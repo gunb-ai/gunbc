@@ -1,0 +1,23 @@
+module test.probe.review_sheet_formula_observation_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. A FormulaWholeTabObservation is minted by
+// gunbc.review_sheet_formula_observation observe_formula_whole_tab and by nothing else: it is
+// sole_constructor, so the record literal below -- an "empty tab" authored by hand, with no read
+// performed, for a spreadsheet and tab the author chose -- refuses as SoleConstructorViolation.
+//
+// This is the forgery the carrier exists to make unwritable. A module holding this value could
+// hand it to gunbc.review_sheet_header_init plan_header_init and receive a header-row write
+// authorisation over a tab nobody read under FORMULA rendering -- the FORMATTED-readback route of
+// gunbc#11613 finding 2, rebuilt one literal at a time. If the literal below ever compiles, the
+// wall is gone and the mint is advice.
+
+import std.types { NonEmptyStr }
+import gunbc.review_sheet_formula_observation { FormulaWholeTabObservation }
+
+fn forged_empty_tab() -> FormulaWholeTabObservation {
+  FormulaWholeTabObservation {
+    spreadsheet_id: "1forged-spreadsheet-id" as NonEmptyStr,
+    tab: "Buyer Review" as NonEmptyStr,
+    rows: [],
+  }
+}

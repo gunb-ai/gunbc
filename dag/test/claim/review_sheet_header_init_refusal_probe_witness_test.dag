@@ -1,0 +1,78 @@
+module test.claim.review_sheet_header_init_refusal_probe_witness
+
+// THE CONSTRUCTION WALLS OF THE HEADER-INIT LANE, MEASURED. Two carriers are sole_constructor:
+// gunbc.review_sheet_formula_observation FormulaWholeTabObservation (minted only by the FORMULA
+// whole-tab read) and gunbc.review_sheet_header_init HeaderRowWriteAuthorization (minted only by
+// plan_header_init over that carrier and a ValidatedHeaderSchema). Each probe under dag/test/probe/
+// is a whole module that MUST NOT RESOLVE, written as the forgery the carrier exists to refuse.
+// This witness hands each probe's source to the compiler through the census harness and requires
+// a BLOCKING SoleConstructorViolation row AT THE TYPE BY NAME -- a probe that refuses for another
+// reason is measuring another wall, so the subject is asserted, not a bare count. The count is
+// asserted at exactly one per probe: each probe carries one literal, and a second refusal would
+// mean the probe is not measuring what it says.
+//
+// THE POSITIVE CONTROL IS NOT A SECOND FIXTURE. test.claim.review_sheet_header_init_witness
+// obtains both carriers FROM THEIR MINTS -- the observation from observe_formula_whole_tab over the
+// hermetic values.get fixture, the authorisation from plan_header_init over it -- and reads their
+// fields, so the refusals here are construction being confined and not the types being unusable.
+//
+// RUNG HONESTY: this measures the v1 seed's acceptance path. The native v2 path parses
+// sole_constructor without enforcing it (gunbc.rung_drop
+// g0_type_decl_modifier_parse_without_sealing_property), and nothing here claims otherwise.
+
+import std.types { Bool, String }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data probe_dir: String = "dag/test/probe/"
+
+fn probe_source(name: String) -> String {
+  filesystem_read(path: probe_dir + name + ".dag").content
+}
+
+// THE HARNESS CONTROL IS TWO-PART, AND THE REASON IS MEASURED RATHER THAN ASSUMED. The census
+// compiles the probed source's WHOLE closure for Rust emission (gunbc.compile_diagnostic_census:
+// the row set is the whole compile's), and every closure that reaches extdeps.transports.rest --
+// which both modules under test do, through the values actuator's values.get call site -- carries
+// blocking rows of that closure's own under this compile: measured on this tree, a source whose
+// only import is extdeps.transports.rest { RestOutcome, RestOk } is NOT total-clean, before any
+// module of this change is reached. So a total-zero control over these modules is not authorable
+// here, and asserting it would be asserting the transport closure's emission, not this wall.
+//
+// Part one: a source over the landed, transport-free closure (gunbc.review_sheet_projection, the
+// same control test.claim.review_sheet_header_schema_witness uses) is total-clean, which is the
+// harness being live. Part two: a source importing both modules under test with NO forgery is
+// observed by the census (not -1) and carries ZERO SoleConstructorViolation rows at either type,
+// so the 1 asserted per probe below is the literal and not a row the closure carries anyway.
+data harness_control_source: String = "module probe_review_sheet_header_init_harness_control\nimport std.types { Int }\nimport gunbc.review_sheet_projection { ci_prospect_sheet_schema }\nfn columns() -> Int { count(ci_prospect_sheet_schema().columns) }\n"
+
+data no_forgery_source: String = "module probe_review_sheet_header_init_no_forgery\nimport std.types { String }\nimport gunbc.review_sheet_formula_observation { formula_whole_tab_refusal_text, FormulaReadRangeUnqualified }\nimport gunbc.review_sheet_header_init { occupied_cell_text, OccupiedCell }\nfn text() -> String { formula_whole_tab_refusal_text(refusal: FormulaReadRangeUnqualified { range: \"A1:B2\" }) }\nfn located() -> String { occupied_cell_text(cell: OccupiedCell { sheet_row: 1, column_index: 0, raw: \"x\" }) }\n"
+
+test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
+  total_blocking_count_for(source: harness_control_source) == 0
+}
+
+test fn a_source_that_forges_nothing_carries_no_sole_constructor_row_at_either_type() -> Bool {
+  total_blocking_count_for(source: no_forgery_source) != 0 - 1
+    && blocking_subject_count_for(source: no_forgery_source, wanted_class: "SoleConstructorViolation", wanted_subject: "FormulaWholeTabObservation") == 0
+    && blocking_subject_count_for(source: no_forgery_source, wanted_class: "SoleConstructorViolation", wanted_subject: "HeaderRowWriteAuthorization") == 0
+}
+
+test fn a_formula_observation_cannot_be_authored_outside_the_mint() -> Bool {
+  blocking_subject_count_for(
+    source: probe_source(name: "review_sheet_formula_observation_forged_probe"),
+    wanted_class: "SoleConstructorViolation",
+    wanted_subject: "FormulaWholeTabObservation",
+  ) == 1
+}
+
+test fn a_header_row_authorization_cannot_be_authored_outside_the_planner() -> Bool {
+  blocking_subject_count_for(
+    source: probe_source(name: "review_sheet_header_row_authorization_forged_probe"),
+    wanted_class: "SoleConstructorViolation",
+    wanted_subject: "HeaderRowWriteAuthorization",
+  ) == 1
+}
