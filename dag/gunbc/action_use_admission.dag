@@ -428,12 +428,21 @@ fn realized_job_scan(path: String, acc: RealizedUsesScan, job_id: String, job: Y
 // removing that is a restructuring of extdeps.languages.yaml.ingest with its own review.
 //
 // THE REMEDY IS NAMED HERE SO IT IS NOT RE-DECIDED UNDER PRESSURE: cut the reader's per-entry cost.
-// WHICH per-entry path to cut IS NOT STATED HERE, because it is a measurement and a measurement
-// belongs to the instrument that re-derives it (DESIGN section 6). That instrument is
-// test.probe.yaml_shape_cost_probe: it parses documents of one repeated shape each, so the
-// difference between two of its readings says which path a corpus of that shape spends in. RUN IT
-// BEFORE CUTTING. This is not ceremony -- the first two cuts made against an unmeasured guess about
-// which path carried the cost returned almost nothing, and the probe is what redirected them.
+// WHICH per-entry path to cut IS NOT STATED HERE, because it is a measurement and this row is not
+// where a measurement lives (DESIGN section 6). MEASURE IT BEFORE CUTTING, with the instrument this
+// row already names above: add one claim over a document of ONE repeated shape -- a one-line
+// `key: value` entry, a two-line step mapping under a sequence, a literal block -- read eval_steps
+// from its [witness] line, and the difference between two such readings says which path a corpus of
+// that shape spends in. That is minutes of work and it is not ceremony: the first two cuts made
+// against an unmeasured guess about which path carried the cost returned almost nothing, and only a
+// per-shape reading redirected them.
+//
+// NO STANDING PROBE IS COMMITTED FOR THIS, deliberately. One was, and it was wrong twice over: it
+// sat in dag/test/probe/, whose modules must NOT resolve (each is a designed refusal consumed as
+// source text by gunbc.compile_diagnostic_census), and it carried no `test` markers, so the tool
+// named to run it reported nothing at all while exiting 0. A measurement worth re-deriving is worth
+// an entry point; this one is re-derived in minutes from the claim vocabulary that already exists,
+// so it is a method, not an instrument (review 69135).
 // A RAISED BUDGET, A SECOND READER BESIDE THE MODELED ONE,
 // AND A DECLARED COST DROP ARE NOT REMEDIES: the first moves the line rather than the work, and the
 // other two are the scaffold this change deleted and the debt row DESIGN section 4b(3) keeps for
@@ -452,7 +461,7 @@ type RealizedCensusCostStanding {
 data realized_census_cost_standing: RealizedCensusCostStanding = RealizedCensusCostStanding {
   subject: "fleet-converge.yml" as NonEmptyStr,
   instrument: "claim_batch --entry dag/test/claim/action_use_admission_witness_test.dag --functions census_fleet_converge_uses_are_modeled_and_executed_exactly, against v2.workflow.required_floor claim_eval_step_budget_for_identity" as NonEmptyStr,
-  remedy: "cut the per-entry cost of extdeps.languages.yaml.ingest, choosing the path by measurement rather than by reading: run test.probe.yaml_shape_cost_probe, which parses documents of one repeated shape each, and cut the path the shape this corpus is made of spends in" as NonEmptyStr,
+  remedy: "cut the per-entry cost of extdeps.languages.yaml.ingest, choosing the path by measurement rather than by reading: add one claim over a document of one repeated shape, read eval_steps from its [witness] line, and cut the path the shape this corpus is made of spends in" as NonEmptyStr,
   refused_remedies: [
     "raising the claim's eval-step budget" as NonEmptyStr,
     "a second, cheaper reader beside extdeps.languages.yaml.ingest" as NonEmptyStr,
