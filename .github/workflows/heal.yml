@@ -3,6 +3,23 @@
 name: heal
 on:
   workflow_dispatch:
+    inputs:
+      pull_number:
+        description: Pull request this manual repair describes
+        required: true
+        type: string
+      head_sha:
+        description: Exact head commit the candidate is sealed against
+        required: true
+        type: string
+      head_ref:
+        description: Head branch the repair would fast-forward
+        required: true
+        type: string
+      base_ref:
+        description: Base branch of that pull request
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -15,7 +32,7 @@ jobs:
   heal-generated-artifacts:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
-    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    if: github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
     steps:
@@ -23,7 +40,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ inputs.head_sha }}
           persist-credentials: false
       - name: Isolate toolchain homes
         run: |
@@ -84,9 +101,9 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/heal_candidate.dag --function heal_candidate_produce_wet
         env:
           HEAL_REPOSITORY: ${{ github.repository }}
-          HEAL_PULL_NUMBER: ${{ github.event.pull_request.number }}
-          HEAL_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          HEAL_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAL_PULL_NUMBER: ${{ inputs.pull_number }}
+          HEAL_HEAD_REF: ${{ inputs.head_ref }}
+          HEAL_BASE_REF: ${{ inputs.base_ref }}
           HEAL_RUN_ID: ${{ github.run_id }}
       - name: Upload the sealed repair candidate
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

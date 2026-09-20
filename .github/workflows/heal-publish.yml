@@ -23,6 +23,20 @@ jobs:
       actions: read
       id-token: write
     steps:
+      - name: Ask the triggering run whether it sealed a candidate
+        id: candidate_probe
+        run: |
+          set -euo pipefail
+          NAMES=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$TRIGGERING_RUN_ID/artifacts" --jq '.artifacts[].name')
+          if printf '%s\n' "$NAMES" | grep -qx "heal-repair-candidate"; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::the triggering run sealed no repair candidate, so there is nothing to publish"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGERING_RUN_ID: ${{ github.event.workflow_run.id }}
       - name: Checkout the default branch this publisher runs from
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -36,7 +50,7 @@ jobs:
           merge-multiple: true
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
-        continue-on-error: true
+        if: steps.candidate_probe.outputs.present == 'true'
       - name: Isolate toolchain homes
         run: |
           # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
