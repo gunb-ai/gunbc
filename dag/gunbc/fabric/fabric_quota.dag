@@ -9,7 +9,7 @@ import product.capacity.event_chain { PartitionId, HeadExpectation, HeadAbsent, 
 import product.capacity.pool_events { PoolEvent, PoolSettled, SeatRequest }
 import product.capacity.lease { LeasePolicy, LeaseGrant, FencedResource }
 import gunbc.fabric_event_log_host { HostEventLogStore, HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
-import gunbc.fabric_db_client { FabricDbBinding }
+import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric_event_log {
   event_log_refusal_wire,
   HeadObservation, HeadObserved, HeadObservationRefused, event_log_observe_head,
@@ -27,7 +27,7 @@ import gunbc.fabric_event_log {
 // expiry frees is the unspent remainder.
 
 type QuotaLease
-  = QuotaLeased { grant: LeaseGrant, partition: PartitionId, store: FabricDbBinding }
+  = QuotaLeased { grant: LeaseGrant, partition: PartitionId, store: FabricStorageBinding }
   | QuotaFull { wire: String }
   | QuotaLeaseRefused { detail: String }
 

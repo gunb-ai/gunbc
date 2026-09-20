@@ -39,6 +39,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_sol_pid_path_env,
 }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
+import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -907,6 +908,11 @@ data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunS
   function: "runner_guest_image_converge_wet",
 }
 
+data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
+  function: "mtcollins1_fan_observe_wet",
+}
+
 data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/managed_grant_install.dag",
   function: "spark_grant_install_ci_wet",
@@ -1082,6 +1088,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
+    gunbc_ci_mtcollins1_fan_observe_target,
     gunbc_ci_spark_grant_install_target,
     gunbc_ci_spark_bootstrap_target,
     gunbc_ci_spark_serving_apply_target,
@@ -1484,6 +1491,85 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
       )
     }
   ]
+}
+
+// THE MT. COLLINS BMC CREDENTIAL FETCH, FACTORED SO ONE SECRET HAS ONE FETCH.
+//
+// This lane originally authored a second, standalone Collins prelude beside the boot lane's, which
+// was the §3 fork arrived at by not knowing the first one existed: two spellings of "read pinned
+// version 2 of bmc-mtcollins1-gunbc into a 0600 file", drifting independently the first time either
+// one was corrected. The shared half is these four steps and it is exactly the half that is the
+// same fact - the auth header, the curl of THAT secret's access URL, the base64 decode, the mode.
+//
+// WHAT IS DELIBERATELY NOT SHARED, because it is genuinely different per consumer: the RUNNER_TEMP
+// filenames, the trap (the boot prelude's also kills a SOL child and wipes a second key file), the
+// second secret the boot lane needs, and the environment variable each consumer reads its path
+// from. The destination variable is a PARAMETER for that reason: the boot lane names the path in
+// host_reset_bmc_credential_path_env and the fan lane in its own, and folding those into one row
+// would make a consumer's variable a fact about the fetch.
+//
+// THE CALLER SETS DEST_FILE AND RESP_FILE BEFORE CALLING, AND THAT ORDERING IS LOAD-BEARING rather
+// than stylistic: these steps read both as shell variables, so a caller that has not set them
+// decodes into an empty path. The boot prelude's second fetch already relies on exactly this by
+// reassigning DEST_FILE around its call.
+fn gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: NonEmptyStr) -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
+    Do { run: ci_retry_body_run(command: concat("curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$DEST_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(dest_path_env as String, "=\"$DEST_FILE\""))) },
+  ]
+}
+
+// THE FAN OBSERVATION'S PRELUDE IS THE SHARED FETCH PLUS ITS OWN FILE NAMES AND TRAP, AND NOTHING
+// ELSE. It needs no SOL capture, no PID file and no second key, because the mode it serves reads
+// sensors and writes nothing - so its trap has three files to remove and no child to kill.
+fn gunbc_ci_mtcollins1_fan_observe_credential_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/mtcollins1-fan-auth-header\"") },
+    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/mtcollins1-fan-sm.json\"") },
+    Do { run: ci_retry_body_run(command: "DEST_FILE=\"$RUNNER_TEMP/mtcollins1-bmc-credential\"") },
+    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\"' EXIT") },
+  ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: mtcollins1_fan_credential_path_env))
+}
+
+
+// THE FAN LANE'S RUNNER IS THE SAME HAND-SHELL CREDENTIAL TRANSPORT ITS TWO SIBLINGS ARE, AND IT
+// CARRIES THE SAME MARKER. It landed without one, which is the failure worth naming rather than
+// quietly fixing: this same change authored the marker twice, for the approval-keyring lane and the
+// boot lane, and dropped it on the third. A rule a diff observes twice and skips once is not a rule
+// anybody is enforcing, and the marker on the carrier IS the authority (DESIGN §5/§6) - so its
+// absence made this lane invisible to every reader counting what still has to dissolve.
+//
+// It shares the boot lane's dissolution trigger because it shares the boot lane's defect: the
+// credential fetch is modeled as PipelineSteps (gunbc_ci_mtcollins1_bmc_credential_fetch_steps) but
+// each step's body is a shell string built by concat, so the transport is hand-authored even though
+// the pipeline around it is not.
+data gunbc_ci_mtcollins1_fan_observe_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_mtcollins1_fan_observe_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_fan_observe_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned BMC secret version fetched over curl through the shared gunbc_ci_mtcollins1_bmc_credential_fetch_steps, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk. The pipeline steps are modeled but each step body is a shell string built by concat, so the transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold. The SHARED fetch means this row and gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger retire together for the fetch half; each keeps its own row because each lane's file names, trap and exports are still its own hand-shell.")
+
+fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_mtcollins1_fan_observe_credential_prelude(),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_mtcollins1_fan_observe_target.entry,
+      function: gunbc_ci_mtcollins1_fan_observe_target.function,
+      claim_run: false,
+      receipt_rel: mtcollins1_fan_observation_receipt_path
+    )
+  )
 }
 
 // The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and must kill
@@ -2192,6 +2278,12 @@ data gunbc_ci_approval_keyring_converge_shell_emit_scaffold: Disposition = Scaff
 
 data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_approval_keyring_converge_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, two PINNED secret versions (capability and submission MAC keys) fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. The pipeline steps are modeled (gunbc_ci_approval_keyring_converge_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
 
+// THE BOOT PRELUDE'S BMC FETCH IS THE SHARED ONE (gunbc_ci_mtcollins1_bmc_credential_fetch_steps).
+// The four steps it used to spell inline are byte-identical to what that function returns when it is
+// given this lane's destination variable, which is why the factoring changes no emitted YAML here.
+// Everything around it stays: this prelude's own file names, its trap with the SOL child kill, the
+// SECOND fetch for the approval submission MAC key, and the SOL capture wiring - none of which the
+// fan observation has or needs.
 fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
   [
     Do { run: ci_retry_body_run(command: "set -euo pipefail") },
@@ -2203,10 +2295,7 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "SOL_PID_FILE=\"$RUNNER_TEMP/mtcollins1-sol.pid\"") },
     Do { run: ci_retry_body_run(command: "SOL_OUT=\"$GITHUB_WORKSPACE/artifacts/mtcollins1-boot-sol.capture\"") },
     Do { run: ci_retry_body_run(command: "trap 'if [ -f \"$SOL_PID_FILE\" ]; then kill \"$(cat \"$SOL_PID_FILE\")\" 2>/dev/null || true; fi; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SUB_FILE\" \"$SOL_PID_FILE\"' EXIT") },
-    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: concat("curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$DEST_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(host_reset_bmc_credential_path_env as String, "=\"$DEST_FILE\""))) },
+  ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: host_reset_bmc_credential_path_env)).concat([
     Do { run: ci_retry_body_run(command: "HOLD_BMC=\"$DEST_FILE\"") },
     Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_submission_mac_access_url(), concat("\"; ", concat(gunbc_ci_sm_decode_payload_to_file(), "; DEST_FILE=\"$HOLD_BMC\""))))) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
@@ -2215,7 +2304,7 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: ": > \"$SOL_OUT\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_capture_path_env as String, "=\"$SOL_OUT\""))) },
     Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_pid_path_env as String, "=\"$SOL_PID_FILE\""))) },
-  ]
+  ])
 }
 
 data gunbc_ci_mtcollins1_boot_credential_shell_emit_scaffold: Disposition = Scaffold {
