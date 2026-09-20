@@ -300,7 +300,9 @@ test fn body_lowering_qualified_call_callee_is_the_whole_path() -> Bool {
 // ALL THREE SITES (review 68231 on gunbc#11683). Measured on main's fold: `{ x.step(a: 1) }`
 // reached the arrow body as Transform(x) -- operator `x`, method AND argument erased -- and
 // `= x.step(a: 1)` as the atom `x`. So no executing lowering of this shape is replaced; it now
-// lowers like every other dotted chain, to a Transform whose operator is the spine x.step, and
+// lowers through the same admitted final-segment-call door, to a Transform whose operator is the
+// spine x.step (a call on a NON-final segment is named and declined instead, as this file's own
+// call_before_end rows demonstrate), and
 // what `x` denotes is the resolver's (a local head refuses Unbound there, loud where the route
 // was silent).
 test fn body_lowering_local_receiver_call_callee_is_the_whole_path() -> Bool {

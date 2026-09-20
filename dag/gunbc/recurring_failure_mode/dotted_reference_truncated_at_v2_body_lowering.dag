@@ -21,5 +21,6 @@ data dotted_reference_truncated_at_v2_body_lowering: RecurringFailureMode = Recu
   evidence: [
     DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_dotted_reference_optional", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_qualified_name_production_spine_optional", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_dotted_chain_lowered_optional", field: WholeDeclaration },
   ],
 }
