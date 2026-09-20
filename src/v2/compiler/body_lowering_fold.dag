@@ -2851,8 +2851,9 @@ fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
 // v2.test.claim.body_lowering_qualified_path body_lowering_block_body_site_keeps_the_whole_call
 // is the executed answer, calling body_lower_try_body_lowered over a supplied chain, and
 // body_lowering_first_atom_fallback_would_truncate_the_chain is what it discriminates against).
-// Those direct-call claims keep their subject; the route now lowers every dotted
-// chain to one spine and leaves what the head denotes to v2.compiler.resolve
+// Those direct-call claims keep their subject; the route now lowers the two shapes this door
+// admits -- bare chains, and chains whose only call is on the final segment -- to one spine, and
+// leaves what the head denotes to v2.compiler.resolve
 // try_resolve_qualified_name_node, which refuses a chain whose head is a local binder as Unbound
 // (its own header states that standing) -- loud where the route was silent.
 fn body_lower_dotted_chain_lowered_optional(node: Node) -> Optional<Node> {
