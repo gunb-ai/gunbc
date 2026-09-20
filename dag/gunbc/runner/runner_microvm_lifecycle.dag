@@ -12,7 +12,7 @@ import gunbc.fabric_cell_converge { fabric_cell_slice_name }
 import gunbc.runner_microvm { RunnerGuestImage }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, runner_microvm_attempt_unit_name, runner_microvm_attempt_dir,
-  runner_microvm_attempt_jail_base, runner_microvm_attempt_jit_drive_path,
+  runner_microvm_attempt_jail_base,
 }
 import gunbc.runner_attempt_launch { AttemptGround, GroundClear, GroundOccupied }
 import gunbc.build_cache_instance { runner_slot_identity_equal, runner_slot_instance_name }
@@ -66,6 +66,7 @@ type AttemptIdentity {
   allocation_generation: Int
   invocation_id: NonEmptyStr
   jit_registration_id: NonEmptyStr
+  credential_device_path: String
   guest_image: RunnerGuestImage
 }
 
@@ -100,6 +101,7 @@ fn in_flight_attempt_of_identity(identity: AttemptIdentity) -> InFlightAttempt {
     attempt: identity.attempt,
     invocation_id: identity.invocation_id,
     jit_registration_id: identity.jit_registration_id,
+    credential_device_path: identity.credential_device_path,
   }
 }
 
@@ -334,7 +336,7 @@ fn teardown_subject_pairs(bound: CellBoundAttempt, o: ObservedTeardown) -> List<
     SubjectPair { subject: SubjectCgroupRoot, expected: fabric_cell_slice_name(slot: a.slot), observed: o.cgroup.root as String },
     SubjectPair { subject: SubjectJailRoot, expected: runner_microvm_attempt_jail_base(attempt: a), observed: o.mounts.path },
     SubjectPair { subject: SubjectAttemptDirectory, expected: runner_microvm_attempt_dir(attempt: a), observed: o.attempt_storage.path },
-    SubjectPair { subject: SubjectCredentialDrive, expected: runner_microvm_attempt_jit_drive_path(attempt: a), observed: o.credential_disk.path },
+    SubjectPair { subject: SubjectCredentialDrive, expected: bound.attempt.credential_device_path, observed: o.credential_disk.path },
   ]
 }
 
