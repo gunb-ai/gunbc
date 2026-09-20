@@ -1,22 +1,22 @@
-module gunbc.fabric_db_placement
+module gunbc.fabric_storage_placement
 
 import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, fleet_intent_network }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_fabric_db_root, srv1_live_dashboard_instance }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_fabric_storage_root, srv1_live_dashboard_instance }
 
 // WHERE THE FABRIC DB IS: one host holds the store's files and answers the endpoint. This is the
-// POLICY fact of the three (DESIGN 3) -- std.fabric_db is the interface, the file store and the
+// POLICY fact of the three (DESIGN 3) -- std.fabric_storage is the interface, the file store and the
 // served handler are its realization, and which host and which root is this row. Moving the store is
 // a row change here; nothing downstream names the host.
 //
 // ONE PLACEMENT, NOT A REPLICA SET (operator approval 2026-09-19): a head needs exactly one
 // linearization point, and an unreachable placement refuses acquisitions rather than failing over.
-// Replication is docs/plans/fabric-db.md.
+// Replication is docs/plans/fabric-storage.md.
 
-type FabricDbPlacement
-  = FabricDbUnplaced
-  | FabricDbPlaced { host: HostIdentity, store_root: NonEmptyStr, endpoint: NonEmptyStr }
+type FabricStoragePlacement
+  = FabricStorageUnplaced
+  | FabricStoragePlaced { host: HostIdentity, store_root: NonEmptyStr, endpoint: NonEmptyStr }
 
 // The endpoint is the placed host's tailnet name on the store's own HTTPS listener, derived from the
 // fleet network's tailnet domain rather than spelled: an unset domain leaves the store unplaced
@@ -30,40 +30,40 @@ type FabricDbPlacement
 // routes on. 10000 because srv1's 443 carries the dashboard and its 8443 the approval notification
 // server (gunbc.auth.approval_ntfy_deployment approval_ntfy_serve_port); tailscale serve admits
 // HTTPS listeners on 443, 8443 and 10000 only.
-data fabric_db_https_port: Port = 10000
+data fabric_storage_https_port: Port = 10000
 
 // The loopback port the fabric DB's `gunbc serve` binds; only tailscale serve reaches it. Distinct
 // from every dashboard instance's listen port (gunbc.roadmap_dashboard_instance).
-data fabric_db_listen_port: Port = 18090
+data fabric_storage_listen_port: Port = 18090
 
-data fabric_db_route_prefix: String = "/fabric-db"
+data fabric_storage_route_prefix: String = "/fabric-storage"
 
 // The store root is the placed instance's fabric DB root -- one authority with the deployment that
-// creates it (gunbc.roadmap_dashboard_instance dashboard_instance_fabric_db_root).
-fn fabric_db_placed_instance() -> HostDashboardInstance {
+// creates it (gunbc.roadmap_dashboard_instance dashboard_instance_fabric_storage_root).
+fn fabric_storage_placed_instance() -> HostDashboardInstance {
   srv1_live_dashboard_instance()
 }
 
-fn fabric_db_store_root() -> NonEmptyStr {
-  dashboard_instance_fabric_db_root(instance: fabric_db_placed_instance()) as String as NonEmptyStr
+fn fabric_storage_store_root() -> NonEmptyStr {
+  dashboard_instance_fabric_storage_root(instance: fabric_storage_placed_instance()) as String as NonEmptyStr
 }
 
 // WHETHER AN INSTANCE HOLDS THE PLACEMENT: the deployment owns the store root and the endpoint only
 // there. Identity is the instance's own id, not a path comparison.
-fn fabric_db_placed_on(instance: HostDashboardInstance) -> Bool {
-  (instance.instance_id as String) == (fabric_db_placed_instance().instance_id as String)
+fn fabric_storage_placed_on(instance: HostDashboardInstance) -> Bool {
+  (instance.instance_id as String) == (fabric_storage_placed_instance().instance_id as String)
 }
 
-fn fabric_db_endpoint_for(host: HostIdentity) -> NonEmptyStr? {
+fn fabric_storage_endpoint_for(host: HostIdentity) -> NonEmptyStr? {
   match fleet_intent_network.tailnet_domain {
     Absent => none
-    Present { value: domain } => Present { value: join(["https://", host as String, ".", domain as String, ":", to_string(fabric_db_https_port), fabric_db_route_prefix], "") as NonEmptyStr }
+    Present { value: domain } => Present { value: join(["https://", host as String, ".", domain as String, ":", to_string(fabric_storage_https_port), fabric_storage_route_prefix], "") as NonEmptyStr }
   }
 }
 
-fn fabric_db_placement() -> FabricDbPlacement {
-  match fabric_db_endpoint_for(host: operator_host_srv1) {
-    Absent => FabricDbUnplaced
-    Present { value: e } => FabricDbPlaced { host: operator_host_srv1, store_root: fabric_db_store_root(), endpoint: e }
+fn fabric_storage_placement() -> FabricStoragePlacement {
+  match fabric_storage_endpoint_for(host: operator_host_srv1) {
+    Absent => FabricStorageUnplaced
+    Present { value: e } => FabricStoragePlaced { host: operator_host_srv1, store_root: fabric_storage_store_root(), endpoint: e }
   }
 }

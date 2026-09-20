@@ -7,8 +7,8 @@ import gunbc.fleet_intent_network { operator_host_srv2 }
 import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, cell_is_ready }
 import gunbc.runner_microvm { gunbc_runner_guest_image }
 import gunbc.runner_microvm_attempt {
-  MicroVmAttemptResult, MicroVmAttemptAccepted, microvm_attempt,
-  runner_microvm_attempt_dir, runner_microvm_attempt_jail_base, runner_microvm_attempt_jit_drive_path,
+  MicroVmAttempt, MicroVmAttemptResult, MicroVmAttemptAccepted, microvm_attempt,
+  runner_microvm_attempt_dir, runner_microvm_attempt_jail_base,
   runner_microvm_attempt_unit_name,
 }
 import gunbc.fabric_cell_converge { fabric_cell_slice_name }
@@ -73,6 +73,15 @@ fn identity(generation: Int, invocation: String) -> AttemptIdentity? {
   identity_on(slot: witness_slot, generation: generation, invocation: invocation)
 }
 
+// THE DEVICE PATH IS SUPPLIED, NOT DERIVED, and that is the property under test rather than a
+// shortcut. The staged device now lives inside the jailer's chroot at a path the launch plan owns
+// (gunbc.runner_attempt_launch jit_device_staging), so a witness that recomputed it from the attempt
+// would be asserting a convention this corpus no longer has. Supplying it is also what lets the
+// foreign-subject red below name a DIFFERENT device than the record does.
+fn witness_credential_device_path(attempt: MicroVmAttempt) -> String {
+  join([runner_microvm_attempt_jail_base(attempt: attempt), "/firecracker/w/root/jit.bin"], "")
+}
+
 fn identity_on(slot: RunnerSlotIdentity, generation: Int, invocation: String) -> AttemptIdentity? {
   match microvm_attempt(slot: slot, attempt_id: join(["w-", to_string(generation)], "")) {
     MicroVmAttemptAccepted { attempt: a } =>
@@ -82,6 +91,7 @@ fn identity_on(slot: RunnerSlotIdentity, generation: Int, invocation: String) ->
           allocation_generation: generation,
           invocation_id: invocation as NonEmptyStr,
           jit_registration_id: "reg-1" as NonEmptyStr,
+          credential_device_path: witness_credential_device_path(attempt: a),
           guest_image: gunbc_runner_guest_image,
         },
       }
@@ -192,7 +202,12 @@ fn quiet_network() -> BoundSlotNetworkReadback? {
 }
 
 fn in_flight(id: AttemptIdentity) -> InFlightAttempt {
-  InFlightAttempt { attempt: id.attempt, invocation_id: id.invocation_id, jit_registration_id: id.jit_registration_id }
+  InFlightAttempt {
+    attempt: id.attempt,
+    invocation_id: id.invocation_id,
+    jit_registration_id: id.jit_registration_id,
+    credential_device_path: id.credential_device_path,
+  }
 }
 
 fn bound_of(id: AttemptIdentity) -> CellBoundAttempt? {
@@ -210,7 +225,7 @@ fn observed_for(id: AttemptIdentity, facts: HostFacts) -> ObservedTeardown {
     cgroup: ObservedCgroup { root: fabric_cell_slice_name(slot: id.attempt.slot) as NonEmptyStr, readback: facts.cgroup },
     mounts: ObservedPath { path: runner_microvm_attempt_jail_base(attempt: id.attempt), readback: facts.mounts },
     attempt_storage: ObservedPath { path: runner_microvm_attempt_dir(attempt: id.attempt), readback: facts.attempt_storage },
-    credential_disk: ObservedPath { path: runner_microvm_attempt_jit_drive_path(attempt: id.attempt), readback: facts.credential_disk },
+    credential_disk: ObservedPath { path: id.credential_device_path, readback: facts.credential_disk },
     network: facts.network,
   }
 }
