@@ -11,7 +11,7 @@ import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeig
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_transient_wait_unit_argv }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.runner_slot_allocation {
-  RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, CpuQuotaRefused,
+  RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded,
   gunbc_runner_slot_desired, runner_host_label, runner_label_set_union,
 }
 import gunbc.runner_throughput_qualification {
@@ -88,49 +88,34 @@ fn stage_egress(stage: QualificationStage) -> EgressPolicyShape? {
 // MemoryHigh, MemorySwapMax, TasksMax, CPUWeight and the CPU quota the fleet's slots run under.
 // The permanent slots reach systemd as a unit file; this one reaches it as `systemd-run`
 // properties, and both spell every property through `extdeps.systemd systemd_unit_property_wire`.
-// A refused CPU quota refuses the unit: a slot with no CPU ceiling measures a different envelope
-// than the fleet's and its receipt would not be comparable.
-type EphemeralSlotRendering
-  = EphemeralSlotRendered { properties: List<SystemdRunProperty> }
-  | EphemeralSlotRefused { cause: NonEmptyStr }
-
-fn cpu_quota_percent(quota: RunnerSlotCpuQuota) -> NonEmptyStr? {
+// AN UNBOUNDED QUOTA EMITS NO CPUQuota WORD: a transient unit carries no absolute CPU ceiling
+// unless one is set, which is exactly the fleet's declared state (SlotCpuQuotaUnbounded, the
+// 2026-09-19 ruling), so the absence is the faithful rendering and cpu_weight governs.
+fn cpu_quota_properties(quota: RunnerSlotCpuQuota) -> List<SystemdRunProperty> {
   match quota {
-    CpuQuotaRefused { cause: _ } => none
-    CpuQuotaResolved { threads: t } =>
-      {
-        let percent = hardware_thread_count_value(t: t) * 100
-        Present { value: concat(percent as String, "%") as NonEmptyStr }
-      }
+    SlotCpuQuotaUnbounded => []
+    CpuQuotaResolved { threads: t } => {
+      let percent = hardware_thread_count_value(t: t) * 100
+      [SystemdRunProperty { property: CPUQuota, value: concat(percent as String, "%") as NonEmptyStr }]
+    }
   }
 }
 
-fn ephemeral_slot_properties(desired: RunnerSlotDesired) -> EphemeralSlotRendering {
-  match cpu_quota_percent(quota: desired.cpu_quota) {
-    Absent =>
-      EphemeralSlotRefused {
-        cause: "the fleet slot's CPU quota did not resolve, so the ephemeral slot cannot carry the fleet envelope and a receipt taken in it would not be comparable" as NonEmptyStr,
-      }
-    Present { value: quota } =>
-      EphemeralSlotRendered {
-        properties: [
-          SystemdRunProperty { property: MemoryMax, value: byte_size_count(b: desired.memory_max) as String as NonEmptyStr },
-          SystemdRunProperty { property: MemoryHigh, value: byte_size_count(b: desired.memory_high) as String as NonEmptyStr },
-          SystemdRunProperty { property: MemorySwapMax, value: byte_size_count(b: desired.memory_swap_max) as String as NonEmptyStr },
-          SystemdRunProperty { property: TasksMax, value: desired.tasks_max as String as NonEmptyStr },
-          SystemdRunProperty { property: CPUWeight, value: desired.cpu_weight as String as NonEmptyStr },
-          SystemdRunProperty { property: CPUQuota, value: quota },
-        ],
-      }
-  }
+fn ephemeral_slot_properties(desired: RunnerSlotDesired) -> List<SystemdRunProperty> {
+  concat(
+    [
+      SystemdRunProperty { property: MemoryMax, value: byte_size_count(b: desired.memory_max) as String as NonEmptyStr },
+      SystemdRunProperty { property: MemoryHigh, value: byte_size_count(b: desired.memory_high) as String as NonEmptyStr },
+      SystemdRunProperty { property: MemorySwapMax, value: byte_size_count(b: desired.memory_swap_max) as String as NonEmptyStr },
+      SystemdRunProperty { property: TasksMax, value: desired.tasks_max as String as NonEmptyStr },
+      SystemdRunProperty { property: CPUWeight, value: desired.cpu_weight as String as NonEmptyStr },
+    ],
+    cpu_quota_properties(quota: desired.cpu_quota),
+  )
 }
 
-fn ephemeral_slot_argv(unit: NonEmptyStr, desired: RunnerSlotDesired, command_argv: List<String>) -> List<String>? {
-  match ephemeral_slot_properties(desired: desired) {
-    EphemeralSlotRefused { cause: _ } => none
-    EphemeralSlotRendered { properties: p } =>
-      Present { value: systemd_run_transient_wait_unit_argv(unit: unit, properties: p, command_argv: command_argv) }
-  }
+fn ephemeral_slot_argv(unit: NonEmptyStr, desired: RunnerSlotDesired, command_argv: List<String>) -> List<String> {
+  systemd_run_transient_wait_unit_argv(unit: unit, properties: ephemeral_slot_properties(desired: desired), command_argv: command_argv)
 }
 
 // THE ATTEMPT LABEL IS IN runs-on, AND THAT IS THE WHOLE BINDING (gunbc.runner.runner_qualification_receipt

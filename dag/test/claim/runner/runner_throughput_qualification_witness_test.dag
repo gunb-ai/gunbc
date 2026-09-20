@@ -25,7 +25,7 @@ import product.fabric.supply { SupplierOffer }
 import gunbc.required_ci_phase_roster { ParsePhase, FloorPhase }
 import gunbc.runner_slot_allocation {
   RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_cores_per_slot,
-  CoresPerSlotResolved, CoresPerSlotUnresolved, CpuQuotaResolved, CpuQuotaRefused,
+  CpuQuotaResolved, SlotCpuQuotaUnbounded,
 }
 import gunbc.fabric_executor_class {
   CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified, admit_executor_capacity,
@@ -190,21 +190,18 @@ test fn a_run_meeting_every_axis_admits_the_host_to_its_candidate_class() -> Boo
 // fleet's cores-per-slot. Both expectations are derived through the owning folds rather than
 // transcribed (an earlier draft wrote 6 and 8 and each went stale against its producer).
 test fn the_receipt_derives_slot_width_as_the_minimum_over_memory_and_cpu() -> Bool {
-  match gunbc_runner_cores_per_slot() {
-    CoresPerSlotUnresolved { cause: _ } => false
-    CoresPerSlotResolved { threads: t } =>
-      match qualify_runner_throughput(subject: subject(runs: [good_run(revision: pin_revision)])) {
-        HostAdmittedToClass { receipt: r, class: _ } =>
-          match r.slot_width {
-            SlotWidthDerived { by_memory: m, by_cpu: c, slots: n } =>
-              m == expected_memory_width()
-                && c == 160 / hardware_thread_count_value(t: t)
-                && n == expected_slot_width(cores_per_slot: hardware_thread_count_value(t: t))
-                && n >= 1
-            SlotWidthUnderivable { cause: _ } => false
-          }
-        _ => false
+  let t = hardware_thread_count_value(t: gunbc_runner_cores_per_slot())
+  match qualify_runner_throughput(subject: subject(runs: [good_run(revision: pin_revision)])) {
+    HostAdmittedToClass { receipt: r, class: _ } =>
+      match r.slot_width {
+        SlotWidthDerived { by_memory: m, by_cpu: c, slots: n } =>
+          m == expected_memory_width()
+            && c == 160 / t
+            && n == expected_slot_width(cores_per_slot: t)
+            && n >= 1
+        SlotWidthUnderivable { cause: _ } => false
       }
+    _ => false
   }
 }
 
@@ -417,18 +414,15 @@ fn derived_offer(runs: List<QualificationRun>) -> SupplierOffer<HostIdentity>? {
 // THE ROW CARRIES THE RECEIPT'S NUMBERS AND NOTHING MORE: the derived slot width as its quantity,
 // the slot's memory as its envelope, and it is fungible for the floor through the fabric's own fold.
 test fn a_qualified_host_enters_the_supply_with_its_measured_envelope() -> Bool {
-  match gunbc_runner_cores_per_slot() {
-    CoresPerSlotUnresolved { cause: _ } => false
-    CoresPerSlotResolved { threads: t } =>
+  let t = hardware_thread_count_value(t: gunbc_runner_cores_per_slot())
   match derived_offer(runs: [good_run(revision: pin_revision)]) {
     Absent => false
     Present { value: o } =>
-      o.quantity_bound == expected_slot_width(cores_per_slot: hardware_thread_count_value(t: t))
+      o.quantity_bound == expected_slot_width(cores_per_slot: t)
         && match floor_offer_fungibility(offer: o) {
           Fungible => true
           _ => false
         }
-  }
   }
 }
 
@@ -528,25 +522,22 @@ test fn receipt_producer_and_consumer_frontiers_are_declared_not_claimed() -> Bo
 }
 
 // THE EPHEMERAL SLOT CARRIES THE FLEET SLOT SHAPE, spelled through the systemd-run authority: the
-// declared MemoryMax and the resolved CPU quota (cores-per-slot x 100%) both appear as property
-// words, and the quota is read from the slot's own resolution rather than written here.
+// declared MemoryMax appears as a property word, and the CPU quota word appears exactly when the
+// fleet's slot declares a bounded quota -- under SlotCpuQuotaUnbounded no CPUQuota word is emitted,
+// which is the transient unit's own meaning of "no ceiling".
 test fn the_ephemeral_slot_argv_carries_the_fleet_memory_max() -> Bool {
-  match gunbc_runner_slot_desired().cpu_quota {
-    CpuQuotaRefused { cause: _ } => false
-    CpuQuotaResolved { threads: t } => {
-      let quota = concat("--property=CPUQuota=", concat((hardware_thread_count_value(t: t) * 100) as String, "%"))
-      match ephemeral_slot_argv(
-        unit: "gunbc-qualification-mtcollins1-x.service" as NonEmptyStr,
-        desired: gunbc_runner_slot_desired(),
-        command_argv: ["/mnt/runner/run.sh"],
-      ) {
-        Absent => false
-        Present { value: argv } =>
-          (argv |> any(w => w == concat("--property=MemoryMax=", byte_size_count(b: gunbc_runner_slot_desired().memory_max) as String)))
-            && (argv |> any(w => w == quota))
-      }
-    }
-  }
+  let argv = ephemeral_slot_argv(
+    unit: "gunbc-qualification-mtcollins1-x.service" as NonEmptyStr,
+    desired: gunbc_runner_slot_desired(),
+    command_argv: ["/mnt/runner/run.sh"],
+  )
+  let has_quota_word = argv |> any(w => string_contains(s: w, pattern: "--property=CPUQuota="))
+  (argv |> any(w => w == concat("--property=MemoryMax=", byte_size_count(b: gunbc_runner_slot_desired().memory_max) as String)))
+    && (match gunbc_runner_slot_desired().cpu_quota {
+      SlotCpuQuotaUnbounded => !has_quota_word
+      CpuQuotaResolved { threads: t } =>
+        argv |> any(w => w == concat("--property=CPUQuota=", concat((hardware_thread_count_value(t: t) * 100) as String, "%")))
+    })
 }
 
 test fn the_ephemeral_slot_labels_carry_class_host_and_attempt() -> Bool {
@@ -554,13 +545,10 @@ test fn the_ephemeral_slot_labels_carry_class_host_and_attempt() -> Bool {
   (labels |> any(l => l == "gunbc-heavy")) && (labels |> any(l => l == "mtcollins1")) && (labels |> any(l => l == "mtcollins1-qual-1"))
 }
 
-// THE INHABITANCE CLAIM FOR cores_per_slot: the real producer resolves to a positive width that
+// THE INHABITANCE CLAIM FOR cores_per_slot: the fleet's authored policy is a positive width that
 // leaves memory as the binding axis on a 160-thread host, so the fixture above is denominated in
 // the fleet's slot and not in a number this file chose.
 test fn the_fleet_cores_per_slot_resolves_to_a_positive_width() -> Bool {
-  match gunbc_runner_cores_per_slot() {
-    CoresPerSlotResolved { threads: t } =>
-      hardware_thread_count_value(t: t) >= 1 && hardware_thread_count_value(t: t) <= 20
-    CoresPerSlotUnresolved { cause: _ } => false
-  }
+  let t = hardware_thread_count_value(t: gunbc_runner_cores_per_slot())
+  t >= 1 && t <= 20
 }

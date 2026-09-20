@@ -24,9 +24,7 @@ import product.fabric.demand { ObservationReceiptRef }
 import extdeps.toolchain.types { Architecture }
 import gunbc.required_ci_phase_roster { RequiredCiPhase, required_ci_phase_name }
 import gunbc.runner_slot_allocation {
-  RunnerSlotDesired, gunbc_floor_minimum_viable_armed_budget,
-  RunnerCoresPerSlotResolution, CoresPerSlotResolved, CoresPerSlotUnresolved,
-  CpuQuotaResolved, CpuQuotaRefused,
+  RunnerSlotDesired, gunbc_floor_minimum_viable_armed_budget, CpuQuotaResolved, SlotCpuQuotaUnbounded,
 }
 import gunbc.host_budget_source {
   HostBudgetResolution, HostBudgetResolved, HostBudgetDeclaredUnverified, HostBudgetUnreadable,
@@ -159,7 +157,7 @@ type RunnerThroughputQualification {
   workload: FloorWorkloadPin
   slot_envelope: RunnerSlotDesired
   workspace_backing: WorkspaceBacking
-  cores_per_slot: RunnerCoresPerSlotResolution
+  cores_per_slot: HardwareThreadCount
   calibration: EvalStepCalibration
   runs: List<QualificationRun>
 }
@@ -193,7 +191,8 @@ type RevisionStanding
 
 // THE SLOT COUNT IS DERIVED THE WAY THE FLEET DERIVES IT: the runner slice is what the host
 // leaves after its measured idle overhead and the oomd actuation floor, and width is the minimum
-// over the memory and CPU axes. Nothing about the host's disk enters, because a diskless host has
+// over the memory and CPU axes, the CPU axis at the fleet's authored cores-per-slot policy
+// (`gunbc_runner_cores_per_slot`, 1 under the 2026-09-19 ruling, so memory binds). Nothing about the host's disk enters, because a diskless host has
 // none and a fleet host's disk axis is DiskWidthUnconstrained today. The overhead is the run's own
 // idle reading (MemTotal minus MemAvailable before the job), not a fleet allowance carried over
 // from a machine with a different OS image.
@@ -228,6 +227,7 @@ type RunnerThroughputReceipt {
   host_architecture: Architecture
   host_threads: HardwareThreadCount
   slot_envelope: RunnerSlotDesired
+  cores_per_slot: HardwareThreadCount
   revision: RevisionStanding
   throughput: ThroughputStanding
   memory: MemoryEnvelopeStanding
@@ -364,35 +364,30 @@ fn qualify_revision(pin: FloorWorkloadPin, observed: CommitSha) -> RevisionStand
 
 fn qualify_slot_width(
   envelope: RunnerSlotDesired,
-  cores_per_slot: RunnerCoresPerSlotResolution,
+  cores_per_slot: HardwareThreadCount,
   run: QualificationRun,
 ) -> SlotWidthStanding {
-  match cores_per_slot {
-    CoresPerSlotUnresolved { cause: c } => SlotWidthUnderivable { cause: c as NonEmptyStr }
-    CoresPerSlotResolved { threads: per_slot } => {
-      let per_slot_threads = hardware_thread_count_value(t: per_slot)
-      let per_slot_bytes = byte_size_count(b: envelope.memory_max)
-      if per_slot_threads == 0 || per_slot_bytes == 0 {
-        SlotWidthUnderivable {
-          cause: "the slot shape admits zero threads or zero bytes per slot, so no width divides" as NonEmptyStr,
-        }
-      } else {
-        let overhead = byte_size_saturating_sub(total: run.host_memory_total, reserved: run.host_memory_available_idle)
-        let slice = runner_slice_cap(
-          host: run.host_memory_total,
-          overhead: overhead,
-          session_slice: byte_size(count: 0),
-          headroom: oomd_actuation_floor(host: run.host_memory_total),
-          compile_pool: byte_size(count: 0),
-        )
-        let by_memory = byte_size_count(b: slice) / per_slot_bytes
-        let by_cpu = hardware_thread_count_value(t: run.host_threads) / per_slot_threads
-        SlotWidthDerived {
-          by_memory: by_memory,
-          by_cpu: by_cpu,
-          slots: if by_cpu < by_memory { by_cpu } else { by_memory },
-        }
-      }
+  let per_slot_threads = hardware_thread_count_value(t: cores_per_slot)
+  let per_slot_bytes = byte_size_count(b: envelope.memory_max)
+  if per_slot_threads == 0 || per_slot_bytes == 0 {
+    SlotWidthUnderivable {
+      cause: "the slot shape admits zero threads or zero bytes per slot, so no width divides" as NonEmptyStr,
+    }
+  } else {
+    let overhead = byte_size_saturating_sub(total: run.host_memory_total, reserved: run.host_memory_available_idle)
+    let slice = runner_slice_cap(
+      host: run.host_memory_total,
+      overhead: overhead,
+      session_slice: byte_size(count: 0),
+      headroom: oomd_actuation_floor(host: run.host_memory_total),
+      compile_pool: byte_size(count: 0),
+    )
+    let by_memory = byte_size_count(b: slice) / per_slot_bytes
+    let by_cpu = hardware_thread_count_value(t: run.host_threads) / per_slot_threads
+    SlotWidthDerived {
+      by_memory: by_memory,
+      by_cpu: by_cpu,
+      slots: if by_cpu < by_memory { by_cpu } else { by_memory },
     }
   }
 }
@@ -409,6 +404,7 @@ fn receipt_for_run(subject: RunnerThroughputQualification, run: QualificationRun
     host_architecture: run.host_architecture,
     host_threads: run.host_threads,
     slot_envelope: subject.slot_envelope,
+    cores_per_slot: subject.cores_per_slot,
     revision: qualify_revision(pin: subject.workload, observed: run.revision),
     throughput: qualify_throughput(calibration: subject.calibration, reading: run.rate_specimen),
     memory: qualify_memory_envelope(envelope: subject.slot_envelope, reading: run.memory),
@@ -629,7 +625,10 @@ fn admission_refusals(admission: RunnerThroughputAdmission) -> List<ThroughputRe
 //
 // product.fabric.selection select_supply prices SupplierOffer rows. The row a qualified host enters
 // with is DERIVED from its receipt and asserts nothing the receipt does not carry: the shape is
-// the slot it was measured in (the fleet's cores-per-slot as hard threads, the slot's MemoryMax as
+// the slot it was measured in (the threads a slot may USE as hard threads -- its CPU quota when
+// the fleet declares one, and the host's observed thread count under SlotCpuQuotaUnbounded, where
+// a slot reaches every core the scheduler gives it under cpu_weight; the cores-per-slot placement
+// policy is what the WIDTH was admitted at and is not a thread ceiling -- the slot's MemoryMax as
 // the memory axis, the architecture the guest reported), the quantity bound is the slot width the
 // receipt derived under the host budget, and the evidence is ObservedSupply naming the run. Every
 // other field is POLICY -- who the provider is, what it charges, what it is trusted for -- and is
@@ -655,18 +654,15 @@ fn qualified_supplier_offer(
       match r.slot_width {
         SlotWidthUnderivable { cause: _ } => none
         SlotWidthDerived { by_memory: _, by_cpu: _, slots: n } =>
-          match slot_hard_threads(envelope: r.slot_envelope) {
-            Absent => none
-            Present { value: threads } =>
-              Present {
+          Present {
                 value: SupplierOffer {
                   id: id,
                   executor: r.host,
                   route: route,
                   shape: Shape {
-                    hard: HardRequirements { threads: threads },
+                    hard: HardRequirements { threads: slot_usable_threads(receipt: r) },
                     envelope: cpu_memory_envelope(
-                      min_threads: threads,
+                      min_threads: slot_usable_threads(receipt: r),
                       architecture: Present { value: r.host_architecture },
                       min_bytes: r.slot_envelope.memory_max,
                     ),
@@ -684,17 +680,16 @@ fn qualified_supplier_offer(
                   },
                 },
               }
-          }
       }
   }
 }
 
-// THE SLOT'S THREADS ARE ITS CPU QUOTA, and a refused quota is an offer with no thread axis, which
-// is not an offer.
-fn slot_hard_threads(envelope: RunnerSlotDesired) -> HardwareThreadCount? {
-  match envelope.cpu_quota {
-    CpuQuotaResolved { threads: t } => Present { value: t }
-    CpuQuotaRefused { cause: _ } => none
+// THE THREADS A SLOT MAY USE: its declared quota, or every thread the host reported when the
+// fleet declares no ceiling. Read off the receipt so the offer names what the run actually had.
+fn slot_usable_threads(receipt: RunnerThroughputReceipt) -> HardwareThreadCount {
+  match receipt.slot_envelope.cpu_quota {
+    CpuQuotaResolved { threads: t } => t
+    SlotCpuQuotaUnbounded => receipt.host_threads
   }
 }
 
