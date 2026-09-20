@@ -29,6 +29,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // four fields can contain one: uid and gid are decimal, and a POSIX login name is restricted to the
 // portable filename character set, which excludes the colon. That is a property of the fields, not
 // an assumption about the data, which is why the separator is not a configurable parameter.
+//
+// THE MODE IS ITS OWN PROBE, NOT A FIFTH FIELD ON THE OWNERSHIP ONE. The colon separator above is
+// safe because none of those four fields can contain one, which is a property of the fields; the
+// mode is a different question with a different failure -- a path can be readable for ownership and
+// the answer still be that its permission bits are what nobody expected -- and joining them would
+// make one unreadable half destroy the other. It is also the shape this module's sibling
+// extdeps.tools.stat already commits to: one token per probe.
+//
+// %a IS THE ACCESS BITS IN OCTAL WITH NO INTERPRETATION. extdeps.access.posix owns what those digits
+// MEAN and reads them back through file_mode_of_octal_text; PathMode's whole job is to fetch the
+// spelling.
 service coreutils.Stat {
   operation PathOwnership {
     input { path: NonEmptyStr }
@@ -44,16 +55,6 @@ service coreutils.Stat {
     }
   }
 
-  // THE MODE IS ITS OWN PROBE, NOT A FIFTH FIELD ON THE ONE ABOVE. The colon separator there is
-  // safe because none of those four fields can contain one, and the note above says so as a
-  // property of the fields; the mode is a different question with a different failure -- a path can
-  // be readable for ownership and the answer still be that its permission bits are what nobody
-  // expected -- and joining them would make one unreadable half destroy the other. It is also the
-  // shape this module's sibling extdeps.tools.stat already commits to: one token per probe.
-  //
-  // %a IS THE ACCESS BITS IN OCTAL WITH NO INTERPRETATION. extdeps.access.posix owns what those
-  // digits MEAN and reads them back through file_mode_of_octal_text; this operation's whole job is
-  // to fetch the spelling.
   operation PathMode {
     input { path: NonEmptyStr }
     output {
