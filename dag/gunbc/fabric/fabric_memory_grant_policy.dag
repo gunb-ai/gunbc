@@ -1,0 +1,274 @@
+module gunbc.fabric_memory_grant_policy
+
+import std.types { String, NonEmptyStr, Int }
+import std.measure {
+  ByteSize, FiniteByteSize, byte_size, byte_size_count, gibibyte_grain,
+  GrainRounding, GrainRounded, GrainUnrepresentable, round_up_to_grain,
+}
+import std.checked_arithmetic { int_inclusive_max }
+import std.decl_ref { DeclarationRef, decl_ref }
+import product.fabric.envelope { MemoryRequirement }
+import product.fabric.identity { FabricIdentity, WorkKey, ExecutionAttemptKey }
+import product.fabric.memory_grant {
+  MemoryGrant, MemoryGrantIssue, MemoryGranted, MemoryGrantRefused, MemoryGrantRefusal,
+  MemoryGrantProvenance, GrantedAgainstStatedRequirement, GrantedUnderCompatibilityPermit,
+  MemoryCompatibilityPermit, issue_memory_grant,
+}
+import gunbc.runner_microvm {
+  GuestCacheAllowance, AllowanceDerived, AllowanceUnderivable,
+  gunbc_runner_microvm_guest_cache_allowance,
+}
+
+// THE REQUIREMENT-TO-GRANT POLICY FOR THIS FLEET'S microVM ATTEMPTS, AND THE SOLE PRODUCER OF A
+// product.fabric.memory_grant MemoryGrant<P, MicroVmMemoryGrantAuthority>.
+//
+// WHAT THIS MODULE IS: an OPERATOR DECISION standing where no derivation exists. It is the same
+// standing gunbc.runner_microvm gunbc_runner_microvm_declared_realization_allowance already
+// carries and says so about, and the honesty is the point rather than a disclaimer attached to it.
+// There is no measurement anywhere in this corpus that says how much memory a customer Work should
+// be AUTHORIZED to consume given the minimum it declared. The formula below --
+// round_up(minimum + allowance, grain) -- is not derived from anything. It is a number an operator
+// chose, shaped so that it is at least the stated minimum and rounded to the grain the corpus
+// already uses for demand figures. Dressing it as a derivation would be the fabricated plausible
+// output DESIGN 5 forbids; declaring it as policy, with the laws in the carrier still deciding
+// admissibility, is not.
+//
+// WHAT WOULD REPLACE IT: a measured relation between a Work's declared held-set minimum and the
+// resident size at which that Work stops thrashing, read per workload class rather than per fleet.
+// Nothing produces that today. Until it does, this row is policy and is labelled policy.
+//
+// NO PRODUCTION SWITCH LANDS WITH THIS MODULE. gunbc.runner_microvm still sizes its guest from the
+// cell remainder and still reads the requirement as a fit gate; nothing there calls this module.
+// The wiring is a separate item; the declared frontier is stated at the foot of this module.
+
+// THE AUTHORITY TOKEN. Fieldless, sealed, and deliberately WITHOUT a mint function, on the
+// gunbc.product.data_class DataRevealKey precedent: an exported mint would be callable from any
+// module and would be the forgery. Its one construction is inline in microvm_memory_grant below,
+// and its whole content is that only this module can write it. That is what makes this module the
+// sole producer BY CONSTRUCTION: product.fabric.memory_grant issue_memory_grant is callable from
+// anywhere, but a MemoryGrant<P, MicroVmMemoryGrantAuthority> needs one of these passed in, and a
+// consumer that demands grants of that authority type has a structural guarantee about who sized
+// them. The brief's "sole_constructor carrier, sole producer elsewhere" was not satisfiable as
+// written -- sole_constructor confines construction to the DECLARING module -- and this is the
+// exit that keeps both halves: the carrier stays sealed in the neutral layer, the monopoly lives
+// in the token's type identity.
+type MicroVmMemoryGrantAuthority sole_constructor { }
+
+// THE POLICY, AS A RECORD RATHER THAN AS MODULE-SCOPE CONSTANTS, so that a witness can supply one
+// and drive every arm below with a fixture, while the fleet's binding is one function that reads
+// each input from the authority that owns it.
+//
+// THE ALLOWANCE IS AN EXPLICIT POLICY INPUT, NOT A UNIVERSAL FORMULA CONSTANT. The fleet binding
+// below supplies gunbc.runner_microvm's floor cache allowance for it, and that is a DELIBERATE,
+// NARROW choice: the allowance was derived from ONE receipt of ONE workload -- this repository's
+// own compile floor (gunbc.floor_demand: reclaimable cache at the last unstalled beat, rounded up
+// to whole-gibibyte grain). It describes what OUR build wanted beside its anonymous demand. It says
+// nothing about a customer job, and it must not silently become the universal customer-job term.
+// It is one input to one binding, passed by name, and a second workload class gets its own binding
+// with its own allowance rather than inheriting this one by default.
+//
+// THE CEILING IS THE PER-CELL MAXIMUM A GRANT MAY NOT EXCEED, and it is a PARAMETER of the fleet
+// binding rather than a fact this module derives, for the reason gunbc.runner_microvm makes the
+// realization reserve a parameter: the quantity -- the cell's MemoryMax less the realization
+// reserve -- is today derived INLINE inside runner_microvm_shape_after_cpu and
+// runner_microvm_shape_after_allowance and exposed as no function. Forking that subtraction here
+// would be the second authority DESIGN 3 forbids, and the one that would drift; declaring a fleet
+// ceiling row with a number would be a fact with no nameable source. So the binding takes the
+// ceiling from its caller, the production caller is the wiring item's frontier (below), and the
+// runner consuming this policy creates no import cycle because this module never imports the
+// runner's sizing folds. The compatibility permit is optional because a fleet may decline to
+// default an unstated axis at all; this fleet does not decline, and the row says why.
+type MicroVmMemoryGrantPolicy {
+  reference: DeclarationRef
+  allowance: ByteSize
+  grain: FiniteByteSize
+  ceiling: FiniteByteSize
+  compatibility_permit: MemoryCompatibilityPermit?
+}
+
+// THE SIZING REFUSES RATHER THAN WRAPPING, AND THERE IS NO CHECKED-ADD GUARD HERE ON PURPOSE.
+//
+// minimum + allowance is the one expression in this module that can cross the realization's bound,
+// and a wrapped sum reads as a SMALL grant that passes every law below it. The precedent is in
+// gunbc.runner_microvm: guest_memory_fits compares by SUBTRACTION so the operation that could
+// overflow does not exist. This follows it exactly: the comparison is made against
+// `int_inclusive_max() - allowance`, which is in range for any non-negative allowance, so the sum
+// is only ever evaluated after it has been established to fit. The round-up is then std.measure
+// round_up_to_grain, which is the same construction one step on: it derives the pad (strictly
+// below the grain) and refuses if the sum is within that pad of the bound. A checked-add guard
+// would answer the same question one rung lower -- DESIGN 4b rung 1 validation where rung 4
+// construction was available -- so the add is absent and must not be helpfully restored.
+//
+// REPRESENTABILITY IS BOUNDED FIRST AND THE CEILING SECOND, AND THE ORDER IS LOAD-BEARING: you
+// cannot say "above the ceiling" about a number you could not compute. Two lanes converged on the
+// other order -- every guard bounded by the ceiling -- and because the ceiling is itself
+// representable, every overflow case was ALSO an above-ceiling case, so the unrepresentable
+// refusal became UNAUTHORABLE: a decoration, permanently green. The two refusals have different
+// remedies, which is why they must both be reachable: "the cell is too small" sends a reader to
+// the cell row; "this demand is not a figure" sends them to the Work; and a demand of
+// int_inclusive_max reported as above-ceiling sends someone to enlarge a cell forever. A later
+// reader who moves the ceiling comparison ahead of this fold has re-created that decoration.
+type MemoryGrantSizing
+  = SizingResolved { bytes: ByteSize }
+  | SizingUnrepresentable { minimum: ByteSize, allowance: ByteSize, detail: String }
+
+fn microvm_memory_grant_size(policy: MicroVmMemoryGrantPolicy, minimum: ByteSize) -> MemoryGrantSizing {
+  let min_count = byte_size_count(b: minimum)
+  let allowance_count = byte_size_count(b: policy.allowance)
+  if min_count > int_inclusive_max() - allowance_count {
+    SizingUnrepresentable {
+      minimum: minimum,
+      allowance: policy.allowance,
+      detail: "the Work's stated minimum plus the policy allowance is not representable, so the grant cannot be sized; it is refused rather than computed on a wrapped sum",
+    }
+  } else {
+    match round_up_to_grain(bytes: byte_size(min_count + allowance_count), grain: policy.grain) {
+      GrainUnrepresentable { cause: _ } =>
+        SizingUnrepresentable {
+          minimum: minimum,
+          allowance: policy.allowance,
+          detail: "the Work's stated minimum plus the policy allowance is within one grain of the representable bound, so rounding it up to the policy grain is not representable and the grant is refused rather than wrapped",
+        }
+      GrainRounded { bytes: sized } => SizingResolved { bytes: sized }
+    }
+  }
+}
+
+// THE ISSUE FOLD: the ONE route from a Work's memory axis to a MemoryGrant under this authority. It
+// decides a NUMBER and a PROVENANCE, and hands both to product.fabric.memory_grant
+// issue_memory_grant, which owns every law about what a grant may be. The split is deliberate:
+// this module decides the number, the carrier decides admissibility, and neither restates the
+// other. In particular the ceiling is NOT compared here -- comparing it in both places is the
+// second authority DESIGN 3 forbids, and the one that would drift is this one.
+//
+// THE ABSENT AXIS IS REFUSED HERE, NOT IN THE CARRIER, because the carrier made it unwritable: a
+// provenance needs a requirement or a permit, so a policy holding neither has nothing to construct
+// and refuses on its own typed arm. An unstated requirement is a requirement NOBODY EXPRESSED,
+// never one satisfied by everything (product.fabric.envelope states that rule for the envelope;
+// this is the same rule at the allocator). Without a permit there is no authority to invent a
+// number on the Work's behalf.
+type MicroVmMemoryGrantIssue<P>
+  = MemoryGrantIssued { grant: MemoryGrant<P, MicroVmMemoryGrantAuthority> }
+  | GrantRefusedUnrepresentable { sizing: MemoryGrantSizing }
+  | GrantRefusedUnstatedAxisWithoutPermit
+  | GrantRefusedByLaw { refusal: MemoryGrantRefusal }
+
+fn microvm_memory_grant<P>(
+  policy: MicroVmMemoryGrantPolicy,
+  work: FabricIdentity<P, WorkKey>,
+  attempt: FabricIdentity<P, ExecutionAttemptKey>,
+  requirement: MemoryRequirement?,
+) -> MicroVmMemoryGrantIssue<P> {
+  match requirement {
+    Absent =>
+      match policy.compatibility_permit {
+        Absent => GrantRefusedUnstatedAxisWithoutPermit
+        Present { value: permit } =>
+          microvm_memory_grant_admit(
+            issue: issue_memory_grant(
+              work: work,
+              attempt: attempt,
+              granted: permit.default_grant,
+              ceiling: policy.ceiling,
+              provenance: GrantedUnderCompatibilityPermit { permit: permit },
+              policy: policy.reference,
+              authority: MicroVmMemoryGrantAuthority { },
+            ),
+          )
+      }
+    Present { value: need } =>
+      match microvm_memory_grant_size(policy: policy, minimum: need.min_bytes) {
+        SizingUnrepresentable { minimum: m, allowance: a, detail: d } =>
+          GrantRefusedUnrepresentable {
+            sizing: SizingUnrepresentable { minimum: m, allowance: a, detail: d },
+          }
+        SizingResolved { bytes: sized } =>
+          microvm_memory_grant_admit(
+            issue: issue_memory_grant(
+              work: work,
+              attempt: attempt,
+              granted: sized,
+              ceiling: policy.ceiling,
+              provenance: GrantedAgainstStatedRequirement { required: need },
+              policy: policy.reference,
+              authority: MicroVmMemoryGrantAuthority { },
+            ),
+          )
+      }
+  }
+}
+
+fn microvm_memory_grant_admit<P>(issue: MemoryGrantIssue<P, MicroVmMemoryGrantAuthority>) -> MicroVmMemoryGrantIssue<P> {
+  match issue {
+    MemoryGranted { grant: g } => MemoryGrantIssued { grant: g }
+    MemoryGrantRefused { refusal: r } => GrantRefusedByLaw { refusal: r }
+  }
+}
+
+// THE FLEET'S OWN POLICY, READ FROM THE AUTHORITIES THAT OWN EACH INPUT RATHER THAN RESTATED HERE.
+// The cache allowance is the floor receipt gunbc.runner_microvm derives; the grain is the corpus's
+// whole-gibibyte grain; the ceiling is the caller's, for the reason stated on the policy record;
+// the permit is this module's own row. The binding REFUSES when an input refuses rather than
+// substituting a number for one it could not read.
+type MicroVmMemoryGrantPolicyStanding
+  = PolicyAvailable { policy: MicroVmMemoryGrantPolicy }
+  | PolicyUnavailable { cause: String }
+
+fn gunbc_microvm_memory_grant_policy_reference() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.fabric_memory_grant_policy", decl_name: "gunbc_microvm_memory_grant_policy")
+}
+
+// THE COMPATIBILITY PERMIT, NAMED, REASONED AND SEPARATELY SIZED.
+//
+// A Work that states no memory axis predates the axis being required. Refusing every such Work
+// would be correct and would also stop the fleet, so the permit exists -- and it is the weaker
+// fact, which is why product.fabric.memory_grant refuses to render a grant issued under it as
+// "memory requirement checked".
+//
+// ITS DEFAULT IS ITS OWN FIGURE AND IS NOT gunbc.runner_microvm gunbc_runner_microvm_declared_size.
+// That row is a BOOT-SMOKE FIXTURE with a receipt behind it -- the size srv4 was observed to boot,
+// demoted from any sizing arm on 2026-09-19 -- and reusing it here would give one number two
+// meanings the moment either moved, which is the meaning fork DESIGN 3 forbids, and would revive as
+// a fallback a row main deliberately retired from that role. The figure below happens to be four
+// gibibytes today, the same as that fixture; the coincidence is noted here so nobody consolidates
+// it, and the fixture may move without moving this.
+data gunbc_microvm_memory_compatibility_default_bytes: Int = 4294967296
+
+fn gunbc_microvm_memory_compatibility_permit() -> MemoryCompatibilityPermit {
+  MemoryCompatibilityPermit {
+    default_grant: byte_size(gunbc_microvm_memory_compatibility_default_bytes),
+    permitted_by: decl_ref(module_path: "gunbc.fabric_memory_grant_policy", decl_name: "gunbc_microvm_memory_compatibility_permit"),
+    reason: "the Work predates the memory axis being required and states none; the fleet grants a fixed default so legacy Work keeps running, and every grant so issued is countable as a compatibility default rather than a checked requirement" as NonEmptyStr,
+  }
+}
+
+// THE DECLARED FRONTIER (DESIGN 3c). This module's consumers today are its witness suite; nothing
+// in a production sizing path calls it, and that is the brief's explicit scope. The named later
+// consumer is gunbc.runner_microvm runner_microvm_shape_after_cpu_admitted, which today reads the
+// Work's minimum as a FIT GATE and then gives every admitted Work the whole cell remainder. The
+// trigger that retires this frontier is the CAPABILITY, not a row: the microVM shape derives its
+// guest memory from a MemoryGrant issued by this policy instead of from the cell remainder, with
+// the remainder exposed by the runner as the ONE nameable ceiling it passes to
+// gunbc_microvm_memory_grant_policy, and the runner's existing memory witnesses re-pointed at the
+// granted size. The import direction that wiring must keep: this module imports the runner for its
+// allowance, so the runner consuming this policy is a cycle unless the allowance moves to a home
+// beneath both -- gunbc.floor_demand's receipt is where it is derived from. Until that lands, this
+// policy is authored and executed by its witnesses and authorizes nothing that runs.
+fn gunbc_microvm_memory_grant_policy(ceiling: FiniteByteSize) -> MicroVmMemoryGrantPolicyStanding {
+  match gunbc_runner_microvm_guest_cache_allowance() {
+    AllowanceUnderivable { cause: c } =>
+      PolicyUnavailable {
+        cause: concat("the policy's cache allowance input is underivable, so no grant can be sized: ", c),
+      }
+    AllowanceDerived { bytes: allowance } =>
+      PolicyAvailable {
+        policy: MicroVmMemoryGrantPolicy {
+          reference: gunbc_microvm_memory_grant_policy_reference(),
+          allowance: allowance,
+          grain: gibibyte_grain(),
+          ceiling: ceiling,
+          compatibility_permit: Present { value: gunbc_microvm_memory_compatibility_permit() },
+        },
+      }
+  }
+}
