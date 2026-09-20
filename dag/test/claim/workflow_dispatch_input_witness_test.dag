@@ -156,7 +156,8 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
 // in that chain, so the repair is here and not at the indexing rule. This module sits outside the
 // required gate closure, so the refusal was invisible to the floor (DeclinedOutsideGateClosure)
 // and surfaced only from a local claim_batch run -- see
-// gunbc.recurring_failure_mode.witness_outside_gate_closure_falsified_by_other_file.
+// gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rather_than_red (fourth
+// specimen: the falsifier is the compiler wall, not another file).
 test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
   match fleet_converge_workflow.on.first() {
     Present { value: trigger } =>
