@@ -1,10 +1,10 @@
 module gunbc.host_memory_observation
 
 import std.measure {
-  ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor,
+  ByteSize, byte_size, measure_scale_fraction_floor,
 }
 import std.realization_width { byte_size_saturating_sub }
-import std.types { Int, List, String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }

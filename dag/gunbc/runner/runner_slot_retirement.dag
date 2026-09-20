@@ -4,14 +4,13 @@ import std.types { Bool, List, String, NonEmptyStr, list_length }
 import std.algebra { trim }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv4 }
 import gunbc.runner_width_transition { required_retirees_for_host }
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
   gunbc_runner_slots_per_host,
 }
 import gunbc.runner_unit { runner_slot_unit_name }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
 import product.placement_supply { HostIdentity }
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.host_operation_exec {
