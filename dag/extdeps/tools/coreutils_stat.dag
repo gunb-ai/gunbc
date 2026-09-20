@@ -43,6 +43,20 @@ service coreutils.Stat {
       nonzero => String "stat could not read the path"
     }
   }
+
+  operation PathMode {
+    input { path: NonEmptyStr }
+    output {
+      line: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["stat", "-c", "%04a", "--", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "stat could not read the path"
+    }
+  }
 }
 
 // AN UNREADABLE PATH IS A REFUSAL, NOT AN OWNERSHIP OF NOBODY, for the same reason an unreadable
@@ -130,6 +144,41 @@ fn coreutils_stat_ownership_record(
               group_name: group as NonEmptyStr,
             }
         }
+    }
+  }
+}
+
+// THE ACCESS BITS, OCTAL, WITH NO POLICY READ INTO THEM. `%04a` is what the kernel holds; whether a
+// mode is acceptable is a question for the consumer that has a rule, and answering it here would
+// put one caller's policy in the observation every other caller shares. The `--` guard is the same
+// one the argv builders carry: these operands come from observed host state, where a leading dash
+// is reachable.
+//
+// FOUR DIGITS, ZERO-PADDED, BECAUSE THAT IS THE FORM THE MODEL ALREADY SERIALIZES. `%a` drops
+// leading zeros, so an ordinary 0700 prints as `700` while a setgid directory prints as `2700` --
+// two widths for one value, and a consumer comparing against
+// extdeps.access.posix file_mode_octal (which always renders all four digits, deliberately, so a
+// dropped special digit cannot change what a mode means) would have to strip or pad, which is a
+// second spelling of that serialization. `%04a` is stat's own way of emitting the same form, so the
+// comparison is equality against the model's rendering rather than against a normalisation of it.
+//
+// AN UNREADABLE PATH IS UNOBSERVABLE, NOT MODE ZERO. `000` is a real mode -- the most restrictive
+// one -- so a failed read folded into it would read as a deliberate lockdown, which is a plausible
+// answer of the wrong kind at exactly the seam a store-ownership admission consults.
+type PathModeObservation
+  = PathModeObserved { path: NonEmptyStr, mode: NonEmptyStr }
+  | PathModeUnobservable { path: NonEmptyStr, reason: String }
+
+fn coreutils_stat_path_mode(path: NonEmptyStr) -> PathModeObservation {
+  let observed = coreutils.Stat.PathMode(path: path)
+  if observed.success == false {
+    PathModeUnobservable { path: path, reason: "stat could not read the path" }
+  } else {
+    let mode = trim(s: observed.line)
+    if mode == "" {
+      PathModeUnobservable { path: path, reason: "stat printed no mode" }
+    } else {
+      PathModeObserved { path: path, mode: mode as NonEmptyStr }
     }
   }
 }

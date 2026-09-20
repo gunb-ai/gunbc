@@ -248,10 +248,19 @@ fn stop_request_admission(live: AttemptIdentity, requested: AttemptIdentity) -> 
 // which of the three happened; a task that survives the bounded force-stop (uninterruptible sleep
 // survives SIGKILL) is not "still stopping", it is a surviving process, and the cell quarantines on
 // it whatever the cgroup readback says afterwards.
+// A STOP WHOSE RESULT COULD NOT BE READ IS ITS OWN ARM, AND IT IS NOT "STOPPED". The three arms
+// below all state something about processes -- they went away politely, they went away under force,
+// or they are still here -- and a controller whose post-stop readback FAILED knows none of the
+// three. Reporting StoppedByForce there and leaving the cgroup readback to carry the doubt would
+// make this field's honesty depend on a SIBLING field, which is the conflation the rest of this
+// module refuses: the cell would still quarantine today, and the first consumer to read the stop
+// field alone would read a fabricated claim. Added by the wet controller
+// (gunbc.runner_microvm_lifecycle_realize), which is the first caller able to produce it.
 type TeardownStop
   = StoppedGracefully
   | StoppedByForce
   | ForceStopBoundExceeded { survivors: List<Int> }
+  | StopOutcomeUnobserved { reason: NonEmptyStr }
 
 // THE CGROUP READBACK IS RECURSIVE, AND A FAILED READ IS ITS OWN ARM. cgroup.procs of the slot's
 // cgroup alone misses every process in a child cgroup -- a double-forked daemon moved one level
@@ -416,6 +425,7 @@ fn surviving_process_observation(stop: TeardownStop, cgroup: CgroupSubtreeReadba
   match stop {
     ForceStopBoundExceeded { survivors: s } =>
       FactRefuted { fact: NoSurvivingProcesses, detail: join(["pids ", pid_list_text(pids: s), " survived the bounded force-stop"], "") as NonEmptyStr }
+    StopOutcomeUnobserved { reason: r } => FactUnobservable { fact: NoSurvivingProcesses, reason: r }
     StoppedGracefully => process_observation_of_cgroup(cgroup: cgroup)
     StoppedByForce => process_observation_of_cgroup(cgroup: cgroup)
   }

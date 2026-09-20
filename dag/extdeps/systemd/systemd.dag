@@ -80,6 +80,9 @@ type SystemdUnitProperty
   | IdProperty
   | KillModeProperty
   | ExitTypeProperty
+  | TimeoutStopSecProperty
+  | SendSigkillProperty
+  | KillSignalProperty
   | EnvironmentProperty
   | AfterProperty
   | WantsProperty
@@ -119,6 +122,9 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     IdProperty => "Id" as NonEmptyStr
     KillModeProperty => "KillMode" as NonEmptyStr
     ExitTypeProperty => "ExitType" as NonEmptyStr
+    TimeoutStopSecProperty => "TimeoutStopSec" as NonEmptyStr
+    SendSigkillProperty => "SendSIGKILL" as NonEmptyStr
+    KillSignalProperty => "KillSignal" as NonEmptyStr
     EnvironmentProperty => "Environment" as NonEmptyStr
     AfterProperty => "After" as NonEmptyStr
     WantsProperty => "Wants" as NonEmptyStr

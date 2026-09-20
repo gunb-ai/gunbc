@@ -1,6 +1,6 @@
 module extdeps.linux.cgroup_v2
 
-import std.types { Bool, NonEmptyStr, Unit, Int }
+import std.types { Bool, NonEmptyStr, Unit, Int, List }
 import std.string_type { String }
 import std.algebra { trim }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
@@ -251,6 +251,164 @@ fn cgroup_v2_slice_path(slice: NonEmptyStr) -> NonEmptyStr {
 
 fn cgroup_v2_events_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
   cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_events_interface_file)
+}
+
+// THE MEMBERSHIP FILE, AND IT ANSWERS FOR THIS CGROUP ALONE. The admin guide documents
+// `cgroup.procs` as "A read-write new-line separated values file which exists on all cgroups",
+// listing "the PIDs of all processes which belong to the cgroup one-per-line" -- BELONG TO, not
+// belong to it or any descendant, which is the clause `cgroup.events` carries and this one does
+// not. So a consumer asking about a SUBTREE reads this file at every node of the subtree; reading
+// it at the root alone is the double-fork blind spot, because a process moved one level down is
+// not listed here at all.
+data cgroup_v2_procs_interface_file: NonEmptyStr = "cgroup.procs"
+
+fn cgroup_v2_procs_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_procs_interface_file)
+}
+
+// A LINE THAT IS NOT A PID REFUSES THE WHOLE FILE RATHER THAN BEING DROPPED. The body is the
+// kernel's own newline-separated list, so a line this decoder cannot read is a body the documented
+// form does not produce -- and the consumer of this reading is a cleanup verdict, where a listing
+// with a hole in it UNDERSTATES the population and releases a cgroup that still holds a process.
+// The trailing newline yields one empty final line and is skipped; an interior blank line is not
+// special-cased, because the kernel does not write one and a decoder that tolerated it would be
+// tolerating a body it cannot otherwise account for.
+type CgroupProcsDecoding
+  = CgroupProcsDecoded { pids: List<Int> }
+  | CgroupProcsUnparseable { cause: String }
+
+type CgroupProcsScan {
+  pids: List<Int>
+  bad: String?
+}
+
+fn cgroup_procs_scan_step(acc: CgroupProcsScan, raw: String) -> CgroupProcsScan {
+  let line = trim(s: raw)
+  match acc.bad {
+    Present { value: _ } => acc
+    Absent =>
+      if line == "" {
+        acc
+      } else {
+        match parse_int(s: line) {
+          Present { value: pid } => CgroupProcsScan { pids: append(acc.pids, pid), bad: none }
+          Absent => CgroupProcsScan { pids: acc.pids, bad: Present { value: line } }
+        }
+      }
+  }
+}
+
+// THE WHOLE SUBTREE'S MEMBERSHIP FROM ONE TREE READ, DECODED BACK INTO ITS NODES. A walk that
+// issued one read per node would take the hierarchy apart at N instants and could not say which
+// instant a pid belonged to; one tree read over `cgroup.procs` takes it at one, and each output line
+// already names the file it came from, so the node is recoverable rather than lost. The stripping is
+// the inverse of cgroup_v2_procs_path and is derived from the same interface-file constant, so a
+// line whose path does not end in that file is REFUSED rather than attributed to a guessed cgroup.
+type CgroupNodeProcs {
+  cgroup: NonEmptyStr
+  pids: List<Int>
+}
+
+type CgroupSubtreeProcsDecoding
+  = CgroupSubtreeProcsDecoded { nodes: List<CgroupNodeProcs> }
+  | CgroupSubtreeProcsUnparseable { cause: String }
+
+type CgroupSubtreeProcsLine
+  = CgroupSubtreeProcsLineBlank
+  | CgroupSubtreeProcsLineRead { cgroup: NonEmptyStr, pid: Int }
+  | CgroupSubtreeProcsLineMalformed { cause: String }
+
+// ONE LINE IS `PATH:PID`, AND THE SPLIT IS ON THE LAST SEPARATOR THE PATH CANNOT CONTAIN. A cgroup
+// path may hold no colon -- systemd escapes the component names it generates -- so the suffix after
+// the final colon is the pid and everything before it is the file. The file must be exactly this
+// module's own procs path for some cgroup, which is what makes the attribution derived rather than
+// parsed.
+fn cgroup_subtree_procs_line(line: String) -> CgroupSubtreeProcsLine {
+  let trimmed = trim(s: line)
+  if trimmed == "" {
+    CgroupSubtreeProcsLineBlank
+  } else {
+    let suffix = concat("/", cgroup_v2_procs_interface_file as String)
+    let fields = split(s: trimmed, delimiter: ":")
+    if list_length(items: fields) != 2 {
+      CgroupSubtreeProcsLineMalformed { cause: concat("a cgroup.procs tree-read line is not one PATH:PID pair: ", trimmed) }
+    } else {
+      cgroup_subtree_procs_pair(trimmed: trimmed, suffix: suffix, file: join(fields.take(n: 1), ""), pid_text: join(fields.skip(n: 1), ""))
+    }
+  }
+}
+
+// THE PAIR, ONCE THE LINE IS KNOWN TO HAVE EXACTLY TWO FIELDS. Split out so the two-field check and
+// the two readings it authorizes are not nested three deep; it is called from nowhere else.
+fn cgroup_subtree_procs_pair(trimmed: String, suffix: String, file: String, pid_text: String) -> CgroupSubtreeProcsLine {
+  if !ends_with(s: file, suffix: suffix) {
+    CgroupSubtreeProcsLineMalformed { cause: concat("a cgroup.procs tree-read line names a file that is not a cgroup.procs: ", file) }
+  } else {
+    match parse_int(s: pid_text) {
+      Absent => CgroupSubtreeProcsLineMalformed { cause: concat("a cgroup.procs tree-read line carries a pid that is not an integer: ", trimmed) }
+      Present { value: pid } =>
+        CgroupSubtreeProcsLineRead {
+          cgroup: substring(s: file, start: 0, end: string_length(s: file) - string_length(s: suffix)) as NonEmptyStr,
+          pid: pid,
+        }
+    }
+  }
+}
+
+type CgroupSubtreeProcsScan {
+  nodes: List<CgroupNodeProcs>
+  bad: String?
+}
+
+// THE NODES KEEP THE ORDER THE READ PRODUCED and one node collects every pid read for it, because a
+// tree read emits one line per pid and a consumer asking "which cgroups still hold processes" wants
+// the cgroups, not the lines. A malformed line refuses the whole reading for the reason the
+// single-file decoder gives: a listing with a hole in it understates the population it is used to
+// release.
+fn cgroup_subtree_procs_scan_step(acc: CgroupSubtreeProcsScan, line: String) -> CgroupSubtreeProcsScan {
+  match acc.bad {
+    Present { value: _ } => acc
+    Absent =>
+      match cgroup_subtree_procs_line(line: line) {
+        CgroupSubtreeProcsLineBlank => acc
+        CgroupSubtreeProcsLineMalformed { cause: c } => CgroupSubtreeProcsScan { nodes: acc.nodes, bad: Present { value: c } }
+        CgroupSubtreeProcsLineRead { cgroup: cg, pid: pid } =>
+          CgroupSubtreeProcsScan {
+            nodes: cgroup_subtree_procs_place(nodes: acc.nodes, cgroup: cg, pid: pid),
+            bad: none,
+          }
+      }
+  }
+}
+
+fn cgroup_subtree_procs_place(nodes: List<CgroupNodeProcs>, cgroup: NonEmptyStr, pid: Int) -> List<CgroupNodeProcs> {
+  let known = fold(nodes, init: false, f: (acc, n) => acc || (n.cgroup as String) == (cgroup as String))
+  if known {
+    map(nodes, n => if (n.cgroup as String) == (cgroup as String) {
+      CgroupNodeProcs { cgroup: n.cgroup, pids: append(n.pids, pid) }
+    } else {
+      n
+    })
+  } else {
+    append(nodes, CgroupNodeProcs { cgroup: cgroup, pids: [pid] })
+  }
+}
+
+fn decode_cgroup_subtree_procs(stdout: String) -> CgroupSubtreeProcsDecoding {
+  let scan = fold(split(s: stdout, delimiter: "\n"), init: CgroupSubtreeProcsScan { nodes: [], bad: none }, f: (acc, line) => cgroup_subtree_procs_scan_step(acc: acc, line: line))
+  match scan.bad {
+    Present { value: c } => CgroupSubtreeProcsUnparseable { cause: c }
+    Absent => CgroupSubtreeProcsDecoded { nodes: scan.nodes }
+  }
+}
+
+fn decode_cgroup_procs(body: String) -> CgroupProcsDecoding {
+  let scan = fold(split(s: body, delimiter: "\n"), init: CgroupProcsScan { pids: [], bad: none }, f: (acc, raw) => cgroup_procs_scan_step(acc: acc, raw: raw))
+  match scan.bad {
+    Present { value: line } =>
+      CgroupProcsUnparseable { cause: concat("cgroup.procs is documented as one pid per line and carried: ", line) }
+    Absent => CgroupProcsDecoded { pids: scan.pids }
+  }
 }
 
 // WHICH KERNELS PROVIDE THIS MECHANISM AT ALL, homed here for the same reason and by the same

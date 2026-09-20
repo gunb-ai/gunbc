@@ -1,0 +1,498 @@
+module gunbc.runner_microvm_lifecycle_realize
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.resources { Network, Filesystem }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.linux.cgroup_v2 {
+  CgroupSubtreeProcsDecoding, CgroupSubtreeProcsDecoded, CgroupSubtreeProcsUnparseable,
+  decode_cgroup_subtree_procs, cgroup_v2_procs_interface_file, cgroup_v2_procs_path,
+  cgroup_v2_slice_path,
+}
+import extdeps.shell.exec { ProcessObservation }
+import extdeps.exec.command { CommandTransport, LocalExec }
+import extdeps.tools.grep { grep_every_line_in_tree_command }
+import extdeps.tools.sleep
+import extdeps.filesystem.filesystem_io {
+  FilesystemListingObservation, filesystem_listing_observation,
+  FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  filesystem_entry_presence,
+}
+import extdeps.systemd {
+  SystemdUnitProperty, KillSignalProperty, SendSigkillProperty, TimeoutStopSecProperty,
+}
+import extdeps.systemd.systemd_run { SystemdRunProperty }
+import gunbc.host_effect { HostEffectTransport, LocalShell }
+import gunbc.host_operation_exec {
+  HostOperation, HostOperationOutcome, HostOperationObserved, HostOperationRefused,
+  CgroupReadInterfaceFile, SystemctlStop, SystemctlKill, host_operation_exec,
+}
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.runner_microvm_lifecycle {
+  CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
+  ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
+  ObservedCgroup, ObservedPath, ObservedStop, ObservedTeardown,
+  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, StopOutcomeUnobserved,
+  TerminalTrigger, TeardownSettlement, settle_teardown,
+  TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject,
+  TeardownSubject, attempt_teardown_readback,
+}
+import gunbc.runner_microvm_cell_readiness { CellBoundAttempt, in_flight_attempt_unit }
+import gunbc.runner_microvm_network { BoundSlotNetworkReadback }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, runner_microvm_attempt_dir, runner_microvm_attempt_jail_base,
+  runner_microvm_attempt_jit_drive_path, runner_microvm_attempt_slice_property,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric_cell_converge { fabric_cell_attempt_root_path, fabric_cell_slice_name }
+
+data runner_microvm_lifecycle_realize_disposition: Disposition = SingleAuthority
+
+// THE WET HALF OF THE SLOT UNIT'S MainPID: THE HOST READINGS THE CONTROLLER DECIDES FROM.
+//
+// gunbc.runner_microvm_lifecycle carries the DECISIONS and takes every observation as a supplied
+// value. This module is where those values come from on a real host, and it adds no decision: each
+// function here produces one carrier that module already declares, and the classification of a
+// reading into Empty / Populated / ReadFailed, or Absent / Present / Unreadable, is the only
+// judgement it makes -- the judgement of what the reading MEANS for the cell stays there.
+//
+// THE SPLIT INSIDE THIS MODULE IS PURE FOLD BESIDE WET PERFORMER, and it is what makes the folds
+// witnessable without a host (DESIGN section 3, a witness discriminates at one interface). Every
+// classification below takes supplied readings; every function that touches the host does nothing
+// but obtain those readings and hand them to a fold. The pairing obligation that goes with it is
+// the srv1 transient-unit evidence: the folds are witnessed hermetically over supplied readings,
+// and the wet path is executed for real against processes that ignore SIGTERM, double-fork and
+// refuse to die.
+
+// THE SUBTREE IS ONE READING TAKEN AT ONE INSTANT, PLUS THE ROOT'S OWN FILE AS ITS PREMISE.
+//
+// extdeps.linux.cgroup_v2 states the kernel's own division: cgroup.procs lists the processes that
+// BELONG TO one cgroup and says nothing about its descendants, so the double-forked daemon systemd
+// placed in a child scope is invisible to the root's file. A read per node would take the hierarchy
+// apart at N instants; one tree read over the interface file's name takes it at one, and each line
+// names the file it came from, so the node survives.
+//
+// THE ROOT READING IS NOT REDUNDANT WITH THE TREE READ, AND ITS ABSENCE IS THE FAIL-OPEN THIS PAIR
+// EXISTS TO CLOSE. grep answers 1 both for "every file was walked and held nothing" and for "the
+// glob matched no file at all" -- so a root that is a directory but NOT a cgroup, or a mistyped
+// slice that happens to exist, would read as an EMPTY SUBTREE and release the cell. Every cgroup
+// directory has a cgroup.procs; reading the root's own file establishes that the thing walked was a
+// cgroup, and only then does "no line" mean "nothing is there".
+type CgroupRootProcsReading
+  = CgroupRootProcsRead
+  | CgroupRootProcsUnread { reason: NonEmptyStr }
+
+// THE TREE READ'S EXIT CODE IS THE ANSWER AND IT IS THREE-VALUED (extdeps.tools.grep
+// grep_every_line_in_tree_command). 0: lines were selected, so the subtree holds processes and the
+// stdout says which. 1: the files were walked and none held a line. Anything else: the walk itself
+// failed, which is evidence of nothing -- and is the one answer that must not release a cell.
+fn cgroup_subtree_readback_of_readings(
+  root: NonEmptyStr,
+  root_procs: CgroupRootProcsReading,
+  tree: ProcessObservation,
+) -> CgroupSubtreeReadback {
+  match root_procs {
+    CgroupRootProcsUnread { reason: why } =>
+      CgroupSubtreeReadFailed {
+        reason: join([root as String, ": the root's own cgroup.procs could not be read, so the tree read establishes nothing -- ", why as String], "") as NonEmptyStr,
+      }
+    CgroupRootProcsRead =>
+      if tree.exit_code == 1 {
+        CgroupSubtreeEmpty
+      } else if tree.exit_code != 0 {
+        CgroupSubtreeReadFailed {
+          reason: join([root as String, ": the cgroup.procs tree read exited ", to_string(tree.exit_code), ": ", trim(s: tree.stderr)], "") as NonEmptyStr,
+        }
+      } else {
+        cgroup_subtree_readback_of_decoding(root: root, decoding: decode_cgroup_subtree_procs(stdout: tree.stdout))
+      }
+  }
+}
+
+// A SELECTED-LINES EXIT WITH NO DECODED NODE IS A FAILED READ, NOT AN EMPTY SUBTREE. grep answered
+// 0, which means it printed at least one line; if the decoder then found no node, the two disagree
+// about the same bytes and neither verdict is established.
+fn cgroup_subtree_readback_of_decoding(root: NonEmptyStr, decoding: CgroupSubtreeProcsDecoding) -> CgroupSubtreeReadback {
+  match decoding {
+    CgroupSubtreeProcsUnparseable { cause: c } =>
+      CgroupSubtreeReadFailed { reason: join([root as String, ": ", c], "") as NonEmptyStr }
+    CgroupSubtreeProcsDecoded { nodes: nodes } =>
+      if list_length(items: nodes) == 0 {
+        CgroupSubtreeReadFailed {
+          reason: join([root as String, ": the tree read selected lines and decoded no cgroup from them"], "") as NonEmptyStr,
+        }
+      } else {
+        CgroupSubtreePopulated {
+          pids: fold(nodes, init: [], f: (acc, n) => concat(acc, n.pids)),
+          cgroups: map(nodes, n => n.cgroup),
+        }
+      }
+  }
+}
+
+// A RESOURCE IS ABSENT ONLY WHEN A SUCCESSFUL LISTING OF ITS DIRECTORY DID NOT NAME IT.
+// extdeps.filesystem.filesystem_io already owns that distinction and the reason for it: Read
+// answers the same failure for a path that is gone and a path that cannot be read, and those have
+// opposite consequences here -- one releases the cell and the other must not. So absence comes
+// from the listing fold, never from a failed read, and both of the fold's cannot-tell arms land on
+// Unreadable rather than on either verdict.
+fn resource_readback_of_presence(presence: FilesystemEntryPresence) -> ResourceReadback {
+  match presence {
+    FilesystemEntryAbsent(_) => ResourceAbsent
+    FilesystemEntryListed { directory: d, name: n } =>
+      ResourcePresent { detail: join([n, " is still listed in ", d as String], "") as NonEmptyStr }
+    FilesystemEntryPresenceIndeterminate { cause: c } => ResourceUnreadable { reason: c as NonEmptyStr }
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
+      ResourceUnreadable { reason: join(["no listable directory for ", n, " at ", d, ": ", c], "") as NonEmptyStr }
+  }
+}
+
+// THE THREE ATTEMPT RESOURCES, EACH AS A (DIRECTORY, NAME) PAIR RATHER THAN A PATH TO SPLIT.
+// gunbc.runner_microvm_attempt derives every one of them by joining a name under a directory it
+// also derives, so the pair is recoverable from the same authority that built the path -- and
+// splitting the rendered path back apart here would be a second, positional authority for a
+// composition the attempt module already performs.
+type AttemptResourceSubject {
+  directory: String
+  name: String
+  path: String
+}
+
+fn attempt_jail_subject(attempt: MicroVmAttempt) -> AttemptResourceSubject {
+  AttemptResourceSubject {
+    directory: runner_microvm_attempt_dir(attempt: attempt),
+    name: "jail",
+    path: runner_microvm_attempt_jail_base(attempt: attempt),
+  }
+}
+
+fn attempt_storage_subject(attempt: MicroVmAttempt) -> AttemptResourceSubject {
+  AttemptResourceSubject {
+    directory: fabric_cell_attempt_root_path(slot: attempt.slot),
+    name: attempt.attempt_id.value as String,
+    path: runner_microvm_attempt_dir(attempt: attempt),
+  }
+}
+
+fn attempt_credential_subject(attempt: MicroVmAttempt) -> AttemptResourceSubject {
+  AttemptResourceSubject {
+    directory: runner_microvm_attempt_dir(attempt: attempt),
+    name: "jit.img",
+    path: runner_microvm_attempt_jit_drive_path(attempt: attempt),
+  }
+}
+
+// THE OBSERVED PATH CARRIES THE PATH THE ATTEMPT MODULE DERIVED, NOT ONE REJOINED HERE. The
+// teardown readback's constructor compares this field against runner_microvm_attempt's own
+// rendering, so a path assembled independently here could differ from it by a separator and turn
+// every teardown into a foreign-subject refusal -- or, worse, agree by accident while the listing
+// was taken somewhere else.
+fn observed_path_of_presence(subject: AttemptResourceSubject, presence: FilesystemEntryPresence) -> ObservedPath {
+  ObservedPath { path: subject.path, readback: resource_readback_of_presence(presence: presence) }
+}
+
+// ── THE HOST LEG: WHERE THE READINGS COME FROM ────────────────────────────────────────────────
+
+// THE CONTROLLER IS THE SLOT UNIT'S MainPID, SO ITS TRANSPORT IS NOT A PARAMETER.
+//
+// Everything below runs in the same process tree as the VMM it supervises, on the machine whose
+// cgroup it reads, and that is what makes its readings evidence about this attempt: an observation
+// taken over ssh from elsewhere is a different subject -- an operator looking at a host -- taken at
+// a different instant, and the stop it issues would race the controller that owns the unit. So the
+// transport is LocalShell and LocalExec by construction here, not a choice a caller makes. A remote
+// observer is not a second arm of this module; it is gunbc.host_operation_exec, which already
+// carries the transport coproduct for callers whose subject is a host.
+fn controller_transport() -> HostEffectTransport {
+  LocalShell
+}
+
+fn cgroup_reading_unread(root: NonEmptyStr, detail: String) -> CgroupRootProcsReading {
+  CgroupRootProcsUnread {
+    reason: join([cgroup_v2_procs_path(cgroup_path: root) as String, ": ", trim(s: detail)], "") as NonEmptyStr,
+  }
+}
+
+fn read_cgroup_root_procs(root: NonEmptyStr) -> CgroupRootProcsReading
+  uses net: Network
+{
+  match host_operation_exec(
+    transport: controller_transport(),
+    operation: CgroupReadInterfaceFile { file_path: cgroup_v2_procs_path(cgroup_path: root) },
+  ) {
+    HostOperationRefused { operation: o, reason: r } =>
+      cgroup_reading_unread(root: root, detail: join([o, " refused: ", r], ""))
+    HostOperationObserved { stdout: _, success: ok, stderr: e } =>
+      if ok {
+        CgroupRootProcsRead
+      } else {
+        cgroup_reading_unread(root: root, detail: match e {
+          Present { value: text } => text
+          Absent => "the read failed and this operation models no stderr"
+        })
+      }
+  }
+}
+
+// THE CELL'S CGROUP IS THE SLICE THE ATTEMPT'S VMM WAS PLACED IN, and the slice name comes from
+// gunbc.fabric_cell_converge -- the same authority runner_microvm_attempt's Slice= property reads,
+// so the cgroup read and the placement cannot disagree about which cgroup this cell is.
+fn read_cell_cgroup_subtree(slice: NonEmptyStr) -> CgroupSubtreeReadback
+  uses net: Network
+{
+  cgroup_subtree_readback_of_readings(
+    root: cgroup_v2_slice_path(slice: slice),
+    root_procs: read_cgroup_root_procs(root: cgroup_v2_slice_path(slice: slice)),
+    tree: run_shell_command_observe(
+      command: grep_every_line_in_tree_command(
+        file_name: cgroup_v2_procs_interface_file,
+        root: cgroup_v2_slice_path(slice: slice),
+      ),
+      transport: LocalExec,
+    ),
+  )
+}
+
+fn observe_cell_cgroup(slot: RunnerSlotIdentity) -> ObservedCgroup
+  uses net: Network
+{
+  ObservedCgroup {
+    root: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
+    readback: read_cell_cgroup_subtree(slice: fabric_cell_slice_name(slot: slot) as NonEmptyStr),
+  }
+}
+
+fn observe_attempt_resource(subject: AttemptResourceSubject) -> ObservedPath
+  uses fs: Filesystem
+{
+  let listed = Filesystem.List(path: subject.directory)
+  observed_path_of_presence(
+    subject: subject,
+    presence: filesystem_entry_presence(
+      listing: filesystem_listing_observation(
+        directory: subject.directory,
+        success: listed.success,
+        entries: listed.entries,
+        error: listed.error,
+      ),
+      name: subject.name,
+    ),
+  )
+}
+
+// ── THE STOP: GRACEFUL, THEN A FORCE THE CONTROLLER OWNS ──────────────────────────────────────
+
+// THE UNIT MUST NOT ESCALATE ON ITS OWN, WHICH IS WHY THESE THREE PROPERTIES TRAVEL WITH THE LAUNCH.
+//
+// systemd's default stop protocol sends KillSignal and then SIGKILL after TimeoutStopSec, and
+// `systemctl stop` returns success either way -- so a controller reading only that result cannot
+// tell a guest that shut down cleanly from one the manager had to kill, and the distinction
+// gunbc.runner_microvm_lifecycle's TeardownStop is made of would be unobservable. SendSIGKILL=no
+// removes the manager's escalation entirely: the graceful attempt is exactly KillSignal, the force
+// is exactly the controller's own `systemctl kill`, and the arm reported is the one that happened.
+// KillSignal is spelled rather than defaulted for the same reason -- a unit whose signal is
+// configured elsewhere would make "graceful" mean something the controller did not choose.
+data runner_microvm_stop_signal: NonEmptyStr = "SIGTERM" as NonEmptyStr
+
+data runner_microvm_force_signal: NonEmptyStr = "SIGKILL" as NonEmptyStr
+
+data runner_microvm_graceful_stop_seconds: Int = 30
+
+// THE FORCE IS BOUNDED IN READS, NOT IN WALL TIME ALONE, because what the bound protects against is
+// an unbounded WAIT, and a controller that slept once and read once could not distinguish a task
+// that was slow to reap from one that will never go. Each read is a real observation of the cgroup;
+// the bound is how many of them the controller will pay for before it calls the survivors survivors.
+data runner_microvm_force_stop_reads: Int = 5
+
+data runner_microvm_force_stop_interval_seconds: Int = 2
+
+fn runner_microvm_attempt_stop_properties(attempt: MicroVmAttempt) -> List<SystemdRunProperty> {
+  [
+    runner_microvm_attempt_slice_property(attempt: attempt),
+    SystemdRunProperty { property: KillSignalProperty, value: runner_microvm_stop_signal },
+    SystemdRunProperty { property: SendSigkillProperty, value: "no" as NonEmptyStr },
+    SystemdRunProperty {
+      property: TimeoutStopSecProperty,
+      value: to_string(runner_microvm_graceful_stop_seconds) as NonEmptyStr,
+    },
+  ]
+}
+
+type UnitSignalOutcome
+  = UnitSignalled
+  | UnitSignalRefused { detail: NonEmptyStr }
+
+fn unit_signal_outcome(label: String, outcome: HostOperationOutcome) -> UnitSignalOutcome {
+  match outcome {
+    HostOperationRefused { operation: o, reason: r } =>
+      UnitSignalRefused { detail: join([label, ": ", o, " refused: ", r], "") as NonEmptyStr }
+    HostOperationObserved { stdout: _, success: ok, stderr: e } =>
+      if ok {
+        UnitSignalled
+      } else {
+        UnitSignalRefused {
+          detail: join([label, ": ", match e {
+            Present { value: text } => trim(s: text)
+            Absent => "the command failed and this operation models no stderr"
+          }], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn request_unit_stop(unit: NonEmptyStr) -> UnitSignalOutcome
+  uses net: Network
+{
+  unit_signal_outcome(
+    label: join(["systemctl stop ", unit as String], ""),
+    outcome: host_operation_exec(transport: controller_transport(), operation: SystemctlStop { unit: unit }),
+  )
+}
+
+fn force_kill_unit(unit: NonEmptyStr) -> UnitSignalOutcome
+  uses net: Network
+{
+  unit_signal_outcome(
+    label: join(["systemctl kill ", unit as String], ""),
+    outcome: host_operation_exec(
+      transport: controller_transport(),
+      operation: SystemctlKill { unit: unit, signal: runner_microvm_force_signal },
+    ),
+  )
+}
+
+// THE WAIT IS A DESCENT ON THE READ BUDGET, and a failed read ENDS it rather than consuming the
+// budget: a subtree nobody could read will not become readable by waiting, and looping on it would
+// spend the whole bound to arrive at the same unobservable answer. A populated subtree is the only
+// state worth another read.
+fn await_quiet_subtree(slice: NonEmptyStr, reads_left: Int) -> CgroupSubtreeReadback
+  uses net: Network
+{
+  let seen = read_cell_cgroup_subtree(slice: slice)
+  match seen {
+    CgroupSubtreeEmpty => seen
+    CgroupSubtreeReadFailed { reason: _ } => seen
+    CgroupSubtreePopulated { pids: _, cgroups: _ } =>
+      if reads_left <= 1 {
+        seen
+      } else {
+        await_quiet_subtree_after_pause(slice: slice, reads_left: reads_left - 1)
+      }
+  }
+}
+
+fn await_quiet_subtree_after_pause(slice: NonEmptyStr, reads_left: Int) -> CgroupSubtreeReadback
+  uses net: Network
+{
+  let paused = sleep.Delay.Seconds(seconds: to_string(runner_microvm_force_stop_interval_seconds) as NonEmptyStr)
+  if paused.success {
+    await_quiet_subtree(slice: slice, reads_left: reads_left)
+  } else {
+    CgroupSubtreeReadFailed {
+      reason: join([slice as String, ": the force-stop interval could not be waited out, so the subtree was not re-read"], "") as NonEmptyStr,
+    }
+  }
+}
+
+// THE THREE ARMS, EACH FROM THE STEP THAT PRODUCED IT.
+//
+// GRACEFUL means the stop request was accepted AND the subtree was empty when it returned -- the
+// unit cannot have escalated on its own, because SendSIGKILL=no. BY FORCE means it was not, the
+// controller sent SIGKILL, and the subtree went quiet within the read budget. EXCEEDED means it did
+// not. A read that failed at either point is UNOBSERVED, which is neither a stop nor a survival,
+// and a stop request that was refused outright is unobserved too: nothing was asked of the unit, so
+// nothing about its processes follows.
+fn perform_bounded_stop(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
+  uses net: Network
+{
+  match request_unit_stop(unit: unit) {
+    UnitSignalRefused { detail: d } => StopOutcomeUnobserved { reason: d }
+    UnitSignalled =>
+      match read_cell_cgroup_subtree(slice: slice) {
+        CgroupSubtreeEmpty => StoppedGracefully
+        CgroupSubtreeReadFailed { reason: r } => StopOutcomeUnobserved { reason: r }
+        CgroupSubtreePopulated { pids: _, cgroups: _ } => force_stop_after_graceful(unit: unit, slice: slice)
+      }
+  }
+}
+
+fn force_stop_after_graceful(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
+  uses net: Network
+{
+  match force_kill_unit(unit: unit) {
+    UnitSignalRefused { detail: d } => StopOutcomeUnobserved { reason: d }
+    UnitSignalled =>
+      match await_quiet_subtree(slice: slice, reads_left: runner_microvm_force_stop_reads) {
+        CgroupSubtreeEmpty => StoppedByForce
+        CgroupSubtreeReadFailed { reason: r } => StopOutcomeUnobserved { reason: r }
+        CgroupSubtreePopulated { pids: p, cgroups: _ } => ForceStopBoundExceeded { survivors: p }
+      }
+  }
+}
+
+// ── THE TEARDOWN, OBSERVED AND SETTLED ────────────────────────────────────────────────────────
+
+// THE SLOT NETWORK READBACK IS A PARAMETER, AND IT IS NOT AN OMISSION.
+//
+// gunbc.runner_microvm_network owns that reading and takes SEVEN host readings plus the slot's
+// ConvergedSlotNetwork receipt to produce it -- the receipt being the proof that the tap and
+// ruleset this cell runs over were converged for THIS slot. This module cannot manufacture either:
+// a controller that assembled a network verdict from its own readings would be a second authority
+// for the fact that module exists to hold, and one that invented a receipt would be asserting the
+// convergence it is supposed to be reading. So the bound readback arrives from its owner, and the
+// teardown carrier's constructor then joins its slot against the attempt exactly as it joins every
+// other subject.
+//
+// DECLARED FRONTIER (DESIGN 3c) on the WET side of that boundary: no performer in this repository
+// yet takes the seven readings on a host. NAMED CONSUMER: this function. TRIGGER: a performer in
+// gunbc.runner_microvm_network that executes the tap, conntrack, neighbour and ruleset reads and
+// returns BoundSlotNetworkReadback, at which point this parameter is supplied by it rather than by
+// the caller. SUFFICIENT FOR deleting this paragraph. NOT satisfied by a witness supplying one.
+fn observe_attempt_teardown(bound: CellBoundAttempt, network: BoundSlotNetworkReadback) -> ObservedTeardown
+  uses net: Network, fs: Filesystem
+{
+  let attempt = bound.attempt.attempt
+  ObservedTeardown {
+    host: attempt.slot.host as String,
+    generation: bound.generation,
+    stop: ObservedStop {
+      unit: in_flight_attempt_unit(attempt: bound.attempt),
+      invocation_id: bound.attempt.invocation_id,
+      outcome: perform_bounded_stop(
+        unit: in_flight_attempt_unit(attempt: bound.attempt),
+        slice: fabric_cell_slice_name(slot: attempt.slot) as NonEmptyStr,
+      ),
+    },
+    cgroup: observe_cell_cgroup(slot: attempt.slot),
+    mounts: observe_attempt_resource(subject: attempt_jail_subject(attempt: attempt)),
+    attempt_storage: observe_attempt_resource(subject: attempt_storage_subject(attempt: attempt)),
+    credential_disk: observe_attempt_resource(subject: attempt_credential_subject(attempt: attempt)),
+    network: network,
+  }
+}
+
+// THE SETTLEMENT, OR THE REASON THERE IS NONE. A readback whose subjects do not all name this
+// attempt never becomes a settlement: gunbc.runner_microvm_lifecycle's constructor refuses it, and
+// this carries that refusal outward rather than resolving it. A controller holding
+// TeardownObservationForeign has read the wrong host, unit, cgroup or path, which is a defect in
+// the controller and not a verdict about the cell -- so it settles nothing and writes nothing.
+type AttemptTeardownOutcome
+  = TeardownSettled { settlement: TeardownSettlement }
+  | TeardownObservationForeign { subject: TeardownSubject, expected: String, observed: String }
+
+fn settle_attempt_teardown(
+  bound: CellBoundAttempt,
+  network: BoundSlotNetworkReadback,
+  trigger: TerminalTrigger,
+) -> AttemptTeardownOutcome
+  uses net: Network, fs: Filesystem
+{
+  match attempt_teardown_readback(
+    bound: bound,
+    observed: observe_attempt_teardown(bound: bound, network: network),
+  ) {
+    TeardownReadbackForeignSubject { subject: s, expected: e, observed: o } =>
+      TeardownObservationForeign { subject: s, expected: e, observed: o }
+    TeardownReadbackBound { readback: r } =>
+      TeardownSettled { settlement: settle_teardown(readback: r, trigger: trigger) }
+  }
+}

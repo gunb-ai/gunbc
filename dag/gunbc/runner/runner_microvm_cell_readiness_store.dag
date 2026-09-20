@@ -1,0 +1,673 @@
+module gunbc.runner_microvm_cell_readiness_store
+
+import std.types { String, NonEmptyStr, Bool, List, Int, Map }
+import std.nat { Nat }
+import std.resources { Filesystem }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.filesystem.filesystem_io {
+  FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused, filesystem_read_outcome,
+  FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused,
+  FilesystemDirectorySubjectRefused, filesystem_listing_observation,
+}
+import gunbc.product.placement_supply { HostIdentity }
+import product.fabric.sanitation {
+  CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact, FactNotObserved, FactObservedFailing,
+  SanitationFact, SanitationObservation, FactConfirmed, FactRefuted, FactUnobservable,
+  SanitationFactAdmission, SanitationFactAdmitted, SanitationFactUnrecognized,
+  sanitation_fact_label, admit_sanitation_fact,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
+  microvm_attempt, attempt_segment_refusal_text,
+}
+import gunbc.runner_microvm_cell_readiness {
+  CellReadinessRecord, CellAttemptInFlight, CellSettled, InFlightAttempt,
+  CellReadinessStoreRead, StoreRead, StoreUnreadable,
+  CellReadinessStoreOwnership, StoreRootOwned, StoreNotRootOwned,
+  CellReadinessWrite, CellReadinessWriteResult, WriteAccepted,
+  apply_cell_readiness_write, record_cell, record_of_write,
+}
+import extdeps.tools.coreutils_stat {
+  PathOwnershipObservation, PathOwnershipObserved, PathOwnershipUnobservable,
+  PathModeObservation, PathModeObserved, PathModeUnobservable,
+  coreutils_stat_path_ownership, coreutils_stat_path_mode,
+}
+import extdeps.access.posix {
+  FileOwnership, FileMode, PermissionBits, file_mode_octal, posix_root_uid,
+}
+import std.algebra { trim }
+
+data runner_microvm_cell_readiness_store_disposition: Disposition = SingleAuthority
+
+// THE HOST-LOCAL CellReadiness STORE, AS BYTES ON THE MACHINE THAT OWNS THE CELLS.
+//
+// gunbc.runner_microvm_cell_readiness decides what a record MEANS across incarnations and refuses
+// every write that would loosen a quarantine or clear a cleanup that is owed. This module is the
+// only place those records become a file and come back, and it adds no verdict: it renders, it
+// parses, it reads a directory, it writes one file. The reason it is a module of its own rather
+// than a corner of the controller is the round trip -- a codec owes an inverse, and an inverse owes
+// a witness that the two agree, which is a subject with its own red.
+//
+// ONE FILE PER CELL, AND THE CELL IS THE FILE NAME. The store's unit is (cell, generation), but the
+// generation is inside the record rather than in the name: a cell has exactly one current record,
+// and a name carrying the generation would let two generations of one cell sit in the directory at
+// once -- which is precisely the store-wide ambiguity the readiness module refuses the WHOLE HOST
+// for. One name per cell makes that state unwritable rather than detected.
+
+data cell_readiness_store_root: NonEmptyStr = "/var/lib/gunbc/microvm-cell-readiness" as NonEmptyStr
+
+data cell_readiness_record_suffix: String = ".record"
+
+fn cell_readiness_record_path(root: NonEmptyStr, cell: CellId) -> String {
+  join([root as String, "/", cell as String, cell_readiness_record_suffix], "")
+}
+
+// ── the codec ─────────────────────────────────────────────────────────────────────────────────
+
+// A RECORD IS LINES OF `key value`, AND THE VALUE IS ESCAPED SO THE GRAMMAR CANNOT BE FORGED BY ITS
+// OWN CONTENT. A sanitation detail is free text produced by a fold -- it can hold spaces, and a
+// refutation quoting a command can hold a newline. A newline inside a value would end the record's
+// line and turn the rest of that detail into a key nobody wrote, so the escape covers the newline
+// and the escape character itself, and nothing else: a codec that escaped more would have more
+// inverse to get wrong. The key is the text before the FIRST space and the value is everything
+// after it, so a value containing spaces round-trips without quoting.
+data store_escape_marker: String = "%"
+
+data store_escaped_marker: String = "%25"
+
+data store_escaped_newline: String = "%0A"
+
+data store_field_separator: String = "|"
+
+data store_escaped_field_separator: String = "%7C"
+
+fn store_escape(value: String) -> String {
+  replace(
+    replace(replace(value, store_escape_marker, store_escaped_marker), "\n", store_escaped_newline),
+    store_field_separator,
+    store_escaped_field_separator,
+  )
+}
+
+// THE INVERSE RUNS IN THE OPPOSITE ORDER, which is what makes it an inverse rather than a second
+// guess: the marker is escaped first and unescaped last, so a value that literally contained `%0A`
+// comes back as `%0A` and not as a newline.
+fn store_unescape(value: String) -> String {
+  replace(
+    replace(replace(value, store_escaped_field_separator, store_field_separator), store_escaped_newline, "\n"),
+    store_escaped_marker,
+    store_escape_marker,
+  )
+}
+
+fn store_line(key: String, value: String) -> String {
+  join([key, " ", store_escape(value: value)], "")
+}
+
+data store_key_kind: String = "kind"
+data store_key_cell: String = "cell"
+data store_key_generation: String = "generation"
+data store_key_host: String = "host"
+data store_key_slot_index: String = "slot-index"
+data store_key_attempt_id: String = "attempt-id"
+data store_key_invocation: String = "invocation"
+data store_key_jit_registration: String = "jit-registration"
+data store_key_readiness: String = "readiness"
+data store_key_unproven: String = "unproven"
+
+data store_kind_in_flight: String = "in-flight"
+data store_kind_settled: String = "settled"
+data store_readiness_ready: String = "ready"
+data store_readiness_quarantined: String = "quarantined"
+
+data store_unproven_not_observed: String = "not-observed"
+data store_unproven_confirmed: String = "observed-confirmed"
+data store_unproven_refuted: String = "observed-refuted"
+data store_unproven_unobservable: String = "observed-unobservable"
+
+// AN UNPROVEN FACT KEEPS ITS ARM AND ITS DETAIL, because the two arms are two different messages to
+// an operator: "this fact was never observed" sends someone to the probe, and "this fact was
+// observed and refuted, here is what was found" sends them to the residue. A record that persisted
+// only the fact name would flatten them, and the quarantine an operator reads days later would no
+// longer say why it happened.
+fn unproven_fact_fields(unproven: UnprovenFact) -> List<String> {
+  match unproven {
+    FactNotObserved { fact: f } => [store_unproven_not_observed, sanitation_fact_label(fact: f)]
+    FactObservedFailing { observation: o } =>
+      match o {
+        FactConfirmed { fact: f } => [store_unproven_confirmed, sanitation_fact_label(fact: f)]
+        FactRefuted { fact: f, detail: d } => [store_unproven_refuted, sanitation_fact_label(fact: f), d as String]
+        FactUnobservable { fact: f, reason: r } => [store_unproven_unobservable, sanitation_fact_label(fact: f), r as String]
+      }
+  }
+}
+
+// THE FIELDS CARRY THEIR OWN ESCAPE AND THE LINE DOES NOT ESCAPE THEM AGAIN. One escape covers all
+// three characters the two grammars rest on -- the escape marker, the newline that ends a line, and
+// the separator that ends a field -- so a detail quoting a command with a pipe in it round-trips
+// instead of splitting into fields nobody wrote. Escaping twice would be the inverse's problem, not
+// the forger's: the reader would have to know how many layers to peel.
+fn unproven_fact_value(unproven: UnprovenFact) -> String {
+  join(map(unproven_fact_fields(unproven: unproven), f => store_escape(value: f)), store_field_separator)
+}
+
+fn render_cell_readiness_record(record: CellReadinessRecord) -> String {
+  match record {
+    CellAttemptInFlight { cell: c, generation: g, attempt: a } =>
+      join([
+        store_line(key: store_key_kind, value: store_kind_in_flight),
+        store_line(key: store_key_cell, value: c as String),
+        store_line(key: store_key_generation, value: to_string(g)),
+        store_line(key: store_key_host, value: a.attempt.slot.host as String),
+        store_line(key: store_key_slot_index, value: to_string(a.attempt.slot.slot_index)),
+        store_line(key: store_key_attempt_id, value: a.attempt.attempt_id.value as String),
+        store_line(key: store_key_invocation, value: a.invocation_id as String),
+        store_line(key: store_key_jit_registration, value: a.jit_registration_id as String),
+        "",
+      ], "\n")
+    CellSettled { cell: c, generation: g, readiness: r } =>
+      join(concat([
+        store_line(key: store_key_kind, value: store_kind_settled),
+        store_line(key: store_key_cell, value: c as String),
+        store_line(key: store_key_generation, value: to_string(g)),
+        store_line(key: store_key_readiness, value: readiness_kind_text(readiness: r)),
+      ], concat(readiness_unproven_lines(readiness: r), [""])), "\n")
+  }
+}
+
+fn readiness_kind_text(readiness: CellReadiness) -> String {
+  match readiness {
+    CellReady { cell: _ } => store_readiness_ready
+    CellQuarantined { cell: _, unproven: _ } => store_readiness_quarantined
+  }
+}
+
+fn readiness_unproven_lines(readiness: CellReadiness) -> List<String> {
+  match readiness {
+    CellReady { cell: _ } => []
+    CellQuarantined { cell: _, unproven: u } =>
+      map(u, f => join([store_key_unproven, " ", unproven_fact_value(unproven: f)], ""))
+  }
+}
+
+// ── the inverse ───────────────────────────────────────────────────────────────────────────────
+
+// PARSING IS TOTAL AND ITS FAILURE IS ONE ARM. Every way a record can fail to be a record -- a key
+// nobody wrote, a key written twice, a missing field, a generation that is not a number, a slot
+// index that is negative, an attempt id that would escape its root, a fact label this vocabulary
+// does not have -- lands here with a cause. The consumer turns that into StoreUnreadable for the
+// WHOLE STORE, because a directory holding one record nobody can read is a directory whose other
+// records nobody should trust either.
+type RecordParse
+  = RecordParsed { record: CellReadinessRecord }
+  | RecordUnparseable { cause: String }
+
+type RecordScan {
+  fields: Map<String, String>
+  unproven: List<String>
+  bad: String?
+}
+
+// A KEY WRITTEN TWICE IS A REFUSAL, NOT A LAST-ONE-WINS. Two values for one field are two records
+// interleaved, and picking either is choosing which of two histories to believe.
+fn record_scan_step(acc: RecordScan, raw: String) -> RecordScan {
+  let line = trim(s: raw)
+  match acc.bad {
+    Present { value: _ } => acc
+    Absent =>
+      if line == "" {
+        acc
+      } else {
+        let words = split(s: line, delimiter: " ")
+        let key = join(words.take(n: 1), "")
+        let value = join(words.skip(n: 1), " ")
+        if key == store_key_unproven {
+          RecordScan { fields: acc.fields, unproven: append(acc.unproven, value), bad: none }
+        } else {
+          match map_get(acc.fields, key) {
+            Present { value: _ } =>
+              RecordScan { fields: acc.fields, unproven: acc.unproven, bad: Present { value: join(["the record carries the key ", key, " more than once"], "") } }
+            Absent =>
+              RecordScan {
+                fields: map_insert(acc.fields, key, store_unescape(value: value)),
+                unproven: acc.unproven,
+                bad: none,
+              }
+          }
+        }
+      }
+  }
+}
+
+type FieldReading
+  = FieldRead { value: String }
+  | FieldMissing { cause: String }
+
+fn read_field(fields: Map<String, String>, key: String) -> FieldReading {
+  match map_get(fields, key) {
+    Present { value: v } => FieldRead { value: v }
+    Absent => FieldMissing { cause: join(["the record carries no ", key], "") }
+  }
+}
+
+type IntReading
+  = IntRead { value: Int }
+  | IntMissing { cause: String }
+
+fn read_int_field(fields: Map<String, String>, key: String) -> IntReading {
+  match read_field(fields: fields, key: key) {
+    FieldMissing { cause: c } => IntMissing { cause: c }
+    FieldRead { value: v } =>
+      match parse_int(s: v) {
+        Present { value: n } => IntRead { value: n }
+        Absent => IntMissing { cause: join(["the record's ", key, " is not an integer: ", v], "") }
+      }
+  }
+}
+
+// A NEGATIVE SLOT INDEX IS REFUSED BEFORE THE CAST, NOT BY IT. `as Nat` refuses at EVALUATION, which
+// on this path would abort the read of a whole store rather than answering that one record is
+// unparseable -- so the guard is here and the cast is reached only over a value it admits.
+fn read_slot_index(fields: Map<String, String>) -> IntReading {
+  match read_int_field(fields: fields, key: store_key_slot_index) {
+    IntMissing { cause: c } => IntMissing { cause: c }
+    IntRead { value: n } =>
+      if n < 0 {
+        IntMissing { cause: join(["the record's ", store_key_slot_index, " is negative: ", to_string(n)], "") }
+      } else {
+        IntRead { value: n }
+      }
+  }
+}
+
+type InFlightReading
+  = InFlightRead { attempt: InFlightAttempt }
+  | InFlightUnread { cause: String }
+
+// THE PERSISTED ATTEMPT IS REBUILT THROUGH ITS OWN SEALED CONSTRUCTOR. A record naming an attempt id
+// that is empty, `..`, or carries a separator is refused here exactly as it would have been refused
+// when the attempt was minted -- so a store that was edited by hand cannot hand the controller a
+// path-traversing attempt the constructor would never have produced.
+fn read_in_flight_attempt(fields: Map<String, String>) -> InFlightReading {
+  match read_field(fields: fields, key: store_key_host) {
+    FieldMissing { cause: c } => InFlightUnread { cause: c }
+    FieldRead { value: host } =>
+      match read_slot_index(fields: fields) {
+        IntMissing { cause: c } => InFlightUnread { cause: c }
+        IntRead { value: index } =>
+          match read_field(fields: fields, key: store_key_attempt_id) {
+            FieldMissing { cause: c } => InFlightUnread { cause: c }
+            FieldRead { value: attempt_id } =>
+              read_in_flight_identity(fields: fields, host: host, index: index, attempt_id: attempt_id)
+          }
+      }
+  }
+}
+
+fn read_in_flight_identity(fields: Map<String, String>, host: String, index: Int, attempt_id: String) -> InFlightReading {
+  match microvm_attempt(
+    slot: RunnerSlotIdentity { host: host as HostIdentity, slot_index: index as Nat },
+    attempt_id: attempt_id,
+  ) {
+    MicroVmAttemptRefused { refusal: r } => InFlightUnread { cause: attempt_segment_refusal_text(r: r) }
+    MicroVmAttemptAccepted { attempt: a } =>
+      match read_field(fields: fields, key: store_key_invocation) {
+        FieldMissing { cause: c } => InFlightUnread { cause: c }
+        FieldRead { value: invocation } =>
+          match read_field(fields: fields, key: store_key_jit_registration) {
+            FieldMissing { cause: c } => InFlightUnread { cause: c }
+            FieldRead { value: registration } =>
+              read_in_flight_nonempty(attempt: a, invocation: invocation, registration: registration)
+          }
+      }
+  }
+}
+
+// THE TWO IDENTIFIERS ARE NonEmptyStr ON THE CARRIER, so an empty one is refused rather than cast:
+// an in-flight record naming no invocation names no incarnation, and recovery would tear down an
+// attempt it cannot identify.
+fn read_in_flight_nonempty(attempt: MicroVmAttempt, invocation: String, registration: String) -> InFlightReading {
+  if invocation == "" {
+    InFlightUnread { cause: join(["the record's ", store_key_invocation, " is empty"], "") }
+  } else if registration == "" {
+    InFlightUnread { cause: join(["the record's ", store_key_jit_registration, " is empty"], "") }
+  } else {
+    InFlightRead {
+      attempt: InFlightAttempt {
+        attempt: attempt,
+        invocation_id: invocation as NonEmptyStr,
+        jit_registration_id: registration as NonEmptyStr,
+      },
+    }
+  }
+}
+
+type UnprovenReading
+  = UnprovenRead { facts: List<UnprovenFact> }
+  | UnprovenUnread { cause: String }
+
+type UnprovenScan {
+  facts: List<UnprovenFact>
+  bad: String?
+}
+
+fn unproven_scan_step(acc: UnprovenScan, encoded: String) -> UnprovenScan {
+  match acc.bad {
+    Present { value: _ } => acc
+    Absent =>
+      match parse_unproven_fact(encoded: encoded) {
+        UnprovenUnread { cause: c } => UnprovenScan { facts: acc.facts, bad: Present { value: c } }
+        UnprovenRead { facts: fs } => UnprovenScan { facts: concat(acc.facts, fs), bad: none }
+      }
+  }
+}
+
+fn parse_unproven_fact(encoded: String) -> UnprovenReading {
+  let fields = map(split(s: encoded, delimiter: store_field_separator), f => store_unescape(value: f))
+  let arm = join(fields.take(n: 1), "")
+  let label = join(fields.skip(n: 1).take(n: 1), "")
+  let detail = join(fields.skip(n: 2).take(n: 1), "")
+  match admit_sanitation_fact(label: label) {
+    SanitationFactUnrecognized { observed: o } =>
+      UnprovenUnread { cause: join(["the record names a sanitation fact this vocabulary does not have: ", o], "") }
+    SanitationFactAdmitted { fact: f } => unproven_fact_of_arm(arm: arm, fact: f, detail: detail, encoded: encoded)
+  }
+}
+
+// A DETAIL-BEARING ARM WITH NO DETAIL IS REFUSED rather than given an empty one: the arms whose
+// carrier is NonEmptyStr say so because a refutation with no detail and an unobservable reading
+// with no reason are the fabricated observations this record exists to avoid carrying.
+fn unproven_fact_of_arm(arm: String, fact: SanitationFact, detail: String, encoded: String) -> UnprovenReading {
+  if arm == store_unproven_not_observed {
+    UnprovenRead { facts: [FactNotObserved { fact: fact }] }
+  } else if arm == store_unproven_confirmed {
+    UnprovenRead { facts: [FactObservedFailing { observation: FactConfirmed { fact: fact } }] }
+  } else if detail == "" {
+    UnprovenUnread { cause: join(["the record's unproven fact carries no detail: ", encoded], "") }
+  } else if arm == store_unproven_refuted {
+    UnprovenRead { facts: [FactObservedFailing { observation: FactRefuted { fact: fact, detail: detail as NonEmptyStr } }] }
+  } else if arm == store_unproven_unobservable {
+    UnprovenRead { facts: [FactObservedFailing { observation: FactUnobservable { fact: fact, reason: detail as NonEmptyStr } }] }
+  } else {
+    UnprovenUnread { cause: join(["the record's unproven fact carries an arm this codec does not write: ", arm], "") }
+  }
+}
+
+fn read_unproven(encoded: List<String>) -> UnprovenReading {
+  let scan = fold(encoded, init: UnprovenScan { facts: [], bad: none }, f: (acc, e) => unproven_scan_step(acc: acc, encoded: e))
+  match scan.bad {
+    Present { value: c } => UnprovenUnread { cause: c }
+    Absent => UnprovenRead { facts: scan.facts }
+  }
+}
+
+fn parse_cell_readiness_record(text: String) -> RecordParse {
+  let scan = fold(split(s: text, delimiter: "\n"), init: RecordScan { fields: empty_map(), unproven: [], bad: none }, f: (acc, l) => record_scan_step(acc: acc, raw: l))
+  match scan.bad {
+    Present { value: c } => RecordUnparseable { cause: c }
+    Absent => parse_scanned_record(scan: scan)
+  }
+}
+
+fn parse_scanned_record(scan: RecordScan) -> RecordParse {
+  match read_field(fields: scan.fields, key: store_key_kind) {
+    FieldMissing { cause: c } => RecordUnparseable { cause: c }
+    FieldRead { value: kind } =>
+      match read_field(fields: scan.fields, key: store_key_cell) {
+        FieldMissing { cause: c } => RecordUnparseable { cause: c }
+        FieldRead { value: cell } =>
+          match read_int_field(fields: scan.fields, key: store_key_generation) {
+            IntMissing { cause: c } => RecordUnparseable { cause: c }
+            IntRead { value: generation } =>
+              if cell == "" {
+                RecordUnparseable { cause: "the record names no cell" }
+              } else {
+                parse_record_of_kind(scan: scan, kind: kind, cell: cell as CellId, generation: generation)
+              }
+          }
+      }
+  }
+}
+
+fn parse_record_of_kind(scan: RecordScan, kind: String, cell: CellId, generation: Int) -> RecordParse {
+  if kind == store_kind_in_flight {
+    if list_length(items: scan.unproven) != 0 {
+      RecordUnparseable { cause: "an in-flight record carries unproven facts, which only a settled quarantine has" }
+    } else {
+      match read_in_flight_attempt(fields: scan.fields) {
+        InFlightUnread { cause: c } => RecordUnparseable { cause: c }
+        InFlightRead { attempt: a } =>
+          RecordParsed { record: CellAttemptInFlight { cell: cell, generation: generation, attempt: a } }
+      }
+    }
+  } else if kind == store_kind_settled {
+    parse_settled_record(scan: scan, cell: cell, generation: generation)
+  } else {
+    RecordUnparseable { cause: join(["the record's kind is one this codec does not write: ", kind], "") }
+  }
+}
+
+// A QUARANTINE WITH NO UNPROVEN FACT IS REFUSED. product.fabric.sanitation only ever mints one from
+// facts that failed, so a record claiming a quarantine with an empty list was not written by that
+// fold -- and reading it as a quarantine would be inventing the evidence that justifies it.
+fn parse_settled_record(scan: RecordScan, cell: CellId, generation: Int) -> RecordParse {
+  match read_field(fields: scan.fields, key: store_key_readiness) {
+    FieldMissing { cause: c } => RecordUnparseable { cause: c }
+    FieldRead { value: readiness } =>
+      if readiness == store_readiness_ready {
+        if list_length(items: scan.unproven) != 0 {
+          RecordUnparseable { cause: "a settled Ready record carries unproven facts, which would make it a quarantine" }
+        } else {
+          RecordParsed { record: CellSettled { cell: cell, generation: generation, readiness: CellReady { cell: cell } } }
+        }
+      } else if readiness == store_readiness_quarantined {
+        match read_unproven(encoded: scan.unproven) {
+          UnprovenUnread { cause: c } => RecordUnparseable { cause: c }
+          UnprovenRead { facts: fs } =>
+            if list_length(items: fs) == 0 {
+              RecordUnparseable { cause: "a settled quarantine record names no unproven fact, so it carries no reason to be a quarantine" }
+            } else {
+              RecordParsed {
+                record: CellSettled { cell: cell, generation: generation, readiness: CellQuarantined { cell: cell, unproven: fs } },
+              }
+            }
+        }
+      } else {
+        RecordUnparseable { cause: join(["the record's readiness is one this codec does not write: ", readiness], "") }
+      }
+  }
+}
+
+// ── the host leg ──────────────────────────────────────────────────────────────────────────────
+
+// ROOT OWNERSHIP IS TWO READINGS AND BOTH MUST HOLD. gunbc.runner_microvm_cell_readiness withdraws
+// the WHOLE HOST for a store that is not root's, because a store any tenant can write is a store
+// any tenant can mark Ready -- so the owner uid and the mode are read, and a reading that FAILED
+// withdraws the host too rather than being treated as either answer. The uid is compared against
+// 0 and the mode against the one mode that denies every non-owner write; a looser mode is reported
+// as it was read, never normalised.
+// THE REQUIRED MODE IS A FileMode, NOT AN OCTAL LITERAL, and root's uid comes from the POSIX
+// authority that already declares it. Spelling either here would be a second authority for a fact
+// extdeps.access.posix owns -- and an octal literal is the worse of the two, because it is the
+// serialization of a structure whose meaning ("nobody but the owner may write") is exactly what a
+// reader of "700" has to reconstruct.
+data cell_readiness_store_required_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: false, write: false, execute: false },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+type StoreOwnershipReading
+  = StoreOwnershipRead { ownership: CellReadinessStoreOwnership }
+  | StoreOwnershipUnreadable { reason: NonEmptyStr }
+
+fn read_store_ownership(root: NonEmptyStr) -> StoreOwnershipReading {
+  match coreutils_stat_path_ownership(path: root) {
+    PathOwnershipUnobservable { path: p, reason: r } =>
+      StoreOwnershipUnreadable { reason: join([p as String, ": ", r], "") as NonEmptyStr }
+    PathOwnershipObserved { path: _, ownership: o, owner_name: _, group_name: _ } =>
+      match coreutils_stat_path_mode(path: root) {
+        PathModeUnobservable { path: p, reason: r } =>
+          StoreOwnershipUnreadable { reason: join([p as String, ": ", r], "") as NonEmptyStr }
+        PathModeObserved { path: _, mode: m } => store_ownership_of(uid: o.uid, mode: m)
+      }
+  }
+}
+
+fn store_ownership_of(uid: Int, mode: NonEmptyStr) -> StoreOwnershipReading {
+  if uid == posix_root_uid && (mode as String) == file_mode_octal(mode: cell_readiness_store_required_mode) {
+    StoreOwnershipRead { ownership: StoreRootOwned }
+  } else {
+    StoreOwnershipRead { ownership: StoreNotRootOwned { owner_uid: uid, mode: mode } }
+  }
+}
+
+// ── reading the whole store ───────────────────────────────────────────────────────────────────
+
+// THE STORE IS READ WHOLE, WHICH IS WHAT THE READINESS MODULE'S INDEX NEEDS. Its host-grain checks
+// -- two records for one cell, a record whose contents name another cell -- are properties of the
+// DIRECTORY, so a read that returned only the asked-for cell would make them unaskable. One listing
+// plus one read per record file, and any failure anywhere is StoreUnreadable for the whole store.
+type StoreRecordReading
+  = StoreRecordsRead { records: List<CellReadinessRecord> }
+  | StoreRecordsUnreadable { reason: NonEmptyStr }
+
+fn record_file_names(entries: String) -> List<String> {
+  filter(split(s: entries, delimiter: "\n"), e => ends_with(s: trim(s: e), suffix: cell_readiness_record_suffix))
+}
+
+type StoreRecordScan {
+  records: List<CellReadinessRecord>
+  bad: NonEmptyStr?
+}
+
+fn store_record_scan_step(root: NonEmptyStr, acc: StoreRecordScan, name: String) -> StoreRecordScan
+  uses fs: Filesystem
+{
+  match acc.bad {
+    Present { value: _ } => acc
+    Absent => {
+      let path = join([root as String, "/", trim(s: name)], "")
+      let read = Filesystem.Read(path: path)
+      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadRefused { error: e } =>
+          StoreRecordScan { records: acc.records, bad: Present { value: join([path, ": ", e], "") as NonEmptyStr } }
+        FilesystemReadSucceeded { content: text } =>
+          match parse_cell_readiness_record(text: text) {
+            RecordUnparseable { cause: c } =>
+              StoreRecordScan { records: acc.records, bad: Present { value: join([path, ": ", c], "") as NonEmptyStr } }
+            RecordParsed { record: r } =>
+              match record_name_disagreement(root: root, name: name, record: r) {
+                Present { value: why } => StoreRecordScan { records: acc.records, bad: Present { value: why } }
+                Absent => StoreRecordScan { records: append(acc.records, r), bad: none }
+              }
+          }
+      }
+    }
+  }
+}
+
+// THE FILE NAME MUST AGREE WITH THE RECORD INSIDE IT. A record for cell B living in A.record is a
+// store whose index would answer for A with B's verdict; the readiness module's own coherence check
+// looks INSIDE a record, and this is the outside half of the same question -- the name is part of
+// the record's identity here, so a disagreement makes the store unreadable rather than admitting a
+// record under a key nobody wrote it for.
+fn record_name_disagreement(root: NonEmptyStr, name: String, record: CellReadinessRecord) -> NonEmptyStr? {
+  let expected = cell_readiness_record_path(root: root, cell: record_cell(record: record))
+  let actual = join([root as String, "/", trim(s: name)], "")
+  if expected == actual {
+    none
+  } else {
+    Present { value: join([actual, ": the record inside names the cell whose file would be ", expected], "") as NonEmptyStr }
+  }
+}
+
+fn read_cell_readiness_store(root: NonEmptyStr) -> CellReadinessStoreRead
+  uses fs: Filesystem
+{
+  match read_store_ownership(root: root) {
+    StoreOwnershipUnreadable { reason: r } => StoreUnreadable { reason: r }
+    StoreOwnershipRead { ownership: ownership } => {
+      let listed = Filesystem.List(path: root as String)
+      match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
+        FilesystemDirectorySubjectRefused { directory: d, cause: c } =>
+          StoreUnreadable { reason: join([d, ": ", c], "") as NonEmptyStr }
+        FilesystemDirectoryListingRefused { directory: d, error: e } =>
+          StoreUnreadable { reason: join([d as String, ": ", e], "") as NonEmptyStr }
+        FilesystemDirectoryListed(listing) =>
+          store_read_of_records(root: root, ownership: ownership, names: record_file_names(entries: listing.entries))
+      }
+    }
+  }
+}
+
+fn store_read_of_records(
+  root: NonEmptyStr,
+  ownership: CellReadinessStoreOwnership,
+  names: List<String>,
+) -> CellReadinessStoreRead
+  uses fs: Filesystem
+{
+  let scan = fold(names, init: StoreRecordScan { records: [], bad: none }, f: (acc, n) => store_record_scan_step(root: root, acc: acc, name: n))
+  match scan.bad {
+    Present { value: why } => StoreUnreadable { reason: why }
+    Absent => StoreRead { ownership: ownership, records: scan.records }
+  }
+}
+
+// ── writing ───────────────────────────────────────────────────────────────────────────────────
+
+// EVERY WRITE IS READ-DECIDE-WRITE AND THE DECISION IS NOT THIS MODULE'S. apply_cell_readiness_write
+// is the authority for whether a record may replace what is stored -- stale generation, a
+// quarantine that would loosen, a settlement naming an attempt the store does not hold, a cleanup
+// still owed. This module asks it and then performs exactly the one file its answer authorises;
+// there is no arm here that writes on a refusal, and no arm that decides for itself.
+//
+// THE FILE WRITTEN IS THE WRITE'S OWN CELL, NOT THE WHOLE RETURNED LIST. apply_cell_readiness_write
+// answers with the store as it would be, which is the shape its refusals are decided over; one cell
+// per file means realising that answer is one file, and rewriting every file would put every OTHER
+// cell's bytes at risk of a partial write for a change that did not concern them.
+type CellReadinessWritten
+  = CellReadinessRecordWritten { path: String, record: CellReadinessRecord }
+  | CellReadinessWriteRefusedByStore { result: CellReadinessWriteResult }
+  | CellReadinessWriteStoreUnreadable { reason: NonEmptyStr }
+  | CellReadinessWriteFailed { path: String, error: String }
+
+fn write_cell_readiness_record(root: NonEmptyStr, write: CellReadinessWrite) -> CellReadinessWritten
+  uses fs: Filesystem
+{
+  match read_cell_readiness_store(root: root) {
+    StoreUnreadable { reason: r } => CellReadinessWriteStoreUnreadable { reason: r }
+    StoreRead { ownership: o, records: records } =>
+      match o {
+        StoreNotRootOwned { owner_uid: uid, mode: m } =>
+          CellReadinessWriteStoreUnreadable {
+            reason: join([root as String, ": the store is owned by uid ", to_string(uid), " with mode ", m as String], "") as NonEmptyStr,
+          }
+        StoreRootOwned =>
+          match apply_cell_readiness_write(records: records, write: write) {
+            WriteAccepted { records: _ } => perform_record_write(root: root, record: record_of_write(write: write))
+            refused => CellReadinessWriteRefusedByStore { result: refused }
+          }
+      }
+  }
+}
+
+// THE RECORD IS WRITTEN OWNER-ONLY, which is the same fact the ownership admission reads back: a
+// store whose directory is root's but whose records are world-writable is a store any tenant can
+// mark Ready one file at a time.
+fn perform_record_write(root: NonEmptyStr, record: CellReadinessRecord) -> CellReadinessWritten
+  uses fs: Filesystem
+{
+  let path = cell_readiness_record_path(root: root, cell: record_cell(record: record))
+  let wrote = Filesystem.WriteOwnerOnly(path: path, content: render_cell_readiness_record(record: record))
+  if wrote.success {
+    CellReadinessRecordWritten { path: path, record: record }
+  } else {
+    CellReadinessWriteFailed { path: path, error: wrote.error }
+  }
+}

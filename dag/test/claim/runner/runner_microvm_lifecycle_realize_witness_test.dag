@@ -1,0 +1,260 @@
+module gunbc.test.claim.runner.runner_microvm_lifecycle_realize_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell.exec { ProcessObservation, process_observation }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.grep { grep_every_line_in_tree_command }
+import extdeps.linux.cgroup_v2 {
+  cgroup_v2_procs_interface_file, cgroup_v2_slice_path, cgroup_v2_procs_path,
+  CgroupSubtreeProcsDecoding, CgroupSubtreeProcsDecoded, CgroupSubtreeProcsUnparseable,
+  decode_cgroup_subtree_procs, CgroupProcsDecoding, CgroupProcsDecoded, CgroupProcsUnparseable,
+  decode_cgroup_procs,
+}
+import extdeps.filesystem.filesystem_io {
+  filesystem_listing_observation, filesystem_entry_presence,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fabric_cell_converge { fabric_cell_slice_name }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, MicroVmAttemptAccepted, microvm_attempt,
+  runner_microvm_attempt_dir, runner_microvm_attempt_jail_base, runner_microvm_attempt_jit_drive_path,
+}
+import gunbc.runner_microvm_lifecycle {
+  CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
+  ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
+  ObservedPath, TeardownStop, StoppedGracefully, StopOutcomeUnobserved,
+  surviving_process_observation,
+}
+import product.fabric.sanitation {
+  SanitationObservation, FactConfirmed, FactRefuted, FactUnobservable, NoSurvivingProcesses,
+}
+import gunbc.runner_microvm_lifecycle_realize {
+  CgroupRootProcsReading, CgroupRootProcsRead, CgroupRootProcsUnread,
+  cgroup_subtree_readback_of_readings, resource_readback_of_presence,
+  AttemptResourceSubject, attempt_jail_subject, attempt_storage_subject, attempt_credential_subject,
+  observed_path_of_presence,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_slot: RunnerSlotIdentity = RunnerSlotIdentity { host: operator_host_srv2, slot_index: 4 }
+
+data witness_root: NonEmptyStr = cgroup_v2_slice_path(slice: fabric_cell_slice_name(slot: witness_slot) as NonEmptyStr)
+
+fn witness_attempt() -> MicroVmAttempt? {
+  match microvm_attempt(slot: witness_slot, attempt_id: "w-1") {
+    MicroVmAttemptAccepted { attempt: a } => Present { value: a }
+    _ => none
+  }
+}
+
+// ── the tree read, decoded ────────────────────────────────────────────────────────────────────
+
+fn procs_line(cgroup: String, pid: Int) -> String {
+  join([cgroup, "/", cgroup_v2_procs_interface_file as String, ":", to_string(pid)], "")
+}
+
+// THE DOUBLE-FORK DISCRIMINATOR. The root's own file holds nothing and a CHILD scope holds the pid,
+// which is exactly the shape a process that double-forked leaves behind: a readback that consulted
+// only the root would answer Empty here and release the cell.
+test fn a_pid_in_a_child_cgroup_is_read_as_populated() -> Bool {
+  let child = join([witness_root as String, "/gunbc-microvm-x.service/payload.scope"], "")
+  match cgroup_subtree_readback_of_readings(
+    root: witness_root,
+    root_procs: CgroupRootProcsRead,
+    tree: process_observation(exit_code: 0, stdout: join([procs_line(cgroup: child, pid: 4242), "\n"], ""), stderr: ""),
+  ) {
+    CgroupSubtreePopulated { pids: p, cgroups: cg } => p == [4242] && map(cg, c => c as String) == [child]
+    _ => false
+  }
+}
+
+test fn two_pids_in_one_cgroup_collect_onto_one_node() -> Bool {
+  let child = join([witness_root as String, "/gunbc-microvm-x.service"], "")
+  match cgroup_subtree_readback_of_readings(
+    root: witness_root,
+    root_procs: CgroupRootProcsRead,
+    tree: process_observation(
+      exit_code: 0,
+      stdout: join([procs_line(cgroup: child, pid: 11), "\n", procs_line(cgroup: child, pid: 12), "\n"], ""),
+      stderr: "",
+    ),
+  ) {
+    CgroupSubtreePopulated { pids: p, cgroups: cg } => p == [11, 12] && list_length(items: cg) == 1
+    _ => false
+  }
+}
+
+// grep(1) exit 1: every file was walked and none held a line. With the root's own procs file read,
+// that is an empty subtree.
+test fn no_selected_line_over_a_read_root_is_an_empty_subtree() -> Bool {
+  match cgroup_subtree_readback_of_readings(
+    root: witness_root,
+    root_procs: CgroupRootProcsRead,
+    tree: process_observation(exit_code: 1, stdout: "", stderr: ""),
+  ) {
+    CgroupSubtreeEmpty => true
+    _ => false
+  }
+}
+
+// THE RED THAT DISCRIMINATES THE ROOT PREMISE. Same "no line selected" exit, but the root's own
+// cgroup.procs could not be read -- so the walk may have covered nothing at all, and an Empty
+// verdict here would release a cell on the strength of a directory that is not a cgroup.
+test fn no_selected_line_over_an_unread_root_is_not_an_empty_subtree() -> Bool {
+  match cgroup_subtree_readback_of_readings(
+    root: witness_root,
+    root_procs: CgroupRootProcsUnread { reason: "No such file or directory" as NonEmptyStr },
+    tree: process_observation(exit_code: 1, stdout: "", stderr: ""),
+  ) {
+    CgroupSubtreeReadFailed { reason: r } => string_contains(s: r as String, pattern: "No such file or directory")
+    _ => false
+  }
+}
+
+test fn a_walk_that_errored_is_a_failed_read_and_never_empty() -> Bool {
+  match cgroup_subtree_readback_of_readings(
+    root: witness_root,
+    root_procs: CgroupRootProcsRead,
+    tree: process_observation(exit_code: 2, stdout: "", stderr: "grep: permission denied"),
+  ) {
+    CgroupSubtreeReadFailed { reason: r } => string_contains(s: r as String, pattern: "permission denied")
+    _ => false
+  }
+}
+
+// A line the decoder cannot read refuses the whole reading: a listing with a hole in it understates
+// the population it would be used to release.
+test fn an_unparseable_tree_line_refuses_the_whole_readback() -> Bool {
+  match cgroup_subtree_readback_of_readings(
+    root: witness_root,
+    root_procs: CgroupRootProcsRead,
+    tree: process_observation(exit_code: 0, stdout: "/sys/fs/cgroup/x/cgroup.procs:not-a-pid\n", stderr: ""),
+  ) {
+    CgroupSubtreeReadFailed { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_tree_line_naming_another_file_refuses_rather_than_guessing_its_cgroup() -> Bool {
+  match decode_cgroup_subtree_procs(stdout: "/sys/fs/cgroup/x/cgroup.threads:7\n") {
+    CgroupSubtreeProcsUnparseable { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn the_single_file_decoder_reads_one_pid_per_line() -> Bool {
+  match decode_cgroup_procs(body: "7\n11\n") {
+    CgroupProcsDecoded { pids: p } => p == [7, 11]
+    _ => false
+  }
+}
+
+test fn the_single_file_decoder_refuses_a_line_that_is_not_a_pid() -> Bool {
+  match decode_cgroup_procs(body: "7\nnope\n") {
+    CgroupProcsUnparseable { cause: _ } => true
+    _ => false
+  }
+}
+
+// ── the tree-read command ─────────────────────────────────────────────────────────────────────
+
+// THE READ IS ROOTED AT THE CELL'S SLICE AND NAMES THE KERNEL'S OWN FILE. The words are read off
+// the production builder rather than restated, so a flag that stops reaching grep goes red here.
+test fn the_subtree_command_reads_cgroup_procs_under_the_cell_slice() -> Bool {
+  argv_words(command: grep_every_line_in_tree_command(file_name: cgroup_v2_procs_interface_file, root: witness_root))
+    == ["grep", "-r", "-H", "-e", "", "--include=cgroup.procs", witness_root as String]
+}
+
+// ── the resource readbacks ────────────────────────────────────────────────────────────────────
+
+fn presence_of(entries: String, success: Bool, error: String, name: String) -> ResourceReadback {
+  resource_readback_of_presence(
+    presence: filesystem_entry_presence(
+      listing: filesystem_listing_observation(directory: "/srv/attempts", success: success, entries: entries, error: error),
+      name: name,
+    ),
+  )
+}
+
+test fn an_entry_a_successful_listing_did_not_name_is_absent() -> Bool {
+  match presence_of(entries: "other\n", success: true, error: "", name: "w-1") {
+    ResourceAbsent => true
+    _ => false
+  }
+}
+
+test fn an_entry_a_successful_listing_named_is_present() -> Bool {
+  match presence_of(entries: "w-1\nother\n", success: true, error: "", name: "w-1") {
+    ResourcePresent { detail: d } => string_contains(s: d as String, pattern: "w-1")
+    _ => false
+  }
+}
+
+// THE RED THAT KEEPS A FAILED LISTING OFF THE RELEASE PATH. A directory that could not be listed
+// establishes no absence, and reading it as one is how a cell with residue is released.
+test fn a_listing_that_failed_is_unreadable_and_never_absent() -> Bool {
+  match presence_of(entries: "", success: false, error: "Permission denied", name: "w-1") {
+    ResourceUnreadable { reason: r } => string_contains(s: r as String, pattern: "Permission denied")
+    _ => false
+  }
+}
+
+// ── the subjects the teardown carrier will join against ───────────────────────────────────────
+
+// EACH SUBJECT'S (DIRECTORY, NAME) PAIR MUST REJOIN INTO THE ATTEMPT MODULE'S OWN PATH, because
+// that path is what gunbc.runner_microvm_lifecycle compares against. A pair that rendered even one
+// separator differently would make every teardown a foreign-subject refusal.
+fn subject_path_agrees(subject: AttemptResourceSubject, expected: String) -> Bool {
+  subject.path == expected && join([subject.directory, "/", subject.name], "") == expected
+}
+
+test fn every_attempt_resource_subject_rejoins_into_the_attempt_modules_path() -> Bool {
+  match witness_attempt() {
+    Absent => false
+    Present { value: a } =>
+      subject_path_agrees(subject: attempt_jail_subject(attempt: a), expected: runner_microvm_attempt_jail_base(attempt: a))
+        && subject_path_agrees(subject: attempt_storage_subject(attempt: a), expected: runner_microvm_attempt_dir(attempt: a))
+        && subject_path_agrees(subject: attempt_credential_subject(attempt: a), expected: runner_microvm_attempt_jit_drive_path(attempt: a))
+  }
+}
+
+test fn an_observed_path_carries_the_subjects_own_path() -> Bool {
+  match witness_attempt() {
+    Absent => false
+    Present { value: a } => {
+      let subject = attempt_credential_subject(attempt: a)
+      observed_path_of_presence(
+        subject: subject,
+        presence: filesystem_entry_presence(
+          listing: filesystem_listing_observation(directory: subject.directory, success: true, entries: "", error: ""),
+          name: subject.name,
+        ),
+      ).path == runner_microvm_attempt_jit_drive_path(attempt: a)
+    }
+  }
+}
+
+// ── the stop arm the wet controller added ─────────────────────────────────────────────────────
+
+// AN UNOBSERVED STOP IS UNOBSERVABLE, NOT CLEAN. The cgroup beside it reads EMPTY here, so a
+// surviving-process fact that deferred to the cgroup would answer Confirmed and release the cell on
+// a stop nobody watched.
+test fn an_unobserved_stop_is_unobservable_even_over_an_empty_cgroup() -> Bool {
+  match surviving_process_observation(
+    stop: StopOutcomeUnobserved { reason: "systemctl stop refused" as NonEmptyStr },
+    cgroup: CgroupSubtreeEmpty,
+  ) {
+    FactUnobservable { fact: _, reason: r } => string_contains(s: r as String, pattern: "systemctl stop refused")
+    _ => false
+  }
+}
+
+test fn a_graceful_stop_over_an_empty_cgroup_confirms_no_survivors() -> Bool {
+  match surviving_process_observation(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty) {
+    FactConfirmed { fact: _ } => true
+    _ => false
+  }
+}

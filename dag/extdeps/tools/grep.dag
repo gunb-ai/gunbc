@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, Bool, Unit, List, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -39,4 +40,25 @@ service grep.Grep {
 // names a transport refuses to carry.
 fn grep_fixed_string_in_tree_argv(pattern: NonEmptyStr, file_name: NonEmptyStr, root: NonEmptyStr) -> List<String> {
   ["grep", "-r", "-H", "-F", pattern as String, concat("--include=", file_name as String), root as String]
+}
+
+// EVERY LINE OF ONE FILE NAME UNDER A TREE, which is a DIFFERENT grep operation from the fixed-string
+// search above and not that one with a degenerate argument. The pattern there is the caller's
+// question; here there is no question -- the operation's whole content is "emit every line of every
+// file called NAME under ROOT, each prefixed by the file it came from", and the empty pattern is this
+// operation's own constant rather than a value a caller supplies. grep(1) documents `-e PATTERN` as
+// the explicit pattern form, and an empty pattern matches every line; spelling it through `-e` rather
+// than as a bare operand is what keeps it from being read as the ROOT argument when a shell or a
+// re-parse drops an empty word.
+//
+// THE EXIT CODE IS THE PART A CALLER MUST NOT DISCARD. grep(1): 0 if a line is selected, 1 if none
+// is, and 2 if an error occurred -- and 1 and 2 are OPPOSITE answers for a consumer reading a tree
+// for residue. "No line" means the files were walked and held nothing; "error" means the walk itself
+// failed, which is not evidence of emptiness. So this is consumed over a transport that preserves the
+// exit code, never over one that flattens it to a success bool.
+fn grep_every_line_in_tree_command(file_name: NonEmptyStr, root: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: grep_cli_tool.name as NonEmptyStr,
+    arguments: ["-r", "-H", "-e", "", concat("--include=", file_name as String), root as String],
+  )
 }

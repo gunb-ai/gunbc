@@ -77,6 +77,39 @@ fn sanitation_fact_label(fact: SanitationFact) -> String {
   }
 }
 
+// THE LABEL READ BACK INTO THE FACT, because a fact that can be WRITTEN to a durable record must be
+// readable out of one, and the inverse belongs beside the rendering rather than in whichever
+// consumer happens to persist first -- two spellings of one correspondence is the fork DESIGN
+// section 3 forbids. AN UNRECOGNISED LABEL REFUSES rather than mapping to any fact: a record naming
+// a fact this vocabulary does not have was written by a different vocabulary, and guessing which
+// fact it meant would silently re-scope a quarantine.
+type SanitationFactAdmission
+  = SanitationFactAdmitted { fact: SanitationFact }
+  | SanitationFactUnrecognized { observed: String }
+
+fn admit_sanitation_fact(label: String) -> SanitationFactAdmission {
+  match first(filter(required_sanitation_facts_all(), f => sanitation_fact_label(fact: f) == label)) {
+    Present { value: f } => SanitationFactAdmitted { fact: f }
+    Absent => SanitationFactUnrecognized { observed: label }
+  }
+}
+
+// EVERY FACT THIS VOCABULARY HAS, WHICH IS NOT required_sanitation_facts OF EITHER SCOPE. The
+// required rosters are scope-dependent and each omits the other scope's network fact; a reader
+// admitting a label off a durable record must recognise both, or a record written under one scope
+// would be unreadable under the other.
+fn required_sanitation_facts_all() -> List<SanitationFact> {
+  [
+    NoSurvivingProcesses,
+    CgroupEmpty,
+    MountsRemoved,
+    NetworkNamespaceRemoved,
+    SlotNetworkQuiescent,
+    WritableLayersDeleted,
+    SecretsRemoved,
+  ]
+}
+
 fn network_sanitation_fact(scope: SandboxNetworkScope) -> SanitationFact {
   match scope {
     AttemptScopedNetwork => NetworkNamespaceRemoved
