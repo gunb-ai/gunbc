@@ -12,7 +12,11 @@
 > **Framing:** a *smaller* native v2 system that replaces the v1 seed and the external session
 > manager, with the capabilities that enlarge the retained closure deliberately deferred. It is not
 > a v1 modernization program and not a feature-parity port.
-> **What this file is not:** the recut of the private plan (that lives in the private overlay), and
+> **What this file is not:** a milestone authority. The program's milestones, their prerequisites
+> and their standing are declarations (`gunbc.compiler_frontend_program_interlock`,
+> `gunbc.compiler_frontend_program_status`, `gunbc.namespace_cut_stage`), read with `where_are_we`;
+> this file proposes DELTAS to them and owns none. Nor is it the recut of the private plan (that
+> lives in the private overlay), and
 > not a measurement authority. Every number below is a dated one-off observation with its method
 > stated; none has an entry point, so none is an instrument (`DESIGN.md` §6). Where an instrument
 > exists it is named instead.
@@ -126,63 +130,108 @@ re-deriving it is owed an entry point.
    cost of prepare and eval. Almost nothing reached them, so both are unmeasured, and the historical
    cost of a passing fold cannot be read off this run.
 
-## 4. Milestones
+## 4. The program is already carried; this document proposes deltas to it
 
-Rows named in the last column exist in `gunbc.roadmap_authority` today and are extended rather than
-re-minted. A citation of a row is not a claim that the row's current text requires what the
-milestone does; where it does not, the row's first slice is what changes.
+**An earlier revision of this file carried a milestone table of its own (R0…R4). That table is
+withdrawn, and its withdrawal is the point of this section.** The program it described already
+exists as declarations, with a prerequisite relation and derived standing:
 
-| Milestone | Acceptance | Existing rows |
+- `gunbc.compiler_frontend_program_interlock` `ProgramMilestone` — fifteen arms across the
+  self-host and namespace programs — and `milestone_prerequisites`, which is the sequencing.
+- `gunbc.compiler_frontend_program_status` `milestone_status` — `Clear` / `Outstanding` /
+  `NotDerivable` per arm, with `MissingInstrument` naming what would settle an underivable one and
+  `InstrumentObstacle` separating *not built* from *refused by authority* from *refusal falsified*.
+- `gunbc.namespace_cut_stage` — the same shape applied to the namespace cut, serial, standings
+  derived.
+
+A second milestone vocabulary beside those is a §3 fork: one program, two names, consolidated later
+at interest. So this document owns no milestones. **What the frontier is, is read — not restated
+here** (`DESIGN.md` §6, *name the instrument*): `gunbc.compiler_frontend_program_status`
+`where_are_we`, run against a built seed, derives the standing, the startability of each arm, and
+the blocker set where it is derivable. A reading taken on 2026-09-20 is in §3's evidence
+directory; a number copied into this prose would rot away from the carrier that owns it.
+
+What this document adds is four things, and each is a change to those carriers rather than a
+parallel program.
+
+### 4a. Two arms that do not exist
+
+| Proposed arm | Why it is not covered by an existing arm | Prerequisite |
 |---|---|---|
-| **R0 — Truthful gate** | On the real `floor` job, a planted-red candidate concludes failure and a clean one concludes success, and a run on main evaluates claims. One controlled candidate carries the corpus repair and the gate repair together, with ordinary queue intake paused. Receipt mode's lost-blocker defect is repaired wherever that mode remains an acceptance authority, or that use is withdrawn. | the `ci-control` lane; the node proposed in #11853 once it lands |
-| **R1 — Safe development execution** | Any existing session submits an exact build/test subject to one designated, resource-admitted executor and receives its result and artifacts without running the heavy operation itself. Exact subject transport (including across git object stores), preflight before expensive work, per-request scratch, admission by measured envelope rather than a fixed slot, shared producers for equivalent requests, honest and distinguishable completion, artifact identity, cancellation and cleanup. A weaker-than-microVM isolation is stated as such. | `compute-exact-work-contract`, `compute-artifact-return-and-materialization`, `compute-deduplication-and-admission`, `ci-owned-execution`, `ci-remote-build-containment` |
-| **C — Derived native compilation units** | The retained module population, its declaration interfaces and the target's constraints produce the compilation-unit assignment; that assignment produces the actual Cargo workspace, manifests, dependency edges and cross-crate references that are built. Every retained module has exactly one owning unit and the build uses those units. A missing interface, an invalid cross-unit dependency or an invalid layout refuses — no monolithic fallback. A no-change rebuild and representative localized edits show the real reuse. The successor reproduces through the same mechanism. | `v2-emitter-native-crate-partition` (its out-of-scope clause, which lets succession run on the one-package probe, is what this milestone overrules) |
-| **R2a — Native succession** | The native compiler emits and builds its retained closure **through C**, and the result does so again with no seed available; a missing native ancestor refuses. The entry's population is produced inside the fold by a reference-derived relation with a stated validity condition on the index that selects it. Behavioural discriminators, not only "the output builds twice". Directory listing and typed read failure land here, because succession is their first consumer. | `v2-emitter-native-bootstrap`, `v2-emitter-production-compatible-corpus-module` |
-| **R2b — Native verification** | The supported witness population is derived from the retained system's obligations and runs natively as a required lane, with must-fail controls, retiring `v2_native_route_off_the_merge_path` for that scope. **Its first slice is to restore a non-empty positive population:** §3(8) found the native lane refusing every identity, so the regression is located first, by running the self-host instrument at earlier revisions. A regex count of contained witnesses is a sizing observation, never the denominator. Narrowing may not discard a failing witness for behaviour the retained system still claims. | `v1-verification-ledger`, `v1-ci-floor-cutover`, `ci-cost-floor-preparation-cut` |
-| **P — Runtime realization and materialization** | Starts now; delivery is judged on a real consumer. Independent ready demands overlap in execution; a dependent proceeds when *its* prerequisite completes, not when an unrelated one does; concurrent requests for one admitted pure computation share a producer or its result; unchanged inputs reuse a qualified value, changed semantic inputs invalidate it, and a missing or corrupt materialization never becomes success; execution and retained values fit the admitted envelope, with cancellation and release accounting for other consumers; results and required refusals agree with the reference, and ordered or unauthorized effects are not parallelized by accident. Its first target is per-file context ingest, which §3(9) found to be nearly all of the serial native run and independent across files; the same grain is the natural unit of materialization. The three-arm measurement (in-process; one child; n children) is evidence toward this, not the acceptance. Process spawn lands here. | `docs/plans/native-route-parallel-realization.md` (a candidate realization), `compute-deduplication-and-admission`; qualify `gunbc.floor_materialization` before authoring another store |
-| **N — Namespace replacement** | The shared correctness repairs start now: calls survive v2 body lowering, and resolve supplies the actual binding rather than a spelling-based substitute. The retained semantic cut follows the first native foothold and precedes any widening of the retained set, so each module admitted afterwards migrates once. Reference binding, dependency selection, evaluation and emission stop taking answers from the import-based authority; `import` refusing at parse is the last step, not the proof. | the thirteen `namespace-*` rows, re-scoped from whole-tree to retained-profile-first |
-| **R3 — Minimum daily workspace** | One real task proceeds through a native-backed loop: open, understand constraints, continue the candidate, request admitted verification, inspect the exact result, publish, resume after interruption. Its closure is derived from that loop, not inherited from the existing serve entry. Publication and credential effects land here. Existing sessions consume the task / attempt / result interface before the surface exists, and journaling counts only where it transfers authority. | `roadmap-serve-emitted-realization`, `roadmap-verify-to-publish-phase`, `roadmap-receipt-continuity`, plus one new row binding a session and its pull request to a node through `gunbc.roadmap.roadmap_event_log` |
-| **R4 — Predecessor retirement** | The by-name consumer census of the interpreter and of the session manager, and the preservation of the session manager's state, start now. A dependency is deleted when its retained replacement qualifies; an obsolete product is deferred or removed rather than ported. Undated by design. | `v1-interpreter-quarantine`, `v1-interpreter-delete`, `v1-products-v1-free`, `v1-zero-hand-maintained-rust`, `ci-actions-runner-retirement` |
+| **derived compilation units** | The self-host arms take the emitted artifact as given. None of them asks whether the retained module population, its declaration interfaces and the target's constraints *produce* the unit assignment that is actually built. `v2.std.compilers.compilation_unit` `CompilationUnit` and `v2.workflow.rust_crate_partition` `PartitionPolicy` are the homes; today the policy-derived arm returns `PolicyResolverUnimplemented`, and `self_host/stage0_crate_layout` and `stage0_executable_assembly` carry the hand-assigned precedent. Its acceptance: every retained module owned by exactly one unit, the emitted workspace built *from* that assignment, a missing interface or invalid cross-unit dependency refusing rather than falling back to one package, and a localized edit shown to rebuild its owner rather than everything. | `SelfHostCorpusEmitsCleanly` |
+| **runtime realization and materialization** | No arm covers the runtime's own concurrency and reuse. Its acceptance is the demand lifecycle, not a benchmark: independent ready demands overlap; a dependent proceeds when *its* prerequisite completes; concurrent requests for one admitted pure computation share a producer or its result; unchanged inputs reuse a qualified value and changed semantic inputs invalidate it; execution and retained values fit the admitted envelope with cancellation accounted; required refusals still agree with the reference and ordered effects are not parallelized by accident. Homes: `std.realization`, `std.materialization_ladder`, `std.decision`. | none — it is startable |
 
-The session manager's feature growth is frozen for the duration: security, loss prevention, state
-export, and hand-off onto the new execution and task interfaces only.
+Its first target is named by §3(9): per-file context ingest, which is nearly all of the serial
+native run and is independent across files. The same grain is the natural unit of materialization.
+
+### 4b. One arm re-cut, per the 2026-09-20 operator ruling
+
+`NamespaceWaveAdmissionEnrolled` is today satisfied only by a **merge-time wall**. That wall was
+built, refused every merge_group run on a clean floor, was deleted, and is now
+`gunbc.rung_drop` `namespace_wave_admission_wall_removed` — which the milestone reads, so the
+namespace waves stay unreleased until a wall exists again. The ruling is that the wall is the wrong
+mechanism: the delta should be established the way the self-host frontier establishes its own
+standing — **a receipt produced on demand, off CI, by the stage carrier that already exists** —
+rather than by a gate that charges every unrelated change at landing time. So the arm is re-cut to
+be satisfied by that receipt, and the drop retires against that capability instead of against a
+resurrected gate. `gunbc.namespace_cut_stage` is already that shape and already reports; what it
+does not yet do is discharge this arm.
+
+### 4c. Three subjects that are not compiler-frontend milestones
+
+They were in the withdrawn table and do not belong in this carrier at all. Each goes to the lane
+that owns it, and none of them gates the arms above:
+
+- **the truthful required gate** — the floor concluding success while refusing (§1) is an incident
+  with repairs already open, not a milestone. Its home is the `ci-control` lane. It is a
+  precondition for *trusting* any measurement above, which is why §3 states its subject exactly.
+- **safe development execution** — one designated, resource-admitted executor for every session's
+  build and test. Home: the `compute` rows (`compute-exact-work-contract`,
+  `compute-artifact-return-and-materialization`, `compute-deduplication-and-admission`).
+- **the minimum daily workspace** — home: the roadmap lane
+  (`roadmap-serve-emitted-realization`, `roadmap-verify-to-publish-phase`).
+
+### 4d. Observations recorded as standing, not as prose
+
+§3's findings are facts about arms that already exist, and belong on them:
+`SelfHostNativeRouteRequiredLane` is outstanding for a reason it does not yet carry — the lane's
+positive population is empty, every enrolled identity refusing — and the front-end refusal census
+bears on the emit arms. Recording them as `MilestoneEvidence` is what keeps `where_are_we` the
+single place the frontier is read.
 
 ## 5. Sequencing notes
 
-- **Inside R2a, finish one successful whole-closure emit first.** Interfaces, rebuild behaviour,
-  the memory envelope and the behavioural discriminators all need a successful emission to measure
-  against. The one-package binary remains a bootstrap and measurement artifact; it never satisfies
-  C or R2a.
-- **C's first policy needs no selection.** One unit per cyclic group of the reference-derived unit
-  graph is derivable without choosing anything, and §3(5) found a single group of three. The
-  unimplemented policy arm of `v2.workflow.rust_crate_partition` (`PolicyResolverUnimplemented`)
-  therefore does not block the first build; coarsening is a later `std.decision` over measured axes.
-  Crate-level build concurrency, `codegen-units`, and runtime concurrency are three different facts.
-- **Scoped ingest needs a sound population boundary.** The identity-level home is
-  `v2.std.dependency` `DependencyRelation<Subject>`; `DependencyView` carries `Node`s, which is the
-  tree scoped ingest exists to avoid building. "An unparseable file outside the closure changes
-  nothing" holds only for a file proven outside the admitted dependency **and name-resolution**
-  domain — a competing declaration must not be ignored because yesterday's graph had no edge to it.
-  Reuse cannot key on yesterday's edges when the namespace facts that justified them have changed.
+- **The carrier already answers one question this document was about to get wrong.**
+  `milestone_prerequisites` makes `NamespaceFixForwardComplete` require `SelfHostSeedRetirement` —
+  the last arm. Read literally, namespace fix-forward cannot begin until the seed is gone, which
+  contradicts the intent of starting namespace early so it does not drag across a growing retained
+  set. Either that prerequisite is right and the intent is wrong, or it encodes an assumption the
+  re-cut of 4b changes. It is a decision (§7), and it was invisible while the program lived in
+  prose.
+- **Finish one successful whole-closure emit before the derived-unit arm can be judged.**
+  Interfaces, rebuild behaviour and the memory envelope all need a successful emission to measure
+  against. The one-package artifact stays a bootstrap and measurement probe; it never satisfies 4a.
+- **Scoped ingest needs a sound population boundary.** §3(4) is the reason: `import` lines are not
+  the dependency relation the build has. The identity-level home is `v2.std.dependency`
+  `DependencyRelation<Subject>`; `DependencyView` carries `Node`s, which is the tree scoped ingest
+  exists to avoid building. "A file outside the closure changes nothing" holds only for a file
+  proven outside the admitted dependency **and name-resolution** domain — a competing declaration
+  must not be ignored because yesterday's graph had no edge to it. That is also why the namespace
+  cut and materialization meet: reuse cannot key on yesterday's edges once the namespace facts that
+  justified them have changed.
 - **The admitted source universe is a choice.** Either the whole repository, in which case the
-  declaration index must be total over forms v2 cannot yet parse or the `service` wall returns
-  through the index; or the retained roots physically hold only the retained population.
-- **P's first consumer is the native witness fold** — wide, pure, independent claims over shared
-  preparation — and its second is R1's executor. Line-weighted speedups computed over the import
-  graph are proxy estimates of module-grain preparation and bound nothing about runtime demand
-  graphs. Fork-after-context is a candidate, not the contract: an `Rc` clone writes its count, so
-  reading shared context in a child dirties copy-on-write pages, and the measurement is shared and
-  private-dirty memory rather than per-process resident size. `Arc<T>` does not make `T` safe.
-- **Native effects arrive with their first consumer** (listing and typed read failure with
-  succession, spawn with P, publication and credentials with R3), not behind one late ruling. No
-  second handwritten semantic implementation is admitted; a line budget on the seed exposes growth
-  and authorizes nothing.
+  declaration index must be total over forms v2 cannot yet parse or the refusals return through the
+  index; or the retained roots physically hold only the retained population.
+- **Native effects arrive with their first consumer** — directory listing and typed read failure
+  with succession, process spawn with the runtime arm, publication and credentials with the
+  workspace — not behind one late ruling. No second handwritten semantic implementation is
+  admitted; a line budget on the seed exposes growth and authorizes nothing.
 
 ## 6. Roadmap mechanics
 
 - **A pause must bind dispatch.** `roadmap_focus_selection` filters `ROADMAP.md` only; its own
-  annotation names the missing dimension. `gunbc.roadmap_launch_admission`, `gunbc.roadmap_page` and
-  the spawner must read the new field or the recut is a display edit. `Unsized` is not a pause.
+  annotation names the missing dimension. `gunbc.roadmap_launch_admission`, `gunbc.roadmap_page`
+  and the spawner must read the new field or the recut is a display edit. `Unsized` is not a pause.
 - **Keep three facts apart:** scheduling (continues / draining / paused with a reason and a restart
   obligation), evidence (a hypothesis falsified, with its receipt), and operations (a service keeps
   running with no new development admitted).
@@ -190,14 +239,9 @@ export, and hand-off onto the new execution and task interfaces only.
   land what qualifies, preserve and close what is obsolete, withdraw what its evidence does not
   support.
 - **A restart needs an unmet obligation of a retained consumer and an activation decision.**
-  Completing R2b reopens nothing by itself, and naming a consumer is not enough.
-- **Proposed dispositions.** Continue: `compute`, `ci-cost`, `ci-control`, the `self-host` rows named
-  above, `roadmap`, `roadmap-runtime`, `harness`, `generated-artifact`. Continue re-scoped:
-  `namespace`. Draining: the primitive-egress changes already open. Operating without investment:
-  serving liveness and runner convergence, on which the harness and CI depend. Paused:
-  `compiler-guarantee` except rows a retained obligation names, `source-intent`, `shell`,
-  `toolchain`, the dashboard presentation rows, the small tooling lanes, and new fleet and serving
-  work.
+  An arm reaching `Clear` reopens nothing by itself, and naming a consumer is not enough.
+- **Roadmap rows cite arms rather than restating them.** A row whose acceptance paraphrases a
+  milestone is the same fork this section's §4 withdrew, one layer out.
 - **Integration.** One owner lands the colliding wind-down changes to `gunbc.roadmap_authority`
   serially, and repairs the `roadmap_authority_test` witnesses that are red and outside the gate in
   the same pass. Accepted rows are extended with `updated(...)`; editing a brief, red control or
@@ -205,17 +249,19 @@ export, and hand-off onto the new execution and task interfaces only.
 
 ## 7. Open operator decisions
 
-1. Where the designated executor runs: a retired CI slot, or a host whose envelope is first
-   established.
+1. **The namespace prerequisite** (§5, first bullet): does `NamespaceFixForwardComplete` keep
+   `SelfHostSeedRetirement` as a prerequisite, or does 4b's re-cut change it?
 2. The admitted source universe (§5).
 3. Whether v2's grammar admits the small parse forms of §3(3) or the corpus is normalised; the seed
    admits them today.
-4. Whether "derived from the beginning" means from the first *supported* native build, as §5 reads
-   it, or earlier.
+4. Where the designated executor of 4c runs: a retired CI slot, or a host whose envelope is
+   established first.
 5. Who integrates `gunbc.roadmap_authority`.
 
 ## 8. Not claimed
 
-No estimate of duration for C, R2a, R2b, P or R3: each is unmeasured beyond the first failures
-above. No claim about the cost of native prepare or eval, which §3(9) could not observe. No claim that generation two works, that the native build's memory envelope is known, that
-any speedup figure bounds the runtime, or that the first-failure census is complete.
+No duration for any arm: each is unmeasured beyond the first failures of §3. No claim about the
+cost of native prepare or eval, which §3(9) could not observe. No claim that generation two works,
+that the native build's memory envelope is known, that any speedup figure bounds the runtime, or
+that the first-failure census is complete. No standing is asserted here for any milestone — the
+carrier derives it, and this file names the reader rather than copying its output.
