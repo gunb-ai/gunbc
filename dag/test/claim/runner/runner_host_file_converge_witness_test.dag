@@ -912,7 +912,9 @@ test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
 // INHABITANCE OF THE REAL ROSTER (DESIGN 3, the pairing obligation). The claims above supply a
 // three-retiree roster; this one asserts the real srv1 subject the production route carries reaches
 // the same functions: its retired roster, with the real ControlGroup paths systemd reports for those
-// units, reaches ONE transport-admitted argv covering all of them.
+// units, reaches ONE transport-admitted argv covering all of them. Its red is in this module and in
+// the cgroup read batching and argv transport it composes -- not in the width transition, which the
+// sibling claim below owns.
 //
 // WHAT IS NOT ASSERTED HERE, AND WHY (review 69106). The stale count literal 38 was first replaced by
 // `retired == required_retirees_for_host(host: srv1)`, which is f(x) == f(x): the subject's
@@ -920,29 +922,43 @@ test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
 // authorable (DESIGN 4b: a decoration). A test-side disjointness fold over retired and desired was the
 // same defect: both sets derive from gunbc_runner_slots_per_host, on opposite sides of it, so they are
 // disjoint by derivation and no production edit could make that conjunct red. A mutation run that
-// edits one side of such a comparison flips it and proves nothing about production.
-//
-// THE RELATION THE STALE 38 WAS STANDING IN FOR, WITH A RED THAT IS AUTHORABLE IN PRODUCTION. The
-// number went wrong because slots 13-15 were still counted as retirees after the width authority made
-// them desired-live. The wall against that class is production's own refusal: a roster that carries a
-// desired unit is a surplus OUTSIDE the transition's manifest, and transition_population_agreement must
-// report it as exactly that unit. The plant is the top desired slot, which comes from the deploy row's
-// runner_count through desired_runner_slot_members -- a different producer from the transition row --
-// so the two sides are independent. RED: derive the obligation from `gunbc_runner_slots_per_host`
-// instead of `+ 1` in transition_required_retirees (the off-by-one that would count a desired-live
-// slot as a retiree) and the plant is absorbed into the manifest, the fold answers Agrees, and this
-// claim fails. An always-Disagrees fold fails it too, because the unexpected list must name the plant
-// alone and not the retirees beside it.
+// edits one side of such a comparison flips it and proves nothing about production. Neither is
+// restored, and no assertion whose two sides originate from one production call belongs here: exact
+// manifest correctness is runner_slot_retirement_witness_test's proposition, not this readback claim's.
 test fn the_real_srv1_retiree_roster_reaches_one_admitted_read() -> Bool {
   let retired = srv1_retired()
   let argv = argv_or_empty(o: events_read_of(retired: retired, show: blocks_for(units: retired, active: "active", live_cgroup: true)))
-  let top_desired_refused = match srv1_desired().last() {
-    Absent => false
-    Present { value: d } =>
-      match transition_population_agreement(host: operator_host_srv1, observed_surplus: concat(retired, [d])) {
-        TransitionPopulationAgrees => false
-        TransitionPopulationDisagrees { unexpected: u } => map(u, x => x as String) == [d as String]
-      }
+  length(retired) > 0
+    && argv == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
+    && (match portable_remote_words(raws: argv) { Absent => false Present { value: _ } => true })
+}
+
+// EVERY IDENTITY THE DEPLOY CURRENTLY DESIRES IS EXCLUDED FROM THE TRANSITION OBLIGATION. This is the
+// one cross-authority relation the stale 38 concealed: that number went wrong because slots 13-15 were
+// still counted as retirees after the width authority made them desired-live. It is NOT a proof that
+// the transition manifest is exact -- that proposition, with its own positive and negative controls
+// over transition_population_agreement, lives in runner_slot_retirement_witness_test.
+//
+// THE RED IS AUTHORABLE IN PRODUCTION because the two sides are independent producers: the desired
+// roster comes from the deploy row's runner_count through desired_runner_slot_members, the obligation
+// from the transition row through transition_required_retirees. The whole desired roster is planted
+// beside the real retirees as an observed surplus, and production's own refusal must name exactly the
+// desired roster as the units outside its manifest. Derive the obligation from
+// `gunbc_runner_slots_per_host` instead of `+ 1` in transition_required_retirees (the off-by-one that
+// counts a desired-live slot as a retiree) and the top desired unit is absorbed into the manifest,
+// vanishes from `unexpected`, and the exact-list equality fails; a later non-contiguous widening that
+// absorbed any OTHER desired unit fails it the same way, which a single planted unit could not see. An
+// always-Disagrees fold fails it too, because the list must name the desired roster alone and not the
+// retirees beside it.
+test fn every_desired_srv1_unit_is_outside_the_retirement_manifest() -> Bool {
+  let retired = srv1_retired()
+  let desired = srv1_desired()
+  match transition_population_agreement(host: operator_host_srv1, observed_surplus: concat(retired, desired)) {
+    TransitionPopulationAgrees => false
+    TransitionPopulationDisagrees { unexpected: u } =>
+      length(desired) > 0 && map(u, x => x as String) == map(desired, x => x as String)
+  }
+}
   }
   length(retired) > 0
     && argv == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
