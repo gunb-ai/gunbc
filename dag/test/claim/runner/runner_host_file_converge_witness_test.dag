@@ -11,7 +11,7 @@ import extdeps.needrestart {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation { gunbc_derived_runner_slots_per_host }
 import gunbc.runner_width_transition { required_retirees_for_host }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
@@ -603,8 +603,14 @@ fn srv1_unit_names(slot: Int, limit: Int) -> List<String> {
 // below partition a supplied 21-slot listing into live and masked; where the cut falls is srv1's
 // declared width, which moved once already (12 -> 15) and turned every claim that spelled it as
 // `12`/`13` red for a reason none of them was about (review 68841).
+// The width is read from the per-axis derivation rather than gunbc_runner_committed_width, which
+// replaced the Int-returning gunbc_runner_slots_per_host this file imported (#11762) with a
+// RunnerWidthResolution whose unresolved arm is srv2's unestablished reservation. srv1's reservation
+// is the established one, so the derived Int IS its committed width; a fabricated 0 for an
+// unresolved arm has no place in a boundary these readings partition on, and the resolution's own
+// arms are that authority's witness, not this file's subject.
 fn srv1_width() -> Int {
-  gunbc_runner_slots_per_host(host: "srv1" as HostIdentity)
+  gunbc_derived_runner_slots_per_host(host: "srv1" as HostIdentity)
 }
 
 fn srv1_live_names() -> List<String> {
