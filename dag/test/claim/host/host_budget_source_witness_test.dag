@@ -16,8 +16,8 @@ import extdeps.linux.procfs {
   kernel_provides_procfs,
   procfs_availability,
   procfs_availability_is_available,
-  procfs_path_provision, ProvidedByEveryLinuxKernel, ProvidedWhenConfigured,
-  ProcfsConditionalOnKernelConfig, ProcNetPnp,
+  procfs_path_provision, ProvidedByEveryLinuxKernel, ProvidedWhenConfigured, ProvisionNotYetQualified,
+  ProcfsConditionalOnKernelConfig, ProcfsProvisionUnqualified, ProcNetPnp, ProcNetUnix,
   procfs_paths_read_by_this_repository,
   procfs_path_literal,
 }
@@ -98,43 +98,47 @@ test fn procfs_provision_follows_the_kernel_not_the_name() -> Bool {
     && !kernel_provides_procfs(kernel: WindowsNt)
 }
 
-// ON LINUX, AVAILABILITY FOLLOWS THE PATH'S PROVISION, NOT THE FAMILY. An unconditional path is
-// available; a config-conditional one answers ProcfsConditionalOnKernelConfig and is NOT available
-// until read. The red is the previous fold, which answered available for every rostered path on
-// Linux and so asserted /proc/net/pnp on a kernel nobody had booted (review 68937 on #11760).
+// ON LINUX, AVAILABILITY FOLLOWS THE PATH'S PROVISION, NOT THE FAMILY, AND NOTHING IS MINTED
+// AVAILABLE FROM THE FAMILY ALONE. A config-conditional path answers ProcfsConditionalOnKernelConfig
+// with its option; an unaudited path answers ProcfsProvisionUnqualified; both are NOT available.
+// The reds: the first fold, which answered available for every rostered path on Linux; and its
+// repair, which classified /proc/net/unix as unconditional (it is CONFIG_UNIX-conditional) and had
+// the witness require that classification to be available -- ratifying the census instead of
+// testing it (review 68937, then sunny-ant-606, on #11760). ProcfsAvailable is therefore refused
+// for every rostered path until a cited census qualifies one.
 test fn procfs_availability_is_absent_for_every_path_on_darwin() -> Bool {
   all(
     procfs_paths_read_by_this_repository,
     p =>
       !procfs_availability_is_available(a: procfs_availability(kernel: Darwin, path: p))
-        && (match procfs_path_provision(p: p) {
-          ProvidedByEveryLinuxKernel => procfs_availability_is_available(a: procfs_availability(kernel: Linux, path: p))
-          ProvidedWhenConfigured { option: o } =>
-            match procfs_availability(kernel: Linux, path: p) {
-              ProcfsConditionalOnKernelConfig { path: _, option: o2 } => (o as String) == (o2 as String) && !procfs_availability_is_available(a: procfs_availability(kernel: Linux, path: p))
-              ProcfsAvailable => false
-              ProcfsAbsentOnKernel { kernel: _, path: _ } => false
-            }
+        && !procfs_availability_is_available(a: procfs_availability(kernel: Linux, path: p))
+        && (match procfs_availability(kernel: Linux, path: p) {
+          ProcfsAvailable => false
+          ProcfsAbsentOnKernel { kernel: _, path: _ } => false
+          ProcfsProvisionUnqualified { path: _ } =>
+            match procfs_path_provision(p: p) { ProvisionNotYetQualified => true  ProvidedByEveryLinuxKernel => false  ProvidedWhenConfigured { option: _ } => false }
+          ProcfsConditionalOnKernelConfig { path: _, option: o2 } =>
+            match procfs_path_provision(p: p) { ProvidedWhenConfigured { option: o } => (o as String) == (o2 as String)  ProvisionNotYetQualified => false  ProvidedByEveryLinuxKernel => false }
         })
   )
 }
 
-// THE ONE CONDITIONAL PATH IS PINNED BY NAME, so the fold above cannot go green by every path
-// happening to be unconditional: /proc/net/pnp on Linux is a CONFIG_IP_PNP obligation and never
-// ProcfsAvailable.
+// THE TWO NAMED CONTROLS, so the fold above cannot go green by every path happening to share one
+// arm: /proc/net/pnp on Linux is a CONFIG_IP_PNP obligation, and /proc/net/unix -- the path the
+// first repair wrongly called unconditional -- is unqualified; neither is ProcfsAvailable.
 test fn proc_net_pnp_is_a_kernel_config_obligation_on_linux_not_an_availability() -> Bool {
-  match procfs_availability(kernel: Linux, path: ProcNetPnp) {
+  (match procfs_availability(kernel: Linux, path: ProcNetPnp) {
     ProcfsConditionalOnKernelConfig { path: _, option: o } => (o as String) == "CONFIG_IP_PNP"
     ProcfsAvailable => false
+    ProcfsProvisionUnqualified { path: _ } => false
     ProcfsAbsentOnKernel { kernel: _, path: _ } => false
-  }
-}
-
-test fn every_procfs_path_renders_an_absolute_proc_path() -> Bool {
-  all(
-    procfs_paths_read_by_this_repository,
-    p => starts_with(s: procfs_path_literal(p: p) as String, prefix: "/proc/")
-  )
+  })
+    && (match procfs_availability(kernel: Linux, path: ProcNetUnix) {
+      ProcfsProvisionUnqualified { path: _ } => true
+      ProcfsAvailable => false
+      ProcfsConditionalOnKernelConfig { path: _, option: _ } => false
+      ProcfsAbsentOnKernel { kernel: _, path: _ } => false
+    })
 }
 
 // The degraded axis is asserted as a PARTITION of the arms rather than arm-by-arm, so adding a

@@ -150,24 +150,40 @@ fn kernel_provides_procfs(kernel: KernelFamily) -> Bool {
 }
 
 // WHICH PATHS A LINUX KERNEL SYNTHESISES UNCONDITIONALLY, AND WHICH ONLY WHEN BUILT WITH AN
-// OPTION. proc.5's process and memory files exist on every Linux kernel that mounts procfs; a path
-// owned by an optional subsystem exists only when that subsystem was compiled in, and no reading
-// this repository has taken decides that for a kernel it has not booted. The option is spelled as
-// the kernel spells it (the same NonEmptyStr convention gunbc.runner.runner_host_filtered_egress
-// KernelFeatureRequirement uses), so a host kernel-config readback can join on it.
+// OPTION -- AND WHICH THIS REPOSITORY HAS NOT YET AUDITED. A path owned by an optional subsystem
+// exists only when that subsystem was compiled in: /proc/net/pnp needs CONFIG_IP_PNP (the kernel's
+// nfsroot guide, cited on nfsroot_ip_autoconfiguration_authority), and no reading this repository
+// has taken decides that for a kernel it has not booted. The option is spelled as the kernel spells
+// it (the NonEmptyStr convention gunbc.runner.runner_host_filtered_egress KernelFeatureRequirement
+// uses), so a host kernel-config readback can join on it.
+//
+// NOTHING IS CLASSIFIED UNCONDITIONAL HERE, BY DESIGN AND NOT BY OVERSIGHT. The first revision of
+// this fold (review 68937 / sunny-ant-606 on #11760) named every previously rostered path
+// ProvidedByEveryLinuxKernel and a witness then required each of them to be available on Linux --
+// ratifying the mapping rather than testing it -- while /proc/net/unix is in fact CONFIG_UNIX-
+// conditional upstream (net/unix is obj-$(CONFIG_UNIX), and its proc_create_net sits inside). So a
+// path is either qualified by a specific cited option, or it is ProvisionNotYetQualified, which
+// procfs_availability carries through as ProcfsProvisionUnqualified and never as ProcfsAvailable:
+// availability may not be minted from KernelFamily alone. DECLARED FRONTIER (DESIGN 3c):
+// ProvidedByEveryLinuxKernel has no inhabitant until a procfs census cites, per path, the kernel
+// source that synthesises it unconditionally under CONFIG_PROC_FS (and a conjunction carrier if a
+// path needs more than one option); that census is its own change, not the resolver PR that
+// surfaced the gap. Its consumer is the same procfs_availability fold, which already carries the
+// arm.
 type ProcfsPathProvision
   = ProvidedByEveryLinuxKernel
   | ProvidedWhenConfigured { option: NonEmptyStr }
+  | ProvisionNotYetQualified
 
 fn procfs_path_provision(p: ProcfsPath) -> ProcfsPathProvision {
   match p {
-    ProcMeminfo => ProvidedByEveryLinuxKernel
-    ProcSelfStat => ProvidedByEveryLinuxKernel
-    ProcSelfStatus => ProvidedByEveryLinuxKernel
-    ProcSelfCgroup => ProvidedByEveryLinuxKernel
-    ProcNetUnix => ProvidedByEveryLinuxKernel
-    ProcSwaps => ProvidedByEveryLinuxKernel
-    ProcSysKernelHostname => ProvidedByEveryLinuxKernel
+    ProcMeminfo => ProvisionNotYetQualified
+    ProcSelfStat => ProvisionNotYetQualified
+    ProcSelfStatus => ProvisionNotYetQualified
+    ProcSelfCgroup => ProvisionNotYetQualified
+    ProcNetUnix => ProvisionNotYetQualified
+    ProcSwaps => ProvisionNotYetQualified
+    ProcSysKernelHostname => ProvisionNotYetQualified
     ProcNetPnp => ProvidedWhenConfigured { option: "CONFIG_IP_PNP" as NonEmptyStr }
   }
 }
@@ -180,6 +196,7 @@ fn procfs_path_provision(p: ProcfsPath) -> ProcfsPathProvision {
 type ProcfsAvailability
   = ProcfsAvailable
   | ProcfsConditionalOnKernelConfig { path: ProcfsPath, option: NonEmptyStr }
+  | ProcfsProvisionUnqualified { path: ProcfsPath }
   | ProcfsAbsentOnKernel { kernel: KernelFamily, path: ProcfsPath }
 
 fn procfs_availability(kernel: KernelFamily, path: ProcfsPath) -> ProcfsAvailability {
@@ -187,6 +204,7 @@ fn procfs_availability(kernel: KernelFamily, path: ProcfsPath) -> ProcfsAvailabi
     match procfs_path_provision(p: path) {
       ProvidedByEveryLinuxKernel => ProcfsAvailable
       ProvidedWhenConfigured { option: o } => ProcfsConditionalOnKernelConfig { path: path, option: o }
+      ProvisionNotYetQualified => ProcfsProvisionUnqualified { path: path }
     }
   } else {
     ProcfsAbsentOnKernel { kernel: kernel, path: path }
@@ -219,6 +237,7 @@ fn procfs_availability_is_available(a: ProcfsAvailability) -> Bool {
   match a {
     ProcfsAvailable => true
     ProcfsConditionalOnKernelConfig { path: _, option: _ } => false
+    ProcfsProvisionUnqualified { path: _ } => false
     ProcfsAbsentOnKernel { kernel: _, path: _ } => false
   }
 }
