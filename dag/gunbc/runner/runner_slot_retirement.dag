@@ -400,13 +400,34 @@ fn host_fabric_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
   fabric_purpose_interruption_scope |> filter(u => unit_is_owned_by_host(host: host, unit: u as String))
 }
 
-fn host_width_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
+// THE SCOPE AND THE REASON COME OUT OF ONE DISPATCH, SO AN UNNAMED HOST HAS NEITHER (review 69334).
+// They used to be two functions keyed on the same host, and the reason's fallback was an unguarded
+// else returning srv4's operator_reason. Nothing was misattributed, because only srv1 and srv4 reach
+// it -- but a third host given a width authorization tomorrow would have been minted an
+// InterruptionAuthorization carrying srv4's stated reason, which is permission text travelling with
+// an unrelated edit. That is the same defect this module closes one function above for the fabric
+// scope, and DESIGN 5's rule for the arm: a failure arm must refuse, never widen.
+//
+// Returning the row itself makes the bad state unwritable rather than merely unreached: there is no
+// spelling of "this host's reason" that does not go through a row naming that host.
+type WidthDecisionAuthorization
+  = WidthDecisionNamed { authorization: InterruptionAuthorization }
+  | WidthDecisionUnnamed
+
+fn host_width_interruption_authorization(host: HostIdentity) -> WidthDecisionAuthorization {
   if (host as String) == (operator_host_srv1 as String) {
-    srv1_transition_interruption_authorization.scope
+    WidthDecisionNamed { authorization: srv1_transition_interruption_authorization }
   } else if (host as String) == (operator_host_srv4 as String) {
-    srv4_transition_interruption_authorization.scope
+    WidthDecisionNamed { authorization: srv4_transition_interruption_authorization }
   } else {
-    []
+    WidthDecisionUnnamed
+  }
+}
+
+fn host_width_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
+  match host_width_interruption_authorization(host: host) {
+    WidthDecisionNamed { authorization: a } => a.scope
+    WidthDecisionUnnamed => []
   }
 }
 
@@ -416,22 +437,14 @@ fn host_width_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
 // for two decisions taken on different days for different populations, which is the fork this
 // module's sole_constructor exists to prevent from being minted casually.
 fn host_interruption_reason(host: HostIdentity) -> NonEmptyStr {
-  let width = host_width_interruption_scope(host: host)
-  let fabric = host_fabric_interruption_scope(host: host)
-  if list_length(items: width) == 0 {
-    fabric_purpose_interruption_reason
-  } else if list_length(items: fabric) == 0 {
-    width_decision_reason(host: host)
-  } else {
-    join([width_decision_reason(host: host) as String, " | ", fabric_purpose_interruption_reason as String], "") as NonEmptyStr
-  }
-}
-
-fn width_decision_reason(host: HostIdentity) -> NonEmptyStr {
-  if (host as String) == (operator_host_srv1 as String) {
-    srv1_transition_interruption_authorization.operator_reason
-  } else {
-    srv4_transition_interruption_authorization.operator_reason
+  match host_width_interruption_authorization(host: host) {
+    WidthDecisionUnnamed => fabric_purpose_interruption_reason
+    WidthDecisionNamed { authorization: a } =>
+      if list_length(items: host_fabric_interruption_scope(host: host)) == 0 {
+        a.operator_reason
+      } else {
+        join([a.operator_reason as String, " | ", fabric_purpose_interruption_reason as String], "") as NonEmptyStr
+      }
   }
 }
 
