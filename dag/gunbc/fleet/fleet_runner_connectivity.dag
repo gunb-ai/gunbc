@@ -2,9 +2,7 @@ module gunbc.fleet_runner_connectivity
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat, nat_range_inclusive }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.realization_reconcile { ShowEffectiveRead, ReadAbsent }
+import std.disposition { Disposition, Terminal }
 import product.placement_supply { HostIdentity }
 import extdeps.github.ci_runner {
   GitHubSelfHostedRunnerRegistration,
@@ -237,8 +235,8 @@ fn incident_registration(
     name: name,
     status: status,
     busy: busy,
-    ephemeral: true,
-    version: incident_runner_version,
+    ephemeral: Present { value: true },
+    version: Present { value: incident_runner_version },
     os: "Linux" as NonEmptyStr,
     labels: incident_runner_labels(host: host),
   }
@@ -295,31 +293,21 @@ data incident_2026_08_06_managed_registrations: List<GitHubSelfHostedRunnerRegis
   incident_2026_08_06_srv4_registrations,
 )
 
-fn organization_runner_roster_managed_hosts_incident_evidence() -> OrganizationRunnerRosterEvidence {
+fn incident_2026_08_06_managed_roster_fixture() -> OrganizationRunnerRosterEvidence {
   RosterObserved {
     observed_on: "2026-08-06" as NonEmptyStr,
     registrations: incident_2026_08_06_managed_registrations,
   }
 }
 
-fn organization_runner_roster_evidence() -> OrganizationRunnerRosterEvidence {
+// THE 2026-08-06 INCIDENT ROSTER, KEPT ONLY AS A DATED HISTORICAL FIXTURE FOR WITNESSES. Production
+// planning reads gunbc.fleet.organization_runner_roster_read organization_runner_roster_live_read;
+// nothing outside a witness may plan from this population.
+fn incident_2026_08_06_roster_fixture() -> OrganizationRunnerRosterEvidence {
   RosterObserved {
     observed_on: "2026-08-06" as NonEmptyStr,
     registrations: incident_2026_08_06_registrations,
   }
-}
-
-data organization_runner_roster_producer_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.fleet_runner_connectivity",
-    decl_name: "organization_runner_roster_show_effective_read",
-    field: WholeDeclaration,
-  }
-}
-
-data organization_runner_roster_show_effective_read: ShowEffectiveRead<OrganizationRunnerRosterEvidence> = ReadAbsent {
-  reason: "no live org-level GET /orgs/gunb-ai/actions/runners has executed through the gunbai-ci GitHub App yet; the incident fixture in organization_runner_roster_evidence is the pinned acceptance corpus until this read binds ReadObserved"
 }
 
 fn registration_matches_name(
@@ -563,7 +551,7 @@ fn runner_slot_connectivity_verdict_for_incarnation(
 }
 
 fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity) -> RunnerSlotConnectivityVerdict {
-  let roster = organization_runner_roster_evidence()
+  let roster = incident_2026_08_06_roster_fixture()
   let incarnations = local_runner_slot_incarnations()
   match fold(
     incarnations,
@@ -718,7 +706,7 @@ fn fleet_runner_capacity_width_snapshot_from_roster(
 }
 
 fn fleet_runner_capacity_width_snapshot() -> FleetRunnerCapacityWidthSnapshot {
-  fleet_runner_capacity_width_snapshot_from_roster(roster: organization_runner_roster_evidence())
+  fleet_runner_capacity_width_snapshot_from_roster(roster: incident_2026_08_06_roster_fixture())
 }
 
 fn connectivity_verdicts_for_active_incarnations(

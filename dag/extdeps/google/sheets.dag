@@ -435,9 +435,9 @@ data structural_coverage_gap_value_range_cell_types: List<CoverageClosureEntry> 
 // over it agrees with a request encoding nobody ever sent. That is shape agreement standing in for
 // execution, and the wire is where the two part company.
 //
-// gunbc.review_sheet_sheets value_range_from_derived_write builds the Optional form and has never
-// executed -- it is the caller live_sheets_transport_frontier reserved. It needs this type before
-// its first write, and that is a defect in a landed module rather than a gap in a new one.
+// gunbc.review_sheet_sheets once lowered a write plan to the Optional form, and it never executed
+// -- it was the caller live_sheets_transport_frontier reserved. lower_write_plan now builds this
+// type; the defect was in a landed module rather than a gap in a new one.
 type BatchUpdateSpreadsheetResponse {
   spreadsheetId: String
 }
@@ -558,6 +558,21 @@ type BatchUpdateValuesResponse {
   responses: List<ValueRange>?
 }
 
+// THE HERMETIC values.get FIXTURE IS AN EMPTY WHOLE TAB. mock_response can publish one result, so
+// the hermetic arm is the decoded-200 shape of values.get over a tab holding no values: the range
+// Sheets reports for a whole-tab request (the quoted title, then the grid extent) and no values
+// field, which is how the API spells an empty range. The title is the fixture's identity -- a live
+// tab is not named this, and a live read of a non-empty tab cannot answer without values. Like the
+// github.Users fixture, mock_response evaluates with an empty env, so every part is a data row.
+data hermetic_get_values_tab: NonEmptyStr = "hermetic-mock-tab"
+data hermetic_get_values_range: String = "'hermetic-mock-tab'!A1:Z1000"
+data hermetic_get_values_value_range: ValueRange = ValueRange {
+  range: hermetic_get_values_range,
+  majorDimension: Absent,
+  values: Absent,
+}
+data hermetic_get_values_outcome: RestOutcome = RestOk
+
 // THE READ THAT MAKES FORMATTING CONVERGEABLE. Without it a format actuator can only report what
 // the API answered to its write, never what the sheet now carries, so re-running re-applies
 // instead of adopting and a conditional rule accumulates on every pass.
@@ -583,20 +598,6 @@ type BatchUpdateValuesResponse {
 // conditionalFormats to the rules INTERSECTING the requested ranges, so any range chosen to bound
 // a grid read silently hides the rules that fall outside it, which is how a readback came to be
 // unable to see its own work (gunbc.recurring_failure_mode readback_scoped_to_exclude_the_effect_it_verifies).
-// THE HERMETIC values.get FIXTURE IS AN EMPTY WHOLE TAB. mock_response can publish one result, so
-// the hermetic arm is the decoded-200 shape of values.get over a tab holding no values: the range
-// Sheets reports for a whole-tab request (the quoted title, then the grid extent) and no values
-// field, which is how the API spells an empty range. The title is the fixture's identity -- a live
-// tab is not named this, and a live read of a non-empty tab cannot answer without values. Like the
-// github.Users fixture, mock_response evaluates with an empty env, so every part is a data row.
-data hermetic_get_values_tab: NonEmptyStr = "hermetic-mock-tab"
-data hermetic_get_values_range: String = "'hermetic-mock-tab'!A1:Z1000"
-data hermetic_get_values_value_range: ValueRange = ValueRange {
-  range: hermetic_get_values_range,
-  majorDimension: Absent,
-  values: Absent,
-}
-data hermetic_get_values_outcome: RestOutcome = RestOk
 
 service sheets.Spreadsheets {
   config {

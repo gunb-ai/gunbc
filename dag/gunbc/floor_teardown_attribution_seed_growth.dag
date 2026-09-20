@@ -1,0 +1,32 @@
+module gunbc.floor_teardown_attribution_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the floor's teardown instrument. Authored because
+// gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes unenumerated hand growth
+// in src/v1 a stop-line, and this change adds one hand function to cli_run plus a two-line ordering
+// change in claim_executor's main. Requested by review 68459 on gunbc#11712, which read the PR body
+// as carrying no checkable receipt for the growth -- correctly.
+//
+// WHY IT IS RUST AND NOT .dag, which is the question this receipt exists to answer. The subject is
+// the SEED PROCESS'S OWN EXIT. What it measures is the cost of dropping thread-local state owned by
+// v1_compiler.cli_run -- PROCESS_RESOLVE_INDEX and its store, the scope and closure memos -- and
+// those carriers have no substrate representation at all. A .dag fold cannot observe a Rust
+// destructor, so a modeled instrument here would be a second account of a cost it cannot see.
+//
+// WHAT IS NOT NETTED. claim_executor's main gains one call and one `let` binding that makes the
+// terminal-receipt emission explicit rather than tail-positional: ExistingSeedItemModified under
+// gunbc.seed_growth_admission SeedGrowthChangeDisposition. The binding changes evaluation ORDER
+// deliberately -- the receipt is emitted before the instrument runs -- and changes no caller's
+// observable result.
+data floor_teardown_attribution_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "drop_process_caches_with_attribution", field: WholeDeclaration },
+  ],
+  reason: "The required floor spends time after it has reported its verdict and the amount was invisible. Measured on run 35365418267: the D0-MEASURE witnesses step printed `required-ci: lane=witnesses phases_run=3 phases_failed=0` at 16:40:33 and the next step began at 16:43:21 -- 167.8 seconds with no output. The discriminator that makes this the PROCESS rather than runner overhead is in the same log: every other inter-step gap in that job is between 0.0s and 1.3s, so this one is a hundredfold outlier unique to this step.\n\nWHY AN INSTRUMENT AND NOT A REPAIR. claim_executor's main returns an ExitCode and calls process::exit nowhere, so everything still alive is dropped after main returns -- past the last log line, where nothing can attribute it. This function moves the thread-local drops inside the timed region so the cost is reported per cache. It makes nothing cheaper; it relocates a cost already paid so that a repair can be chosen against a measurement instead of against a paragraph.\n\nWHY THE OBVIOUS REPAIR WAS NOT TAKEN. Exiting without running destructors is not safe by inspection: v1_interpreter's InterpContext carries a Drop that absorbs recompute totals into a process global which a CI gate reads and which fails closed on keyed_calls=0. On the measured run that receipt printed at 16:36:16, four minutes before the gap, so contexts dropped during it absorb into a total nothing reads again -- but that is an argument about ONE RUN'S ORDERING and not an established property, and the source records it as exactly that rather than as a licence.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "DELETED WHEN THE TEARDOWN COST IT MEASURES IS GONE, not when it has been measured once. The instrument exists because the quantity is unattributed; a reading does not retire it, because a reading that is not re-derivable is the transcribed number DESIGN section 6 refuses. It retires when the floor process no longer holds corpus-scale thread-local state at exit -- whichever construction achieves that, whether an exit path that does not run destructors, a bounded realization that never retains the population, or the namespace cut's scoped closure -- at which point the per-cache lines report zero on a real run and the function is deleted rather than left green.\n\nAND THE HAND-RUST OBLIGATION DOES NOT END MERELY BECAUSE THE INSTRUMENT SUCCEEDS. If the measurement drives a repair and this function survives beside it to guard the repair, this receipt is RETAINED or transferred to the owner carrying that continuing debt. A receipt disappearing because its subject proved useful is the escape hatch DESIGN section 7 names.",
+  current_boundary: "One function called once, at the end of main, after the worker terminal receipt is emitted. It reads no argv, decides no verdict, and changes no caller's result: every cache it clears would be dropped moments later by main's return. The ORDER is load-bearing and is the one behavioural fact here -- an earlier revision called it before emit_worker_terminal_before_return, inserting the measured ~168s between a failure and the emission of its located receipt, so a worker killed by an outer step cap during teardown would have downgraded a located failure into the parent's generic no-receipt arm. The residue after this call -- whatever main's return still drops -- is unmeasured and is reported as a residue rather than assumed to be zero. NOTHING HERE IS ON THE MERGE PATH in the sense that would make CI evidence of its output: the per-cache figures arrive only from a floor run, and cargo test --lib does not exercise this path.",
+}
