@@ -132,6 +132,7 @@ fn witness_receipt() -> ConvergedSlotNetwork {
       userspace_helpers: 0,
       expectations_at_generation: 0,
     },
+    nft_digest: converged_digest,
   }
 }
 
