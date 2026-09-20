@@ -6,6 +6,14 @@ import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import gunbc.spark.native_serving_apply { spark_native_apply_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
+import gunbc.auth.ci_app_key_rotation {
+  app_key_version_env_name,
+  app_key_verify_record_env_name,
+  app_key_record_key_status_key,
+  app_key_record_resolved_name_key,
+  app_key_record_token_status_key,
+  app_key_verify_receipt_path,
+}
 import gunbc.auth.github_apps {
   DeclaredGitHubApp,
   gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id,
@@ -1737,6 +1745,7 @@ type AppInstallationTokenMint {
   token_refused_message: String
   minted_message: String
   request_body: String?
+  observation_record: String?
 }
 
 fn app_mint_path(stem: String, suffix: String) -> String {
@@ -1779,6 +1788,21 @@ fn app_mint_export_commands(spec: AppInstallationTokenMint) -> List<String> {
 
 fn app_mint_step(command: String) -> PipelineStep {
   Do { run: ci_retry_body_run(command: command) }
+}
+
+// THE OBSERVATION RECORD, for the one caller whose verdict is decided in .dag rather than by this
+// script's exit: the app-key version verifier (gunbc.auth.ci_app_key_rotation). Each line is what one
+// boundary answered -- Secret Manager's status for the exact version, the resource name it said it
+// answered about, GitHub's status line for the exchange -- written BEFORE the arm that refuses on it,
+// so a refusal still leaves its cause for the verdict step that runs after. It carries no key, JWT or
+// token material, and it is not in the cleanup trap because that later step reads it. Absent for
+// every caller that only needs the token.
+fn app_mint_record_steps(spec: AppInstallationTokenMint, key: String, value_expression: String) -> List<PipelineStep> {
+  match spec.observation_record {
+    Absent => []
+    Present { value: path_expression } =>
+      [app_mint_step(command: join(["printf '", key, " %s\\n' ", value_expression, " >> ", path_expression], ""))]
+  }
 }
 
 // ONE MINT FOR EVERY IN-RUN INSTALLATION TOKEN, because the sequence is one fact: read the App key
@@ -1832,7 +1856,7 @@ fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
 }
 
 fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
-  concat(
+  concat(concat(concat(concat(concat(concat(concat(
     [
       app_mint_step(command: "set -euo pipefail"),
       app_mint_step(command: "umask 077"),
@@ -1850,12 +1874,22 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
         secret_ref_access_url(ref: spec.key_secret),
         "\")\""
       ], "")),
-      app_mint_step(command: "rm -f \"$HDR_FILE\""),
+      app_mint_step(command: "rm -f \"$HDR_FILE\"")
+    ],
+    app_mint_record_steps(spec: spec, key: app_key_record_key_status_key, value_expression: "\"$SM_CODE\"")),
+    [
       app_mint_step(command: join([
         "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"",
         spec.key_unreadable_message,
         "\" >&2; exit 1; fi"
-      ], "")),
+      ], ""))
+    ]),
+    app_mint_record_steps(
+      spec: spec,
+      key: app_key_record_resolved_name_key,
+      value_expression: "\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"name\"])' \"$SM_BODY\")\""
+    )),
+    [
       app_mint_step(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$SM_BODY\" > \"$KEY_FILE\""),
       app_mint_step(command: "rm -f \"$SM_BODY\""),
       app_mint_step(command: "chmod 600 \"$KEY_FILE\""),
@@ -1875,7 +1909,14 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
       app_mint_step(command: "rm -f \"$KEY_FILE\""),
       app_mint_step(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" \"$JWT_SIG\" > \"$JWT_FILE\""),
       app_mint_step(command: app_mint_token_request_command(spec: spec)),
-      app_mint_step(command: "rm -f \"$JWT_FILE\""),
+      app_mint_step(command: "rm -f \"$JWT_FILE\"")
+    ]),
+    app_mint_record_steps(
+      spec: spec,
+      key: app_key_record_token_status_key,
+      value_expression: "\"$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')\""
+    )),
+    [
       app_mint_step(command: join([
         "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"",
         spec.token_refused_message,
@@ -1886,7 +1927,7 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
         "=\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"token\"])' \"$TOKEN_BODY\")\""
       ], "")),
       app_mint_step(command: "rm -f \"$TOKEN_HEADERS\" \"$TOKEN_BODY\"")
-    ],
+    ]),
     concat(
       map(app_mint_export_commands(spec: spec), c => app_mint_step(command: c)),
       [app_mint_step(command: join(["echo \"", spec.minted_message, "\""], ""))]
@@ -1917,12 +1958,89 @@ fn org_admin_app_token_mint() -> AppInstallationTokenMint {
       to_string(gunbai_ci_declared_installation_id.value),
       " (one-hour lifetime; key wiped; token held in this step's environment only)"
     ], ""),
-    request_body: none
+    request_body: none,
+    observation_record: none
   }
 }
 
 fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
   github_app_installation_token_prelude(spec: org_admin_app_token_mint())
+}
+
+// THE APP-KEY VERSION VERIFIER, as two steps: a mint over the EXACT version the dispatch names,
+// then a verdict over what that mint observed. They are two steps because the mint refuses by
+// exiting -- as every caller of this prelude must -- and a verdict inside the same script would
+// never run on the refusals it exists to type. The verdict step runs on always() and reads the
+// observation record. It is the same mint the org-admin step performs, over a different key
+// version, so there is one place key material is written.
+//
+// The version reaches the key's resource name as a RUNTIME parameter: the dispatch input is in
+// APP_KEY_VERSION, and the SecretRef the prelude reads carries that variable where a number would
+// be. That is why the selector guard comes FIRST and admits only a positive decimal integer -- the
+// alias and anything else never reach the URL. The guard is the shell's copy of
+// extdeps.cloud.gcp.secret_manager sm_version_id_is_number, which the verdict re-applies in .dag
+// over the same input, so a value one admits and the other refuses reds the verdict.
+fn gunbc_ci_app_key_version_verify_key_ref() -> SecretRef {
+  SecretRef {
+    project: gunbai_ci_app_pem_secret.project,
+    secret: gunbai_ci_app_pem_secret.secret,
+    version: join(["$", app_key_version_env_name as String], "") as NonEmptyStr,
+    hash_state: gunbai_ci_app_pem_secret.hash_state,
+  }
+}
+
+fn app_key_version_verify_mint() -> AppInstallationTokenMint {
+  AppInstallationTokenMint {
+    file_stem: "app-key-verify",
+    key_secret: gunbc_ci_app_key_version_verify_key_ref(),
+    app_id: gunbai_ci_declared.app_id.value,
+    app_slug: gunbai_ci_declared.slug as String,
+    installation_id: gunbai_ci_declared_installation_id.value,
+    export_env_names: FreeSemigroup { head: "GUNBC_APP_KEY_VERIFY_TOKEN", tail: [] },
+    key_unreadable_message: join([
+      "AppKeyVersionUnreadable: Secret Manager answered HTTP $SM_CODE for ",
+      secret_ref_version_resource(ref: gunbc_ci_app_key_version_verify_key_ref()),
+      "; the verdict step below types the cause. Minting NO token."
+    ], ""),
+    token_refused_message: "AppKeyInstallationTokenRefused: GitHub answered $(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r') to the exchange signed with this version; the verdict step below types the cause.",
+    minted_message: join([
+      "app-key-verify: an installation token was minted with version $", app_key_version_env_name as String,
+      " for app ", gunbai_ci_declared.slug as String,
+      " (key wiped; token unused and unset on exit)"
+    ], ""),
+    request_body: none,
+    observation_record: Present { value: join(["\"$", app_key_verify_record_env_name as String, "\""], "") }
+  }
+}
+
+fn gunbc_ci_app_key_version_verify_mint_script() -> String {
+  gunbc_invoke_step_emit_pipeline(
+    p: Pipeline {
+      steps: concat(
+        [
+          app_mint_step(command: "set -euo pipefail"),
+          app_mint_step(command: join([": > \"$", app_key_verify_record_env_name as String, "\""], "")),
+          app_mint_step(command: join([
+            "case \"$", app_key_version_env_name as String,
+            "\" in ''|0*|*[!0-9]*) echo \"AppKeyVersionSelectorRefused: '$", app_key_version_env_name as String,
+            "' is not a Secret Manager version number; the alias is refused rather than resolved. Reading NO key.\" >&2; exit 1;; esac"
+          ], "")),
+        ],
+        github_app_installation_token_prelude(spec: app_key_version_verify_mint())
+      ),
+      on_failure: FailFast
+    }
+  )
+}
+
+fn gunbc_ci_app_key_version_verify_verdict_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/auth/ci_app_key_rotation.dag",
+    function: "ci_app_key_version_verify_wet",
+    claim_run: false,
+    receipt_rel: Present { value: app_key_verify_receipt_path }
+  )
 }
 
 // THE APP-JWT PRELUDE (operator decision 2026-09-05, option (b)). GET /app and
@@ -2702,7 +2820,8 @@ fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInst
       to_string(installation.value),
       " (one hour, contents:write on this repository only; key wiped; token held in this step's environment only)"
     ], ""),
-    request_body: Present { value: heal_publisher_installation_token_request_body() }
+    request_body: Present { value: heal_publisher_installation_token_request_body() },
+    observation_record: none
   }
 }
 
