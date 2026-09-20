@@ -1,44 +1,56 @@
 module gunbc.compiler_gate_workflow
 
-// THE REQUIRED CHECK IS, FOR NOW, "THE COMPILER BUILDS" -- AND NOTHING ELSE. (2026-09-19)
+// ONE REQUIRED JOB: BUILD, CLIPPY, NOMINAL WITNESSES, AND THE GENERATED-ARTIFACT GATE. (2026-09-19)
 //
-// This module emits .github/workflows/witnesses.yml in place of gunbc.witness_floor_workflow.
-// The fold that workflow ran cost ~100 runner-minutes per PR push across two self-hosted jobs
-// (build lane ~30 min, floor ~47 min) plus the heal job (~26 min), on a ~45-runner fleet that
-// every session pushes to. Measured on run 35462055101: the floor's 4,185 claims executed in
-// 53 seconds; the other ~42 minutes were corpus preparation (14.3 min strict-preparation of
-// 3,197 modules), reach probes (11 min), parse/admission (~7 min) and receipt bookkeeping.
-// The fleet queued for up to 49 minutes and the merge queue stalled behind it.
+// This module emits .github/workflows/witnesses.yml, and with it the whole required gate. It
+// replaces three jobs across two workflows -- witnesses' build lane (~30 min) and floor (~47 min),
+// plus heal's own job (~26 min) -- that together cost ~100 self-hosted runner-minutes per push on a
+// ~45-runner fleet. Queues reached 49 minutes and the merge queue stalled behind them.
 //
-// The operator ruled that the required gate shrinks to building the compiler until the fold's
-// preparation cost is fixed. So this workflow is one job, `witnesses` (the name the ruleset's
-// required status check reads), that builds the `gunbc` binary and stops.
+// WHAT THE MEASUREMENTS SAID (run 35462055101 for the floor, 35475373850 for heal):
+//   - the floor's 4,185 claims executed in 53 SECONDS. Its other ~42 minutes were corpus
+//     preparation (14.3 min resolving a 3,197-module gate closure), reach probes (11 min), parse
+//     and admission (~7 min) and receipt bookkeeping.
+//   - heal spent 22.7 of its 26.4 minutes in FOUR gunbc invocations that each reload the corpus:
+//     declare (6.7), write (6.3), verify (6.3), seal the candidate (3.4).
+// Both costs are per-invocation corpus loading, so the cut is to run fewer invocations over a
+// smaller closure -- not to shard the fold, which its own header forbids.
 //
-// IT RUNS ON A GITHUB-HOSTED RUNNER, which is what makes supersession lawful here. The fold keeps
-// cancel-in-progress false because a killed job on a self-hosted host leaks its ctrl-jobserver
-// permits (gunbc.compile_permit_scope, fleet_compile_cancellation_standing is NotSafe). A hosted
-// runner joins no host jobserver, so a cancelled build leaks nothing, and a PR's superseded run is
-// cancelled instead of holding a runner. merge_group and heal revalidation keep their immutable
-// groups (witness_floor_concurrency_group), so they are never cancelled by a later push.
+// SO THIS JOB:
+//   1. builds the compiler and the witness executor once,
+//   2. runs clippy,
+//   3. runs the witnesses fold over the NOMINAL roster (v2.workflow.required_floor
+//      required_gate_prefixes, trimmed in this change), and refuses on a failed claim,
+//   4. runs the generated-artifact drift gate as its LAST verdict -- one invocation, `main`, on the
+//      pristine checkout, so a stale committed artifact BLOCKS THE MERGE,
+//   5. and only when that gate refused, spends the repair invocations (declare, write, seal) and
+//      uploads the candidate heal-publish pushes.
+// A drift-free push -- the ordinary case -- therefore pays for the gate once and skips the repair
+// entirely, where heal paid all four invocations on every push.
 //
-// DISSOLVE-ON: the fold's preparation cost is cut (resolved-module and reach-probe results
-// reused across runs, or preparation scoped to a diff's closure) and its runtime fits the fleet;
-// then witnesses.yml is emitted by gunbc.witness_floor_workflow again and this module is deleted.
+// IT STAYS ON THE FLEET, and cancel-in-progress stays literal false with it. A killed job on a
+// self-hosted host leaks its ctrl-jobserver permits (gunbc.compile_permit_scope: the live
+// fleet_compile_cancellation_standing is NotSafe), and the regeneration needs the 26 GiB slot the
+// fleet gives it -- a GitHub-hosted standard runner offers 16 GiB. Superseded PR runs are therefore
+// still run to completion; at ~20 minutes for one job that is a fifth of what the three cost.
+//
+// DISSOLVE-ON: the fold's preparation is reused across runs (resolved modules and reach probes keyed
+// by content) or scoped to the diff's closure. Then the nominal roster widens back to the full gate
+// and this module's trimming goes with it.
 
 import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { list_map }
-import extdeps.languages.yaml.types { yaml_string, yaml_bool, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
-  Workflow, Job, Step, UsesStep,
+  Workflow, Job, Step, RunStep, UsesStep,
   WorkflowPermissions, PermRead,
-  RunnerSpec, HostedRunner, Ubuntu2404Arm,
-  github_event_name_pull_request
+  RunnerSpec
 }
 import gunbc.action_use_admission {
-  checkout_action,
+  checkout_action, upload_artifact_action,
   admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason
 }
 import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
@@ -50,32 +62,182 @@ import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import gunbc.witness_floor_workflow {
   witness_floor_workflow_name,
   witness_floor_triggers,
   witness_floor_concurrency_group,
   concurrency_of_policy,
-  WitnessFloorConcurrencyPolicy, ReplaceExistingPending, SupersedeRunningForEvent,
+  witness_floor_concurrency_policy,
   witness_floor_toolchain_step,
   witness_floor_build_step,
+  witness_floor_required_bins,
+  witness_floor_run_script,
+  witness_floor_precondition,
+  witness_toolchain_homes_isolated_guard_step,
+  rust_clippy_all_targets_step,
+  witness_step_status_guard,
+  malloc_arena_max_env_key, malloc_arena_max_value,
+  expected_red_roster_join_path,
+  required_floor_disposition_path,
+  long_home_storage_agreement_path,
+  required_floor_claim_cost_path,
+  required_floor_cross_claim_demand_path,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
 import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.ci_spec {
+  gunbc_ci_generated_artifact_verify_invoke,
+  gunbc_ci_generated_artifact_regen_only_invoke,
+  gunbc_ci_heal_repair_declaration_invoke,
+  gunbc_ci_heal_candidate_invoke
+}
+import gunbc.heal_candidate {
+  heal_candidate_directory,
+  heal_candidate_repository_env,
+  heal_candidate_pull_number_env,
+  heal_candidate_head_ref_env,
+  heal_candidate_base_ref_env,
+  heal_candidate_run_id_env
+}
+import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 
 // The ruleset requires a check named `witnesses`, and a job's check is named by its id.
 data compiler_gate_job_id: String = "witnesses"
-data compiler_gate_timeout_minutes: Int = 45
-data compiler_gate_required_bins: List<String> = ["gunbc"]
-data compiler_gate_build_step_name: String = "Build the compiler"
+data compiler_gate_timeout_minutes: Int = 90
+data compiler_gate_build_step_name: String = "Build the compiler and the witness executor"
+data compiler_gate_drift_step_id: String = "generated_artifact_gate"
+data compiler_gate_candidate_retention_days: Int = 3
+
+// THE CHECKOUT IS THE PULL REQUEST HEAD, NOT THE MERGE COMMIT, because a repair candidate describes
+// a commit someone can fast-forward onto the PR branch; a candidate sealed against the merge result
+// would carry main's content into the PR. On merge_group and dispatch the expression is empty and
+// checkout falls back to the triggering ref, which is what those events want.
+fn compiler_gate_checkout_ref_expression() -> String {
+  "${{ github.event.pull_request.head.sha }}"
+}
 
 fn compiler_gate_checkout_step() -> Step {
   UsesStep {
-    name: Present { value: "Checkout" },
+    name: Present { value: "Checkout the commit this run judges" },
     id: none,
     uses: checkout_action,
-    with: Present { value: [kv(key: "persist-credentials", value: yaml_bool(b: false))] },
+    with: Present {
+      value: [
+        kv(key: "fetch-depth", value: yaml_int(n: 0)),
+        kv(key: "ref", value: yaml_string(s: compiler_gate_checkout_ref_expression())),
+        kv(key: "persist-credentials", value: yaml_bool(b: false))
+      ]
+    },
     env: none,
     if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// The nominal fold. The floor's own step carries continue-on-error so a separate aggregate job could
+// adjudicate its receipt; here the fold IS the required verdict, so a refused claim refuses the job.
+fn compiler_gate_witnesses_step() -> Step {
+  RunStep {
+    name: Present { value: "Nominal witnesses (one prepared subject, one fold)" },
+    id: Present { value: "required_ci_measure" },
+    run: concat(wrap_command_with_floor_attempt_receipt(command: witness_floor_run_script()), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_floor_precondition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// The merge gate: one invocation, on the bytes as committed.
+fn compiler_gate_drift_step() -> Step {
+  RunStep {
+    name: Present { value: "Generated artifacts match their authorities" },
+    id: Present { value: compiler_gate_drift_step_id },
+    run: concat(gunbc_ci_generated_artifact_verify_invoke(), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: concat(witness_step_status_guard(), "steps.build_witness_fold.outcome == 'success'") },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// The repair path. It runs ONLY where the gate refused, so the ordinary push never pays for it.
+fn compiler_gate_repair_condition() -> String {
+  concat("failure() && steps.", concat(compiler_gate_drift_step_id, ".outcome == 'failure'"))
+}
+
+fn compiler_gate_repair_declaration_step() -> Step {
+  RunStep {
+    name: Present { value: "Declare which ledger rows this repair covers" },
+    id: none,
+    run: gunbc_ci_heal_repair_declaration_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: compiler_gate_repair_condition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn compiler_gate_regen_step() -> Step {
+  RunStep {
+    name: Present { value: "Regenerate every committed generated artifact" },
+    id: none,
+    run: concat(gunbc_ci_generated_artifact_regen_only_invoke(), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: compiler_gate_repair_condition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn compiler_gate_candidate_step() -> Step {
+  RunStep {
+    name: Present { value: "Produce the sealed repair candidate" },
+    id: none,
+    run: gunbc_ci_heal_candidate_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: heal_candidate_repository_env as String, value: yaml_string(s: "${{ github.repository }}")),
+        kv(key: heal_candidate_pull_number_env as String, value: yaml_string(s: "${{ github.event.pull_request.number }}")),
+        kv(key: heal_candidate_head_ref_env as String, value: yaml_string(s: "${{ github.event.pull_request.head.ref }}")),
+        kv(key: heal_candidate_base_ref_env as String, value: yaml_string(s: "${{ github.event.pull_request.base.ref }}")),
+        kv(key: heal_candidate_run_id_env as String, value: yaml_string(s: "${{ github.run_id }}"))
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: compiler_gate_repair_condition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn compiler_gate_candidate_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the sealed repair candidate" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: heal_repair_candidate_artifact_name as String)),
+        kv(key: "path", value: yaml_string(s: heal_candidate_directory)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+        kv(key: "retention-days", value: yaml_int(n: compiler_gate_candidate_retention_days))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: compiler_gate_repair_condition() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -92,7 +254,7 @@ fn compiler_gate_bound_steps() -> List<CompilerGateBoundStep> {
     CompilerGateBoundStep {
       step: compiler_gate_checkout_step(),
       role: capability_neutral,
-      step_name: "Checkout",
+      step_name: "Checkout the commit this run judges",
     },
     CompilerGateBoundStep {
       step: toolchain_home_isolation_step(),
@@ -112,10 +274,50 @@ fn compiler_gate_bound_steps() -> List<CompilerGateBoundStep> {
     CompilerGateBoundStep {
       step: witness_floor_build_step(
         step_name: compiler_gate_build_step_name,
-        build_script: repo_self_build_command(bins: compiler_gate_required_bins),
+        build_script: repo_self_build_command(bins: witness_floor_required_bins),
       ),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: compiler_gate_build_step_name,
+    },
+    CompilerGateBoundStep {
+      step: witness_toolchain_homes_isolated_guard_step(),
+      role: capability_neutral,
+      step_name: "Require isolated toolchain homes",
+    },
+    CompilerGateBoundStep {
+      step: rust_clippy_all_targets_step(),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: "clippy, all targets",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_witnesses_step(),
+      role: consumes_only(capabilities: [RustfmtCapability]),
+      step_name: "Nominal witnesses (one prepared subject, one fold)",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_drift_step(),
+      role: capability_neutral,
+      step_name: "Generated artifacts match their authorities",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_repair_declaration_step(),
+      role: capability_neutral,
+      step_name: "Declare which ledger rows this repair covers",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_regen_step(),
+      role: capability_neutral,
+      step_name: "Regenerate every committed generated artifact",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_candidate_step(),
+      role: capability_neutral,
+      step_name: "Produce the sealed repair candidate",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_candidate_upload_step(),
+      role: capability_neutral,
+      step_name: "Upload the sealed repair candidate",
     },
   ]
 }
@@ -131,6 +333,11 @@ fn compiler_gate_capability_closure_holds() -> Bool {
   )
 }
 
+fn compiler_gate_scripts_are_renderable() -> Bool {
+  wrap_command_is_renderable(command: witness_floor_run_script())
+    && wrap_command_is_renderable(command: repo_self_build_command(bins: witness_floor_required_bins))
+}
+
 data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
   contents: Present { value: PermRead },
   pull_requests: none,
@@ -143,7 +350,7 @@ fn compiler_gate_job() -> Job {
   Job {
     id: compiler_gate_job_id,
     name: none,
-    runner: HostedRunner { label: Ubuntu2404Arm },
+    runner: gunbc_ci_selected_runner_spec(),
     steps: list_map(xs: compiler_gate_bound_steps(), f: fn(b) { b.step }),
     needs: [],
     env: none,
@@ -156,27 +363,29 @@ fn compiler_gate_job() -> Job {
   }
 }
 
-// Pending runs are replaced as before; a running PR build is cancelled by the next push (see the
-// header for why that is lawful on a hosted runner). The policy arm is the fold's own vocabulary,
-// so the emitted expression is the one gunbc.witness_floor_workflow would emit for this arm.
-data compiler_gate_concurrency_policy: WitnessFloorConcurrencyPolicy = WitnessFloorConcurrencyPolicy {
-  pending: ReplaceExistingPending,
-  running: SupersedeRunningForEvent { event: github_event_name_pull_request }
-}
-
 data compiler_gate_workflow: Workflow = Workflow {
   name: witness_floor_workflow_name,
   run_name: none,
   on: witness_floor_triggers(),
   concurrency: Present {
-    value: concurrency_of_policy(policy: compiler_gate_concurrency_policy, group: witness_floor_concurrency_group())
+    value: concurrency_of_policy(policy: witness_floor_concurrency_policy, group: witness_floor_concurrency_group())
   },
-  env: Present { value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))] },
+  env: Present {
+    value: [
+      kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
+      kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value)),
+      kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: expected_red_roster_join_path)),
+      kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: required_floor_disposition_path)),
+      kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path)),
+      kv(key: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: yaml_string(s: required_floor_claim_cost_path)),
+      kv(key: "GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND", value: yaml_string(s: required_floor_cross_claim_demand_path))
+    ]
+  },
   permissions: Present { value: compiler_gate_permissions },
   jobs: [compiler_gate_job()]
 }
 
-data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: the job's capability closure does not hold. No workflow yaml was emitted. Fix the step roles in compiler_gate_bound_steps."
+data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: the job's capability closure does not hold, or a wrapped command is not renderable. No workflow yaml was emitted. Fix the step roles in compiler_gate_bound_steps."
 
 fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
   match admit_workflow_action_uses(workflow: compiler_gate_workflow) {
@@ -187,7 +396,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          if compiler_gate_capability_closure_holds() {
+          if compiler_gate_capability_closure_holds() && compiler_gate_scripts_are_renderable() {
             WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) }
           } else {
             WitnessFloorGenerationRefused { reason: compiler_gate_capability_refusal_reason }

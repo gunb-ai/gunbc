@@ -2,9 +2,7 @@
 # Authority: gunbc.heal_workflow heal_workflow; regen via tools.generated_artifact_gate main_wet.
 name: heal
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
