@@ -246,8 +246,8 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 // Unknown hosts refuse rather than defaulting. A width is a claim about a specific machine's RAM,
 // and handing an unclassified host the width the measured hosts reached (21 as of 2026-08-23) would
 // be the same borrowed-premise failure the fixed-overhead fallback carries
-// (gunbc.ci_floor_measurement gunbc_ci_host_fixed_overhead_unknown_host_note) — worse here, because
-// width multiplies the per-slot ceiling. Zero slots is the fail-closed answer:
+// (gunbc.host_memory_observation gunbc_ci_host_fixed_overhead_for, whose unknown arm refuses for
+// the same reason) — worse here, because width multiplies the per-slot ceiling. Zero slots is the fail-closed answer:
 // gunbc.ci_runner_placement's any_unfit arm already refuses a plan that admits zero runners on an
 // enrolled host, so an unclassified host produces a located PlanUnsound rather than a silent five.
 
