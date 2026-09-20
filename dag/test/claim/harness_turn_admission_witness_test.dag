@@ -2,7 +2,7 @@ module test.claim.harness_turn_admission_witness
 
 import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
-import std.measure { token_count }
+import std.measure { token_count, money_amount_micro, second_count }
 import v2.std.optional { Present, Absent }
 import product.fabric.provider_route { ProviderRoute }
 import product.fabric.isolation { IsolationProfile }
@@ -18,9 +18,10 @@ import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vll
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.spark.vllm_observed { ModelsRouteRead, vllm_models_route_readback }
 import gunbc.spark.pair_serving_realization { spark_pair_model_path_in_container, spark_pair_desired_snapshot }
-import gunbc.spark.first_party_serving { SparkServingRealization, spark_first_party_admission, spark_first_party_use_scope }
+import gunbc.spark.first_party_serving { SparkServingRealization, spark_first_party_admission, spark_first_party_use_scope, spark_first_party_route }
 import gunbc.spark.serving_usage_stats_observe {
   SparkUsageStatsEvidence, UsageStatsEnvironmentUnread, UsageStatsLaunchBindingMissing,
+  UsageStatsEnvironmentRead, ServingHostEnvReading,
 }
 import gunbc.spark.serving_offer {
   SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused, ServingRouteObserved,
@@ -31,10 +32,14 @@ import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
 import gunbc.harness.harness_seat {
   HarnessCandidates, HarnessTurnSubject, AnyAdmittedModel, ExactServingUnit,
   harness_turn_subject, harness_turn_request, harness_admit_bound_offer, harness_execution_requirements,
-  harness_bind_candidate, harness_serving_realization,
+  harness_bind_candidate, harness_serving_realization, harness_placement_grant_duration,
 }
 import gunbc.harness.harness_reasoning_wire { Glm53FlashOnVllm }
-import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_system_prompt_at, harness_default_wire_shape }
+import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_system_prompt_at, harness_default_wire_shape, harness_seat_policy }
+import product.fabric.supply { EstimatedGrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey }
+import product.fabric.selection { select_supply, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved }
+import gunbc.serving.turn_admission { serving_delay_valuation }
+import extdeps.currency.currency { Usd }
 
 // ── A TURN IS PLACED AS ONE WORK AND ONE DEMAND, AND A BOUND OFFER PASSES ADMISSION OR NOTHING ──
 //
@@ -43,12 +48,16 @@ import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_
 // under that subject before the offer may enter the field. These witnesses pin the subject, the
 // factored admit step, AND the production route from harness_bind_candidate's bound arm into it
 // (a_bound_offer_reaches_admission_through_bind_candidate, over the route seam). The
-// admitted arm has no positive control yet, and that is stated rather than faked: first-party
-// admission refuses while the answering launch's usage-stats path is unread, on every fixture this
-// corpus can build. DECLARED FRONTIER (DESIGN 3c): the positive CandidateBound control lands when
-// spark_first_party_admission takes the narrow ServingUsageStatsObservation (gunbc#11441) and this
-// harness threads it through harness_admit_bound_offer -- a fixture Disabled observation on the
-// offered launch, a matching declared unit and an observed incarnation then reach the admitted arm.
+// The admitted arm's positive control LANDED below
+// (a_bound_offer_with_disabled_telemetry_evidence_is_admitted_and_selected): the telemetry evidence
+// the frontier named (gunbc#11441) exists as gunbc.spark.serving_usage_stats_observe, threaded
+// through harness_admit_bound_offer, so a fixture Disabled reading reaches ProviderUseAdmitted. And
+// the row goes further than CandidateBound, into select_supply, because the first live dispatch
+// after the evidence landed (2026-09-20) died there: harness_placement_round handed
+// EstimatedGrantDuration.seconds a bare Nat where a Second belongs, which no claim had priced
+// before, and the interpreter met it as "cannot access field 'count' on Int" at second_count. That
+// is why the duration below comes from harness_placement_grant_duration -- the constructor the
+// production fold now shares -- rather than from a fixture spelled beside it.
 
 fn t_launch() -> VllmEndpointProcessLaunch {
   vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr)
@@ -266,4 +275,80 @@ test fn the_wire_shape_is_the_interface() -> Bool {
   let openai = harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr)
   let anthropic = harness_turn_subject(request: harness_turn_request(shape: AnthropicMessagesShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr)
   (openai.work.id.key as String) != (anthropic.work.id.key as String)
+}
+
+// ── THE ADMITTED ARM, AND THE PRICING SEAM BEHIND IT ──────────────────────────────────────────
+//
+// THE TELEMETRY EVIDENCE HERE IS A PLANTED DISABLED READING, stated as such: two hosts whose
+// Config.Env carries VLLM_NO_USAGE_STATS=1, which is what gunbc.spark.serving_usage_stats_observe
+// returns for today's fleet (measured 2026-09-19 on both serving groups). It is NOT a live reading
+// and is not cited as one; what it exercises is everything DOWNSTREAM of the reading.
+fn t_telemetry_disabled() -> SparkUsageStatsEvidence {
+  UsageStatsEnvironmentRead { readings: [
+    ServingHostEnvReading { host: operator_host_srv5, env: ["PATH=/usr/bin", "VLLM_NO_USAGE_STATS=1"] },
+    ServingHostEnvReading { host: operator_host_srv6, env: ["PATH=/usr/bin", "VLLM_NO_USAGE_STATS=1"] },
+  ] }
+}
+
+// THE ROUTE IS THE PRODUCTION FIRST-PARTY ROUTE, because the permit's route check compares it
+// against the admission's facts route by value: a fixture route named anything else refuses as
+// "the admission permit names another route", which is a wiring wall, not the arm under test.
+//
+// POSITIVE CONTROL, AND THE ROW THAT PINS THE 2026-09-20 DISPATCH FAULT. Under the pre-repair
+// harness_placement_round this row could not exist: admission never admitted, so select_supply was
+// never asked to price a bound candidate -- and the FIRST time it was, the duration handed to it
+// carried a bare Nat in EstimatedGrantDuration.seconds, which is typed Second. The interpreter met
+// the Nat at second_count and died with "cannot access field 'count' on Int". With the constructor
+// shared (harness_placement_grant_duration), this row drives the same duration the production fold
+// now builds; under the old shape the row does not FAIL, it errors -- the sharpest red available.
+test fn a_bound_offer_with_disabled_telemetry_evidence_is_admitted_and_selected() -> Bool {
+  let subject = t_subject(prompt: "p", attempt: "a-1")
+  let placed = harness_bind_candidate(
+    acc: t_empty(), group: FabricGroupA, endpoint: t_endpoint(), launch: t_launch(), availability: t_ready(),
+    readback: t_realization().readback, incarnation: t_realization().incarnation, telemetry: t_telemetry_disabled(),
+    route: ServingRouteObserved { route: spark_first_party_route() }, subject: subject,
+    model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 1,
+  )
+  if length(placed.candidates) != 1 {
+    false
+  } else {
+    match select_supply(
+      requirements: subject.work.requirements,
+      candidates: map(placed.candidates, c => c.offer),
+      duration: harness_placement_grant_duration(policy: harness_seat_policy),
+      maximum_buy_order: money_amount_micro(count: 0),
+      budget_currency: Usd,
+      delay_valuation: serving_delay_valuation,
+      tie: AffinityKeyedRendezvous,
+      affinity: "witness" as PlacementAffinityKey,
+    ) {
+      OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => true
+      NoAdmissibleOffer { considered: _ } => false
+      EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => false
+    }
+  }
+}
+
+// CONTROL -- THE SEAM ITSELF, PINNED DIRECTLY: the grant duration the placement fold builds carries
+// the policy's seconds AS a Second, so second_count can read it back. Under the old inline spelling
+// this value was a bare Nat and the read-back was the dispatch's crash site.
+test fn the_placement_duration_carries_the_policy_seconds_as_a_second() -> Bool {
+  match harness_placement_grant_duration(policy: harness_seat_policy) {
+    EstimatedGrantDuration { seconds: sc } => second_count(s: sc) == harness_seat_policy.maximum_duration_seconds
+    _ => false
+  }
+}
+
+// CONTROL -- THE REFUSAL PATH STILL REFUSES: the same bind with unread telemetry evidence is not
+// admitted, so the admitted arm above is the evidence's doing and not a gate that learned to admit.
+test fn a_bound_offer_with_unread_telemetry_evidence_is_still_refused() -> Bool {
+  let subject = t_subject(prompt: "p", attempt: "a-1")
+  let placed = harness_bind_candidate(
+    acc: t_empty(), group: FabricGroupA, endpoint: t_endpoint(), launch: t_launch(), availability: t_ready(),
+    readback: t_realization().readback, incarnation: t_realization().incarnation, telemetry: t_telemetry_unread(),
+    route: ServingRouteObserved { route: spark_first_party_route() }, subject: subject,
+    model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 1,
+  )
+  length(placed.candidates) == 0
+    && any(placed.notes, n => n.contains("provider-use admission refused"))
 }

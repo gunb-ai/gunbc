@@ -2,7 +2,7 @@ module gunbc.harness.harness_seat
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
-import std.measure { Measure, Count, One, money_amount_micro }
+import std.measure { Measure, Count, One, money_amount_micro, second }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire, fabric_group_hosts }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
@@ -35,7 +35,7 @@ import gunbc.harness.harness_backend {
 import gunbc.harness.harness_wire { HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape, harness_backend_url_for_endpoint }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_unit_model_id }
 import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, Work, ServiceInterfaceRef, ArtifactManifestRef, EffectContractRef, OutputContractRef, identity_frame }
-import product.fabric.supply { EstimatedGrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey }
+import product.fabric.supply { EstimatedGrantDuration, GrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey }
 import product.fabric.selection {
   CandidateOffer, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse,
   PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand, PayAsYouGo,
@@ -1113,6 +1113,16 @@ fn harness_nothing_placed(notes: List<String>, retryable: Bool) -> HarnessSeatBi
   }
 }
 
+// THE DURATION CARRIES A Second, NOT A COUNT. GrantDuration's estimated arm holds a Second, and
+// LeasePolicy.maximum_duration_seconds is a bare Nat; handing it across unwrapped survived every
+// witness because no claim had ever priced a bound candidate, and the first dispatch that did
+// (2026-09-20) died in selection at `second_count` -- "cannot access field 'count' on Int". The
+// constructor is named so the seam has one authority and a witness can drive it
+// (test.claim.harness_turn_admission_witness prices a bound candidate with exactly this duration).
+fn harness_placement_grant_duration(policy: LeasePolicy) -> GrantDuration {
+  EstimatedGrantDuration { seconds: second(count: policy.maximum_duration_seconds) }
+}
+
 fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat, access: FleetSshContextPreparation, declared_units: HarnessDeclaredUnitRoster) -> PlacementRound {
   match acc.done {
     Present { value: _ } => acc
@@ -1123,7 +1133,7 @@ fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, re
       match select_supply(
         requirements: subject.work.requirements,
         candidates: map(collected.candidates, c => c.offer),
-        duration: EstimatedGrantDuration { seconds: policy.maximum_duration_seconds },
+        duration: harness_placement_grant_duration(policy: policy),
         maximum_buy_order: money_amount_micro(count: 0),
         budget_currency: Usd,
         delay_valuation: serving_delay_valuation,

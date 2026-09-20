@@ -19,6 +19,9 @@ import gunbc.harness.harness_backend {
 }
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligation }
+import gunbc.spark.serving_usage_stats_observe {
+  SparkUsageStatsEvidence, UsageStatsEnvironmentUnread, UsageStatsLaunchBindingMissing,
+}
 import gunbc.spark.pair_serving_realization { DeclaredUnitDigested, DeclaredUnitDigestUnavailable }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
 import gunbc.harness.harness_seat {
@@ -35,6 +38,16 @@ data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGrou
 data w_model: NonEmptyStr = "deepseek-v4-flash:iq3s-split" as NonEmptyStr
 
 data w_now: String = "1789400000"
+
+// THE TELEMETRY EVIDENCE THIS WET LANE CARRIES IS THE LAUNCH-BINDING REFUSAL: the fleet context
+// above is supplied refused, so no container environment can be bound to the offered launch, and
+// the read is not this claim's subject. The observed-reading arms are driven by planted fixtures in
+// test.claim.spark.spark_serving_usage_stats_observe_witness_test.
+fn w_telemetry_unread() -> SparkUsageStatsEvidence {
+  UsageStatsEnvironmentUnread { refusal: UsageStatsLaunchBindingMissing {
+    obligation: "fixture: the fleet context is refused, so no container environment can be bound to the offered launch" as NonEmptyStr,
+  } }
+}
 
 fn w_readback() -> VllmModelsRouteReadbackStanding {
   ModelsRouteEntryAbsent { served_model_id: w_model, unexaminable_entries: 0 }
@@ -150,9 +163,11 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
     group: FabricGroupA, endpoint: w_endpoint, launch: launch, availability: a,
     readback: w_readback(),
     incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
+    telemetry: w_telemetry_unread(),
     route: harness_serving_route(
       group: FabricGroupA, launch: launch, readback: w_readback(),
       incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
+      telemetry: w_telemetry_unread(),
       declared_unit: harness_declared_unit_from_roster(roster: harness_declared_unit_roster(), group: FabricGroupA),
     ),
     subject: harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr),
