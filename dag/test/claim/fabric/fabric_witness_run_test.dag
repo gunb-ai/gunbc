@@ -5,6 +5,7 @@ module test.claim.fabric_witness_run
 // looser path, so adding a Nat-typed parameter passed locally and refused in CI.
 import test.claim.fabric.provider_use_fixture { fixture_route }
 import std.nat { Nat }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_offer_envelope }
 import std.measure { Second, second, money_amount_micro_count }
 
 // The subject is FUNGIBILITY AND AFFORDABILITY, two separate questions with two
@@ -34,7 +35,7 @@ fn t_offer(
     id: FabricIdentity { principal: "gunbc", key: "offer-srv1" },
     executor: "gunbc",
     route: fixture_route(),
-    shape: Shape { hard: HardRequirements { threads: threads }, envelope: unstated_envelope() },
+    shape: Shape { hard: HardRequirements { threads: threads }, envelope: gunbc_runner_slot_offer_envelope() },
     capabilities: caps,
     trust_domain: trust,
     isolation: current_runner_slot_profile(),
@@ -57,7 +58,7 @@ fn t_offer_with_quantum(
     id: FabricIdentity { principal: "gunbc", key: "offer-quantum" },
     executor: "gunbc",
     route: fixture_route(),
-    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 128) }, envelope: unstated_envelope() },
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 128) }, envelope: gunbc_runner_slot_offer_envelope() },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
     isolation: current_runner_slot_profile(),
