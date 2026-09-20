@@ -1,38 +1,47 @@
 module gunbc.plans.demand_restatement_follow_up
 
 import std.types { NonEmptyStr, List, String }
+import std.integer { UInt32 }
 
-// THE ROWS D13 CUT (c) DID NOT MEASURE, named rather than counted away.
-//
-// Cut (c) deletes an authored `uses` row when the function's DERIVED service demand is nonempty,
-// measured by resolving the module and reading `ItemInfo.service_names`. The census that types a
-// row is a resolve of its module, and the population is not static while the cut is in flight:
-// main gained new `uses` rows between the census and the merge, and each merge of main brought
-// more. The rows below arrived that way, AFTER the measured population was fixed, and they are
-// carried here instead of being deleted on the assumption that they would have typed the same way.
-//
-// DELETING THEM UNMEASURED WOULD BE THE FAIL-OPEN THIS CUT EXISTS TO AVOID: a row whose derived
-// demand is empty is exactly the row whose deletion flips its function from effectful to pure, and
-// the only thing that distinguishes the two is the measurement. Nine of the twenty-one sit in one
-// module (`gunbc.machine_intake_mtcollins1_boot_run`), so a single unmeasured deletion there would
-// be nine silent flips, not one.
-//
-// THE NEXT CUT TAKES THEM: re-resolve these modules, apply the same criterion, and delete the
-// rows whose derived demand is nonempty. Nothing about the criterion changes -- only the population
-// is new.
+// ONE ROSTERED MODULE whose restatement rows cut (c) did not measure: the module, and how many rows
+// it carries. The count is a field rather than a number baked into the module's spelling, so a
+// reader that wants the population's size folds this list instead of trusting prose beside it. No
+// total is declared here: nothing renders one today, and a folded total with no consumer would be
+// a declaration this roster does not need (DESIGN 3c).
+type DemandRestatementFollowUpModule {
+  module_path: NonEmptyStr
+  rows: UInt32
+}
 
-data demand_restatement_follow_up_commit_range: NonEmptyStr =
-  "5ff323b6d29..af316cc415d" as NonEmptyStr
+// THE COMMIT RANGE OVER WHICH THESE ROWS ARRIVED. Cut (c) deletes an authored `uses` row when the
+// function's DERIVED service demand is nonempty, measured by resolving the module and reading
+// `ItemInfo.service_names`. The census that types a row is a resolve of its module, and the
+// population is not static while the cut is in flight: main gained rows between the census and the
+// merge, and every merge of main brought more. The rows rostered below arrived that way, AFTER the
+// measured population was fixed.
 
-// Each entry carries its own row count, so the population's size is derived from the roster rather
-// than restated beside it. Twenty-six rows in total; nine sit in one module, which is why an
-// unmeasured deletion here would be nine silent flips rather than one.
-data demand_restatement_follow_up_modules: List<String> = [
-  "gunbc.machine_intake_mtcollins1_boot_run (9 rows)",
-  "gunbc.auth.approval_keyring_converge (5 rows)",
-  "gunbc.review_sheet_batch_actuator (4 rows)",
-  "test.probe.review_sheet_tab_forged_probe (4 rows)",
-  "gunbc.authorization_claim_slot (2 rows)",
-  "gunbc.machine_intake_megarac_media_attach (1 row)",
-  "gunbc.review_sheet_tab_locator (1 row)",
+data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..af316cc415d" as NonEmptyStr
+
+// THE ROSTER, carried rather than deleted on the assumption that these rows would have typed the
+// same way. Deleting them unmeasured is the fail-open the cut exists to avoid: a row whose derived
+// demand is EMPTY is exactly the row whose deletion flips its function from effectful to pure, and
+// the only thing that distinguishes the two is the measurement. The first module carries most of
+// them, so one unmeasured sweep there would be several silent flips rather than one. THE NEXT CUT
+// TAKES THEM: re-resolve these modules, apply the same criterion, delete the rows whose derived
+// demand is nonempty. The criterion does not change -- only the population is new.
+
+data demand_restatement_follow_up_modules: List<DemandRestatementFollowUpModule> = [
+  DemandRestatementFollowUpModule { module_path: "gunbc.machine_intake_mtcollins1_boot_run" as NonEmptyStr, rows: 9 as UInt32 },
+  DemandRestatementFollowUpModule { module_path: "gunbc.auth.approval_keyring_converge" as NonEmptyStr, rows: 5 as UInt32 },
+  DemandRestatementFollowUpModule { module_path: "gunbc.review_sheet_batch_actuator" as NonEmptyStr, rows: 4 as UInt32 },
+  DemandRestatementFollowUpModule { module_path: "test.probe.review_sheet_tab_forged_probe" as NonEmptyStr, rows: 4 as UInt32 },
+  DemandRestatementFollowUpModule { module_path: "gunbc.authorization_claim_slot" as NonEmptyStr, rows: 2 as UInt32 },
+  DemandRestatementFollowUpModule { module_path: "gunbc.machine_intake_megarac_media_attach" as NonEmptyStr, rows: 1 as UInt32 },
+  DemandRestatementFollowUpModule { module_path: "gunbc.review_sheet_tab_locator" as NonEmptyStr, rows: 1 as UInt32 },
 ]
+
+// THE MODULE PATHS, for a consumer that renders the roster as prose.
+
+fn demand_restatement_follow_up_module_paths() -> List<String> {
+  demand_restatement_follow_up_modules |> map(m => m.module_path as String)
+}
