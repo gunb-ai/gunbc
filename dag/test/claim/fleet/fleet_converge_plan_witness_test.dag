@@ -681,6 +681,30 @@ test fn the_full_host_apply_script_carries_the_hosts_own_executor_grants() -> Bo
     && string_contains(s: unrostered.apply_shell, pattern: "no runner host spec for srv-not-rostered")
 }
 
+// THE HEADER MUST DESCRIBE THE FOLD UNDER IT, because that line is what an operator reads before
+// approving a host mutation. It said "ADD only" directly above a family that can also emit
+// `systemctl mask --now` for an authorized surplus unit and remove a retired tree -- a narrower
+// blast radius than the script carries, which is the one claim that matters to a reader deciding
+// whether it is safe to run while jobs are live. The negative half is the whole point: the retired
+// wording must not come back.
+test fn the_slot_family_header_names_every_disposition_the_fold_can_emit() -> Bool {
+  let artifact = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  )
+  !string_contains(s: artifact.apply_shell, pattern: "ADD only")
+    && string_contains(s: artifact.apply_shell, pattern: "retirement inhibition (systemctl mask --now)")
+    && string_contains(s: artifact.apply_shell, pattern: "independently reobserved RetirementComplete")
+    && string_contains(s: artifact.apply_shell, pattern: "No desired runner is stopped, restarted or reinstalled")
+}
+
 // The stale diagnostic names the observed generation as ONE word. Split across two echo
 // arguments it renders `observed= 4`, which reads as an empty observation followed by a
 // number — precisely the confusion this PR removes from the guard itself (review 54519).

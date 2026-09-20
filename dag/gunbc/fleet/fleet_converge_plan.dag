@@ -1556,6 +1556,20 @@ fn activation_apply_lines(
   )
 }
 
+// THE HEADER AN OPERATOR READS BEFORE APPROVING A HOST MUTATION, and it said something the fold
+// below does not do. It read "ADD only", immediately above a family that can also emit
+// `systemctl mask --now` for an authorized surplus unit and remove a retired tree. The inner
+// headers in slot_apply_lines have always named both of those honestly; the OUTER one -- the first
+// line a reader meets, and the one that frames everything under it -- claimed a narrower blast
+// radius than the script carries. A reader who trusts it stops reading at the right moment to miss
+// the only two lines that stop anything.
+//
+// It names all three dispositions now, and each is bounded by what the fold actually admits: no
+// desired runner is restarted or reinstalled, inhibition is `mask --now` on units the retirement
+// admission authorized as surplus, and a tree is removed only for a unit whose RetirementComplete
+// was independently re-observed.
+data runner_slot_apply_family_header: String = "# runner-slot membership (gunbc.runner_slot_provision): ADDITIONS, plus retirement inhibition (systemctl mask --now) for units the retirement admission authorized as surplus, plus tree removal ONLY for a unit with an independently reobserved RetirementComplete. No desired runner is stopped, restarted or reinstalled; see slot_apply_lines for the per-disposition lines"
+
 fn slot_apply_lines(
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
@@ -2526,7 +2540,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
         concat(
           host_wide_grant_apply_lines(host: host),
         concat(
-          ["# runner-slot membership (gunbc.runner_slot_provision) — ADD only; see slot_apply_lines"],
+          [runner_slot_apply_family_header],
           concat(
             slot_apply_lines(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence),
             concat(

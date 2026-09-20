@@ -32,6 +32,10 @@ import gunbc.command_runner {
   run_shell_command_capture, run_shell_commands, process_outcome_admitted, LocalExec,
 }
 import extdeps.tools.id { id_group_names_command }
+import extdeps.tools.coreutils_stat {
+  PathOwnershipObservation, PathOwnershipObserved, PathOwnershipUnobservable, coreutils_stat_path_ownership,
+  PathModeObservation, PathModeObserved, PathModeUnobservable, coreutils_stat_path_mode,
+}
 import gunbc.host_effect { LocalShell }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
 import product.placement_supply { HostIdentity }
@@ -100,6 +104,25 @@ type KvmGroupEnrolment
   | KvmGroupNotEnrolled { login: NonEmptyStr, group: NonEmptyStr }
   | KvmGroupEnrolmentUnreadable { login: NonEmptyStr, cause: String }
 
+// ENROLMENT PLUS PRESENCE DOES NOT PROVE THE NEXT INCARNATION CAN OPEN THE DEVICE, and this type is
+// what closes that gap. `present-not-writable` beside `enrolled` has TWO explanations: the grant has
+// landed and this process simply predates it, or /dev/kvm is not delegated to the group the grant
+// names at all. udev's Ubuntu default hands the device to group kvm at mode 0660
+// (50-udev-default.rules, cited at extdeps.virtualization.firecracker kvm_device_group), but that is
+// UPSTREAM DESIRED STATE, not a readback of this host -- a local rule, a different distribution or a
+// hand-chmod makes it false, and reading a capability off an upstream default is asserting as
+// deduced what was only inferred (DESIGN section 4d).
+//
+// So the delegation is OBSERVED: the device's own group name and its group-write bit, joined into
+// one verdict. Contradicted carries what was actually seen, because the remedy differs by which
+// half failed -- a device owned by a different group is a udev question, a device owned by kvm with
+// no group-write is a mode question -- and Unreadable stays separate from both for the reason every
+// other arm here does.
+type KvmDeviceDelegation
+  = KvmDeviceDelegated { group: NonEmptyStr }
+  | KvmDeviceDelegationContradicted { expected_group: NonEmptyStr, observed_group: NonEmptyStr, group_writable: Bool }
+  | KvmDeviceDelegationUnreadable { cause: String }
+
 type FirecrackerBinaryStanding
   = FirecrackerInstalled { binary: String, version_line: String }
   | FirecrackerVersionMismatch { binary: String, observed: String }
@@ -134,6 +157,7 @@ type FootprintInstrumentStanding {
 type FirecrackerHostStanding {
   kvm: KvmDeviceStanding
   kvm_group: KvmGroupEnrolment
+  kvm_delegation: KvmDeviceDelegation
   binary: FirecrackerBinaryStanding
   footprint_instruments: FootprintInstrumentStanding
 }
@@ -187,24 +211,36 @@ fn binary_standing_of(binary: String, executable: Bool, version_output: String, 
   }
 }
 
-// THE DEVICE MUST EXIST AND THE EXECUTOR MUST REACH IT, AND THERE ARE EXACTLY TWO WAYS TO HAVE
-// OBSERVED THE SECOND. Either this process can already open it -- direct evidence -- or the account
-// database enrols the login in the group udev hands the device to, which is the evidence that the
-// NEXT incarnation can. Requiring the first alone would refuse a host the moment the grant landed
-// and keep refusing it until something unrelated restarted the executor; accepting enrolment while
-// the device is ABSENT would assert a capability against a device that does not exist, so the
-// absent arm still refuses on its own.
+// THE CONVERGE'S QUESTION IS ABOUT THE NEXT INCARNATION, SO IT IS ANSWERED ENTIRELY FROM DURABLE
+// HOST STATE AND NEVER FROM THIS PROCESS'S CREDENTIALS. Three facts, all required: the device
+// exists, the host delegates it to the group the grant names with group-write, and the account
+// database enrols the executor login in that group. Any incarnation started after this line
+// inherits all three; none of them can be read off whether the CURRENT process happens to hold an
+// open path to the device.
+//
+// THIS DELIBERATELY DOES NOT SHORT-CIRCUIT ON KvmDeviceWritable, AND THAT WAS THE DEFECT. An
+// earlier revision admitted a writable device outright, which answers the next-incarnation question
+// from the current incarnation: a process that inherited the group before the grant was revoked can
+// still open the device, so the host would read ready while the login was no longer enrolled at
+// all -- and the next incarnation, the one the whole split exists to speak for, would fail. A
+// writable device is now evidence for `firecracker_host_ready_in_this_process` and for nothing
+// else.
 fn kvm_reachable(standing: FirecrackerHostStanding) -> Bool {
-  match standing.kvm {
+  (match standing.kvm {
     KvmDeviceAbsent => false
     KvmDeviceWritable => true
-    KvmDevicePresentNotWritable =>
-      match standing.kvm_group {
-        KvmGroupEnrolled { login: _, group: _ } => true
-        KvmGroupNotEnrolled { login: _, group: _ } => false
-        KvmGroupEnrolmentUnreadable { login: _, cause: _ } => false
-      }
-  }
+    KvmDevicePresentNotWritable => true
+  })
+    && (match standing.kvm_delegation {
+      KvmDeviceDelegated { group: _ } => true
+      KvmDeviceDelegationContradicted { expected_group: _, observed_group: _, group_writable: _ } => false
+      KvmDeviceDelegationUnreadable { cause: _ } => false
+    })
+    && (match standing.kvm_group {
+      KvmGroupEnrolled { login: _, group: _ } => true
+      KvmGroupNotEnrolled { login: _, group: _ } => false
+      KvmGroupEnrolmentUnreadable { login: _, cause: _ } => false
+    })
 }
 
 fn firecracker_binary_installed(standing: FirecrackerHostStanding) -> Bool {
@@ -259,8 +295,21 @@ fn kvm_group_standing_text(g: KvmGroupEnrolment) -> String {
   }
 }
 
+fn kvm_delegation_text(d: KvmDeviceDelegation) -> String {
+  match d {
+    KvmDeviceDelegated { group: g } =>
+      join(["kvm-delegation=delegated (", firecracker_requires_kvm_device as String, " is owned by group ", g as String, " and is group-writable, so membership of that group is what opens it)"], "")
+    KvmDeviceDelegationContradicted { expected_group: e, observed_group: o, group_writable: w } =>
+      join(["kvm-delegation=contradicted (the grant enrols in group ", e as String, " but ", firecracker_requires_kvm_device as String,
+            " is owned by group ", o as String, " and is ", if w { "group-writable" } else { "NOT group-writable" },
+            "; membership of ", e as String, " would not open this device)"], "")
+    KvmDeviceDelegationUnreadable { cause: c } =>
+      join(["kvm-delegation=unreadable (", c, ")"], "")
+  }
+}
+
 fn firecracker_host_standing_text(s: FirecrackerHostStanding) -> String {
-  join([kvm_standing_text(k: s.kvm), "\n", kvm_group_standing_text(g: s.kvm_group), "\n",
+  join([kvm_standing_text(k: s.kvm), "\n", kvm_delegation_text(d: s.kvm_delegation), "\n", kvm_group_standing_text(g: s.kvm_group), "\n",
         binary_standing_text(b: s.binary), "\n",
         footprint_instrument_text(f: s.footprint_instruments), "\n",
         if firecracker_host_ready(standing: s) { "standing=ready" } else { "standing=not-ready" }], "")
@@ -319,6 +368,33 @@ fn group_names_contain(output: String, group: NonEmptyStr) -> Bool {
   fold(split(trim(s: output), " "), init: false, f: (acc, w) => acc || trim(s: w) == (group as String))
 }
 
+// THE TWO HALVES ARE OBSERVED SEPARATELY AND JOINED HERE, because either can fail on its own and
+// the join is where "what did we see" turns into "does membership of this group open this device".
+// Both probes are typed metadata observations over extdeps.tools.coreutils_stat; neither reads a
+// mode as a string, because extdeps.access.posix owns what the digits mean.
+fn observe_kvm_device_delegation_wet() -> KvmDeviceDelegation {
+  let path = (firecracker_requires_kvm_device as String) as NonEmptyStr
+  match coreutils_stat_path_ownership(path: path) {
+    PathOwnershipUnobservable { path: _, reason: r } =>
+      KvmDeviceDelegationUnreadable { cause: join(["the device's owning group could not be read: ", r], "") }
+    PathOwnershipObserved { path: _, ownership: _, owner_name: _, group_name: g } =>
+      match coreutils_stat_path_mode(path: path) {
+        PathModeUnobservable { path: _, reason: r } =>
+          KvmDeviceDelegationUnreadable { cause: join(["the device's permission bits could not be read: ", r], "") }
+        PathModeObserved { path: _, mode: m } =>
+          if (g as String) == (kvm_device_group as String) && m.group.write {
+            KvmDeviceDelegated { group: kvm_device_group }
+          } else {
+            KvmDeviceDelegationContradicted {
+              expected_group: kvm_device_group,
+              observed_group: g,
+              group_writable: m.group.write,
+            }
+          }
+      }
+  }
+}
+
 fn observe_kvm_group_enrolment_wet(login: NonEmptyStr) -> KvmGroupEnrolment {
   match run_shell_command_capture(command: id_group_names_command(user: login), transport: LocalExec) {
     ProcessOutputPresent { text: t } =>
@@ -374,6 +450,7 @@ fn observe_firecracker_host_standing_wet(root: String, login: NonEmptyStr) -> Fi
   FirecrackerHostStanding {
     kvm: kvm_standing_of(exists: exists, writable: writable),
     kvm_group: observe_kvm_group_enrolment_wet(login: login),
+    kvm_delegation: observe_kvm_device_delegation_wet(),
     binary: binary_standing_of(binary: binary, executable: executable, version_output: version_output, rel: rel),
     footprint_instruments: FootprintInstrumentStanding {
       instruments: [

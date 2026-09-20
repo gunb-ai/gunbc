@@ -15,6 +15,7 @@ import gunbc.runner_microvm_host_ready {
   FirecrackerBinaryStanding, FirecrackerInstalled, FirecrackerVersionMismatch, FirecrackerBinaryAbsent,
   FirecrackerHostStanding,
   KvmGroupEnrolment, KvmGroupEnrolled, KvmGroupNotEnrolled, KvmGroupEnrolmentUnreadable,
+  KvmDeviceDelegation, KvmDeviceDelegated, KvmDeviceDelegationContradicted, KvmDeviceDelegationUnreadable,
   kvm_standing_of, binary_standing_of, firecracker_host_ready, firecracker_host_ready_in_this_process,
   group_names_contain, firecracker_host_standing_text,
   firecracker_fetch_commands, firecracker_install_commands, firecracker_installed_binary, firecracker_install_root,
@@ -55,8 +56,16 @@ data witness_enrolled: KvmGroupEnrolment = KvmGroupEnrolled { login: "ghrunner" 
 
 data witness_not_enrolled: KvmGroupEnrolment = KvmGroupNotEnrolled { login: "ghrunner" as NonEmptyStr, group: "kvm" as NonEmptyStr }
 
+data witness_delegated: KvmDeviceDelegation = KvmDeviceDelegated { group: "kvm" as NonEmptyStr }
+
+// THE DEFAULT FIXTURE DELEGATES, so every claim that is NOT about delegation reads the same as it
+// did before the fact existed; the claims that ARE about it construct their own arm.
 fn witness_standing(kvm: KvmDeviceStanding, group: KvmGroupEnrolment, binary: FirecrackerBinaryStanding) -> FirecrackerHostStanding {
-  FirecrackerHostStanding { kvm: kvm, kvm_group: group, binary: binary, footprint_instruments: witness_instruments }
+  FirecrackerHostStanding { kvm: kvm, kvm_group: group, kvm_delegation: witness_delegated, binary: binary, footprint_instruments: witness_instruments }
+}
+
+fn witness_standing_with_delegation(kvm: KvmDeviceStanding, group: KvmGroupEnrolment, delegation: KvmDeviceDelegation) -> FirecrackerHostStanding {
+  FirecrackerHostStanding { kvm: kvm, kvm_group: group, kvm_delegation: delegation, binary: witness_installed, footprint_instruments: witness_instruments }
 }
 
 // The standing folds two facts; readiness needs both, and each refusal names what it lacks.
@@ -99,6 +108,59 @@ test fn an_unreadable_membership_neither_carries_nor_reads_as_a_missing_grant() 
   !firecracker_host_ready(standing: unreadable)
     && string_contains(s: firecracker_host_standing_text(s: unreadable), pattern: "kvm-group=unreadable")
     && !string_contains(s: firecracker_host_standing_text(s: unreadable), pattern: "kvm-group=not-enrolled")
+}
+
+// A WRITABLE DEVICE MAY NOT ANSWER THE NEXT INCARNATION'S QUESTION, AND THIS IS THE CLAIM THAT SAYS
+// SO. An earlier revision short-circuited converge readiness on KvmDeviceWritable, which answers a
+// question about the NEXT incarnation from the CURRENT one: a process that inherited the group
+// before the grant was revoked still holds an open path to the device, so the host read ready while
+// the login was no longer enrolled at all -- and the next incarnation, the one the split exists to
+// speak for, would fail. Both writable-but-ungranted shapes are covered, because an unreadable
+// probe and a revoked grant reach the same wrong answer by different routes.
+test fn a_writable_device_does_not_carry_a_login_the_database_no_longer_enrols() -> Bool {
+  let writable_not_enrolled = witness_standing(kvm: KvmDeviceWritable, group: witness_not_enrolled, binary: witness_installed)
+  let writable_unreadable = witness_standing(
+    kvm: KvmDeviceWritable,
+    group: KvmGroupEnrolmentUnreadable { login: "ghrunner" as NonEmptyStr, cause: "id -nG exited 1: name service unavailable" },
+    binary: witness_installed,
+  )
+  !firecracker_host_ready(standing: writable_not_enrolled)
+    && !firecracker_host_ready(standing: writable_unreadable)
+    && firecracker_host_ready_in_this_process(standing: writable_not_enrolled)
+    && firecracker_host_ready_in_this_process(standing: writable_unreadable)
+}
+
+// ENROLMENT PLUS PRESENCE HAS A SECOND EXPLANATION, and until the delegation was observed the
+// standing could not tell them apart: either the grant landed and this process predates it, or
+// /dev/kvm is not handed to the group the grant names at all. Ubuntu's udev default is UPSTREAM
+// DESIRED STATE, not a readback of this host, so reading the capability off it would be asserting
+// as deduced what was only inferred (DESIGN section 4d). Both contradiction shapes refuse -- a
+// device owned by another group, and a device owned by kvm with no group-write -- and so does an
+// unreadable probe.
+test fn enrolment_does_not_carry_a_device_this_host_does_not_delegate_to_that_group() -> Bool {
+  let delegated = witness_standing_with_delegation(kvm: KvmDevicePresentNotWritable, group: witness_enrolled, delegation: witness_delegated)
+  let wrong_group = witness_standing_with_delegation(
+    kvm: KvmDevicePresentNotWritable,
+    group: witness_enrolled,
+    delegation: KvmDeviceDelegationContradicted { expected_group: "kvm" as NonEmptyStr, observed_group: "root" as NonEmptyStr, group_writable: true },
+  )
+  let no_group_write = witness_standing_with_delegation(
+    kvm: KvmDevicePresentNotWritable,
+    group: witness_enrolled,
+    delegation: KvmDeviceDelegationContradicted { expected_group: "kvm" as NonEmptyStr, observed_group: "kvm" as NonEmptyStr, group_writable: false },
+  )
+  let unreadable = witness_standing_with_delegation(
+    kvm: KvmDevicePresentNotWritable,
+    group: witness_enrolled,
+    delegation: KvmDeviceDelegationUnreadable { cause: "stat could not read the path" },
+  )
+  firecracker_host_ready(standing: delegated)
+    && !firecracker_host_ready(standing: wrong_group)
+    && !firecracker_host_ready(standing: no_group_write)
+    && !firecracker_host_ready(standing: unreadable)
+    && string_contains(s: firecracker_host_standing_text(s: wrong_group), pattern: "owned by group root")
+    && string_contains(s: firecracker_host_standing_text(s: no_group_write), pattern: "NOT group-writable")
+    && string_contains(s: firecracker_host_standing_text(s: unreadable), pattern: "kvm-delegation=unreadable")
 }
 
 // THE BOOT PROBE ASKS A DIFFERENT QUESTION AND MUST GET A DIFFERENT ANSWER. It opens /dev/kvm in
@@ -201,9 +263,9 @@ test fn host_readiness_is_independent_of_the_footprint_instruments() -> Bool {
     ],
   }
   let installed = FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" }
-  firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, kvm_group: witness_enrolled, binary: installed, footprint_instruments: bare })
-    && firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, kvm_group: witness_enrolled, binary: installed, footprint_instruments: equipped })
-    && !firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceAbsent, kvm_group: witness_enrolled, binary: installed, footprint_instruments: equipped })
+  firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, kvm_group: witness_enrolled, kvm_delegation: witness_delegated, binary: installed, footprint_instruments: bare })
+    && firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, kvm_group: witness_enrolled, kvm_delegation: witness_delegated, binary: installed, footprint_instruments: equipped })
+    && !firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceAbsent, kvm_group: witness_enrolled, kvm_delegation: witness_delegated, binary: installed, footprint_instruments: equipped })
 }
 
 // THE VERSION GATE, WHICH NOTHING EXERCISED UNTIL NOW AND WHICH WAS WRONG THE WHOLE TIME. Before
@@ -256,6 +318,7 @@ test fn the_standing_text_reports_the_instruments() -> Bool {
   let equipped = FirecrackerHostStanding {
     kvm: KvmDeviceWritable,
     kvm_group: witness_enrolled,
+    kvm_delegation: witness_delegated,
     binary: FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" },
     footprint_instruments: FootprintInstrumentStanding {
       instruments: [
