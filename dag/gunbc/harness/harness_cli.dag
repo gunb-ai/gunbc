@@ -643,6 +643,10 @@ fn harness_reviewer_config(
   }
 }
 
+// ATTEMPT IDENTITY IS MINTED BY THE SPAWNER, for the reason harness_worker_cli records: the bind
+// below consumes it as a fleet-ssh path segment and the verdict path is absolute. The reviewer was
+// the one entry 3db98ec3d0 missed; its actor stays seeded on the verdict path (an affinity key,
+// not a path segment) for the spread that seeding bought.
 fn harness_reviewer_cli(
   worktree: String,
   brief: String,
@@ -651,10 +655,11 @@ fn harness_reviewer_cli(
   events_path: String,
   verdict_dir: String,
   verdict_name: String,
+  attempt_identity: String,
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   let system_prompt = harness_reviewer_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "reviewer", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "reviewer", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)

@@ -1171,6 +1171,7 @@ fn gunbc_harness_review_argv(
   events_path: String,
   verdict_dir: String,
   verdict_name: String,
+  attempt_identity: String,
 ) -> List<String> {
   [
     gunbc_program,
@@ -1186,9 +1187,16 @@ fn gunbc_harness_review_argv(
     "--arg", join(["events_path=", events_path], ""),
     "--arg", join(["verdict_dir=", verdict_dir], ""),
     "--arg", join(["verdict_name=", verdict_name], ""),
+    "--arg", join(["attempt_identity=", attempt_identity], ""),
   ]
 }
 
+// THE REVIEWER'S ATTEMPT IDENTITY IS MINTED HERE, as the worker's and auditor's are, with the
+// criterion key appended: fourteen reviewer lanes share one node id and attempt key, and each
+// lane's identity must stay distinct. Every piece is a safe path segment by construction, which the
+// fleet ssh context's safe-segment law (gunbc.fleet_known_hosts_anchor fleet_ssh_attempt_identity)
+// demands of the attempt identity it consumes as a path segment -- the pre-fix reviewer built it
+// from the absolute verdict path and every lane's seat bind refused before any ssh leg.
 fn dispatch_review_unit_argv(
   systemd_run_program: FilePath,
   instance: HostDashboardInstance,
@@ -1220,6 +1228,7 @@ fn dispatch_review_unit_argv(
         events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
         verdict_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
         verdict_name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
+        attempt_identity: join(["reviewer:", node_id as String, "-", attempt_key, "-", criterion_key], ""),
       ),
     ),
   )

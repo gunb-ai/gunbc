@@ -1,7 +1,7 @@
 module test.claim.roadmap_dispatch_actuator
 
 import v2.std.optional { Present }
-import std.types { NonEmptyStr, GitRef, FilePath }
+import std.types { NonEmptyStr, GitRef, FilePath, path_segment_is_safe }
 import std.disposition { Scaffold, Terminal }
 import gunbc.roadmap_model {
   RoadmapNodeId,
@@ -107,6 +107,8 @@ import gunbc.roadmap_dispatch_actuator {
   SessionObserved,
   SpawnSession,
   dispatch_current_attempt_events_projection_argv_for_instance,
+  gunbc_harness_review_argv,
+  dispatch_review_unit_argv,
 }
 import gunbc.dispatch_selection {
   dispatch_selection_standing_ineligible_reason,
@@ -1075,4 +1077,60 @@ test fn witness_inner_argv_carries_pinned_model_for_both_vendors() -> Bool {
   )
   string_contains(s: claude_wire, pattern: expected)
     && string_contains(s: codex_wire, pattern: expected)
+}
+
+
+// THE REVIEWER'S ATTEMPT IDENTITY IS MINTED AT THE SPAWNER FROM SAFE PIECES. The reviewer was the
+// one harness entry the attempt-identity fix missed: harness_reviewer_cli kept building its attempt
+// identity from the absolute verdict path, the fleet ssh context's safe-segment law refused it, and
+// every reviewer lane exited 1 before any ssh leg with no verdict written (measured 2026-09-20 on
+// srv2, all fourteen lanes of one belt review pass). The criterion key is part of the mint because
+// the lanes of one attempt share the node id and attempt key, and each lane's identity must stay
+// distinct.
+
+test fn witness_review_attempt_identity_is_a_safe_path_segment() -> Bool {
+  path_segment_is_safe(raw: join(["reviewer:", "node-1", "-", "att-20260920", "-", "conformance-external-facts"], ""))
+}
+
+test fn witness_review_argv_carries_spawner_minted_attempt_identity() -> Bool {
+  let argv = gunbc_harness_review_argv(
+    gunbc_program: "/opt/gunbc/target/release/gunbc",
+    repo_root: "/opt/gunbc/repo",
+    worktree_path: "/opt/gunbc/dispatch-worktrees/node-1",
+    brief: "brief",
+    timeout_program: "/usr/bin/timeout",
+    request_scratch_path: "/state/node-1/att/review/c.harness-request.json",
+    events_path: "/state/node-1/att/review/c.provider-events.jsonl",
+    verdict_dir: "/state/node-1/att/review",
+    verdict_name: "abc123.c.json",
+    attempt_identity: "reviewer:node-1-att-20260920-c",
+  )
+  string_contains(s: join(argv, separator: "\0"), pattern: "\0--arg\0attempt_identity=reviewer:node-1-att-20260920-c")
+}
+
+// THE SPAWN SITE, not just the argv row: dispatch_review_unit_argv is where the mint lives, and it
+// is the fold the belt's review pass actually spawns through. This witness fails if a future edit
+// re-drops the argument between the unit fold and the argv row, which compilation alone would not
+// catch once the parameter exists and could be ignored.
+
+test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool {
+  let cmd = dispatch_review_unit_argv(
+    systemd_run_program: "/usr/bin/systemd-run" as FilePath,
+    instance: srv1_lab_dashboard_instance(),
+    node_id: roadmap_dispatch_actuator_nid(s: "node-1"),
+    attempt_key: "att-20260920",
+    worktree_path: "/opt/gunbc/dispatch-worktrees/node-1",
+    brief: "brief",
+    head_sha: "abc123",
+    criterion_key: "conformance-external-facts",
+  )
+  string_contains(s: join(cmd.args, separator: "\0"), pattern: "attempt_identity=reviewer:node-1-att-20260920-conformance-external-facts")
+}
+
+// THE ROW THAT WOULD HAVE CAUGHT THE ORIGINAL BUG: an attempt identity built from a path-bearing
+// piece -- the pre-fix reviewer's join(["reviewer:", verdict_path]) -- is refused by the same
+// safe-segment law the fleet ssh context enforces.
+
+test fn witness_verdict_path_bearing_attempt_identity_refuses() -> Bool {
+  !path_segment_is_safe(raw: join(["reviewer:", "/state/node-1/att/review/abc123.c.json"], ""))
 }
