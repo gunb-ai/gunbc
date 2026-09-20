@@ -236,15 +236,16 @@ test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_ex
 // THE THREE REDS. Each would be called STABLE by a body that only compares the two manifests: both
 // empty agree, both partial agree, and the disagreeing case is the ordinary instability. None may
 // emit the token, and each must leave the stage nonzero.
+//
+// ABSENCE IS ASSERTED AS A SUBSTRING BELOW, not as a whole line: substring-absence is the STRONGER
+// claim -- it also rules out the token appearing with anything appended -- and a RED may not be
+// weakened to share a helper with the positive case.
 test fn a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution() -> Bool {
   let cleared = shell.Remove.FileForce(path: "/tmp/gunbc-wl-counter")
   let empty = workload_case(stubs: concat(workload_stub_dd, workload_stub_both_empty))
   let partial = workload_case(stubs: concat(workload_stub_dd, workload_stub_partial))
   let cleared_again = shell.Remove.FileForce(path: "/tmp/gunbc-wl-counter")
   let disagree = workload_case(stubs: concat(workload_stub_dd, workload_stub_disagree))
-  // ABSENCE IS ASSERTED AS A SUBSTRING, not as a whole line: substring-absence is the STRONGER
-  // claim -- it also rules out the token appearing with anything appended -- and a RED may not be
-  // weakened to share a helper with the positive case.
   string_contains(s: empty.stdout, pattern: "workload-digest-stable=yes") == false
     && empty.exit_code != 0
     && string_contains(s: partial.stdout, pattern: "workload-digest-stable=yes") == false
