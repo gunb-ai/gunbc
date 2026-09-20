@@ -122,8 +122,26 @@ fn breakout_leg_programming_intervention(procedure: LegProgrammingProcedure) -> 
 // leg receipt in gunbc.spark.fabric_switch_observed holds, and the re-flash leaves them alone, so
 // they are not restated here.
 //
-// THIS IS NOT AN OBSERVATION. No leg has been read after a re-flash; the observing layer is
-// product.cable_leg_observation and it acquires a row when one is.
+// THIS ROW IS STILL THE VENDOR'S CLAIM, AND THE CLAIM IS NOW CONFIRMED BY AN INDEPENDENT READ. The
+// observing layer is product.cable_leg_observation and the acquired rows live in
+// gunbc.spark.fabric_switch_observed `fabric_leg_eeprom_observations`: on 2026-09-16 the operator
+// programmed all eight legs of both breakouts and every one reads byte 192 = 0x40, with both
+// SFF-8636 checksums recomputing correctly, so the programmer also fixed the CC_EXT byte its own
+// write invalidated. FS said 0x40 and 0x40 is what the copper carries.
+//
+// THE STANDING FIELD BELOW STILL READS TranscribedUncited, AND THAT IS A CARRIER LIMIT RATHER THAN A
+// JUDGEMENT ABOUT THE EVIDENCE. extdeps.external_authority `CitedFigureStanding` offers exactly two
+// arms -- cited to an EXTERNAL authority, or transcribed and uncited -- and neither says "confirmed
+// by this repository's own observation", which is the strongest of the three and the one that now
+// holds. Recording it as CitedToAuthority would name FS as grounding a figure FS only asserted, so
+// the honest arm is the weaker one plus this note. NEXT-RUNG TRIGGER: a third arm on
+// CitedFigureStanding for a figure grounded by an in-corpus observation, carrying the acquiring
+// declaration, at which point this row cites the receipts and the note goes away.
+//
+// WHAT THE CONFIRMATION DOES NOT ESTABLISH is that the re-flash achieved its PURPOSE. The coding now
+// attests 100GBASE-CR2 and the ConnectX-7 admits the mode, and the link still trains at 50G:
+// `fabric_forced_100g_attempts` records four switch/NIC combinations, none of which came up. So the
+// burden this module prices was genuinely owed and genuinely paid, and paying it was not sufficient.
 type VendorAssertedLegCoding {
   coding_profile: NonEmptyStr
   extended_compliance_code: Nat

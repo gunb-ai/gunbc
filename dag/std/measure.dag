@@ -408,6 +408,28 @@ type PowerCordCount = Measure<Count, One, Nat>
 // 2026-09-11.
 type MemoryControllerCount = Measure<Count, One, Nat>
 
+// A count of SDR text lines a decoder could not structure. Same Count axis as its siblings,
+// different thing counted: an undecoded line is parse residue, not a sensor and not a reading, and
+// the distinction is the whole point of counting them -- a truncated read and a machine with no
+// fans are different facts and the count is what separates them.
+type SdrUndecodedLineCount = Measure<Count, One, Nat>
+
+// A count of ROUNDS in an observation series -- how many times a producer sampled, not how long it
+// sampled for (that is Second) and not which sample this is (an index is an ordinal position, not a
+// cardinality, and deliberately does not live on this axis).
+type ObservationRoundCount = Measure<Count, One, Nat>
+
+// A count of FANS moving air at one subject. Same Count axis, different thing counted: it exists
+// because acoustic derivation is wrong by fan count -- six fans are louder than one and combining
+// their levels needs a logarithm this substrate has no builtin for, so the count is the input to a
+// refusal rather than to a sum.
+type FanCount = Measure<Count, One, Nat>
+
+// A count of operating points for which a vendor published a sound level. Same Count axis,
+// different thing counted: it is the size of the EVIDENCE, not of the fan or of its speeds, and it
+// is what decides whether an acoustic law can be applied, assumed or only refused.
+type PublishedLevelCount = Measure<Count, One, Nat>
+
 type Millicore = Measure<Count, Milli, Nat>
 
 type Watt = Measure<Power, One, Nat>
@@ -1259,6 +1281,38 @@ fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
   measure_count(c)
 }
 
+fn sdr_undecoded_line_count(count: Nat) -> SdrUndecodedLineCount {
+  Measure { count: count }
+}
+
+fn sdr_undecoded_line_count_value(c: SdrUndecodedLineCount) -> Nat {
+  measure_count(c)
+}
+
+fn observation_round_count(count: Nat) -> ObservationRoundCount {
+  Measure { count: count }
+}
+
+fn observation_round_count_value(c: ObservationRoundCount) -> Nat {
+  measure_count(c)
+}
+
+fn fan_count(count: Nat) -> FanCount {
+  Measure { count: count }
+}
+
+fn fan_count_value(c: FanCount) -> Nat {
+  measure_count(c)
+}
+
+fn published_level_count(count: Nat) -> PublishedLevelCount {
+  Measure { count: count }
+}
+
+fn published_level_count_value(c: PublishedLevelCount) -> Nat {
+  measure_count(c)
+}
+
 fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
   Measure { count: count }
 }
@@ -1300,6 +1354,33 @@ fn tokens_per_second(count: Nat) -> TokensPerSecond {
 }
 
 fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+  measure_count(r)
+}
+
+// The same token rate at Milli: a count of N is N/1000 tokens per second, so a client figure quoted
+// to three decimals ("17.39 tok/s") is carried exactly as 17390 without a bare Nat whose scale lives
+// only in its field name. Same Frequency axis as TokensPerSecond; the scale marker, not a suffix,
+// says milli. First consumer: gunbc.spark.serving_load_probe client throughput.
+type MilliTokensPerSecond = Measure<Frequency, Milli, Nat>
+
+fn milli_tokens_per_second(count: Nat) -> MilliTokensPerSecond {
+  Measure { count: count }
+}
+
+fn milli_tokens_per_second_count(r: MilliTokensPerSecond) -> Nat {
+  measure_count(r)
+}
+
+// An offered REQUEST arrival rate at Milli (vllm bench serve `--request-rate`). Frequency axis like
+// its token sibling, a different thing counted: a request is not a token. First consumer:
+// extdeps.vllm.bench_serve PoissonProcess.
+type MilliRequestsPerSecond = Measure<Frequency, Milli, Nat>
+
+fn milli_requests_per_second(count: Nat) -> MilliRequestsPerSecond {
+  Measure { count: count }
+}
+
+fn milli_requests_per_second_count(r: MilliRequestsPerSecond) -> Nat {
   measure_count(r)
 }
 
@@ -1487,6 +1568,10 @@ fn minute(count: Nat) -> Minute {
 
 fn minute_count(m: Minute) -> Nat {
   measure_count(m)
+}
+
+fn minute_to_second(m: Minute) -> Second {
+  second(count: minute_count(m) * seconds_per_minute())
 }
 
 fn minute_to_millisecond(m: Minute) -> Millisecond {

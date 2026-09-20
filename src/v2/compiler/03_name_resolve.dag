@@ -4,6 +4,7 @@ import v2.std.language_model { LanguageModel }
 
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
+import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.resolve {
   DeclaredBinding,
@@ -20,18 +21,18 @@ import v2.std.resolution_policy {
   default_name_resolution_policy
 }
 import v2.extdeps.languages.dag {
-  dag_language_model_canonical_symbols,
   dag_surface_module_header_metadata_edge,
   namespace_graft_already_grafted,
   namespace_graft_spine_segment_edge_optional,
   qualified_name_from_module_node
 }
 import v2.compiler.namespace_graft {
+  namespace_graft_parse_projection_edge,
   namespace_graft_strip_provenance_marker
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list }
-import v2.std.collection { Absent, Map, Present, List, empty_map, map_get, map_lookup, map_insert, optional_absent, optional_present }
+import v2.std.collection { Absent, Map, Present, List, PointwisePower, empty_map, map_get, map_lookup, map_insert, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -102,9 +103,12 @@ type Admission {
 // Shared by every subject admitted against the same language and root collection.
 // The Outcome stays with the caller so validation diagnostics retain their original
 // per-subject refusal boundary when the context is constructed before admission.
+// `test_code` is every root's test-marker channel keyed by the paths resolution binds to, built in
+// the same pass that names the roots, so no root can be resolvable while its markers are unread.
 type ValidatedModuleRoots {
   roots: FreeMonoid<NormalizedTree>
   by_name: Map<QualifiedName, NormalizedTree>
+  test_code: TestCodeIndex
 }
 
 type ResolutionContext {
@@ -147,7 +151,7 @@ type AdmissionState
   | AdmissionRejected { diagnostics: NonEmptyDiagnostics }
 
 type ModuleRootValidateState
-  = ModuleRootsValid { seen: Map<QualifiedName, NormalizedTree>, diagnostics: Diagnostics }
+  = ModuleRootsValid { seen: Map<QualifiedName, NormalizedTree>, test_code: TestCodeIndex, diagnostics: Diagnostics }
   | ModuleRootsDuplicate { diagnostics: Diagnostics }
   | ModuleRootsProjectionRejected { diagnostics: NonEmptyDiagnostics }
 
@@ -225,14 +229,14 @@ fn admit_export_symbol(
 fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<ValidatedModuleRoots> {
   match fold_list(
     xs: roots,
-    empty: ModuleRootsValid { seen: empty_map(), diagnostics: v2.std.diagnostic.None },
+    empty: ModuleRootsValid { seen: empty_map(), test_code: test_code_index_empty(), diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, root) {
       match acc {
         ModuleRootsDuplicate { diagnostics: d } =>
           ModuleRootsDuplicate { diagnostics: d }
         ModuleRootsProjectionRejected { diagnostics: d } =>
           ModuleRootsProjectionRejected { diagnostics: d }
-        ModuleRootsValid { seen: prior, diagnostics: acc_diag } =>
+        ModuleRootsValid { seen: prior, test_code: prior_test_code, diagnostics: acc_diag } =>
           if well_formed(n: root.root) {
             match qualified_name_from_module_node(root: root.root) {
               Rejected { diagnostics: d } =>
@@ -245,6 +249,11 @@ fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<Validated
                   Absent =>
                     ModuleRootsValid {
                       seen: map_insert(m: prior, key: name, value: root),
+                      test_code: test_code_index_add_module(
+                        index: prior_test_code,
+                        module_qn: name,
+                        channel: root.test_markers
+                      ),
                       diagnostics: merged_diag
                     }
                   Present { value: _ } =>
@@ -262,8 +271,8 @@ fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<Validated
       }
     }
   ) {
-    ModuleRootsValid { seen: by_name, diagnostics: d } =>
-      Accepted { value: ValidatedModuleRoots { roots: roots, by_name: by_name }, diagnostics: d }
+    ModuleRootsValid { seen: by_name, test_code: test_code, diagnostics: d } =>
+      Accepted { value: ValidatedModuleRoots { roots: roots, by_name: by_name, test_code: test_code }, diagnostics: d }
     ModuleRootsDuplicate { diagnostics: d } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -350,10 +359,15 @@ fn module_root_find(
   }
 }
 
+// Parse-projection edges (identity / captured projections, sequence spines) are
+// machinery, not exports -- the same rule symbol_index_fill_containment_edge
+// applies. The body's identity projection reaches this fold as a direct child.
 fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
   match try_edge_declared_binding(e: e) {
     Present { value: b } =>
       if dag_surface_module_header_metadata_edge(name: b.name) {
+        optional_absent()
+      } else if namespace_graft_parse_projection_edge(name: b.name) {
         optional_absent()
       } else {
         optional_present(value: b)
@@ -556,12 +570,15 @@ fn admit_imports(
   )
 }
 
-fn admission_namespace_base(lm: LanguageModel) -> Namespace {
+fn admission_namespace_base(canonical_symbols: PointwisePower<Symbol>) -> Namespace {
   Namespace {
     bindings: empty_map(),
-    canonical_symbols: dag_language_model_canonical_symbols(lm: lm),
+    canonical_symbols: canonical_symbols,
     symbol_index: empty_symbol_index(),
-    module_qn: Empty
+    module_qn: Empty,
+    test_code: test_code_index_empty(),
+    declared_in: Empty,
+    imported_origins: empty_map()
   }
 }
 
@@ -579,11 +596,11 @@ fn subject_module_root_for_name(
 
 fn namespace_admission_initial_state(
   policy: NameResolutionPolicy,
-  lm: LanguageModel,
+  canonical_symbols: PointwisePower<Symbol>,
   subject_module_root: NormalizedTree,
   subject_qn: QualifiedName
 ) -> AdmissionState {
-  let base = admission_namespace_base(lm: lm)
+  let base = admission_namespace_base(canonical_symbols: canonical_symbols)
   match policy {
     NamespaceOnlyY =>
       admission_initial(base: base)
@@ -601,7 +618,9 @@ fn admitted_subject_from_bindings(
   base: Namespace,
   subject_module_root: NormalizedTree,
   symbol_index: SymbolIndex,
-  module_qn: QualifiedName
+  module_qn: QualifiedName,
+  origins: Map<Symbol, QualifiedName>,
+  test_code: TestCodeIndex
 ) -> AdmittedSubject {
   AdmittedSubject {
     namespace: Namespace {
@@ -611,7 +630,10 @@ fn admitted_subject_from_bindings(
       ),
       canonical_symbols: base.canonical_symbols,
       symbol_index: symbol_index,
-      module_qn: module_qn
+      module_qn: module_qn,
+      test_code: test_code,
+      declared_in: module_qn,
+      imported_origins: origins
     },
     subject_root: subject_module_root
   }
@@ -660,13 +682,12 @@ fn namespace_for_subject_root(
   active_roots: FreeMonoid<SourceRootRef>,
   policy: NameResolutionPolicy
 ) -> Outcome<AdmittedSubject> {
-  let lm = shared.lm
   let validated_roots = shared.roots
   if well_formed(n: subject_module_root.root) {
-    let base = admission_namespace_base(lm: lm)
+    let base = admission_namespace_base(canonical_symbols: shared.lm.canonical_symbols)
     let initial = namespace_admission_initial_state(
       policy: policy,
-      lm: lm,
+      canonical_symbols: shared.lm.canonical_symbols,
       subject_module_root: subject_module_root,
       subject_qn: admission.subject.name
     )
@@ -677,14 +698,16 @@ fn namespace_for_subject_root(
             Rejected {
               diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
             }
-          AdmissionAccepted { bindings: b, origins: _ } =>
+          AdmissionAccepted { bindings: b, origins: o } =>
             Accepted {
               value: admitted_subject_from_bindings(
                 bindings: b,
                 base: base,
                 subject_module_root: subject_module_root,
                 symbol_index: shared.symbol_index,
-                module_qn: admission.subject.name
+                module_qn: admission.subject.name,
+                origins: o,
+                test_code: shared.roots.test_code
               ),
               diagnostics: validate_diag
             }
@@ -698,14 +721,16 @@ fn namespace_for_subject_root(
           index: index,
           active_roots: active_roots
         ) {
-          AdmissionAccepted { bindings: b, origins: _ } =>
+          AdmissionAccepted { bindings: b, origins: o } =>
             Accepted {
               value: admitted_subject_from_bindings(
                 bindings: b,
                 base: base,
                 subject_module_root: subject_module_root,
                 symbol_index: shared.symbol_index,
-                module_qn: admission.subject.name
+                module_qn: admission.subject.name,
+                origins: o,
+                test_code: shared.roots.test_code
               ),
               diagnostics: validate_diag
             }

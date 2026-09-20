@@ -62,6 +62,31 @@ data gunbai_ci_app_pem_secret: SecretRef = SecretRef {
 
 data gunbai_ci_declared_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 104134109 }
 
+// BOTH APPS CARRY THEIR INSTALLATION ID HERE, AND THE ASYMMETRY THAT USED TO EXIST IS THE REASON.
+// gunbai-ci's id was recorded and gunbai-bot's was not, so wiring anything to gunbai-bot sent a
+// human to github.com/organizations/gunb-ai/settings/installations to read a number off a URL --
+// twice, because the first reader had no reason to think it was worth writing down. An installation
+// id is a forge fact like the app id beside it: not derivable, not guessable, and cheap to hold.
+//
+// THE STRUCTURE ALREADY REFUSES TO MINT WITHOUT ONE -- gunbc.ci_spec AppInstallationTokenMint takes
+// installation_id as a required field, so no token spec can be built that omits it. What was missing
+// was never the wall; it was the RECORD. This row is that record.
+data gunbai_bot_declared_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 136673607 }
+
+// THE PROGRAMMING-AGENT APP'S KEY, WHICH ALREADY EXISTS AND ALREADY SAYS WHAT IT IS FOR. Secret
+// Manager carries it labelled purpose=ci-heal-push app=gunbai-bot, created 2026-09-09 by the
+// root-cause effort that was meant to build the heal publisher and stopped before wiring it
+// (gunbc#10958). Declaring it here rather than in the publisher's own module is the same placement
+// rule gunbai_ci_app_pem_secret follows: the key belongs to the App, and the App's home is this
+// module. A publisher that declared its own copy would be a second home for one forge fact.
+data gunbai_bot_app_pem_secret: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "agent-github-app-private-key",
+  version: "latest",
+  hash_state: HashPending,
+}
+
+
 type ManagedGitHubAppKeyRole
   = ActiveSigningKey
   | RetiringSigningKey

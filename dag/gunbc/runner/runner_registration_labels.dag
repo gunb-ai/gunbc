@@ -1,0 +1,50 @@
+module gunbc.runner_registration_labels
+
+import std.types { String, NonEmptyStr, List }
+import product.placement_supply { HostIdentity }
+import extdeps.github.actions { SelfHosted }
+import gunbc.ci_fleet { fleet_compute_offer_for }
+import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, runner_host_label, runner_label_set_union }
+
+// ONE COMPOSITION, EVERY PRODUCER. A registration's labels are made of three facts, each read from
+// the one place that owns it:
+//   platform  self-hosted / os / arch   gunbc.runner_spec_from_offer, from the host's ComputeOffer
+//   class     gunbc-heavy                gunbc.runner_slot_allocation gunbc_runner_slot_desired
+//   host      the host it executes on    gunbc.runner_slot_allocation runner_host_label
+// Unit-file registration, JIT mint, the replace postcondition and the org-roster readback all read
+// their labels here. The host-pinned selector (gunbc.ci_deploy_target_host host_pinned_runner_spec)
+// reads its platform labels from the same runner_spec_from_offer and its host label from the same
+// runner_host_label, so any label it names is one a registration carries.
+//
+// A HOST WITH NO FLEET COMPUTE OFFER REFUSES. Its OS and architecture are unknown, and filling them
+// in with the labels the enrolled hosts carry would register a runner under an architecture nobody
+// observed on that host.
+type RunnerRegistrationLabelsResolution
+  = RegistrationLabelsResolved { labels: List<String> }
+  | RegistrationLabelsRefused { host: HostIdentity, cause: NonEmptyStr }
+
+fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsResolution {
+  match fleet_compute_offer_for(host: host) {
+    Absent =>
+      RegistrationLabelsRefused {
+        host: host,
+        cause: "host has no fleet compute offer, so its platform labels (os, architecture) are unknown and no registration label set is derived" as NonEmptyStr,
+      }
+    Present { value: offer } =>
+      match runner_spec_from_offer(offer: offer) {
+        SelfHosted { labels: platform } =>
+          RegistrationLabelsResolved {
+            labels: runner_label_set_union(
+              a: runner_label_set_union(a: platform, b: gunbc_runner_slot_desired().labels.github_labels),
+              b: [runner_host_label(host: host)],
+            ),
+          }
+        _ =>
+          RegistrationLabelsRefused {
+            host: host,
+            cause: "the host's compute offer did not project to a self-hosted runner spec, so it has no self-hosted registration label set" as NonEmptyStr,
+          }
+      }
+  }
+}

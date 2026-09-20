@@ -197,6 +197,9 @@ type HostTemperatureExpectation
 type BmcEventKind
   = CorrectedMemoryErrorEvent
   | UncorrectedMemoryErrorEvent
+  | MemoryErrorDetailEvent
+  | DimmThermalEvent { subject: NonEmptyStr, asserted: Bool }
+  | SensorThresholdEvent { sensor: NonEmptyStr, critical: Bool, asserted: Bool }
   | UnclassifiedEvent
 
 type BmcEventRecord {
@@ -283,7 +286,9 @@ type HostHealthDeviation
   | TemperatureLimitExceeded { sensor: NonEmptyStr, maximum: Celsius, critical: Celsius }
   | BmcSensorThresholdCrossed { sensor: NonEmptyStr, standing: BmcThresholdStanding }
   | TemperatureObservationForUndeclaredSensor { sensor: NonEmptyStr }
-  | MemoryErrorEventLogged { corrected: Bool, message: NonEmptyStr }
+  | MemoryErrorEventsLogged { corrected: Bool, events: Int }
+  | DimmThermalAsserted { subject: NonEmptyStr, events: Int }
+  | SensorThresholdAsserted { sensor: NonEmptyStr, critical: Bool, events: Int }
 
 // A SIGNAL THE BMC NEVER EXPOSES AND ONE IT FAILED TO ANSWER ARE DIFFERENT GAPS with different owners:
 // the first is a telemetry requirement on the BMC surface, the second an access or reachability fault.
@@ -561,27 +566,45 @@ fn assess_temperatures(
 
 // History is residue: with no admitted event baseline (HEALTH-1 owns that), entries that were
 // already in the log when the window opened are neither news nor cleared, so a nonzero history is
-// an unknown. Appended memory errors are deviations; anything else appended is unclassified.
+// an unknown. Among appended entries, an ASSERT is a deviation and a DEASSERT is the recovery of
+// one, so only asserts diverge; a memory-error detail record accompanies an error already counted
+// and adds nothing. Deviations are aggregated per subject with a count, because a flapping sensor
+// that asserts hundreds of times in a window is one condition, not hundreds.
+fn distinct_names(names: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  reverse(fold(names, init: [], f: (acc, n) => if any(acc, x => x == n) { acc } else { concat([n], acc) }))
+}
+
 fn assess_bmc_events(window: BmcEventWindow) -> SignalVerdict {
   match window {
     BmcEventLogContinuityUnestablished { cause } =>
       signal_unknown(unknown: EventLogContinuityUnestablished { cause: cause })
-    BmcEventsObserved { history_count, appended } => SignalVerdict {
-      deviations: flat_map(appended, e => match e.kind {
-        CorrectedMemoryErrorEvent => [MemoryErrorEventLogged { corrected: true, message: e.message }]
-        UncorrectedMemoryErrorEvent => [MemoryErrorEventLogged { corrected: false, message: e.message }]
-        UnclassifiedEvent => []
-      }),
-      unknowns: flat_map([
-        if history_count > 0 { [HistoricalEventResidueUndispositioned { entries: history_count }] } else { [] },
-        flat_map(appended, e => match e.kind {
-          UnclassifiedEvent => [BmcEventUnclassified { entry: e.message }]
-          CorrectedMemoryErrorEvent => []
-          UncorrectedMemoryErrorEvent => []
-        }),
-      ], group => group),
-      refusal: none,
-      judged: 1,
+    BmcEventsObserved { history_count, appended } => {
+      let corrected = count(filter(appended, e => match e.kind { CorrectedMemoryErrorEvent => true _ => false }))
+      let uncorrected = count(filter(appended, e => match e.kind { UncorrectedMemoryErrorEvent => true _ => false }))
+      let hot = flat_map(appended, e => match e.kind { DimmThermalEvent { subject, asserted } => if asserted { [subject] } else { [] } _ => [] })
+      let crossed = flat_map(appended, e => match e.kind { SensorThresholdEvent { sensor, critical, asserted } => if asserted { [sensor] } else { [] } _ => [] })
+      let crossed_critical = flat_map(appended, e => match e.kind { SensorThresholdEvent { sensor, critical, asserted } => if asserted && critical { [sensor] } else { [] } _ => [] })
+      SignalVerdict {
+        deviations: flat_map([
+          if corrected > 0 { [MemoryErrorEventsLogged { corrected: true, events: corrected }] } else { [] },
+          if uncorrected > 0 { [MemoryErrorEventsLogged { corrected: false, events: uncorrected }] } else { [] },
+          map(distinct_names(names: hot), subject => DimmThermalAsserted { subject: subject, events: count(filter(hot, x => x == subject)) }),
+          map(distinct_names(names: crossed), sensor => SensorThresholdAsserted {
+            sensor: sensor,
+            critical: any(crossed_critical, x => x == sensor),
+            events: count(filter(crossed, x => x == sensor)),
+          }),
+        ], group => group),
+        unknowns: flat_map([
+          if history_count > 0 { [HistoricalEventResidueUndispositioned { entries: history_count }] } else { [] },
+          flat_map(appended, e => match e.kind {
+            UnclassifiedEvent => [BmcEventUnclassified { entry: e.message }]
+            _ => []
+          }),
+        ], group => group),
+        refusal: none,
+        judged: 1,
+      }
     }
   }
 }

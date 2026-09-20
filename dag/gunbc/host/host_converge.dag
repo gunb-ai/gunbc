@@ -16,7 +16,7 @@ import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
   HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
   RunnerHostDeployment,
-  RunnerCpuBoundary, CapacityQuota,
+  RunnerCpuBoundary, CapacityQuota, NoCpuCeiling,
   runner_deployment_plan,
   workload_class_cpu_weight,
   WorkloadClass,
@@ -33,7 +33,7 @@ import gunbc.session_reservation_policy {
 import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
-import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
+import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_pressure_limit, gunbc_oomd_sessions_slice }
 import extdeps.systemd {
   systemd_memory_max_property,
   systemd_memory_swap_max_property,
@@ -42,7 +42,7 @@ import extdeps.systemd {
   systemd_cpu_quota_property,
   systemd_tasks_max_property,
 }
-import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
+import extdeps.systemd.unit_file { systemd_directive_value_wire, SystemdDirectiveValue, DirectiveCpuTime, DirectiveReset }
 import extdeps.systemd.oomd {
   oomd_managed_oom_memory_pressure_property,
   oomd_managed_oom_memory_pressure_limit_property,
@@ -554,25 +554,48 @@ fn codex_runtime_bundle_knobs(host: HostIdentity) -> List<ConvergeKnob> {
 // does not pre-empt that rename; it is the third value to arrive at a field still named
 // bytes_value, which strengthens the case that lane already carries rather than adding a new one.
 //
-// EVERY REPRESENTABLE BOUNDARY EMITS A KNOB. RunnerCpuBoundary has exactly one constructor, so this
-// function is total without an arm that converges successfully while realizing nothing -- the
-// fail-open review 57675 found, now closed by deletion at the type rather than by a refusal here.
+// EVERY REPRESENTABLE BOUNDARY EMITS A KNOB, INCLUDING THE ONE THAT MEANS NO CEILING. An arm that
+// converges successfully while realizing nothing is the fail-open review 57675 found; NoCpuCeiling
+// is not that arm, because "no ceiling" is a state a unit can fail to be in (one that was once
+// given a quota keeps it), so it is represented as the affirmative empty assignment `CPUQuota=`
+// that systemd reads as unset, through the same drop-in the ceiling would use.
+//
+// A KNOB IS THE DESIRED REPRESENTATION, NOT ITS APPLICATION OR READBACK (review F-R2, 2026-09-19).
+// Nothing in production carries this CPU drop-in through to a host today, for either arm:
+// gunbc.host_axis_caps caps_managed_dropin_paths enrols the memory, swap, high-water and tasks
+// drop-ins and not gunbc_runner_per_slot_cpu_dropin_path; gunbc.host_runner_memory_provision
+// selects its three memory knobs and has no live apply; and gunbc.runner_unit_live_read
+// converge_target_live_verdict answers a verdict only for the memory properties, so a CPUQuota
+// target has no effective-value reader. This knob therefore does NOT clear a previously installed
+// per-slot quota by production convergence; it declares what a converged unit must carry.
+// EXPLICITLY BLOCKED, with its trigger: enrol the CPU drop-in path in the managed set the deploy
+// apply authority actuates (set-property on the running unit, no restart), and bind its readback as
+// a verdict over CPUQuotaPerSecUSec through parse_systemd_cpu_quota_per_sec_show -- the write is
+// `CPUQuota=` and the satisfying read is `infinity`, two spellings that must stay distinct, and an
+// unreadable property must not satisfy it. The reported srv4 runner-unit census found unlimited
+// quotas; other runner units require their own readback, and this row does not establish
+// fleet-wide quota conformity -- a unit found carrying a finite quota sits behind this block.
 fn runner_cpu_boundary_knobs(h: RunnerHostDeployment, glob: String) -> List<ConvergeKnob> {
-  match h.per_runner_cpu_boundary {
-    CapacityQuota { threads: t } =>
-      [
-        legacy_converge_knob(
-          slice: RunnerSlice,
-          name: "per_slot_cpu_quota",
-          desired: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }),
-          target: PerSlotMemoryCap {
-            dropin_path: gunbc_runner_per_slot_cpu_dropin_path,
-            instance_glob: glob,
-            property: systemd_cpu_quota_property,
-            bytes_value: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }),
-          }
-        ),
-      ]
+  let value = runner_cpu_boundary_directive_value(b: h.per_runner_cpu_boundary)
+  [
+    legacy_converge_knob(
+      slice: RunnerSlice,
+      name: "per_slot_cpu_quota",
+      desired: systemd_directive_value_wire(value: value),
+      target: PerSlotMemoryCap {
+        dropin_path: gunbc_runner_per_slot_cpu_dropin_path,
+        instance_glob: glob,
+        property: systemd_cpu_quota_property,
+        bytes_value: systemd_directive_value_wire(value: value),
+      }
+    ),
+  ]
+}
+
+fn runner_cpu_boundary_directive_value(b: RunnerCpuBoundary) -> SystemdDirectiveValue {
+  match b {
+    CapacityQuota { threads: t } => DirectiveCpuTime { threads: t }
+    NoCpuCeiling => DirectiveReset
   }
 }
 
@@ -658,7 +681,7 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
 
 fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<ConvergeKnob> {
   let kill_value = managed_oom_action_value(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure)
-  let pct = to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit))
+  let pct = to_string(percent_count(p: gunbc_oomd_sessions_pressure_limit))
   [
     slice_numeric_knob(
       slice: SessionsSlice,
@@ -695,7 +718,7 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
         unit: gunbc_oomd_sessions_slice,
         property: oomd_managed_oom_memory_pressure_limit_property,
         apply_value: concat(pct, "%"),
-        expected_effective: to_string(managed_oom_pressure_limit_show_value(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)),
+        expected_effective: to_string(managed_oom_pressure_limit_show_value(p: gunbc_oomd_sessions_pressure_limit)),
       }
     ),
     slice_numeric_knob(

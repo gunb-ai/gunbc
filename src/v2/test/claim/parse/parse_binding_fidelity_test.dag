@@ -1,7 +1,8 @@
 module v2.test.parse.parse_binding_fidelity
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots, admit_normalized_tree }
+import v2.std.declaration_marker { test_marker_channel_empty }
+import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots, admit_normalized_tree }
 import v2.compiler.name_resolve {
   Admission,
   Import,
@@ -135,7 +136,7 @@ fn pbf_subject_with_import_use() -> Node {
 }
 
 fn pbf_cross_file_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: pbf_graft_module_root(root: pbf_subject_with_import_use()),
     tail: Cons {
@@ -200,7 +201,7 @@ fn pbf_unbound_atom_tree() -> Node {
 }
 
 fn pbf_resolve_unbound_symbol_rejects() -> Bool {
-  match admit_normalized_tree(root: pbf_unbound_atom_tree(), diagnostics: None) {
+  match admit_normalized_tree(test_markers: test_marker_channel_empty(), root: pbf_unbound_atom_tree(), diagnostics: None) {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted_tree, diagnostics: _ } =>
   match resolve(
@@ -239,7 +240,7 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
 }
 
 fn pbf_ambiguous_import_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: pbf_graft_module_root(root: pbf_subject_with_ambiguous_import_use()),
     tail: Cons {

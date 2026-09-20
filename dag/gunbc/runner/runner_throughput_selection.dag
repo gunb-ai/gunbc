@@ -1,0 +1,119 @@
+module gunbc.runner_throughput_selection
+
+import std.types { NonEmptyStr }
+import product.placement_supply { HostIdentity }
+import product.fabric.work { ExecutionRequirements }
+import product.fabric.supply { SupplierOffer }
+import gunbc.runner_slot_allocation {
+  RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded,
+  gunbc_floor_minimum_viable_armed_budget, gunbc_runner_cores_per_slot,
+}
+import gunbc.fleet_host_budget {
+  FleetHostPlan, FleetHostPlanDerived, FleetHostPlanUnsound,
+  HostAllocationVerdict, HostAllocationConserves, HostAllocationOversubscribed, HostAllocationUnchargeable,
+}
+import gunbc.fabric_executor_class { ExecutorSanction }
+import v2.workflow.floor_eval_step_calibration { EvalStepCalibration }
+import gunbc.runner_throughput_qualification {
+  SelectedRunnerQualification, SelectedSlot, SelectedHostAllocation, HostAllocationAdmitted, HostAllocationRefused,
+  SlotQuotaThreads, FloorWorkloadPin, WorkspaceBacking, SamplingPolicy, PhaseCeilings,
+}
+
+// THE SELECTION IS THE FLEET'S ACT, AND THIS IS WHERE THE FLEET'S AUTHORITIES ARE CONSUMED.
+//
+// gunbc.runner_throughput_qualification assesses a selection it never mints. This module makes
+// the selection from the authorities that own each part -- the fleet slot shape
+// (gunbc.runner_slot_allocation), the host plan and its conservation verdict
+// (gunbc.fleet_host_budget), the fleet-side sanction (gunbc.fabric_executor_class) -- and projects
+// them into the carriers the assessment reads. It is a separate module for a measured reason
+// recorded on the leaf: an import edge from the fabric's closure to gunbc.build_cache_instance
+// breaks bare-name resolution in gunbc.harness.harness_backend on the current seed, so the fleet
+// authorities (all of which reach build_cache_instance) are consumed here, one module above the
+// leaf product.fabric.node_qualification imports. The defect is dashboard work item
+// adhoc-3bd6c9ef-59c (eager-owl-205); this module's separate existence is the declared departure
+// that item retires.
+//
+// THE SANCTION TRAVELS BESIDE THE SELECTION, NOT INSIDE THE ASSESSMENT. The assessment reads no
+// class-specific fact, so the sanction is not an input to it; it is the input the fabric's
+// admission (gunbc.fabric_executor_class admit_executor_capacity) joins on. Carrying it here keeps
+// the operator hold's shape -- selected sanction, offer and requirements exist before the
+// assessment -- without letting the assessment mint or read it.
+type RunnerQualificationInputs<P> {
+  executor_sanction: ExecutorSanction
+  selection: SelectedRunnerQualification<P>
+}
+
+// THE CPU QUOTA PROJECTION: a declared ceiling becomes its thread count; the fleet's affirmative
+// no-ceiling (SlotCpuQuotaUnbounded) becomes absent. Both sides of the subject join carry the same
+// projection, so an observed unit with an unbounded quota joins a selection that declared one and
+// refuses a selection that declared a ceiling.
+fn slot_quota_threads(quota: RunnerSlotCpuQuota) -> SlotQuotaThreads {
+  match quota {
+    SlotCpuQuotaUnbounded => none
+    CpuQuotaResolved { threads: t } => Present { value: t }
+  }
+}
+
+fn selected_slot(desired: RunnerSlotDesired, unit: NonEmptyStr) -> SelectedSlot {
+  SelectedSlot {
+    unit: unit,
+    memory_max: desired.memory_max,
+    memory_high: desired.memory_high,
+    tasks_max: desired.tasks_max,
+    cpu_quota_threads: slot_quota_threads(quota: desired.cpu_quota),
+    floor_minimum_armed_budget: gunbc_floor_minimum_viable_armed_budget,
+  }
+}
+
+// THE ALLOCATION IS ADMITTED ONLY WHEN THE PLAN DERIVED AND THE ALLOCATION CONSERVES; every other
+// combination carries the fleet's own reason forward, so a width refusal downstream names what the
+// fleet refused rather than a fact this module invented.
+fn selected_host_allocation(plan: FleetHostPlan, allocation: HostAllocationVerdict) -> SelectedHostAllocation {
+  match allocation {
+    HostAllocationOversubscribed =>
+      HostAllocationRefused { cause: "the selected host allocation is oversubscribed" as NonEmptyStr }
+    HostAllocationUnchargeable { cause: c } =>
+      HostAllocationRefused { cause: concat("the selected host allocation is unchargeable: ", c) as NonEmptyStr }
+    HostAllocationConserves =>
+      match plan {
+        FleetHostPlanUnsound { reason: r } => HostAllocationRefused { cause: r as NonEmptyStr }
+        FleetHostPlanDerived {
+          name: _, tree: _, runner_slice_cap: slice, effective_build_tokens: _,
+          effective_runner_cpu_cap: cap, build_step: _,
+        } => HostAllocationAdmitted { runner_slice_cap: slice, effective_runner_cpu_cap: cap }
+      }
+  }
+}
+
+fn select_runner_qualification<P>(
+  offer: SupplierOffer<P>,
+  host: HostIdentity,
+  executor_sanction: ExecutorSanction,
+  requirements: ExecutionRequirements,
+  workload: FloorWorkloadPin,
+  plan: FleetHostPlan,
+  allocation: HostAllocationVerdict,
+  slot: RunnerSlotDesired,
+  unit: NonEmptyStr,
+  workspace: WorkspaceBacking,
+  calibration: EvalStepCalibration,
+  sampling: SamplingPolicy,
+  phase_ceilings: PhaseCeilings,
+) -> RunnerQualificationInputs<P> {
+  RunnerQualificationInputs {
+    executor_sanction: executor_sanction,
+    selection: SelectedRunnerQualification {
+      offer: offer,
+      host: host,
+      requirements: requirements,
+      workload: workload,
+      host_allocation: selected_host_allocation(plan: plan, allocation: allocation),
+      slot: selected_slot(desired: slot, unit: unit),
+      workspace: workspace,
+      cores_per_slot: gunbc_runner_cores_per_slot(),
+      calibration: calibration,
+      sampling: sampling,
+      phase_ceilings: phase_ceilings,
+    },
+  }
+}

@@ -7,7 +7,8 @@ module test.claim.host_allocation_conservation
 // already using; making them explicit costs nothing and buys a witness you can execute while you
 // are writing it, which is the difference between finding a defect now and finding it in CI.
 import std.types { String, Bool, Int, List }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, hardware_thread_count_value }
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
@@ -19,7 +20,6 @@ import gunbc.fleet_host_budget {
   HostAllocationOversubscribed,
   HostAllocationUnchargeable,
   oomd_actuation_floor,
-  gunbc_runner_pool_budget_for,
 }
 import gunbc.ci_runner_placement {
   host_usable_ram_or_refusal,
@@ -38,15 +38,19 @@ import gunbc.ci_floor_measurement {
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_demand_sum_memory_max,
   gunbc_runner_slot_desired,
-  gunbc_committed_runner_slot_allocations,
+  gunbc_admitted_runner_slot_allocations,
+  gunbc_runner_slice_cap_for_width,
   host_memory_admitted_width,
-  gunbc_runner_slots_per_host,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_slot_shape_standing,
   RunnerSlotShapeAdmitted,
   RunnerSlotShapeRefusedZeroMemoryMax,
   RunnerSlotDesired,
   RunnerSlotLabels,
-  CpuQuotaRefused,
+  SlotCpuQuotaUnbounded,
+  gunbc_runner_cores_per_slot,
+  host_cpu_admitted_width,
   host_disk_admitted_width,
   DiskWidthUnconstrained,
   DiskAdmitsWidth,
@@ -95,12 +99,37 @@ fn witness_allocation_conserves(
 // 125 GiB machine; the 2026-08-22 upgrade made the literal describe a different computer than the
 // pool did, and the row went red for that mismatch rather than for anything about conservation.
 // Mixing a fixture host with a live pool is the defect -- it passed by coincidence, not by design.
+fn committed_equals_memory_admission(host: HostIdentity) -> Bool {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: n } => n == host_memory_admitted_width(host: host)
+  }
+}
+
+// THE CHARGE IS SUPPLIED, NOT DEFAULTED. An earlier revision of this change read the live width and
+// mapped an unresolved answer to byte_size(0) -- and this row feeds that value straight into the
+// conservation arithmetic, where a zero runner charge makes conservation EASIER to satisfy. That is
+// the same substitution the production code stopped making, reappearing in the test that checks it:
+// if srv1's width ever stopped resolving, the row would go on passing for the strongest possible
+// reason. The subject here is the comparison interface -- does a host of this size conserve with
+// this much runner memory charged -- so the charge is a deliberate fixture and no live resolution
+// is consulted. The live-derived claims live in the rows that match the resolution and fail on
+// unresolved.
+//
+// TEN IS A CHOSEN CHARGE, NOT srv1'S WIDTH, and the difference is deliberate: a fixture equal to
+// the live commitment would read as a transcription of it and would have to be re-authored every
+// time the width moved (DESIGN 5 -- a measurement copied from the same current tree is not an
+// oracle). Ten 26 GiB slots is 260 GiB against srv1's measured RAM with the overhead and headroom
+// this row already supplies, which is the "pools fit" side of the boundary the four controls below
+// pin from both directions at the live width.
+data witness_srv1_fixture_slot_count: Int = 10
+
 test fn allocation_conserves_when_pools_fit() -> Bool {
   witness_allocation_conserves(
     host: usable_ram_of(host: operator_host_srv1),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget_for(host: operator_host_srv1),
+    runner_pool: gunbc_runner_slice_cap_for_width(slots: witness_srv1_fixture_slot_count),
     session_pool: byte_size(0),
     compile_pool: byte_size(0),
     control_plane: ControlPlaneNotPlaced
@@ -232,15 +261,17 @@ fn conserves_at_width(host: HostIdentity, slots: Int) -> Bool {
   )
 }
 
+// THE CONDITIONAL IS GONE AND THE ROSTER DOES ITS WORK. Every row in the admitted roster has a
+// resolved width, which on this fleet is the same condition the `session_charge_is_established`
+// guard was testing for -- so the guard was re-stating, per row, the reason the row now cannot
+// exist. The bounding row below still pins WHICH host is excused, and it pins it against the
+// reservation policy directly rather than against this fold.
 test fn committed_width_fits_on_every_host_with_an_established_charge() -> Bool {
   all(
-    gunbc_committed_runner_slot_allocations(),
-    a => if session_charge_is_established(host: a.host) {
-      conserves_at_width(host: a.host, slots: a.slots_per_host)
-    } else {
-      true
-    }
+    gunbc_admitted_runner_slot_allocations(),
+    a => conserves_at_width(host: a.host, slots: a.slots_per_host)
   )
+    && (gunbc_admitted_runner_slot_allocations() |> count) > 0
 }
 
 // THE SKIP ABOVE IS BOUNDED BY THIS ROW, and without it the check could go green by skipping every
@@ -276,19 +307,19 @@ test fn an_unsized_host_yields_no_committed_width_verdict() -> Bool {
 
 test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
   all(
-    gunbc_committed_runner_slot_allocations(),
+    gunbc_admitted_runner_slot_allocations(),
     a => !conserves_at_width(host: a.host, slots: host_memory_admitted_width(host: a.host) + 1)
   )
 }
 
 // The minimum cannot exceed either of its arguments, and this row is the executable form of that:
 // no host may commit a width its RAM does not admit. It goes red if a future axis is folded into
-// gunbc_runner_slots_per_host with the comparison inverted, which is the one edit that would turn a
+// gunbc_runner_committed_width with the comparison inverted, which is the one edit that would turn a
 // constraint into a grant.
 
 test fn committed_width_never_exceeds_memory_admission() -> Bool {
   all(
-    gunbc_committed_runner_slot_allocations(),
+    gunbc_admitted_runner_slot_allocations(),
     a => a.slots_per_host <= host_memory_admitted_width(host: a.host)
   )
 }
@@ -306,10 +337,16 @@ test fn committed_width_never_exceeds_memory_admission() -> Bool {
 // passing while the other moved -- which is exactly how the srv4 roster-versus-prose disagreement
 // this test exists to prevent got started.
 
+// THE LITERALS ARE REPLACED BY THE RELATION THEY WERE MEANT TO STATE, BECAUSE THEY HAD GONE STALE.
+// This row read `host_memory_admitted_width(srv4) == 29` and `committed == 21`; at the 26 GiB slot
+// those are 17 and 17, so the row was asserting a configuration the fleet left behind (the same
+// transcribed-figure decay DESIGN 6 warns about: a number copied out of the authority that owns
+// it). The property this row is FOR is that srv4 commits its MEMORY width with disk gated at apply
+// rather than lowering allocation -- which is a relation, holds at any width, and is what is
+// asserted now.
 test fn srv4_commits_memory_width_disk_gated_at_apply() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv4) == 29
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 21
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 21
+  committed_equals_memory_admission(host: operator_host_srv4)
+    && committed_equals_memory_admission(host: operator_host_srv3)
     && match host_disk_admitted_width(host: operator_host_srv4) {
       DiskWidthUnconstrained { reason: r } => string_contains(s: r, pattern: "runner_width_disk_preflight")
       DiskAdmitsWidth { slots: _, provenance: _ } => false
@@ -393,7 +430,7 @@ test fn sessions_subtract_from_the_same_budget() -> Bool {
 
 // THIS WITNESS WAS NOT TESTING SESSIONS, and the repair matters more than the deletion that
 // surfaced it. It asserted a single negative while mixing a LIVE authority
-// (gunbc_runner_pool_budget_for(srv1)) into an otherwise authored 125 GiB fixture host. Executed
+// (the live runner pool of srv1) into an otherwise authored 125 GiB fixture host. Executed
 // with the session term at ZERO it STILL PASSES — measured, not inferred — because srv1 is now a
 // ~502 GiB host whose live runner pool alone exceeds the fixture. The sessions term contributed
 // nothing to the verdict, so the witness has been green-by-coincidence since that memory upgrade.
@@ -964,8 +1001,8 @@ fn zero_memory_slot_shape() -> RunnerSlotDesired {
     memory_high: byte_size(0),
     tasks_max: 16384,
     cpu_weight: 100,
-    cpu_quota: CpuQuotaRefused { cause: "zero-memory fixture carries no surveyed quota" },
-    labels: RunnerSlotLabels { github_labels: ["self-hosted", "linux", "arm64", "gunbc-heavy"] },
+    cpu_quota: SlotCpuQuotaUnbounded,
+    labels: RunnerSlotLabels { github_labels: ["gunbc-heavy"] },
   }
 }
 
@@ -984,58 +1021,20 @@ test fn w_live_slot_shape_is_admitted() -> Bool {
   }
 }
 
-// THE RATIO'S REFUSAL, RED AND POSITIVE CONTROL. The shape this replaces mapped every refusing
-// memory-per-vCPU reading to byte_size(0) and let the zero travel: through cores-per-slot, through
-// the CPU axis, into a fleet-wide deployment=refused cause=zero_runner_width that named neither the
-// ratio nor the conversion that broke it. That is an absorbing arm, not a refusal, and it hid a
-// real defect for a full CI cycle -- the reading is quoted in the vendor's own unit and was being
-// read as a byte count, making the per-core figure 3 BYTES.
+// THE CPU AXIS IS A QUOTIENT OF TWO CITED CONSTANTS AND IT DOES NOT BIND. cores_per_slot is the
+// authored policy of one (gunbc_runner_cores_per_slot_policy, operator ruling 2026-09-19); the host
+// core count is the Ampere catalog row. The rows that stood here -- a basisless-ratio refusal, an
+// absent-survey refusal, and w_live_ratio_resolves_to_the_vendors_decimal_gigabytes -- were the
+// red and positive control of a vendor memory-per-vCPU reading that no longer exists; their
+// subject was deleted, so they are deleted rather than retargeted at a literal.
 //
-// Each refusing arm is now handed to the derivation directly, which is only possible because
-// runner_memory_per_core_of takes the reading as a parameter.
-fn basisless_uniform_reading() -> MemoryPerVcpuReading {
-  UniformMemoryPerVcpu {
-    per_vcpu: QuotedWithoutBasis { numeral: 3, unit_label: "GB" },
-    sizes_agreeing: 5,
-  }
-}
-
-test fn w_basisless_ratio_refuses_rather_than_answering_zero() -> Bool {
-  match runner_memory_per_core_of(reading: basisless_uniform_reading()) {
-    MemoryPerCoreUnresolved { cause: _ } => true
-    MemoryPerCoreResolved { bytes: _ } => false
-  }
-}
-
-test fn w_absent_survey_refuses_rather_than_answering_zero() -> Bool {
-  match runner_memory_per_core_of(reading: NoShapesForProviderArchitecture) {
-    MemoryPerCoreUnresolved { cause: _ } => true
-    MemoryPerCoreResolved { bytes: _ } => false
-  }
-}
-
-// THE POSITIVE CONTROL, and it is also the unit-conversion regression control: the live survey is
-// ubicloud aarch64, whose catalog states decimal gigabytes, so the resolved figure must be the
-// vendor's 3 GB in bytes. Reading that numeral as gibibytes, or failing to convert it at all,
-// both go red here.
-test fn w_live_ratio_resolves_to_the_vendors_decimal_gigabytes() -> Bool {
-  match gunbc_runner_memory_per_core() {
-    MemoryPerCoreResolved { bytes: b } => byte_size_count(b: b) == 3000000000
-    MemoryPerCoreUnresolved { cause: _ } => false
-  }
-}
-
-// AND THE SLOT WIDTH THE RATIO IMPLIES, asserted as the derivation rather than as its current
-// answer: 128 cores over a per-slot core count that is itself derived from the slot's memory
-// ceiling and the surveyed ratio.
-test fn w_cpu_axis_admits_a_width_from_the_resolved_ratio() -> Bool {
-  match gunbc_runner_cores_per_slot() {
-    CoresPerSlotUnresolved { cause: _ } => false
-    CoresPerSlotResolved { threads: t } =>
-      hardware_thread_count_value(t: t) > 0
-        && (match host_cpu_admitted_width(host: operator_host_srv1) {
-             CpuAdmitsWidth { slots: n } => n == altra_max_m12830_catalog.cores / hardware_thread_count_value(t: t)
-             CpuWidthUnresolved { cause: _ } => false
-           })
-  }
+// RED: a policy re-derived from memory_max resolves above 1 at the 26 GiB slot and fails the first
+// clause; an axis that stopped consulting the catalog (a 128 written here) fails the second the day
+// the catalog row moves; and the third clause is the ruling's whole consequence -- with the CPU
+// axis at 128 the memory admission IS the committed width on every derived host.
+test fn w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot() -> Bool {
+  hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) == 1
+    && host_cpu_admitted_width(host: operator_host_srv1) == altra_max_m12830_catalog.cores
+    && committed_equals_memory_admission(host: operator_host_srv1)
+    && committed_equals_memory_admission(host: operator_host_srv3)
 }

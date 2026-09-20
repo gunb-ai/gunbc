@@ -10,6 +10,7 @@ import product.host_health {
   CorrectedMemoryErrorEvent,
   SignalObserved,
   TemperatureReadingPresent,
+  SensorThresholdEvent,
   UnclassifiedEvent,
 }
 import extdeps.bmc.redfish_telemetry {
@@ -56,7 +57,7 @@ test fn appended_entries_are_those_after_the_openings_newest_and_are_classified(
       history_count == 2
         && map(appended, e => e.id) == [12, 13]
         && match appended.first() { Present { value: e } => match e.kind { CorrectedMemoryErrorEvent => true _ => false } none => false }
-        && match reverse(appended).first() { Present { value: e } => match e.kind { UnclassifiedEvent => true _ => false } none => false }
+        && match reverse(appended).first() { Present { value: e } => match e.kind { SensorThresholdEvent { sensor, critical: _, asserted } => sensor == "FAN4" && !asserted _ => false } none => false }
     BmcEventLogContinuityUnestablished { cause: _ } => false
   }
 }

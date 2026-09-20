@@ -14,11 +14,23 @@ import gunbc.floor_materialization {
   floor_typecheck_store_share_provider_id,
   floor_typecheck_store_materialization,
   floor_typecheck_store_materialization_without_provider,
-  floor_typecheck_store_reader_count
+  floor_typecheck_store_reader_count,
+  floor_typecheck_store_persist_provider_id,
+  floor_typecheck_store_persist_verdicts,
+  floor_typecheck_store_persist_verdicts_unbounded,
+  floor_typecheck_store_persist_verdicts_unobserved,
+  floor_typecheck_store_persist_verdicts_process_scoped,
+  floor_typecheck_store_persist_verdicts_without_provider
 }
 import std.materialization_ladder {
+  LadderVerdict,
   value_verdict_is_shared_by_reference,
-  value_verdict_is_refused_needing_reference
+  value_verdict_is_refused_needing_reference,
+  verdict_is_discharged_by,
+  verdict_is_refused_retention_unbounded,
+  verdict_is_refused_retention_unobserved,
+  verdict_is_refused_scope_too_narrow,
+  verdict_is_refused_no_provider
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -74,4 +86,67 @@ test fn floor_typecheck_store_reds_without_reference_provider() -> Bool {
     v: floor_typecheck_store_materialization_without_provider(),
     identity: floor_typecheck_store_identity
   )
+}
+
+// C3 — the HOST-PERSISTED tier. The demand set is the two sibling PROCESSES over one corpus under
+// one built binary (the witness fold and the generated-artifact drift gate), whose obligation LCA
+// is the runner host. That LCA is not shared state, so the repetition is not a rewire the ladder
+// would refuse; it is the isolation obligation only a store tier discharges. Four REDs follow, one
+// per withdrawn obligation, each naming the DISTINCT refusal it must produce — so the green is
+// green because the ladder admitted this provider, and a provider failing for another reason
+// cannot pass as this one.
+
+fn first_persist_verdict(vs: List<LadderVerdict>) -> LadderVerdict? {
+  vs.first()
+}
+
+test fn floor_typecheck_store_persist_is_discharged() -> Bool {
+  match first_persist_verdict(vs: floor_typecheck_store_persist_verdicts()) {
+    Absent => false
+    Present { value: v } =>
+      verdict_is_discharged_by(
+        v: v,
+        identity: floor_typecheck_store_identity,
+        provider_id: floor_typecheck_store_persist_provider_id
+      )
+  }
+}
+
+// The ladder refuses ReleasedNever with CapacityUnbounded. Without this red, a persistent provider
+// with no ceiling would read as discharged and the boundedness obligation would be decoration.
+test fn floor_typecheck_store_persist_reds_when_unbounded() -> Bool {
+  match first_persist_verdict(vs: floor_typecheck_store_persist_verdicts_unbounded()) {
+    Absent => false
+    Present { value: v } =>
+      verdict_is_refused_retention_unbounded(v: v, provider_id: floor_typecheck_store_persist_provider_id)
+  }
+}
+
+// And refuses ReleasedNever with CapacityUnobserved: a ceiling nobody measures is not a ceiling.
+test fn floor_typecheck_store_persist_reds_when_occupancy_unobserved() -> Bool {
+  match first_persist_verdict(vs: floor_typecheck_store_persist_verdicts_unobserved()) {
+    Absent => false
+    Present { value: v } =>
+      verdict_is_refused_retention_unobserved(v: v, provider_id: floor_typecheck_store_persist_provider_id)
+  }
+}
+
+// The same store row scoped to ONE PROCESS, offered against a CROSS-PROCESS demand, must refuse as
+// scope-too-narrow. This is the discriminating red for the whole tier: if it passed, the
+// process-scoped provider would be answering a cross-process question, and C3 would be redundant
+// with C2 rather than reaching a boundary C2 cannot.
+test fn floor_typecheck_store_persist_reds_when_only_process_scoped() -> Bool {
+  match first_persist_verdict(vs: floor_typecheck_store_persist_verdicts_process_scoped()) {
+    Absent => false
+    Present { value: v } =>
+      verdict_is_refused_scope_too_narrow(v: v, provider_id: floor_typecheck_store_persist_provider_id)
+  }
+}
+
+test fn floor_typecheck_store_persist_reds_without_any_provider() -> Bool {
+  match first_persist_verdict(vs: floor_typecheck_store_persist_verdicts_without_provider()) {
+    Absent => false
+    Present { value: v } =>
+      verdict_is_refused_no_provider(v: v, identity: floor_typecheck_store_identity)
+  }
 }

@@ -1,7 +1,10 @@
 module v2.workflow.gunbc_invoke_step_emit
 
-import std.algebra { Empty, FreeMonoid }
-import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_shell_unquoted_path_ok }
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.types { Char }
+import v2.std.algebra { list_flat_map }
+import v2.std.text { string_contains_char }
+import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_shell_unquoted_path_alphabet, orch_shell_unquoted_path_ok }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.cli_invoke {
@@ -80,25 +83,38 @@ data gunbc_invoke_step_root_var: String = "$ROOT"
 // marker-only assertion would have passed over this defect.
 // THE FIX, and why it is construction rather than another check: the offending word never
 // reaches shell context at all. It is projected through the SAME alphabet that judged it
-// (orch_shell_unquoted_path_ok, per character), every refused character replaced by a
+// (orch_shell_unquoted_path_alphabet, per character), every refused character replaced by a
 // fixed safe token, so the emitted bytes are inside the alphabet by construction and no
 // input can widen them. The refusal stays located -- the sanitized shape identifies which
 // word failed and where its bad characters were -- and stays countable, without any byte
 // of untrusted input reaching a runner.
-data gunbc_invoke_refused_char_token: String = "_"
+// The token names the STRUCTURAL CARRIER DIRECTLY rather than the String alias over it, so the
+// literal is introduced through the Unicode-scalar-sequence homomorphism (std.literal_elaboration)
+// as one Char -- which is what a character map can return, and what a host String is not.
+// Spelling it `FreeMonoid<Char>` rather than `v2.std.text.String` is not a style choice: the alias
+// spelling leaves a `String` reference in this declaration whose binding MOVES off the ambient
+// kernel -- the move the wave-admission wall adjudicated as TargetChanged while it stood (deleted
+// 2026-09-19). Naming the carrier
+// retires the `String` reference here instead of re-pointing it.
+data gunbc_invoke_refused_char_token: FreeMonoid<Char> = "_"
 
-fn gunbc_invoke_sanitize_at(word: String, i: Int, n: Int, acc: String) -> String {
-  if i >= n {
-    acc
+// SANITIZING IS A MAP OVER CHARACTERS, and the index walk this replaced could not say so. It asked
+// the WHOLE-WORD predicate orch_shell_unquoted_path_ok about one character at a time -- a word rule
+// standing in for a character rule, which happened to agree only because the word rule is itself a
+// membership scan -- and it rebuilt the answer with `concat(acc, safe)` inside the recursion, a
+// copied accumulator that made a one-pass substitution quadratic in the word (DESIGN section 6,
+// bare minimum cost, which is fixed regardless of the realized n). Both dissolve into one
+// list_flat_map over the carrier's own characters against the alphabet the rule was always about.
+fn gunbc_invoke_sanitize_char(c: Char) -> FreeMonoid<Char> {
+  if string_contains_char(s: orch_shell_unquoted_path_alphabet, c: c) {
+    Cons { head: c, tail: Empty }
   } else {
-    let ch = char_at(s: word, pos: i)
-    let safe = if orch_shell_unquoted_path_ok(path: ch) { ch } else { gunbc_invoke_refused_char_token }
-    gunbc_invoke_sanitize_at(word: word, i: i + 1, n: n, acc: concat(acc, safe))
+    gunbc_invoke_refused_char_token
   }
 }
 
 fn gunbc_invoke_sanitize_word(word: String) -> String {
-  gunbc_invoke_sanitize_at(word: word, i: 0, n: string_length(s: word), acc: "")
+  list_flat_map(xs: word, f: gunbc_invoke_sanitize_char)
 }
 
 data gunbc_invoke_step_emit_refused_poison_prefix: String = "__GUNBC_INVOKE_EMIT_REFUSED__ v2.workflow.gunbc_invoke_step_emit refused to render a gunbc run step: an invocation word carried characters outside the emitter unquoted-word alphabet. This marker is not valid workflow shell, so the committed workflow drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen). The refused word is shown SANITIZED through that same alphabet, every refused character replaced by an underscore, so no byte of the refused input reaches a runner. Sanitized refused word: "

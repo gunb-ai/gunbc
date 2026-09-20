@@ -31,6 +31,9 @@ import product.host_health {
   BmcThresholdStanding,
   BmcThresholdUnreported,
   CorrectedMemoryErrorEvent,
+  DimmThermalEvent,
+  MemoryErrorDetailEvent,
+  SensorThresholdEvent,
   HostHealthObserved,
   HostSignalAttempt,
   SignalNotExposedOutOfBand,
@@ -67,9 +70,13 @@ import extdeps.bmc.redfish_telemetry {
   redfish_thermal_points,
 }
 import extdeps.bmc.openbmc_message_registry {
+  AmpereDimmHot,
+  OpenBmcMemoryEcc,
   OpenBmcMemoryEccCorrectable,
+  OpenBmcMemoryEccDetail,
   OpenBmcMemoryEccUncorrectable,
-  openbmc_memory_ecc_message,
+  SelLoggerThreshold,
+  openbmc_event_class,
 }
 import extdeps.bmc.types {
   BmcRedfishSurfaceRow,
@@ -327,9 +334,12 @@ fn temperature_windows(host: HostIdentity, samples: List<List<RedfishTelemetryPo
 }
 
 fn event_kind(message: NonEmptyStr) -> BmcEventKind {
-  match openbmc_memory_ecc_message(message: message as String) {
-    Present { value: OpenBmcMemoryEccCorrectable } => CorrectedMemoryErrorEvent
-    Present { value: OpenBmcMemoryEccUncorrectable } => UncorrectedMemoryErrorEvent
+  match openbmc_event_class(message: message as String) {
+    Present { value: OpenBmcMemoryEcc { ecc: OpenBmcMemoryEccCorrectable } } => CorrectedMemoryErrorEvent
+    Present { value: OpenBmcMemoryEcc { ecc: OpenBmcMemoryEccUncorrectable } } => UncorrectedMemoryErrorEvent
+    Present { value: OpenBmcMemoryEccDetail } => MemoryErrorDetailEvent
+    Present { value: AmpereDimmHot { subject, asserted } } => DimmThermalEvent { subject: subject, asserted: asserted }
+    Present { value: SelLoggerThreshold { sensor, critical, high: _, asserted } } => SensorThresholdEvent { sensor: sensor, critical: critical, asserted: asserted }
     none => UnclassifiedEvent
   }
 }

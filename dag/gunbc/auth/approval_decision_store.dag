@@ -1,5 +1,6 @@
 module gunbc.auth.approval_decision_store
 
+import extdeps.numeric.base16 { base16_is_lower_digit_code_point }
 import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp, HttpMethod, Secret }
 import std.content_hash { ContentHash, serialize_content_hash }
 import std.scoped_authorization {
@@ -47,6 +48,7 @@ import gunbc.auth.approval_capability {
   ProposeDeny,
   approval_capability_signing_input,
   proposed_decision_name,
+  utc_instant_is_canonical,
 }
 import gunbc.auth.approval_broker {
   BrokerDecision, IdentityAttribution, HeaderAttributedToProxy, HeaderUnattributed,
@@ -93,8 +95,9 @@ import gunbc.auth.approval_broker {
 // THE MAC KEY IS A SECRET MANAGER SECRET, MINTED 2026-09-16 UNDER OPERATOR AUTHORIZATION
 // ("yes you can mint it"): 32 random bytes rendered as 64 lowercase hex, version 1 ENABLED, with
 // roles/secretmanager.secretAccessor granted to fleet-cloud-convergence@gunbai-secrets only. The
-// value never touched this repository or a session transcript; its sha256 prefix 113a3274bd95 is
-// how a materialized copy is checked without printing it. Version is PINNED because a keyring that
+// value never touched this repository or a session transcript; a materialized copy is checked
+// against gunbc.auth.approval_keyring_pins approval_mac_key_payload_sha256_prefix without printing
+// the key. Version is PINNED because a keyring that
 // followed `latest` would let a rotation invalidate every link in flight (approval_capability:
 // "key_id -- which key to check, so rotation does not invalidate what is in flight").
 data approval_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
@@ -130,13 +133,8 @@ type ApprovalKeyringRead
   = ApprovalKeyLoaded { key: MacKey }
   | ApprovalKeyringRefused { cause: ApprovalKeyringRefusal }
 
-// Code points: '0'..'9' are 48..57, 'a'..'f' are 97..102.
-fn is_lower_hex_code_point(cp: Int) -> Bool {
-  (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
-}
-
 fn is_lower_hex(s: String) -> Bool {
-  all(s.chars(), cp => is_lower_hex_code_point(cp: cp))
+  all(s.chars(), cp => base16_is_lower_digit_code_point(cp: cp))
 }
 
 // THE MATERIAL IS 64 LOWERCASE HEX DIGITS AND NOTHING ELSE; a trailing newline from an editor is
@@ -364,17 +362,24 @@ fn parse_stored_request(v: JsonValue) -> StoredRecordParse {
                   Absent => StoredRecordUnreadable { detail: "stored request lacks expires_at" }
                   Present { value: expires } => match json_field_string(v: v, key: "key_id") {
                     Absent => StoredRecordUnreadable { detail: "stored request lacks key_id" }
-                    Present { value: kid } => StoredRequestParsed { request: StoredApprovalRequest {
-                      escalation_id: e as NonEmptyStr,
-                      request_revision: rev as NonEmptyStr,
-                      attempt: att as AttemptIdentity,
-                      requester: req as NonEmptyStr,
-                      purpose: purpose as NonEmptyStr,
-                      destructive: destructive,
-                      issued_at: issued,
-                      expires_at: expires,
-                      key_id: kid as MacKeyId,
-                    } }
+                    Present { value: kid } =>
+                      if !utc_instant_is_canonical(t: issued as Timestamp) {
+                        StoredRecordUnreadable { detail: "stored request issued_at is not a canonical UTC instant" }
+                      } else if !utc_instant_is_canonical(t: expires as Timestamp) {
+                        StoredRecordUnreadable { detail: "stored request expires_at is not a canonical UTC instant" }
+                      } else {
+                        StoredRequestParsed { request: StoredApprovalRequest {
+                          escalation_id: e as NonEmptyStr,
+                          request_revision: rev as NonEmptyStr,
+                          attempt: att as AttemptIdentity,
+                          requester: req as NonEmptyStr,
+                          purpose: purpose as NonEmptyStr,
+                          destructive: destructive,
+                          issued_at: issued,
+                          expires_at: expires,
+                          key_id: kid as MacKeyId,
+                        } }
+                      }
                   }
                 }
               }
@@ -396,26 +401,38 @@ fn parse_stored_decision(v: JsonValue, kind: String) -> StoredRecordParse {
         Present { value: by } => match json_field_string(v: v, key: "decided_at") {
           Absent => StoredRecordUnreadable { detail: "stored decision lacks decided_at" }
           Present { value: at } =>
-            if kind == "approved" {
+            if !utc_instant_is_canonical(t: at as Timestamp) {
+              StoredRecordUnreadable { detail: "stored decision decided_at is not a canonical UTC instant" }
+            } else if kind == "approved" {
               match json_field_string(v: v, key: "obligation_authority") {
                 Absent => StoredRecordUnreadable { detail: "stored approval lacks obligation_authority" }
                 Present { value: oa } => match json_field_string(v: v, key: "obligation_intent_revision") {
                   Absent => StoredRecordUnreadable { detail: "stored approval lacks obligation_intent_revision" }
                   Present { value: oi } => match json_field_string(v: v, key: "obligation_execute_by") {
                     Absent => StoredRecordUnreadable { detail: "stored approval lacks obligation_execute_by" }
-                    Present { value: ob } => StoredDecisionParsed { decision: BrokerApproved {
-                      escalation_id: e as NonEmptyStr, revision: rev as NonEmptyStr, decided_by: by as NonEmptyStr, decided_at: at,
-                      obligation: ExecutionObligation { authority: oa as NonEmptyStr, intent_revision: oi as NonEmptyStr, execute_by: ob },
-                    } }
+                    Present { value: ob } =>
+                      if !utc_instant_is_canonical(t: ob as Timestamp) {
+                        StoredRecordUnreadable { detail: "stored approval obligation_execute_by is not a canonical UTC instant" }
+                      } else {
+                        StoredDecisionParsed { decision: BrokerApproved {
+                          escalation_id: e as NonEmptyStr, revision: rev as NonEmptyStr, decided_by: by as NonEmptyStr, decided_at: at,
+                          obligation: ExecutionObligation { authority: oa as NonEmptyStr, intent_revision: oi as NonEmptyStr, execute_by: ob },
+                        } }
+                      }
                   }
                 }
               }
             } else {
               match json_field_string(v: v, key: "reason") {
                 Absent => StoredRecordUnreadable { detail: "stored denial lacks reason" }
-                Present { value: why } => StoredDecisionParsed { decision: BrokerDenied {
-                  escalation_id: e as NonEmptyStr, revision: rev as NonEmptyStr, decided_by: by as NonEmptyStr, decided_at: at, reason: why as NonEmptyStr,
-                } }
+                Present { value: why } =>
+                  if (why as String).contains("\n") || (why as String).contains("\r") {
+                    StoredRecordUnreadable { detail: "stored denial reason is not a single kv line" }
+                  } else {
+                    StoredDecisionParsed { decision: BrokerDenied {
+                      escalation_id: e as NonEmptyStr, revision: rev as NonEmptyStr, decided_by: by as NonEmptyStr, decided_at: at, reason: why as NonEmptyStr,
+                    } }
+                  }
               }
             }
         }
@@ -699,6 +716,34 @@ fn request_revision_of<Subject>(request: AuthorizationRequest<Subject>) -> NonEm
   serialize_content_hash(hash: request.intent_hash)
 }
 
+fn grant_from_approved_decision<Subject>(
+  request: AuthorizationRequest<Subject>,
+  revision: NonEmptyStr,
+  decided_by: NonEmptyStr,
+  decided_at: Timestamp,
+  execute_by: Timestamp,
+) -> GrantDerivation<Subject> {
+  let want = request_revision_of(request: request)
+  if revision != want {
+    GrantForAnotherIntent { requested_revision: want, decided_revision: revision }
+  } else {
+    GrantDerived { authorization: AuthorizationGranted {
+      grant: OperatorGrant {
+        escalation_id: request.escalation_id,
+        scopes: request.scopes,
+        subject: request.subject,
+        purpose: request.purpose,
+        attempt: request.attempt,
+        intent_hash: request.intent_hash,
+        granted_by: decided_by,
+        granted_at: decided_at,
+        expires_at: execute_by,
+      },
+      claim: Unclaimed,
+    } }
+  }
+}
+
 fn grant_from_store<Subject>(root: NonEmptyStr, request: AuthorizationRequest<Subject>) -> GrantDerivation<Subject> {
   let revision = request_revision_of(request: request)
   match observe_escalation(root: root, escalation_id: request.escalation_id) {
@@ -707,23 +752,16 @@ fn grant_from_store<Subject>(root: NonEmptyStr, request: AuthorizationRequest<Su
     EscalationPending { request: _ } => GrantStillPending { escalation_id: request.escalation_id }
     EscalationDecided { decision: d } => match d {
       BrokerApproved { escalation_id: e, revision: r, decided_by: by, decided_at: at, obligation: o } =>
-        if e != request.escalation_id || r != revision {
+        if e != request.escalation_id {
           GrantForAnotherIntent { requested_revision: revision, decided_revision: r }
         } else {
-          GrantDerived { authorization: AuthorizationGranted {
-            grant: OperatorGrant {
-              escalation_id: request.escalation_id,
-              scopes: request.scopes,
-              subject: request.subject,
-              purpose: request.purpose,
-              attempt: request.attempt,
-              intent_hash: request.intent_hash,
-              granted_by: by,
-              granted_at: at,
-              expires_at: o.execute_by,
-            },
-            claim: Unclaimed,
-          } }
+          grant_from_approved_decision(
+            request: request,
+            revision: r,
+            decided_by: by,
+            decided_at: at,
+            execute_by: o.execute_by,
+          )
         }
       BrokerDenied { escalation_id: e, revision: r, decided_by: by, decided_at: at, reason: why } =>
         if e != request.escalation_id || r != revision {

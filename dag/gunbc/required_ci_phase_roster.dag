@@ -8,9 +8,10 @@ import std.types { String, Bool, List }
 // REQUIRED_CI_PHASES have no substrate authority" -- and named this carrier as its next rung
 // (required_ci_phase_roster_next_rung). Phase identity and lane ownership are one roster, consumed
 // by the workflow emission (gunbc.fabric_witness_run takes its lane vocabulary from
-// required_ci_lane_name) and by the program-standing derivation
-// (gunbc.compiler_frontend_program_status derives NamespaceWaveAdmissionEnrolled from membership in
-// required_ci_phases, never from a status row).
+// required_ci_lane_name). Until 2026-09-19 the program-standing derivation also read it
+// (gunbc.compiler_frontend_program_status derived NamespaceWaveAdmissionEnrolled from membership
+// in required_ci_phases); with the wall deleted by that day's operator ruling, the milestone reads
+// the drop row instead (gunbc.rung_drop namespace_wave_admission_wall_removed).
 //
 // THE HOST REALIZATION IS A DECLARED PARALLEL REPRESENTATION WITH AN EXECUTING JOIN, NOT A TWIN
 // LEFT TO DRIFT. claim_executor's RequiredCiPhase enum realizes this coproduct, and every
@@ -43,9 +44,13 @@ fn required_ci_lane_name(l: RequiredCiLane) -> String {
 // its CLI word and lane -- construction, not a list a phase can be omitted from. Four phases are
 // the post-bankruptcy roster (gunbc.rung_drop required_gate_bankruptcy, 2026-08-29), with the
 // generated-artifact wall restored after its declared population produced a real drift incident:
-// parse, namespace-wave-admission, generated-artifact, floor. `generated-artifact` is ONE phase
+// parse, generated-artifact, regen-fixed-point, floor. `generated-artifact` is ONE phase
 // over both declared generated populations below. The former sibling `regen` phase was removed
 // when its independently-green verdict hid a drift in the stage0-mirror half for five hours.
+// The namespace-wave-admission phase was DELETED by operator ruling 2026-09-19: its
+// transition-admission bookkeeping refused 100% of merge_group runs on a clean floor (run
+// 35461710214), and the wall went rather than staying as a skipped phase. The drop is declared
+// at gunbc.rung_drop namespace_wave_admission_wall_removed.
 //
 // WALL-CLOCK PRICE OF THIS WIDENING, recorded here because `gunbc.rung_drop`
 // `required_gate_bankruptcy` requires every static-roster widening to be priced on the roster's
@@ -59,7 +64,6 @@ fn required_ci_lane_name(l: RequiredCiLane) -> String {
 // name the same instrument and roster grain: 127.558 seconds would-be-drifted, 130.867 clean.
 type RequiredCiPhase
   = ParsePhase
-  | NamespaceWaveAdmissionPhase
   | GeneratedArtifactPhase
   | RegenFixedPointPhase
   | FloorPhase
@@ -104,19 +108,17 @@ fn whole_generated_artifact_adjudication_clean(a: WholeGeneratedArtifactAdjudica
 fn required_ci_phase_name(p: RequiredCiPhase) -> String {
   match p {
     ParsePhase => "parse"
-    NamespaceWaveAdmissionPhase => "namespace-wave-admission"
     GeneratedArtifactPhase => "generated-artifact"
     RegenFixedPointPhase => "regen-fixed-point"
     FloorPhase => "floor"
   }
 }
 
-// Lane ownership, total. Parse and the wave wall share the witnesses lane because the wall
-// consumes the index the parse phase builds -- one acquisition, two consumers.
+// Lane ownership, total. Parse rides with the floor because the floor's planning row consumes
+// the index the parse phase builds -- one acquisition, two consumers.
 fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
   match p {
     ParsePhase => WitnessesLane
-    NamespaceWaveAdmissionPhase => WitnessesLane
     GeneratedArtifactPhase => BuildLane
     RegenFixedPointPhase => BuildLane
     FloorPhase => WitnessesLane
@@ -129,7 +131,6 @@ fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
 // edit. The per-run host join keeps the two from diverging silently in either direction.
 data required_ci_phases: List<RequiredCiPhase> = [
   ParsePhase,
-  NamespaceWaveAdmissionPhase,
   GeneratedArtifactPhase,
   RegenFixedPointPhase,
   FloorPhase,

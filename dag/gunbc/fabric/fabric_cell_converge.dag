@@ -9,17 +9,20 @@ import std.measure { byte_size_count }
 import extdeps.systemd {
   systemd_cpu_quota_per_sec_of_threads,
   systemd_cpu_quota_per_sec_magnitude_identity,
+  systemd_cpu_quota_unbounded_identity,
 }
 import product.placement_supply { HostIdentity }
 import product.fabric.sanitation { CellId }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fabric_cell_subject { FabricCellSlotScope, fabric_cell_subject_ownership }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_instance_name_prefix, runner_slot_identity_equal }
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
   gunbc_runner_slot_desired,
-  RunnerSlotCpuQuota, CpuQuotaResolved, CpuQuotaRefused,
+  RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded,
   runner_slot_membership,
+  SlotMembershipWidthUnresolved,
+  runner_width_unresolved_cause_text,
   CommittedSlotMember,
   SlotOutsideCommittedPopulation,
   SlotServesFabricExecution,
@@ -84,8 +87,18 @@ fn fabric_cell_attempt_root_path(slot: RunnerSlotIdentity) -> String {
   join([fabric_cell_root_path(slot: slot), "/attempts"], "")
 }
 
+// THE SLICE LEAD IS SPELLED ONCE AND THE HOST PREFIX IS PROJECTED THROUGH IT. gunbc.fabric_cell_observe
+// must ask whether an observed slice name could belong to a given host, which means rendering that
+// host's prefix the way slice names are rendered -- and spelling "fabric-cell-" there would be a
+// second authority for this name's shape, free to drift from this one.
+data fabric_cell_slice_name_lead: String = "fabric-cell-"
+
+fn fabric_cell_slice_name_prefix(host: HostIdentity) -> String {
+  join([fabric_cell_slice_name_lead, runner_slot_instance_name_prefix(host: host)], "")
+}
+
 fn fabric_cell_slice_name(slot: RunnerSlotIdentity) -> String {
-  join(["fabric-cell-", runner_slot_instance_name(slot: slot), ".slice"], "")
+  join([fabric_cell_slice_name_lead, runner_slot_instance_name(slot: slot), ".slice"], "")
 }
 
 // THREE ADDRESSES, EACH WITH A REAL DESIRED VALUE AND A REAL OBSERVATION TODAY. An address is added
@@ -204,30 +217,32 @@ fn fabric_cell_member_ownership(member: FabricCellMember) -> Optional<Ownership>
 // address instead of drifting silently. The digest is over the values the boundary will carry.
 fn fabric_cell_resource_boundary_state_digest() -> NonEmptyStr {
   let desired = gunbc_runner_slot_desired()
-  match desired.cpu_quota {
-    CpuQuotaRefused { cause: c } =>
-      join(["cpu_quota_survey_refused=", c], "") as NonEmptyStr
-    CpuQuotaResolved { threads: t } =>
-      fabric_cell_boundary_state_digest_of(
-        memory_max: to_string(byte_size_count(b: desired.memory_max)),
-        memory_high: to_string(byte_size_count(b: desired.memory_high)),
-        memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
-        tasks_max: to_string(desired.tasks_max),
-        cpu_weight: to_string(desired.cpu_weight),
-        cpu_quota_per_sec: systemd_cpu_quota_per_sec_magnitude_identity(
-          usec: systemd_cpu_quota_per_sec_of_threads(threads: t),
-        ),
-      )
-  }
+  fabric_cell_boundary_state_digest_of(
+    memory_max: to_string(byte_size_count(b: desired.memory_max)),
+    memory_high: to_string(byte_size_count(b: desired.memory_high)),
+    memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
+    tasks_max: to_string(desired.tasks_max),
+    cpu_weight: to_string(desired.cpu_weight),
+    cpu_quota_per_sec: fabric_cell_desired_cpu_quota_identity(quota: desired.cpu_quota),
+  )
 }
 
-// THE QUOTA MEMBER IS THE MAGNITUDE IDENTITY OF systemd_cpu_quota_per_sec_of_threads, NOT A SECOND
-// RENDERER AND NOT A SENTINEL. Desired authors a thread count; observed reads CPUQuotaPerSecUSec as
-// a formatted span, parses it, and supplies the same identity. A six-thread cell and a host that
-// printed `6s` compare equal as 6000000 microseconds. A refused survey has no magnitude and is not
-// stuffed into this field: fabric_cell_resource_boundary_state_digest names the refusal on its own
-// arm, and fabric_cell_address_standing_for_quota blocks every disposition so reconcile cannot
-// treat that string as drift-to-repair.
+// THE QUOTA MEMBER IS THE IDENTITY THE OBSERVED SIDE PRODUCES, NOT A SECOND RENDERER AND NOT A
+// SENTINEL. A resolved quota is the magnitude identity of systemd_cpu_quota_per_sec_of_threads:
+// desired authors a thread count; observed reads CPUQuotaPerSecUSec as a formatted span, parses it,
+// and supplies the same identity, so a six-thread cell and a host that printed `6s` compare equal
+// as 6000000 microseconds. An UNBOUNDED quota is spelled by extdeps.systemd's
+// systemd_cpu_quota_unbounded_identity -- the same constant the read-side identity returns for the
+// CpuQuotaUnbounded arm a host that printed `infinity` parses to -- so a cell with no ceiling and a
+// desired row with no ceiling compare equal through one spelling rather than a literal authored
+// here beside the parser's.
+fn fabric_cell_desired_cpu_quota_identity(quota: RunnerSlotCpuQuota) -> String {
+  match quota {
+    CpuQuotaResolved { threads: t } =>
+      systemd_cpu_quota_per_sec_magnitude_identity(usec: systemd_cpu_quota_per_sec_of_threads(threads: t))
+    SlotCpuQuotaUnbounded => systemd_cpu_quota_unbounded_identity
+  }
+}
 
 // THE SPELLING IS A FUNCTION, BECAUSE THE OBSERVED SIDE HAS TO PRODUCE THE SAME ONE. The desired
 // digest above is compared against a digest an OBSERVER builds out of what a host reported, and if
@@ -322,6 +337,10 @@ type FabricCellFamilyMembership
 // lifecycle lives in gunbc.runner_lifecycle".
 fn fabric_cell_family_membership(host: HostIdentity, slot_index: Nat) -> FabricCellFamilyMembership {
   match runner_slot_membership(host: host, slot_index: slot_index) {
+    SlotMembershipWidthUnresolved { identity: _, cause: c } =>
+      SlotIsNotACommittedMemberOfItsHost {
+        reason: join(["this host's committed width does not resolve, so no slot index can be decided to be inside or outside its population: ", runner_width_unresolved_cause_text(cause: c)], "")
+      }
     SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
       SlotIsNotACommittedMemberOfItsHost {
         reason: "slot index is outside the host committed population derived by gunbc.runner_slot_allocation: a cell cannot be provisioned onto a slot the host was never admitted to carry"
@@ -684,44 +703,22 @@ fn fabric_cell_address_disposition_ref(d: FabricCellAddressDisposition) -> Fabri
   }
 }
 
-fn fabric_cell_address_standing_for_quota(
-  slot: RunnerSlotIdentity,
-  d: FabricCellAddressDisposition,
-  quota: RunnerSlotCpuQuota,
-) -> FabricCellAddressStanding {
-  match quota {
-    CpuQuotaRefused { cause: c } =>
-      StandingBlocked {
-        disposition: AddressUnreadable {
-          ref: fabric_cell_address_disposition_ref(d: d),
-          cause: join(["desired CPU quota refused: ", c], ""),
-        },
-      }
-    CpuQuotaResolved { threads: _ } =>
-      match d {
-        AddressUnreadable { ref: _, cause: _ } => StandingBlocked { disposition: d }
-        AddressContradicted { ref: _ } => StandingBlocked { disposition: d }
-        AddressMissingOnHost { ref: r } => StandingExplicitlyAbsent { ref: r }
-        AddressUnobserved { ref: _ } => StandingBlocked { disposition: d }
-        AddressPresent { ref: r, member: m } =>
-          if (m.state_digest as String) == (fabric_cell_desired_state_digest(slot: r.slot, address: r.address) as String) {
-            StandingSatisfied { ref: r }
-          } else {
-            StandingObservedDrift { ref: r, observed_state_digest: m.state_digest }
-          }
-      }
-  }
-}
-
 fn fabric_cell_address_standing(
   slot: RunnerSlotIdentity,
   d: FabricCellAddressDisposition,
 ) -> FabricCellAddressStanding {
-  fabric_cell_address_standing_for_quota(
-    slot: slot,
-    d: d,
-    quota: gunbc_runner_slot_desired().cpu_quota,
-  )
+  match d {
+    AddressUnreadable { ref: _, cause: _ } => StandingBlocked { disposition: d }
+    AddressContradicted { ref: _ } => StandingBlocked { disposition: d }
+    AddressMissingOnHost { ref: r } => StandingExplicitlyAbsent { ref: r }
+    AddressUnobserved { ref: _ } => StandingBlocked { disposition: d }
+    AddressPresent { ref: r, member: m } =>
+      if (m.state_digest as String) == (fabric_cell_desired_state_digest(slot: r.slot, address: r.address) as String) {
+        StandingSatisfied { ref: r }
+      } else {
+        StandingObservedDrift { ref: r, observed_state_digest: m.state_digest }
+      }
+  }
 }
 
 fn fabric_cell_address_standings(

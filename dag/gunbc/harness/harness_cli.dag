@@ -390,7 +390,7 @@ fn harness_place_for(request: String, actor: String, attempt: String, receipt: S
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant, partition, ceiling: bound_ceiling, group_wire, launch, layout: _, model: bound_model, unit: _, class: _ } => {
+    HarnessSeatBound { url, grant, partition, ceiling: bound_ceiling, group_wire, launch, store: _, model: bound_model, unit: _, class: _ } => {
       let capability = harness_release_capability(partition: partition, ceiling: bound_ceiling, grant: grant)
       let line = join([
         "url=", url,
@@ -466,7 +466,7 @@ fn harness_probe_cli() -> ProcessExit {
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_probe_outcome(backend_url: url, model: bound_model, unit: bound_unit)
       let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       harness_turn_exit_released(outcome: outcome, seat: seat_release)
@@ -550,6 +550,12 @@ data harness_worker_step_budget: Int = harness_round_budget_steps
 // terminal exits zero; every harness refusal exits non-zero with its typed cause. Whether the WORK
 // satisfies the node is decided by the belt's pinned verification against the attempt head, which
 // is the separation DCH-2 requires and the reason there is nothing here that inspects the diff.
+// THE ATTEMPT IDENTITY ARRIVES MINTED, because it is consumed as a PATH SEGMENT by the fleet ssh
+// context (gunbc.fleet_known_hosts_anchor fleet_ssh_attempt_identity refuses anything that is not
+// a safe segment) as well as by the seat ledger. Building it here from the worktree and events
+// paths -- both absolute -- made every bind on a host that needs the fleet context fail before any
+// ssh leg: measured 2026-09-16 on srv2, "attempt identity ... is not a safe path segment". The
+// spawner holds the safe unique pieces (node id and attempt key), so the mint moves there.
 fn harness_worker_cli(
   worktree: String,
   brief: String,
@@ -558,13 +564,14 @@ fn harness_worker_cli(
   events_path: String,
   repo_root: String,
   gunbc_program: String,
+  attempt_identity: String,
 ) -> ProcessExit {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: join(["worker:", worktree, "@", events_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_run_turn(
         config: harness_worker_config(
           worktree: worktree as FilePath,
@@ -651,7 +658,7 @@ fn harness_reviewer_cli(
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_run_turn(
         config: harness_reviewer_config(
           worktree: worktree as FilePath,
@@ -712,6 +719,9 @@ fn harness_auditor_config(
   }
 }
 
+// THE AUDITOR'S ATTEMPT IDENTITY FOLLOWS THE WORKER'S MINT (see harness_worker_cli): a safe
+// segment from the node id and attempt key, because the bind consumes it as a fleet-ssh path
+// segment and the verdict path it replaced is absolute.
 fn harness_auditor_cli(
   worktree: String,
   brief: String,
@@ -720,14 +730,15 @@ fn harness_auditor_cli(
   events_path: String,
   verdict_dir: String,
   verdict_name: String,
+  attempt_identity: String,
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   let system_prompt = harness_auditor_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "auditor", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "auditor", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_run_turn(
         config: harness_auditor_config(
           worktree: worktree as FilePath,
@@ -757,7 +768,7 @@ fn harness_probe_report() -> String {
   match binding {
     HarnessSeatRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
     HarnessSeatPending { detail } => join(["harness probe is pending placement: ", detail, "\n"], "")
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_probe_outcome(backend_url: url, model: bound_model, unit: bound_unit)
       let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       join([

@@ -5,8 +5,12 @@ import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, fold_list_node, list_append, list_snoc_item, zip_eq }
 import v2.std.collection {
   List,
+  Map,
   PointwisePower,
-  list_nth
+  empty_map,
+  list_nth,
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -38,11 +42,9 @@ import v2.std.node {
   Edge,
   Named,
   Node,
-  NodeFold,
   Positional,
   Symbol,
   TypeNode,
-  fold_node,
 }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.compilers.target_model {
@@ -210,8 +212,15 @@ type TerminalStampMode
   | StampBinding { binding: Symbol }
   | StampLexeme
 
+// A LITERAL TERMINAL MATCHES ONE EXACT WORD OF A TOKEN CLASS -- `service` as an ident, not every
+// ident. It is a MATCH constraint, not a stamp: the node it captures publishes the token CLASS
+// exactly as a `StampClass` terminal does, and never its own text as atom identity (that is
+// `StampLexeme`, a different fact). It exists so a marker word can be a grammar row without being
+// minted as a keyword token class: a keyword class taxes every identifier the lexer reads and
+// every name slot the grammar offers, while a literal terminal costs only where it is authored.
 type GrammarExpr
   = Terminal { token_class: Symbol, stamp: TerminalStampMode }
+  | LiteralTerminal { token_class: Symbol, lexeme: Symbol }
   | Nonterminal { production: Symbol }
   | Sequence { left: GrammarExpr, right: GrammarExpr }
   | Choice { left: GrammarExpr, right: GrammarExpr }
@@ -234,6 +243,10 @@ fn grammar_expr_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampLexeme }
 }
 
+fn grammar_expr_literal_terminal(token_class: Symbol, lexeme: Symbol) -> GrammarExpr {
+  LiteralTerminal { token_class: token_class, lexeme: lexeme }
+}
+
 fn formal_grammar_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
   match sym {
     FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
@@ -254,6 +267,7 @@ fn formal_grammar_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExp
 
 type GrammarExprFold<R> {
   terminal: fn(Symbol, TerminalStampMode) -> R
+  literal_terminal: fn(Symbol, Symbol) -> R
   nonterminal: fn(Symbol) -> R
   sequence: fn(R, R) -> R
   choice: fn(R, R) -> R
@@ -265,6 +279,8 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
   match expr {
     Terminal { token_class: token_class, stamp: stamp } =>
       algebra.terminal(token_class, stamp)
+    LiteralTerminal { token_class: token_class, lexeme: lexeme } =>
+      algebra.literal_terminal(token_class, lexeme)
     Nonterminal { production: production } => algebra.nonterminal(production)
     Sequence { left: left, right: right } =>
       algebra.sequence(
@@ -344,10 +360,6 @@ type GrammarRelationRow {
 }
 
 type ParseTree = Node
-
-type GrammarSymbolFoldState {
-  found: Bool
-}
 
 fn grammar_atom(identity: Symbol) -> Node {
   Node {
@@ -1178,18 +1190,36 @@ fn formal_conj_child_atom_at_index(
 }
 
 type EmittedRhsMatchState
-  = EmittedRhsMatchOk { children: List<Node>, index: Int }
+  = EmittedRhsMatchOk { index: Int }
   | EmittedRhsMatchFail
+
+// ONE BACKWARD READING PER EMITTED NODE, CARRIED. Selecting a production for an emitted node
+// asks, for every candidate, whether its rhs matches the node -- and a nonterminal slot in that
+// rhs asks the same question of the slot's child. Asked as a recursion from the root, the answer
+// for a child was re-derived once per candidate at every ancestor, and again when the token edges
+// were derived after selection: exponential in depth, and only a result memo could make it look
+// linear. std.materialization_ladder rule 1 names that AuthoredDuplication and prescribes Share:
+// the reading is computed ONCE per node, bottom-up, and every consumer -- the unique-match
+// selection, the per-lhs exact selection, the token-edge derivation -- reads the carried
+// resolution instead of re-matching. `matched` is exactly the set the old
+// formal_production_matches_emitted_child accepted for this node; `slots` are the conj
+// positional children's resolutions in order (Empty for a non-conj node), so the slot a rhs
+// symbol consumes is the same node the old recursion consumed.
+type EmittedProductionResolution {
+  emitted: Node
+  matched: List<FormalProduction>
+  slots: List<EmittedProductionResolution>
+}
 
 fn formal_production_rhs_matches_emitted_conj_step(
   state: EmittedRhsMatchState,
-  productions: List<FormalProduction>,
-  emitted: Node,
+  resolution: EmittedProductionResolution,
+  children: List<Node>,
   symbol: FormalGrammarSymbol
 ) -> EmittedRhsMatchState {
   match state {
     EmittedRhsMatchFail => state
-    EmittedRhsMatchOk { children: children, index: index } =>
+    EmittedRhsMatchOk { index: index } =>
       match symbol {
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
@@ -1199,23 +1229,22 @@ fn formal_production_rhs_matches_emitted_conj_step(
                   match formal_conj_child_atom_at_index(
                     children: children,
                     index: index,
-                    emitted: emitted
+                    emitted: resolution.emitted
                   ) {
-                    Holds { value: _ } =>
-                      EmittedRhsMatchOk { children: children, index: index + 1 }
+                    Holds { value: _ } => EmittedRhsMatchOk { index: index + 1 }
                     Violates { diagnostic: _ } => EmittedRhsMatchFail
                   }
                 FormalBindingConjSlotExactBinding =>
                   match formal_conj_child_atom_at_index(
                     children: children,
                     index: index,
-                    emitted: emitted
+                    emitted: resolution.emitted
                   ) {
                     Holds { value: slot_child } =>
                       match node_atom_identity_optional(node: slot_child) {
                         Present { value: atom_id } =>
                           if atom_id == binding_symbol {
-                            EmittedRhsMatchOk { children: children, index: index + 1 }
+                            EmittedRhsMatchOk { index: index + 1 }
                           } else {
                             EmittedRhsMatchFail
                           }
@@ -1224,27 +1253,21 @@ fn formal_production_rhs_matches_emitted_conj_step(
                     Violates { diagnostic: _ } => EmittedRhsMatchFail
                   }
               }
-            Absent =>
-              EmittedRhsMatchOk { children: children, index: index }
+            Absent => EmittedRhsMatchOk { index: index }
           }
         FormalNonterminalOccurrence { nonterminal: nonterminal } =>
           match list_nth(
-            xs: children,
+            xs: resolution.slots,
             wanted: index,
             absent: Diagnostic {
               reason: ^grammar_relation_emitted_conj_slot_missing,
-              at: node_locus(node: emitted),
+              at: node_locus(node: resolution.emitted),
               correction: Unavailable { reason: ExternalContractUnknown }
             }
           ) {
-            Holds { value: slot_child } =>
-              match formal_production_for_lhs_exact(
-                productions: productions,
-                lhs: nonterminal.identity,
-                child: slot_child
-              ) {
-                Holds { value: _ } =>
-                  EmittedRhsMatchOk { children: children, index: index + 1 }
+            Holds { value: slot } =>
+              match resolution_production_for_lhs_exact(resolution: slot, lhs: nonterminal.identity) {
+                Holds { value: _ } => EmittedRhsMatchOk { index: index + 1 }
                 Violates { diagnostic: _ } => EmittedRhsMatchFail
               }
             Violates { diagnostic: _ } => EmittedRhsMatchFail
@@ -1255,50 +1278,55 @@ fn formal_production_rhs_matches_emitted_conj_step(
 
 fn formal_production_rhs_matches_emitted_conj(
   production: FormalProduction,
-  productions: List<FormalProduction>,
-  emitted: Node
+  resolution: EmittedProductionResolution,
+  children: List<Node>,
+  child_count: Int
 ) -> Bool {
-  match emitted.kind {
+  match resolution.emitted.kind {
     TypeNode { connective: Conj } =>
       formal_production_rhs_matches_emitted_conj_conj(
         production: production,
-        productions: productions,
-        emitted: emitted
+        resolution: resolution,
+        children: children,
+        child_count: child_count
       )
     _ => false
   }
 }
 
+// `children` and `child_count` are the node's positional children and their count, read ONCE
+// per node by the resolver and handed to every candidate, rather than re-read per candidate.
 fn formal_production_rhs_matches_emitted_conj_conj(
   production: FormalProduction,
-  productions: List<FormalProduction>,
-  emitted: Node
+  resolution: EmittedProductionResolution,
+  children: List<Node>,
+  child_count: Int
 ) -> Bool {
-  let children = conj_positional_children(parent: emitted)
-  let child_count = conj_positional_child_count(children: children)
   match fold_list(
     xs: production.rhs,
-    empty: EmittedRhsMatchOk { children: children, index: 0 },
+    empty: EmittedRhsMatchOk { index: 0 },
     cons: fn(state, symbol) {
       formal_production_rhs_matches_emitted_conj_step(
         state: state,
-        productions: productions,
-        emitted: emitted,
+        resolution: resolution,
+        children: children,
         symbol: symbol
       )
     }
   ) {
-    EmittedRhsMatchOk { children: _, index: index } => index == child_count
+    EmittedRhsMatchOk { index: index } => index == child_count
     EmittedRhsMatchFail => false
   }
 }
 
-fn formal_production_matches_emitted_child(
+// Whether a production's rhs matches the resolved node: the root criterion, independent of lhs.
+fn formal_production_matches_resolution(
   production: FormalProduction,
-  productions: List<FormalProduction>,
-  child: Node
+  resolution: EmittedProductionResolution,
+  children: List<Node>,
+  child_count: Int
 ) -> Bool {
-  match child.kind {
+  match resolution.emitted.kind {
     TypeNode { connective: Atom { identity: atom_id } } =>
       match formal_production_rhs_singleton_terminal_identity(production: production) {
         Present { value: terminal_id } => atom_id == terminal_id
@@ -1315,8 +1343,9 @@ fn formal_production_matches_emitted_child(
     TypeNode { connective: Conj } =>
       formal_production_rhs_matches_emitted_conj(
         production: production,
-        productions: productions,
-        emitted: child
+        resolution: resolution,
+        children: children,
+        child_count: child_count
       )
     _ => false
   }
@@ -1330,37 +1359,328 @@ fn emitted_shape_supported_for_lhs_exact(child: Node) -> Bool {
   }
 }
 
-fn formal_production_for_lhs_exact(
+// WHICH PRODUCTIONS A NODE IS ASKED ABOUT, CARRIED DOWN; WHICH MATCH, CARRIED UP. A node is only
+// ever asked for the left-hand sides its parents' candidates place at its slot, so the resolver
+// takes that set (`asked`) and matches only the productions with those lhs -- the same
+// population the old recursion explored, once per node instead of once per candidate at every
+// ancestor. Each child's asked set is the union, over this node's candidates, of the nonterminal
+// each candidate places at that child's slot index; the child is resolved once against it.
+fn formal_symbol_list_contains(xs: List<Symbol>, wanted: Symbol) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == wanted })
+}
+
+fn formal_symbol_list_insert(xs: List<Symbol>, item: Symbol) -> List<Symbol> {
+  if formal_symbol_list_contains(xs: xs, wanted: item) { xs } else { list_snoc_item(xs: xs, item: item) }
+}
+
+// The nonterminal a production places at emitted slot `slot`, if any: terminals with a binding
+// and nonterminals each occupy one slot, unbound terminals none -- the same counting as
+// formal_production_emitted_slot_count and the rhs match.
+type SlotNonterminalScan {
+  index: Int
+  found: Optional<Symbol>
+}
+
+fn formal_production_nonterminal_at_slot(production: FormalProduction, slot: Int) -> Optional<Symbol> {
+  let scan = fold_list(
+    xs: production.rhs,
+    empty: SlotNonterminalScan { index: 0, found: optional_absent() },
+    cons: fn(acc, symbol) {
+      match symbol {
+        FormalTerminalOccurrence { terminal: _, binding: binding } =>
+          match binding {
+            Present { value: _ } => SlotNonterminalScan { index: acc.index + 1, found: acc.found }
+            Absent => acc
+          }
+        FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+          if acc.index == slot {
+            SlotNonterminalScan { index: acc.index + 1, found: optional_present(value: nonterminal.identity) }
+          } else {
+            SlotNonterminalScan { index: acc.index + 1, found: acc.found }
+          }
+      }
+    }
+  )
+  scan.found
+}
+
+fn formal_productions_asked(productions: List<FormalProduction>, asked: List<Symbol>) -> List<FormalProduction> {
+  fold_list(
+    xs: productions,
+    empty: Empty,
+    cons: fn(acc, production) {
+      if formal_symbol_list_contains(xs: asked, wanted: production.lhs.identity) {
+        list_snoc_item(xs: acc, item: production)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn formal_slot_asked_lhs(candidates: List<FormalProduction>, slot: Int) -> List<Symbol> {
+  fold_list(
+    xs: candidates,
+    empty: Empty,
+    cons: fn(acc, candidate) {
+      match formal_production_nonterminal_at_slot(production: candidate, slot: slot) {
+        Present { value: nonterminal } => formal_symbol_list_insert(xs: acc, item: nonterminal)
+        Absent => acc
+      }
+    }
+  )
+}
+
+type SlotResolutionScan {
+  index: Int
+  slots: List<EmittedProductionResolution>
+}
+
+fn resolve_emitted_productions_slots(
   productions: List<FormalProduction>,
+  candidates: List<FormalProduction>,
+  children: List<Node>
+) -> List<EmittedProductionResolution> {
+  let scan = fold_list(
+    xs: children,
+    empty: SlotResolutionScan { index: 0, slots: Empty },
+    cons: fn(acc, child) {
+      SlotResolutionScan {
+        index: acc.index + 1,
+        slots: list_snoc_item(
+          xs: acc.slots,
+          item: resolve_emitted_productions_asked(
+            productions: productions,
+            asked: formal_slot_asked_lhs(candidates: candidates, slot: acc.index),
+            emitted: child
+          )
+        )
+      }
+    }
+  )
+  scan.slots
+}
+
+fn resolve_emitted_productions_matched_step(
+  acc: List<FormalProduction>,
+  production: FormalProduction,
+  resolution: EmittedProductionResolution,
+  children: List<Node>,
+  child_count: Int
+) -> List<FormalProduction> {
+  if formal_production_matches_resolution(
+    production: production,
+    resolution: resolution,
+    children: children,
+    child_count: child_count
+  ) {
+    list_snoc_item(xs: acc, item: production)
+  } else {
+    acc
+  }
+}
+
+// The one pass: candidates by asked lhs, children resolved once against what those candidates
+// ask of them, then this node's matched set over the carried slots.
+fn resolve_emitted_productions_asked(
+  productions: List<FormalProduction>,
+  asked: List<Symbol>,
+  emitted: Node
+) -> EmittedProductionResolution {
+  let candidates = formal_productions_asked(productions: productions, asked: asked)
+  let children = conj_positional_children(parent: emitted)
+  let child_count = conj_positional_child_count(children: children)
+  let unmatched = EmittedProductionResolution {
+    emitted: emitted,
+    matched: Empty,
+    slots: resolve_emitted_productions_slots(productions: productions, candidates: candidates, children: children)
+  }
+  EmittedProductionResolution {
+    emitted: emitted,
+    matched: fold_list(
+      xs: candidates,
+      empty: Empty,
+      cons: fn(acc, production) {
+        resolve_emitted_productions_matched_step(
+          acc: acc,
+          production: production,
+          resolution: unmatched,
+          children: children,
+          child_count: child_count
+        )
+      }
+    ),
+    slots: unmatched.slots
+  }
+}
+
+fn formal_productions_all_lhs(productions: List<FormalProduction>) -> List<Symbol> {
+  fold_list(
+    xs: productions,
+    empty: Empty,
+    cons: fn(acc, production) { formal_symbol_list_insert(xs: acc, item: production.lhs.identity) }
+  )
+}
+
+// Asked about every lhs: the root selection over all productions.
+fn resolve_emitted_productions(
+  productions: List<FormalProduction>,
+  emitted: Node
+) -> EmittedProductionResolution {
+  resolve_emitted_productions_asked(
+    productions: productions,
+    asked: formal_productions_all_lhs(productions: productions),
+    emitted: emitted
+  )
+}
+
+fn lhs_exact_production_match_fold_step(
+  acc: LhsExactProductionMatchFold,
+  resolution: EmittedProductionResolution,
   lhs: Symbol,
-  child: Node
+  candidate: FormalProduction
+) -> LhsExactProductionMatchFold {
+  if formal_production_matches_lhs_and_slot_count(
+    production: candidate,
+    lhs: lhs,
+    emitted_slot_count: emitted_node_slot_count(emitted: resolution.emitted)
+  ) {
+    match acc {
+      LhsExactProductionMatchNone => LhsExactProductionMatchOne { production: candidate }
+      LhsExactProductionMatchOne { production: _ } => LhsExactProductionMatchMany
+      LhsExactProductionMatchMany => LhsExactProductionMatchMany
+    }
+  } else {
+    acc
+  }
+}
+
+// The per-lhs exact selection over a carried resolution: among the productions whose rhs matched
+// the node, the one with this lhs and this slot count -- none, one, or many, each its own refusal.
+fn resolution_production_for_lhs_exact(
+  resolution: EmittedProductionResolution,
+  lhs: Symbol
 ) -> Witness<FormalProduction> {
-  if emitted_shape_supported_for_lhs_exact(child: child) {
-    formal_production_for_lhs_exact_supported(
-      productions: productions,
-      lhs: lhs,
-      child: child
-    )
+  if emitted_shape_supported_for_lhs_exact(child: resolution.emitted) {
+    match fold_list(
+      xs: resolution.matched,
+      empty: LhsExactProductionMatchNone,
+      cons: fn(acc, candidate) {
+        lhs_exact_production_match_fold_step(acc: acc, resolution: resolution, lhs: lhs, candidate: candidate)
+      }
+    ) {
+      LhsExactProductionMatchNone =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_production_not_found,
+            at: node_locus(node: resolution.emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      LhsExactProductionMatchMany =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_row_backward_selection_ambiguous,
+            at: node_locus(node: resolution.emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      LhsExactProductionMatchOne { production: production } => Holds { value: production }
+    }
   } else {
     Violates {
       diagnostic: Diagnostic {
         reason: ^grammar_relation_emitted_not_conj,
-        at: node_locus(node: child),
+        at: node_locus(node: resolution.emitted),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     }
   }
 }
 
-fn formal_production_for_lhs_exact_supported(
+// The unique match over ALL productions for a resolved node: the root's selection.
+fn resolution_unique_emitted_match(
+  resolution: EmittedProductionResolution
+) -> Witness<FormalProduction> {
+  if emitted_shape_supported_for_lhs_exact(child: resolution.emitted) {
+    match fold_list(
+      xs: resolution.matched,
+      empty: LhsExactProductionMatchNone,
+      cons: fn(acc, candidate) {
+        match acc {
+          LhsExactProductionMatchNone => LhsExactProductionMatchOne { production: candidate }
+          LhsExactProductionMatchOne { production: _ } => LhsExactProductionMatchMany
+          LhsExactProductionMatchMany => LhsExactProductionMatchMany
+        }
+      }
+    ) {
+      LhsExactProductionMatchNone =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_production_not_found,
+            at: node_locus(node: resolution.emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      LhsExactProductionMatchMany =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^grammar_relation_row_backward_selection_ambiguous,
+            at: node_locus(node: resolution.emitted),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+      LhsExactProductionMatchOne { production: production } => Holds { value: production }
+    }
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^grammar_relation_emitted_not_conj,
+        at: node_locus(node: resolution.emitted),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
+// One candidate against one child, by lhs, slot count and rhs -- the same three facts the
+// per-lhs selection folds, read for a single production.
+fn formal_production_matches_lhs_exact_child(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  child: Node,
+  candidate: FormalProduction
+) -> Bool {
+  if emitted_shape_supported_for_lhs_exact(child: child) {
+    let resolution = resolve_emitted_productions_asked(productions: productions, asked: [lhs], emitted: child)
+    let children = conj_positional_children(parent: child)
+    formal_production_matches_lhs_and_slot_count(
+      production: candidate,
+      lhs: lhs,
+      emitted_slot_count: emitted_node_slot_count(emitted: child)
+    ) &&
+      formal_production_matches_resolution(
+        production: candidate,
+        resolution: resolution,
+        children: children,
+        child_count: conj_positional_child_count(children: children)
+      )
+  } else {
+    false
+  }
+}
+
+// The entry every language module calls. It resolves the child once and selects; a caller that
+// then derives the row resolves once more inside derive_grammar_relation_row_node, so the whole
+// cost of a row is two linear passes over the emitted tree rather than a recursion per candidate.
+fn formal_production_for_lhs_exact(
   productions: List<FormalProduction>,
   lhs: Symbol,
   child: Node
 ) -> Witness<FormalProduction> {
-  formal_production_unique_lhs_exact_match(
-    productions: productions,
-    lhs: lhs,
-    child: child
+  resolution_production_for_lhs_exact(
+    resolution: resolve_emitted_productions_asked(productions: productions, asked: [lhs], emitted: child),
+    lhs: lhs
   )
 }
 
@@ -1381,7 +1701,7 @@ fn emitted_node_slot_count(emitted: Node) -> Int {
 
 fn derive_grammar_relation_token_edges_recursive_step(
   progress: Witness<DeriveGrammarRelationTokensProgress>,
-  productions: List<FormalProduction>,
+  resolution: EmittedProductionResolution,
   emitted: Node,
   symbol: FormalGrammarSymbol
 ) -> Witness<DeriveGrammarRelationTokensProgress> {
@@ -1453,7 +1773,7 @@ fn derive_grammar_relation_token_edges_recursive_step(
           }
         FormalNonterminalOccurrence { nonterminal: nonterminal } =>
           match list_nth(
-            xs: conj_children,
+            xs: resolution.slots,
             wanted: conj_index,
             absent: Diagnostic {
               reason: ^grammar_relation_emitted_conj_slot_missing,
@@ -1461,17 +1781,12 @@ fn derive_grammar_relation_token_edges_recursive_step(
               correction: Unavailable { reason: ExternalContractUnknown }
             }
           ) {
-            Holds { value: child } =>
-              match formal_production_for_lhs_exact(
-                productions: productions,
-                lhs: nonterminal.identity,
-                child: child
-              ) {
+            Holds { value: slot } =>
+              match resolution_production_for_lhs_exact(resolution: slot, lhs: nonterminal.identity) {
                 Holds { value: nested } =>
-                  match derive_grammar_relation_token_edges_recursive(
+                  match derive_grammar_relation_token_edges_resolved(
                     production: nested,
-                    productions: productions,
-                    emitted: child
+                    resolution: slot
                   ) {
                     Holds { value: nested_edges } =>
                       Holds {
@@ -1491,11 +1806,11 @@ fn derive_grammar_relation_token_edges_recursive_step(
   }
 }
 
-fn derive_grammar_relation_token_edges_recursive(
+fn derive_grammar_relation_token_edges_resolved(
   production: FormalProduction,
-  productions: List<FormalProduction>,
-  emitted: Node
+  resolution: EmittedProductionResolution
 ) -> Witness<List<Edge>> {
+  let emitted = resolution.emitted
   let conj_children = conj_positional_children(parent: emitted)
   match fold_list(
     xs: production.rhs,
@@ -1509,7 +1824,7 @@ fn derive_grammar_relation_token_edges_recursive(
     cons: fn(progress, symbol) {
       derive_grammar_relation_token_edges_recursive_step(
         progress: progress,
-        productions: productions,
+        resolution: resolution,
         emitted: emitted,
         symbol: symbol
       )
@@ -1546,12 +1861,26 @@ fn derive_grammar_relation_row_node(
   productions: List<FormalProduction>,
   emitted: Node
 ) -> Witness<Node> {
+  derive_grammar_relation_row_node_resolved(
+    production: production,
+    resolution: resolve_emitted_productions_asked(
+      productions: productions,
+      asked: [production.lhs.identity],
+      emitted: emitted
+    )
+  )
+}
+
+fn derive_grammar_relation_row_node_resolved(
+  production: FormalProduction,
+  resolution: EmittedProductionResolution
+) -> Witness<Node> {
+  let emitted = resolution.emitted
   match emitted.kind {
     TypeNode { connective: Conj } =>
-      match derive_grammar_relation_token_edges_recursive(
+      match derive_grammar_relation_token_edges_resolved(
         production: production,
-        productions: productions,
-        emitted: emitted
+        resolution: resolution
       ) {
         Holds { value: token_edges } =>
           Holds {
@@ -1607,6 +1936,12 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
               grammar_named_edge(name: ^grammar_terminal_stamp_lexeme_node_projection, target: grammar_atom(identity: ^grammar_terminal_stamp_lexeme))
             ])
         }
+      },
+      literal_terminal: fn(token_class, lexeme) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class)),
+          grammar_named_edge(name: ^grammar_terminal_literal_lexeme_node_projection, target: grammar_atom(identity: lexeme))
+        ])
       },
       nonterminal: fn(production) {
         grammar_expr_node(children: [
@@ -1699,38 +2034,52 @@ fn grammar_to_node(grammar: ParseGrammar) -> Node {
   }
 }
 
-fn grammar_symbol_fold(sym: Symbol) -> NodeFold<GrammarSymbolFoldState> {
-  NodeFold {
-    init: fn(n0) {
-      grammar_symbol_fold_init(n: n0, sym: sym)
+fn grammar_symbol_map_put(m: Map<Symbol, Bool>, sym: Symbol) -> Map<Symbol, Bool> {
+  map_insert(m: m, key: sym, value: true)
+}
+
+fn grammar_symbol_list_put(m: Map<Symbol, Bool>, xs: List<Symbol>) -> Map<Symbol, Bool> {
+  fold_list(
+    xs: xs,
+    empty: m,
+    cons: fn(acc, sym) { grammar_symbol_map_put(m: acc, sym: sym) }
+  )
+}
+
+fn grammar_node_insert_atom_identities_child(
+  m: Map<Symbol, Bool>,
+  e: Edge
+) -> Map<Symbol, Bool> {
+  grammar_node_insert_atom_identities(m: m, n: e.target)
+}
+
+fn grammar_node_insert_atom_identities(m: Map<Symbol, Bool>, n: Node) -> Map<Symbol, Bool> {
+  fold_list(
+    xs: n.children,
+    empty: match n.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        grammar_symbol_map_put(m: m, sym: id)
+      _ => m
     },
-    step: grammar_symbol_fold_step
-  }
+    cons: fn(acc, e) {
+      grammar_node_insert_atom_identities_child(m: acc, e: e)
+    }
+  )
 }
 
-fn grammar_symbol_fold_init(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      GrammarSymbolFoldState { found: id == sym }
-    _ =>
-      GrammarSymbolFoldState { found: false }
-  }
-}
-
-fn grammar_symbol_fold_step(
-  acc: GrammarSymbolFoldState,
-  edge: Edge,
-  child_has_symbol: GrammarSymbolFoldState
-) -> GrammarSymbolFoldState {
-  GrammarSymbolFoldState { found: acc.found || child_has_symbol.found }
-}
-
-fn grammar_symbol_fold_state(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
-  fold_node(n: n, algebra: grammar_symbol_fold(sym: sym))
+// The carried set is the atom set of grammar_to_node, read off that projection rather than
+// re-derived per GrammarExpr arm, so the two cannot disagree. The walk threads one Map through
+// the tree instead of using fold_node: fold_node returns a value per subtree, and std.collection
+// has no Map union to join sibling results.
+fn grammar_carried_symbol_map(grammar: ParseGrammar) -> Map<Symbol, Bool> {
+  grammar_node_insert_atom_identities(m: empty_map(), n: grammar_to_node(grammar: grammar))
 }
 
 fn grammar_carries_symbol(grammar: ParseGrammar, sym: Symbol) -> Bool {
-  grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
+  match map_lookup(m: grammar_carried_symbol_map(grammar: grammar), key: sym) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 type GrammarInterpretationDirection
@@ -1755,120 +2104,13 @@ type LhsExactProductionMatchFold
   | LhsExactProductionMatchOne { production: FormalProduction }
   | LhsExactProductionMatchMany
 
-fn formal_production_matches_lhs_exact_child(
-  productions: List<FormalProduction>,
-  lhs: Symbol,
-  child: Node,
-  candidate: FormalProduction
-) -> Bool {
-  if emitted_shape_supported_for_lhs_exact(child: child) {
-    let emitted_slot_count = emitted_node_slot_count(emitted: child)
-    formal_production_matches_lhs_and_slot_count(
-      production: candidate,
-      lhs: lhs,
-      emitted_slot_count: emitted_slot_count
-    ) &&
-      formal_production_matches_emitted_child(
-        production: candidate,
-        productions: productions,
-        child: child
-      )
-  } else {
-    false
-  }
-}
-
-fn lhs_exact_production_match_fold_step(
-  acc: LhsExactProductionMatchFold,
-  productions: List<FormalProduction>,
-  lhs: Symbol,
-  child: Node,
-  candidate: FormalProduction
-) -> LhsExactProductionMatchFold {
-  if formal_production_matches_lhs_exact_child(
-    productions: productions,
-    lhs: lhs,
-    child: child,
-    candidate: candidate
-  ) {
-    match acc {
-      LhsExactProductionMatchNone =>
-        LhsExactProductionMatchOne { production: candidate }
-      LhsExactProductionMatchOne { production: _ } => LhsExactProductionMatchMany
-      LhsExactProductionMatchMany => LhsExactProductionMatchMany
-    }
-  } else {
-    acc
-  }
-}
-
-fn emitted_production_match_fold_step(
-  acc: LhsExactProductionMatchFold,
-  productions: List<FormalProduction>,
-  child: Node,
-  candidate: FormalProduction
-) -> LhsExactProductionMatchFold {
-  if formal_production_matches_emitted_child(
-    production: candidate,
-    productions: productions,
-    child: child
-  ) {
-    match acc {
-      LhsExactProductionMatchNone =>
-        LhsExactProductionMatchOne { production: candidate }
-      LhsExactProductionMatchOne { production: _ } => LhsExactProductionMatchMany
-      LhsExactProductionMatchMany => LhsExactProductionMatchMany
-    }
-  } else {
-    acc
-  }
-}
-
 fn formal_production_unique_emitted_match(
   productions: List<FormalProduction>,
   child: Node
 ) -> Witness<FormalProduction> {
-  if emitted_shape_supported_for_lhs_exact(child: child) {
-    match fold_list(
-      xs: productions,
-      empty: LhsExactProductionMatchNone,
-      cons: fn(acc, candidate) {
-        emitted_production_match_fold_step(
-          acc: acc,
-          productions: productions,
-          child: child,
-          candidate: candidate
-        )
-      }
-    ) {
-      LhsExactProductionMatchNone =>
-        Violates {
-          diagnostic: Diagnostic {
-            reason: ^grammar_relation_production_not_found,
-            at: node_locus(node: child),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        }
-      LhsExactProductionMatchMany =>
-        Violates {
-          diagnostic: Diagnostic {
-            reason: ^grammar_relation_row_backward_selection_ambiguous,
-            at: node_locus(node: child),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        }
-      LhsExactProductionMatchOne { production: production } =>
-        Holds { value: production }
-    }
-  } else {
-    Violates {
-      diagnostic: Diagnostic {
-        reason: ^grammar_relation_emitted_not_conj,
-        at: node_locus(node: child),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      }
-    }
-  }
+  resolution_unique_emitted_match(
+    resolution: resolve_emitted_productions(productions: productions, emitted: child)
+  )
 }
 
 type RebuildRhsWalkState
@@ -2144,12 +2386,12 @@ fn grammar_relation_row_derived_from_productions(
   productions: List<FormalProduction>,
   emitted: Node
 ) -> Outcome<Node> {
-  match formal_production_unique_emitted_match(productions: productions, child: emitted) {
+  let resolution = resolve_emitted_productions(productions: productions, emitted: emitted)
+  match resolution_unique_emitted_match(resolution: resolution) {
     Holds { value: production } =>
-      match derive_grammar_relation_row_node(
+      match derive_grammar_relation_row_node_resolved(
         production: production,
-        productions: productions,
-        emitted: emitted
+        resolution: resolution
       ) {
         Holds { value: row } => outcome_accepted(value: row)
         Violates { diagnostic: d } => outcome_rejected(d)
@@ -2163,49 +2405,10 @@ fn formal_production_unique_lhs_exact_match(
   lhs: Symbol,
   child: Node
 ) -> Witness<FormalProduction> {
-  if emitted_shape_supported_for_lhs_exact(child: child) {
-    let lhs_productions = formal_productions_for_lhs(productions: productions, lhs: lhs)
-    match fold_list(
-      xs: lhs_productions,
-      empty: LhsExactProductionMatchNone,
-      cons: fn(acc, candidate) {
-        lhs_exact_production_match_fold_step(
-          acc: acc,
-          productions: productions,
-          lhs: lhs,
-          child: child,
-          candidate: candidate
-        )
-      }
-    ) {
-      LhsExactProductionMatchNone =>
-        Violates {
-          diagnostic: Diagnostic {
-            reason: ^grammar_relation_production_not_found,
-            at: node_locus(node: child),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        }
-      LhsExactProductionMatchMany =>
-        Violates {
-          diagnostic: Diagnostic {
-            reason: ^grammar_relation_row_backward_selection_ambiguous,
-            at: node_locus(node: child),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        }
-      LhsExactProductionMatchOne { production: production } =>
-        Holds { value: production }
-    }
-  } else {
-    Violates {
-      diagnostic: Diagnostic {
-        reason: ^grammar_relation_emitted_not_conj,
-        at: node_locus(node: child),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      }
-    }
-  }
+  resolution_production_for_lhs_exact(
+    resolution: resolve_emitted_productions_asked(productions: productions, asked: [lhs], emitted: child),
+    lhs: lhs
+  )
 }
 
 fn grammar_relation_row_backward_selection(

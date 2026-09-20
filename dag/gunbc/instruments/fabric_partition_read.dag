@@ -1,0 +1,131 @@
+module gunbc.instruments.fabric_partition_read
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.capacity.event_chain {
+  PartitionId, ChainEnvelope, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
+  HeadExpectation, HeadAbsent, HeadAt,
+}
+import product.capacity.pool_events { PoolEvent, pool_event_wire_text }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageServed, FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric_event_log {
+  PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition, event_log_refusal_wire,
+}
+
+// READING A PARTITION WITHOUT WRITING TO IT, and that is the whole point of a second entry beside
+// gunbc.instruments.fabric_event_log_probe. The probe is the carrier's receipt and it WRITES: it
+// appends events and takes a seat in its own pool, so it may never be pointed at a live partition.
+// An operator who wants to know what a live partition holds -- what the seat pool of a serving group
+// has recorded -- had no modeled way to ask, so the first live receipt for the fabric DB cutover was
+// a hand-built curl. A hand-built request is not an instrument: nothing re-derives it, and the
+// reply it renders is whatever the person typed (DESIGN section 6, name the instrument).
+//
+// THIS READS THE PRODUCTION FOLD, not a re-implementation of it: event_log_read_partition is the
+// same function the harness's seat transaction reads through, so a refusal here is the refusal a
+// seat acquisition would meet, in the same typed vocabulary.
+//
+// IT TAKES NO POOL AND REPORTS NO SEAT STANDING. Whether a pool has room is a question about a
+// ceiling and a fold over these events (product.capacity.pool_events), and answering it here would
+// be a second spelling of gunbc.fabric_event_log fabric_seat_observe. This answers only what the log
+// holds: the head, and the chain from it, oldest first.
+
+type PartitionReadout {
+  head: HeadExpectation
+  events: List<ChainEnvelope<PoolEvent>>
+}
+
+fn head_word(head: HeadExpectation) -> String {
+  match head {
+    HeadAbsent => "absent"
+    HeadAt { id: h } => join(["at ", h as String], "")
+  }
+}
+
+// One line per event, oldest first: its id and its wire text. The text is the event's own
+// serialization, so a reader sees exactly the bytes the store holds rather than a rendering minted
+// here. Rendered by map-then-join rather than a fold over a copied accumulator: a readout is bounded
+// at partition_read_budget() events, and an accumulator re-copied per event is quadratic in bytes at
+// that bound (DESIGN section 6 -- a copied accumulator is fixed regardless of the realized n).
+fn readout_lines(readout: PartitionReadout) -> String {
+  join(map(readout.events, env => join([env.id as String, " ", pool_event_wire_text(event: env.event), "\n"], "")), "")
+}
+
+fn readout_text(partition: PartitionId, readout: PartitionReadout) -> String {
+  join([
+    "partition ", partition as String, "\n",
+    "head ", head_word(head: readout.head), "\n",
+    "events ", to_string(length(readout.events)), "\n",
+    readout_lines(readout: readout),
+  ], "")
+}
+
+type PartitionReadReport
+  = PartitionReadReported { text: String }
+  | PartitionReadUnreported { detail: String }
+
+fn partition_read_report(store: FabricStorageBinding, partition: PartitionId, budget: Nat) -> PartitionReadReport {
+  match event_log_read_partition(store: store, partition: partition, budget: budget) {
+    PartitionReadRefused { cause: c } => PartitionReadUnreported { detail: event_log_refusal_wire(cause: c) }
+    PartitionReadOk { head: head, walk: walk } =>
+      match walk {
+        ChainWalked { oldest_first: xs } => PartitionReadReported { text: readout_text(partition: partition, readout: PartitionReadout { head: head, events: xs }) }
+        ChainIncomplete { missing: m, newest_first_so_far: _ } =>
+          PartitionReadUnreported { detail: join(["the chain is missing event ", m as String], "") }
+        ChainBudgetExhausted { at: a } =>
+          PartitionReadUnreported { detail: join(["the chain exceeded the read budget at ", a as String], "") }
+      }
+  }
+}
+
+// THE READOUT GOES TO STDOUT'S STAND-IN, A FILE THE CALLER NAMES, for the reason every other
+// instrument here writes a receipt: `gunbc run` maps a function's result to an exit code, so a
+// value returned is not a value read. An unwritable receipt path refuses rather than reporting a
+// read it could not hand back.
+fn partition_read_exit(report: PartitionReadReport, receipt: NonEmptyStr) -> ProcessExit {
+  match report {
+    PartitionReadUnreported { detail: why } => exit_failure(reason: join(["fabric partition read refused: ", why], ""))
+    PartitionReadReported { text: text } => {
+      let w = Filesystem.Write(path: receipt as String, content: text)
+      if w.success { ExitSuccess } else { exit_failure(reason: join(["fabric partition read: receipt write failed: ", w.error], "")) }
+    }
+  }
+}
+
+fn partition_read_budget() -> Nat { 4096 }
+
+// THE SERVED READ: any host on the tailnet, against the placed store's endpoint. This is the entry
+// the live group A receipt runs, e.g.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_partition_read.dag --function fabric_partition_read_served \
+//     --arg endpoint=https://srv1.<tailnet>/fabric-storage --arg partition=group-group-a-quality-seat-v1 \
+//     --arg receipt=/tmp/group-a.txt
+//
+// An empty partition is `head absent` with no events, which after the cutover is the correct answer
+// rather than a failure: partitions start empty, nothing was imported from the git log.
+fn fabric_partition_read_served(endpoint: NonEmptyStr, partition: NonEmptyStr, receipt: NonEmptyStr) -> ProcessExit {
+  partition_read_exit(
+    report: partition_read_report(
+      store: FabricStorageServed { endpoint: endpoint },
+      partition: (partition as String) as PartitionId,
+      budget: partition_read_budget(),
+    ),
+    receipt: receipt,
+  )
+}
+
+// THE LOCAL READ: on the placed host itself, against the store's files, so an operator standing on
+// srv1 can read a partition without going out through tailscale and back.
+fn fabric_partition_read_local(root: NonEmptyStr, partition: NonEmptyStr, receipt: NonEmptyStr) -> ProcessExit {
+  partition_read_exit(
+    report: partition_read_report(
+      store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: root) },
+      partition: (partition as String) as PartitionId,
+      budget: partition_read_budget(),
+    ),
+    receipt: receipt,
+  )
+}
