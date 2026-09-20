@@ -852,7 +852,7 @@ fn run_launched_attempt(
 {
   let launch = launch_attempt(
     attempt: bound.attempt.attempt.attempt,
-    invocation_id: bound.attempt.invocation_id,
+    invocation_id: bound.attempt.attempt.invocation_id,
     plan: plan,
   )
   let trigger = terminal_trigger_of_launch(launch: launch)

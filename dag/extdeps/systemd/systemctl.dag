@@ -348,6 +348,28 @@ type UnitFileState
 // main process only, and a stop that signals only the main process leaves exactly the children
 // gunbc.runner_microvm_lifecycle's CgroupSubtreePopulated exists to catch. systemd.kill(5) documents
 // both flags.
+// THE PROPERTY REACHES systemctl AS ITS WIRE SPELLING, NOT AS A VARIANT NAME, AND THE DIFFERENCE IS
+// A SILENT EMPTY READING RATHER THAN A FAILURE.
+//
+// These two operations used to take a SystemdUnitProperty and interpolate it straight into
+// `--property={property}`, which renders the VARIANT name. systemd_unit_property_wire exists in
+// extdeps.systemd precisely because the two spellings are not always the same string: `ActiveState`
+// is both, `InvocationIDProperty` is spelled `InvocationID` on the wire, and so are
+// `SliceProperty`, `ExecStartProperty`, `IdProperty`, `KillModeProperty` and the rest of the
+// `*Property` family. systemctl does not refuse a property it does not know -- it prints NOTHING and
+// exits 0 -- so every consumer naming one of those read an empty string back with success true and
+// had no way to tell that from a property whose value is genuinely empty.
+//
+// MEASURED, NOT INFERRED (gunbc#11803, srv1, wet): a claim reading ActiveState through this operation
+// PASSES and a claim reading InvocationID through it FAILS, on the same live unit, in the same run --
+// which is the discriminator, because a broken operation would have failed both and a broken unit
+// would have failed both. At the shell on the same host, `--property=InvocationID --value` prints the
+// id and `--property=InvocationIDProperty --value` prints nothing with exit 0.
+//
+// SO THE INPUT IS THE WIRE STRING AND ITS ONLY PRODUCER IS systemd_unit_property_wire. The closed
+// type survives one call up, where the caller names the property it means; what crosses into the
+// argv is the spelling systemctl actually accepts, derived once, by the row that owns it.
+//
 service systemd.Systemctl {
   operation Enable {
     input { unit: NonEmptyStr }
@@ -534,27 +556,6 @@ service systemd.Systemctl {
     }
   }
 
-// THE PROPERTY REACHES systemctl AS ITS WIRE SPELLING, NOT AS A VARIANT NAME, AND THE DIFFERENCE IS
-// A SILENT EMPTY READING RATHER THAN A FAILURE.
-//
-// These two operations used to take a SystemdUnitProperty and interpolate it straight into
-// `--property={property}`, which renders the VARIANT name. systemd_unit_property_wire exists in
-// extdeps.systemd precisely because the two spellings are not always the same string: `ActiveState`
-// is both, `InvocationIDProperty` is spelled `InvocationID` on the wire, and so are
-// `SliceProperty`, `ExecStartProperty`, `IdProperty`, `KillModeProperty` and the rest of the
-// `*Property` family. systemctl does not refuse a property it does not know -- it prints NOTHING and
-// exits 0 -- so every consumer naming one of those read an empty string back with success true and
-// had no way to tell that from a property whose value is genuinely empty.
-//
-// MEASURED, NOT INFERRED (gunbc#11803, srv1, wet): a claim reading ActiveState through this operation
-// PASSES and a claim reading InvocationID through it FAILS, on the same live unit, in the same run --
-// which is the discriminator, because a broken operation would have failed both and a broken unit
-// would have failed both. At the shell on the same host, `--property=InvocationID --value` prints the
-// id and `--property=InvocationIDProperty --value` prints nothing with exit 0.
-//
-// SO THE INPUT IS THE WIRE STRING AND ITS ONLY PRODUCER IS systemd_unit_property_wire. The closed
-// type survives one call up, where the caller names the property it means; what crosses into the
-// argv is the spelling systemctl actually accepts, derived once, by the row that owns it.
   operation ShowProperty {
     input { unit: NonEmptyStr, property: NonEmptyStr }
     output {
