@@ -56,7 +56,6 @@ data fleet_converge_plan_receipt_path: String = "/tmp/fleet-converge-plan/plan_r
 data fleet_converge_apply_receipt_dir: String = "/tmp/fleet-converge-apply"
 data fleet_converge_apply_receipt_path: String = "/tmp/fleet-converge-apply/apply_receipt.json"
 
-data fleet_converge_expected_host_env_name: String = "FLEET_CONVERGE_EXPECTED_HOST"
 data fleet_converge_plan_run_id_env_name: String = "FLEET_CONVERGE_PLAN_RUN_ID"
 
 type FleetConvergePlanReceipt {
