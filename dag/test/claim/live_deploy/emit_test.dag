@@ -135,6 +135,7 @@ import gunbc.host_axis_caps {
   CapConvergeAuthorized,
   SurplusSlotsObserved,
   runner_slot_service_units_for_host,
+  RunnerSlotServiceUnits, ServiceUnitsDerived, ServiceUnitsWidthUnresolved,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
@@ -432,9 +433,19 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
 // NEXT-RUNG TRIGGER: the reach claim returns the moment one render fits under a tier this module's
 // identities are judged by -- either because the emitter's fixed cost falls below the ceiling, or
 // because these identities are measured into a tier that admits one.
+// THE FIXTURE FAILS RATHER THAN SUBSTITUTES. srv1's width resolves, so both rows below take the
+// derived arm; the unresolved arm returns a one-element list that matches no real unit, so a
+// regression that made srv1 unresolvable reds these rows instead of comparing empty scripts.
+fn emit_test_service_units_of(host: HostIdentity) -> List<NonEmptyStr> {
+  match runner_slot_service_units_for_host(host: host) {
+    ServiceUnitsDerived { units: units } => units
+    ServiceUnitsWidthUnresolved { host: _, cause: _ } => ["__width-unresolved__" as NonEmptyStr]
+  }
+}
+
 test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
   let target = deployment_srv1_target()
-  let units = runner_slot_service_units_for_host(host: target.host.identity)
+  let units = emit_test_service_units_of(host: target.host.identity)
   let members = derived_runner_memory_cap_members()
   let cap_block = deploy_memory_cap_apply_script_from_authorization(members: members, units: units)
   let steps = pipeline_steps_text(
@@ -1289,7 +1300,7 @@ fn srv1_authorization() -> CapConvergeDecision {
 // authority that produces it, which is both correct and immune to how the serializer quotes -- the
 // same reason the sibling wiring witness below was already green while this one was red.
 test fn a_matching_authorization_applies_the_staged_caps() -> Bool {
-  let units = runner_slot_service_units_for_host(host: deployment_srv1_target().host.identity)
+  let units = emit_test_service_units_of(host: deployment_srv1_target().host.identity)
   let text = pipeline_steps_text(
     steps: deploy_memory_cap_apply_steps(spec: deployment_spec_srv1(), authorization: srv1_authorization())
   )
