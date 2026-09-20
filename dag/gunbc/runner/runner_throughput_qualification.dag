@@ -18,18 +18,9 @@ import extdeps.toolchain.types { Architecture }
 import gunbc.required_ci_phase_roster {
   RequiredCiPhase, required_ci_phase_name, required_ci_phase_is, required_ci_phases,
 }
-import gunbc.runner_slot_allocation {
-  RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded,
-  gunbc_floor_minimum_viable_armed_budget,
-}
 import gunbc.host_budget_source {
   HostBudgetResolution, HostBudgetResolved, HostBudgetDeclaredUnverified, HostBudgetUnreadable,
 }
-import gunbc.fleet_host_budget {
-  FleetHostPlan, FleetHostPlanDerived, FleetHostPlanUnsound,
-  HostAllocationVerdict, HostAllocationConserves, HostAllocationOversubscribed, HostAllocationUnchargeable,
-}
-import gunbc.fabric_executor_class { ExecutorSanction }
 import v2.workflow.floor_eval_step_calibration {
   EvalStepCalibration, calibration_rate, calibration_specimen_eval_steps,
 }
@@ -42,15 +33,27 @@ import v2.workflow.floor_eval_step_calibration {
 // allowed to read a hardware census as a capacity class.
 //
 // SELECTION PRECEDES THE ASSESSMENT (DESIGN section 3d; operator hold on gunbc#11722, 2026-09-19).
-// The selected offer, the selected fleet-side sanction, the requirements the offer is claimed to
-// deliver, the selected conserving host plan, the selected slot, the sampling policy and the phase
-// ceilings are INPUTS -- `SelectedRunnerQualification` -- chosen by the fleet before any run. This
-// module mints none of them: an earlier draft derived the sanction and the supply row FROM the
-// assessment, which reversed `gunbc.fabric_executor_class`'s meaning (a sanction is permission
-// decided before fungibility, not a performance conclusion) and let the same fast run be labelled
-// either class. What this module produces is an assessment bound to that exact selection, and the
-// fabric's existing admission -- `product.fabric.capacity_admission admit_delivered_offer` through
+// The selected offer, the requirements the offer is claimed to deliver, the selected conserving
+// host allocation, the selected slot, the sampling policy and the phase ceilings are INPUTS --
+// `SelectedRunnerQualification` -- chosen by the fleet before any run and projected from the
+// fleet's own authorities by `gunbc.runner_throughput_selection`, which also carries the
+// independently selected `ExecutorSanction` the fabric admits on. This module mints none of them:
+// an earlier draft derived the sanction and the supply row FROM the assessment, which reversed
+// `gunbc.fabric_executor_class`'s meaning (a sanction is permission decided before fungibility,
+// not a performance conclusion) and let the same fast run be labelled either class. What this
+// module produces is an assessment bound to that exact selection, and the fabric's existing
+// admission -- `product.fabric.capacity_admission admit_delivered_offer` through
 // `product.fabric.node_qualification OfferClaimsRunnerDelivery` -- joins policy and qualification.
+//
+// WHY THIS MODULE IS A LEAF AND THE SELECTION MODULE IS NOT. product.fabric.node_qualification
+// imports this module for the assessment type, so this module's import closure joins the fabric's.
+// Measured on the seed at gunbc#11722 (2026-09-20): adding an import edge from that closure to
+// gunbc.build_cache_instance -- through gunbc.runner_slot_allocation, gunbc.fleet_host_budget or
+// gunbc.fabric_executor_class, each already reachable in the closure by other paths -- makes
+// gunbc.harness.harness_backend's bare `split` and `last` fail to resolve, with the module set
+// unchanged. That is a seed resolution defect reported to the parent lane, not a modeling fact, and
+// this module routes around it: the fleet authorities are consumed one module up and projected
+// into the carriers below, so the sealed record and the fold stay reachable from the fabric.
 //
 // THE OBSERVED RUN IS PRODUCER-OWNED AND SEALED. `ObservedRunnerQualificationRun` carries every
 // identity the assessment joins on -- host, program, revision, calibration specimen, image and
@@ -148,21 +151,27 @@ type CgroupMemoryReading
   | CgroupMemoryUnreadable { reason: NonEmptyStr }
 
 // THE UNIT'S PROPERTIES AS systemd REPORTS THEM AFTER THE RUN STARTED -- what bound the run, as
-// opposed to what was asked for. The join compares them to the selected slot.
+// opposed to what was asked for. The join compares them to the selected slot. THE CPU QUOTA IS
+// CARRIED AS A PROJECTION of gunbc.runner_slot_allocation RunnerSlotCpuQuota: a thread count when
+// a ceiling is declared, absent when the fleet declares none (SlotCpuQuotaUnbounded), the same
+// projection on both sides of the join; gunbc.runner_throughput_selection performs it for the
+// selected side, and the producer reads CPUQuotaPerSecUSec=infinity as absent for the observed.
+type SlotQuotaThreads = HardwareThreadCount?
+
 type EffectiveSlotProperties {
   memory_max: ByteSize
   memory_high: ByteSize
   tasks_max: Int
-  cpu_quota: RunnerSlotCpuQuota
+  cpu_quota_threads: SlotQuotaThreads
 }
 
-fn cpu_quota_eq(a: RunnerSlotCpuQuota, b: RunnerSlotCpuQuota) -> Bool {
+fn cpu_quota_eq(a: SlotQuotaThreads, b: SlotQuotaThreads) -> Bool {
   match a {
-    SlotCpuQuotaUnbounded => match b { SlotCpuQuotaUnbounded => true _ => false }
-    CpuQuotaResolved { threads: x } =>
+    Absent => match b { Absent => true Present { value: _ } => false }
+    Present { value: x } =>
       match b {
-        CpuQuotaResolved { threads: y } => hardware_thread_count_value(t: x) == hardware_thread_count_value(t: y)
-        _ => false
+        Present { value: y } => hardware_thread_count_value(t: x) == hardware_thread_count_value(t: y)
+        Absent => false
       }
   }
 }
@@ -230,19 +239,27 @@ fn observed_run(
 
 // ── THE SELECTION: EVERYTHING THE ASSESSMENT CONSUMES AND NEVER MINTS ─────────────────────────
 
-// THE HOST PLAN IS A RECEIPT, NOT FACTS TO RE-PLAN FROM. `gunbc.fleet_host_budget fleet_host_plan_for`
-// derives it (refusing on unverified oomd, an absent jobserver citation, an unset headroom) and
-// `host_allocation_verdict` says whether it conserves with the control plane charged. Both are
-// selected by the fleet and carried here; the assessment reads the slice and the effective CPU cap
-// off the plan and chooses no sibling claim of its own (hold item 4).
-type SelectedHostPlan {
-  plan: FleetHostPlan
-  allocation: HostAllocationVerdict
-}
+// THE HOST ALLOCATION IS A RECEIPT, NOT FACTS TO RE-PLAN FROM. `gunbc.fleet_host_budget
+// fleet_host_plan_for` derives the plan (refusing on unverified oomd, an absent jobserver citation,
+// an unset headroom) and `host_allocation_verdict` says whether it conserves with the control plane
+// charged; `gunbc.runner_throughput_selection selected_host_allocation` projects the two into this
+// carrier, admitting the slice and the effective runner CPU cap only when the plan derived AND the
+// allocation conserves, and carrying the fleet's own reason otherwise. The assessment reads the
+// slice and the cap off it and chooses no sibling claim of its own (hold item 4).
+type SelectedHostAllocation
+  = HostAllocationAdmitted { runner_slice_cap: ByteSize, effective_runner_cpu_cap: HardwareThreadCount }
+  | HostAllocationRefused { cause: NonEmptyStr }
 
+// THE SELECTED SLOT IS THE FLEET'S RunnerSlotDesired PROJECTED to the properties the join reads,
+// plus the unit it will run as, and the floor's minimum viable armed budget the high line must
+// clear (`gunbc_floor_minimum_viable_armed_budget`, carried by the selection module).
 type SelectedSlot {
-  desired: RunnerSlotDesired
   unit: NonEmptyStr
+  memory_max: ByteSize
+  memory_high: ByteSize
+  tasks_max: Int
+  cpu_quota_threads: SlotQuotaThreads
+  floor_minimum_armed_budget: ByteSize
 }
 
 // HOW MANY RUNS SPEAK, DECIDED BEFORE THE FOLD. ExactlyOneReconciledRun admits one run and refuses
@@ -262,10 +279,9 @@ type PhaseCeilings
 type SelectedRunnerQualification<P> {
   offer: SupplierOffer<P>
   host: HostIdentity
-  executor_sanction: ExecutorSanction
   requirements: ExecutionRequirements
   workload: FloorWorkloadPin
-  host_plan: SelectedHostPlan
+  host_allocation: SelectedHostAllocation
   slot: SelectedSlot
   workspace: WorkspaceBacking
   cores_per_slot: HardwareThreadCount
@@ -324,10 +340,10 @@ fn first_refused(joins: List<SubjectJoin>) -> SubjectJoin {
   )
 }
 
-fn cpu_quota_wire(q: RunnerSlotCpuQuota) -> String {
+fn cpu_quota_wire(q: SlotQuotaThreads) -> String {
   match q {
-    SlotCpuQuotaUnbounded => "unbounded"
-    CpuQuotaResolved { threads: t } => concat(hardware_thread_count_value(t: t) as String, " threads")
+    Absent => "unbounded"
+    Present { value: t } => concat(hardware_thread_count_value(t: t) as String, " threads")
   }
 }
 
@@ -343,7 +359,7 @@ fn locus_wire(l: WorkspaceBytesLocus) -> String {
 // unreadable or declared-unverified bound is a join refusal, not a memory standing -- the run was
 // not bounded by the subject's envelope, so nothing it measured is about the subject.
 fn bound_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunnerQualificationRun) -> SubjectJoin {
-  let want = byte_size_count(b: selection.slot.desired.memory_high)
+  let want = byte_size_count(b: selection.slot.memory_high)
   match run.memory {
     CgroupMemoryUnreadable { reason: r } =>
       SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: r as String }
@@ -360,7 +376,7 @@ fn bound_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunnerQ
 }
 
 fn subject_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunnerQualificationRun) -> SubjectJoin {
-  let want = selection.slot.desired
+  let want = selection.slot
   first_refused(joins: [
     join_axis(run: run.run, axis: HostAxis, holds: (selection.host as String) == (run.host as String), selected: selection.host as String, observed: run.host as String),
     join_axis(run: run.run, axis: ProgramAxis, holds: (selection.workload.program as String) == (run.program as String), selected: selection.workload.program as String, observed: run.program as String),
@@ -370,7 +386,7 @@ fn subject_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunne
     join_axis(run: run.run, axis: EffectiveMemoryMaxAxis, holds: byte_size_count(b: want.memory_max) == byte_size_count(b: run.effective.memory_max), selected: byte_size_count(b: want.memory_max) as String, observed: byte_size_count(b: run.effective.memory_max) as String),
     join_axis(run: run.run, axis: EffectiveMemoryHighAxis, holds: byte_size_count(b: want.memory_high) == byte_size_count(b: run.effective.memory_high), selected: byte_size_count(b: want.memory_high) as String, observed: byte_size_count(b: run.effective.memory_high) as String),
     join_axis(run: run.run, axis: EffectiveTasksMaxAxis, holds: want.tasks_max == run.effective.tasks_max, selected: want.tasks_max as String, observed: run.effective.tasks_max as String),
-    join_axis(run: run.run, axis: EffectiveCpuQuotaAxis, holds: cpu_quota_eq(a: want.cpu_quota, b: run.effective.cpu_quota), selected: cpu_quota_wire(q: want.cpu_quota), observed: cpu_quota_wire(q: run.effective.cpu_quota)),
+    join_axis(run: run.run, axis: EffectiveCpuQuotaAxis, holds: cpu_quota_eq(a: want.cpu_quota_threads, b: run.effective.cpu_quota_threads), selected: cpu_quota_wire(q: want.cpu_quota_threads), observed: cpu_quota_wire(q: run.effective.cpu_quota_threads)),
     join_axis(run: run.run, axis: WorkspaceAxis, holds: workspace_locus_eq(a: workspace_bytes_locus(backing: selection.workspace), b: run.workspace), selected: locus_wire(l: workspace_bytes_locus(backing: selection.workspace)), observed: locus_wire(l: run.workspace)),
     bound_join(selection: selection, run: run),
   ])
@@ -406,16 +422,19 @@ type PhaseRosterStanding
   = PhaseRosterComplete
   | PhaseMissing { phase: RequiredCiPhase }
   | PhaseDuplicated { phase: RequiredCiPhase }
+  | PhaseRosterNotAssessed { because: NonEmptyStr }
 
+// A CEILING ALWAYS NAMES A REQUIRED PHASE BY CONSTRUCTION: RequiredCiPhase is the closed roster
+// coproduct, so there is no ceiling for a phase that is not required and no arm for one
+// (review 68860 removed a check that could never go red).
 type PhaseWallStanding
   = PhaseWallsNotAssessed
   | PhaseWallsWithinCeilings
   | PhaseWallExceedsCeiling { phase: RequiredCiPhase, wall: Millisecond, ceiling: Millisecond }
-  | PhaseCeilingNamesNoRequiredPhase { phase: RequiredCiPhase }
 
-// THE SLOT COUNT IS READ OFF THE SELECTED PLAN: its runner slice over the selected slot's MemoryMax,
-// and its effective runner CPU cap over the fleet's cores-per-slot policy; the minimum commits.
-// An unsound plan, an unchargeable or oversubscribed allocation, derives no width.
+// THE SLOT COUNT IS READ OFF THE SELECTED ALLOCATION: its runner slice over the selected slot's
+// MemoryMax, and its effective runner CPU cap over the fleet's cores-per-slot policy; the minimum
+// commits. A refused allocation (unsound plan, unchargeable or oversubscribed) derives no width.
 type SlotWidthStanding
   = SlotWidthDerived { by_memory: Int, by_cpu: Int, slots: Int }
   | SlotWidthUnderivable { cause: NonEmptyStr }
@@ -486,7 +505,7 @@ fn run_peak(run: ObservedRunnerQualificationRun) -> ByteSize? {
   }
 }
 
-fn peak_standing(peak: ByteSize, envelope: RunnerSlotDesired) -> MemoryEnvelopeStanding {
+fn peak_standing(peak: ByteSize, envelope: SelectedSlot) -> MemoryEnvelopeStanding {
   if byte_size_count(b: peak) < byte_size_count(b: envelope.memory_high) {
     PeakWithinSlotHigh { peak: peak, high: envelope.memory_high }
   } else {
@@ -516,18 +535,18 @@ fn memory_worse(candidate: MemoryEnvelopeStanding, held: MemoryEnvelopeStanding)
   }
 }
 
-fn run_memory_standing(envelope: RunnerSlotDesired, run: ObservedRunnerQualificationRun) -> MemoryEnvelopeStanding {
+fn run_memory_standing(envelope: SelectedSlot, run: ObservedRunnerQualificationRun) -> MemoryEnvelopeStanding {
   match run_peak(run: run) {
     Absent => MemoryUnread { reason: "a run in the sample has no readable memory.peak" as NonEmptyStr }
     Present { value: p } => peak_standing(peak: p, envelope: envelope)
   }
 }
 
-fn aggregate_memory(envelope: RunnerSlotDesired, runs: List<ObservedRunnerQualificationRun>) -> MemoryEnvelopeStanding {
+fn aggregate_memory(envelope: SelectedSlot, runs: List<ObservedRunnerQualificationRun>) -> MemoryEnvelopeStanding {
   let high = byte_size_count(b: envelope.memory_high)
-  let minimum = byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
+  let minimum = byte_size_count(b: envelope.floor_minimum_armed_budget)
   if high < minimum {
-    SlotHighBelowFloorMinimum { high: envelope.memory_high, minimum: gunbc_floor_minimum_viable_armed_budget }
+    SlotHighBelowFloorMinimum { high: envelope.memory_high, minimum: envelope.floor_minimum_armed_budget }
   } else {
     match runs.first() {
       Absent => MemoryUnread { reason: "no run observed" as NonEmptyStr }
@@ -575,27 +594,20 @@ fn max_wall_for(runs: List<ObservedRunnerQualificationRun>, phase: RequiredCiPha
   )
 }
 
-fn phase_is_required(phase: RequiredCiPhase) -> Bool {
-  required_ci_phases |> any(p => required_ci_phase_is(a: p, b: phase))
-}
-
 fn phase_wall_standing(ceilings: PhaseCeilings, runs: List<ObservedRunnerQualificationRun>) -> PhaseWallStanding {
   match ceilings {
     NoPhaseCeilings => PhaseWallsNotAssessed
     PhaseCeilingsDeclared { ceilings: cs } =>
       fold(cs, init: PhaseWallsWithinCeilings, f: (acc, c) =>
         match acc {
-          PhaseWallsWithinCeilings =>
-            if !phase_is_required(phase: c.phase) {
-              PhaseCeilingNamesNoRequiredPhase { phase: c.phase }
+          PhaseWallsWithinCeilings => {
+            let observed = max_wall_for(runs: runs, phase: c.phase)
+            if observed > (millisecond_count(m: c.wall) as Int) {
+              PhaseWallExceedsCeiling { phase: c.phase, wall: millisecond(count: observed), ceiling: c.wall }
             } else {
-              let observed = max_wall_for(runs: runs, phase: c.phase)
-              if observed > (millisecond_count(m: c.wall) as Int) {
-                PhaseWallExceedsCeiling { phase: c.phase, wall: millisecond(count: observed), ceiling: c.wall }
-              } else {
-                acc
-              }
+              acc
             }
+          }
           _ => acc
         }
       )
@@ -603,29 +615,19 @@ fn phase_wall_standing(ceilings: PhaseCeilings, runs: List<ObservedRunnerQualifi
 }
 
 fn qualify_slot_width<P>(selection: SelectedRunnerQualification<P>) -> SlotWidthStanding {
-  match selection.host_plan.allocation {
-    HostAllocationOversubscribed =>
-      SlotWidthUnderivable { cause: "the selected host allocation is oversubscribed" as NonEmptyStr }
-    HostAllocationUnchargeable { cause: c } =>
-      SlotWidthUnderivable { cause: concat("the selected host allocation is unchargeable: ", c) as NonEmptyStr }
-    HostAllocationConserves =>
-      match selection.host_plan.plan {
-        FleetHostPlanUnsound { reason: r } => SlotWidthUnderivable { cause: r as NonEmptyStr }
-        FleetHostPlanDerived {
-          name: _, tree: _, runner_slice_cap: slice, effective_build_tokens: _,
-          effective_runner_cpu_cap: cpu_cap, build_step: _,
-        } => {
-          let per_slot_threads = hardware_thread_count_value(t: selection.cores_per_slot)
-          let per_slot_bytes = byte_size_count(b: selection.slot.desired.memory_max)
-          if per_slot_threads == 0 || per_slot_bytes == 0 {
-            SlotWidthUnderivable { cause: "the selected slot admits zero threads or zero bytes per slot, so no width divides" as NonEmptyStr }
-          } else {
-            let by_memory = byte_size_count(b: slice) / per_slot_bytes
-            let by_cpu = hardware_thread_count_value(t: cpu_cap) / per_slot_threads
-            SlotWidthDerived { by_memory: by_memory, by_cpu: by_cpu, slots: if by_cpu < by_memory { by_cpu } else { by_memory } }
-          }
-        }
+  match selection.host_allocation {
+    HostAllocationRefused { cause: c } => SlotWidthUnderivable { cause: c }
+    HostAllocationAdmitted { runner_slice_cap: slice, effective_runner_cpu_cap: cpu_cap } => {
+      let per_slot_threads = hardware_thread_count_value(t: selection.cores_per_slot)
+      let per_slot_bytes = byte_size_count(b: selection.slot.memory_max)
+      if per_slot_threads == 0 || per_slot_bytes == 0 {
+        SlotWidthUnderivable { cause: "the selected slot admits zero threads or zero bytes per slot, so no width divides" as NonEmptyStr }
+      } else {
+        let by_memory = byte_size_count(b: slice) / per_slot_bytes
+        let by_cpu = hardware_thread_count_value(t: cpu_cap) / per_slot_threads
+        SlotWidthDerived { by_memory: by_memory, by_cpu: by_cpu, slots: if by_cpu < by_memory { by_cpu } else { by_memory } }
       }
+    }
   }
 }
 
@@ -733,8 +735,8 @@ fn assess_runner_throughput<P>(
   let joined = join_holds(j: join) && sampling.length() == 0
   let not_assessed = "not assessed: the subject join or the sampling policy refused" as NonEmptyStr
   let throughput = if joined { aggregate_throughput(calibration: selection.calibration, runs: runs) } else { ThroughputUnread { because: not_assessed } }
-  let memory = if joined { aggregate_memory(envelope: selection.slot.desired, runs: runs) } else { MemoryUnread { reason: not_assessed } }
-  let roster = if joined { first_incomplete_roster(runs: runs) } else { PhaseRosterComplete }
+  let memory = if joined { aggregate_memory(envelope: selection.slot, runs: runs) } else { MemoryUnread { reason: not_assessed } }
+  let roster = if joined { first_incomplete_roster(runs: runs) } else { PhaseRosterNotAssessed { because: not_assessed } }
   let walls = if joined { phase_wall_standing(ceilings: selection.phase_ceilings, runs: runs) } else { PhaseWallsNotAssessed }
   let width = qualify_slot_width(selection: selection)
   let join_refusals = if join_holds(j: join) { [] } else { [SubjectJoinDidNotHold { join: join }] }
@@ -846,6 +848,7 @@ fn refusal_wire(r: ThroughputRefusal) -> String {
         PhaseRosterComplete => "phase roster complete"
         PhaseMissing { phase: p } => concat("required phase missing from the run: ", required_ci_phase_name(p: p))
         PhaseDuplicated { phase: p } => concat("required phase read more than once: ", required_ci_phase_name(p: p))
+        PhaseRosterNotAssessed { because: b } => concat("phase roster not assessed: ", b as String)
       }
     PhaseWallDidNotHold { standing: s } =>
       match s {
@@ -853,7 +856,6 @@ fn refusal_wire(r: ThroughputRefusal) -> String {
         PhaseWallsWithinCeilings => "phase walls within ceilings"
         PhaseWallExceedsCeiling { phase: p, wall: w, ceiling: c } =>
           join(["phase ", required_ci_phase_name(p: p), " wall ", nat_wire(n: millisecond_count(m: w)), "ms exceeds ceiling ", nat_wire(n: millisecond_count(m: c)), "ms"], "")
-        PhaseCeilingNamesNoRequiredPhase { phase: p } => concat("a supplied ceiling names no required phase: ", required_ci_phase_name(p: p))
       }
     SlotWidthDidNotHold { standing: s } => slot_width_wire(s: s) as String
   }

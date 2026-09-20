@@ -31,7 +31,13 @@ delivers. Nothing imports either module, so the cost of the recut is zero consum
 
 Three live in `gunbc.runner_throughput_qualification` (the route stays in
 `gunbc.runner_throughput_qualification_route`); the fourth is an arm on the fabric's existing
-delivery-claim carrier. Names are the operator's.
+delivery-claim carrier. Names are the operator's. **One module was added after the cut for a
+measured reason:** `gunbc.runner_throughput_selection` consumes the fleet authorities
+(`runner_slot_allocation`, `fleet_host_budget`, `fabric_executor_class`) and projects them into the
+selection carriers, because `product.fabric.node_qualification` imports the leaf and, on the
+current seed, an import edge from that closure to `gunbc.build_cache_instance` (reached by all
+three) breaks bare-name resolution in `gunbc.harness.harness_backend` with the module set
+unchanged — bisected 2026-09-20 on #11722, reported to the parent lane as a seed defect.
 
 **`SelectedRunnerQualification<P>`** — the selection, made BEFORE the assessment, by the fleet:
 

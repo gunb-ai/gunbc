@@ -29,12 +29,12 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired, gunbc_runner_cores_per_slot, CpuQuotaResolved, SlotCpuQuotaUnbounded,
 }
 import gunbc.fabric_executor_class {
-  ExecutorSanctioned, CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified, admit_executor_capacity,
+  ExecutorSanction, ExecutorSanctioned, CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified, admit_executor_capacity,
 }
 import gunbc.fabric_witness_run { floor_execution_requirements }
 import gunbc.fleet_host_budget {
   FleetHostPlan, FleetHostPlanDerived, FleetHostPlanUnsound, HeadroomSet, fleet_host_plan_for, oomd_actuation_floor,
-  HostAllocationConserves, HostAllocationOversubscribed,
+  HostAllocationVerdict, HostAllocationConserves, HostAllocationOversubscribed,
 }
 import gunbc.fleet_container { gha_runner_container }
 import gunbc.ci_floor_measurement { OomdEnforced }
@@ -47,22 +47,26 @@ import gunbc.runner_throughput_qualification {
   workspace_bytes_locus,
   PhaseWall, RateSpecimenRead, CgroupMemoryReading, CgroupMemoryRead, CgroupMemoryUnreadable, EffectiveSlotProperties,
   ObservedRunnerQualificationRun, observed_run,
-  SelectedHostPlan, SelectedSlot, SamplingPolicy, ExactlyOneReconciledRun, ConservativePerAxis,
+  SamplingPolicy, ExactlyOneReconciledRun, ConservativePerAxis,
   PhaseCeilings, NoPhaseCeilings, PhaseCeilingsDeclared, SelectedRunnerQualification,
+  HostAllocationAdmitted, HostAllocationRefused,
   subject_join_axis_wire, SubjectJoined, SubjectJoinRefused,
   ThroughputMeetsPin, ThroughputBelowPin, ThroughputUnread,
   PeakWithinSlotHigh, PeakExceedsSlotHigh, MemoryUnread,
-  PhaseRosterComplete, PhaseMissing, PhaseDuplicated,
+  PhaseRosterComplete, PhaseMissing, PhaseDuplicated, PhaseRosterNotAssessed,
   PhaseWallsNotAssessed, PhaseWallsWithinCeilings, PhaseWallExceedsCeiling,
   SlotWidthDerived, SlotWidthUnderivable,
   ThroughputRefusal, SubjectJoinDidNotHold, SamplingDidNotHold,
   RunnerThroughputAssessment, assess_runner_throughput, assessment_holds, assessment_wire,
   qualification_run_producer_frontier, leg_is_bound,
 }
+import gunbc.runner_throughput_selection {
+  RunnerQualificationInputs, select_runner_qualification, slot_quota_threads, selected_host_allocation,
+}
 import gunbc.runner_throughput_qualification_route {
   QualificationStage, BootHostUnderApprovalGate, RegisterEphemeralRunnerSlot, DispatchFloorToSlot,
   CollectInstruments, DeregisterRunnerSlot,
-  BmcWrite, GitHubControlPlaneWrite, GuestLocalEffect, ObservationOnly, stage_effect, stage_egress,
+  BmcWrite, GitHubControlPlaneWrite, ObservationOnly, stage_effect, stage_egress,
   mtcollins1_qualification_route, ephemeral_slot_argv, ephemeral_slot_labels, ephemeral_slot_unit,
   route_bmc_writes_are_gated, route_bmc_write_count, route_control_plane_write_count,
   route_effectful_stage_count, route_is_executable,
@@ -187,29 +191,36 @@ fn slot_unit() -> NonEmptyStr {
   ephemeral_slot_unit(host: "mtcollins1", attempt: attempt)
 }
 
-fn selection_with(sampling: SamplingPolicy, ceilings: PhaseCeilings, plan: SelectedHostPlan) -> SelectedRunnerQualification<HostIdentity> {
-  SelectedRunnerQualification {
+fn control_plane_sanction() -> ExecutorSanction {
+  ExecutorSanctioned { executor: "mtcollins1" as NonEmptyStr, sanctioned: ControlPlaneCapacity }
+}
+
+// THE SELECTION IS MADE BY THE FLEET'S SELECTION FOLD from the fleet's own authorities -- the live
+// slot shape, the plan fold, the conservation verdict -- never assembled by hand here.
+fn inputs_with(sampling: SamplingPolicy, ceilings: PhaseCeilings, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> RunnerQualificationInputs<HostIdentity> {
+  select_runner_qualification(
     offer: selected_offer(key: "offer-mtcollins1-qual-1"),
     host: "mtcollins1",
-    executor_sanction: ExecutorSanctioned { executor: "mtcollins1" as NonEmptyStr, sanctioned: ControlPlaneCapacity },
+    executor_sanction: control_plane_sanction(),
     requirements: floor_execution_requirements(),
     workload: pin(),
-    host_plan: plan,
-    slot: SelectedSlot { desired: gunbc_runner_slot_desired(), unit: slot_unit() },
+    plan: plan,
+    allocation: allocation,
+    slot: gunbc_runner_slot_desired(),
+    unit: slot_unit(),
     workspace: mtcollins1_qualification_workspace_backing,
-    cores_per_slot: gunbc_runner_cores_per_slot(),
     calibration: floor_eval_step_calibration,
     sampling: sampling,
     phase_ceilings: ceilings,
-  }
+  )
 }
 
-fn sound_selected_plan() -> SelectedHostPlan {
-  SelectedHostPlan { plan: sound_plan(), allocation: HostAllocationConserves }
+fn selection_with(sampling: SamplingPolicy, ceilings: PhaseCeilings, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> SelectedRunnerQualification<HostIdentity> {
+  inputs_with(sampling: sampling, ceilings: ceilings, plan: plan, allocation: allocation).selection
 }
 
 fn selection() -> SelectedRunnerQualification<HostIdentity> {
-  selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_selected_plan())
+  selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves)
 }
 
 // ── observed runs, minted through the sealed record's one door ────────────────────────────────
@@ -248,12 +259,12 @@ fn complete_roster(wall: Millisecond) -> List<PhaseWall> {
 
 fn effective_as_selected() -> EffectiveSlotProperties {
   let d = gunbc_runner_slot_desired()
-  EffectiveSlotProperties { memory_max: d.memory_max, memory_high: d.memory_high, tasks_max: d.tasks_max, cpu_quota: d.cpu_quota }
+  EffectiveSlotProperties { memory_max: d.memory_max, memory_high: d.memory_high, tasks_max: d.tasks_max, cpu_quota_threads: slot_quota_threads(quota: d.cpu_quota) }
 }
 
 fn effective_with_high(high: ByteSize) -> EffectiveSlotProperties {
   let d = gunbc_runner_slot_desired()
-  EffectiveSlotProperties { memory_max: d.memory_max, memory_high: high, tasks_max: d.tasks_max, cpu_quota: d.cpu_quota }
+  EffectiveSlotProperties { memory_max: d.memory_max, memory_high: high, tasks_max: d.tasks_max, cpu_quota_threads: slot_quota_threads(quota: d.cpu_quota) }
 }
 
 // THE PARAMETERS ARE THE AXES THE CLAIMS VARY, one at a time, from a run that joins on every axis
@@ -354,6 +365,7 @@ test fn a_run_from_another_host_is_refused_on_the_host_axis() -> Bool {
   )
   let a = assess_runner_throughput(selection: selection(), runs: [r])
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "host"
+    && (match a.phase_roster { PhaseRosterNotAssessed { because: _ } => true _ => false })
 }
 
 // THE SAME STEP COUNT ON A DIFFERENT SPECIMEN IS A DIFFERENT PROGRAM: the identity is joined, not
@@ -424,7 +436,7 @@ test fn a_faster_run_that_pinned_the_high_line_is_not_hidden_by_a_slower_clean_r
 }
 
 test fn the_sampling_policy_refuses_a_sample_of_the_wrong_size() -> Bool {
-  let one = selection_with(sampling: ExactlyOneReconciledRun, ceilings: NoPhaseCeilings, plan: sound_selected_plan())
+  let one = selection_with(sampling: ExactlyOneReconciledRun, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves)
   let two = assess_runner_throughput(selection: one, runs: [good_run(id: run_a), good_run(id: run_b)])
   let zero = assess_runner_throughput(selection: selection(), runs: [])
   sampling_refused(a: two) && sampling_refused(a: zero) && !assessment_holds(a: zero)
@@ -454,12 +466,12 @@ test fn phase_walls_are_assessed_only_against_supplied_ceilings() -> Bool {
   let loose = selection_with(
     sampling: ConservativePerAxis { minimum_runs: 1 },
     ceilings: PhaseCeilingsDeclared { ceilings: [PhaseWall { phase: FloorPhase, wall: millisecond(count: 2000) }] },
-    plan: sound_selected_plan(),
+    plan: sound_plan(), allocation: HostAllocationConserves,
   )
   let tight = selection_with(
     sampling: ConservativePerAxis { minimum_runs: 1 },
     ceilings: PhaseCeilingsDeclared { ceilings: [PhaseWall { phase: FloorPhase, wall: millisecond(count: 500) }] },
-    plan: sound_selected_plan(),
+    plan: sound_plan(), allocation: HostAllocationConserves,
   )
   let al = assess_runner_throughput(selection: loose, runs: [good_run(id: run_a)])
   let at = assess_runner_throughput(selection: tight, runs: [good_run(id: run_a)])
@@ -487,15 +499,16 @@ test fn throughput_below_the_pinned_rate_does_not_deliver_and_carries_the_number
 // THE WIDTH IS READ OFF THE SELECTED PLAN AND ALLOCATION (operator hold, item 4): an oversubscribed
 // allocation or a plan the fleet refused derives no width and no delivery.
 test fn a_refused_or_oversubscribed_selected_allocation_derives_no_width() -> Bool {
-  let oversubscribed = SelectedHostPlan { plan: sound_plan(), allocation: HostAllocationOversubscribed }
-  let unsound = SelectedHostPlan { plan: FleetHostPlanUnsound { reason: "oomd enforcement unverified" }, allocation: HostAllocationConserves }
-  [oversubscribed, unsound] |> all(p => {
-    let a = assess_runner_throughput(
-      selection: selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: p),
-      runs: [good_run(id: run_a)],
-    )
+  let oversubscribed = selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationOversubscribed)
+  let unsound = selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: FleetHostPlanUnsound { reason: "oomd enforcement unverified" }, allocation: HostAllocationConserves)
+  ([oversubscribed, unsound] |> all(sel => {
+    let a = assess_runner_throughput(selection: sel, runs: [good_run(id: run_a)])
     !assessment_holds(a: a) && (match a.slot_width { SlotWidthUnderivable { cause: _ } => true _ => false })
-  })
+  }))
+    && (match selected_host_allocation(plan: sound_plan(), allocation: HostAllocationConserves) {
+      HostAllocationAdmitted { runner_slice_cap: _, effective_runner_cpu_cap: _ } => true
+      HostAllocationRefused { cause: _ } => false
+    })
 }
 
 // ── the join into the fabric (operator hold, item 1) ──────────────────────────────────────────
@@ -504,8 +517,9 @@ test fn a_refused_or_oversubscribed_selected_allocation_derives_no_width() -> Bo
 // delivering assessment beside a customer sanction is refused by admit_executor_capacity for
 // the floor, and nothing in the qualification module can mint a sanction from an assessment.
 test fn the_selected_sanction_not_the_assessment_decides_the_class() -> Bool {
-  let s = selection()
-  let control = admit_executor_capacity(requirements: s.requirements, roster: [s.executor_sanction], executor: "mtcollins1" as NonEmptyStr)
+  let inputs = inputs_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves)
+  let s = inputs.selection
+  let control = admit_executor_capacity(requirements: s.requirements, roster: [inputs.executor_sanction], executor: "mtcollins1" as NonEmptyStr)
   let customer = admit_executor_capacity(
     requirements: s.requirements,
     roster: [ExecutorSanctioned { executor: "mtcollins1" as NonEmptyStr, sanctioned: CustomerExecutableCapacity }],

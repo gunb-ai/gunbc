@@ -41,11 +41,10 @@ import gunbc.runner_throughput_qualification {
 
 // ── THE STAGES ────────────────────────────────────────────────────────────────────────────────
 
-// FOUR EFFECT GRAINS, NONE OF THEM "NONE" FOR A STAGE THAT MUTATES SOMETHING OUTSIDE THE GUEST.
+// THREE EFFECT GRAINS, NONE OF THEM "NONE" FOR A STAGE THAT MUTATES SOMETHING OUTSIDE THE GUEST.
 type StageEffect
   = BmcWrite { gate: DeclarationRef, boot: RouteLegStanding, image: RouteLegStanding }
   | GitHubControlPlaneWrite { authority: RouteLegStanding }
-  | GuestLocalEffect
   | ObservationOnly
 
 type QualificationStage
@@ -289,7 +288,6 @@ fn mtcollins1_qualification_route(attempt: NonEmptyStr, workload: FloorWorkloadP
 fn stage_is_effectful(stage: QualificationStage) -> Bool {
   match stage_effect(stage: stage) {
     ObservationOnly => false
-    GuestLocalEffect => true
     BmcWrite { gate: _, boot: _, image: _ } => true
     GitHubControlPlaneWrite { authority: _ } => true
   }
@@ -300,7 +298,6 @@ fn stage_is_effectful(stage: QualificationStage) -> Bool {
 fn stage_legs(stage: QualificationStage) -> List<RouteLegStanding> {
   match stage_effect(stage: stage) {
     ObservationOnly => []
-    GuestLocalEffect => []
     BmcWrite { gate: _, boot: b, image: i } => [b, i]
     GitHubControlPlaneWrite { authority: a } => [a]
   }
