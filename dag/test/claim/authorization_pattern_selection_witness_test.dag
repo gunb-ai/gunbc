@@ -19,6 +19,7 @@ import gunbc.auth.authorization_pattern_selection {
 import gunbc.auth.privileged_effect_census {
   privileged_effect_census, census_verdicts, undecidable_sites,
   unrostered_unreasoned_divergences, rostered_but_not_diverging, follow_up_sites,
+  reasoned_divergences, reasoned_divergences_with_fired_triggers,
   site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
 }
 import std.human_intervention {
@@ -225,4 +226,10 @@ test fn the_census_has_conforming_exemplars_of_two_patterns() -> Bool {
   let manual = any(census_verdicts(), v =>
     match v.selection { ManualStepRequired { step: _, receipt: _ } => match v.conformance { Conforms => true _ => false } _ => false })
   federated && manual
+}
+
+// EVERY STATED REASON CARRIES A DISSOLUTION, AND NONE HAS FIRED. A fired trigger means the site
+// belongs in follow_up_sites rather than behind a statement (review 68720).
+test fn no_reasoned_divergence_has_a_fired_trigger() -> Bool {
+  (reasoned_divergences() |> count) > 0 && (reasoned_divergences_with_fired_triggers() |> count) == 0
 }

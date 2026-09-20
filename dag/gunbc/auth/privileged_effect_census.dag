@@ -2,6 +2,10 @@ module gunbc.auth.privileged_effect_census
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list }
+import std.dissolution {
+  DissolutionCondition, DissolutionStatus, DissolutionFired, DissolutionPending, DissolutionUnbound,
+  dissolution_status, unbound_dissolution, retires_dissolution,
+}
 import std.human_intervention { FleetOnce, DeviceOnce, EveryProvision }
 import gunbc.spark.bootstrap_provision {
   fleet_cloud_principal_standing,
@@ -59,16 +63,30 @@ type RealizedAuthorization
   | RealizedHumanStep
   | RealizedOperatorSession { arm: OperatorSessionArm }
 
+// A REASON IS A STATEMENT PLUS THE CONDITION UNDER WHICH IT STOPS BEING ONE. A bare string moved a
+// site out of the debt roster for as long as anyone left it there (review 68720): no bound, no
+// trigger, nothing joined to anything. The trigger is the whole content of a reason (§4b(3): a drop
+// is retired by its trigger and by nothing else), so it is carried in std.dissolution's vocabulary.
+// A bound trigger names a declaration whose retirement fires it; the required floor refuses a
+// decl_ref to a declaration that does not exist (CITED-DECLARATION-ABSENT), so deleting the
+// trigger's subject fails this module at the gate rather than leaving a fired reason standing. An unbound trigger names the CAPABILITY that would retire it, because a
+// forward citation to a declaration nobody has written is the fabricated-citation class the floor
+// refuses, and that is the honest shape for an adapter that does not exist yet.
+type DivergenceReason {
+  statement: NonEmptyStr
+  dissolution: DissolutionCondition
+}
+
 type PrivilegedEffectSite {
   site: DeclarationRef
   effect: PrivilegedEffect
   realized: RealizedAuthorization
-  divergence_reason: NonEmptyStr?
+  divergence_reason: DivergenceReason?
 }
 
 type SiteConformance
   = Conforms
-  | DivergesWithReason { reason: NonEmptyStr }
+  | DivergesWithReason { reason: DivergenceReason }
   | Diverges
   | SiteNotDecidable { standing: AuthorizationPatternSelection }
 
@@ -190,14 +208,41 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
   }
 }
 
-// THE DIVERGENCE REASONS THAT RECUR, each stated once.
-data interim_gcp_iam_adapter_unlanded: NonEmptyStr = "the approval loop's authority adapter for GCP IAM and Secret Manager effects is not landed on main (gunbc#11484 carries the first executing consumer, mtcollins1_boot); until it lands the grant administrator's own session on the grant administrator's own workstation is the interim realization, and relaying that token through chat or a message is the refused pattern" as NonEmptyStr
+// THE DIVERGENCE REASONS THAT RECUR, each stated once with its dissolution.
+data interim_gcp_iam_adapter_unlanded: DivergenceReason = DivergenceReason {
+  statement: "the approval loop's authority adapter for GCP IAM and Secret Manager effects is not landed on main (gunbc#11484 carries the first executing consumer, mtcollins1_boot); until it lands the grant administrator's own session on the grant administrator's own workstation is the interim realization, and relaying that token through chat or a message is the refused pattern" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "an approval-loop authority adapter that performs getIamPolicy/setIamPolicy and Secret Manager create/addVersion under a redeemed capability, executing as the grant administrator identity on the roadmap server; owner: this lane (nimble-otter-774), sequenced after gunbc#11734 and gunbc#11484" as NonEmptyStr),
+}
 
-data interim_cloudflare_adapter_unlanded: NonEmptyStr = "the approval loop has no authority adapter for Cloudflare account-token mints; the operator's workflow_dispatch of the mint stood as the informal witness on 2026-09-19, and the token this run resolved in a session was relayed into its file from chat -- the refused pattern, invisible to the file arm" as NonEmptyStr
+data interim_cloudflare_adapter_unlanded: DivergenceReason = DivergenceReason {
+  statement: "the approval loop has no authority adapter for Cloudflare account-token mints; the operator's workflow_dispatch of the mint stood as the informal witness on 2026-09-19, and the token this run resolved in a session was relayed into its file from chat -- the refused pattern, invisible to the file arm" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "an approval-loop authority adapter that performs cloudflare.AccountTokens.Create for a one-off mint under a redeemed capability, so gunbc.cloudflare.r2_token_mint_run resolves no operator credential in any run; owner: this lane (nimble-otter-774), PR 2b after gunbc#11721 merges" as NonEmptyStr),
+}
 
-data approval_bootstrap_circularity: NonEmptyStr = "the approval loop's own MAC keys cannot be provisioned by the approval loop; this is the one ceremony that is structurally the operator's, and it ran once on 2026-09-17" as NonEmptyStr
+// STRUCTURAL, AND BOUND TO THE THING THAT MAKES IT STRUCTURAL: the reason retires only if the
+// approval loop stops having a provisioned submission MAC key to bootstrap.
+data approval_bootstrap_circularity: DivergenceReason = DivergenceReason {
+  statement: "the approval loop's own MAC keys cannot be provisioned by the approval loop; this is the one ceremony that is structurally the operator's, and it ran once on 2026-09-17" as NonEmptyStr,
+  dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "approval_submission_mac_key_secret_ref")),
+}
 
-data eager_bootstrap_fork_declared: NonEmptyStr = "gunbc.auth.access_token_source ensure_access_token_eager_bootstrap_fork_dissolve_on declares this eager gcloud call as a §3 fork with its dissolution condition" as NonEmptyStr
+// BOUND TO THE DECLARED FORK ROW: when that dissolution row retires, the fork it names is gone and
+// this reason with it.
+data eager_bootstrap_fork_declared: DivergenceReason = DivergenceReason {
+  statement: "gunbc.auth.access_token_source ensure_access_token_eager_bootstrap_fork_dissolve_on declares this eager gcloud call as a §3 fork with its dissolution condition" as NonEmptyStr,
+  dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.auth.access_token_source", decl_name: "ensure_access_token_eager_bootstrap_fork_dissolve_on")),
+}
+
+// THE DECLARATIONS THE BOUND TRIGGERS NAME, PRESENT BY CITATION. Each decl_ref here is checked by
+// the required floor against the corpus, so a trigger whose subject was deleted cannot stay in this
+// list. dissolution_status over it therefore answers Pending for every bound reason while its
+// subject exists, and the witness asserts none is Fired -- the fold that replaces the sentence.
+fn present_trigger_declarations() -> List<DeclarationRef> {
+  [
+    decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "approval_submission_mac_key_secret_ref"),
+    decl_ref(module_path: "gunbc.auth.access_token_source", decl_name: "ensure_access_token_eager_bootstrap_fork_dissolve_on"),
+  ]
+}
 
 // ── The roster ───────────────────────────────────────────────────────────────────────────────
 // Read in groups, in order: the (a) exemplars (dispatched runs under the federated identity); the
@@ -515,4 +560,34 @@ fn unrostered_unreasoned_divergences() -> List<DeclarationRef> {
 fn rostered_but_not_diverging() -> List<DeclarationRef> {
   let found = map(unreasoned_divergences(), v => v.site)
   filter(follow_up_sites, s => !declaration_ref_in_list(target: s, refs: found))
+}
+
+// ── The reasoned side of the debt: every stated reason's trigger, checked ────────────────────
+type ReasonedDivergence {
+  site: DeclarationRef
+  reason: DivergenceReason
+}
+
+fn reasoned_divergences() -> List<ReasonedDivergence> {
+  flat_map(census_verdicts(), v =>
+    match v.conformance {
+      DivergesWithReason { reason: r } => [ReasonedDivergence { site: v.site, reason: r }]
+      Conforms => []
+      Diverges => []
+      SiteNotDecidable { standing: _ } => []
+    })
+}
+
+fn reason_trigger_fired(r: ReasonedDivergence) -> Bool {
+  match dissolution_status(condition: r.reason.dissolution, present_decls: present_trigger_declarations()) {
+    DissolutionFired => true
+    DissolutionPending => false
+    DissolutionUnbound => false
+  }
+}
+
+// A REASON WHOSE TRIGGER HAS FIRED IS NOT A REASON (review 68577), now as a fold rather than a
+// sentence: such a site belongs in follow_up_sites, not behind a statement.
+fn reasoned_divergences_with_fired_triggers() -> List<ReasonedDivergence> {
+  filter(reasoned_divergences(), r => reason_trigger_fired(r: r))
 }
