@@ -112,11 +112,6 @@ data srv3_boot_once_cd_required_scopes: List<AuthorizationScope> = [
   srv3_system_reset_scope,
 ]
 
-// Where the exclusive claim for this escalation lives. One root, one slot per escalation id, on
-// the machine that runs the step -- the claim has to outlive the process for a restart to be
-// refused rather than admitted, which is what durable means here.
-data srv3_authorization_claim_root: NonEmptyStr = "/var/lib/gunbc/authorization-claims" as NonEmptyStr
-
 // The attempt this workflow's grant is bound to. A grant issued for this attempt refuses any
 // other, which is the difference between approving THIS run and issuing a standing approval for
 // every future run of the same step.

@@ -9,20 +9,22 @@ module gunbc.scm.commit_closure_json_v2
 //
 // THE RENAME IS DEFERRED, AND THE REASON IS AN EXTERNALITY RATHER THAN EFFORT. It was authored and
 // reverted after measuring what it costs. A module rename re-targets every binding that names it,
-// which the required namespace-wave-admission phase classifies `TargetChanged` -- not auto-admitted,
-// so each needs a row in NAMESPACE_TRANSITION_ADMISSIONS. This rename produced 41. That roster's own
-// header records what happened the last time rows sat on main: `stale_admissions` is computed PER
-// RUN, so rows on main are inherited by every open pull request, and a change that touches no
-// namespace can never match them -- the phase then refuses every unrelated lane until the rows are
-// dissolved. Landing 41 of them to fix a name would spend every other lane's CI to buy this one's
-// tidiness, which is the externalized cost DESIGN section 5 names, and it would do it inside a pull
-// request whose subject is the object model.
+// which the required namespace-wave-admission phase then classified `TargetChanged` -- not
+// auto-admitted, so each needed a transition-admission row. This rename produced 41. That roster's
+// header recorded what happened the last time rows sat on main: staleness was computed PER RUN, so
+// rows on main were inherited by every open pull request, and a change touching no namespace could
+// never match them -- the phase refused every unrelated lane until the rows were dissolved. Landing
+// 41 of them to fix a name would have spent every other lane's CI to buy this one's tidiness, which
+// is the externalized cost DESIGN section 5 names. POSTSCRIPT, 2026-09-19: the wall and the roster
+// are deleted (operator ruling; gunbc.rung_drop namespace_wave_admission_wall_removed), so the
+// admission-row half of that cost no longer exists. The rename is still not folded into an
+// unrelated subject -- its remaining cost is the ordinary one, and it wants its own change.
 //
 // So the fork is REPORTED rather than carried silently, and it is not repaired by this comment
 // existing: a reader who trusts the module path over the emitted tag is still wrong. What this note
 // buys is that the two are not equally authoritative-looking. dissolve-on: a rename landed as its
-// own change, with its admission rows authored and deleted in the same wave, at a moment when the
-// open-PR population can absorb them -- not folded into an unrelated subject.
+// own change, at a moment when the open-PR population can absorb it -- not folded into an
+// unrelated subject.
 
 import std.types { Bool, Int, List, String, list_length }
 
