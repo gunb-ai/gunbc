@@ -5,7 +5,7 @@ import v2.std.optional { Absent, Present }
 import std.algebra { trim }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { Second, second, ByteSize, byte_size, byte_size_count, measure_le, Mebibyte, mebibyte, mebibyte_to_byte_size }
+import std.measure { Second, second, ByteSize, byte_size, byte_size_count, measure_le, mebibyte_to_byte_size }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.e2fsprogs { Ext2, mke2fs_format_command, dumpe2fs_superblock_command }
 import extdeps.tools.gnu_coreutils {
@@ -45,7 +45,8 @@ import gunbc.runner_microvm {
   runner_microvm_vm_config,
   attach_workspace_drive,
   runner_microvm_workspace_drive_id,
-  RunnerMicroVmSize,
+  RunnerMicroVmShape,
+  runner_microvm_workspace_grant,
   gunbc_runner_jit_transport,
 }
 import gunbc.runner_microvm_attempt {
@@ -128,8 +129,9 @@ data jail_workspace_path: FilePath = "/work.img"
 
 data host_busybox_bin: NonEmptyStr = "/bin/busybox"
 
-// X's WORKGB=4 with `dd bs=1M count=0 seek=$((WORKGB*1024))`: four gibibytes as a Mebibyte seek.
-data runner_attempt_workspace_size: Mebibyte = mebibyte(count: 4096)
+// THE WORKSPACE GRANT MOVED TO gunbc.runner_microvm runner_microvm_workspace_grant, beside the
+// drive it sizes, so the guest shape can judge the Work's storage demand against it; the plan
+// realizes shape.workspace and no longer carries a size of its own.
 
 type AttemptGround
   = GroundClear
@@ -300,11 +302,13 @@ type AttemptLaunchPlan
       jailer: ArgvCommand
     }
 
-fn with_guest_ip_boot_arg(config: FirecrackerVmConfig, ip_arg: String) -> FirecrackerVmConfig {
+// ONE APPENDER FOR EVERY BOOT ARGUMENT THE PLAN ADDS -- the guest address today -- so the join
+// is spelled once and a second argument is one more call, not a second copy.
+fn with_boot_arg(config: FirecrackerVmConfig, arg: String) -> FirecrackerVmConfig {
   FirecrackerVmConfig {
     boot_source: FirecrackerBootSource {
       kernel_image_path: config.boot_source.kernel_image_path,
-      boot_args: join([config.boot_source.boot_args as String, " ", ip_arg], "") as NonEmptyStr,
+      boot_args: join([config.boot_source.boot_args as String, " ", arg], "") as NonEmptyStr,
     },
     drives: config.drives,
     network_interfaces: config.network_interfaces,
@@ -347,7 +351,7 @@ fn plan_attempt_launch(
   firecracker_binary: String,
   kernel_source: String,
   rootfs_source: String,
-  guest_size: RunnerMicroVmSize,
+  shape: RunnerMicroVmShape,
 ) -> AttemptLaunchPlan {
   let authorization = grant_authorizes_reservation(
     grant: grant,
@@ -367,7 +371,7 @@ fn plan_attempt_launch(
       firecracker_binary: firecracker_binary,
       kernel_source: kernel_source,
       rootfs_source: rootfs_source,
-      guest_size: guest_size,
+      shape: shape,
     )
     GrantFenceRefused => LaunchRefusedUnauthorized { authorization: authorization }
     GrantAuthorizesDifferentWork => LaunchRefusedUnauthorized { authorization: authorization }
@@ -385,7 +389,7 @@ fn plan_after_authorization(
   firecracker_binary: String,
   kernel_source: String,
   rootfs_source: String,
-  guest_size: RunnerMicroVmSize,
+  shape: RunnerMicroVmShape,
 ) -> AttemptLaunchPlan {
   match ground {
     GroundOccupied => LaunchRefusedPriorResources
@@ -400,7 +404,7 @@ fn plan_after_authorization(
           firecracker_binary: firecracker_binary,
           kernel_source: kernel_source,
           rootfs_source: rootfs_source,
-          guest_size: guest_size,
+          shape: shape,
         )
       }
   }
@@ -414,7 +418,7 @@ fn plan_authorized_steps(
   firecracker_binary: String,
   kernel_source: String,
   rootfs_source: String,
-  guest_size: RunnerMicroVmSize,
+  shape: RunnerMicroVmShape,
 ) -> AttemptLaunchPlan {
   let net = runner_slot_network(slot: attempt.slot)
   let jail_root = attempt_jail_chroot_root(attempt: attempt, firecracker_binary: firecracker_binary)
@@ -424,12 +428,12 @@ fn plan_authorized_steps(
     jit_config_path: jail_jit_path,
     kernel_path: jail_kernel_path,
     net: runner_slot_network_as_microvm_networking(net: net),
-    size: guest_size,
+    size: shape.size,
     transport: gunbc_runner_jit_transport,
   )
-  let jailed = with_guest_ip_boot_arg(
+  let jailed = with_boot_arg(
     config: attach_workspace_drive(config: cfg, path: jail_workspace_path),
-    ip_arg: runner_slot_guest_network_boot_args(net: net),
+    arg: runner_slot_guest_network_boot_args(net: net),
   )
   LaunchAuthorized {
     authorization: authorization,
@@ -453,7 +457,7 @@ fn plan_authorized_steps(
     workspace_create: busybox_dd_sparse_image_command(
       busybox_bin: host_busybox_bin,
       image_path: workspace_host,
-      size: runner_attempt_workspace_size,
+      size: shape.workspace,
     ),
     workspace_format: mke2fs_format_command(
       fs: Ext2,
@@ -650,8 +654,11 @@ type WorkspaceStanding
   | WorkspaceUnreadable { reason: NonEmptyStr }
   | WorkspaceReadbackOfDifferentImage { read: String, planned: String }
 
+// THE EXPECTED SIZE IS THE ONE GRANT, read from gunbc.runner_microvm runner_microvm_workspace_grant
+// -- the same row the plan's dd seek and the guest shape's storage fit read -- so the readback
+// judges the image against the size that was planned and not against a second copy of it.
 fn runner_attempt_workspace_bytes() -> ByteSize {
-  mebibyte_to_byte_size(m: runner_attempt_workspace_size)
+  mebibyte_to_byte_size(m: runner_microvm_workspace_grant)
 }
 
 // THE ORDER IS CAUSAL: a failed create makes the format's exit meaningless, and a failed format
@@ -678,20 +685,53 @@ fn workspace_standing(obs: WorkspaceStagingObservation, planned_path: String) ->
   }
 }
 
+// THE RECEIPT IS SEALED, so the admitted arm cannot be assembled beside the gate. sole_constructor
+// makes attempt_staging_verdict the ONLY producer of an AttemptStagingReceipt, and the jailer
+// command is reachable only inside one -- so a caller cannot mint "staging passed" while holding a
+// failed device, and cannot lift the jailer out of a refusal. The receipt names WHICH device and
+// WHICH workspace were read back, so the capability it releases is bound to the attempt whose
+// premises were established rather than to staging in general.
+//
+// A PROSE OBLIGATION BESIDE A JAILER-ADMITTING VALUE IS NOT A WALL (sunny-ant-606 ruling): the
+// frontier row can say the controller must reach the jailer through this fold, and a controller
+// following it exactly would still have launched on workspace readiness alone while the credential
+// device had failed. The premises are made inseparable here instead.
+type AttemptStagingReceipt sole_constructor {
+  jailer: ArgvCommand
+  jit_device_path: String
+  workspace_path: String
+}
+
 type AttemptStagingVerdict
-  = StagingAdmitsJailer { jailer: ArgvCommand }
+  = StagingAdmitsJailer { receipt: AttemptStagingReceipt }
+  | StagingRefusedJitDevice { outcome: JitDeviceStagingOutcome }
+  | StagingRefusedForeignJitDevice { staged_path: String, planned_path: String }
   | StagingRefusedWorkspace { standing: WorkspaceStanding }
   | StagingNotAuthorized
 
-// THE ONLY ROUTE TO THE JAILER COMMAND AFTER STAGING. A refused plan has no jailer to admit, and a
-// workspace that is anything but WorkspaceReady refuses -- there is no arm that launches anyway.
-fn staging_verdict(plan: AttemptLaunchPlan, obs: WorkspaceStagingObservation) -> AttemptStagingVerdict {
+// THE ONLY ROUTE TO THE JAILER COMMAND AFTER STAGING, AND IT CONSUMES BOTH STAGINGS. A refused plan
+// has no jailer to admit; a workspace that is anything but WorkspaceReady refuses; and the JIT
+// device must have been STAGED FOR THIS ATTEMPT -- the staged path is compared against the path this
+// plan's own jit_device names, so a sibling attempt's device (or a stale one left at another path)
+// refuses rather than being launched over.
+//
+// TAKING ONLY THE WORKSPACE OBSERVATION WAS A FAIL-OPEN, AND IT WAS CREATED BY A MERGE rather than
+// authored: the workspace gate landed on one side and the JIT device on the other, and the join
+// admitted a ready workspace while the credential device had failed to stage or had never been
+// staged at all. A guest reaching the listener with no credential burns its whole deadline looking
+// healthy, which is the class this planner exists to close, so the gate takes both outcomes and
+// there is no arm that launches on one of them.
+fn attempt_staging_verdict(
+  plan: AttemptLaunchPlan,
+  jit: JitDeviceStagingOutcome,
+  workspace: WorkspaceStagingObservation,
+) -> AttemptStagingVerdict {
   match plan {
     LaunchAuthorized {
       authorization: _,
       jit_runner_name: _,
       jit_registration_id: _,
-      jit_device: _,
+      jit_device: device,
       tap_device: _,
       guest_ip_boot_arg: _,
       slice: _,
@@ -705,18 +745,32 @@ fn staging_verdict(plan: AttemptLaunchPlan, obs: WorkspaceStagingObservation) ->
       kvm_device: _,
       vm_config: _,
       jailer: j,
-    } => {
-      let s = workspace_standing(obs: obs, planned_path: planned)
-      match s {
-        WorkspaceReady => StagingAdmitsJailer { jailer: j }
-        WorkspaceCreateFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
-        WorkspaceFormatFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
-        WorkspaceNotExtFilesystem => StagingRefusedWorkspace { standing: s }
-        WorkspaceSizeMismatch { observed: _, expected: _ } => StagingRefusedWorkspace { standing: s }
-        WorkspaceUnreadable { reason: _ } => StagingRefusedWorkspace { standing: s }
-        WorkspaceReadbackOfDifferentImage { read: _, planned: _ } => StagingRefusedWorkspace { standing: s }
+    } =>
+      match jit {
+        JitDeviceStagingRefused { step: _, detail: _ } => StagingRefusedJitDevice { outcome: jit }
+        JitDeviceStaged { host_path: staged } =>
+          if staged != device.host_path {
+            StagingRefusedForeignJitDevice { staged_path: staged, planned_path: device.host_path }
+          } else {
+            let s = workspace_standing(obs: workspace, planned_path: planned)
+            match s {
+              WorkspaceReady =>
+                StagingAdmitsJailer {
+                  receipt: AttemptStagingReceipt {
+                    jailer: j,
+                    jit_device_path: staged,
+                    workspace_path: planned,
+                  },
+                }
+              WorkspaceCreateFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
+              WorkspaceFormatFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
+              WorkspaceNotExtFilesystem => StagingRefusedWorkspace { standing: s }
+              WorkspaceSizeMismatch { observed: _, expected: _ } => StagingRefusedWorkspace { standing: s }
+              WorkspaceUnreadable { reason: _ } => StagingRefusedWorkspace { standing: s }
+              WorkspaceReadbackOfDifferentImage { read: _, planned: _ } => StagingRefusedWorkspace { standing: s }
+            }
+          }
       }
-    }
     LaunchRefusedUnauthorized { authorization: _ } => StagingNotAuthorized
     LaunchRefusedJitCredential { refusal: _ } => StagingNotAuthorized
     LaunchRefusedPriorResources => StagingNotAuthorized
@@ -729,8 +783,8 @@ fn workspace_readback_command(workspace_path: String) -> ArgvCommand {
 
 // DECLARED FRONTIER (DESIGN 3c). NAMED CONSUMER: the lifecycle controller's staging step
 // (gunbc#11670). TRIGGER: that step runs the plan's workspace_create and workspace_format, reads
-// workspace_readback_command, and reaches the jailer only through staging_verdict. SUFFICIENT FOR
-// deleting this row. NOT satisfied by a witness calling staging_verdict.
+// workspace_readback_command, stages the jit device, and reaches the jailer only through
+// attempt_staging_verdict. SUFFICIENT FOR deleting this row. NOT satisfied by a witness calling it.
 data workspace_staging_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the microVM lifecycle controller's staging step (gunbc#11670). TRIGGER: that step executes workspace_create and workspace_format, reads workspace_readback_command, and reaches the jailer only through staging_verdict. SUFFICIENT FOR deleting this row. NOT satisfied by a witness calling staging_verdict." as NonEmptyStr,
+  description: "NAMED CONSUMER: the microVM lifecycle controller's staging step (gunbc#11670). TRIGGER: that step executes workspace_create and workspace_format, executes stage_jit_device and reaches the jailer only through attempt_staging_verdict. SUFFICIENT FOR deleting this row. NOT satisfied by a witness calling it." as NonEmptyStr,
 )

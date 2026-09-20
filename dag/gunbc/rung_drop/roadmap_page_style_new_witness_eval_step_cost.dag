@@ -1,0 +1,46 @@
+module gunbc.rung_drop.roadmap_page_style_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_page_style_rows }
+
+// DECLARED 4b(3) DROP (gunbc#10994, 2026-09-19). The DECLARATION lives here; the POPULATION's
+// authority is `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_page_style_rows`.
+// It is its own list because growing another drop's list is a new drop.
+//
+// WHAT IS LOST IS ONE WALL, AND THE CLAIM ITSELF IS UNTOUCHED. The identity is still planned,
+// executed and measured on every pull request that edits it; a semantic red and a wall-clock
+// crossing still block. Only an eval-step overrun is reported as
+// `EvalStepsOverBudgetUnderDeclaredDrop` rather than refusing. The budget is not raised.
+//
+// WHY A DROP AND NOT A SUPPLIED STYLESHEET. DESIGN section 3's witness rule lets every other page
+// claim supply its inputs only while ONE claim still runs the real path; this claim is that one --
+// the only route by which the emitted page carries `gunbc.roadmap_style` `roadmap_css` as actually
+// derived. Supplying the stylesheet here would remove the last execution of the real path.
+//
+// THE COPIED ACCUMULATORS WERE FIXED, AND ARE NOT PART OF THIS CASE. `band_var_decls` and
+// `audition_paints` rebuilt their accumulators per element; DESIGN section 6 fixes that at any n,
+// so both are now `flat_map`. That repair barely moved this claim, which is recorded only so no
+// reader mistakes it for evidence of irreducibility: what remains is the stylesheet derivation.
+data roadmap_page_style_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_page_style_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_page_style_rows; measured by "), m.measured_by))
+
+data roadmap_page_style_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "roadmap_page_style_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the one roadmap page claim that derives the real stylesheet: it still executes, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+
+  declared: "2026-09-19",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "the derived roadmap stylesheet reaching a claim frame as a served value rather than being re-derived inside it",
+    },
+    population: roadmap_page_style_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY, BOTH CLAUSES. (i) gunbc.roadmap_style roadmap_css is served across claim frames by v2.workflow.floor_pure_producer_share on the acceptance path, or its derivation itself fits the budget; WHAT THAT MUST BE SUFFICIENT FOR: a required-floor claim asserting the emitted page carries the real derived stylesheet does not re-derive it inside its own frame. A share row not covering this identity's demand does not satisfy this clause. (ii) AND this identity measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, while still executing the real stylesheet path. Deleting the identity, supplying the stylesheet as a fixture, or relocating it to a home that does not execute it satisfies neither clause.",
+  }
+}

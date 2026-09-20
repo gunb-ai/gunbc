@@ -61,7 +61,7 @@ fn observe_admitted_revision(repo: FilePath, remote: String, ref_name: GitRef) -
     if line == "" {
       FleetDesiredAbsent
     } else {
-      match git_object_id_from_untagged_hex(hex: split(s: line, delimiter: "\t").first()) {
+      match (match split(s: line, delimiter: "\t").first() { Absent => none  Present { value: wire_field } => git_object_id_from_untagged_hex(hex: wire_field) }) {
         Present { value: oid } => FleetDesiredAdmitted { revision: oid }
         Absent => FleetDesiredUndecodable { advertised: line }
       }

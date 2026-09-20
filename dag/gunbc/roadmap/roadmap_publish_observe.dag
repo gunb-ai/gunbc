@@ -257,7 +257,7 @@ fn observe_pull_requests(
       match lease {
         QuotaFull { wire: w } => PullRequestsUnreadable { cause: PullRequestQuotaWithheld { repository: repo.full_name, detail: w } }
         QuotaLeaseRefused { detail: d } => PullRequestsUnreadable { cause: PullRequestQuotaWithheld { repository: repo.full_name, detail: d } }
-        QuotaLeased { grant: _, partition: _, layout: _ } => {
+        QuotaLeased { grant: _, partition: _, store: _ } => {
       let result = github.Pulls.List(
         auth_token: source,
         owner: repo.owner,

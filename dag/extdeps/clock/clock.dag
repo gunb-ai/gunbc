@@ -17,11 +17,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 // feature:offset-nat-carrier — dissolve-on: when the shell transport supports
-// Measure<Time, One, Nat> (Second) interpolation, convert TimestampOffset to
-// accept offset: Second and unwrap to Nat only in the transport binder.
-// Meanwhile the operation accepts offset: Nat — still a bare scalar, but at
-// least the Nat refinement (Int where non_negative) encodes the sign constraint
-// that Int lacked, and the parameter name names the unit as a second-best signal.
+// Measure<Time, One, Nat> (Second) interpolation, convert Clock.TimestampOffset
+// AND Clock.TimestampAdd to accept offset: Second and unwrap to Nat only in the
+// transport binder. Meanwhile both operations accept offset: Nat — still a bare
+// scalar, but at least the Nat refinement (Int where non_negative) encodes the
+// sign constraint that Int lacked, and the parameter name names the unit as a
+// second-best signal. TimestampAdd is the same carrier family as TimestampOffset
+// (seconds as Nat at the operation boundary), not a second unit surface.
 
 service Clock {
   operation Now {
@@ -65,6 +67,17 @@ service Clock {
     exit {
       0 => Unit
       nonzero => String "date offset failed"
+    }
+  }
+
+  operation TimestampAdd {
+    input { timestamp: Timestamp, offset: Nat }
+    output { result: Timestamp from "stdout" }
+    readonly
+    transport shell { argv: ["date", "-u", "-d", "{timestamp} +{offset} seconds", "+%Y-%m-%dT%H:%M:%SZ"] }
+    exit {
+      0 => Unit
+      nonzero => String "date add failed"
     }
   }
 

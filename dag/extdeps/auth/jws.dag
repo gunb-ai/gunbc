@@ -51,9 +51,6 @@ fn jws_rs256_signing_input(payload_json: String) -> NonEmptyStr {
   ], "") as NonEmptyStr
 }
 
-// THE SIGNATURE IS OCTETS, NOT TEXT. A realization that hands back a printable rendering (hex,
-// standard base64) decodes it to octets first; this join then encodes exactly once. Accepting a
-// pre-encoded String here would let a standard-alphabet signature through looking valid.
 // THE SIGNER INTERFACE: sign(signing input, key reference) -> signature octets. Its SUBJECT is the
 // KEY CUSTODY BOUNDARY -- a private key that must not enter the evaluator -- which is what makes a
 // host realization honest here (PRIMITIVE-EGRESS-0 ruling, fierce-seal-607: a signer on an external
@@ -68,6 +65,10 @@ type JwsSignOutcome
   = JwsSigned { signature: List<UInt8> }
   | JwsSignRefused { detail: String }
 
+// THE SIGNATURE IS OCTETS, NOT TEXT. A realization that hands back a printable rendering (hex,
+// standard base64) decodes it to octets first; this join then encodes exactly once. Accepting a
+// pre-encoded String here would let a standard-alphabet signature through looking valid.
+//
 // THE RESULT IS extdeps.auth.jwt JwtCompactSerialization, not a bare string: the only protected
 // header this module produces is typ JWT, so every value it emits IS a JWT, and the brand keeps it
 // from being confused with an opaque bearer (an installation token is not decodable).

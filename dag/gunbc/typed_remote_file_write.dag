@@ -97,12 +97,14 @@ type TypedRemoteFileWriteOutcome
 // open octal parameter would let any consumer spell a group- or world-readable key.
 type RemoteFileMode
   = RemoteFileModeOwnerReadWrite
+  | RemoteFileModeOwnerReadWriteGroupRead
   | RemoteFileModeOwnerReadWriteWorldRead
   | RemoteFileModeOwnerRead
 
 fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
   match mode {
     RemoteFileModeOwnerReadWrite => "600"
+    RemoteFileModeOwnerReadWriteGroupRead => "640"
     RemoteFileModeOwnerReadWriteWorldRead => "644"
     RemoteFileModeOwnerRead => "400"
   }
