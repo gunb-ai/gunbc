@@ -71,7 +71,8 @@ import gunbc.witness_floor_workflow {
   required_floor_cross_claim_demand_path,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
-import gunbc.fabric_witness_run { witnesses_lane_run_command }
+import gunbc.fabric_witness_run { witnesses_lane_run_command, measurement_receipt_flag }
+import extdeps.exec.command { ArgvCommand }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import gunbc.ci_spec {
@@ -358,7 +359,20 @@ fn compiler_gate_floor_checkout_step() -> Step {
 // step success). The lane runs the plain lane command, under which a phase failure is the process
 // exit; no receipt is written because nothing in this workflow reads one.
 fn compiler_gate_floor_command_script() -> String {
-  required_lane_run_script(command: witnesses_lane_run_command())
+  required_lane_run_script(command: compiler_gate_floor_command())
+}
+
+fn compiler_gate_floor_command() -> ArgvCommand {
+  witnesses_lane_run_command()
+}
+
+// THE WALL FOR THE FAIL-OPEN CLASS, AT CONSTRUCTION: this workflow has no job that adjudicates a
+// measurement receipt, so a floor command carrying the receipt flag would exit 0 over a refused
+// floor. Generation refuses such a command (gunbc.recurring_failure_mode
+// measure_mode_command_emitted_into_a_lane_with_no_adjudicator), so re-introducing
+// witnesses_lane_measurement_command here cannot regenerate the artifact -- the drift gate reds.
+fn floor_command_carries_no_measurement_receipt(command: ArgvCommand) -> Bool {
+  count(filter(command.arguments, a => a == measurement_receipt_flag)) == 0
 }
 
 fn compiler_gate_floor_run_step() -> Step {
@@ -569,7 +583,8 @@ fn compiler_gate_floor_capability_closure_holds() -> Bool {
 }
 
 fn compiler_gate_floor_scripts_are_renderable() -> Bool {
-  wrap_command_is_renderable(command: compiler_gate_floor_command_script())
+  floor_command_carries_no_measurement_receipt(command: compiler_gate_floor_command())
+    && wrap_command_is_renderable(command: compiler_gate_floor_command_script())
     && wrap_command_is_renderable(command: repo_self_build_command(bins: witness_floor_required_bins))
 }
 
@@ -682,6 +697,8 @@ data compiler_gate_workflow: Workflow = Workflow {
   jobs: [compiler_gate_job(), compiler_gate_clippy_job(), compiler_gate_floor_job(), compiler_gate_aggregate_job()]
 }
 
+data compiler_gate_receipt_command_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: the floor command carries --measurement-receipt, under which claim_executor returns 0 over a refused floor, and this workflow has no job that adjudicates a receipt (gunbc.recurring_failure_mode measure_mode_command_emitted_into_a_lane_with_no_adjudicator). Emit the plain lane command. No workflow yaml was emitted."
+
 data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: the job's capability closure does not hold. No workflow yaml was emitted. Fix the step roles in compiler_gate_bound_steps."
 
 fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
@@ -693,7 +710,9 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          if compiler_gate_capability_closure_holds() && compiler_gate_clippy_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() {
+          if !floor_command_carries_no_measurement_receipt(command: compiler_gate_floor_command()) {
+            WitnessFloorGenerationRefused { reason: compiler_gate_receipt_command_refusal_reason }
+          } else if compiler_gate_capability_closure_holds() && compiler_gate_clippy_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() {
             WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) }
           } else {
             WitnessFloorGenerationRefused { reason: compiler_gate_capability_refusal_reason }

@@ -551,6 +551,10 @@ fn floor_inputs_manifest_ref() -> ArtifactManifestRef {
 // A SINGLE ARGV, NOT TWO. Two hand-built invocations would be two spellings of the binary path,
 // mode flag and source roots, free to drift as #8629 removed once already; the lane is a
 // parameter of one command.
+// THE RECEIPT FLAG HAS ONE SPELLING, HERE, so a lane that must never carry it can refuse by identity
+// rather than by a copied string (gunbc.compiler_gate_workflow floor_command_carries_no_measurement_receipt).
+data measurement_receipt_flag: String = "--measurement-receipt"
+
 fn required_ci_lane_command(lane: String, measurement_receipt: String) -> ArgvCommand {
   claim_executor_command(
     mode_flag: "--required-ci",
@@ -563,7 +567,7 @@ fn required_ci_lane_command(lane: String, measurement_receipt: String) -> ArgvCo
       if measurement_receipt == "" {
         ["--required-lane", lane]
       } else {
-        ["--required-lane", lane, "--measurement-receipt", measurement_receipt]
+        ["--required-lane", lane, measurement_receipt_flag, measurement_receipt]
       },
     ),
   )
