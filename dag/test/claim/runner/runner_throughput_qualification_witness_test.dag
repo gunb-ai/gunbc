@@ -75,7 +75,7 @@ import gunbc.runner_throughput_qualification_route {
   mtcollins1_qualification_workspace_backing,
   CalibrationSpecimenWitnessLine, FloorCgroupRows, qualification_instrument_wire, qualification_instrument_producer,
 }
-import gunbc.runner.runner_host_filtered_egress { DefaultDrop, DefaultAccept }
+import gunbc.runner_microvm_network { HostChainDefaultDrop, TapScopedFinalDrop }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -630,7 +630,7 @@ test fn only_the_runner_stages_open_the_network_and_only_default_drop() -> Bool 
           _ => false
         }
       Present { value: policy } =>
-        (match policy.forward { DefaultDrop => true DefaultAccept => false })
+        (match policy.host.forward { HostChainDefaultDrop => true TapScopedFinalDrop { chain_policy_reason: _ } => false })
           && (match s {
             RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: _ } => true
             DispatchFloorToSlot { workload: _, selector: _, dispatch: _ } => true
