@@ -84,8 +84,13 @@ type JitMintStep
 // only the step and the performance. It DROPS the attempt, the JIT runner name, the dispatch and
 // the organization, so it does not give an operator what reconciling a possibly-created
 // registration needs, and the earlier sentence promising reconciliation BY RUNNER NAME was not
-// backed by the value. No live orphan can result while nothing consumes this function; a repair
-// carries the attempt identity on this arm.
+// backed by the value.
+//
+// No live orphan can result while no PRODUCTION route consumes this function.
+// Before such a consumer lands, this arm must retain a reconciliation subject:
+// preferably the authorized dispatch, or an equivalent sealed carrier containing
+// at least the attempt, the organization, and the runner name derived from that
+// attempt.
 type JitMintPerformance
   = JitMintReceived { delivery: JitCredentialDelivery }
   | JitMintAppKeyNotCustodied { app: DeclaredGitHubApp }

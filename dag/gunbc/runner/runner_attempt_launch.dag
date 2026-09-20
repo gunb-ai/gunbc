@@ -290,10 +290,10 @@ fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> Jit
 //
 // AND DEVICE-WITHOUT-LAUNCH IS NOT THE STATE THAT MUST BE IMPOSSIBLE: a staged device with no VMM
 // is safe provided teardown removes it. The dangerous state is A VMM LAUNCHED WITHOUT AN
-// EFFECT-BOUND, READ-BACK CREDENTIAL DEVICE FOR THIS ATTEMPT. Closing it means withholding the raw
-// jailer capability until after effect-bound staging -- the staging realization itself constructing
-// the executable jailer from its own observations -- which is a substantive redesign, not a
-// comment fix, and is not attempted here.
+// EFFECT-BOUND, READ-BACK CREDENTIAL DEVICE FOR THIS ATTEMPT. ONE MECHANICALLY PREVENTING REPAIR
+// is to withhold the raw jailer capability until after effect-bound staging, with the staging
+// realization constructing the executable jailer from its own observations. That is a substantive
+// redesign, not a comment fix, and is not attempted here.
 
 type AttemptLaunchPlan
   = LaunchRefusedUnauthorized { authorization: GrantAuthorization }
@@ -702,13 +702,15 @@ fn workspace_standing(obs: WorkspaceStagingObservation, planned_path: String) ->
   }
 }
 
-// THE RECEIPT IS SEALED: sole_constructor makes attempt_staging_verdict the only producer of an
-// AttemptStagingReceipt, so a caller cannot mint one beside the gate, and the receipt names WHICH
-// device and WHICH workspace this verdict read.
+// THE RECEIPT IS SEALED: sole_constructor makes attempt_staging_verdict the only
+// producer of an AttemptStagingReceipt, so a caller cannot construct that receipt
+// beside the gate. The receipt carries the planned JIT-device path and workspace
+// path against which the supplied outcomes were judged.
 //
-// WHAT SEALING DOES NOT PROVE, twice over. FIRST, it withholds nothing: the same jailer command
-// sits in plain sight on AttemptLaunchPlan's LaunchAuthorized arm, which is not sole_constructor,
-// so a caller holding the plan already has the capability this receipt was described as gating.
+// WHAT SEALING DOES NOT PROVE, twice over. FIRST, it does not withhold the jailer
+// capability: the same jailer command sits in plain sight on AttemptLaunchPlan's
+// LaunchAuthorized arm, which is not sole_constructor, so a caller holding the plan
+// already has the capability this receipt was described as gating.
 // SECOND, the gate accepts CALLER-AUTHORED positive outcomes: a JitDeviceStaged value is
 // constructible without stage_jit_device ever running -- this module's own witnesses construct one
 // to drive the foreign-device case -- so a sealed receipt proves the gate was CALLED with
