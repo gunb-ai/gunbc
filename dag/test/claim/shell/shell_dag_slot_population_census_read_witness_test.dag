@@ -1,0 +1,91 @@
+module test.claim.shell.shell_dag_slot_population_census_read_witness_test
+
+import std.types { Bool, String, List }
+import product.placement_supply { HostIdentity }
+import gunbc.host_effect { EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, HostEffectTransport }
+import gunbc.host_effect_realize { observe_slot_population_over_host_effect_transport }
+import gunbc.runner_slot_population_census { SlotCensus, CensusRefused, slot_census_from_command_outcome }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ACCEPTANCE ORACLE FOR shell-dag-slot-population-census-read, RED BY DESIGN UNTIL THE NODE IS
+// DONE. The node's bar is that gunbc.host_effect_realize observe_slot_population_over_host_effect_
+// transport executes its census read through the typed-argv transport directly — the same file's
+// own build_cache_typed_argv_read precedent — instead of building typed argv and throwing the
+// typing away by re-joining it via shell_command_text_of_argv. A no-control-word assertion cannot
+// discriminate here (the re-joined systemctl argv is clean text), so the discriminating arm reads
+// the census's REFUSAL CHANNEL over a transport neither realization can execute: today the
+// shell-text carrier's refusal lands in the observed stdout and is discarded by the classifier,
+// which reports only a bare exit code — the signature of a text-carrier failure with the typed
+// reason lost. After the typed-argv rebind the transport's typed refusal reason reaches the census
+// cause, exactly as the sibling observe_slot_population_over_ssh already carries it. Enrolled in
+// v2.workflow.floor_expected_red; the transition red -> green IS the work.
+//
+// PINNED AT LAUNCH: the dispatched worker is forbidden to edit this file — an edit refuses
+// verification as oracle-moved. The callable surface it reads
+// (observe_slot_population_over_host_effect_transport over a caller-supplied transport, and the
+// shared classifier slot_census_from_command_outcome) must survive the rebind, because this
+// witness cannot be re-pointed. The transport fixture is planted: an EmitArtifactThenThinRun that
+// no arm executes, so every claim here stays hermetic on both sides of the rebind.
+
+data census_fixture_host: HostIdentity = "census-fixture" as HostIdentity
+
+data unexecutable_transport: HostEffectTransport = EmitArtifactThenThinRun {
+  bootstrap: BootstrapFragment { script: "true" },
+  invocation: ThinInvocation { argv: ["true"] },
+}
+
+// RED TODAY: over a transport that cannot execute, the census cause must carry the transport's
+// typed refusal — not a bare exit code, which is what a COMMAND that ran and failed says. Today
+// the re-joined shell text's refusal is produced as stdout text and dropped by the classifier's
+// failure arm, leaving `systemctl list-units exit=1`: the text-carrier signature. Greens when the
+// typed-argv read's TypedArgvExecRefused reason reaches the cause, the build_cache_typed_argv_read
+// shape.
+test fn census_read_over_unexecutable_transport_carries_the_typed_refusal() -> Bool {
+  match observe_slot_population_over_host_effect_transport(host: census_fixture_host, transport: unexecutable_transport) {
+    CensusRefused { cause } => cause != "" && !string_contains(s: cause, pattern: "exit=")
+    _ => false
+  }
+}
+
+// PAIRED REFUSAL-SHAPE CONTROL, green today and after: the unexecutable transport does produce a
+// refusal, never a fabricated empty population — the red arm discriminates HOW the cause reads,
+// not WHETHER the read refuses. A transport refusal is unobserved, never an empty census.
+test fn census_read_over_unexecutable_transport_is_a_refusal() -> Bool {
+  match observe_slot_population_over_host_effect_transport(host: census_fixture_host, transport: unexecutable_transport) {
+    CensusRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+// TYPED-READ POSITIVE CONTROL over a planted command outcome, green today and after: a genuine
+// command failure's cause keeps its exit code — `exit=` is the right vocabulary for a command
+// that ran, which is exactly why its presence on the transport-refusal path above is the defect.
+// The shared classifier is untouched by the rebind.
+test fn planted_command_failure_cause_keeps_its_exit_code() -> Bool {
+  match slot_census_from_command_outcome(host: census_fixture_host, success: false, exit_code: 3, stdout: "", stderr: "connection refused") {
+    CensusRefused { cause } =>
+      string_contains(s: cause, pattern: "exit=3")
+        && string_contains(s: cause, pattern: "connection refused")
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL over a planted host fixture, green today and after: a successful planted
+// list-units outcome classifies as a census, not a refusal.
+test fn planted_list_units_success_classifies_as_a_census() -> Bool {
+  match slot_census_from_command_outcome(host: census_fixture_host, success: true, exit_code: 0, stdout: "", stderr: "") {
+    CensusRefused { cause: _ } => false
+    _ => true
+  }
+}
+
+// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
+// arm is red; green only when every clause holds over the typed rebind.
+test fn slot_population_census_read_acceptance_holds() -> Bool {
+  census_read_over_unexecutable_transport_carries_the_typed_refusal()
+    && census_read_over_unexecutable_transport_is_a_refusal()
+    && planted_command_failure_cause_keeps_its_exit_code()
+    && planted_list_units_success_classifies_as_a_census()
+}
