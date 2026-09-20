@@ -32,7 +32,7 @@ import gunbc.spark.vllm_serving_launch {
   launch_unit_provenance, launch_wire,
 }
 import gunbc.spark.pair_serving_realization {
-  spark_pair_head_unit_name,
+  spark_pair_head_unit_name, spark_pair_container_name,
   DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
 }
 import gunbc.spark.rendezvous_participation {
