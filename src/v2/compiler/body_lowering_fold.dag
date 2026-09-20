@@ -2830,10 +2830,13 @@ fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
   }
 }
 
-// THE ONE DOOR THE EXPRESSION SITES CONSULT, AND IT SITS ABOVE THE FIRST-ATOM FALLBACK. A dotted
-// chain lowers to its spine, or to a call through its spine; a call before the last segment is
-// declined (see DottedChainTailRead); and nothing else claims a chain this door admits before it
-// has answered. The order is the
+// THE ONE DOOR THE EXPRESSION SITES CONSULT, AND IT SITS ABOVE THE FIRST-ATOM FALLBACK. ITS
+// POPULATION IS TWO SHAPES AND NOT "EVERY DOTTED CHAIN": a BARE chain lowers to its spine, and a
+// chain whose ONLY call is on its FINAL segment lowers to a call through that spine. A call on a
+// NON-FINAL segment (`a.f().b`) is named by the walk and DECLINED to the pre-existing arms, where
+// it stays erased (see DottedChainTailRead, and the today-row on
+// gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering). Nothing else claims a
+// chain this door admits before it has answered. The order is the
 // construction (review 67903 on gunbc#11612): body_lower_pattern_first_atom_optional, consulted
 // first, claimed the chain's head atom and the rest of the chain vanished, so a guard beside the
 // fallback asking "is this dotted?" would have been a second authority for what this reader

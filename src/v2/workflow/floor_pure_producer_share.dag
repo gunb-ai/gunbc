@@ -479,7 +479,7 @@ import v2.std.collection { List }
 // preparation with disposition=Stored and the claims serving hits. Nullary, pure, inline sources,
 // and the value is the same Outcome<FreeMonoid<NormalizedTree>> carrier the row before it stores.
 //
-// AND THE NINE ROWS AFTER IT ARE THAT FILE'S RESOLVED SUBJECTS, ONE PRODUCER PER SUBJECT, EARNED BY
+// AND THE EIGHT ROWS AFTER IT ARE THAT FILE'S RESOLVED SUBJECTS, ONE PRODUCER PER SUBJECT, EARNED BY
 // TWO FLOOR REFUSALS RATHER THAN PREDICTED. gunbc#11582 run 35317696454: every resolve row reached
 // its verdict and was refused COMPLETED-OVER-COST-REQUIREMENT at ~92k eval steps against the
 // 72,300-step new-witness line, with the ingest fill served. Run 35327371663 then tried to share
@@ -491,23 +491,11 @@ import v2.std.collection { List }
 // -- the shape direct_rust_door_specimen_resolved above already inhabits -- executed once by
 // preparation (the real path, refused there if it cannot run) and read by the rows. Nullary, pure,
 // inline sources; Nodes and located diagnostics, no closure. Re-derive rather than trust: the run's
-// [floor-shared-fill] ledger must show all nine Stored at preparation and the rows serving hits (the ninth, the local-receiver CALL subject, enrolled on gunbc#11683).
+// [floor-shared-fill] ledger must show all eight Stored at preparation and the rows serving hits.
 // AND THE TWO ROWS AFTER THOSE ARE THE ENUMERATOR-DIFFERENTIAL FIXTURE, parsed and normalized, for
 // v2.test.claim.namespace_xl0.qualified_site_enumerator_differential: the rows there name the two
 // site WALKS and share the one-module ingest the walks read, exactly as the sibling rows do. Both
 // values are Nodes; no closure.
-// AND THE SIX body_lowering_qualified_path ROWS ARE ONE PARSE PER FIXTURE, THE SAME SHAPE AS THE
-// block_body_call ROW ABOVE THEM AND EARNED THE SAME WAY. That row's floor receipt refused the
-// single-pass claim over the new-witness line and admitted it once its parse was warm-shared; these
-// four claims each normalize a two-fn fixture and read one arrow body, so the parse is the stage
-// no claim names and normalize (which the claims are ABOUT) stays per claim. RECOMPUTE: claim_batch
-// on that file, [witness] eval_steps per lowering claim beside its parse inhabitance claim. SHARING:
-// each parse is read by at least two claims -- its inhabitance claim and the lowering claim(s) over
-// that fixture -- which is why the fixtures are not one five-fn module (measured ~4x the line per
-// claim) and why a single-consumer fixture is not enrolled. SERVE: the value is an Outcome<Node>
-// parse tree, fully portable, and the serve is the header's zero-walk capability. Re-derive rather
-// than trust: the run's [floor-shared-fill] ledger must show the six fills Stored at preparation.
-//
 // AND THE FINAL ROW:
 // DAG CANONICAL-SYMBOL MAP EARNS ITS ROW ON THE ENROLMENT-MARGIN CPU THE EVAL-STEP GATE
 // CANNOT SEE. Sibling floor run 35340819603 (#11580 merging the resolve-cost head that
@@ -556,12 +544,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
   "v2.test.claim.body_lowering_block_body_call.body_lowering_block_call_parsed",
-  "v2.test.claim.body_lowering_qualified_path.body_lowering_local_value_parsed",
-  "v2.test.claim.body_lowering_qualified_path.body_lowering_qualified_value_parsed",
-  "v2.test.claim.body_lowering_qualified_path.body_lowering_qualified_call_parsed",
-  "v2.test.claim.body_lowering_qualified_path.body_lowering_qualified_block_call_parsed",
-  "v2.test.claim.body_lowering_qualified_path.body_lowering_local_receiver_call_parsed",
-  "v2.test.claim.body_lowering_qualified_path.body_lowering_receiver_chain_mid_call_parsed",
   "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_fixture_normalized",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_local_consumer",
@@ -572,7 +554,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_shadowing_consumer",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_consumer_a",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_consumer_b",
-  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_method_call_consumer",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_normalized",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_parsed",
   "v2.extdeps.languages.dag.dag_canonical_symbol_map"

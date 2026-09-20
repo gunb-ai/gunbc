@@ -61,7 +61,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WHAT RESOLVES HERE IS THE SUBJECT ROOT ALONE. v2.compiler.name_resolve resolve_with_admission_context_policy
 // resolves the module the Admission names and consults the other ingested roots only through the
 // symbol index, so three consumer modules can share ONE ingest and each claim selects its subject.
-// That is what lets one warm producer serve every row: the parse-and-normalize of eleven inline
+// That is what lets one warm producer serve every row: the parse-and-normalize of twelve inline
 // modules is the stage no row is about, and it is shared exactly as the sibling file shares its
 // ingest (v2.workflow.floor_pure_producer_share); the resolve is executed per claim.
 //
