@@ -742,9 +742,9 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // RUNG: unchanged at MECHANICALLY PREVENTABLE. This is a repair of a fabricated-refusal direction
 // in an existing wall, not a climb. HAND-ITEM DELTA: plus one, collect_reference_occurrences,
 // enumerated in the roster above; record_from_module's inline walk is replaced by a call to it
-// rather than duplicated, and no other declaration is added. The three test arms live in the wave
-// wall's fixture file, whose carrier gunbc.namespace_wave_admission enumerates lib declarations
-// rather than test arms.
+// rather than duplicated, and no other declaration is added. The three test arms lived in the wave
+// wall's fixture file (its carrier gunbc.namespace_wave_admission enumerated lib declarations
+// rather than test arms); both file and carrier were deleted with the wall, 2026-09-19.
 // TWO AUTHORED REFERENCES THE INDEX COULD NOT REACH, AND THE FALSE GREEN THEY PRODUCED (gunbc, this
 // change). Recorded beside the selectivity note above rather than only in the Rust doc comment,
 // because the two are the SAME FUNCTION moving in OPPOSITE DIRECTIONS -- that one removed

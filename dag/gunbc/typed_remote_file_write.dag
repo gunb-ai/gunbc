@@ -94,11 +94,13 @@ type TypedRemoteFileWriteOutcome
 // For a unit file the transfer is a few hundred bytes.
 type RemoteFileMode
   = RemoteFileModeOwnerReadWrite
+  | RemoteFileModeOwnerReadWriteGroupRead
   | RemoteFileModeOwnerReadWriteWorldRead
 
 fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
   match mode {
     RemoteFileModeOwnerReadWrite => "600"
+    RemoteFileModeOwnerReadWriteGroupRead => "640"
     RemoteFileModeOwnerReadWriteWorldRead => "644"
   }
 }
