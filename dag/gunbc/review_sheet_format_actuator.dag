@@ -6,7 +6,6 @@ module gunbc.review_sheet_format_actuator
 // which is the route that was missing: an argv-free entry, an id established by observation rather
 // than supplied, and a refusal when the converge produced no id to format.
 import std.types { NonEmptyStr, String, Bool, Int, Float, List }
-import std.resources { Network }
 import std.integer { uint8_channel_inclusive_max_value_derived }
 import extdeps.color.srgb { Srgb8 }
 import extdeps.color.okabe_ito { okabe_ito_bluish_green, okabe_ito_vermillion, okabe_ito_blue }
@@ -205,7 +204,7 @@ fn classify_format_step(step: NonEmptyStr, outcome: RestOutcome) -> FormatStepOu
   }
 }
 
-fn freeze_header(spreadsheet_id: NonEmptyStr) -> FormatStepOutcome uses net: Network {
+fn freeze_header(spreadsheet_id: NonEmptyStr) -> FormatStepOutcome {
   let r = sheets.Spreadsheets.SetFrozenRows(
     spreadsheet_id: spreadsheet_id as String,
     sheet_id: spreadsheet_first_sheet_id,
@@ -214,7 +213,7 @@ fn freeze_header(spreadsheet_id: NonEmptyStr) -> FormatStepOutcome uses net: Net
   classify_format_step(step: "freeze header row" as NonEmptyStr, outcome: r.outcome)
 }
 
-fn format_header_band(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema) -> FormatStepOutcome uses net: Network {
+fn format_header_band(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema) -> FormatStepOutcome {
   match header_background_color() {
     SheetsColorUnderivable { cause: c } =>
       FormatStepRefused { step: "header band" as NonEmptyStr, cause: c }
@@ -246,7 +245,7 @@ fn color_standing(
   color: SheetsColorReading,
   rule_index: Int,
   standing_col: Int,
-) -> FormatStepOutcome uses net: Network {
+) -> FormatStepOutcome {
   match color {
     SheetsColorUnderivable { cause: c } =>
       FormatStepRefused {
@@ -265,7 +264,7 @@ fn color_standing_derived(
   color: SheetsColor,
   rule_index: Int,
   standing_col: Int,
-) -> FormatStepOutcome uses net: Network {
+) -> FormatStepOutcome {
   let r = sheets.Spreadsheets.AddTextColorRule(
     spreadsheet_id: spreadsheet_id as String,
     sheet_id: spreadsheet_first_sheet_id,
@@ -333,7 +332,7 @@ type FormatReport {
 // The steps are named individually rather than folded over the roster because each is an EFFECT
 // and the report names which one refused. A fold would answer "one of five failed", which is the
 // shape of diagnostic this session has repeatedly had to go back and re-derive.
-fn format_review_sheet(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema, standing_col: Int) -> FormatReport uses net: Network {
+fn format_review_sheet(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema, standing_col: Int) -> FormatReport {
   FormatReport {
     freeze: freeze_header(spreadsheet_id: spreadsheet_id),
     header: format_header_band(spreadsheet_id: spreadsheet_id, schema: schema),
@@ -409,7 +408,7 @@ type FormatObservation
 // THE SECOND READ IS UNRANGED AND CARRIES NO GRID DATA, so the conditional rules are not filtered
 // away by a range chosen to bound something else. It is cheap for the same reason: sheet metadata
 // without grid data does not grow with the census.
-fn read_format_meta(spreadsheet_id: NonEmptyStr, grid: SpreadsheetRead) -> FormatObservation uses net: Network {
+fn read_format_meta(spreadsheet_id: NonEmptyStr, grid: SpreadsheetRead) -> FormatObservation {
   let meta = sheets.Spreadsheets.GetSpreadsheetMetadata(
     spreadsheet_id: spreadsheet_id as String,
     fields: review_sheet_format_meta_field_mask,
@@ -611,7 +610,7 @@ fn observed_header_format(sheet: SheetsSheetRead) -> SheetsCellFormatRead? {
   }
 }
 
-fn read_format(spreadsheet_id: NonEmptyStr) -> FormatObservation uses net: Network {
+fn read_format(spreadsheet_id: NonEmptyStr) -> FormatObservation {
   let grid = sheets.Spreadsheets.GetSpreadsheet(
     spreadsheet_id: spreadsheet_id as String,
     range: review_sheet_header_range,
@@ -701,7 +700,7 @@ type FormatConvergeOutcome
 fn converge_review_sheet_format(
   spreadsheet_id: NonEmptyStr,
   schema: ReviewSheetSchema,
-) -> FormatConvergeOutcome uses net: Network {
+) -> FormatConvergeOutcome {
   match standing_column_index(schema: schema) {
     StandingColumnAbsent =>
       FormatConvergeRefused {
@@ -716,7 +715,7 @@ fn converge_format_with_standing(
   spreadsheet_id: NonEmptyStr,
   schema: ReviewSheetSchema,
   standing_col: Int,
-) -> FormatConvergeOutcome uses net: Network {
+) -> FormatConvergeOutcome {
   match uint8_channel_inclusive_max_value_derived() {
     Absent =>
       FormatConvergeRefused {
@@ -744,7 +743,7 @@ fn converge_with_desired(
   inclusive_max: Int,
   header_bg: SheetsColor,
   header_fg: SheetsColor,
-) -> FormatConvergeOutcome uses net: Network {
+) -> FormatConvergeOutcome {
   let observed = read_format(spreadsheet_id: spreadsheet_id)
   match observed {
     FormatUnreadable { cause: c } =>
@@ -772,7 +771,7 @@ fn verify_applied_format(
   inclusive_max: Int,
   header_bg: SheetsColor,
   header_fg: SheetsColor,
-) -> FormatConvergeOutcome uses net: Network {
+) -> FormatConvergeOutcome {
   if format_report_all_applied(r: report) {
     if format_is_converged(o: read_format(spreadsheet_id: spreadsheet_id), inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg) {
       FormatAppliedAndVerified { report: report }

@@ -6,14 +6,17 @@ import std.decl_ref { decl_ref }
 import gunbc.compiler_frontend_program_interlock { TargetChanged }
 import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
 
-// D13 cut (c) deleted this function's authored `uses` row, and with it the module's now-dead
-// `import std.resources`. The bare name `Filesystem` had TWO candidate providers while that import
-// stood -- the std.resources RESOURCE and the extdeps.filesystem.filesystem_io SERVICE, the homonym
-// `gunbc.recurring_failure_mode` `service_import_emitted_beside_its_authored_binding` names -- and
-// the call site always meant the service. Dropping the import removes the candidate nothing bound,
-// so the spelling now denotes the one declaration it already denoted. Consumer: namespace-wave-admission.
+// WHAT REMOVED THE SECOND CANDIDATE: the deleted `uses fs: std.resources.Filesystem` BINDER on this
+// function, not an import. While that binder stood it bound the spelling `Filesystem` to the
+// std.resources RESOURCE inside this function's scope, beside the extdeps.filesystem.filesystem_io
+// SERVICE the call site actually meant -- the homonym `gunbc.recurring_failure_mode`
+// `service_import_emitted_beside_its_authored_binding` names. D13 cut (c) deleted the binder because
+// the function's derived service demand already carries the requirement, so the spelling now denotes
+// the one declaration it always meant. The module's `import std.resources` went dead once its last
+// binder left and was removed with it; that removal is a consequence of the binder deletion, not the
+// cause of this rebind. Consumer: namespace-wave-admission.
 data gunbc_instruments_github_app_acquire_installations_read_exit_filesystem: TransitionAdmission = TransitionAdmission {
-  label: "the dead std.resources import left gunbc.instruments.github_app_acquire, so `Filesystem` names the service alone" as NonEmptyStr,
+  label: "the deleted uses fs binder was the std.resources candidate for `Filesystem` in this function; the service it always meant is the only one left" as NonEmptyStr,
   subject: Binding {
     enclosing: decl_ref("gunbc.instruments.github_app_acquire", "installations_read_exit"),
     spelling: "Filesystem" as NonEmptyStr,

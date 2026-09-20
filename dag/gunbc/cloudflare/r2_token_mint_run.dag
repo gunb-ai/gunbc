@@ -1,7 +1,6 @@
 module gunbc.cloudflare.r2_token_mint_run
 
 import std.types { String, NonEmptyStr, Secret, List, Bool }
-import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.human_intervention {
@@ -290,7 +289,7 @@ fn r2_mint_custody_container_intervention(secret_id: NonEmptyStr, cause: NonEmpt
 fn observe_r2_mint_custody_container(
   profile: R2OriginTokenProfile,
   gcp_token: Secret,
-) -> R2MintCustodyContainerStanding uses net: Network {
+) -> R2MintCustodyContainerStanding {
   let secret_id = r2_origin_token_secret_id(profile: profile)
   match observe_secret_container(
     project: fleet_secret_ref(secret_id: secret_id).project,
@@ -445,7 +444,7 @@ type R2MintBootstrapStanding
 fn r2_mint_bootstrap(
   profile: R2OriginTokenProfile,
   requirement: R2MintContainerRequirement,
-) -> R2MintBootstrapStanding uses net: Network {
+) -> R2MintBootstrapStanding {
   match resolve_access_token() {
     AccessTokenUpsertRequired { plan: plan } =>
       R2MintBootstrapRefused {
@@ -521,7 +520,7 @@ type R2AccountTokenListing
 fn list_account_tokens(
   bootstrap: Secret,
   account_id: CloudflareAccountId,
-) -> R2AccountTokenListing uses net: Network {
+) -> R2AccountTokenListing {
   let listed = cloudflare.AccountTokens.List(
     auth_token: bootstrap,
     account_id: account_id as String,
@@ -591,7 +590,7 @@ fn mint_r2_origin_token(
   account_id: CloudflareAccountId,
   request: CreateAccountTokenRequest,
   bootstrap: Secret,
-) -> R2TokenMintOutcome uses net: Network {
+) -> R2TokenMintOutcome {
   let created = cloudflare.AccountTokens.Create(
     auth_token: bootstrap,
     account_id: account_id as String,
@@ -717,7 +716,7 @@ fn store_minted_token(
   locus: SecretRef,
   gcp_token: Secret,
   container: ObservedSecretContainer,
-) -> R2CredentialStored uses net: Network {
+) -> R2CredentialStored {
   match snapshot_minted_secret(payload: token.value) {
     CredentialSnapshotRefused { cause: cause } =>
       R2CredentialStoreRefused {
@@ -769,7 +768,7 @@ fn store_minted_token(
 // consumer class as run(); they are not a second mint path. /tmp is the non-secret readback
 // channel run() also uses. They dissolve when a modeled artifact store replaces that write.
 
-fn list_account_tokens_for_reconcile() -> ProcessExit uses net: Network {
+fn list_account_tokens_for_reconcile() -> ProcessExit {
   match r2_mint_bootstrap(
     profile: R2OriginObjectRead,
     requirement: CustodyContainerNotNeeded { reason: r2_mint_container_not_required_reason },
@@ -803,7 +802,7 @@ fn list_account_tokens_for_reconcile() -> ProcessExit uses net: Network {
   }
 }
 
-fn revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
+fn revoke_unheld_object_read_token() -> ProcessExit {
   match r2_mint_bootstrap(
     profile: R2OriginObjectRead,
     requirement: CustodyContainerNotNeeded { reason: r2_mint_container_not_required_reason },
@@ -909,11 +908,11 @@ fn revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
 // The write entry will refuse the same way once its own pin lands. This is the origin_read_pin
 // check revoke_unheld_object_read_token already performs, applied at the mint rather than only at
 // the revoke.
-fn run() -> ProcessExit uses net: Network {
+fn run() -> ProcessExit {
   mint_origin_token_and_store(profile: R2OriginObjectRead)
 }
 
-fn run_object_write() -> ProcessExit uses net: Network {
+fn run_object_write() -> ProcessExit {
   mint_origin_token_and_store(profile: R2OriginObjectWrite)
 }
 
@@ -1130,7 +1129,7 @@ fn refuse_with_orphan_receipt(
   }
 }
 
-fn mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit uses net: Network {
+fn mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit {
   if origin_credential_already_pinned(profile: profile, origin: fabric_durable_origin_standing()) {
     exit_failure(reason: concat(
       "THE ORIGIN ALREADY PINS THIS CREDENTIAL TO AN EXACT VERSION, NOTHING CREATED: a second mint would leave a token on the account that no declaration names; rotate by editing the pin in gunbc.cloudflare.r2_origin first -- ",

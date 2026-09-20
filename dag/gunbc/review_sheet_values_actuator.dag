@@ -2,7 +2,6 @@ module gunbc.review_sheet_values_actuator
 
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import v2.std.algebra { fold_list }
-import std.resources { Network }
 import extdeps.transports.rest {
   RestReadExchange,
   RestMutationExchange,
@@ -74,7 +73,7 @@ type ValuesReadOutcome
   = ValuesRead { range: ValueRange }
   | ValuesUnreadable { cause: NonEmptyStr }
 
-fn read_values(spreadsheet_id: NonEmptyStr, a1: String) -> ValuesReadOutcome uses net: Network {
+fn read_values(spreadsheet_id: NonEmptyStr, a1: String) -> ValuesReadOutcome {
   let read = sheets.Spreadsheets.GetValues(
     spreadsheet_id: spreadsheet_id as String,
     range: a1,
@@ -245,7 +244,7 @@ fn perform_values_write(
   spreadsheet_id: NonEmptyStr,
   a1: String,
   desired: ValueRange,
-) -> ValuesWriteOutcome uses net: Network {
+) -> ValuesWriteOutcome {
   let written = sheets.Spreadsheets.BatchUpdateValues(
     spreadsheet_id: spreadsheet_id as String,
     value_input_option: InputRaw,
@@ -290,7 +289,7 @@ fn verify_written_values(
   a1: String,
   desired: ValueRange,
   detail: NonEmptyStr,
-) -> ValuesWriteOutcome uses net: Network {
+) -> ValuesWriteOutcome {
   match read_values(spreadsheet_id: spreadsheet_id, a1: a1) {
     ValuesUnreadable { cause: c } =>
       ValuesWriteUnverified {
@@ -328,7 +327,7 @@ fn converge_sheet_values(
   spreadsheet_id: NonEmptyStr,
   a1: String,
   desired: ValueRange,
-) -> ValuesWriteOutcome uses net: Network {
+) -> ValuesWriteOutcome {
   match read_values(spreadsheet_id: spreadsheet_id, a1: a1) {
     ValuesUnreadable { cause: c } => ValuesWriteRefused { cause: c }
     ValuesRead { range: got } =>

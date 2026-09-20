@@ -2,7 +2,6 @@ module gunbc.ci_workflow_scan_producer
 
 import std.types { NonEmptyStr, String, Int, Bool, List, Secret }
 import std.nat { Nat, nat_range_inclusive }
-import std.resources { Network }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import extdeps.github.code_search {
   CodeSearchPage,
@@ -153,7 +152,7 @@ fn advance_scan(
   page: Int,
   observed_at: NonEmptyStr,
   api_version: NonEmptyStr,
-) -> ScanWalkState uses net: Network {
+) -> ScanWalkState {
   match state.stop {
     Present { value: _ } => state
     Absent =>
@@ -291,7 +290,7 @@ fn scan_partition(
   per_page: Int,
   observed_at: NonEmptyStr,
   api_version: NonEmptyStr,
-) -> ScanReceipt uses net: Network {
+) -> ScanReceipt {
   let bound = deepest_retrievable_page(per_page: per_page)
   let walked = fold(
     nat_range_inclusive(1, bound as Nat),

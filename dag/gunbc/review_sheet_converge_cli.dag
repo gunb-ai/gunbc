@@ -11,7 +11,6 @@ import gunbc.review_sheet_projection { ci_prospect_sheet_schema }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
-import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ensure { EnsurePolicy, EnsureMayApply, EnsureObserveOnly }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
@@ -146,7 +145,7 @@ fn converge_review_sheet_all(
   writer: ServiceAccountEmail,
   drive_id: NonEmptyStr,
   policy: EnsurePolicy,
-) -> ReviewSheetConvergeReport uses net: Network {
+) -> ReviewSheetConvergeReport {
   ReviewSheetConvergeReport {
     sheets_api: converge_service_enablement(
       token: token,
@@ -306,7 +305,7 @@ fn converge_drive_half(
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
   policy: EnsurePolicy,
-) -> DriveHalfReport uses net: Network {
+) -> DriveHalfReport {
   DriveHalfReport {
     membership: converge_drive_membership(drive_id: drive_id, writer: writer, policy: policy),
     spreadsheet: converge_review_spreadsheet(
@@ -332,7 +331,7 @@ fn drive_half_text(r: DriveHalfReport) -> String {
   )
 }
 
-fn converge_drive_half_cli() -> ProcessExit uses net: Network {
+fn converge_drive_half_cli() -> ProcessExit {
   match calling_home_resolution() {
     HomeUnresolved { cause: c } => exit_failure(reason: c as String)
     HomeResolved { project_id: _, writer: w } =>
@@ -355,7 +354,7 @@ type FormatDisposition
   = FormatAttempted { outcome: FormatConvergeOutcome }
   | FormatSkipped { cause: NonEmptyStr }
 
-fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition uses net: Network {
+fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition {
   match o {
     SpreadsheetAdopted { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
     SpreadsheetCreatedAndVerified { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
@@ -378,7 +377,7 @@ fn format_disposition_is_applied(d: FormatDisposition) -> Bool {
   }
 }
 
-fn drive_half_exit(report: DriveHalfReport) -> ProcessExit uses net: Network {
+fn drive_half_exit(report: DriveHalfReport) -> ProcessExit {
   if drive_half_is_converged(r: report) {
     let formatting = format_converged_spreadsheet(o: report.spreadsheet)
     if format_disposition_is_applied(d: formatting) {
