@@ -1,0 +1,24 @@
+module gunbc.namespace.transition_admission.gunbc_roadmap_belt_actuate_belt_review_plan_for_head_node_title
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+// gunbc#10994 roadmap-model split: `node_title` relocates verbatim from `gunbc.roadmap_spawner` to `gunbc.roadmap_status`.
+// The binding at `gunbc.roadmap_belt_actuate::belt_review_plan_for_head` keeps its spelling and denotes the same
+// declaration; only the module that declares it moved. The candidate set is a singleton by
+// structure, since the spelling is declared in exactly one module on each side.
+// DISSOLVE-ON: gunbc#10994 merging.
+data gunbc_roadmap_belt_actuate_belt_review_plan_for_head_node_title: TransitionAdmission = TransitionAdmission {
+  label: "gunbc#10994 node_title moves from gunbc.roadmap_spawner to gunbc.roadmap_status" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.roadmap_belt_actuate", "belt_review_plan_for_head"),
+    spelling: "node_title" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.roadmap_status", "node_title")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 10994 as UInt32,
+}

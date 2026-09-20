@@ -29,6 +29,10 @@ import gunbc.fabric_control_plane_charge {
   host_fabric_control_plane_claim,
 }
 import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
+import product.fabric.envelope { ResourceEnvelope, memory_envelope }
+import gunbc.floor_demand {
+  gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored,
+}
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 
 // THE SLOT'S CPU CEILING IS A POLICY OF THE ROW, AND THE ROW'S POLICY IS NO CEILING. CpuQuotaResolved
@@ -179,6 +183,17 @@ data gunbc_runner_slot_memory_max: ByteSize = byte_size(gunbc_runner_slot_memory
 // constraint the ruling did not ask for. cpu_weight stays the relative-share governor.
 fn gunbc_runner_slot_cpu_quota() -> RunnerSlotCpuQuota {
   SlotCpuQuotaUnbounded
+}
+
+// WHAT A CELL OFFERS A WORK, AS THE ENVELOPE VOCABULARY THE BROKER COMPARES. The floor's Work now
+// states a memory requirement (gunbc.fabric_witness_run reading gunbc.floor_demand), and
+// product.fabric.supply refuses an offer that states no memory against a Work that states some --
+// so every offer standing for one of these cells must say what the cell grants, and it must say it
+// from THIS row rather than from a fixture literal. MemoryMax is the grant: it is the ceiling the
+// cell enforces, and a guest sized inside it (gunbc.runner_microvm) is judged against the same
+// number. Threads are not restated here; HardRequirements carries them at the offer's own site.
+fn gunbc_runner_slot_offer_envelope() -> ResourceEnvelope {
+  memory_envelope(min_bytes: gunbc_runner_slot_desired().memory_max)
 }
 
 fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
@@ -1038,16 +1053,14 @@ fn converged_slot_is_pinned_at_armed_throttle_line(obs: ConvergedSlotThrottleObs
 // throttling is eliminated. Dissolve-on: a floor-run receipt series emitting peak and armed line
 // per run, which would replace this single-day cross-sectional read with a distribution.
 
-data gunbc_floor_measured_peak_observation: ByteSize = byte_size(15509315584)
-
-data gunbc_floor_measured_peak_armed_high: ByteSize = byte_size(16106127360)
-
-data gunbc_floor_measured_peak_reported_decimal_corroboration: ByteSize = byte_size(15600000000)
-
-fn gunbc_floor_measured_peak_is_uncensored() -> Bool {
-  byte_size_count(b: gunbc_floor_measured_peak_observation)
-    < byte_size_count(b: gunbc_floor_measured_peak_armed_high)
-}
+// THE THREE ROWS THAT STOOD HERE -- gunbc_floor_measured_peak_observation, its armed line and the
+// uncensored guard -- MOVED TO gunbc.floor_demand ON 2026-09-19 AND ARE RE-DERIVED THERE FROM A
+// TYPED RECEIPT. They carried the 2026-08-17 srv2 reading (15509315584 bytes against a 16106127360
+// line) long after the 2026-09-12 ruling above had sized this row to a 24.4 GiB uncensored
+// measurement that existed only in that ruling's prose, so the wall's input was a stale figure the
+// wall passed trivially. The names are unchanged and this module imports them, so the conjunct in
+// gunbc_runner_slot_allocation_wall_holds reads the 2026-09-12 receipt without a second literal.
+// The unit-ambiguity argument that used to sit here retired with the reading it discriminated.
 
 // SUPERSEDED BY THE 2026-08-17 RULING, RETAINED BECAUSE ITS QUESTION WAS ANSWERED RATHER THAN
 // ABANDONED. This note asked whether converging srv2-03 DOWN to a 14GiB/13GiB declaration would be

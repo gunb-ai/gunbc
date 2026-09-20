@@ -12,6 +12,7 @@ import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.floor_demand { gunbc_ci_floor_run_peak_receipts, floor_run_peak_receipt_at_throttle_line }
 
 data gunbc_ci_width_constants_retired_note: String = "WITHIN-run width constants retired (operator ruling 2026-07-12): the hand-edited per-shard peak samples (floor 3.2-4.6GiB, falsifier 3.9-6.4GiB), the executor base overhead (8910036989), the 17/20 usable fraction, the conservative fallback width, the execution-corpus per-witness reservation, and every memory-derived width fold over them are DELETED — they were pins freezing derivations (the per-shard source row itself said STALE-PENDING-RECALIBRATION: samples predated the enrollment flip) and their staleness was the July OOM/wedge regime's root. Run-time concurrency is now governed adaptively by v1_compiler::memory_governor (AIMD admission against the slot's own cgroup budget, graceful back-off on creep, counted receipts — see gunbc_ci_adaptive_width_note in v2.workflow.ci_floor_plan). This module keeps only the INTER-run granularity: whole-run job peaks and session reservations feeding host co-residence and the conserving budget tree, plus the live slot-limit readback receipts. Quantified per-runnable demand returns when derivable from the graph, never as authored literals."
 
@@ -56,65 +57,12 @@ data gunbc_ci_runner_slot_memory_max_live_source: Disposition = Terminal {
 // the wrong repairs are editing the observation or reconciling the declaration toward it. Here
 // neither was needed — the receipt was simply missing a field it always implicitly had.
 
-type FloorRunCgroupPeakReceipt
-  = FloorRunCgroupPeakMeasured {
-      run_id: String,
-      runner_unit: String,
-      cgroup_peak: ByteSize,
-      armed_memory_high: ByteSize,
-      floor_outcome: String,
-    }
-  | FloorRunCgroupPeakUnmeasured
-
-data gunbc_ci_floor_run_peak_receipt_overshoot_ceiling: ByteSize = byte_size(681574)
-
-data gunbc_ci_floor_run_peak_receipts: List<FloorRunCgroupPeakReceipt> = [
-  FloorRunCgroupPeakMeasured {
-    run_id: "29137081535",
-    runner_unit: "actions-runner@srv1-01.service",
-    cgroup_peak: byte_size(16106127360),
-    armed_memory_high: byte_size(16106127360),
-    floor_outcome: "timeout",
-  },
-  FloorRunCgroupPeakMeasured {
-    run_id: "29142398465",
-    runner_unit: "actions-runner@srv1-03.service",
-    cgroup_peak: byte_size(16106127360),
-    armed_memory_high: byte_size(16106127360),
-    floor_outcome: "timeout",
-  },
-  FloorRunCgroupPeakMeasured {
-    run_id: "29159082043",
-    runner_unit: "actions-runner@srv2-01.service",
-    cgroup_peak: byte_size(16106127360),
-    armed_memory_high: byte_size(16106127360),
-    floor_outcome: "timeout",
-  },
-  FloorRunCgroupPeakMeasured {
-    run_id: "29112500694",
-    runner_unit: "actions-runner@srv2-02.service",
-    cgroup_peak: byte_size(16106127360),
-    armed_memory_high: byte_size(16106127360),
-    floor_outcome: "timeout",
-  },
-]
+// THE CARRIER, THE OVERSHOOT CEILING AND THE FOUR RECEIPTS NOW LIVE IN gunbc.floor_demand, which is
+// the floor's demand authority and a leaf this module and gunbc.runner_slot_allocation both import.
+// They moved unchanged; this module keeps the disposition and the witness over them.
 
 data gunbc_ci_floor_run_peak_receipt_disposition: Disposition = Terminal {
   reason: "Per-run floor cgroup peak receipts (operator ruling 2026-07-14): typed carrier for floor_peak_post observations from completed fleet floors — the INTER-run whole-run peak at the slot's memory.high throttle line. Four independent readbacks across four diffs and both hosts (runs 29137081535, 29142398465, 29159082043, 29112500694 on srv1-01/srv1-03/srv2-01/srv2-02) pinned within gunbc_ci_floor_run_peak_receipt_overshoot_ceiling (0.65MiB) above gunbc_ci_runner_slot_memory_high_live with zero oom_kill events. floor_outcome != success means the peak is a CENSORED lower bound (DESIGN §5); these wedged runs still prove the throttle-line signature. The executor [measurement] line on a COMPLETED floor is the memory.max readback path that closes the residual in gunbc_ci_runner_slot_memory_max_live_source."
-}
-
-fn floor_run_peak_receipt_at_throttle_line(receipt: FloorRunCgroupPeakReceipt) -> Bool {
-  match receipt {
-    FloorRunCgroupPeakMeasured { run_id: _, runner_unit: _, cgroup_peak: peak, armed_memory_high: high, floor_outcome: _ } =>
-      floor_run_peak_within_throttle_overshoot(peak: peak, high: high)
-    FloorRunCgroupPeakUnmeasured => false
-  }
-}
-
-fn floor_run_peak_within_throttle_overshoot(peak: ByteSize, high: ByteSize) -> Bool {
-  let overshoot_ceiling = gunbc_ci_floor_run_peak_receipt_overshoot_ceiling
-  byte_size_count(b: peak) >= byte_size_count(b: high)
-    && byte_size_count(b: peak) <= (byte_size_count(b: high) + byte_size_count(b: overshoot_ceiling))
 }
 
 fn witness_live_caps_derive_from_allocation_authority() -> Bool {
