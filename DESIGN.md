@@ -8,6 +8,15 @@ It carries the REASONING only. Recurring failure modes live one class per file u
 
 ---
 
+## Operational essentials (build & test)
+
+- **Batch witness runs — never loop per-function.** `gunbc run --entry <file.dag> --claim-run` with NO `--function` runs every `test fn` in that entry in one process over one shared closure resolve; ~90% of the wall clock is the one-time load, so per-function loops pay it N times.
+- **Across files, one batch process:** `target/release/claim_batch --source-root dag --source-root src/v2 --roster-from-discovery --scan-dir <dir>` (build with `cargo build --release -p v1-compiler --bin claim_batch`) — one process-shared module index, one warmup for a whole directory. Explicit form: repeated `--entry <file> --functions a,b,c`. Wet witnesses (shell out / build crates) need `--wet` or they fail with a route-gap refusal. A stale `claim_batch` binary silently greens — rebuild before trusting it.
+- **CI precedent:** `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses` (`.github/workflows/witnesses.yml`).
+- **Heavy commands run under a memory cap:** `systemd-run --user --scope -p MemoryMax=6G --quiet <gunbc run ...>` — otherwise the run refuses with `HostBudgetUnreadable` (fail-closed budget gate). Serving/dispatch units use larger caps.
+- **In-flight, not yet landed:** a `gunbc test //pkg/...` pattern verb is being wired concurrently; do not treat it as working today — the two batching mechanisms above are the working routes.
+- Detail lives in [docs/onboarding.md](docs/onboarding.md) and [docs/plans/blackjack-onboarding.md](docs/plans/blackjack-onboarding.md) (`claim_batch`); the above is the essential minimum.
+
 ## 1. The objective (the axioms)
 
 Three **axioms** — assumed, not derived:
