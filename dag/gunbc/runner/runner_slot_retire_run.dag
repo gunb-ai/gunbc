@@ -631,11 +631,13 @@ fn retirement_route_text(run: RetirementRouteRun) -> String {
 //                 here, and a disagreement REFUSES: this job checks out
 //                 `expected_revision || github.ref`, so the checkout is the fact that actually
 //                 decides which sources produced the assessment.
-//   EXECUTABLE -- which revision built the binary performing the assessment. THERE IS NO PRODUCER
-//                 FOR THIS. Nothing in this repository binds a release binary to the revision that
-//                 built it, so the honest state is unresolved, and it is carried as a named blocker
-//                 rather than asserted or omitted. The run identity travels on the receipt so the
-//                 eventual package can join this assessment to its actual producer.
+//   EXECUTABLE -- which revision built the binary performing the assessment. Joined by
+//                 gunbc.build_provenance_join: the running image reports its compiled identity
+//                 (gunbc.Cli.RunningVersion over /proc/self/exe) and must equal the corroborated R,
+//                 inside the admitted delivery route (this job of the fleet-converge workflow, whose
+//                 build job hands it the release-bins artifact). Any refusal arm -- mismatch, dirty,
+//                 unobserved, origin unestablished -- is carried as a named blocker
+//                 (build_provenance_blockers below) and reaches the terminal.
 type CheckoutRevisionReading
   = CheckoutRevisionRead { revision: String }
   | CheckoutRevisionUnreadable { cause: String }
