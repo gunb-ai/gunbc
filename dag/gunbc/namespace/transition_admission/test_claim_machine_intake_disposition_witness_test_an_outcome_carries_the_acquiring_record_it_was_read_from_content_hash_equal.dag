@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.test_claim_machine_intake_disposition_witness_test_an_outcome_carries_the_acquiring_record_it_was_read_from_content_hash_equal
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, PullRequest }
+
+data test_claim_machine_intake_disposition_witness_test_an_outcome_carries_the_acquiring_record_it_was_read_from_content_hash_equal: TransitionAdmission = TransitionAdmission {
+  label: "content_hash_equal is homed in std.content_hash beside the comparison it folds (review 67905); gunbc.machine_intake_subject's mint is deleted and its consumers rebind" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("test.claim.machine_intake_disposition_witness_test", "an_outcome_carries_the_acquiring_record_it_was_read_from"),
+    spelling: "content_hash_equal" as NonEmptyStr,
+    expected_candidates: [decl_ref("std.content_hash", "content_hash_equal")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: PullRequest { number: 11666 as UInt32 },
+  owner_pull_request: 11555 as UInt32,
+}
