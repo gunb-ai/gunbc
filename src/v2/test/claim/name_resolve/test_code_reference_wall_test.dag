@@ -165,17 +165,24 @@ fn peer_test_module() -> Outcome<NormalizedTree> {
   )
 }
 
-// The smallest module that carries both facts the supplied roots rely on: a member of the
-// expression-bodied shape, and a test marker on it. One member, because the front end's cost
-// grows with the source and this claim pays for a real tokenize, parse and normalize.
+// The smallest module that carries every producer shape the supplied roots rely on, one member per
+// fixture builder: wall_member with a `true` body (`shared_fixture`), wall_member_returning_its_param
+// (`helper`, the one-parameter domain), and wall_member with a name-reference body carrying the test
+// marker (`peer_leaf`). Three members because the builders have three distinct bodies; the front
+// end's cost grows with the source and this claim pays for one real tokenize, parse and normalize.
+// The only supplied node no source produces is wall_qualified, declared beside it.
 fn inhabitance_module() -> Outcome<NormalizedTree> {
   wall_tree(
-    root: wall_module_root(leaf_segment: ^peer, members: [wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture))]),
+    root: wall_module_root(leaf_segment: ^peer, members: [
+      wall_member(name: ^shared_fixture, body: wall_atom(identity: ^dag_token_kw_true)),
+      wall_member_returning_its_param(name: ^helper, param: ^leaf),
+      wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture))
+    ]),
     marked: [^peer_leaf]
   )
 }
 
-data inhabitance_module_source: String = "module wall.peer\ntest fn peer_leaf() -> Bool = shared_fixture()\n"
+data inhabitance_module_source: String = "module wall.peer\nfn shared_fixture() -> Bool = true\nfn helper(leaf: Bool) -> Bool = leaf\ntest fn peer_leaf() -> Bool = shared_fixture()\n"
 
 // module wall.peer -- `fn shared_fixture() -> Bool = true`, no test code.
 fn peer_serving_module() -> Outcome<NormalizedTree> {
@@ -201,6 +208,9 @@ fn serving_module_with_body(body: Node) -> Outcome<NormalizedTree> {
 // tokenize, parse and normalize of even a one-member module costs about 75k eval steps, over the
 // 72,300 new-witness budget by itself, so paying it once and sharing it is the only way the real
 // path gets onto the floor at all.
+// WHEN THE ROOT CLAIM REDS: render BOTH trees with their EDGE LABELS and compare those. A read by
+// child index is what made the graft-marker drift (#11694, a leading edge on the module body) look
+// like a change inside the member Arrow, and cost two lanes to find.
 fn inhabitance_normalized() -> Outcome<NormalizedTree> {
   let lm = dag_language_model()
   match tokenize(text: inhabitance_module_source, file: ^wall_peer_file, rules: lm.lex) {
