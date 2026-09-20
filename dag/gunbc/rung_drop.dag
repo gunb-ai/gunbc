@@ -324,12 +324,20 @@ fn rung_drop_declaration_message(d: RungDrop) -> String {
         concat(" -> ", concat(guarantee_rung_label(r: t), concat(" (", rung_drop_reason_label(r: rs)))),
         concat(
           concat("). Population: ", join(pop, ", ")),
-          concat(". Restored when: ", concat(rt, "."))
+          concat(". Restored when: ", sentence_terminated(s: rt))
         )
       )
     )
     AuthoredProse { legacy: _, authored: a } => a
   }
+}
+
+// THE SENTENCE'S TERMINAL PERIOD IS THE PROJECTOR'S FACT, NOT EACH ROW'S. A restoration trigger is
+// authored as prose and some rows already close their sentence; appending unconditionally rendered
+// a double period on every one of those. Terminate the sentence exactly once regardless of how the
+// row spelled it, so the next caller cannot get this wrong by choosing either spelling.
+fn sentence_terminated(s: String) -> String {
+  if ends_with(s: s, suffix: ".") { s } else { concat(s, ".") }
 }
 
 fn rung_drop_reason_label(r: RungDropReason) -> String {
