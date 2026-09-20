@@ -43,7 +43,7 @@ import gunbc.runner_microvm_network {
 import gunbc.runner_microvm_cell_readiness {
   InFlightAttempt, CellBoundAttempt, AttemptBoundToCell, AttemptCellMismatch, bind_attempt_to_cell,
   CellReadinessWrite, WriteReadbackSettled, CellReadinessStoreRead, StoreRead, StoreUnreadable,
-  CellReadinessRecord, CellSettled, CellAttemptInFlight,
+  CellReadinessRecord, CellSettled, CellAttemptInFlight, record_cell,
 }
 import gunbc.runner_microvm_lifecycle {
   AttemptIdentity, TerminalTrigger, RunnerExited, StopRequested, DeadlineReached,
@@ -65,7 +65,8 @@ import gunbc.runner_microvm_lifecycle_realize {
 import gunbc.runner_microvm_cell_readiness_store {
   CellReadinessWritten, CellReadinessRecordWritten, CellReadinessWriteRefusedByStore,
   CellReadinessWriteStoreUnreadable, CellReadinessWriteFailed,
-  cell_readiness_store_root, read_cell_readiness_store, write_cell_readiness_record,
+  cell_readiness_store_root, cell_readiness_record_path, read_cell_readiness_store,
+  write_cell_readiness_record,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -73,9 +74,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE SIX REDs, EXECUTED AGAINST REAL PROCESSES ON A REAL HOST.
 //
 // Nothing in the microVM lifecycle lane had run against a process before this file. Every claim
-// below starts a TRANSIENT unit it owns, under a slot index no live slot uses, drives the
-// production controller against it, and ends with the host in the state it started in. None of
-// them touches an actions-runner unit, a live slot, or a converged slot network.
+// that needs a process starts a TRANSIENT unit it owns, on a slot identity the allocation
+// authority calls outside the host's committed population, drives the production controller
+// against it, and ends by reading back that nothing under its slice is running or frozen. The one
+// claim that needs no process -- RED 4, whose subject is a reading no host can be asked to produce
+// safely -- writes real records to the real store and DELETES them, reading back that the cell it
+// used holds no record. None of them touches an actions-runner unit, a committed slot, or a
+// converged slot network.
 //
 // WHY A TRANSIENT UNIT IS THE RIGHT ADVERSARY AND NOT A WEAKER ONE. The states these claims need --
 // a child that ignores SIGTERM, a process that escaped its service's cgroup into a sibling scope, a
@@ -571,7 +576,28 @@ fn red_store_refuses_release(bound: CellBoundAttempt, settled: TeardownSettlemen
     CellReadinessWriteRefusedByStore { result: _ } => true
     _ => false
   }
-  written_ok && refused && red_store_still_quarantined(cell_generation: bound.generation)
+  let held = written_ok && refused && red_store_still_quarantined(cell_generation: bound.generation)
+  held && red_store_record_removed(cell: bound.cell, after: held)
+}
+
+// THE STORE IS LEFT AS IT WAS FOUND, and the removal is read back rather than assumed. This claim
+// is the only one that writes a durable record, so it is the only one that owes a deletion -- and
+// a deletion nobody checked is the same kind of claim as a teardown nobody read back.
+fn red_store_record_removed(cell: CellId, after: Bool) -> Bool {
+  if !after {
+    false
+  } else {
+    let removed = Filesystem.Delete(path: cell_readiness_record_path(root: cell_readiness_store_root, cell: cell))
+    removed.success && red_store_holds_no_record_for(cell: cell)
+  }
+}
+
+fn red_store_holds_no_record_for(cell: CellId) -> Bool {
+  match read_cell_readiness_store(root: cell_readiness_store_root) {
+    StoreUnreadable { reason: _ } => false
+    StoreRead { ownership: _, records: rs } =>
+      list_length(items: filter(rs, r => (record_cell(record: r) as String) == (cell as String))) == 0
+  }
 }
 
 fn red_store_still_quarantined(cell_generation: Int) -> Bool {
