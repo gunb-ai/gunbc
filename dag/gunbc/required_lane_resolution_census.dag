@@ -81,17 +81,6 @@ type ResolutionCensusStanding
   = ResolutionCensusHeld
   | ResolutionCensusDidNotHold { unreached: List<String> }
 
-fn membership(xs: List<String>) -> Map<String, Bool> {
-  xs |> fold(init: empty_map(), f: fn(acc, x) { map_insert(acc, x, true) })
-}
-
-fn is_member(m: Map<String, Bool>, x: String) -> Bool {
-  match map_get(m, x) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 // THE JOIN IS AT IDENTITY GRAIN. Reached is every admitted identity some lane resolved; unreached
 // is the rest, in the admitted order. A resolved identity the ingestion does not admit is not an
 // admitted module and is neither reached nor unreached: the denominator is the ingestion's, not
@@ -100,8 +89,8 @@ fn resolution_census(inputs: ResolutionCensusInputs) -> ResolutionCensus {
   let reached_by_any = inputs.resolved |> fold(init: empty_map(), f: fn(acc, lane) {
     lane.modules |> fold(init: acc, f: fn(m, x) { map_insert(m, x, true) })
   })
-  let reached = inputs.admitted |> filter(x => is_member(m: reached_by_any, x: x))
-  let unreached = inputs.admitted |> filter(x => !is_member(m: reached_by_any, x: x))
+  let reached = inputs.admitted |> filter(x => map_contains_key(reached_by_any, x))
+  let unreached = inputs.admitted |> filter(x => !map_contains_key(reached_by_any, x))
   ResolutionCensus { admitted: inputs.admitted, reached: reached, unreached: unreached, lanes: inputs.resolved }
 }
 
