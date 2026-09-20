@@ -11,9 +11,9 @@ on:
         options: [srv1, srv2, srv3, srv4]
         type: choice
       mode:
-        description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown
+        description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_runtime_image_probe, dashboard_deploy, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, runner_password_session_tool_converge, r2_mint_preflight, r2_object_write_mint]
+        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_runtime_image_probe, dashboard_deploy, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, runner_password_session_tool_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe]
         type: choice
       target:
         description: "Spark target host for the spark_* modes, naming the administrator credential the run materializes (any rostered Spark: srv5, srv6, srv7, srv8, srv9, srv10, srv11, srv12); apply reads the subject off the plan artifact"
@@ -43,6 +43,14 @@ on:
         type: string
       dashboard_workflow_run_id:
         description: Workflow run id of the dashboard deploy — required for rlm_launch_deployment_receipt
+        required: false
+        type: string
+      runner_ids:
+        description: "org_runner_roster_observe only: comma-separated captured runner registration ids to observe individually (present / absent / unobserved) in the gunbai-ci organization"
+        required: false
+        type: string
+      roster_page_size:
+        description: "org_runner_roster_observe only: page size for the first roster request (1..100, default 100); later pages follow the authority's own continuation links"
         required: false
         type: string
       transaction_nonce:
@@ -343,6 +351,59 @@ jobs:
           if-no-files-found: error
           retention-days: 30
         if: github.event.inputs.mode == 'org_actions_observe'
+        timeout-minutes: 10
+      - name: "Org runner roster: paginated read of GitHub self-hosted runner registrations"
+        id: org_runner_roster_observe
+        run: |-
+          set -euo pipefail
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/org-admin-app-key"
+          HDR_FILE="$RUNNER_TEMP/org-admin-auth-header"
+          JWT_FILE="$RUNNER_TEMP/org-admin-app-jwt"
+          TOKEN_HEADERS="$RUNNER_TEMP/org-admin-token-headers"
+          TOKEN_BODY="$RUNNER_TEMP/org-admin-token-body"
+          cleanup() { rm -f "$KEY_FILE" "$HDR_FILE" "$JWT_FILE" "$TOKEN_HEADERS" "$TOKEN_BODY" "$RUNNER_TEMP/org-admin-app-key-sm-body"; unset GUNBC_ORG_ADMIN_TOKEN GH_TOKEN; }
+          trap cleanup EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          SM_BODY="$RUNNER_TEMP/org-admin-app-key-sm-body"
+          SM_CODE="$(curl -sS -o "$SM_BODY" -w '%{http_code}' -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/latest:access")"
+          rm -f "$HDR_FILE"
+          if [ "$SM_CODE" != 200 ]; then rm -f "$SM_BODY"; echo "OrgAdminAppKeyUnreadable: Secret Manager answered HTTP $SM_CODE for projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/latest to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor, and confirm the version exists. Minting NO token." >&2; exit 1; fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$SM_BODY" > "$KEY_FILE"
+          rm -f "$SM_BODY"
+          chmod 600 "$KEY_FILE"
+          NOW=$(date +%s)
+          b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }
+          JWT_HEADER=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          JWT_PAYLOAD=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((NOW-60))" "$((NOW+540))" "2653532" | b64url)
+          JWT_SIG=$(printf '%s.%s' "$JWT_HEADER" "$JWT_PAYLOAD" | openssl dgst -sha256 -sign "$KEY_FILE" | b64url)
+          rm -f "$KEY_FILE"
+          printf 'Authorization: Bearer %s.%s.%s\n' "$JWT_HEADER" "$JWT_PAYLOAD" "$JWT_SIG" > "$JWT_FILE"
+          curl -sS -X POST -H @"$JWT_FILE" -H 'Accept: application/vnd.github+json' -D "$TOKEN_HEADERS" -o "$TOKEN_BODY" "https://api.github.com/app/installations/104134109/access_tokens"
+          rm -f "$JWT_FILE"
+          if ! head -n1 "$TOKEN_HEADERS" | grep -q ' 201 '; then echo "OrgAdminInstallationTokenRefused: GitHub answered $(head -n1 "$TOKEN_HEADERS" | tr -d '\r') for the gunbai-ci installation; a revoked key, a removed installation, or a missing Self-hosted-runners permission each look like this -- inspect the App's installation on the organization" >&2; exit 1; fi
+          GUNBC_ORG_ADMIN_TOKEN="$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))["token"])' "$TOKEN_BODY")"
+          rm -f "$TOKEN_HEADERS" "$TOKEN_BODY"
+          export GUNBC_ORG_ADMIN_TOKEN
+          export GH_TOKEN="$GUNBC_ORG_ADMIN_TOKEN"
+          echo "org-admin: installation token minted in-run for app gunbai-ci installation 104134109 (one-hour lifetime; key wiped; token held in this step's environment only)"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/organization_runner_roster_read.dag --function organization_runner_roster_observe_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          GUNBC_RUNNER_ID_PROBES: ${{ github.event.inputs.runner_ids }}
+          GUNBC_RUNNER_ROSTER_PAGE_SIZE: ${{ github.event.inputs.roster_page_size }}
+        if: github.event.inputs.mode == 'org_runner_roster_observe'
+        timeout-minutes: 5
+      - name: Upload org runner roster receipt
+        id: org_runner_roster_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: org-runner-roster
+          path: target/org-runner-roster-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'org_runner_roster_observe'
         timeout-minutes: 10
       - name: "GitHub App control plane: registration + webhook config observation"
         id: app_control_plane_observe

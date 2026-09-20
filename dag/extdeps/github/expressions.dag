@@ -339,11 +339,14 @@ fn parse_function_call_atom(s: String, sp: ExpressionSpellings) -> Expression? {
     } else {
       after
     }
-    match function_from_name(name: segs.first()) {
+    match segs.first() {
       Absent => none
-      Present { value: fn_variant } => match parse_args_with(args_str: args_str, sp: sp) {
+      Present { value: fn_name } => match function_from_name(name: fn_name) {
         Absent => none
-        Present { value: args } => Present { value: FunctionCall { function: fn_variant, args: args } }
+        Present { value: fn_variant } => match parse_args_with(args_str: args_str, sp: sp) {
+          Absent => none
+          Present { value: args } => Present { value: FunctionCall { function: fn_variant, args: args } }
+        }
       }
     }
   }
@@ -362,9 +365,12 @@ fn parse_function_call_atom(s: String, sp: ExpressionSpellings) -> Expression? {
 fn parse_context_access_atom(s: String, sp: ExpressionSpellings) -> Expression? {
   let dotted = replace(replace(s, sp.index_open, sp.path_sep), sp.index_close, "")
   let segs = split(s: dotted, delimiter: sp.path_sep)
-  match context_from_name(name: segs.first()) {
+  match segs.first() {
     Absent => none
-    Present { value: ctx } => Present { value: ContextAccess { context: ctx, path: segs.skip(n: 1) } }
+    Present { value: ctx_name } => match context_from_name(name: ctx_name) {
+      Absent => none
+      Present { value: ctx } => Present { value: ContextAccess { context: ctx, path: segs.skip(n: 1) } }
+    }
   }
 }
 
@@ -384,7 +390,11 @@ fn parse_expression_with(s: String, sp: ExpressionSpellings) -> Expression? {
   if parts.length() == 1 {
     parse_atom_with(s: s, sp: sp)
   } else {
-    fold(parts.skip(n: 1), init: parse_atom_with(s: parts.first(), sp: sp), f: (acc, part) => match acc {
+    let head_atom = match parts.first() {
+      Absent => none
+      Present { value: head } => parse_atom_with(s: head, sp: sp)
+    }
+    fold(parts.skip(n: 1), init: head_atom, f: (acc, part) => match acc {
       Absent => none
       Present { value: left } => match parse_atom_with(s: part, sp: sp) {
         Absent => none
@@ -414,7 +424,11 @@ fn ingest_template_with(src: String, sp: ExpressionSpellings) -> ExpressionTempl
         none
       } else {
         let trailing = join(halves.skip(n: 1), sp.interp_close)
-        match parse_expression_with(s: halves.first(), sp: sp) {
+        let head_expression = match halves.first() {
+          Absent => none
+          Present { value: head } => parse_expression_with(s: head, sp: sp)
+        }
+        match head_expression {
           Absent => none
           Present { value: e } => {
             let with_interp = concat(sofar, [ Interpolation { expression: e } ])

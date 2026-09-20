@@ -23,9 +23,10 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // MEMBERSHIP RULE: a symbol is a member when, IN PRODUCTION, it cannot reach its intended answer
 // because of the missing memory quantity, or because guest topology is still the withdrawn
 // declaration rather than a derivation from the cell's absolute CPU ceiling. gunbc_runner_microvm_
-// cell_cpu_entitlement is NOT a member: it now returns CpuEntitlementAbsolute from the slot quota
-// when the survey resolves. fabric_cell_slice_desired_directives is NOT a member: it emits
-// CPUQuota when the slot declares one. guest_memory_fits remains a member because it still
+// cell_cpu_entitlement is NOT a member: it reads the slot quota and answers RelativeOnly under the
+// 2026-09-19 no-ceiling policy, which is its intended answer for that row rather than a stall.
+// fabric_cell_slice_desired_directives is NOT a member: it emits the CPUQuota line the slot
+// declares (a ceiling or the affirmative unset). guest_memory_fits remains a member because it still
 // returns MemoryFitUnresolved on the production path.
 //
 // THE TRIGGER CARRIES TWO CLAUSES AND BOTH ARE REQUIRED, because satisfying the first alone would

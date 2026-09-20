@@ -1,0 +1,56 @@
+module extdeps.github.organizations
+
+import std.types { String, NonEmptyStr, Bool, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.emit { JsonNumber }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
+import extdeps.github.cli_api_include { GhApiIncludedParsed, GhApiIncludedUnreadable, parse_gh_api_included }
+
+// GET /orgs/{org}: the organization object, whose integer `id` is how GitHub's own id-addressed
+// URLs (`/organizations/{id}/...`) name the same organization the login names.
+data get_organization_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/orgs/orgs#get-an-organization"
+  }
+}
+
+// THE CLI TRANSPORT, one of N realizations, in the same gh family as extdeps.github.ci_runner
+// github.CliOrgSelfHostedRunners; authenticated by the caller's GH_TOKEN environment. Readonly.
+service github.CliOrganizations {
+  operation GetOrganization {
+    input {
+      org: NonEmptyStr
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["gh", "api", "--include", "orgs/{org}"]
+    }
+  }
+}
+
+// The id, when the response is a 200 carrying one; otherwise nothing is known and nothing is
+// guessed -- a caller that needed the id refuses whatever depended on it.
+fn organization_id_from_included(stdout: String) -> Int? {
+  match parse_gh_api_included(stdout: stdout) {
+    GhApiIncludedUnreadable { reason: _ } => none
+    GhApiIncludedParsed { response } =>
+      if response.status != 200 {
+        none
+      } else {
+        match parse_json_document(s: response.body) {
+          JsonDocumentUnreadable { gap: _ } => none
+          JsonDocumentParsed { value: doc } => match json_object_unique_member(v: doc, key: "id") {
+            JsonMemberFound { value: JsonNumber { lexeme } } => parse_int(s: lexeme as String)
+            _ => none
+          }
+        }
+      }
+  }
+}

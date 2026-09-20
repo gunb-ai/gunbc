@@ -9,7 +9,7 @@ import gunbc.runner_capacity_plan {
   PlanRefused,
 }
 import gunbc.fleet_runner_connectivity {
-  organization_runner_roster_evidence,
+  incident_2026_08_06_managed_roster_fixture,
   organization_runner_roster_materialized_slots_online_evidence,
 }
 import gunbc.runner_capacity_realize {
@@ -50,11 +50,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // which pins WHICH slots these are. Counts are load-bearing here only for the seam's own question,
 // and a count alone could not have caught the dense-prefix subtraction defect -- which is stated
 // here so a future reader does not mistake this row for coverage of that class.
+//
+// THE ROSTER IS NOW THE MANAGED-PAIR SLICE OF THE 2026-08-06 CORPUS, SUPPLIED AT THE INTERFACE.
+// The whole-org corpus stopped planning on 2026-09-15 (#11204): srv2's commitment became
+// unestablished, its registrations resolve to no committed slot, and the planner refuses the
+// org corpus before this seam is reached -- correctly, and
+// test.claim.runner_capacity_plan_witness the_whole_org_corpus_is_refused_while_srv2_holds_unaccounted_registrations
+// is the claim that runs the real producer and asserts that. This row's subject is the seam on the
+// managed pair; the slice carries the same holes and nothing about srv2.
 test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() -> Bool {
   let plan = runner_capacity_plan(
     srv3_width: 6,
     srv4_width: 6,
-    roster: organization_runner_roster_evidence(),
+    roster: incident_2026_08_06_managed_roster_fixture(),
   )
   match plan {
     PlanReady { hosts: _ } =>
@@ -114,12 +122,15 @@ test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
 // add path entirely, so the fabric slot never enters this row's outcome. The claim is recorded as
 // wrong rather than quietly deleted, because it is the plausible story and the next reader will
 // reach for it too.
+//
+// SAME ROSTER MOVE AS apply_seam_plans_additions_at_the_committed_width_not_count_refusal: the
+// managed-pair slice, so the plan reaches apply instead of refusing on srv2 upstream of the seam.
 test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
   let outcome = runner_capacity_apply_plan(
     plan: runner_capacity_plan(
       srv3_width: 6,
       srv4_width: 6,
-      roster: organization_runner_roster_evidence(),
+      roster: incident_2026_08_06_managed_roster_fixture(),
     ),
   )
   match outcome {

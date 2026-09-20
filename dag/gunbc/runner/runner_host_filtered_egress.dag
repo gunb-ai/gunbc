@@ -3,8 +3,10 @@ module gunbc.runner.runner_host_filtered_egress
 import std.types { Int, List, NonEmptyStr, String }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import gunbc.runner_microvm_network {
-  RunnerSlotNetwork, runner_slot_host_cidr, runner_slot_guest_ip_boot_arg,
+  RunnerSlotNetwork, runner_slot_host_cidr,
   runner_microvm_network_supernet,
+  GuestEgressPolicy, runner_microvm_guest_egress_policy,
+  HostEgressGrain, HostChainDefaultDrop, IpV6DisabledOnDataPath,
 }
 
 // THE EGRESS PATH A RAW RUNNER HOST OWES, and why it is not the one the shared hosts run.
@@ -74,50 +76,35 @@ data runner_host_uplink: HostUplinkConfiguration = StaticFromObservedOfferCandid
 // EVERY CHAIN STARTS CLOSED AND OPENS BY NAME. The grants are the whole of what a guest may reach,
 // and the denials that matter most are the ones a permissive default would have allowed silently:
 // the BMC, the rest of the LAN, and any other attempt's tap.
-type ChainStance = DefaultDrop | DefaultAccept
 
+// THE GUEST-FACING GRANTS AND DENIALS ARE CONSUMED, NOT RESTATED. They are
+// gunbc.runner_microvm_network runner_microvm_guest_egress_policy, the same rows the shared hosts'
+// ruleset is folded from; an earlier revision listed them here as prose and the two drifted (review
+// 68173: a "selected resolver" here against any-host port 53 there). What this host adds is its OWN
+// chain stances: it owns the whole forwarding policy, so its forward chain default-drops at host
+// grain where the shared hosts cannot, and its v6 is disabled on the data path (read back as 1 on
+// the filtered-egress-4 run) where theirs is filtered. Both are this host's HostEgressGrain, so the
+// record carries one value for each fact.
+//
+// This host is NOT a fleet-converge target of the srvN microVM program: its grain has no installer in
+// this tree, and the one that would install it is its host image (runner_attempt_launch
+// host_boot_cutover_frontier), not the srvN converge named by host_ruleset_installer_frontier.
+// THE DENIALS ARE NOT LISTED HERE BECAUSE THEY ARE ALREADY RULES. The BMC and management LAN fall in
+// the guest policy's private-range rows (the BMC measured on the filtered-egress run is 192.168.1.228),
+// and tap to tap is the forward chain's first rule in gunbc.runner_microvm_network; a prose list here
+// would be a third spelling of both (review 68294).
 type EgressPolicyShape {
-  host_input: ChainStance
-  forward: ChainStance
-  explicit_grants: List<NonEmptyStr>
-  explicit_denials: List<NonEmptyStr>
+  host: HostEgressGrain
+  guest: GuestEgressPolicy
   nat: NonEmptyStr
 }
 
 data runner_host_egress_policy: EgressPolicyShape = EgressPolicyShape {
-  host_input: DefaultDrop,
-  forward: DefaultDrop,
-  explicit_grants: [
-    "loopback on the host",
-    "established and related, both directions",
-    "guest to the selected resolver, for name resolution only",
-    "guest to the qualification destination class on TCP 443",
-  ],
-  explicit_denials: [
-    "guest to the BMC and any management address",
-    "guest to the LAN, private, link-local and multicast ranges",
-    "tap to tap -- no attempt may reach another attempt",
-    "everything not named above",
-  ],
+  host: HostEgressGrain { forward: HostChainDefaultDrop, input: HostChainDefaultDrop, ipv6: IpV6DisabledOnDataPath },
+  guest: runner_microvm_guest_egress_policy,
   nat: "masquerade the admitted guest prefix on the host uplink, and nothing else",
 }
 
-// TCP 443 TO A DESTINATION CLASS IS NOT "GITHUB ONLY", and calling it that would be the kind of
-// precision this lane keeps having to walk back. A static address list for a CDN-fronted service is
-// stale the moment it is written, so the honest description is a default-deny policy with one broad
-// allowance. Narrowing it properly means an authenticated egress proxy as the single permitted
-// destination, which is its own design.
-data egress_grant_precision: NonEmptyStr = "the TCP 443 grant is a destination CLASS, not a GitHub-only rule; a static address list cannot honestly express a CDN-fronted service and the narrow form is an egress proxy"
-
-// IPv6 IS AN EXPLICIT STANDING RATHER THAN AN OVERSIGHT. An IPv4-only ruleset on a dual-stack host
-// is a default-allow wearing a default-deny's name, because everything the v4 policy denies remains
-// reachable over v6.
-type IpV6Standing
-  = IpV6DisabledOnDataPath
-  | IpV6DefaultDenyRuleset
-  | IpV6Unaddressed { risk: NonEmptyStr }
-
-data runner_host_ipv6: IpV6Standing = IpV6DisabledOnDataPath
 
 // ── what the kernel must carry, since nothing is modular ────────────────────────────────────────
 
@@ -203,17 +190,16 @@ fn runner_host_admitted_guest_source(net: RunnerSlotNetwork) -> String {
   join([render_ipv4_address(addr: net.guest_address) as String, "/32"], "")
 }
 
-// THE HOST SIDE OF THE POINT-TO-POINT LINK, which is the guest's only next hop and therefore the
-// only address it may reach on the host at all.
+// THE HOST SIDE OF THE POINT-TO-POINT LINK, which is the guest's only next hop. It is a next hop
+// and not a destination: the input chain refuses everything a tap sends to the host itself.
 fn runner_host_tap_cidr(net: RunnerSlotNetwork) -> String {
   runner_slot_host_cidr(net: net)
 }
 
-// THE GUEST IS TOLD ITS ADDRESS AT BOOT, WHICH IS WHY NO DHCP CLIENT IS NEEDED ON EITHER SIDE. The
-// same rendering the fleet already uses; the raw host does not get a second spelling of it.
-fn runner_host_guest_boot_ip_arg(net: RunnerSlotNetwork) -> String {
-  runner_slot_guest_ip_boot_arg(net: net)
-}
+// THE GUEST'S BOOT ARGUMENTS ARE gunbc.runner_microvm_network runner_slot_guest_network_boot_args ON
+// EVERY HOST. A wrapper here returned only the ip= directive, a second spelling that omitted the v6
+// refusal on the one host with no v6 ruleset behind it (review 68590); it had no caller and is gone.
+
 
 // TAP-TO-TAP IS DENIED BY THE SUPERNET, not by enumerating peers. Every slot's /30 sits inside the
 // one supernet, so a single rule denying guest -> supernet forbids reaching EVERY other attempt --

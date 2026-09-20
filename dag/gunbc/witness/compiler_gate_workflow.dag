@@ -1,0 +1,200 @@
+module gunbc.compiler_gate_workflow
+
+// THE REQUIRED CHECK IS, FOR NOW, "THE COMPILER BUILDS" -- AND NOTHING ELSE. (2026-09-19)
+//
+// This module emits .github/workflows/witnesses.yml in place of gunbc.witness_floor_workflow.
+// The fold that workflow ran cost ~100 runner-minutes per PR push across two self-hosted jobs
+// (build lane ~30 min, floor ~47 min) plus the heal job (~26 min), on a ~45-runner fleet that
+// every session pushes to. Measured on run 35462055101: the floor's 4,185 claims executed in
+// 53 seconds; the other ~42 minutes were corpus preparation (14.3 min strict-preparation of
+// 3,197 modules), reach probes (11 min), parse/admission (~7 min) and receipt bookkeeping.
+// The fleet queued for up to 49 minutes and the merge queue stalled behind it.
+//
+// The operator ruled that the required gate shrinks to building the compiler until the fold's
+// preparation cost is fixed. So this workflow is one job, `witnesses` (the name the ruleset's
+// required status check reads), that builds the `gunbc` binary and stops.
+//
+// IT RUNS ON A GITHUB-HOSTED RUNNER, which is what makes supersession lawful here. The fold keeps
+// cancel-in-progress false because a killed job on a self-hosted host leaks its ctrl-jobserver
+// permits (gunbc.compile_permit_scope, fleet_compile_cancellation_standing is NotSafe). A hosted
+// runner joins no host jobserver, so a cancelled build leaks nothing, and a PR's superseded run is
+// cancelled instead of holding a runner. merge_group and heal revalidation keep their immutable
+// groups (witness_floor_concurrency_group), so they are never cancelled by a later push.
+//
+// DISSOLVE-ON: the fold's preparation cost is cut (resolved-module and reach-probe results
+// reused across runs, or preparation scoped to a diff's closure) and its runtime fits the fleet;
+// then witnesses.yml is emitted by gunbc.witness_floor_workflow again and this module is deleted.
+
+import std.types { Bool, Int, List, String }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { list_map }
+import extdeps.languages.yaml.types { yaml_string, yaml_bool, kv }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, UsesStep,
+  WorkflowPermissions, PermRead,
+  RunnerSpec, HostedRunner, Ubuntu2404Arm,
+  github_event_name_pull_request
+}
+import gunbc.action_use_admission {
+  checkout_action,
+  admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason
+}
+import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
+import gunbc.workflow_capability_closure {
+  CapabilityAnnotatedStep, StepCapabilityRole, capability_neutral, provides_only, consumes_only,
+  workflow_job_capability_closure, capability_closure_is_closed
+}
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
+}
+import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
+import gunbc.witness_floor_workflow {
+  witness_floor_workflow_name,
+  witness_floor_triggers,
+  witness_floor_concurrency_group,
+  concurrency_of_policy,
+  WitnessFloorConcurrencyPolicy, ReplaceExistingPending, SupersedeRunningForEvent,
+  witness_floor_toolchain_step,
+  witness_floor_build_step,
+  WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
+}
+import gunbc.repo_self_build { repo_self_build_command }
+
+// The ruleset requires a check named `witnesses`, and a job's check is named by its id.
+data compiler_gate_job_id: String = "witnesses"
+data compiler_gate_timeout_minutes: Int = 45
+data compiler_gate_required_bins: List<String> = ["gunbc"]
+data compiler_gate_build_step_name: String = "Build the compiler"
+
+fn compiler_gate_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: Present { value: [kv(key: "persist-credentials", value: yaml_bool(b: false))] },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+type CompilerGateBoundStep {
+  step: Step
+  role: StepCapabilityRole
+  step_name: String
+}
+
+fn compiler_gate_bound_steps() -> List<CompilerGateBoundStep> {
+  [
+    CompilerGateBoundStep {
+      step: compiler_gate_checkout_step(),
+      role: capability_neutral,
+      step_name: "Checkout",
+    },
+    CompilerGateBoundStep {
+      step: toolchain_home_isolation_step(),
+      role: capability_neutral,
+      step_name: "Isolate toolchain homes",
+    },
+    CompilerGateBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
+      step_name: "Install Rust toolchain",
+    },
+    CompilerGateBoundStep {
+      step: toolchain_pin_rustup_default_step(),
+      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+    },
+    CompilerGateBoundStep {
+      step: witness_floor_build_step(
+        step_name: compiler_gate_build_step_name,
+        build_script: repo_self_build_command(bins: compiler_gate_required_bins),
+      ),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_build_step_name,
+    },
+  ]
+}
+
+fn compiler_gate_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: compiler_gate_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermRead },
+  pull_requests: none,
+  issues: none,
+  actions: none,
+  id_token: none
+}
+
+fn compiler_gate_job() -> Job {
+  Job {
+    id: compiler_gate_job_id,
+    name: none,
+    runner: HostedRunner { label: Ubuntu2404Arm },
+    steps: list_map(xs: compiler_gate_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: compiler_gate_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: compiler_gate_permissions }
+  }
+}
+
+// Pending runs are replaced as before; a running PR build is cancelled by the next push (see the
+// header for why that is lawful on a hosted runner). The policy arm is the fold's own vocabulary,
+// so the emitted expression is the one gunbc.witness_floor_workflow would emit for this arm.
+data compiler_gate_concurrency_policy: WitnessFloorConcurrencyPolicy = WitnessFloorConcurrencyPolicy {
+  pending: ReplaceExistingPending,
+  running: SupersedeRunningForEvent { event: github_event_name_pull_request }
+}
+
+data compiler_gate_workflow: Workflow = Workflow {
+  name: witness_floor_workflow_name,
+  run_name: none,
+  on: witness_floor_triggers(),
+  concurrency: Present {
+    value: concurrency_of_policy(policy: compiler_gate_concurrency_policy, group: witness_floor_concurrency_group())
+  },
+  env: Present { value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))] },
+  permissions: Present { value: compiler_gate_permissions },
+  jobs: [compiler_gate_job()]
+}
+
+data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: the job's capability closure does not hold. No workflow yaml was emitted. Fix the step roles in compiler_gate_bound_steps."
+
+fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
+  match admit_workflow_action_uses(workflow: compiler_gate_workflow) {
+    WorkflowActionUsesRefused { refusals: rs } =>
+      WitnessFloorGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.compiler_gate_workflow", refusals: rs) }
+    WorkflowActionUsesAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: compiler_gate_workflow) {
+        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+          WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+        WorkflowToolchainHomesAdmitted =>
+          if compiler_gate_capability_closure_holds() {
+            match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
+              EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
+              YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.compiler_gate_workflow", path: p, reason: r) }
+            }
+          } else {
+            WitnessFloorGenerationRefused { reason: compiler_gate_capability_refusal_reason }
+          }
+      }
+  }
+}

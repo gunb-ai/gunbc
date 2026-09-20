@@ -82,6 +82,13 @@ jobs:
 
       - name: Admit the candidate against this checkout's policy, with no publication credential
         run: |-
+          set -euo pipefail
+          GUNBC_CG=/sys/fs/cgroup/gunbc-publish
+          echo "+memory" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null
+          sudo mkdir -p "$GUNBC_CG"
+          echo 12884901888 | sudo tee "$GUNBC_CG/memory.max" >/dev/null
+          echo $$ | sudo tee "$GUNBC_CG/cgroup.procs" >/dev/null
+          cat "$GUNBC_CG/memory.max"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/heal_publication.dag --function heal_publication_admit_wet
         env:
@@ -100,6 +107,13 @@ jobs:
         if: hashFiles('heal-candidate/heal-repair-candidate-blob-*') != ''
       - name: Publish the admitted repair, fast-forward only, and read it back
         run: |-
+          set -euo pipefail
+          GUNBC_CG=/sys/fs/cgroup/gunbc-publish
+          echo "+memory" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null
+          sudo mkdir -p "$GUNBC_CG"
+          echo 12884901888 | sudo tee "$GUNBC_CG/memory.max" >/dev/null
+          echo $$ | sudo tee "$GUNBC_CG/cgroup.procs" >/dev/null
+          cat "$GUNBC_CG/memory.max"
           set -euo pipefail
           umask 077
           KEY_FILE="$RUNNER_TEMP/heal-publisher-app-key"
