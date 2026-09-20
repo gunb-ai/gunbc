@@ -215,8 +215,14 @@ fn dispatch_doc_html_for_with_merged(rn: RoadmapNode, merged: List<Int>) -> Html
   try_serialize_html_source(node: roadmap_page_launch(doc: doc, merged: merged, launch: dispatch_doc_standing()))
 }
 
+// The ready fixture carries the launch canary's PARENT id: the centering gate (operator ruling
+// 2026-09-19, gunbc.roadmap.roadmap_centering declared_node_centerings) refuses any id its roster
+// does not name before the dependency and capacity gates run, so a fixture-minted id would read
+// back centering_absent rather than the admission this witness's subject is about. The canary ids
+// are the admission's owned synthetic graph, rostered for exactly this use (the same pattern as
+// test.claim.roadmap.roadmap_launch_admission_witness rlm_ready_node).
 fn ready_dispatch_node() -> RoadmapNode {
-  launch_fixture_with_contract(rn: gunbc.roadmap_authority.authored_wi(identity: "rnfx_7KPP33Y7P6BH9CBVKZ03", id: "disp1",
+  launch_fixture_with_contract(rn: gunbc.roadmap_authority.authored_wi(identity: "rnfx_7KPP33Y7P6BH9CBVKZ03", id: "roadmap-launch-canary",
     done: false,
     content: "dispatch-me",
     intricacy: IntricacyLow,
@@ -375,6 +381,11 @@ test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
   }
 }
 
+// The blocked child carries the launch canary's FOLLOWUP id for the same reason as
+// ready_dispatch_node above: the centering gate runs before the dependencies gate, and only a
+// rostered id lets the admission reach the DependenciesBlocked refusal this workspace exists to
+// exercise. The parents keep fixture-minted ids -- the dependencies gate asks whether they are
+// accepted, never whether they are dispatchable.
 fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
   let policy_blocker = gunbc.roadmap_authority.authored(identity: "rnfx_ENDCMSJ7A7XTXK91KKZD", id: "disp-policy-blocker",
     done: false,
@@ -382,7 +393,7 @@ fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
   let model_blocker = gunbc.roadmap_authority.authored(identity: "rnfx_2R3ZJWEHE8BDYVGJ82Z9", id: "disp-model-blocker",
     done: false,
     content: "model prerequisite")
-  let blocked = launch_fixture_with_contract(rn: gunbc.roadmap_authority.authored_wi(identity: "rnfx_VRBYQ6ZVRKNMCNVXFCG6", id: "disp-blocked",
+  let blocked = launch_fixture_with_contract(rn: gunbc.roadmap_authority.authored_wi(identity: "rnfx_VRBYQ6ZVRKNMCNVXFCG6", id: "roadmap-launch-canary-followup",
     done: false,
     content: "blocked work",
     intricacy: IntricacyLow,
@@ -408,7 +419,7 @@ test fn witness_upcoming_node_dispatch_refused_dependencies_blocked() -> Bool {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"frontier-bucket frontier-upcoming\"")
-        && string_contains(s: h, pattern: "data-node=\"disp-blocked\"")
+        && string_contains(s: h, pattern: "data-node=\"roadmap-launch-canary-followup\"")
         && string_contains(s: h, pattern: "class=\"workflow-controls\"")
         && string_contains(s: h, pattern: "<button class=\"dispatch-btn action-secondary\"")
         && string_contains(s: h, pattern: "data-availability=\"unavailable\"")
@@ -449,7 +460,6 @@ test fn witness_ticket_rows_render_structured() -> Bool {
       string_contains(s: h, pattern: "class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>details</summary>")
         && string_contains(s: h, pattern: "class=\"ticket-brief\"")
         && string_contains(s: h, pattern: ">displaced cost</span>")
-        && !string_contains(s: h, pattern: "class=\"ticket-updates\"")
         && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/roadmap-workspace-ux-plan.md\"")
   }
 }
@@ -508,7 +518,61 @@ test fn witness_item_detail_disclosure_present() -> Bool {
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "<details class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>details</summary>")
         && string_contains(s: h, pattern: "class=\"item-body\"")
-        && !string_contains(s: h, pattern: "<span class=\"disclosure-mark\">›</span>brief</summary>")
+  }
+}
+
+// The two negatives retired from the ticket-row and item-detail witnesses above (repair
+// 2026-09-20) pinned the ACCIDENTAL state of the live document — "no ticket renders an updates
+// thread" held until an authored ticket legitimately carried one, and "no row discloses under the
+// brief label" held until an authored row's body legitimately did. Comparing the live population
+// against its own former state is a change detector, not a claim (DESIGN §5's oracle law), so the
+// DECIDED laws are pinned here on constructed fixtures whose shape cannot drift beneath them:
+// gunbc.roadmap_page disclosure_updates_block renders the thread exactly when it is non-empty, and
+// view_detail_block labels a legacy-body row 'brief'. The live-page positives above keep the
+// inhabitance half.
+
+fn updates_fixture_node(updates: List<TicketUpdate>) -> RoadmapNode {
+  gunbc.roadmap_authority.ticket_row(identity: "rnfx_7Q2MZ4KX8HT1WP9V6R3J", id: "updates-fixture", done: false, t: TicketFields {
+    headline: "updates fixture",
+    brief: "a brief comfortably inside the budget",
+    displaced_cost: "the reading this fixture displaces",
+    current_state: "",
+    first_slice: "",
+    red_control: "",
+    out_of_scope: "",
+    handback: "",
+    updates: updates,
+    authored_on: "",
+    last_verified_on: "",
+  })
+}
+
+test fn witness_ticket_updates_block_follows_the_thread() -> Bool {
+  match dispatch_doc_html_for(rn: updates_fixture_node(updates: [])) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: empty } =>
+      !string_contains(s: empty, pattern: "class=\"ticket-updates\"")
+        && string_contains(s: empty, pattern: "class=\"item-detail ticket-row\"")
+  }
+    && match dispatch_doc_html_for(rn: updates_fixture_node(updates: [ TicketUpdate { on: "2026-09-20", note: "thread note the witness looks for" } ])) {
+      EmitRejected { reason: _ } => false
+      EmitOk { html: with_update } =>
+        string_contains(s: with_update, pattern: "class=\"ticket-updates\"")
+          && string_contains(s: with_update, pattern: "thread note the witness looks for")
+    }
+}
+
+fn legacy_body_fixture_node() -> RoadmapNode {
+  gunbc.roadmap_authority.authored(identity: "rnfx_3X8NV2KQ6JP9MT4RW7ZH", id: "legacy-body-fixture",
+    done: false,
+    content: "a short lead — the body continues well past the lead cut so the row carries a legacy disclosure")
+}
+
+test fn witness_disclosure_label_law_on_fixtures() -> Bool {
+  match dispatch_doc_html_for(rn: legacy_body_fixture_node()) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "<span class=\"disclosure-mark\">›</span>brief</summary>")
   }
 }
 

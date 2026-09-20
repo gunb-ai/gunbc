@@ -1491,85 +1491,85 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_8QK2M5F7V3N9P1R4T6W0X2Y5Z8A",
       id: "five-minute-ci-gate",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_1H4J6L8N0P2Q5S7U9V1W3X6Y8Z0B",
       id: "warm-merge-admission",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C",
       id: "native-selected-witness-bundle",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_7Q2W4E6R8T1Y3V5P9A2S4D6F8G1H",
       id: "v2-lens-suite-execution",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_4K7M9O1Q3S5T8V1W3X4Y7Z9A1B3E",
       id: "module-grain-materialization",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_5L8N0P2R4T6U9W2X4Y8Z0A2B4C6D",
       id: "pre-index-materialization-lookup",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_6M9N1Q3S5U7W0X2Y4Z6A8B0C2D4E",
       id: "phased-single-process-ci",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_7N0O2R4T6V8X1Y5Z7A9B1C3D5E6F",
       id: "per-entry-assembly-decomposition",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_9WQ3ZB6HTKX2LNVR40PDGY7CJM",
       id: "ci-cost-arc-reconciliation",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_5TDM8PXW1QKZ0HRB37NVLYG6CA",
       id: "ci-build-once-per-subject",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_4RTVN0BQKZ8XWM2CDPHJLG7Y36",
       id: "ci-floor-discovery-snapshot",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_8QDBM3ZVKT5XWN0RCPHJLG2764",
       id: "ci-scoped-worker-shared-substrate",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_2VNCX7QBZK9TWM4RDPHJLG0538",
       id: "ci-selection-before-preparation",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_4XKBW0ZQNV6TCM2RDPHJLG7135",
       id: "ci-streaming-realization",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
 
     active_small(
@@ -1591,7 +1591,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_9WD4YB1TQK6RXA0PJM7N5GHVC2",
       id: "entry-graph-union-construction",
       by: "DESIGN.md Building & checks (the 2026-08-15 floor cut) and the re-cut row ci-required-run-cost",
-      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut; the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
+      content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut. The required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost."
     ),
     superseded(
       identity: "rn_6JR237TB4G7T9S52M93JCP3PK7",
@@ -2933,13 +2933,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_JDGMNTM0D3LS3L3CTNTUN1NGX7Q",
       id: "judgment-model-selection-and-specialization",
       by: "gunbc.roadmap.roadmap_review_role, gunbc.roadmap.roadmap_review_criteria and gunbc.roadmap.roadmap_goal_audit_role (#10443)",
-      content: "Review is six criterion reviewers, one per DESIGN proposition from gunbc.design_argument, plus a goal auditor, all on the harness's own serving routes (gunbc.serving.serving_enrollment serving_enrolled_groups, whose model is bound per placement); a proposal-mode judgment service over an evidence index and a separately tuned judgment model are not on the path."
+      content: "Review is six criterion reviewers, one per DESIGN proposition from gunbc.design_argument, plus a goal auditor — all on the harness's own serving routes (gunbc.serving.serving_enrollment serving_enrolled_groups, whose model is bound per placement); a proposal-mode judgment service over an evidence index and a separately tuned judgment model are not on the path."
     ),
     superseded(
       identity: "rn_0PGYW4KDNQ2BXR9TVCM6HJ3LZ5",
       id: "judgment-mechanical-review-service",
       by: "gunbc.roadmap.roadmap_review_role, gunbc.roadmap.roadmap_review_criteria and gunbc.roadmap.roadmap_goal_audit_role (#10443)",
-      content: "Review is six criterion reviewers, one per DESIGN proposition from gunbc.design_argument, plus a goal auditor, all on the harness's own serving routes (gunbc.serving.serving_enrollment serving_enrolled_groups, whose model is bound per placement); a proposal-mode judgment service over an evidence index and a separately tuned judgment model are not on the path."
+      content: "Review is six criterion reviewers, one per DESIGN proposition from gunbc.design_argument, plus a goal auditor — all on the harness's own serving routes (gunbc.serving.serving_enrollment serving_enrolled_groups, whose model is bound per placement); a proposal-mode judgment service over an evidence index and a separately tuned judgment model are not on the path."
     ),
 
     active(

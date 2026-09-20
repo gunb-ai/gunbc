@@ -375,7 +375,7 @@ data node_attempt_stale_class: String = "node-attempt-stale"
 // independent presence source) render into the row disclosure's session-facts line, never into the
 // actuator cell and never onto the dispatch button — the button is an action, not a status report.
 
-data workflow_progress_note: String = "The seven-obligation attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine. Environment and Worktree are constructive receipts; Agent comes from provider events reconciled with the shared worker-process evidence; Verify, Publish, Review, and Audit remain pending until their own producers exist. The server decides the presentation (the 'activity' member on each wire attempt, derived by gunbc.roadmap_presentation from roadmap_attempt_workflow_segment_kinds and the reconcile report); the client paints it into the UnderHead activity region without policy. A provider turn completing cannot move downstream obligations. Workflow observation is single-flight: the next timer is armed only in the settled promise's finally arm, so a slow/refused route cannot accumulate overlapping requests against the interpreted single-threaded server."
+data workflow_progress_note: String = "The eight-obligation attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine. Environment and Worktree are constructive receipts; Agent comes from provider events reconciled with the shared worker-process evidence; Verify, Publish, Review, and Audit remain pending until their own producers exist. The server decides the presentation (the 'activity' member on each wire attempt, derived by gunbc.roadmap_presentation from roadmap_attempt_workflow_segment_kinds and the reconcile report); the client paints it into the UnderHead activity region without policy. A provider turn completing cannot move downstream obligations. Workflow observation is single-flight: the next timer is armed only in the settled promise's finally arm, so a slow/refused route cannot accumulate overlapping requests against the interpreted single-threaded server."
 
 // The session route observes tmux container presence independently from pane/process lifecycle. Its
 // decided sentence says `present`, never `live` or `executing` (the wording now lives in
@@ -869,7 +869,7 @@ data js_reason_surface_fn: String = "gunbcReasonSurface"
 // THE REASON SURFACE IS ONE MECHANISM WITH SEVERAL PRODUCERS, and it became one on an incident
 // (2026-07-30). Composition slice 4 established the rule — anomaly evidence is a SURFACE, not a
 // tooltip — and realized it once, inline, for the dispatch answer. Since then the row grew two more
-// refusal producers: the seven-obligation workflow strip, whose failed and refused segments carry a
+// refusal producers: the eight-obligation workflow strip, whose failed and refused segments carry a
 // located detail from /workflow.json, and the click's own catch arm. NEITHER reached a surface. The
 // workflow segment's detail went to stage.title and the catch arm's went to b.title, which is
 // exactly the title-only world anomaly_evidence_witness_test plants as its RED — the corpus stated
