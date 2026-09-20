@@ -1758,6 +1758,111 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The predicate consumed by every repo-lane commit writer, the incident witness pair red then green, and the two writer bindings carried as countable work rows rather than prose."
       )
     ),
+    ticket_row(
+      identity: "rn_Z3FS3HMD5WWH1Z7FGPK1KAWJBM",
+      id: "fleet-health-0-live-receipt",
+      done: false,
+      t: fields(
+        headline: "HEALTH-0 is built and green; it needs one live run under the qualified realization to leave draft",
+        boundary: "gunbc.fleet_health fleet_health_check is an out-of-band, read-only, goal-blind check over fleet_intent_known_hosts: firmware-derived telemetry surface, five sampled fan/temperature windows, an event-log window with wrap/clear continuity, assessment over std.goal_assessment, and a receipt whose first line discloses the evaluation realization. gunbc#11681 carries it with 29 passing witnesses, including a call-reachability wall that no mutation is reachable from the entry. What remains is one live run under GUNBC_EVAL_MEMO=0 whose receipt matches the current code, and attaching it to the PR.",
+        displaced_cost: "Three real conditions were found by the first live run and nothing else in the repository observes them: srv1 FAN4 rotating in 1 of 5 samples and FAN5 in 2 of 5, srv2 FAN5 in 2 of 5, srv3 logging 14 corrected memory errors and DIMM_HOT in a single half-hour window, srv4 DIMM_HOT on two channels. Until the check runs on a cadence those degrade unobserved.",
+        first_slice: "One live fleet_health_check run against srv1-srv4 with an operator access token, its receipt attached to gunbc#11681, and the PR flipped out of draft.",
+        red_control: "The enrolled fixture's bare-call mutations are found by the same reachability derivation that reports the health closure clean; a service-call mutation is asserted INVISIBLE so the claim fails when the instrument gains service-call identity.",
+        out_of_scope: "Admitted baselines (HEALTH-1) and serving admission (HEALTH-2) are their own rows. No in-band fallback for any signal the BMC does not expose.",
+        handback: "A merged gunbc#11681 with a live receipt in its body, and gunbc#11696 landed after it to delete the consumed namespace admission rows."
+      )
+    ),
+
+    ticket_row(
+      identity: "rn_TD7X82087026JR4X3XKSHAT7Z6",
+      id: "fleet-health-1-admitted-baselines",
+      done: false,
+      t: fields(
+        headline: "Health baselines: tell new errors from history without letting a divergent run rebaseline itself",
+        boundary: "product.host_health already takes HostHealthBaselineBasis as an input seam and answers NoPriorBaseline today. This selects the last ADMITTED or explicitly dispositioned receipt, verifies subject, counter epoch and evidence manifest before subtracting, and makes diagnosis or operator disposition the only route to a replacement baseline.",
+        displaced_cost: "Without it every host with any history stays indeterminate forever: srv3 and srv4 carry 1200-entry event logs that can never be dispositioned, so the check can report change but never quiet. The automatic-rebaseline trap is the specific harm: run A sees a new corrected error, run B takes A as its baseline, and the unresolved error disappears after one cycle.",
+        first_slice: "Durable receipt selection plus the refusal that a divergent observation may not mint a baseline, with the four counter-window cases already witnessed re-expressed against a stored receipt.",
+        red_control: "A divergent run cannot produce an admissible baseline; a baseline for another host, another counter epoch or another endpoint set refuses; history that was never dispositioned stays an unknown rather than becoming zero.",
+        out_of_scope: "Serving admission consumption. Any new cache or store beyond the receipt the check already writes.",
+        handback: "A health run that reports new-since-last-admitted for memory counters and event records, with the rebaseline refusal witnessed."
+      )
+    ),
+
+    ticket_row(
+      identity: "rn_YWBBMCMY5FHC2Q5VCX9AA8MA46",
+      id: "fleet-health-2-serving-admission",
+      done: false,
+      t: fields(
+        headline: "A host serves only on a fresh satisfied health receipt",
+        boundary: "Serving admission consumes the health inspection and the convergence standing as a product: same host identity, expected fleet and policy revisions, satisfied assessment, freshness, window continuity, and where required a health window opened after a named apply receipt. Unknown health denies new placement without pretending an emergency shutdown was authorized.",
+        displaced_cost: "Health that nothing consumes is a report nobody is obliged to read. Today a host with a dead fan or new uncorrected errors is as admissible for work as a clean one.",
+        first_slice: "New-host admission requires a fresh satisfied receipt; previously serving hosts with divergence become drain candidates.",
+        red_control: "A stale receipt, a receipt for another host, and an indeterminate assessment each deny admission; a satisfied fresh receipt admits.",
+        out_of_scope: "Automatic workload kill, reboot or repair from the health route.",
+        handback: "Admission consuming health, with the deny arms witnessed."
+      )
+    ),
+
+    ticket_row(
+      identity: "rn_FH7X3QWQJ14MVMN9ES41C4HNZ6",
+      id: "srv1-srv2-bmc-firmware-exposes-memory-errors",
+      done: false,
+      t: fields(
+        headline: "srv1 and srv2 cannot report memory errors out of band on firmware 2.07",
+        boundary: "Both hosts run the ASRock 2.07 image: no MemoryMetrics resource and an empty Redfish event log, so the out-of-band check is structurally unable to see memory errors there. srv3 and srv4 on OpenBMC 3.22 do report them as MemoryECCCorrectable records. The work is the flash and its qualification, not a health-side workaround.",
+        displaced_cost: "srv1 has recorded 255 corrected memory errors in-band since its August boot with all of them unattributed to a DIMM; out of band the health check must report that host unknown on memory indefinitely. Two of four hosts are unobservable on the signal most likely to precede a failure.",
+        first_slice: "Qualify the 3.22 image on one of the two hosts through the existing BMC firmware route, then confirm the health check reports memory events for it.",
+        red_control: "After the flash, a health run reports the host's memory signal as observed rather than not-exposed-out-of-band.",
+        out_of_scope: "Any in-band EDAC read as a substitute. The standing rule is out-of-band only.",
+        handback: "Both hosts on an image whose event log carries memory records, with a health receipt showing the signal observed."
+      )
+    ),
+
+    ticket_row(
+      identity: "rn_W1PKZZXFM2CS3TKAXDG59PD29S",
+      id: "srv3-srv4-fan-threshold-flapping-floods-the-event-log",
+      done: false,
+      t: fields(
+        headline: "Fan threshold flapping overwrites the BMC event log within hours",
+        boundary: "srv3 and srv4 log a FAN threshold assert/deassert pair repeatedly: 982 of srv3's 1200 entries on 2026-09-18 were one fan's deassert, and the log wraps at about 1200, so entries roll off in hours. Either the fan curve or the thresholds are wrong for these chassis. gunbc.bmc_fan_converge already owns fan policy.",
+        displaced_cost: "Event-log continuity is the health check's only out-of-band route to memory errors, and it survives only over windows shorter than the wrap. Every memory record older than a few hours is already lost on those two hosts.",
+        first_slice: "Establish whether the flapping fan is below its own threshold because the threshold is wrong or because the fan is failing, then converge whichever is wrong.",
+        red_control: "After the change, an event log read twice a day apart still contains its earlier newest entry.",
+        out_of_scope: "Raising the health check's sampling rate as a substitute for fixing the flapping.",
+        handback: "A log whose wrap horizon exceeds the health cadence, and a fan policy that stops asserting."
+      )
+    ),
+
+    ticket_row(
+      identity: "rn_H1TH1ZJTFQNC5G2Q7YHJ7RMZZF",
+      id: "dimm-temperature-limits-need-a-citation",
+      done: false,
+      t: fields(
+        headline: "No temperature limit is cited, so every sensor reads unestablished",
+        boundary: "product.host_health carries TemperatureLimit with its authority as a field and refuses to invent one; the fleet goal declares all twenty board sensors with TemperatureLimitUnestablished. The work is citing limits for the DIMM parts and the board sensors that have them, per component grade, so the check can judge a reading rather than only carry the BMC's verdict.",
+        displaced_cost: "srv1 DIMM C1 was read at 99 C with the BMC reporting OK, because the BMC carries only a 105 C critical line and no caution threshold. srv3 and srv4 assert DIMM_HOT. Nothing in the corpus can say whether those readings are acceptable.",
+        first_slice: "Cite the JEDEC or vendor limit for the installed DDR4 parts and bind it to the DIMM sensors, leaving the rest unestablished rather than guessed.",
+        red_control: "A sensor above its cited limit diverges; a sensor whose limit is uncited still cannot produce a green.",
+        out_of_scope: "Fleet-wide default limits. An uncited number is refused by construction.",
+        handback: "Cited limits on the sensors that have them, with the citation on the row."
+      )
+    ),
+
+    ticket_row(
+      identity: "rn_NBX7Z3E7CSV0JBT611DGGXG1AD",
+      id: "eval-memo-admission-rewire-program",
+      done: false,
+      t: fields(
+        headline: "The seed keys every pure call before admission; the rewires that make retirement landable",
+        boundary: "gunbc#11741 holds the retirement (memo, GUNBC_EVAL_MEMO and its provider row deleted) because retiring it turns the required floor red: 2767 of 4161 claims do more work without it, 76 cross their step ceiling and 23 flip to budget-interrupted. The ruling is root-first, option A: repair the shared producers, then qualify the combined cutover. Stage 1 gunbc#11784 (integer decode reads carried tables) and stage 2 gunbc#11835 (grammar backward selection resolves each tree once) are green and awaiting merge; stage 3 is the rust.dag nullary node constants and bind_outcome chains.",
+        displaced_cost: "Measured: JSON parsing is O(n squared) because every pure call re-hashes its whole string argument, so a 1.08 MB event log costs about 441 s of CPU instead of 27 s, and the same shape taxes every text-processing route under the interpreter. Stage 2 alone removed 1.54B evaluation steps across 110 claims and made seven timed-out claims complete.",
+        first_slice: "Land stages 1 and 2, then stage 3, each with per-claim before/after under both realizations and no claim crossing its ceiling on the memo-on path the floor runs today.",
+        red_control: "A direct-recompute demand reaches neither key construction nor memo storage, with a control that fails when unconditional keying is restored; every stage keeps the floor population and terminal results unchanged.",
+        out_of_scope: "A pointer-hash string cache, a function-name allowlist, a roster memo dressed as declared recurrence, and any global memo-default flip without consumer-wide qualification -- all refused by ruling.",
+        handback: "The rewires landed and retirement re-qualified on the repaired corpus as one combined cutover."
+      )
+    ),
+
     active(
       identity: "rn_7VNBH0KXR5ZQWD2PLGT3MJ86CY",
       id: "generated-projection-registry-containment",
