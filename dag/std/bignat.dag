@@ -24,9 +24,14 @@ import std.integer { UInt8 }
 //
 // WHAT THIS CLOSES AND WHAT IT DOES NOT. sole_constructor restricts WHO may construct: outside
 // std.bignat there is no expression that mints one, so the FABRICATION route is gone by
-// construction. It does not restrict WHAT this module may construct -- the eleven constructions
-// below are trusted to preserve the invariant because each derives its limbs from octets, from a
-// carry-propagating fold, or from another BigNat, never from unchecked caller input.
+// construction. It does not restrict WHAT this module may construct.
+//
+// AN EARLIER VERSION OF THIS NOTE CLAIMED THE INTERNAL CONSTRUCTIONS NEVER DERIVE FROM UNCHECKED
+// CALLER INPUT. THAT WAS FALSE WHEN WRITTEN (review 69034 of gunbc#11645): bignat_small took a raw
+// caller Int and wrote n / base^2 as its top limb with no reduction, so any n >= 2^72 produced a
+// limb above 2^24 and any negative n produced a negative limb -- through a PUBLIC function, which
+// is the very route the wall above was claimed to close. An annotation is never evidence (DESIGN
+// 4c); this one asserted the invariant it was standing next to a breach of.
 type BigNat sole_constructor {
   limbs: List<Int>
 }
@@ -37,8 +42,35 @@ fn bignat_zero() -> BigNat {
   BigNat { limbs: [] }
 }
 
-fn bignat_small(n: Int) -> BigNat {
-  BigNat { limbs: [n % bignat_base, (n / bignat_base) % bignat_base, n / (bignat_base * bignat_base)] }
+// THE ONLY ENTRY THAT TOOK AN UNCHECKED CALLER Int, NOW REFUSING -- ON THE ONE CONDITION THAT CAN
+// ACTUALLY OCCUR. A NEGATIVE n has no unsigned representation, and before this it produced a
+// NEGATIVE LIMB through a public function, breaking the invariant every overflow argument in this
+// module rests on (review 69034 of gunbc#11645).
+//
+// THE OVER-LARGE CASE THE REVIEW ALSO NAMED IS UNREACHABLE HERE, AND GUARDING IT WOULD HAVE BEEN
+// WORSE THAN USELESS. Three limbs carry values below base^3 = 2^72, so the review is right that a
+// larger n would overflow the top limb -- but Int is 64-bit, so the largest n expressible is
+// 2^63 - 1, whose top limb is 32767, comfortably inside 2^24. No Int reaches the boundary. Writing
+// `n >= bignat_base * bignat_base * bignat_base` would not merely be dead: evaluating 2^72 RAISES
+// IntegerOverflow, so the guard against an impossible input would itself be the failure. The
+// unreachable arm is therefore described here rather than authored (DESIGN 4b: ask whether the
+// check's RED is authorable before writing the check).
+fn bignat_small(n: Int) -> BigNat? {
+  if n < 0 {
+    none
+  } else {
+    Present { value: BigNat { limbs: [n % bignat_base, (n / bignat_base) % bignat_base, n / (bignat_base * bignat_base)] } }
+  }
+}
+
+// Total, because their limbs are written here rather than derived from an argument. Byte-identical
+// to what bignat_small produced for 0 and 1, so substituting them changes no value anywhere.
+fn bignat_zero_limbs() -> BigNat {
+  BigNat { limbs: [0, 0, 0] }
+}
+
+fn bignat_one() -> BigNat {
+  BigNat { limbs: [1, 0, 0] }
 }
 
 // ── Octets and hex (big-endian on the wire) ──────────────────────────────────────────────────
@@ -273,7 +305,7 @@ fn bignat_truncate(limbs: List<Int>, width: Int) -> List<Int> {
 // R² mod m by doubling 1 modulo m, 2·24·width times, each doubling followed by a conditional
 // subtraction. Derived from the modulus; never a transcribed constant.
 fn montgomery_r_squared(m: BigNat, width: Int) -> BigNat {
-  montgomery_double_times(m: m, a: bignat_small(n: 1), times: 48 * width)
+  montgomery_double_times(m: m, a: bignat_one(), times: 48 * width)
 }
 
 fn montgomery_double_times(m: BigNat, a: BigNat, times: Int) -> BigNat {
@@ -298,7 +330,7 @@ fn montgomery_to(ctx: MontgomeryModulus, a: BigNat) -> BigNat {
 }
 
 fn montgomery_from(ctx: MontgomeryModulus, a: BigNat) -> BigNat {
-  montgomery_mul(ctx: ctx, a: a, b: bignat_small(n: 1))
+  montgomery_mul(ctx: ctx, a: a, b: bignat_one())
 }
 
 // Modular addition and subtraction of RESIDUES: both operands below m, which every montgomery_*
@@ -318,7 +350,7 @@ fn montgomery_sub(ctx: MontgomeryModulus, a: BigNat, b: BigNat) -> BigNat {
 
 // a^e in Montgomery form, left to right over e's bits. `one` is R mod m (1 in Montgomery form).
 fn montgomery_pow(ctx: MontgomeryModulus, a: BigNat, e: BigNat) -> BigNat {
-  let one = montgomery_to(ctx: ctx, a: bignat_small(n: 1))
+  let one = montgomery_to(ctx: ctx, a: bignat_one())
   fold(reverse(bignat_bits(a: e)), init: one, f: (acc, bit) => {
     let sq = montgomery_mul(ctx: ctx, a: acc, b: acc)
     if bit == 1 { montgomery_mul(ctx: ctx, a: sq, b: a) } else { sq }

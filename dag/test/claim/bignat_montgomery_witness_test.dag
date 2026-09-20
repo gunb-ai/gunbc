@@ -10,9 +10,9 @@ import std.bignat {
 
 // THE PAIRED HALF OF THE sole_constructor WALL ON BigNat AND MontgomeryModulus (review of
 // gunbc#11645). The wall establishes that no caller OUTSIDE std.bignat can mint a carrier with
-// negative or oversized limbs. It establishes nothing about whether the module's OWN eleven
-// constructions preserve the limb invariant they all reason from, and a wall whose protected
-// interior is never exercised is specification-without-execution (DESIGN 5).
+// negative or oversized limbs. It establishes nothing about whether the module's OWN constructions
+// preserve the limb invariant they all reason from, and a wall whose protected interior is never
+// exercised is specification-without-execution (DESIGN 5).
 //
 // SO THESE CLAIMS RUN THE REAL PRODUCERS AND READ THEIR ANSWERS. They are deliberately small-modulus
 // rather than P-256 sized: the subject is whether Montgomery arithmetic over this carrier returns
@@ -23,9 +23,37 @@ import std.bignat {
 // WHY A ROUND TRIP IS A DISCRIMINATING CLAIM AND NOT A TAUTOLOGY: montgomery_to multiplies by
 // r_squared and montgomery_from multiplies by one, and BOTH run the CIOS reduction. A limb that left
 // [0, 2^24) would propagate a wrong carry through that reduction, so the value would not come back.
+//
+// EVERY INPUT IS THREADED THROUGH ITS REFUSAL RATHER THAN UNWRAPPED. bignat_small now answers
+// Optional, and a claim that cannot BUILD its input must FAIL rather than pass -- substituting a
+// default here would be the same fabricated-default defect the review found in the curve parameters,
+// reproduced in the evidence layer, where it would additionally defeat the claim's own red.
 
-fn small_modulus() -> MontgomeryModulus {
-  montgomery_modulus(m: bignat_small(n: 97), width: 3)
+fn with_modulus(f: fn(MontgomeryModulus) -> Bool) -> Bool {
+  match bignat_small(n: 97) {
+    Absent => false
+    Present { value: m } => f(montgomery_modulus(m: m, width: 3))
+  }
+}
+
+fn with2(a: Int, b: Int, f: fn(BigNat, BigNat) -> Bool) -> Bool {
+  match bignat_small(n: a) {
+    Absent => false
+    Present { value: x } =>
+      match bignat_small(n: b) {
+        Absent => false
+        Present { value: y } => f(x, y)
+      }
+  }
+}
+
+fn with3(a: Int, b: Int, c: Int, f: fn(BigNat, BigNat, BigNat) -> Bool) -> Bool {
+  with2(a: a, b: b, f: fn(x, y) {
+    match bignat_small(n: c) {
+      Absent => false
+      Present { value: z } => f(x, y, z)
+    }
+  })
 }
 
 fn residues_equal(a: BigNat, b: BigNat) -> Bool {
@@ -34,36 +62,63 @@ fn residues_equal(a: BigNat, b: BigNat) -> Bool {
 
 // A value carried into Montgomery form and back is the value it started as.
 test fn montgomery_form_round_trips_a_residue() -> Bool {
-  let ctx = small_modulus()
-  let five = bignat_small(n: 5)
-  let back = montgomery_from(ctx: ctx, a: montgomery_to(ctx: ctx, a: five))
-  residues_equal(a: back, b: five)
+  with_modulus(f: fn(ctx) {
+    with2(a: 5, b: 5, f: fn(five, same) {
+      residues_equal(a: montgomery_from(ctx: ctx, a: montgomery_to(ctx: ctx, a: five)), b: same)
+    })
+  })
 }
 
 // 5 * 7 = 35, and 35 is already reduced modulo 97, so the product survives the round trip unchanged.
 test fn montgomery_multiplication_answers_the_residue() -> Bool {
-  let ctx = small_modulus()
-  let product = montgomery_mul(ctx: ctx, a: montgomery_to(ctx: ctx, a: bignat_small(n: 5)), b: montgomery_to(ctx: ctx, a: bignat_small(n: 7)))
-  residues_equal(a: montgomery_from(ctx: ctx, a: product), b: bignat_small(n: 35))
+  with_modulus(f: fn(ctx) {
+    with3(a: 5, b: 7, c: 35, f: fn(five, seven, expected) {
+      let product = montgomery_mul(ctx: ctx, a: montgomery_to(ctx: ctx, a: five), b: montgomery_to(ctx: ctx, a: seven))
+      residues_equal(a: montgomery_from(ctx: ctx, a: product), b: expected)
+    })
+  })
 }
 
 // 20 * 30 = 600 = 6 * 97 + 18, so the reduction must actually reduce rather than return the product.
 // This is the case a wrong carry reaches: 600 does not fit in the modulus and 18 is not a prefix of
 // it, so an unreduced or mis-carried answer cannot coincide with the right one.
 test fn montgomery_multiplication_reduces_past_the_modulus() -> Bool {
-  let ctx = small_modulus()
-  let product = montgomery_mul(ctx: ctx, a: montgomery_to(ctx: ctx, a: bignat_small(n: 20)), b: montgomery_to(ctx: ctx, a: bignat_small(n: 30)))
-  residues_equal(a: montgomery_from(ctx: ctx, a: product), b: bignat_small(n: 18))
+  with_modulus(f: fn(ctx) {
+    with3(a: 20, b: 30, c: 18, f: fn(twenty, thirty, expected) {
+      let product = montgomery_mul(ctx: ctx, a: montgomery_to(ctx: ctx, a: twenty), b: montgomery_to(ctx: ctx, a: thirty))
+      residues_equal(a: montgomery_from(ctx: ctx, a: product), b: expected)
+    })
+  })
 }
 
 // Addition of residues wraps at the modulus: 90 + 20 = 110 = 97 + 13.
 test fn montgomery_addition_wraps_at_the_modulus() -> Bool {
-  let ctx = small_modulus()
-  residues_equal(a: montgomery_add(ctx: ctx, a: bignat_small(n: 90), b: bignat_small(n: 20)), b: bignat_small(n: 13))
+  with_modulus(f: fn(ctx) {
+    with3(a: 90, b: 20, c: 13, f: fn(ninety, twenty, expected) {
+      residues_equal(a: montgomery_add(ctx: ctx, a: ninety, b: twenty), b: expected)
+    })
+  })
 }
 
 // Zero is carried and recognised rather than confused with an empty limb list.
 test fn zero_survives_montgomery_form_and_is_recognised() -> Bool {
-  let ctx = small_modulus()
-  bignat_is_zero(a: montgomery_from(ctx: ctx, a: montgomery_to(ctx: ctx, a: bignat_small(n: 0))))
+  with_modulus(f: fn(ctx) {
+    with2(a: 0, b: 0, f: fn(zero, _unused) {
+      bignat_is_zero(a: montgomery_from(ctx: ctx, a: montgomery_to(ctx: ctx, a: zero)))
+    })
+  })
+}
+
+// THE REFUSAL IS REACHABLE AND IS ASSERTED, so bignat_small's new arm is not vocabulary nothing
+// produces: a negative has no unsigned representation, and before this change it minted a BigNat
+// with a NEGATIVE limb through a public function.
+//
+// THE UPPER EDGE IS ASSERTED AS AN ADMISSION RATHER THAN A REFUSAL, because no Int can exceed three
+// limbs: the largest expressible n is 2^63 - 1, whose top limb is 32767 and so is inside 2^24. That
+// is the positive control for the note on bignat_small -- if the top limb ever did escape, this is
+// the input that would show it.
+test fn bignat_small_refuses_a_negative_and_admits_the_largest_int() -> Bool {
+  let negative = match bignat_small(n: 0 - 1) { Absent => true Present { value: _ } => false }
+  let largest = match bignat_small(n: 9223372036854775807) { Absent => false Present { value: _ } => true }
+  negative && largest
 }
