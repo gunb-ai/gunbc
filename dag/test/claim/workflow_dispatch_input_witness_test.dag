@@ -175,7 +175,8 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 }
 
 // THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
-// `dashboard-deploy` job was added -- not because the check was in the way. Naming each job without
+// `dashboard-deploy` job was added (and on to 7 with the broker dark install, the microVM controller
+// install and the launch-deployment receipt) -- not because the check was in the way. Naming each job without
 // pinning the total would let a fourth job appear unobserved; pinning the total without naming them
 // would pass for any set of jobs at all. Together they are an exact partition, which is the identity
 // join DESIGN section 5 asks for rather than a count standing in for one.
@@ -186,7 +187,7 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // `host-reset-return` is held to it for a sharper reason than the others -- it POWER-CYCLES its
 // subject, so a stale binary there would drive a real machine from a model nobody reviewed.
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  fleet_converge_workflow.jobs.length() == 6
+  fleet_converge_workflow.jobs.length() == 7
     && fleet_converge_workflow.jobs[0].id == "build"
     && fleet_converge_workflow.jobs[1].id == "fleet-converge"
     && fleet_converge_workflow.jobs[1].needs == ["build"]
@@ -196,8 +197,10 @@ test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
     && fleet_converge_workflow.jobs[3].needs == ["build"]
     && fleet_converge_workflow.jobs[4].id == "approval-broker-dark-install"
     && fleet_converge_workflow.jobs[4].needs == ["build"]
-    && fleet_converge_workflow.jobs[5].id == "rlm-launch-deployment-receipt"
+    && fleet_converge_workflow.jobs[5].id == "microvm-controller-install"
     && fleet_converge_workflow.jobs[5].needs == ["build"]
+    && fleet_converge_workflow.jobs[6].id == "rlm-launch-deployment-receipt"
+    && fleet_converge_workflow.jobs[6].needs == ["build"]
 }
 
 fn expected_fleet_converge_yml_content() -> String {
