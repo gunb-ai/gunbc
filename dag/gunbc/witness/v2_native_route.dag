@@ -6,6 +6,8 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
+import extdeps.bazel.label { Label, PackageName, PackagePath, RootPackage, TargetName }
+import extdeps.bazel.target_pattern { PackageTargets, SingleTarget, SubtreeTargets, TargetPattern }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
@@ -64,6 +66,91 @@ data native_route_universe_prefix: String = "v2.test."
 
 fn native_route_universe_member(module_qn: String) -> Bool {
   starts_with(s: module_qn, prefix: native_route_universe_prefix)
+}
+
+// A TARGET PATTERN IS THE SAME PREFIX, SPELLED THE WAY OPERATORS ALREADY SPELL SETS.
+//
+// The universe above is a namespace prefix chosen once and compiled in. An operator asking for a
+// subset -- `gunbc test //v2/test/parse/...` -- is asking the SAME question with a different
+// prefix, so this is a generalisation of `native_route_universe_member`, not a second selection
+// mechanism beside it. `native_route_default_selection` is exactly the compiled-in prefix
+// expressed as a pattern, and `default_selection_admits_exactly_the_prefix_universe` is the law
+// that keeps the two from drifting: if a later edit changes one, the witness fails rather than the
+// route quietly selecting a different population than the prefix it reports.
+//
+// THE MAPPING FROM PACKAGE TO NAMESPACE IS A GUNBC FACT, NOT A BAZEL ONE, which is why it lives
+// here rather than in `extdeps.bazel.target_pattern`. The cited authority spells packages as PATH
+// SEGMENTS; this corpus's targets are DECLARED MODULE NAMESPACES (the `module` line, never the
+// file path -- see gunbc.namespace_cut_stage for why those are different facts). Joining the
+// segments with `.` is the whole of the correspondence, and stating it once here means a pattern
+// and a module header can never be spelled apart.
+//
+// WHY A SUBTREE PREFIX ENDS IN A SEPARATOR. `//v2/test/...` must select `v2.test.parse.x` and must
+// NOT select a module named `v2.testing.y`. Appending the separator makes the boundary the
+// namespace edge rather than a character position, which is the same reason
+// `native_route_universe_prefix` is written `"v2.test."` and not `"v2.test"`. The root package
+// selects everything, so its prefix is empty and the separator would be wrong.
+type NativeRouteSelection
+  = SelectSubtree { namespace_prefix: String }
+  | SelectModule { module_qn: String }
+  | SelectDeclaration { module_qn: String, declaration: String }
+
+fn native_route_package_namespace(package: PackageName) -> String {
+  match package {
+    RootPackage => ""
+    PackagePath { segments: segments } =>
+      fold_list(
+        xs: segments,
+        empty: "",
+        cons: fn(acc, segment) {
+          if acc == "" { concat("", segment) } else { concat(concat(acc, "."), segment) }
+        }
+      )
+  }
+}
+
+fn native_route_subtree_prefix(namespace: String) -> String {
+  if namespace == "" { "" } else { concat(namespace, ".") }
+}
+
+fn native_route_selection_of_pattern(pattern: TargetPattern) -> NativeRouteSelection {
+  match pattern {
+    SubtreeTargets { package: package } =>
+      SelectSubtree {
+        namespace_prefix: native_route_subtree_prefix(
+          namespace: native_route_package_namespace(package: package)
+        )
+      }
+    PackageTargets { package: package } =>
+      SelectModule { module_qn: native_route_package_namespace(package: package) }
+    SingleTarget { label: label } =>
+      SelectDeclaration {
+        module_qn: native_route_package_namespace(package: label.package),
+        declaration: label.target.name
+      }
+  }
+}
+
+// ADMISSION IS PER IDENTITY, NOT PER MODULE, because the single-target form names a DECLARATION.
+// The two set forms ignore the declaration entirely -- they select whole modules -- and saying so
+// by matching on the selection rather than by passing an optional declaration keeps the three arms
+// total and keeps an absent declaration from meaning two different things.
+fn native_route_selection_admits(
+  selection: NativeRouteSelection,
+  module_qn: String,
+  declaration: String
+) -> Bool {
+  match selection {
+    SelectSubtree { namespace_prefix: prefix } =>
+      starts_with(s: module_qn, prefix: prefix)
+    SelectModule { module_qn: selected } => module_qn == selected
+    SelectDeclaration { module_qn: selected, declaration: selected_declaration } =>
+      (module_qn == selected) && (declaration == selected_declaration)
+  }
+}
+
+fn native_route_default_selection() -> NativeRouteSelection {
+  SelectSubtree { namespace_prefix: native_route_universe_prefix }
 }
 
 // ONE TEST IDENTITY, STRUCTURED. The module qualified name and the declaration name are separate

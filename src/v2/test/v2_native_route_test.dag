@@ -1,9 +1,14 @@
 module v2.test.v2_native_route
 
+import extdeps.bazel.label { Label, PackagePath, RootPackage, TargetName }
+import extdeps.bazel.target_pattern { PackageTargets, SingleTarget, SubtreeTargets }
+import std.types { NonEmptyStr }
 import gunbc.witness_v2_native_route {
   NativeRouteTestIdentity, native_route_identity_qualified, native_route_identities_unique,
   native_route_identity_member,
   native_route_universe_member,
+  NativeRouteSelection, native_route_selection_of_pattern, native_route_selection_admits,
+  native_route_default_selection,
   NativeRouteReference, FloorExpectedPass, FloorExpectedRed, FloorRouteGapRefusal,
   native_route_reference_for,
   NativeRouteMemberRow,
@@ -208,6 +213,121 @@ test fn the_universe_is_the_prefix_and_nothing_else() -> Bool {
   && !native_route_universe_member(module_qn: "v2.compiler.compile")
   && !native_route_universe_member(module_qn: "v2.test")
   && !native_route_universe_member(module_qn: "dag.test.claim")
+}
+
+// ── a target pattern selects the same way the prefix does ──
+
+// THE LAW THAT KEEPS THE GENERALISATION HONEST. The default selection is the compiled-in prefix
+// expressed as a pattern, so it must admit EXACTLY what the prefix admits -- on both sides. Were
+// someone to change `native_route_universe_prefix` without changing the default selection, or to
+// map the root package to a prefix that swallowed everything, this arm goes red rather than the
+// route selecting a population different from the prefix it reports.
+fn selection_agrees_with_prefix(module_qn: String) -> Bool {
+  native_route_selection_admits(
+    selection: native_route_default_selection(),
+    module_qn: module_qn,
+    declaration: "any_declaration"
+  ) == native_route_universe_member(module_qn: module_qn)
+}
+
+test fn the_default_selection_admits_exactly_the_prefix_universe() -> Bool {
+  selection_agrees_with_prefix(module_qn: "v2.test.v2_native_route")
+  && selection_agrees_with_prefix(module_qn: "v2.test.")
+  && selection_agrees_with_prefix(module_qn: "v2.compiler.compile")
+  && selection_agrees_with_prefix(module_qn: "v2.test")
+  && selection_agrees_with_prefix(module_qn: "dag.test.claim")
+}
+
+fn subtree_of(segments: List<NonEmptyStr>) -> NativeRouteSelection {
+  native_route_selection_of_pattern(
+    pattern: SubtreeTargets { package: PackagePath { segments: segments } }
+  )
+}
+
+// `//v2/test/...` must reach a module nested below it and must NOT reach `v2.testing.*`. That is
+// the whole reason the subtree prefix carries the separator; a character-position match would
+// admit the second.
+test fn a_subtree_pattern_stops_at_the_namespace_edge() -> Bool {
+  native_route_selection_admits(
+    selection: subtree_of(segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr]),
+    module_qn: "v2.test.parse.alias_decl_parse",
+    declaration: "d"
+  )
+  && !native_route_selection_admits(
+    selection: subtree_of(segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr]),
+    module_qn: "v2.testing.y",
+    declaration: "d"
+  )
+}
+
+// `//...` is the root package: every module, which is the empty prefix rather than a dot.
+test fn the_root_subtree_pattern_selects_every_module() -> Bool {
+  native_route_selection_admits(
+    selection: native_route_selection_of_pattern(
+      pattern: SubtreeTargets { package: RootPackage }
+    ),
+    module_qn: "anything.at.all",
+    declaration: "d"
+  )
+}
+
+// `//v2/test/parse:all` selects that module and not the ones nested beneath it -- the distinction
+// a subtree pattern exists to make.
+test fn a_package_pattern_selects_one_module_and_not_its_subtree() -> Bool {
+  native_route_selection_admits(
+    selection: native_route_selection_of_pattern(
+      pattern: PackageTargets {
+        package: PackagePath {
+          segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr, "parse" as NonEmptyStr]
+        }
+      }
+    ),
+    module_qn: "v2.test.parse",
+    declaration: "d"
+  )
+  && !native_route_selection_admits(
+    selection: native_route_selection_of_pattern(
+      pattern: PackageTargets {
+        package: PackagePath {
+          segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr, "parse" as NonEmptyStr]
+        }
+      }
+    ),
+    module_qn: "v2.test.parse.alias_decl_parse",
+    declaration: "d"
+  )
+}
+
+// The single-target form is the only one that reads the declaration at all.
+test fn a_single_target_pattern_selects_one_declaration() -> Bool {
+  native_route_selection_admits(
+    selection: native_route_selection_of_pattern(
+      pattern: SingleTarget {
+        label: Label {
+          package: PackagePath {
+            segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr, "parse" as NonEmptyStr]
+          },
+          target: TargetName { name: "a_parse_holds" as NonEmptyStr }
+        }
+      }
+    ),
+    module_qn: "v2.test.parse",
+    declaration: "a_parse_holds"
+  )
+  && !native_route_selection_admits(
+    selection: native_route_selection_of_pattern(
+      pattern: SingleTarget {
+        label: Label {
+          package: PackagePath {
+            segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr, "parse" as NonEmptyStr]
+          },
+          target: TargetName { name: "a_parse_holds" as NonEmptyStr }
+        }
+      }
+    ),
+    module_qn: "v2.test.parse",
+    declaration: "a_different_declaration"
+  )
 }
 
 test fn identity_qualification_derives_the_dotted_spelling() -> Bool {
