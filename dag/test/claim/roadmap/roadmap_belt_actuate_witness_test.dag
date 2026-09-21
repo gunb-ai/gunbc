@@ -67,7 +67,8 @@ import std.upsert_decision { ObservationVerdict, Converged }
 import gunbc.roadmap_belt_actuate { belt_tick_receipt_schema, belt_path_parent_dir }
 import gunbc.roadmap_belt_actuate {
   BeltCommitOutcome, CommitRecorded, CommitSkipped, CommitFailed, CommitDeferred,
-  CommitSubjectUnaddressable,
+  CommitSubjectUnaddressable, CandidateCaptured,
+  belt_commit_outcome_receipt, belt_commit_outcome_receipt_json,
   belt_commit_outcome_is_failure, belt_commit_outcome_is_recorded,
   belt_commit_pass_outcome_from, belt_commit_outcome_json_value,
   BeltExecOutcome, ExecOk, ExecFailed, ExecRefused,
@@ -2336,4 +2337,30 @@ test fn the_publish_edge_parent_dir_drops_exactly_the_basename() -> Bool {
   belt_path_parent_dir(path: "dag/gunbc/ci/ci_spec.dag") == "dag/gunbc/ci"
     && belt_path_parent_dir(path: "dag/a.dag") == "dag"
     && belt_path_parent_dir(path: "README.md") == ""
+}
+
+// The per-attempt commit outcome receipt is the durable record the tick receipt's collapse erases:
+// the failing attempt's arm and detail must survive the pass.
+test fn the_commit_outcome_receipt_carries_the_failing_attempts_arm_and_detail() -> Bool {
+  let r = belt_commit_outcome_receipt(
+    o: CommitFailed { node_id: "n1", detail: "status: git exited 128: fatal" },
+    attempt_key: "abc",
+  )
+  let wire = serialize_json(v: belt_commit_outcome_receipt_json(r: r))
+  r.node_id == "n1"
+    && r.attempt_key == "abc"
+    && r.outcome == "failed"
+    && r.detail == "status: git exited 128: fatal"
+    && string_contains(s: wire, pattern: "\"schema\": \"roadmap-commit-outcome/v1\"")
+    && string_contains(s: wire, pattern: "\"outcome\": \"failed\"")
+    && string_contains(s: wire, pattern: "status: git exited 128: fatal")
+}
+
+test fn the_candidate_receipt_names_the_captured_head() -> Bool {
+  let r = belt_commit_outcome_receipt(
+    o: CandidateCaptured { node_id: "n1", head_sha: "aaaa", message: "dispatch candidate: n1 aabc" },
+    attempt_key: "abc",
+  )
+  r.outcome == "candidate-captured"
+    && string_contains(s: r.detail, pattern: "aaaa")
 }

@@ -41,3 +41,81 @@ fn worktree_inventory_parse(stdout_nul: String) -> List<NonEmptyStr> {
     |> filter(row => row != "")
     |> map(row => row as NonEmptyStr)
 }
+
+// THE BASE INVENTORY IS THE TREE AT THE RECORDED SHA, NOT THE INDEX. `git ls-files` answers about
+// the index (which belt commits have moved since the intake), so seeding from it would freeze
+// belt's own checkpoint commits into the "base"; `git ls-tree -r --name-only <sha>` answers about
+// the recorded base commit's tree exactly. Used only for seeding; the candidate delta is computed
+// against the worktree itself.
+fn worktree_base_inventory_args(base_sha: String) -> List<String> {
+  ["ls-tree", "-r", "-z", "--name-only", base_sha]
+}
+
+// THE CANDIDATE DELTA, TWO VERBS BECAUSE GIT KEEPS THEM APART. `git diff --name-status -z <sha>`
+// reports tracked changes against the recorded base (modify, add, delete, rename); `git ls-files
+// --others --exclude-standard -z` reports the untracked-but-not-ignored files -- and the second
+// list is not optional: a worker's NEW file (its witness module, its notes) is the deliverable
+// just as much as an edited one, and an inventory drawn from ls-files alone silently drops it
+// (measured against the landed design: the SCM candidate lacked every new file the git edge
+// commit then swept in). Ignored files (build output, scratch) are excluded by git's own ignore
+// rules, which is the declared boundary for what may enter a candidate.
+fn worktree_changes_since_args(base_sha: String) -> List<String> {
+  ["diff", "--name-status", "-z", base_sha]
+}
+
+data worktree_untracked_args: List<String> = ["ls-files", "--others", "--exclude-standard", "-z"]
+
+// A change row: modify/add binds a path to the worktree's bytes; delete removes it. Renames
+// decompose into a deletion of the old path and a bind of the new one, which is what the rename
+// semantically is at manifest grain.
+type WorktreeChange
+  = WorktreeBind { path: NonEmptyStr }
+  | WorktreeDelete { path: NonEmptyStr }
+
+// name-status -z interleaves status letters and paths: <status>\0<path>\0..., with renames and
+// copies carrying a second path (<status>\0<old>\0<new>\0). The fold is over alternating tokens;
+// any other letter binds its single path (M, A, T and friends are all "the worktree's bytes now").
+type WorktreeChangeAcc {
+  changes: List<WorktreeChange>
+  pending_status: String
+}
+
+fn worktree_changes_parse(stdout_nul: String) -> List<WorktreeChange> {
+  let acc = fold(
+    split(s: stdout_nul, delimiter: "\0") |> filter(row => row != ""),
+    init: WorktreeChangeAcc { changes: [], pending_status: "" },
+    f: fn(acc, token) {
+      if acc.pending_status == "~bind" {
+        WorktreeChangeAcc {
+          changes: concat(acc.changes, [WorktreeBind { path: token as NonEmptyStr }]),
+          pending_status: "",
+        }
+      } else if acc.pending_status == "" {
+        WorktreeChangeAcc { changes: acc.changes, pending_status: token }
+      } else if string_length(s: acc.pending_status) > 0
+        && substring(s: acc.pending_status, start: 0, end: 1) == "R" {
+        WorktreeChangeAcc {
+          changes: concat(acc.changes, [WorktreeDelete { path: token as NonEmptyStr }]),
+          pending_status: "~bind",
+        }
+      } else if string_length(s: acc.pending_status) > 0
+        && substring(s: acc.pending_status, start: 0, end: 1) == "C" {
+        WorktreeChangeAcc {
+          changes: acc.changes,
+          pending_status: "~bind",
+        }
+      } else if acc.pending_status == "D" {
+        WorktreeChangeAcc {
+          changes: concat(acc.changes, [WorktreeDelete { path: token as NonEmptyStr }]),
+          pending_status: "",
+        }
+      } else {
+        WorktreeChangeAcc {
+          changes: concat(acc.changes, [WorktreeBind { path: token as NonEmptyStr }]),
+          pending_status: "",
+        }
+      }
+    },
+  )
+  acc.changes
+}

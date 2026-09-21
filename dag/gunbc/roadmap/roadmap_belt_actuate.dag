@@ -395,23 +395,19 @@ import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CandidateCommitNe
 import gunbc.scm.object_store {
   ObjectStore, CorpusManifestEntry, authored_source_target_of,
   store_authored_source, SourceStored, SourceLocatorCollision,
+  store_authored_sources_batch, SourcesBatched, SourceBatchCollision,
   store_corpus_manifest, CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
-}
-import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository, commit_at_reference }
-import gunbc.scm.object_store {
   find_corpus_manifest_record,
   CorpusManifestFound, CorpusManifestAbsent, CorpusManifestIsAuthoredSource, CorpusManifestIsSemanticNode,
   AuthoredSourceEmpty, AuthoredSourceText,
+  PathUniqueManifestEntries,
+  path_unique_of_record, path_unique_with_path_bound, path_unique_with_path_removed,
+  store_path_unique_manifest, UniqueManifestStored, UniqueManifestLocatorCollision,
 }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository, commit_at_reference }
 import std.list { distinct_by_key }
 import gunbc.scm.checkout { recover_corpus, CorpusRecovered, CorpusRecoveryRefused, RecoveredSourceFile }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
-import gunbc.scm.checkout {
-  checkout_repository_at,
-  RepositoryCheckedOut, CheckoutReferenceUnresolved,
-  CheckoutSnapshotMissingFromStore, CheckoutSnapshotIsAuthoredSource, CheckoutSnapshotIsSemanticNode,
-  CheckoutCorpusUnrecoverable, CheckoutWouldDiscardStagedWork, CheckoutCandidateUnreadable,
-}
 import gunbc.scm.write_spine {
   commit_staged,
   StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
@@ -422,7 +418,11 @@ import gunbc.scm.repository_save {
   save_repository,
   RepositorySaved, RepositorySaveRefusedByCodec, RepositoryFileUnwritable, RepositoryWriteByteCountUnrepresentable,
 }
-import gunbc.scm.worktree_inventory { worktree_inventory_args, worktree_inventory_parse, worktree_base_file_args }
+import gunbc.scm.worktree_inventory {
+  worktree_inventory_args, worktree_inventory_parse, worktree_base_file_args,
+  worktree_base_inventory_args, worktree_changes_since_args, worktree_untracked_args,
+  worktree_changes_parse, WorktreeChange, WorktreeBind, WorktreeDelete,
+}
 import std.minted_identity { MintedId, minted_id_ordinal }
 import gunbc.roadmap.roadmap_project {
   ProjectMembership, MembershipStandalone, MembershipMember, MembershipAmbiguous,
@@ -4909,54 +4909,57 @@ fn belt_scm_load_refusal_detail(cause: RepositoryLoadRefusal) -> String {
   }
 }
 
-// THE TREE IS STAGED WHOLE, ONE AUTHORED SOURCE PER TRACKED PATH, and the manifest is stored once.
-// The path population comes from the bridge (gunbc.scm.worktree_inventory): while the worktree is
-// git, its index is the inventory authority, and an unreadable tracked path stops the capture --
-// a partial manifest would mint a candidate that is not the tree the worker declared.
-type BeltManifestBuild
-  = ManifestEntriesBuilt { store: ObjectStore, entries: List<CorpusManifestEntry> }
-  | ManifestBuildRefused { detail: String }
+// THE BASE TREE IS READ THROUGH THE BRIDGE, one `git show <sha>:<path>` per tracked path, and
+// staged into the object store in ONE batch (gunbc.scm.object_store store_authored_sources_batch).
+// One-time per project envelope; an unreadable base file stops the seed -- a partial base would
+// make every later merge answer about a tree the intake never was. The batch is what makes the
+// once affordable: the per-insert path was measured quadratic at this corpus size on 2026-09-21
+// (a 7,050-file seeding never completed a belt tick).
+type BeltBaseTexts
+  = BaseTextsGathered { texts: List<String> }
+  | BaseTextsRefused { detail: String }
 
-fn belt_scm_stage_tree(worktree: String, store: ObjectStore, paths: List<NonEmptyStr>) -> BeltManifestBuild {
+fn belt_scm_gather_base_texts(
+  instance: HostDashboardInstance,
+  worktree: String,
+  paths: List<NonEmptyStr>,
+  base_sha: String,
+) -> BeltBaseTexts {
   fold(
     paths,
-    init: ManifestEntriesBuilt { store: store, entries: [] },
+    init: BaseTextsGathered { texts: [] },
     f: (acc, path) =>
       match acc {
-        ManifestBuildRefused { detail: _ } => acc
-        ManifestEntriesBuilt { store, entries } => {
-          let read = Filesystem.Read(path: join([worktree, "/", path as String], ""))
-          if !read.success {
-            ManifestBuildRefused {
-              detail: join([
-                "the tracked path ", path as String,
-                " could not be read from the worktree (", read.error,
-                "), so the tree cannot be captured whole",
-              ], ""),
-            }
-          } else {
-            match store_authored_source(store: store, text: read.content) {
-              SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
-                ManifestBuildRefused {
-                  detail: join([
-                    "the object store refuses ", path as String,
-                    ": a different source already holds its content identity, which is store damage, not a capture",
-                  ], ""),
-                }
-              SourceStored { store: next, source } =>
-                ManifestEntriesBuilt {
-                  store: next,
-                  entries: concat(
-                    [CorpusManifestEntry { path: path, source: authored_source_target_of(reference: source) }],
-                    entries,
-                  ),
-                }
-            }
+        BaseTextsRefused { detail: _ } => acc
+        BaseTextsGathered { texts } =>
+          match belt_commit_git(
+            instance: instance,
+            worktree: worktree,
+            args: worktree_base_file_args(base_sha: base_sha, path: path as String),
+          ) {
+            ExecFailed { program, exit_code, stderr } =>
+              BaseTextsRefused {
+                detail: belt_commit_exec_detail(
+                  step: join(["base-file ", path as String], ""),
+                  outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+                ),
+              }
+            ExecRefused { program, reason } =>
+              BaseTextsRefused {
+                detail: belt_commit_exec_detail(
+                  step: join(["base-file ", path as String], ""),
+                  outcome: ExecRefused { program: program, reason: reason },
+                ),
+              }
+            ExecOk { stdout } => BaseTextsGathered { texts: concat(texts, [stdout]) }
           }
-        }
       },
   )
 }
+
+type BeltManifestBuild
+  = ManifestEntriesBuilt { store: ObjectStore, entries: List<CorpusManifestEntry> }
+  | ManifestBuildRefused { detail: String }
 
 // THE INTAKE BASE IS THE SPAWN ORIGIN'S RECORDED SHA, never a moving ref. The dispatch writes the
 // origin (base_ref + base_sha) before the worker starts; a project envelope's base commit freezes
@@ -4997,10 +5000,6 @@ fn belt_scm_base_sha_observe(instance: HostDashboardInstance, node_id: RoadmapNo
   }
 }
 
-// THE BASE TREE IS READ THROUGH THE BRIDGE, one `git show <sha>:<path>` per tracked path, and
-// staged into the object store exactly as worktree bytes are. One-time per project envelope; an
-// unreadable base file stops the seed -- a partial base would make every later merge answer about
-// a tree the intake never was.
 fn belt_scm_stage_base_tree(
   instance: HostDashboardInstance,
   worktree: String,
@@ -5008,53 +5007,59 @@ fn belt_scm_stage_base_tree(
   paths: List<NonEmptyStr>,
   base_sha: String,
 ) -> BeltManifestBuild {
+  match belt_scm_gather_base_texts(
+    instance: instance,
+    worktree: worktree,
+    paths: paths,
+    base_sha: base_sha,
+  ) {
+    BaseTextsRefused { detail } => ManifestBuildRefused { detail: detail }
+    BaseTextsGathered { texts } =>
+      match store_authored_sources_batch(store: store, texts: texts) {
+        SourceBatchCollision { identity: _ } =>
+          ManifestBuildRefused {
+            detail: "the object store refuses the base batch: a different source already holds a content identity, which is store damage",
+          }
+        SourcesBatched { store: next, sources } =>
+          ManifestEntriesBuilt {
+            store: next,
+            entries: belt_scm_entries_zip(paths: paths, sources: sources),
+          }
+      }
+  }
+}
+
+// Paths and sources align by construction of the batch (one reference per input text, in input
+// order, duplicates included). The zip goes through an index map because the list has no
+// positional access: one O(n) map build, then cheap lookups -- never a fold-per-path rescan.
+type BeltZipIndexAcc { i: Int, m: Map<String, AuthoredSourceObjectRef> }
+type BeltZipAcc { i: Int, entries: List<CorpusManifestEntry> }
+
+fn belt_scm_entries_zip(paths: List<NonEmptyStr>, sources: List<AuthoredSourceObjectRef>) -> List<CorpusManifestEntry> {
+  let by_index = fold(
+    sources,
+    init: BeltZipIndexAcc { i: 0, m: empty_map() },
+    f: fn(acc, s) {
+      BeltZipIndexAcc { i: acc.i + 1, m: map_insert(acc.m, to_string(acc.i), s) }
+    },
+  ).m
   fold(
     paths,
-    init: ManifestEntriesBuilt { store: store, entries: [] },
-    f: (acc, path) =>
-      match acc {
-        ManifestBuildRefused { detail: _ } => acc
-        ManifestEntriesBuilt { store, entries } =>
-          match belt_commit_git(
-            instance: instance,
-            worktree: worktree,
-            args: worktree_base_file_args(base_sha: base_sha, path: path as String),
-          ) {
-            ExecFailed { program, exit_code, stderr } =>
-              ManifestBuildRefused {
-                detail: belt_commit_exec_detail(
-                  step: join(["base-file ", path as String], ""),
-                  outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
-                ),
-              }
-            ExecRefused { program, reason } =>
-              ManifestBuildRefused {
-                detail: belt_commit_exec_detail(
-                  step: join(["base-file ", path as String], ""),
-                  outcome: ExecRefused { program: program, reason: reason },
-                ),
-              }
-            ExecOk { stdout } =>
-              match store_authored_source(store: store, text: stdout) {
-                SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
-                  ManifestBuildRefused {
-                    detail: join([
-                      "the object store refuses base path ", path as String,
-                      ": a different source already holds its content identity, which is store damage",
-                    ], ""),
-                  }
-                SourceStored { store: next, source } =>
-                  ManifestEntriesBuilt {
-                    store: next,
-                    entries: concat(
-                      [CorpusManifestEntry { path: path, source: authored_source_target_of(reference: source) }],
-                      entries,
-                    ),
-                  }
-              }
+    init: BeltZipAcc { i: 0, entries: [] },
+    f: fn(acc, path) {
+      match map_get(by_index, key: to_string(acc.i)) {
+        Absent => acc
+        Present { value: source } =>
+          BeltZipAcc {
+            i: acc.i + 1,
+            entries: concat(
+              acc.entries,
+              [CorpusManifestEntry { path: path, source: authored_source_target_of(reference: source) }],
+            ),
           }
-      },
-  )
+      }
+    },
+  ).entries
 }
 
 type BeltSeedOutcome
@@ -5144,9 +5149,6 @@ fn belt_scm_root_commit_ref(envelope: RepositoryEnvelope) -> RepositoryCommitRef
     |> map(c => c.reference)).first()
 }
 
-fn belt_scm_checkout_refusal_detail(side: String) -> String {
-  join(["the ", side, " could not be checked out inside the project envelope, which is envelope damage, not a capture"], "")
-}
 
 // THE CAPTURE, WHOLE. Seed-once (an envelope holding any commit is already seeded), then the
 // candidate is staged from the worktree and minted DESCENDING FROM THE SHARED BASE: the selection
@@ -5197,7 +5199,14 @@ fn belt_scm_capture_candidate_tree(
       ) {
         EnvelopeSourceRefused { detail } => ScmCaptureRefused { detail: detail }
         EnvelopeReady { envelope } =>
-          match belt_commit_git(instance: instance, worktree: worktree, args: worktree_inventory_args) {
+          match belt_scm_base_sha_observe(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: attempt_key,
+          ) {
+            BaseShaUnobserved { reason } => ScmCaptureRefused { detail: reason }
+            BaseShaObserved { base_sha } =>
+          match belt_commit_git(instance: instance, worktree: worktree, args: worktree_base_inventory_args(base_sha: base_sha)) {
             ExecFailed { program, exit_code, stderr } =>
               ScmCaptureRefused {
                 detail: belt_commit_exec_detail(
@@ -5213,7 +5222,7 @@ fn belt_scm_capture_candidate_tree(
               let paths = worktree_inventory_parse(stdout_nul: stdout)
               if count(paths) == 0 {
                 ScmCaptureRefused {
-                  detail: "the worktree tracks zero files, so capturing it would mint an empty tree as the worker's deliverable",
+                  detail: "the recorded base names zero files, so capturing against it would mint an empty tree as the worker's deliverable",
                 }
               } else {
                 match belt_scm_envelope_seeded(
@@ -5234,116 +5243,24 @@ fn belt_scm_capture_candidate_tree(
                         }
                       Present { value: base_ref } => {
                         let head_ref = seeded.checked_out
-                        match checkout_repository_at(repo: seeded, reference: base_ref) {
-                          CheckoutReferenceUnresolved { reference: _ } =>
-                            ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "project base") }
-                          CheckoutSnapshotMissingFromStore { reference: _, root: _ } =>
-                            ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "project base") }
-                          CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } =>
-                            ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "project base") }
-                          CheckoutSnapshotIsSemanticNode { reference: _, root: _ } =>
-                            ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "project base") }
-                          CheckoutCorpusUnrecoverable { reference: _, cause: _ } =>
-                            ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "project base") }
-                          CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } =>
-                            ScmCaptureRefused { detail: "the envelope carries uncommitted staged work, so moving the selection to the project base would discard it: unexplained state" }
-                          CheckoutCandidateUnreadable { reference: _, cause: _ } =>
-                            ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "project base") }
-                          RepositoryCheckedOut { repository: at_base, corpus: _ } =>
-                match belt_scm_stage_tree(worktree: worktree, store: at_base.store, paths: paths) {
-                  ManifestBuildRefused { detail } => ScmCaptureRefused { detail: detail }
-                  ManifestEntriesBuilt { store, entries } =>
-                    match store_corpus_manifest(store: store, entries: entries) {
-                      CorpusManifestDuplicatePath { path: p } =>
-                        ScmCaptureRefused {
-                          detail: join(["the inventory named ", p as String, " twice, so the tree cannot be captured whole"], ""),
-                        }
-                      CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
-                        ScmCaptureRefused {
-                          detail: "the object store refuses the candidate manifest: a different manifest already holds its identity, which is store damage, not a capture",
-                        }
-                      CorpusManifestStored { store: with_manifest, manifest } =>
-                        match commit_staged(
-                          repository: RepositoryEnvelope {
-                            store: with_manifest,
-                            commits: at_base.commits,
-                            commit_allocator: at_base.commit_allocator,
-                            checked_out: at_base.checked_out,
-                            staged: Present { value: manifest },
-                          },
-                          message: message,
+                        match belt_scm_base_sha_observe(
+                          instance: instance,
+                          node_id: node_id,
+                          attempt_key: attempt_key,
                         ) {
-                          StagedCommitCandidateRefused { cause: _ } =>
-                            ScmCaptureRefused {
-                              detail: "the SCM stage could not be compared against its base, so the capture was not minted",
-                            }
-                          StagedCommitNothingToFreeze =>
-                            ScmCaptureRefused {
-                              detail: "the declared candidate is identical to the intake base: there is no change to deliver, so there is no candidate to bind",
-                            }
-                          StagedCommitAllocatorInvalid { next_ordinal } =>
-                            ScmCaptureRefused {
-                              detail: join([
-                                "the project envelope's commit allocator is invalid (next ordinal ",
-                                to_string(next_ordinal), "), which is envelope damage, not a capture",
-                              ], ""),
-                            }
-                          StagedCommitSourceUnrecoverable { cause: _ } =>
-                            ScmCaptureRefused {
-                              detail: "a staged path's source is unrecoverable from the object store, so the candidate must not be published into history",
-                            }
-                          StagedCommitMinted { repository: with_candidate, reference } => {
-                            let restore_ref = match head_ref {
-                              Present { value: h } => h
-                              Absent => base_ref
-                            }
-                            match checkout_repository_at(repo: with_candidate, reference: restore_ref) {
-                              CheckoutReferenceUnresolved { reference: _ } =>
-                                ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "integration head") }
-                              CheckoutSnapshotMissingFromStore { reference: _, root: _ } =>
-                                ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "integration head") }
-                              CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } =>
-                                ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "integration head") }
-                              CheckoutSnapshotIsSemanticNode { reference: _, root: _ } =>
-                                ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "integration head") }
-                              CheckoutCorpusUnrecoverable { reference: _, cause: _ } =>
-                                ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "integration head") }
-                              CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } =>
-                                ScmCaptureRefused { detail: "the envelope carries uncommitted staged work after a candidate mint, which is unexplained state" }
-                              CheckoutCandidateUnreadable { reference: _, cause: _ } =>
-                                ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "integration head") }
-                              RepositoryCheckedOut { repository: restored, corpus: _ } =>
-                            match save_repository(path: path, repo: restored) {
-                              RepositorySaved { path: _, written: _ } =>
-                                ScmCandidateCaptured {
-                                  repository_path: path,
-                                  commit_ordinal: minted_id_ordinal(id: reference.identity),
-                                }
-                              RepositorySaveRefusedByCodec { path: _, cause: _ } =>
-                                ScmCaptureRefused {
-                                  detail: "the capture was minted but the envelope could not be encoded for persistence; the in-memory commit is lost and the capture must be re-taken",
-                                }
-                              RepositoryFileUnwritable { path: p, error } =>
-                                ScmCaptureRefused {
-                                  detail: join([
-                                    "the capture was minted but the envelope could not be written to ", p,
-                                    " (", error, "); the in-memory commit is lost and the capture must be re-taken",
-                                  ], ""),
-                                }
-                              RepositoryWriteByteCountUnrepresentable { path: _, reported } =>
-                                ScmCaptureRefused {
-                                  detail: join([
-                                    "the envelope write reported a nonsensical byte count (",
-                                    to_string(reported), "), so whether the capture persisted is unknown",
-                                  ], ""),
-                                }
-                            }
-                            }
-                          }
+                          BaseShaUnobserved { reason } => ScmCaptureRefused { detail: reason }
+                          BaseShaObserved { base_sha } =>
+                            belt_scm_delta_capture(
+                              instance: instance,
+                              worktree: worktree,
+                              seeded: seeded,
+                              base_ref: base_ref,
+                              head_ref: head_ref,
+                              base_sha: base_sha,
+                              path: path,
+                              message: message,
+                            )
                         }
-                }
-                        }
-                      }
                 }
               }
             }
@@ -5353,6 +5270,229 @@ fn belt_scm_capture_candidate_tree(
   }
   }
   }
+  }
+  }
+}
+
+// THE CANDIDATE DELTA: the candidate manifest is the base manifest with exactly the changed paths
+// re-bound and the deleted paths removed, never the whole corpus re-staged. Two bridge verbs name
+// the change population against the recorded base (worktree_changes_since_args for tracked,
+// worktree_untracked_args for new files), and the selection moves are plain field assignments --
+// the previous shape's two whole-corpus checkout recoveries per capture are gone with the
+// whole-tree staging.
+type BeltDeltaFold {
+  store: ObjectStore
+  unique: PathUniqueManifestEntries
+  refused: String?
+}
+
+fn belt_scm_delta_fold_step(
+  instance: HostDashboardInstance,
+  worktree: String,
+  acc: BeltDeltaFold,
+  change: WorktreeChange,
+) -> BeltDeltaFold {
+  match acc.refused {
+    Present { value: _ } => acc
+    Absent =>
+      match change {
+        WorktreeDelete { path } =>
+          BeltDeltaFold {
+            store: acc.store,
+            unique: path_unique_with_path_removed(unique: acc.unique, path: path),
+            refused: none,
+          }
+        WorktreeBind { path } => {
+          let read = Filesystem.Read(path: join([worktree, "/", path as String], ""))
+          if !read.success {
+            BeltDeltaFold {
+              store: acc.store,
+              unique: acc.unique,
+              refused: Present {
+                value: join([
+                  "the changed path ", path as String,
+                  " could not be read from the worktree (", read.error,
+                  "), so the tree cannot be captured whole",
+                ], ""),
+              },
+            }
+          } else {
+            match store_authored_source(store: acc.store, text: read.content) {
+              SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+                BeltDeltaFold {
+                  store: acc.store,
+                  unique: acc.unique,
+                  refused: Present {
+                    value: join([
+                      "the object store refuses ", path as String,
+                      ": a different source already holds its content identity, which is store damage",
+                    ], ""),
+                  },
+                }
+              SourceStored { store: next, source } =>
+                BeltDeltaFold {
+                  store: next,
+                  unique: path_unique_with_path_bound(
+                    unique: acc.unique,
+                    path: path,
+                    source: authored_source_target_of(reference: source),
+                  ),
+                  refused: none,
+                }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn belt_scm_delta_capture(
+  instance: HostDashboardInstance,
+  worktree: String,
+  seeded: RepositoryEnvelope,
+  base_ref: RepositoryCommitRef,
+  head_ref: RepositoryCommitRef?,
+  base_sha: String,
+  path: String,
+  message: String,
+) -> BeltScmCapture {
+  match commit_at_reference(commits: seeded.commits, reference: base_ref) {
+    Absent =>
+      ScmCaptureRefused { detail: "the seeded base commit is not a commit of its own envelope, which is envelope damage" }
+    Present { value: base_commit } =>
+      match find_corpus_manifest_record(store: seeded.store, identity: base_commit.root.locator) {
+        CorpusManifestAbsent { identity: _ } =>
+          ScmCaptureRefused { detail: "the seeded base's manifest is absent from the store" }
+        CorpusManifestIsAuthoredSource { identity: _ } =>
+          ScmCaptureRefused { detail: "the seeded base's root is an authored source, which is store damage" }
+        CorpusManifestIsSemanticNode { identity: _ } =>
+          ScmCaptureRefused { detail: "the seeded base's root is a semantic node, which is store damage" }
+        CorpusManifestFound(base_record) =>
+          match belt_commit_git(
+            instance: instance,
+            worktree: worktree,
+            args: worktree_changes_since_args(base_sha: base_sha),
+          ) {
+            ExecFailed { program, exit_code, stderr } =>
+              ScmCaptureRefused {
+                detail: belt_commit_exec_detail(
+                  step: "changes",
+                  outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+                ),
+              }
+            ExecRefused { program, reason } =>
+              ScmCaptureRefused {
+                detail: belt_commit_exec_detail(step: "changes", outcome: ExecRefused { program: program, reason: reason }),
+              }
+            ExecOk { stdout: changes_out } =>
+              match belt_commit_git(instance: instance, worktree: worktree, args: worktree_untracked_args) {
+                ExecFailed { program, exit_code, stderr } =>
+                  ScmCaptureRefused {
+                    detail: belt_commit_exec_detail(
+                      step: "untracked",
+                      outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+                    ),
+                  }
+                ExecRefused { program, reason } =>
+                  ScmCaptureRefused {
+                    detail: belt_commit_exec_detail(step: "untracked", outcome: ExecRefused { program: program, reason: reason }),
+                  }
+                ExecOk { stdout: untracked_out } => {
+                  let changes = concat(
+                    worktree_changes_parse(stdout_nul: changes_out),
+                    map(worktree_inventory_parse(stdout_nul: untracked_out), p => WorktreeBind { path: p }),
+                  )
+                  let folded = fold(
+                    changes,
+                    init: BeltDeltaFold {
+                      store: seeded.store,
+                      unique: path_unique_of_record(base: base_record),
+                      refused: none,
+                    },
+                    f: (acc, change) => belt_scm_delta_fold_step(instance: instance, worktree: worktree, acc: acc, change: change),
+                  )
+                  match folded.refused {
+                    Present { value: detail } => ScmCaptureRefused { detail: detail }
+                    Absent =>
+                      match store_path_unique_manifest(store: folded.store, unique: folded.unique) {
+                        UniqueManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
+                          ScmCaptureRefused {
+                            detail: "the object store refuses the candidate manifest: a different manifest already holds its identity, which is store damage, not a capture",
+                          }
+                        UniqueManifestStored { store: with_manifest, manifest } =>
+                          match commit_staged(
+                            repository: RepositoryEnvelope {
+                              store: with_manifest,
+                              commits: seeded.commits,
+                              commit_allocator: seeded.commit_allocator,
+                              checked_out: Present { value: base_ref },
+                              staged: Present { value: manifest },
+                            },
+                            message: message,
+                          ) {
+                            StagedCommitCandidateRefused { cause: _ } =>
+                              ScmCaptureRefused {
+                                detail: "the SCM stage could not be compared against its base, so the capture was not minted",
+                              }
+                            StagedCommitNothingToFreeze =>
+                              ScmCaptureRefused {
+                                detail: "the declared candidate is identical to the intake base: there is no change to deliver, so there is no candidate to bind",
+                              }
+                            StagedCommitAllocatorInvalid { next_ordinal } =>
+                              ScmCaptureRefused {
+                                detail: join([
+                                  "the project envelope's commit allocator is invalid (next ordinal ",
+                                  to_string(next_ordinal), "), which is envelope damage, not a capture",
+                                ], ""),
+                              }
+                            StagedCommitSourceUnrecoverable { cause: _ } =>
+                              ScmCaptureRefused {
+                                detail: "a staged path's source is unrecoverable from the object store, so the candidate must not be published into history",
+                              }
+                            StagedCommitMinted { repository: with_candidate, reference } => {
+                              let restored = RepositoryEnvelope {
+                                store: with_candidate.store,
+                                commits: with_candidate.commits,
+                                commit_allocator: with_candidate.commit_allocator,
+                                checked_out: match head_ref {
+                                  Present { value: h } => Present { value: h }
+                                  Absent => Present { value: base_ref }
+                                },
+                                staged: with_candidate.staged,
+                              }
+                              match save_repository(path: path, repo: restored) {
+                                RepositorySaved { path: _, written: _ } =>
+                                  ScmCandidateCaptured {
+                                    repository_path: path,
+                                    commit_ordinal: minted_id_ordinal(id: reference.identity),
+                                  }
+                                RepositorySaveRefusedByCodec { path: _, cause: _ } =>
+                                  ScmCaptureRefused {
+                                    detail: "the capture was minted but the envelope could not be encoded for persistence; the in-memory commit is lost and the capture must be re-taken",
+                                  }
+                                RepositoryFileUnwritable { path: p, error } =>
+                                  ScmCaptureRefused {
+                                    detail: join([
+                                      "the capture was minted but the envelope could not be written to ", p,
+                                      " (", error, "); the in-memory commit is lost and the capture must be re-taken",
+                                    ], ""),
+                                  }
+                                RepositoryWriteByteCountUnrepresentable { path: _, reported } =>
+                                  ScmCaptureRefused {
+                                    detail: join([
+                                      "the envelope write reported a nonsensical byte count (",
+                                      to_string(reported), "), so whether the capture persisted is unknown",
+                                    ], ""),
+                                  }
+                              }
+                            }
+                          }
+                      }
+                  }
+                }
+              }
+          }
+      }
   }
 }
 
@@ -5436,7 +5576,85 @@ fn belt_commit_capture_candidate(
   }
 }
 
+// THE PER-ATTEMPT OUTCOME IS PERSISTED BEFORE IT IS RETURNED. The tick receipt collapses every
+// attempt's detail into one pass sentence ("one or more attempt worktrees could not be committed"),
+// so the failing attempt and its arm were computed and erased on every tick (measured 2026-09-21:
+// a wedged pass described itself only through a debugger). This receipt is the durable record at
+// attempt grain -- node, key, outcome, detail -- written as each attempt's judgment is reached, so
+// even a pass that stalls on a later attempt leaves the earlier attempts' outcomes on disk.
+type BeltCommitOutcomeReceipt {
+  node_id: String
+  attempt_key: String
+  outcome: String
+  detail: String
+}
+
+fn belt_commit_outcome_receipt(o: BeltCommitOutcome, attempt_key: String) -> BeltCommitOutcomeReceipt {
+  match o {
+    CommitRecorded { node_id, message } =>
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "recorded", detail: message }
+    CandidateCaptured { node_id, head_sha, message } =>
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "candidate-captured", detail: join([message, " at ", head_sha], "") }
+    CommitSkipped { node_id, reason } =>
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "skipped", detail: reason }
+    CommitFailed { node_id, detail } =>
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "failed", detail: detail }
+    CommitDeferred { node_id, reason } =>
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "deferred", detail: reason }
+    CommitSubjectUnaddressable { node_id, reason } =>
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "subject-unaddressable", detail: reason }
+  }
+}
+
+fn belt_commit_outcome_receipt_json(r: BeltCommitOutcomeReceipt) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-commit-outcome/v1")),
+    json_kv(key: "node_id", value: json_string(s: r.node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: r.attempt_key)),
+    json_kv(key: "outcome", value: json_string(s: r.outcome)),
+    json_kv(key: "detail", value: json_string(s: r.detail)),
+  ])
+}
+
+fn belt_commit_outcome_persist(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  outcome: BeltCommitOutcome,
+) -> BeltCommitOutcome {
+  if trim(attempt_key) == "" {
+    outcome
+  } else {
+    let write = Filesystem.Write(
+      path: join([
+        dispatch_attempt_state_path_for_instance(
+          instance: instance,
+          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+          attempt_key: attempt_key,
+        ),
+        "/commit-outcome-last.json",
+      ], ""),
+      content: serialize_json(v: belt_commit_outcome_receipt_json(
+        r: belt_commit_outcome_receipt(o: outcome, attempt_key: attempt_key),
+      )),
+    )
+    outcome
+  }
+}
+
 fn belt_commit_attempt_for_instance(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+) -> BeltCommitOutcome {
+  belt_commit_outcome_persist(
+    instance: instance,
+    node_id: progress.node_id,
+    attempt_key: progress.attempt_key,
+    outcome: belt_commit_attempt_compute_for_instance(instance: instance, progress: progress),
+  )
+}
+
+fn belt_commit_attempt_compute_for_instance(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
 ) -> BeltCommitOutcome {

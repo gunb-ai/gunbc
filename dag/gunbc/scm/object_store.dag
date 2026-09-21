@@ -927,6 +927,128 @@ fn store_authored_source(store: ObjectStore, text: String) -> SourceStoreOutcome
   }
 }
 
+// THE BATCH PRODUCER, BECAUSE THE PER-INSERT PATH IS QUADRATIC AT CORPUS SCALE (measured on the
+// srv2-deploy instance, 2026-09-21: a 7,050-file intake-base seeding never completed a belt tick —
+// each store_authored_source paid a full-list find plus a full-list concat copy, so the seeding
+// cost grew with the SQUARE of the corpus and the belt ground for over an hour at 18GB with no
+// envelope ever persisted). This verb keeps the same identity rule, collision vocabulary and
+// dedup semantics, but builds the batch's objects in one spine and pays the integrity checks
+// instead of the copies: duplicates fold away through a Map of seen identities and the surviving objects join the store in ONE concat.
+//
+// insert. A candidate whose identity the store already holds is admitted only when the held
+// object is equal -- otherwise it is the same SourceLocatorCollision the single-insert path
+// reports, carried by identity because the batch's caller locates the fault by path, not by list
+// position.
+type SourceStoreBatch
+  = SourcesBatched { store: ObjectStore, sources: List<AuthoredSourceObjectRef> }
+  | SourceBatchCollision { identity: ObjectId }
+
+type SourceStoreBatchAcc {
+  seen: Map<String, Bool>
+  new_objects: List<ScmObject>
+  sources: List<AuthoredSourceObjectRef>
+  collision: ObjectId?
+}
+
+fn store_authored_sources_batch(store: ObjectStore, texts: List<String>) -> SourceStoreBatch {
+  let acc = fold(
+    texts,
+    init: SourceStoreBatchAcc { seen: empty_map(), new_objects: [], sources: [], collision: none },
+    f: fn(acc, text) {
+      match acc.collision {
+        Present { value: _ } => acc
+        Absent => {
+          let content = authored_source_content(text: text)
+          let reference = AuthoredSourceObjectRef {
+            locator: authored_source_identity(content: content),
+          }
+          let key = reference.locator.digest as String
+          match map_get(acc.seen, key: key) {
+            Present { value: _ } =>
+              SourceStoreBatchAcc {
+                seen: acc.seen,
+                new_objects: acc.new_objects,
+                sources: concat(acc.sources, [reference]),
+                collision: none,
+              }
+            Absent =>
+              match find_object(store: store, identity: reference.locator) {
+                Absent =>
+                  SourceStoreBatchAcc {
+                    seen: map_insert(acc.seen, key, true),
+                    new_objects: concat(
+                      [AuthoredSourceObject(
+                        AuthoredSourceRecord { identity: reference, content: content },
+                      )],
+                      acc.new_objects,
+                    ),
+                    sources: concat(acc.sources, [reference]),
+                    collision: none,
+                  }
+                Present { value: existing } =>
+                  if objects_equal(
+                    left: existing,
+                    right: AuthoredSourceObject(
+                      AuthoredSourceRecord { identity: reference, content: content },
+                    ),
+                  ) {
+                    SourceStoreBatchAcc {
+                      seen: map_insert(acc.seen, key, true),
+                      new_objects: acc.new_objects,
+                      sources: concat(acc.sources, [reference]),
+                      collision: none,
+                    }
+                  } else {
+                    SourceStoreBatchAcc {
+                      seen: acc.seen,
+                      new_objects: acc.new_objects,
+                      sources: acc.sources,
+                      collision: Present { value: reference.locator },
+                    }
+                  }
+              }
+          }
+        }
+      }
+    },
+  )
+  match acc.collision {
+    Present { value: identity } => SourceBatchCollision { identity: identity }
+    Absent =>
+      SourcesBatched {
+        store: ObjectStore { objects: concat(store.objects, reverse(acc.new_objects)) },
+        sources: acc.sources,
+      }
+  }
+}
+
+// A PATH LEAVES THE MANIFEST. path_unique_with_path_removed was deleted for want of a consumer;
+// the delta capture is the consumer: a worker's deleted file must leave the candidate manifest.
+// The Map has insert and lookup but no delete primitive, so the removal rebuilds the bindings by
+// one pass of cheap map binds, skipping exactly the removed path.
+fn path_unique_with_path_removed(
+  unique: PathUniqueManifestEntries,
+  path: NonEmptyStr,
+) -> PathUniqueManifestEntries {
+  fold(
+    map_values(unique.bindings),
+    init: empty_path_unique_entries(),
+    f: (acc, entry) =>
+      if (entry.path as String) == (path as String) {
+        acc
+      } else {
+        path_unique_with_path_bound(unique: acc, path: entry.path, source: entry.source)
+      },
+  )
+}
+
+fn manifest_entries_with_path_removed(
+  base: CorpusManifestRecord,
+  path: NonEmptyStr,
+) -> PathUniqueManifestEntries {
+  path_unique_with_path_removed(unique: path_unique_of_record(base: base), path: path)
+}
+
 data corpus_manifest_tag: NonEmptyStr = "gunbc.scm.corpus_manifest"
 data corpus_manifest_entry_tag: NonEmptyStr = "gunbc.scm.corpus_manifest.entry"
 
