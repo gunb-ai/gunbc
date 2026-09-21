@@ -3,6 +3,7 @@ module extdeps.standards.rfc_8949
 import std.types { Int, String, List }
 import std.logic { Bool }
 import std.integer { UInt8 }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.encoding { utf8_decode_octets }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -52,7 +53,7 @@ type CborEntry {
 }
 
 type CborRefusal
-  = CborTruncated { at: Int, needed: Int, available: Int }
+  = CborTruncated { at: Int, needed: ByteSize, available: ByteSize }
   | CborIndefiniteLengthRefused { at: Int, major: Int }
   | CborFloatRefused { at: Int, info: Int }
   | CborReservedAdditionalInfo { at: Int, info: Int }
@@ -112,7 +113,7 @@ fn cbor_big_endian_value(octets: List<UInt8>, at: Int, n: Int, acc: Int) -> Cbor
 
 fn cbor_read_head(octets: List<UInt8>, at: Int) -> CborHead {
   match cbor_octet_at(octets: octets, at: at) {
-    Absent => CborHeadRefused { cause: CborTruncated { at: at, needed: 1, available: 0 } }
+    Absent => CborHeadRefused { cause: CborTruncated { at: at, needed: byte_size(count: 1), available: byte_size(count: 0) } }
     Present { value: initial } => {
       let major = initial / 32
       let info = initial % 32
@@ -128,11 +129,11 @@ fn cbor_read_head(octets: List<UInt8>, at: Int) -> CborHead {
         let n = cbor_argument_octet_count(info: info)
         let available = count(octets) - (at + 1)
         if available < n {
-          CborHeadRefused { cause: CborTruncated { at: at + 1, needed: n, available: available } }
+          CborHeadRefused { cause: CborTruncated { at: at + 1, needed: byte_size(count: n), available: byte_size(count: available) } }
         } else {
           match cbor_big_endian_value(octets: octets, at: at + 1, n: n, acc: 0) {
             CborArgumentBeyondExact => CborHeadRefused { cause: CborIntegerBeyondExact { at: at } }
-            CborArgumentTruncated { at: t } => CborHeadRefused { cause: CborTruncated { at: t, needed: 1, available: 0 } }
+            CborArgumentTruncated { at: t } => CborHeadRefused { cause: CborTruncated { at: t, needed: byte_size(count: 1), available: byte_size(count: 0) } }
             CborArgumentRead { value: v } => CborHeadRead { major: major, argument: v, next: at + 1 + n }
           }
         }
@@ -185,7 +186,7 @@ fn cbor_decode_entries(octets: List<UInt8>, at: Int, remaining: Int, depth: Int,
 
 fn cbor_decode_string_payload(octets: List<UInt8>, at: Int, n: Int) -> CborRefusal? {
   let available = count(octets) - at
-  if available < n { Present { value: CborTruncated { at: at, needed: n, available: available } } } else { none }
+  if available < n { Present { value: CborTruncated { at: at, needed: byte_size(count: n), available: byte_size(count: available) } } } else { none }
 }
 
 // ONE ITEM AT ONE OFFSET (Appendix C well-formedness, as a fold). `depth` counts the arrays, maps
