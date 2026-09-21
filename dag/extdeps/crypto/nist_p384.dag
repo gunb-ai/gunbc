@@ -3,7 +3,7 @@ module extdeps.crypto.nist_p384
 import std.types { Int, List, Bool }
 import std.integer { UInt8 }
 import std.bignat { BigNat, bignat_from_octets }
-import extdeps.crypto.nist_prime_curve { PrimeCurve, prime_curve, curve_on_curve, curve_ecdsa_verify_octets }
+import extdeps.crypto.nist_prime_curve { PrimeCurve, prime_curve, curve_on_curve, curve_ecdsa_verify_octets, curve_admit_point_octets, PointAdmitted, PointNotAdmitted }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -43,11 +43,13 @@ fn p384_on_curve(x: BigNat, y: BigNat) -> Bool {
   curve_on_curve(c: p384_curve, x: x, y: y)
 }
 
-// A SEC 1 uncompressed point (97 octets) is on the curve with both coordinates below p.
+// A SEC 1 uncompressed point (97 octets) the curve admits: prefix, both coordinates below p, on
+// the curve -- the family fold's one predicate, not a second reading of it.
 fn p384_point_octets_on_curve(point: List<UInt8>) -> Bool {
-  count(point) == 97
-    && (point |> take(1)) == [4]
-    && p384_on_curve(x: bignat_from_octets(octets: point |> skip(1) |> take(48)), y: bignat_from_octets(octets: point |> skip(49)))
+  match curve_admit_point_octets(c: p384_curve, point: point) {
+    PointAdmitted { x: _, y: _ } => true
+    PointNotAdmitted => false
+  }
 }
 
 // ── ECDSA verification (FIPS 186-5 §6.4.2) over a supplied digest ───────────────────────────
