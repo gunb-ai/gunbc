@@ -9,6 +9,19 @@ import gunbc.runner_width_transition {
   required_retirees_for_host,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
 }
+import gunbc.runner_slot_allocation {
+  fabric_execution_slot_identities,
+  srv3_fabric_first_slot,
+  srv3_fabric_second_slot,
+  srv4_fabric_first_slot,
+  srv4_fabric_second_slot,
+  gunbc_runner_committed_width,
+  RunnerWidthDerived,
+  RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_unit { runner_slot_unit_name }
 import product.placement_supply { HostIdentity }
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.host_operation_exec {
@@ -338,15 +351,116 @@ type HostInterruptionAuthorizationStanding
   = HostInterruptionAuthorizationPresent { authorization: InterruptionAuthorization }
   | HostInterruptionAuthorizationAbsent { host: HostIdentity, cause: String }
 
-fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAuthorizationStanding {
+// THE FABRIC REASSIGNMENT IS ITS OWN OPERATOR DECISION AND ITS OWN SCOPE, carried beside the width
+// decisions rather than folded into them. Neither width decision reaches these units: srv4's names
+// 13-21 and srv1's says outright that it "does not name srv1-01..12". The reassigned identities are
+// all inside the committed width, so without this row every one of them is a required retiree that
+// no authorization permits -- which is a refusal, correctly, and not a state this change may leave
+// standing while declaring the cells.
+//
+// THE SCOPE IS AUTHORED AND THE OBLIGATION IS DERIVED, AND AN EARLIER REVISION COLLAPSED THEM
+// (review 68854). It read the scope from fabric_execution_slot_identities -- the same authority
+// fabric_purpose_retirees_for_host derives the obligation from -- so for every fabric slot the
+// permission set was DEFINITIONALLY EQUAL to the obligation set and interruption_authorization_covers
+// could never refuse. That is the substitution the standing rule below forbids in terms: permission
+// is checked OVER the obligation, never substituted for it.
+//
+// THE CONSEQUENCE WAS AN ESCAPE HATCH, NOT AN INCONVENIENCE. A later edit adding a fifth cell to
+// runner_slot_allocation would have MINTED, with no operator row anywhere, permission to mask and
+// stop a live runner on a committed slot -- approval travelling automatically with an unrelated
+// membership edit, which is precisely what DESIGN 5 means by approval being external to the diff.
+// The earlier annotation stated that auto-widening as a FEATURE ("a cell added later carries the
+// same permission"), which is the tell: a sentence praising a mechanism for granting itself scope.
+//
+// SO THE FOUR CELLS ARE ENUMERATED, for the same reason srv4's 13-21 row enumerates rather than
+// ranges: an authored list cannot silently acquire a member. A fifth cell added tomorrow is a
+// required retiree that this authorization does not name, so the transition REFUSES until an
+// operator adds it -- which is the refusal doing its job rather than a gap.
+//
+// WHAT IS AUTHORED IS THE MEMBERSHIP, NOT THE SPELLING (review 69262). An earlier revision wrote
+// the four systemd unit names out as string literals, which forked runner_unit's name template:
+// interruption_authorization_covers compares permission against obligation as raw strings, and the
+// obligation side maps identities through runner_slot_unit_name, so editing the unit template would
+// have silently stopped the two matching -- a refusal, but one whose cause points nowhere near the
+// cause. Naming the four identities and mapping them through the same fold keeps the property this
+// row exists for (nothing is added without an operator edit here) and removes the second name for
+// one concept that DESIGN 3 calls a correctness concern rather than a style one.
+data fabric_purpose_interruption_cells: List<RunnerSlotIdentity> = [
+  srv3_fabric_first_slot(),
+  srv3_fabric_second_slot(),
+  srv4_fabric_first_slot(),
+  srv4_fabric_second_slot(),
+]
+
+data fabric_purpose_interruption_scope: List<NonEmptyStr> = map(fabric_purpose_interruption_cells, id => runner_slot_unit_name(slot: id))
+
+data fabric_purpose_interruption_reason: NonEmptyStr = "operator decision 2026-09-19, scoped to the four committed slots reassigned from GitHub Actions to fabric execution and enumerated in fabric_purpose_interruption_scope (srv3-06, srv3-07, srv4-06, srv4-07): their runners may be taken over for the fabric widening. The decision does not extend to any other slot on those hosts, to sessions, or to the deployment service, and it does not extend to a fabric cell added later -- a new member is a required retiree this row does not permit, and the transition refuses until an operator names it here" as NonEmptyStr
+
+fn host_fabric_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
+  fabric_purpose_interruption_scope |> filter(u => unit_is_owned_by_host(host: host, unit: u as String))
+}
+
+// THE SCOPE AND THE REASON COME OUT OF ONE DISPATCH, SO AN UNNAMED HOST HAS NEITHER (review 69334).
+// They used to be two functions keyed on the same host, and the reason's fallback was an unguarded
+// else returning srv4's operator_reason. Nothing was misattributed, because only srv1 and srv4 reach
+// it -- but a third host given a width authorization tomorrow would have been minted an
+// InterruptionAuthorization carrying srv4's stated reason, which is permission text travelling with
+// an unrelated edit. That is the same defect this module closes one function above for the fabric
+// scope, and DESIGN 5's rule for the arm: a failure arm must refuse, never widen.
+//
+// Returning the row itself makes the bad state unwritable rather than merely unreached: there is no
+// spelling of "this host's reason" that does not go through a row naming that host.
+type WidthDecisionAuthorization
+  = WidthDecisionNamed { authorization: InterruptionAuthorization }
+  | WidthDecisionUnnamed
+
+fn host_width_interruption_authorization(host: HostIdentity) -> WidthDecisionAuthorization {
   if (host as String) == (operator_host_srv1 as String) {
-    HostInterruptionAuthorizationPresent { authorization: srv1_transition_interruption_authorization }
+    WidthDecisionNamed { authorization: srv1_transition_interruption_authorization }
   } else if (host as String) == (operator_host_srv4 as String) {
-    HostInterruptionAuthorizationPresent { authorization: srv4_transition_interruption_authorization }
+    WidthDecisionNamed { authorization: srv4_transition_interruption_authorization }
   } else {
+    WidthDecisionUnnamed
+  }
+}
+
+fn host_width_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
+  match host_width_interruption_authorization(host: host) {
+    WidthDecisionNamed { authorization: a } => a.scope
+    WidthDecisionUnnamed => []
+  }
+}
+
+// THE TWO PERMISSIONS COMPOSE AND THEIR REASONS TRAVEL WITH THEM. A host may be mid-width-transition
+// AND reassigning a purpose -- srv4 is both -- so the scope is the union and the reason names the
+// decision that covers each part. Collapsing them into one sentence would make a single row answer
+// for two decisions taken on different days for different populations, which is the fork this
+// module's sole_constructor exists to prevent from being minted casually.
+fn host_interruption_reason(host: HostIdentity) -> NonEmptyStr {
+  match host_width_interruption_authorization(host: host) {
+    WidthDecisionUnnamed => fabric_purpose_interruption_reason
+    WidthDecisionNamed { authorization: a } =>
+      if list_length(items: host_fabric_interruption_scope(host: host)) == 0 {
+        a.operator_reason
+      } else {
+        join([a.operator_reason as String, " | ", fabric_purpose_interruption_reason as String], "") as NonEmptyStr
+      }
+  }
+}
+
+fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAuthorizationStanding {
+  let scope = concat(host_width_interruption_scope(host: host), host_fabric_interruption_scope(host: host))
+  if list_length(items: scope) == 0 {
     HostInterruptionAuthorizationAbsent {
       host: host,
       cause: join([host as String, " has no operator interruption authorization for this width transition, so surplus slots may be neither masked nor deleted"], ""),
+    }
+  } else {
+    HostInterruptionAuthorizationPresent {
+      authorization: InterruptionAuthorization {
+        scope: scope,
+        operator_reason: host_interruption_reason(host: host),
+      }
     }
   }
 }
@@ -367,8 +481,81 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 //     authorization        -> which of those required retirees may be interrupted
 //     census               -> what is presently visible, and where the two disagree
 //     retirement readback  -> completion, per required identity
+// RETIREMENT IS NOT RELINQUISHMENT, AND THE HALF THIS MODULE CANNOT SEE IS ROSTERED RATHER THAN
+// ASSERTED (review 68807; side-analyst ruling 2026-09-19). RunnerRetirementObservation carries a
+// unit, a mask flag, a running flag and a cgroup occupancy, so RetirementComplete proves the mask
+// held, the unit stopped and the cgroup emptied -- all local. It observes no GitHub registration, so
+// it cannot prove that the former authority may no longer assign work to the identity, and the
+// dangerous state has no detector here: substrate pristine, registration live, GitHub free to
+// dispatch onto a slot a fabric cell now owns.
+//
+// AN EARLIER REVISION OF THIS BRANCH MODELLED THE SEALED JOIN AND IT WAS DELETED, which is worth
+// recording because the deletion is the honest move rather than a retreat. Nothing consumed the join
+// -- DESIGN 3c makes a declaration with no consumer red however well modelled it is -- and the only
+// consumer available would have refused fabric-cell convergence for slots whose takeover the
+// operator has explicitly authorized (2026-09-19, all four runners live). A guard that contradicts a
+// standing decision is not a guard. The class is carried where it is countable instead:
+// gunbc.guarantee_stall.fabric_purpose_handover_registration_unobserved_stall, with the bounded
+// population and the capability that retires it.
+//
+// SO READ transition_required_retiring FOR WHAT IT IS. It names the units this transition owes a
+// retirement, and retirement is the local half. Do not read it, or RetirementComplete, as a
+// statement that GitHub has let the identity go.
+// A SLOT CAN LEAVE THE GITHUB POPULATION WITHOUT THE WIDTH MOVING, AND UNTIL NOW NOTHING SAID SO.
+//
+// required_retirees_for_host derives its set from a WIDTH TRANSITION: prior width down to committed
+// width, so srv4's 13..21 and srv1's 13..50. That covers a slot the host stops having. It does not
+// cover a slot the host still has whose PURPOSE changed -- and gunbc.runner_slot_allocation
+// reassigns exactly that: a committed index stops serving GitHub Actions and becomes a fabric
+// execution cell. The index is inside the width, so the width transition produces no retiree for it,
+// no authorization is consulted, and nothing refuses. The fabric cell's directory and cgroup slice
+// can then be established on a slot whose Actions runner is still running there.
+//
+// THIS IS NOT HYPOTHETICAL AND IT PREDATES THE WIDENING THAT EXPOSED IT. srv3-06 has been a declared
+// fabric member since the canary landed while its runner stayed live (operator, 2026-09-19), so the
+// gap is already open on one slot; reassigning srv3-07, srv4-06 and srv4-07 widens it to four.
+//
+// THE OBLIGATION IS DERIVED FROM THE FABRIC POPULATION RATHER THAN AUTHORED BESIDE IT, which is the
+// whole reason it can be trusted to keep covering. A fifth cell added to
+// fabric_execution_slot_identities acquires its retirement obligation with no edit here, exactly as
+// gunbc.fabric_cell_converge acquires its desired members. An authored list would have to be
+// remembered, and the evidence that it would not be is that this hole opened the first time.
+//
+// THE WIDTH IS NOW A RESOLUTION RATHER THAN AN Int (#11762), AND THIS FOLD REFUSES THROUGH IT
+// INSTEAD OF SUBSTITUTING A NUMBER. A host whose committed width does not resolve cannot say which
+// of its fabric identities it ever provisioned as a runner, so it states no obligation and carries
+// the width authority's own cause outward -- the same arm required_retirees_for_host takes.
+//
+// MEMBERSHIP IS INTERSECTED WITH THE COMMITTED WIDTH ON PURPOSE. A fabric identity outside the width
+// is not a slot the host ever provisioned as a runner, so there is no runner to retire and asserting
+// one would invent an obligation nobody owes.
+fn fabric_purpose_retirees_for_host(host: HostIdentity) -> RequiredRetirees {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      RetireesUnresolved { host: host, cause: runner_width_unresolved_cause_text(cause: c) }
+    RunnerWidthDerived { slots: w } =>
+      RetireesKnown {
+        units: fabric_execution_slot_identities()
+          |> filter(id => (id.host as String) == (host as String) && id.slot_index <= w)
+          |> map(id => runner_slot_unit_name(slot: id))
+      }
+  }
+}
+
+// THE TWO SOURCES ARE UNIONED, NOT SUBSTITUTED. A host mid-width-transition that also reassigns a
+// purpose owes both sets, and dropping either would retire fewer units than the transition requires.
+// EITHER SIDE BEING UNRESOLVED REFUSES THE WHOLE ANSWER: a partial roster read as complete would
+// retire fewer units than the transition owes, which is the silent widen DESIGN 5 forbids.
 fn transition_required_retiring(host: HostIdentity) -> RequiredRetirees {
-  required_retirees_for_host(host: host)
+  match required_retirees_for_host(host: host) {
+    RetireesUnresolved { host: h, cause: c } => RetireesUnresolved { host: h, cause: c }
+    RetireesKnown { units: width_units } =>
+      match fabric_purpose_retirees_for_host(host: host) {
+        RetireesUnresolved { host: h2, cause: c2 } => RetireesUnresolved { host: h2, cause: c2 }
+        RetireesKnown { units: fabric_units } =>
+          RetireesKnown { units: concat(width_units, fabric_units) }
+      }
+  }
 }
 
 // PERMISSION IS CHECKED OVER THE OBLIGATION, NEVER SUBSTITUTED FOR IT. A required retiree the
