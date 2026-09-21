@@ -28,7 +28,9 @@ import gunbc.host_reset_return {
   DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
   ResetDispatchAdmitted, ResetDispatchNotThisMode, ResetDispatchObserverUnnamed, admit_reset_dispatch,
 }
-import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke }
+import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_pair_serving_d0_invoke, gunbc_ci_pair_serving_d0_sm_connect_timeout_seconds, gunbc_ci_pair_serving_d0_sm_max_time_seconds }
+import std.measure { minute_count, second_count }
+import gunbc.spark.pair_serving_d0_door { pair_serving_d0_step_timeout_minutes, d0_prelude_allowance, d0_approval_window, d0_transaction_allowance }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
@@ -568,4 +570,20 @@ test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_befo
     && !string_contains(s: yml, pattern: "d0_group")
     && string_contains(s: before_wif, pattern: "id: pair_serving_d0_admit")
     && !string_contains(s: before_wif, pattern: "id: pair_serving_d0\n")
+}
+
+// THE OPERATIONAL BOUNDS ARE A MAINTAINED INTERFACE, NOT A ONE-HEAD TEXT: the emitted invocation
+// carries the Secret Manager connect and total bounds, the prelude allowance covers the total
+// bound, the step timeout is the sum of the window and the two allowances rounded up, and a key
+// fetch that fails does not stop the door (no set -e exit on the curl; the door decides).
+test fn the_pair_serving_d0_invocation_is_bounded_and_the_step_timeout_is_the_declared_sum() -> Bool {
+  let inv = gunbc_ci_pair_serving_d0_invoke()
+  let secs = (second_count(s: d0_approval_window()) as Int) + (second_count(s: d0_transaction_allowance) as Int) + (second_count(s: d0_prelude_allowance) as Int)
+  string_contains(s: inv, pattern: join(["--connect-timeout ", to_string(gunbc_ci_pair_serving_d0_sm_connect_timeout_seconds)], ""))
+    && string_contains(s: inv, pattern: join(["--max-time ", to_string(gunbc_ci_pair_serving_d0_sm_max_time_seconds)], ""))
+    && (second_count(s: d0_prelude_allowance) as Int) >= gunbc_ci_pair_serving_d0_sm_max_time_seconds + gunbc_ci_pair_serving_d0_sm_connect_timeout_seconds
+    && string_contains(s: inv, pattern: "if DEST_FILE=")
+    && string_contains(s: inv, pattern: "a held lifecycle resumes without it")
+    && (minute_count(m: pair_serving_d0_step_timeout_minutes()) as Int) == (secs + 59) / 60
+    && (minute_count(m: pair_serving_d0_step_timeout_minutes()) as Int) == 47
 }

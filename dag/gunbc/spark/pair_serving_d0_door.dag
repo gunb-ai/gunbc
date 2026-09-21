@@ -37,7 +37,10 @@ import gunbc.spark.pair_serving_d0_authorization {
 // ── THE WET DOOR OF D0: file the consent, wait for the operator, then run the transaction ─────
 //
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/spark/pair_serving_d0_door.dag
-//     --function pair_serving_d0_wet --arg group=group-a --arg transaction=<word> --arg authorization=<escalation id>
+//     --function pair_serving_d0_wet --arg group=group-a --arg transaction=<consent> --arg authorization=<consent>
+//     --arg execution_revision=<the 40-hex revision this tree is checked out at>
+//   (the fleet-converge mode pair_serving_d0 is the authoritative route; it derives every argument
+//   from its admission and this direct form exists for the same arguments by hand)
 //
 // THE ORDER IS THE SAFETY. Nothing on the fleet moves before, in this order: the store's two write
 // walls stand (gunbc.spark.pair_serving_d0 d0_store_write_wall_standing); the store this executor

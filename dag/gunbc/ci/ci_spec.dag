@@ -2579,6 +2579,15 @@ data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: Dissolu
 // THE D0 DOOR'S PRELUDE materializes the submission MAC key alone (the door signs one filing; it
 // holds no BMC credential and no capability key): the shared auth header and SM decode, one
 // pinned secret version to a 0600 file under RUNNER_TEMP, the trap armed before it touches disk.
+// THE KEY IS FIRST-RUN-ONLY, SO ITS ABSENCE DOES NOT STOP THE DOOR: a lifecycle that already holds
+// its durable claim resumes under the recorded decision and signs nothing, and the recovery #11555
+// made total must not narrow to "recoverable while Secret Manager answers". A fetch that fails
+// leaves the key path env unset and the door decides -- a run that must file refuses there with a
+// typed cause (gunbc.auth.approval_gate approval_file_stored_request), a resume proceeds. The
+// transport is bounded (10 s connect, 60 s total) inside the prelude allowance.
+data gunbc_ci_pair_serving_d0_sm_connect_timeout_seconds: Int = 10
+data gunbc_ci_pair_serving_d0_sm_max_time_seconds: Int = 60
+
 fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
   [
     Do { run: ci_retry_body_run(command: "set -euo pipefail") },
@@ -2588,9 +2597,12 @@ fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
     Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$SUB_FILE\"' EXIT") },
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; curl -sSf --connect-timeout 10 --max-time 60 -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_submission_mac_access_url(), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
+    Do { run: ci_retry_body_run(command: join([
+      "if DEST_FILE=\"$SUB_FILE\"; curl -sSf --connect-timeout ", to_string(gunbc_ci_pair_serving_d0_sm_connect_timeout_seconds),
+      " --max-time ", to_string(gunbc_ci_pair_serving_d0_sm_max_time_seconds),
+      " -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", approval_submission_mac_access_url(), "\" && ", gunbc_ci_sm_decode_payload_to_file(),
+      "; then chmod 600 \"$SUB_FILE\"; export ", approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\"; else rm -f \"$SUB_FILE\"; echo 'submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it'; fi",
+    ], "")) },
   ]
 }
 
