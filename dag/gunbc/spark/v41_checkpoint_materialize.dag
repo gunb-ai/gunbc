@@ -48,7 +48,7 @@ import gunbc.spark.v41_engram_row_store {
 import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
-import gunbc.spark.host_commitment { spark_serving_admissible_hosts }
+import gunbc.spark.host_commitment { admit_host_held_by_subject }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_known_hosts_anchor {
   fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
@@ -84,7 +84,7 @@ import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, obse
 //
 // THE ADMISSION IT TAKES AND THE STRONGER ONE IT DOES NOT. A host is admitted when the Group A pair
 // subject (PairServingUnitOn FabricGroupA) holds it, read through gunbc.spark.host_commitment
-// spark_serving_admissible_hosts, and any other host refuses. Concurrency is Group A's arm domain in
+// admit_host_held_by_subject, and any other host refuses. Concurrency is Group A's arm domain in
 // gunbc.fleet_converge_workflow, so this mode serializes with D0 and the pair-serving apply. It lands NO
 // host-effect claim: host_commitment has no claim a committed host can carry on its owner's behalf, and
 // modeling one there (a committed-host staging claim) is the stronger construction. It is not taken
@@ -595,12 +595,6 @@ fn v41_run_body(run: V41MaterializeRun) -> String {
 data v41_checkpoint_ci_attempt_raw: String = "v41-checkpoint-materialize-ci"
 data v41_checkpoint_ci_receipt_path: String = "target/v41-checkpoint-materialize-receipt.txt"
 
-fn v41_group_a_admission(raw: HostIdentity, held: List<HostIdentity>) -> String? {
-  if any(held, h => host_identity_eq(a: h, b: raw)) { none } else {
-    Present { value: join([raw as String, " is not held by the Group A pair subject (PairServingUnitOn FabricGroupA); this mode stages the V4.1 checkpoint only onto hosts that subject holds, which are: ", join(map(held, h => h as String), ", ")], "") }
-  }
-}
-
 fn v41_checkpoint_materialize_ci_wet() -> ProcessExit
   uses net: Network
 {
@@ -610,7 +604,7 @@ fn v41_checkpoint_materialize_ci_wet() -> ProcessExit
     SparkConvergeTargetAllObserveOnly =>
       exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode writes the V4.1 checkpoint to ONE host, so it refuses rather than choosing one")
     SparkConvergeTargetSingle { host: target_host } =>
-      match v41_group_a_admission(raw: target_host, held: spark_serving_admissible_hosts(subject: PairServingUnitOn { group: FabricGroupA })) {
+      match admit_host_held_by_subject(raw: target_host, subject: PairServingUnitOn { group: FabricGroupA }) {
         Present { value: why } => exit_failure(reason: why)
         Absent =>
           match observe_executor_reach() {

@@ -9,13 +9,13 @@ import extdeps.deepseek.deepseek_v4_1_flash { DeepseekV41PublishedFile, deepseek
 import gunbc.artifact_acquisition { ContentDigestSha256, UpstreamRevision, SourceArgv, SourceUrl }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
-import gunbc.spark.host_commitment { spark_serving_admissible_hosts }
+import gunbc.spark.host_commitment { spark_serving_admissible_hosts, admit_host_held_by_subject_among }
 import gunbc.spark.v41_engram_row_store { V41PublishedSpan }
 import extdeps.tools.sha256sum { sha256sum_byte_span_program }
 import gunbc.spark.v41_checkpoint_materialize {
   V41CheckpointPopulation, V41CheckpointPopulationAdmitted, V41CheckpointPopulationRefused,
   v41_checkpoint_population, v41_checkpoint_bytes, v41_checkpoint_subject, v41_required_bytes,
-  v41_group_a_admission, v41_span_read_argv, v41_checkpoint_directory,
+  v41_span_read_argv, v41_checkpoint_directory,
   V41SpanReadOutcome, V41SpanPlanRefused, v41_span_line, v41_span_is_read,
 }
 
@@ -87,10 +87,10 @@ test fn the_disk_requirement_counts_only_what_is_missing() -> Bool {
 test fn only_a_group_a_host_is_admitted() -> Bool {
   let held = spark_serving_admissible_hosts(subject: PairServingUnitOn { group: FabricGroupA })
   length(held) == 4
-    && (match v41_group_a_admission(raw: "srv5" as HostIdentity, held: held) { Absent => true  Present { value: _ } => false })
-    && (match v41_group_a_admission(raw: "srv8" as HostIdentity, held: held) { Absent => true  Present { value: _ } => false })
-    && (match v41_group_a_admission(raw: "srv9" as HostIdentity, held: held) { Absent => false  Present { value: why } => why.contains("not held by the Group A pair subject") })
-    && (match v41_group_a_admission(raw: "srv1" as HostIdentity, held: held) { Absent => false  Present { value: _ } => true })
+    && (match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: "srv5" as HostIdentity, held: held) { Absent => true  Present { value: _ } => false })
+    && (match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: "srv8" as HostIdentity, held: held) { Absent => true  Present { value: _ } => false })
+    && (match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: "srv9" as HostIdentity, held: held) { Absent => false  Present { value: why } => why.contains("is not held by pair-unit@") })
+    && (match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: "srv1" as HostIdentity, held: held) { Absent => false  Present { value: _ } => true })
 }
 
 // THE SPAN READ IS EXACTLY THE PLANNED REGION: the fixed program owned by extdeps.tools.sha256sum,

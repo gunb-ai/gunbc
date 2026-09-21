@@ -681,6 +681,22 @@ fn spark_serving_admissible_hosts(subject: ServingSubject) -> List<HostIdentity>
   spark_admissible_hosts_to(standings: spark_host_standings, subject: subject)
 }
 
+// ADMISSION BY THE SUBJECT THAT HOLDS THE HOST, for an effect that stages bytes at rest on a committed
+// host on its owner's behalf (no process, container, seat or live allocation). The host must be one the
+// named subject holds; any other refuses with the held list rendered. The decision takes the held set
+// as a supplied value so a claim can drive it; the live seam reads it from spark_serving_admissible_hosts.
+// It lands no host-effect claim -- a committed-host staging claim carried on the owner's behalf would be
+// the stronger construction, and is not modeled here yet.
+fn admit_host_held_by_subject_among(raw: HostIdentity, subject: ServingSubject, held: List<HostIdentity>) -> String? {
+  if any(held, h => host_identity_eq(a: h, b: raw)) { none } else {
+    Present { value: join([raw as String, " is not held by ", serving_subject_wire(s: subject) as String, "; this effect runs only on hosts that subject holds, which are: ", join(map(held, h => h as String), ", ")], "") }
+  }
+}
+
+fn admit_host_held_by_subject(raw: HostIdentity, subject: ServingSubject) -> String? {
+  admit_host_held_by_subject_among(raw: raw, subject: subject, held: spark_serving_admissible_hosts(subject: subject))
+}
+
 // WHY A HOST IS NOT AVAILABLE, RENDERED FROM THE STANDING ITSELF.
 //
 // THE SHAPE THIS REPLACES WAS A HAND-MAINTAINED SENTENCE. `spark_uncommitted_hosts_how` listed the
