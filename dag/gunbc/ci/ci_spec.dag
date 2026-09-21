@@ -916,6 +916,11 @@ data gunbc_ci_approval_keyring_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "approval_keyring_converge_wet",
 }
 
+data gunbc_ci_approval_device_enrolment_code_issue_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/approval_device_enrolment_code_issue.dag",
+  function: "approval_device_enrolment_code_issue_wet",
+}
+
 data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
   function: "mtcollins1_boot_wet",
@@ -1174,6 +1179,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_publication_admit_target,
     gunbc_ci_heal_publication_publish_target,
     gunbc_ci_approval_keyring_converge_target,
+    gunbc_ci_approval_device_enrolment_code_issue_target,
     gunbc_ci_mtcollins1_boot_target
   ]
 }
@@ -2563,6 +2569,19 @@ data gunbc_ci_mtcollins1_boot_credential_shell_emit_scaffold: Disposition = Scaf
 }
 
 data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, PINNED BMC and submission-MAC secret versions fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+
+// The enrolment-code step has no prelude: no secret is fetched on the runner, the host holds
+// everything the verb reads, and the step's stdout is the remote receipt line alone.
+fn gunbc_ci_approval_device_enrolment_code_issue_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: [],
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_approval_device_enrolment_code_issue_target.entry,
+    function: gunbc_ci_approval_device_enrolment_code_issue_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
 
 fn gunbc_ci_approval_keyring_converge_invoke() -> String {
   concat(

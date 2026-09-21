@@ -1,0 +1,64 @@
+module test.claim.approval_device_enrolment_code_witness_test
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Timestamp, List }
+import std.process { ExitSuccess }
+import gunbc.auth.approval_device_routes {
+  EnrolmentCodeDeliveryReceipt, enrolment_code_delivery_line, enrolment_code_notification, approval_enrolment_code_notification_title,
+}
+import gunbc.auth.approval_notification { approval_ntfy_topic }
+import gunbc.auth.approval_device_enrolment_code_issue { enrolment_code_issue_remote_argv, enrolment_code_issue_refuses_off_srv1 }
+import gunbc.live_deploy.emit { RevisionBoundAtEmission }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
+import gunbc.fleet_converge_workflow {
+  ApprovalDeviceEnrolmentCodeIssue, fleet_converge_workflow_mode_wire, fleet_converge_workflow_modes, fleet_converge_mode_fleet_ssh_key_demand, FleetSshKeyConsumed,
+}
+
+// THE CODE NEVER REACHES THE STEP LOG (decision msg_a1d8d1b9): the receipt record carries no code
+// field, so the line rendered from it cannot contain one -- and this claim asserts that over a
+// designed code rather than trusting the type: the rendered line does NOT contain the code, while
+// the notification body, the one rendering the code is allowed, DOES. Deleting the receipt
+// carrier and rendering from the issuance directly reds the first half.
+data fx_code: NonEmptyStr = "9f3ac1d2"
+data fx_expires: Timestamp = "2026-09-21T20:10:00Z"
+
+test fn the_receipt_line_carries_the_delivery_but_never_the_code() -> Bool {
+  let line = enrolment_code_delivery_line(r: EnrolmentCodeDeliveryReceipt { topic: approval_ntfy_topic as NonEmptyStr, message_id: "m-42", expires_at: fx_expires })
+  let message = enrolment_code_notification(code: fx_code, expires_at: fx_expires)
+  !string_contains(s: line, pattern: fx_code as String)
+    && string_contains(s: line, pattern: "message_id=m-42")
+    && string_contains(s: line, pattern: "expires=" + fx_expires)
+    && string_contains(s: message.body as String, pattern: fx_code as String)
+    && message.title == approval_enrolment_code_notification_title
+    && message.topic == approval_ntfy_topic
+}
+
+// The remote argv runs the release's own binary over the release's own tree, as the operator's
+// POSIX user under non-interactive sudo, and names the verb by its module and function.
+test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool {
+  let argv = enrolment_code_issue_remote_argv(revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" })
+  let joined = join(argv, " ")
+  string_contains(s: joined, pattern: "/usr/bin/sudo -n -u " + (fleet_posix_operator_user.name as String) + " ")
+    && string_contains(s: joined, pattern: "/releases/0123456789abcdef0123456789abcdef01234567/gunbc run ")
+    && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/dag/gunbc/auth/approval_device_routes.dag --function issue_device_enrolment_code")
+}
+
+// The step runs on srv1 and nowhere else; the mode is rostered, wired, and consumes the fleet SSH
+// key like its keyring sibling.
+test fn the_mode_is_rostered_and_pinned_to_srv1() -> Bool {
+  (match enrolment_code_issue_refuses_off_srv1(host: operator_host_srv1 as String) {
+    ExitSuccess => true
+    _ => false
+  })
+    && (match enrolment_code_issue_refuses_off_srv1(host: "srv2") {
+      ExitSuccess => false
+      _ => true
+    })
+    && fleet_converge_workflow_mode_wire(mode: ApprovalDeviceEnrolmentCodeIssue) == "approval_device_enrolment_code_issue"
+    && any(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m) == "approval_device_enrolment_code_issue")
+    && (match fleet_converge_mode_fleet_ssh_key_demand(mode: ApprovalDeviceEnrolmentCodeIssue) {
+      FleetSshKeyConsumed => true
+      _ => false
+    })
+}

@@ -78,6 +78,19 @@ fn sudo_elevate(command: List<String>) -> ElevatedInvocation {
   }
 }
 
+// -u USER: run the command as USER rather than root (sudo(8): "-u user, --user=user"). A SEPARATE
+// row from sudo_elevate for the same reason -E is: it makes a different claim -- the command runs
+// under another principal's identity and permissions -- and a caller that means root must not get
+// a user by default. Still non-interactive: the same missing-grant refusal applies.
+data sudo_run_as_user_flag: NonEmptyStr = "-u"
+
+fn sudo_elevate_as(user: NonEmptyStr, command: List<String>) -> ElevatedInvocation {
+  ElevatedInvocation {
+    bin_path: sudo_binary_path as String,
+    args: list_append(left: [sudo_non_interactive_flag as String, sudo_run_as_user_flag as String, user as String], right: command),
+  }
+}
+
 // THE FLAT ARGV OF AN ELEVATED INVOCATION. ElevatedInvocation splits binary from tail because the
 // host-effect surface takes it that way; a shell transport wants one word list, and three callers
 // had each written the same [bin_path] ++ args append to get it. One row, so a future change to
