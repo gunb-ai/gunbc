@@ -78,6 +78,7 @@ import gunbc.runner_microvm_slot_unit {
   microvm_slot_unit_template_name, microvm_slot_unit_path, microvm_slot_unit_file,
   microvm_slot_unit_timeout_stop_sec,
   microvm_controller_slice_unit_name, microvm_controller_slice_unit_path, microvm_controller_slice_unit_file,
+  microvm_slot_controller_receipt_dir,
 }
 import extdeps.tools.findutils { find_program, xargs_program }
 import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program }
@@ -638,7 +639,7 @@ fn live_deploy_approval_broker_unit_file_on(
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
     service: [
-      ServiceType { mode: "simple" as NonEmptyStr },
+      ServiceType { mode: SimpleMode },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
@@ -2071,7 +2072,10 @@ fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeli
           microvm_controller_vmm_install_steps(revision: revision),
         ),
       ),
-      concat(microvm_slot_unit_write_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
+      concat(
+        [deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir))],
+        concat(microvm_slot_unit_write_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
+      ),
     ),
     on_failure: FailFast,
   }

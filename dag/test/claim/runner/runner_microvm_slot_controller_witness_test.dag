@@ -2,7 +2,10 @@ module test.claim.runner.runner_microvm_slot_controller_witness_test
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
-import std.measure { byte_size_count, byte_size, gibibyte, gibibyte_to_byte_size }
+import std.measure { byte_size_count, byte_size, gibibyte, gibibyte_to_byte_size, second_count }
+import gunbc.runner_microvm_attempt_bounds {
+  runner_attempt_vmm_deadline, runner_attempt_vmm_kill_grace, attempt_stop_grace, attempt_force_stop_bound, attempt_unit_stop_slack,
+}
 import extdeps.systemd.unit_file { slice_memory_max, slice_memory_swap_max }
 import v2.std.optional { Absent, Present }
 import extdeps.systemd.unit_file {
@@ -131,10 +134,13 @@ test fn the_controller_unit_joins_its_own_bounded_no_swap_slice_outside_the_cell
     && byte_size_count(b: microvm_controller_slice_memory_max) < gunbc_microvm_shakedown_slot_memory_max_bytes
 }
 
-// THE STOP TIMEOUT EXCEEDS THE VMM DEADLINE, so systemd cannot SIGKILL the controller before its
-// own bounded teardown has run (540 s deadline + 10 s kill grace + 30 s grace + 10 s force + 30 s).
+// THE STOP TIMEOUT IS THE SUM OF THE FIVE DECLARED ROWS, re-derived here from those rows rather
+// than transcribed, so a moved bound moves this claim with it.
 test fn the_unit_stop_timeout_covers_the_controllers_declared_bounds() -> Bool {
-  microvm_slot_unit_timeout_stop_seconds() == 620
+  microvm_slot_unit_timeout_stop_seconds()
+    == second_count(s: runner_attempt_vmm_deadline) + second_count(s: runner_attempt_vmm_kill_grace)
+      + second_count(s: attempt_stop_grace) + second_count(s: attempt_force_stop_bound) + second_count(s: attempt_unit_stop_slack)
+    && microvm_slot_unit_timeout_stop_seconds() > second_count(s: runner_attempt_vmm_deadline)
 }
 
 // --- the per-slot envelope and its width cost ---

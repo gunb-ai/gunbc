@@ -28,3 +28,10 @@ data runner_attempt_vmm_kill_grace: Second = second(count: 10)
 data attempt_stop_grace: Second = second(count: 30)
 
 data attempt_force_stop_bound: Second = second(count: 10)
+
+// THE SLACK BETWEEN THE CONTROLLER'S OWN BOUNDS AND THE UNIT'S STOP TIMEOUT, declared beside the
+// bounds it is added to (review 69796: it was a bare `+ 30` whose note called it a poll interval,
+// which is one second). It covers the readbacks and the store persist that follow the force bound
+// -- work the four bounds above do not time -- so systemd's SIGKILL of the controller arrives only
+// after a teardown that used every declared second has also written its settlement.
+data attempt_unit_stop_slack: Second = second(count: 30)

@@ -22,6 +22,7 @@ import gunbc.runner_unit_file { runner_unit_teardown_directives }
 import std.measure { Second, second, second_count }
 import gunbc.runner_microvm_attempt_bounds {
   runner_attempt_vmm_deadline, runner_attempt_vmm_kill_grace, attempt_stop_grace, attempt_force_stop_bound,
+  attempt_unit_stop_slack,
 }
 
 data runner_microvm_slot_unit_disposition: Disposition = SingleAuthority
@@ -128,6 +129,13 @@ fn microvm_controller_slice_unit_file() -> SystemdUnitFile {
   }
 }
 
+// WHERE THE CONTROLLER WRITES ITS RECEIPT: a root-owned directory the install creates
+// (gunbc.live_deploy.emit microvm_controller_install_intent) and the controller writes into, one
+// file per unit incarnation. It is declared here beside the unit because the deploy that writes
+// the unit is what makes the directory exist, and the controller that runs from the unit is what
+// fills it; a directory declared only in the controller (review 69796) was created by nothing.
+data microvm_slot_controller_receipt_dir: String = "/var/lib/gunbc/microvm-slot-controller"
+
 // THE TWO ENVIRONMENT NAMES THE UNIT SETS AND THE CONTROLLER READS. The slot arrives as systemd's
 // instance specifier (%i), so the unit instance name IS the slot instance name and a unit started
 // for srv1-13 cannot run the controller for another slot. The release directory is set explicitly
@@ -179,17 +187,16 @@ fn microvm_slot_lifecycle_intent() -> RunnerUnitLifecycleIntent {
 // TimeoutStopSec IS THE VMM DEADLINE PLUS THE CONTROLLER'S OWN STOP AND FORCE BOUNDS, spelled by
 // the controller module that owns those figures; the unit only carries the rendered value.
 // THE STOP TIMEOUT IS THE SUM OF THE BOUNDS THE CONTROLLER ALREADY DECLARES -- the VMM deadline and
-// its kill grace (gunbc.runner_attempt_launch), the graceful stop grace and the force bound
-// (gunbc.runner_microvm_lifecycle_realize) -- plus one poll interval of slack, so systemd's own
-// SIGKILL of the controller can arrive only after the controller's bounded teardown has had its
-// full declared time. A shorter value would kill the controller mid-readback and leave the cell
+// its kill grace, the graceful stop grace, the force bound, and the settlement slack, all rows of
+// gunbc.runner_microvm_attempt_bounds -- so systemd's own SIGKILL of the controller can arrive only
+// after the controller's bounded teardown has had its full declared time. A shorter value would kill the controller mid-readback and leave the cell
 // with no settlement, which is the recovery arm at the next admission rather than a clean stop.
 fn microvm_slot_unit_timeout_stop_seconds() -> Int {
   second_count(s: runner_attempt_vmm_deadline)
     + second_count(s: runner_attempt_vmm_kill_grace)
     + second_count(s: attempt_stop_grace)
     + second_count(s: attempt_force_stop_bound)
-    + 30
+    + second_count(s: attempt_unit_stop_slack)
 }
 
 fn microvm_slot_unit_timeout_stop_sec() -> String {
