@@ -45,10 +45,12 @@ import gunbc.runner_microvm { GuestCacheAllowance, AllowanceDerived, AllowanceUn
 // claim_batch run, and the PR that lands it says so rather than implying a gate.
 
 // THE AUTHORITY TOKEN IS UNCONSTRUCTIBLE HERE, AND THAT IS A COMPILE-TIME FACT RATHER THAN A CLAIM
-// THIS MODULE CAN EXECUTE: `MicroVmMemoryGrantAuthority { }` written in this file refuses at
-// resolve with SoleConstructorViolation (v1.compiler.infer sole_constructor_construction_diags,
-// whose own witnesses hold that wall), taking this module with it. So no claim here mints one;
-// every grant below is obtained through the policy's fold, which is the whole point of the token.
+// THIS MODULE CAN EXECUTE -- MEASURED, NOT ASSUMED: a function returning `MicroVmMemoryGrantAuthority { }`
+// appended to this file makes claim_batch refuse the whole module at resolve, at the literal's own
+// position, with `sole_constructor type 'MicroVmMemoryGrantAuthority' cannot be constructed outside
+// its defining module` (v1.compiler.infer sole_constructor_construction_diags, whose own witnesses
+// hold that wall), and no claim runs. So no claim here mints one; every grant below is obtained
+// through the policy's fold, which is the whole point of the token.
 
 fn work_id() -> FabricIdentity<NonEmptyStr, WorkKey> {
   FabricIdentity { principal: "operator", key: "work-1" as WorkKey }
