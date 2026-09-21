@@ -1,6 +1,7 @@
 module gunbc.auth.approval_capability
 
 import std.types { NonEmptyStr, String, Int, Timestamp }
+import std.decimal { decimal_digit_char }
 import std.logic { Bool }
 import std.scoped_authorization { AttemptIdentity }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
@@ -257,8 +258,7 @@ data utc_instant_width: Int = 20
 // produced by a validator that believed it had bounded one. So the accepted domain is validated in
 // full: digits, then field ranges, then the calendar.
 fn is_digit(c: String) -> Bool {
-  c == "0" || c == "1" || c == "2" || c == "3" || c == "4"
-    || c == "5" || c == "6" || c == "7" || c == "8" || c == "9"
+  decimal_digit_char(ch: c)
 }
 
 // The offsets are a LIST rather than a counted loop because every field in this format has a fixed

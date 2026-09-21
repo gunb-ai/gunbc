@@ -475,7 +475,7 @@ fn bundle_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> Atte
         Absent => Present { value: AttestationBundleVersionAbsent }
         Present { value: v } =>
           match cbor_text_string_value(v: v) {
-            Absent => Present { value: AttestationBundleVersionAbsent }
+            Absent => Present { value: app_attest_undecodable(cause: "apple_bundle_version_01 is not a CBOR text string") }
             Present { value: declared } => if declared == (expected as String) { none } else { Present { value: AttestationBundleVersionUnexpected { declared: declared } } }
           }
       }
@@ -671,20 +671,45 @@ fn assertion_parts(object: List<UInt8>) -> AssertionPartsRead {
   }
 }
 
+// The assertion's steps 7 and 8 share the attestation's readers; every attestation refusal the
+// readers can produce maps to its assertion twin BY NAME, and an undecodable member stays
+// undecodable with its cause (review 69702 of gunbc#11989: a wildcard had reported a malformed
+// category as absent).
 fn assertion_category_refusal(extensions: CborValue?, admitted: List<Int>) -> AssertionRefusal? {
   match validation_category_refusal(extensions: extensions, admitted: admitted) {
     Absent => none
     Present { value: AttestationValidationCategoryAbsent } => Present { value: AssertionValidationCategoryAbsent }
     Present { value: AttestationValidationCategoryRefused { category: c } } => Present { value: AssertionValidationCategoryRefused { category: c } }
-    Present { value: _ } => Present { value: AssertionValidationCategoryAbsent }
+    Present { value: AttestationUndecodable { cause: c } } => Present { value: AssertionUndecodable { cause: c } }
+    Present { value: other } => Present { value: AssertionUndecodable { cause: "validation category reader produced a refusal outside its contract: " + attestation_refusal_name(r: other) } }
   }
 }
 
 fn assertion_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> AssertionRefusal? {
   match bundle_version_refusal(extensions: extensions, expected: expected) {
     Absent => none
+    Present { value: AttestationBundleVersionAbsent } => Present { value: AssertionBundleVersionAbsent }
     Present { value: AttestationBundleVersionUnexpected { declared: d } } => Present { value: AssertionBundleVersionUnexpected { declared: d } }
-    Present { value: _ } => Present { value: AssertionBundleVersionAbsent }
+    Present { value: AttestationUndecodable { cause: c } } => Present { value: AssertionUndecodable { cause: c } }
+    Present { value: other } => Present { value: AssertionUndecodable { cause: "bundle version reader produced a refusal outside its contract: " + attestation_refusal_name(r: other) } }
+  }
+}
+
+fn attestation_refusal_name(r: AttestationRefusal) -> String {
+  match r {
+    AttestationFormatUnexpected { declared: _ } => "AttestationFormatUnexpected"
+    AttestationChainUntrusted { detail: _ } => "AttestationChainUntrusted"
+    AttestationNonceMismatch => "AttestationNonceMismatch"
+    AttestationKeyIdMismatch { declared: _ } => "AttestationKeyIdMismatch"
+    AttestationAppIdMismatch { expected_app_id: _ } => "AttestationAppIdMismatch"
+    AttestationCounterNonZero { counter: _ } => "AttestationCounterNonZero"
+    AttestationEnvironmentUnexpected { expected: _ } => "AttestationEnvironmentUnexpected"
+    AttestationCredentialIdMismatch { declared: _ } => "AttestationCredentialIdMismatch"
+    AttestationValidationCategoryRefused { category: _ } => "AttestationValidationCategoryRefused"
+    AttestationValidationCategoryAbsent => "AttestationValidationCategoryAbsent"
+    AttestationBundleVersionAbsent => "AttestationBundleVersionAbsent"
+    AttestationBundleVersionUnexpected { declared: _ } => "AttestationBundleVersionUnexpected"
+    AttestationUndecodable { cause: _ } => "AttestationUndecodable"
   }
 }
 
