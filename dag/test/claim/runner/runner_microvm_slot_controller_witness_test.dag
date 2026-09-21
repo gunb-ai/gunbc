@@ -1,0 +1,217 @@
+module test.claim.runner.runner_microvm_slot_controller_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size }
+import v2.std.optional { Absent, Present }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, ExecStart, ServiceType, ExecMode,
+  ServiceExitType, ServiceKillMode, ExitTypeMain, KillModeControlGroup, Installable, WantedBy, Description,
+}
+import product.fabric.identity { FabricIdentity, WorkKey }
+import product.fabric.work { Work, ExecutionRequirements, TrustDomainRef }
+import product.fabric.sanitation { CellId }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
+import gunbc.runner_slot_allocation {
+  srv1_microvm_shakedown_slot, gunbc_runner_slot_desired, gunbc_runner_slot_desired_for,
+  gunbc_microvm_shakedown_slot_memory_max_bytes, gunbc_runner_slot_memory_max_bytes,
+  memory_admitted_width_of_envelope, fabric_execution_slot_identities,
+}
+import gunbc.fabric_witness_run { gunbc_internal_fleet_trust_domain }
+import gunbc.runner_microvm { gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused, gunbc_runner_microvm_shape }
+import gunbc.runner_microvm_attempt { MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused }
+import gunbc.runner_microvm_shakedown { microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer }
+import gunbc.runner_attempt_launch {
+  ReservationAuthorization, ReservationAuthorizes, ReservationArmRequiresInternalFleetTrust,
+  ReservationNamesDifferentWork, ReservationForDifferentCell, ReservationGenerationDisagrees,
+  reservation_agreement,
+}
+import gunbc.runner_microvm_slot_unit {
+  microvm_slot_unit_file, microvm_slot_unit_execs_controller, microvm_slot_unit_timeout_stop_seconds,
+  microvm_slot_controller_entry_function,
+}
+import gunbc.runner_microvm_slot_controller { slot_of_instance }
+
+// THE SLOT CONTROLLER'S PURE FOLDS, CLAIMED WITHOUT A HOST. The composition itself is wet -- it
+// reads the environment, the CAS, the readiness store and the locus -- and its inhabitance is the
+// srv1 receipt in the PR that landed it; what these claims discriminate are the decisions the
+// composition consumes: the unit's shape, the per-slot envelope and its width cost, the shakedown
+// slot's guest shape against the fleet row's, the reservation-authorized planner arm's refusals,
+// and the slot selection.
+
+// --- the unit execs the controller as MainPID ---
+
+fn rendered() -> SystemdUnitFile {
+  microvm_slot_unit_file(release_dir: "/opt/gunbc/microvm-controller/releases/abc", timeout_stop_sec: "630")
+}
+
+fn service_directives(f: SystemdUnitFile) -> List<SystemdServiceDirective> {
+  match f {
+    ServiceUnitFile { unit: _, service: s, install: _ } => s
+    _ => []
+  }
+}
+
+fn has_exec_mode(f: SystemdUnitFile) -> Bool {
+  fold(service_directives(f: f), init: false, f: (acc, d) => acc || match d { ServiceType { mode: ExecMode } => true  _ => false })
+}
+
+fn has_teardown_intent(f: SystemdUnitFile) -> Bool {
+  let ds = service_directives(f: f)
+  fold(ds, init: false, f: (acc, d) => acc || match d { ServiceExitType { exit_type: ExitTypeMain } => true  _ => false })
+    && fold(ds, init: false, f: (acc, d) => acc || match d { ServiceKillMode { mode: KillModeControlGroup } => true  _ => false })
+}
+
+// A LAUNCHER THAT EXITS DOES NOT SATISFY THE TOPOLOGY, and the discriminator is a unit whose
+// ExecStart names something other than the controller entry: the projection reads false for it.
+fn launcher_unit() -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [Description { text: "launcher" as NonEmptyStr }],
+    service: [ServiceType { mode: ExecMode }, ExecStart { command: "/usr/bin/true" as NonEmptyStr }],
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}
+
+test fn the_slot_unit_execs_the_controller_entry_as_main_pid_with_the_declared_teardown() -> Bool {
+  microvm_slot_unit_execs_controller(file: rendered())
+    && has_exec_mode(f: rendered())
+    && has_teardown_intent(f: rendered())
+    && !microvm_slot_unit_execs_controller(file: launcher_unit())
+}
+
+// THE STOP TIMEOUT EXCEEDS THE VMM DEADLINE, so systemd cannot SIGKILL the controller before its
+// own bounded teardown has run (540 s deadline + 10 s kill grace + 30 s grace + 10 s force + 30 s).
+test fn the_unit_stop_timeout_covers_the_controllers_declared_bounds() -> Bool {
+  microvm_slot_unit_timeout_stop_seconds() == 620
+}
+
+// --- the per-slot envelope and its width cost ---
+
+fn fleet_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
+}
+
+test fn the_shakedown_slot_carries_28_gib_no_swap_and_no_throttle_line_while_the_fleet_row_stands() -> Bool {
+  let shakedown = gunbc_runner_slot_desired_for(slot: srv1_microvm_shakedown_slot())
+  let fleet = gunbc_runner_slot_desired_for(slot: fleet_slot())
+  byte_size_count(b: shakedown.memory_max) == gunbc_microvm_shakedown_slot_memory_max_bytes
+    && gunbc_microvm_shakedown_slot_memory_max_bytes == byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 28)))
+    && byte_size_count(b: shakedown.memory_swap_max) == 0
+    && byte_size_count(b: shakedown.memory_high) == byte_size_count(b: shakedown.memory_max)
+    && byte_size_count(b: fleet.memory_max) == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+    && byte_size_count(b: fleet.memory_swap_max) == byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)
+}
+
+// THE WIDTH COST IS DERIVED FROM THE REMAINDER'S SLACK: fifteen fleet slots exactly lose one to
+// the 28 GiB slot; fifteen slots plus two spare GiB lose none. A host that cannot hold the
+// shakedown slot at all admits zero.
+test fn the_shakedown_slot_costs_one_fleet_slot_only_when_the_remainders_slack_is_under_two_gib() -> Bool {
+  let fleet_row = gunbc_runner_slot_memory_max_bytes
+  let gib = byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 1)))
+  memory_admitted_width_of_envelope(envelope_bytes: 15 * fleet_row, carries_shakedown_slot: false) == 15
+    && memory_admitted_width_of_envelope(envelope_bytes: 15 * fleet_row, carries_shakedown_slot: true) == 14
+    && memory_admitted_width_of_envelope(envelope_bytes: 15 * fleet_row + 2 * gib, carries_shakedown_slot: true) == 15
+    && memory_admitted_width_of_envelope(envelope_bytes: gunbc_microvm_shakedown_slot_memory_max_bytes - 1, carries_shakedown_slot: true) == 0
+}
+
+// THE SHAKEDOWN SLOT'S GUEST SHAPE RESOLVES WHERE THE FLEET ROW'S REFUSES: the same demand
+// receipt, the same allowance and reserve, one more row. The expecting-red production witness
+// (test.claim.runner.runner_microvm_witness_test) keeps reading the fleet row and keeps refusing,
+// which is the floor-fit stall's trigger left where it was.
+test fn the_shakedown_slots_shape_resolves_while_the_fleet_rows_still_refuses() -> Bool {
+  let shakedown = match gunbc_runner_microvm_shape_for_slot(slot: srv1_microvm_shakedown_slot()) {
+    MicroVmShapeResolved { shape: _ } => true
+    MicroVmShapeRefused { refusal: _ } => false
+  }
+  let fleet = match gunbc_runner_microvm_shape() {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: _ } => true
+  }
+  shakedown && fleet
+}
+
+// --- the reservation-authorized planner arm ---
+
+fn attempt_on(slot: RunnerSlotIdentity) -> List<MicroVmAttempt> {
+  match microvm_attempt(slot: slot, attempt_id: "w-1") {
+    MicroVmAttemptAccepted { attempt: a } => [a]
+    MicroVmAttemptRefused { refusal: _ } => []
+  }
+}
+
+fn work_in_domain(domain: TrustDomainRef) -> Work<NonEmptyStr> {
+  let w = microvm_shakedown_work()
+  Work {
+    id: w.id,
+    contract: w.contract,
+    requirements: ExecutionRequirements {
+      capacity_class: w.requirements.capacity_class,
+      shape: w.requirements.shape,
+      capabilities: w.requirements.capabilities,
+      trust_domain: domain,
+      isolation: w.requirements.isolation,
+    },
+  }
+}
+
+fn agreement_label(a: ReservationAuthorization) -> String {
+  match a {
+    ReservationAuthorizes => "authorizes"
+    ReservationArmRequiresInternalFleetTrust { trust_domain: _ } => "trust"
+    ReservationNamesDifferentWork { reserved: _, presented: _ } => "work"
+    ReservationForDifferentCell { reserved: _, attempt_cell: _ } => "cell"
+    ReservationGenerationDisagrees { reserved: _, presented: _ } => "generation"
+  }
+}
+
+fn agree(reserved_work: FabricIdentity<NonEmptyStr, WorkKey>, reserved_cell: CellId, generation: Int, work: Work<NonEmptyStr>, presented: Int) -> String {
+  match attempt_on(slot: srv1_microvm_shakedown_slot()).first() {
+    Absent => "no-attempt"
+    Present { value: a } =>
+      agreement_label(a: reservation_agreement(
+        reserved_work: reserved_work, reserved_cell: reserved_cell, reserved_generation: generation,
+        work: work, attempt: a, allocation_generation: presented,
+      ))
+  }
+}
+
+// EVERY REFUSAL THE GRANT JOIN PERFORMS HAS ITS ARM HERE, AND THE TRUST DOMAIN IS CHECKED FIRST:
+// a Work outside the fleet's trust domain -- the untrusted-CI route -- cannot reach the arm even
+// when every identity agrees, which is the control the parent's decision required.
+test fn the_reservation_arm_admits_only_the_fleets_trust_domain_and_refuses_each_disagreement_by_name() -> Bool {
+  let work = microvm_shakedown_work()
+  let cell = fabric_cell_id_for_slot(slot: srv1_microvm_shakedown_slot())
+  let other_cell = fabric_cell_id_for_slot(slot: fleet_slot())
+  let other_work = FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "some-other-work" as WorkKey }
+  agree(reserved_work: work.id, reserved_cell: cell, generation: 3, work: work, presented: 3) == "authorizes"
+    && agree(reserved_work: work.id, reserved_cell: cell, generation: 3, work: work_in_domain(domain: "gunbc.trust.untrusted-ci" as TrustDomainRef), presented: 3) == "trust"
+    && agree(reserved_work: other_work, reserved_cell: cell, generation: 3, work: work, presented: 3) == "work"
+    && agree(reserved_work: work.id, reserved_cell: other_cell, generation: 3, work: work, presented: 3) == "cell"
+    && agree(reserved_work: work.id, reserved_cell: cell, generation: 3, work: work, presented: 4) == "generation"
+    && (work.requirements.trust_domain as String) == (gunbc_internal_fleet_trust_domain as String)
+}
+
+// --- the shakedown identities are deterministic and bound to the slot ---
+
+test fn the_shakedown_demand_and_offer_are_derived_from_the_slot_and_name_the_shakedown_work() -> Bool {
+  let slot = srv1_microvm_shakedown_slot()
+  let demand = microvm_shakedown_demand(slot: slot)
+  let offer = microvm_shakedown_offer(slot: slot)
+  (demand.work.key as String) == (microvm_shakedown_work().id.key as String)
+    && (offer.executor as String) == runner_slot_instance_name(slot: slot)
+    && (demand.id.key as String) != (microvm_shakedown_demand(slot: fleet_slot()).id.key as String)
+}
+
+// --- the slot is selected out of the roster, never parsed ---
+
+test fn the_controller_selects_only_a_fabric_member_out_of_its_instance_name() -> Bool {
+  let shakedown = match slot_of_instance(instance: "srv1-13") {
+    Present { value: s } => (s.host as String) == (operator_host_srv1 as String) && s.slot_index == 13
+    Absent => false
+  }
+  let github_slot = match slot_of_instance(instance: "srv1-01") { Present { value: _ } => false  Absent => true }
+  let member_count = fabric_execution_slot_identities().count()
+  shakedown && github_slot && member_count == 5
+}

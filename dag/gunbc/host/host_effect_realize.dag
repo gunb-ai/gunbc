@@ -26,6 +26,7 @@ import gunbc.host_effect {
   LiveDeployApply,
   LiveDeployRetract,
   LiveDeployApprovalBrokerDarkInstall,
+  LiveDeployMicrovmControllerInstall,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
   DeployAccessPreflight,
@@ -182,6 +183,7 @@ import gunbc.live_deploy.emit {
   live_deploy_retract_script_for,
   deployment_ensure_dependency_script,
   approval_broker_dark_install_script,
+  microvm_controller_install_script,
   ReleaseRevisionBinding, RevisionBoundAtEmission,
 }
 import gunbc.runner_lifecycle_realize {
@@ -436,6 +438,7 @@ type ResolvedHostEffectCell =
   | LiveDeployApplyOnHost { node: ComputeHost, spec: DeploymentSpec, candidate: CandidateRelease, plan: ReleaseEffectPlan }
   | LiveDeployRetractOnHost { node: ComputeHost, spec: DeploymentSpec }
   | LiveDeployApprovalBrokerDarkInstallOnHost { node: ComputeHost, spec: DeploymentSpec, candidate: CandidateRelease }
+  | LiveDeployMicrovmControllerInstallOnHost { node: ComputeHost, candidate: CandidateRelease }
   | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
   | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int }
   | EnsureActionsRunnerReleaseOnHost { node: ComputeHost, runner_release: ActionsRunnerRelease }
@@ -505,6 +508,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           LiveDeployRetractOnHost { node: n, spec: s }
         LiveDeployApprovalBrokerDarkInstall { spec: s, candidate: c } =>
           LiveDeployApprovalBrokerDarkInstallOnHost { node: n, spec: s, candidate: c }
+        LiveDeployMicrovmControllerInstall { candidate: c } =>
+          LiveDeployMicrovmControllerInstallOnHost { node: n, candidate: c }
         LiveDeployEnsureDependency { dep: d } =>
           LiveDeployEnsureDependencyOnHost { node: n, dep: d }
         LiveDeployDigestReadback { port: p } =>
@@ -561,6 +566,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               LiveDeployRetractOnHost { node: n, spec: s }
             LiveDeployApprovalBrokerDarkInstall { spec: s, candidate: c } =>
               LiveDeployApprovalBrokerDarkInstallOnHost { node: n, spec: s, candidate: c }
+            LiveDeployMicrovmControllerInstall { candidate: c } =>
+              LiveDeployMicrovmControllerInstallOnHost { node: n, candidate: c }
             LiveDeployEnsureDependency { dep: d } =>
               LiveDeployEnsureDependencyOnHost { node: n, dep: d }
             LiveDeployDigestReadback { port: p } =>
@@ -652,6 +659,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               IncompatibleCell { reason: "host_effect: LiveDeployRetract is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } =>
               IncompatibleCell { reason: "host_effect: LiveDeployApprovalBrokerDarkInstall is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            LiveDeployMicrovmControllerInstall { candidate: _ } =>
+              IncompatibleCell { reason: "host_effect: LiveDeployMicrovmControllerInstall is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             LiveDeployEnsureDependency { dep: _ } =>
               IncompatibleCell { reason: "host_effect: LiveDeployEnsureDependency is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             LiveDeployDigestReadback { port: _ } =>
@@ -4004,6 +4013,23 @@ fn realize_approval_broker_dark_install_on_host(
   )
 }
 
+fn realize_microvm_controller_install_on_host(
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: microvm_controller_install_script(
+        revision: RevisionBoundAtEmission { revision: candidate.revision },
+      ),
+      reason: "microVM slot controller install (additive locus + template unit; starts no instance)",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
 fn realize_live_deploy_ensure_dependency_on_host(
   dep: DeploymentDependencyStep,
   transport: HostEffectTransport,
@@ -4084,6 +4110,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
     LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: s, candidate: c } =>
       realize_approval_broker_dark_install_on_host(spec: s, candidate: c, transport: transport, intent: intent)
+    LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: c } =>
+      realize_microvm_controller_install_on_host(candidate: c, transport: transport, intent: intent)
     LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
       realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
     LiveDeployDigestReadbackOnHost { node: _, port: p } =>
@@ -4285,6 +4313,8 @@ fn host_effect_apply_gated(
           realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
         LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: s, candidate: c } =>
           realize_approval_broker_dark_install_on_host(spec: s, candidate: c, transport: transport, intent: intent)
+        LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: c } =>
+          realize_microvm_controller_install_on_host(candidate: c, transport: transport, intent: intent)
         LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
           realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
         LiveDeployDigestReadbackOnHost { node: _, port: p } =>
@@ -4367,6 +4397,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             LiveDeployApplyOnHost { node: _, spec: _, candidate: _, plan: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployRetractOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: _, candidate: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployEnsureDependencyOnHost { node: _, dep: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployDigestReadbackOnHost { node: _, port: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))

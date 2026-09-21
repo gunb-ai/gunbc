@@ -104,6 +104,16 @@ fn firecracker_release_binary_path_in_tarball(rel: FirecrackerRelease) -> String
   ], "")
 }
 
+// THE JAILER SHIPS IN THE SAME TARBALL beside the VMM, as jailer-<version>-<arch>, read from the
+// same release listing; it is named here so an installer that wants both copies both out of one
+// digest-verified archive rather than spelling the second path itself.
+fn firecracker_release_jailer_path_in_tarball(rel: FirecrackerRelease) -> String {
+  join([
+    "release-", rel.version as String, "-", rel.arch as String,
+    "/jailer-", rel.version as String, "-", rel.arch as String,
+  ], "")
+}
+
 data firecracker_release_aarch64_tarball_sha256: NonEmptyStr = "8d0e69f6d6f9a1724551f607f18504052c16c1828ee3d4d7b6e6c73380871e0e" as NonEmptyStr
 
 // `firecracker --version` prints `Firecracker v<version>` on its first line; the readback compares

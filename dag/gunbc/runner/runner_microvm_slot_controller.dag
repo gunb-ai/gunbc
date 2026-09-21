@@ -1,0 +1,532 @@
+module gunbc.runner_microvm_slot_controller
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.algebra { trim }
+import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.resources { Filesystem, Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.posix.test_utility { test_executable_command, test_exists_command }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.github.actions_jit_runner { JitRunnerGroupId }
+import extdeps.github.effect { GitHubOrganizationRef }
+import product.fabric.sanitation { CellId }
+import product.fabric.work { Work }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.host_effect { LocalShell }
+import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet_posix_accounts { fleet_posix_home_directory }
+import gunbc.runner_slot_allocation { fabric_execution_slot_identities }
+import gunbc.runner_host_deploy { RunnerHostSpec }
+import gunbc.runner_microvm_host_ready {
+  MicrovmHostBinding, MicrovmHostBound, MicrovmHostBindingRefused, MicrovmHostBindingRefusal,
+  microvm_host_binding_of, microvm_host_binding_refusal_text, HostObservationFailed,
+}
+import gunbc.runner_microvm_slot_unit {
+  microvm_slot_env_name, microvm_release_dir_env_name,
+  microvm_controller_vmm_binary, microvm_controller_jailer_binary,
+}
+import gunbc.runner_guest_image {
+  runner_guest_image_root, runner_guest_image_path, runner_guest_base_artifact_path, runner_guest_kernel_artifact,
+}
+import gunbc.runner_microvm {
+  gunbc_runner_guest_image, RunnerMicroVmShape,
+  gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused, runner_microvm_shape_refusal_text,
+}
+import gunbc.runner_microvm_shakedown {
+  microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_runner_group,
+}
+import gunbc.fabric_control_plane { fabric_control_plane_store_root }
+import gunbc.fabric_required_build_cell {
+  RequiredBuildCellSnapshot, RequiredBuildCellObservation, RequiredBuildCellObserved,
+  ReservationAbsent, ReservationUnreadable, ReservationPayloadUndecodable, ReservationPayloadWorkMismatch,
+  SelectedOfferCellMismatch, CellSubstrateNotConverged, UnownedCell,
+  observe_required_build_cell_wet,
+}
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned, bind_microvm_to_cell,
+}
+import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, gunbai_ci_declared_installation_id }
+import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
+import gunbc.fleet_runner_connectivity { github_organization_ref }
+import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
+import gunbc.runner.runner_jit_perform { dispatch_jit_mint, JitMintDispatch }
+import gunbc.github_effect_perform { JitMintPerformance, perform_organization_jit_mint }
+import gunbc.runner_attempt_launch {
+  AttemptLaunchPlan, LaunchAuthorized, plan_attempt_launch_reservation_authorized,
+}
+import gunbc.runner_microvm_network {
+  ConvergedSlotNetwork, parse_converged_slot_network, ConvergedSlotNetworkParsed, ConvergedSlotNetworkMalformed,
+  SlotNetworkSanitationSubject, slot_network_sanitation_subject, SanitationSubjectAdmitted, SanitationSubjectRefused,
+  SanitationSubjectRefusal, runner_microvm_converged_receipt_path,
+}
+import gunbc.runner_microvm_lifecycle { AttemptIdentity }
+import gunbc.runner_microvm_lifecycle_realize {
+  ControllerOutcome, run_controller, observe_attempt_ground,
+  ControllerRefusedAdmission, ControllerRefusedBinding, ControllerQuarantinedUnattributedResidue,
+  ControllerStartNotRecorded, ControllerRecovered, ControllerRanAttempt,
+}
+
+data runner_microvm_slot_controller_disposition: Disposition = SingleAuthority
+
+// THE PROCESS THE microVM SLOT UNIT EXECS AS ITS MainPID (gunbc.runner_microvm_slot_unit): the one
+// production route into gunbc.runner_microvm_lifecycle_realize run_controller, and the consumer
+// that dissolved its controller_main_pid_consumer_frontier row.
+//
+// WHAT THIS MODULE IS AND IS NOT. It is COMPOSITION and nothing else: every decision it reaches is
+// made by a module that already owned it -- cell admission by the readiness store, the reservation
+// re-read by gunbc.fabric_required_build_cell, cell binding by gunbc.runner_microvm_attempt, the
+// credential mint by gunbc.runner.runner_jit_perform and gunbc.github_effect_perform, the guest shape
+// by gunbc.runner_microvm, the launch plan by gunbc.runner_attempt_launch, the sanitation subject by
+// gunbc.runner_microvm_network, and the attempt itself by the lifecycle controller. This module
+// obtains each one's INPUTS from the host and hands the outputs down in the order the world
+// requires; it adds no verdict and no second orchestration model (DESIGN section 3, replacement
+// migrations: integrate the landed controller, never stand a second one beside it).
+//
+// THE ORDER IS THE SAFETY PROPERTY. Nothing is minted before the slot is bound to this machine and
+// its reservation has been re-read from the host CAS; nothing is staged before run_controller has
+// recorded the attempt in flight; and every stage before the mint is free of host mutation, so a
+// refusal there leaves the host exactly as it was found.
+//
+// EVERY STAGE THAT CANNOT PROCEED REFUSES WITH THE STAGE NAMED AND THE HOST UNTOUCHED. The refusal
+// carrier below has one arm per stage so an operator reading a receipt knows which authority said
+// no and what to go and read -- the environment, the roster, the machine's own name, the locus,
+// the guest image, the reservation, the cell's ownership, the App control plane, the shape, or the
+// network receipt. A String would send them to the wrong module.
+type SlotControllerRefusal
+  = EnvironmentAbsent { name: String }
+  | SlotNotAFabricMember { instance: String }
+  | SlotHostBindingRefused { cause: MicrovmHostBindingRefusal }
+  | ReleaseLocusIncomplete { path: String }
+  | GuestImageIncomplete { path: String }
+  | ReservationNotObserved { observation: RequiredBuildCellObservation }
+  | CellNotBound { cause: String }
+  | AppControlPlaneUnproduced { detail: String }
+  | ShapeRefused { detail: String }
+  | NetworkReceiptUnreadable { path: String, detail: String }
+  | NetworkReceiptMalformed { path: String, cause: NonEmptyStr }
+  | SanitationSubjectNotAdmitted { refusal: SanitationSubjectRefusal }
+  | LaunchNotPlanned { plan: AttemptLaunchPlan }
+
+type SlotControllerOutcome
+  = SlotControllerRefused { refusal: SlotControllerRefusal }
+  | SlotControllerRan { outcome: ControllerOutcome }
+
+// ── stage 1: the slot, from the unit's own instance ─────────────────────────────────────────────
+
+fn environment_value(name: String) -> String? {
+  match shell.Env.Get(name: name as NonEmptyStr).value {
+    Absent => none
+    Present { value: v } => if trim(s: v) == "" { none } else { Present { value: trim(s: v) } }
+  }
+}
+
+// THE SLOT IS SELECTED OUT OF THE FABRIC ROSTER, NOT PARSED OUT OF A STRING. The unit instance is
+// %i, which the emitter sets to the slot's instance name; matching it against
+// fabric_execution_slot_identities is the same selection-over-candidates the network receipt parser
+// uses, and it refuses by construction for any instance the roster does not admit -- a GitHub slot,
+// a typo, a host that has no fabric member.
+fn slot_of_instance(instance: String) -> RunnerSlotIdentity? {
+  fold(fabric_execution_slot_identities(), init: none, f: (acc, s) =>
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if runner_slot_instance_name(slot: s) == instance { Present { value: s } } else { none }
+    })
+}
+
+// THE MACHINE MUST BE THE SLOT'S HOST, READ FROM THE KERNEL AND JOINED THROUGH THE SAME BINDING THE
+// FLEET-CONVERGE micro-VM MODES USE (gunbc.runner_microvm_host_ready microvm_host_binding_of):
+// a unit for srv1-13 started on any other machine refuses before reading anything else.
+fn bind_slot_host(slot: RunnerSlotIdentity) -> MicrovmHostBinding {
+  match hostname_short_read(transport: LocalShell) {
+    HostnameShortCaptureRefused { reason: r } =>
+      MicrovmHostBindingRefused { cause: HostObservationFailed { reason: r } }
+    HostnameShortCaptured { value: v } =>
+      if trim(s: v) == "" {
+        MicrovmHostBindingRefused { cause: HostObservationFailed { reason: "hostname -s returned empty output" } }
+      } else {
+        microvm_host_binding_of(expected: slot.host as NonEmptyStr, observed: trim(s: v) as NonEmptyStr)
+      }
+  }
+}
+
+// ── stage 2: the locus and the guest image, read as existence ───────────────────────────────────
+
+fn path_is_executable(path: String) -> Bool
+  uses net: Network
+{
+  outcome_is_success(outcome: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec))
+}
+
+fn path_exists(path: String) -> Bool
+  uses net: Network
+{
+  outcome_is_success(outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
+}
+
+fn outcome_is_success(outcome: ProcessOutcome) -> Bool {
+  match outcome {
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+// THE VMM AND THE JAILER ARE THE LOCUS'S, root-owned and installed beside this binary by the same
+// deploy (gunbc.live_deploy.emit microvm_controller_vmm_install_steps). The job-user copy under
+// the executor's HOME (gunbc.runner_microvm_host_ready) is never read here: root must not exec what
+// the job user can write.
+type LocusBinaries { firecracker: String, jailer: String }
+
+fn locus_binaries(release_dir: String) -> LocusBinaries {
+  LocusBinaries {
+    firecracker: microvm_controller_vmm_binary(release_dir: release_dir),
+    jailer: microvm_controller_jailer_binary(release_dir: release_dir),
+  }
+}
+
+// THE GUEST IMAGE SOURCES ARE THE JOB USER'S BUILT IMAGE (gunbc.runner_guest_image, built by the
+// guest_image_converge mode under the executor's HOME) and the cited kernel beside it. STATED
+// RATHER THAN HIDDEN: those files are job-user-writable and the plan copies them into a root-owned
+// jail, so a hostile job on this host could alter the next attempt's guest. This is the trusted-
+// workload shakedown and makes no isolation claim; moving the image into the root-owned locus is
+// the same repair the VMM already had and is named, not done, here.
+type GuestImageSources { kernel: String, rootfs: String }
+
+fn guest_image_sources(spec: RunnerHostSpec) -> GuestImageSources {
+  let root = runner_guest_image_root(executor_home: fleet_posix_home_directory(login: spec.job_user) as String)
+  GuestImageSources {
+    kernel: runner_guest_base_artifact_path(root: root, artifact: runner_guest_kernel_artifact),
+    rootfs: runner_guest_image_path(root: root, image: gunbc_runner_guest_image),
+  }
+}
+
+// ── stage 3: the reservation, re-read from the host CAS ─────────────────────────────────────────
+
+// THE DEMAND AND OFFER ARE DERIVED, NOT REMEMBERED (gunbc.runner_microvm_shakedown): the same
+// authority the placer used, so the hold owner the CAS carries is one this process can name.
+fn observe_reservation(slot: RunnerSlotIdentity) -> RequiredBuildCellObservation
+  uses net: Network, fs: Filesystem
+{
+  observe_required_build_cell_wet(
+    root: fabric_control_plane_store_root(),
+    host: slot.host,
+    slot: slot,
+    demand: microvm_shakedown_demand(slot: slot),
+    offer: microvm_shakedown_offer(slot: slot),
+  )
+}
+
+// ── stage 4: the credential ─────────────────────────────────────────────────────────────────────
+
+// DECLARED FRONTIER (DESIGN 3c): NO PRODUCTION ROUTE OBSERVES THE gunbai-ci APP CONTROL PLANE.
+// gunbc.runner_jit_mint plan_jit_mint admits a mint only under a GitHubAppControlPlaneState that
+// reports InstallationGrantObserved, and that state is sealed by gunbc.auth.github_apps
+// sealed_control_plane_state from three observations -- signer custody (the key's fingerprint
+// against GitHub's registered one), the App registration's permissions, and the installation's
+// grant -- of which no production process performs the first, and the second and third exist only
+// as fleet-converge observe modes and instruments. NAMED CONSUMER: mint_attempt_credential below,
+// which hands the state to dispatch_jit_mint. TRIGGER, at capability grain: a producer that a
+// process holding the controller's App key can call to observe custody, registration and
+// installation and seal the state -- the App control-plane lane's, not this one's. SUFFICIENT FOR
+// deleting this row and the AppControlPlaneUnproduced arm. NOT satisfied by a witness supplying an
+// InstallationGrantObserved state, nor by performing the mint without the plan's credential join
+// (the workaround DESIGN section 5 names).
+data app_control_plane_producer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_microvm_slot_controller mint_attempt_credential, which needs a GitHubAppControlPlaneState for gunbc.runner.runner_jit_perform dispatch_jit_mint. TRIGGER: a production producer that observes signer custody, App registration and installation grant with the controller's App key and seals the state through gunbc.auth.github_apps sealed_control_plane_state. SUFFICIENT FOR deleting this row and SlotControllerRefusal AppControlPlaneUnproduced. NOT satisfied by a witness supplying the state or by minting around the plan's credential join." as NonEmptyStr,
+)
+
+type AppControlPlaneObservation
+  = AppControlPlaneObserved { state: GitHubAppControlPlaneState }
+  | AppControlPlaneNotObservable { detail: String }
+
+fn observe_app_control_plane() -> AppControlPlaneObservation {
+  AppControlPlaneNotObservable {
+    detail: "no production producer observes the gunbai-ci App control plane (signer custody, registration, installation grant) from a process holding the controller's key; see app_control_plane_producer_frontier",
+  }
+}
+
+fn controller_credential_authority() -> GitHubCredentialAuthority {
+  ManagedAppInstallationCredential {
+    app: gunbai_ci_declared,
+    installation: gunbai_ci_declared_installation_id,
+    profile: GitHubCredentialProfileRef { name: "microvm-slot-controller" },
+  }
+}
+
+fn mint_attempt_credential(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState) -> JitMintPerformance
+  uses net: Network
+{
+  perform_organization_jit_mint(dispatch: dispatch_jit_mint(
+    binding: binding,
+    authority: controller_credential_authority(),
+    control_plane: state,
+    organization: github_organization_ref(),
+    runner_group_id: microvm_shakedown_runner_group,
+    attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+  ))
+}
+
+// ── stage 5: the slot network receipt, read from its durable host path ──────────────────────────
+
+// THE RECEIPT IS READ FROM ITS DURABLE ROOT-OWNED PATH (gunbc.runner_microvm_network
+// runner_microvm_converged_receipt_path), PARSED, AND THE SUBJECT DERIVED FROM THE PARSED VALUE --
+// the consumption gunbc.runner_microvm_network's converged_slot_network_parse_consumer_frontier
+// named. The producer is the administrator-edge observe the network lane owns (parent ruling
+// 2026-09-21: never a job-user-writable file that root believes); until it lands every read here
+// is Unreadable, which refuses the attempt BEFORE the mint rather than quarantining a cell after a
+// run. The brief's network-quarantine arm is reached only once a receipt exists and the readings
+// themselves are Unreadable.
+
+type NetworkSubjectResolution
+  = NetworkSubjectResolved { subject: SlotNetworkSanitationSubject }
+  | NetworkSubjectRefused { refusal: SlotControllerRefusal }
+
+fn resolve_network_subject(slot: RunnerSlotIdentity) -> NetworkSubjectResolution
+  uses fs: Filesystem
+{
+  let read = Filesystem.Read(path: runner_microvm_converged_receipt_path)
+  if !read.success {
+    NetworkSubjectRefused { refusal: NetworkReceiptUnreadable { path: runner_microvm_converged_receipt_path, detail: read.error } }
+  } else {
+    match parse_converged_slot_network(text: read.content, candidates: fabric_execution_slot_identities()) {
+      ConvergedSlotNetworkMalformed { cause: c } =>
+        NetworkSubjectRefused { refusal: NetworkReceiptMalformed { path: runner_microvm_converged_receipt_path, cause: c } }
+      ConvergedSlotNetworkParsed { receipt: r } =>
+        match slot_network_sanitation_subject(slot: slot, receipt: r) {
+          SanitationSubjectRefused { refusal: rf } => NetworkSubjectRefused { refusal: SanitationSubjectNotAdmitted { refusal: rf } }
+          SanitationSubjectAdmitted { subject: s } => NetworkSubjectResolved { subject: s }
+        }
+    }
+  }
+}
+
+// ── the composition ─────────────────────────────────────────────────────────────────────────────
+
+fn slot_controller(instance: String, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  match slot_of_instance(instance: instance) {
+    Absent => SlotControllerRefused { refusal: SlotNotAFabricMember { instance: instance } }
+    Present { value: slot } =>
+      match bind_slot_host(slot: slot) {
+        MicrovmHostBindingRefused { cause: c } => SlotControllerRefused { refusal: SlotHostBindingRefused { cause: c } }
+        MicrovmHostBound { spec: spec, host: _ } =>
+          slot_controller_on_host(slot: slot, spec: spec, release_dir: release_dir, invocation_id: invocation_id)
+      }
+  }
+}
+
+fn slot_controller_on_host(slot: RunnerSlotIdentity, spec: RunnerHostSpec, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  let bins = locus_binaries(release_dir: release_dir)
+  let image = guest_image_sources(spec: spec)
+  if !path_is_executable(path: bins.firecracker) {
+    SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } }
+  } else if !path_is_executable(path: bins.jailer) {
+    SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.jailer } }
+  } else if !path_exists(path: image.kernel) {
+    SlotControllerRefused { refusal: GuestImageIncomplete { path: image.kernel } }
+  } else if !path_exists(path: image.rootfs) {
+    SlotControllerRefused { refusal: GuestImageIncomplete { path: image.rootfs } }
+  } else {
+    match observe_reservation(slot: slot) {
+      RequiredBuildCellObserved { snapshot: snapshot } =>
+        slot_controller_on_reservation(slot: slot, snapshot: snapshot, bins: bins, image: image, invocation_id: invocation_id)
+      not_observed => SlotControllerRefused { refusal: ReservationNotObserved { observation: not_observed } }
+    }
+  }
+}
+
+fn slot_controller_on_reservation(
+  slot: RunnerSlotIdentity,
+  snapshot: RequiredBuildCellSnapshot,
+  bins: LocusBinaries,
+  image: GuestImageSources,
+  invocation_id: NonEmptyStr,
+) -> SlotControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  let binding = bind_microvm_to_cell(snapshot: snapshot)
+  match binding {
+    VmUnboundCellNotOwned { cause: c } => SlotControllerRefused { refusal: CellNotBound { cause: c } }
+    VmBoundToOwnedCell { attempt: attempt, rootfs_path: _, vm_config_path: _, unit_name: _, slice_property: _ } =>
+      match gunbc_runner_microvm_shape_for_slot(slot: slot) {
+        MicroVmShapeRefused { refusal: r } => SlotControllerRefused { refusal: ShapeRefused { detail: runner_microvm_shape_refusal_text(r: r) } }
+        MicroVmShapeResolved { shape: shape } =>
+          match resolve_network_subject(slot: slot) {
+            NetworkSubjectRefused { refusal: r } => SlotControllerRefused { refusal: r }
+            NetworkSubjectResolved { subject: subject } =>
+              match observe_app_control_plane() {
+                AppControlPlaneNotObservable { detail: d } => SlotControllerRefused { refusal: AppControlPlaneUnproduced { detail: d } }
+                AppControlPlaneObserved { state: state } =>
+                  slot_controller_launch(
+                    snapshot: snapshot, attempt: attempt, shape: shape, subject: subject, bins: bins, image: image,
+                    invocation_id: invocation_id,
+                    mint: mint_attempt_credential(binding: binding, state: state),
+                  )
+              }
+          }
+      }
+  }
+}
+
+// THE PLAN IS BUILT AND THE CONTROLLER RUNS WHATEVER THE PLAN SAYS: a refused plan still reaches
+// run_controller, whose teardown runs whatever the launch did, because a refused plan can still
+// have left a minted registration to reconcile. The attempt's invocation id is systemd's for THIS
+// unit incarnation, the one value the teardown will read back off the VMM unit's Environment.
+fn slot_controller_launch(
+  snapshot: RequiredBuildCellSnapshot,
+  attempt: MicroVmAttempt,
+  shape: RunnerMicroVmShape,
+  subject: SlotNetworkSanitationSubject,
+  bins: LocusBinaries,
+  image: GuestImageSources,
+  invocation_id: NonEmptyStr,
+  mint: JitMintPerformance,
+) -> SlotControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  let plan = plan_attempt_launch_reservation_authorized(
+    snapshot: snapshot,
+    work: microvm_shakedown_work(),
+    allocation_generation: snapshot.generation,
+    attempt: attempt,
+    mint: mint,
+    ground: observe_attempt_ground(attempt: attempt),
+    jailer_binary: bins.jailer,
+    firecracker_binary: bins.firecracker,
+    kernel_source: image.kernel,
+    rootfs_source: image.rootfs,
+    shape: shape,
+  )
+  match plan {
+    LaunchAuthorized {
+      authorization: _, jit_runner_name: _, jit_registration_id: registration, jit_device: device,
+      tap_device: _, guest_ip_boot_arg: _, slice: _, jail_root: _, stage_jail_root: _, stage_kernel: _,
+      stage_rootfs: _, workspace_path: _, workspace_create: _, workspace_format: _, kvm_device: _,
+      vm_config: _, jailer: _,
+    } =>
+      SlotControllerRan {
+        outcome: run_controller(
+          identity: AttemptIdentity {
+            attempt: attempt,
+            allocation_generation: snapshot.generation,
+            invocation_id: invocation_id,
+            jit_registration_id: to_string(registration) as NonEmptyStr,
+            credential_device_path: device.host_path,
+            guest_image: gunbc_runner_guest_image,
+          },
+          allocation_generation: snapshot.generation,
+          plan: plan,
+          subject: subject,
+        ),
+      }
+    refused => SlotControllerRefused { refusal: LaunchNotPlanned { plan: refused } }
+  }
+}
+
+// ── the entry the unit execs, and its receipt ───────────────────────────────────────────────────
+
+data slot_controller_receipt_dir: String = "/var/lib/gunbc/microvm-slot-controller"
+
+fn slot_controller_receipt_path(instance: String, invocation_id: NonEmptyStr) -> String {
+  join([slot_controller_receipt_dir, "/", instance, "-", invocation_id as String, ".txt"], "")
+}
+
+fn refusal_text(r: SlotControllerRefusal) -> String {
+  match r {
+    EnvironmentAbsent { name: n } => join(["EnvironmentAbsent ", n, " -- the unit did not set it, so the controller cannot name its slot or locus"], "")
+    SlotNotAFabricMember { instance: i } => join(["SlotNotAFabricMember ", i, " -- not in gunbc.runner_slot_allocation fabric_execution_slot_identities"], "")
+    SlotHostBindingRefused { cause: c } => join(["SlotHostBindingRefused ", microvm_host_binding_refusal_text(c: c)], "")
+    ReleaseLocusIncomplete { path: p } => join(["ReleaseLocusIncomplete ", p, " is not an executable in the release locus"], "")
+    GuestImageIncomplete { path: p } => join(["GuestImageIncomplete ", p, " is absent"], "")
+    ReservationNotObserved { observation: o } => join(["ReservationNotObserved ", reservation_observation_text(o: o)], "")
+    CellNotBound { cause: c } => join(["CellNotBound ", c], "")
+    AppControlPlaneUnproduced { detail: d } => join(["AppControlPlaneUnproduced ", d], "")
+    ShapeRefused { detail: d } => join(["ShapeRefused ", d], "")
+    NetworkReceiptUnreadable { path: p, detail: d } => join(["NetworkReceiptUnreadable ", p, ": ", d], "")
+    NetworkReceiptMalformed { path: p, cause: c } => join(["NetworkReceiptMalformed ", p, ": ", c as String], "")
+    SanitationSubjectNotAdmitted { refusal: _ } => "SanitationSubjectNotAdmitted -- the converged receipt does not admit this slot's sanitation subject"
+    LaunchNotPlanned { plan: _ } => "LaunchNotPlanned -- the planner refused (authorization, credential or prior resources); the teardown was not reached because nothing was launched"
+  }
+}
+
+fn reservation_observation_text(o: RequiredBuildCellObservation) -> String {
+  match o {
+    RequiredBuildCellObserved { snapshot: _ } => "observed"
+    ReservationAbsent { slot_key: k } => join(["no reservation holds ", k as String], "")
+    ReservationUnreadable { slot_key: k } => join(["the allocation store could not be read for ", k as String], "")
+    ReservationPayloadUndecodable { slot_key: k } => join(["the hold payload for ", k as String, " did not decode"], "")
+    ReservationPayloadWorkMismatch { slot_key: k } => join(["the hold on ", k as String, " belongs to a different demand/offer than the shakedown's"], "")
+    SelectedOfferCellMismatch { slot_key: k, executor: e } => join(["the shakedown offer's executor ", e as String, " is not the slot key ", k as String], "")
+    CellSubstrateNotConverged { cell: c } => join(["the cell substrate for ", c as String, " is not converged"], "")
+    UnownedCell { cell: c } => join(["the cell ", c as String, " is not owned"], "")
+  }
+}
+
+fn outcome_text(o: SlotControllerOutcome) -> String {
+  match o {
+    SlotControllerRefused { refusal: r } => join(["refused: ", refusal_text(r: r)], "")
+    SlotControllerRan { outcome: c } => join(["ran: ", controller_outcome_label(c: c)], "")
+  }
+}
+
+fn controller_outcome_label(c: ControllerOutcome) -> String {
+  match c {
+    ControllerRefusedAdmission { admission: _ } => "controller-refused-admission"
+    ControllerRefusedBinding { binding: _ } => "controller-refused-binding"
+    ControllerQuarantinedUnattributedResidue { persisted: _ } => "controller-quarantined-unattributed-residue"
+    ControllerStartNotRecorded { persisted: _ } => "controller-start-not-recorded"
+    ControllerRecovered { teardown: _ } => "controller-recovered"
+    ControllerRanAttempt { launch: _, trigger: _, teardown: _ } => "controller-ran-attempt"
+  }
+}
+
+// THE EXIT IS ZERO ONLY WHEN THE CONTROLLER RAN, and a run that quarantined its cell still exits
+// zero: the unit's job was to run the attempt and settle the cell, and it did. A refusal before
+// the controller exits non-zero with the stage named, so systemd's own failed state is the
+// operator's first signal that no attempt happened.
+fn microvm_slot_controller_main() -> ProcessExit
+  uses net: Network, fs: Filesystem
+{
+  match environment_value(name: microvm_slot_env_name) {
+    Absent => exit_failure(reason: refusal_text(r: EnvironmentAbsent { name: microvm_slot_env_name }))
+    Present { value: instance } =>
+      match environment_value(name: microvm_release_dir_env_name) {
+        Absent => exit_failure(reason: refusal_text(r: EnvironmentAbsent { name: microvm_release_dir_env_name }))
+        Present { value: release_dir } =>
+          match environment_value(name: systemd_invocation_id_env_name) {
+            Absent => exit_failure(reason: refusal_text(r: EnvironmentAbsent { name: systemd_invocation_id_env_name }))
+            Present { value: invocation } =>
+              controller_exit(
+                instance: instance,
+                invocation_id: invocation as NonEmptyStr,
+                outcome: slot_controller(instance: instance, release_dir: release_dir, invocation_id: invocation as NonEmptyStr),
+              )
+          }
+      }
+  }
+}
+
+// systemd SETS $INVOCATION_ID FOR EVERY SERVICE IT STARTS (systemd.exec(5)): a 128-bit id unique
+// to this unit incarnation. It is the attempt's invocation id -- written to the readiness store
+// before staging, set on the VMM unit's Environment, read back at teardown -- so the whole attempt
+// is keyed on the one identifier systemd itself minted for this process.
+data systemd_invocation_id_env_name: String = "INVOCATION_ID"
+
+fn controller_exit(instance: String, invocation_id: NonEmptyStr, outcome: SlotControllerOutcome) -> ProcessExit
+  uses fs: Filesystem
+{
+  let text = outcome_text(o: outcome)
+  let _ = Filesystem.Write(path: slot_controller_receipt_path(instance: instance, invocation_id: invocation_id), content: concat(text, "\n"))
+  match outcome {
+    SlotControllerRan { outcome: _ } => ExitSuccess
+    SlotControllerRefused { refusal: _ } => exit_failure(reason: join(["microvm_slot_controller ", instance, ": ", text], ""))
+  }
+}

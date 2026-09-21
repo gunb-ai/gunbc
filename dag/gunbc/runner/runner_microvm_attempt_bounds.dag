@@ -1,0 +1,30 @@
+module gunbc.runner_microvm_attempt_bounds
+
+import std.measure { Second, second }
+import std.disposition { Disposition, SingleAuthority }
+
+data runner_microvm_attempt_bounds_disposition: Disposition = SingleAuthority
+
+// THE FOUR TIME BOUNDS OF ONE microVM ATTEMPT, IN A LEAF MODULE, because three modules on both
+// sides of the deploy boundary consume them: the launch planner bounds the jailer with the deadline
+// and its kill grace, the lifecycle controller polls the stop against the grace and the force bound,
+// and the slot unit's TimeoutStopSec is their sum (gunbc.runner_microvm_slot_unit) -- and the unit
+// emitter sits inside gunbc.live_deploy.emit, which the planner's closure reaches through
+// gunbc.host_effect_realize. Declaring them where they were consumed put the emitter on both sides
+// of an import cycle; declaring them here keeps one authority per figure and no cycle.
+
+// THE VMM DEADLINE BOUNDS THE ATTEMPT AS A WHOLE (gunbc.runner_attempt_launch bounded_jailer_command
+// wraps the jailer in `timeout`), and the kill grace is how long `timeout` waits after SIGTERM
+// before SIGKILL.
+data runner_attempt_vmm_deadline: Second = second(count: 540)
+
+data runner_attempt_vmm_kill_grace: Second = second(count: 10)
+
+// THE GRACE AND THE FORCE BOUND ARE TWO DURATIONS BECAUSE THEY ANSWER TWO QUESTIONS. The grace is
+// how long a well-behaved guest is given to finish; the force bound is how long the host waits for
+// the kernel to finish a SIGKILL, which it does promptly for every task that is not in
+// uninterruptible sleep. A task still present after the force bound is not slow, it is unkillable,
+// and that is the arm gunbc.runner_microvm_lifecycle ForceStopBoundExceeded carries.
+data attempt_stop_grace: Second = second(count: 30)
+
+data attempt_force_stop_bound: Second = second(count: 10)

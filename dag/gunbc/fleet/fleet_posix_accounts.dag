@@ -1222,3 +1222,14 @@ fn automation_allocation_is_applied(a: FleetAutomationAllocationStanding) -> Boo
     AutomationAllocationPending { host: _, cause: _ } => false
   }
 }
+
+// A LOGIN'S HOME DIRECTORY UNDER THE FLEET'S CONVENTION, SPELLED ONCE. Every fleet host creates its
+// accounts under /home/<login> (the provisioning rows above); a consumer that needs a home path --
+// the microVM slot controller reading the job user's guest image root -- derives it here rather
+// than joining the prefix itself. gunbc.spark.managed_access_bootstrap carries the same join and is
+// a consumer to move onto this row. It is the CONVENTION and not a readback: a host whose passwd
+// entry disagrees is a host this row is wrong about, and the reader's existence check is what
+// catches it.
+fn fleet_posix_home_directory(login: NonEmptyStr) -> NonEmptyStr {
+  join(["/home/", login as String], "") as NonEmptyStr
+}

@@ -43,6 +43,11 @@ import std.effects {
 // made an additive install indistinguishable from a release deploy at the one boundary where the
 // difference is the requirement (operator directive 2026-09-19: roadmap redeploys are frozen at the
 // current release until the cutover completes).
+// LiveDeployMicrovmControllerInstall IS THE SAME SHAPE AS THE DARK INSTALL FOR THE microVM SLOT
+// CONTROLLER: the live_deploy release locus (owned by root) plus the VMM and jailer, the template
+// unit gunbc-microvm-slot@.service, and a daemon-reload -- additive, starting no instance. It carries
+// no DeploymentSpec because the controller is not a member of the dashboard deployment: its locus
+// root and owner are gunbc.runner_microvm_slot_unit's, which is the one section 3b divergence.
 type HostEffect =
     RedfishAction { action: RedfishSystemAction }
   | ConvergePlan { policy: HostConverge }
@@ -73,6 +78,7 @@ type HostEffect =
   | LiveDeployApply { spec: DeploymentSpec, candidate: CandidateRelease, plan: ReleaseEffectPlan }
   | LiveDeployRetract { spec: DeploymentSpec }
   | LiveDeployApprovalBrokerDarkInstall { spec: DeploymentSpec, candidate: CandidateRelease }
+  | LiveDeployMicrovmControllerInstall { candidate: CandidateRelease }
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
   | LiveDeployDigestReadback { port: Int }
   | DeployAccessPreflight {}

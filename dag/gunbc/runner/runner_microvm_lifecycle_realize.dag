@@ -39,7 +39,9 @@ import gunbc.runner_attempt_launch {
   JailMaterialStaging, jail_kernel_destination, jail_rootfs_destination,
   WorkspaceReadback, WorkspaceSuperblockRead, WorkspaceReadbackFailed, WorkspaceStagingObservation,
   attempt_staging_verdict, workspace_readback_command, stage_jit_device,
-  runner_attempt_vmm_deadline,
+}
+import gunbc.runner_microvm_attempt_bounds {
+  runner_attempt_vmm_deadline, attempt_stop_grace, attempt_force_stop_bound,
 }
 import gunbc.runner_microvm_cell_readiness {
   CellBoundAttempt, CellIncarnationAdmission, cell_incarnation_admission,
@@ -413,15 +415,9 @@ fn resource_is_absent(r: ResourceReadback) -> Bool {
 
 // --- the bounded stop ---
 
-// THE GRACE AND THE FORCE BOUND ARE TWO DURATIONS BECAUSE THEY ANSWER TWO QUESTIONS. The grace is
-// how long a well-behaved guest is given to finish; the force bound is how long the host waits for
-// the kernel to finish a SIGKILL, which it does promptly for every task that is not in
-// uninterruptible sleep. A task still present after the force bound is not slow, it is unkillable,
-// and that is the arm gunbc.runner_microvm_lifecycle ForceStopBoundExceeded carries.
-data attempt_stop_grace: Second = second(count: 30)
-
-data attempt_force_stop_bound: Second = second(count: 10)
-
+// THE GRACE AND THE FORCE BOUND ARE DECLARED IN gunbc.runner_microvm_attempt_bounds beside the VMM
+// deadline, because the slot unit's stop timeout is their sum and its emitter cannot import this
+// module without a cycle.
 data attempt_stop_poll_interval: Second = second(count: 1)
 
 // THE STOP IS TWO STEPS AT TWO DIFFERENT SUBJECTS, AND THE ASYMMETRY IS THE WHOLE DESIGN.
@@ -1128,31 +1124,28 @@ data guest_bring_up_channel_frontier: DissolutionCondition = unbound_dissolution
   description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize run_controller, calling gunbc.runner_microvm_lifecycle advance_bring_up. TRIGGER: a modeled guest-to-host readiness channel carrying the runner's own listening report bound to this attempt's invocation id, so GuestBooted and RunnerListening are guest events the host receives rather than host guesses. SUFFICIENT FOR deleting this row. NOT satisfied by the controller polling host-side facts, which cannot distinguish a guest that failed to boot from one that booted and is idle." as NonEmptyStr,
 )
 
-// DECLARED FRONTIER (DESIGN 3c): NOTHING CALLS run_controller, AND THIS MODULE HAD NOT SAID SO.
+// THE CONSUMER OF run_controller IS THE microVM SLOT UNIT, THROUGH gunbc.runner_microvm_slot_controller.
 //
-// Everything below is reachable only from this entry, and `git grep "run_controller("` finds no
-// caller at all -- not a witness, not an instrument, not a unit file. That is the honest state of the
-// lane and it was visible only in a plan document and obliquely in another module's mint row, which
-// is not a declaration on the thing itself (review 69117 surfaced the gap while pointing at a
-// neighbouring row). §3c admits exactly this arm -- a named consumer landing in a named later change
-// -- and it is red only if the trigger is missing, so here it is.
+// This module used to carry controller_main_pid_consumer_frontier: nothing called run_controller,
+// and the row named its consumer as the slot unit's ExecStart execing this controller as MainPID,
+// emitted by the converge route that writes the other slot units. That trigger is met and the row
+// is deleted rather than left standing over it: gunbc.runner_microvm_slot_unit renders
+// gunbc-microvm-slot@.service with Type=exec and an ExecStart naming
+// gunbc.runner_microvm_slot_controller microvm_slot_controller_main (Environment carries the slot
+// instance and the release locus; ExitType=main and KillMode=control-group are gunbc.runner_unit's
+// declared lifecycle intent, the VmmUnderLifecycleController prerequisite), gunbc.live_deploy.emit
+// installs that unit beside the root-owned release locus through the microvm_controller_install
+// fleet-converge mode, and that entry composes the readiness store, the reservation re-read, the
+// cell binding, the credential mint, the shape, the reservation-authorized plan and the network
+// subject into ONE call of run_controller below. A launcher that exits does not satisfy the
+// topology; the unit execs the controller directly, so it is MainPID for the attempt's whole life.
 //
-// NAMED CONSUMER: the slot unit's ExecStart, which execs this controller as the unit's MainPID --
-// gunbc.runner_microvm's VmmUnderLifecycleController topology, where the unit's ExitType=main and
-// KillMode=control-group make systemd's stop reach the whole cgroup once this process exits.
-//
-// TRIGGER, at capability grain: a slot unit file whose ExecStart names this entry, emitted by the
-// same converge route that writes the other slot units, so the controller is what systemd starts for
-// a microVM slot rather than something a person runs by hand. SUFFICIENT FOR deleting this row. NOT
-// satisfied by a witness calling run_controller, by an instrument label invoking it, nor by a
-// hand-run invocation on a host -- each of those proves the function evaluates and none of them makes
-// it the slot's MainPID, which is the whole claim the topology rests on.
-//
-// WHY THAT IS SAFE TO DECLARE RATHER THAN RUSH: the cutover that makes a slot unit select this path
-// is sunny-ant-606's, not this lane's, and nothing here may make the floor CI job take it.
-data controller_main_pid_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the microVM slot unit's ExecStart, which execs gunbc.runner_microvm_lifecycle_realize run_controller as the unit's MainPID (gunbc.runner_microvm VmmUnderLifecycleController). TRIGGER: a slot unit file whose ExecStart names this entry, emitted by the converge route that writes the other slot units. SUFFICIENT FOR deleting this row. NOT satisfied by a witness calling run_controller, by an instrument label invoking it, nor by a hand-run invocation on a host -- none of those makes it the slot's MainPID." as NonEmptyStr,
-)
+// WHAT STILL STANDS BETWEEN THAT ENTRY AND A LAUNCHED VMM IS DECLARED WHERE IT IS OWNED: the App
+// control-plane observation the mint needs has no production producer
+// (gunbc.runner_microvm_slot_controller app_control_plane_producer_frontier), and the planner's
+// grant arm has none either (gunbc.runner_attempt_launch
+// reservation_authorization_grant_producer_frontier). Neither is this module's, and neither makes
+// the consumer of this entry anything other than the unit.
 
 // THE ORDER IS THE SAFETY PROPERTY AND IT IS NOT NEGOTIABLE.
 //

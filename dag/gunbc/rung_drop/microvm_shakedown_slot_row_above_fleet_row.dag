@@ -1,0 +1,58 @@
+module gunbc.rung_drop.microvm_shakedown_slot_row_above_fleet_row
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED CHANGE (DESIGN 4b(3)) for the fleet-uniform slot row: ONE slot carries a
+// 28 GiB ceiling above the 26 GiB fleet row, by operator decision (side chat 2026-09-21), for the
+// bounded microVM shakedown on srv1.
+// ============================================================================================
+//
+// WHAT THE FLEET-UNIFORM ROW ESTABLISHED. `gunbc.runner_slot_allocation` derives every host's
+// memory-admitted width as envelope / ONE slot size, and `runner_slice_cap` as slots x that size, so
+// the sum of per-slot ceilings could not exceed the slice cap: oversubscription had no
+// representation (StructurallyGuaranteed on that class, by the module's own note).
+//
+// WHAT THIS CHANGE DOES TO IT. `gunbc_runner_slot_desired_for` answers a different envelope for
+// `srv1_microvm_shakedown_slot` -- 28 GiB MemoryMax, MemoryHigh at the ceiling, MemorySwapMax zero
+// -- and `host_memory_admitted_width` charges that slot first on srv1 before dividing the remainder
+// by the fleet row (`memory_admitted_width_of_envelope`). The conservation property therefore now
+// rests on that fold charging the right slot the right size, which is checked by
+// test.claim.runner_slot_allocation_witness rather than unwritable by construction: the class drops
+// one rung, on a population of one slot, and this row says so.
+//
+// WHY A DECLARED CHANGE RATHER THAN MOVING THE FLEET ROW. Raising the fleet row to 28 GiB lowers
+// EVERY host's memory-admitted width (the binding axis since gunbc#11716) and is the operator's
+// fleet decision, which was explicitly NOT made: the decision made was for THIS slot only. Moving the
+// row would also flip the expecting-red production-shape witness without the floor-fit stall's
+// trigger having been discharged on the fleet.
+//
+// THE RESTORATION TRIGGER NAMES THE CAPABILITY: the fleet-uniform invariant is restored when EITHER
+// the shakedown slot leaves `fabric_execution_slot_identities` (the shakedown is over and its cell
+// is retired through the modeled teardown) OR the fleet row itself moves to the shakedown ceiling
+// under an operator ruling cited on that change, at which point `gunbc_runner_slot_desired_for`
+// has no arm to answer differently and is deleted. Widening the per-slot arm to a second slot
+// satisfies neither.
+data microvm_shakedown_slot_row_above_fleet_row: RungDrop = RungDrop {
+  identity: "microvm_shakedown_slot_row_above_fleet_row" as NonEmptyStr,
+
+  subject: "the fleet-uniform slot row (gunbc.runner_slot_allocation gunbc_runner_slot_desired): every committed slot on a host carries the same MemoryMax, so width and slice cap are one quotient",
+
+  declared: "2026-09-21",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged {
+      replacement: "gunbc.runner_slot_allocation gunbc_runner_slot_desired_for (28 GiB MemoryMax, MemoryHigh at the ceiling, MemorySwapMax zero for srv1_microvm_shakedown_slot) and memory_admitted_width_of_envelope charging that slot first on srv1, checked by test.claim.runner.runner_microvm_slot_controller_witness_test",
+    },
+    population: [
+      "gunbc.runner_slot_allocation srv1_microvm_shakedown_slot (srv1-13): 30064771072 bytes against the fleet row's 27917287424",
+    ],
+    restoration_trigger: "EITHER the shakedown slot leaves fabric_execution_slot_identities with its cell retired through the modeled teardown, OR the fleet row moves to the shakedown ceiling under an operator ruling cited on that change, so gunbc_runner_slot_desired_for has no differing arm and is deleted. A second per-slot arm satisfies neither",
+  },
+}

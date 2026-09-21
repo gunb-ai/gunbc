@@ -37,9 +37,12 @@ import product.fabric.isolation {
 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
+  gunbc_runner_slot_desired_for,
+  RunnerSlotDesired,
   CpuQuotaResolved,
   SlotCpuQuotaUnbounded,
 }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
@@ -739,7 +742,20 @@ fn gunbc_runner_microvm_guest_cache_allowance() -> GuestCacheAllowance {
 // task row and workspace grant. Every input is read from the authority that owns it; nothing here is a
 // parameter a caller could use to hand the guest an envelope the cell did not declare.
 fn gunbc_runner_microvm_shape() -> RunnerMicroVmShapeResolution {
-  let cell = gunbc_runner_slot_desired()
+  gunbc_runner_microvm_shape_in_cell(cell: gunbc_runner_slot_desired())
+}
+
+// THE SAME SHAPE, ASKED FOR A NAMED SLOT'S CELL. The slot controller (gunbc.runner_microvm_slot_
+// controller) shapes the guest for the cell its attempt was reserved on, and that cell's row is
+// gunbc_runner_slot_desired_for -- the 28 GiB shakedown row for srv1's shakedown slot, the fleet row
+// everywhere else. The parameter is a slot and not an envelope, so a caller still cannot hand the
+// guest a ceiling the cell did not declare; and the fleet-row entry above is unchanged, so the
+// expecting-red production-shape witness keeps reading the row it was written against.
+fn gunbc_runner_microvm_shape_for_slot(slot: RunnerSlotIdentity) -> RunnerMicroVmShapeResolution {
+  gunbc_runner_microvm_shape_in_cell(cell: gunbc_runner_slot_desired_for(slot: slot))
+}
+
+fn gunbc_runner_microvm_shape_in_cell(cell: RunnerSlotDesired) -> RunnerMicroVmShapeResolution {
   match floor_storage_demand() {
     StorageDemandUnrepresentable { cause: _ } =>
       MicroVmShapeRefused { refusal: ShapeRefusedWorkStorageUnstated { cause: "the floor's storage components do not sum within the representable bound, so the demand is not a figure" } }
@@ -751,7 +767,7 @@ fn gunbc_runner_microvm_shape() -> RunnerMicroVmShapeResolution {
         envelope: CellMemoryEnvelope { bytes: cell.memory_max },
         reserve: gunbc_runner_microvm_realization_reserve(),
         cache_allowance: gunbc_runner_microvm_guest_cache_allowance(),
-        task_ceiling: gunbc_runner_microvm_task_ceiling(),
+        task_ceiling: cell.tasks_max,
         workspace: runner_microvm_workspace_grant,
       )
   }

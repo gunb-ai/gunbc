@@ -121,6 +121,7 @@ import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
   gunbc_ci_live_deploy_transaction_invoke,
   gunbc_ci_approval_broker_dark_install_invoke,
+  gunbc_ci_microvm_controller_install_invoke,
   gunbc_ci_rlm_launch_deployment_receipt_invoke,
   gunbc_live_deploy_receipt_artifact_name,
   gunbc_live_deploy_receipt_artifact_dir,
@@ -220,6 +221,7 @@ type FleetConvergeWorkflowMode
   | HostResetReturn
   | RunnerHostFileObserve
   | ApprovalBrokerDarkInstall
+  | MicrovmControllerInstall
   | RunnerHostFileConverge
   | SitePxeEdgeObserve
   | SitePxeEdgeConverge
@@ -261,6 +263,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     HostResetReturn => "host_reset_return"
     RunnerHostFileObserve => "runner_host_file_observe"
     ApprovalBrokerDarkInstall => "approval_broker_dark_install"
+    MicrovmControllerInstall => "microvm_controller_install"
     RunnerHostFileConverge => "runner_host_file_converge"
     SitePxeEdgeObserve => "site_pxe_edge_observe"
     SitePxeEdgeConverge => "site_pxe_edge_converge"
@@ -301,7 +304,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, MicrovmControllerAppKeyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, MicrovmControllerAppKeyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -343,6 +346,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     SparkRuntimeImageProbe => none
     DashboardDeploy => Present { value: LiveDeploy }
     ApprovalBrokerDarkInstall => none
+    MicrovmControllerInstall => none
     RlmLaunchDeploymentReceipt => none
     HostResetReturn => none
     RunnerHostFileObserve => none
@@ -453,6 +457,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     SparkRuntimeImageProbe => FleetSshKeyConsumed
     DashboardDeploy => FleetSshKeyConsumed
     ApprovalBrokerDarkInstall => FleetSshKeyConsumed
+    MicrovmControllerInstall => FleetSshKeyConsumed
     RlmLaunchDeploymentReceipt => FleetSshKeyConsumed
     HostResetReturn => FleetSshKeyConsumed
     RunnerHostFileObserve => FleetSshKeyConsumed
@@ -982,6 +987,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     HostResetReturn => ExecutorDomain
     RunnerHostFileObserve => ExecutorDomain
     ApprovalBrokerDarkInstall => ExecutorDomain
+    MicrovmControllerInstall => ExecutorDomain
     RunnerHostFileConverge => ExecutorDomain
     SitePxeEdgeObserve => ExecutorDomain
     SitePxeEdgeConverge => ExecutorDomain
@@ -2328,6 +2334,57 @@ fn fleet_converge_approval_broker_dark_install_step() -> Step {
 // against one another is what stops a broker install landing in the middle of a roadmap deploy.
 // QueueNotMax with cancel_in_progress false, for the reason the dashboard-deploy annotation gives
 // -- a queued install must never interrupt the one holding the host mutation window.
+// ── THE microVM SLOT CONTROLLER INSTALL (microvm_controller_install) ─────────────────────────
+// THE SAME JOB SHAPE AS THE DARK INSTALL, FOR THE SAME REASON: the install binds ci_deploy_srv1_access
+// (ghrunner on the host-pinned runner), copies from the release bins this job downloaded and
+// verified, and writes an additive locus + template unit that starts no instance. It shares the
+// host-mutation concurrency group so it cannot land inside a roadmap deploy or a broker install.
+data fleet_converge_microvm_controller_install_step_if: String = fleet_converge_mode_step_if(mode: MicrovmControllerInstall)
+
+fn fleet_converge_microvm_controller_install_step() -> Step {
+  RunStep {
+    name: Present { value: "Install the microVM slot controller release locus, VMM + jailer and template unit on srv1 (additive; starts no instance)" },
+    id: Present { value: "microvm_controller_install" },
+    run: gunbc_ci_microvm_controller_install_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_microvm_controller_install_job() -> Job {
+  Job {
+    id: "microvm-controller-install",
+    name: none,
+    runner: fleet_converge_host_pinned_runner_spec(),
+    steps: concat(
+      fleet_converge_consumer_prelude_steps(),
+      [
+        ci_release_bins_download_step(),
+        ci_release_bins_unpack_verify_step(),
+        fleet_converge_microvm_controller_install_step(),
+      ]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_microvm_controller_install_step_if },
+    timeout_minutes: Present { value: gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: fleet_host_mutation_concurrency_group_expression,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
+    permissions: none,
+  }
+}
+
 fn fleet_converge_approval_broker_dark_install_job() -> Job {
   Job {
     id: "approval-broker-dark-install",
@@ -2728,7 +2785,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; app_key_version_verify reads the gunbai-ci App private key at the EXACT Secret Manager version named by app_key_version, mints an installation token with it, and refuses unless GitHub accepts it and the key's rotation deadline has not passed -- no add, disable or destroy; microvm_host_converge installs the cited Firecracker release on the selected host and reads the kvm grant back, refusing by name when the grant has not landed (the grant itself is applied by the full-host apply spine); guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; app_key_version_verify reads the gunbai-ci App private key at the EXACT Secret Manager version named by app_key_version, mints an installation token with it, and refuses unless GitHub accepts it and the key's rotation deadline has not passed -- no add, disable or destroy; microvm_host_converge installs the cited Firecracker release on the selected host and reads the kvm grant back, refusing by name when the grant has not landed (the grant itself is applied by the full-host apply spine); guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown; microvm_controller_install writes the microVM slot controller's root-owned release locus (gunbc + sources + Firecracker + jailer) and the gunbc-microvm-slot@ template unit on srv1 and starts no instance" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },
@@ -2823,7 +2880,7 @@ data fleet_converge_workflow: Workflow = Workflow {
   concurrency: none,
   env: none,
   permissions: none,
-  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_host_reset_return_job(), fleet_converge_dashboard_deploy_job(), fleet_converge_approval_broker_dark_install_job(), fleet_converge_rlm_launch_deployment_receipt_job()],
+  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_host_reset_return_job(), fleet_converge_dashboard_deploy_job(), fleet_converge_approval_broker_dark_install_job(), fleet_converge_microvm_controller_install_job(), fleet_converge_rlm_launch_deployment_receipt_job()],
 }
 
 type FleetConvergeYamlGenerationOutcome

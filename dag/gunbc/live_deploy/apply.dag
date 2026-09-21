@@ -55,6 +55,7 @@ import gunbc.host_effect {
   LiveDeployApply,
   LiveDeployRetract,
   LiveDeployApprovalBrokerDarkInstall,
+  LiveDeployMicrovmControllerInstall,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
   DeployAccessPreflight,
@@ -79,7 +80,18 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_cadence,
 }
 import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
-import gunbc.live_deploy.emit { approval_broker_tree_receipt_path_for, RevisionBoundAtEmission }
+import gunbc.live_deploy.emit {
+  approval_broker_tree_receipt_path_for, RevisionBoundAtEmission, ReleaseRevisionBinding,
+  microvm_controller_vmm_receipt_path,
+}
+import gunbc.runner_microvm_slot_unit {
+  microvm_controller_root, microvm_controller_vmm_name, microvm_controller_jailer_name,
+  microvm_slot_unit_instance_name,
+}
+import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import extdeps.systemd { systemd_unit_property_wire, LoadState }
+import std.algebra { trim }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import std.measure { Second, second, second_count }
 import gunbc.readiness { Ready, Pending, Refused }
@@ -789,6 +801,96 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
 // The roadmap's live_deploy_apply_srv1_operator_local_wet is NOT this case and stays: it has a real
 // consumer in gunbc.fleet.fleet_converge_plan_cli, so it is a routed entry rather than a dormant
 // second door.
+// ── THE microVM SLOT CONTROLLER INSTALL (the microvm_controller_install mode) ─────────────────
+//
+// THE SAME FOLD AS THE DARK INSTALL, OVER THE SAME ACCESS: ghrunner on the host-pinned runner, the
+// srv1 deployment spec for the target and the gate, and one additive effect
+// (gunbc.host_effect LiveDeployMicrovmControllerInstall) that writes the controller's release
+// locus, the VMM and jailer, and the template unit, then reloads the manager. The spec is consumed
+// for WHERE (target host, access gate) and not for WHAT: the effect carries the candidate alone,
+// because the controller is not a member of the dashboard deployment (gunbc.runner_microvm_slot_unit
+// states the locus root and owner), which is the one section 3b divergence this install declares.
+//
+// THE READBACK IS THE POINT, AS FOR THE BROKER: a converged mutation says the script ran; what
+// this asks afterwards is whether the locus carries THIS candidate's tree receipt and a VMM
+// receipt, and whether systemd loads the template for the shakedown slot's instance. An installer
+// asserting it installed is the control-plane acknowledgement gunbc.recurring_failure_mode
+// control_plane_acknowledgement_minted_as_effect refuses.
+fn microvm_controller_install_srv1_wet() -> ProcessExit {
+  microvm_controller_install_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
+}
+
+fn microvm_controller_install_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
+  match observe_candidate_release() {
+    CandidateUnobservable { cause: why } =>
+      exit_failure(reason: candidate_unobservable_detail(cause: why))
+    CandidateObserved { candidate: candidate } => {
+      let preflight = live_deploy_access_preflight_for(access: access)
+      if !reconciliation_converged(r: preflight) {
+        live_deploy_reconciliation_exit(r: preflight)
+      } else {
+        let mutation = live_deploy_fold(
+          spec: spec,
+          effect: LiveDeployMicrovmControllerInstall { candidate: candidate },
+          transport: access.transport,
+          access: access,
+          fixture_actor: Absent,
+          fixture_host: Absent,
+        )
+        if !reconciliation_converged(r: mutation) {
+          live_deploy_reconciliation_exit(r: mutation)
+        } else {
+          microvm_controller_install_readback_exit(candidate: candidate)
+        }
+      }
+    }
+  }
+}
+
+fn microvm_controller_install_readback_exit(candidate: CandidateRelease) -> ProcessExit {
+  let revision = RevisionBoundAtEmission { revision: candidate.revision }
+  let tree = Filesystem.Read(path: approval_broker_tree_receipt_path_for(root: microvm_controller_root, revision: revision))
+  match observe_broker_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
+    TreeReceiptUnreadable { detail: d } =>
+      exit_failure(reason: join(["microvm_controller_install: the locus tree receipt could not be read, so the copy did not complete: ", d as String], ""))
+    TreeReceiptMalformed { detail: d } =>
+      exit_failure(reason: join(["microvm_controller_install: the locus tree receipt is malformed: ", d as String], ""))
+    TreeReceiptObserved { revision: r, installed_digest: _ } =>
+      if (r as String) != (candidate.revision as String) {
+        exit_failure(reason: join(["microvm_controller_install: the locus tree receipt names ", r as String, " and this install's candidate is ", candidate.revision as String], ""))
+      } else {
+        microvm_controller_vmm_readback_exit(revision: revision)
+      }
+  }
+}
+
+fn microvm_controller_vmm_readback_exit(revision: ReleaseRevisionBinding) -> ProcessExit {
+  let vmm = Filesystem.Read(path: microvm_controller_vmm_receipt_path(revision: revision))
+  if !vmm.success {
+    exit_failure(reason: join(["microvm_controller_install: the VMM receipt could not be read, so the Firecracker and jailer installs did not complete: ", vmm.error], ""))
+  } else if !string_contains(s: vmm.content, pattern: microvm_controller_vmm_name) || !string_contains(s: vmm.content, pattern: microvm_controller_jailer_name) {
+    exit_failure(reason: join(["microvm_controller_install: the VMM receipt does not name both binaries: ", vmm.content], ""))
+  } else {
+    microvm_slot_unit_load_readback_exit()
+  }
+}
+
+// THE TEMPLATE IS READ BACK THROUGH AN INSTANCE NAME, because systemd loads a template only when
+// an instance is asked for; the shakedown slot's instance is the one the operator will start, and
+// `show` loads it without starting it. Anything but `loaded` means the unit file the install wrote
+// is not what the manager parses.
+fn microvm_slot_unit_load_readback_exit() -> ProcessExit {
+  let unit = microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: LoadState))
+  if !shown.success {
+    exit_failure(reason: join(["microvm_controller_install: LoadState of ", unit as String, " could not be read"], ""))
+  } else if trim(s: shown.value) != "loaded" {
+    exit_failure(reason: join(["microvm_controller_install: ", unit as String, " is not loaded after the install (LoadState=", trim(s: shown.value), ")"], ""))
+  } else {
+    ExitSuccess
+  }
+}
+
 fn approval_broker_dark_install_srv1_wet() -> ProcessExit {
   approval_broker_dark_install_wet_with_access(
     spec: deployment_spec_srv1(),

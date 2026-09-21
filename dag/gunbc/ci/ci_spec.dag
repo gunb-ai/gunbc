@@ -1049,6 +1049,13 @@ data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRun
   function: "approval_broker_dark_install_srv1_wet",
 }
 
+// THE microVM SLOT CONTROLLER INSTALL follows the dark install's convention exactly: the wet fold
+// under ci_deploy_srv1_access, invoked on the host-pinned runner, never through apply_dispatch.
+data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply.dag",
+  function: "microvm_controller_install_srv1_wet",
+}
+
 data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag",
   function: "rlm_launch_deployment_receipt_wet",
@@ -1175,6 +1182,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_live_deploy_apply_srv1_target,
     gunbc_ci_live_deploy_transaction_target,
     gunbc_ci_approval_broker_dark_install_target,
+    gunbc_ci_microvm_controller_install_target,
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
@@ -1235,6 +1243,16 @@ fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_approval_broker_dark_install_target.entry,
     function: gunbc_ci_approval_broker_dark_install_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_microvm_controller_install_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_microvm_controller_install_target.entry,
+    function: gunbc_ci_microvm_controller_install_target.function,
     claim_run: false,
     receipt_rel: none
   )
