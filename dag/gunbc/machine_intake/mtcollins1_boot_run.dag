@@ -39,7 +39,7 @@ import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
 import gunbc.machine_intake_host_capture_envelope {
-  HostCaptureBound, HostCaptureOpen, HostCaptureUnbound, BoundHostCaptureEnvelope, HostCaptureRunIdentity,
+  HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound, BoundHostCaptureEnvelope, HostCaptureRunIdentity,
   SectionAbsent, SectionPending, SectionComplete,
   host_capture_bind, host_capture_section_reading, host_capture_output_value_after, host_capture_output_has_line,
   host_capture_mc0_counter, host_capture_workload_write_rc_token, host_capture_workload_stable_token,
@@ -351,7 +351,7 @@ fn mtcollins1_boot_medium_refusal(medium: MtCollins1BootMedium) -> String? {
 // qualification holds. Causes are collected, not short-circuited, so the topology disagreement
 // stays visible beside the workload failure it also caused.
 type MtCollins1BootTerminalCause
-  = TerminalSubjectMediumDisjoint { subject_image: NonEmptyStr, medium_image: NonEmptyStr }
+  = TerminalSubjectMediumDisjoint { subject_image: NonEmptyStr, subject_sha256: NonEmptyStr, medium_image: NonEmptyStr, medium_sha256: NonEmptyStr }
   | TerminalCaptureUnbound { reason: String }
   | TerminalSectionAbsent { name: String }
   | TerminalSectionFailed { name: String, exit_code: String }
@@ -509,14 +509,15 @@ fn terminal_over_open(envelope: BoundHostCaptureEnvelope, threads: String, label
 fn mtcollins1_boot_terminal_verdict(capture: String, subject: MtCollins1BootSubject, medium: MtCollins1BootMedium) -> MtCollins1BootTerminalVerdict {
   let threads = hardware_thread_count_value(t: mtcollins1_nproc) as String
   let medium_image = mtcollins1_boot_medium_image_name(medium: medium)
+  let medium_sha256 = mtcollins1_boot_medium_image_sha256(medium: medium)
   let joined = (subject.image_name as String) == (medium_image as String)
-    && (subject.image_sha256 as String) == (mtcollins1_boot_medium_image_sha256(medium: medium) as String)
+    && (subject.image_sha256 as String) == (medium_sha256 as String)
   match if joined { mtcollins1_boot_medium_label(medium: medium) } else { none } {
-    Absent => TerminalRefused { causes: [TerminalSubjectMediumDisjoint { subject_image: subject.image_name, medium_image: medium_image }] }
+    Absent => TerminalRefused { causes: [TerminalSubjectMediumDisjoint { subject_image: subject.image_name, subject_sha256: subject.image_sha256, medium_image: medium_image, medium_sha256: medium_sha256 }] }
     Present { value: label } =>
       match host_capture_bind(capture: capture, machine: subject.machine) {
-        HostCaptureUnbound { reason: r } =>
-          if starts_with(s: r, prefix: "no begin marker") { TerminalPending { reason: r } } else { TerminalRefused { causes: [TerminalCaptureUnbound { reason: r }] } }
+        HostCaptureNotBegun => TerminalPending { reason: "no begin marker for this machine yet" }
+        HostCaptureUnbound { reason: r } => TerminalRefused { causes: [TerminalCaptureUnbound { reason: r }] }
         HostCaptureOpen { envelope: envelope } => terminal_over_open(envelope: envelope, threads: threads, label: label)
         HostCaptureBound { envelope: envelope } => terminal_over_closed(envelope: envelope, threads: threads, label: label)
       }
@@ -525,7 +526,12 @@ fn mtcollins1_boot_terminal_verdict(capture: String, subject: MtCollins1BootSubj
 
 fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> String {
   match cause {
-    TerminalSubjectMediumDisjoint { subject_image: s, medium_image: m } => concat("signed subject names ", s as String, " but the medium row names ", m as String)
+    TerminalSubjectMediumDisjoint { subject_image: si, subject_sha256: ss, medium_image: mi, medium_sha256: ms } =>
+      if (si as String) == (mi as String) {
+        concat("signed subject and medium row both name ", si as String, " but the subject binds sha256 ", ss as String, " and the medium row ", ms as String)
+      } else {
+        concat("signed subject names ", si as String, " (", ss as String, ") but the medium row names ", mi as String, " (", ms as String, ")")
+      }
     TerminalCaptureUnbound { reason: r } => concat("capture does not bind: ", r)
     TerminalSectionAbsent { name: n } => concat("closed envelope carries no ", n, " section")
     TerminalSectionFailed { name: n, exit_code: c } => concat(n, " exited ", c)

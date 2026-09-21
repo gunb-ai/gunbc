@@ -15,7 +15,7 @@ import gunbc.machine_intake_host_capture_envelope {
   HostCaptureStage,
   BoundHostCaptureEnvelope,
   HostCaptureBound,
-  HostCaptureUnbound, HostCaptureOpen,
+  HostCaptureUnbound, HostCaptureOpen, HostCaptureNotBegun,
   HistoricalAttemptOrdinal,
   KernelBootId,
   host_capture_bind,
@@ -75,6 +75,7 @@ fn census_binds(capture: String) -> Bool {
     HostCaptureBound { envelope: _ } => true
     HostCaptureUnbound { reason: _ } => false
     HostCaptureOpen { envelope: _ } => false
+    HostCaptureNotBegun => false
   }
 }
 
@@ -82,6 +83,7 @@ test fn one_run_binds_and_answers_every_verdict_axis() -> Bool {
   match host_capture_bind(capture: census_capture_one_run(), machine: mtcollins1_census_machine) {
     HostCaptureUnbound { reason: _ } => false
     HostCaptureOpen { envelope: _ } => false
+    HostCaptureNotBegun => false
     HostCaptureBound { envelope: e } =>
       host_capture_run_identity_value(run: e.run) == "aaaa-1111"
         && host_capture_bound_nproc_exact(envelope: e, threads: "160")
@@ -124,6 +126,7 @@ test fn a_section_from_another_run_is_not_read() -> Bool {
   match host_capture_bind(capture: stream, machine: mtcollins1_census_machine) {
     HostCaptureUnbound { reason: _ } => false
     HostCaptureOpen { envelope: _ } => false
+    HostCaptureNotBegun => false
     HostCaptureBound { envelope: e } =>
       host_capture_bound_nproc_exact(envelope: e, threads: "160")
         && host_capture_bound_nproc_exact(envelope: e, threads: "8") == false
@@ -180,6 +183,7 @@ test fn the_envelope_is_bound_to_its_own_machine() -> Bool {
   match host_capture_bind(capture: census_capture_one_run(), machine: "mtcollins2") {
     HostCaptureUnbound { reason: _ } => true
     HostCaptureOpen { envelope: _ } => false
+    HostCaptureNotBegun => true
     HostCaptureBound { envelope: _ } => false
   }
 }
@@ -197,6 +201,7 @@ test fn a_workload_token_in_the_argv_line_is_not_a_result() -> Bool {
   match host_capture_bind(capture: capture, machine: mtcollins1_census_machine) {
     HostCaptureUnbound { reason: _ } => false
     HostCaptureOpen { envelope: _ } => false
+    HostCaptureNotBegun => false
     HostCaptureBound { envelope: e } => host_capture_bound_workload_stable(envelope: e) == false
   }
 }
@@ -218,6 +223,7 @@ test fn the_two_run_identity_forms_are_distinguished() -> Bool {
   match host_capture_bind(capture: historical, machine: mtcollins1_census_machine) {
     HostCaptureUnbound { reason: _ } => false
     HostCaptureOpen { envelope: _ } => false
+    HostCaptureNotBegun => false
     HostCaptureBound { envelope: e } =>
       match e.run {
         HistoricalAttemptOrdinal { ordinal: o } => (o as String) == "3"
