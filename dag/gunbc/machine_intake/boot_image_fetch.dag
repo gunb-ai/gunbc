@@ -41,6 +41,7 @@ type BootImageFetchOutcome
   | BootImagePublishFailed { staged: NonEmptyStr, destination: NonEmptyStr }
   | BootImagePublishedDigestMismatch { path: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
   | BootImagePublicationNotAdmitted { export_dir: NonEmptyStr, reason: String }
+  | BootImagePresentWithDifferentDigest { path: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
 
 // WHETHER A MEASURED DIGEST AGREES WITH THE PIN. Separated from the effect sequence so the judgment
 // is nameable, and returning the OBSERVED value on disagreement rather than a Bool: a refusal that
@@ -63,7 +64,13 @@ fn boot_image_observed_hex(observed: Sha256FileDigest) -> NonEmptyStr {
   }
 }
 
-// THE SEQUENCE, AND ITS ORDER IS THE GUARANTEE. Fetch to a staging path, measure there, and move
+// The one composition of an export directory and an image name. Every route that names an image in
+// an export -- the stock fetch, a derived image built from it -- composes through here.
+fn boot_image_published_path(export_dir: NonEmptyStr, image_name: NonEmptyStr) -> NonEmptyStr {
+  join([export_dir as String, "/", image_name as String], "") as NonEmptyStr
+}
+
+// THE SEQUENCE, AND ITS ORDER IS THE GUARANTEE. Fetch to a staging path, measure there, and link
 // into the published path ONLY on agreement. Fetching straight into the export and checking
 // afterwards would leave an interval in which a truncated or substituted image is mountable, and the
 // controller re-scans that share on its own schedule rather than this program's, so the interval is
@@ -86,7 +93,8 @@ fn boot_image_observed_hex(observed: Sha256FileDigest) -> NonEmptyStr {
 // path constant with no diagnostic anywhere.
 //
 // DERIVING THE STAGING PATH FROM THE DESTINATION MAKES THE TWO PATHS UNABLE TO DIVERGE. They share a
-// directory by construction, so they share a filesystem, so the rename is atomic — and there is no
+// directory by construction, so they share a filesystem, so the hard link that publishes is atomic, and
+// a staging path on another filesystem would fail the link (EXDEV) rather than copy — and there is no
 // longer an input whose editing could break it. This is the §5 move: prefer the single authority the
 // realization is derived from over a check that the two agree.
 //
@@ -111,7 +119,7 @@ fn fetch_verified_boot_image(
 ) -> BootImageFetchOutcome
   uses net: std.resources.Network
 {
-  let published_path = join([export_dir as String, "/", image_name as String], "") as NonEmptyStr
+  let published_path = boot_image_published_path(export_dir: export_dir, image_name: image_name)
   let staging_path = boot_image_staging_path(published_path: published_path)
   let fetched = run_shell_command(
     command: curl_download_command(url: url as String, destination: staging_path as String),
@@ -181,7 +189,6 @@ fn admit_then_publish_boot_image(
   export_dir: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome
-  uses net: std.resources.Network
 {
   let standing = observed_export_ownership_standing(path: export_dir)
   return if export_ownership_admits_publication(standing: standing) {
@@ -215,16 +222,54 @@ fn publish_verified_boot_image(
   published_path: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome
-  uses net: std.resources.Network
 {
-  moved = shell.Move.File(
-    source: staging_path as FilePath,
-    destination: published_path as FilePath,
-  )
-  return if moved.success {
+  return if shell.Test.IsFile(path: published_path as FilePath).is_file {
+    reconcile_present_boot_image(staging_path: staging_path, published_path: published_path, digest: digest)
+  } else {
+    link_verified_boot_image(staging_path: staging_path, published_path: published_path, digest: digest)
+  }
+}
+
+// CREATE-ONLY. A hard link fails when the destination exists, so publication can add a name and can
+// never replace the bytes behind one: an image already served under a name keeps those bytes for as
+// long as the name exists. The staging name is then removed; the published name holds the inode.
+fn link_verified_boot_image(
+  staging_path: NonEmptyStr,
+  published_path: NonEmptyStr,
+  digest: NonEmptyStr,
+) -> BootImageFetchOutcome {
+  let linked = shell.Link.Hard(source: staging_path as FilePath, destination: published_path as FilePath)
+  return if linked.success {
+    let unstaged = shell.Remove.FileForce(path: staging_path as FilePath)
     confirm_published_boot_image(published_path: published_path, digest: digest)
   } else {
     BootImagePublishFailed { staged: staging_path, destination: published_path }
+  }
+}
+
+// THE NAME IS ALREADY TAKEN. If it holds the verified bytes this is the idempotent re-run and it is
+// confirmed by the same read-back as a fresh publish; if it holds anything else the publish REFUSES
+// and nothing is replaced -- the staged file is left beside it as the evidence of what was verified.
+fn reconcile_present_boot_image(
+  staging_path: NonEmptyStr,
+  published_path: NonEmptyStr,
+  digest: NonEmptyStr,
+) -> BootImageFetchOutcome {
+  let present = sha256sum_file_digest_via_shell(path: published_path)
+  return match present {
+    Sha256FileDigestUnavailable { path: p, reason: r } =>
+      BootImageDigestUnreadable { path: p, reason: r }
+    Sha256FileDigest { digest: _ } =>
+      if boot_image_digest_agrees(observed: present, expected: digest) {
+        let unstaged = shell.Remove.FileForce(path: staging_path as FilePath)
+        BootImageAdmitted { path: published_path, digest: digest }
+      } else {
+        BootImagePresentWithDifferentDigest {
+          path: published_path,
+          expected: digest,
+          observed: boot_image_observed_hex(observed: present),
+        }
+      }
   }
 }
 
@@ -248,7 +293,6 @@ fn confirm_published_boot_image(
   published_path: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome
-  uses net: std.resources.Network
 {
   let republished = sha256sum_file_digest_via_shell(path: published_path)
   return match republished {

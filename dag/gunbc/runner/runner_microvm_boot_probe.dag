@@ -27,9 +27,11 @@ import gunbc.runner_guest_image {
   runner_guest_base_artifact_path, runner_guest_kernel_artifact,
 }
 import gunbc.runner_microvm_host_ready {
-  FirecrackerHostStanding, firecracker_host_ready, firecracker_installed_binary,
+  FirecrackerHostStanding, firecracker_host_ready_in_this_process, firecracker_installed_binary,
   firecracker_install_root, firecracker_host_standing_text,
   observe_firecracker_host_standing_wet,
+  MicrovmHostBinding, MicrovmHostBound, MicrovmHostBindingRefused,
+  microvm_host_binding_wet, microvm_host_binding_refusal_text,
 }
 import gunbc.command_runner {
   ProcessObservation, run_shell_command_observe, run_shell_commands, LocalExec,
@@ -260,11 +262,20 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
     Absent => exit_failure(reason: "runner_microvm_boot_probe: HOME is unset, so neither the image root nor the Firecracker install root can be named")
     Present { value: home } => {
       let fc_root = firecracker_install_root(executor_home: home)
-      let standing = observe_firecracker_host_standing_wet(root: fc_root)
-      if !firecracker_host_ready(standing: standing) {
+      // THE LOGIN COMES FROM THE HOST'S ROSTER ROW, because the standing now carries the executor's
+      // group enrolment and that is a fact about a named account. A probe on a host with no roster
+      // row has no executor to ask about, which is a BootNotAttempted cause like any other.
+      match microvm_host_binding_wet() {
+        MicrovmHostBindingRefused { cause: c } =>
+          runner_microvm_boot_probe_receipt_wet(
+            verdict: BootNotAttempted { cause: join(["the host this probe is running on is not bound to the host the dispatch selected, so no executor is named to ask about and nothing was booted: ", microvm_host_binding_refusal_text(c: c)], "") },
+          )
+        MicrovmHostBound { spec: spec, host: bound_host } => {
+      let standing = observe_firecracker_host_standing_wet(root: fc_root, login: spec.job_user)
+      if !firecracker_host_ready_in_this_process(standing: standing) {
         runner_microvm_boot_probe_receipt_wet(
           verdict: BootNotAttempted {
-            cause: join(["the host cannot run a micro-VM at all, so no image verdict is available --\n", firecracker_host_standing_text(s: standing)], ""),
+            cause: join(["the host cannot run a micro-VM at all, so no image verdict is available --\n", firecracker_host_standing_text(s: standing, host: bound_host, expected_login: spec.job_user)], ""),
           },
         )
       } else {
@@ -317,6 +328,8 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
               }
               other => other
             }
+        }
+      }
         }
       }
     }
