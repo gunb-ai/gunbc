@@ -1,11 +1,16 @@
 module gunbc.machine_intake_mtcollins1_census_image
 
 import std.types { List, NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
+import gunbc.fleet_intent_network { operator_host_srv2 }
 import std.measure { Bandwidth, bandwidth, bandwidth_count }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
   UbuntuSeededInstallMediaBuildInput,
+  UbuntuSeededInstallMediaBuilt,
   ubuntu_seeded_install_media_grub_kernel_cmdline,
 }
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
@@ -15,7 +20,10 @@ import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_di
 import gunbc.machine_intake_boot_image_fetch { boot_image_published_path }
 import gunbc.seeded_install_media_publish {
   BmcExportBoundary,
+  SeededImageAlreadyPublished,
   SeededImagePublication,
+  SeededImagePublicationRefused,
+  SeededImagePublished,
   SeededImageResolution,
   publish_seeded_image,
   resolve_seeded_image,
@@ -128,16 +136,15 @@ data mtcollins1_census_image_input: UbuntuSeededInstallMediaBuildInput = mtcolli
   volume_id: mtcollins1_census_volume_id,
 )
 
-// DECLARED FRONTIER (DESIGN §3c): the two effectful entries below have NO consumer in this change,
-// and each names the one that lands next. mtcollins1_census_image_publish is consumed by stage 0B/0C:
-// a step in the fleet-converge workflow run on srv2 (host=srv2, the SM/WIF credential prelude, the same
-// job shape as gunbc.machine_intake_mtcollins1_boot_image_fetch mtcollins1_fetch_boot_image), which
-// builds and publishes inside /srv/bmc and emits the published name and digest as its receipt.
-// mtcollins1_census_image_resolve is consumed by stage 0D: gunbc.machine_intake_mtcollins1_boot_run
-// (#11484) resolves the census image before the approval-gated boot, and its signed boot subject binds
-// the resolved image_name and output_digest instead of the stock ones. TRIGGER THAT RETIRES THIS
-// FRONTIER: that fleet-converge step and that boot-run binding landing, each calling these functions;
-// until both do, neither is reachable from an entry point, and nothing here claims otherwise.
+// CONSUMPTION (DESIGN §3c). mtcollins1_census_image_publish is consumed by census stage 0B/0C:
+// mtcollins1_census_image_publish_wet below, invoked by the fleet-converge mode
+// mtcollins1_census_image_publish on srv2 (gunbc.fleet_converge_workflow, gunbc.ci_spec), which builds
+// and publishes inside /srv/bmc and emits the published name and digest as its receipt.
+// mtcollins1_census_image_resolve remains a DECLARED FRONTIER for stage 0D: gunbc.machine_intake_mtcollins1_boot_run
+// resolves the census image before the approval-gated boot and its signed boot subject binds the
+// resolved image_name and output_digest instead of the stock ones. TRIGGER THAT RETIRES THAT
+// FRONTIER: the boot-run binding landing and calling it; until then it is reachable from no entry
+// point, and nothing here claims otherwise.
 //
 // BUILT WHERE IT IS SERVED. The build reads the stock medium already verified into srv2's export and
 // writes the derived image into the same export, admitted against that export's ownership
@@ -157,4 +164,74 @@ fn mtcollins1_census_image_publish() -> SeededImagePublication {
 
 fn mtcollins1_census_image_resolve() -> SeededImageResolution {
   resolve_seeded_image(input: mtcollins1_census_image_input, dir: mtcollins1_boot_export_dir)
+}
+
+data mtcollins1_census_image_receipt_path: String = "target/mtcollins1-census-image.txt"
+
+// THE RECEIPT IS THE PUBLISHED NAME AND THE MEASURED DIGEST, one line each. It is the publication-time
+// fact 0D authors into the boot medium row; it does NOT stand in for the boot-time proof that the
+// served file still holds those bytes, which stays with mtcollins1_census_image_resolve (or an
+// equally strong srv2-side remeasurement) as its declared frontier says. Already-published is a
+// success: publication is create-only and the name is the digest, so a second run over the same
+// derivation finds its own bytes and reports them.
+fn mtcollins1_render_census_image_receipt(built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr) -> String {
+  concat(
+    "image_name=", built.image_name as String, "\n",
+    "output_digest=", built.output_digest as String, "\n",
+    "build_key=", built.build_key as String, "\n",
+    "published_path=", path as String, "\n",
+  )
+}
+
+// BUILT WHERE IT IS SERVED MEANS SRV2 AND NOTHING ELSE. The dispatch names a host and the runner is
+// pinned to it, so a run dispatched at srv1, srv3 or srv4 would remaster into THAT runner's /srv/bmc
+// -- a file no controller reads, published under a name the boot lane would then trust. The host is
+// admitted from the run environment before the build, the publication or the receipt write.
+type MtCollins1CensusPublishHostAdmission
+  = CensusPublishHostAdmitted
+  | CensusPublishHostRefused { reason: String }
+
+fn mtcollins1_census_publish_host_admission(expected_host: String) -> MtCollins1CensusPublishHostAdmission {
+  if expected_host == (operator_host_srv2 as String) {
+    CensusPublishHostAdmitted
+  } else {
+    CensusPublishHostRefused { reason: concat("mtcollins1 census image: the dispatch names host ", expected_host, " but the census image is built where it is served, on ", operator_host_srv2 as String, "; refusing before any build or write") }
+  }
+}
+
+fn mtcollins1_census_image_publish_wet() -> ProcessExit
+  uses fs: std.resources.Filesystem
+{
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: join(["mtcollins1 census image: ", v, " ", d, "; one host per run, named by the dispatch; refusing before any build or write"], ""))
+    ActionsVariablePresent { value: raw_host } =>
+      match mtcollins1_census_publish_host_admission(expected_host: raw_host) {
+        CensusPublishHostRefused { reason: r } => exit_failure(reason: r)
+        CensusPublishHostAdmitted => mtcollins1_census_image_publish_admitted()
+      }
+  }
+}
+
+fn mtcollins1_census_image_publish_admitted() -> ProcessExit
+  uses fs: std.resources.Filesystem
+{
+  match mtcollins1_census_image_publish() {
+    SeededImagePublicationRefused { reason: r } =>
+      exit_failure(reason: concat("mtcollins1 census image: publication refused: ", r))
+    SeededImagePublished { built: b, path: p } => mtcollins1_write_census_image_receipt(built: b, path: p)
+    SeededImageAlreadyPublished { built: b, path: p } => mtcollins1_write_census_image_receipt(built: b, path: p)
+  }
+}
+
+fn mtcollins1_write_census_image_receipt(built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr) -> ProcessExit {
+  let written = Filesystem.Write(
+    path: mtcollins1_census_image_receipt_path,
+    content: mtcollins1_render_census_image_receipt(built: built, path: path),
+  )
+  if written.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 census image: published at ", path as String, " and the receipt could not be written: ", written.error))
+  }
 }

@@ -1,0 +1,608 @@
+module test.claim.spark.pair_serving_d0_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List, Int, Port }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.measure { second }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_equal }
+import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected }
+import product.placement_supply { HostIdentity }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.serving_incarnation_observe { UnitOccupancy, UnitInstalled, UnitNotInstalled, UnitOccupancyUnread, IncarnationUnitNotActive }
+import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
+import gunbc.spark.vllm_serving_launch { vllm_serving_launch, endpoint_incarnation_observation }
+import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
+import gunbc.spark.pair_incumbent_identity {
+  DeclaredRankUnit, DeclaredPairRealization, declared_pair_realization_of, DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable,
+  ObservedRankUnit, observed_pair_realization_of, ObservedPairRealizationRead, pair_realization_agreement,
+}
+import gunbc.spark.released_baseline { QuiescentReservedBaseline }
+import gunbc.spark.pair_serving_authority {
+  pair_serving_committed_hosts,
+  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal,
+  PairRealizationKeyed, PairRealizationUnestablished, pair_serving_apply_admits, pair_serving_successor_may_launch,
+}
+import std.scoped_authorization {
+  OperatorGrant, ScopedAuthorization, AuthorizationGranted, Unclaimed, AuthorizationScope, AttemptIdentity, AuthorizedAction,
+  AuthorizationClaimState, ClaimedBy, CompletedBy, AbortedBy,
+}
+import std.effect_grant { Read, Write, NamespacePosition, CodeNameTree }
+import gunbc.rung_drop { Standing, Retired }
+import gunbc.rung_drop.fabric_storage_append_principal_unrefused { fabric_storage_append_principal_unrefused }
+import gunbc.spark.pair_serving_d0 {
+  d0_store_write_wall_standing, d0_store_operation_wall, StoreOperationWallMissing, StoreOperationWallRestored,
+  D0Subject, RankOccupancyReading, IncumbentReading, IncumbentAnswered, IncumbentAnsweredUnread, IncumbentDidNotAnswer, IncumbentRouteUnread, D0Observation,
+  HeadEndpointReading, HeadEndpointQuiet, HeadEndpointListening, HeadEndpointEngineProcess, HeadEndpointUnread, d0_held_lease,
+  OccupancyReconciliation, OccupancyNotQuiet, DeclaredOccupantDrifted, OccupancyUnread, reconcile_occupancy,
+  D0Decision, D0DecidedSuspend, D0DecidedRestore, D0DecidedFence, D0Cause, D0IncumbentLive, D0IncumbentUnidentified, D0OccupancyUnread, D0DeclarationUnavailable,
+  d0_decide, d0_decision_is_eligible, d0_authorized_action, d0_intent_text,
+  D0Population, D0PopulationAgrees, D0PopulationDiffers, d0_population,
+  D0AuthorizationStanding, D0AuthorizationResolved, D0AuthorizationUnestablished, resolve_d0_authorization,
+  D0ClaimReading, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
+  D0Recovery, D0RecoverStart, D0RecoverFirstWrite, D0RecoverResume, D0RecoverComplete, D0RecoverAbort, D0RecoveryRefused, d0_recovery,
+}
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+import gunbc.spark.pair_serving_authority_log { AuthorityTransitionRecord, PlacementPreparationRef, committed_population,
+}
+import product.capacity.event_chain { EventId }
+import extdeps.linux.proc_net_tcp { TcpSocketRow, TcpPortBound }
+
+// THE DECISION AND THE RECONCILIATION, OVER SUPPLIED READINGS. Every branch of the redesign's D0
+// table is driven here with a constructed observation; the transfer and the readings themselves
+// execute in the wet entry (pair_serving_d0_wet) against the fleet, and the compare-and-set it
+// relies on has its own real-execution witness on the authority log.
+
+fn d0w_t_sha(hex: String) -> ContentHash? {
+  match sha256_hex_digest(hex: hex) {
+    Absent => none
+    Present { value: d } => Present { value: Sha256Hash(d) }
+  }
+}
+
+fn d0w_with_digests(scenario: fn(ContentHash, ContentHash, ContentHash) -> Bool) -> Bool {
+  match d0w_t_sha(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => false
+    Present { value: a } =>
+      match d0w_t_sha(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") {
+        Absent => false
+        Present { value: b } =>
+          match d0w_t_sha(hex: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc") {
+            Absent => false
+            Present { value: c } => scenario(a, b, c)
+          }
+      }
+  }
+}
+
+fn d0w_t_declared(head: ContentHash, worker: ContentHash) -> DeclaredPairRealization {
+  declared_pair_realization_of(
+    group: FabricGroupA,
+    head: DeclaredRankUnit { host: operator_host_srv5, unit_name: spark_pair_head_unit_name, digest: head },
+    workers: [
+      DeclaredRankUnit { host: operator_host_srv6, unit_name: spark_pair_worker_unit_name, digest: worker },
+      DeclaredRankUnit { host: operator_host_srv7, unit_name: spark_pair_worker_unit_name, digest: worker },
+      DeclaredRankUnit { host: operator_host_srv8, unit_name: spark_pair_worker_unit_name, digest: worker },
+    ],
+  )
+}
+
+fn d0w_t_rank(host: HostIdentity, unit: NonEmptyStr, occupancy: UnitOccupancy) -> RankOccupancyReading {
+  RankOccupancyReading { host: host, unit_name: unit, occupancy: occupancy }
+}
+
+fn d0w_t_ranks(head: UnitOccupancy, w6: UnitOccupancy, w7: UnitOccupancy, w8: UnitOccupancy) -> List<RankOccupancyReading> {
+  [
+    d0w_t_rank(host: operator_host_srv5, unit: spark_pair_head_unit_name, occupancy: head),
+    d0w_t_rank(host: operator_host_srv6, unit: spark_pair_worker_unit_name, occupancy: w6),
+    d0w_t_rank(host: operator_host_srv7, unit: spark_pair_worker_unit_name, occupancy: w7),
+    d0w_t_rank(host: operator_host_srv8, unit: spark_pair_worker_unit_name, occupancy: w8),
+  ]
+}
+
+fn d0w_t_lease(h: ContentHash) -> HeldLease {
+  held_lease(epoch: LeaseEpoch { lease_key: "tx-w" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected)
+}
+
+data d0w_t_tx: NonEmptyStr = "tx-w" as NonEmptyStr
+
+fn d0w_t_subject(successor: ContentHash) -> D0Subject {
+  D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+}
+
+// A grant over the exact operation: the write scope over the authority, the transaction as the
+// attempt, and an intent hash SUPPLIED as a fixture -- the real intent is a SHA-256 taken through
+// the sha256sum realization, an effect the wet witness executes; the decision here consumes only
+// the grant's subject and escalation. The knobs let the reds vary one binding fact at a time.
+fn d0w_t_authorization(successor: ContentHash, scope_verb_write: Bool, attempt: NonEmptyStr, intent: ContentHash, expires_at: String) -> ScopedAuthorization<D0Subject> {
+  AuthorizationGranted {
+    grant: OperatorGrant {
+      escalation_id: "auth-w" as NonEmptyStr,
+      subject: d0w_t_subject(successor: successor),
+      scopes: [AuthorizationScope { verb: if scope_verb_write { Write } else { Read }, resource: NamespacePosition { tree: CodeNameTree, path: ["gunbc", "spark", "pair_serving_authority"] }, action: d0_authorized_action }],
+      purpose: "witness d0" as NonEmptyStr,
+      attempt: (attempt as String) as AttemptIdentity,
+      intent_hash: intent,
+      granted_by: "witness" as NonEmptyStr,
+      granted_at: "2026-09-18T00:00:00Z",
+      expires_at: expires_at,
+    },
+    claim: Unclaimed,
+  }
+}
+
+fn d0w_t_good_authorization(successor: ContentHash) -> ScopedAuthorization<D0Subject> {
+  d0w_t_authorization(successor: successor, scope_verb_write: true, attempt: d0w_t_tx, intent: successor, expires_at: "2026-09-19T00:00:00Z")
+}
+
+// The grant the decision is judged under: the fixture authorization's own grant. The DECISION
+// consumes the grant's fields (successor, cleanup, escalation); the TRANSACTION consumes an
+// AdmittedD0Grant, which only admit_d0_grant mints and which the real-execution witness drives.
+fn d0w_t_grant(successor: ContentHash) -> OperatorGrant<D0Subject>? {
+  match d0w_t_good_authorization(successor: successor) {
+    AuthorizationGranted { grant: g, claim: _ } => Present { value: g }
+    _ => none
+  }
+}
+
+fn d0w_t_active() -> PairServingGroupAuthority {
+  PairServingActive { group: FabricGroupA, exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr } }
+}
+
+fn d0w_t_decide(declared: DeclaredPairRealization, incumbent: IncumbentReading, ranks: List<RankOccupancyReading>, h: ContentHash) -> D0Decision {
+  match d0w_t_grant(successor: h) {
+    Absent => D0DecidedFence { next: FencedRefusal { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), cause: "witness: the fixture authorization carries no grant" as NonEmptyStr, disposition_authority: "witness" as NonEmptyStr }, cause: D0DeclarationUnavailable { obligation: "witness fixture" as NonEmptyStr } }
+    Present { value: grant } =>
+      d0_decide(
+        declared: DeclaredPairRealizationKeyed { declared: declared },
+        observation: D0Observation { group: FabricGroupA, incumbent: incumbent, ranks: ranks },
+        active: d0w_t_active(),
+        lease: d0w_t_lease(h: h),
+        grant: grant,
+      )
+  }
+}
+
+fn d0w_silent() -> IncumbentReading {
+  IncumbentDidNotAnswer { receipt: "the front door could not be connected within the bound" as NonEmptyStr, head: HeadEndpointQuiet }
+}
+
+
+// ── RECONCILIATION ─────────────────────────────────────────────────────────────────────────────
+
+// Our units, our bytes, all running: NOT a reconciled answer. That reading is the running declared
+// occupant, which the incumbent question owns; reconciliation is asked only after the head was
+// corroborated quiet, so it refuses as OccupancyNotQuiet naming the ranks -- and handed to the
+// decision behind a silent front door it fences as unidentified, never suspends.
+test fn all_ranks_installed_running_with_declared_bytes_is_not_quiet_and_fences() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    let ranks = d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b })
+    (match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: ranks) {
+       OccupancyNotQuiet { live: lv } => length(lv) == 1 && any(lv, h => (h as String) == (operator_host_srv5 as String))
+       _ => false
+     })
+      && (match d0w_t_decide(declared: d0w_t_declared(head: a, worker: b), incumbent: d0w_silent(), ranks: ranks, h: c) {
+            D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: _ } } => true
+            _ => false
+          })
+  })
+}
+
+// THE EXPECTED ANSWER: our units installed, none running. Drifted, naming every inactive rank --
+// and eligible, not refused (the redesign's correction of an earlier draft).
+test fn installed_but_inactive_ranks_are_drifted_and_eligible() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    let ranks = d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b })
+    (match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: ranks) {
+       DeclaredOccupantDrifted { drifted: ds } => length(ds) == 4
+       _ => false
+     })
+    && (match d0w_t_decide(declared: d0w_t_declared(head: a, worker: b), incumbent: d0w_silent(), ranks: ranks, h: c) {
+          D0DecidedSuspend { next: SuspendedForAuthorizedSuccessor { group: _, authorization: au, exact_candidate_realization: PairRealizationKeyed { key: k }, lease: _, cleanup: QuiescentReservedBaseline }, reconciliation: DeclaredOccupantDrifted { drifted: ds } } =>
+            (au as String) == "auth-w" && length(ds) == 4 && content_hash_equal(left: k, right: c)
+          _ => false
+        })
+  })
+}
+
+// One rank carries other bytes while the others are inactive with the declared bytes: every
+// rank is drifted (declared bytes not running is drift, other bytes is drift) and the population
+// names all four, the head and the other-bytes rank among them. A rank ACTIVE with the declared
+// bytes is live and makes the occupancy not quiet -- the claim above -- never a drifted member.
+test fn one_rank_with_other_bytes_is_drifted_naming_it() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: c }, w8: UnitInstalled { active: false, unit_digest: b })) {
+      DeclaredOccupantDrifted { drifted: ds } => length(ds) == 4 && any(ds, h => (h as String) == (operator_host_srv7 as String)) && any(ds, h => (h as String) == (operator_host_srv5 as String))
+      _ => false
+    }
+  })
+}
+
+// RED -- a rank with no pair unit installed is UNREAD, not empty and not drifted: this
+// transaction cannot tell it from a foreign occupant, and says so. It fences. (The head is quiet
+// here so absence is corroborated and the worker's unread reading is what governs.)
+test fn an_uninstalled_rank_is_unread_and_fences() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    let ranks = d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitNotInstalled, w8: UnitInstalled { active: true, unit_digest: b })
+    (match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: ranks) {
+       OccupancyUnread { hosts: hs, cause: _ } => length(hs) == 1
+       _ => false
+     })
+    && (match d0w_t_decide(declared: d0w_t_declared(head: a, worker: b), incumbent: d0w_silent(), ranks: ranks, h: c) {
+          D0DecidedFence { next: FencedRefusal { group: _, cause: _, disposition_authority: _ }, cause: D0OccupancyUnread { cause: _ } } => true
+          _ => false
+        })
+  })
+}
+
+// RED -- a rank whose read refused is unread even when every other rank converged.
+test fn one_unread_rank_makes_the_occupancy_unread() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitOccupancyUnread { refusal: IncarnationUnitNotActive { unit: spark_pair_worker_unit_name } }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b })) {
+      OccupancyUnread { hosts: hs, cause: _ } => length(hs) == 1 && all(hs, h => (h as String) == (operator_host_srv6 as String))
+      _ => false
+    }
+  })
+}
+
+// RED -- a declared rank with no reading at all is unread: a missing reading is not a reading.
+test fn a_missing_rank_reading_is_unread() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: [d0w_t_rank(host: operator_host_srv5, unit: spark_pair_head_unit_name, occupancy: UnitInstalled { active: false, unit_digest: a })]) {
+      OccupancyUnread { hosts: hs, cause: _ } => length(hs) == 3
+      _ => false
+    }
+  })
+}
+
+// ── THE INCUMBENT QUESTION COMES FIRST ─────────────────────────────────────────────────────────
+
+// An incumbent answering with head bytes `a` and worker bytes `b`, judged against a declaration
+// whose workers are `declared_worker`: equal to `b` for an established incumbent, other for drift.
+fn d0w_t_answered(a: ContentHash, b: ContentHash, declared_worker: ContentHash, img: ContentHash) -> IncumbentReading {
+  let head = endpoint_incarnation_observation(
+    endpoint: vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.5:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr),
+    launch: vllm_serving_launch(group: FabricGroupA, head: operator_host_srv5, systemd_invocation: "inv" as NonEmptyStr, container_id: "c" as NonEmptyStr, executable_digest: img, unit_digest: a, started_at: 1),
+    container_env: [] as List<String>,
+    receipt: "test.claim.spark.pair_serving_d0_witness fixture" as ObservationReceiptRef,
+  )
+  let workers = [
+    ObservedRankUnit { host: operator_host_srv6, unit_name: spark_pair_worker_unit_name, systemd_invocation: "inv" as NonEmptyStr, unit_digest: b },
+    ObservedRankUnit { host: operator_host_srv7, unit_name: spark_pair_worker_unit_name, systemd_invocation: "inv" as NonEmptyStr, unit_digest: b },
+    ObservedRankUnit { host: operator_host_srv8, unit_name: spark_pair_worker_unit_name, systemd_invocation: "inv" as NonEmptyStr, unit_digest: b },
+  ]
+  IncumbentAnswered {
+    agreement: pair_realization_agreement(
+      declared: DeclaredPairRealizationKeyed { declared: d0w_t_declared(head: a, worker: declared_worker) },
+      observed: ObservedPairRealizationRead { observed: observed_pair_realization_of(group: FabricGroupA, head: head, workers: workers, receipt: "test.claim.spark.pair_serving_d0_witness fixture" as ObservationReceiptRef) },
+    ),
+  }
+}
+
+// An incumbent answers and IS the declared realization on every rank: restoration is shown safe,
+// the authority returns to EXACTLY the Active state it held -- unchanged, not upgraded to a keyed
+// realization, because the running image is observed and uncompared -- and D0 is refused.
+test fn a_live_declared_incumbent_restores_the_active_state_unchanged_and_refuses() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    let d = d0w_t_declared(head: a, worker: b)
+    let decision = d0w_t_decide(declared: d, incumbent: d0w_t_answered(a: a, b: b, declared_worker: b, img: c), ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b }), h: c)
+    match decision {
+      D0DecidedRestore { next: PairServingActive { group: _, exact_realization: PairRealizationUnestablished { obligation: o } }, key: k2 } =>
+        (o as String) == "witness" && content_hash_equal(left: k2, right: d.key) && !d0_decision_is_eligible(d: decision)
+      _ => false
+    }
+  })
+}
+
+// RED -- an incumbent answers but is NOT the declared realization (a worker's bytes differ): not
+// restored, not suspended -- fenced for the operator, naming the standing.
+test fn a_live_drifted_incumbent_is_fenced() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    match d0w_t_decide(declared: d0w_t_declared(head: a, worker: c), incumbent: d0w_t_answered(a: a, b: b, declared_worker: c, img: c), ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: c }, w7: UnitInstalled { active: true, unit_digest: c }, w8: UnitInstalled { active: true, unit_digest: c }), h: c) {
+      D0DecidedFence { next: FencedRefusal { group: _, cause: _, disposition_authority: _ }, cause: D0IncumbentLive { standing: _ } } => true
+      _ => false
+    }
+  })
+}
+
+// RED -- the route could not be read at all: the incumbent question is unanswered, and an
+// unanswered first question fences before the ranks are consulted.
+test fn an_unread_route_fences_before_reconciling() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    match d0w_t_decide(declared: d0w_t_declared(head: a, worker: b), incumbent: IncumbentRouteUnread { cause: "no fleet ssh context" as NonEmptyStr }, ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b }), h: c) {
+      D0DecidedFence { next: _, cause: D0OccupancyUnread { cause: _ } } => true
+      _ => false
+    }
+  })
+}
+
+// RED -- the route ANSWERED but the document named no launch: an incumbent may be live and could
+// not be identified. That is not silence, and it fences before the ranks are consulted --
+// whatever the ranks would have reconciled to.
+test fn an_answering_but_unidentified_incumbent_fences() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    match d0w_t_decide(declared: d0w_t_declared(head: a, worker: b), incumbent: IncumbentAnsweredUnread { cause: "the served metrics carried no process start-time series" as NonEmptyStr }, ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }), h: c) {
+      D0DecidedFence { next: FencedRefusal { group: _, cause: _, disposition_authority: _ }, cause: D0IncumbentUnidentified { cause: _ } } => true
+      _ => false
+    }
+  })
+}
+
+// THE ENTRY IS NON-ADMITTING TODAY BY CONSTRUCTION: no authorization id resolves to a scoped
+// authorization, so the wet entry refuses before its first write. This is the wall's executed
+// red; the positive route is driven by the real-execution witness with a fixture grant.
+test fn no_authorization_resolves_today_so_the_entry_cannot_admit() -> Bool {
+  match resolve_d0_authorization(group: FabricGroupA, authorization: "esc-anything") {
+    D0AuthorizationUnestablished { obligation: _ } => true
+    D0AuthorizationResolved { authorization: _ } => false
+  }
+}
+
+fn d0w_port(n: Int) -> Port {
+  n
+}
+
+fn d0w_with_four_hosts(scenario: fn(HostIdentity, HostIdentity, HostIdentity, HostIdentity) -> Bool) -> Bool {
+  let current = fabric_group_hosts(g: FabricGroupA)
+  if length(current) != 4 { false } else {
+    match get(xs: current, index: 0) {
+      Absent => false
+      Present { value: h1 } =>
+        match get(xs: current, index: 1) {
+          Absent => false
+          Present { value: h2 } =>
+            match get(xs: current, index: 2) {
+              Absent => false
+              Present { value: h3 } =>
+                match get(xs: current, index: 3) {
+                  Absent => false
+                  Present { value: h4 } => scenario(h1, h2, h3, h4)
+                }
+            }
+        }
+    }
+  }
+}
+
+fn d0w_t_subject_over(hs: List<HostIdentity>, successor: ContentHash, term: Nat) -> D0Subject {
+  D0Subject { group: FabricGroupA, hosts: hs, successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: term) }
+}
+
+// THE SUBJECT NAMES THE EXACT HOSTS. A grant whose host list is the group's current population,
+// in any order, agrees; one with a host swapped, one dropped, or one duplicated differs -- by an
+// identity join in both directions, so a count could not have passed the swap.
+test fn the_grant_population_is_joined_to_the_current_group_by_identity() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
+      (match d0_population(subject: d0w_t_subject_over(hs: [h4, h3, h2, h1], successor: c, term: 1000), current: [h1, h2, h3, h4]) { D0PopulationAgrees => true  _ => false })
+        && (match d0_population(subject: d0w_t_subject_over(hs: [h1, h2, h3], successor: c, term: 1000), current: [h1, h2, h3, h4]) { D0PopulationDiffers { granted: _, current: _ } => true  _ => false })
+        && (match d0_population(subject: d0w_t_subject_over(hs: [h1, h2, h3, h3], successor: c, term: 1000), current: [h1, h2, h3, h4]) { D0PopulationDiffers { granted: _, current: _ } => true  _ => false })
+        && (match d0_population(subject: d0w_t_subject_over(hs: [h1, h2, h3, operator_host_srv1], successor: c, term: 1000), current: [h1, h2, h3, h4]) { D0PopulationDiffers { granted: _, current: _ } => true  _ => false })
+    })
+  })
+}
+
+// THE INTENT'S CANONICAL TEXT is one line per fact and the hosts are sorted: two subjects that
+// list the same hosts in different orders encode identically, and any other fact moving --
+// successor, term, transaction -- changes the text.
+test fn the_intent_text_is_canonical_over_the_operation() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
+      let one = d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1000)
+      let t = d0_intent_text(subject: one, group: FabricGroupA, transaction: d0w_t_tx)
+      t == d0_intent_text(subject: d0w_t_subject_over(hs: [h4, h2, h1, h3], successor: c, term: 1000), group: FabricGroupA, transaction: d0w_t_tx)
+        && t != d0_intent_text(subject: d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1001), group: FabricGroupA, transaction: d0w_t_tx)
+        && t != d0_intent_text(subject: d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: a, term: 1000), group: FabricGroupA, transaction: d0w_t_tx)
+        && t != d0_intent_text(subject: one, group: FabricGroupA, transaction: "tx-other" as NonEmptyStr)
+        && t.contains("suspend-pair-serving-authority")
+    })
+  })
+}
+
+// ── RECOVERY: THE JOIN OVER THE CLAIM AND THE AUTHORITY HISTORY ────────────────────────────────
+
+fn d0w_rec_of(id: String, tx: String, lifecycle: ContentHash?, next: PairServingGroupAuthority) -> AuthorityTransitionRecord {
+  AuthorityTransitionRecord { id: (id as NonEmptyStr) as EventId, transaction: tx as NonEmptyStr, lifecycle: lifecycle, next: next, placement: PlacementPreparationRef { id: (join(["p-", id], "") as NonEmptyStr) as EventId, group: FabricGroupA, previous_hosts: [] as List<HostIdentity>, next_hosts: committed_population(a: next), operation: tx as NonEmptyStr } }
+}
+
+// A record written by THIS lifecycle (binding c, the same hash the claims pass as the lifecycle).
+fn d0w_rec(id: String, tx: String, next: PairServingGroupAuthority) -> AuthorityTransitionRecord {
+  d0w_rec_of(id: id, tx: tx, lifecycle: none, next: next)
+}
+
+fn d0w_mine(id: String, h: ContentHash, next: PairServingGroupAuthority) -> AuthorityTransitionRecord {
+  d0w_rec_of(id: id, tx: "tx-w", lifecycle: Present { value: h }, next: next)
+}
+
+// A pending state as this witness's executor ("witness") wrote it: the lease owner is that
+// executor's fingerprint, so a resume from the same executor is admitted and one from another
+// executor is refused by the owner check.
+fn d0w_pending(tx: String, h: ContentHash) -> PairServingGroupAuthority {
+  SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: tx as NonEmptyStr, authorization_binding: h, lease: d0_held_lease(group: FabricGroupA, transaction: tx as NonEmptyStr, executor: "witness" as NonEmptyStr, generation: 1) }
+}
+
+fn d0w_claimed(by: String) -> D0ClaimReading {
+  D0ClaimAt { state: ClaimedBy { attempt: (by as NonEmptyStr) as AttemptIdentity, claimed_at: "2026-09-18T00:00:00Z" }, generation: 1 }
+}
+
+fn d0w_suspended(h: ContentHash) -> PairServingGroupAuthority {
+  SuspendedForAuthorizedSuccessor { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), authorization: "auth-w" as NonEmptyStr, exact_candidate_realization: PairRealizationKeyed { key: h }, lease: d0w_t_lease(h: h), cleanup: QuiescentReservedBaseline }
+}
+
+// EVERY CRASH POINT HAS ONE DISPOSITION. No claim starts. A claim held by this transaction with no
+// transition by it performs the first write when the authority is Active and aborts otherwise. A
+// pending state under this transaction resumes. A settling transition by this transaction means
+// only the claim's terminal is owed. A pending state written by this transaction that another
+// writer moved is refused for an operator.
+test fn the_recovery_join_dispatches_every_crash_point() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    let active = d0w_t_active()
+    (match d0_recovery(claim: D0ClaimAbsent, transaction: d0w_t_tx, lifecycle: none, executor: "witness" as NonEmptyStr, current: active, transitions: [] as List<AuthorityTransitionRecord>) { D0RecoverStart => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, executor: "witness" as NonEmptyStr, current: active, transitions: [] as List<AuthorityTransitionRecord>) { D0RecoverFirstWrite { claim_generation: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, executor: "witness" as NonEmptyStr, current: FencedRefusal { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr }, transitions: [d0w_rec(id: "e1", tx: "tx-other", next: FencedRefusal { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr })]) { D0RecoverAbort { claim_generation: _, cause: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, executor: "witness" as NonEmptyStr, current: d0w_pending(tx: "tx-w", h: c), transitions: [d0w_mine(id: "e1", h: c, next: d0w_pending(tx: "tx-w", h: c))]) { D0RecoverResume { claim_generation: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, executor: "witness" as NonEmptyStr, current: d0w_suspended(h: c), transitions: [d0w_mine(id: "e1", h: c, next: d0w_pending(tx: "tx-w", h: c)), d0w_mine(id: "e2", h: c, next: d0w_suspended(h: c))]) { D0RecoverComplete { claim_generation: _, settled: s } => (s.id as String) == "e2"  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, executor: "witness" as NonEmptyStr, current: active, transitions: [d0w_mine(id: "e1", h: c, next: d0w_pending(tx: "tx-w", h: c)), d0w_mine(id: "e2", h: c, next: active), d0w_rec(id: "e3", tx: "tx-later", next: d0w_pending(tx: "tx-later", h: c)), d0w_rec(id: "e4", tx: "tx-later", next: active)]) { D0RecoverComplete { claim_generation: _, settled: s } => (s.id as String) == "e2"  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, executor: "witness" as NonEmptyStr, current: active, transitions: [d0w_mine(id: "e1", h: c, next: d0w_pending(tx: "tx-w", h: c)), d0w_rec(id: "e2", tx: "tx-operator", next: active)]) { D0RecoveryRefused { cause: _ } => true  _ => false })
+  })
+}
+
+// RED: THE TRANSACTION WORD IS NOT THE LIFECYCLE. Escalation E1 under word tx-w settled (its
+// transitions carry binding a); an operator restored the group; escalation E2 under the SAME word
+// claimed (binding c) and died before its first write. E2's recovery must be FirstWrite -- never
+// Complete from E1's terminal -- and a claim whose binding could not be digested identifies no
+// history at all and is refused rather than joined by the word. AND THE LIFECYCLE IS NOT THE
+// EXECUTOR: another executor facing THIS lifecycle's pending state is refused by the lease owner
+// (no handoff), but that same executor completes a settled lifecycle -- suspended or restored to
+// Active -- rather than aborting it or starting a second first write.
+test fn a_reused_transaction_word_does_not_inherit_another_lifecycles_history() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    let active = d0w_t_active()
+    let history = [
+      d0w_rec_of(id: "e1", tx: "tx-w", lifecycle: Present { value: a }, next: d0w_pending(tx: "tx-w", h: a)),
+      d0w_rec_of(id: "e2", tx: "tx-w", lifecycle: Present { value: a }, next: d0w_suspended(h: a)),
+      d0w_rec(id: "e3", tx: "tx-operator-restore", next: active),
+    ]
+    (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, executor: "witness" as NonEmptyStr, current: active, transitions: history) { D0RecoverFirstWrite { claim_generation: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: a }, executor: "witness" as NonEmptyStr, current: active, transitions: history) { D0RecoverComplete { claim_generation: _, settled: s } => (s.id as String) == "e2"  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: none, executor: "witness" as NonEmptyStr, current: active, transitions: history) { D0RecoveryRefused { cause: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, executor: "witness" as NonEmptyStr, current: d0w_pending(tx: "tx-w", h: a), transitions: concat(history, [d0w_rec_of(id: "e4", tx: "tx-w", lifecycle: Present { value: c }, next: d0w_pending(tx: "tx-w", h: c))])) { D0RecoveryRefused { cause: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, executor: "another-executor" as NonEmptyStr, current: d0w_pending(tx: "tx-w", h: c), transitions: [d0w_mine(id: "e5", h: c, next: d0w_pending(tx: "tx-w", h: c))]) { D0RecoveryRefused { cause: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, executor: "another-executor" as NonEmptyStr, current: d0w_suspended(h: c), transitions: [d0w_mine(id: "e5", h: c, next: d0w_pending(tx: "tx-w", h: c)), d0w_mine(id: "e6", h: c, next: d0w_suspended(h: c))]) { D0RecoverComplete { claim_generation: _, settled: st } => (st.id as String) == "e6"  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, executor: "another-executor" as NonEmptyStr, current: active, transitions: [d0w_mine(id: "e5", h: c, next: d0w_pending(tx: "tx-w", h: c)), d0w_mine(id: "e6", h: c, next: active)]) { D0RecoverComplete { claim_generation: _, settled: st } => (st.id as String) == "e6"  _ => false })
+  })
+}
+
+// RED: consent that is not this run's is refused whatever the authority says -- held by another
+// attempt, completed, aborted, or unreadable -- and an Active authority with a completed claim is
+// NOT a start.
+test fn a_claim_that_is_not_this_transactions_is_refused_before_any_write() -> Bool {
+  let active = d0w_t_active()
+  let none_yet = [] as List<AuthorityTransitionRecord>
+  (match d0_recovery(claim: d0w_claimed(by: "tx-other"), transaction: d0w_t_tx, lifecycle: none, executor: "witness" as NonEmptyStr, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    && (match d0_recovery(claim: D0ClaimAt { state: CompletedBy { attempt: ("tx-w" as NonEmptyStr) as AttemptIdentity, completed_at: "t" }, generation: 2 }, transaction: d0w_t_tx, lifecycle: none, executor: "witness" as NonEmptyStr, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    && (match d0_recovery(claim: D0ClaimAt { state: AbortedBy { attempt: ("tx-w" as NonEmptyStr) as AttemptIdentity, aborted_at: "t", cause: "w" as NonEmptyStr }, generation: 2 }, transaction: d0w_t_tx, lifecycle: none, executor: "witness" as NonEmptyStr, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    && (match d0_recovery(claim: D0ClaimAt { state: Unclaimed, generation: 1 }, transaction: d0w_t_tx, lifecycle: none, executor: "witness" as NonEmptyStr, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    && (match d0_recovery(claim: D0ClaimUnreadable { reason: "w" as NonEmptyStr }, transaction: d0w_t_tx, lifecycle: none, executor: "witness" as NonEmptyStr, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+}
+
+// A declaration that could not be keyed fences: there is nothing to reconcile against.
+test fn an_unavailable_declaration_fences() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    match d0w_t_grant(successor: c) {
+      Absent => false
+      Present { value: grant } =>
+    match d0_decide(
+      declared: DeclaredPairRealizationUnavailable { group: FabricGroupA, obligation: "witness" as NonEmptyStr },
+      observation: D0Observation { group: FabricGroupA, incumbent: d0w_silent(), ranks: [] as List<RankOccupancyReading> },
+      active: d0w_t_active(), lease: d0w_t_lease(h: c), grant: grant,
+    ) {
+      D0DecidedFence { next: _, cause: D0DeclarationUnavailable { obligation: _ } } => true
+      _ => false
+    }
+    }
+  })
+}
+
+// The suspended authority D0 writes is what the successor's launch gate reads: with the lease
+// running it may launch, and the incumbent's apply is refused.
+test fn the_suspension_d0_writes_admits_launch_and_refuses_apply() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    match d0w_t_decide(declared: d0w_t_declared(head: a, worker: b), incumbent: d0w_silent(), ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }), h: c) {
+      D0DecidedSuspend { next: n, reconciliation: _ } => pair_serving_successor_may_launch(a: n) && !pair_serving_apply_admits(a: n)
+      _ => false
+    }
+  })
+}
+
+// ── ABSENCE IS CORROBORATED ON THE HEAD, AND THE FENCE KEEPS THE AUTHORIZED HOSTS ──────────────
+
+// The front door gave no status (a failed connect). Absence needs the head QUIET on both readings:
+// no LISTEN on the enrolled port and no engine process (HeadEndpointQuiet), AND the declared unit
+// inactive. A listener, an engine process, or an unread table fences as an unidentified incumbent
+// (or unread); an active declared unit fences; an unread head fences; only a quiet head with an
+// inactive unit proceeds to reconciliation.
+test fn a_failed_connect_is_absence_only_when_the_head_unit_is_quiet() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    let declared = d0w_t_declared(head: a, worker: b)
+    let no_status = IncumbentDidNotAnswer { receipt: "the front door could not be connected (curl exit 7)" as NonEmptyStr, head: HeadEndpointQuiet }
+    let quiet_ranks = d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b })
+    (match reconcile_occupancy(declared: declared, ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b })) { OccupancyNotQuiet { live: lv } => length(lv) == 1  _ => false })
+      && (match reconcile_occupancy(declared: declared, ranks: [] as List<RankOccupancyReading>) { OccupancyUnread { hosts: _, cause: _ } => true  _ => false })
+      && (match reconcile_occupancy(declared: declared, ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b })) { OccupancyNotQuiet { live: lv } => length(lv) == 3 && !any(lv, h => (h as String) == (operator_host_srv5 as String))  _ => false })
+      && (match d0w_t_decide(declared: declared, incumbent: no_status, ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b }), h: c) {
+            D0DecidedFence { next: FencedRefusal { group: _, cause: _, disposition_authority: _ }, cause: D0IncumbentUnidentified { cause: _ } } => true
+            _ => false
+          })
+      && (match d0w_t_decide(declared: declared, incumbent: no_status, ranks: d0w_t_ranks(head: UnitOccupancyUnread { refusal: IncarnationUnitNotActive { unit: spark_pair_head_unit_name } }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }), h: c) {
+            D0DecidedFence { next: _, cause: D0OccupancyUnread { cause: _ } } => true
+            _ => false
+          })
+      && (match d0w_t_decide(declared: declared, incumbent: no_status, ranks: quiet_ranks, h: c) {
+            D0DecidedSuspend { next: _, reconciliation: DeclaredOccupantDrifted { drifted: ds } } => length(ds) == 4
+            _ => false
+          })
+      && (match d0w_t_decide(declared: declared, incumbent: IncumbentDidNotAnswer { receipt: "curl 7" as NonEmptyStr, head: HeadEndpointListening { port: d0w_port(n: 8000), rows: [TcpSocketRow { local_address: "00000000:1F40", local_port: TcpPortBound { port: 8000 }, state: "0A" }] } }, ranks: quiet_ranks, h: c) {
+            D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: _ } } => true
+            _ => false
+          })
+      && (match d0w_t_decide(declared: declared, incumbent: IncumbentDidNotAnswer { receipt: "curl 7" as NonEmptyStr, head: HeadEndpointEngineProcess { listing: "4242 python -m vllm.entrypoints.openai.api_server" } }, ranks: quiet_ranks, h: c) {
+            D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: _ } } => true
+            _ => false
+          })
+      && (match d0w_t_decide(declared: declared, incumbent: IncumbentDidNotAnswer { receipt: "curl 7" as NonEmptyStr, head: HeadEndpointUnread { cause: "/proc/net/tcp unread" as NonEmptyStr } }, ranks: quiet_ranks, h: c) {
+            D0DecidedFence { next: _, cause: D0OccupancyUnread { cause: _ } } => true
+            _ => false
+          })
+  })
+}
+
+fn d0w_same_order(hs: List<HostIdentity>, first: HostIdentity, last: HostIdentity) -> Bool {
+  length(hs) == 4
+    && (match get(xs: hs, index: 0) { Present { value: x } => (x as String) == (first as String)  Absent => false })
+    && (match get(xs: hs, index: 3) { Present { value: x } => (x as String) == (last as String)  Absent => false })
+}
+
+// EVERY STATE D0 WRITES CARRIES THE AUTHORIZED HOSTS, AND THE COMMITMENT READS THEM. The subject
+// names [h4, h3, h2, h1] (the group's hosts, reordered); the suspension and the fence D0 decides
+// commit exactly those, in the subject's order, whatever the roster says now -- and a resting
+// Active commits the roster.
+test fn the_states_d0_writes_commit_the_authorized_hosts_not_the_roster() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
+      let subject = d0w_t_subject_over(hs: [h4, h3, h2, h1], successor: c, term: 1000)
+      match d0w_t_grant(successor: c) {
+        Absent => false
+        Present { value: g0 } => {
+          let grant = OperatorGrant { escalation_id: g0.escalation_id, subject: subject, scopes: g0.scopes, purpose: g0.purpose, attempt: g0.attempt, intent_hash: g0.intent_hash, granted_by: g0.granted_by, granted_at: g0.granted_at, expires_at: g0.expires_at }
+          (match d0_decide(declared: DeclaredPairRealizationKeyed { declared: d0w_t_declared(head: a, worker: b) }, observation: D0Observation { group: FabricGroupA, incumbent: d0w_silent(), ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }) }, active: d0w_t_active(), lease: d0w_t_lease(h: c), grant: grant) {
+             D0DecidedSuspend { next: n, reconciliation: _ } => d0w_same_order(hs: pair_serving_committed_hosts(a: n), first: h4, last: h1)
+             _ => false
+           })
+            && (match d0_decide(declared: DeclaredPairRealizationKeyed { declared: d0w_t_declared(head: a, worker: b) }, observation: D0Observation { group: FabricGroupA, incumbent: IncumbentRouteUnread { cause: "w" as NonEmptyStr }, ranks: [] as List<RankOccupancyReading> }, active: d0w_t_active(), lease: d0w_t_lease(h: c), grant: grant) {
+                  D0DecidedFence { next: n, cause: _ } => d0w_same_order(hs: pair_serving_committed_hosts(a: n), first: h4, last: h1)
+                  _ => false
+                })
+            && length(pair_serving_committed_hosts(a: d0w_t_active())) == 4
+        }
+      }
+    })
+  })
+}
+
+// THE WET DOOR CONSUMES THE STORE'S WRITE-WALL DROP: while gunbc.rung_drop
+// fabric_storage_append_principal_unrefused stands the door's first gate names it and refuses; when the
+// row is retired the gate is absent. The gate is read from the row, so retiring the row is the
+// only thing that opens it.
+test fn the_wet_door_refuses_while_the_fabric_storage_write_wall_drop_stands() -> Bool {
+  match fabric_storage_append_principal_unrefused.standing {
+    Standing => (match d0_store_write_wall_standing() { Present { value: why } => why.contains("fabric_storage_append_principal_unrefused") && why.contains("does not run")  Absent => false })
+    Retired { trigger_fired: _ } =>
+      match d0_store_operation_wall {
+        StoreOperationWallMissing { trigger: _ } => (match d0_store_write_wall_standing() { Present { value: why } => why.contains("d0_store_operation_wall") && why.contains("does not run")  Absent => false })
+        StoreOperationWallRestored { by: _ } => (match d0_store_write_wall_standing() { Absent => true  Present { value: _ } => false })
+      }
+  }
+}

@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.test_claim_host_allocation_conservation_live_verdict_with_session_charge_gunbc_ci_host_fixed_overhead_for
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data test_claim_host_allocation_conservation_live_verdict_with_session_charge_gunbc_ci_host_fixed_overhead_for: TransitionAdmission = TransitionAdmission {
+  label: "EXTRACTION host memory observation: `gunbc_ci_host_fixed_overhead_for` moves gunbc.ci_floor_measurement -> gunbc.host_memory_observation" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("test.claim.host_allocation_conservation", "live_verdict_with_session_charge"),
+    spelling: "gunbc_ci_host_fixed_overhead_for" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.host_memory_observation", "gunbc_ci_host_fixed_overhead_for")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11625 as UInt32,
+}

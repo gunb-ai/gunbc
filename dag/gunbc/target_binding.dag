@@ -12,6 +12,11 @@ import std.integer { Int }
 // identity and dependency edges; this relation answers the separate realization question. In
 // particular, no command line, function name, or execution closure is carried here: selecting a
 // transport belongs to the later realization layer, not to either side of this model relation.
+// FloorMemoryQualificationProducer supervises a required-floor run inside a cgroup it shares with
+// the child, then reads memory.peak and memory.events from OUTSIDE the dead process. Deliberately
+// NOT the RequiredFloorProducer variant, which remains unbound: what it produces is a memory
+// QUALIFICATION, not a floor verdict, and reusing a differently-named slot for a different fact is
+// the meaning fork DESIGN section 3 forbids.
 type TargetProducer
   = SelfHostProducer
   | RequiredFloorProducer
@@ -27,12 +32,8 @@ type TargetProducer
   | PrimitiveEgressCensusV2Producer
   | PrimitiveEgressCensusDagProducer
   | PrimitiveEgressCensusSeedProducer
-  // Supervises a required-floor run inside a cgroup it shares with the child, then reads
-  // memory.peak and memory.events from OUTSIDE the dead process. Deliberately NOT the
-  // `RequiredFloorProducer` variant above, which remains unbound: what this produces is a memory
-  // QUALIFICATION, not a floor verdict, and reusing a differently-named slot for a different fact
-  // is the meaning fork DESIGN section 3 forbids.
   | FloorMemoryQualificationProducer
+  | RequiredLaneResolutionCensusProducer
 
 type TargetBinding {
   target: Label

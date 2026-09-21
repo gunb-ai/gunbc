@@ -13,9 +13,11 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_sol_held_from_observations,
   mtcollins1_sol_observed_from_collector,
   mtcollins1_boot_terminal_observed,
+  mtcollins1_boot_medium_refusal,
   mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1,
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet_converge_workflow { fleet_converge_fleet_ssh_key_step_if }
 import std.process { ExitSuccess }
 import std.temporal_effect {
   LeaseRunningExpected, LeaseRunningStale, LeaseInaccessible,
@@ -23,7 +25,9 @@ import std.temporal_effect {
 }
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
 import std.scoped_authorization { authorization_claim_key }
-import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
+import gunbc.machine_intake_mtcollins1_boot_authorization {
+  mtcollins1_boot_subject, mtcollins1_boot_subject_for, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium_label,
+}
 import gunbc.auth.approval_request_client {
   approval_poll_standing, PollExpired, PollUnreadable,
 }
@@ -196,16 +200,18 @@ test fn sol_lease_observation_is_the_collector_we_hold_not_sol_info() -> Bool {
 
 test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let subject = mtcollins1_boot_subject(execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+  let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
+  let census_subject = mtcollins1_boot_subject_for(medium: census_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
   let clean = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
-      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      "----SECTION boot-media----\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
         "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
         concat(
           "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
-            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
               "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
               "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
@@ -218,13 +224,13 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let ghes_ce = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
-      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      "----SECTION boot-media----\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
         "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
         concat(
           "----SECTION edac-before----\nghes_edac\n== /sys/devices/system/edac/mc/mc0/ce_count == 1\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
-            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
               "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
               "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
@@ -237,13 +243,13 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let ue = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
-      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      "----SECTION boot-media----\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
         "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
         concat(
           "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 1\n----EXIT edac-before: 0\n",
           concat(
-            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
               "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
               "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
@@ -256,13 +262,13 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let nproc_elsewhere = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
-      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      "----SECTION boot-media----\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
         "----SECTION nproc----\n----EXIT nproc: 1\n----SECTION lscpu----\nCPU(s):                               160\n----EXIT lscpu: 0\n",
         concat(
           "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
-            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
               "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
               "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
@@ -275,13 +281,13 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let digest_mismatch = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
-      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      "----SECTION boot-media----\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
         "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
         concat(
           "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
-            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=no\n----EXIT workload: 0\n",
+            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=no\n----EXIT workload: 0\n",
             concat(
               "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
               "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
@@ -296,14 +302,56 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     "console said the process reached the end of its run\n----SECTION nproc----\n160\n",
   )
-  mtcollins1_boot_terminal_observed(capture: clean, subject: subject)
-    && !mtcollins1_boot_terminal_observed(capture: "BootControlIssued cdrom", subject: subject)
-    && !mtcollins1_boot_terminal_observed(capture: ghes_ce, subject: subject)
-    && !mtcollins1_boot_terminal_observed(capture: ue, subject: subject)
-    && !mtcollins1_boot_terminal_observed(capture: nproc_elsewhere, subject: subject)
-    && !mtcollins1_boot_terminal_observed(capture: digest_mismatch, subject: subject)
-    && !mtcollins1_boot_terminal_observed(capture: begin_only, subject: subject)
-    && !mtcollins1_boot_terminal_observed(capture: begin_with_spurious_end, subject: subject)
+  let stock_medium = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        concat(
+          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          concat(
+            "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            concat(
+              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+  let argv_echo_only = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        concat(
+          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          concat(
+            "----SECTION workload----\n----ARGV workload: echo workload-write-rc=0; echo workload-digest-stable=yes\nworkload-write-rc=0\n----EXIT workload: 0\n",
+            concat(
+              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+  mtcollins1_boot_terminal_observed(capture: clean, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: clean, subject: subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: stock_medium, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: clean, subject: subject, medium: MtCollins1StockInstallerMedium)
+    && !mtcollins1_boot_terminal_observed(capture: argv_echo_only, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: "BootControlIssued cdrom", subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: ghes_ce, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: ue, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: nproc_elsewhere, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: digest_mismatch, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: begin_only, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: begin_with_spurious_end, subject: census_subject, medium: census_medium)
 }
 
 test fn boot_loopback_filing_is_srv1_only() -> Bool {
@@ -311,4 +359,45 @@ test fn boot_loopback_filing_is_srv1_only() -> Bool {
     && !mtcollins1_boot_host_must_be_srv1(host: operator_host_srv2 as String)
     && match mtcollins1_boot_refuses_off_srv1(host: operator_host_srv1 as String) { ExitSuccess => true  _ => false }
     && match mtcollins1_boot_refuses_off_srv1(host: operator_host_srv2 as String) { ExitSuccess => false  _ => true }
+}
+
+// THE FLEET KEY IS NOT MATERIALIZED FOR THIS MODE, AND THE CONTROL IS THE MODE BESIDE IT. The
+// fleet-converge key step's condition is derived from the per-mode demand, so this is the executing
+// consumer of MtCollins1Boot => FleetSshKeyNotConsumed rather than a restatement of the arm: flip the
+// arm back and this claim goes red. approval_keyring_converge is asserted PRESENT in the same string
+// because it is a real fleet-SSH demand (its run reaches typed_argv_exec_over_fleet_ssh against
+// srv1), which also keeps the negative from being satisfiable by an empty or absent condition.
+//
+// WHY NotConsumed IS THE HONEST VALUE HERE. Every transport mtcollins1_boot_wet's closure reaches
+// presents a credential that is not the fleet key: local filesystem reads and writes, curl to the
+// approvals server over HTTP loopback under the approval submission MAC key, curl over HTTPS to the
+// MegaRAC BMC and ipmitool -I lanplus to the same BMC -- including the serial-over-LAN session --
+// both under the pinned mtcollins1 BMC credential file. The full enumeration is beside the arm in
+// gunbc.fleet_converge_workflow fleet_converge_mode_fleet_ssh_key_demand.
+test fn mtcollins1_boot_does_not_materialize_the_fleet_key() -> Bool {
+  let c = fleet_converge_fleet_ssh_key_step_if
+  !string_contains(s: c, pattern: "'mtcollins1_boot'")
+    && string_contains(s: c, pattern: "'approval_keyring_converge'")
+}
+
+// THE MEDIUM GATE REFUSES BEFORE ANY CONTROLLER WRITE. A boot that attaches the stock installer can
+// never print the census terminal, and the run says so from the row rather than after a hardware
+// run (review 69352); the census medium passes the gate and names the label the verdict binds to.
+test fn the_stock_installer_medium_refuses_the_census_boot_at_the_gate() -> Bool {
+  match mtcollins1_boot_medium_refusal(medium: MtCollins1StockInstallerMedium) {
+    Present { value: why } => string_contains(s: why, pattern: "controller untouched") && string_contains(s: why, pattern: "no census program")
+    Absent => false
+  }
+}
+
+test fn the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label() -> Bool {
+  let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
+  match mtcollins1_boot_medium_refusal(medium: medium) {
+    Present { value: _ } => false
+    Absent =>
+      match mtcollins1_boot_medium_label(medium: medium) {
+        Absent => false
+        Present { value: label } => (label as String) == "GUNBC_MTC1_CENSUS_2404_3"
+      }
+  }
 }
