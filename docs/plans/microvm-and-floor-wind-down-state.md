@@ -10,6 +10,23 @@ that produced it. Where a claim is **contested**, it is marked, and neither vers
 asserted — DESIGN §4d: a bet is typed as a bet, and the reader who consumes it as a fact is
 the defect.
 
+**Consumer, and a declared frontier (DESIGN §3c).** This page is cited by path from the two
+re-entry briefs that govern the parked programs, which is where a resuming session reads it.
+It is **not** linked from `DESIGN.md`, and it deliberately does not add a
+`gunbc.design_document` row to become so: it is a dated state record rather than a doctrine
+a DESIGN section governs, and editing that authority is not a wind-down act. It therefore
+joins the orphan population already rostered as `gunbc.guarantee_stall`
+`doc_graph_orphan_population_stall` (`current: OutsideTheLadder`), and this paragraph is the
+admission rather than a silent addition. **Trigger for the frontier:** whichever funded lane
+resumes a program named here either links this page from the section that governs its work,
+or supersedes it and deletes it. A wind-down record that outlives the wind-down is debt.
+
+**On the numbers below.** Where a figure is load-bearing it is stated with the producer that
+re-derives it (DESIGN §6: name the instrument, never transcribe its output). Where a figure
+is a lane's reported reading rather than a re-derivable instrument, it is attributed to that
+lane and marked as such — those are receipts of a past run, not facts a reader may refresh,
+and they are written so that staleness is visible rather than plausible.
+
 ---
 
 ## 1. The floor reports SUCCESS over its own refusal — the highest-value open item
@@ -30,9 +47,13 @@ upstream of the breakage, not downstream of it (§5: a failure arm must refuse, 
 the downgrade is an absorbing fallback executed in YAML).
 
 **Current standing.** The parse class is **closed**: the indented-annotation census is 0
-corpus-wide and the floor now executes 412 witnesses
-(`planned=412 executed=412 not_attempted=0 terminal=412 passed=397 known_red_held=8`).
-Closed by #11896, #11897, #11880, #11920, #11842.
+corpus-wide and the floor selects and executes its full planned set, with `not_attempted=0`
+and `claims_failed=0`, where previously **zero** witnesses were selected. Closed by #11896,
+#11897, #11880, #11920, #11842. **Re-derive rather than trust this sentence:** the producer
+is the required floor itself — `claim_executor --required-ci --source-root dag
+--source-root src/v2 --required-lane witnesses` — whose run prints its own
+`planned/executed/not_attempted/terminal/passed` summary line. The counts move with every
+landed witness, so a number copied here would rot within a day.
 
 **CONTESTED — do not propagate either reading.** Whether the downgrade swallows failures
 *per phase* is disputed by two lanes:
@@ -58,9 +79,11 @@ var rather than printing, so identical counts appear whether the hypothesis hold
 ## 2. microVM: the part that decides is built; the part that acts is not
 
 `gunbc.runner_microvm_lifecycle_realize` **landed** (#11803) and has executed against real
-processes on srv1 — launch 18/18, lifecycle 30/30, realize 6/6, store 17/17, wet receipt
-10/10 under `--wet`, argv-binding wall 13/13. #11677 closed both launch frontiers, so the
-JIT credential mint and jail staging are realized.
+processes on srv1: the lane reported every claim group green at its landing head, including
+the wet receipt under `--wet` and the argv-binding wall. That is a **lane receipt of a past
+run**, not a standing fact — re-derive it with `claim_batch` over the module's witness
+modules at the current head before relying on it. #11677 closed both launch frontiers, so
+the JIT credential mint and jail staging are realized.
 
 **Five declared frontiers, all live in that one landed module.** Read them from the file,
 not from here.
@@ -100,8 +123,12 @@ installed a tap or the table — that is honest, not a failure.
 
 ### The floor's own job does not fit a cell
 
-`runner_microvm_floor_fit_stall` remains rostered: ~26.8 GB held-set peak against
-`gunbc_runner_slot_memory_max_bytes = 27917287424` (26 GiB) less a 1 GiB realization reserve.
+`runner_microvm_floor_fit_stall` remains rostered: the floor's measured held-set peak exceeds
+`gunbc.runner_slot_allocation` `gunbc_runner_slot_memory_max_bytes` less the realization
+reserve. Both sides are derivable rather than transcribed — the cap is that declaration, and
+the demand is produced by `gunbc.floor_memory_demand`, whose qualification against readable
+limits is what the stall cites. The stall row itself carries the figures it was written
+against; read them there, where they sit beside the reading that produced them.
 
 **Grounding it is an operator decision with a fleet cost**, not an engineering task: raise
 per-slot `MemoryMax` to ~28 GiB, which **lowers each host's memory-admitted width**, or
@@ -123,8 +150,8 @@ and #11850.
 
 | branch | sha | evidence | carries uniquely |
 |---|---|---|---|
-| `session/bright-ram-63` | `125659f70df` | 16/16 PASS + five mutation controls | the **executed** authority-token wall |
-| `session/royal-moth-544` | `80ec5065822` | 14/14 + 4/4 PASS, two mutation controls | `std.measure round_up_to_grain` (resolves the unowned rounder fork), ceiling-as-parameter, permit-in-provenance |
+| `session/bright-ram-63` | `125659f70df` | lane-reported: all claims green under `claim_batch`, plus five mutation controls, tree restored green after each | the **executed** authority-token wall |
+| `session/royal-moth-544` | `80ec5065822` | lane-reported: all claims green under `claim_batch`, two mutation controls executed | `std.measure round_up_to_grain` (resolves the unowned rounder fork), ceiling-as-parameter, permit-in-provenance |
 
 The same three file paths exist on both with different contents, so **merging them is a
 textual conflict on every file, not a union.** Pick one base and port the other's evidence.
