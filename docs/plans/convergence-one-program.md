@@ -33,7 +33,7 @@ Six pull requests were CLEAN with every check green, waiting on an operator merg
 | #11678 | C9a.1 | GCP Secret IAM: read the policy back **independently** after the write |
 | #11676 | C7 | provider-state root as a `live_deploy` ensured member, read back — **now DIRTY** |
 | #11689 | C11 | GitHub reads rebound onto the canonical join — **parked, see below** |
-| #11732 | C9b | App-key rotation: exact-version verifier, contract, `DisableOnly` — **parked green** |
+| #11732 | C9b | App-key rotation: exact-version verifier, contract, `DisableOnly` — **MERGED** |
 | #11795 | — | `RungDropAmendment` carrier, so a later ruling on a standing drop has a home |
 | #11828 | — | `mtcollins1_boot` narrowed to `FleetSshKeyNotConsumed` |
 
@@ -77,6 +77,29 @@ mutation. If it refuses with an absent mint observation on a version that plainl
 the record wire before the mint. Its actuation half (add-version, disable-prior) is blocked on
 `gunbc.github_actions_wif` being absent from main: on a runner there is no federated identity for a
 Secret Manager write, so the only honest route today is an operator workstation.
+
+## Two operator acts C9b left open, one of them dated
+
+**`rotate_by` on main is `2026-12-18`, and it is a placeholder a lane chose rather than policy.**
+The verifier reads it on every run and refuses once it passes. So if nobody sets it, the first
+thing that happens on that date is that a green verify run turns red with a deadline-passed
+refusal. That is the honest behaviour, and it is also a trap for whoever meets it first: **the fix
+is a policy decision and a rotation, not a code change.**
+
+**Nothing in that cut has run against the live surface.** Every witness supplies its own
+observation record. The first dispatch of `app_key_version_verify` against the currently enabled
+version *is* the inhabitance claim for the whole thing, and it is cheap and safe — read-only, one
+installation-token mint. Three shapes are readings of upstream rather than observations, so that is
+where a first-dispatch failure will be: that the Secret Manager response carries the resolved
+version in its name field, that `curl -D` writes a status line whose second word is the code, and
+that the mint's refusal arms leave their record line before exiting. A refusal reporting an absent
+mint observation on a version that plainly exists means the record wire, not the mint.
+
+**The actuation half is blocked on identity, not on design.** Add-version and disable-prior with
+independent readback need a federated identity for a Secret Manager *write*, and
+`gunbc.github_actions_wif` is still absent from main — so a runner has none, and the only honest
+route today is an operator workstation. Reaching for a print-token on a runner fails at runtime
+rather than degrading, which is why the lane did not.
 
 ## Still held, and on what
 
