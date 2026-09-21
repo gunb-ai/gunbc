@@ -848,12 +848,14 @@ fn base_is_admissible(observed: LevelObservation, trusted: TrustedOwners) -> Boo
 // and readable by nobody else: a 0755 base would satisfy the ancestry rule and publish every
 // materialized tree to every principal on the host.
 // THE CHMOD IS NESTED UNDER `created` AND NOT GUARDED BY `&&`, AND THAT IS NOT A STYLE CHOICE.
-// `&&` IN THIS SUBSTRATE DOES NOT SHORT-CIRCUIT: both operands evaluate, so an effect on the right
-// of a false left still happens. Written as `created && !chmod(base)`, this function chmodded a
-// directory it had NOT created -- the squatted one -- to 0700, and then admitted it as compliant,
-// which is precisely the adoption the separation exists to prevent. Measured with a probe
-// (`false && Filesystem.Write(...)` wrote the file), and caught by the squatted-base control
-// before it left this branch. An effect may sit under a CONTROL-FLOW form, never under a boolean.
+// `&&` DEMANDS ITS RIGHT OPERAND UNDER A FALSE LEFT, so an effect there runs unconditionally.
+// Written as `created && !chmod(base)`, this function chmodded a directory it had NOT created --
+// the squatted one -- to 0700 and then admitted it as compliant, which is precisely the adoption
+// the separation exists to prevent; the squatted-base control caught it. The authority for the
+// property is `test.claim.eval_model_probe` `and_short_circuit_direct_probe`, which asserts the
+// marker file is GONE after `false && shell.Remove.RecursiveForce(...)`, and
+// `v2.workflow.local_repo_wet_terminal` records why those probes exist. An effect may sit under a
+// CONTROL-FLOW form, never under a boolean operand.
 fn establish_provider_base(layout: ProviderBaseLayout, trusted: TrustedOwners) -> ProviderRootAdmission {
   let base = layout.base as String
   let created = shell.Mkdir.New(path: base as FilePath).success
