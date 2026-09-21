@@ -75,7 +75,23 @@ module gunbc.scm.commit_closure
 // AND THE RUNG OF THE DIGEST ITSELF IS NOT AUTHENTICATION. ObjectId is fnv1a64 structural. It
 // establishes structural consistency and refuses collisions at the current local rung; it is not an
 // adversarial or cross-tenant cryptographic commitment, and calling this "Merkle" must not import
-// that stronger claim. dissolve-on: a computing cryptographic digest reachable from .dag.
+// that stronger claim.
+//
+// DISSOLVE-ON, CORRECTED 2026-09-21 (gunbc#11996) -- THE SECOND ROW CARRYING THIS TRIGGER. It read
+// "a computing cryptographic digest reachable from .dag", the same artifact-shaped condition
+// gunbc.scm.object_store carried, and that condition is NOW SATISFIED: extdeps.crypto.sha2 computes
+// FIPS 180-4 SHA-256 in the substrate and std.content_hash content_hash_of_value_cryptographic mints
+// through it. Read literally this row retires today while ObjectId is still fnv1a64 and the sentence
+// above -- that this is not an adversarial commitment -- is still exactly true. A trigger naming
+// less than the capability it restores will be satisfied while the capability stays dead
+// (DESIGN 4b(3)).
+//
+// THE TRIGGER IS THE SAME CAPABILITY object_store NAMES, AND IT IS NOT A SECOND ROW ABOUT A SECOND
+// FACT: this module's digest IS ObjectId, so the two dissolve together or neither does. Native
+// emission of the extdeps.crypto.sha2 closure -- SUFFICIENT FOR v2 to emit and build itself with
+// node identity minted from a cryptographic family. When ObjectId changes family, this paragraph
+// and object_store's declared rung delete in one motion; until then "Merkle" here continues to mean
+// structural consistency and not authentication.
 
 import std.types { Bool, Int, List, list_length }
 import std.algebra { Cons, Empty, FreeSemigroup }
