@@ -178,6 +178,7 @@ type AuthorizationClaimState
 type AuthorizationRefusalCause
   = AuthorizationNotGranted { escalation_id: NonEmptyStr }
   | AuthorizationExpired { expires_at: Timestamp, observed_at: Timestamp }
+  | AuthorizationObservedBeforeGrant { granted_at: Timestamp, observed_at: Timestamp }
   | AuthorizationAlreadyCompleted { completed_by: AttemptIdentity, completed_at: Timestamp }
   | AuthorizationClaimedByOtherAttempt { requested: AttemptIdentity, holder: AttemptIdentity }
   | AuthorizationAborted { aborted_by: AttemptIdentity, cause: NonEmptyStr }
@@ -242,6 +243,15 @@ fn first_uncovered_scope(
 
 fn grant_not_expired_at(observed_at: Timestamp, expires_at: Timestamp) -> Bool {
   observed_at <= expires_at
+}
+
+// THE WINDOW HAS A LOWER BOUND TOO. An instant before the operator's decision cannot be one at
+// which the grant permits anything: a claim stamped with it would predate the consent it consumes,
+// which is the shape a stale or fabricated clock produces (an instant read before the request was
+// even filed, carried past the poll). The refusal names both instants so the remedy -- a fresh
+// canonical read -- is the only one that fits.
+fn grant_reached_at(observed_at: Timestamp, granted_at: Timestamp) -> Bool {
+  granted_at <= observed_at
 }
 
 // The single decision procedure. Ordered so the cause reported is the FIRST thing wrong rather
@@ -321,8 +331,14 @@ fn authorize_reached_time<Subject>(
   grant: OperatorGrant<Subject>,
   observed_at: Timestamp,
 ) -> AuthorizationDecision<Subject> {
-  if !grant_not_expired_at(observed_at: observed_at, expires_at: grant.expires_at) {
-
+  if !grant_reached_at(observed_at: observed_at, granted_at: grant.granted_at) {
+    AuthorizationRefused {
+      cause: AuthorizationObservedBeforeGrant {
+        granted_at: grant.granted_at,
+        observed_at: observed_at,
+      },
+    }
+  } else if !grant_not_expired_at(observed_at: observed_at, expires_at: grant.expires_at) {
     AuthorizationRefused {
       cause: AuthorizationExpired {
         expires_at: grant.expires_at,
@@ -603,6 +619,8 @@ fn authorization_refusal_reason(cause: AuthorizationRefusalCause) -> String {
       concat("operator authorization absent for escalation ", id as String)
     AuthorizationExpired { expires_at: exp, observed_at: at } =>
       concat("operator authorization expired at ", concat(exp, concat(", observed at ", at)))
+    AuthorizationObservedBeforeGrant { granted_at: g, observed_at: at } =>
+      concat("operator authorization granted at ", concat(g, concat(" is observed at the earlier instant ", concat(at, "; the clock is behind the decision or the instant is stale"))))
     AuthorizationAlreadyCompleted { completed_by: who, completed_at: when } =>
       concat("operator authorization already completed by attempt ", concat(who as String, concat(" at ", when)))
     AuthorizationClaimedByOtherAttempt { requested: req, holder: holder } =>

@@ -46,9 +46,12 @@ import gunbc.typed_remote_file_write {
   converge_typed_remote_file,
 }
 import gunbc.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
-import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_job_user }
-import gunbc.live_deploy.member_observe { path_parent, path_basename, parent_listing_argv, listing_contains_entry }
-import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate }
+import gunbc.runner_host_grants { bootstrap_principal_is_not_the_job_user }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.live_deploy.member_observe {
+  path_parent, path_basename, parent_listing_argv, listing_contains_entry,
+  EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate,
+}
 import gunbc.runner_host_file_converge {
   administrator_ssh_target,
   RunnerHostFileStanding,
@@ -56,10 +59,12 @@ import gunbc.runner_host_file_converge {
   HostFileDiffers,
   HostFileAbsent,
   HostFileUnobservable,
-  classify_host_file_metadata,
   RunnerHostFileMetadataReading,
   HostFileMetadataRead,
   HostFileMetadataUnread,
+  RunnerHostFilePathStanding,
+  HostFilePathPresent,
+  classify_host_file_metadata,
   classify_host_file_path,
   runner_host_file_settled_standing,
   runner_host_file_metadata_probe_argv,
@@ -647,70 +652,71 @@ fn observe_upper_ancestors(subject: ControllerKeyHost, context: FleetSshExecutio
   }
 }
 
-// ONLY THE EntryPresence PRODUCER IS TRANSPORT-BOUND; THE CLASSIFICATION IS NOT, AND IS CONSUMED.
-// This leg was `test -e`, whose exit 1 is stat(path) == 0 failing, so ENOENT, EACCES on an ancestor,
-// ELOOP, ENOTDIR and EIO all answered "absent" with empty stderr. gunbc.runner_host_file_converge
-// closed that class and deleted classify_host_file_presence; this module still called it, so main
-// carried a stranded import across two merges.
+// THE PROBE READS METADATA; IT DOES NOT ANSWER PRESENCE. This was `test -e` classified by
+// gunbc.runner_host_file_converge classify_host_file_presence, whose exit-1 arm minted
+// HostFileAbsent -- the false-absence arm #11845 deleted from that module (GNU `test -e` is
+// stat(path) == 0, so EACCES, ELOOP, ENOTDIR and EIO all answer 1 with an empty stderr), leaving
+// this consumer calling a name that no longer existed. Restoring the name would restore the
+// defect: HostFileAbsent plans a write, so "I could not look" would walk into the write path for
+// the one file this module exists to keep root:root 0400. The chain is the sibling's repaired one,
+// consumed rather than re-minted (DESIGN §3): stat `%F` read through classify_host_file_metadata;
+// when the read failed, the parent listing decides absence through classify_host_file_path; and
+// runner_host_file_settled_standing answers `none` only for a path that was READ, which is the one
+// case the byte comparison below is entitled to.
 //
-// A FIRST REPAIR RESTATED THE RULE INSTEAD OF CONSUMING IT (review 69503) and the copy had already
-// drifted: it hand-wrote the metadata-unread -> parent -> standing decision, down to the verbatim
-// message text, while classify_host_file_path and runner_host_file_settled_standing already own it.
-// What actually differs here is the TRANSPORT -- this module reads through an elevated sudo leg
-// rather than an ObservationArm -- so this function now produces ONLY the EntryPresence and hands it
-// to the landed classifiers, which keeps one authority for the rule (DESIGN 3).
-//
-// THE REMAINING DIFFERENCE IS STATED RATHER THAN HIDDEN: member_observe entry_presence escalates an
-// indeterminate parent by walking ancestors, and this producer reads ONE level. That is a weaker
-// reading, never a wrong one -- an unreadable parent yields EntryPresenceIndeterminate, which
-// classify_host_file_path maps to HostFilePathUnreadable and never to absence, so the class the
-// deletion closed stays closed. Consuming the escalation needs an ObservationArm over the elevated
-// leg, which this module has no carrier for; that carrier is what would end this difference.
-fn key_content_parent_presence(
-  subject: ControllerKeyHost,
-  context: FleetSshExecutionContext,
-  path: String,
-) -> EntryPresence
+// THE PARENT LISTING RUNS OVER THIS MODULE'S ELEVATED LEG, and the departure from
+// member_observe's entry_presence is the one clear_staging already states: the parent is the key
+// directory at root:root 0700, so an unelevated listing can only refuse. The argv and the
+// membership read stay member_observe's.
+fn observe_key_parent_presence(subject: ControllerKeyHost, context: FleetSshExecutionContext, path: String) -> EntryPresence
   uses net: Network
 {
   match run_elevated_leg(subject: subject, context: context, argv: parent_listing_argv(parent: path_parent(path: path)), stdin_payload: "") {
-    ElevatedLegRefused { reason: r } => EntryPresenceIndeterminate { cause: r }
-    ElevatedLegRan { exit_code: lc, stdout: lo, stderr: le } =>
-      if lc != 0 {
-        EntryPresenceIndeterminate { cause: join(["the containing directory listing failed: ", trim(s: le)], "") }
+    ElevatedLegRefused { reason: r } => EntryPresenceIndeterminate { cause: concat("key parent not listed: ", r) }
+    ElevatedLegRan { exit_code: c, stdout: o, stderr: e } =>
+      if c != 0 {
+        EntryPresenceIndeterminate { cause: join(["key parent listing exit=", to_string(c), " ", trim(s: e)], "") }
+      } else if listing_contains_entry(stdout: o, name: path_basename(path: path)) {
+        EntryPresent
       } else {
-        if listing_contains_entry(stdout: lo, name: path_basename(path: path)) { EntryPresent } else { EntryAbsent }
+        EntryAbsent
       }
   }
 }
 
-fn key_content_path_standing(
+// THE PARENT IS ENUMERATED ONLY WHEN THE READ FAILED, as in the sibling's observe_runner_host_file_path:
+// a read that answered a file type has already decided presence, and a listing beside it buys a
+// standing the classifier discards (DESIGN §2).
+fn observe_key_path_standing(
   subject: ControllerKeyHost,
   context: FleetSshExecutionContext,
   path: String,
   reading: RunnerHostFileMetadataReading,
-) -> RunnerHostFileStanding?
+) -> RunnerHostFilePathStanding
   uses net: Network
 {
   match reading {
-    HostFileMetadataRead { file_type: _ } => none
+    HostFileMetadataRead { file_type: t } => HostFilePathPresent { file_type: t }
     HostFileMetadataUnread { cause: _ } =>
-      runner_host_file_settled_standing(
-        st: classify_host_file_path(
-          reading: reading,
-          parent: key_content_parent_presence(subject: subject, context: context, path: path),
-        ),
-      )
+      classify_host_file_path(reading: reading, parent: observe_key_parent_presence(subject: subject, context: context, path: path))
   }
 }
 
+// The same far-side `cmp -s -` judgment converge_typed_remote_file mints from, run elevated with the
+// fetched version's bytes on stdin, so observation and apply cannot disagree about "identical".
 fn observe_key_content(subject: ControllerKeyHost, context: FleetSshExecutionContext, write: TypedRemoteFileWrite) -> RunnerHostFileStanding
   uses net: Network
 {
-  match run_elevated_leg(subject: subject, context: context, argv: runner_host_file_metadata_probe_argv(path: write.path as String), stdin_payload: "") {
+  let path = write.path as String
+  match run_elevated_leg(subject: subject, context: context, argv: runner_host_file_metadata_probe_argv(path: path), stdin_payload: "") {
     ElevatedLegRefused { reason: r } => HostFileUnobservable { reason: r }
     ElevatedLegRan { exit_code: pc, stdout: po, stderr: pe } =>
-      match key_content_path_standing(subject: subject, context: context, path: write.path as String, reading: classify_host_file_metadata(exit_code: pc, stdout: po, stderr: pe)) {
+      match runner_host_file_settled_standing(st: observe_key_path_standing(
+        subject: subject,
+        context: context,
+        path: path,
+        reading: classify_host_file_metadata(exit_code: pc, stdout: po, stderr: pe),
+      )) {
         Present { value: settled } => settled
         Absent =>
           match run_elevated_leg(subject: subject, context: context, argv: typed_remote_file_compare_argv(write: write), stdin_payload: write.content) {
@@ -724,6 +730,9 @@ fn observe_key_content(subject: ControllerKeyHost, context: FleetSshExecutionCon
   }
 }
 
+// REMOVE, THEN READ THE ABSENCE BACK. `rm -f` exits 0 on an absent path, so its exit alone cannot
+// distinguish "removed" from "never there" -- which is fine -- nor "there and still there", which is
+// not; the presence test is what answers that.
 // THE RESIDUE PREDICATE'S KEY IS DERIVED FROM THE SEAL, never supplied beside it. As a parameter
 // it was the one value of the three a caller could still spell freely, and it is exactly what
 // classify_staging_residue keys on: a name that does not match authorization.staging reads a
@@ -731,10 +740,6 @@ fn observe_key_content(subject: ControllerKeyHost, context: FleetSshExecutionCon
 // the same false-absence class the parent-listing repair above exists to close. Deriving it here
 // is what makes the sole_constructor claim true of every input the leg uses rather than of two of
 // the three (DESIGN 4b meta-obligation 1; 5, construction over validation).
-//
-// REMOVE, THEN READ THE ABSENCE BACK. `rm -f` exits 0 on an absent path, so its exit alone cannot
-// distinguish "removed" from "never there" -- which is fine -- nor "there and still there", which is
-// not; the presence test is what answers that.
 fn clear_staging(
   authorization: StagingCleanupAuthorization,
   context: FleetSshExecutionContext,
