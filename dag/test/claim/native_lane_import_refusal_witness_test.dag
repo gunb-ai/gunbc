@@ -7,6 +7,12 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.integer { Int }
+import v2.std.algebra { contains, fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import gunbc.witness_v2_native_route { native_route_identity_qualified }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -77,6 +83,61 @@ data bare_import_read: DagSourceReadWitness = DagSourceReadWitness {
   source_root: v2.std.cross_tree.import_model.V2Tree
 }
 
+// THE POPULATION THE DERIVATION SELECTS, driven end to end rather than through the predicate in
+// isolation. `native_lane_universe_module_for_source` now asks `native_route_selection_admits` per
+// IDENTITY at the default selection instead of asking `native_route_universe_member` per module,
+// and these two reads discriminate that: the only difference between them is the DECLARED
+// NAMESPACE, one inside the `v2.test.` selection and one outside. Same declarations, no imports.
+//
+// THE PATH THAT MATTERS IS `compilation_unit`, NOT `artifact.file_path`. Discovery is handed
+// `symbol_lexeme(sym: read.compilation_unit)` as its entry path, so a placeholder symbol there
+// reads as a path not ending in `_test.dag` and the source refuses on test PLACEMENT before
+// selection is ever consulted -- which is how an earlier attempt at these arms failed. The interned
+// real path is this fixture's load-bearing detail.
+//
+// NO `live_tree_disposition` ROW IN THE SUPPLIED TEXT, deliberately: absence is accepted and
+// defaults, while a present row must carry a supported initializer -- including one would add a way
+// for the fixture to fail that has nothing to do with what it tests.
+//
+// TWO DECLARATIONS IN THE SELECTED MODULE, also deliberately. A consumer that filtered MODULES and
+// then took every declaration would pass a one-declaration fixture; carrying two lets the arm tell
+// module-grain filtering from the identity-grain filtering this change introduces.
+data selection_inside_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium {
+    carried: "module v2.test.selection_probe\n\ntest fn probe_one() -> Bool { true }\n\ntest fn probe_two() -> Bool { true }\n",
+    fidelity: Lossless
+  },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^selection_inside_artifact,
+    file_path: "src/v2/test/selection_inside_test.dag"
+  },
+  compilation_unit: symbol_intern_lexeme(lexeme: "src/v2/test/selection_inside_test.dag"),
+  source_root: v2.std.cross_tree.import_model.V2Tree
+}
+
+// `v2.testing.` shares the character prefix `v2.test` and is NOT under the `v2.test.` namespace --
+// the case the selection separator exists to separate. It must DISCOVER cleanly and be excluded by
+// selection alone; were it to refuse discovery, the whole derivation would refuse and this pair
+// would prove nothing.
+data selection_outside_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium {
+    carried: "module v2.testing.selection_probe\n\ntest fn probe_one() -> Bool { true }\n",
+    fidelity: Lossless
+  },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^selection_outside_artifact,
+    file_path: "src/v2/testing/selection_outside_test.dag"
+  },
+  compilation_unit: symbol_intern_lexeme(lexeme: "src/v2/testing/selection_outside_test.dag"),
+  source_root: v2.std.cross_tree.import_model.V2Tree
+}
+
+data selection_inside_ingest: SourceRootIngest = [selection_inside_read]
+data selection_outside_ingest: SourceRootIngest = [selection_outside_read]
+data selection_combined_ingest: SourceRootIngest = [selection_inside_read, selection_outside_read]
+
 data malformed_import_ingest: SourceRootIngest = [malformed_import_read]
 data well_formed_import_ingest: SourceRootIngest = [well_formed_import_read]
 data bare_import_ingest: SourceRootIngest = [bare_import_read]
@@ -105,4 +166,57 @@ test fn a_well_formed_import_is_admitted_by_the_derivation() -> Bool {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
+}
+
+fn universe_qualified_names(ingest: SourceRootIngest) -> List<String> {
+  match native_lane_universe(ingest: ingest) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: universe, diagnostics: _ } =>
+      fold_list(
+        xs: universe.identities,
+        empty: [],
+        cons: fn(acc, identity) {
+          list_snoc_item(xs: acc, item: native_route_identity_qualified(identity: identity))
+        }
+      )
+  }
+}
+
+fn universe_admits(ingest: SourceRootIngest, qualified: String) -> Bool {
+  contains(xs: universe_qualified_names(ingest: ingest), item: qualified, eq: fn(a, b) { a == b })
+}
+
+fn universe_accepted(ingest: SourceRootIngest) -> Bool {
+  match native_lane_universe(ingest: ingest) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+// THE CONTROL THAT MAKES THE EXCLUSION ATTRIBUTABLE, and it asserts ACCEPTANCE rather than a
+// population. The derivation finalizes discovery over every supplied source BEFORE selection
+// filters, so a malformed source refuses the whole thing -- meaning an excluded module and a
+// broken one both yield no identity, and a population arm alone cannot tell them apart. This says
+// the out-of-selection source is discovered fine; the arm below then attributes its absence from
+// the combined ingest to selection and to nothing else.
+test fn the_out_of_selection_source_is_discovered_not_refused() -> Bool {
+  universe_accepted(ingest: selection_outside_ingest)
+  && (length(xs: universe_qualified_names(ingest: selection_outside_ingest)) == 0)
+}
+
+// Both declarations of the selected module reach the universe -- the arm a module-grain filter
+// would also pass, kept so the identity-grain one can be told apart from it.
+test fn every_declaration_of_a_selected_module_reaches_the_universe() -> Bool {
+  universe_admits(ingest: selection_inside_ingest, qualified: "v2.test.selection_probe.probe_one")
+  && universe_admits(ingest: selection_inside_ingest, qualified: "v2.test.selection_probe.probe_two")
+}
+
+// The pair that pins selection in both directions over ONE ingest carrying both sources: a
+// selection admitting everything reds the second conjunct, one admitting nothing reds the first.
+test fn the_combined_ingest_selects_by_namespace_not_by_character_prefix() -> Bool {
+  universe_admits(ingest: selection_combined_ingest, qualified: "v2.test.selection_probe.probe_one")
+  && !universe_admits(
+    ingest: selection_combined_ingest,
+    qualified: "v2.testing.selection_probe.probe_one"
+  )
 }

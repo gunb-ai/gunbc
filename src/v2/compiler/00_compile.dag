@@ -12,7 +12,8 @@ import gunbc.witness_v2_native_route {
   native_route_live_control_false_declaration,
   native_route_live_control_module,
   native_route_live_control_true_declaration,
-  native_route_universe_member,
+  native_route_selection_admits,
+  native_route_default_selection,
   required_v2_native_job_name
 }
 import v2.workflow.floor_discovery_source_authority {
@@ -1773,28 +1774,51 @@ type NativeLaneUniverse {
   module_sources: List<NativeRouteModuleSource>
 }
 
+// THE POPULATION IS A SELECTION, AND TODAY'S SELECTION IS THE DEFAULT ONE. This asked
+// `native_route_universe_member` whether the MODULE was in the prefix and then took every
+// declaration it found. It now asks `native_route_selection_admits` per IDENTITY, at
+// `native_route_default_selection` -- which gunbc.witness_v2_native_route's
+// `the_default_selection_admits_exactly_the_prefix_universe` pins to the same answer the prefix
+// gave. Same population, reached through the vocabulary a caller can one day supply.
+//
+// PER IDENTITY IS THE GRAIN THE SINGLE-TARGET FORM NEEDS: `//pkg:name` names a declaration, not a
+// module. The two set forms ignore the declaration, so at the default this reduces exactly to the
+// module test it replaces -- which is what makes the swap provably behaviour-preserving rather
+// than merely intended to be.
+//
+// A MODULE WITH NO ADMITTED DECLARATION IS NOT IN THE UNIVERSE, which is why the emptiness check
+// moved BELOW the filter. Before, only an out-of-prefix module was dropped; now a module can also
+// be dropped because a narrower selection admitted none of its declarations, and both reach the
+// same arm rather than one being a special case.
 fn native_lane_universe_module_for_source(facts: NativeLaneSourceFacts) -> List<NativeLaneUniverseModule> {
   match facts.module {
     Absent => []
-    Present { value: declared } =>
-      if native_route_universe_member(module_qn: declared) {
-        let declarations = fold_list(
-          xs: facts.discovery.rows,
-          empty: [],
-          cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.function) }
-        )
-        if length(xs: declarations) == 0 {
-          []
-        } else {
-          [NativeLaneUniverseModule {
-            module: declared,
-            path: facts.path,
-            declarations: declarations
-          }]
+    Present { value: declared } => {
+      let declarations = fold_list(
+        xs: facts.discovery.rows,
+        empty: [],
+        cons: fn(acc, row) {
+          if native_route_selection_admits(
+            selection: native_route_default_selection(),
+            module_qn: declared,
+            declaration: row.function
+          ) {
+            list_snoc_item(xs: acc, item: row.function)
+          } else {
+            acc
+          }
         }
-      } else {
+      )
+      if length(xs: declarations) == 0 {
         []
+      } else {
+        [NativeLaneUniverseModule {
+          module: declared,
+          path: facts.path,
+          declarations: declarations
+        }]
       }
+    }
   }
 }
 
