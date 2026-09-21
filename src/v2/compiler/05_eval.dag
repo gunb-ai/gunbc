@@ -117,6 +117,7 @@ import v2.std.diagnostic {
   AmbiguousIntent,
   ByteRange,
   Correction,
+  DeclarationLocus,
   Diagnostic,
   Extent,
   Locus,
@@ -654,6 +655,12 @@ fn locus_cache_digest(at: Locus) -> Hash {
           a: test_claim_symbol_digest(sym: f),
           b: extent_cache_digest(e: e)
         )
+      )
+    DeclarationLocus { declaration: segments } =>
+      fold_list(
+        xs: segments,
+        empty: test_claim_symbol_digest(sym: ^test_claim_cache_locus_declaration_tag),
+        cons: fn(acc, seg) { combine_hash(a: acc, b: test_claim_symbol_digest(sym: seg)) }
       )
   }
 }
