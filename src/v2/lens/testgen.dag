@@ -9,6 +9,7 @@ import std.algebra { FreeMonoid, Empty, Cons }
 import v2.std.algebra { count_where, filter, fold_list, fold_list_right, length, list_append, list_flat_map, list_map, non_empty, list_snoc_item, zip_eq }
 import v2.std.diagnostic {
   Outcome,
+  DeclarationLocus,
   Diagnostic,
   Locus,
   NodeLocus,
@@ -52,6 +53,7 @@ import v2.std.node {
   Edge,
   Node,
   Named,
+  Positional,
   Connective,
   Conj,
   Disj,
@@ -1006,6 +1008,29 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
               target: witness_validity_symbol_atom_node(s: invariant)
             }
           ],
+          occurrence_id: OccurrenceSynthetic
+},
+        diagnostics: None
+      }
+    DeclarationLocus { declaration: declaration } =>
+      Accepted {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: fold_list(
+            xs: declaration,
+            empty: [
+              Edge {
+                label: Named { name: ^witness_validity_locus_tag_declaration },
+                target: witness_validity_symbol_atom_node(s: ^witness_validity_locus_tag_declaration)
+              }
+            ],
+            cons: fn(acc, seg) {
+              list_snoc_item(xs: acc, item: Edge {
+                label: Positional,
+                target: witness_validity_symbol_atom_node(s: seg)
+              })
+            }
+          ),
           occurrence_id: OccurrenceSynthetic
 },
         diagnostics: None
