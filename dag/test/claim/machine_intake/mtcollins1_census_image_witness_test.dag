@@ -48,6 +48,9 @@ import gunbc.machine_intake_mtcollins1_census_image {
   mtcollins1_census_program_file,
   mtcollins1_census_volume_id,
   mtcollins1_seeded_image_input,
+  CensusPublishHostAdmitted,
+  CensusPublishHostRefused,
+  mtcollins1_census_publish_host_admission,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -373,4 +376,28 @@ test fn the_image_name_is_the_stem_and_the_measured_digest() -> Bool {
     && a.image_name != b.image_name
     && a.build_key == b.build_key
     && a.image_name != mtcollins1_diskless_image_name
+}
+
+// BUILT WHERE IT IS SERVED: the publish admits srv2 and refuses every other dispatch host before any
+// build or write (side-chat hold 5261870012). Both directions, so the refusal is the host discriminating.
+test fn the_census_publish_admits_only_srv2() -> Bool {
+  match mtcollins1_census_publish_host_admission(expected_host: "srv2") {
+    CensusPublishHostAdmitted => true
+    CensusPublishHostRefused { reason: _ } => false
+  }
+}
+
+test fn the_census_publish_refuses_a_dispatch_at_another_host_before_any_write() -> Bool {
+  (match mtcollins1_census_publish_host_admission(expected_host: "srv1") {
+    CensusPublishHostAdmitted => false
+    CensusPublishHostRefused { reason: r } => string_contains(s: r, pattern: "srv1") && string_contains(s: r, pattern: "before any build or write")
+  })
+  && (match mtcollins1_census_publish_host_admission(expected_host: "srv3") {
+    CensusPublishHostAdmitted => false
+    CensusPublishHostRefused { reason: _ } => true
+  })
+  && (match mtcollins1_census_publish_host_admission(expected_host: "") {
+    CensusPublishHostAdmitted => false
+    CensusPublishHostRefused { reason: _ } => true
+  })
 }

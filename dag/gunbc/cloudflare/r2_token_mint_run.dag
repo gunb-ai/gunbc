@@ -903,10 +903,10 @@ fn revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
 // two entries over one fold, so an operator invoking either knows from the name which credential
 // the Create will spend.
 //
-// A MINT WHOSE CREDENTIAL IS ALREADY PINNED REFUSES BEFORE THE CREATE. The read mint has executed
-// and gunbc.cloudflare.r2_origin pins it; running `run` again would mint a second read token the
-// origin declaration does not name and whose value would land as a second version nothing reads.
-// The write entry will refuse the same way once its own pin lands. This is the origin_read_pin
+// A MINT WHOSE CREDENTIAL IS ALREADY PINNED REFUSES BEFORE THE CREATE. Both mints have executed
+// and gunbc.cloudflare.r2_origin pins both credentials; running either entry again would mint a
+// second token the origin declaration does not name and whose value would land as a second version
+// nothing reads. This is the origin_read_pin
 // check revoke_unheld_object_read_token already performs, applied at the mint rather than only at
 // the revoke.
 fn run() -> ProcessExit uses net: Network {

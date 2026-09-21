@@ -3939,6 +3939,91 @@ pub(crate) fn run_discovery_rows(
     Ok(summary)
 }
 
+/// THE SEEDS OF THE REQUIRED FLOOR'S NOMINAL PREPARED SUBJECT -- what the floor prepares when a
+/// run touches nothing: the gate's prefix roster and authored-module roster, both decoded from
+/// `v2.workflow.required_floor` in a frame over that module's own closure, and the local-repo wet
+/// schedule rows whose entry modules join the module seeds. The diff-derived seeds (changed
+/// witnesses, touched entries, arm-set consumers) are NOT here: they are a fact about one run's
+/// diff, and this is the part of the subject that holds for every run.
+///
+/// ONE PRODUCER, TWO CONSUMERS, and that is the reason it is a function rather than a block in
+/// `run_required_floor`. The floor consumes it to seed preparation; the required-lane resolution
+/// census (`gunbc.required_lane_resolution_census`, `gunbc test
+/// //gunbc/instruments:required-lane-resolution-census`) consumes it to answer, for every module
+/// under the source roots, whether the floor's nominal subject resolves it. A census that
+/// re-derived the seed list from the roster would be a second authority for what the floor
+/// prepares, and it would drift the first time a seed kind was added here and not there.
+pub struct RequiredFloorNominalSubjectSeeds {
+    pub required_gate_prefixes: Vec<String>,
+    pub required_gate_authored_modules: Vec<String>,
+    pub(crate) local_repo_wet_schedule_rows: Vec<LocalRepoWetScheduledRow>,
+}
+
+/// THE LANE'S SCHEDULE IS DECODED HERE, IN THE POLICY CLOSURE, AND NOT LATER -- because its
+/// modules must become SEEDS of the prepared subject. The first CI run of that lane refused
+/// seven times with `EntryModuleOutsidePreparedSubject`: the prepared graph is the required-gate
+/// closure plus the changed set, and the lane's members are on the discovery exclusion
+/// frontier, so nothing pulled them in. A lane that cannot reach its own members cannot support
+/// the route claim `std.witness_admission` makes for its cadence, so the schedule joins the seed
+/// list rather than the executor learning to run outside the subject.
+pub fn required_floor_nominal_subject_seeds(
+    source_roots: &[String],
+    gate_entry_index: &MultiEntryIndex,
+) -> Result<RequiredFloorNominalSubjectSeeds, String> {
+    let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
+    let (policy_prepared, _) = prepare_repository_closure(
+        source_roots,
+        &floor_prepared_subject_exclusions(),
+        Some((gate_entry_index, &[], &policy_seed)),
+    )?;
+    let policy_scope = claim_scope_for(&policy_prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
+    let policy_frame = evaluation_frame(
+        &policy_scope,
+        v1_interpreter::ExecutionMode::Hermetic,
+        None,
+        None,
+    );
+    let required_gate_prefixes = floor_decode_module_prefix_roster(
+        &policy_frame,
+        "v2.workflow.required_floor.required_gate_prefixes",
+    )?;
+    // THE GATE'S SECOND SELECTOR KIND (`v2.workflow.required_floor`
+    // `required_gate_authored_modules`, `RequiredGateSelector`): authored module NAMES,
+    // matched at segment boundaries -- the module-seed rule, not the prefix rule. They join
+    // the module seeds, so preparation and site disposition admit them under one rule by
+    // construction.
+    let required_gate_authored_modules = floor_decode_module_prefix_roster(
+        &policy_frame,
+        "v2.workflow.required_floor.required_gate_authored_modules",
+    )?;
+    let local_repo_wet_schedule_rows = local_repo_wet_schedule(&policy_frame)?;
+    Ok(RequiredFloorNominalSubjectSeeds {
+        required_gate_prefixes,
+        required_gate_authored_modules,
+        local_repo_wet_schedule_rows,
+    })
+}
+
+/// The nominal MODULE seeds (`v2.workflow.floor_subject_seed` `PreparedSubjectSeedGround`,
+/// matched at segment boundaries): the floor's own runtime authorities, the gate's authored
+/// modules, and the wet schedule's entry modules. The prefix seeds travel separately because
+/// they are matched by a different rule.
+pub(crate) fn required_floor_nominal_closure_module_seeds(
+    required_gate_authored_modules: &[String],
+    local_repo_wet_schedule_rows: &[LocalRepoWetScheduledRow],
+) -> Vec<String> {
+    REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES
+        .iter()
+        .map(|m| m.to_string())
+        .chain(required_gate_authored_modules.iter().cloned())
+        .chain(
+            local_repo_wet_schedule_rows
+                .iter()
+                .map(|row| row.entry_module.clone()),
+        )
+        .collect()
+}
+
 pub fn floor_prepared_subject_exclusions() -> Vec<String> {
     vec![
         // MUST-NOT-RESOLVE PROBES. Every module under dag/test/probe/ declares in its header that
@@ -5614,44 +5699,14 @@ pub fn run_required_floor(
                 .to_string()
         })
         .collect();
-    // THE LANE'S SCHEDULE IS DECODED HERE, IN THE POLICY CLOSURE, AND NOT LATER -- because its
-    // modules must become SEEDS of the prepared subject below. The first CI run of this lane
-    // refused seven times with `EntryModuleOutsidePreparedSubject`: the prepared graph is the
-    // required-gate closure plus the changed set, and the lane's members are on the discovery
-    // exclusion frontier, so nothing pulled them in. A lane that cannot reach its own members
-    // cannot support the route claim `std.witness_admission` makes for its cadence, so the
-    // schedule joins the seed list rather than the executor learning to run outside the subject.
-    let (required_gate_prefixes, local_repo_wet_schedule_rows) = {
-        let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
-        let (policy_prepared, _) = prepare_repository_closure(
-            source_roots,
-            &floor_prepared_subject_exclusions(),
-            Some((&gate_entry_index, &[], &policy_seed)),
-        )?;
-        let policy_scope = claim_scope_for(&policy_prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
-        let policy_frame = evaluation_frame(
-            &policy_scope,
-            v1_interpreter::ExecutionMode::Hermetic,
-            None,
-            None,
-        );
-        let prefixes = floor_decode_module_prefix_roster(
-            &policy_frame,
-            "v2.workflow.required_floor.required_gate_prefixes",
-        )?;
-        // THE GATE'S SECOND SELECTOR KIND (`v2.workflow.required_floor`
-        // `required_gate_authored_modules`, `RequiredGateSelector`): authored module NAMES,
-        // matched at segment boundaries -- the module-seed rule below, not the prefix rule.
-        // They join `closure_module_seeds`, so preparation and site disposition admit them
-        // under one rule by construction.
-        let authored_modules = floor_decode_module_prefix_roster(
-            &policy_frame,
-            "v2.workflow.required_floor.required_gate_authored_modules",
-        )?;
-        let schedule = local_repo_wet_schedule(&policy_frame)?;
-        ((prefixes, authored_modules), schedule)
-    };
-    let (required_gate_prefixes, required_gate_authored_modules) = required_gate_prefixes;
+    // THE NOMINAL SEEDS -- gate prefixes, gate authored modules, the wet schedule -- come from
+    // the one producer the resolution census also reads, so what the floor prepares on a run
+    // that touches nothing and what the census reports as reached are the same fact.
+    let RequiredFloorNominalSubjectSeeds {
+        required_gate_prefixes,
+        required_gate_authored_modules,
+        local_repo_wet_schedule_rows,
+    } = required_floor_nominal_subject_seeds(source_roots, &gate_entry_index)?;
     // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
     // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
     // and a gate roster that happened not to reach `v2.workflow.required_floor` refused with
@@ -5788,23 +5843,19 @@ pub fn run_required_floor(
             }
         }
     }
-    let closure_module_seeds: Vec<String> = REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES
-        .iter()
-        .map(|m| m.to_string())
-        .chain(required_gate_authored_modules.iter().cloned())
-        .chain(changed_module_seeds.iter().cloned())
-        .chain(
-            compile_subject
-                .iter()
-                .flat_map(|subject| subject.touched_modules.iter().cloned()),
-        )
-        .chain(arm_set_consumer_seeds.iter().cloned())
-        .chain(
-            local_repo_wet_schedule_rows
-                .iter()
-                .map(|row| row.entry_module.clone()),
-        )
-        .collect();
+    let closure_module_seeds: Vec<String> = required_floor_nominal_closure_module_seeds(
+        &required_gate_authored_modules,
+        &local_repo_wet_schedule_rows,
+    )
+    .into_iter()
+    .chain(changed_module_seeds.iter().cloned())
+    .chain(
+        compile_subject
+            .iter()
+            .flat_map(|subject| subject.touched_modules.iter().cloned()),
+    )
+    .chain(arm_set_consumer_seeds.iter().cloned())
+    .collect();
     let (mut prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
         &floor_prepared_subject_exclusions(),

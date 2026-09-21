@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtcollins1_boot_run
 
-import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
+import std.types { Bool, Int, NonEmptyStr, String, Timestamp, Unit }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
 import std.temporal_effect {
   HeldLeaseObservedState,
@@ -21,6 +21,8 @@ import std.scoped_authorization {
 import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim, unterminated_claim_exit }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootGate,
+  MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium,
+  mtcollins1_boot_medium_image_name, mtcollins1_boot_medium_image_sha256, mtcollins1_boot_medium_label,
   MtCollins1BootSubject,
   mtcollins1_boot_authorization_request,
   mtcollins1_boot_gate_from_poll,
@@ -42,7 +44,11 @@ import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
-import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
+import gunbc.machine_intake_host_capture_envelope {
+  HostCaptureBound, HostCaptureUnbound,
+  host_capture_bind, host_capture_bound_section, host_capture_bound_section_exit_zero,
+  host_capture_bound_nproc_exact, host_capture_bound_edac_clean, host_capture_bound_workload_stable,
+}
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.clock_read { clock_now_probed_at }
@@ -336,96 +342,57 @@ fn mtcollins1_boot_terminal_tick_budget() -> Int {
     / (second_count(s: mtcollins1_boot_poll_cadence) as Int)
 }
 
-fn mtcollins1_host_capture_section(capture: String, name: String) -> String? {
-  fold(
-    split(s: capture, delimiter: "----SECTION "),
-    init: none,
-    f: (acc, part) => match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if starts_with(s: part, prefix: concat(name, "----")) {
-          Present { value: part }
-        } else {
-          none
-        }
-    },
-  )
-}
-
-fn mtcollins1_host_capture_section_exit_zero(capture: String, name: String) -> Bool {
-  match mtcollins1_host_capture_section(capture: capture, name: name) {
-    Absent => false
-    Present { value: section } =>
-      string_contains(s: section, pattern: concat("----EXIT ", concat(name, ": 0")))
+// THE CAPTURE IS READ THROUGH THE ONE GRAMMAR THE CENSUS PROGRAM RENDERS. The eight parsers that
+// lived here re-derived the envelope by substring: they accepted a section from any run in the
+// capture, and their workload check matched tokens the ARGV line echoes, so a failed workload read
+// as stable. gunbc.machine_intake_host_capture_envelope binds ONE begin/end pair for one machine
+// and one run, and its readers match whole output lines; a capture that does not bind is not a
+// terminal, whatever it contains.
+//
+// BOOT MEDIA IS THE CENSUS MEDIUM, NOT THE POINT RELEASE. The stock live-server ISO and the derived
+// census image share a point release, so matching "24.04.3" could not tell a boot that ran the
+// census program from one that ran the installer. The derived medium carries its own volume id
+// (gunbc.machine_intake_mtcollins1_census_image mtcollins1_census_volume_id), which blkid prints
+// in the boot-media section; the digest-grade binding of the attached image to that medium is
+// census stage 0D and lands with the built image, whose name is its digest.
+// THE MEDIUM DECIDES BEFORE THE CONTROLLER IS TOUCHED. The census terminal is printed by the census
+// program on the census medium and by nothing else, so a boot that attaches the stock installer can
+// never observe it: that is decidable from the medium row alone, and a run that discovered it by
+// holding the grant, taking the SOL lease, powering the unit and timing out would report a
+// hardware-shaped refusal for a modeling-shaped cause (DESIGN §5, the line stops at the deficit).
+fn mtcollins1_boot_medium_refusal(medium: MtCollins1BootMedium) -> String? {
+  match medium {
+    MtCollins1StockInstallerMedium =>
+      Present { value: "mtcollins1 boot: the boot medium is the stock installer, which carries no census program, so no census terminal can be observed; switch mtcollins1_boot_medium to the published census image (census stage 0D) -- controller untouched" }
+    MtCollins1CensusMedium { output_digest: _ } => none
   }
 }
 
-fn mtcollins1_host_capture_has_envelope_marker(capture: String, machine: NonEmptyStr, kind: String) -> Bool {
-  fold(
-    split(s: capture, delimiter: "\n"),
-    init: false,
-    f: (acc, line) =>
-      acc || (
-        string_contains(s: line, pattern: concat("GUNBC-HOST-CAPTURE ", concat(machine as String, " ")))
-          && string_contains(s: line, pattern: concat(" ", concat(kind, " ")))
-      ),
-  )
-}
-
-fn mtcollins1_host_capture_envelope_complete(capture: String, machine: NonEmptyStr) -> Bool {
-  mtcollins1_host_capture_has_envelope_marker(capture: capture, machine: machine, kind: "begin")
-    && mtcollins1_host_capture_has_envelope_marker(capture: capture, machine: machine, kind: "end")
-}
-
-fn mtcollins1_host_capture_nproc_exact(capture: String, threads: String) -> Bool {
-  match mtcollins1_host_capture_section(capture: capture, name: "nproc") {
-    Absent => false
-    Present { value: section } =>
-      string_contains(s: section, pattern: "----EXIT nproc: 0")
-        && string_contains(s: section, pattern: concat("\n", concat(threads, "\n----EXIT nproc: 0")))
-  }
-}
-
-fn mtcollins1_host_capture_mc0_counter(section: String, counter: String, value: String) -> Bool {
-  string_contains(
-    s: section,
-    pattern: concat("/sys/devices/system/edac/mc/mc0/", concat(counter, concat(" == ", value))),
-  )
-}
-
-fn mtcollins1_host_capture_edac_clean_section(capture: String, name: String) -> Bool {
-  match mtcollins1_host_capture_section(capture: capture, name: name) {
-    Absent => false
-    Present { value: section } =>
-      string_contains(s: section, pattern: concat("----EXIT ", concat(name, ": 0")))
-        && mtcollins1_host_capture_mc0_counter(section: section, counter: "ce_count", value: "0")
-        && mtcollins1_host_capture_mc0_counter(section: section, counter: "ue_count", value: "0")
-  }
-}
-
-fn mtcollins1_host_capture_workload_stable(capture: String) -> Bool {
-  match mtcollins1_host_capture_section(capture: capture, name: "workload") {
-    Absent => false
-    Present { value: section } =>
-      string_contains(s: section, pattern: "----EXIT workload: 0")
-        && string_contains(s: section, pattern: "workload-write-rc=0")
-        && string_contains(s: section, pattern: "workload-digest-stable=yes")
-  }
-}
-
-fn mtcollins1_boot_terminal_observed(capture: String, subject: MtCollins1BootSubject) -> Bool {
+// THE SUBJECT AND THE MEDIUM ARE JOINED BEFORE THE CAPTURE IS READ: the signed subject names the
+// image the grant was issued for, the medium names the image this verdict expects to have booted,
+// and a terminal is a fact about ONE image. A census terminal against a stock-authorized subject is
+// refused here rather than accepted (review 5261662425).
+fn mtcollins1_boot_terminal_observed(capture: String, subject: MtCollins1BootSubject, medium: MtCollins1BootMedium) -> Bool {
   let threads = hardware_thread_count_value(t: mtcollins1_nproc) as String
-  mtcollins1_host_capture_envelope_complete(capture: capture, machine: subject.machine)
-    && mtcollins1_host_capture_nproc_exact(capture: capture, threads: threads)
-    && mtcollins1_host_capture_section_exit_zero(capture: capture, name: "boot-media")
-    && match mtcollins1_host_capture_section(capture: capture, name: "boot-media") {
-      Absent => false
-      Present { value: media } =>
-        string_contains(s: media, pattern: noble_numbat_2404_3_live_server_arm64.point_release as String)
-    }
-    && mtcollins1_host_capture_edac_clean_section(capture: capture, name: "edac-before")
-    && mtcollins1_host_capture_workload_stable(capture: capture)
-    && mtcollins1_host_capture_edac_clean_section(capture: capture, name: "edac-after")
+  let joined = (subject.image_name as String) == (mtcollins1_boot_medium_image_name(medium: medium) as String)
+    && (subject.image_sha256 as String) == (mtcollins1_boot_medium_image_sha256(medium: medium) as String)
+  match if joined { mtcollins1_boot_medium_label(medium: medium) } else { none } {
+    Absent => false
+    Present { value: label } =>
+      match host_capture_bind(capture: capture, machine: subject.machine) {
+        HostCaptureUnbound { reason: _ } => false
+        HostCaptureBound { envelope: envelope } =>
+          host_capture_bound_nproc_exact(envelope: envelope, threads: threads)
+            && host_capture_bound_section_exit_zero(envelope: envelope, name: "boot-media")
+            && match host_capture_bound_section(envelope: envelope, name: "boot-media") {
+              Absent => false
+              Present { value: media } => string_contains(s: media.body, pattern: label as String)
+            }
+            && host_capture_bound_edac_clean(envelope: envelope, name: "edac-before")
+            && host_capture_bound_workload_stable(envelope: envelope)
+            && host_capture_bound_edac_clean(envelope: envelope, name: "edac-after")
+      }
+  }
 }
 
 fn mtcollins1_boot_await_capture_terminal(
@@ -437,7 +404,7 @@ fn mtcollins1_boot_await_capture_terminal(
     exit_failure(reason: "mtcollins1 boot: timed out waiting for the host-capture terminal in SOL; capture preserved; claim will abort, not complete")
   } else {
     let capture = Filesystem.Read(path: capture_path)
-    if capture.success && mtcollins1_boot_terminal_observed(capture: capture.content, subject: subject) {
+    if capture.success && mtcollins1_boot_terminal_observed(capture: capture.content, subject: subject, medium: mtcollins1_boot_medium) {
       ExitSuccess
     } else {
       let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
@@ -652,6 +619,10 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
   }
   if sha == "" {
     return exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset; the signed subject binds the execution revision")
+  }
+  match mtcollins1_boot_medium_refusal(medium: mtcollins1_boot_medium) {
+    Present { value: why } => return exit_failure(reason: why)
+    Absent => Unit
   }
   let escalation = concat("mtcollins1-boot-", run_id) as NonEmptyStr
   let request = mtcollins1_boot_authorization_request(
