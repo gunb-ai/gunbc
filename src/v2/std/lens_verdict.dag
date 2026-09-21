@@ -19,6 +19,7 @@ import v2.std.diagnostic {
   textual_whole_file_diagnostic,
 }
 import v2.std.integer { integer_int_to_decimal_string }
+import extdeps.languages.json.emit { quote_json_string }
 import v2.std.node {
   Node, Symbol, TypeNode, ComputationNode, Atom, Conj, Disj, Arrow, Cardinality, Instantiation
 }
@@ -102,11 +103,18 @@ fn lens_verdict_extent_text(e: Extent) -> String {
 // and the persisted row keeps it; rendering only the ordinal dropped the one word a reader needs
 // ("which symbol was ambiguous?") on the text surface while the JSON row still had it. Composite
 // anchors carry no single name and render as before.
+//
+// THE SPELLING IS QUOTED BY ONE LOSSLESS AUTHORITY, NOT PASTED (side-chat hold on gunbc#12004). A
+// symbol's lexeme is any string: pasted between delimiters, an embedded delimiter breaks the
+// quoting and a newline or ESC goes onto the operator's line raw. `extdeps.languages.json.emit`
+// `quote_json_string` is the repository's modeled RFC 8259 string quotation -- total, lossless and
+// unambiguous (backslash and quote escaped, every control character a visible escape) -- so the
+// atom renders as a JSON string literal and no second escaping rule is written here.
 fn lens_verdict_node_atom_suffix(node: Node) -> String {
   match node.kind {
     TypeNode { connective: c } =>
       match c {
-        Atom { identity: identity } => concat(" `", concat(symbol_lexeme(sym: identity), "`"))
+        Atom { identity: identity } => concat(" ", quote_json_string(s: symbol_lexeme(sym: identity)))
         Conj => ""
         Disj => ""
         Arrow => ""

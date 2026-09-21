@@ -45,12 +45,16 @@ import v2.std.diagnostic {
   SourcePortLocus,
   Textual,
   diagnostics_fatal,
-  diagnostics_fatal_reason
+  diagnostics_fatal_reason,
+  ExternalContractUnknown,
+  Unavailable,
+  node_locus
 }
 import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, Atom, Conj, TypeNode, node_synthetic }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -362,14 +366,14 @@ test fn operator_line_renders_the_source_occurrence_holds() -> Bool {
 }
 
 // AND THE OCCURRENCE NAMES ITS SYMBOL. The unbound refusal is anchored at the atom
-// `ndp_absent_callee`; the persisted row carried that identity while the text line rendered only
+// ndp_absent_callee; the persisted row carried that identity while the text line rendered only
 // the ordinal, so a reader of the line could not tell which reference failed. A locus renderer
 // that dropped the atom reds here.
 test fn operator_line_names_the_refused_symbol_holds() -> Bool {
   match ndp_unbound_refusal() {
     Absent => false
     Present { value: d } =>
-      string_contains(s: lens_verdict_diagnostic_locus_text(d: diagnostics_fatal(d: d)), pattern: "`ndp_absent_callee`")
+      string_contains(s: lens_verdict_diagnostic_locus_text(d: diagnostics_fatal(d: d)), pattern: " \"ndp_absent_callee\">")
   }
 }
 
@@ -385,4 +389,40 @@ test fn clean_module_resolves_holds() -> Bool {
         NativeLaneModuleResolveRowsDecided { rows: _ } => false
       }
   }
+}
+
+// ── the atom spelling is QUOTED, losslessly, through the real locus renderer (side-chat hold on
+// gunbc#12004). Each arm renders a node-anchored diagnostic whose anchor atom's lexeme carries the
+// hostile characters, and asserts the EXACT text: a raw paste reds the escaping arms, and a
+// renderer that dropped the name reds the ordinary one.
+
+fn atom_locus_text(lexeme: String) -> String {
+  lens_verdict_diagnostic_locus_text(d: Diagnostic {
+    reason: ^native_refusal_detail_quoting_probe,
+    at: node_locus(node: node_synthetic(kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } }, children: [])),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
+}
+
+test fn an_ordinary_atom_renders_readably_holds() -> Bool {
+  atom_locus_text(lexeme: "SubstrateInputsOnly") == "<synthetic node occurrence \"SubstrateInputsOnly\">"
+}
+
+test fn an_embedded_backtick_and_backslash_stay_unambiguous_holds() -> Bool {
+  atom_locus_text(lexeme: concat("left`right", concat(from_code_point(cp: 92), "x")))
+    == concat("<synthetic node occurrence \"left`right", concat(from_code_point(cp: 92), concat(from_code_point(cp: 92), "x\">")))
+}
+
+test fn newline_cr_and_esc_become_visible_escapes_holds() -> Bool {
+  let bs = from_code_point(cp: 92)
+  atom_locus_text(lexeme: concat("a", concat(from_code_point(cp: 10), concat("b", concat(from_code_point(cp: 13), concat("c", concat(from_code_point(cp: 27), "d")))))))
+    == concat("<synthetic node occurrence \"a", concat(bs, concat("nb", concat(bs, concat("rc", concat(bs, "u001Bd\">"))))))
+}
+
+test fn a_composite_anchor_renders_unchanged_holds() -> Bool {
+  lens_verdict_diagnostic_locus_text(d: Diagnostic {
+    reason: ^native_refusal_detail_quoting_probe,
+    at: node_locus(node: node_synthetic(kind: TypeNode { connective: Conj }, children: [])),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }) == "<synthetic node occurrence>"
 }
