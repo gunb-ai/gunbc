@@ -1804,9 +1804,72 @@ fn approval_broker_binary_install_command(release_dir: String) -> String {
 fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   release_locus_install_steps(
     owner: spec.service.service_user,
+    copy: LocusCopiedByJobUser,
     base_root: spec.approval_broker.repo_root as String,
     revision: revision,
   )
+}
+
+// HOW THE TREE AND BINARY REACH THE LOCUS IS THE OWNER'S CONSEQUENCE, AND THE FIRST srv1 RUN OF THE
+// ROOT-OWNED LOCUS IS WHAT SAID SO (fleet-converge run 35655377521: rsync as the job user into
+// root-owned directories, `Permission denied`). The broker's locus is owned by the service user and
+// the job user's unprivileged rsync populates it. A root-owned locus can only be populated by a
+// privileged mover, and gunbc.ci_deploy_sudoers REFUSES the generic movers (rsync, chown) as sudo
+// grants by design -- so the privileged copy is install(1), the one granted mover, ONE FILE AT A
+// TIME: every directory `install -d -o root`, every file `install -m 0644 -o root` from the job's
+// checkout, driven by find over the same subdirectories and never by a recursive tool root would
+// have to trust. Slower than rsync by the sudo per file, and that is the price of a tree root
+// execs that the job user cannot write.
+type ReleaseLocusCopy
+  = LocusCopiedByJobUser
+  | LocusInstalledPrivilegedPerFile { owner: NonEmptyStr }
+
+fn release_locus_tree_copy_steps(copy: ReleaseLocusCopy, root: String) -> List<PipelineStep> {
+  match copy {
+    LocusCopiedByJobUser =>
+      map(approval_broker_tree_subdirs, sub =>
+        deploy_raw(command: approval_broker_tree_copy_command(src_sub: sub, root: root))
+      )
+    LocusInstalledPrivilegedPerFile { owner: o } =>
+      flat_map(approval_broker_tree_subdirs, sub => [
+        deploy_raw(command: privileged_tree_directories_install_command(src_sub: sub, root: root, owner: o)),
+        deploy_raw(command: privileged_tree_files_install_command(src_sub: sub, root: root, owner: o)),
+      ])
+  }
+}
+
+// 🟡 dissolve-on: the two commands below assemble a find | xargs pipeline as a string, the same
+// medium-as-string shape approval_broker_tree_digest_expr names, and dissolve with it.
+fn privileged_tree_directories_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
+  join([
+    "(cd \"$PWD\" && ", find_program as String, " ", src_sub, " -type d -print0) | ",
+    xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
+      install_program as String, "-d", "-m", "0755", "-o", owner as String, "-g", owner as String,
+    ]), " "), " ", root, "/{}",
+  ], "")
+}
+
+fn privileged_tree_files_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
+  join([
+    "(cd \"$PWD\" && ", find_program as String, " ", src_sub, " -type f -print0 | ", sort_program as String, " -z) | ",
+    xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
+      install_program as String, "-m", "0644", "-o", owner as String, "-g", owner as String,
+    ]), " "), " \"$PWD\"/{} ", root, "/{}",
+  ], "")
+}
+
+fn release_locus_binary_install_step(copy: ReleaseLocusCopy, root: String) -> PipelineStep {
+  match copy {
+    LocusCopiedByJobUser => deploy_raw(command: approval_broker_binary_install_command(release_dir: root))
+    LocusInstalledPrivilegedPerFile { owner: o } =>
+      deploy_raw(command: install_file_owned_command(
+        mode: install_executable_shared_mode,
+        owner: o,
+        group: o,
+        source: join(["\"$PWD\"/target/release/", gunbc_release_bin_name], ""),
+        dest: join([root, "/", gunbc_release_bin_name], ""),
+      ))
+  }
 }
 
 // THE RELEASE LOCUS INSTALL, PARAMETERIZED BY OWNER AND BY ROOT AND BY NOTHING ELSE. The approval
@@ -1819,7 +1882,7 @@ fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisi
 // differs is exactly the two parameters: who owns the directories, and which root they hang under.
 // approval_broker_release_retention_note applies to every root this installs under; the microVM
 // controller inherits that named obligation rather than re-declaring it.
-fn release_locus_install_steps(owner: NonEmptyStr, base_root: String, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+fn release_locus_install_steps(owner: NonEmptyStr, copy: ReleaseLocusCopy, base_root: String, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   let root = approval_broker_release_dir(root: base_root, revision: revision)
   concat(
     concat(
@@ -1834,15 +1897,29 @@ fn release_locus_install_steps(owner: NonEmptyStr, base_root: String, revision: 
       ),
     ),
     concat(
-      map(approval_broker_tree_subdirs, sub =>
-        deploy_raw(command: approval_broker_tree_copy_command(src_sub: sub, root: root))
-      ),
+      release_locus_tree_copy_steps(copy: copy, root: root),
       [
-        deploy_raw(command: approval_broker_binary_install_command(release_dir: root)),
-        deploy_raw(command: approval_broker_tree_receipt_command(base_root: base_root, revision: revision)),
+        release_locus_binary_install_step(copy: copy, root: root),
+        release_locus_tree_receipt_step(copy: copy, base_root: base_root, revision: revision),
       ],
     ),
   )
+}
+
+// THE RECEIPT IS WRITTEN BY THE SAME PRINCIPAL THAT OWNS THE LOCUS: `install -m 0644 /dev/stdin`
+// into a root-owned directory needs root, and the digest pipeline feeding it is the same either way.
+fn release_locus_tree_receipt_step(copy: ReleaseLocusCopy, base_root: String, revision: ReleaseRevisionBinding) -> PipelineStep {
+  match copy {
+    LocusCopiedByJobUser => deploy_raw(command: approval_broker_tree_receipt_command(base_root: base_root, revision: revision))
+    LocusInstalledPrivilegedPerFile { owner: o } =>
+      deploy_raw(command: join([
+        printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
+        "\\ninstalled_digest=%s\\n' ",
+        "\"$(", approval_broker_tree_digest_expr(root: approval_broker_release_dir(root: base_root, revision: revision)), ")\"",
+        " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", o as String, "-g", o as String, "/dev/stdin",
+          approval_broker_tree_receipt_path_for(root: base_root, revision: revision)]), " "),
+      ], ""))
+  }
 }
 
 // ── THE microVM SLOT CONTROLLER'S RELEASE LOCUS AND UNIT ──────────────────────────────────────
@@ -1908,8 +1985,8 @@ fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> Lis
       sha256sum_program as String, " ",
       microvm_controller_vmm_binary(release_dir: dir), " ",
       microvm_controller_jailer_binary(release_dir: dir),
-      " | ", install_program as String, " -m 0644 /dev/stdin ",
-      microvm_controller_vmm_receipt_path(revision: revision),
+      " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", microvm_controller_owner as String, "-g", microvm_controller_owner as String, "/dev/stdin",
+        microvm_controller_vmm_receipt_path(revision: revision)]), " "),
     ], "")),
   ]
 }
@@ -1941,7 +2018,12 @@ fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeli
       concat(
         [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
         concat(
-          release_locus_install_steps(owner: microvm_controller_owner, base_root: microvm_controller_root, revision: revision),
+          release_locus_install_steps(
+            owner: microvm_controller_owner,
+            copy: LocusInstalledPrivilegedPerFile { owner: microvm_controller_owner },
+            base_root: microvm_controller_root,
+            revision: revision,
+          ),
           microvm_controller_vmm_install_steps(revision: revision),
         ),
       ),
