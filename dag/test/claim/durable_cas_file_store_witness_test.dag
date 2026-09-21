@@ -15,7 +15,7 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.durable_cas_file_store {
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
-  admit_cas_attempt, cas_file_slot_path,
+  admit_cas_attempt, cas_file_slot_path, observe_cas_slot_state, cas_key_not_slot_addressable_detail,
   cas_outcome_from_create, cas_probe_from_exact, cas_probe_as_observation,
 }
 
@@ -159,6 +159,22 @@ test fn a_key_that_would_escape_the_store_root_is_refused_at_the_mint() -> Bool 
     CasAttemptAdmitted { verified: _ } => false
     CasAttemptDigestMismatch { claimed: _, actual: _ } => false
     CasAttemptDigestIncomparable { claimed: _, actual: _ } => false
+  }
+}
+
+// THE READ VERB REFUSES THE SAME KEY, BEFORE ANY FILESYSTEM READ (review 69793 of gunbc#12000):
+// a separator-carrying key on observe_cas_slot_state is unreadable with the store's own fixed
+// detail, so a request-supplied identity cannot turn a read into a probe of a path outside the root
+// and the answer discriminates nothing about the host. This runs hermetically precisely because no
+// read happens; routing the key to the probe would fail here on the missing filesystem arm.
+test fn a_key_that_would_escape_the_store_root_is_refused_at_the_read() -> Bool {
+  match observe_cas_slot_state(root: "/var/lib/gunbc/cas", key: "../../etc/passwd") {
+    CasObservedUnreadable { cause: c } =>
+      match c {
+        CasUnreadableReadRefused { detail: d } => d == cas_key_not_slot_addressable_detail
+        _ => false
+      }
+    CasObservedReadable { readable: _ } => false
   }
 }
 
