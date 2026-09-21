@@ -272,6 +272,29 @@ fn compute_basename(path: String) -> String {
 // makes the retry cheap; what must never happen is a caller attaching to a failure it did not ask for); refuse at the cap or behind a lease; take the lease; check out;
 // run; return outputs; write the outcome; release the lease. A refusal before the lease leaves no
 // state; a refusal after it leaves the lease released and the outcome written.
+// THE ORDER THE TWO HOLDS ARE TAKEN IN, and they are two facts rather than one. The producer lease
+// excludes a SECOND PRODUCER OF THIS IDENTITY and is a NAME, so an exclusive create settles it; the
+// reservation is a QUANTITY on the host, and no exclusive create of any name settles that. The
+// lease is taken first because a request that then loses on capacity releases a name it holds
+// rather than memory it may never use, and a name is the cheaper of the two to undo.
+//
+// THE WORK RUNS UNDER THE GRANT: the transient unit's MemoryMax is the amount the pool reserved, so
+// the ledger's arithmetic IS the enforcement rather than a parallel description of it.
+//
+// AGGREGATE CONSUMPTION IS READ WHILE THE GRANT IS STILL HELD, which is the only instant at which
+// the ledger's committed total and the machine's own availability describe the same population;
+// after the release the reservation is gone from one side and the memory may not yet be gone from
+// the other.
+//
+// COMPLETION AND CANCELLATION RELEASE THE SAME WAY. Every ending of compute_run_leased -- succeeded,
+// failed, output-mismatch, refused by infrastructure -- reaches the release, so there is no ending
+// on which the seat stays held.
+//
+// THE COMMENTS ABOVE USED TO SIT INSIDE THIS FUNCTION'S BODY, and the first real compile of this
+// module on srv1 (2026-09-21) is what moved them: DESIGN 4c admits standalone leading blocks
+// attached to MODULE-SCOPE declarations only, and the interpreter route this provider's witnesses
+// run on tolerates a body-position block that `gunbc compile` refuses outright -- 14 blocking
+// errors on a module every witness had reported green.
 fn compute_provide_leaf(
   instance: HostDashboardInstance,
   commit: String,
@@ -292,11 +315,6 @@ fn compute_provide_leaf(
   } else if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.store_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir)) {
     compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["could not create the compute directories under ", layout.root], "") } }, subject: subject, op: op)
   } else {
-    // THE PRODUCER LEASE AND THE CAPACITY RESERVATION ARE TWO FACTS AND ARE TAKEN IN THIS ORDER.
-    // The lease excludes a SECOND PRODUCER OF THIS IDENTITY and is a name, so O_EXCL settles it; the
-    // reservation is a QUANTITY on the host and no exclusive name can settle that. Taking the lease
-    // first means a request that then loses on capacity releases a name it holds rather than
-    // reserving memory it may never use, and it is the cheaper of the two to undo.
     let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
     if !lease.success {
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: layout.lease_path } }, subject: subject, op: op)
@@ -310,17 +328,8 @@ fn compute_provide_leaf(
         ComputeReservationRefused { detail: d } =>
           compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: ComputeCapacityLedgerUnavailable { detail: d })
         ComputeReserved { grant: _, partition: _, amount: granted, store: _ } => {
-          // THE WORK RUNS UNDER THE GRANT: the unit's MemoryMax is the amount the pool reserved, so
-          // the ledger's arithmetic is the enforcement rather than a parallel description of it.
           let outcome = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store, granted: granted)
-          // AGGREGATE CONSUMPTION IS READ WHILE THE GRANT IS STILL HELD, which is the only instant
-          // at which the ledger's committed total and the machine's own availability describe the
-          // same population; after the release the reservation is gone from one side and the
-          // memory may not yet be gone from the other.
           let standing = compute_capacity_standing(instance: instance)
-          // COMPLETION AND CANCELLATION RELEASE THE SAME WAY. Every ending of compute_run_leased --
-          // succeeded, failed, output-mismatch, refused by infrastructure -- reaches here, so there
-          // is no ending on which the seat stays held.
           let returned = compute_release(reservation: reservation, reason: join(["work ", work_outcome_ending(o: outcome)], "") as NonEmptyStr)
           let document = work_outcome_wire(o: outcome, subject: subject, op: op)
           let measured = Filesystem.Write(path: layout.consumption_path, content: join([compute_capacity_standing_wire(s: standing), "\n"], ""))
