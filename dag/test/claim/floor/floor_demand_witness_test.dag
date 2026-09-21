@@ -25,6 +25,8 @@ import gunbc.floor_demand {
   PeakIsDemand, PeakIsLowerBound, PeakUnreadable, PeakLowerBoundCause, RunDidNotComplete,
   PeakBeatWasStalling, SwapCouldAbsorbAnonymousPages, SwapPolicyIsRead,
   RunSwapPolicy, SwapMaxRead, SwapMaxDeclaredUnread, SwapDisabled,
+  BeatStall, StallRead, StallUnread, SeamUnreadable, PeakBeatStallUnread, PeakBeatSeamUnreadable,
+  beat_stall_is_zero, beat_stall_is_positive,
 }
 import gunbc.fabric_witness_run { floor_execution_requirements }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
@@ -130,7 +132,7 @@ fn seamed_beat(n: Int, seam: FloorSeam, anon: Int, file: Int, shmem: Int, unevic
     anon: byte_size(anon), file: byte_size(file), shmem: byte_size(shmem), unevictable: byte_size(unevictable),
     slab_unreclaimable: byte_size(4), slab_reclaimable: byte_size(1000), kernel_stack: byte_size(3),
     pagetables: byte_size(2), percpu: byte_size(1), sock: byte_size(0), file_dirty: byte_size(0),
-    stall: events_per_minute(count: stall),
+    stall: StallRead { rate: events_per_minute(count: stall) },
   }
 }
 
@@ -178,7 +180,7 @@ test fn a_beat_whose_held_set_cannot_be_represented_makes_the_receipt_torn() -> 
     anon: byte_size(int_inclusive_max()), file: byte_size(0), shmem: byte_size(1), unevictable: byte_size(0),
     slab_unreclaimable: byte_size(0), slab_reclaimable: byte_size(0), kernel_stack: byte_size(0),
     pagetables: byte_size(0), percpu: byte_size(0), sock: byte_size(0), file_dirty: byte_size(0),
-    stall: events_per_minute(count: 0),
+    stall: StallRead { rate: events_per_minute(count: 0) },
   }
   let sum_refuses = match beat_held_set(b: torn) {
     CheckedIntOverflow { cause: _ } => true
@@ -467,6 +469,46 @@ test fn a_completed_unstalled_run_without_swap_reads_a_demand() -> Bool {
   }
   match receipt_peak_reading_standing(r: clean) {
     PeakIsDemand => true
+    _ => false
+  }
+}
+
+// AN UNREAD STALL IS NOT AN UNSTALLED BEAT, IN BOTH FOLDS THAT ASK. The instrument emits `na` for
+// a stall window that did not read, so a receipt can carry StallUnread; treating it as zero would
+// make "we could not tell" evidence of calm, and the guest's cache allowance is derived from the
+// last UNSTALLED beat -- so a beat nobody observed would size a guest. Both predicates answer
+// false, which is the fail-closed direction, and this claim drives both rather than trusting that
+// one implies the other.
+test fn an_unread_stall_is_neither_stalled_nor_unstalled() -> Bool {
+  let unread = FloorMemoryStatBeat {
+    beat: 1, seam: SeamClaimEvaluationFold, charge: byte_size(100),
+    anon: byte_size(90), file: byte_size(10), shmem: byte_size(1), unevictable: byte_size(0),
+    slab_unreclaimable: byte_size(1), slab_reclaimable: byte_size(1), kernel_stack: byte_size(1),
+    pagetables: byte_size(1), percpu: byte_size(1), sock: byte_size(0), file_dirty: byte_size(0),
+    stall: StallUnread,
+  }
+  !beat_stall_is_zero(b: unread) && !beat_stall_is_positive(b: unread)
+}
+
+// A TORN RECEIPT REPORTS ReceiptTorn, NOT ReceiptHasNoBeats. review 69767: this fold used to route
+// through receipt_peak_beat, which collapses the unrepresentable arm into Absent, so a receipt
+// that plainly HAS beats was reported as having none -- a located cause naming something untrue,
+// and ReceiptTorn was unreachable from this fold. There was no claim over the torn case here,
+// which is exactly why it passed.
+test fn a_torn_receipt_reading_standing_names_the_tear_not_an_absence() -> Bool {
+  let torn_beat = FloorMemoryStatBeat {
+    beat: 7, seam: SeamClaimEvaluationFold, charge: byte_size(0),
+    anon: byte_size(int_inclusive_max()), file: byte_size(0), shmem: byte_size(1), unevictable: byte_size(0),
+    slab_unreclaimable: byte_size(0), slab_reclaimable: byte_size(0), kernel_stack: byte_size(0),
+    pagetables: byte_size(0), percpu: byte_size(0), sock: byte_size(0), file_dirty: byte_size(0),
+    stall: StallRead { rate: events_per_minute(count: 0) },
+  }
+  let torn = FloorHeldSetReceipt {
+    run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
+    beats: [torn_beat], run_completed: true, swap_policy: SwapDisabled,
+  }
+  match receipt_peak_reading_standing(r: torn) {
+    PeakUnreadable { cause: ReceiptTorn { overflow: _ } } => true
     _ => false
   }
 }
