@@ -7,7 +7,7 @@ import gunbc.runner_microvm_network_converge { runner_microvm_staging_dir }
 import gunbc.runner_microvm_network_apply {
   MicrovmNetworkApplyAdmission, MicrovmNetworkApplyAdmitted, MicrovmNetworkApplyRefused,
   microvm_network_apply_admission, staging_ancestor_paths,
-  RunnerHostPathMetadata, path_metadata_ok,
+  path_metadata_ok,
   OperationResult, ApplyLeg, ApplyLegRan, ApplyLegRefused, operation_result_ok,
   RulesetReadback, RulesetListed, RulesetNotListed,
 }

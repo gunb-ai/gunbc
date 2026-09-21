@@ -42,13 +42,12 @@ import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureOwnedDirectory, executor_privileged_operation_argv }
 import gunbc.runner_microvm_network {
   runner_microvm_shared_host_grain,
-  runner_microvm_nft_table_name,
+  runner_microvm_nft_read_operation,
 }
 import gunbc.runner_microvm_network_converge {
   StagedFile, converge_staged_files, microvm_network_converge_operations,
   runner_microvm_staging_dir,
 }
-import extdeps.nftables.ruleset { nft_list_table_arguments_wire, NftInet, nft_family_wire }
 
 // THE MICROVM NETWORK'S MUTATING HALF, EXECUTED BY THE HOST'S ADMINISTRATOR AND BY NOBODY ELSE.
 //
@@ -320,15 +319,14 @@ fn run_operations_until_failure(
   )
 }
 
+// THE LAST RESULT, AND THE EMPTY LIST IS A REFUSAL RATHER THAN A SUCCESS. An empty accumulator
+// means no operation has run, and a fold whose empty case reported success would let the guard above
+// read "the previous operation was fine" on the first iteration by accident rather than by fact.
 fn last_result(rs: List<OperationResult>) -> OperationResult {
-  fold(rs, init: head_result(rs: rs), f: (acc, r) => r)
-}
-
-fn head_result(rs: List<OperationResult>) -> OperationResult {
   fold(
     rs,
     init: OperationResult { argv: [], leg: ApplyLegRefused { reason: "no operation ran" } },
-    f: (acc, r) => acc,
+    f: (acc, r) => r,
   )
 }
 
@@ -419,14 +417,7 @@ fn read_back_ruleset(
 ) -> RulesetReadback
   uses net: Network
 {
-  match run_admin_leg(
-    subject: subject,
-    context: context,
-    argv: elevated_argv(command: concat(
-      ["nft"],
-      map(nft_list_table_arguments_wire(family: nft_family_wire(f: NftInet), name: runner_microvm_nft_table_name as String), w => w),
-    )),
-  ) {
+  match run_operation(subject: subject, context: context, op: runner_microvm_nft_read_operation()) {
     ApplyLegRefused { reason: why } => RulesetNotListed { reason: why }
     ApplyLegRan { exit_code: c, stdout: o, stderr: e } =>
       if c != 0 {
