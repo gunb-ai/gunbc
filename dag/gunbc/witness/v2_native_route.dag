@@ -6,6 +6,9 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
+import std.types { NonEmptyStr }
+import extdeps.bazel.label { LabelParse, PackagePath, parse_label }
+import extdeps.bazel.target_pattern { SubtreeTargets, TargetPattern }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
@@ -65,6 +68,64 @@ data native_route_universe_prefix: String = "v2.test."
 
 fn native_route_universe_member(module_qn: String) -> Bool {
   starts_with(s: module_qn, prefix: native_route_universe_prefix)
+}
+
+// A TARGET PATTERN SELECTS THE UNIVERSE, AND THE MATCHING IS `extdeps.bazel.target_pattern`'S.
+//
+// The universe above is a namespace prefix chosen once and compiled in. An operator asking for a
+// subset -- `gunbc test //v2/test/parse/...` -- is asking the same question with a different
+// pattern, and the cited authority already answers it: `target_pattern_matches` owns subtree
+// containment, package equality and single-target equality. This module owns exactly one fact
+// beside it, the correspondence below, and does not restate the matching.
+//
+// THE MAPPING FROM IDENTITY TO LABEL IS A GUNBC FACT, NOT A BAZEL ONE, which is why it lives here.
+// The cited authority spells packages as PATH SEGMENTS; this corpus's targets are DECLARED MODULE
+// NAMESPACES (the `module` line, never the file path -- see gunbc.namespace_cut_stage for why
+// those are different facts) holding declarations. A module's namespace segments ARE the package
+// segments and the declaration IS the target name, so the label is spelled and handed to the
+// upstream's own `parse_label`: its segment and target-name refusals apply to an identity exactly
+// as they apply to an operator's label, and no second parser decides what a well-formed package
+// is. A refused identity label is a typed refusal of the universe, never a silent exclusion.
+// ONE PACKAGE TEXT PER MODULE: the namespace segments joined with the upstream's separator.
+// The producer computes it once per module and parses each declaration against it, so a module's
+// namespace is folded once, not once per declaration.
+fn native_route_module_package_text(module_qn: String) -> String {
+  fold_list(
+    xs: split(s: module_qn, delimiter: "."),
+    empty: "",
+    cons: fn(acc, segment) {
+      if acc == "" { concat("", segment) } else { concat(concat(acc, "/"), segment) }
+    }
+  )
+}
+
+fn native_route_label_in_package(package_text: String, declaration: String) -> LabelParse {
+  parse_label(text: concat(concat(concat("//", package_text), ":"), declaration))
+}
+
+fn native_route_identity_label(module_qn: String, declaration: String) -> LabelParse {
+  native_route_label_in_package(
+    package_text: native_route_module_package_text(module_qn: module_qn),
+    declaration: declaration
+  )
+}
+
+// THE DEFAULT PATTERN IS `//v2/test/...`, AND IT NARROWS NOTHING. The universe stays the floor's
+// prefix; a pattern only selects within it (v2.compiler.compile `native_lane_identity_admitted`).
+// The two differ on exactly one module name -- `v2.test` itself, which the subtree form includes
+// and the gate prefix does not -- and no such module exists; the conjunction makes that difference
+// unobservable rather than a second population. `the_default_pattern_admits_every_universe_member`
+// is the law: were the default ever narrower than the universe, the lane would silently drop
+// members at its default.
+//
+// CONSUMERS AND FRONTIER. `v2.compiler.compile` `native_lane_universe_selected` consumes the
+// pattern at execution; `native_lane_universe` (the required-v2-native lane's rendered main)
+// consumes it at this default. An OPERATOR-SUPPLIED pattern reaches that same producer when
+// `gunbc test <pattern>` enters the native implementation (v2 foundation package 9); that verb is
+// the trigger for a non-default caller, and until it lands the only non-default callers are the
+// witnesses over the real producer in gunbc.native_lane_import_refusal_witness_test.
+fn native_route_default_pattern() -> TargetPattern {
+  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr] } }
 }
 
 // ONE TEST IDENTITY, STRUCTURED. The module qualified name and the declaration name are separate
