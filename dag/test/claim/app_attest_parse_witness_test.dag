@@ -2,8 +2,8 @@ module test.claim.app_attest_parse_witness_test
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Timestamp, Int, List }
-import std.integer { UInt8 }
-import std.encoding { base64_decode, base64_encode, Standard }
+import std.encoding { base64_decode, base64_encode, base64_octets, Standard }
+import std.integer { UInt8, QualifiedOctetsReady, QualifiedOctetsRefused }
 import std.octet_span { OctetSpan, octet_span_octets }
 import extdeps.ietf.cbor { CborTrailingInput, CborDuplicateMapKey, CborDecoded, CborRefused, CborMap, cbor_decode }
 import extdeps.itu.der { DerTrailingInput }
@@ -70,9 +70,9 @@ fn genuine_octets() -> List<UInt8> {
 }
 
 fn reencode(octets: List<UInt8>) -> NonEmptyStr {
-  match base64_encode(octets: octets, variant: Standard) {
-    Present { value: s } => s as NonEmptyStr
-    Absent => "!" as NonEmptyStr
+  match base64_octets(values: octets) {
+    QualifiedOctetsReady { value: q } => base64_encode(octets: q, variant: Standard) as NonEmptyStr
+    QualifiedOctetsRefused { observed: _ } => "!" as NonEmptyStr
   }
 }
 

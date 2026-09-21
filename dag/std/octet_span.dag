@@ -1,6 +1,6 @@
 module std.octet_span
 
-import std.integer { UInt8 }
+import std.integer { UInt8, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
 import std.machine_word {
   Word, WordWidth, Width8, Width16, Width32, WordResult, WordReady, WordRefused,
   word_of_int, word_from_octets, word_shift_right, word_and,
@@ -129,17 +129,6 @@ fn octet_unsigned_width(octets: Int) -> WordWidth? {
   }
 }
 
-fn octet_words(octets: List<UInt8>) -> List<Word>? {
-  fold(octets, init: Present { value: [] }, f: (acc, octet) =>
-    match acc {
-      Absent => none
-      Present { value: words } =>
-        match octet_word(octet: octet) {
-          WordRefused { cause: _ } => none
-          WordReady { word: w } => Present { value: words |> list_push(w) }
-        }
-    })
-}
 
 data octet_zero_pad: List<UInt8> = [0]
 
@@ -158,10 +147,10 @@ fn octet_read_unsigned_be(input: List<UInt8>, at: Int, octets: Int) -> OctetUnsi
       match octet_unsigned_width(octets: octets) {
         Absent => OctetUnsignedRefused { cause: OctetUnsignedTooWide { at: at, octets: octets } }
         Present { value: width } =>
-          match octet_words(octets: append(octet_zero_padding(octets: octets), items: octet_span_octets(input: input, span: span))) {
-            Absent => OctetUnsignedRefused { cause: OctetWordRefused { at: at } }
-            Present { value: words } =>
-              match word_from_octets(width: width, octets: words, endianness: BigEndian) {
+          match uint8_octets_of_ints(values: append(octet_zero_padding(octets: octets), items: octet_span_octets(input: input, span: span))) {
+            QualifiedOctetsRefused { observed: _ } => OctetUnsignedRefused { cause: OctetWordRefused { at: at } }
+            QualifiedOctetsReady { value: qualified } =>
+              match word_from_octets(width: width, octets: qualified, endianness: BigEndian) {
                 WordRefused { cause: _ } => OctetUnsignedRefused { cause: OctetWordRefused { at: at } }
                 WordReady { word: w } => OctetUnsignedReady { value: w.value, end: span.end }
               }
