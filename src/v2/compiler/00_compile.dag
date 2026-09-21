@@ -1788,9 +1788,11 @@ type NativeLaneUniverse {
 //
 // THE SPLIT IS THE SAME ONE AND FOR THE SAME REASON. The host cannot know which roots to walk, or
 // which facts file to read, until argv has been parsed; and this module cannot read a directory.
-// So `native_driver_parse` answers with a plan, `native_driver_plan_source_roots` and
-// `native_driver_plan_facts_path` say what the host must fetch, and the run folds receive what came
-// back. A single call would force one of those two to be wrong.
+// So `native_driver_parse` answers with a plan, `native_driver_plan_source_roots` says which roots
+// the host must walk, and the run folds receive what came back. A single call would force one of
+// those two to be wrong. The facts path needs no accessor: only `NativeDriverAdjudicate` carries
+// one, and the rendered main reads it from that verb in the arm that runs adjudication -- the same
+// plan value, not argv (and it retires with `facts_path` itself, trigger stated on the type).
 //
 // THE RENDERED MAIN CALLS THIS AND NOTHING ELSE DECIDES THE VERB. v1.compiler.emit_rust
 // `emit_source_root_eval_driver_main_rs` renders `main` as one `native_driver_parse` call, reads
@@ -1928,18 +1930,6 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensus { source_roots: roots } => roots
         NativeDriverCensusResolve { source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, source_roots: roots } => roots
-      }
-  }
-}
-
-fn native_driver_plan_facts_path(plan: NativeDriverPlan) -> Optional<String> {
-  match plan {
-    NativeDriverPlanRefused { reason: _, detail: _ } => optional_absent()
-    NativeDriverPlanned { verb: verb } =>
-      match verb {
-        NativeDriverCensus { source_roots: _ } => optional_absent()
-        NativeDriverCensusResolve { source_roots: _ } => optional_absent()
-        NativeDriverAdjudicate { facts_path: path, source_roots: _ } => optional_present(value: path)
       }
   }
 }

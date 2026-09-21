@@ -4,14 +4,14 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.algebra { length }
 import v2.std.collection { List }
-import v2.std.optional { Absent, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ExitFailure, ExitSuccess }
+import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import v2.compiler.compile {
   NativeDriverAdjudicate, NativeDriverCensus, NativeDriverCensusResolve,
   NativeDriverPlanRefused, NativeDriverPlanned,
   native_driver_adjudicate_needs_facts, native_driver_parse, native_driver_plan_exit,
-  native_driver_plan_facts_path, native_driver_plan_source_roots, native_driver_usage,
+  native_driver_plan_source_roots, native_driver_usage,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -19,8 +19,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WHAT THESE ARMS EXIST TO PIN. The verb surface used to live in the rendered main: three literal
 // comparisons and three inline refusals in emitted Rust, which no witness could reach. Moving the
 // decision here is only an improvement if the decision is now EXERCISED, so every verb the driver
-// admits and every refusal it can raise has an arm, and the two accessors the host reads are
-// checked against a plan rather than against argv.
+// admits and every refusal it can raise has an arm, and what the host reads -- the roots accessor
+// and the adjudicate verb's facts path -- is checked against a plan rather than against argv.
 //
 // The refusal arms assert the EXACT message the rendered main printed. That is deliberate and it is
 // not a change detector: these strings are this program's command-line contract, the change being
@@ -75,16 +75,21 @@ fn planned_root_count(argv: List<String>) -> Int {
 }
 
 fn planned_facts_path(argv: List<String>) -> String {
-  match native_driver_plan_facts_path(plan: native_driver_parse(argv: argv)) {
-    Absent => ""
-    Present { value: path } => path
+  match native_driver_parse(argv: argv) {
+    NativeDriverPlanRefused { reason: _, detail: _ } => ""
+    NativeDriverPlanned { verb: verb } =>
+      match verb {
+        NativeDriverAdjudicate { facts_path: path, source_roots: _ } => path
+        NativeDriverCensus { source_roots: _ } => ""
+        NativeDriverCensusResolve { source_roots: _ } => ""
+      }
   }
 }
 
 fn plan_exit_is_misuse(argv: List<String>) -> Bool {
   match native_driver_plan_exit(plan: native_driver_parse(argv: argv)) {
     ExitSuccess => false
-    ExitFailure { code: code, reason: _ } => code == 2
+    ExitFailure { code: code, reason: _ } => code == exit_code_misuse
   }
 }
 
