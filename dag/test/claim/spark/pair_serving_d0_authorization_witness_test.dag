@@ -1,0 +1,126 @@
+module test.claim.spark.pair_serving_d0_authorization_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List, Timestamp }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, serialize_content_hash }
+import std.scoped_authorization { AuthorizationRequest, AuthorizationGranted }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_request_client { PollApproved, PollNotFiled, PollStillPending, PollDenied }
+import gunbc.auth.approval_gate { StandingReadAt, StandingClockUnreadable, ApprovalDenied }
+import gunbc.spark.pair_serving_d0_door { d0_absent_claim_step, D0AbsentClaimClockUnreadable, D0AbsentClaimFileFrozen, D0AbsentClaimEnterPoll, D0AbsentClaimDecided }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import std.measure { second }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+import gunbc.spark.released_baseline { QuiescentReservedBaseline }
+import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_text, d0_intent_hash }
+import gunbc.spark.v41_runtime_candidate { V41CandidateRefused, V41CandidateUnestablished }
+import gunbc.spark.pair_serving_d0_authorization {
+  D0SubjectFor, D0SubjectUnestablished, D0SubjectRefused, d0_live_subject, d0_subject_of_candidate,
+  D0FiledRequestFor, D0FiledRequestRefused, d0_filed_request,
+  d0_resumable_authorization, D0Resumable, D0NotRecorded, D0NotClaimedHere,
+}
+import gunbc.spark.pair_serving_d0 { D0ClaimAbsent, D0ClaimAt }
+import std.scoped_authorization { ClaimedBy, CompletedBy, AttemptIdentity }
+import gunbc.auth.approval_gate { approval_gate_from_poll, approval_recorded_from_poll, ApprovalRecorded, ApprovalNotRecorded, GateAdmitted, GateRefused, ApprovalAuthorizeRefused, ApprovalIntentMismatch }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn w_sha(hex: String) -> ContentHash? {
+  match sha256_hex_digest(hex: hex) { Absent => none  Present { value: d } => Present { value: Sha256Hash(d) } }
+}
+
+fn w_request(intent: ContentHash) -> AuthorizationRequest<D0Subject> {
+  d0_request(escalation_id: "d0-esc-1" as NonEmptyStr, subject: D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: intent, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }, transaction: "tx-1" as NonEmptyStr, intent: intent)
+}
+
+// THE LIVE SUBJECT FOLLOWS THE CANDIDATE: while gunbc.spark.v41_runtime_candidate leaves an axis
+// unestablished there is no subject and the obligations are the candidate's own (the row-store
+// digest, at this writing); a keyed candidate is the successor. The claim is exhaustive over
+// both so it flips, rather than rots, when Cut 0 completes.
+test fn the_live_subject_exists_exactly_when_the_candidate_is_keyed() -> Bool {
+  let live = match d0_live_subject(group: FabricGroupA) {
+    D0SubjectUnestablished { obligations: o } => length(o) >= 1 && any(o, x => (x as String).contains("row-store"))
+    D0SubjectFor { subject: s } => length(s.hosts) == 4
+    D0SubjectRefused { defects: _ } => false
+  }
+  let refused = match d0_subject_of_candidate(group: FabricGroupA, standing: V41CandidateRefused { defects: ["weight manifest: path declared more than once" as NonEmptyStr] }) { D0SubjectRefused { defects: d } => length(d) == 1  _ => false }
+  let pending = match d0_subject_of_candidate(group: FabricGroupA, standing: V41CandidateUnestablished { obligations: ["row-store digest" as NonEmptyStr] }) { D0SubjectUnestablished { obligations: o } => length(o) == 1  _ => false }
+  live && refused && pending
+}
+
+// THE FILED REQUEST IS THE FROZEN TEXT, EXACTLY. The intent text a live request is frozen as
+// parses back to the same subject and digests to the same revision, so a rerun re-derives the
+// request the operator decided over; the same text under another group or transaction is refused
+// as another filing, not resumed; and a hosts order in the text is not identity (the wire sorts).
+test fn a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction() -> Bool {
+  match w_sha(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
+    Absent => false
+    Present { value: successor } => {
+      let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+      let text = d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-1" as NonEmptyStr)
+      let same = match d0_filed_request(text: text, group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr) {
+        D0FiledRequestFor { request: r, intent_text: t } =>
+          t == text
+            && (match d0_intent_hash(subject: subject, group: FabricGroupA, transaction: "tx-1" as NonEmptyStr) { Present { value: h } => (request_revision_of(request: r) as String) == (serialize_content_hash(hash: h) as String)  Absent => false })
+            && length(r.subject.hosts) == 4
+            && (r.escalation_id as String) == "d0-esc-1"
+        D0FiledRequestRefused { reason: _ } => false
+      }
+      let other_tx = match d0_filed_request(text: text, group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-2" as NonEmptyStr) { D0FiledRequestRefused { reason: r } => (r as String).contains("tx-1")  _ => false }
+      let garbage = match d0_filed_request(text: "not an intent", group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr) { D0FiledRequestRefused { reason: _ } => true  _ => false }
+      let edited = match d0_filed_request(text: join([text, "x"], ""), group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr) { D0FiledRequestRefused { reason: _ } => true  _ => false }
+      same && other_tx && garbage && edited
+    }
+  }
+}
+
+// A RECORDED APPROVAL IS NOT AN ADMISSION: the same approved decision that the live gate refuses
+// after execute_by is handed back as recorded by its own constructor, and D0 turns it into a
+// resumable authorization ONLY against a claim held by this transaction -- an absent claim (a
+// start), another attempt's claim and a completed claim each refuse without consulting the
+// decision's window. An approval over another revision is a mismatch under either fold.
+test fn a_recorded_approval_resumes_only_under_this_transactions_held_claim() -> Bool {
+  match w_sha(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
+    Absent => false
+    Present { value: intent } => {
+      let req = w_request(intent: intent)
+      let rev = request_revision_of(request: req)
+      let at = "2026-09-21T02:00:00Z" as Timestamp
+      let until = "2026-09-21T03:00:00Z" as Timestamp
+      let approved = PollApproved { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }
+      let held = D0ClaimAt { state: ClaimedBy { attempt: "tx-1" as AttemptIdentity, claimed_at: at }, generation: 1 }
+      let other = D0ClaimAt { state: ClaimedBy { attempt: "tx-9" as AttemptIdentity, claimed_at: at }, generation: 1 }
+      let done = D0ClaimAt { state: CompletedBy { attempt: "tx-1" as AttemptIdentity, completed_at: at }, generation: 2 }
+      (match approval_gate_from_poll(poll: approved, request: req, observed_at: "2026-09-21T04:00:00Z" as Timestamp) { GateRefused { cause: ApprovalAuthorizeRefused { detail: _ } } => true  _ => false })
+        && (match approval_recorded_from_poll(poll: approved, request: req) { ApprovalRecorded { authorization: AuthorizationGranted { grant: g, claim: _ } } => (g.escalation_id as String) == "d0-esc-1"  _ => false })
+        && (match d0_resumable_authorization(claim: held, transaction: "tx-1" as NonEmptyStr, poll: approved, request: req) { D0Resumable { authorization: _ } => true  _ => false })
+        && (match d0_resumable_authorization(claim: D0ClaimAbsent, transaction: "tx-1" as NonEmptyStr, poll: approved, request: req) { D0NotClaimedHere { reason: _ } => true  _ => false })
+        && (match d0_resumable_authorization(claim: other, transaction: "tx-1" as NonEmptyStr, poll: approved, request: req) { D0NotClaimedHere { reason: r } => (r as String).contains("tx-9")  _ => false })
+        && (match d0_resumable_authorization(claim: done, transaction: "tx-1" as NonEmptyStr, poll: approved, request: req) { D0NotClaimedHere { reason: _ } => true  _ => false })
+        && (match d0_resumable_authorization(claim: held, transaction: "tx-1" as NonEmptyStr, poll: PollApproved { revision: "sha256:0000" as NonEmptyStr, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, request: req) { D0NotRecorded { cause: ApprovalIntentMismatch { requested_revision: _, decided_revision: _ } } => true  _ => false })
+    }
+  }
+}
+
+// THE DOOR'S STEP FOR A FROZEN FILING WITH NO CLAIM: not filed files the frozen request, pending
+// enters the poll, a decision goes through the live gate at the instant of the read (an approval
+// inside its window admits; a denial refuses), and an unreadable clock refuses before any of it.
+test fn a_frozen_filing_with_no_claim_files_polls_or_decides_live_by_the_read() -> Bool {
+  match w_sha(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
+    Absent => false
+    Present { value: intent } => {
+      let req = w_request(intent: intent)
+      let rev = request_revision_of(request: req)
+      let at = "2026-09-21T02:00:00Z" as Timestamp
+      let until = "2026-09-21T03:00:00Z" as Timestamp
+      (match d0_absent_claim_step(read: StandingReadAt { standing: PollNotFiled, observed_at: at }, request: req) { D0AbsentClaimFileFrozen => true  _ => false })
+        && (match d0_absent_claim_step(read: StandingReadAt { standing: PollStillPending, observed_at: at }, request: req) { D0AbsentClaimEnterPoll => true  _ => false })
+        && (match d0_absent_claim_step(read: StandingReadAt { standing: PollApproved { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, observed_at: "2026-09-21T02:30:00Z" as Timestamp }, request: req) { D0AbsentClaimDecided { gate: GateAdmitted { authorization: _ } } => true  _ => false })
+        && (match d0_absent_claim_step(read: StandingReadAt { standing: PollApproved { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, observed_at: "2026-09-21T04:00:00Z" as Timestamp }, request: req) { D0AbsentClaimDecided { gate: GateRefused { cause: ApprovalAuthorizeRefused { detail: _ } } } => true  _ => false })
+        && (match d0_absent_claim_step(read: StandingReadAt { standing: PollDenied { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, reason: "no" as NonEmptyStr }, observed_at: at }, request: req) { D0AbsentClaimDecided { gate: GateRefused { cause: ApprovalDenied { reason: _ } } } => true  _ => false })
+        && (match d0_absent_claim_step(read: StandingClockUnreadable, request: req) { D0AbsentClaimClockUnreadable => true  _ => false })
+    }
+  }
+}

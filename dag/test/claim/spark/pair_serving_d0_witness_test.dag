@@ -40,7 +40,6 @@ import gunbc.spark.pair_serving_d0 {
   D0Decision, D0DecidedSuspend, D0DecidedRestore, D0DecidedFence, D0Cause, D0IncumbentLive, D0IncumbentUnidentified, D0OccupancyUnread, D0DeclarationUnavailable,
   d0_decide, d0_decision_is_eligible, d0_authorized_action, d0_intent_text,
   D0Population, D0PopulationAgrees, D0PopulationDiffers, d0_population,
-  D0AuthorizationStanding, D0AuthorizationResolved, D0AuthorizationUnestablished, resolve_d0_authorization,
   D0ClaimReading, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
   D0Recovery, D0RecoverStart, D0RecoverFirstWrite, D0RecoverResume, D0RecoverComplete, D0RecoverAbort, D0RecoveryRefused, d0_recovery,
 }
@@ -330,15 +329,11 @@ test fn an_answering_but_unidentified_incumbent_fences() -> Bool {
   })
 }
 
-// THE ENTRY IS NON-ADMITTING TODAY BY CONSTRUCTION: no authorization id resolves to a scoped
-// authorization, so the wet entry refuses before its first write. This is the wall's executed
-// red; the positive route is driven by the real-execution witness with a fixture grant.
-test fn no_authorization_resolves_today_so_the_entry_cannot_admit() -> Bool {
-  match resolve_d0_authorization(group: FabricGroupA, authorization: "esc-anything") {
-    D0AuthorizationUnestablished { obligation: _ } => true
-    D0AuthorizationResolved { authorization: _ } => false
-  }
-}
+// THE ENTRY ADMITS ONLY THROUGH THE PRODUCER: the request over the exact operation exists only
+// when the successor is keyed, and the door (gunbc.spark.pair_serving_d0_door) files it and admits
+// only an approval over that request's revision -- test.claim.spark.pair_serving_d0_authorization_witness
+// drives both. What this module's wall still executes: the door refuses before any write while
+// either store wall stands (the claim below), so no authorization opens it today.
 
 fn d0w_port(n: Int) -> Port {
   n

@@ -1,17 +1,25 @@
 module gunbc.runner_microvm_network
 
 import std.types { String, NonEmptyStr, Bool, Int, List, Port }
+import std.algebra { trim }
 import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
+import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr, Ipv4Prefix, ipv4_prefix, render_ipv4_prefix, ipv4_address_eq }
 import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, MacAddressScope, LocallyAdministered, mac_address_scope }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal, runner_slot_instance_name }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_microvm { RunnerMicroVmNetworking, GuestNetworkTap }
 import gunbc.executor_privileged_operation {
-  ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit,
+  ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit, SystemdRestartUnit,
+  SystemdDaemonReload, SystemdEnableUnit, ReadNftTable,
+}
+import gunbc.fleet_posix_accounts { fleet_nft_binary_path }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, SystemdInstallSection, Installable,
+  Description, After, Wants, ServiceType, SystemdServiceMode, OneshotMode, RemainAfterExit, ExecStart, WantedBy,
+  serialize_systemd_unit_file,
 }
 import extdeps.nftables.ruleset {
   NftTable, NftChain, NftRule, NftMatch, NftFamily, NftInet, NftHook, NftForward, NftPostrouting,
@@ -19,7 +27,7 @@ import extdeps.nftables.ruleset {
   NftChainType, NftTypeFilter, NftTypeNat,
   NftVerdict, NftAccept, NftDrop, NftMasquerade,
   NftInputInterfaceWildcard, NftOutputInterfaceWildcard, NftSourceAddressPrefix,
-  NftConnectionTrackingEstablished, nft_table_wire,
+  NftConnectionTrackingEstablished, nft_table_wire, nft_family_wire,
   NftDestinationAddressPrefix, NftTransportDestinationPort, NftNetworkProtocolIpv6,
   NftTransport, NftTcp, NftUdp, nft_list_table_command,
 }
@@ -576,7 +584,7 @@ fn runner_microvm_nft_ruleset_text_for(host: HostEgressGrain) -> String {
 // slot_network_readback compares against. SUFFICIENT FOR deleting this row. NOT satisfied by a
 // witness folding a grain, and not by any per-attempt step installing a table.
 data host_ruleset_installer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the microvm_host_converge fleet-converge mode on srvN. TRIGGER: it installs runner_microvm_nft_ruleset_text_for(host: the converged host's HostEgressGrain), reads the listing back with runner_microvm_nft_list_command, and records that digest as the converged digest slot_network_readback compares against. SUFFICIENT FOR deleting this row. NOT satisfied by a witness folding a grain or by a per-attempt step installing a table." as NonEmptyStr,
+  description: "NAMED CONSUMER: whichever mode installs this ruleset once the mutating half has a principal to run under -- microvm_network_observe reads and records but installs NOTHING, because granting the job user install+restart over files it also stages would be granting root (review 69104). WHAT REMAINS: no ruleset has been installed by any modeled route, so no listing has been read back as the converged digest. TRIGGER: the capability named by microvm_network_host_mutation_principal_frontier holds and that route installs runner_microvm_nft_ruleset_text_for(the host's HostEgressGrain), reads the listing back with runner_microvm_nft_list_command, and records that digest as the converged digest slot_network_readback compares against. SUFFICIENT FOR deleting this row. NOT satisfied by the observe mode running, by the fold existing, or by a witness folding a grain." as NonEmptyStr,
 )
 
 fn runner_microvm_shared_host_nft_ruleset_text() -> String {
@@ -603,6 +611,11 @@ fn runner_microvm_shared_host_nft_ruleset_text() -> String {
 data runner_microvm_networkd_dir: NonEmptyStr = "/etc/systemd/network" as NonEmptyStr
 
 data runner_microvm_networkd_unit: NonEmptyStr = "systemd-networkd" as NonEmptyStr
+
+// THE ORDERING DEPENDENCY NAMES THE UNIT FILE, NOT THE systemctl ARGUMENT. `systemctl reload
+// systemd-networkd` resolves the short name, but After=/Wants= in a unit file take the unit's full
+// name, so the two spellings are derived from one row rather than authored twice.
+data runner_microvm_networkd_unit_name: NonEmptyStr = "systemd-networkd.service" as NonEmptyStr
 
 data runner_microvm_networkd_file_mode: NonEmptyStr = "0644" as NonEmptyStr
 
@@ -646,6 +659,22 @@ fn runner_slot_network_file_text(net: RunnerSlotNetwork) -> String {
     "Address=", runner_slot_host_cidr(net: net), "\n",
     "ConfigureWithoutCarrier=yes\n",
   ], "")
+}
+
+// THE CONNECTED ROUTE IS OVER THE NETWORK ADDRESS, NOT THE HOST'S OWN. `ip -o -4 route show dev tap`
+// prints `172.30.N.0/30 proto kernel scope link src 172.30.N.1`: the destination is the NETWORK and
+// the host address appears only as the source. A readback matching the host address with a prefix
+// would never hit, so a correctly configured tap would read as SlotRouteNotHeld (side-chat hold on
+// #11751). The network address is derived here, beside the addresses it shares its octets with, so
+// the route matcher and the address authority cannot drift.
+fn runner_slot_subnet(net: RunnerSlotNetwork) -> Ipv4Prefix {
+  ipv4_prefix(
+    o1: net.host_address.octet1,
+    o2: net.host_address.octet2,
+    o3: net.host_address.octet3,
+    o4: 0,
+    length: net.prefix_length,
+  )
 }
 
 fn runner_slot_host_cidr(net: RunnerSlotNetwork) -> String {
@@ -696,6 +725,107 @@ fn runner_slot_network_install_operations(
       mode: runner_microvm_networkd_file_mode,
     },
     SystemdReloadUnit { unit: runner_microvm_networkd_unit },
+  ]
+}
+
+// --- the host's own network files: the ruleset, its loader unit, and forwarding ---
+
+// THE RULESET IS A FILE LOADED BY A ONESHOT UNIT, WHICH IS WHY THE CONVERGE NEEDS NO nft GRANT TO
+// APPLY IT. The unit runs as root and its ExecStart is the only nft invocation in the fleet's apply
+// path; the converge's own authority is limited to installing files and driving systemctl, verbs it
+// already holds. It is also what makes the ruleset survive a reboot without a converge run.
+//
+// RESTART, NOT START. `nft -f` on a file that begins by replacing its own table converges, so
+// re-running it is safe -- and a RemainAfterExit oneshot that is already active ignores `start`, so
+// a converge that installed new bytes and then started the unit would report success over the OLD
+// live ruleset.
+data runner_microvm_nft_ruleset_path: NonEmptyStr = "/etc/gunbc/microvm.nft" as NonEmptyStr
+
+data runner_microvm_nft_unit: NonEmptyStr = "gunbc-microvm-nft.service" as NonEmptyStr
+
+data runner_microvm_systemd_unit_dir: NonEmptyStr = "/etc/systemd/system" as NonEmptyStr
+
+fn runner_microvm_nft_unit_path() -> String {
+  join([runner_microvm_systemd_unit_dir as String, "/", runner_microvm_nft_unit as String], "")
+}
+
+// THE UNIT IS A MODELED SystemdUnitFile, NOT CONCATENATED INI. extdeps.systemd.unit_file owns that
+// syntax -- its sections, its separators, its terminating newline -- and gunbc.build_cache_unit
+// already records what happens when a consumer re-mints it: a second authority for systemd's own
+// file format, the DESIGN section 3 nicknaming that module exists to prevent (review 69082). The one
+// directive it lacked, RemainAfterExit=, is now a row there rather than a literal here.
+//
+// After= networkd, because the ruleset's rules name tap devices networkd creates; nft accepts rules
+// for a device that does not exist yet, but ordering it after removes the window where a tap is up
+// and unfiltered.
+fn runner_microvm_nft_unit_file() -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc microVM host ruleset" as NonEmptyStr },
+      After { target: runner_microvm_networkd_unit_name },
+      Wants { target: runner_microvm_networkd_unit_name },
+    ],
+    service: [
+      ServiceType { mode: OneshotMode },
+      RemainAfterExit { active: true },
+      ExecStart {
+        command: join([fleet_nft_binary_path as String, " -f ", runner_microvm_nft_ruleset_path as String], "") as NonEmptyStr,
+      },
+    ],
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}
+
+fn runner_microvm_nft_unit_text() -> String {
+  serialize_systemd_unit_file(file: runner_microvm_nft_unit_file())
+}
+
+// FORWARDING IS WHAT MAKES THE TAP A ROUTED LINK RATHER THAN A DEAD END. Without it the guest's
+// packets reach the host and stop, and the masquerade never runs.
+data runner_microvm_forward_sysctl_path: NonEmptyStr = "/etc/sysctl.d/50-gunbc-microvm-forward.conf" as NonEmptyStr
+
+data runner_microvm_ip_forward_proc_path: NonEmptyStr = "/proc/sys/net/ipv4/ip_forward" as NonEmptyStr
+
+fn runner_microvm_forward_sysctl_text() -> String {
+  "net.ipv4.ip_forward = 1\n"
+}
+
+data runner_microvm_sysctl_unit: NonEmptyStr = "systemd-sysctl.service" as NonEmptyStr
+
+// THE HOST'S OPERATIONS, IN THE ORDER THEY DEPEND ON EACH OTHER: the files first, then the daemon
+// reload that makes systemd see a new unit, then the sysctl re-read, then enable (so it survives a
+// reboot) and restart (so the bytes just installed are the live ones).
+fn runner_microvm_host_network_install_operations(
+  staged_ruleset: NonEmptyStr,
+  staged_unit: NonEmptyStr,
+  staged_forward_sysctl: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  [
+    InstallFile {
+      source: staged_ruleset,
+      destination: runner_microvm_nft_ruleset_path,
+      owner: runner_microvm_networkd_file_owner,
+      group: runner_microvm_networkd_file_owner,
+      mode: runner_microvm_networkd_file_mode,
+    },
+    InstallFile {
+      source: staged_unit,
+      destination: runner_microvm_nft_unit_path() as NonEmptyStr,
+      owner: runner_microvm_networkd_file_owner,
+      group: runner_microvm_networkd_file_owner,
+      mode: runner_microvm_networkd_file_mode,
+    },
+    InstallFile {
+      source: staged_forward_sysctl,
+      destination: runner_microvm_forward_sysctl_path,
+      owner: runner_microvm_networkd_file_owner,
+      group: runner_microvm_networkd_file_owner,
+      mode: runner_microvm_networkd_file_mode,
+    },
+    SystemdDaemonReload,
+    SystemdRestartUnit { unit: runner_microvm_sysctl_unit },
+    SystemdEnableUnit { unit: runner_microvm_nft_unit },
+    SystemdRestartUnit { unit: runner_microvm_nft_unit },
   ]
 }
 
@@ -816,12 +946,28 @@ type HelperAutoAssignment
   | AutoAssignmentOn
   | AutoAssignmentUnread { reason: NonEmptyStr }
 
+// A SURFACE IS COUNTED OR IT IS UNREAD, AND THERE IS NO THIRD ANSWER. An Int field cannot say "I did
+// not look", so a converge that could not run a probe had only a zero to write -- which is the
+// fabricated reading DESIGN section 5 forbids, and it reads as "no helper is attached" (review
+// 68963). The count now carries its own absence, so an unread surface cannot be spelled as an
+// excluded one.
+type HelperSurfaceReading
+  = HelperSurfaceCounted { count: Int }
+  | HelperSurfaceUnread { reason: NonEmptyStr }
+
 type HelperStanding {
   auto_assignment: HelperAutoAssignment
-  nft_ct_helper_statements: Int
-  xtables_ct_helper_targets: Int
-  userspace_helpers: Int
-  expectations_at_generation: Int
+  nft_ct_helper_statements: HelperSurfaceReading
+  xtables_ct_helper_targets: HelperSurfaceReading
+  userspace_helpers: HelperSurfaceReading
+  expectations_at_generation: HelperSurfaceReading
+}
+
+fn helper_surface_is_empty(r: HelperSurfaceReading) -> Bool {
+  match r {
+    HelperSurfaceCounted { count: n } => n == 0
+    HelperSurfaceUnread { reason: _ } => false
+  }
 }
 
 fn helpers_excluded(h: HelperStanding) -> Bool {
@@ -832,15 +978,20 @@ fn helpers_excluded(h: HelperStanding) -> Bool {
     AutoAssignmentUnread { reason: _ } => false
   }
   auto_off
-    && h.nft_ct_helper_statements == 0
-    && h.xtables_ct_helper_targets == 0
-    && h.userspace_helpers == 0
-    && h.expectations_at_generation == 0
+    && helper_surface_is_empty(r: h.nft_ct_helper_statements)
+    && helper_surface_is_empty(r: h.xtables_ct_helper_targets)
+    && helper_surface_is_empty(r: h.userspace_helpers)
+    && helper_surface_is_empty(r: h.expectations_at_generation)
 }
+
+// THE GENERATION IS AN IDENTITY, NOT A COUNT. What a consumer needs is "which converge established
+// this", and the converge run already has a name; a number would invite arithmetic on something that
+// only ever supports equality, and would need a counter with state of its own.
+type ConvergeGeneration = NonEmptyStr where brand("ConvergeGeneration")
 
 type ConvergedSlotNetwork {
   host: HostIdentity
-  generation: Int
+  generation: ConvergeGeneration
   slots: List<ConvergedSlot>
   helpers: HelperStanding
   nft_digest: Sha256Digest
@@ -854,7 +1005,7 @@ type ConvergedSlotNetwork {
 // deleting this row and host_ruleset_installer_frontier together. NOT satisfied by a witness
 // building a receipt.
 data converged_slot_network_producer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: microvm_host_converge on srvN, producing ConvergedSlotNetwork. TRIGGER: it installs each slot's .netdev, .network and v6 sysctl file and the ruleset for the host's HostEgressGrain, reads back tap, address, route, disable_ipv6, helper standing and the nft listing digest, and records them at a generation. SUFFICIENT FOR deleting this row and host_ruleset_installer_frontier. NOT satisfied by a witness building a receipt." as NonEmptyStr,
+  description: "NAMED CONSUMER: gunbc.runner_microvm_network_converge runner_microvm_network_observe_wet, which HAS LANDED: it binds the dispatched host to the machine, reads the taps, addresses, routes, v6 standing, forwarding, ruleset digest and helper standing, and folds them into ConvergedSlotNetwork or a typed refusal. WHAT REMAINS: no run has produced a receipt, so no ConvergedSlotNetwork exists for any host. The staging and install folds beside it are NOT executed by that mode and are covered by microvm_network_host_mutation_principal_frontier, not by this row. TRIGGER: that observe mode executes on srv1 and records a receipt carrying the live readings at a generation. SUFFICIENT FOR deleting this row. NOT satisfied by a witness building a receipt, or by the module compiling." as NonEmptyStr,
 )
 
 // --- the sanitation subject: sealed, and joined to the receipt ---
@@ -988,13 +1139,13 @@ type SlotResidueReading {
 
 type HostResidueReading {
   host: HostIdentity
-  generation: Int
+  generation: ConvergeGeneration
   observation: ResidueObservation
 }
 
 type RulesetReading {
   host: HostIdentity
-  generation: Int
+  generation: ConvergeGeneration
   observation: RulesetObservation
 }
 
@@ -1084,8 +1235,9 @@ fn slot_residue_readback(s: SlotNetworkSanitationSubject, fact: SlotNetworkFact,
   }
 }
 
-fn at_receipt(s: SlotNetworkSanitationSubject, host: HostIdentity, generation: Int) -> Bool {
-  (s.converged.host as String) == (host as String) && s.converged.generation == generation
+fn at_receipt(s: SlotNetworkSanitationSubject, host: HostIdentity, generation: ConvergeGeneration) -> Bool {
+  (s.converged.host as String) == (host as String)
+    && (s.converged.generation as String) == (generation as String)
 }
 
 fn host_residue_readback(s: SlotNetworkSanitationSubject, fact: SlotNetworkFact, r: HostResidueReading) -> SlotNetworkReadback {
@@ -1218,6 +1370,13 @@ fn runner_microvm_nft_list_command() -> ArgvCommand {
   nft_list_table_command(family: NftInet, name: runner_microvm_nft_table_name)
 }
 
+// THE SAME LISTING, AS A GRANTED OPERATION. Listing a table needs CAP_NET_ADMIN, so the converge and
+// the lifecycle controller reach it through the operation type that also renders the sudoers line;
+// the bare ArgvCommand above is the unelevated spelling for a caller that already has the capability.
+fn runner_microvm_nft_read_operation() -> ExecutorPrivilegedOperation {
+  ReadNftTable { family: nft_family_wire(f: NftInet) as NonEmptyStr, table: runner_microvm_nft_table_name }
+}
+
 // DECLARED FRONTIER (DESIGN 3c). The readback and the three commands that feed it have no
 // executing consumer in this tree yet. NAMED CONSUMER: the host teardown readback of the microVM
 // slot lifecycle controller (gunbc#11670), whose network fact maps onto product.fabric.sanitation.
@@ -1242,3 +1401,326 @@ data slot_network_readback_consumer_frontier: DissolutionCondition = unbound_dis
 data guest_resolver_configuration_frontier: DissolutionCondition = unbound_dissolution(
   description: "NAMED CONSUMER: gunbc.runner_guest_image resolver configuration. IMAGE HALF LANDED: runner_guest_resolver_link_command links /etc/resolv.conf to /proc/net/pnp. REMAINING TRIGGER: a booted networked guest resolves github.com through runner_microvm_guest_resolver, observed on the console of the first test-label job (guest_agent_real_job_acceptance_frontier). SUFFICIENT FOR deleting this row. NOT satisfied by the link alone or by the ip= boot argument carrying dns0 alone." as NonEmptyStr,
 )
+
+// --- the receipt as a wire value: what a later process reads back ---
+
+// A RECEIPT NOBODY CAN PARSE IS A REPORT, NOT A RECEIPT. The converge builds a ConvergedSlotNetwork
+// in memory and writes a file; the lifecycle controller runs later, in another process, and needs
+// the VALUE -- slot_network_sanitation_subject takes a receipt, not prose (side-chat hold on #11751).
+// So the file has a schema line and a total parse back, and the two live beside the type they carry
+// rather than in either consumer.
+//
+// THE DERIVABLE FIELDS ARE VERIFIED, NOT TRUSTED. A slot's tap, guest address and MAC follow from its
+// identity, so the parse derives them and REFUSES when the wire disagrees: a receipt describing a
+// tap this fleet would never mint is a receipt about something else.
+data converged_slot_network_wire_schema: NonEmptyStr = "gunbc.converged_slot_network.v1" as NonEmptyStr
+
+// THE PARSE HALF IS UNCONSUMED AND SAYS SO IN A ROW, NOT IN THIS PROSE. The render half has a
+// production consumer (receipt_text folds it into the persisted artifact); the parse half does not
+// yet, and DESIGN section 4c is explicit that an annotation is never evidence that a machine claim
+// holds. So the gap carries the same typed row every other unconsumed surface in this module
+// carries, rather than resting on the paragraph above (review 69448).
+data converged_slot_network_parse_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the microVM slot lifecycle controller (gunbc#11670), which runs in a LATER PROCESS than the converge that wrote the receipt and therefore cannot hold the in-memory ConvergedSlotNetwork -- it must read the persisted artifact back and recover the VALUE, because slot_network_sanitation_subject takes a receipt rather than prose. COVERS the whole wire-parse family: parse_converged_slot_network, parse_converged_body, parse_helper_standing, parse_converged_slot_line, parse_converged_slot_tail, parse_helper_surface, parse_auto_assignment_wire, parse_tap_ipv6_wire, candidate_named, wire_value, wire_lines and drop_prefix. WHAT REMAINS: no controller exists to read a receipt, and no receipt has been written by any run, so the only executing callers are witnesses. TRIGGER: that controller reads a receipt this fleet wrote, recovers the ConvergedSlotNetwork through parse_converged_slot_network, and derives the slot's network fact through slot_network_sanitation_subject on the value it parsed rather than on one it built. SUFFICIENT FOR deleting this row. NOT satisfied by the render half having a consumer, by a witness round-tripping render into parse, by the module compiling, or by the annotation above naming the controller." as NonEmptyStr,
+)
+
+fn helper_surface_wire(r: HelperSurfaceReading) -> String {
+  match r {
+    HelperSurfaceCounted { count: n } => join(["counted:", to_string(n)], "")
+    HelperSurfaceUnread { reason: why } => join(["unread:", why as String], "")
+  }
+}
+
+fn auto_assignment_wire(a: HelperAutoAssignment) -> String {
+  match a {
+    AutoAssignmentAbsentFromKernel { kernel_release: k } => join(["absent_from_kernel:", k as String], "")
+    AutoAssignmentSysctlOff => "sysctl_off"
+    AutoAssignmentOn => "on"
+    AutoAssignmentUnread { reason: why } => join(["unread:", why as String], "")
+  }
+}
+
+fn tap_ipv6_wire(t: TapIpv6Standing) -> String {
+  match t {
+    TapIpv6Disabled => "disabled"
+    TapIpv6Enabled => "enabled"
+    TapIpv6Unread { reason: why } => join(["unread:", why as String], "")
+  }
+}
+
+fn converged_slot_wire(c: ConvergedSlot) -> String {
+  join([
+    "slot=", runner_slot_instance_name(slot: c.subject.slot),
+    "|tap=", c.subject.tap_device as String,
+    "|guest=", render_ipv4_address(addr: c.subject.guest_address) as String,
+    "|mac=", render_mac_address(addr: c.subject.guest_mac) as String,
+    "|host_cidr=", c.host_address_cidr as String,
+    "|route=", c.guest_route as String,
+    "|ipv6=", tap_ipv6_wire(t: c.tap_ipv6),
+  ], "")
+}
+
+fn render_converged_slot_network(c: ConvergedSlotNetwork) -> String {
+  join([
+    converged_slot_network_wire_schema as String, "\n",
+    "host=", c.host as String, "\n",
+    "generation=", c.generation as String, "\n",
+    "nft_digest=", c.nft_digest.hex as String, "\n",
+    "helper_auto=", auto_assignment_wire(a: c.helpers.auto_assignment), "\n",
+    "helper_nft=", helper_surface_wire(r: c.helpers.nft_ct_helper_statements), "\n",
+    "helper_xtables=", helper_surface_wire(r: c.helpers.xtables_ct_helper_targets), "\n",
+    "helper_userspace=", helper_surface_wire(r: c.helpers.userspace_helpers), "\n",
+    "helper_expectations=", helper_surface_wire(r: c.helpers.expectations_at_generation), "\n",
+    join(map(c.slots, x => join([converged_slot_wire(c: x), "\n"], "")), ""),
+  ], "")
+}
+
+type ConvergedSlotNetworkParse
+  = ConvergedSlotNetworkParsed { receipt: ConvergedSlotNetwork }
+  | ConvergedSlotNetworkMalformed { cause: NonEmptyStr }
+
+fn wire_lines(text: String) -> List<String> {
+  filter(xs: split(s: text, delimiter: "\n"), predicate: fn(l) { trim(s: l) != "" })
+}
+
+fn wire_value(lines: List<String>, key: String) -> String? {
+  fold(lines, init: none, f: (acc, l) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if trim(s: l).starts_with(prefix: join([key, "="], "")) {
+          Present { value: drop_prefix(s: trim(s: l), prefix: join([key, "="], "")) }
+        } else {
+          acc
+        }
+    }
+  )
+}
+
+fn drop_prefix(s: String, prefix: String) -> String {
+  join(skip(xs: split(s: s, delimiter: prefix), n: 1), prefix)
+}
+
+fn parse_helper_surface(raw: String) -> HelperSurfaceReading? {
+  if raw.starts_with(prefix: "counted:") {
+    match parse_int(s: drop_prefix(s: raw, prefix: "counted:")) {
+      Present { value: n } => Present { value: HelperSurfaceCounted { count: n } }
+      Absent => none
+    }
+  } else if raw.starts_with(prefix: "unread:") {
+    Present { value: HelperSurfaceUnread { reason: drop_prefix(s: raw, prefix: "unread:") as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+fn parse_auto_assignment_wire(raw: String) -> HelperAutoAssignment? {
+  if raw.starts_with(prefix: "absent_from_kernel:") {
+    Present { value: AutoAssignmentAbsentFromKernel { kernel_release: drop_prefix(s: raw, prefix: "absent_from_kernel:") as NonEmptyStr } }
+  } else if raw == "sysctl_off" {
+    Present { value: AutoAssignmentSysctlOff }
+  } else if raw == "on" {
+    Present { value: AutoAssignmentOn }
+  } else if raw.starts_with(prefix: "unread:") {
+    Present { value: AutoAssignmentUnread { reason: drop_prefix(s: raw, prefix: "unread:") as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+fn parse_tap_ipv6_wire(raw: String) -> TapIpv6Standing? {
+  if raw == "disabled" {
+    Present { value: TapIpv6Disabled }
+  } else if raw == "enabled" {
+    Present { value: TapIpv6Enabled }
+  } else if raw.starts_with(prefix: "unread:") {
+    Present { value: TapIpv6Unread { reason: drop_prefix(s: raw, prefix: "unread:") as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+// THE SLOT IS FOUND IN THE CANDIDATE ROSTER, NOT MINTED FROM THE TEXT. A receipt naming a slot this
+// host does not have is a receipt about another fleet, and deriving the identity from a parsed index
+// would let the file invent one.
+fn candidate_named(candidates: List<RunnerSlotIdentity>, name: String) -> RunnerSlotIdentity? {
+  fold(candidates, init: none, f: (acc, c) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => if runner_slot_instance_name(slot: c) == name { Present { value: c } } else { acc }
+    }
+  )
+}
+
+fn parse_converged_slot_line(line: String, candidates: List<RunnerSlotIdentity>) -> ConvergedSlot? {
+  let parts = split(s: trim(s: line), delimiter: "|")
+  match wire_value(lines: parts, key: "slot") {
+    Absent => none
+    Present { value: name } =>
+      match candidate_named(candidates: candidates, name: name) {
+        Absent => none
+        Present { value: identity } => {
+          let derived = slot_network_subject(slot: identity)
+          match wire_value(lines: parts, key: "tap") {
+            Absent => none
+            Present { value: tap } =>
+              match wire_value(lines: parts, key: "guest") {
+                Absent => none
+                Present { value: guest } =>
+                  match wire_value(lines: parts, key: "mac") {
+                    Absent => none
+                    Present { value: mac } =>
+                      if (tap != (derived.tap_device as String))
+                        || (guest != (render_ipv4_address(addr: derived.guest_address) as String))
+                        || (mac != (render_mac_address(addr: derived.guest_mac) as String)) {
+                        none
+                      } else {
+                        parse_converged_slot_tail(parts: parts, derived: derived)
+                      }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn parse_converged_slot_tail(parts: List<String>, derived: SlotNetworkSubject) -> ConvergedSlot? {
+  match wire_value(lines: parts, key: "host_cidr") {
+    Absent => none
+    Present { value: cidr } =>
+      match wire_value(lines: parts, key: "route") {
+        Absent => none
+        Present { value: route } =>
+          match wire_value(lines: parts, key: "ipv6") {
+            Absent => none
+            Present { value: v6raw } =>
+              match parse_tap_ipv6_wire(raw: v6raw) {
+                Absent => none
+                Present { value: v6 } =>
+                  Present { value: ConvergedSlot {
+                    subject: derived,
+                    host_address_cidr: cidr as NonEmptyStr,
+                    guest_route: route as NonEmptyStr,
+                    tap_ipv6: v6,
+                  } }
+              }
+          }
+      }
+  }
+}
+
+// EVERY FIELD OR NOTHING. A receipt missing its schema line, its host, its generation, its digest,
+// any helper reading, or carrying a slot line this host cannot own, is malformed -- the consumer
+// gets a typed refusal naming the field rather than a partially populated value.
+fn parse_converged_slot_network(text: String, candidates: List<RunnerSlotIdentity>) -> ConvergedSlotNetworkParse {
+  let lines = wire_lines(text: text)
+  match lines.first() {
+    Absent => ConvergedSlotNetworkMalformed { cause: "the receipt is empty" as NonEmptyStr }
+    Present { value: schema } =>
+      if trim(s: schema) != (converged_slot_network_wire_schema as String) {
+        ConvergedSlotNetworkMalformed { cause: "the first line is not this receipt's schema" as NonEmptyStr }
+      } else {
+        parse_converged_body(lines: lines, candidates: candidates)
+      }
+  }
+}
+
+fn parse_converged_body(lines: List<String>, candidates: List<RunnerSlotIdentity>) -> ConvergedSlotNetworkParse {
+  match wire_value(lines: lines, key: "host") {
+    Absent => ConvergedSlotNetworkMalformed { cause: "no host= line" as NonEmptyStr }
+    Present { value: host } =>
+      match wire_value(lines: lines, key: "generation") {
+        Absent => ConvergedSlotNetworkMalformed { cause: "no generation= line" as NonEmptyStr }
+        Present { value: generation } =>
+          match wire_value(lines: lines, key: "nft_digest") {
+            Absent => ConvergedSlotNetworkMalformed { cause: "no nft_digest= line" as NonEmptyStr }
+            Present { value: hex } =>
+              match sha256_hex_digest(hex: hex) {
+                Absent => ConvergedSlotNetworkMalformed { cause: "nft_digest is not a sha256 hex digest" as NonEmptyStr }
+                Present { value: digest } =>
+                  match parse_helper_standing(lines: lines) {
+                    Absent => ConvergedSlotNetworkMalformed { cause: "a helper reading is missing or malformed" as NonEmptyStr }
+                    Present { value: helpers } =>
+                      parse_converged_slots(lines: lines, candidates: candidates, host: host, generation: generation, digest: digest, helpers: helpers)
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn parse_helper_standing(lines: List<String>) -> HelperStanding? {
+  match wire_value(lines: lines, key: "helper_auto") {
+    Absent => none
+    Present { value: autoraw } =>
+      match parse_auto_assignment_wire(raw: autoraw) {
+        Absent => none
+        Present { value: auto } =>
+          match parse_helper_surface_at(lines: lines, key: "helper_nft") {
+            Absent => none
+            Present { value: nft } =>
+              match parse_helper_surface_at(lines: lines, key: "helper_xtables") {
+                Absent => none
+                Present { value: xt } =>
+                  match parse_helper_surface_at(lines: lines, key: "helper_userspace") {
+                    Absent => none
+                    Present { value: us } =>
+                      match parse_helper_surface_at(lines: lines, key: "helper_expectations") {
+                        Absent => none
+                        Present { value: ex } =>
+                          Present { value: HelperStanding {
+                            auto_assignment: auto,
+                            nft_ct_helper_statements: nft,
+                            xtables_ct_helper_targets: xt,
+                            userspace_helpers: us,
+                            expectations_at_generation: ex,
+                          } }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn parse_helper_surface_at(lines: List<String>, key: String) -> HelperSurfaceReading? {
+  match wire_value(lines: lines, key: key) {
+    Absent => none
+    Present { value: raw } => parse_helper_surface(raw: raw)
+  }
+}
+
+fn slot_lines(lines: List<String>) -> List<String> {
+  filter(xs: lines, predicate: fn(l) { trim(s: l).starts_with(prefix: "slot=") })
+}
+
+fn parse_converged_slots(
+  lines: List<String>,
+  candidates: List<RunnerSlotIdentity>,
+  host: String,
+  generation: String,
+  digest: Sha256Digest,
+  helpers: HelperStanding,
+) -> ConvergedSlotNetworkParse {
+  let raw = slot_lines(lines: lines)
+  let parsed = fold(raw, init: [], f: (acc, l) =>
+    match parse_converged_slot_line(line: l, candidates: candidates) {
+      Present { value: c } => concat(acc, [c])
+      Absent => acc
+    }
+  )
+  if length(parsed) != length(raw) {
+    ConvergedSlotNetworkMalformed { cause: "a slot line named a slot this host does not own, or disagreed with the address this fleet derives for it" as NonEmptyStr }
+  } else {
+    ConvergedSlotNetworkParsed {
+      receipt: ConvergedSlotNetwork {
+        host: host as HostIdentity,
+        generation: generation as ConvergeGeneration,
+        slots: parsed,
+        helpers: helpers,
+        nft_digest: digest,
+      },
+    }
+  }
+}
