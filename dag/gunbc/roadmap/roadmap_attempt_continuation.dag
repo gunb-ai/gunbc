@@ -283,6 +283,16 @@ fn attempt_origin_base_ref(origin: AttemptOrigin, instance_base_ref: String) -> 
   }
 }
 
+// THE CADENCE TEXT FOR THE ALIGNMENT PREAMBLE, AUTHORED ONCE HERE so the continuation lane owns
+// what docs/plans/harness-work-lifecycle.md's alignment ladder says at cadence point 2 (each
+// continuation turn re-aligns), and the dispatch actuator only projects it. L0 stays a POINTER:
+// the load phase carries the principles' text; the preamble names their home and no more. The ask
+// is bounded (at most three sentences, riding in the submission's explanation) and names the drift
+// route: a named drift is supervisor input, not a failure.
+data continuation_alignment_l0_pointer: String = "L0 root principles: the root principles in DESIGN.md govern; in particular single authority, fail-closed, displaced cost."
+
+data continuation_alignment_ask: String = "Ask: in at most three sentences of your submission's explanation, state how the current work serves the task contract and the project intent, and NAME any drift you can see. A drift named here routes to the supervisor path; it is not a failure."
+
 // THE VERDICT LEADS THE BRIEF. The continuation's worker reads the same node brief as the first
 // turn, prefixed by what happened: which turn this is, that the prior work is already on the branch
 // it is standing in, and what verification said. It is told to start from the verdict, because the

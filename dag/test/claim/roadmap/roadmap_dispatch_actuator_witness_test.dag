@@ -14,7 +14,8 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_spawner { next_spawnable, dispatch_brief_template }
+import gunbc.roadmap_spawner { next_spawnable, dispatch_brief_template, node_title }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
 import std.upsert_decision {
   Absent,
   Apply,
@@ -79,6 +80,10 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_spawn_commands_for_instance,
   dispatch_spawn_commands_for_inventory,
   dispatch_spawn_commands_for_resolved_instance,
+  dispatch_brief_for_origin,
+  dispatch_brief_fields_for_environment,
+  dispatch_brief_with_centering,
+  dispatch_continuation_alignment_preamble,
   DispatchSpawnCommands,
   HostExecArgv,
   SystemdUnitContainer,
@@ -153,7 +158,10 @@ import gunbc.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   dashboard_instance_provider_executable,
 }
-import gunbc.roadmap.roadmap_attempt_continuation { ContinueFromAttempt }
+import gunbc.roadmap.roadmap_attempt_continuation {
+  ContinueFromAttempt, FreshFromBase,
+  continuation_alignment_l0_pointer, continuation_alignment_ask,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -1165,4 +1173,67 @@ test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt
         && !string_contains(s: git_wire, pattern: "\0origin/main")
     }
   }
+}
+
+// THE AUTHORITY ROW, READ BY THE TEST ITSELF. The drift control below requires the preamble to
+// carry the arc's title AS THE AUTHORITY DECLARES IT, so the expectation is projected here rather
+// than transcribed: editing the authority row moves this expectation with it, and a hand-copied
+// preamble goes red.
+fn authority_node_opt(id: String) -> RoadmapNode? {
+  (declared_roadmap_nodes() |> filter(n => (n.node as String) == id)).first()
+}
+
+// DRIFT CONTROL (docs/plans/harness-work-lifecycle.md, alignment ladder): the L1 line derives the
+// task's project from the authority's edges (namespace-occurrence-transport's project is
+// namespace-binding-kernel) and projects the arc row's declared headline; L0 and the bounded ask
+// are the continuation lane's cadence rows; L2 projects the task contract.
+test fn the_continuation_preamble_projects_the_three_levels_from_their_authorities() -> Bool {
+  match authority_node_opt(id: "namespace-occurrence-transport") {
+    Absent => false
+    Present { value: task } =>
+      match authority_node_opt(id: "namespace-binding-kernel") {
+        Absent => false
+        Present { value: arc } => {
+          let preamble = dispatch_continuation_alignment_preamble(node: task)
+          preamble.contains("Alignment (re-checked at every continuation turn)")
+            && preamble.contains(continuation_alignment_l0_pointer)
+            && preamble.contains("L1 project intent: this task serves project namespace-binding-kernel: ")
+            && preamble.contains(node_title(item: arc.line))
+            && preamble.contains("L2 task contract:")
+            && preamble.contains(continuation_alignment_ask)
+        }
+      }
+  }
+}
+
+// A PROJECT-OF-ONE PROJECTS ITS OWN ROW: a node no arc depends on has no arc intent to serve, so
+// its own declared headline and boundary are the L1 line.
+test fn a_project_of_one_names_its_own_row_as_the_project_intent() -> Bool {
+  let node = sized_derivable(id: "ts-alignment-project-of-one", prs: [], title: "A standalone alignment task")
+  let preamble = dispatch_continuation_alignment_preamble(node: node)
+  preamble.contains("this node is a project of one, so its own declared row is the intent: A standalone alignment task")
+}
+
+// THE INITIAL BRIEF IS UNCHANGED: the preamble exists only on continuation origins, the fresh
+// assembly is byte-identical to the pre-preamble join, and the continuation assembly leads with
+// the verdict (the alignment preamble follows it, never precedes it).
+test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() -> Bool {
+  let node = sized_derivable(id: "ts-alignment-fresh", prs: [], title: "Fresh brief shape")
+  let fields = dispatch_brief_fields_for_environment(
+    node: node,
+    environment: srv1_lab_dashboard_instance().execution_environment,
+  )
+  let fresh = dispatch_brief_for_origin(node: node, fields: fields, origin: FreshFromBase)
+  let cont = dispatch_brief_for_origin(node: node, fields: fields, origin: ContinueFromAttempt {
+    parent_attempt_key: "a1",
+    branch: "roadmap/ts-alignment-fresh/a1",
+    turn: 2,
+    verdict_detail: "verification failed: sandbox render red",
+  })
+  fresh == dispatch_brief_with_centering(node: node, fields: fields)
+    && !fresh.contains("Alignment (re-checked")
+    && cont.starts_with("CONTINUATION: this is turn 2 of 3")
+    && cont.contains("verification failed: sandbox render red")
+    && cont.contains("\nAlignment (re-checked at every continuation turn):\n")
+    && cont.contains(continuation_alignment_ask)
 }

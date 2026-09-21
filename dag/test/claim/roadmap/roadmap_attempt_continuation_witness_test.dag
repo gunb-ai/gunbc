@@ -6,6 +6,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
   ContinuationDecision, ContinuationFresh, ContinuationContinue, ContinuationRefused, ContinuationHold,
   continuation_decision, continuation_turn_cap, attempt_origin_base_ref, attempt_origin_turn, continuation_brief_prefix,
+  continuation_alignment_l0_pointer, continuation_alignment_ask,
 }
 import gunbc.roadmap.roadmap_submission {
   WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
@@ -276,4 +277,17 @@ test fn an_unreadable_capture_refuses_with_its_reason() -> Bool {
     ContinuationRefused { reason } => string_contains(s: reason, pattern: "does not decode")
     _ => false
   }
+}
+
+// THE CADENCE TEXT STAYS BOUNDED AND NAMES THE DRIFT ROUTE (harness-work-lifecycle alignment
+// ladder, cadence point 2): the ask caps the answer at three sentences carried in the submission's
+// explanation, and a named drift routes to the supervisor path rather than reading as failure. L0
+// stays a pointer -- the load phase carries the principles' text, the preamble names their home.
+test fn the_alignment_ask_is_bounded_and_names_the_drift_route() -> Bool {
+  string_contains(s: continuation_alignment_ask, pattern: "at most three sentences")
+    && string_contains(s: continuation_alignment_ask, pattern: "submission's explanation")
+    && string_contains(s: continuation_alignment_ask, pattern: "routes to the supervisor path")
+    && string_contains(s: continuation_alignment_ask, pattern: "not a failure")
+    && string_contains(s: continuation_alignment_l0_pointer, pattern: "DESIGN.md")
+    && string_contains(s: continuation_alignment_l0_pointer, pattern: "fail-closed")
 }

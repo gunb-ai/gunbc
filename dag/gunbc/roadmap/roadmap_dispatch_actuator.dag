@@ -34,7 +34,14 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_spawner { dispatch_brief_template, node_title }
 import gunbc.roadmap.roadmap_centering { dispatch_centering_preamble, node_centering_plan_text }
-import gunbc.roadmap.roadmap_attempt_continuation { AttemptOrigin, FreshFromBase, attempt_origin_base_ref, continuation_brief_prefix }
+import gunbc.roadmap.roadmap_attempt_continuation {
+  AttemptOrigin, FreshFromBase, ContinueFromAttempt, attempt_origin_base_ref, continuation_brief_prefix,
+  continuation_alignment_l0_pointer, continuation_alignment_ask,
+}
+import gunbc.roadmap.roadmap_project {
+  node_project_membership, MembershipStandalone, MembershipMember, MembershipAmbiguous,
+}
+import gunbc.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges }
 import gunbc.dispatch_pipe_pane_emit {
   PipePaneEmission,
   PipeEmitted,
@@ -1659,6 +1666,68 @@ fn dispatch_brief_with_centering(node: RoadmapNode, fields: DispatchBriefFields)
   ], "")
 }
 
+// THE CONTINUATION BRIEF RE-ALIGNS BEFORE IT RE-BRIEFS (docs/plans/harness-work-lifecycle.md,
+// alignment ladder: the continuation turn is a cadence point, and the answer rides in the
+// submission's explanation). The preamble sits between the verdict prefix and the ordinary brief,
+// exists only on continuation origins -- the initial brief is byte-identical to the pre-preamble
+// assembly -- and every level is PROJECTED from its own authority, never hand-copied: L0 and the
+// ask are the continuation lane's cadence rows, L1 is derived from the authority's edges and rows,
+// L2 is the same slot-field projection the brief template fills from.
+fn dispatch_brief_for_origin(node: RoadmapNode, fields: DispatchBriefFields, origin: AttemptOrigin) -> String {
+  join([
+    continuation_brief_prefix(origin: origin),
+    match origin {
+      FreshFromBase => ""
+      ContinueFromAttempt { parent_attempt_key: _, branch: _, turn: _, verdict_detail: _ } =>
+        dispatch_continuation_alignment_preamble(node: node)
+    },
+    dispatch_brief_with_centering(node: node, fields: fields),
+  ], "")
+}
+
+fn dispatch_continuation_alignment_preamble(node: RoadmapNode) -> String {
+  join([
+    "\nAlignment (re-checked at every continuation turn):\n",
+    continuation_alignment_l0_pointer, "\n",
+    dispatch_alignment_project_intent(node: node), "\n",
+    dispatch_alignment_task_contract(node: node), "\n",
+    continuation_alignment_ask, "\n\n",
+  ], "")
+}
+
+// L1 IS DERIVED, NOT ROSTERED: the node's project is the arc that depends on it
+// (gunbc.roadmap.roadmap_project), and the arc's row is read from the authority's own declared
+// nodes. A project-of-one node projects its own row. A membership the authority cannot resolve --
+// an edge naming an undeclared arc, or two arcs over one task -- is named as drift to report,
+// never defaulted to a guess.
+fn dispatch_alignment_project_intent(node: RoadmapNode) -> String {
+  match node_project_membership(node_id: node.node as String, edges: declared_roadmap_edges()) {
+    MembershipStandalone =>
+      join(["L1 project intent: this node is a project of one, so its own declared row is the intent: ", dispatch_alignment_row_text(node: node)], "")
+    MembershipMember { arc } =>
+      match (declared_roadmap_nodes() |> filter(n => (n.node as String) == arc)).first() {
+        Present { value: a } =>
+          join(["L1 project intent: this task serves project ", arc, ": ", dispatch_alignment_row_text(node: a)], "")
+        Absent =>
+          join(["L1 project intent: the authority's edges name ", arc, " as this task's project but declare no node with that id -- NAME this as drift in your submission's explanation rather than guessing the intent"], "")
+      }
+    MembershipAmbiguous { arcs } =>
+      join(["L1 project intent: the authority's edges give this task more than one project (", join(arcs, ", "), "); the authority must say which arc owns the delivery before the intent can be read -- NAME this as drift in your submission's explanation"], "")
+  }
+}
+
+// A ROW RENDERED FROM ITS OWN DECLARED FIELDS: the headline is the row's title and the boundary is
+// its declared out-of-scope, resolved by the same slot-field fold the brief template fills from,
+// so the preamble and the brief cannot disagree about a row.
+fn dispatch_alignment_row_text(node: RoadmapNode) -> String {
+  join([node_title(item: node.line), " -- boundary: ", dispatch_slot_fields(node: node, repo: "").out_of_scope], "")
+}
+
+fn dispatch_alignment_task_contract(node: RoadmapNode) -> String {
+  let f = dispatch_slot_fields(node: node, repo: "")
+  join(["L2 task contract: boundary: ", f.out_of_scope, "; red control: ", f.red_control, " -- the full contract follows in the brief below"], "")
+}
+
 fn host_exec_argv(program: String, args: List<String>) -> HostExecArgv {
   HostExecArgv { program: program, args: args }
 }
@@ -2612,10 +2681,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     node: node,
     environment: instance.execution_environment,
   )
-  let brief = join([
-    continuation_brief_prefix(origin: origin),
-    dispatch_brief_with_centering(node: node, fields: fields),
-  ], "")
+  let brief = dispatch_brief_for_origin(node: node, fields: fields, origin: origin)
   let session_name = dispatch_tmux_session_name(node_id: node.node)
   let worktree_path = dispatch_worktree_path_for_instance(
     instance: instance,
