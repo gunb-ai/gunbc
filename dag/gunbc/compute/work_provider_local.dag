@@ -10,7 +10,13 @@ import extdeps.gunbc
 import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
-import extdeps.systemd.systemd_run { systemd_run_user_wait_arguments, systemd_run_property }
+import extdeps.systemd.systemd_run {
+  systemd_run_user_wait_arguments, systemd_run_property,
+  SystemdRunWaitSummary, systemd_run_wait_summary, SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
+  SystemdServiceResult, ServiceResultOomKill, systemd_service_result_wire,
+  SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
+  SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
+}
 import extdeps.systemd.systemctl
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_events_path,
@@ -26,10 +32,14 @@ import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap_execution_contract {
   ExecutionCapability, GitWorkspaceCapability, CargoCapability, RustcCapability, AttemptStateDirectoryCapability,
 }
-import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size }
+import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size, kibibyte, byte_size_count }
+import gunbc.compute.work_class_grant {
+  WorkClass, work_class_of, work_class_wire, WorkClassGrant, GrantAtCeiling, GrantSized, ClassRetryAfterGrantExceeded,
+  work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_is_ceiling, work_class_grant_wire,
+}
 import gunbc.compute.host_capacity {
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
-  ComputeRelease, ComputeReleased, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire,
+  ComputeRelease, ComputeReleased, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire, compute_memory_ceiling,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
 }
 import gunbc.compute.work_request {
@@ -39,8 +49,8 @@ import gunbc.compute.work_request {
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
   CheckoutUnavailable, StoreUnavailable,
-  ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved,
-  work_outcome_wire, work_outcome_ending, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
+  ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded,
+  work_outcome_wire, work_outcome_ending, work_operation_canonical, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
 
 // THE LOCAL PROVIDER: one of N behind the exact work contract, serving the host it runs on. It is a
@@ -600,6 +610,120 @@ fn compute_attempt_completed(outcome: WorkOutcome) -> Bool {
   }
 }
 
+// ── A GRANT THAT WAS TOO SMALL: RETRIED ONCE AT THE CEILING, AND COUNTED ──────────────────────
+//
+// WHICH RETRY THIS IS, since the phrase admits two (loyal-swift-608, 2026-09-21). It is NOT the class
+// reserving the ceiling forever after one OOM: that would let one bad run revert a class to the
+// status quo silently and permanently. It is THIS ATTEMPT retried at the ceiling, with the event
+// written to a per-class record whose count is readable -- so the work still completes, and the
+// grant that was too small is reported rather than absorbed.
+//
+// UNCOUNTED, THIS WOULD BE THE ABSORBING FALLBACK IN ITS EXACT FORM: the grant is too small, the
+// retry widens to the ceiling, the work succeeds, and the mechanism degrades to yesterday's
+// behaviour while looking like it works. COUNTED, the retry is the falsifier of the grant's
+// headroom budget: a class with a non-zero count has a wrong grant (gunbc.compute.work_class_grant
+// WorkClassGrantRow). That is also why the count is written BEFORE the retry is attempted -- a retry
+// that is refused for capacity still leaves the evidence that the grant was exceeded.
+//
+// A GRANT THAT WAS ALREADY THE CEILING IS NOT RETRIED: there is no larger reservation, so the
+// attempt ends as the typed UnitMemoryGrantExceeded refusal. And a retry is taken only after the
+// first seat is PROVEN released, by the same termination fact settlement uses; a seat that cannot be
+// proven free is settled as it stands, so the retry can never run beside the attempt it replaces.
+fn compute_grant_exceeded_dir(layout: ComputeLayout, class: WorkClass) -> String {
+  join([layout.root, "/grant-exceeded/", work_class_wire(c: class)], "")
+}
+
+fn compute_grant_exceeded_record(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, grant: WorkClassGrant, attempt: ComputeAttempt, reference: NonEmptyStr) -> Bool {
+  let dir = compute_grant_exceeded_dir(layout: layout, class: work_class_of(op: op))
+  if !compute_ensure_dir(instance: instance, path: dir) {
+    false
+  } else {
+    Filesystem.WriteCreateNew(
+      path: join([dir, "/", reference as String], ""),
+      content: compute_peak_sample_wire(op: op, grant: grant, summary: attempt.summary),
+    ).success
+  }
+}
+
+// THE READABLE COUNT: the number of recorded exceedances for a class on this host. An unreadable
+// directory is reported as unreadable and never as zero -- a count that reads 0 when it could not
+// look would be the one falsifier of the budget silently reporting the budget sound.
+type GrantExceededCount
+  = GrantExceededCounted { count: Int }
+  | GrantExceededNeverRecorded
+  | GrantExceededUnreadable { detail: String }
+
+fn compute_grant_exceeded_count(instance: HostDashboardInstance, class: WorkClass) -> GrantExceededCount {
+  let dir = join([dashboard_instance_compute_root(instance: instance) as String, "/grant-exceeded/", work_class_wire(c: class)], "")
+  let listed = Filesystem.List(path: dir)
+  if listed.success {
+    GrantExceededCounted { count: length(filter(split(listed.entries, "\n"), n => trim(s: n) != "")) }
+  } else if !Filesystem.List(path: join([dashboard_instance_compute_root(instance: instance) as String, "/grant-exceeded"], "")).success {
+    GrantExceededNeverRecorded
+  } else {
+    GrantExceededUnreadable { detail: listed.error }
+  }
+}
+
+fn compute_grant_exceeded_count_wire(instance: HostDashboardInstance, class: WorkClass) -> String {
+  match compute_grant_exceeded_count(instance: instance, class: class) {
+    GrantExceededCounted { count } => to_string(value: count)
+    GrantExceededNeverRecorded => "0 (no exceedance has ever been recorded on this host)"
+    GrantExceededUnreadable { detail } => join(["UNREADABLE (", detail, ")"], "")
+  }
+}
+
+fn compute_attempt_retries_at_ceiling(grant: WorkClassGrant, attempt: ComputeAttempt) -> Bool {
+  !work_class_grant_is_ceiling(g: grant) && compute_summary_is_oom_kill(summary: attempt.summary)
+}
+
+fn compute_run_granted(
+  instance: HostDashboardInstance,
+  commit: String,
+  layout: ComputeLayout,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  dependency_store: String,
+  grant: WorkClassGrant,
+  reference: NonEmptyStr,
+  reservation: ComputeReservation,
+) -> ProvideResult {
+  let granted = work_class_grant_amount(g: grant)
+  let attempt = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store, granted: granted, grant_was_ceiling: work_class_grant_is_ceiling(g: grant))
+  if !compute_attempt_retries_at_ceiling(grant: grant, attempt: attempt) {
+    compute_run_and_settle(instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency_store: dependency_store, grant: grant, attempt: attempt, reference: reference, reservation: reservation)
+  } else {
+    let counted = compute_grant_exceeded_record(instance: instance, layout: layout, op: op, grant: grant, attempt: attempt, reference: reference)
+    let termination = observe_unit_termination(identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: attempt.outcome))
+    let returned = if counted && unit_termination_frees_capacity(t: termination) {
+      compute_release(reservation: reservation, reason: join(["grant of ", to_string(value: kibibyte_count(k: granted)), " KiB exceeded (oom-kill); retrying this attempt at the ceiling"], "") as NonEmptyStr)
+    } else {
+      ComputeReleaseRefused { detail: if counted { join(["not retried: ", unit_termination_wire(t: termination)], "") } else { "not retried: the exceedance could not be recorded, and an uncounted retry is the absorbing fallback" } }
+    }
+    if !compute_release_landed(r: returned) {
+      compute_run_and_settle(instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency_store: dependency_store, grant: grant, attempt: attempt, reference: reference, reservation: reservation)
+    } else {
+      let ceiling = compute_memory_ceiling(instance: instance)
+      let retry_grant = GrantAtCeiling { class: work_class_of(op: op), amount: ceiling, reason: ClassRetryAfterGrantExceeded { exceeded: granted } }
+      let retry_reference = compute_reservation_reference(identity: identity)
+      let retry_reservation = compute_reserve(instance: instance, reference: retry_reference, term_seconds: compute_reservation_term_seconds, request: ceiling)
+      match retry_reservation {
+        ComputeCapacityFull { wire: w } =>
+          compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostComputeCapacityFull { wire: w })
+        ComputeHostBelowFloor { requested: rq, available: av } =>
+          compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostBelowMemoryFloor { requested: rq, available: av })
+        ComputeReservationRefused { detail: d } =>
+          compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: ComputeCapacityLedgerUnavailable { detail: d })
+        ComputeReserved { grant: _, partition: _, amount: _, store: _ } => {
+          let retry = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store, granted: ceiling, grant_was_ceiling: true)
+          compute_run_and_settle(instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency_store: dependency_store, grant: retry_grant, attempt: retry, reference: retry_reference, reservation: retry_reservation)
+        }
+      }
+    }
+  }
+}
+
 fn compute_run_and_settle(
   instance: HostDashboardInstance,
   commit: String,
@@ -608,11 +732,12 @@ fn compute_run_and_settle(
   subject: WorkSubject,
   op: WorkOperation,
   dependency_store: String,
-  granted: Kibibyte,
+  grant: WorkClassGrant,
+  attempt: ComputeAttempt,
   reference: NonEmptyStr,
   reservation: ComputeReservation,
 ) -> ProvideResult {
-  let outcome = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store, granted: granted)
+  let outcome = attempt.outcome
   let standing = compute_capacity_standing(instance: instance)
   let termination = observe_unit_termination(identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: outcome))
   let returned = if unit_termination_frees_capacity(t: termination) {
@@ -632,6 +757,8 @@ fn compute_run_and_settle(
     path: layout.consumption_path,
     content: join([
       compute_capacity_standing_wire(s: standing), "\n",
+      compute_peak_sample_wire(op: op, grant: grant, summary: attempt.summary),
+      "grant exceeded, this class: ", compute_grant_exceeded_count_wire(instance: instance, class: work_class_of(op: op)), "\n",
       "unit: ", unit_termination_wire(t: termination), "\n",
       "reservation: ", compute_release_wire(r: returned), "\n",
       if dropped.success { "" } else { compute_stale_lease_note(layout: layout, error: dropped.error) },
@@ -828,7 +955,8 @@ fn compute_provide_leaf(
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: layout.lease_path } }, subject: subject, op: op)
     } else {
       let reference = compute_reservation_reference(identity: identity)
-      let reservation = compute_reserve(instance: instance, reference: reference, term_seconds: compute_reservation_term_seconds)
+      let grant = work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
+      let reservation = compute_reserve(instance: instance, reference: reference, term_seconds: compute_reservation_term_seconds, request: work_class_grant_amount(g: grant))
       match reservation {
         ComputeCapacityFull { wire: w } =>
           compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostComputeCapacityFull { wire: w })
@@ -836,10 +964,10 @@ fn compute_provide_leaf(
           compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostBelowMemoryFloor { requested: rq, available: av })
         ComputeReservationRefused { detail: d } =>
           compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: ComputeCapacityLedgerUnavailable { detail: d })
-        ComputeReserved { grant: _, partition: _, amount: granted, store: _ } =>
-          compute_run_and_settle(
+        ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
+          compute_run_granted(
             instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-            dependency_store: dependency_store, granted: granted, reference: reference, reservation: reservation)
+            dependency_store: dependency_store, grant: grant, reference: reference, reservation: reservation)
       }
     }
   }
@@ -907,6 +1035,57 @@ fn compute_fresh(outcome: WorkOutcome, subject: WorkSubject, op: WorkOperation) 
   ProvideFresh { outcome: outcome, document: work_outcome_wire(o: outcome, subject: subject, op: op), host_record: HostRecordWritten }
 }
 
+// ONE ATTEMPT AND WHAT ITS UNIT'S MANAGER SAID ABOUT IT. The summary is read off the launcher's
+// stderr because it is the only reading of the unit's peak and result that outlives the unit
+// (extdeps.systemd.systemd_run systemd_run_wait_summary); a checkout or toolchain refusal never
+// launched a unit, so its summary reports nothing, which is the honest reading of that attempt.
+type ComputeAttempt {
+  outcome: WorkOutcome
+  summary: SystemdRunWaitSummary
+}
+
+fn compute_summary_is_oom_kill(summary: SystemdRunWaitSummary) -> Bool {
+  match summary.result {
+    ServiceResultRead { result: r } => match r { ServiceResultOomKill => true  _ => false }
+    ServiceResultUnrecognized { wire: _ } => false
+    ServiceResultNotReported => false
+  }
+}
+
+fn compute_summary_peak_wire(summary: SystemdRunWaitSummary) -> String {
+  match summary.memory_peak {
+    MemoryPeakRead { peak: b } =>
+      match b {
+        FormattedBytesExact { bytes } => join([to_string(value: byte_size_count(b: bytes)), " B"], "")
+        FormattedBytesBounded { printed, lower: _, upper } => join([printed, " (at most ", to_string(value: byte_size_count(b: upper)), " B)"], "")
+      }
+    MemoryPeakUnparseable { text } => join(["UNPARSEABLE (", text, ")"], "")
+    MemoryPeakNotReported => "NOT REPORTED (no Memory peak line: systemd below v254, or --wait summary suppressed)"
+  }
+}
+
+fn compute_summary_result_wire(summary: SystemdRunWaitSummary) -> String {
+  match summary.result {
+    ServiceResultRead { result: r } => systemd_service_result_wire(r: r)
+    ServiceResultUnrecognized { wire } => join(["UNRECOGNIZED (", wire, ")"], "")
+    ServiceResultNotReported => "NOT REPORTED"
+  }
+}
+
+// THE PEAK SAMPLE, and a peak that was not reported is NEVER written as zero: a recorded zero would
+// size its class at headroom alone, which is the worst failure this mechanism can have. The sample
+// line carries the class, the operation's canonical text and the unparsed reading, so a later grant
+// row can cite exactly which runs it was sized from.
+fn compute_peak_sample_wire(op: WorkOperation, grant: WorkClassGrant, summary: SystemdRunWaitSummary) -> String {
+  join([
+    "class: ", work_class_wire(c: work_class_of(op: op)), "\n",
+    "operation: ", work_operation_canonical(op: op), "\n",
+    "grant: ", work_class_grant_wire(g: grant), "\n",
+    "unit result: ", compute_summary_result_wire(summary: summary), "\n",
+    "unit peak: ", compute_summary_peak_wire(summary: summary), "\n",
+  ], "")
+}
+
 fn compute_run_leased(
   instance: HostDashboardInstance,
   commit: String,
@@ -915,7 +1094,8 @@ fn compute_run_leased(
   op: WorkOperation,
   dependency_store: String,
   granted: Kibibyte,
-) -> WorkOutcome {
+  grant_was_ceiling: Bool,
+) -> ComputeAttempt {
   let existing = Filesystem.List(path: layout.checkout)
   let checkout = if existing.success {
     ComputeExecOk { stdout: "", stderr: "" }
@@ -928,20 +1108,37 @@ fn compute_run_leased(
   }
   match checkout {
     ComputeExecFailed { exit_code, stdout: _, stderr } =>
-      WorkRefusedByInfrastructure { identity: identity, cause: CheckoutUnavailable { detail: join(["git worktree add exited ", to_string(value: exit_code), ": ", stderr], "") } }
+      ComputeAttempt {
+        outcome: WorkRefusedByInfrastructure { identity: identity, cause: CheckoutUnavailable { detail: join(["git worktree add exited ", to_string(value: exit_code), ": ", stderr], "") } },
+        summary: SystemdRunWaitSummary { result: ServiceResultNotReported, memory_peak: MemoryPeakNotReported },
+      }
     ComputeExecOk { stdout: _, stderr: _ } => {
       let run = compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store), granted: granted)
       let log = Filesystem.Write(path: layout.log_path, content: match run {
         ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
         ComputeExecFailed { exit_code: _, stdout, stderr } => join([stdout, stderr], "")
       })
-      match run {
-        ComputeExecFailed { exit_code, stdout: _, stderr: _ } => WorkFailed { identity: identity, exit_code: exit_code, log_path: layout.log_path }
-        ComputeExecOk { stdout: _, stderr: _ } =>
-          match compute_return_outputs(instance: instance, layout: layout, declared: work_declared_outputs(op: op)) {
-            OutputsMismatch { detail } => WorkOutputMismatch { identity: identity, detail: detail }
-            OutputsReturned { outputs } => WorkSucceeded { identity: identity, outputs: outputs, log_path: if log.success { layout.log_path } else { "" } }
-          }
+      let summary = systemd_run_wait_summary(stderr: match run {
+        ComputeExecOk { stdout: _, stderr } => stderr
+        ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
+      })
+      ComputeAttempt {
+        outcome: match run {
+          ComputeExecFailed { exit_code, stdout: _, stderr: _ } =>
+            if compute_summary_is_oom_kill(summary: summary) {
+              WorkRefusedByInfrastructure { identity: identity, cause: UnitMemoryGrantExceeded {
+                class: work_class_wire(c: work_class_of(op: op)), granted: granted, peak: compute_summary_peak_wire(summary: summary), grant_was_ceiling: grant_was_ceiling,
+              } }
+            } else {
+              WorkFailed { identity: identity, exit_code: exit_code, log_path: layout.log_path }
+            }
+          ComputeExecOk { stdout: _, stderr: _ } =>
+            match compute_return_outputs(instance: instance, layout: layout, declared: work_declared_outputs(op: op)) {
+              OutputsMismatch { detail } => WorkOutputMismatch { identity: identity, detail: detail }
+              OutputsReturned { outputs } => WorkSucceeded { identity: identity, outputs: outputs, log_path: if log.success { layout.log_path } else { "" } }
+            }
+        },
+        summary: summary,
       }
     }
   }

@@ -154,6 +154,12 @@ type WorkOutcome
 // all and that a caller must not confuse with it: the machine's LIVE availability being below what
 // this class needs is somebody else's memory, not this pool's commitments, and an unreadable
 // ledger is a store repair. One arm for three remedies is the conflation DESIGN 5 forbids.
+// A UNIT KILLED FOR MEMORY IS THE MACHINE ENDING THE WORK, NOT THE WORK FAILING, and it has its
+// own arm for the reason this vocabulary has five endings rather than one: rendering an OOM kill as
+// WorkFailed { exit_code: 137 } tells the caller to fix its code when the remedy is a larger
+// reservation. The arm is reached only when no larger reservation remains -- a grant below the
+// ceiling that is exceeded retries at the ceiling first (gunbc.compute.work_provider_local
+// compute_run_granted), and that retry is counted per class.
 type WorkInfrastructureRefusal
   = ProducerInFlight { lease_path: String }
   | HostComputeCapacityFull { wire: String }
@@ -164,6 +170,7 @@ type WorkInfrastructureRefusal
   | ToolchainUnobserved { detail: String }
   | DependencyNotSucceeded { dependency_identity: String, ending: String }
   | SubjectUnresolved { detail: String }
+  | UnitMemoryGrantExceeded { class: String, granted: Kibibyte, peak: String, grant_was_ceiling: Bool }
 
 fn work_outcome_identity(o: WorkOutcome) -> String {
   match o {
@@ -196,6 +203,10 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
     DependencyNotSucceeded { dependency_identity, ending } => join(["dependency ", dependency_identity, " ended ", ending], "")
     SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")
+    UnitMemoryGrantExceeded { class, granted, peak, grant_was_ceiling } =>
+      join(["the unit was OOM-killed at its memory grant: class ", class, " was granted ", to_string(value: kibibyte_count(k: granted)),
+        " KiB and its manager reported a peak of ", peak,
+        if grant_was_ceiling { "; the grant was this host's ceiling, so no larger reservation exists to retry under" } else { "; the grant was below the ceiling and the retry at the ceiling was not taken -- the consumption record says why" }], "")
   }
 }
 

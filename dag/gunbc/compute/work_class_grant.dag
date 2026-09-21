@@ -1,0 +1,166 @@
+module gunbc.compute.work_class_grant
+
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
+import std.nat { Nat }
+import std.measure { Kibibyte, kibibyte, kibibyte_count }
+import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, cargo_profile_wire }
+
+// A WORK REQUEST RESERVES AN AMOUNT PER CLASS, AND THE AMOUNT IS A GRANT WITH ITS OBSERVATIONS
+// ATTACHED (operator ruling 2026-09-21: do not raise a global ceiling; size a job's reservation per
+// class from that class's measured peak, admitted against observed host memory).
+//
+// THE GRANT IS ALSO THE CAP. gunbc.compute.host_capacity makes the reserved amount and the unit's
+// MemoryMax one figure, so a grant sized at a measured peak would also KILL the first run that
+// exceeds it. A peak is a SAMPLE, not a bound. That is why a grant is peak plus headroom, why the
+// headroom is a named policy budget rather than a picked multiplier, and why exceeding a grant is a
+// typed, counted ending (gunbc.compute.work_provider_local compute_grant_exceeded_record) rather
+// than an OOM that renders as the work having failed.
+//
+// WHAT THIS CHANGE DOES AND DOES NOT DELIVER. It builds the producer (the unit's peak, read from
+// the launcher's own summary), the typed ending, the per-class counter and this resolution. It
+// ships NO grant rows: no class has a peak measured on the provider's own route yet, so every class
+// resolves to the ceiling and no reserved amount moves. The relief is the next change, the one that
+// adds rows from the samples this one starts recording.
+
+// THE CLASS GRAIN IS A CLAIM, STATED SO IT CAN BE WRONG. A class is the operation kind, split by
+// cargo profile for builds. A compile's peak depends heavily on WHICH entry it compiles (the
+// v2.compiler.compile closure is far above a single witness module), so two compiles of one class
+// can differ by an order of magnitude. A grant over that grain is sampled, not derived, which is
+// exactly the residual gunbc.recurring_failure_mode a_sampled_grant_is_discovered_below_worst_case
+// rosters -- and the counted GrantExceeded ending is what reports a class whose grain is too coarse.
+type WorkClass
+  = WorkClassBuild { profile: CargoProfile }
+  | WorkClassCompile
+  | WorkClassClaims
+
+fn work_class_of(op: WorkOperation) -> WorkClass {
+  match op {
+    BuildGunbcBinaries { profile, bins: _ } => WorkClassBuild { profile: profile }
+    CompileEntry { entry: _ } => WorkClassCompile
+    RunClaims { entry: _, functions: _, hermetic: _ } => WorkClassClaims
+  }
+}
+
+fn work_class_wire(c: WorkClass) -> String {
+  match c {
+    WorkClassBuild { profile } => join(["build-", cargo_profile_wire(p: profile)], "")
+    WorkClassCompile => "compile"
+    WorkClassClaims => "claims"
+  }
+}
+
+// ONE SAMPLE: one attempt of one work identity on one host, and the UPPER BOUND of the peak the
+// unit's manager reported (extdeps.systemd.systemd_run systemd_formatted_bytes_upper -- the printed
+// figure is truncated, so its lower reading would size a grant below the peak that produced it).
+// The operation's canonical text says what ran, so "over what" is carried, not remembered.
+type WorkClassPeakSample {
+  work_identity: NonEmptyStr
+  operation: NonEmptyStr
+  host: NonEmptyStr
+  observed_at: EpochSecs
+  peak_upper: Kibibyte
+}
+
+// THE ROW: a policy budget grounded in observations. The headroom is the OPERATOR'S figure and is
+// cited as such; what makes it admissible (DESIGN 5) is that it is FALSIFIABLE -- a non-zero
+// GrantExceeded count for this class (compute_grant_exceeded_count) means the grant is wrong and
+// the row is re-derived. A budget nobody can prove wrong is a guess; this one carries its counter.
+type WorkClassGrantRow {
+  class: WorkClass
+  samples: List<WorkClassPeakSample>
+  headroom: Kibibyte
+  headroom_authority: NonEmptyStr
+}
+
+// ONE OBSERVATION IS NOT A PEAK (operator ruling, 2026-09-21), so the smallest sample set a grant
+// may be sized from is two. Below that the class reserves the ceiling and says how many it has.
+data work_class_minimum_samples: Int = 2
+
+// THE ROWS. Empty in this change, deliberately and not as a placeholder: a row lands with samples
+// taken on the provider's route (the per-attempt record compute_run_and_settle writes), and none
+// exist yet. neat-boar-16's 9.7 GB peak for the v2.compiler.compile closure is a real observation
+// but was not taken under a provider unit, so it is cited in the next change's evidence and does
+// not size a row here.
+data work_class_grant_rows: List<WorkClassGrantRow> = []
+
+type WorkClassCeilingReason
+  = ClassUnmeasured
+  | ClassTooFewSamples { samples: Int }
+  | ClassRowsAmbiguous { rows: Int }
+  | ClassRetryAfterGrantExceeded { exceeded: Kibibyte }
+  | ClassSizedAtOrAboveCeiling { samples: Int, sized: Kibibyte }
+
+// EVERY ARM NAMES ITS CLASS AND ITS EVIDENCE COUNT. The ceiling arm is the fail-closed one and it
+// is the only arm this change's rows reach; it must stay reachable, so "no row" and "too few
+// samples" are both ceiling, never a default amount.
+type WorkClassGrant
+  = GrantAtCeiling { class: WorkClass, amount: Kibibyte, reason: WorkClassCeilingReason }
+  | GrantSized { class: WorkClass, amount: Kibibyte, samples: Int, peak_upper: Kibibyte, headroom: Kibibyte, headroom_authority: NonEmptyStr }
+
+fn work_class_grant_amount(g: WorkClassGrant) -> Kibibyte {
+  match g {
+    GrantAtCeiling { class: _, amount, reason: _ } => amount
+    GrantSized { class: _, amount, samples: _, peak_upper: _, headroom: _, headroom_authority: _ } => amount
+  }
+}
+
+fn work_class_grant_is_ceiling(g: WorkClassGrant) -> Bool {
+  match g {
+    GrantAtCeiling { class: _, amount: _, reason: _ } => true
+    GrantSized { class: _, amount: _, samples: _, peak_upper: _, headroom: _, headroom_authority: _ } => false
+  }
+}
+
+fn work_class_grant_wire(g: WorkClassGrant) -> String {
+  match g {
+    GrantAtCeiling { class, amount, reason } =>
+      join(["class ", work_class_wire(c: class), " reserves the ceiling ", to_string(value: kibibyte_count(k: amount)), " KiB (",
+        match reason {
+          ClassUnmeasured => "no grant row"
+          ClassTooFewSamples { samples } => join([to_string(value: samples), " sample(s), fewer than ", to_string(value: work_class_minimum_samples)], "")
+          ClassRetryAfterGrantExceeded { exceeded } => join(["this attempt's grant of ", to_string(value: kibibyte_count(k: exceeded)), " KiB was exceeded, so it is retried at the ceiling"], "")
+          ClassRowsAmbiguous { rows } => join([to_string(value: rows), " grant rows name this class, so none of them decides"], "")
+          ClassSizedAtOrAboveCeiling { samples, sized } => join(["sized ", to_string(value: kibibyte_count(k: sized)), " KiB from ", to_string(value: samples), " samples, not below the ceiling"], "")
+        }, ")"], "")
+    GrantSized { class, amount, samples, peak_upper, headroom, headroom_authority } =>
+      join(["class ", work_class_wire(c: class), " reserves ", to_string(value: kibibyte_count(k: amount)), " KiB = peak ",
+        to_string(value: kibibyte_count(k: peak_upper)), " KiB over ", to_string(value: samples), " samples + headroom ",
+        to_string(value: kibibyte_count(k: headroom)), " KiB (", headroom_authority as String, ")"], "")
+  }
+}
+
+fn work_class_rows_for(rows: List<WorkClassGrantRow>, class: WorkClass) -> List<WorkClassGrantRow> {
+  filter(rows, r => work_class_wire(c: r.class) == work_class_wire(c: class))
+}
+
+fn work_class_samples_peak(samples: List<WorkClassPeakSample>) -> Nat {
+  fold(samples, init: kibibyte_count(k: kibibyte(count: 0)), f: (acc, s) => if kibibyte_count(k: s.peak_upper) > acc { kibibyte_count(k: s.peak_upper) } else { acc })
+}
+
+// THE RESOLUTION, taking the rows and the ceiling as values so every arm is exercisable with a
+// supplied row while production passes work_class_grant_rows. A class with more than one row is
+// refused to the ceiling rather than resolved by position: two rows for one class are two
+// authorities for one fact, and picking one would be the silent choice DESIGN 3 forbids.
+fn work_class_grant(class: WorkClass, rows: List<WorkClassGrantRow>, ceiling: Kibibyte) -> WorkClassGrant {
+  match work_class_rows_for(rows: rows, class: class) {
+    Empty {} => GrantAtCeiling { class: class, amount: ceiling, reason: ClassUnmeasured }
+    Cons { head: row, tail: more } =>
+      match more {
+        Cons { head: _, tail: _ } => GrantAtCeiling { class: class, amount: ceiling, reason: ClassRowsAmbiguous { rows: length(work_class_rows_for(rows: rows, class: class)) } }
+        Empty {} => {
+          let n = length(row.samples)
+          if n < work_class_minimum_samples {
+            GrantAtCeiling { class: class, amount: ceiling, reason: ClassTooFewSamples { samples: n } }
+          } else {
+            let peak = work_class_samples_peak(samples: row.samples)
+            let sized = kibibyte(count: peak + kibibyte_count(k: row.headroom))
+            if kibibyte_count(k: sized) >= kibibyte_count(k: ceiling) {
+              GrantAtCeiling { class: class, amount: ceiling, reason: ClassSizedAtOrAboveCeiling { samples: n, sized: sized } }
+            } else {
+              GrantSized { class: class, amount: sized, samples: n, peak_upper: kibibyte(count: peak), headroom: row.headroom, headroom_authority: row.headroom_authority }
+            }
+          }
+        }
+      }
+  }
+}

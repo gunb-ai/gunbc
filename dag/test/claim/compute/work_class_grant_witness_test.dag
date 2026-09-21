@@ -1,0 +1,134 @@
+module test.claim.compute.work_class_grant_witness_test
+
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, byte_size_count }
+import extdeps.systemd.systemd_run {
+  SystemdRunWaitSummary, systemd_run_wait_summary,
+  SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
+  SystemdServiceResult, ServiceResultOomKill, ServiceResultSuccess, ServiceResultExitCode,
+  SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
+  SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
+}
+import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug, WorkSucceeded, WorkFailed }
+import gunbc.compute.work_class_grant {
+  WorkClass, WorkClassBuild, WorkClassCompile, WorkClassClaims, work_class_of, work_class_wire,
+  WorkClassPeakSample, WorkClassGrantRow, work_class_grant_rows,
+  WorkClassGrant, GrantAtCeiling, GrantSized,
+  WorkClassCeilingReason, ClassUnmeasured, ClassTooFewSamples, ClassRowsAmbiguous, ClassSizedAtOrAboveCeiling, ClassRetryAfterGrantExceeded,
+  work_class_grant, work_class_grant_amount,
+}
+import gunbc.compute.work_provider_local { ComputeAttempt, compute_attempt_retries_at_ceiling, compute_summary_is_oom_kill }
+
+// ── THE PRODUCER: what systemd-run --wait said about the unit ─────────────────────────────────
+
+// The unit's own stderr precedes the launcher's summary under --pipe, so a command that prints a
+// "Memory peak:" line of its own must not be read as the unit's peak. The summary text is the v255
+// run.c ordering: result, main process status, runtime, CPU, memory peak.
+data summary_oom_after_spoof: String = "compiling...\nMemory peak: 1K\nFinished with result: success\nerror: killed\nFinished with result: oom-kill\nMain processes terminated with: code=killed/status=KILL\nService runtime: 10min 31.402s\nCPU time consumed: 1h 2min 3.100s\nMemory peak: 9.7G\nMemory swap peak: 0B\n"
+
+// 9.7G: whole 9, tenth 7, factor 1024^3 -- the sound upper bound is (97 + 2) * 1024^3 / 10 rounded
+// up, because the printed tenth is truncated and computed through a second truncation.
+data nine_point_seven_gib_upper_bytes: Int = 10630044058
+data nine_point_seven_gib_lower_bytes: Int = 10415295692
+
+test fn the_units_peak_and_result_are_the_summarys_last_lines_not_the_commands() -> Bool {
+  let s = systemd_run_wait_summary(stderr: summary_oom_after_spoof)
+  compute_summary_is_oom_kill(summary: s)
+    && match s.memory_peak {
+      MemoryPeakRead { peak: b } =>
+        match b {
+          FormattedBytesBounded { printed, lower, upper } =>
+            printed == "9.7G"
+              && byte_size_count(b: lower) == nine_point_seven_gib_lower_bytes
+              && byte_size_count(b: upper) == nine_point_seven_gib_upper_bytes
+          FormattedBytesExact { bytes: _ } => false
+        }
+      MemoryPeakUnparseable { text: _ } => false
+      MemoryPeakNotReported => false
+    }
+}
+
+// A MISSING PEAK IS NEVER A ZERO PEAK. A manager below v254 omits the line; so does a launcher run
+// with --quiet. Either must read NotReported, because a recorded zero would size a class at its
+// headroom alone. An exact small figure keeps its exact reading.
+test fn an_absent_peak_is_not_reported_and_a_byte_figure_is_exact() -> Bool {
+  let absent = systemd_run_wait_summary(stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
+  let small = systemd_run_wait_summary(stderr: "Finished with result: success\nMemory peak: 512B\n")
+  let garbled = systemd_run_wait_summary(stderr: "Finished with result: frobnicated\nMemory peak: lots\n")
+  match absent.memory_peak { MemoryPeakNotReported => true  _ => false }
+    && !compute_summary_is_oom_kill(summary: absent)
+    && match small.memory_peak {
+      MemoryPeakRead { peak: b } => match b { FormattedBytesExact { bytes } => byte_size_count(b: bytes) == 512  _ => false }
+      _ => false
+    }
+    && match garbled.result { ServiceResultUnrecognized { wire } => wire == "frobnicated"  _ => false }
+    && match garbled.memory_peak { MemoryPeakUnparseable { text } => text == "lots"  _ => false }
+    && match systemd_run_wait_summary(stderr: "").result { ServiceResultNotReported => true  _ => false }
+}
+
+// ── THE RESOLUTION: rows to a grant ──────────────────────────────────────────────────────────
+
+data gib: Int = 1048576
+
+fn ceiling() -> Kibibyte { kibibyte(count: 26 * gib) }
+
+fn sample(peak_gib: Int) -> WorkClassPeakSample {
+  WorkClassPeakSample {
+    work_identity: "0000000000000001" as NonEmptyStr,
+    operation: "compile:src/v2/compiler/compile.dag" as NonEmptyStr,
+    host: "fixture-host" as NonEmptyStr,
+    observed_at: 1790000000,
+    peak_upper: kibibyte(count: peak_gib * gib),
+  }
+}
+
+fn row(class: WorkClass, samples: List<WorkClassPeakSample>) -> WorkClassGrantRow {
+  WorkClassGrantRow { class: class, samples: samples, headroom: kibibyte(count: 2 * gib), headroom_authority: "fixture policy budget" as NonEmptyStr }
+}
+
+// EVERY ARM, from supplied rows. The sized arm is peak (the LARGEST sample, not the last or first)
+// plus headroom; one sample is not a peak; a sized figure at or above the ceiling is the ceiling;
+// two rows for one class decide nothing; a class with no row is the ceiling.
+test fn a_grant_is_the_largest_sample_plus_headroom_and_every_shortfall_is_the_ceiling() -> Bool {
+  let sized = work_class_grant(class: WorkClassCompile, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 4), sample(peak_gib: 9), sample(peak_gib: 6)])], ceiling: ceiling())
+  let one = work_class_grant(class: WorkClassCompile, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 4)])], ceiling: ceiling())
+  let over = work_class_grant(class: WorkClassCompile, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 24), sample(peak_gib: 20)])], ceiling: ceiling())
+  let twice = work_class_grant(class: WorkClassCompile, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 4), sample(peak_gib: 5)]), row(class: WorkClassCompile, samples: [sample(peak_gib: 4), sample(peak_gib: 5)])], ceiling: ceiling())
+  let other = work_class_grant(class: WorkClassClaims, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 4), sample(peak_gib: 5)])], ceiling: ceiling())
+  match sized { GrantSized { class: _, amount, samples, peak_upper: _, headroom: _, headroom_authority: _ } => kibibyte_count(k: amount) == 11 * gib && samples == 3  _ => false }
+    && match one { GrantAtCeiling { class: _, amount, reason } => kibibyte_count(k: amount) == 26 * gib && match reason { ClassTooFewSamples { samples } => samples == 1  _ => false }  _ => false }
+    && match over { GrantAtCeiling { class: _, amount, reason } => kibibyte_count(k: amount) == 26 * gib && match reason { ClassSizedAtOrAboveCeiling { samples: _, sized: s } => kibibyte_count(k: s) == 26 * gib  _ => false }  _ => false }
+    && match twice { GrantAtCeiling { class: _, amount: _, reason } => match reason { ClassRowsAmbiguous { rows } => rows == 2  _ => false }  _ => false }
+    && match other { GrantAtCeiling { class: _, amount: _, reason } => match reason { ClassUnmeasured => true  _ => false }  _ => false }
+}
+
+// THE INHABITANCE CLAIM OVER THE REAL ROWS, and it is expected to FLIP (DESIGN 4b(4)). This change
+// ships no rows, so every class the provider can be asked for resolves to the ceiling and no
+// reserved amount moves. When the first row lands from provider-route samples this claim reds for
+// that class and becomes the regression control that production rows reach the sized arm.
+test fn with_the_shipped_rows_every_class_reserves_the_ceiling() -> Bool {
+  let ops = [
+    BuildGunbcBinaries { profile: CargoRelease, bins: ["gunbc" as NonEmptyStr] },
+    BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] },
+    CompileEntry { entry: "src/v2/compiler/compile.dag" },
+    RunClaims { entry: "dag/test/claim/x_test.dag", functions: "f" as NonEmptyStr, hermetic: true },
+  ]
+  all(ops, op => match work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: ceiling()) {
+    GrantAtCeiling { class: _, amount, reason } => kibibyte_count(k: amount) == 26 * gib && match reason { ClassUnmeasured => true  _ => false }
+    GrantSized { class: _, amount: _, samples: _, peak_upper: _, headroom: _, headroom_authority: _ } => false
+  })
+}
+
+// ── WHICH ATTEMPT IS RETRIED ─────────────────────────────────────────────────────────────────
+
+// Only an oom-kill under a grant BELOW the ceiling retries; the same kill at the ceiling ends as the
+// typed refusal, and a grant below the ceiling that ended any other way does not retry.
+test fn only_an_oom_kill_below_the_ceiling_retries_at_the_ceiling() -> Bool {
+  let below = GrantSized { class: WorkClassCompile, amount: kibibyte(count: 11 * gib), samples: 3, peak_upper: kibibyte(count: 9 * gib), headroom: kibibyte(count: 2 * gib), headroom_authority: "fixture" as NonEmptyStr }
+  let at = GrantAtCeiling { class: WorkClassCompile, amount: ceiling(), reason: ClassUnmeasured }
+  let oom = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(stderr: summary_oom_after_spoof) }
+  let clean = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(stderr: "Finished with result: exit-code\nMemory peak: 3.1G\n") }
+  compute_attempt_retries_at_ceiling(grant: below, attempt: oom)
+    && !compute_attempt_retries_at_ceiling(grant: at, attempt: oom)
+    && !compute_attempt_retries_at_ceiling(grant: below, attempt: clean)
+}

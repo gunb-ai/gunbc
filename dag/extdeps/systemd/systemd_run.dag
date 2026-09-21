@@ -1,6 +1,9 @@
 module extdeps.systemd.systemd_run
 
 import std.types { NonEmptyStr, List, Bool, Int, Unit }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
+import std.algebra { trim }
 import std.string_type { String }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -194,5 +197,192 @@ service systemd.SystemdRun {
       0 => Unit
       nonzero => Unit
     }
+  }
+}
+
+// ── WHAT `systemd-run --wait` REPORTS WHEN THE UNIT ENDS ──────────────────────────────────────
+//
+// THE SUMMARY IS THE ONLY INSTANT THE UNIT'S OWN PEAK AND RESULT ARE STILL READABLE, and that is why
+// it is modeled rather than a property read afterwards. A `--wait --collect` transient unit is
+// garbage-collected when it ends, so `systemctl show -p MemoryPeak` after the launcher returns
+// answers for a unit the manager no longer has, and the cgroup whose memory.peak it mirrors is gone
+// with it. systemd-run itself reads Result and MemoryPeak off the unit over D-Bus before it exits
+// and logs them to stderr, unless --quiet was passed (src/run/run.c at v255, `if (arg_wait &&
+// !arg_quiet)`): "Finished with result: <result>" when the result is non-empty, and "Memory peak:
+// <FORMAT_BYTES>" when MemoryPeak is not UINT64_MAX. MemoryPeak itself arrives in v254
+// (extdeps.systemd.systemctl systemd_memory_peak_minimum_version), and an older manager simply
+// omits the line -- so ABSENCE IS A READING, and it is never a peak of zero.
+//
+// WHY THE LAST LINE AND NOT THE FIRST. Under --pipe the unit's own stderr and the launcher's summary
+// arrive on one stream. The summary is written after the unit has ended and the pipe has drained,
+// so it is the TAIL; a command that happens to print "Memory peak: 1K" on its own stderr prints it
+// BEFORE the summary. Taking the last occurrence of each prefix is what that ordering entitles.
+// It is an ordering fact about the launcher, stated here so a reader can falsify it.
+
+// systemd.exec(5) "$SERVICE_RESULT": the closed vocabulary a service's Result property takes.
+type SystemdServiceResult
+  = ServiceResultSuccess
+  | ServiceResultProtocol
+  | ServiceResultTimeout
+  | ServiceResultExitCode
+  | ServiceResultSignal
+  | ServiceResultCoreDump
+  | ServiceResultWatchdog
+  | ServiceResultStartLimitHit
+  | ServiceResultResources
+  | ServiceResultOomKill
+
+fn systemd_service_result_wire(r: SystemdServiceResult) -> String {
+  match r {
+    ServiceResultSuccess => "success"
+    ServiceResultProtocol => "protocol"
+    ServiceResultTimeout => "timeout"
+    ServiceResultExitCode => "exit-code"
+    ServiceResultSignal => "signal"
+    ServiceResultCoreDump => "core-dump"
+    ServiceResultWatchdog => "watchdog"
+    ServiceResultStartLimitHit => "start-limit-hit"
+    ServiceResultResources => "resources"
+    ServiceResultOomKill => "oom-kill"
+  }
+}
+
+type SystemdServiceResultReading
+  = ServiceResultRead { result: SystemdServiceResult }
+  | ServiceResultUnrecognized { wire: String }
+  | ServiceResultNotReported
+
+fn systemd_service_result_parse(wire: String) -> SystemdServiceResultReading {
+  let w = trim(s: wire)
+  if w == "success" { ServiceResultRead { result: ServiceResultSuccess } }
+  else if w == "protocol" { ServiceResultRead { result: ServiceResultProtocol } }
+  else if w == "timeout" { ServiceResultRead { result: ServiceResultTimeout } }
+  else if w == "exit-code" { ServiceResultRead { result: ServiceResultExitCode } }
+  else if w == "signal" { ServiceResultRead { result: ServiceResultSignal } }
+  else if w == "core-dump" { ServiceResultRead { result: ServiceResultCoreDump } }
+  else if w == "watchdog" { ServiceResultRead { result: ServiceResultWatchdog } }
+  else if w == "start-limit-hit" { ServiceResultRead { result: ServiceResultStartLimitHit } }
+  else if w == "resources" { ServiceResultRead { result: ServiceResultResources } }
+  else if w == "oom-kill" { ServiceResultRead { result: ServiceResultOomKill } }
+  else { ServiceResultUnrecognized { wire: w } }
+}
+
+// A FORMAT_BYTES READING IS AN INTERVAL, NOT A NUMBER. format_bytes (src/basic/format-util.h, v255)
+// is format_bytes_full with USE_IEC | BELOW_POINT | TRAILING_B: below 1024 it prints the exact count
+// with a trailing "B"; otherwise the largest 1024-power suffix K/M/G/T/P/E with the whole part and
+// ONE TRUNCATED tenth, and no "B". The tenth is computed as floor(floor(t / F') * 10 / 1024) mod 10
+// with F' the next-smaller factor, which can read one tenth LOW, so the only sound upper bound for
+// a printed W.d of factor F is (10W + d + 2) * F / 10. A capacity reading must carry the upper
+// bound; carrying the printed figure would size a grant below the peak that produced it.
+type SystemdFormattedBytes
+  = FormattedBytesExact { bytes: ByteSize }
+  | FormattedBytesBounded { printed: String, lower: ByteSize, upper: ByteSize }
+
+type SystemdFormattedBytesReading
+  = FormattedBytesRead { value: SystemdFormattedBytes }
+  | FormattedBytesUnparseable { text: String }
+
+fn systemd_iec_suffix_factor(suffix: String) -> Nat? {
+  if suffix == "K" { Present { value: 1024 } }
+  else if suffix == "M" { Present { value: 1048576 } }
+  else if suffix == "G" { Present { value: 1073741824 } }
+  else if suffix == "T" { Present { value: 1099511627776 } }
+  else if suffix == "P" { Present { value: 1125899906842624 } }
+  else if suffix == "E" { Present { value: 1152921504606846976 } }
+  else { none }
+}
+
+fn systemd_formatted_bytes_parse(text: String) -> SystemdFormattedBytesReading {
+  let t = trim(s: text)
+  let n = string_length(s: t)
+  if n < 2 {
+    FormattedBytesUnparseable { text: t }
+  } else {
+    let suffix = substring(s: t, start: n - 1, end: n)
+    let body = substring(s: t, start: 0, end: n - 1)
+    if suffix == "B" {
+      match parse_int(s: body) {
+        Present { value: v } => if v < 0 { FormattedBytesUnparseable { text: t } } else { FormattedBytesRead { value: FormattedBytesExact { bytes: byte_size(count: v) } } }
+        Absent => FormattedBytesUnparseable { text: t }
+      }
+    } else {
+      match systemd_iec_suffix_factor(suffix: suffix) {
+        Absent => FormattedBytesUnparseable { text: t }
+        Present { value: factor } =>
+          match split(body, ".") {
+            Cons { head: whole_text, tail: rest } =>
+              match rest {
+                Cons { head: tenth_text, tail: more } =>
+                  match more {
+                    Cons { head: _, tail: _ } => FormattedBytesUnparseable { text: t }
+                    Empty {} =>
+                      match parse_int(s: whole_text) {
+                        Absent => FormattedBytesUnparseable { text: t }
+                        Present { value: w } =>
+                          match parse_int(s: tenth_text) {
+                            Absent => FormattedBytesUnparseable { text: t }
+                            Present { value: d } =>
+                              if w < 0 || d < 0 || d > 9 || string_length(s: tenth_text) != 1 {
+                                FormattedBytesUnparseable { text: t }
+                              } else {
+                                FormattedBytesRead { value: FormattedBytesBounded {
+                                  printed: t,
+                                  lower: byte_size(count: (w * 10 + d) * factor / 10),
+                                  upper: byte_size(count: ((w * 10 + d + 2) * factor + 9) / 10),
+                                } }
+                              }
+                          }
+                      }
+                  }
+                Empty {} => FormattedBytesUnparseable { text: t }
+              }
+            Empty {} => FormattedBytesUnparseable { text: t }
+          }
+      }
+    }
+  }
+}
+
+fn systemd_formatted_bytes_upper(b: SystemdFormattedBytes) -> ByteSize {
+  match b {
+    FormattedBytesExact { bytes } => bytes
+    FormattedBytesBounded { printed: _, lower: _, upper } => upper
+  }
+}
+
+type SystemdMemoryPeakReading
+  = MemoryPeakRead { peak: SystemdFormattedBytes }
+  | MemoryPeakUnparseable { text: String }
+  | MemoryPeakNotReported
+
+type SystemdRunWaitSummary {
+  result: SystemdServiceResultReading
+  memory_peak: SystemdMemoryPeakReading
+}
+
+data systemd_run_summary_result_prefix: String = "Finished with result: "
+data systemd_run_summary_memory_peak_prefix: String = "Memory peak: "
+
+fn systemd_run_summary_last_value(stderr: String, prefix: String) -> String? {
+  fold(split(stderr, "\n"), init: none, f: (acc, line) =>
+    if starts_with(s: line, prefix: prefix) {
+      Present { value: substring(s: line, start: string_length(s: prefix), end: string_length(s: line)) }
+    } else { acc })
+}
+
+fn systemd_run_wait_summary(stderr: String) -> SystemdRunWaitSummary {
+  SystemdRunWaitSummary {
+    result: match systemd_run_summary_last_value(stderr: stderr, prefix: systemd_run_summary_result_prefix) {
+      Present { value: v } => systemd_service_result_parse(wire: v)
+      Absent => ServiceResultNotReported
+    },
+    memory_peak: match systemd_run_summary_last_value(stderr: stderr, prefix: systemd_run_summary_memory_peak_prefix) {
+      Present { value: v } =>
+        match systemd_formatted_bytes_parse(text: v) {
+          FormattedBytesRead { value: b } => MemoryPeakRead { peak: b }
+          FormattedBytesUnparseable { text: x } => MemoryPeakUnparseable { text: x }
+        }
+      Absent => MemoryPeakNotReported
+    },
   }
 }

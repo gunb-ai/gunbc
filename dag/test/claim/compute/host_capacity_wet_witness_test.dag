@@ -8,7 +8,7 @@ import product.capacity.event_chain { PartitionId }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance, dashboard_instance_compute_root }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
-  compute_capacity_subject, compute_capacity_root, compute_memory_partition,
+  compute_capacity_subject, compute_capacity_root, compute_memory_partition, compute_memory_ceiling,
   HostMemoryObservation, HostMemoryObserved, HostMemoryUnobserved, observe_host_memory,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   compute_reserve_on, compute_reserve_against, compute_release, ComputeRelease, ComputeReleased, ComputeReleaseRefused,
@@ -149,10 +149,10 @@ test fn an_appropriation_larger_than_the_machine_refuses_rather_than_admitting()
 test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
-  match compute_capacity_subject(instance: live) {
+  match compute_capacity_subject(instance: live, request: compute_memory_ceiling(instance: live)) {
     ComputeSubjectHostUnresolved { host: _ } => false
     ComputeSubjectResolved { subject: a } =>
-      match compute_capacity_subject(instance: lab) {
+      match compute_capacity_subject(instance: lab, request: compute_memory_ceiling(instance: lab)) {
         ComputeSubjectHostUnresolved { host: _ } => false
         ComputeSubjectResolved { subject: b } =>
           (live.instance_id as String) != (lab.instance_id as String)
