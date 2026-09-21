@@ -651,7 +651,11 @@ fn x509_key_usage_permits_cert_sign(input: List<UInt8>, ext: X509Extension) -> B
         DerBitStringReady { value: bits } =>
           match octet_in_span(input: input, span: bits.bits, at: bits.bits.start) {
             Absent => false
-            Present { value: first } => octet_bit_is_set(octet: first, bit: 2)
+            Present { value: first } =>
+              match octet_bit_is_set(octet: first, bit: 2) {
+                Present { value: set } => set
+                Absent => false
+              }
           }
       }
   }

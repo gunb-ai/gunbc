@@ -93,6 +93,7 @@ type AppAttestDecodeRefusal
   | AppAttestUnknownField
   | AppAttestAuthDataTruncated { needed: Int, available: Int }
   | AppAttestAuthDataTrailing { remaining: Int }
+  | AppAttestAuthDataFlagsUnreadable
   | AppAttestAaguidUnknown
   | AppAttestCredentialKeyMalformed
   | AppAttestCertificateRefused { index: Int, cause: X509Refusal }
@@ -358,9 +359,14 @@ fn app_attest_auth_data(input: List<UInt8>, span: OctetSpan, reads_credential: B
       Present { value: flags } =>
         match octet_read_unsigned_be(input: input, at: span.start + 33, octets: 4) {
           OctetUnsignedRefused { cause: _ } => AppAttestAuthDataRefused { cause: AppAttestAuthDataTruncated { needed: 37, available: 33 } }
-          OctetUnsignedReady { value: counter, end: after_counter } => {
-            let attested = reads_credential && octet_bit_is_set(octet: flags, bit: 6)
-            let has_extensions = octet_bit_is_set(octet: flags, bit: 7)
+          OctetUnsignedReady { value: counter, end: after_counter } =>
+            match octet_bit_is_set(octet: flags, bit: 6) {
+              Absent => AppAttestAuthDataRefused { cause: AppAttestAuthDataFlagsUnreadable }
+              Present { value: attested_flag } =>
+            match octet_bit_is_set(octet: flags, bit: 7) {
+              Absent => AppAttestAuthDataRefused { cause: AppAttestAuthDataFlagsUnreadable }
+              Present { value: has_extensions } => {
+            let attested = reads_credential && attested_flag
             let bounded = input.take(n: span.end)
             if attested {
               match app_attest_credential_data(input: bounded, at: after_counter) {
@@ -375,6 +381,8 @@ fn app_attest_auth_data(input: List<UInt8>, span: OctetSpan, reads_credential: B
               )
             }
           }
+            }
+            }
         }
     }
   }

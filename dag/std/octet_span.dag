@@ -104,10 +104,14 @@ fn octet_bit_field(octet: UInt8, shift: Int, mask: Int) -> Int? {
   }
 }
 
-fn octet_bit_is_set(octet: UInt8, bit: Int) -> Bool {
+// Absent is the word refusal (an octet outside the byte range, or a shift outside the width), never
+// "not set": a consumer that read it as clear decided a DER element was primitive, an OID arc was
+// its last octet, or an attestation carried no extensions on an octet that was never a byte
+// (review 69455). Every consumer refuses on Absent.
+fn octet_bit_is_set(octet: UInt8, bit: Int) -> Bool? {
   match octet_bit_field(octet: octet, shift: bit, mask: 1) {
-    Present { value: v } => v == 1
-    Absent => false
+    Present { value: v } => Present { value: v == 1 }
+    Absent => none
   }
 }
 

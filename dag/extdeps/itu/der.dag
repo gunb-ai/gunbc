@@ -55,6 +55,7 @@ type DerRefusal
   | DerNoncanonicalBoolean { at: Int }
   | DerBitStringMalformed { at: Int }
   | DerObjectIdentifierMalformed { at: Int }
+  | DerOctetNotAByte { at: Int }
 
 type DerRead
   = DerReadReady { element: DerElement }
@@ -134,14 +135,17 @@ fn der_read_element(input: List<UInt8>, at: Int) -> DerRead {
     Absent => DerReadRefused { cause: DerTruncated { at: at, needed: 1, available: 0 } }
     Present { value: identifier } =>
       match octet_bit_field(octet: identifier, shift: 0, mask: 31) {
-        Absent => DerReadRefused { cause: DerHighTagNumberUnsupported { at: at } }
+        Absent => DerReadRefused { cause: DerOctetNotAByte { at: at } }
         Present { value: tag } =>
           if tag == 31 {
             DerReadRefused { cause: DerHighTagNumberUnsupported { at: at } }
           } else {
             match octet_bit_field(octet: identifier, shift: 6, mask: 3) {
-              Absent => DerReadRefused { cause: DerHighTagNumberUnsupported { at: at } }
+              Absent => DerReadRefused { cause: DerOctetNotAByte { at: at } }
               Present { value: class_bits } =>
+                match octet_bit_is_set(octet: identifier, bit: 5) {
+                  Absent => DerReadRefused { cause: DerOctetNotAByte { at: at } }
+                  Present { value: constructed } =>
                 match der_read_length(input: input, at: at + 1) {
                   DerLengthRefused { cause: c } => DerReadRefused { cause: c }
                   DerLengthReady { length: l } =>
@@ -151,13 +155,14 @@ fn der_read_element(input: List<UInt8>, at: Int) -> DerRead {
                         DerReadReady {
                           element: DerElement {
                             class: der_tag_class(bits: class_bits),
-                            constructed: octet_bit_is_set(octet: identifier, bit: 5),
+                            constructed: constructed,
                             tag: tag,
                             whole: OctetSpan { start: at, end: content.end },
                             content: content,
                           }
                         }
                     }
+                }
                 }
             }
           }
@@ -357,10 +362,14 @@ fn der_arc_step(input: List<UInt8>, st: DerArcState, octet: UInt8) -> DerArcStat
       Present { value: low } =>
         if !st.started && octet == 128 {
           DerArcState { arcs: st.arcs, pending: 0, started: false, malformed: true }
-        } else if octet_bit_is_set(octet: octet, bit: 7) {
-          DerArcState { arcs: st.arcs, pending: st.pending * 128 + low, started: true, malformed: false }
         } else {
-          DerArcState { arcs: st.arcs |> list_push(st.pending * 128 + low), pending: 0, started: false, malformed: false }
+          match octet_bit_is_set(octet: octet, bit: 7) {
+            Absent => DerArcState { arcs: st.arcs, pending: 0, started: false, malformed: true }
+            Present { value: true } =>
+              DerArcState { arcs: st.arcs, pending: st.pending * 128 + low, started: true, malformed: false }
+            Present { value: false } =>
+              DerArcState { arcs: st.arcs |> list_push(st.pending * 128 + low), pending: 0, started: false, malformed: false }
+          }
         }
     }
   }
