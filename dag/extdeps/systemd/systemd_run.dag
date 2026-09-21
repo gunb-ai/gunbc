@@ -213,6 +213,36 @@ service systemd.SystemdRun {
 // (extdeps.systemd.systemctl systemd_memory_peak_minimum_version), and an older manager simply
 // omits the line -- so ABSENCE IS A READING, and it is never a peak of zero.
 //
+// THE CONTRACT IS A DISPLAY FORMAT, CHOSEN ON THE TRADEOFF RATHER THAN INHERITED FROM --collect
+// (fork put by loyal-swift-608, 2026-09-21). Three routes read a unit's peak, and this one is taken
+// knowing it is the weakest KIND of contract -- a human-readable line, verified against run.c and
+// format-util.c at systemd v255 (srv1's recorded version), which upstream is free to reword.
+//
+//   DROPPING --collect DOES NOT KEEP THE UNIT. systemd.unit(5) CollectMode= (v255): the default,
+//   `inactive`, unloads a unit "in the inactive state and not referenced" and keeps only FAILED
+//   units. So a typed `systemctl show -p MemoryPeak` after the launcher returns would answer for
+//   failed units only -- the samples a grant is sized from are overwhelmingly successful runs, so
+//   this route loses the population that matters, and it adds a teardown (reset-failed) this
+//   provider would own and could leak.
+//
+//   READING memory.peak FROM THE CGROUP means a process inside the unit at stop time, i.e. an
+//   ExecStopPost carrying shell that writes a file -- raw shell implementing semantics beside the
+//   modeled invocation (DESIGN 6), plus a second file protocol to parse. The number would be exact,
+//   but the route is more authored machinery for a fact the manager already reads over D-Bus.
+//
+//   THIS ROUTE: systemd-run itself reads Result and MemoryPeak as TYPED D-Bus properties before the
+//   unit is collected, and prints them. What is display-shaped is only the last hop.
+//
+// WHAT MAKES THE DISPLAY CONTRACT ADMISSIBLE IS ITS FAILURE ARM, and the link is load-bearing: a
+// reworded or absent line reads ServiceResultNotReported / MemoryPeakNotReported /
+// MemoryPeakUnparseable -- never a peak of zero and never a default -- so a format change stops the
+// class from ever gaining samples and it stays at the ceiling (gunbc.compute.work_class_grant),
+// which is fail-closed. What it CANNOT do is detect a reworded result line that still parses as a
+// different valid word; the result vocabulary is systemd.exec(5)'s closed $SERVICE_RESULT set, so
+// that would be an upstream semantic change, not a formatting one. Retirement trigger for this
+// choice: an upstream structured output for the --wait summary (e.g. a JSON mode), which this module
+// would read instead.
+//
 // WHY THE LAST LINE AND NOT THE FIRST. Under --pipe the unit's own stderr and the launcher's summary
 // arrive on one stream. The summary is written after the unit has ended and the pipe has drained,
 // so it is the TAIL; a command that happens to print "Memory peak: 1K" on its own stderr prints it
