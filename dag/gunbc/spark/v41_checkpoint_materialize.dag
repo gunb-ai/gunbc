@@ -12,6 +12,9 @@ import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { sha256sum_argv, sha256sum_line_digest }
+import extdeps.tools.sha256sum { sha256sum_byte_span_argv }
+import extdeps.tools.findutils { find_regular_file_sizes_argv }
+import extdeps.tools.gnu_coreutils { df_available_bytes_argv }
 import extdeps.huggingface.hub { hub_resolve_url, hub_repo_cache_directory_name }
 import extdeps.deepseek.deepseek_v4_1_flash {
   DeepseekV41PublishedFile,
@@ -407,27 +410,55 @@ fn v41_parse_nat(s: String) -> Nat? {
   }
 }
 
+// THREE PLAIN LEGS. The directory is probed first, because an absent directory holds nothing and find
+// over it would exit non-zero; listing is extdeps.tools.findutils find_regular_file_sizes_argv. The
+// directory is then created -- an empty directory, the only write before the refusal, and one the
+// fold's ensure_parent makes anyway -- so df answers for the filesystem that will hold the files
+// rather than for a parent this module would otherwise have to walk to.
+fn v41_last_line(s: String) -> String {
+  fold(split(s: s, delimiter: "\n"), init: "", f: (acc, l) => if trim(s: l) == "" { acc } else { l })
+}
+
 fn v41_read_disk(ctx: SparkMaterializeContext, files: List<DeepseekV41PublishedFile>) -> V41DiskReading {
   let dir = v41_checkpoint_directory as String
-  match spark_remote_run(ctx: ctx, argv: ["sh", "-c", join(["if [ -d '", dir, "' ]; then find '", dir, "' -type f -printf '%s %P\\n'; fi"], "")]) {
-    RemoteUnreachable { cause: c } => V41DiskUnread { cause: join(["the directory listing did not run: ", c], "") as NonEmptyStr }
-    RemoteRan { exit_code: e, stdout: listing, stderr: err } =>
-      if e != 0 { V41DiskUnread { cause: join(["the directory listing exited ", to_string(e), ": ", trim(s: err)], "") as NonEmptyStr } } else {
-        match spark_remote_run(ctx: ctx, argv: ["sh", "-c", join(["d='", dir, "'; while [ ! -e \"$d\" ]; do d=$(dirname \"$d\"); done; df -B1 --output=avail \"$d\" | tail -n 1"], "")]) {
-          RemoteUnreachable { cause: c } => V41DiskUnread { cause: join(["the free-space read did not run: ", c], "") as NonEmptyStr }
-          RemoteRan { exit_code: e2, stdout: avail, stderr: err2 } =>
-            if e2 != 0 { V41DiskUnread { cause: join(["df exited ", to_string(e2), ": ", trim(s: err2)], "") as NonEmptyStr } } else {
-              match v41_parse_nat(s: avail) {
-                Absent => V41DiskUnread { cause: join(["df answered no byte count: ", avail], "") as NonEmptyStr }
-                Present { value: a } => V41DiskRead {
-                  required: v41_required_bytes(files: files, listing: split(s: listing, delimiter: "\n")),
-                  available: a,
-                  population: v41_checkpoint_bytes(files: files),
+  match spark_remote_run(ctx: ctx, argv: ["test", "-d", dir]) {
+    RemoteUnreachable { cause: c } => V41DiskUnread { cause: join(["the directory probe did not run: ", c], "") as NonEmptyStr }
+    RemoteRan { exit_code: present, stdout: _, stderr: _ } =>
+      if present != 0 && present != 1 { V41DiskUnread { cause: join(["the directory probe exited ", to_string(present)], "") as NonEmptyStr } } else {
+        match v41_list_directory(ctx: ctx, present: present == 0) {
+          Absent => V41DiskUnread { cause: "the directory listing did not answer" as NonEmptyStr }
+          Present { value: listing } =>
+            match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", dir]) {
+              RemoteUnreachable { cause: c } => V41DiskUnread { cause: join(["the directory could not be created for the free-space read: ", c], "") as NonEmptyStr }
+              RemoteRan { exit_code: m, stdout: _, stderr: merr } =>
+                if m != 0 { V41DiskUnread { cause: join(["mkdir exited ", to_string(m), ": ", trim(s: merr)], "") as NonEmptyStr } } else {
+                  match spark_remote_run(ctx: ctx, argv: df_available_bytes_argv(path: dir)) {
+                    RemoteUnreachable { cause: c } => V41DiskUnread { cause: join(["the free-space read did not run: ", c], "") as NonEmptyStr }
+                    RemoteRan { exit_code: e2, stdout: avail, stderr: err2 } =>
+                      if e2 != 0 { V41DiskUnread { cause: join(["df exited ", to_string(e2), ": ", trim(s: err2)], "") as NonEmptyStr } } else {
+                        match v41_parse_nat(s: v41_last_line(s: avail)) {
+                          Absent => V41DiskUnread { cause: join(["df answered no byte count: ", avail], "") as NonEmptyStr }
+                          Present { value: a } => V41DiskRead {
+                            required: v41_required_bytes(files: files, listing: split(s: listing, delimiter: "\n")),
+                            available: a,
+                            population: v41_checkpoint_bytes(files: files),
+                          }
+                        }
+                      }
+                  }
                 }
-              }
             }
         }
       }
+  }
+}
+
+fn v41_list_directory(ctx: SparkMaterializeContext, present: Bool) -> String? {
+  if !present { Present { value: "" } } else {
+    match spark_remote_run(ctx: ctx, argv: find_regular_file_sizes_argv(root: v41_checkpoint_directory as String)) {
+      RemoteUnreachable { cause: _ } => none
+      RemoteRan { exit_code: e, stdout: out, stderr: _ } => if e != 0 { none } else { Present { value: out } }
+    }
   }
 }
 
@@ -442,19 +473,16 @@ fn v41_disk_line(d: V41DiskReading) -> String {
 // ── THE STORAGE-BACKED SPANS, READ FROM THE VERIFIED SHARDS ───────────────────────────────────
 //
 // The plan is gunbc.spark.v41_engram_row_store v41_published_span_plan over the candidate's partition,
-// the same derivation the key admits the readings against. dd reads exactly the span; pipefail keeps a
-// failed read from passing as the digest of an empty stream.
+// the same derivation the key admits the readings against; the read is extdeps.tools.sha256sum
+// sha256sum_byte_span_argv over exactly the span.
 fn v41_span_read_argv(sp: V41PublishedSpan) -> List<String> {
-  ["bash", "-c", join([
-    "set -o pipefail; dd if='", v41_install_path(path: sp.shard) as String,
-    "' bs=4M iflag=skip_bytes,count_bytes skip=", to_string(sp.file_offset), " count=", to_string(sp.length),
-    " status=none | sha256sum",
-  ], "")]
+  sha256sum_byte_span_argv(path: v41_install_path(path: sp.shard) as String, offset: to_string(sp.file_offset), length: to_string(sp.length))
 }
 
 type V41SpanReadOutcome
   = V41SpanRead { reading: V41PublishedSpanDigest }
   | V41SpanUnread { span: V41PublishedSpan, cause: NonEmptyStr }
+  | V41SpanPlanRefused { defects: List<NonEmptyStr> }
 
 fn v41_read_span(ctx: SparkMaterializeContext, sp: V41PublishedSpan) -> V41SpanReadOutcome {
   match spark_remote_run(ctx: ctx, argv: v41_span_read_argv(sp: sp)) {
@@ -478,6 +506,7 @@ fn v41_span_line(o: V41SpanReadOutcome) -> String {
   match o {
     V41SpanRead { reading: r } => join(["span ", r.span.tensor as String, " ", r.span.shard as String, " ", to_string(r.span.file_offset), " ", to_string(r.span.length), " sha256=", r.sha256.hex as String, "\n"], "")
     V41SpanUnread { span: sp, cause: c } => join(["span-unread ", sp.tensor as String, " ", sp.shard as String, ": ", c as String, "\n"], "")
+    V41SpanPlanRefused { defects: d } => join(["span-plan-refused: ", join(map(d, x => x as String), "; "), "\n"], "")
   }
 }
 
@@ -485,6 +514,7 @@ fn v41_span_is_read(o: V41SpanReadOutcome) -> Bool {
   match o {
     V41SpanRead { reading: _ } => true
     V41SpanUnread { span: _, cause: _ } => false
+    V41SpanPlanRefused { defects: _ } => false
   }
 }
 
@@ -531,7 +561,7 @@ fn v41_materialize_checkpoint(ctx: SparkMaterializeContext) -> V41MaterializeRun
 // be a digest of bytes nobody vouched for.
 fn v41_spans_after(ctx: SparkMaterializeContext, receipts: List<V41FileReceipt>) -> List<V41SpanReadOutcome> {
   match v41_published_span_plan(partition: v41_candidate_partition, sharded: deepseek_v4_1_flash_engram_sharded_entries, shards: deepseek_v4_1_flash_engram_shard_files) {
-    V41PublishedSpansUnplannable { defects: d } => [] as List<V41SpanReadOutcome>
+    V41PublishedSpansUnplannable { defects: d } => [V41SpanPlanRefused { defects: d }]
     V41PublishedSpansPlanned { spans: plan } =>
       map(plan, sp =>
         if any(receipts, r => (r.path as String) == (sp.shard as String) && acquisition_succeeded(outcome: r.outcome)) {

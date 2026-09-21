@@ -1,6 +1,6 @@
 module extdeps.tools.sha256sum
 
-import std.types { NonEmptyStr, Bool, Unit }
+import std.types { NonEmptyStr, Bool, Unit, List }
 import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -115,7 +115,12 @@ data sha256_verify_native_transport_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "extdeps.tools.sha256sum", decl_name: "Sha256VerifyVerdict"),
     reason: "Sha256VerifyVerdict|transport:shell-only",
     dissolution: unbound_dissolution(description: "a native/library SHA-256 realization lands and is bound as a second handler for the Sha256Verify shape"),
-  )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.tools.sha256sum", decl_name: "sha256sum_byte_span_program"),
+    reason: "sha256sum_byte_span_program|pipeline:fixed-bash-text",
+    dissolution: unbound_dissolution(description: "a pipeline realization (bash-emit / shell-to-intent) expresses dd | sha256sum with the producing stage's status, so the fixed bash text is emitted rather than authored"),
+  ),
 ]
 
 // sha256sum --check exits non-zero on DIGEST MISMATCH, which is this fn's Sha256Mismatch answer, not a fault — so the check call is OutcomeIsData. The guard holds on the same evidence as the caller: Sha256VerifyVerdict already separates the two content answers (Matches / Mismatch) from Sha256VerifyInfraFailure, the arm for the verification machinery itself breaking, so annotating the content comparison cannot silence an infra failure — that arm is reached by different conditions entirely.
@@ -176,3 +181,17 @@ fn sha256sum_verify_via_shell(path: NonEmptyStr, expected_digest: NonEmptyStr) -
     }
   }
 }
+
+// THE SHA256 OF A BYTE SPAN OF A FILE. sha256sum has no offset operand, so the span is streamed by
+// dd(1) (iflag=skip_bytes,count_bytes makes skip and count byte counts) into sha256sum -- a pipeline,
+// which no argv carrier here expresses. The program is FIXED TEXT owned by this authority and the
+// path, offset and length travel as positional operands, never spliced into it; bash's pipefail makes
+// a failed read fail the whole rather than pass as the digest of a short stream (dash, /bin/sh on these
+// hosts, refuses pipefail -- see extdeps.shell).
+data sha256sum_byte_span_program: NonEmptyStr = "set -o pipefail; dd if=\"$1\" bs=4M iflag=skip_bytes,count_bytes skip=\"$2\" count=\"$3\" status=none | sha256sum" as NonEmptyStr
+
+
+fn sha256sum_byte_span_argv(path: String, offset: String, length: String) -> List<String> {
+  ["bash", "-c", sha256sum_byte_span_program as String, "bash", path, offset, length]
+}
+
