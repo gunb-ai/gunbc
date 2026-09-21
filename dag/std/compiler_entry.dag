@@ -54,7 +54,11 @@ import std.measure {
 // native_test_resolve_module / native_test_infer_resolved) and carries decls=. Its outcome names
 // which arm decided the module: accepted, infer_refused, resolve_refused, or context_refused --
 // the last for a module whose FILE this context already refused, which never enters the resolver,
-// so its resolve span is the refusal lookup and not a resolution it did not perform. The
+// so its resolve span is the refusal lookup and not a resolution it did not perform. Beside
+// each persisted population row that did not pass it prints one `[native-verdict]` line on
+// stderr -- gunbc.witness_v2_native_route native_route_member_row_text: the subject, the stage,
+// the fatal cause and the located diagnostic chain the failing stage produced -- so the operator
+// command that drains this stderr names WHERE a subject failed, not only that it did. The
 // `[native-cost-partition]` verdict is native_driver_cost_account over NativeDriverExclusiveRows,
 // not a second copy of the reconcile law: remainder_nanos is that fold's residual, and
 // OverAttributed carries no remainder field (underflow is not a number). A non-Reconciled

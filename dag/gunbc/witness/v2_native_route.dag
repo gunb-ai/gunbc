@@ -6,11 +6,15 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
+import std.types { NonEmptyStr }
+import extdeps.bazel.label { LabelParse, PackagePath, parse_label }
+import extdeps.bazel.target_pattern { SubtreeTargets, TargetPattern }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
-  NativeTestFileRefusal
+  NativeTestFileRefusal, native_test_verdict_text
 }
+import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.workflow.compile_door_cause_ownership {
   CauseLane, DiagnosticGrain, FatalGrain, HeadGrain, cause_ownership_lookup, known_frontier_causes
 }
@@ -64,6 +68,64 @@ data native_route_universe_prefix: String = "v2.test."
 
 fn native_route_universe_member(module_qn: String) -> Bool {
   starts_with(s: module_qn, prefix: native_route_universe_prefix)
+}
+
+// A TARGET PATTERN SELECTS THE UNIVERSE, AND THE MATCHING IS `extdeps.bazel.target_pattern`'S.
+//
+// The universe above is a namespace prefix chosen once and compiled in. An operator asking for a
+// subset -- `gunbc test //v2/test/parse/...` -- is asking the same question with a different
+// pattern, and the cited authority already answers it: `target_pattern_matches` owns subtree
+// containment, package equality and single-target equality. This module owns exactly one fact
+// beside it, the correspondence below, and does not restate the matching.
+//
+// THE MAPPING FROM IDENTITY TO LABEL IS A GUNBC FACT, NOT A BAZEL ONE, which is why it lives here.
+// The cited authority spells packages as PATH SEGMENTS; this corpus's targets are DECLARED MODULE
+// NAMESPACES (the `module` line, never the file path -- see gunbc.namespace_cut_stage for why
+// those are different facts) holding declarations. A module's namespace segments ARE the package
+// segments and the declaration IS the target name, so the label is spelled and handed to the
+// upstream's own `parse_label`: its segment and target-name refusals apply to an identity exactly
+// as they apply to an operator's label, and no second parser decides what a well-formed package
+// is. A refused identity label is a typed refusal of the universe, never a silent exclusion.
+// ONE PACKAGE TEXT PER MODULE: the namespace segments joined with the upstream's separator.
+// The producer computes it once per module and parses each declaration against it, so a module's
+// namespace is folded once, not once per declaration.
+fn native_route_module_package_text(module_qn: String) -> String {
+  fold_list(
+    xs: split(s: module_qn, delimiter: "."),
+    empty: "",
+    cons: fn(acc, segment) {
+      if acc == "" { concat("", segment) } else { concat(concat(acc, "/"), segment) }
+    }
+  )
+}
+
+fn native_route_label_in_package(package_text: String, declaration: String) -> LabelParse {
+  parse_label(text: concat(concat(concat("//", package_text), ":"), declaration))
+}
+
+fn native_route_identity_label(module_qn: String, declaration: String) -> LabelParse {
+  native_route_label_in_package(
+    package_text: native_route_module_package_text(module_qn: module_qn),
+    declaration: declaration
+  )
+}
+
+// THE DEFAULT PATTERN IS `//v2/test/...`, AND IT NARROWS NOTHING. The universe stays the floor's
+// prefix; a pattern only selects within it (v2.compiler.compile `native_lane_identity_admitted`).
+// The two differ on exactly one module name -- `v2.test` itself, which the subtree form includes
+// and the gate prefix does not -- and no such module exists; the conjunction makes that difference
+// unobservable rather than a second population. `the_default_pattern_admits_every_universe_member`
+// is the law: were the default ever narrower than the universe, the lane would silently drop
+// members at its default.
+//
+// CONSUMERS AND FRONTIER. `v2.compiler.compile` `native_lane_universe_selected` consumes the
+// pattern at execution; `native_lane_universe` (the required-v2-native lane's rendered main)
+// consumes it at this default. An OPERATOR-SUPPLIED pattern reaches that same producer when
+// `gunbc test <pattern>` enters the native implementation (v2 foundation package 9); that verb is
+// the trigger for a non-default caller, and until it lands the only non-default callers are the
+// witnesses over the real producer in gunbc.native_lane_import_refusal_witness_test.
+fn native_route_default_pattern() -> TargetPattern {
+  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr] } }
 }
 
 // ONE TEST IDENTITY, STRUCTURED. The module qualified name and the declaration name are separate
@@ -132,6 +194,18 @@ fn native_route_reference_for(
 type NativeRouteMemberRow {
   identity: NativeRouteTestIdentity
   verdict: NativeTestVerdict
+}
+
+// THE OPERATOR'S LINE FOR ONE ROW: the subject the lane keys on, then the verdict as the
+// vocabulary renders it. The driver prints this on stderr for every row that did not pass,
+// beside the JSON row it persists on stdout, so the command an operator runs names the failing
+// subject with its stage, its cause and where the cause is -- read off the same value the row
+// carries, never re-derived by the host from the bytes it wrote.
+fn native_route_member_row_text(row: NativeRouteMemberRow) -> String {
+  concat(
+    native_route_identity_qualified(identity: row.identity),
+    concat(" ", native_test_verdict_text(verdict: row.verdict))
+  )
 }
 
 // THE MODULE → SOURCE-PATH RELATION, OVER THE UNIVERSE'S OWN MODULES. A Context-stage row is a
@@ -262,22 +336,25 @@ fn native_route_disposition(
         FloorRouteGapRefusal => NativeDivergence { cause: NativeReachedRouteGap }
       }
     NativeTestReturnedOther => NativeDivergence { cause: NativeReturnedOtherVerdict }
-    NativeTestRefused { stage: stage, reason: reason } =>
-      match reference {
-        FloorRouteGapRefusal =>
-          match stage {
-            NativeTestStageEval =>
-              if native_route_reason_member(reason: reason, roster: native_route_effect_boundary_reasons) {
-                NativeAgreementRouteGap
-              } else {
-                NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
-              }
-            NativeTestStageContext => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
-            NativeTestStagePrepare => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
-            NativeTestStageEntry => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
-          }
-        FloorExpectedPass => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
-        FloorExpectedRed => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+    NativeTestRefused { stage: stage, diagnostics: d } =>
+      {
+        let reason = diagnostics_fatal_reason(d: d)
+        match reference {
+          FloorRouteGapRefusal =>
+            match stage {
+              NativeTestStageEval =>
+                if native_route_reason_member(reason: reason, roster: native_route_effect_boundary_reasons) {
+                  NativeAgreementRouteGap
+                } else {
+                  NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+                }
+              NativeTestStageContext => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+              NativeTestStagePrepare => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+              NativeTestStageEntry => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+            }
+          FloorExpectedPass => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+          FloorExpectedRed => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+        }
       }
   }
 }
@@ -791,13 +868,13 @@ fn native_route_head_advisories_attributed(receipt: NativeRouteReceipt) -> Bool 
 fn native_route_context_refusals_backed(receipt: NativeRouteReceipt) -> Bool {
   !any(xs: receipt.population, predicate: fn(row) {
     match row.verdict {
-      NativeTestRefused { stage: stage, reason: reason } =>
+      NativeTestRefused { stage: stage, diagnostics: d } =>
         match stage {
           NativeTestStageContext =>
             !any(xs: receipt.module_source_index, predicate: fn(ms) {
               ms.module == row.identity.module
               && any(xs: receipt.file_refusals, predicate: fn(fr) {
-                fr.path == ms.path && fr.fatal_reason == reason
+                fr.path == ms.path && fr.fatal_reason == diagnostics_fatal_reason(d: d)
               })
             })
           NativeTestStagePrepare => false
@@ -832,7 +909,7 @@ fn native_route_false_control_holds(receipt: NativeRouteReceipt) -> Bool {
         NativeTestReturnedFalse => true
         NativeTestPassed => false
         NativeTestReturnedOther => false
-        NativeTestRefused { stage: _, reason: _ } => false
+        NativeTestRefused { stage: _, diagnostics: _ } => false
       }
     Absent => false
   }
@@ -845,7 +922,7 @@ fn native_route_true_control_holds(receipt: NativeRouteReceipt) -> Bool {
         NativeTestPassed => true
         NativeTestReturnedFalse => false
         NativeTestReturnedOther => false
-        NativeTestRefused { stage: _, reason: _ } => false
+        NativeTestRefused { stage: _, diagnostics: _ } => false
       }
     Absent => false
   }
