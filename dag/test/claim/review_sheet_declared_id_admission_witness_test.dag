@@ -164,8 +164,50 @@ test fn an_unsettled_legacy_side_offers_no_ids_to_select() -> Bool {
     ),
     declaration: w_selection(subject: w_subject(), file_id: "legacy-C"),
   ) {
-    SelectionRejected { cause: c } => string_contains(s: c as String, pattern: "no observation saw")
+    SelectionRejected { cause: c } =>
+      string_contains(s: c as String, pattern: "never that no other lineage exists")
     SelectionStandsForAdjudication { file_id: _ } => false
+    SelectionNotOffered => false
+  }
+}
+
+// THE SAME LAW ON THE NEIGHBOURING STANDING, WHICH IS WHERE IT LEAKED. Two CURRENT-marked files
+// were observed and the superseded extent was never read; the operator picks one of the two files
+// they can see. That is a real adjudication of A against C and it is still refused, because
+// nothing here has established that an invisible superseded-marked B does not exist -- a different
+// marker field with a different visibility. Without this claim the arm admits the selection
+// through its current-id population while the module's own law refuses the identical situation one
+// standing away.
+test fn a_selection_among_conflicting_current_files_beside_an_unsettled_extent_refuses() -> Bool {
+  match candidacy(
+    disposition: w_conflict(
+      current: ["current-A", "current-C"],
+      legacy: LegacyExtentUnsettled { cause: "the superseded-marker search could not be read" as NonEmptyStr },
+    ),
+    declaration: w_selection(subject: w_subject(), file_id: "current-A"),
+  ) {
+    SelectionRejected { cause: c } =>
+      string_contains(s: c as String, pattern: "never that no other lineage exists")
+        && string_contains(s: c as String, pattern: "current-C")
+    SelectionStandsForAdjudication { file_id: _ } => false
+    SelectionNotOffered => false
+  }
+}
+
+// AND ITS POSITIVE CONTROL, WITHOUT WHICH THE REFUSAL ABOVE IS SATISFIED BY AN OVER-PROHIBITION.
+// The same two observed current files, but the superseded extent SETTLED empty by a declaration
+// that is a statement about the world -- so there is no unread generation left to be silent about,
+// and choosing between A and C is the adjudication a declaration is for.
+test fn a_selection_among_conflicting_current_files_beside_a_settled_empty_extent_stands() -> Bool {
+  match candidacy(
+    disposition: w_conflict(
+      current: ["current-A", "current-C"],
+      legacy: LegacyExtentSettledEmpty,
+    ),
+    declaration: w_selection(subject: w_subject(), file_id: "current-A"),
+  ) {
+    SelectionStandsForAdjudication { file_id: f } => (f as String) == "current-A"
+    SelectionRejected { cause: _ } => false
     SelectionNotOffered => false
   }
 }

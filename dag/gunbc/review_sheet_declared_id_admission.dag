@@ -49,7 +49,8 @@ import gunbc.review_sheet_legacy_extent_producer {
 // FILE-BY-ID PREFLIGHT, which costs a request and is therefore last.
 //
 // THE REFUSAL THIS MODULE EXISTS FOR IS THE ONE PEOPLE WILL WANT TO WIDEN. A selection beside an
-// UNRESOLVED extent stays unresolved. It is tempting to read the selection as settling the
+// UNRESOLVED extent stays unresolved, on EVERY standing that carries one -- whether one
+// current-marked file was observed or several. It is tempting to read the selection as settling the
 // question -- the operator has looked, after all -- but the operator has said which file they
 // choose, not that no other lineage exists, and the whole incident this lane closes is a
 // conclusion assigned to a reading that had not established it. Admitting here would be that
@@ -104,25 +105,11 @@ fn selection_against_standing(
 ) -> DeclaredIdCandidacy {
   match disposition {
     ReviewSheetConflictingLineages { current_file_ids: current, legacy: legacy } =>
-      if lineage_ids_name(ids: current, file_id: selection.file_id)
-        || lineage_ids_name(ids: settled_legacy_ids(legacy: legacy), file_id: selection.file_id) {
-        SelectionStandsForAdjudication { file_id: selection.file_id }
-      } else {
-        SelectionRejected {
-          cause: join(
-            [
-              "the operator declaration selects file ",
-              selection.file_id as String,
-              ", which no observation saw: neither the current-marker observation [",
-              join(current, ", "),
-              "] nor the superseded-marker one, ",
-              legacy_observed_ids_text(legacy: legacy),
-              ". Choosing between observed lineages is an adjudication; naming a file no observation returned is an assertion this converge cannot check against anything",
-            ],
-            "",
-          ) as NonEmptyStr,
-        }
-      }
+      selection_against_conflicting_lineages(
+        selection: selection,
+        current: current,
+        legacy: legacy,
+      )
     CurrentMarkerObservedLegacyExtentUnresolved { file_id: f, cause: c } =>
       SelectionRejected {
         cause: join(
@@ -210,36 +197,87 @@ fn selection_against_sole_observed_file(
   }
 }
 
-// THE OBSERVED POPULATION A SELECTION MAY CHOOSE FROM, derived from the verdict rather than from a
-// second reading of the evidence. An UNSETTLED legacy side contributes no ids, which is correct and
-// is the property that keeps the conflict arm from admitting a file the superseded search never
-// returned.
+// THE LEGACY VERDICT IS CONSULTED BEFORE ANY SELECTION IS ACCEPTED, AND THAT ORDER IS THE WHOLE
+// REPAIR. An earlier shape asked one question -- does some observed population name this id? --
+// with the UNSETTLED side contributing no candidates to that population. That is true and it is
+// not enough: a selected CURRENT id still named a population, so a selection beside an unresolved
+// superseded extent was admitted through the current side while the module's own law refused it
+// one arm away. More observed CURRENT files cannot settle an unread LEGACY namespace; they are a
+// different marker field with a different visibility, which is the entire content of this lane.
+//
+// SO THE UNSETTLED CASE HAS NO PATH TO SelectionStandsForAdjudication AT ALL rather than a guard
+// that re-checks one: the constructor is absent from that arm, so re-admitting it is an edit a
+// reader has to write rather than a condition they can loosen (DESIGN §4b -- construction over
+// validation, and a failure arm refuses rather than widens).
+fn selection_against_conflicting_lineages(
+  selection: LegacyFileSelection,
+  current: List<String>,
+  legacy: LegacyExtentVerdict,
+) -> DeclaredIdCandidacy {
+  match legacy {
+    LegacyExtentUnsettled { cause: c } =>
+      SelectionRejected {
+        cause: join(
+          [
+            "the operator declaration selects file ",
+            selection.file_id as String,
+            " while the superseded-marker extent is unresolved (",
+            c as String,
+            "), and the current-marker observation returned [",
+            join(current, ", "),
+            "]. A selection says which file the operator chose, never that no other lineage exists, and adjudicating between the current-marked files says nothing about a superseded generation nobody read. Declare the extent absent for this subject if that is what you can establish",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    LegacyExtentSettledEmpty =>
+      selection_within_observed_ids(
+        selection: selection,
+        observed: current,
+        current: current,
+        legacy_text: "which was declared to hold nothing",
+      )
+    LegacyExtentFound { file_ids: ids } =>
+      selection_within_observed_ids(
+        selection: selection,
+        observed: concat(current, ids),
+        current: current,
+        legacy_text: join(["which returned [", join(ids, ", "), "]"], ""),
+      )
+  }
+}
+
+// THE OBSERVED POPULATION A SELECTION MAY CHOOSE FROM, reached only from a legacy side that was
+// SETTLED. The two sides are still named separately in the refusal rather than concatenated,
+// because an operator reading it needs to know WHICH observation failed to return their file.
+fn selection_within_observed_ids(
+  selection: LegacyFileSelection,
+  observed: List<String>,
+  current: List<String>,
+  legacy_text: String,
+) -> DeclaredIdCandidacy {
+  if lineage_ids_name(ids: observed, file_id: selection.file_id) {
+    SelectionStandsForAdjudication { file_id: selection.file_id }
+  } else {
+    SelectionRejected {
+      cause: join(
+        [
+          "the operator declaration selects file ",
+          selection.file_id as String,
+          ", which no observation saw: neither the current-marker observation [",
+          join(current, ", "),
+          "] nor the superseded-marker one, ",
+          legacy_text,
+          ". Choosing between observed lineages is an adjudication; naming a file no observation returned is an assertion this converge cannot check against anything",
+        ],
+        "",
+      ) as NonEmptyStr,
+    }
+  }
+}
+
 fn lineage_ids_name(ids: List<String>, file_id: NonEmptyStr) -> Bool {
   count(filter(ids, i => i == (file_id as String))) > 0
-}
-
-// THE IDS THE SUPERSEDED SIDE ACTUALLY RETURNED, and an UNSETTLED side returns none. That is the
-// property keeping the conflict arm from admitting a file the superseded search never saw: an
-// unread generation is not a source of candidates, and treating it as one would let a selection
-// be justified by the very silence this lane exists to refuse.
-fn settled_legacy_ids(legacy: LegacyExtentVerdict) -> List<String> {
-  match legacy {
-    LegacyExtentFound { file_ids: ids } => ids
-    LegacyExtentSettledEmpty => []
-    LegacyExtentUnsettled { cause: _ } => []
-  }
-}
-
-// THE TWO SIDES ARE NAMED SEPARATELY IN THE REFUSAL RATHER THAN CONCATENATED, because an operator
-// reading it needs to know WHICH observation failed to return their file, and because "the
-// superseded side was unread" is a different sentence from "the superseded side returned nothing".
-fn legacy_observed_ids_text(legacy: LegacyExtentVerdict) -> String {
-  match legacy {
-    LegacyExtentFound { file_ids: ids } => join(["which returned [", join(ids, ", "), "]"], "")
-    LegacyExtentSettledEmpty => "which was declared to hold nothing"
-    LegacyExtentUnsettled { cause: c } =>
-      join(["which was never settled (", c as String, ") and so offers no file to select"], "")
-  }
 }
 
 // ── THE EXACT FILE-BY-ID PREFLIGHT ────────────────────────────────────────────────────────────
