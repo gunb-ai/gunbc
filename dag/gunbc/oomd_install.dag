@@ -66,11 +66,35 @@ import extdeps.systemd.systemctl {
 data gunbc_oomd_sessions_slice: NonEmptyStr = "sessions.slice"
 
 
+data gunbc_oomd_sessions_pressure_limit: Percent = percent(60)
+
+
+// PSI-pressure eviction is OFF for the sessions slice.
+//
+// systemd-oomd's pressure action does not evict a process, it "select[s] a
+// descendant cgroup and send[s] SIGKILL to all of the processes under it"
+// (systemd.resource-control(5)). Every session container is a descendant of
+// sessions.slice, so on a host under aggregate pressure that is a fleet-wide
+// kill, not a targeted eviction. Measured on srv2 2026-09-20: six culls in
+// one hour taking 25-40 sessions each, every one landing within one second
+// of an oomd pressure decision.
+//
+// PSI is a STALL signal, not an occupancy signal, so the threshold cannot be
+// tuned out of the failure: pressure reached 92% with 33 GiB of the slice's
+// 88 GiB still free, because anon memory could not be reclaimed and the
+// kernel was churning file cache. Raising the limit 60% -> 90% moved the bar
+// and the culls continued.
+//
+// Eviction is still guaranteed, by the mechanism that bounds occupancy
+// rather than stall: MemoryMax on the slice, enforced by the kernel OOM
+// killer, which kills ONE process instead of a whole descendant cgroup. The
+// per-session and parent-slice cap checks below are what make that binding,
+// and they remain mandatory.
 data gunbc_oomd_sessions_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
   scope_unit: gunbc_oomd_sessions_slice,
   managed_oom_swap: ManagedOomKill,
-  managed_oom_memory_pressure: ManagedOomKill,
-  managed_oom_memory_pressure_limit: percent(60),
+  managed_oom_memory_pressure: ManagedOomAuto,
+  managed_oom_memory_pressure_limit: gunbc_oomd_sessions_pressure_limit,
   managed_oom_memory_pressure_duration: second(20),
 }
 
@@ -160,6 +184,7 @@ type OomdGroundingThresholds {
   per_session_cap: ByteSize
   parent_slice_cap: SessionReservationBytesResolution
   pressure_limit: Percent
+  pressure_action: ManagedOomAction
 }
 
 type OomdGroundingCheck
@@ -196,10 +221,45 @@ fn unit_is_enabled(s: UnitFileState) -> Bool {
   }
 }
 
+// Does the effective ManagedOOMMemoryPressure equal what the policy asked
+// for? This replaces a pressure_is_kill/1 that hardcoded ManagedOomKill as
+// the only grounded value, which made the intended policy unrepresentable:
+// a host correctly converged to ManagedOomAuto reported as drift forever.
+// Every other property here is checked effective-vs-intended; this one now
+// matches.
+// Is this action the destructive one? A PROJECTION predicate: it renders an
+// action for consumers that must state the posture as a boolean (the runner
+// deploy manifest). It is deliberately NOT a grounding assertion -- asserting
+// pressure_is_kill(effective) is what made ManagedOomAuto unrepresentable as
+// an intended state; see pressure_action_matches below.
 fn pressure_is_kill(a: ManagedOomAction) -> Bool {
   match a {
     ManagedOomKill => true
     ManagedOomAuto => false
+  }
+}
+
+fn pressure_action_matches(eff: ManagedOomAction, intended: ManagedOomAction) -> Bool {
+  match eff {
+    ManagedOomKill => match intended {
+      ManagedOomKill => true
+      ManagedOomAuto => false
+    }
+    ManagedOomAuto => match intended {
+      ManagedOomKill => false
+      ManagedOomAuto => true
+    }
+  }
+}
+
+// ManagedOOMMemoryPressureLimit "is ignored unless
+// ManagedOOMMemoryPressure=kill" (systemd.resource-control(5)), so under
+// ManagedOomAuto the effective percent is inert and comparing it asserts
+// nothing about the host. Only bind it when the action makes it load-bearing.
+fn pressure_limit_grounded(eff: Percent, req: Percent, action: ManagedOomAction) -> Bool {
+  match action {
+    ManagedOomAuto => true
+    ManagedOomKill => percent_count(p: eff) == percent_count(p: req)
   }
 }
 
@@ -235,10 +295,10 @@ fn grounding_checks(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> Li
     grounding_check(ok: read.slice_present, reason: "managed sessions slice does not exist: systemd-oomd has no managed cgroup to evict within under aggregate pressure (active oomd with no managed slice = zero protection)"),
     grounding_check(ok: unit_is_active(s: read.unit_active), reason: "systemd-oomd.service is not active"),
     grounding_check(ok: unit_is_enabled(s: read.unit_file_state), reason: "systemd-oomd.service is not enabled: the eviction backstop will not survive a reboot"),
-    grounding_check(ok: pressure_is_kill(a: read.effective_managed_oom_memory_pressure), reason: "effective ManagedOOMMemoryPressure is auto, not kill: eviction is not guaranteed on the sessions slice"),
+    grounding_check(ok: pressure_action_matches(eff: read.effective_managed_oom_memory_pressure, intended: req.pressure_action), reason: "effective ManagedOOMMemoryPressure does not equal the intended policy action: the host has drifted from the configured oomd posture"),
     grounding_check(ok: cap_equals(eff: read.effective_per_session_memory_max, target: req.per_session_cap), reason: "per-session memory.max does not equal the C eviction ceiling (or MemoryMax is infinity — an inert cap)"),
     grounding_check(ok: parent_slice_cap_ok(eff: read.effective_parent_slice_memory_max, agg: req.parent_slice_cap), reason: "parent sessions.slice MemoryMax does not equal the measured aggregate reservation (or the aggregate is unmeasured / MemoryMax is infinity)"),
-    grounding_check(ok: percent_count(p: read.effective_managed_oom_memory_pressure_limit) == percent_count(p: req.pressure_limit), reason: "ManagedOOMMemoryPressureLimit (PSI percent) does not equal the intended threshold"),
+    grounding_check(ok: pressure_limit_grounded(eff: read.effective_managed_oom_memory_pressure_limit, req: req.pressure_limit, action: req.pressure_action), reason: "ManagedOOMMemoryPressureLimit (PSI percent) does not equal the intended threshold"),
     grounding_check(ok: read.oomctl_manages_slice, reason: "oomctl does not list the sessions slice in the systemd-oomd managed set"),
     membership_grounding_check(m: read.membership),
   ]

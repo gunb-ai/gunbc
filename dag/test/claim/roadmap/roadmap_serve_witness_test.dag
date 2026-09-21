@@ -10,12 +10,12 @@ import gunbc.roadmap_serve {
   InstrumentTunerAssetHandler, InstrumentMotionPageHandler, InstrumentMotionAssetHandler,
   SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
-  BeltPublishHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
-  RoadmapServeRouteSpec,
-  RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
+  BeltPublishHandler,
   roadmap_serve_route_table_build,
   roadmap_serve_route_specs,
-  roadmap_serve_build_from_specs,
+  roadmap_serve_own_route_specs,
+  roadmap_serve_approval_cutover_route_specs,
+  ApprovalBrokerCutoverHandler,
   roadmap_serve_selection_response,
   roadmap_serve_invoke,
   roadmap_serve_respond,
@@ -46,6 +46,8 @@ import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse,
   ServedRouteTable,
+  ServedRouteSpec, ServedRouteTableBuild, ServedRouteTableBuilt, ServedRouteTableBuildRefused,
+  serve_build_route_table,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
   serve_select_route,
   HttpMethodParse, KnownMethod, UnknownMethod,
@@ -53,6 +55,7 @@ import extdeps.http.server {
   media_type_wire_label,
 }
 import extdeps.uri_path { PathParamBinding, path_param_value }
+import gunbc.auth.approval_broker_serve { approval_broker_route_specs }
 import std.types { String, Int, Bool, List, HttpMethod, GET, POST, PUT }
 import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
@@ -64,6 +67,7 @@ import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap_site_surface_render { roadmap_site_roadmap_url_path, roadmap_site_dispatch_url_path, roadmap_site_daily_url_path }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_lines_accepted_count }
 import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.auth.approval_status_wire { filed_approval_status_text, StatusNotFiled }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 
 // Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below
@@ -72,8 +76,8 @@ import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source 
 
 fn live_table_or_empty() -> ServedRouteTable<RoadmapServeHandler> {
   match roadmap_serve_route_table_build() {
-    RoadmapServeTable { table: t } => t
-    RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => ServedRouteTable { routes: [] }
+    ServedRouteTableBuilt { table: t } => t
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => ServedRouteTable { routes: [] }
   }
 }
 
@@ -109,8 +113,6 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: POST, path: "/cleanup/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/stop/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/publish/some-node", want: BeltPublishHandler)
-    && selects(method: POST, path: "/approvals", want: ApprovalSubmitHandler)
-    && selects(method: GET, path: "/approvals/esc-1", want: ApprovalStatusHandler)
 }
 
 test fn witness_asset_route_serves_modeled_js() -> Bool {
@@ -277,9 +279,9 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
 
 test fn witness_live_table_builds_ready_routes() -> Bool {
   match roadmap_serve_route_table_build() {
-    RoadmapServeTable { table: t } =>
+    ServedRouteTableBuilt { table: t } =>
       count(t.routes) > 0 && count(t.routes) == count(roadmap_serve_route_specs())
-    RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => false
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
   }
 }
 
@@ -289,12 +291,12 @@ test fn witness_live_table_builds_ready_routes() -> Bool {
 
 test fn witness_malformed_route_literal_refuses_table() -> Bool {
   let specs = [
-    RoadmapServeRouteSpec { method: GET, raw: "/ok", handler: HealthzHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/dispatch/\{node_id", handler: BeltDispatchHandler },
+    ServedRouteSpec { method: GET, raw: "/ok", handler: HealthzHandler },
+    ServedRouteSpec { method: GET, raw: "/dispatch/\{node_id", handler: BeltDispatchHandler },
   ]
-  match roadmap_serve_build_from_specs(specs: specs) {
-    RoadmapServeTableRefused { raw: r, segment: _, reason: _ } => r == "/dispatch/\{node_id"
-    RoadmapServeTable { table: _ } => false
+  match serve_build_route_table(specs: specs) {
+    ServedRouteTableBuildRefused { raw: r, segment: _, reason: _ } => r == "/dispatch/\{node_id"
+    ServedRouteTableBuilt { table: _ } => false
   }
 }
 
@@ -409,6 +411,25 @@ test fn an_absent_identity_arrives_at_the_handler_as_absent() -> Bool {
   )
   string_contains(s: r.body, pattern: "identity: \n")
     && !string_contains(s: r.body, pattern: "briansrls")
+}
+
+test fn a_garbage_approval_submission_is_400_and_names_the_unreadable_body() -> Bool {
+  let r = roadmap_serve_respond(
+    method_label: "POST",
+    path: "/approvals",
+    body: "nope",
+    tailscale_identity: "",
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 400
+    && string_contains(s: r.body, pattern: "approval submission:")
+    && !string_contains(s: r.body, pattern: "http")
+}
+
+test fn an_unfiled_escalation_status_is_text_plain_standing() -> Bool {
+  let body = filed_approval_status_text(status: StatusNotFiled)
+  string_contains(s: body, pattern: "standing=")
+    && !string_contains(s: body, pattern: "{")
 }
 
 // ── The plan authority is a parameter ───────────────────────────────────────────────────────────
@@ -604,4 +625,51 @@ test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
   md.status == 200
     && string_contains(s: md.body, pattern: caller_supplied_plan_section_title())
     && !string_contains(s: md.body, pattern: public_plan_section_title())
+}
+
+// ── THE APPROVAL ROUTES, MID-CUTOVER ────────────────────────────────────────────────────────
+// The four approval routes are being moved to gunbc.auth.approval_broker_serve under its own unit
+// and slice, for an availability reason rather than a tidiness one: boot 15 refused on an approval
+// status poll because THIS process's heap was swapped and OOM-killed (side-chat ruling
+// 2026-09-19). The staged transaction deploys the broker dark and measures it BEFORE anything is
+// repointed, so during the window this table still mounts them -- and what these two claims
+// establish is that mounting them costs no second authority.
+//
+// WHAT IS ASSERTED: every approval row this table carries is a PROJECTION of the broker's own spec
+// -- same method, same path literal, same handler value -- so there is one place an approval route
+// is defined and one place it is implemented, while there are temporarily two tables serving it.
+// The RED is a hand-authored approval row appearing in roadmap_serve_own_route_specs: the counts
+// stop agreeing and the projection stops accounting for every approval path this table answers.
+//
+// THE WALL THIS BECOMES. At stage 6 of gunbc.auth.approval_broker_cutover the arm and the
+// projection are deleted, and these two claims are replaced by the standing regression control that
+// this table answers NOTHING for the four approval (method, path) pairs.
+
+test fn roadmap_approval_rows_are_projected_from_the_broker() -> Bool {
+  let projected = roadmap_serve_approval_cutover_route_specs()
+  count(projected) == count(approval_broker_route_specs())
+    && count(roadmap_serve_route_specs())
+       == count(roadmap_serve_own_route_specs()) + count(projected)
+}
+
+// NO APPROVAL PATH IS ANSWERED BY A ROW THIS MODULE AUTHORED. The projection above could hold while
+// a hand-written row ALSO matched an approval request -- two owners with agreeing counts. This asks
+// selection instead: every approval request this table answers must land on the broker arm.
+fn roadmap_approval_request_lands_on_the_broker_arm(method: HttpMethod, path: String) -> Bool {
+  match serve_select_route(table: live_table_or_empty(), method: method, path: path) {
+    SelectedDynamic { handler: h, params: _ } => match h {
+      ApprovalBrokerCutoverHandler { route: _ } => true
+      _ => false
+    }
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+test fn roadmap_approval_paths_are_owned_only_by_the_broker_arm() -> Bool {
+  roadmap_approval_request_lands_on_the_broker_arm(method: GET, path: "/approve/esc-1.approve.0badc0de")
+    && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approve/esc-1.approve.0badc0de")
+    && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approvals")
+    && roadmap_approval_request_lands_on_the_broker_arm(method: GET, path: "/approvals/esc-1")
 }

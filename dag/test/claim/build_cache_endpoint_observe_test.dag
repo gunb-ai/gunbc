@@ -52,7 +52,14 @@ data observe_managed_unit_cgroup_text: String = "0::/system.slice/gunbc-build-ca
 // it was "wider than any host can reach"). So the index is computed as one past what the host
 // actually commits, and it is retired BY CONSTRUCTION rather than by a coincidence someone has to
 // maintain.
-data observe_retired_slot_index: Int = gunbc_runner_slots_per_host(host: "srv1") + 1
+fn observe_srv1_committed_width() -> Int {
+  match gunbc_runner_committed_width(host: "srv1") {
+    RunnerWidthDerived { slots: n } => n
+    RunnerWidthUnresolved { cause: _ } => 0 - 1
+  }
+}
+
+data observe_retired_slot_index: Int = observe_srv1_committed_width() + 1
 
 data observe_retired_slot_cgroup_text: String = join(
   [
@@ -207,7 +214,7 @@ test fn witness_retired_runner_slot_owner_refuses() -> Bool {
   ) {
     ServerRunnerOwned { slot: s, lifecycle: lc } =>
       match lc {
-        RetiredRunnerSlot => s.slot_index > gunbc_runner_slots_per_host(host: "srv1")
+        RetiredRunnerSlot => s.slot_index > observe_srv1_committed_width()
         DesiredRunnerSlot => false
       }
     ServerManagedUnitOwned { unit: _ } => false

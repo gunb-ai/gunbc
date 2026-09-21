@@ -1,0 +1,146 @@
+module v2.compiler.test_marker_capture
+
+import v2.compiler.parse { ParseTree }
+import v2.extdeps.languages.dag {
+  dag_binding_branded_atom_identity,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional
+}
+import v2.std.collection { Absent, List, Present, Optional }
+import v2.std.algebra { list_snoc_item }
+import v2.std.declaration_marker { TestMarkedDeclaration, TestMarkerChannel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Edge, Node, Symbol }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
+
+// The capture half of the `test` marker channel (v2.std.declaration_marker, shaped like the DESIGN
+// section 4c annotation channel): a pure reader over the
+// parse tree, run beside lowering and never inside it. Lowering is unchanged -- a `test fn` still
+// lowers to the same named member a plain `fn` does -- so every semantic consumer is byte-identical
+// by construction, and the marker survives here instead of being dropped.
+//
+// Every shell the capture cannot read is a typed refusal rather than a skipped row: a skipped row
+// would make a marked declaration read as unmarked, which is the absent-reads-as-false class the
+// channel exists to close.
+//
+// CONSUMER: v2.compiler.normalize runs this over the same parse tree it lowers and seals the result
+// beside the root in NormalizedTree, where name resolution (v2.compiler.resolve resolve_atom_bound)
+// reads it and refuses references to what it marks. The frontier gunbc#11573 declared here is closed
+// by that wiring.
+//
+// THE SUBJECT IS THE PARSE TREE, NOT THE ARTIFACT AROUND IT. gunbc#11573 took a whole ParseArtifact
+// while reading only its `tree`; normalize, the consumer that landed, is handed a ParseTree and never
+// the artifact, so the door now names what it actually reads rather than obliging every caller to
+// carry a span index the capture does not use.
+fn test_marker_capture(tree: ParseTree) -> Outcome<TestMarkerChannel> {
+  let no_rows: List<TestMarkedDeclaration> = []
+  match test_marker_capture_walk(n: tree, acc: outcome_accepted(value: no_rows)) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: rows, diagnostics: d } =>
+      Accepted { value: TestMarkerChannel { marked: rows }, diagnostics: d }
+  }
+}
+
+fn test_marker_capture_walk(
+  n: Node,
+  acc: Outcome<List<TestMarkedDeclaration>>
+) -> Outcome<List<TestMarkedDeclaration>> {
+  match acc {
+    Rejected { diagnostics: _ } => acc
+    Accepted { value: rows, diagnostics: d } =>
+      match parse_production_emitted_identity_optional(node: n) {
+        Present { value: emitted } =>
+          if emitted == ^dag_surface_test_fn_decl {
+            match test_marked_declaration(shell: n) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: row, diagnostics: _ } =>
+                Accepted { value: list_snoc_item(xs: rows, item: row), diagnostics: d }
+            }
+          } else {
+            test_marker_capture_children(n: n, acc: acc)
+          }
+        Absent => test_marker_capture_children(n: n, acc: acc)
+      }
+  }
+}
+
+fn test_marker_capture_children(
+  n: Node,
+  acc: Outcome<List<TestMarkedDeclaration>>
+) -> Outcome<List<TestMarkedDeclaration>> {
+  fold(n.children, init: acc, f: fn(a, e) { test_marker_capture_walk(n: e.target, acc: a) })
+}
+
+fn test_marker_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn test_marker_named_child(n: Node, name: Symbol) -> Optional<Node> {
+  match named_child_lookup(root: n, name: name) {
+    NamedChildFound { target: t } => Present { value: t }
+    NamedChildMissing => Absent
+    NamedChildAmbiguous => Absent
+  }
+}
+
+// The shell is `sequence(ident marker, fn_decl | data_decl)`. Both declaration forms put the
+// declared ident immediately after their leading keyword, so one reading covers both.
+fn test_marked_declaration(shell: Node) -> Outcome<TestMarkedDeclaration> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => outcome_rejected(d: test_marker_diagnostic(reason: ^test_marker_reason_shape_unread, n: shell))
+    Present { value: captured } =>
+      match test_marker_named_child(n: captured, name: ^grammar_sequence_left_node_projection) {
+        Absent => outcome_rejected(d: test_marker_diagnostic(reason: ^test_marker_reason_shape_unread, n: shell))
+        Present { value: marker_node } =>
+          if test_marker_lexeme_is_test(marker_node: marker_node) {
+            match test_marker_named_child(n: captured, name: ^grammar_sequence_right_node_projection) {
+              Absent => outcome_rejected(d: test_marker_diagnostic(reason: ^test_marker_reason_shape_unread, n: shell))
+              Present { value: decl } =>
+                match test_marked_declared_name(decl: decl) {
+                  Absent => outcome_rejected(d: test_marker_diagnostic(reason: ^test_marker_reason_name_unread, n: decl))
+                  Present { value: name } =>
+                    outcome_accepted(value: TestMarkedDeclaration { name: name })
+                }
+            }
+          } else {
+            outcome_rejected(d: test_marker_diagnostic(reason: ^test_marker_reason_marker_not_test, n: marker_node))
+          }
+      }
+  }
+}
+
+fn test_marker_lexeme_is_test(marker_node: Node) -> Bool {
+  match dag_binding_branded_atom_identity(node: marker_node) {
+    Present { value: marker } => marker == ^test
+    Absent => false
+  }
+}
+
+fn test_marked_declared_name(decl: Node) -> Optional<Symbol> {
+  match parse_production_captured_child_optional(node: decl) {
+    Absent => Absent
+    Present { value: captured } =>
+      match test_marker_named_child(n: captured, name: ^grammar_sequence_right_node_projection) {
+        Absent => Absent
+        Present { value: after_keyword } =>
+          match test_marker_named_child(n: after_keyword, name: ^grammar_sequence_left_node_projection) {
+            Absent => Absent
+            Present { value: ident_node } => dag_binding_branded_atom_identity(node: ident_node)
+          }
+      }
+  }
+}

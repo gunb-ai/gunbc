@@ -51,6 +51,7 @@ provisioning/srv1/gunbc-ghrunner.sudoers merge=generated-artifact
 provisioning/srv2/gunbc-ghrunner.sudoers merge=generated-artifact
 provisioning/srv3/gunbc-ghrunner.sudoers merge=generated-artifact
 provisioning/srv4/gunbc-ghrunner.sudoers merge=generated-artifact
+src/v1/stage0/linked_partition_crates.generated.txt merge=generated-artifact
 src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs merge=generated-artifact
 src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs merge=generated-artifact
 src/v1/stage0/src/evaluation_budget_consequence_generated.rs merge=generated-artifact
@@ -75,7 +76,7 @@ src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs !merge
 src/v1/stage0/src/generated_artifact_boundary_host.rs !merge
 src/v1/stage0/src/main.rs !merge
 src/v1/stage0/src/memory_governor.rs !merge
-src/v1/stage0/src/namespace_wave_admission.rs !merge
+src/v1/stage0/src/namespace_baseline.rs !merge
 src/v1/stage0/src/partition_crate_boundary_host.rs !merge
 src/v1/stage0/src/phase_profile.rs !merge
 src/v1/stage0/src/pre_push.rs !merge

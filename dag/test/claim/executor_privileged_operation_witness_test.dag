@@ -20,14 +20,16 @@ import gunbc.runner_host_grants {
   fabric_allocation_store_privileged_operations,
   runner_host_wide_privileged_operations,
 }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.runner_slot_allocation {
-  gunbc_runner_slots_per_host,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   gunbc_runner_slot_cpu_quota,
   CpuQuotaResolved,
-  CpuQuotaRefused,
+  SlotCpuQuotaUnbounded,
 }
-import gunbc.fabric_cell_effect { fabric_cell_slice_desired_directives, SliceDirectivesComplete, SliceDirectivesQuotaSurveyRefused }
-import extdeps.systemd.unit_file { slice_cpu_quota, systemd_slice_directive_line }
+import gunbc.fabric_cell_effect { fabric_cell_slice_desired_directives }
+import extdeps.systemd.unit_file { slice_cpu_quota, slice_cpu_quota_unbounded, systemd_slice_directive_line }
 import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv4 }
 import gunbc.runner_host_deploy { admitted_deploy_for, RunnerHostDeploy }
 
@@ -149,56 +151,62 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // fabric_allocation_store_privileged_operations on a fabric host -- deriving that chain is
 // out of scope here.
 test fn witness_population_tracks_the_slot_roster() -> Bool {
-  match fabric_cell_slice_desired_directives() {
-    SliceDirectivesQuotaSurveyRefused { cause: _ } => false
-    SliceDirectivesComplete { directives: ds } => {
-      let slots = desired_runner_slot_members(deploy: wt_srv3_deploy()).length()
-      let activation = runner_slot_activation_operations(deploy: wt_srv3_deploy()).length()
-      let fabric_slots = fabric_cell_host_slots(deploy: wt_srv3_deploy()).length()
-      let directives = ds.length()
-      let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
-      let allocation_store = fabric_allocation_store_privileged_operations(deploy: wt_srv3_deploy()).length()
-      let host_wide = runner_host_wide_privileged_operations(deploy: wt_srv3_deploy()).length()
-      runner_host_privileged_operations(deploy: wt_srv3_deploy()).length()
-        == runner_slot_teardown_grant_index_bound + (slots * 3) + host_wide + fabric_expected + allocation_store
-        && allocation_store == 2
-        && fabric_cell_privileged_operations(deploy: wt_srv3_deploy()).length() == fabric_expected
-        && activation == slots * 2
-        && slots > 0
-        && fabric_slots > 0
-        && host_wide > 0
+  let ds = fabric_cell_slice_desired_directives()
+  let slots = desired_runner_slot_members(deploy: wt_srv3_deploy()).length()
+  let activation = runner_slot_activation_operations(deploy: wt_srv3_deploy()).length()
+  let fabric_slots = fabric_cell_host_slots(deploy: wt_srv3_deploy()).length()
+  let directives = ds.length()
+  let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
+  let allocation_store = fabric_allocation_store_privileged_operations(deploy: wt_srv3_deploy()).length()
+  let host_wide = runner_host_wide_privileged_operations(deploy: wt_srv3_deploy()).length()
+  runner_host_privileged_operations(deploy: wt_srv3_deploy()).length()
+    == runner_slot_teardown_grant_index_bound + (slots * 3) + host_wide + fabric_expected + allocation_store
+    && allocation_store == 2
+    && fabric_cell_privileged_operations(deploy: wt_srv3_deploy()).length() == fabric_expected
+    && activation == slots * 2
+    && slots > 0
+    && fabric_slots > 0
+    && host_wide > 0
+}
+
+// THE CPUQuota GRANT IS THE DECLARED DIRECTIVE, NOT A TRANSCRIBED PERCENTAGE. The generated
+// sudoers body is `artifact_generate` of this host's row; the assignment word is the
+// `systemd_slice_directive_line` of the directive `gunbc_runner_slot_cpu_quota` selects -- a
+// thread ceiling under CpuQuotaResolved, the empty assignment `CPUQuota=` under
+// SlotCpuQuotaUnbounded (the 2026-09-19 policy). RED: hand-insert `CPUQuota=600%` into the
+// committed file, or declare a different quota than the committed projection, and either this
+// or the generated-artifact gate goes false. The unbounded arm asserts the OTHER direction too: no
+// percentage grant may survive in the file, because a 100% quota at one core per slot is the
+// throttle the ruling forbids. That negative is a LINE-TERMINAL `%`: a percentage grant is the
+// only sudoers line that ends in one, whereas a `%group` principal line begins with it, so the
+// clause names the CPU grant and not every future row that happens to carry the character
+// (review 68479).
+test fn witness_fabric_slice_cpu_quota_grant_is_the_declared_directive() -> Bool {
+  let ds = fabric_cell_slice_desired_directives()
+  let desired_lines = join(map(ds, d => systemd_slice_directive_line(directive: d)), "\n")
+  match gunbc_runner_slot_cpu_quota() {
+    CpuQuotaResolved { threads: t } => {
+      let assignment = systemd_slice_directive_line(directive: slice_cpu_quota(threads: t))
+      string_contains(s: srv3_runner_host_sudoers(), pattern: assignment)
+        && string_contains(s: desired_lines, pattern: assignment)
+    }
+    SlotCpuQuotaUnbounded => {
+      let assignment = systemd_slice_directive_line(directive: slice_cpu_quota_unbounded())
+      string_contains(s: srv3_runner_host_sudoers(), pattern: join([assignment, "\n"], ""))
+        && string_contains(s: desired_lines, pattern: assignment)
+        && !string_contains(s: srv3_runner_host_sudoers(), pattern: join(["%", "\n"], ""))
     }
   }
 }
 
-// THE CPUQuota GRANT IS THE SURVEYED DIRECTIVE, NOT A TRANSCRIBED PERCENTAGE. The generated
-// sudoers body is `artifact_generate` of this host's row; the assignment word is
-// `systemd_slice_directive_line(slice_cpu_quota(threads))` for the same
-// `gunbc_runner_slot_cpu_quota` the effect emits. RED: hand-insert `CPUQuota=600%` into the
-// committed file without the survey resolving, or resolve to a different thread count than the
-// committed projection, and either this or the generated-artifact gate goes false. A refused
-// survey must leave no `CPUQuota=` grant, because there is then no argv to authorize.
-test fn witness_fabric_slice_cpu_quota_grant_is_the_surveyed_directive() -> Bool {
-  match gunbc_runner_slot_cpu_quota() {
-    CpuQuotaResolved { threads: t } =>
-      match fabric_cell_slice_desired_directives() {
-        SliceDirectivesQuotaSurveyRefused { cause: _ } => false
-        SliceDirectivesComplete { directives: ds } => {
-          let assignment = systemd_slice_directive_line(directive: slice_cpu_quota(threads: t))
-          let desired_lines = join(
-            map(ds, d => systemd_slice_directive_line(directive: d)),
-            "\n",
-          )
-          string_contains(s: srv3_runner_host_sudoers(), pattern: assignment)
-            && string_contains(s: desired_lines, pattern: assignment)
-        }
-      }
-    CpuQuotaRefused { cause: _ } =>
-      match fabric_cell_slice_desired_directives() {
-        SliceDirectivesComplete { directives: _ } => false
-        SliceDirectivesQuotaSurveyRefused { cause: _ } =>
-          !string_contains(s: srv3_runner_host_sudoers(), pattern: "CPUQuota=")
-      }
+// A HOST WITH NO RESOLVED WIDTH IS COVERED VACUOUSLY AND SAYS SO. The bound must exceed every width
+// the fleet COMMITS; a host that commits none imposes no lower bound, and the alternative -- reading
+// its unresolved width as 0 -- would make this conjunct true for the wrong reason on exactly the
+// host most likely to be re-grounded into a large width later.
+fn bound_covers(host: HostIdentity, bound: Int) -> Bool {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: _ } => true
+    RunnerWidthDerived { slots: n } => bound >= n
   }
 }
 
@@ -208,10 +216,10 @@ test fn witness_fabric_slice_cpu_quota_grant_is_the_surveyed_directive() -> Bool
 test fn witness_teardown_grant_bound_covers_every_committed_width_exactly() -> Bool {
   let bound = runner_slot_teardown_grant_index_bound
   let dirs = runner_slot_grammar_dirs_to_bound(host: operator_host_srv2, bound: bound)
-  bound >= gunbc_runner_slots_per_host(host: operator_host_srv1)
-    && bound >= gunbc_runner_slots_per_host(host: operator_host_srv2)
-    && bound >= gunbc_runner_slots_per_host(host: operator_host_srv3)
-    && bound >= gunbc_runner_slots_per_host(host: operator_host_srv4)
+  bound_covers(host: operator_host_srv1, bound: bound)
+    && bound_covers(host: operator_host_srv2, bound: bound)
+    && bound_covers(host: operator_host_srv3, bound: bound)
+    && bound_covers(host: operator_host_srv4, bound: bound)
     && bound >= 12
     && dirs.length() == bound
     && any(dirs, d => (d as String) == "/opt/actions-runner/srv2-12")

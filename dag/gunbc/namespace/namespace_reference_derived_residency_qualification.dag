@@ -1,0 +1,221 @@
+module gunbc.namespace_reference_derived_residency_qualification
+
+import std.types { Bool, List }
+import v2.std.node { Symbol }
+import std.decl_ref { DeclarationRef, decl_ref }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+
+// THE EVIDENCE TYPE FOR THE CONSUMPTION SIDE of
+// gunbc.recurring_failure_mode.semantic_independence_consumed_as_resource_independence, which is the
+// site the filed trigger names. The trigger binds any consumer claiming BOUNDED REALIZATION or
+// MEMORY-READY DEPLOYMENT of the reference-derived graph to require resource evidence SEPARATELY from
+// semantic delivery, and it deliberately does not touch what ReferenceGraphInstrumentDelivered means.
+// So this module adds no arm to the semantic receipt: it declares the SECOND evidence such a claim
+// needs, and `admit_bounded_realization` has no arm that mints an admission from semantic delivery
+// alone. The answer-scope verdict (gunbc.namespace_pool_independence PoolIndependenceVerdict) is a
+// different TYPE and cannot reach this admission at all.
+//
+// CONSUMPTION STATE, DECLARED HONESTLY BECAUSE IT IS NOT YET PLACED (DESIGN section 3c, and review
+// 68631 on gunbc#11740, which was right to refuse an earlier header here that claimed placement).
+// NO PRODUCTION CONSUMER CLAIMS BOUNDED REALIZATION TODAY. This is a DECLARED FRONTIER, and its two
+// halves are stated separately because they land at different times:
+//   THE DERIVATION exists and executes: v2.lens reference_derived_residency_reading computes grain
+//   and population from a TYPE DECLARATION, and its witnesses supply declarations of each shape. What
+//   it is NOT yet wired to is a live read of the producer's own declaration -- a standalone
+//   single-file ingest does not yield field type expressions, measured three ways in that module's
+//   witnesses -- so the derivation must move to the compile-door lens path before anything here
+//   establishes a property of the live producer. THAT is the open pairing obligation, stated rather
+//   than papered over, and it is why no row in this module names a live reading.
+//   THE ADMISSION has no production consumer yet. Its named later consumer is the namespace memory
+//   program's first bounded-realization claim, and its trigger is the XL-6 production edge-source
+//   transition in gunbc.namespace_cut_stage -- the point at which a replacement stands where the
+//   whole-corpus pool parse used to, and someone must say whether it is bounded.
+// Until that consumer exists this module is evidence machinery with its frontier named, which is the
+// admissible middle state, not the claim that the class is already repaired in production.
+//
+// WHY THE READING HAS TWO BOUNDARIES AND THE FIRST ONE DECIDES. A producer that loads and retains
+// every tree, computes the graph, RELEASES what it held and returns is indistinguishable AFTER THE
+// FACT from one whose active syntax was bounded throughout: identical answers, identical post-return
+// retention, different construction high-water. So `constructed` is read first and on its own is
+// sufficient to refuse, and an empty lifecycle reading refuses rather than qualifying -- absence of a
+// reading is not evidence of a bound.
+//
+// WHY THE READING IS A LIST OF CARRIERS AND NOT ONE FIELD. In v2.lens.module_graph the pool's syntax
+// population is reachable TWICE: `ReferenceDerivedPool.trees` is Map<String, Node> over every
+// normalized module root, and `v2.std.symbol_index` SymbolIndex is `entries: Map<QualifiedName, Node>`
+// -- a Node per qualified name over the same population. An obligation written against `trees` alone
+// is discharged by moving retention into the index and measures nothing, so both carriers enter one
+// reading and either one refuses it.
+
+// The per-key payload a carrier holds. The distinction that matters is whether the payload is SYNTAX
+// -- whose size is the source it came from -- or a bounded per-key record. TWO ARMS, because two is
+// what any producer mints: an earlier revision carried a third, ModuleQualifiedNamePerKey, that no
+// fold could produce and that only ever appeared as a `=> false` match arm (review 68699).
+type CarrierPayloadGrain
+  = SyntaxNodePerKey
+  | IdentityDigestPerKey
+
+// What the carrier is keyed over. A carrier keyed by the whole pool population scales with the
+// corpus; one keyed by the single subject under production does not.
+type CarrierKeyPopulation
+  = KeyedByWholePoolPopulation
+  | KeyedBySingleSubject
+
+// WHETHER THE DERIVATION COULD READ THE CARRIER AT ALL, carried on the reading so it reaches the
+// qualification rather than being resolved away by the producer. A derivation that cannot decide a
+// field's type must not answer with the value that QUALIFIES -- that is ignorance returned as an
+// answer, DESIGN section 5's widen-instead-of-refuse, and in this module it is the only path that
+// mints an admission (review 68724). So an unrecognized type expression travels as itself.
+type CarrierReadability
+  = CarrierTypeRecognized
+  | CarrierTypeUnrecognized { spelling: Symbol }
+
+type ProducerCarrierReading {
+  carrier: DeclarationRef
+  grain: CarrierPayloadGrain
+  population: CarrierKeyPopulation
+  readability: CarrierReadability
+}
+
+// The production lifecycle at the two boundaries that differ between the specimens: what the producer
+// CONSTRUCTS (its high-water) and what survives its return.
+type ProductionLifecycleReading {
+  subject: DeclarationRef
+  constructed: List<ProducerCarrierReading>
+  retained_at_return: List<ProducerCarrierReading>
+}
+
+type ResidencyBoundFailure
+  = WholeCorpusSyntaxAtConstructionPeak { carrier: DeclarationRef }
+  | WholeCorpusSyntaxRetainedAtReturn { carrier: DeclarationRef }
+  | CarrierReadingUndecidable { carrier: DeclarationRef, spelling: Symbol }
+  | LifecycleReadingAbsent
+
+// A QUALIFICATION RESULT, not a reading that exists. The class row's harm is a reading being consumed
+// as a bound; a reading alone therefore has no admitting arm anywhere in this module.
+type ResidencyQualification
+  = BoundedRealizationQualified { subject: DeclarationRef }
+  | BoundedRealizationRefused { subject: DeclarationRef, failure: ResidencyBoundFailure }
+
+// THE UNDECIDABLE CAUSE IS BUILT WHERE IT IS DECIDED, in ONE fold, so there is no arm anywhere that
+// has to invent a cause for a carrier that was read fine. An earlier revision split this into a
+// Bool predicate over the coproduct, a filter for the first offending carrier, and a second match
+// that rebuilt the cause -- and that second match needed a CarrierTypeRecognized arm it could never
+// reach, filled with LifecycleReadingAbsent, which means something materially different ("the
+// producer supplied no carriers at all"). Unreachable by an upstream filter is VALIDATION; the state
+// stayed representable. A filler cause on the ignorance path is the wrong shape in this module even
+// when dead, since not fabricating an answer out of ignorance is the module's entire subject
+// (review 68747, and the same arm-no-fold-can-produce shape review 68699 removed from
+// CarrierPayloadGrain).
+fn first_undecidable_failure(
+  readings: List<ProducerCarrierReading>,
+) -> Optional<ResidencyBoundFailure> {
+  fold(readings, init: optional_absent(), f: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match r.readability {
+          CarrierTypeRecognized => acc
+          CarrierTypeUnrecognized { spelling: spelling } =>
+            optional_present(
+              value: CarrierReadingUndecidable { carrier: r.carrier, spelling: spelling },
+            )
+        }
+    }
+  })
+}
+
+fn carrier_holds_whole_corpus_syntax(reading: ProducerCarrierReading) -> Bool {
+  match reading.population {
+    KeyedBySingleSubject => false
+    KeyedByWholePoolPopulation =>
+      match reading.grain {
+        SyntaxNodePerKey => true
+        IdentityDigestPerKey => false
+      }
+  }
+}
+
+fn whole_corpus_syntax_carriers(
+  readings: List<ProducerCarrierReading>,
+) -> List<ProducerCarrierReading> {
+  readings |> filter(r => carrier_holds_whole_corpus_syntax(reading: r))
+}
+
+fn first_whole_corpus_syntax_carrier(
+  readings: List<ProducerCarrierReading>,
+) -> ProducerCarrierReading? {
+  whole_corpus_syntax_carriers(readings: readings) |> first
+}
+
+// NOTHING DEFINITE FOUND IS NOT THE SAME AS A BOUND (the last arm of the fold below). A carrier
+// the derivation could not read is checked LAST, after the definite failures, so a known-bad
+// producer still reports its specific carrier -- but it refuses, because qualifying there would
+// let a producer buy the admission by renaming a type.
+// Construction peak is read BEFORE retention, so the whole-pool-build-then-release specimen refuses on
+// the strength of `constructed` with `retained_at_return` empty. An empty `constructed` is refused
+// rather than qualified: a producer that reports no carriers has supplied no evidence of a bound.
+// NOTHING DEFINITE WAS FOUND, WHICH IS NOT THE SAME AS A BOUND. A carrier the
+// derivation could not read is checked LAST, after the definite failures, so a
+// known-bad producer still reports its specific carrier -- but it refuses, because
+// qualifying here would let a producer buy the admission by renaming a type.
+fn qualify_bounded_realization(
+  reading: ProductionLifecycleReading,
+) -> ResidencyQualification {
+  match reading.constructed |> first {
+    Absent =>
+      BoundedRealizationRefused {
+        subject: reading.subject,
+        failure: LifecycleReadingAbsent,
+      }
+    Present { value: _ } =>
+      match first_whole_corpus_syntax_carrier(readings: reading.constructed) {
+        Present { value: peak } =>
+          BoundedRealizationRefused {
+            subject: reading.subject,
+            failure: WholeCorpusSyntaxAtConstructionPeak { carrier: peak.carrier },
+          }
+        Absent =>
+          match first_whole_corpus_syntax_carrier(readings: reading.retained_at_return) {
+            Present { value: held } =>
+              BoundedRealizationRefused {
+                subject: reading.subject,
+                failure: WholeCorpusSyntaxRetainedAtReturn { carrier: held.carrier },
+              }
+            Absent =>
+              match first_undecidable_failure(
+                readings: concat(reading.constructed, reading.retained_at_return),
+              ) {
+                Present { value: failure } =>
+                  BoundedRealizationRefused { subject: reading.subject, failure: failure }
+                Absent => BoundedRealizationQualified { subject: reading.subject }
+              }
+          }
+      }
+  }
+}
+
+// THE CONSUMPTION SIDE. `semantic_delivered` is the semantic instrument's own receipt, carried as the
+// Bool it reduces to precisely so that this module neither redefines it nor can be satisfied by it:
+// there is no arm below in which `semantic_delivered: true` reaches an admission without a
+// BoundedRealizationQualified beside it.
+type BoundedRealizationAdmission
+  = BoundedRealizationAdmitted { subject: DeclarationRef }
+  | BoundedRealizationSemanticDeliveryOutstanding
+  | BoundedRealizationResourceQualificationOutstanding { failure: ResidencyBoundFailure }
+
+fn admit_bounded_realization(
+  semantic_delivered: Bool,
+  resource: ResidencyQualification,
+) -> BoundedRealizationAdmission {
+  match resource {
+    BoundedRealizationRefused { subject: _, failure: failure } =>
+      BoundedRealizationResourceQualificationOutstanding { failure: failure }
+    BoundedRealizationQualified { subject: subject } =>
+      if semantic_delivered {
+        BoundedRealizationAdmitted { subject: subject }
+      } else {
+        BoundedRealizationSemanticDeliveryOutstanding
+      }
+  }
+}

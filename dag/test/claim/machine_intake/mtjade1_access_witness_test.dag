@@ -1,0 +1,54 @@
+module test.claim.mtjade1_access_witness
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.machine_intake_mtjade1_access_observation {
+  SecretLocusReservedNotOnAccessorRoster,
+  mtjade1_managed_bmc_secret_standing,
+  mtjade1_unit_key_standing,
+}
+import gunbc.machine_intake_subject {
+  BoardSerialAbsent,
+  UnitIdentityInputs,
+  UnitKeyBound,
+  UnitKeyRefused,
+  bind_unit_key,
+}
+import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
+import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_mtjade1_unit_key_is_board_serial_absent() -> Bool {
+  match mtjade1_unit_key_standing {
+    UnitKeyRefused { cause: BoardSerialAbsent } => true
+    UnitKeyRefused { cause: _ } => false
+    UnitKeyBound { key: _ } => false
+  }
+}
+
+test fn w_bmc_only_bind_without_serials_is_absent_not_a_fabricated_key() -> Bool {
+  match bind_unit_key(
+    inputs: UnitIdentityInputs {
+      bmc_endpoint: BmcEndpoint { host: "fixture-jade-bmc", protocol: Ipmi },
+      board_serial_observations: [],
+    },
+    other_units: [],
+  ) {
+    UnitKeyRefused { cause: BoardSerialAbsent } => true
+    UnitKeyRefused { cause: _ } => false
+    UnitKeyBound { key: _ } => false
+  }
+}
+
+// THE CLAIM IS THE DISTINCTNESS, AND THAT IS ALL IT ASSERTS NOW. Two conjuncts comparing each
+// secret id to its own literal were the same change detector as the count above (review 68005):
+// both sides authored here, red only if someone edits one copy. What has a real RED is re-binding
+// Jade's locus to the Collins secret, which is the confusion that would hand one machine another
+// machine's BMC credential.
+test fn w_mtjade1_bmc_secret_locus_is_not_the_collins_secret() -> Bool {
+  match mtjade1_managed_bmc_secret_standing {
+    SecretLocusReservedNotOnAccessorRoster { ref: r } =>
+      (r.secret as String) != (mtcollins1_bmc_gunbc_secret_ref.secret as String)
+  }
+}

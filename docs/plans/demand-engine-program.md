@@ -133,7 +133,7 @@ Sequence, as standalone realization cuts owned by the CLI lane and not blocking 
 | `derived_realization_schedule.rs` | `derived_realization_schedule.rs` |
 | `std.realize_pack` advisory width | `std.realize_pack` |
 | `std.realization_width` fallback / minimum-one | `std.realization_width` |
-| parse sweep unbounded threads | `claim_executor`, `declaration_index`, `module_path_index`, `namespace_wave_admission` |
+| parse sweep unbounded threads | `claim_executor`, `declaration_index`, `module_path_index`, `namespace_baseline` |
 | build parallelism (`ci_compile_jobs`, jobserver, `CARGO_BUILD_JOBS`) | `ci_compile_jobs`, jobserver, `CARGO_BUILD_JOBS` |
 | results indexed by occurrence identity crossing graphs | allocator, minted ids, span index |
 

@@ -1,7 +1,7 @@
 module test.claim.network_boot_delivery_join_witness
 
 import std.types { Bool, EpochMs, NonEmptyStr, String }
-import std.content_hash { ContentHash, content_hash_of_value }
+import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.crypto.mac { MacKeyId }
@@ -20,7 +20,6 @@ import gunbc.machine_intake_subject {
   IntakeAttemptId,
   MachineIntakeSubject,
   UnitKey,
-  content_hash_equal,
   qualification_subject_of,
 }
 import gunbc.machine_intake_access { BootDeliveryTarget }

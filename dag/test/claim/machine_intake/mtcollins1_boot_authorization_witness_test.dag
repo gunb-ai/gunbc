@@ -1,0 +1,149 @@
+module test.claim.machine_intake.mtcollins1_boot_authorization_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import std.scoped_authorization { AttemptIdentity, authorize, AuthorizationRefused, AuthorizationExpired }
+import gunbc.machine_intake_mtcollins1_boot_authorization {
+  mtcollins1_boot_authorization_request,
+  mtcollins1_boot_subject,
+  mtcollins1_boot_required_scopes,
+  mtcollins1_boot_gate_from_poll,
+  BootGatePending,
+  BootGateAdmitted,
+  BootGateIntentMismatch,
+  BootGateDenied,
+  BootGateExpired,
+  BootGateNotFiled,
+  BootGateStoreUnreadable,
+  mtcollins1_boot_medium,
+  mtcollins1_boot_medium_image_name,
+  mtcollins1_boot_medium_image_sha256,
+}
+import gunbc.auth.approval_request_client { PollStillPending, PollExpired, PollDenied, PollNotFiled, PollUnreadable, PollApproved }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn request_is_destructive_and_names_the_selected_medium() -> Bool {
+  let r = mtcollins1_boot_authorization_request(
+    escalation_id: "esc-mtc1-1",
+    attempt: "mtc1-1" as AttemptIdentity,
+    execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  )
+  r.destructive
+    && r.subject.image_name == mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium)
+    && r.subject.image_sha256 == mtcollins1_boot_medium_image_sha256(medium: mtcollins1_boot_medium)
+    && (r.subject.image_name as String) == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso"
+    && r.subject.machine as String == "mtcollins1"
+    && r.subject.execution_revision as String == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    && r.subject.selection.architecture == Aarch64
+    && r.subject.selection.firmware_mode == IpmiBootEfi
+    && r.subject.selection.persistence == IpmiBootOnce
+    && r.subject.selection.device == IpmiBootCdrom
+    && (ipmi_boot_selection_label(selection: r.subject.selection) as String) == "cdrom/efi/once"
+    && r.scopes.length() == mtcollins1_boot_required_scopes.length()
+    && r.escalation_id as String == "esc-mtc1-1"
+}
+
+test fn pending_denied_expired_and_unfiled_do_not_write_the_controller() -> Bool {
+  let r = mtcollins1_boot_authorization_request(
+    escalation_id: "esc-mtc1-1",
+    attempt: "mtc1-1" as AttemptIdentity,
+    execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  )
+  let at = "2026-09-16T20:30:00Z"
+  let denied = PollDenied {
+    revision: request_revision_of(request: r),
+    decided_by: "op" as NonEmptyStr,
+    decided_at: at,
+    reason: "no" as NonEmptyStr,
+  }
+  match mtcollins1_boot_gate_from_poll(poll: PollStillPending, request: r, observed_at: at) {
+    BootGatePending { escalation_id: _ } => true
+    _ => false
+  }
+    && match mtcollins1_boot_gate_from_poll(poll: denied, request: r, observed_at: at) {
+      BootGateDenied { reason: _ } => true
+      _ => false
+    }
+    && match mtcollins1_boot_gate_from_poll(poll: PollExpired, request: r, observed_at: at) {
+      BootGateExpired => true
+      _ => false
+    }
+    && match mtcollins1_boot_gate_from_poll(poll: PollNotFiled, request: r, observed_at: at) {
+      BootGateNotFiled { escalation_id: _ } => true
+      _ => false
+    }
+    && match mtcollins1_boot_gate_from_poll(poll: PollUnreadable { detail: "get failed" as NonEmptyStr }, request: r, observed_at: at) {
+      BootGateStoreUnreadable { detail: _ } => true
+      _ => false
+    }
+}
+
+test fn poll_pending_is_the_pending_gate() -> Bool {
+  let r = mtcollins1_boot_authorization_request(
+    escalation_id: "esc-mtc1-1",
+    attempt: "mtc1-1" as AttemptIdentity,
+    execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  )
+  match mtcollins1_boot_gate_from_poll(poll: PollStillPending, request: r, observed_at: "2026-09-16T20:30:00Z") {
+    BootGatePending { escalation_id: e } => e as String == "esc-mtc1-1"
+    _ => false
+  }
+}
+
+test fn poll_approved_http_fields_admit_and_a_foreign_revision_does_not() -> Bool {
+  let r = mtcollins1_boot_authorization_request(
+    escalation_id: "esc-mtc1-1",
+    attempt: "mtc1-1" as AttemptIdentity,
+    execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  )
+  let at = "2026-09-16T20:30:00Z"
+  let until = "2026-09-16T21:00:00Z"
+  let matching = PollApproved {
+    revision: request_revision_of(request: r),
+    decided_by: "op" as NonEmptyStr,
+    decided_at: at,
+    execute_by: until,
+  }
+  let foreign = PollApproved {
+    revision: "other-intent" as NonEmptyStr,
+    decided_by: "op" as NonEmptyStr,
+    decided_at: at,
+    execute_by: until,
+  }
+  match mtcollins1_boot_gate_from_poll(poll: matching, request: r, observed_at: at) {
+      BootGateAdmitted { authorization: _ } => true
+      _ => false
+    }
+    && match mtcollins1_boot_gate_from_poll(poll: foreign, request: r, observed_at: at) {
+      BootGateIntentMismatch { requested_revision: _, decided_revision: d } => d as String == "other-intent"
+      _ => false
+    }
+}
+
+test fn an_execute_by_that_lapses_after_poll_is_expired_on_the_actuation_clock() -> Bool {
+  let r = mtcollins1_boot_authorization_request(
+    escalation_id: "esc-mtc1-1",
+    attempt: "mtc1-1" as AttemptIdentity,
+    execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  )
+  let poll_at = "2026-09-16T20:30:00Z"
+  let until = "2026-09-16T20:45:00Z"
+  let matching = PollApproved {
+    revision: request_revision_of(request: r),
+    decided_by: "op" as NonEmptyStr,
+    decided_at: poll_at,
+    execute_by: until,
+  }
+  match mtcollins1_boot_gate_from_poll(poll: matching, request: r, observed_at: poll_at) {
+    BootGateAdmitted { authorization: auth } =>
+      match authorize(authorization: auth, request: r, observed_at: "2026-09-16T20:45:01Z") {
+        AuthorizationRefused { cause: AuthorizationExpired { expires_at: _, observed_at: _ } } => true
+        _ => false
+      }
+    _ => false
+  }
+}

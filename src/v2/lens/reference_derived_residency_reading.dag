@@ -1,0 +1,254 @@
+module v2.lens.reference_derived_residency_reading
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import gunbc.namespace_reference_derived_residency_qualification {
+  CarrierKeyPopulation,
+  CarrierReadability,
+  CarrierTypeRecognized,
+  CarrierTypeUnrecognized,
+  CarrierPayloadGrain,
+  IdentityDigestPerKey,
+  KeyedBySingleSubject,
+  KeyedByWholePoolPopulation,
+  ProducerCarrierReading,
+  SyntaxNodePerKey,
+}
+import std.decl_ref { DeclarationRef }
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Instantiation,
+  Node,
+  Symbol,
+  TypeNode,
+  node_subtree_nodes,
+}
+
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// DERIVES a ProducerCarrierReading from the type declaration the producer actually holds, so the
+// reading moves when the declaration moves. The alternative -- hand-authoring the reading from a
+// prose read of the producer -- transcribes an instrument's output (DESIGN section 6) and produces a
+// row that keeps whatever it was set to after the producer is bounded, which is the defect review
+// 68631 named on gunbc#11740 and is the reason this module exists.
+//
+// THE TWO STRUCTURAL QUESTIONS, and both are decidable off the declaration. Does the field's declared
+// type mention `Node` -- that is, is the payload SYNTAX rather than a bounded per-key record? And is
+// it held per member of a population rather than for one subject -- a `Map`, `List` or `FreeMonoid`
+// rather than a bare field? The pair is what separates `ReferenceDerivedPool.trees:
+// Map<String, Node>` from `LocatedModuleRoot.root: Node`: both mention `Node`, and only the first
+// scales with the corpus.
+//
+// SCOPE, STATED BECAUSE IT IS NOT A GENERAL RESIDENCY ANALYSER. This reads ONE declaration at a time
+// and does not follow a field's type into the module that declares it. That is deliberate rather than
+// unfinished: the two carriers the filed class names -- `v2.lens.module_graph ReferenceDerivedPool`
+// and `v2.std.symbol_index SymbolIndex` -- are each read as their own reading and both enter one
+// ProductionLifecycleReading, which is exactly what makes an obligation written against either one
+// alone insufficient. A transitive reader would let `index: SymbolIndex` answer for the index without
+// the index's own declaration being present, which is a weaker check, not a stronger one.
+
+fn node_atom_is(n: Node, needle: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == needle
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn subtree_mentions_atom(root: Node, needle: Symbol) -> Bool {
+  length(xs: node_subtree_nodes(root: root) |> filter(n => node_atom_is(n: n, needle: needle))) > 0
+}
+
+// THE RECOGNISED VOCABULARY, AND EVERYTHING OUTSIDE IT REFUSES. This derivation reads an UNRESOLVED
+// type expression, so it can only decide the two axes for spellings it knows. An earlier revision
+// treated every unknown spelling as bounded-and-single-subject -- the ADMITTING side of both axes --
+// which meant a field retyped through an alias (`trees: TreePool` in place of
+// `Map<String, Node>`) flipped the producer from refusing to QUALIFIED while the same corpus stayed
+// resident, and `admit_bounded_realization` then minted the admission. Ignorance returned as the
+// answer that qualifies is DESIGN section 5's widen-instead-of-refuse, and it was reachable by
+// renaming a type (review 68724).
+//
+// WHY A ROSTER RATHER THAN RESOLUTION, which is the honest form of DESIGN section 4's "a heuristic is
+// never necessary". The richer source is the field type's DECLARATION, and reading it would decide
+// alias and unknown constructors properly. That read is blocked: a type declaration cannot be
+// resolved from a live tree today (gunbc#11574), which this module's own witnesses establish by
+// execution. So the roster is the fail-closed interim, its unknown arm REFUSES rather than widening,
+// and resolving the reference instead of matching the spelling is what #11574 unblocks.
+
+data recognised_collection_constructors: List<Symbol> = [^Map, ^List, ^FreeMonoid]
+
+data recognised_syntax_atoms: List<Symbol> = [^Node]
+
+// Leaf spellings whose payload is bounded per key. A spelling absent from every roster here is NOT
+// assumed bounded -- it is unrecognised, and unrecognised refuses.
+data recognised_bounded_leaf_atoms: List<Symbol> = [
+  ^String,
+  ^QualifiedName,
+  ^ContentHash,
+  ^Symbol,
+  ^Int,
+  ^Bool
+]
+
+fn symbol_in(xs: List<Symbol>, needle: Symbol) -> Bool {
+  fold(xs, init: false, f: fn(acc, s) { acc || (s == needle) })
+}
+
+fn atom_identity_optional(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    TypeNode { connective: Conj } => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+fn atom_is_recognised(id: Symbol) -> Bool {
+  symbol_in(xs: recognised_collection_constructors, needle: id)
+    || symbol_in(xs: recognised_syntax_atoms, needle: id)
+    || symbol_in(xs: recognised_bounded_leaf_atoms, needle: id)
+}
+
+// The first atom in the field's type expression this derivation does not know, if any.
+fn first_unrecognised_atom(target: Node) -> Optional<Symbol> {
+  fold(node_subtree_nodes(root: target), init: optional_absent(), f: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match atom_identity_optional(n: n) {
+          Absent => acc
+          Present { value: id } =>
+            if atom_is_recognised(id: id) { acc } else { optional_present(value: id) }
+        }
+    }
+  })
+}
+
+fn decl_first_unrecognised_atom(decl: Node) -> Optional<Symbol> {
+  match decl.kind {
+    TypeNode { connective: _ } =>
+      fold(decl.children, init: optional_absent(), f: fn(acc, edge) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match edge.label {
+              Named { name: _ } => first_unrecognised_atom(target: edge.target)
+              Positional => acc
+            }
+        }
+      })
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+fn carrier_readability_of(decl: Node) -> CarrierReadability {
+  match decl_first_unrecognised_atom(decl: decl) {
+    Absent => CarrierTypeRecognized
+    Present { value: id } => CarrierTypeUnrecognized { spelling: id }
+  }
+}
+
+fn type_expr_is_keyed_population(target: Node) -> Bool {
+  fold(recognised_collection_constructors, init: false, f: fn(acc, c) {
+    acc || subtree_mentions_atom(root: target, needle: c)
+  })
+}
+
+fn type_expr_holds_syntax(target: Node) -> Bool {
+  fold(recognised_syntax_atoms, init: false, f: fn(acc, c) {
+    acc || subtree_mentions_atom(root: target, needle: c)
+  })
+}
+
+// A declaration's reading is its WORST field on each axis independently: one field held per key makes
+// the carrier a population, and one field carrying syntax makes its payload syntax, whatever the
+// other fields hold. The two questions are asked SEPARATELY -- an earlier revision decided population
+// with a predicate requiring both a Node payload and a collection, which made the population axis
+// mean "keyed over a population OF SYNTAX" and left the name-table shape
+// (IdentityDigestPerKey, KeyedByWholePoolPopulation) unconstructible (review 68711).
+fn decl_has_keyed_population_field(decl: Node) -> Bool {
+  match decl.kind {
+    TypeNode { connective: _ } =>
+      fold(decl.children, init: false, f: fn(acc, edge) {
+        match edge.label {
+          Named { name: _ } => acc || type_expr_is_keyed_population(target: edge.target)
+          Positional => acc
+        }
+      })
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn decl_has_syntax_field(decl: Node) -> Bool {
+  match decl.kind {
+    TypeNode { connective: _ } =>
+      fold(decl.children, init: false, f: fn(acc, edge) {
+        match edge.label {
+          Named { name: _ } => acc || type_expr_holds_syntax(target: edge.target)
+          Positional => acc
+        }
+      })
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+// GRAIN ALONE: is the per-key payload syntax, regardless of how many keys there are.
+fn carrier_payload_grain_of(decl: Node) -> CarrierPayloadGrain {
+  if decl_has_syntax_field(decl: decl) {
+    SyntaxNodePerKey
+  } else {
+    IdentityDigestPerKey
+  }
+}
+
+// POPULATION ALONE: is anything held per key, regardless of payload. A digest-keyed map over the
+// whole pool is a POPULATION with a bounded payload -- exactly the shape a bounded realization has --
+// and it must be expressible or the check can never describe a repaired producer.
+fn carrier_key_population_of(decl: Node) -> CarrierKeyPopulation {
+  if decl_has_keyed_population_field(decl: decl) {
+    KeyedByWholePoolPopulation
+  } else {
+    KeyedBySingleSubject
+  }
+}
+
+fn carrier_reading_from_type_decl(
+  carrier: DeclarationRef,
+  decl: Node,
+) -> ProducerCarrierReading {
+  ProducerCarrierReading {
+    carrier: carrier,
+    grain: carrier_payload_grain_of(decl: decl),
+    population: carrier_key_population_of(decl: decl),
+    readability: carrier_readability_of(decl: decl),
+  }
+}
+
+// WHY THIS IS A LENS AND NOT CONSTRUCTION. The reading is derived from a declaration a producer
+// already holds, so the fact it reports has one authority -- the declaration -- and this module is a
+// second reader of it. What construction would need is for the residency qualification to consume the
+// producer's declared carrier type directly, at which point a separate reading has nothing to add;
+// until that single authority carries the grain, population and readability itself, the lens is the
+// validation that stands in front of it.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

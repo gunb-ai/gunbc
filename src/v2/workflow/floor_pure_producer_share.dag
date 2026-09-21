@@ -516,7 +516,57 @@ import v2.std.collection { List }
 // CLAIM-FORCED, by the same ceiling arithmetic as dag_prepared_grammar: an in-fold first
 // touch of this fill dies on the lane's margin and restarts per claim. The module is under
 // src/v2/extdeps, so it resolves in every required-floor subject.
+// THE TEN declaration_graft_assemble PRODUCERS EARN THEIR ROWS ON THE FILL-THAT-CANNOT-LAND
+// GROUND, AND SIX OF THEM ON THE SHARING GROUND AS WELL. Receipt, re-derivable: required-floor
+// run 35467726264 (gunbc#11574 head 1797ea43bd) reported fourteen of that file's claims
+// COMPLETED-OVER-COST-REQUIREMENT at 73,857-148,646 eval steps against the 72,300 new-witness
+// line -- the cheapest, a one-member type-only module, barely clearing it. One
+// assemble_program_from_ingest over a ~30-200 character source is the whole cost; the
+// assertions are a fold over its Outcome (DESIGN section 3's diagnostic: the cost did not move
+// when the assertions changed). So no in-fold first touch can land inside a claim's budget,
+// which is the dag_prepared_grammar / rust_module_emission_population ground. The share point
+// is Outcome<Node> (the grafted, resolved root, or the typed refusal), the same seam as
+// native_decl_selection.collision_resolved. The combined producer serves SIX claims off one
+// tree (combined_accepts, silent_drop_control, coproduct_beside_fn, variant_reference_construct
+// _and_match, dag_prefix_user_fn, import_beside_fn -- nine call sites; the type-only producer
+// serves two, every other one exactly one); the one-member sources (empty, fn-only, type-only,
+// where-alias-only) are the
+// containment-spine controls of gunbc#11694 and cannot be combined; the two collided-alias
+// sources cannot join the combined module because two where-refinement aliases in one module
+// refuse resolve_reason_ambiguous_symbol on main (measured, independent of #11574); and the
+// three refusing record sources are the typed-refusal rows whose claims assert the REASON, as
+// population_declarationless_refuses does. Discrimination was re-established against the shared
+// sources before enrolment: with the flatten's provenance filter reverted to spelling, both
+// collided-alias rows red; with Conj-targeted members dropped from the flatten, the
+// silent-drop control reds and the combined producer refuses on the conservation check.
+// WARM, NEVER CLAIM-FORCED, by the same ceiling arithmetic as every row above. The instrument
+// that decides it is the [floor-shared-fill] ledger, and it has been read (floor run
+// 35509977276 on gunbc#11574 head 2fdc7f7863): ten fills disposition=Stored at
+// pure-producer-share-warm, consumer_claims 6 / 2 / 1 as stated above, all sixteen claims
+// admitted at 0-2ms against the 302ms margin, zero over-cost. An earlier revision of this note
+// said eight for the combined producer -- a count from before the two collided-alias sources
+// were given their own rows -- and the ledger is what corrected it.
+// THE WHOLE-TREE CENSUS PROBE ROW IS THE native_decl_selection GROUND A THIRD TIME, ON THE SAME
+// PRODUCER. v2.test.claim.native_census.whole_tree_census_resolve drives
+// v2.compiler.compile native_test_context_from_ingest over one three-specimen supplied ingest, and
+// its four context-consuming identities were refused COMPLETED-OVER-COST-REQUIREMENT at
+// 197116-200054 evaluator steps against the 72300-step new-witness budget (run 35464948266, job
+// 105955463881; observed cpu_ms=463-476, recorded and not gated on). The claims assert over one
+// module's outcome each -- resolve-refused, file-refused and resolved -- so the front end they
+// rebuilt per claim is work no row is about: DESIGN section 3's "a claim whose evaluation is
+// dominated by ONE call whose RESULT SHAPE is all it inspects".
+// THE SHARE POINT IS THE DECIDED OUTCOMES, not the context that produced them. NativeTestContext
+// carries a resolution context, which is the origin-bound shape this roster refuses at publication;
+// CensusProbeOutcomes carries three NativeCensusModuleOutcome variants plus an Int, and those carry
+// only diagnostics -- symbols, loci and nodes -- so the stored value is positively portable for the
+// same reason collision_resolved's ResolvedTree is.
+// WARM, NEVER CLAIM-FORCED, for the reason the rows above give: the fill costs more than one
+// claim's whole budget on this lane, so an in-fold fill would die mid-flight exactly as
+// prepare_grammar's did. The instrument that decides this row is the required floor's
+// [floor-shared-fill] ledger showing disposition=Stored at preparation, joined against
+// required_floor_claim_cost.tsv showing the four identities reaching verdict_reached=true.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
@@ -557,7 +607,17 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_consumer_b",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_normalized",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_parsed",
-  "v2.extdeps.languages.dag.dag_canonical_symbol_map"
+  "v2.extdeps.languages.dag.dag_canonical_symbol_map",
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_combined_assembled",
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_alias_spelled_as_emitted_id_assembled",
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_alias_spelled_as_production_name_assembled",
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_empty_assembled",
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_fn_only_assembled",
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_type_only_assembled",
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_where_alias_only_assembled",
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_record_construct_assembled",
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_record_type_only_assembled",
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_flag_and_rec_assembled"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
@@ -1193,7 +1253,7 @@ fn share_roster_pending_collisions(
 //
 // `BoundParameter` — the producer TAKES the acquired value as a named argument, so a claim's own
 // call already carries the content in its argument row and the stored key needs no help. This is
-// the shape gunbc#11303 is moving the roadmap projections to.
+// the shape the roadmap projections took in gunbc#11303.
 //
 // `ImplicitAcquisition` — the producer is nullary and reaches the acquisition INSIDE itself. The
 // carried input's content identity is folded into the key on both the warm and the serve, so the
@@ -1270,8 +1330,8 @@ data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [
   CarriedInputWarmRow {
     producer: "gunbc.roadmap_authority.roadmap_authority_projection",
     carried_input: "gunbc.roadmap_authority.roadmap_acceptance_event_history_load",
-    dependence: ImplicitAcquisition,
-    measurement: "The same sha-pinned present-vs-absent pair as its input row, normalised on claims in no consumer module of any enrolled key. Admitted only on serve-below-recompute at identity grain; a row that does not clear it is withdrawn into floor_cross_claim_refused_candidates rather than defended by a family aggregate. ImplicitAcquisition is the shape on main today: gunbc#11303 moves the live callers to the explicit-history spelling, at which point this row becomes BoundParameter and the producer's own nullary wrapper stops existing — the migration is a row edit, not a mechanism change."
+    dependence: BoundParameter { parameter: "history" },
+    measurement: "The same sha-pinned present-vs-absent pair as its input row, normalised on claims in no consumer module of any enrolled key. Admitted only on serve-below-recompute at identity grain; a row that does not clear it is withdrawn into floor_cross_claim_refused_candidates rather than defended by a family aggregate. BoundParameter since gunbc#11303 landed the explicit-history spelling: the producer's nullary wrapper no longer exists, so the warm supplies `history` by name and the claim's own call already carries the content in its argument row. This row was authored ImplicitAcquisition with that transition written into it as the anticipated row edit, and the floor is what forced the edit rather than a reader noticing — the warm refused PureProducerShareWarmFailed with a call-contract mismatch naming the missing argument, which is the mechanism working."
   }
 ]
 

@@ -19,16 +19,19 @@ import gunbc.runner_microvm {
   RunnerGuestImage, gunbc_runner_guest_image,
   RunnerMicroVmNetworking, GuestNetworkAbsent,
   RunnerMicroVmConfigResolution, MicroVmConfigResolved, MicroVmConfigUnresolved,
-  gunbc_runner_microvm_vm_config,
+  gunbc_runner_microvm_vm_config, jit_drive_without_credential,
 }
 import gunbc.runner_guest_image {
+  guest_console_carries, GuestEmitted, GuestBooted,
   runner_guest_image_root, runner_guest_image_path,
   runner_guest_base_artifact_path, runner_guest_kernel_artifact,
 }
 import gunbc.runner_microvm_host_ready {
-  FirecrackerHostStanding, firecracker_host_ready, firecracker_installed_binary,
+  FirecrackerHostStanding, firecracker_host_ready_in_this_process, firecracker_installed_binary,
   firecracker_install_root, firecracker_host_standing_text,
   observe_firecracker_host_standing_wet,
+  MicrovmHostBinding, MicrovmHostBound, MicrovmHostBindingRefused,
+  microvm_host_binding_wet, microvm_host_binding_refusal_text,
 }
 import gunbc.command_runner {
   ProcessObservation, run_shell_command_observe, run_shell_commands, LocalExec,
@@ -98,14 +101,16 @@ fn runner_microvm_boot_probe_stage_commands(root: String, image: RunnerGuestImag
   ]
 }
 
-// THE JIT DRIVE IS THE ROOT DRIVE'S OWN PATH TODAY, AND THAT IS A GAP RATHER THAN A DESIGN.
-// gunbc.runner_microvm's configuration builder attaches a second, read-only drive carrying the
-// registration credential, because that carrier is the whole reason a microVM closes the shared-
-// credential class. No credential is minted yet -- that is the JIT slice -- so there is nothing to
-// put on it. A drive pointing at a file that does not exist makes Firecracker refuse at device
-// setup, which would render as an image defect; pointing it at the rootfs copy attaches a real file
-// the guest ignores. The moment a credential exists this argument is the credential's path and this
-// paragraph deletes.
+// THE JIT DRIVE CARRIES NO CREDENTIAL, BY THE CONTRACT RATHER THAN BY ACCIDENT. The guest agent reads
+// that device as a systemd environment file (gunbc.runner_microvm jit_drive_content), so the
+// earlier stand-in -- the rootfs copy's own path -- would now hand systemd an 8 GiB ext4 image to
+// parse. The probe instead writes gunbc.runner_microvm jit_drive_without_credential: whole sectors
+// of blank lines. The guest boots, prints its runner version and GuestBooted, the listener refuses as
+// unconfigured, and the manager powers the VM off -- a boot probe spends no registration.
+fn runner_microvm_boot_probe_jit_drive(root: String) -> String {
+  join([runner_microvm_boot_probe_dir(root: root), "/probe-jit.img"], "")
+}
+
 // NO IMAGE IDENTITY IS TAKEN HERE, AND THAT IS THE POINT: the probe boots a FIXED path, and the
 // identity is spent upstream by runner_microvm_boot_probe_stage_commands, which copies
 // runner_guest_image_path(root, image) onto it. Taking an identity this function could not honour
@@ -114,7 +119,7 @@ fn runner_microvm_boot_probe_stage_commands(root: String, image: RunnerGuestImag
 fn runner_microvm_boot_probe_config(root: String) -> RunnerMicroVmConfigResolution {
   gunbc_runner_microvm_vm_config(
     rootfs_path: runner_microvm_boot_probe_rootfs(root: root),
-    jit_config_path: runner_microvm_boot_probe_rootfs(root: root),
+    jit_config_path: runner_microvm_boot_probe_jit_drive(root: root),
     kernel_path: runner_guest_base_artifact_path(root: root, artifact: runner_guest_kernel_artifact),
     net: runner_microvm_boot_probe_networking(),
   )
@@ -122,7 +127,7 @@ fn runner_microvm_boot_probe_config(root: String) -> RunnerMicroVmConfigResoluti
 
 // THE DEADLINE IS THE HOST'S, AND IT MUST NOT DEPEND ON THE GUEST AGREEING TO IT.
 //
-// The guest agent powers the machine off on ExecStopPost=, which runs on both arms of the job -- and
+// The guest agent powers the machine off by SuccessAction=/FailureAction=, which cover every way the agent unit ends -- and
 // that only ever covers the case where the agent STARTED. It does not cover an agent systemd never
 // pulled in (the exact defect this module's sibling just carried), a kernel that panics before
 // userspace, an init that hangs, or a guest that never reaches its target at all. In every one of
@@ -160,6 +165,7 @@ type BootProbeVerdict
   = BootPrintedRunnerVersion { version: String }
   | BootProducedNoConsole { cause: String }
   | BootConsoleLacksRunnerVersion { expected: String, console: String }
+  | BootConsoleLacksGuestBooted { console: String }
   | BootNotAttempted { cause: String }
   | BootExceededHostDeadline { deadline: String, console: String, detail: String }
   | BootVmmFailed { exit_code: Int, console: String, detail: String }
@@ -184,12 +190,33 @@ fn boot_probe_verdict(runner: ActionsRunnerRelease, observed: ProcessObservation
   }
 }
 
+// A LIVE BOOT OF THIS IMAGE MUST ALSO CARRY THE AGENT'S GuestBooted MARKER, read through
+// gunbc.runner_guest_image guest_console_carries -- the host's one console reader -- so a version
+// string that reached the console some other way is not read as the agent having run. It is a layer
+// over boot_probe_verdict rather than inside it because that verdict also judges consoles captured
+// before the marker existed (gunbc.runner_observed_version_check's committed Mt. Collins capture),
+// where requiring it would fail a true version readback for a reason unrelated to the version.
+fn guest_agent_boot_verdict(runner: ActionsRunnerRelease, observed: ProcessObservation) -> BootProbeVerdict {
+  let base = boot_probe_verdict(runner: runner, observed: observed)
+  match base {
+    BootPrintedRunnerVersion { version: _ } =>
+      if guest_console_carries(console: observed.stdout, kind: GuestEmitted { event: GuestBooted }) {
+        base
+      } else {
+        BootConsoleLacksGuestBooted { console: observed.stdout }
+      }
+    _ => base
+  }
+}
+
 fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
   match v {
     BootPrintedRunnerVersion { version: x } => join(["boot=printed-runner-version ", x], "")
     BootProducedNoConsole { cause: c } => join(["boot=no-console (", c, ")"], "")
     BootConsoleLacksRunnerVersion { expected: e, console: c } =>
       join(["boot=console-without-runner-version expected=", e, "\n--- console ---\n", c, "\n--- end console ---"], "")
+    BootConsoleLacksGuestBooted { console: c } =>
+      join(["boot=console-without-guest-booted (the guest agent never reported GuestBooted)\n--- console ---\n", c, "\n--- end console ---"], "")
     BootNotAttempted { cause: c } => join(["boot=not-attempted (", c, ")"], "")
     BootExceededHostDeadline { deadline: d, console: c, detail: e } =>
       join(["boot=host-deadline-expired after ", d,
@@ -206,6 +233,7 @@ fn boot_probe_admitted(v: BootProbeVerdict) -> Bool {
     BootPrintedRunnerVersion { version: _ } => true
     BootProducedNoConsole { cause: _ } => false
     BootConsoleLacksRunnerVersion { expected: _, console: _ } => false
+    BootConsoleLacksGuestBooted { console: _ } => false
     BootNotAttempted { cause: _ } => false
     BootExceededHostDeadline { deadline: _, console: _, detail: _ } => false
     BootVmmFailed { exit_code: _, console: _, detail: _ } => false
@@ -223,10 +251,19 @@ fn executor_home_wet() -> String? {
   }
 }
 
+// (Hoisted to module grain from the body of the item below: a source annotation inside a
+// declaration body is not modeled and refuses to parse.)
+// THE LOGIN COMES FROM THE HOST'S ROSTER ROW, because the standing now carries the executor's
+// group enrolment and that is a fact about a named account. A probe on a host with no roster
+// row has no executor to ask about, which is a BootNotAttempted cause like any other.
+//
 // THE HOST STANDING IS CHECKED FIRST AND ITS REFUSAL IS CARRIED FORWARD WHOLE. A host with no
 // writable /dev/kvm or no Firecracker cannot boot anything, and a probe that discovered that by
 // failing to produce a console would report an IMAGE verdict for a HOST fact -- sending a reader to
 // the wrong module, which is the state-space conflation this repository refuses elsewhere.
+// THE LOGIN COMES FROM THE HOST'S ROSTER ROW, because the standing now carries the executor's
+// group enrolment and that is a fact about a named account. A probe on a host with no roster
+// row has no executor to ask about, which is a BootNotAttempted cause like any other.
 fn runner_microvm_boot_probe_wet() -> ProcessExit
   uses net: Network
 {
@@ -234,11 +271,17 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
     Absent => exit_failure(reason: "runner_microvm_boot_probe: HOME is unset, so neither the image root nor the Firecracker install root can be named")
     Present { value: home } => {
       let fc_root = firecracker_install_root(executor_home: home)
-      let standing = observe_firecracker_host_standing_wet(root: fc_root)
-      if !firecracker_host_ready(standing: standing) {
+      match microvm_host_binding_wet() {
+        MicrovmHostBindingRefused { cause: c } =>
+          runner_microvm_boot_probe_receipt_wet(
+            verdict: BootNotAttempted { cause: join(["the host this probe is running on is not bound to the host the dispatch selected, so no executor is named to ask about and nothing was booted: ", microvm_host_binding_refusal_text(c: c)], "") },
+          )
+        MicrovmHostBound { spec: spec, host: bound_host } => {
+      let standing = observe_firecracker_host_standing_wet(root: fc_root, login: spec.job_user)
+      if !firecracker_host_ready_in_this_process(standing: standing) {
         runner_microvm_boot_probe_receipt_wet(
           verdict: BootNotAttempted {
-            cause: join(["the host cannot run a micro-VM at all, so no image verdict is available --\n", firecracker_host_standing_text(s: standing)], ""),
+            cause: join(["the host cannot run a micro-VM at all, so no image verdict is available --\n", firecracker_host_standing_text(s: standing, host: bound_host, expected_login: spec.job_user)], ""),
           },
         )
       } else {
@@ -254,11 +297,21 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
           MicroVmConfigResolved { config: cfg } =>
             match run_shell_commands(commands: runner_microvm_boot_probe_stage_commands(root: root, image: image), transport: LocalExec) {
               ExitSuccess => {
+                let j = Filesystem.Write(
+                  path: runner_microvm_boot_probe_jit_drive(root: root),
+                  content: jit_drive_without_credential(),
+                )
                 let w = Filesystem.Write(
                   path: runner_microvm_boot_probe_config_path(root: root),
                   content: firecracker_vm_config_document(config: cfg),
                 )
-                if !w.success {
+                if !j.success {
+                  runner_microvm_boot_probe_receipt_wet(
+                    verdict: BootNotAttempted {
+                      cause: join(["the credential-free JIT drive could not be written: ", j.error], ""),
+                    },
+                  )
+                } else if !w.success {
                   runner_microvm_boot_probe_receipt_wet(
                     verdict: BootNotAttempted {
                       cause: join(["the VM configuration document could not be written: ", w.error], ""),
@@ -266,7 +319,7 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
                   )
                 } else {
                   runner_microvm_boot_probe_receipt_wet(
-                    verdict: boot_probe_verdict(
+                    verdict: guest_agent_boot_verdict(
                       runner: image.runner,
                       observed: run_shell_command_observe(
                         command: runner_microvm_boot_probe_bounded_command(
@@ -281,6 +334,8 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
               }
               other => other
             }
+        }
+      }
         }
       }
     }

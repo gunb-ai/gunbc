@@ -8,8 +8,8 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import extdeps.network.mac { Eui48Address, MacParseResult, parse_mac_address, render_mac_address }
 import extdeps.toolchain.types { Architecture, Aarch64 }
-import product.placement_supply { SiteIdentity }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
+import product.placement_supply { SiteIdentity }
 import extdeps.firmware.ipxe { ipxe_chainloading_authority, ipxe_arm64_efi_snponly, ipxe_build_target_path }
 import extdeps.formats.dnsmasq {
   DnsmasqDirective,
@@ -19,6 +19,9 @@ import extdeps.formats.dnsmasq {
   DnsmasqDhcpMatchSet,
   DnsmasqDhcpHostSetTag,
   DnsmasqDhcpBootTags,
+  DnsmasqLogDhcp,
+  DnsmasqEnableTftp,
+  DnsmasqTftpRoot,
   serialize_dnsmasq
 }
 import gunbc.network_boot_delivery {
@@ -270,31 +273,39 @@ fn site_edge_admission_of_standing(standing: SitePxeEdgeStanding, unreachable: L
 // edge on a segment with an existing DHCP server must say, and it is never evidence -- standing
 // comes only from the observed offer above. Only the aarch64 tag gets a boot line, and that line
 // also requires the known-machine tag, so the rendered edge offers nothing to an unknown machine
-// or architecture.
+// or architecture. The TFTP root it serves holds only that chainloader; kernels, initrds and images
+// are fetched from the global HTTPS boot origin, never from the edge.
 data site_edge_arm64_tag: String = "efi-arm64"
 
 data site_edge_known_tag: String = "onboarding-known"
 
-fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, roster: SiteEdgeRoster) -> List<DnsmasqDirective> {
+fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, roster: SiteEdgeRoster, tftp_directory: NonEmptyStr) -> List<DnsmasqDirective> {
   concat(
     [
       DnsmasqComment { text: join(["gunbc.site_uefi_arm64_pxe_edge: ProxyDHCP, UEFI ARM64 chainloader only: iPXE ", ipxe_build_target_path(target: ipxe_arm64_efi_snponly) as String, " per ", ipxe_chainloading_authority.uri.locator], "") },
       DnsmasqPort { value: 0 },
+      DnsmasqLogDhcp,
       DnsmasqDhcpRangeProxy { network_address: render_ipv4_address(addr: network_address) as String },
       DnsmasqDhcpMatchSet { tag: site_edge_arm64_tag, option: "option:client-arch", value: to_string(uefi_arm64_client_arch_code) },
     ],
     concat(
       map(roster.known_client_macs, m => DnsmasqDhcpHostSetTag { mac: render_mac_address(addr: m) as String, tag: site_edge_known_tag }),
-      [DnsmasqDhcpBootTags { first_tag: site_edge_arm64_tag, more_tags: [site_edge_known_tag], target: site_edge_offered_filename(roster: roster) as String, server_name: roster.tftp_server_name as String, server_address: render_ipv4_address(addr: roster.tftp_server_address) as String }],
+      [
+        DnsmasqDhcpBootTags { first_tag: site_edge_arm64_tag, more_tags: [site_edge_known_tag], target: site_edge_offered_filename(roster: roster) as String, server_name: roster.tftp_server_name as String, server_address: render_ipv4_address(addr: roster.tftp_server_address) as String },
+        DnsmasqEnableTftp,
+        DnsmasqTftpRoot { path: tftp_directory as String },
+      ],
     ),
   )
 }
 
-// The config renders the SAME roster admission gates on: its known-machine tags are the roster's MACs
-// and its boot line is the roster's derived transport, so the offered file and the checked file are
-// one value.
-fn site_edge_proxy_dhcp_config(network_address: Ipv4Address, roster: SiteEdgeRoster) -> String {
-  serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, roster: roster))
+// CONSUMER (§3c): gunbc.site_pxe_edge_converge site_pxe_edge_config_file renders this as the srv4 edge
+// daemon's config once its gate opens (see the frontier row below for what that waits on). It renders the SAME roster admission gates on: its known-machine
+// tags are the roster's MACs and its boot line is the roster's derived transport. tftp_directory is
+// the serving host's filesystem path for dnsmasq's tftp-root, a host fact beside the roster's TFTP
+// route identity.
+fn site_edge_proxy_dhcp_config(network_address: Ipv4Address, roster: SiteEdgeRoster, tftp_directory: NonEmptyStr) -> String {
+  serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, roster: roster, tftp_directory: tftp_directory))
 }
 
 fn site_edge_offered_filename(roster: SiteEdgeRoster) -> NonEmptyStr {
@@ -308,21 +319,21 @@ fn site_edge_offered_filename(roster: SiteEdgeRoster) -> NonEmptyStr {
 // failure is a MacParseFailed every consumer must refuse on, never an empty roster.
 data first_onboarding_known_client_mac: MacParseResult = parse_mac_address(text: mtcollins1_host_nic_mac as String)
 
-// The two production routes this module provides and nothing in this change executes, as counted
+// The production routes this module provides and nothing yet executes, as counted
 // rows (enrolled in gunbc.census_closure_frontier) rather than prose.
 data site_uefi_arm64_pxe_edge_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.site_uefi_arm64_pxe_edge", decl_name: "site_edge_proxy_dhcp_config"),
+    reason: "gunbc.site_pxe_edge_converge site_pxe_edge_config_file renders this config, but its converge gate is closed by construction (site_pxe_edge_chainloader_pin is SitePxeEdgeChainloaderUnpinned), so no dispatch has written it to srv4",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the iPXE arm64 chainloader pin is grounded (a digested build pinned as SitePxeEdgeChainloaderPinned and present in the TFTP root) and a site_pxe_edge_converge dispatch writes this rendering to srv4 and reads it back; the converge code existing does not fire this"
+    )
+  ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.site_uefi_arm64_pxe_edge", decl_name: "site_edge_client_admission"),
     reason: "no route binds an observed srv4 boot offer into gunbc.network_boot_delivery NetworkBootJoinInputs.site; the admission verdict is constructed only by witnesses over supplied rosters",
     dissolution: unbound_dissolution(
       description: "dissolves when the first boot offer observed from the converged srv4 edge is minted as a SiteDhcpOfferObservation and bound through site_edge_client_admission into NetworkBootJoinInputs.site on a real boot attempt; a witness over supplied offers does not fire this"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.site_uefi_arm64_pxe_edge", decl_name: "site_edge_proxy_dhcp_config"),
-    reason: "no production route writes the rendered ProxyDHCP config to the edge host in this change",
-    dissolution: unbound_dissolution(
-      description: "dissolves when gunbc.site_pxe_edge_converge site_pxe_edge_config_file writes this rendering to srv4 through the fleet-converge site_pxe_edge_converge mode (PXE-FABRIC 0C follow-up)"
     )
   ),
 ]

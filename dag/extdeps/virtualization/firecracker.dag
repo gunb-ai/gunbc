@@ -3,6 +3,7 @@ module extdeps.virtualization.firecracker
 import extdeps.exec.command { ArgvCommand, argv_command }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.disposition { Disposition, Terminal }
+import std.measure { ByteSize, byte_size, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.emit {
@@ -36,6 +37,42 @@ type FirecrackerRelease {
 data firecracker_release_aarch64: FirecrackerRelease = FirecrackerRelease {
   version: "v1.16.1",
   arch: "aarch64",
+}
+
+// THE vCPU RANGE THE PINNED RELEASE ACCEPTS, AS UPSTREAM STATES IT. Firecracker's machine
+// configuration admits `vcpu_count` in 1..=32 (docs/api_requests: "Number of vCPUs (either 1 or
+// an even number)" was the pre-1.0 wording; the current MachineConfig schema constrains the field
+// to minimum 1, maximum 32, and the VMM refuses a PUT /machine-config outside that range before
+// any boot). It is a fact about this RELEASE and lives beside its row, so a consumer that admits
+// a guest topology can refuse a count the VMM would refuse, rather than discovering it at boot as
+// an API error. A later release that widens the range changes this row and nothing downstream.
+// THE BOUNDS RIDE THE SAME CARRIER AS THE COUNT THEY BOUND: std.measure HardwareThreadCount, the
+// one place a vCPU count lives in this corpus (extdeps.cloud.hetzner and extdeps.github.hosted_runners
+// read vendor vCPU figures onto it the same way). The API field itself stays the bare Int upstream's
+// schema declares (FirecrackerMachineConfig.vcpu_count); the boundary conversion is one call, here.
+type FirecrackerVcpuRange {
+  of_release: FirecrackerRelease
+  minimum: HardwareThreadCount
+  maximum: HardwareThreadCount
+}
+
+data firecracker_vcpu_range_v1_16_1: FirecrackerVcpuRange = FirecrackerVcpuRange {
+  of_release: firecracker_release_aarch64,
+  minimum: hardware_thread_count(count: 1),
+  maximum: hardware_thread_count(count: 32),
+}
+
+type FirecrackerVcpuAdmission
+  = VcpuCountAdmitted { count: HardwareThreadCount }
+  | VcpuCountUnsupported { requested: HardwareThreadCount, minimum: HardwareThreadCount, maximum: HardwareThreadCount }
+
+fn firecracker_vcpu_count_admission(range: FirecrackerVcpuRange, count: HardwareThreadCount) -> FirecrackerVcpuAdmission {
+  let n = hardware_thread_count_value(t: count)
+  if n < hardware_thread_count_value(t: range.minimum) || n > hardware_thread_count_value(t: range.maximum) {
+    VcpuCountUnsupported { requested: count, minimum: range.minimum, maximum: range.maximum }
+  } else {
+    VcpuCountAdmitted { count: count }
+  }
 }
 
 // THE HOST REQUIREMENT IS ONE FACT AND IT IS NOT NEGOTIABLE. Upstream states it as read/write
@@ -113,6 +150,13 @@ type FirecrackerBootSource {
   boot_args: NonEmptyStr
 }
 
+// A DRIVE IS EXPOSED TO THE GUEST IN WHOLE 512-BYTE SECTORS, AND A PARTIAL TAIL IS DROPPED.
+// firecracker v1.16.1 src/vmm/src/devices/virtio/block/virtio/mod.rs: SECTOR_SIZE = 1 << SECTOR_SHIFT
+// (9). device.rs, on opening the backing file: "If the image is not a multiple of the sector size,
+// the tail bits are not exposed" -- it logs a warning and the guest sees the size rounded down. A
+// backing file whose content matters to its last byte must therefore be a whole number of these.
+data firecracker_block_sector_size: ByteSize = byte_size(count: 512)
+
 // A drive is identified by a caller-chosen id and is EITHER the root device or not. Upstream lets
 // both flags be set independently; modelling is_root_device as a Bool beside is_read_only keeps
 // the upstream shape rather than inventing a coproduct the API does not have.
@@ -157,6 +201,42 @@ fn firecracker_root_drive_count(config: FirecrackerVmConfig) -> Int {
 
 fn firecracker_config_has_single_root(config: FirecrackerVmConfig) -> Bool {
   firecracker_root_drive_count(config: config) == 1
+}
+
+// WHICH GUEST DEVICE A DRIVE BECOMES IS ITS POSITION IN `drives`. Firecracker attaches the
+// virtio-blk devices in the order of the configuration's drives array, and the Linux virtio_blk
+// driver names them vda, vdb, ... in the order it probes them (virtblk_name_format). On this fleet's
+// aarch64 hosts that order was observed, not only read: the Mt. Collins run
+// (gunbc.runner.runner_first_job_receipt execution_chain) booted root=/dev/vda and read its second
+// drive's credential off /dev/vdb. Only the first 26 drives are named here; a drive beyond them, or
+// one that is not attached, has no name rather than a guessed one.
+type DriveIndexScan {
+  next: Int
+  found: Int?
+}
+
+data firecracker_guest_block_letters: String = "abcdefghijklmnopqrstuvwxyz"
+
+fn firecracker_guest_block_device_of_index(index: Int) -> String? {
+  if index >= string_length(s: firecracker_guest_block_letters) {
+    none
+  } else {
+    Present { value: concat("/dev/vd", substring(s: firecracker_guest_block_letters, start: index, end: index + 1)) }
+  }
+}
+
+fn firecracker_drive_guest_device(drives: List<FirecrackerDrive>, drive_id: NonEmptyStr) -> String? {
+  let scan = fold(drives, init: DriveIndexScan { next: 0, found: none }, f: fn(acc, d) {
+    let found = match acc.found {
+      Present { value: i } => Present { value: i }
+      Absent => if d.drive_id == drive_id { Present { value: acc.next } } else { none }
+    }
+    DriveIndexScan { next: acc.next + 1, found: found }
+  })
+  match scan.found {
+    Absent => none
+    Present { value: i } => firecracker_guest_block_device_of_index(index: i)
+  }
 }
 
 // --- the configuration FILE, which is upstream's own wire shape and not a rendering of ours ---

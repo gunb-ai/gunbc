@@ -60,13 +60,12 @@ type HostConvergenceSubject
   | SparkRuntimeImage
   | RunnerHostFiles
   | RunnerPasswordSessionTools
+  | MicrovmControllerAppKey
   | MicrovmHost
   | GuestImage
   | Srv3InstallMedia
   | SrvBmcCredential
   | TypedRemoteFileBytes
-  | OrgActions
-  | AppControlPlane
   | HostToolchain
   | RunnerMemoryCaps
   | ContributorRepoLocalGitConfig
@@ -684,6 +683,15 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.runner_password_session_tool_converge", decl_name: "runner_password_session_tool_converge_ci_wet"),
   ),
   census_row(
+    identity: cite(module_path: "gunbc.microvm_controller_app_key_converge", decl_name: "microvm_controller_app_key_converge_ci_wet"),
+    subject: MicrovmControllerAppKey,
+    phases: protocol_phases(false, true, true, true, true, true, false),
+    current_authority: cite(module_path: "gunbc.microvm_controller_app_key_converge", decl_name: "microvm_controller_app_key_converge_ci_wet"),
+    persistent_host_effect: ReachesPersistentHostMutation,
+    disposition: BindToAuthority { target: fleet_plan() },
+    first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
+  ),
+  census_row(
     identity: cite(module_path: "gunbc.runner_microvm_host_ready", decl_name: "runner_microvm_host_converge_wet"),
     subject: MicrovmHost,
     phases: protocol_phases(false, true, false, false, false, false, true),
@@ -736,24 +744,6 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     persistent_host_effect: ReachesPersistentHostMutation,
     disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
-  ),
-  census_row(
-    identity: cite(module_path: "gunbc.fleet.org_actions_converge", decl_name: "org_actions_converge_wet"),
-    subject: OrgActions,
-    phases: protocol_phases(false, true, true, false, false, false, false),
-    current_authority: cite(module_path: "gunbc.fleet.org_actions_converge", decl_name: "org_actions_converge_wet"),
-    persistent_host_effect: DoesNotMutateHost,
-    disposition: RenameOutOfConvergence { canonical: std_goal_assessment() },
-    first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
-  ),
-  census_row(
-    identity: cite(module_path: "gunbc.fleet.app_control_plane_converge", decl_name: "app_control_plane_converge_wet"),
-    subject: AppControlPlane,
-    phases: protocol_phases(false, true, true, false, false, false, false),
-    current_authority: cite(module_path: "gunbc.fleet.app_control_plane_converge", decl_name: "app_control_plane_converge_wet"),
-    persistent_host_effect: DoesNotMutateHost,
-    disposition: RenameOutOfConvergence { canonical: std_goal_assessment() },
-    first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
     identity: cite(module_path: "gunbc.host_toolchain_ensure", decl_name: "host_toolchain_ensure"),

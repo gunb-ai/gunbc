@@ -6,6 +6,8 @@ import extdeps.access.posix {
   PermissionBits,
   FileMode,
   file_mode_octal,
+  file_mode_of_octal_text,
+  permission_bits_of_octal_digit,
 }
 import std.effect_grant { Read, Write, Execute }
 import gunbc.ownership { Owned }
@@ -127,4 +129,62 @@ test fn witness_octal_renders_special_bits_digit() -> Bool {
     sticky: false,
   }
   file_mode_octal(mode: mode) == "2750"
+}
+
+// THE INVERSE IS THE SAME GRAMMAR READ BACKWARD (DESIGN section 4), so the discriminating check is
+// that the round trip preserves the mode -- not that one hand-picked string parses. stat's %a omits
+// the special digit when it is zero, so "660" and "0660" must reach the same FileMode; that pair is
+// the reason the reader slices digits from the least significant end rather than branching on
+// length.
+test fn the_octal_parse_is_the_inverse_of_the_render_for_three_and_four_digit_forms() -> Bool {
+  let setgid_mode = FileMode {
+    owner: PermissionBits { read: true, write: true, execute: true },
+    group: PermissionBits { read: true, write: false, execute: true },
+    other: PermissionBits { read: false, write: false, execute: false },
+    setuid: false,
+    setgid: true,
+    sticky: false,
+  }
+  let kvm_mode = FileMode {
+    owner: PermissionBits { read: true, write: true, execute: false },
+    group: PermissionBits { read: true, write: true, execute: false },
+    other: PermissionBits { read: false, write: false, execute: false },
+    setuid: false,
+    setgid: false,
+    sticky: false,
+  }
+  (match file_mode_of_octal_text(text: file_mode_octal(mode: setgid_mode)) {
+    Present { value: m } => file_mode_octal(mode: m) == "2750" && m.setgid && !m.group.write
+    Absent => false
+  })
+    && (match file_mode_of_octal_text(text: "660") {
+      Present { value: m } => file_mode_octal(mode: m) == file_mode_octal(mode: kvm_mode) && m.group.write
+      Absent => false
+    })
+    && (match file_mode_of_octal_text(text: "0660") {
+      Present { value: m } => file_mode_octal(mode: m) == file_mode_octal(mode: kvm_mode)
+      Absent => false
+    })
+    && (match file_mode_of_octal_text(text: "640") {
+      Present { value: m } => !m.group.write && m.group.read
+      Absent => false
+    })
+}
+
+// AN UNPARSEABLE MODE IS A REFUSAL AND NEVER A MODE WITH EVERYTHING FALSE, because the consumer is
+// deciding whether a device is delegated to a group: a fabricated all-denied mode would render as
+// "this host does not delegate", sending an operator to fix a udev rule that is fine, when what
+// actually happened is that the probe failed. An octal digit above 7 is the sharp case -- "680" is
+// digits all the way down and still not a mode.
+test fn an_unreadable_octal_mode_refuses_rather_than_reading_as_all_denied() -> Bool {
+  (match file_mode_of_octal_text(text: "") { Absent => true  Present { value: _ } => false })
+    && (match file_mode_of_octal_text(text: "rw-rw----") { Absent => true  Present { value: _ } => false })
+    && (match file_mode_of_octal_text(text: "680") { Absent => true  Present { value: _ } => false })
+    && (match file_mode_of_octal_text(text: "-1") { Absent => true  Present { value: _ } => false })
+    && (match file_mode_of_octal_text(text: "77777") { Absent => true  Present { value: _ } => false })
+    && (match permission_bits_of_octal_digit(digit: 8) { Absent => true  Present { value: _ } => false })
+    && (match permission_bits_of_octal_digit(digit: 6) {
+      Present { value: b } => b.read && b.write && !b.execute
+      Absent => false
+    })
 }

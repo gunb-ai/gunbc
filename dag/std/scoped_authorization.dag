@@ -1,6 +1,7 @@
 module std.scoped_authorization
 
-import std.types { NonEmptyStr, String, Bool, Timestamp }
+import std.types { NonEmptyStr, String, Bool, Timestamp, List }
+import v2.std.optional { Present, Absent }
 import std.content_hash {
   ContentHash,
   ContentHashComparison,
@@ -395,10 +396,18 @@ fn authorize<Subject>(
 //
 // The claim slot is keyed by escalation id, so every attempt that could claim one grant addresses
 // exactly one slot. Keying it by attempt instead would give each racer its own slot and exclude
-// nothing, which is the shape of the race rather than its resolution.
+// nothing, which is the shape of the race rather than its resolution. The key CARRIES ITS SCOPE:
+// `authorization_claim_store_root` is one shared authorization-claim domain (srv3 boot-once and
+// Mt. Collins boot both publish there), and the scope prefix is what keeps this relation's slots
+// from colliding with any other relation that may share the root. The separator is `-` rather than
+// `/` because a slash is not slot-addressable in gunbc.durable_cas_file_store (cas_key_is_slot_
+// addressable) -- the earlier repair for that refusal deleted the prefix and moved the scoping into
+// caller convention (review 68728); this restores it as a property of the key.
 fn authorization_claim_key(escalation_id: NonEmptyStr) -> NonEmptyStr {
-  concat("scoped-authorization/", escalation_id as String) as NonEmptyStr
+  concat(authorization_claim_key_scope, escalation_id as String) as NonEmptyStr
 }
+
+data authorization_claim_key_scope: String = "scoped-authorization-"
 
 // THE SLOT HOLDS WHAT THE STORE HOLDS. std.durable_compare_and_set's realization
 // (gunbc.durable_cas_file_store) reads and writes NonEmptyStr, so a claim typed over
@@ -461,6 +470,65 @@ type AuthorizationClaimOutcome
   = ClaimHeld { state: AuthorizationClaimState, generation: CasGeneration }
   | ClaimLost { holder: NonEmptyStr }
   | ClaimUndecided { reason: NonEmptyStr }
+
+// THE EXACT INVERSE OF THE SERIALIZER, for a reader that must know WHO holds a slot rather than
+// only that it lost to someone. A transaction recovering after a crash reads its grant's slot and
+// has to decide from the state found there -- claimed by this attempt, claimed by another,
+// completed, aborted -- and each answer is a different remedy, so the bytes are decoded into
+// the same closed type they were written from and a payload that inhabits no arm is Absent,
+// never a guessed state. The LOST arm of authorization_claim_outcome still carries the raw
+// winner's payload: a loser needs no decision from it, only the report.
+fn parse_authorization_claim_state(payload: NonEmptyStr) -> AuthorizationClaimState? {
+  let parts = split(s: payload as String, delimiter: "\t")
+  match get(xs: parts, index: 0) {
+    Absent => none
+    Present { value: word } =>
+      if word == "unclaimed" {
+        if length(parts) == 1 { Present { value: Unclaimed } } else { none }
+      } else if word == "claimed-by" {
+        claim_state_two_fields(parts: parts, completed: false)
+      } else if word == "completed-by" {
+        claim_state_two_fields(parts: parts, completed: true)
+      } else if word == "aborted-by" {
+        if length(parts) != 4 { none } else {
+          match get(xs: parts, index: 1) {
+            Absent => none
+            Present { value: who } =>
+              match get(xs: parts, index: 2) {
+                Absent => none
+                Present { value: when } =>
+                  match get(xs: parts, index: 3) {
+                    Absent => none
+                    Present { value: why } =>
+                      if who == "" || why == "" { none } else {
+                        Present { value: AbortedBy { attempt: (who as NonEmptyStr) as AttemptIdentity, aborted_at: when, cause: why as NonEmptyStr } }
+                      }
+                  }
+              }
+          }
+        }
+      } else {
+        none
+      }
+  }
+}
+
+fn claim_state_two_fields(parts: List<String>, completed: Bool) -> AuthorizationClaimState? {
+  if length(parts) != 3 { none } else {
+    match get(xs: parts, index: 1) {
+      Absent => none
+      Present { value: who } =>
+        match get(xs: parts, index: 2) {
+          Absent => none
+          Present { value: when } =>
+            if who == "" { none } else {
+              let attempt = (who as NonEmptyStr) as AttemptIdentity
+              Present { value: if completed { CompletedBy { attempt: attempt, completed_at: when } } else { ClaimedBy { attempt: attempt, claimed_at: when } } }
+            }
+        }
+    }
+  }
+}
 
 // THE HELD STATE IS THE ONE WE PROPOSED, not one decoded back out of the slot. A committed write
 // is proof the store took our bytes, so re-deriving the state from them would be a round trip

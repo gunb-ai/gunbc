@@ -37,11 +37,17 @@ import extdeps.google.sheets {
 // converge with conflict detection over an operator-edited sheet -- and this module does not call
 // it: it converges a whole range against a supplied ValueRange. The frontier is still open and
 // review_sheet_ensure still has no caller. What this module did establish is that the frontier was
-// hiding a defect: value_range_from_derived_write builds an Optional-wrapped body that Sheets
-// refuses, which no witness over a mock response corpus could ever have caught.
+// hiding a defect: the earlier plan lowering built an Optional-wrapped ValueRange body that Sheets
+// refuses, which no witness over a mock response corpus could ever have caught; the lowering is
+// now gunbc.review_sheet_sheets lower_write_plan, which builds ValueRangeWrite.
 //
-// NO MODULE IN THIS REPOSITORY IMPORTS THIS ONE, and that is a real consumption gap rather than a
-// stylistic one. Its consumer is strategy.ci_prospect_sheet_write in the gunbc-private repository,
+// THE WHOLE-PLAN ROUTE IS NOT THIS MODULE. gunbc.review_sheet_batch_actuator issues one
+// values.batchUpdate over an admitted TabBoundWritePlan and verifies by whole-tab reassessment; it
+// imports read_values from here and nothing else. perform_values_write and converge_sheet_values
+// stay for the consumer below and take no new callers; their deletion waits on a census of it.
+//
+// NO CALLER OF converge_sheet_values EXISTS IN THIS REPOSITORY, and that is a real consumption gap
+// rather than a stylistic one. Its consumer is strategy.ci_prospect_sheet_write in the gunbc-private repository,
 // which this corpus cannot import and a reader here cannot see, so from inside gunbc this module
 // reads exactly like the dangling declaration DESIGN section 3c refuses. The frontier row below is
 // the declaration that makes it honest -- a named consumer and a named trigger -- and not an
@@ -74,11 +80,24 @@ type ValuesReadOutcome
   = ValuesRead { range: ValueRange }
   | ValuesUnreadable { cause: NonEmptyStr }
 
+// THE ONE values.get CALL SITE IN THIS MODULE, with the render option a parameter. read_values is
+// the FORMATTED_VALUE reading the converge path pairs with RAW writes (the note above);
+// gunbc.review_sheet_formula_observation reads the same tab under FORMULA rendering to see a cell
+// whose formula renders to the empty string. One call site, two readings, so the outcome
+// classification below is written once.
 fn read_values(spreadsheet_id: NonEmptyStr, a1: String) -> ValuesReadOutcome uses net: Network {
+  read_values_rendered(spreadsheet_id: spreadsheet_id, a1: a1, render: RenderFormattedValue)
+}
+
+fn read_values_rendered(
+  spreadsheet_id: NonEmptyStr,
+  a1: String,
+  render: SheetsValueRenderOption,
+) -> ValuesReadOutcome uses net: Network {
   let read = sheets.Spreadsheets.GetValues(
     spreadsheet_id: spreadsheet_id as String,
     range: a1,
-    value_render_option: RenderFormattedValue,
+    value_render_option: render,
   )
   match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
     RestExchangeSucceeded => ValuesRead { range: read.value_range }
@@ -194,10 +213,10 @@ fn compare_rows(a: List<List<String>>, b: List<List<String>>) -> RowsComparison 
 
 fn compare_value_ranges(a: ValueRange, b: ValueRange) -> RowsComparison {
   match value_range_row_major(r: a) {
-    RowsNotRowMajor { cause: c } => RowsIncomparable { cause: c }
+    RowsNotRowMajor { cause: c } => RowsIncomparable { cause: row_major_refusal_text(cause: c) }
     RowsRead { rows: ar } =>
       match value_range_row_major(r: b) {
-        RowsNotRowMajor { cause: c } => RowsIncomparable { cause: c }
+        RowsNotRowMajor { cause: c } => RowsIncomparable { cause: row_major_refusal_text(cause: c) }
         RowsRead { rows: br } => compare_rows(a: ar, b: br)
       }
   }
@@ -212,24 +231,36 @@ fn compare_value_ranges(a: ValueRange, b: ValueRange) -> RowsComparison {
 // ABSENT IS ROWS, and that is the upstream default rather than a guess: Sheets omits majorDimension
 // when it is ROWS, the same proto3 omission that hides a zero colour channel. An unrecognised
 // spelling is neither, and refuses.
+//
+// THE REFUSAL IS TYPED, AND THE PROSE IS A PROJECTION OF IT. An earlier shape carried the cause as
+// a sentence, which a consumer asserting "refused because COLUMNS-major" could only test by
+// substring; the two causes are now two arms, and row_major_refusal_text renders them for the
+// comparison path that still reports prose.
+type RowMajorRefusal
+  = RangeColumnsMajor
+  | RangeDimensionUnrecognised { raw: String }
+
 type RowMajorReading
   = RowsRead { rows: List<List<String>> }
-  | RowsNotRowMajor { cause: NonEmptyStr }
+  | RowsNotRowMajor { cause: RowMajorRefusal }
+
+fn row_major_refusal_text(cause: RowMajorRefusal) -> NonEmptyStr {
+  match cause {
+    RangeDimensionUnrecognised { raw: raw } =>
+      join(["the range reports majorDimension '", raw, "', which is neither ROWS nor COLUMNS, so its nesting cannot be read as rows or as columns"], "") as NonEmptyStr
+    RangeColumnsMajor =>
+      "the range is COLUMNS-major, so its outer list is columns and comparing it against row-major desired values would compare a transposition and then write it back as rows" as NonEmptyStr
+  }
+}
 
 fn value_range_row_major(r: ValueRange) -> RowMajorReading {
   match r.majorDimension {
     Absent => RowsRead { rows: value_range_values_raw(r: r) }
     Present { value: raw } =>
       match sheets_major_dimension_from_wire(raw: raw) {
-        Absent =>
-          RowsNotRowMajor {
-            cause: join(["the range reports majorDimension '", raw, "', which is neither ROWS nor COLUMNS, so its nesting cannot be read as rows or as columns"], "") as NonEmptyStr
-          }
+        Absent => RowsNotRowMajor { cause: RangeDimensionUnrecognised { raw: raw } }
         Present { value: DimensionRows } => RowsRead { rows: value_range_values_raw(r: r) }
-        Present { value: DimensionColumns } =>
-          RowsNotRowMajor {
-            cause: "the range is COLUMNS-major, so its outer list is columns and comparing it against row-major desired values would compare a transposition and then write it back as rows" as NonEmptyStr
-          }
+        Present { value: DimensionColumns } => RowsNotRowMajor { cause: RangeColumnsMajor }
       }
   }
 }

@@ -3,7 +3,7 @@ module v2.compiler.namespace_graft
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list, fold_list_right, list_append, list_snoc_item }
-import v2.std.collection { Absent, List, Present, optional_absent }
+import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -26,7 +26,6 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  node_rebuild,
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.compilers.lexing { symbol_lexeme }
@@ -46,7 +45,12 @@ import v2.extdeps.languages.dag {
   namespace_graft_has_module_header,
   namespace_graft_module_body_marker_node,
   namespace_graft_unwrap_module_working_root,
+  parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
+  parse_subtree_locate_production,
+  dag_resolve_preserve_module_metadata_subtree,
+  dag_surface_kw_then_ident_from_captured,
+  dag_surface_kw_then_ident_rest_from_captured,
   qualified_name_from_module_node
 }
 
@@ -67,9 +71,10 @@ type ModuleRootEdgeDisposition
 // read once for graft). grammar_production_identity_node_projection → RE-HOME on output ModuleShell
 // (^dag_surface_module provenance only). grammar_production_captured_node_projection → DISSOLVE
 // (unwrap before graft). grammar_sequence/repeat *_node_projection, ^dag_surface_top_level_item
-// shells, fn/data/type/import decl Named edges, Positional repeat spines, and every other
+// shells, fn/data/type decl Named edges, Positional repeat spines, and every other
 // non-metadata child → GRAFT_BODY (entire declaration forest under innermost Conj; extent is never
-// an export subset).
+// an export subset). import_decl units DISSOLVE at the unit partition
+// (NamespaceGraftUnitDisposition UnitDissolved): admitted upstream as Admission.imports.
 
 fn namespace_graft_module_root_edge_disposition(name: Symbol) -> ModuleRootEdgeDisposition {
   if dag_surface_module_header_metadata_edge(name: name) {
@@ -100,13 +105,6 @@ fn namespace_graft_parse_projection_edge(name: Symbol) -> Bool {
     || ends_with(s: symbol_lexeme(sym: name), suffix: "_node_projection")
 }
 
-fn namespace_graft_is_module_header_subtree(node: Node) -> Bool {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } => id == ^dag_surface_module_header
-    Absent => false
-  }
-}
-
 fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -128,35 +126,47 @@ fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
   }
 }
 
-fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
+fn namespace_graft_collect_body_edge(
+  acc: List<Edge>,
+  edge: Edge,
+  unit_ids: List<Symbol>
+) -> List<Edge> {
+  if namespace_graft_node_is_top_level_item_unit(node: edge.target, unit_ids: unit_ids) {
+    acc
+  } else {
   match edge.label {
     Named { name: sym } =>
       if namespace_graft_is_metadata_edge(name: sym) {
         acc
       } else if namespace_graft_parse_projection_edge(name: sym) {
-        concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target))
-      } else if namespace_graft_is_module_header_subtree(node: edge.target) {
+        concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target, unit_ids: unit_ids))
+      } else if dag_resolve_preserve_module_metadata_subtree(node: edge.target) {
         acc
       } else if namespace_graft_is_transparent_sequence_spine(node: edge.target) {
-        concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target))
+        concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target, unit_ids: unit_ids))
       } else {
         list_snoc_item(xs: acc, item: edge)
       }
     Positional =>
-      if namespace_graft_is_module_header_subtree(node: edge.target) {
+      if dag_resolve_preserve_module_metadata_subtree(node: edge.target) {
         acc
       } else if namespace_graft_is_transparent_sequence_spine(node: edge.target) {
-        concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target))
+        concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target, unit_ids: unit_ids))
       } else {
         list_snoc_item(xs: acc, item: edge)
       }
   }
+  }
 }
 
-fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<Edge> {
-  fold(node.children, init: [], f: fn(acc, edge) {
-    namespace_graft_collect_body_edge(acc: acc, edge: edge)
-  })
+fn namespace_graft_collect_body_edges_from_node(node: Node, unit_ids: List<Symbol>) -> List<Edge> {
+  if namespace_graft_node_is_top_level_item_unit(node: node, unit_ids: unit_ids) {
+    []
+  } else {
+    fold(node.children, init: [], f: fn(acc, edge) {
+      namespace_graft_collect_body_edge(acc: acc, edge: edge, unit_ids: unit_ids)
+    })
+  }
 }
 
 fn namespace_graft_grammar_expr_nonterminal_productions(expr: GrammarExpr) -> List<Symbol> {
@@ -178,9 +188,12 @@ fn namespace_graft_production_emitted_identity_optional(production: GrammarProdu
   node_atom_identity_optional(node: production.emitted)
 }
 
-fn namespace_graft_emitted_identity_for_production_name(name: Symbol) -> Symbol? {
+fn namespace_graft_emitted_identity_for_production_name(
+  productions: List<GrammarProduction>,
+  name: Symbol
+) -> Symbol? {
   fold_list(
-    xs: dag_grammar_root().productions,
+    xs: productions,
     empty: optional_absent(),
     cons: fn(acc, production) {
       match acc {
@@ -195,12 +208,17 @@ fn namespace_graft_emitted_identity_for_production_name(name: Symbol) -> Symbol?
   )
 }
 
-fn namespace_graft_top_level_item_alternative_emitted_ids() -> List<Symbol> {
+fn namespace_graft_top_level_item_alternative_emitted_ids(
+  productions: List<GrammarProduction>
+) -> List<Symbol> {
   fold_list(
     xs: namespace_graft_grammar_expr_nonterminal_productions(expr: dag_grammar_top_level_item_expr()),
     empty: [],
     cons: fn(acc, production_name) {
-      match namespace_graft_emitted_identity_for_production_name(name: production_name) {
+      match namespace_graft_emitted_identity_for_production_name(
+        productions: productions,
+        name: production_name
+      ) {
         Present { value: emitted } => list_snoc_item(xs: acc, item: emitted)
         Absent => acc
       }
@@ -218,11 +236,12 @@ fn namespace_graft_id_is_top_level_item_unit(id: Symbol, unit_ids: List<Symbol>)
   )
 }
 
-fn namespace_graft_collect_unit_nodes(node: Node) -> List<Node> {
-  namespace_graft_collect_unit_nodes_against(
-    node: node,
-    unit_ids: namespace_graft_top_level_item_alternative_emitted_ids()
-  )
+fn namespace_graft_node_is_top_level_item_unit(node: Node, unit_ids: List<Symbol>) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      namespace_graft_id_is_top_level_item_unit(id: id, unit_ids: unit_ids)
+    Absent => false
+  }
 }
 
 fn namespace_graft_collect_unit_nodes_against(node: Node, unit_ids: List<Symbol>) -> List<Node> {
@@ -264,19 +283,295 @@ fn namespace_graft_reconstruct_declaration_forest(units: List<Node>) -> List<Edg
   ]
 }
 
-fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
-  let flattened = namespace_graft_collect_body_edges(root: root)
-  if count(flattened) == 0 {
-    let units = namespace_graft_collect_unit_nodes(
-      node: namespace_graft_unwrap_module_working_root(root: root)
-    )
-    if count(units) == 0 {
-      []
-    } else {
-      namespace_graft_reconstruct_declaration_forest(units: units)
+fn namespace_graft_type_decl_name(unit: Node) -> Symbol? {
+  match namespace_graft_unit_captured(unit: unit) {
+    Present { value: captured } => dag_surface_kw_then_ident_from_captured(captured: captured)
+    Absent => optional_absent()
+  }
+}
+
+// Machinery is decided by PROVENANCE, not spelling (review 68542): a flattened Named
+// edge whose target is a parse production shell (it carries an identity projection) is
+// structure the parse left at module level; a member's target is lowered content.
+// Deciding by the label's lexeme dropped any user declaration that happened to spell a
+// production name or emitted identity -- a silent narrow in the one path this module
+// exists to keep loud.
+fn namespace_graft_target_is_production_shell(edge: Edge) -> Bool {
+  match parse_production_emitted_identity_optional(node: edge.target) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn namespace_graft_unit_captured(unit: Node) -> Node? {
+  parse_production_captured_child_optional(node: unit)
+}
+
+fn namespace_graft_type_decl_target(root: Node) -> Node {
+  match parse_subtree_locate_production(root: root, emitted: ^dag_surface_type_alias_rhs) {
+    Present { value: rhs } => rhs
+    Absent =>
+      match namespace_graft_unit_captured(unit: root) {
+        Present { value: captured } => captured
+        Absent => root
+      }
+  }
+}
+
+// Any type_decl that still locates dag_surface_field_decl_block is residual,
+// not Named: records and fielded variants (optional field_decl_block on
+// dag_grammar_type_variant_expr; sugar leaves those blocks in the tree).
+// Narrowing by type_alias_rhs / `=` rehomes records. Class
+// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
+fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
+  match parse_subtree_locate_production(root: unit, emitted: ^dag_surface_field_decl_block) {
+    Present { value: _ } => optional_absent()
+    Absent =>
+      match namespace_graft_type_decl_name(unit: unit) {
+        Absent => optional_absent()
+        Present { value: type_name } =>
+          optional_present(
+            value: Edge {
+              label: Named { name: type_name },
+              target: namespace_graft_type_decl_target(root: unit)
+            }
+          )
+      }
+  }
+}
+
+fn namespace_graft_kw_ident_named_edge(unit: Node) -> Edge? {
+  match namespace_graft_unit_captured(unit: unit) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match dag_surface_kw_then_ident_from_captured(captured: captured) {
+        Absent => optional_absent()
+        Present { value: name } =>
+          match dag_surface_kw_then_ident_rest_from_captured(captured: captured) {
+            Absent => optional_absent()
+            Present { value: rest } =>
+              optional_present(
+                value: Edge {
+                  label: Named { name: name },
+                  target: rest
+                }
+              )
+          }
+      }
+  }
+}
+
+fn namespace_graft_test_fn_named_edge(unit: Node) -> Edge? {
+  match parse_subtree_locate_production(root: unit, emitted: ^dag_surface_fn_decl) {
+    Present { value: fn_unit } => namespace_graft_kw_ident_named_edge(unit: fn_unit)
+    Absent => optional_absent()
+  }
+}
+
+type NamespaceGraftDeclPartition {
+  named_edges: List<Edge>
+  residual_units: List<Node>
+}
+
+// One disposition per collected top-level unit. UnitDissolved is the import_decl
+// arm: its members are admitted upstream as Admission.imports
+// (v2.compiler.name_resolve admit_imports), so the graft body owes it nothing --
+// the same disposition ModuleRootEdgeDissolve gives the module header. Carried
+// as a residual it is a raw shell resolve walks as bare mentions, which refuses
+// every ingest whose closure does not contain the imported module's spine.
+// EVERY CONSUMER OF THE GRAFTED BODY WAS CHECKED FOR AN IMPORT READ, AND NONE HAS
+// ONE: the self-host emitter feeds emit_imports from v1.compiler.core module_imports
+// (the v1 module node's own params, the seed parse -- not this tree); the v2 closure
+// route (v2.compiler.self_host.compiler_closure_emit) derives its closure with
+// v2.std.dependency dependency_lens, a generic parent-to-child edge fold; and
+// v2.compiler.translate's import shortcut fires only on an import_decl node it is
+// handed directly (the TypeScript import witnesses construct one), never on a node
+// found in a module body. Measured on origin/main with the same binary: the graft
+// body of a module with an import and a fn already carried no import_decl shell,
+// so this arm types a drop the flatten was already making.
+type NamespaceGraftUnitDisposition
+  = UnitNamed { edge: Edge }
+  | UnitResidual
+  | UnitDissolved
+
+fn namespace_graft_partition_step(
+  acc: NamespaceGraftDeclPartition,
+  unit: Node,
+  disposition: NamespaceGraftUnitDisposition
+) -> NamespaceGraftDeclPartition {
+  match disposition {
+    UnitNamed { edge: edge } =>
+      NamespaceGraftDeclPartition {
+        named_edges: list_snoc_item(xs: acc.named_edges, item: edge),
+        residual_units: acc.residual_units
+      }
+    UnitResidual =>
+      NamespaceGraftDeclPartition {
+        named_edges: acc.named_edges,
+        residual_units: list_snoc_item(xs: acc.residual_units, item: unit)
+      }
+    UnitDissolved => acc
+  }
+}
+
+fn namespace_graft_disposition_from_named_opt(named: Edge?) -> NamespaceGraftUnitDisposition {
+  match named {
+    Present { value: edge } => UnitNamed { edge: edge }
+    Absent => UnitResidual
+  }
+}
+
+fn namespace_graft_unit_disposition(unit: Node, id: Symbol) -> NamespaceGraftUnitDisposition {
+  match id == ^dag_surface_import_decl {
+    true => UnitDissolved
+    false =>
+      match id == ^dag_surface_type_decl {
+        true => namespace_graft_disposition_from_named_opt(named: namespace_graft_type_decl_named_edge(unit: unit))
+        false =>
+          match id == ^dag_surface_data_decl {
+            true => namespace_graft_disposition_from_named_opt(named: namespace_graft_kw_ident_named_edge(unit: unit))
+            false =>
+              match id == ^dag_surface_fn_decl {
+                true => namespace_graft_disposition_from_named_opt(named: namespace_graft_kw_ident_named_edge(unit: unit))
+                false =>
+                  match id == ^dag_surface_test_fn_decl {
+                    true => namespace_graft_disposition_from_named_opt(named: namespace_graft_test_fn_named_edge(unit: unit))
+                    false =>
+                      match id == ^dag_surface_alias_decl {
+                        true => namespace_graft_disposition_from_named_opt(named: namespace_graft_kw_ident_named_edge(unit: unit))
+                        false => UnitResidual
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDeclPartition {
+  fold(
+    units,
+    init: NamespaceGraftDeclPartition { named_edges: [], residual_units: [] },
+    f: fn(acc, unit) {
+      match parse_production_emitted_identity_optional(node: unit) {
+        Present { value: id } =>
+          namespace_graft_partition_step(
+            acc: acc,
+            unit: unit,
+            disposition: namespace_graft_unit_disposition(unit: unit, id: id)
+          )
+        Absent =>
+          namespace_graft_partition_step(acc: acc, unit: unit, disposition: UnitResidual)
+      }
     }
+  )
+}
+
+// Flatten keeps Named members that are not parse machinery. A Conj that still
+// carries field_decl_block is the same skip as type_decl_named_edge (record or
+// fielded variant), not a flatten member. Atom targets stay: the graft-shape
+// fixture is two Named atoms.
+fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
+  match edge.label {
+    Named { name: sym } =>
+      if namespace_graft_parse_projection_edge(name: sym) {
+        false
+      } else if namespace_graft_is_metadata_edge(name: sym) {
+        false
+      } else if namespace_graft_target_is_production_shell(edge: edge) {
+        false
+      } else {
+        match edge.target.kind {
+          TypeNode { connective: Conj } =>
+            match parse_subtree_locate_production(
+              root: edge.target,
+              emitted: ^dag_surface_field_decl_block
+            ) {
+              Present { value: _ } => false
+              Absent => true
+            }
+          _ => true
+        }
+      }
+    Positional => false
+  }
+}
+
+fn namespace_graft_flattened_member_edges(edges: List<Edge>) -> List<Edge> {
+  fold(edges, init: [], f: fn(acc, edge) {
+    if namespace_graft_keep_flattened_member_edge(edge: edge) {
+      list_snoc_item(xs: acc, item: edge)
+    } else {
+      acc
+    }
+  })
+}
+
+fn namespace_graft_named_list_has_name(edges: List<Edge>, name: Symbol) -> Bool {
+  fold(edges, init: false, f: fn(found, edge) {
+    if found {
+      true
+    } else {
+      match edge.label {
+        Named { name: n } => n == name
+        Positional => false
+      }
+    }
+  })
+}
+
+fn namespace_graft_flatten_minus_decl_names(from_decls: List<Edge>, flattened: List<Edge>) -> List<Edge> {
+  fold(flattened, init: [], f: fn(acc, edge) {
+    match edge.label {
+      Named { name: n } =>
+        if namespace_graft_named_list_has_name(edges: from_decls, name: n) {
+          acc
+        } else {
+          list_snoc_item(xs: acc, item: edge)
+        }
+      Positional => acc
+    }
+  })
+}
+
+// The graft body and its loss verdict come out of ONE partition, and the loss is a
+// CONSERVATION check, never a shape predicate. Every dag_surface_top_level_item shell in
+// the working root reaches the body one of three ways: as a collected UNIT (then Named,
+// residual, or dissolved -- imports are Admission.imports' fact), or, when lowering has
+// already rehomed its content (a fn_decl becomes an Arrow, a where-alias a Named host),
+// as a FLATTENED member. So the only thing that can be lost is an item that became
+// neither: items_seen > units + flattened_kept. Emptiness is never the question: an
+// import-only module has one item, one unit, one dissolution and an empty body that
+// is its true body.
+type NamespaceGraftBody {
+  edges: List<Edge>
+  loss: Bool
+}
+
+fn namespace_graft_body_for_graft(root: Node) -> NamespaceGraftBody {
+  let working = namespace_graft_unwrap_module_working_root(root: root)
+  let productions = dag_grammar_root().productions
+  let unit_ids = namespace_graft_top_level_item_alternative_emitted_ids(productions: productions)
+  let units = namespace_graft_collect_unit_nodes_against(node: working, unit_ids: unit_ids)
+  let partitioned = namespace_graft_partition_decl_units(units: units)
+  let from_decls = partitioned.named_edges
+  let flattened = namespace_graft_flatten_minus_decl_names(
+    from_decls: from_decls,
+    flattened: namespace_graft_flattened_member_edges(
+      edges: namespace_graft_collect_body_edges_from_node(node: working, unit_ids: unit_ids)
+    )
+  )
+  let combined = concat(from_decls, flattened)
+  let residuals = partitioned.residual_units
+  let edges = if count(residuals) == 0 {
+    combined
   } else {
-    flattened
+    concat(combined, namespace_graft_reconstruct_declaration_forest(units: residuals))
+  }
+  NamespaceGraftBody {
+    edges: edges,
+    loss: namespace_graft_subtree_count_atom(n: working, sym: ^dag_surface_top_level_item)
+      > (count(units) + count(flattened))
   }
 }
 
@@ -290,12 +585,6 @@ fn namespace_graft_is_graft_candidate(root: Node) -> Bool {
   }
 }
 
-fn namespace_graft_collect_body_edges(root: Node) -> List<Edge> {
-  namespace_graft_collect_body_edges_from_node(
-    node: namespace_graft_unwrap_module_working_root(root: root)
-  )
-}
-
 // The empty-observation narrow made unwritable (operator ruling msg_d18a55de): a
 // collector that cannot express a module's declarations must not report "this module
 // has none". Flattening parse-projection / transparent-sequence spines into a
@@ -306,37 +595,14 @@ fn namespace_graft_collect_body_edges(root: Node) -> List<Edge> {
 // An empty flatten with surviving top-level-item alternatives reconstructs one Named forest
 // (Cardinality of those units as Positional children, interiors kept). Empty flatten, no units,
 // and a leftover dag_surface_top_level_item is a genuine loss and still refuses.
-fn namespace_graft_subtree_contains_atom(n: Node, sym: Symbol) -> Bool {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == sym {
-        true
-      } else {
-        namespace_graft_children_contain_atom(n: n, sym: sym)
-      }
-    _ => namespace_graft_children_contain_atom(n: n, sym: sym)
+fn namespace_graft_subtree_count_atom(n: Node, sym: Symbol) -> Int {
+  let here = match n.kind {
+    TypeNode { connective: Atom { identity: id } } => if id == sym { 1 } else { 0 }
+    _ => 0
   }
-}
-
-fn namespace_graft_children_contain_atom(n: Node, sym: Symbol) -> Bool {
-  fold(n.children, init: false, f: fn(found, e) {
-    if found {
-      true
-    } else {
-      namespace_graft_subtree_contains_atom(n: e.target, sym: sym)
-    }
+  fold(n.children, init: here, f: fn(acc, e) {
+    acc + namespace_graft_subtree_count_atom(n: e.target, sym: sym)
   })
-}
-
-fn namespace_graft_body_dissolved(root: Node, body_edges: List<Edge>) -> Bool {
-  if count(body_edges) == 0 {
-    namespace_graft_subtree_contains_atom(
-      n: namespace_graft_unwrap_module_working_root(root: root),
-      sym: ^dag_surface_top_level_item
-    )
-  } else {
-    false
-  }
 }
 
 // The body carries its identity projection first (namespace_graft_module_body_identity):
@@ -473,15 +739,15 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
               correction: Unavailable { reason: ExternalContractUnknown }
             })
           Cons { head: _, tail: _ } => {
-            let body_edges = namespace_graft_body_edges_for_graft(root: root)
-            if namespace_graft_body_dissolved(root: root, body_edges: body_edges) {
+            let graft_body = namespace_graft_body_for_graft(root: root)
+            if graft_body.loss {
               outcome_rejected(Diagnostic {
                 reason: ^namespace_graft_body_dissolved_refused,
                 at: node_locus(node: root),
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
             } else {
-              let body = namespace_graft_build_body_conj(edges: body_edges)
+              let body = namespace_graft_build_body_conj(edges: graft_body.edges)
               let spine = namespace_graft_fold_spine(qn: qn, body: body)
               outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine))
             }

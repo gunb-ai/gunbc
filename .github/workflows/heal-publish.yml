@@ -3,7 +3,7 @@
 name: heal-publish
 on:
   workflow_run:
-    workflows: [heal]
+    workflows: [witnesses]
     branches: ["**"]
     types: [completed]
 concurrency:
@@ -16,13 +16,27 @@ jobs:
   publish:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository
     permissions:
       contents: read
       pull-requests: read
       actions: read
       id-token: write
     steps:
+      - name: Ask the triggering run whether it sealed a candidate
+        id: candidate_probe
+        run: |
+          set -euo pipefail
+          NAMES=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$TRIGGERING_RUN_ID/artifacts" --jq '.artifacts[].name')
+          if printf '%s\n' "$NAMES" | grep -qx "heal-repair-candidate"; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::the triggering run sealed no repair candidate, so there is nothing to publish"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGERING_RUN_ID: ${{ github.event.workflow_run.id }}
       - name: Checkout the default branch this publisher runs from
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -36,6 +50,7 @@ jobs:
           merge-multiple: true
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
+        if: steps.candidate_probe.outputs.present == 'true'
       - name: Isolate toolchain homes
         run: |
           # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
@@ -81,11 +96,19 @@ jobs:
           'exit' "$GUNBC_FLOOR_EXIT"
       - name: Admit the candidate against this checkout's policy, with no publication credential
         run: |
+          set -euo pipefail
+          GUNBC_CG=/sys/fs/cgroup/gunbc-publish
+          echo "+memory" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null
+          sudo mkdir -p "$GUNBC_CG"
+          echo 12884901888 | sudo tee "$GUNBC_CG/memory.max" >/dev/null
+          echo $$ | sudo tee "$GUNBC_CG/cgroup.procs" >/dev/null
+          cat "$GUNBC_CG/memory.max"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/heal_publication.dag --function heal_publication_admit_wet
         env:
           HEAL_CANDIDATE_DIRECTORY: heal-candidate
           GITHUB_TOKEN: ${{ github.token }}
+        if: hashFiles('heal-candidate/heal-repair-candidate-blob-*') != ''
       - name: Federate to the publisher's own identity (access token only, five minutes)
         id: heal_publisher_wif
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
@@ -99,6 +122,13 @@ jobs:
         if: hashFiles('heal-candidate/heal-repair-candidate-blob-*') != ''
       - name: Publish the admitted repair, fast-forward only, and read it back
         run: |
+          set -euo pipefail
+          GUNBC_CG=/sys/fs/cgroup/gunbc-publish
+          echo "+memory" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null
+          sudo mkdir -p "$GUNBC_CG"
+          echo 12884901888 | sudo tee "$GUNBC_CG/memory.max" >/dev/null
+          echo $$ | sudo tee "$GUNBC_CG/cgroup.procs" >/dev/null
+          cat "$GUNBC_CG/memory.max"
           set -euo pipefail
           umask 077
           KEY_FILE="$RUNNER_TEMP/heal-publisher-app-key"

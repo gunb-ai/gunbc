@@ -87,36 +87,113 @@ fn docker_mount_flag(m: DockerMount) -> List<String> {
   }
 }
 
+// THE WORD SHAPES, ONE AUTHORITY. docker create's structured renderer and the raw word-list
+// renderers (the GLM native arm's systemd Exec line) must spell a device mapping, a capability
+// and the memlock ulimit identically; extracted 2026-09-17 when the native arm took the RoCE
+// collective-transport plan and would otherwise have re-typed the three literals.
+fn docker_memlock_unlimited_words() -> List<String> { ["--ulimit", "memlock=-1:-1"] }
+
+fn docker_device_words(d: DockerDeviceMapping) -> List<String> {
+  ["--device", join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], "")]
+}
+
+fn docker_cap_add_words(c: NonEmptyStr) -> List<String> { ["--cap-add", c as String] }
+
+// ── ONE CONTAINER PLAN, TWO VERB PROJECTIONS ─────────────────────────────────────────────────
+//
+// A CONTAINER IS CREATED TWO WAYS IN THIS FLEET AND THEY ARE THE SAME CONTAINER. The relaunch
+// transaction runs `docker create` then `docker start`, because it needs a handle it can rename and
+// restore; a systemd unit runs `docker run --rm` in the foreground, because a unit stays active
+// exactly while its exec does. Those are two REALIZATION handlers for one plan (DESIGN section 3:
+// transport is a handler bound to a shape, never a fork of the shape), so the flags they spell come
+// from one body here and neither may hand-assemble its own.
+//
+// WHAT THIS CLOSED. Until 2026-09-18 the GLM native arm's systemd unit built its own word list, and
+// the two renderings of ONE Group-B launch had already drifted on three fields -- the create spec
+// carried a --shm-size the unit did not, the two read their environment values from different
+// authorities, and only the unit declared the usage-stats reporter off. Nothing could report the
+// disagreement, because there was no shared value for a comparison to be against.
+//
+// THE RESTART FLAG IS THE ONE FIELD THE TWO PROJECTIONS DO NOT SHARE, and it is a refusal rather
+// than an omission. `docker run --rm` conflicts with a restart policy: under systemd the supervisor
+// IS systemd, so the container's own policy must be RestartNo, and a spec asking for anything else
+// has asked for two supervisors. Dropping the field silently would be exactly the widen DESIGN
+// section 5 forbids.
+fn docker_container_identity_flags(spec: DockerCreateSpec) -> List<String> {
+  [
+    "--name", spec.name as String,
+    "--network", docker_namespace_mode_wire(m: spec.network) as String,
+    "--ipc", docker_namespace_mode_wire(m: spec.ipc) as String,
+    "--shm-size", to_string(spec.shm_size_bytes),
+  ]
+}
+
+fn docker_container_resource_flags(spec: DockerCreateSpec) -> List<String> {
+  concat(
+    concat(
+      concat(
+        if spec.memlock_unlimited { docker_memlock_unlimited_words() } else { [] },
+        if spec.gpus_all { ["--gpus", "all"] } else { [] },
+      ),
+      flat_map(spec.devices, d => docker_device_words(d: d)),
+    ),
+    concat(
+      flat_map(spec.cap_add, c => docker_cap_add_words(c: c)),
+      concat(
+        flat_map(spec.mounts, m => docker_mount_flag(m: m)),
+        flat_map(spec.env, e => ["--env", join([e.name as String, "=", e.value], "")]),
+      ),
+    ),
+  )
+}
+
+fn docker_container_image_and_command(spec: DockerCreateSpec) -> List<String> {
+  concat([spec.image as String], spec.command)
+}
+
 fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
   concat(
     concat(
       concat(
+        concat(["create"], docker_container_identity_flags(spec: spec)),
+        ["--restart", docker_restart_policy_wire(p: spec.restart) as String],
+      ),
+      docker_container_resource_flags(spec: spec),
+    ),
+    docker_container_image_and_command(spec: spec),
+  )
+}
+
+type DockerForegroundRun
+  = DockerForegroundRunArgv { argv: List<String> }
+  | DockerForegroundRunRefused { cause: NonEmptyStr }
+
+fn docker_run_foreground_argv(spec: DockerCreateSpec) -> DockerForegroundRun {
+  match spec.restart {
+    RestartNo => DockerForegroundRunArgv {
+      argv: concat(
         concat(
           concat(
-            [
-              "create",
-              "--name", spec.name as String,
-              "--network", docker_namespace_mode_wire(m: spec.network) as String,
-              "--ipc", docker_namespace_mode_wire(m: spec.ipc) as String,
-              "--shm-size", to_string(spec.shm_size_bytes),
-              "--restart", docker_restart_policy_wire(p: spec.restart) as String,
-            ],
-            if spec.memlock_unlimited { ["--ulimit", "memlock=-1:-1"] } else { [] },
+            [docker_binary_path as String, "run", "--rm"],
+            docker_container_identity_flags(spec: spec),
           ),
-          if spec.gpus_all { ["--gpus", "all"] } else { [] },
+          docker_container_resource_flags(spec: spec),
         ),
-        flat_map(spec.devices, d => ["--device", join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], "")]),
+        docker_container_image_and_command(spec: spec),
       ),
-      concat(
-        flat_map(spec.cap_add, c => ["--cap-add", c as String]),
-        concat(
-          flat_map(spec.mounts, m => docker_mount_flag(m: m)),
-          flat_map(spec.env, e => ["--env", join([e.name as String, "=", e.value], "")]),
-        ),
-      ),
-    ),
-    concat([spec.image as String], spec.command),
-  )
+    }
+    RestartUnlessStopped => DockerForegroundRunRefused { cause: docker_foreground_restart_refusal(p: spec.restart) }
+    RestartAlways => DockerForegroundRunRefused { cause: docker_foreground_restart_refusal(p: spec.restart) }
+    RestartOnFailure => DockerForegroundRunRefused { cause: docker_foreground_restart_refusal(p: spec.restart) }
+  }
+}
+
+fn docker_foreground_restart_refusal(p: DockerRestartPolicy) -> NonEmptyStr {
+  join([
+    "a foreground `docker run --rm` cannot carry the restart policy `",
+    docker_restart_policy_wire(p: p) as String,
+    "`: --rm and --restart conflict, and a container supervised by a unit manager must leave restart to it",
+  ], "") as NonEmptyStr
 }
 
 fn docker_create_command(spec: DockerCreateSpec) -> ArgvCommand {
@@ -262,6 +339,20 @@ fn docker_image_digest_command(image: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["images", "--no-trunc", "--quiet", image as String])
 }
 
+// SAVE AND LOAD ARE THE IMAGE'S BYTE TRANSPORT BETWEEN HOSTS THAT SHARE NO REGISTRY. `docker save
+// -o <path> <image>` writes the image and its metadata as a tar; `docker load -i <path>` reads it
+// back and preserves the image's config digest, which is what makes the delivered identity
+// checkable against the source's readback rather than against the tar's name. Modeled when the
+// GLM derived image needed to leave its build host (2026-09-17): the fleet runs no registry, and
+// rebuilding per host re-pays a two-hour compile for a fact one host already holds.
+fn docker_image_save_command(image: NonEmptyStr, output_path: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["save", "-o", output_path as String, image as String])
+}
+
+fn docker_image_load_command(input_path: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["load", "-i", input_path as String])
+}
+
 // DIGEST-PINNED IDENTITY. `docker image inspect <ref>` names repo@sha256:... and prints a JSON
 // array of image objects. The local config id is the unique `Id` member of the single element,
 // read by docker_image_inspect_id_from_stdout (extdeps.languages.json.parse). No --format: a Go
@@ -284,6 +375,30 @@ fn docker_image_inspect_command(image: NonEmptyStr) -> ArgvCommand {
 // naming "No such container" when the reference names nothing. No --format, for the same
 // portable-word reason as the image form. The argv and the sudoers Cmnd_Spec that authorizes it are
 // the same words, so a grantee rendering both reads this one function.
+// THE RUNNING CONTAINERS SELECTED BY ONE `docker ps` FILTER, one container id per line (`docker ps
+// --filter <key>=<value> --quiet`): empty output is "no such running container". `docker ps` lists
+// RUNNING containers only, which is the question a quiescence reading asks; a stopped container is
+// not a residual realization of an effect. Two filters this repository asks by: `name=<name>`
+// (docker's name filter is an unanchored regular expression, so it matches any running container
+// whose name contains the text -- wider than exact, and the wider reading is the safe one for a
+// residue question) and `ancestor=<image>` (containers created from that image reference, for an
+// effect that starts an unnamed container). `--quiet` rather than a `--format` template because
+// the argv crosses an ssh leg whose portable word alphabet has no braces.
+type DockerPsFilter
+  = DockerPsByName { name: NonEmptyStr }
+  | DockerPsByAncestor { image: NonEmptyStr }
+
+fn docker_ps_filter_wire(f: DockerPsFilter) -> String {
+  match f {
+    DockerPsByName { name: n } => join(["name=", n as String], "")
+    DockerPsByAncestor { image: i } => join(["ancestor=", i as String], "")
+  }
+}
+
+fn docker_ps_running_command(filter: DockerPsFilter) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["ps", "--filter", docker_ps_filter_wire(f: filter), "--quiet"])
+}
+
 fn docker_container_inspect_command(name: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["container", "inspect", name as String])
 }
@@ -380,6 +495,75 @@ fn docker_inspect_nonempty_string_member(obj: JsonValue, key: String) -> String?
       let text = json_string_value_or_empty(v: v)
       if text == "" { none } else { Present { value: text } }
     }
+  }
+}
+
+// THE EFFECTIVE ENVIRONMENT IS A SEPARATE, NAMED DISCLOSURE. The identity reader above takes .Id
+// and .Image and nothing else; this reader takes .Config.Env -- the assignment list docker exec
+// hands the container's process -- because the serving route's telemetry obligation
+// (gunbc.spark.first_party_serving spark_serving_usage_stats_declared_environment_obligation) is
+// dischargeable only by a reading of the environment of the container that ANSWERED, and the
+// inspect leg already returns this document under the same per-container grant. The disclosure is
+// stated here rather than hidden in a generic parse: Config.Env can carry secrets in the general
+// case, so this reader is for containers whose environment this repository itself declares, and it
+// returns the assignments as opaque NAME=value strings -- classification of any one of them is the
+// consumer's cited reading (extdeps.vllm.usage_stats vllm_usage_stats_assignment_disables), not
+// this module's guess.
+type DockerContainerInspectEnvRead
+  = DockerContainerInspectEnv { assignments: List<String> }
+  | DockerContainerInspectEnvUnreadable { cause: String }
+
+// A null Env is docker's spelling of an empty one (the daemon emits "Env": null when a container
+// was created with no environment), so null reads as the empty list rather than as unreadable.
+fn docker_inspect_string_list_member(obj: JsonValue, key: String) -> List<String>? {
+  match json_object_unique_member(v: obj, key: key) {
+    JsonMemberAbsent => none
+    JsonMemberNotAnObject => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNull => Present { value: [] as List<String> }
+        JsonArray { elements: es } =>
+          if all(es, e => match e {
+            JsonString { value: _ } => true
+            JsonNull => false
+            JsonBool { value: _ } => false
+            JsonNumber { lexeme: _ } => false
+            JsonArray { elements: _ } => false
+            JsonObject { members: _ } => false
+          }) {
+            Present { value: map(es, e => json_string_value_or_empty(v: e)) }
+          } else {
+            none
+          }
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: _ } => none
+        JsonObject { members: _ } => none
+      }
+  }
+}
+
+fn docker_container_inspect_env_from_stdout(stdout: String) -> DockerContainerInspectEnvRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } =>
+      DockerContainerInspectEnvUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_json_first_of_one(v: v) {
+        Absent => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON is not a one-element array" }
+        Present { value: obj } =>
+          match json_object_unique_member(v: obj, key: "Config") {
+            JsonMemberAbsent => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON names no Config" }
+            JsonMemberNotAnObject => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON element is not an object" }
+            JsonMemberDuplicated { count: n } =>
+              DockerContainerInspectEnvUnreadable { cause: join(["docker container inspect JSON names Config ", to_string(n), " times"], "") }
+            JsonMemberFound { value: config } =>
+              match docker_inspect_string_list_member(obj: config, key: "Env") {
+                Absent => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON Config.Env is not a string list" }
+                Present { value: assignments } => DockerContainerInspectEnv { assignments: assignments }
+              }
+          }
+      }
   }
 }
 

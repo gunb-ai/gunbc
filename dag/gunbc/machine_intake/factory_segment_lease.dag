@@ -1,0 +1,101 @@
+module gunbc.machine_intake_factory_segment_lease
+
+import std.types { Bool, NonEmptyStr }
+import std.measure { ObservationInstant, InstantAfter, InstantBefore, InstantIncomparable, InstantSame, compare_instants }
+
+// A SECONDARY ADDRESS ON A PRODUCTION HOST, HELD FOR ONE RUN AND PROVABLY GIVEN BACK.
+//
+// Reaching Mt. Jade's factory BMC needs srv1 to hold an address in the controller's /29 for the
+// length of one intake run. That is a WRITE to a production host, and the failure that matters is
+// not a bad write but a missing unwrite: an address left behind outlives the run that placed it,
+// belongs to nobody, and silently changes which segment srv1 answers on.
+//
+// "RELEASED ON EVERY EXIT ARM" IS NOT ASSERTED HERE, IT IS MADE UNWRITABLE. Every outcome the run
+// can return carries a SegmentAddressDisposition, so a code path that forgets to release cannot
+// construct a value to return. A witness that merely checked for release would be checking
+// something it cannot observe -- a leaked address lives on an interface, not in the value under
+// test -- so the check would pass while the address stayed. This is the decoration class, avoided
+// by construction rather than by a claim about it.
+//
+// THE ALREADY-PRESENT CASE IS WHY DISPOSITION IS A COPRODUCT AND NOT A BOOL. If the address is
+// already on the device when the run starts, the run did not place it and MUST NOT remove it:
+// deleting an address another process owns is a worse outcome than the one this module exists to
+// prevent. So "we placed it and removed it" and "it was already there and we left it alone" are
+// different dispositions, and neither is "we failed".
+
+type LeasedSegmentAddress {
+  device: NonEmptyStr
+  cidr: NonEmptyStr
+  acquired_at: ObservationInstant
+  deadline: ObservationInstant
+}
+
+type SegmentAddressAcquisition
+  = SegmentAddressPlaced { lease: LeasedSegmentAddress }
+  | SegmentAddressAlreadyPresent { device: NonEmptyStr, cidr: NonEmptyStr, basis: NonEmptyStr }
+  | SegmentAddressPlacementRefused { device: NonEmptyStr, cidr: NonEmptyStr, cause: NonEmptyStr }
+
+// THE ONLY PROOF THAT THE HOST WAS LEFT AS FOUND. ReleaseRefused is deliberately here and
+// deliberately loud: a delete that fails leaves a real address on a real interface, and the run
+// must surface that as its worst outcome rather than returning findings as though the host were
+// clean.
+type SegmentAddressDisposition
+  = SegmentAddressReleased { lease: LeasedSegmentAddress, released_at: ObservationInstant }
+  | SegmentAddressLeftAsFound { device: NonEmptyStr, cidr: NonEmptyStr, basis: NonEmptyStr }
+  | SegmentAddressNeverPlaced { device: NonEmptyStr, cidr: NonEmptyStr, cause: NonEmptyStr }
+  | SegmentAddressReleaseRefused { lease: LeasedSegmentAddress, cause: NonEmptyStr }
+
+// A DEADLINE IS ONLY MEANINGFUL WITHIN ONE CLOCK DOMAIN, so the overrun answer is three-valued.
+// std.measure compare_instants refuses across domains, and a Bool here would have to call an
+// incomparable pair either "expired" or "live" -- both of which are claims about an order that
+// does not exist.
+type LeaseTimeStanding
+  = LeaseWithinDeadline
+  | LeaseOverranDeadline
+  | LeaseDeadlineIncomparable { basis: NonEmptyStr }
+
+fn lease_time_standing(lease: LeasedSegmentAddress, now: ObservationInstant) -> LeaseTimeStanding {
+  match compare_instants(a: now, b: lease.deadline) {
+    InstantBefore => LeaseWithinDeadline
+    InstantSame => LeaseWithinDeadline
+    InstantAfter => LeaseOverranDeadline
+    InstantIncomparable { left: _, right: _ } =>
+      LeaseDeadlineIncomparable {
+        basis: "the observed instant and the lease deadline are on different clock domains, so no order between them is defined",
+      }
+  }
+}
+
+// THE DISPOSITION A RUN MUST REACH FROM EACH ACQUISITION, so the pairing is derived rather than
+// remembered at each call site. Placed must be released; already-present must be left alone;
+// refused has nothing to undo.
+fn disposition_for_unplaced(acquisition: SegmentAddressAcquisition) -> SegmentAddressDisposition? {
+  match acquisition {
+    SegmentAddressPlaced { lease: _ } => Absent
+    SegmentAddressAlreadyPresent { device: d, cidr: c, basis: b } =>
+      Present {
+        value: SegmentAddressLeftAsFound {
+          device: d,
+          cidr: c,
+          basis: b,
+        },
+      }
+    SegmentAddressPlacementRefused { device: d, cidr: c, cause: cz } =>
+      Present {
+        value: SegmentAddressNeverPlaced {
+          device: d,
+          cidr: c,
+          cause: cz,
+        },
+      }
+  }
+}
+
+fn host_was_left_as_found(disposition: SegmentAddressDisposition) -> Bool {
+  match disposition {
+    SegmentAddressReleased { lease: _, released_at: _ } => true
+    SegmentAddressLeftAsFound { device: _, cidr: _, basis: _ } => true
+    SegmentAddressNeverPlaced { device: _, cidr: _, cause: _ } => true
+    SegmentAddressReleaseRefused { lease: _, cause: _ } => false
+  }
+}

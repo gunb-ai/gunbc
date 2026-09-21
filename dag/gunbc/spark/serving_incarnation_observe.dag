@@ -1,6 +1,6 @@
 module gunbc.spark.serving_incarnation_observe
 
-import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs }
+import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs, Port }
 import std.algebra { trim }
 import std.decimal { ExactDecimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_multiply, checked_int_add, CheckedIntReady, CheckedIntOverflow }
@@ -16,12 +16,13 @@ import gunbc.spark.vllm_serving_launch {
   EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
   launch_wire,
 }
-import gunbc.spark.pair_serving_realization { spark_pair_container_name, spark_pair_head_unit_name }
+import gunbc.spark.serving_group_launch { ServingGroupLaunch, serving_group_launch }
 import gunbc.spark.managed_access_bootstrap { InspectServingContainer, spark_managed_grant_argv, spark_managed_grant_wire }
-import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_vllm_binary }
 import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
 import extdeps.docker.cli {
   DockerContainerInspectIdentity, DockerContainerInspectIdentityUnreadable,
+  DockerContainerInspectEnvRead, DockerContainerInspectEnv, DockerContainerInspectEnvUnreadable,
+  docker_container_inspect_env_from_stdout,
   docker_container_inspect_identity_from_stdout, docker_image_id_sha256_hex,
 }
 import extdeps.docker.cgroup { DockerContainerScope, NotADockerContainerCgroup, docker_cgroup_membership }
@@ -46,8 +47,9 @@ import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyBlank
 import gunbc.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host_operation_exec {
   HostOperation, HostOperationObserved, HostOperationRefused, host_operation_exec,
-  ProcfsReadStat, ProcfsReadPidStat, ProcfsReadPidCgroup, GetconfClockTicksPerSecond, Sha256SumFile,
+  ProcfsReadStat, ProcfsReadPidStat, ProcfsReadPidCgroup, ProcfsReadNetTcp, ProcfsReadNetTcp6, GetconfClockTicksPerSecond, Sha256SumFile,
 }
+import extdeps.linux.proc_net_tcp { TcpSocketRow, ProcNetTcpParsed, ProcNetTcpUnparseable, proc_net_tcp_table, tcp_rows_listening_on }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_ssh_locus { fleet_locus_ssh_target }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -109,6 +111,7 @@ type ServingIncarnationRefusal
   | InspectLegDidNotRun { container: NonEmptyStr, cause: String }
   | InspectCommandFailed { container: NonEmptyStr, exit_code: Int, stderr: String }
   | InspectIdentityUnreadable { container: NonEmptyStr, cause: String }
+  | InspectEnvUnreadable { container: NonEmptyStr, cause: String }
   | InspectedContainerIsNotTheAnsweringOne { by_name: NonEmptyStr, answering: NonEmptyStr }
   | IncarnationImageIdNotSha256 { image_id: NonEmptyStr }
   | IncarnationStartBeforeEpoch { seconds: Int }
@@ -151,6 +154,8 @@ fn serving_incarnation_refusal_text(r: ServingIncarnationRefusal) -> String {
       join(["the inspect command for ", c as String, " exited ", to_string(code), ", so the image the answering container was created from is unread -- this is where a not-held InspectServingContainer grant (sudo denies) surfaces, but a removed or renamed container answers the same way, so the exit and stderr are carried rather than a cause asserted: ", trim(s: err)], "")
     InspectIdentityUnreadable { container: c, cause: why } =>
       join(["the inspect object of ", c as String, " did not yield an id and image: ", why], "")
+    InspectEnvUnreadable { container: c, cause: why } =>
+      join(["the inspect object of ", c as String, " did not yield Config.Env, so the effective environment of the answering container is unread and the telemetry standing cannot be discharged: ", why], "")
     InspectedContainerIsNotTheAnsweringOne { by_name: n, answering: a } =>
       join(["the container holding the name is ", n as String, " but the answering process runs in ", a as String], "")
     IncarnationImageIdNotSha256 { image_id: i } =>
@@ -298,22 +303,23 @@ fn incarnation_after_container(
   group: FabricGroup,
   head: HostIdentity,
   endpoint: VllmEndpointProcessLaunch,
+  names: ServingGroupLaunch,
   invocation: NonEmptyStr,
   unit_digest: ContentHash,
   container_id: NonEmptyStr,
   started_at: EpochSecs,
 ) -> ServingIncarnationReading {
-  let grant = InspectServingContainer { container: spark_pair_container_name }
+  let grant = InspectServingContainer { container: names.container_name }
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: spark_managed_grant_argv(grant: grant)) {
     TypedArgvExecRefused { reason: why } =>
-      IncarnationRefused { refusal: InspectLegDidNotRun { container: spark_pair_container_name, cause: why } }
+      IncarnationRefused { refusal: InspectLegDidNotRun { container: names.container_name, cause: why } }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
-        IncarnationRefused { refusal: InspectCommandFailed { container: spark_pair_container_name, exit_code: r.exit_code, stderr: r.stderr } }
+        IncarnationRefused { refusal: InspectCommandFailed { container: names.container_name, exit_code: r.exit_code, stderr: r.stderr } }
       } else {
         match docker_container_inspect_identity_from_stdout(stdout: r.stdout) {
           DockerContainerInspectIdentityUnreadable { cause: c } =>
-            IncarnationRefused { refusal: InspectIdentityUnreadable { container: spark_pair_container_name, cause: c } }
+            IncarnationRefused { refusal: InspectIdentityUnreadable { container: names.container_name, cause: c } }
           DockerContainerInspectIdentity { id: by_name, image: image_id } =>
             if (by_name as String) != (container_id as String) {
               IncarnationRefused { refusal: InspectedContainerIsNotTheAnsweringOne { by_name: by_name, answering: container_id } }
@@ -324,20 +330,26 @@ fn incarnation_after_container(
                   match sha256_hex_digest(hex: hex) {
                     Absent => IncarnationRefused { refusal: IncarnationImageIdNotSha256 { image_id: image_id } }
                     Present { value: digest } =>
-                      IncarnationObserved {
-                        observation: endpoint_incarnation_observation(
-                          endpoint: endpoint,
-                          launch: vllm_serving_launch(
-                            group: group,
-                            head: head,
-                            systemd_invocation: invocation,
-                            container_id: container_id,
-                            executable_digest: Sha256Hash(digest),
-                            unit_digest: unit_digest,
-                            started_at: started_at,
-                          ),
-                          receipt: serving_incarnation_receipt,
-                        ),
+                      match docker_container_inspect_env_from_stdout(stdout: r.stdout) {
+                        DockerContainerInspectEnvUnreadable { cause: why } =>
+                          IncarnationRefused { refusal: InspectEnvUnreadable { container: names.container_name, cause: why } }
+                        DockerContainerInspectEnv { assignments: env } =>
+                          IncarnationObserved {
+                            observation: endpoint_incarnation_observation(
+                              endpoint: endpoint,
+                              launch: vllm_serving_launch(
+                                group: group,
+                                head: head,
+                                systemd_invocation: invocation,
+                                container_id: container_id,
+                                executable_digest: Sha256Hash(digest),
+                                unit_digest: unit_digest,
+                                started_at: started_at,
+                              ),
+                              container_env: env,
+                              receipt: serving_incarnation_receipt,
+                            ),
+                          }
                       }
                   }
               }
@@ -354,6 +366,7 @@ fn incarnation_after_process(
   group: FabricGroup,
   head: HostIdentity,
   endpoint: VllmEndpointProcessLaunch,
+  names: ServingGroupLaunch,
   invocation: NonEmptyStr,
   unit_digest: ContentHash,
   pid: Int,
@@ -378,7 +391,7 @@ fn incarnation_after_process(
               } else {
                 incarnation_after_container(
                   target: target, context: context, group: group, head: head, endpoint: endpoint,
-                  invocation: invocation, unit_digest: unit_digest, container_id: id, started_at: seconds,
+                  names: names, invocation: invocation, unit_digest: unit_digest, container_id: id, started_at: seconds,
                 )
               }
             }
@@ -418,13 +431,14 @@ fn incarnation_after_host_facts(
   group: FabricGroup,
   head: HostIdentity,
   endpoint: VllmEndpointProcessLaunch,
+  names: ServingGroupLaunch,
   invocation: NonEmptyStr,
   unit_digest: ContentHash,
   exported: ExactDecimal,
   boot: EpochSecs,
   ticks: Hertz,
 ) -> ServingIncarnationReading {
-  let pattern = sparkrun_vllm_ds4_gb10_vllm_binary
+  let pattern = names.engine_binary
   match scan_engine_processes(target: target, context: context, pattern: pattern) {
     EngineScanLegDidNotRun { cause: why } =>
       IncarnationRefused { refusal: IncarnationProcessScanRefused { pattern: pattern, cause: join(["the pgrep leg did not run: ", why], "") } }
@@ -449,11 +463,14 @@ fn incarnation_after_host_facts(
                 } else if count(scan.matched) > 1 {
                   IncarnationRefused { refusal: IncarnationAmbiguousProcessStart { pids: map(scan.matched, b => b.pid), field: endpoint.process_start_field } }
                 } else {
-                  let bound = scan.matched.first()
-                  incarnation_after_process(
-                    transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
-                    invocation: invocation, unit_digest: unit_digest, pid: bound.pid, boot: boot, ticks: ticks, start_ticks: bound.start_ticks,
-                  )
+                  match scan.matched.first() {
+                    Absent => IncarnationRefused { refusal: IncarnationNoProcessStartsAtExportedInstant { candidates: count(pids), field: endpoint.process_start_field } }
+                    Present { value: bound } =>
+                      incarnation_after_process(
+                        transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
+                        names: names, invocation: invocation, unit_digest: unit_digest, pid: bound.pid, boot: boot, ticks: ticks, start_ticks: bound.start_ticks,
+                      )
+                  }
                 }
             }
           }
@@ -468,6 +485,7 @@ fn incarnation_after_unit(
   group: FabricGroup,
   head: HostIdentity,
   endpoint: VllmEndpointProcessLaunch,
+  names: ServingGroupLaunch,
   invocation: NonEmptyStr,
   unit_digest: ContentHash,
 ) -> ServingIncarnationReading {
@@ -495,7 +513,7 @@ fn incarnation_after_unit(
                     BootTimeObserved { epoch_seconds: boot } =>
                       incarnation_after_host_facts(
                         transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
-                        invocation: invocation, unit_digest: unit_digest, exported: exported, boot: boot, ticks: ticks,
+                        names: names, invocation: invocation, unit_digest: unit_digest, exported: exported, boot: boot, ticks: ticks,
                       )
                   }
               }
@@ -549,9 +567,54 @@ fn read_unit_identity(transport: HostEffectTransport, unit: NonEmptyStr) -> Unit
   }
 }
 
+// ── ONE UNIT'S OCCUPANCY, WHETHER OR NOT IT RUNS ────────────────────────────────────────────────
+//
+// read_unit_identity asks about a RUNNING unit and refuses an inactive one, because an
+// incarnation is a launch. The Cut D D0 reconciliation asks a different question of the same
+// three reads: is our unit INSTALLED on this rank at all, what bytes is it, and is it running --
+// where "installed and not running" is the expected answer on the readings the redesign records,
+// not a refusal. So the fragment path decides installed, its digest decides which bytes, and the
+// invocation decides running; only a read that could not be taken is unread.
+type UnitOccupancy
+  = UnitInstalled { active: Bool, unit_digest: ContentHash }
+  | UnitNotInstalled
+  | UnitOccupancyUnread { refusal: ServingIncarnationRefusal }
+
+fn read_unit_occupancy(transport: HostEffectTransport, unit: NonEmptyStr) -> UnitOccupancy {
+  match read_unit_property(transport: transport, unit: unit, property: FragmentPathProperty) {
+    UnitTextRefused { cause: c } =>
+      UnitOccupancyUnread { refusal: IncarnationUnitPropertyUnread { unit: unit, property: systemd_unit_property_wire(property: FragmentPathProperty), cause: c } }
+    UnitTextObserved { value: fragment_path } =>
+      if fragment_path == "" {
+        UnitNotInstalled
+      } else {
+        match host_read_text(transport: transport, operation: Sha256SumFile { path: fragment_path as NonEmptyStr }) {
+          HostTextRefused { cause: c } => UnitOccupancyUnread { refusal: IncarnationUnitDigestUnread { unit: unit, cause: c } }
+          HostTextObserved { stdout: line } =>
+            match sha256sum_line_digest(line: line) {
+              Absent => UnitOccupancyUnread { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "sha256sum printed no 64-hex digest line" } }
+              Present { value: d } =>
+                match sha256_digest_content_hash(digest: d) {
+                  Absent => UnitOccupancyUnread { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "the sha256sum output did not read as a sha256 content hash" } }
+                  Present { value: digest } =>
+                    match read_unit_property(transport: transport, unit: unit, property: InvocationIDProperty) {
+                      UnitTextRefused { cause: c } =>
+                        UnitOccupancyUnread { refusal: IncarnationUnitPropertyUnread { unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty), cause: c } }
+                      UnitTextObserved { value: invocation_text } => UnitInstalled { active: invocation_text != "", unit_digest: digest }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
 // THE ENTRY. One head host, one group, the endpoint launch the harness just read from that group's
-// route, and the sealed fleet context; everything else is derived. The unit is the pair-serving head
-// unit, because that is the unit whose engine exports the endpoint; a worker unit exports nothing.
+// route, and the sealed fleet context; everything else is derived. The unit, container and engine
+// binary are the GROUP'S, read from gunbc.spark.serving_group_launch: group A's launch is the
+// pair-serving realization's, group B's is the native arm's (gunbc.spark.native_serving_realization).
+// It is the head unit in both cases, because that is the unit whose engine exports the endpoint; a
+// worker or rank unit exports nothing.
 fn observe_endpoint_incarnation(
   context: FleetSshExecutionContext,
   group: FabricGroup,
@@ -560,13 +623,52 @@ fn observe_endpoint_incarnation(
 ) -> ServingIncarnationReading {
   let target = fleet_locus_ssh_target(host: head)
   let transport = FleetSsh { target: target, context: context }
-  let unit = spark_pair_head_unit_name
+  let names = serving_group_launch(group: group)
+  let unit = names.head_unit_name
   match read_unit_identity(transport: transport, unit: unit) {
     UnitIdentityRefused { refusal: r } => IncarnationRefused { refusal: r }
     UnitIdentityObserved { invocation: invocation, unit_digest: digest } =>
       incarnation_after_unit(
         transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
-        invocation: invocation, unit_digest: digest,
+        names: names, invocation: invocation, unit_digest: digest,
       )
+  }
+}
+
+// ── DOES ANYTHING LISTEN ON THE ENROLLED PORT, READ ON THE HOST ────────────────────────────────
+//
+// The kernel's socket tables (/proc/net/tcp and /proc/net/tcp6, extdeps.linux.proc_net_tcp) are
+// read on the host and every LISTEN row on the port is returned, whatever bound it: our unit, an
+// orphan engine, a foreign process. This is the host-side half of an absence reading -- a front
+// door that could not be connected says nothing about a listener the route did not reach, and the
+// declared unit's invocation id says nothing about a process that is not the unit. Both tables
+// are read because a v6 wildcard bind serves v4 too; one table unreadable is the reading unread.
+// A listener in another network namespace (a container with its own netns) is not in these
+// tables; the enrolled address is reached through the host's namespace, and a port published from
+// a container appears there as the proxy's listener.
+type EndpointListenerReading
+  = EndpointNoListener { port: Port }
+  | EndpointListening { port: Port, rows: List<TcpSocketRow> }
+  | EndpointListenerUnread { port: Port, cause: String }
+
+fn read_endpoint_listener(transport: HostEffectTransport, port: Port) -> EndpointListenerReading {
+  match host_read_text(transport: transport, operation: ProcfsReadNetTcp) {
+    HostTextRefused { cause: c } => EndpointListenerUnread { port: port, cause: join(["/proc/net/tcp: ", c], "") }
+    HostTextObserved { stdout: v4 } =>
+      match proc_net_tcp_table(text: v4) {
+        ProcNetTcpUnparseable { line: l } => EndpointListenerUnread { port: port, cause: join(["/proc/net/tcp row could not be read: ", l], "") }
+        ProcNetTcpParsed { rows: rows4 } =>
+          match host_read_text(transport: transport, operation: ProcfsReadNetTcp6) {
+            HostTextRefused { cause: c } => EndpointListenerUnread { port: port, cause: join(["/proc/net/tcp6: ", c], "") }
+            HostTextObserved { stdout: v6 } =>
+              match proc_net_tcp_table(text: v6) {
+                ProcNetTcpUnparseable { line: l } => EndpointListenerUnread { port: port, cause: join(["/proc/net/tcp6 row could not be read: ", l], "") }
+                ProcNetTcpParsed { rows: rows6 } => {
+                  let listening = tcp_rows_listening_on(rows: concat(rows4, rows6), port: port)
+                  if length(listening) == 0 { EndpointNoListener { port: port } } else { EndpointListening { port: port, rows: listening } }
+                }
+              }
+          }
+      }
   }
 }

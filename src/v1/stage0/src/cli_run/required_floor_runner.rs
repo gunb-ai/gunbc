@@ -1395,7 +1395,7 @@ pub(crate) enum ArmSetConsumerPlanning {
     Selected {
         base: String,
         head: String,
-        selection: crate::cli_run::namespace_wave_admission::ArmSetConsumerSelection,
+        selection: crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
     },
 }
 
@@ -1405,7 +1405,7 @@ pub(crate) enum ArmSetConsumerPlanning {
 /// WHICH INDEX, AND WHY IT IS REACHABLE HERE. `v2.std.decl_index` `decl_facts_at` answers
 /// "what does the corpus declare under this name" and has no base side; it is the wrong
 /// question. The relation that answers "who binds this declaration" is the one
-/// `namespace_wave_admission` already computes from `ModuleDeclarationRecord`, and the parse
+/// `namespace_baseline` already computes from `ModuleDeclarationRecord`, and the parse
 /// phase builds that index in THIS lane before the floor runs (`RequiredCiPhase::Parse` and
 /// `::Floor` are both `Witnesses`), so it exists at planning time and is lent in rather than
 /// rebuilt. A floor invoked without it on a CI commit is refused below rather than planned
@@ -1413,7 +1413,7 @@ pub(crate) enum ArmSetConsumerPlanning {
 fn arm_set_consumer_planning(
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
 ) -> Result<ArmSetConsumerPlanning, String> {
-    use crate::cli_run::namespace_wave_admission::{
+    use crate::cli_run::namespace_baseline::{
         arm_set_changed_match_consumers, git_stdout, reconstruct_base_index, BaselineReconstruction,
     };
     let Some(head_index) = planning_index else {
@@ -3939,6 +3939,91 @@ pub(crate) fn run_discovery_rows(
     Ok(summary)
 }
 
+/// THE SEEDS OF THE REQUIRED FLOOR'S NOMINAL PREPARED SUBJECT -- what the floor prepares when a
+/// run touches nothing: the gate's prefix roster and authored-module roster, both decoded from
+/// `v2.workflow.required_floor` in a frame over that module's own closure, and the local-repo wet
+/// schedule rows whose entry modules join the module seeds. The diff-derived seeds (changed
+/// witnesses, touched entries, arm-set consumers) are NOT here: they are a fact about one run's
+/// diff, and this is the part of the subject that holds for every run.
+///
+/// ONE PRODUCER, TWO CONSUMERS, and that is the reason it is a function rather than a block in
+/// `run_required_floor`. The floor consumes it to seed preparation; the required-lane resolution
+/// census (`gunbc.required_lane_resolution_census`, `gunbc test
+/// //gunbc/instruments:required-lane-resolution-census`) consumes it to answer, for every module
+/// under the source roots, whether the floor's nominal subject resolves it. A census that
+/// re-derived the seed list from the roster would be a second authority for what the floor
+/// prepares, and it would drift the first time a seed kind was added here and not there.
+pub struct RequiredFloorNominalSubjectSeeds {
+    pub required_gate_prefixes: Vec<String>,
+    pub required_gate_authored_modules: Vec<String>,
+    pub(crate) local_repo_wet_schedule_rows: Vec<LocalRepoWetScheduledRow>,
+}
+
+/// THE LANE'S SCHEDULE IS DECODED HERE, IN THE POLICY CLOSURE, AND NOT LATER -- because its
+/// modules must become SEEDS of the prepared subject. The first CI run of that lane refused
+/// seven times with `EntryModuleOutsidePreparedSubject`: the prepared graph is the required-gate
+/// closure plus the changed set, and the lane's members are on the discovery exclusion
+/// frontier, so nothing pulled them in. A lane that cannot reach its own members cannot support
+/// the route claim `std.witness_admission` makes for its cadence, so the schedule joins the seed
+/// list rather than the executor learning to run outside the subject.
+pub fn required_floor_nominal_subject_seeds(
+    source_roots: &[String],
+    gate_entry_index: &MultiEntryIndex,
+) -> Result<RequiredFloorNominalSubjectSeeds, String> {
+    let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
+    let (policy_prepared, _) = prepare_repository_closure(
+        source_roots,
+        &floor_prepared_subject_exclusions(),
+        Some((gate_entry_index, &[], &policy_seed)),
+    )?;
+    let policy_scope = claim_scope_for(&policy_prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
+    let policy_frame = evaluation_frame(
+        &policy_scope,
+        v1_interpreter::ExecutionMode::Hermetic,
+        None,
+        None,
+    );
+    let required_gate_prefixes = floor_decode_module_prefix_roster(
+        &policy_frame,
+        "v2.workflow.required_floor.required_gate_prefixes",
+    )?;
+    // THE GATE'S SECOND SELECTOR KIND (`v2.workflow.required_floor`
+    // `required_gate_authored_modules`, `RequiredGateSelector`): authored module NAMES,
+    // matched at segment boundaries -- the module-seed rule, not the prefix rule. They join
+    // the module seeds, so preparation and site disposition admit them under one rule by
+    // construction.
+    let required_gate_authored_modules = floor_decode_module_prefix_roster(
+        &policy_frame,
+        "v2.workflow.required_floor.required_gate_authored_modules",
+    )?;
+    let local_repo_wet_schedule_rows = local_repo_wet_schedule(&policy_frame)?;
+    Ok(RequiredFloorNominalSubjectSeeds {
+        required_gate_prefixes,
+        required_gate_authored_modules,
+        local_repo_wet_schedule_rows,
+    })
+}
+
+/// The nominal MODULE seeds (`v2.workflow.floor_subject_seed` `PreparedSubjectSeedGround`,
+/// matched at segment boundaries): the floor's own runtime authorities, the gate's authored
+/// modules, and the wet schedule's entry modules. The prefix seeds travel separately because
+/// they are matched by a different rule.
+pub(crate) fn required_floor_nominal_closure_module_seeds(
+    required_gate_authored_modules: &[String],
+    local_repo_wet_schedule_rows: &[LocalRepoWetScheduledRow],
+) -> Vec<String> {
+    REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES
+        .iter()
+        .map(|m| m.to_string())
+        .chain(required_gate_authored_modules.iter().cloned())
+        .chain(
+            local_repo_wet_schedule_rows
+                .iter()
+                .map(|row| row.entry_module.clone()),
+        )
+        .collect()
+}
+
 pub fn floor_prepared_subject_exclusions() -> Vec<String> {
     vec![
         // MUST-NOT-RESOLVE PROBES. Every module under dag/test/probe/ declares in its header that
@@ -5458,6 +5543,63 @@ pub(crate) fn floor_cgroup_envelope(when: &str) {
     }
 }
 
+/// THE LEAF'S memory.stat COUNTERS, RAW, ON EVERY BEAT, BECAUSE memory.peak IS NOT A DEMAND.
+///
+/// `memory.current` and `memory.peak` charge page cache alongside anonymous memory, and a run
+/// that is being reclaimed down to its `memory.high` line finishes clean precisely because the
+/// cache half of that charge is reclaimable. So a peak read at the throttle line is a CEILING
+/// that includes cache, and sizing anything to it -- a cell row, a microVM guest whose kernel
+/// can reclaim its own cache just as well -- treats a bet as a fact (DESIGN 4d). Demand is
+/// therefore derived from `memory.stat`'s counters, and this reader prints those counters AS THE
+/// KERNEL REPORTS THEM: one flat list, no grouping, no sum. `memory.stat` is not a partition --
+/// `file` includes shmem, and `unevictable` is an LRU-list state over pages `anon` and `file`
+/// already count -- so any grouping here would already be a derivation, and the derivation has
+/// one home: `gunbc.floor_demand` `beat_held_set`, which folds disjoint terms into a resident
+/// held-set lower bound. `memory.current` is printed beside the counters so a derivation can be
+/// checked against the charge it is drawn from.
+///
+/// Sampled every beat rather than every tenth, because `memory.stat` has no `.peak` and the
+/// maximum over samples is the only bound available; a ten-minute cadence would undercount a
+/// short anonymous spike by whatever it missed. One file read per beat, leaf only -- the
+/// ancestors' counters cover their whole subtrees and say nothing about this run.
+///
+/// Every field is printed as read or as `na`; a missing key is never rendered as zero, for the
+/// reason `floor_resource_sample` gives.
+pub(crate) fn floor_cgroup_stat_beat(when: &str) {
+    let leaf = floor_cgroup_dir();
+    let body = std::fs::read_to_string(format!("{leaf}/memory.stat")).ok();
+    let key = |k: &str| -> String {
+        body.as_deref()
+            .and_then(|b| {
+                b.lines().find_map(|l| {
+                    l.strip_prefix(k)
+                        .and_then(|r| r.strip_prefix(' '))
+                        .map(|v| v.trim().to_string())
+                })
+            })
+            .unwrap_or_else(|| "na".to_string())
+    };
+    let current = std::fs::read_to_string(format!("{leaf}/memory.current"))
+        .map(|v| v.trim().to_string())
+        .unwrap_or_else(|_| "na".to_string());
+    eprintln!(
+        "[floor-cgroup] when={when} stat_level={leaf} current={current} \
+         memory_stat=[anon,{},file,{},shmem,{},unevictable,{},slab_unreclaimable,{},\
+         slab_reclaimable,{},kernel_stack,{},pagetables,{},percpu,{},sock,{},file_dirty,{}]",
+        key("anon"),
+        key("file"),
+        key("shmem"),
+        key("unevictable"),
+        key("slab_unreclaimable"),
+        key("slab_reclaimable"),
+        key("kernel_stack"),
+        key("pagetables"),
+        key("percpu"),
+        key("sock"),
+        key("file_dirty"),
+    );
+}
+
 ///
 /// `planning_index` is the parse phase's `DeclarationIndex`, LENT rather than rebuilt: the
 /// floor's planning row derives the match-bearing consumers of a changed coproduct from it
@@ -5494,6 +5636,7 @@ pub fn run_required_floor(
         );
     }
     floor_cgroup_envelope("floor-entry");
+    floor_cgroup_stat_beat("floor-entry");
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
     eprintln!("[floor-phase] phase=strict-preparation state=started");
@@ -5556,44 +5699,14 @@ pub fn run_required_floor(
                 .to_string()
         })
         .collect();
-    // THE LANE'S SCHEDULE IS DECODED HERE, IN THE POLICY CLOSURE, AND NOT LATER -- because its
-    // modules must become SEEDS of the prepared subject below. The first CI run of this lane
-    // refused seven times with `EntryModuleOutsidePreparedSubject`: the prepared graph is the
-    // required-gate closure plus the changed set, and the lane's members are on the discovery
-    // exclusion frontier, so nothing pulled them in. A lane that cannot reach its own members
-    // cannot support the route claim `std.witness_admission` makes for its cadence, so the
-    // schedule joins the seed list rather than the executor learning to run outside the subject.
-    let (required_gate_prefixes, local_repo_wet_schedule_rows) = {
-        let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
-        let (policy_prepared, _) = prepare_repository_closure(
-            source_roots,
-            &floor_prepared_subject_exclusions(),
-            Some((&gate_entry_index, &[], &policy_seed)),
-        )?;
-        let policy_scope = claim_scope_for(&policy_prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
-        let policy_frame = evaluation_frame(
-            &policy_scope,
-            v1_interpreter::ExecutionMode::Hermetic,
-            None,
-            None,
-        );
-        let prefixes = floor_decode_module_prefix_roster(
-            &policy_frame,
-            "v2.workflow.required_floor.required_gate_prefixes",
-        )?;
-        // THE GATE'S SECOND SELECTOR KIND (`v2.workflow.required_floor`
-        // `required_gate_authored_modules`, `RequiredGateSelector`): authored module NAMES,
-        // matched at segment boundaries -- the module-seed rule below, not the prefix rule.
-        // They join `closure_module_seeds`, so preparation and site disposition admit them
-        // under one rule by construction.
-        let authored_modules = floor_decode_module_prefix_roster(
-            &policy_frame,
-            "v2.workflow.required_floor.required_gate_authored_modules",
-        )?;
-        let schedule = local_repo_wet_schedule(&policy_frame)?;
-        ((prefixes, authored_modules), schedule)
-    };
-    let (required_gate_prefixes, required_gate_authored_modules) = required_gate_prefixes;
+    // THE NOMINAL SEEDS -- gate prefixes, gate authored modules, the wet schedule -- come from
+    // the one producer the resolution census also reads, so what the floor prepares on a run
+    // that touches nothing and what the census reports as reached are the same fact.
+    let RequiredFloorNominalSubjectSeeds {
+        required_gate_prefixes,
+        required_gate_authored_modules,
+        local_repo_wet_schedule_rows,
+    } = required_floor_nominal_subject_seeds(source_roots, &gate_entry_index)?;
     // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
     // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
     // and a gate roster that happened not to reach `v2.workflow.required_floor` refused with
@@ -5668,7 +5781,7 @@ pub fn run_required_floor(
                 head,
                 selection,
             } => {
-                use crate::cli_run::namespace_wave_admission::ArmConsumerBinding;
+                use crate::cli_run::namespace_baseline::ArmConsumerBinding;
                 let floor_roots = floor_source_roots_workspace_relative(source_roots);
                 let mut flat_channel = 0usize;
                 for change in &selection.changes {
@@ -5730,23 +5843,19 @@ pub fn run_required_floor(
             }
         }
     }
-    let closure_module_seeds: Vec<String> = REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES
-        .iter()
-        .map(|m| m.to_string())
-        .chain(required_gate_authored_modules.iter().cloned())
-        .chain(changed_module_seeds.iter().cloned())
-        .chain(
-            compile_subject
-                .iter()
-                .flat_map(|subject| subject.touched_modules.iter().cloned()),
-        )
-        .chain(arm_set_consumer_seeds.iter().cloned())
-        .chain(
-            local_repo_wet_schedule_rows
-                .iter()
-                .map(|row| row.entry_module.clone()),
-        )
-        .collect();
+    let closure_module_seeds: Vec<String> = required_floor_nominal_closure_module_seeds(
+        &required_gate_authored_modules,
+        &local_repo_wet_schedule_rows,
+    )
+    .into_iter()
+    .chain(changed_module_seeds.iter().cloned())
+    .chain(
+        compile_subject
+            .iter()
+            .flat_map(|subject| subject.touched_modules.iter().cloned()),
+    )
+    .chain(arm_set_consumer_seeds.iter().cloned())
+    .collect();
     let (mut prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
         &floor_prepared_subject_exclusions(),
@@ -11730,7 +11839,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         base: &[(&str, &str)],
         head: &[(&str, &str)],
     ) -> (
-        crate::cli_run::namespace_wave_admission::ArmSetConsumerSelection,
+        crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
         PathBuf,
     ) {
         let base_fx = arm_set_fixture(name, "base", base);
@@ -11744,7 +11853,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             "PLANT MALFORMED: a side indexed no modules"
         );
         (
-            crate::cli_run::namespace_wave_admission::arm_set_changed_match_consumers(
+            crate::cli_run::namespace_baseline::arm_set_changed_match_consumers(
                 &base_index,
                 &head_index,
             ),
@@ -11753,7 +11862,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     }
 
     fn consumers_of(
-        selection: &crate::cli_run::namespace_wave_admission::ArmSetConsumerSelection,
+        selection: &crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
     ) -> Vec<&str> {
         let mut out: Vec<&str> = selection
             .consumers
@@ -11769,7 +11878,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     /// -- see the positive control below, which prepares W without Y.
     #[test]
     fn arm_growth_selects_the_untouched_match_consumer_and_strict_preparation_refuses_it() {
-        use crate::cli_run::namespace_wave_admission::ArmConsumerBinding;
+        use crate::cli_run::namespace_baseline::ArmConsumerBinding;
         let (selection, head_fx) = arm_set_selection(
             "red",
             &[

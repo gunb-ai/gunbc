@@ -11,9 +11,9 @@ on:
         options: [srv1, srv2, srv3, srv4]
         type: choice
       mode:
-        description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown
+        description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; app_key_version_verify reads the gunbai-ci App private key at the EXACT Secret Manager version named by app_key_version, mints an installation token with it, and refuses unless GitHub accepts it and the key's rotation deadline has not passed -- no add, disable or destroy; microvm_host_converge installs the cited Firecracker release on the selected host and reads the kvm grant back, refusing by name when the grant has not landed (the grant itself is applied by the full-host apply spine); guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_runtime_image_probe, dashboard_deploy, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, runner_password_session_tool_converge, r2_mint_preflight, r2_object_write_mint]
+        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_native_serving_apply, spark_runtime_image_probe, dashboard_deploy, approval_broker_dark_install, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, site_pxe_edge_observe, site_pxe_edge_converge, runner_password_session_tool_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, mtcollins1_boot, mtcollins1_fan_observe, mtcollins1_census_image_publish, microvm_controller_app_key_converge, app_key_version_verify, r2_bucket_ensure, r2_bucket_admin_mint]
         type: choice
       target:
         description: "Spark target host for the spark_* modes, naming the administrator credential the run materializes (any rostered Spark: srv5, srv6, srv7, srv8, srv9, srv10, srv11, srv12); apply reads the subject off the plan artifact"
@@ -25,6 +25,10 @@ on:
         required: false
         options: [srv1, srv2, srv3, srv4]
         type: choice
+      app_key_version:
+        description: "app_key_version_verify only: the Secret Manager version NUMBER of ci-github-app-private-key to verify. The alias latest is refused -- it names whatever is newest when it resolves, so a mint through it proves nothing about a specific key"
+        required: false
+        type: string
       plan_artifact_hash:
         description: Fnv1a64Structural bundle digest of plan.txt + apply.sh — required for apply (printed by plan step).
         required: false
@@ -43,6 +47,14 @@ on:
         type: string
       dashboard_workflow_run_id:
         description: Workflow run id of the dashboard deploy — required for rlm_launch_deployment_receipt
+        required: false
+        type: string
+      runner_ids:
+        description: "org_runner_roster_observe only: comma-separated captured runner registration ids to observe individually (present / absent / unobserved) in the gunbai-ci organization"
+        required: false
+        type: string
+      roster_page_size:
+        description: "org_runner_roster_observe only: page size for the first roster request (1..100, default 100); later pages follow the authority's own continuation links"
         required: false
         type: string
       transaction_nonce:
@@ -160,7 +172,7 @@ jobs:
       actions: read
       id-token: write
     concurrency:
-      group: gunbc-host-mutation-${{ github.event.inputs.host }}
+      group: ${{ github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
       cancel-in-progress: false
     steps:
       - name: Checkout
@@ -219,6 +231,7 @@ jobs:
           echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)"
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'dashboard_deploy' || github.event.inputs.mode == 'approval_broker_dark_install' || github.event.inputs.mode == 'rlm_launch_deployment_receipt' || github.event.inputs.mode == 'host_reset_return' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'microvm_controller_app_key_converge'
         timeout-minutes: 5
       - name: Fleet converge plan (membership_reconcile → artifact)
         id: plan
@@ -329,7 +342,7 @@ jobs:
           export GH_TOKEN="$GUNBC_ORG_ADMIN_TOKEN"
           echo "org-admin: installation token minted in-run for app gunbai-ci installation 104134109 (one-hour lifetime; key wiped; token held in this step's environment only)"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/org_actions_converge.dag --function org_actions_converge_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/org_actions_inspection.dag --function org_actions_inspect_wet
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'org_actions_observe'
@@ -343,6 +356,59 @@ jobs:
           if-no-files-found: error
           retention-days: 30
         if: github.event.inputs.mode == 'org_actions_observe'
+        timeout-minutes: 10
+      - name: "Org runner roster: paginated read of GitHub self-hosted runner registrations"
+        id: org_runner_roster_observe
+        run: |
+          set -euo pipefail
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/org-admin-app-key"
+          HDR_FILE="$RUNNER_TEMP/org-admin-auth-header"
+          JWT_FILE="$RUNNER_TEMP/org-admin-app-jwt"
+          TOKEN_HEADERS="$RUNNER_TEMP/org-admin-token-headers"
+          TOKEN_BODY="$RUNNER_TEMP/org-admin-token-body"
+          cleanup() { rm -f "$KEY_FILE" "$HDR_FILE" "$JWT_FILE" "$TOKEN_HEADERS" "$TOKEN_BODY" "$RUNNER_TEMP/org-admin-app-key-sm-body"; unset GUNBC_ORG_ADMIN_TOKEN GH_TOKEN; }
+          trap cleanup EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          SM_BODY="$RUNNER_TEMP/org-admin-app-key-sm-body"
+          SM_CODE="$(curl -sS -o "$SM_BODY" -w '%{http_code}' -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/latest:access")"
+          rm -f "$HDR_FILE"
+          if [ "$SM_CODE" != 200 ]; then rm -f "$SM_BODY"; echo "OrgAdminAppKeyUnreadable: Secret Manager answered HTTP $SM_CODE for projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/latest to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor, and confirm the version exists. Minting NO token." >&2; exit 1; fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$SM_BODY" > "$KEY_FILE"
+          rm -f "$SM_BODY"
+          chmod 600 "$KEY_FILE"
+          NOW=$(date +%s)
+          b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }
+          JWT_HEADER=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          JWT_PAYLOAD=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((NOW-60))" "$((NOW+540))" "2653532" | b64url)
+          JWT_SIG=$(printf '%s.%s' "$JWT_HEADER" "$JWT_PAYLOAD" | openssl dgst -sha256 -sign "$KEY_FILE" | b64url)
+          rm -f "$KEY_FILE"
+          printf 'Authorization: Bearer %s.%s.%s\n' "$JWT_HEADER" "$JWT_PAYLOAD" "$JWT_SIG" > "$JWT_FILE"
+          curl -sS -X POST -H @"$JWT_FILE" -H 'Accept: application/vnd.github+json' -D "$TOKEN_HEADERS" -o "$TOKEN_BODY" "https://api.github.com/app/installations/104134109/access_tokens"
+          rm -f "$JWT_FILE"
+          if ! head -n1 "$TOKEN_HEADERS" | grep -q ' 201 '; then echo "OrgAdminInstallationTokenRefused: GitHub answered $(head -n1 "$TOKEN_HEADERS" | tr -d '\r') for the gunbai-ci installation; a revoked key, a removed installation, or a missing Self-hosted-runners permission each look like this -- inspect the App's installation on the organization" >&2; exit 1; fi
+          GUNBC_ORG_ADMIN_TOKEN="$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))["token"])' "$TOKEN_BODY")"
+          rm -f "$TOKEN_HEADERS" "$TOKEN_BODY"
+          export GUNBC_ORG_ADMIN_TOKEN
+          export GH_TOKEN="$GUNBC_ORG_ADMIN_TOKEN"
+          echo "org-admin: installation token minted in-run for app gunbai-ci installation 104134109 (one-hour lifetime; key wiped; token held in this step's environment only)"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/organization_runner_roster_read.dag --function organization_runner_roster_observe_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          GUNBC_RUNNER_ID_PROBES: ${{ github.event.inputs.runner_ids }}
+          GUNBC_RUNNER_ROSTER_PAGE_SIZE: ${{ github.event.inputs.roster_page_size }}
+        if: github.event.inputs.mode == 'org_runner_roster_observe'
+        timeout-minutes: 5
+      - name: Upload org runner roster receipt
+        id: org_runner_roster_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: org-runner-roster
+          path: target/org-runner-roster-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'org_runner_roster_observe'
         timeout-minutes: 10
       - name: "GitHub App control plane: registration + webhook config observation"
         id: app_control_plane_observe
@@ -378,7 +444,7 @@ jobs:
           export GUNBC_APP_JWT_HEADER_FILE
           echo "app-control-plane: short-lived App JWT minted in-run for app gunbai-ci (540s lifetime; key wiped; header file 0600, path exported, contents never in argv or environment)"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/app_control_plane_converge.dag --function app_control_plane_converge_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/app_control_plane_inspection.dag --function app_control_plane_inspect_wet
           cat "$ROOT/target/app-control-plane-observation-receipt.txt"
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
@@ -393,6 +459,125 @@ jobs:
           if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'app_control_plane_observe'
+        timeout-minutes: 10
+      - name: "App key version verify: mint an installation token with the exact version"
+        id: app_key_version_verify_mint
+        run: |
+          set -euo pipefail
+          : > "$APP_KEY_VERIFY_RECORD"
+          case "$APP_KEY_VERSION" in ''|0*|*[!0-9]*) echo "AppKeyVersionSelectorRefused: '$APP_KEY_VERSION' is not a Secret Manager version number; the alias is refused rather than resolved. Reading NO key." >&2; exit 1;; esac
+          set -euo pipefail
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/app-key-verify-app-key"
+          HDR_FILE="$RUNNER_TEMP/app-key-verify-auth-header"
+          JWT_FILE="$RUNNER_TEMP/app-key-verify-app-jwt"
+          TOKEN_HEADERS="$RUNNER_TEMP/app-key-verify-token-headers"
+          TOKEN_BODY="$RUNNER_TEMP/app-key-verify-token-body"
+          cleanup() { rm -f "$KEY_FILE" "$HDR_FILE" "$JWT_FILE" "$TOKEN_HEADERS" "$TOKEN_BODY" "$RUNNER_TEMP/app-key-verify-app-key-sm-body"; unset GUNBC_APP_KEY_VERIFY_TOKEN; }
+          trap cleanup EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          SM_BODY="$RUNNER_TEMP/app-key-verify-app-key-sm-body"
+          SM_CODE="$(curl -sS -o "$SM_BODY" -w '%{http_code}' -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/$APP_KEY_VERSION:access")"
+          rm -f "$HDR_FILE"
+          printf 'key_http_status %s\n' "$SM_CODE" >> "$APP_KEY_VERIFY_RECORD"
+          if [ "$SM_CODE" != 200 ]; then rm -f "$SM_BODY"; echo "AppKeyVersionUnreadable: Secret Manager answered HTTP $SM_CODE for projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/$APP_KEY_VERSION; the verdict step below types the cause. Minting NO token." >&2; exit 1; fi
+          printf 'resolved_name %s\n' "$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))["name"])' "$SM_BODY")" >> "$APP_KEY_VERIFY_RECORD"
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$SM_BODY" > "$KEY_FILE"
+          rm -f "$SM_BODY"
+          chmod 600 "$KEY_FILE"
+          NOW=$(date +%s)
+          b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }
+          JWT_HEADER=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          JWT_PAYLOAD=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((NOW-60))" "$((NOW+540))" "2653532" | b64url)
+          JWT_SIG=$(printf '%s.%s' "$JWT_HEADER" "$JWT_PAYLOAD" | openssl dgst -sha256 -sign "$KEY_FILE" | b64url)
+          rm -f "$KEY_FILE"
+          printf 'Authorization: Bearer %s.%s.%s\n' "$JWT_HEADER" "$JWT_PAYLOAD" "$JWT_SIG" > "$JWT_FILE"
+          curl -sS -X POST -H @"$JWT_FILE" -H 'Accept: application/vnd.github+json' -D "$TOKEN_HEADERS" -o "$TOKEN_BODY" "https://api.github.com/app/installations/104134109/access_tokens"
+          rm -f "$JWT_FILE"
+          printf 'token_status_line %s\n' "$(head -n1 "$TOKEN_HEADERS" | tr -d '\r')" >> "$APP_KEY_VERIFY_RECORD"
+          if ! head -n1 "$TOKEN_HEADERS" | grep -q ' 201 '; then echo "AppKeyInstallationTokenRefused: GitHub answered $(head -n1 "$TOKEN_HEADERS" | tr -d '\r') to the exchange signed with this version; the verdict step below types the cause." >&2; exit 1; fi
+          GUNBC_APP_KEY_VERIFY_TOKEN="$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))["token"])' "$TOKEN_BODY")"
+          rm -f "$TOKEN_HEADERS" "$TOKEN_BODY"
+          export GUNBC_APP_KEY_VERIFY_TOKEN
+          echo "app-key-verify: an installation token was minted with version $APP_KEY_VERSION for app gunbai-ci (key wiped; token unused and unset on exit)"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          APP_KEY_VERSION: ${{ github.event.inputs.app_key_version }}
+          APP_KEY_VERIFY_RECORD: ${{ runner.temp }}/app-key-verify-record
+        if: github.event.inputs.mode == 'app_key_version_verify'
+        timeout-minutes: 5
+      - name: "App key version verify: typed verdict and rotation-deadline standing"
+        id: app_key_version_verify_verdict
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/ci_app_key_rotation.dag --function ci_app_key_version_verify_wet
+          cat "$ROOT/target/app-key-version-verify-receipt.txt"
+        env:
+          APP_KEY_VERSION: ${{ github.event.inputs.app_key_version }}
+          APP_KEY_VERIFY_RECORD: ${{ runner.temp }}/app-key-verify-record
+        if: always() && github.event.inputs.mode == 'app_key_version_verify'
+        timeout-minutes: 5
+      - name: Upload app key version verify receipt
+        id: app_key_version_verify_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: app-key-version-verify
+          path: target/app-key-version-verify-receipt.txt
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+        if: always() && github.event.inputs.mode == 'app_key_version_verify'
+        timeout-minutes: 10
+      - name: "Mt. Collins fan observation: IPMI SDR fan + temperature time series with power state (reads only)"
+        id: mtcollins1_fan_observe
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_mtcollins1_fan_observe_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned BMC secret version fetched over curl through the shared gunbc_ci_mtcollins1_bmc_credential_fetch_steps, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk. The pipeline steps are modeled but each step body is a shell string built by concat, so the transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold. The SHARED fetch means this row and gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger retire together for the fetch half; each keeps its own row because each lane's file names, trap and exports are still its own hand-shell.
+          set -euo pipefail
+          umask 077
+          HDR_FILE="$RUNNER_TEMP/mtcollins1-fan-auth-header"
+          RESP_FILE="$RUNNER_TEMP/mtcollins1-fan-sm.json"
+          DEST_FILE="$RUNNER_TEMP/mtcollins1-bmc-credential"
+          trap 'rm -f "$HDR_FILE" "$RESP_FILE" "$DEST_FILE"' EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          curl -sSf -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access"; python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          chmod 600 "$DEST_FILE"
+          export GUNBC_MTCOLLINS1_BMC_CREDENTIAL_FILE="$DEST_FILE"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_fan_observe.dag --function mtcollins1_fan_observe_wet
+          cat "$ROOT/target/mtcollins1-fan-observation.txt"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'mtcollins1_fan_observe'
+        timeout-minutes: 5
+      - name: Upload Mt. Collins fan observation series
+        id: mtcollins1_fan_observe_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: mtcollins1-fan-observation
+          path: target/mtcollins1-fan-observation.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: github.event.inputs.mode == 'mtcollins1_fan_observe'
+        timeout-minutes: 10
+      - name: "Mt. Collins census image: build the seeded live-server image in /srv/bmc and publish it create-only under its digest name"
+        id: mtcollins1_census_image_publish
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_census_image.dag --function mtcollins1_census_image_publish_wet
+          cat "$ROOT/target/mtcollins1-census-image.txt"
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        if: github.event.inputs.mode == 'mtcollins1_census_image_publish'
+        timeout-minutes: 30
+      - name: Upload Mt. Collins census image receipt
+        id: mtcollins1_census_image_publish_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: mtcollins1-census-image
+          path: target/mtcollins1-census-image.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: github.event.inputs.mode == 'mtcollins1_census_image_publish'
         timeout-minutes: 10
       - name: "R2 mint preflight: bootstrap read + account permission-group listing (reachability, no mutation)"
         id: r2_mint_preflight
@@ -414,6 +599,45 @@ jobs:
           retention-days: 30
         if: github.event.inputs.mode == 'r2_mint_preflight'
         timeout-minutes: 10
+      - name: R2 bucket-admin token mint (AccountTokens.Create + Secret Manager custody)
+        id: r2_bucket_admin_mint
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/cloudflare/r2_token_mint_run.dag --function run_bucket_admin
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'r2_bucket_admin_mint'
+        timeout-minutes: 5
+      - name: Upload R2 bucket-admin mint receipt (token id + custody version resource; no secret)
+        id: r2_bucket_admin_mint_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: r2-bucket-admin-mint-receipt
+          path: /tmp/r2-mint-receipts/${{ github.run_id }}-${{ github.run_attempt }}/r2-*-bucket-admin-mint-receipt.txt
+          if-no-files-found: warn
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'r2_bucket_admin_mint'
+        timeout-minutes: 10
+      - name: "R2 bucket ensure: entitlement + bucket existence per allocated purpose (create on absence, readback)"
+        id: r2_bucket_ensure
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/cloudflare/r2_bucket_ensure.dag --function ensure
+          cat "$ROOT/target/r2-bucket-ensure-receipt.txt"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'r2_bucket_ensure'
+        timeout-minutes: 5
+      - name: Upload R2 bucket ensure receipt
+        id: r2_bucket_ensure_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: r2-bucket-ensure
+          path: target/r2-bucket-ensure-receipt.txt
+          if-no-files-found: warn
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'r2_bucket_ensure'
+        timeout-minutes: 10
       - name: R2 object-write token mint (AccountTokens.Create + Secret Manager custody)
         id: r2_object_write_mint
         run: |
@@ -432,6 +656,73 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
         if: always() && github.event.inputs.mode == 'r2_object_write_mint'
+        timeout-minutes: 10
+      - name: Materialize approval MAC keys on srv1 (SM pinned -> sha256 prefix -> /etc/gunbc-roadmap 0640)
+        id: approval_keyring_converge
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_approval_keyring_converge_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, two PINNED secret versions (capability and submission MAC keys) fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. The pipeline steps are modeled (gunbc_ci_approval_keyring_converge_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          set -euo pipefail
+          umask 077
+          HDR_FILE="$RUNNER_TEMP/approval-keyring-auth-header"
+          RESP_FILE="$RUNNER_TEMP/approval-keyring-sm.json"
+          CAP_FILE="$RUNNER_TEMP/approval-capability-mac-key"
+          SUB_FILE="$RUNNER_TEMP/approval-submission-mac-key"
+          trap 'rm -f "$HDR_FILE" "$RESP_FILE" "$CAP_FILE" "$SUB_FILE"' EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          DEST_FILE="$CAP_FILE"; curl -sSf -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-capability-mac-key/versions/1:access"; python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          chmod 600 "$CAP_FILE"
+          DEST_FILE="$SUB_FILE"; curl -sSf -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access"; python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          chmod 600 "$SUB_FILE"
+          export GUNBC_APPROVAL_CAPABILITY_MAC_KEY_FILE="$CAP_FILE"
+          export GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE="$SUB_FILE"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/approval_keyring_converge.dag --function approval_keyring_converge_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        if: github.event.inputs.mode == 'approval_keyring_converge'
+        timeout-minutes: 5
+      - name: Mt. Collins unit 1 approval-gated diskless boot (file request, poll, grant, attach, CD handoff)
+        id: mtcollins1_boot
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, PINNED BMC and submission-MAC secret versions fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          set -euo pipefail
+          umask 077
+          HDR_FILE="$RUNNER_TEMP/mtcollins1-boot-auth-header"
+          RESP_FILE="$RUNNER_TEMP/mtcollins1-boot-sm.json"
+          DEST_FILE="$RUNNER_TEMP/mtcollins1-bmc-credential"
+          SUB_FILE="$RUNNER_TEMP/approval-submission-mac-key"
+          SOL_PID_FILE="$RUNNER_TEMP/mtcollins1-sol.pid"
+          SOL_OUT="$GITHUB_WORKSPACE/artifacts/mtcollins1-boot-sol.capture"
+          trap 'if [ -f "$SOL_PID_FILE" ]; then kill "$(cat "$SOL_PID_FILE")" 2>/dev/null || true; fi; rm -f "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$SUB_FILE" "$SOL_PID_FILE"' EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          curl -sSf -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access"; python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          chmod 600 "$DEST_FILE"
+          export GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE="$DEST_FILE"
+          HOLD_BMC="$DEST_FILE"
+          DEST_FILE="$SUB_FILE"; curl -sSf -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access"; python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"; DEST_FILE="$HOLD_BMC"
+          chmod 600 "$SUB_FILE"
+          export GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE="$SUB_FILE"
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          : > "$SOL_OUT"
+          export GUNBC_MTCOLLINS1_SOL_CAPTURE="$SOL_OUT"
+          export GUNBC_MTCOLLINS1_SOL_PID_FILE="$SOL_PID_FILE"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_boot_run.dag --function mtcollins1_boot_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        if: github.event.inputs.mode == 'mtcollins1_boot'
+        timeout-minutes: 38
+      - name: Upload Mt. Collins unit 1 boot SOL capture and receipts
+        id: mtcollins1_boot_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: mtcollins1-boot-receipts
+          path: artifacts/mtcollins1-boot-*
+          if-no-files-found: warn
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'mtcollins1_boot'
         timeout-minutes: 10
       - name: "Runner micro-VM guest image: observe base artifacts and their digests"
         id: guest_image_observe
@@ -465,6 +756,8 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_microvm_host_ready.dag --function runner_microvm_host_converge_wet
           cat "$ROOT/target/runner-microvm-host-standing.txt"
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'microvm_host_converge'
         timeout-minutes: 30
       - name: Upload runner micro-VM host standing receipt
@@ -483,6 +776,8 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_microvm_boot_probe.dag --function runner_microvm_boot_probe_wet
           cat "$ROOT/target/runner-microvm-boot-probe.txt"
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'microvm_boot_probe'
         timeout-minutes: 30
       - name: Upload runner micro-VM boot probe console receipt
@@ -582,6 +877,35 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'spark_serving_apply'
         timeout-minutes: 60
+      - name: "Spark native serving apply (group B's native four-rank arm as one bounded transaction over the password session: all-host preflight that mutates nothing, the incumbent unit preserved, head before workers, a readback of the complete realization bound to each rank's own incarnation, then commit or roll the whole arm back)"
+        id: spark_native_serving_apply
+        run: |
+          set -euo pipefail
+          umask 077
+          CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
+          RESP_FILE="$RUNNER_TEMP/spark-administrator-response.json"
+          HDR_FILE="$RUNNER_TEMP/spark-administrator-auth-header"
+          trap 'rm -f "$CRED_FILE" "$RESP_FILE" "$HDR_FILE"' EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          case "${SPARK_CONVERGE_TARGET:-}" in srv5) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv6) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv7) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv8) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv9) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv10) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv11) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; srv12) SM_URL="https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access"; SM_RES="projects/gunbai-secrets/secrets/spark-administrator-password/versions/1" ;; *) echo "SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='${SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host" >&2; exit 1 ;; esac
+          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H @"$HDR_FILE" "$SM_URL" || echo 000)"
+          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: $SM_RES answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: $SM_RES answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
+          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from $SM_RES; contacting NO host." >&2; exit 1; fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$CRED_FILE"
+          rm -f "$RESP_FILE"
+          chmod 600 "$CRED_FILE"
+          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: $SM_RES returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
+          export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
+          echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/native_serving_apply.dag --function spark_native_serving_apply_wet
+          cat "$ROOT/target/spark-native-apply-receipt.txt"
+        env:
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'spark_native_serving_apply'
+        timeout-minutes: 60
       - name: Spark runtime image probe (pull the pinned image on the selected Spark and ask it, inside its own digest, what it registers and what it admits)
         id: spark_runtime_image_probe
         run: |
@@ -651,6 +975,27 @@ jobs:
           retention-days: 30
         if: always() && (github.event.inputs.mode == 'runner_password_session_tool_converge')
         timeout-minutes: 10
+      - name: "MicroVM controller App key: deliver root:root 0400 from Secret Manager, read owner, mode, bytes and staging back"
+        id: microvm_controller_app_key_converge
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/microvm_controller_app_key_converge.dag --function microvm_controller_app_key_converge_ci_wet
+          cat "$ROOT/target/microvm-controller-app-key-converge-receipt.txt"
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'microvm_controller_app_key_converge'
+        timeout-minutes: 15
+      - name: Upload microVM controller App key custody receipt
+        id: microvm_controller_app_key_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: microvm-controller-app-key-converge-receipt
+          path: target/microvm-controller-app-key-converge-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && (github.event.inputs.mode == 'microvm_controller_app_key_converge')
+        timeout-minutes: 10
       - name: Upload runner host file converge receipt
         id: runner_host_file_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -660,6 +1005,36 @@ jobs:
           if-no-files-found: error
           retention-days: 30
         if: always() && (github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge')
+        timeout-minutes: 10
+      - name: "Site PXE edge: observe the chainloader digest, dnsmasq, the edge config and unit (no writes)"
+        id: site_pxe_edge_observe
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/site_pxe_edge_converge.dag --function site_pxe_edge_observe_ci_wet
+          cat "$ROOT/target/site-pxe-edge-converge-receipt.txt"
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        if: github.event.inputs.mode == 'site_pxe_edge_observe'
+        timeout-minutes: 15
+      - name: "Site PXE edge: if the gate is open, write what differs, restart the unit, read its active state back"
+        id: site_pxe_edge_converge
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/site_pxe_edge_converge.dag --function site_pxe_edge_converge_ci_wet
+          cat "$ROOT/target/site-pxe-edge-converge-receipt.txt"
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        if: github.event.inputs.mode == 'site_pxe_edge_converge'
+        timeout-minutes: 15
+      - name: Upload site PXE edge converge receipt
+        id: site_pxe_edge_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: site-pxe-edge-converge-receipt
+          path: target/site-pxe-edge-converge-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && (github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge')
         timeout-minutes: 10
       - name: Kill the in-run ssh-agent (key never outlives the job)
         run: |
@@ -785,6 +1160,41 @@ jobs:
           compression-level: 0
         if: always()
         timeout-minutes: 10
+  approval-broker-dark-install:
+    runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
+    needs: [build]
+    timeout-minutes: 50
+    if: github.event.inputs.mode == 'approval_broker_dark_install'
+    concurrency:
+      group: gunbc-host-mutation-${{ github.event.inputs.host }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.expected_revision || github.ref }}
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        id: release_bins
+        run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        timeout-minutes: 5
+      - name: Install the approval broker dark on srv1 (additive unit + slice; does not restart gunbc-roadmap.service)
+        id: approval_broker_dark_install
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_srv1_wet
+        timeout-minutes: 30
   rlm-launch-deployment-receipt:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]

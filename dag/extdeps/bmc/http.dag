@@ -22,16 +22,22 @@ data redfish_http_hardwired_transport_dissolution_trigger: Disposition = Scaffol
   }
 }
 
-data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: every operation below re-spells the shell/curl transport handler per row (the hardwired-single-transport trap; the DMTF-owned interface facts are only the method x path x auth-mode axes). Dissolves when the operations become declarative transport rows realized by the shared HTTP-client machinery - i.e. when `transport rest` (or a derived-curl realization of the extdeps.http.client shape) supports the three axes these argv rows carry by hand: netrc/basic auth, insecure-TLS (self-signed BMC certs), and request-body-from-file. Until then the argv rows stay - live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, srv3_boot_once_cd) execute them as-is."
+data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: every operation below re-spells the shell/curl transport handler per row (the hardwired-single-transport trap; the DMTF-owned interface facts are only the method x path x auth-mode axes). Dissolves when the operations become declarative transport rows realized by the shared HTTP-client machinery - i.e. when `transport rest` (or a derived-curl realization of the extdeps.http.client shape) supports the FOUR axes these argv rows carry by hand: netrc/basic auth, insecure-TLS (self-signed BMC certs), request-body-from-file, and UNAUTHENTICATED STATUS-AS-THE-ANSWER capture (no --fail-with-body, a caller-supplied write-out format, and the three-digit code read back off stdout as the observation - ProbeServiceRoot). The fourth axis is stated because a `transport rest` covering exactly the first three would RETIRE THIS ROW while ProbeServiceRoot still had to be hand-spelled, which is DESIGN section 4b(3): a trigger naming less than the capability it restores is satisfied while the capability stays dead (review 67976). Until then the argv rows stay - live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, bmc_intake_first_contact, srv3_boot_once_cd) execute them as-is."
 
 // LOAD-BEARING: success:Bool derives from exit_success, so curl MUST fail-close on HTTP status.
-// Every argv carries --fail-with-body (curl >=7.76). WITHOUT it curl exits 0 on 401/403/404/5xx and
-// `success` reads a rejected auth or a missing resource as TRUE — a §5 fail-open: a factory-401
-// misreads as FactoryCredentialActive (so an already-rotated BMC gets re-rotated), and a rotation
-// PATCH that 401s reports rotated while changing nothing (the 'secret populated, server never
-// rotated' state). --fail-with-body (not bare --fail) keeps the OpenBMC error body in `body` for
-// diagnosis (e.g. PropertyValueFormatError on a rejected password). Do not drop the flag; a new
-// redfish op without it re-opens the arm. Found by execution against srv4 2026-07-23.
+// Authenticated resource ops carry --fail-with-body (curl >=7.76). WITHOUT it curl exits 0 on
+// 401/403/404/5xx and `success` reads a rejected auth or a missing resource as TRUE — a §5
+// fail-open: a factory-401 misreads as FactoryCredentialActive (so an already-rotated BMC gets
+// re-rotated), and a rotation PATCH that 401s reports rotated while changing nothing (the
+// 'secret populated, server never rotated' state). --fail-with-body (not bare --fail) keeps the
+// OpenBMC error body in `body` for diagnosis (e.g. PropertyValueFormatError on a rejected
+// password). Do not drop the flag on those ops; a new authenticated redfish op without it
+// re-opens the arm. Found by execution against srv4 2026-07-23.
+//
+// ONE ADMITTED EXCEPTION: ProbeServiceRoot. HTTP status is the observation, so the argv omits
+// --fail-with-body and takes write_out so the caller binds a classified three-digit code. curl
+// still fails closed on an unreachable host. A new op may omit the flag only when status is the
+// consumed answer in that same shape, never because a caller would rather treat 404 as success.
 
 // EVERY REDFISH OPERATION AUTHENTICATES BY FILE, AND THE ABSENCE OF `Secret` IN THIS MODULE'S
 // IMPORTS IS THE RECEIPT. GetSystem, GetPower and GetThermal each declared `password: Secret` and
@@ -60,6 +66,20 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: ever
 // carries declared_inputs as a List<String>, names without types, so the binder cannot see that an
 // input is Secret. That missing declared-input TYPE on the row is this class's next-rung trigger;
 // until it lands the class sits at mitigatable and this note is diligence.
+//
+// ABOUT ProbeServiceRoot BELOW. This note sits at module grain because the parser models only
+// module-item annotations: a // block inside the service body is a located parse refusal
+// ("source annotation sits inside a declaration body"), which is how this was found.
+// UNAUTHENTICATED DISCOVERY, AND HTTP STATUS IS THE ANSWER. GetServiceRoot uses --fail-with-body,
+// so a 404 (Collins: no Redfish) is a failed ProcessExit and cannot be stored as a first-contact
+// observation. This probe keeps the body on stdout and takes write_out as an input so the caller
+// binds curl_http_code_after_newline_write_out_format (newline then three-digit code). curl still
+// fails closed on an unreachable host. It does not authenticate and does not identify MegaRAC
+// versus OpenBMC — Redfish presence is a surface, not a family. IT IS THE ONE OPERATION HERE THAT
+// BINDS stderr: -sS keeps curl's transport error there while stdout holds only the write-out, so
+// on an unreachable host stdout is "\n000" and stderr is the only text naming the cause. A caller
+// that refuses on this op must refuse with stderr; refusing with the stdout blob refuses with
+// "\n000", which is typed but locates nothing.
 service redfish.Http {
 
   operation GetServiceRoot {
@@ -72,6 +92,49 @@ service redfish.Http {
     exit {
       0 => Unit
       nonzero => String "redfish service root GET failed"
+    }
+  }
+
+  operation ProbeServiceRoot {
+    input { bmc_host: NonEmptyStr, write_out: String }
+    output {
+      body: String from "stdout",
+      transport_stderr: String from "stderr",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-w", "{write_out}", "https://{bmc_host}/redfish/v1/"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish service root probe failed to reach the host"
+    }
+  }
+
+  operation GetManagers {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Managers"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish Managers collection GET failed"
+    }
+  }
+
+  operation GetManager {
+    input { bmc_host: NonEmptyStr, manager_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Managers/{manager_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish Manager GET failed"
     }
   }
 
@@ -124,6 +187,58 @@ service redfish.Http {
     exit {
       0 => Unit
       nonzero => String "redfish thermal GET failed"
+    }
+  }
+
+  operation GetManager {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Managers/bmc"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish manager GET failed"
+    }
+  }
+
+  operation GetChassisThermal {
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Thermal"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish chassis thermal GET failed"
+    }
+  }
+
+  operation GetChassisSensor {
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, sensor_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Sensors/{sensor_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish chassis sensor GET failed"
+    }
+  }
+
+  operation GetSystemEventLogEntries {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Systems/system/LogServices/EventLog/Entries"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish system event log GET failed"
     }
   }
 

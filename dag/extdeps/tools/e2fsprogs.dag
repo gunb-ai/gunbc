@@ -1,6 +1,7 @@
 module extdeps.tools.e2fsprogs
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Bool, Int }
+import std.algebra { trim }
 import std.measure { Mebibyte, mebibyte_count }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -53,6 +54,18 @@ fn mke2fs_format_command(fs: Ext2FilesystemType, image_path: String) -> ArgvComm
   )
 }
 
+data dumpe2fs_program: NonEmptyStr = "dumpe2fs"
+
+// `-h` PRINTS THE SUPERBLOCK AND STOPS, which is the whole readback a freshly formatted image needs:
+// the magic number that says an ext filesystem is there, and the block count and block size whose
+// product is its size. It reads the image file directly, so no loop device or mount is reached --
+// the same property that makes mke2fs usable unprivileged here. A nonzero exit does NOT by itself
+// separate "no ext superblock" from "file unreadable", so a caller reports it as a failed reading and
+// never as a filesystem-type fact.
+fn dumpe2fs_superblock_command(image_path: String) -> ArgvCommand {
+  argv_command(program: dumpe2fs_program, arguments: ["-h", image_path])
+}
+
 // `-d` IS WHAT MAKES A ROOT FILESYSTEM BUILDABLE WITHOUT MOUNTING ONE, and that is the reason this
 // builder exists rather than a mount-copy-unmount sequence. mke2fs populates the new filesystem from
 // a directory tree in userspace, so the image is produced by one process with no loop device, no
@@ -80,4 +93,118 @@ fn mke2fs_populate_command(
       concat(to_string(mebibyte_count(m: size)), "m"),
     ],
   )
+}
+
+// THE SUPERBLOCK PRINTOUT, DECODED WHERE ITS FORMAT IS OWNED.
+//
+// `dumpe2fs -h` writes flat `Key:   value` lines, and which keys it writes is e2fsprogs' fact, not
+// any consumer's. A consumer that scanned this text itself would be a second authority for the
+// upstream's output format (DESIGN section 3), and the first consumer to want a second field would
+// grow a second scanner beside the first.
+//
+// THE MAGIC NUMBER IS THE UPSTREAM'S CONSTANT, NOT A NUMBER A CONSUMER CHOSE. ext2/3/4 share the
+// superblock magic 0xEF53 (s_magic, ext4 on-disk layout), and dumpe2fs renders it in that spelling.
+//
+// EVERY MISSING OR UNPARSEABLE FIELD IS Unreadable AND NEVER A ZERO. A block count that failed to
+// parse and a block count of zero are the same value once defaulted, and a consumer sizing an image
+// against it would read a successful format as a size mismatch, or worse, a failed one as agreement.
+type Dumpe2fsSuperblockReading
+  = Ext2SuperblockRead { magic: String, block_count: Int, block_size: Int }
+  | Ext2SuperblockUnreadable { cause: String }
+
+data ext2_superblock_magic: String = "0xEF53"
+
+data dumpe2fs_magic_key: String = "Filesystem magic number"
+data dumpe2fs_block_count_key: String = "Block count"
+data dumpe2fs_block_size_key: String = "Block size"
+
+type Dumpe2fsScan {
+  magic: String
+  block_count: Int
+  block_size: Int
+  seen_magic: Bool
+  seen_block_count: Bool
+  seen_block_size: Bool
+}
+
+fn dumpe2fs_line_value(line: String, key: String) -> String? {
+  if starts_with(s: trim(s: line), prefix: concat(key, ":")) {
+    Present { value: trim(s: substring(s: trim(s: line), start: string_length(s: key) + 1, end: string_length(s: trim(s: line)))) }
+  } else {
+    none
+  }
+}
+
+fn dumpe2fs_scan_step(acc: Dumpe2fsScan, line: String) -> Dumpe2fsScan {
+  match dumpe2fs_line_value(line: line, key: dumpe2fs_magic_key) {
+    Present { value: v } =>
+      Dumpe2fsScan {
+        magic: v,
+        block_count: acc.block_count,
+        block_size: acc.block_size,
+        seen_magic: true,
+        seen_block_count: acc.seen_block_count,
+        seen_block_size: acc.seen_block_size,
+      }
+    Absent => dumpe2fs_scan_counts(acc: acc, line: line)
+  }
+}
+
+fn dumpe2fs_scan_counts(acc: Dumpe2fsScan, line: String) -> Dumpe2fsScan {
+  match dumpe2fs_line_value(line: line, key: dumpe2fs_block_count_key) {
+    Present { value: v } =>
+      match parse_int(s: v) {
+        Present { value: n } =>
+          Dumpe2fsScan {
+            magic: acc.magic,
+            block_count: n,
+            block_size: acc.block_size,
+            seen_magic: acc.seen_magic,
+            seen_block_count: true,
+            seen_block_size: acc.seen_block_size,
+          }
+        Absent => acc
+      }
+    Absent =>
+      match dumpe2fs_line_value(line: line, key: dumpe2fs_block_size_key) {
+        Present { value: v } =>
+          match parse_int(s: v) {
+            Present { value: n } =>
+              Dumpe2fsScan {
+                magic: acc.magic,
+                block_count: acc.block_count,
+                block_size: n,
+                seen_magic: acc.seen_magic,
+                seen_block_count: acc.seen_block_count,
+                seen_block_size: true,
+              }
+            Absent => acc
+          }
+        Absent => acc
+      }
+  }
+}
+
+fn decode_dumpe2fs_superblock(body: String) -> Dumpe2fsSuperblockReading {
+  let scan = fold(
+    split(s: body, delimiter: "\n"),
+    init: Dumpe2fsScan {
+      magic: "",
+      block_count: 0,
+      block_size: 0,
+      seen_magic: false,
+      seen_block_count: false,
+      seen_block_size: false,
+    },
+    f: (acc, line) => dumpe2fs_scan_step(acc: acc, line: line),
+  )
+  if scan.seen_magic == false {
+    Ext2SuperblockUnreadable { cause: "the superblock printout carried no `Filesystem magic number` line" }
+  } else if scan.seen_block_count == false {
+    Ext2SuperblockUnreadable { cause: "the superblock printout carried no readable `Block count` line" }
+  } else if scan.seen_block_size == false {
+    Ext2SuperblockUnreadable { cause: "the superblock printout carried no readable `Block size` line" }
+  } else {
+    Ext2SuperblockRead { magic: scan.magic, block_count: scan.block_count, block_size: scan.block_size }
+  }
 }

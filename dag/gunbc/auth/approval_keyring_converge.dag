@@ -1,0 +1,301 @@
+module gunbc.auth.approval_keyring_converge
+
+import std.types { Bool, NonEmptyStr, String, List, FilePath }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import gunbc.auth.approval_decision_store { approval_mac_key_path, approval_decision_store_root }
+import gunbc.durable_cas_file_store { authorization_claim_store_root }
+import gunbc.auth.approval_request_submission {
+  approval_submission_mac_key_path,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import extdeps.sudo.elevation { sudo_elevate }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, actions_variable_trimmed }
+import gunbc.auth.approval_keyring_pins {
+  approval_submission_mac_key_path_env,
+  approval_capability_mac_key_path_env,
+  approval_mac_key_payload_sha256_prefix,
+  approval_submission_mac_key_payload_sha256_prefix,
+}
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_usermod_binary_path }
+import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name }
+import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
+import extdeps.systemd.systemctl { systemctl_restart_argv }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.file_access { FileTreeScope }
+import gunbc.typed_remote_file_write {
+  typed_remote_file_write_seal, converge_typed_remote_file,
+  RemoteFileModeOwnerReadWriteGroupRead, RemoteFileViaNonInteractiveSudo,
+  TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
+}
+
+data approval_keyring_config_dir: NonEmptyStr = "/etc/gunbc-roadmap"
+
+type KeyringSha256Compare
+  = Sha256PrefixMatches { prefix: NonEmptyStr }
+  | Sha256PrefixMismatch { expected: NonEmptyStr, observed: NonEmptyStr }
+  | Sha256Unavailable { detail: NonEmptyStr }
+
+fn sha256_prefix_compare(observed_hex: String, expected_prefix: NonEmptyStr) -> KeyringSha256Compare {
+  let n = expected_prefix.length()
+  if observed_hex.length() < n {
+    Sha256Unavailable { detail: "observed digest shorter than the modeled prefix" }
+  } else {
+    let prefix = substring(s: observed_hex, start: 0, end: n)
+    let expected = expected_prefix as String
+    if prefix == expected {
+      Sha256PrefixMatches { prefix: expected_prefix }
+    } else {
+      Sha256PrefixMismatch {
+        expected: expected_prefix,
+        observed: prefix as NonEmptyStr,
+      }
+    }
+  }
+}
+
+fn approval_mac_key_digest_standing(observed_hex: String, expected_prefix: NonEmptyStr, role: String) -> ProcessExit {
+  match sha256_prefix_compare(observed_hex: observed_hex, expected_prefix: expected_prefix) {
+    Sha256PrefixMatches { prefix: _ } => ExitSuccess
+    Sha256PrefixMismatch { expected: e, observed: o } =>
+      exit_failure(reason: concat("approval keyring: ", concat(role, concat(" MAC key sha256 prefix mismatch (expected ", concat(e as String, concat(", observed ", o as String)), ")"))))
+    Sha256Unavailable { detail: d } =>
+      exit_failure(reason: concat("approval keyring: ", concat(role, concat(" MAC key digest unusable: ", d as String))))
+  }
+}
+
+fn approval_keyring_staged_digest_ok(path: NonEmptyStr, expected_prefix: NonEmptyStr, role: String) -> ProcessExit {
+  match sha256sum_file_digest_via_shell(path: path) {
+    Sha256FileDigestUnavailable { path: _, reason: r } =>
+      exit_failure(reason: concat("approval keyring: could not digest the staged ", concat(role, concat(" MAC key: ", r))))
+    Sha256FileDigest { digest: d } =>
+      approval_mac_key_digest_standing(observed_hex: d.hex as String, expected_prefix: expected_prefix, role: role)
+  }
+}
+
+fn keyring_host_must_be_srv1(host: String) -> Bool {
+  host == operator_host_srv1 as String
+}
+
+fn approval_keyring_converge_refuses_off_srv1(host: String) -> ProcessExit {
+  if keyring_host_must_be_srv1(host: host) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("approval keyring converge refuses host '", concat(host, concat("': the files live on the machine that serves /approve, which is ", operator_host_srv1 as String))))
+  }
+}
+
+data approval_keyring_converge_attempt_raw: String = "approval-keyring-converge-ci"
+
+data approval_keyring_etc_scope: FileTreeScope = FileTreeScope { root_path: "/etc" as NonEmptyStr }
+
+fn keyring_elevated_argv(command: List<String>) -> List<String> {
+  let inv = sudo_elevate(command: command)
+  concat([inv.bin_path], inv.args)
+}
+
+fn keyring_mkdir_argv() -> List<String> {
+  [
+    "install",
+    "-d",
+    "-m",
+    "0750",
+    "-o",
+    fleet_posix_root_user.name as String,
+    "-g",
+    fleet_posix_operator_user.name as String,
+    approval_keyring_config_dir as String,
+  ]
+}
+
+fn store_root_mkdir_argv() -> List<String> {
+  [
+    "install",
+    "-d",
+    "-m",
+    "0700",
+    "-o",
+    fleet_posix_operator_user.name as String,
+    "-g",
+    fleet_posix_operator_user.name as String,
+    approval_decision_store_root as String,
+  ]
+}
+
+fn claim_store_root_mkdir_argv() -> List<String> {
+  [
+    "install",
+    "-d",
+    "-m",
+    "0700",
+    "-o",
+    fleet_posix_ci_runner_user.name as String,
+    "-g",
+    fleet_posix_ci_runner_user.name as String,
+    authorization_claim_store_root as String,
+  ]
+}
+
+fn keyring_chown_argv(path: NonEmptyStr) -> List<String> {
+  ["chown", concat(fleet_posix_root_user.name as String, concat(":", fleet_posix_operator_user.name as String)), path as String]
+}
+
+fn ntfy_group_admit_argv() -> List<String> {
+  [
+    fleet_usermod_binary_path as String,
+    "-aG",
+    approval_ntfy_principal_name as String,
+    fleet_posix_operator_user.name as String,
+  ]
+}
+
+fn roadmap_unit_restart_argv() -> List<String> {
+  systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
+}
+
+fn keyring_ssh_target() -> SshTarget {
+  SshTarget {
+    endpoint: fleet_probe_endpoint_for(host: operator_host_srv1 as String) as NonEmptyStr,
+    principal: executor_bootstrap_principal.login,
+  }
+}
+
+fn keyring_elevated_exec(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  command: List<String>,
+  step: String,
+) -> ProcessExit
+  uses net: Network
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: keyring_elevated_argv(command: command)) {
+    TypedArgvExecRefused { reason: why } =>
+      exit_failure(reason: concat("approval keyring: ", concat(step, concat(" refused: ", why))))
+    TypedArgvExecConverged { result: r } =>
+      if r.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("approval keyring: ", concat(step, concat(" exit=", concat(to_string(r.exit_code), concat(" ", trim(s: r.stderr)))))))
+      }
+  }
+}
+
+fn keyring_ensure_dirs(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+) -> ProcessExit
+  uses net: Network
+{
+  match keyring_elevated_exec(target: target, context: context, command: keyring_mkdir_argv(), step: "mkdir") {
+    ExitSuccess =>
+      match keyring_elevated_exec(target: target, context: context, command: store_root_mkdir_argv(), step: "store-root-mkdir") {
+        ExitSuccess =>
+          keyring_elevated_exec(target: target, context: context, command: claim_store_root_mkdir_argv(), step: "claim-store-root-mkdir")
+        other => other
+      }
+    other => other
+  }
+}
+
+fn keyring_install_file(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  dest: NonEmptyStr,
+  content: String,
+  step: String,
+) -> ProcessExit
+  uses net: Network
+{
+  match converge_typed_remote_file(
+    target: target,
+    context: context,
+    admission: typed_remote_file_write_seal(path: dest as FilePath, content: content, allowed_scope: approval_keyring_etc_scope),
+    mode: RemoteFileModeOwnerReadWriteGroupRead,
+    privilege: RemoteFileViaNonInteractiveSudo,
+  ) {
+    TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
+      exit_failure(reason: concat("approval keyring: ", concat(step, concat(" ", concat(st, concat(": ", why))))))
+    TypedRemoteFileConverged { converged: _ } =>
+      keyring_elevated_exec(target: target, context: context, command: keyring_chown_argv(path: dest), step: concat(step, "-chown"))
+  }
+}
+
+fn approval_keyring_converge_on_host() -> ProcessExit
+  uses net: Network
+{
+  let cap_path = actions_variable_trimmed(name: approval_capability_mac_key_path_env)
+  let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
+  if cap_path == "" {
+    exit_failure(reason: concat("approval keyring: ", concat(approval_capability_mac_key_path_env as String, " is unset; the capability key stays in the runner temp until the administrator write")))
+  } else if sub_path == "" {
+    exit_failure(reason: concat("approval keyring: ", concat(approval_submission_mac_key_path_env as String, " is unset; the submission key stays in the runner temp until the administrator write")))
+  } else {
+    let cap = Filesystem.Read(path: cap_path)
+    let sub = Filesystem.Read(path: sub_path)
+    if !cap.success {
+      exit_failure(reason: concat("approval keyring: staged capability MAC key unreadable: ", cap.error))
+    } else if !sub.success {
+      exit_failure(reason: concat("approval keyring: staged submission MAC key unreadable: ", sub.error))
+    } else {
+      match approval_keyring_staged_digest_ok(path: cap_path as NonEmptyStr, expected_prefix: approval_mac_key_payload_sha256_prefix, role: "capability") {
+        ExitSuccess =>
+          match approval_keyring_staged_digest_ok(path: sub_path as NonEmptyStr, expected_prefix: approval_submission_mac_key_payload_sha256_prefix, role: "submission") {
+            ExitSuccess =>
+              match prepare_fleet_ssh_agent_context(attempt_raw: approval_keyring_converge_attempt_raw) {
+                FleetSshContextRefused { cause: c } => exit_failure(reason: concat("approval keyring: ", c))
+                FleetSshContextReady { context: context, receipt: _ } => {
+                  let target = keyring_ssh_target()
+                  match keyring_elevated_exec(target: target, context: context, command: ["true"], step: "administrator-privilege") {
+                    ExitSuccess =>
+                      match keyring_ensure_dirs(target: target, context: context) {
+                        ExitSuccess =>
+                          match keyring_install_file(target: target, context: context, dest: approval_mac_key_path, content: cap.content, step: "capability-key") {
+                            ExitSuccess =>
+                              match keyring_install_file(target: target, context: context, dest: approval_submission_mac_key_path, content: sub.content, step: "submission-key") {
+                                ExitSuccess =>
+                                  match keyring_elevated_exec(target: target, context: context, command: ntfy_group_admit_argv(), step: "ntfy-group-admit") {
+                                    ExitSuccess =>
+                                      match keyring_elevated_exec(target: target, context: context, command: roadmap_unit_restart_argv(), step: "roadmap-unit-restart") {
+                                        ExitSuccess => ExitSuccess
+                                        other => other
+                                      }
+                                    other => other
+                                  }
+                                other => other
+                              }
+                            other => other
+                          }
+                        other => other
+                      }
+                    other => other
+                  }
+                }
+              }
+            other => other
+          }
+        other => other
+      }
+    }
+  }
+}
+
+fn approval_keyring_converge_wet() -> ProcessExit
+  uses net: Network
+{
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: concat("approval keyring converge: ", concat(v, concat(" ", concat(d, "; one host per run, named by the dispatch")))))
+    ActionsVariablePresent { value: host } =>
+      match approval_keyring_converge_refuses_off_srv1(host: host) {
+        ExitSuccess => approval_keyring_converge_on_host()
+        other => other
+      }
+  }
+}

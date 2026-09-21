@@ -499,11 +499,11 @@ fn run() -> Result<ExitCode, ExitCode> {
     // and the absence of those flags is the point rather than an omission. `run_required_floor`
     // refuses when planned, executed and terminal identity counts disagree, so a silently short
     // roster cannot report as a pass.
-    // THE COMPOSED CI RUN — one process per LANE. The roster is five phases: the .dag parse
-    // sweep, namespace wave admission, one generated-artifact comparison over registry
-    // projections and stage0 mirrors, its fixed-point comparison, and the witness floor.
+    // THE COMPOSED CI RUN — one process per LANE. The roster is four phases: the .dag parse
+    // sweep, one generated-artifact comparison over registry projections and stage0 mirrors,
+    // its fixed-point comparison, and the witness floor.
     // `--required-lane` selects which of them
-    // this process owns; with no lane, it owns all five, which is what a local run wants.
+    // this process owns; with no lane, it owns all four, which is what a local run wants.
     //
     // WHAT IT IS AND IS NOT. Sequencing a program's phases is the program's job (DESIGN §3: the
     // workflow is a realization of the intent, not the place the intent lives), so the order
@@ -537,7 +537,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     // paragraph's re-add queue), so nothing is admitted by the absence — but the three
     // measurements above are simply not taken, which is a declared rung drop, not a silent one.
     //
-    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The five phases are independent —
+    // THE NAMESPACE WAVE-ADMISSION WALL LEFT THE SAME WAY, LATER (operator ruling, 2026-09-19).
+    // The phase measured closure, subject-membership and binding deltas between the merge base
+    // and the head and refused unadjudicated motion; its consumed-row bookkeeping loop refused
+    // 100% of merge_group runs on a clean floor (run 35461710214), so the gate was deleted
+    // outright rather than repaired. The drop is declared at `gunbc.rung_drop`
+    // `namespace_wave_admission_wall_removed`; the baseline-reconstruction machinery the floor's
+    // planning row shares survives as `cli_run::namespace_baseline`.
+    //
+    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The four phases are independent —
     // the one real data dependency, the fixed point's need for regen's pass-1 digest, went with
     // the phase that consumed it — so every phase RUNS EVEN AFTER AN EARLIER FAILURE and the run
     // reports the complete ledger instead of letting the first defect hide the rest. The line
@@ -547,11 +555,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut measurement_blockers: Vec<RequiredCiBlocker> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
-        // THE ONE PARSE, HELD FOR ITS SECOND CONSUMER. The wave-admission phase below reads
-        // the index the parse phase built rather than acquiring the corpus again; holding it
-        // in an `Option` also keeps `the parse refused` distinguishable from `the parse ran
-        // and found nothing`, which is what the wall's own `NotEvaluated` arm exists to keep
-        // apart one level down.
+        // THE ONE PARSE, HELD FOR ITS SECOND CONSUMER. The floor's planning row below reads
+        // the index the parse phase built (its base-side reconstruction starts from it) rather
+        // than acquiring the corpus again; holding it in an `Option` also keeps `the parse
+        // refused` distinguishable from `the parse ran and found nothing`, which the floor's
+        // own NotEvaluated arm keeps apart one level down.
         let mut head_index: Option<v1_compiler::cli_run::declaration_index::DeclarationIndex> =
             None;
 
@@ -678,8 +686,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                     // THE PHASE ROSTER JOIN RIDES THE SAME INGESTION. The substrate authority
                     // for phase identity is `gunbc.required_ci_phase_roster` `RequiredCiPhase`;
                     // this enum is its declared parallel realization, and the two are joined by
-                    // variant-set equality in both directions on every required run — the same
-                    // shape as the wave wall's vocabulary join, for the same DESIGN §3 reason.
+                    // variant-set equality in both directions on every required run, the DESIGN
+                    // §3 answer to a second representation.
                     // A phase declared and not realized, or realized and not declared, stops
                     // the line here rather than diverging silently.
                     let roster_findings = phase_roster_findings(&sweep.index);
@@ -767,84 +775,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             ran.push("parse");
-        }
-
-        // PHASE — THE NAMESPACE WAVE-ADMISSION WALL.
-        //
-        // WHAT IT GATES AND WHY IT IS REQUIRED. `gunbc.compiler_frontend_program_interlock`
-        // (operator ruling, 2026-08-26) makes the import/namespace plan's disclosed "no CI
-        // mechanism" gap a BLOCKER rather than a disclosure: no change that can alter which
-        // modules enter a subject, or what an occurrence denotes, may merge before this wall
-        // exists, and `milestone_prerequisites` gates `NamespaceFirstSemanticWave` on
-        // `NamespaceWaveAdmissionEnrolled` by name.
-        //
-        // IT REPORTS ITS OWN NON-VERDICTS UNDER THEIR OWN NAMES. `NoSubject` (a push whose
-        // baseline is its own head) and `NotEvaluated` (a baseline that does not resolve) are
-        // printed as themselves and never as an admission -- and only the first of them
-        // passes, because "nothing to compare" and "could not compare" are the two zeros this
-        // repository has already been corrected for once.
-        if required_ci_phase_selected(RequiredCiPhase::NamespaceWaveAdmission, required_ci_lane) {
-            eprintln!("required-ci: phase namespace-wave-admission (closure, subject membership, binding)");
-            match &head_index {
-                // THE PARSE REFUSED, SO THERE IS NO HEAD TO ADJUDICATE AGAINST. This is not
-                // silence: the parse phase has already stopped the line, and adjudicating a
-                // corpus half of which failed to parse would report a smaller delta than the
-                // one that exists.
-                None => {
-                    eprintln!(
-                        "required-ci: namespace-wave-admission NOT RUN — the parse phase did not \
-                         produce an index (it refused, or this lane does not own it)"
-                    );
-                    phase_failures.push("namespace-wave-admission (no head index)".to_string());
-                }
-                Some(index) => {
-                    // THE VOCABULARY JOIN RUNS FIRST, because every verdict below is stated in
-                    // that vocabulary: adjudicating against a superseded disposition set would
-                    // produce answers that look like verdicts and are not.
-                    let vocabulary =
-                        v1_compiler::cli_run::namespace_wave_admission::vocabulary_findings(index);
-                    for finding in &vocabulary {
-                        eprintln!("required-ci: namespace-wave-admission VOCABULARY {finding}");
-                    }
-                    if !vocabulary.is_empty() {
-                        phase_failures.push(format!(
-                            "namespace-wave-admission vocabulary ({} finding(s))",
-                            vocabulary.len()
-                        ));
-                    }
-                    let event_name = std::env::var("GITHUB_EVENT_NAME").ok();
-                    let adjudicated = v1_compiler::cli_run::namespace_wave_admission::adjudication_event_from_name(
-                        event_name.as_deref(),
-                    )
-                    // THE EVENT IS VALIDATED AND DISCARDED, AND THE VALIDATION IS THE POINT --
-                    // BUT NOT FOR THE REASON THIS COMMENT FIRST GAVE (review 67027). It said the
-                    // call guards against applying the pull_request policy to an unmodelled event.
-                    // There is no event-selected policy left to mis-apply: gunbc#11481 removed the
-                    // arms that were it. What the call still does is refuse a GITHUB_EVENT_NAME
-                    // wave admission does not model, which is now a tripwire on the WORKFLOW'S
-                    // TRIGGER SET -- add a trigger nobody sized this wall against and the required
-                    // run stops instead of quietly producing a verdict for it. Its RED is authored
-                    // and executing (`adjudication_event_from_name(Some("schedule")).is_err()`), so
-                    // this is a live refusal and not a decoration. Dropping the call drops it.
-                    .and_then(|_event| {
-                        v1_compiler::cli_run::namespace_wave_admission::run_required_wave_admission(
-                            index,
-                        )
-                    });
-                    match adjudicated {
-                        Ok(outcome) => {
-                            if let Some(failure) = report_wave_admission_outcome(&outcome) {
-                                phase_failures.push(failure);
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("required-ci: namespace-wave-admission FAIL {e}");
-                            phase_failures.push("namespace-wave-admission".to_string());
-                        }
-                    }
-                }
-            }
-            ran.push("namespace-wave-admission");
         }
 
         // PHASE — ONE adjudication over BOTH declared generated-artifact populations: every
@@ -1120,12 +1050,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
             eprintln!("required-ci: phase floor (one prepared subject, one fold)");
             let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
-            // THE PARSE PHASE'S INDEX IS LENT TO THE FLOOR'S PLANNING ROW, the same way the
-            // wave-admission phase reads it: the match-bearing consumers of a coproduct whose
-            // arm set changed are derived from that index and its base-side reconstruction,
-            // never from a second corpus walk. `None` here means the parse refused (the line
-            // is already stopped) and the floor refuses the planning row rather than planning
-            // blind.
+            // THE PARSE PHASE'S INDEX IS LENT TO THE FLOOR'S PLANNING ROW: the match-bearing
+            // consumers of a coproduct whose arm set changed are derived from that index and
+            // its base-side reconstruction, never from a second corpus walk. `None` here means
+            // the parse refused (the line is already stopped) and the floor refuses the
+            // planning row rather than planning blind.
             match v1_compiler::cli_run::run_required_floor(
                 &source_roots,
                 &commit,
@@ -1709,7 +1638,6 @@ impl RequiredCiLane {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RequiredCiPhase {
     Parse,
-    NamespaceWaveAdmission,
     GeneratedArtifact,
     RegenFixedPoint,
     Floor,
@@ -1719,7 +1647,6 @@ impl RequiredCiPhase {
     fn name(self) -> &'static str {
         match self {
             RequiredCiPhase::Parse => "parse",
-            RequiredCiPhase::NamespaceWaveAdmission => "namespace-wave-admission",
             RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
@@ -1735,11 +1662,6 @@ impl RequiredCiPhase {
             // lane means the cheapest total refusal over the witness corpus arrives from the
             // job that owns that corpus.
             RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
-            // THE WALL CONSUMES THE PARSE THAT PHASE JUST RAN, so it is in the same lane by
-            // necessity and not by preference: its head index IS the sweep's index, and a
-            // lane boundary between them would mean parsing the corpus twice to answer a
-            // question one parse already reached.
-            RequiredCiPhase::NamespaceWaveAdmission => RequiredCiLane::Witnesses,
             RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
             // THE FIXED POINT RIDES WITH GENERATED-ARTIFACT BY NECESSITY, NOT PREFERENCE. It reads
             // the receipt that phase's stage0-mirror adjudicator wrote at
@@ -1752,17 +1674,19 @@ impl RequiredCiPhase {
     }
 }
 
-// THE REQUIRED GATE IS FIVE PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
+// THE REQUIRED GATE IS FOUR PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
 // generated-artifact returned after its declared exposure produced a real stale projection on
 // main, and now also owns the former regen phase's stage0-mirror population. Keeping two phase
 // identities would preserve the independently-green outcomes this composition removes. The other
 // three removed phases remain outside required CI and inside the declared drop. The v2-native
 // phase (2026-09-09 to 2026-09-11) left required CI by operator ruling — its ~4h wall on every
 // push starved the gating lanes; the route stays reachable as `--v2-native-route` and the drop
-// is gunbc.rung_drop v2_native_route_off_the_merge_path.
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
+// is gunbc.rung_drop v2_native_route_off_the_merge_path. The namespace wave-admission phase
+// (2026-08-26 to 2026-09-19) left by operator ruling 2026-09-19 — its consumed-row bookkeeping
+// refused every merge_group run on a clean floor; the drop is gunbc.rung_drop
+// namespace_wave_admission_wall_removed.
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 4] = [
     RequiredCiPhase::Parse,
-    RequiredCiPhase::NamespaceWaveAdmission,
     RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::RegenFixedPoint,
     RequiredCiPhase::Floor,
@@ -1777,19 +1701,18 @@ const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
 const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 
 /// Every phase this binary realizes, in the authority's own variant spelling.
-const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 4] = [
     "ParsePhase",
-    "NamespaceWaveAdmissionPhase",
     "GeneratedArtifactPhase",
     "RegenFixedPointPhase",
     "FloorPhase",
 ];
 
-/// Refuse if the host phase enum and the `.dag` phase roster disagree — the same both-directions
-/// variant-set join `namespace_wave_admission::vocabulary_findings` executes against its own
-/// authority, for the same reason: a second representation diverges on the first amendment, and
-/// nothing else joins these two. An absent authority module refuses too — that is the state in
-/// which nothing is checking the roster, not permission to proceed.
+/// Refuse if the host phase enum and the `.dag` phase roster disagree — a both-directions
+/// variant-set join against the authority's own declaration, because a second representation
+/// diverges on the first amendment, and nothing else joins these two. An absent authority module
+/// refuses too — that is the state in which nothing is checking the roster, not permission to
+/// proceed.
 ///
 /// WHAT THIS JOIN DOES NOT COVER: lane ownership. A match arm is not a declaration, so the
 /// index this join reads cannot see which lane owns a phase. That half is joined by evaluation
@@ -1900,93 +1823,6 @@ fn required_ci_phase_selected(phase: RequiredCiPhase, lane: Option<RequiredCiLan
     match lane {
         None => true,
         Some(selected) => phase.lane() == selected,
-    }
-}
-
-/// Print one wave-admission run, and return the phase failure it carries, if any.
-///
-/// EVERY GREEN NAMES ITS DENOMINATORS. A run that admitted nothing because it compared
-/// nothing and a run that compared a corpus and found no motion render identically unless the
-/// population is printed beside the verdict, and rendering them alike is the
-/// execution-provenance loss DESIGN names.
-fn report_wave_admission_outcome(
-    outcome: &v1_compiler::cli_run::namespace_wave_admission::WaveAdmissionOutcome,
-) -> Option<String> {
-    use v1_compiler::cli_run::namespace_wave_admission as nwa;
-    match outcome {
-        nwa::WaveAdmissionOutcome::NoSubject { head } => {
-            eprintln!(
-                "required-ci: namespace-wave-admission NO SUBJECT — the merge base against \
-                 origin/main IS {head}, so this run has no diff to adjudicate. Nothing was \
-                 compared and nothing is admitted."
-            );
-            None
-        }
-        nwa::WaveAdmissionOutcome::NotEvaluated { reason } => {
-            eprintln!("required-ci: namespace-wave-admission NotEvaluated — {reason}");
-            nwa::wave_admission_refusal(outcome)
-        }
-        nwa::WaveAdmissionOutcome::Adjudicated {
-            base,
-            head,
-            report,
-            roster_touched: _,
-        } => {
-            let p = &report.population;
-            eprintln!(
-                "required-ci: namespace-wave-admission base={base} head={head} \
-                 modules_compared={} modules_added={} modules_removed={} \
-                 membership_edges_head={} binding_rows_compared={} closure_rows_moved={} \
-                 deltas={}",
-                p.modules_compared,
-                p.modules_added,
-                p.modules_removed,
-                p.membership_edges_head,
-                p.binding_rows_compared,
-                p.closure_rows_moved,
-                report.deltas.len(),
-            );
-            for delta in &report.deltas {
-                eprintln!(
-                    "required-ci: namespace-wave-admission {}",
-                    nwa::render_delta(delta)
-                );
-            }
-            for stale in &report.stale_admissions {
-                eprintln!("required-ci: namespace-wave-admission STALE ADMISSION {stale}");
-            }
-            for consumed in &report.consumed_admissions {
-                eprintln!("required-ci: namespace-wave-admission CONSUMED ADMISSION {consumed}");
-            }
-            for owed in &report.used_without_follow_up {
-                eprintln!("required-ci: namespace-wave-admission FOLLOW-UP ABSENT {owed}");
-            }
-            for receipt in &report.owned_consumed_receipts {
-                eprintln!(
-                    "required-ci: namespace-wave-admission CONSUMED ROW RECEIPT row={:?} \
-                     owner=gunbc#{} follow_up=gunbc#{} -- follow-up number declared; its \
-                     existence, state, and deletion scope are not established by this run, and \
-                     whether this run refuses is wave_admission_refusal's verdict, not this \
-                     receipt's; no executing route in this repository reads the follow-up's forge \
-                     state",
-                    receipt.label,
-                    receipt.owner_pull_request,
-                    receipt.deletion_follow_up_pull_request
-                );
-            }
-            // THE VERDICT IS THE WALL'S, NOT THE PRINTER'S. This function owns the receipts
-            // because it owns a stderr; `wave_admission_refusal` owns whether the run refuses,
-            // so the arm that decides it can be exercised by a test on the path CI runs rather
-            // than only from inside this binary.
-            let refusal = nwa::wave_admission_refusal(outcome);
-            if refusal.is_none() {
-                eprintln!(
-                    "required-ci: namespace-wave-admission ADMITTED — every delta is \
-                     auto-admitted or named by a transition admission"
-                );
-            }
-            refusal
-        }
     }
 }
 
@@ -2402,7 +2238,28 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(code) => code,
     };
-    emit_worker_terminal_before_return(code)
+    // THE TERMINAL RECEIPT IS EMITTED FIRST, AND THE ORDER IS THE WHOLE POINT OF THESE TWO LINES.
+    // `emit_worker_terminal_before_return` is the worker's fail-closed channel: when the receipt is
+    // absent the parent substitutes "worker returned before producing a walk terminal receipt" and
+    // the real, located detail is gone. The first revision of this change called the instrument
+    // BEFORE it, inserting a ~168-second window -- this PR's own measured figure -- between a
+    // failure and the emission of its receipt, so a worker killed by an outer step cap during
+    // teardown would have downgraded a located failure into the generic no-receipt arm. That window
+    // did not exist when the drops ran after `main` returned, so the instrument would have created
+    // the regression it was added to measure (review 68459; DESIGN section 5, "every path succeeds
+    // fully or fails with a typed, located diagnostic"). Nothing in the instrument reads the
+    // receipt, so emitting first costs nothing.
+    let code = emit_worker_terminal_before_return(code);
+    // ATTRIBUTE THE TEARDOWN INSTEAD OF LEAVING IT SILENT. `main` returns an `ExitCode` and calls
+    // `process::exit` nowhere, so everything still alive is dropped after this function returns --
+    // off the end of the log, where no instrument can see it. This call moves the thread-local drops
+    // inside the timed region so the cost is attributed per cache rather than inferred from a hole.
+    //
+    // IT IS NOT THE REPAIR AND DOES NOT CLAIM TO BE. It makes the quantity visible so a repair can
+    // be chosen against it; whatever `main`'s return still drops after this line remains unmeasured
+    // and is reported as a residue rather than assumed to be zero.
+    v1_compiler::cli_run::drop_process_caches_with_attribution();
+    code
 }
 
 #[cfg(test)]
@@ -2420,7 +2277,6 @@ mod tests {
     fn standing_authority_rows() -> Vec<v1_compiler::cli_run::LanePhaseRow> {
         vec![
             lane_phase_row("witnesses", "parse"),
-            lane_phase_row("witnesses", "namespace-wave-admission"),
             lane_phase_row("build", "generated-artifact"),
             lane_phase_row("build", "regen-fixed-point"),
             lane_phase_row("witnesses", "floor"),
@@ -2484,7 +2340,7 @@ mod tests {
             .into_iter()
             .collect()
         );
-        assert_eq!(expected_lane_phases(&rows, None).len(), 5);
+        assert_eq!(expected_lane_phases(&rows, None).len(), 4);
     }
 
     #[test]

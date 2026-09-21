@@ -68,12 +68,16 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-03
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-04
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-05
-ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-07
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-08
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-09
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-10
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-11
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-12
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-13
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-14
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-15
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-16
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-17
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-01.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-01.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-02.service
@@ -84,8 +88,6 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-04.s
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-04.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-05.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-05.service
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-07.service
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-07.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-08.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-08.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-09.service
@@ -96,6 +98,16 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-11.s
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-11.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-12.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-12.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-13.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-13.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-14.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-14.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-15.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-15.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-16.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-16.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv3-17.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv3-17.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o root -g root /opt/fabric-cells
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o root -g root /opt/fabric-cells/srv3-06
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/fabric-cells/srv3-06/attempts
@@ -104,8 +116,17 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-0
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice MemorySwapMax=34359738368
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice TasksMax=16384
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice CPUWeight=100
-ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice CPUQuota=1000%
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice CPUQuota=
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start fabric-cell-srv3-06.slice
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o root -g root /opt/fabric-cells/srv3-07
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/fabric-cells/srv3-07/attempts
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice MemoryMax=27917287424
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice MemoryHigh=26843545600
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice MemorySwapMax=34359738368
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice TasksMax=16384
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice CPUWeight=100
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-07.slice CPUQuota=
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start fabric-cell-srv3-07.slice
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 0700 -o root -g root /var/lib/gunbc/fabric
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 0700 -o root -g root /var/lib/gunbc/fabric/allocation
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge

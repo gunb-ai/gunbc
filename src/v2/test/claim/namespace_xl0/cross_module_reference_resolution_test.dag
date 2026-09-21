@@ -61,7 +61,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WHAT RESOLVES HERE IS THE SUBJECT ROOT ALONE. v2.compiler.name_resolve resolve_with_admission_context_policy
 // resolves the module the Admission names and consults the other ingested roots only through the
 // symbol index, so three consumer modules can share ONE ingest and each claim selects its subject.
-// That is what lets one warm producer serve every row: the parse-and-normalize of eleven inline
+// That is what lets one warm producer serve every row: the parse-and-normalize of twelve inline
 // modules is the stage no row is about, and it is shared exactly as the sibling file shares its
 // ingest (v2.workflow.floor_pure_producer_share); the resolve is executed per claim.
 //
@@ -91,6 +91,8 @@ data xl0r_consumer_a_source: String = "module v2.test.xl0r_consumer_a\n\nimport 
 data xl0r_consumer_b_source: String = "module v2.test.xl0r_consumer_b\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_b() -> Bool { v2.test.xl0r_provider_b.xl0r_same_leaf }\n"
 
 data xl0r_field_access_consumer_source: String = "module v2.test.xl0r_field_access_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_projects(r: Bool) -> Bool { r.v }\n"
+
+data xl0r_method_call_consumer_source: String = "module v2.test.xl0r_method_call_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_calls_through(r: Bool, p: Bool) -> Bool { r.v(x: p) }\n"
 
 data xl0r_shadowing_consumer_source: String = "module v2.test.xl0r_shadowing_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_shadows(v2: Bool) -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
 
@@ -160,7 +162,10 @@ data xl0r_ingest: SourceRootIngest = Cons {
                   head: xl0r_read(source: xl0r_consumer_a_source, id: ^xl0r_consumer_a_read, unit: ^xl0r_consumer_a_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_consumer_a.dag"),
                   tail: Cons {
                     head: xl0r_read(source: xl0r_consumer_b_source, id: ^xl0r_consumer_b_read, unit: ^xl0r_consumer_b_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_consumer_b.dag"),
-                    tail: Empty
+                    tail: Cons {
+                      head: xl0r_read(source: xl0r_method_call_consumer_source, id: ^xl0r_method_call_consumer_read, unit: ^xl0r_method_call_consumer_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_method_call_consumer.dag"),
+                      tail: Empty
+                    }
                   }
                 }
               }
@@ -237,6 +242,10 @@ fn xl0r_resolved_data_target_consumer() -> Outcome<Node> {
 
 fn xl0r_resolved_field_access_consumer() -> Outcome<Node> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_field_access_consumer")
+}
+
+fn xl0r_resolved_method_call_consumer() -> Outcome<Node> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_method_call_consumer")
 }
 
 fn xl0r_resolved_shadowing_consumer() -> Outcome<Node> {
@@ -334,13 +343,19 @@ test fn a_cross_module_reference_to_an_undeclared_name_refuses_unbound() -> Bool
   }
 }
 
-// MEASURED, NOT REPAIRED: a cross-module reference to a DATA declaration refuses today, because the
-// data declaration is not grafted into the containment tree. This reds when declaration grafting
-// lands, and must then be re-stated as resolving.
-test fn a_cross_module_reference_to_a_data_declaration_refuses_today() -> Bool {
+// RE-STATED 2026-09-19 (DESIGN 4b(4)), as the previous revision said it must be when declaration
+// grafting landed (gunbc#11574): a DATA declaration is now a Named containment edge at its content
+// (the `: Type = init` remainder), so the chain is FOUND -- the unbound refusal is gone -- and the
+// hit lands on the same frontier a declared fn sits on: the target is not an Atom, so the resolver
+// refuses resolve_reason_qualified_target_identity_unrepresentable until the declaring-identity
+// carrier lands (03_resolve qualified_target_identity_unrepresentable_diagnostic). The reason
+// moving from unbound to identity-unrepresentable is the climb this row records; the row flips
+// again to Accepted when that carrier lands.
+test fn a_cross_module_reference_to_a_data_declaration_is_found_and_refuses_identity_unrepresentable_today() -> Bool {
   match xl0r_resolved_data_target_consumer() {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
+    Rejected { diagnostics: d } =>
+      xl0r_last_reason(d: d) == ^resolve_reason_qualified_target_identity_unrepresentable
   }
 }
 
@@ -360,6 +375,23 @@ test fn a_cross_module_reference_to_a_data_declaration_refuses_today() -> Bool {
 // here as a today-row that could be retired by half of its trigger (DESIGN section 4b(3)).
 test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
   match xl0r_resolved_field_access_consumer() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+// THE CALL FORM OF THE LOCAL-RECEIVER ROW, ENROLLED ON gunbc#11683 (review 68231 asked for it by
+// execution, not argument). `r.v(x: p)` in a body now lowers to a Transform whose operator is the
+// spine `r.v` -- before that PR it lowered to Transform(r) with method and argument erased and
+// RESOLVED, a fabricated body Accepted -- and the resolver answers for the spine exactly as for
+// the value form above: the head `r` is a binder on the ancestor chain, the projection through it
+// is unfired, so the reference refuses Unbound. Loud where the route was silent. This is the
+// verdict the corpus sites review 68231 named (`elem_r.apply(...)`, `result.tokens.reverse()`,
+// `lens.gate(...)`) receive under v2 resolve; no required lane compiles those modules through v2
+// resolve (the native route over the corpus is a declared rung drop), so this row is the executed
+// evidence. Retired by the local-receiver projection, the same trigger as the value row.
+test fn a_local_receiver_method_call_refuses_unbound_today_holds() -> Bool {
+  match xl0r_resolved_method_call_consumer() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
   }

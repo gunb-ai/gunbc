@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.content_hash { content_hash_atom }
 import extdeps.crypto.hash { Digest, sha256sum_argv, sha256sum_line_digest }
 import extdeps.crypto.hash
-import extdeps.systemd { parse_systemd_unit_active_state, ActiveState, NeedDaemonReload, Active, SystemdUnitActiveState }
+import extdeps.systemd { systemd_unit_property_wire, parse_systemd_unit_active_state, ActiveState, NeedDaemonReload, Active, SystemdUnitActiveState }
 import extdeps.systemd.systemctl
 import extdeps.git.inspect
 import extdeps.shell
@@ -21,7 +21,8 @@ import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecConverged, Typ
 import gunbc.live_deploy.spec {
   DeploymentSpec, deployment_systemd_unit_path, deployment_plan_listen_port,
   DeploymentStep, ArtifactStep, Dependency,
-  DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, FabricEventLogRoot,
+  DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot,
+  deployment_provider_state_path,
 }
 import gunbc.live_deploy.candidate { CandidateRelease }
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for, ReleaseRevisionBinding, RevisionBoundAtEmission }
@@ -121,6 +122,20 @@ fn path_basename(path: String) -> String {
   fold(split(s: path, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
 }
 
+// THE TWO PURE HALVES OF A TRANSPORT LISTING, named so a caller that must supply its OWN transport
+// consumes them rather than re-minting them. The elevated arms of the fleet converges cannot use
+// entry_presence itself -- it reaches the far side as the bootstrap principal, and a root:root 0700
+// parent refuses that listing -- but the argv and the membership read are the same facts whichever
+// principal runs them, and two copies of a membership predicate can drift into two answers about
+// one question (DESIGN §2: net concepts must not grow by re-invention).
+fn parent_listing_argv(parent: String) -> List<String> {
+  ["ls", "-1", "-A", "--", parent]
+}
+
+fn listing_contains_entry(stdout: String, name: String) -> Bool {
+  any(split(s: stdout, delimiter: "\n"), entry => entry == name)
+}
+
 fn entry_presence_in_parent(arm: ObservationArm, parent: String, name: String) -> EntryPresence {
   match arm {
     OnTheHostItself => {
@@ -135,9 +150,9 @@ fn entry_presence_in_parent(arm: ObservationArm, parent: String, name: String) -
         FilesystemEntrySubjectRefused { directory: _, name: _, cause } => EntryPresenceIndeterminate { cause: cause }
       }
     }
-    OverTransport { transport } => match remote_leg(transport: transport, argv: ["ls", "-1", "-A", "--", parent], leg: join(["listing ", parent], "")) {
+    OverTransport { transport } => match remote_leg(transport: transport, argv: parent_listing_argv(parent: parent), leg: join(["listing ", parent], "")) {
       LegRefused { cause } => EntryPresenceIndeterminate { cause: cause }
-      LegOut { stdout } => if any(split(s: stdout, delimiter: "\n"), entry => entry == name) { EntryPresent } else { EntryAbsent }
+      LegOut { stdout } => if listing_contains_entry(stdout: stdout, name: name) { EntryPresent } else { EntryAbsent }
     }
   }
 }
@@ -249,7 +264,7 @@ fn desired_unit_file(spec: DeploymentSpec, candidate: CandidateRelease) -> Membe
 fn manager_standing_leg(arm: ObservationArm, unit: NonEmptyStr) -> Leg {
   match arm {
     OnTheHostItself => {
-      let r = systemd.Systemctl.ShowProperty(unit: unit, property: NeedDaemonReload)
+      let r = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: NeedDaemonReload))
       leg_of(success: r.success, stdout: r.value, stderr: "systemctl show failed", leg: join(["systemctl show NeedDaemonReload ", unit as String], ""))
     }
     OverTransport { transport } => remote_leg(transport: transport, argv: ["systemctl", "show", unit as String, "--property=NeedDaemonReload", "--value"], leg: join(["systemctl show NeedDaemonReload ", unit as String], ""))
@@ -280,7 +295,7 @@ fn desired_unit_manager() -> MemberIdentity {
 fn active_state_leg(arm: ObservationArm, unit: NonEmptyStr) -> Leg {
   match arm {
     OnTheHostItself => {
-      let r = systemd.Systemctl.ShowProperty(unit: unit, property: ActiveState)
+      let r = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: ActiveState))
       leg_of(success: r.success, stdout: r.value, stderr: "systemctl show failed", leg: join(["systemctl show ActiveState ", unit as String], ""))
     }
     OverTransport { transport } => remote_leg(transport: transport, argv: ["systemctl", "show", unit as String, "--property=ActiveState", "--value"], leg: join(["systemctl show ActiveState ", unit as String], ""))
@@ -477,23 +492,33 @@ fn desired_tree(candidate: CandidateRelease) -> MemberIdentity {
 // different roots at different paths, and a roster written here would be a second authority for
 // what the deployment owns -- the steps already say it. The four directory roots join as
 // DirectoryRoot; the timer units and the tailscale route stay on the apply-all path and
-// contribute no member. A kind that names no member emits exactly as it does now. Provider
-// state is Ensured, not Owned, and is not a DirectoryRoot here.
+// contribute no member. A kind that names no member emits exactly as it does now. The
+// provider-state root is Ensured, not Owned: retract never tears it down. It is still a
+// DirectoryRoot for readback (C7). Its presence and owner are read like any root's, so a host whose
+// provider login has nowhere to write shows as a member to create, not as a converged host.
 fn root_members_of_step(st: DeploymentStep) -> List<ConvergedMember> {
   match st {
     ArtifactStep { step: art } => match art.kind {
       DispatchWorktreeRoot => [DirectoryRoot { path: art.path }]
       AttemptStateRoot => [DirectoryRoot { path: art.path }]
       ComputeRoot => [DirectoryRoot { path: art.path }]
-      FabricEventLogRoot => [DirectoryRoot { path: art.path }]
       _ => []
     }
     Dependency { step: _ } => []
   }
 }
 
+// THE PROVIDER-STATE ROOT JOINS THE ROSTER FROM THE SPEC, NOT FROM ITS STEPS (C7). Its path and
+// owner are derived by gunbc.live_deploy.spec deployment_provider_state_step, the same function the
+// emitted ensure is built from, so the directory that is created and the directory that is read
+// back cannot name two different paths or two different owners. Deriving it here rather than
+// matching a step is what makes its absence unwritable: no spec can drop the member, so nothing
+// has to refuse a spec that did.
 fn deployment_member_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
-  concat(release_member_roster(), flat_map(spec.steps, st => root_members_of_step(st: st)))
+  concat(
+    concat(release_member_roster(), flat_map(spec.steps, st => root_members_of_step(st: st))),
+    [DirectoryRoot { path: deployment_provider_state_path(spec: spec) }],
+  )
 }
 
 // A ROOT'S OWNER IS READ, NOT ASSUMED. Presence alone would call a root:root-owned directory

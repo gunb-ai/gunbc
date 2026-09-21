@@ -150,8 +150,11 @@ fn catalog_matches(catalog: RunnerLabelCatalog, label: String) -> List<LabelMatc
 // provider's projection when the join is in the survey: the right destination reached by a false
 // statement, sending the reader to the wrong module to repair it.
 fn matches_share_one_catalog(matches: List<LabelMatch>) -> Bool {
-  let first_catalog = first(matches).catalog
-  count(filter(matches, m => declaration_ref_eq(a: m.catalog, b: first_catalog) == false)) == 0
+  match first(matches) {
+    Present { value: head } =>
+      count(filter(matches, m => declaration_ref_eq(a: m.catalog, b: head.catalog) == false)) == 0
+    Absent => true
+  }
 }
 
 fn surveyed_matches(label: String) -> List<LabelMatch> {
@@ -215,11 +218,11 @@ fn resolve_from_matches(
           " DIFFERENT surveyed catalogs. One label on one selection surface is one authority's fact, so there is no answer to give: taking either row would make the result depend on which catalog is enrolled first. The repair is to gunbc.runner_provider_survey's roster, not to any provider module."], ""),
       }
     }
-  } else if count(matches) > 0 {
-    let hit = first(matches)
-    RunnerLabelResolved { row: hit.row, snapshot: hit.snapshot }
   } else {
-    unmatched_resolution(label: label, observed_at: observed_at)
+    match first(matches) {
+      Present { value: hit } => RunnerLabelResolved { row: hit.row, snapshot: hit.snapshot }
+      Absent => unmatched_resolution(label: label, observed_at: observed_at)
+    }
   }
 }
 
