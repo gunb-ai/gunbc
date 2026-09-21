@@ -181,6 +181,12 @@ struct CliDoorRun {
 /// A GUARD RATHER THAN A CALL PAIR, because the function it protects returns early on nine refusal
 /// paths and each one would otherwise leak the lock, turning a transient failure into a permanent
 /// one for every later run on that host.
+///
+/// IT IS CARRIED OUT OF THAT FUNCTION IN `EmittedPreparation`, AND AN EARLIER CUT WAS NOT. Bound
+/// locally, it dropped at the preparation's return -- before the entrypoint walks spawned the
+/// artifact. The span stated above stopped at the identity re-read, one step short of the readers
+/// this same change introduces (review 69715). It now ends when the CALLER drops the preparation,
+/// after every spawn.
 struct ProbeRootLockGuard {
     lock: PathBuf,
 }
@@ -199,6 +205,23 @@ struct EmittedPreparation {
     closure_identity: String,
     seed_identity: String,
     build: EmittedBuildObserved,
+    /// THE PROBE-ROOT EXCLUSION TRAVELS WITH THE PREPARATION, so it outlives the function that
+    /// took it (review 69715).
+    ///
+    /// It was bound inside `prepare_emitted_compiler_for_entry` and therefore DROPPED AT ITS
+    /// RETURN -- before either entrypoint walk spawned `binary_path`. The probe build uses a shared
+    /// `CARGO_TARGET_DIR` (`<workspace>/target`) and the executable's name is derived from the
+    /// ENTRY (`probe_package_name`), so two runs of one entry write the SAME path: a peer taking
+    /// the freed lock could rebuild and replace the executable between the drop and our spawn, and
+    /// the two steps this change exists for would then report about an artifact whose identity was
+    /// checked before it was swapped. That is the invalid state
+    /// `a_shared_probe_root_lets_one_run_compile_anothers_source` files -- a verdict computed
+    /// against somebody else's tree.
+    ///
+    /// Holding it here extends the transaction to emission, build, fault, restore, the identity
+    /// re-read AND every spawn of the artifact, and it is released when the caller drops the
+    /// preparation. Underscore-prefixed because nothing reads it; its lifetime IS its behaviour.
+    _probe_lock: ProbeRootLockGuard,
 }
 
 /// The emitted compiler's build as the receipt records it — mirror of
@@ -271,13 +294,13 @@ fn prepare_emitted_compiler_for_entry(
     let probe_root = super::lane_emit_compile_probe_root();
     // TAKEN BEFORE THE EMISSION, because the emission is what WRITES the shared root. Acquiring it
     // after would leave the write this lock exists to serialize outside the transaction.
-    let _probe_lock = ProbeRootLockGuard {
+    let probe_lock = ProbeRootLockGuard {
         lock: super::emitted_closure_compile_host::acquire_probe_root_lock(&probe_root).map_err(
             |cause| format!("V2-NATIVE REFUSAL cause=ProbeRootHeldByAnotherRun — {cause}"),
         )?,
     };
     eprintln!(
-        "v2-native-route: probe root {} held for emit+build+fault+restore",
+        "v2-native-route: probe root {} held for emit+build+fault+restore+spawn",
         probe_root.display()
     );
     eprintln!("v2-native-route: emitting {entry} (seed, in-process)");
@@ -455,6 +478,7 @@ fn prepare_emitted_compiler_for_entry(
         closure_identity,
         seed_identity,
         build,
+        _probe_lock: probe_lock,
     })
 }
 
