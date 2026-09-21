@@ -759,10 +759,10 @@ fn bmc_fan_observe_tach_health_rec(
   sensors: List<NonEmptyStr>,
   built: List<OpenBmcTachHealth>,
 ) -> BmcFanTachHealthListResult {
-  if sensors.length() == 0 {
-    BmcFanTachHealthListObserved { values: built }
-  } else {
-    match openbmc_tach_health(session: session, sensor: sensors.first()) {
+  match sensors.first() {
+    Absent => BmcFanTachHealthListObserved { values: built }
+    Present { value: sensor } =>
+    match openbmc_tach_health(session: session, sensor: sensor) {
       OpenBmcTachHealthRefused { reason } =>
         BmcFanTachHealthListRefused { reason: reason }
       OpenBmcTachHealthObserved { health } =>
