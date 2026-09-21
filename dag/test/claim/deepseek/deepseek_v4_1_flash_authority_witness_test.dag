@@ -215,6 +215,10 @@ test fn dsml_block_name_is_the_encoder_leading_space_not_v4_tool_calls() -> Bool
     && string_contains(s: deepseek_v4_1_flash_dsml_tool_calls_open(), pattern: deepseek_v4_1_flash_dsml_token as String)
 }
 
+// rows 3 and 4 have the same size: drop row 4 and repeat row 3 -- count 48, total unchanged.
+// THE INDEX JOIN HAS ITS OWN RED: the same 48 files against an index whose weight_map names one
+// shard fewer, and against one naming a 49th, refuse on the index arm alone.
+//
 // THE WEIGHT MANIFEST IS ADMITTED AS AN EXACT POPULATION, NOT COUNTED: the declared 48 rows admit
 // (every generated path once, the index's shard set equal to the files', the tree total); the two
 // Engram shards in it are the rows their owners declare (one source for path, size and digest).
@@ -236,7 +240,6 @@ test fn the_weight_manifest_admits_exactly_the_48_shards_and_refuses_a_same_size
   }
   let owners = (match deepseek_v4_1_flash_published_file(path: deepseek_v4_1_flash_engram_shard_1.file.path) { Present { value: f } => (f.sha256.hex as String) == (deepseek_v4_1_flash_engram_shard_1.sha256.hex as String)  Absent => false })
     && (match deepseek_v4_1_flash_published_file(path: deepseek_v4_1_flash_engram_shard_14.file.path) { Present { value: f } => (f.sha256.hex as String) == (deepseek_v4_1_flash_engram_shard_14.sha256.hex as String)  Absent => false })
-  // rows 3 and 4 have the same size: drop row 4 and repeat row 3 -- count 48, total unchanged.
   let row3 = rows |> skip(n: 2) |> take(n: 1)
   let swapped = concat(rows |> take(n: 3), concat(row3, rows |> skip(n: 4)))
   let same_size_duplicate = match deepseek_v4_1_flash_admit_weight_manifest(rows: swapped, index: deepseek_v4_1_flash_index_reading, shard_count: deepseek_v4_1_flash_safetensors_shard_count, tree_bytes: deepseek_v4_1_flash_safetensors_tree_file_bytes) {
@@ -247,8 +250,6 @@ test fn the_weight_manifest_admits_exactly_the_48_shards_and_refuses_a_same_size
     WeightManifestRefused { defects: d } => any(d, x => (x as String).contains("outside the generated shard set: model-00049"))
     WeightManifestAdmitted { files: _, index: _, canonical_text: _ } => false
   }
-  // THE INDEX JOIN HAS ITS OWN RED: the same 48 files against an index whose weight_map names one
-  // shard fewer, and against one naming a 49th, refuse on the index arm alone.
   let index_short = deepseek_v4_1_flash_index_reading_of(file: deepseek_v4_1_flash_safetensors_index_file, shard_paths: deepseek_v4_1_flash_index_reading.shard_paths |> take(n: 47))
   let index_wide = deepseek_v4_1_flash_index_reading_of(file: deepseek_v4_1_flash_safetensors_index_file, shard_paths: concat(deepseek_v4_1_flash_index_reading.shard_paths, ["model-00049-of-00048.safetensors" as NonEmptyStr]))
   let index_refuses = (match deepseek_v4_1_flash_admit_weight_manifest(rows: rows, index: index_short, shard_count: deepseek_v4_1_flash_safetensors_shard_count, tree_bytes: deepseek_v4_1_flash_safetensors_tree_file_bytes) { WeightManifestRefused { defects: d } => length(d) == 1 && any(d, x => (x as String).contains("weight_map shard population"))  _ => false })
