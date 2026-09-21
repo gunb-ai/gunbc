@@ -179,7 +179,7 @@ test fn truncated_items_refuse_with_the_offset() -> Bool {
 // One item followed by another octet is not one document.
 test fn trailing_octets_refuse() -> Bool {
   match cbor_refuses(octets: [1, 2]) {
-    Present { value: CborTrailingOctets { consumed: 1, total: 2 } } => true
+    Present { value: CborTrailingOctets { consumed: c, total: t } } => byte_size_count(b: c) == 1 && byte_size_count(b: t) == 2
     _ => false
   }
 }

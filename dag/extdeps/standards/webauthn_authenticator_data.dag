@@ -117,7 +117,7 @@ type AuthenticatorDataRefusal
   = AuthenticatorDataTruncated { at: Int, needed: ByteSize, available: ByteSize }
   | AuthenticatorDataCredentialKeyRefused { cause: CborRefusal }
   | AuthenticatorDataExtensionsRefused { cause: CborRefusal }
-  | AuthenticatorDataTrailingOctets { consumed: Int, total: Int }
+  | AuthenticatorDataTrailingOctets { consumed: ByteSize, total: ByteSize }
 
 type AuthenticatorDataDecode
   = AuthenticatorDataDecoded { data: AuthenticatorData }
@@ -199,7 +199,7 @@ fn authenticator_data_finish(octets: List<UInt8>, rp_id_hash: List<UInt8>, flags
   match read_extensions(octets: octets, at: at, included: flags.extension_data_included) {
     ExtensionsRefused { cause: r } => AuthenticatorDataRefused { cause: r }
     ExtensionsRead { extensions: ext, next: n } =>
-      if n != count(octets) { AuthenticatorDataRefused { cause: AuthenticatorDataTrailingOctets { consumed: n, total: count(octets) } } }
+      if n != count(octets) { AuthenticatorDataRefused { cause: AuthenticatorDataTrailingOctets { consumed: byte_size(count: n), total: byte_size(count: count(octets)) } } }
       else {
         AuthenticatorDataDecoded { data: AuthenticatorData { rp_id_hash: rp_id_hash, flags: flags, sign_count: sign_count, attested_credential: credential, extensions: ext } }
       }
@@ -248,7 +248,7 @@ fn decode_authenticator_data_prefix(octets: List<UInt8>) -> AuthenticatorDataPre
     Present { value: r } => AuthenticatorDataPrefixRefused { cause: r }
     Absent =>
       if count(octets) != byte_size_count(b: authenticator_data_prefix_size) {
-        AuthenticatorDataPrefixRefused { cause: AuthenticatorDataTrailingOctets { consumed: byte_size_count(b: authenticator_data_prefix_size), total: count(octets) } }
+        AuthenticatorDataPrefixRefused { cause: AuthenticatorDataTrailingOctets { consumed: authenticator_data_prefix_size, total: byte_size(count: count(octets)) } }
       } else {
         match octet_at(octets: octets, at: authenticator_data_flags_offset()) {
           Absent => AuthenticatorDataPrefixRefused { cause: AuthenticatorDataTruncated { at: authenticator_data_flags_offset(), needed: byte_size(count: byte_size_count(b: authenticator_data_flags_size)), available: byte_size(count: 0) } }
