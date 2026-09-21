@@ -386,32 +386,47 @@ fn receipt_peak_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
 // pre-instrument receipt look attributed. The 2026-09-19 receipt is exactly that case, so this
 // function answers PeakSeamUnattributable for it today, which is a true statement about what that
 // run recorded rather than a defect in this fold.
+// THE REFUSAL CAUSE IS TYPED, NOT A SENTENCE, because the four ways a peak can fail to be
+// attributed are four different facts with four different remedies, and a reader who has to
+// parse prose to tell them apart is doing the same guessing this module exists to end (review
+// 69719). An earlier revision folded the seam through a Bool and could then only emit a
+// DISJUNCTIVE cause -- "sampled before the first seam, OR transcribed from a line without one" --
+// for a case where the arm is known exactly. Collapsing a known discriminator and then
+// apologising for it in the message is the absorbing fallback DESIGN 5 forbids, one layer up from
+// the positional join the seam field removes.
+//
+// PeakBeatSampledBeforeAnySeam is a live run whose first beat landed before any seam was entered:
+// the remedy is to read a later beat. PeakBeatSeamUnrecorded is a receipt transcribed from a
+// pre-instrument log: the remedy is a new run. ReceiptHasNoBeats is an unmeasured receipt.
+// ReceiptTorn carries the overflow from the beat whose held set does not sum. Different facts,
+// different remedies, no prose to parse.
+type PeakUnattributableCause
+  = PeakBeatSampledBeforeAnySeam { beat: Int }
+  | PeakBeatSeamUnrecorded { beat: Int }
+  | ReceiptHasNoBeats
+  | ReceiptTorn { overflow: IntegerOverflow }
+
 type PeakSeamAttribution
   = PeakAttributedTo { seam: FloorSeam, beat: Int, bytes: ByteSize }
-  | PeakSeamUnattributable { cause: NonEmptyStr }
+  | PeakSeamUnattributable { cause: PeakUnattributableCause }
 
-fn seam_is_attributable(seam: FloorSeam) -> Bool {
-  match seam {
-    SeamNotYetEntered => false
-    SeamUnrecorded => false
-    SeamStrictPreparation => true
-    SeamPublishedMockProjection => true
-    SeamSiteProjection => true
-    SeamDiscoveryAuthority => true
-    SeamClaimScopeProjection => true
-    SeamClaimEvaluationFold => true
-  }
-}
-
+// THE MATCH IS ON THE PEAK BEAT'S SEAM DIRECTLY, so every arm of FloorSeam is answered here and
+// a new arm added to that coproduct cannot silently fall into either bucket -- it fails to
+// compile until this fold says which it is.
 fn receipt_peak_seam(r: FloorHeldSetReceipt) -> PeakSeamAttribution {
   match receipt_held_set_peak(r: r) {
-    HeldSetPeakNoBeats => PeakSeamUnattributable { cause: "the receipt carries no beats, so there is no peak to attribute" }
-    HeldSetPeakUnrepresentable { cause: _ } => PeakSeamUnattributable { cause: "the receipt is torn: a beat's held set does not sum, so no beat may be called the peak" }
+    HeldSetPeakNoBeats => PeakSeamUnattributable { cause: ReceiptHasNoBeats }
+    HeldSetPeakUnrepresentable { cause: c } => PeakSeamUnattributable { cause: ReceiptTorn { overflow: c } }
     HeldSetPeakAt { beat: b, bytes: v } =>
-      if seam_is_attributable(seam: b.seam) {
-        PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
-      } else {
-        PeakSeamUnattributable { cause: "the peak beat carries no seam: it was sampled before the floor entered its first seam, or transcribed from a line printed before the instrument carried one" }
+      match b.seam {
+        SeamNotYetEntered => PeakSeamUnattributable { cause: PeakBeatSampledBeforeAnySeam { beat: b.beat } }
+        SeamUnrecorded => PeakSeamUnattributable { cause: PeakBeatSeamUnrecorded { beat: b.beat } }
+        SeamStrictPreparation => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamPublishedMockProjection => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamSiteProjection => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamDiscoveryAuthority => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamClaimScopeProjection => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamClaimEvaluationFold => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
       }
   }
 }

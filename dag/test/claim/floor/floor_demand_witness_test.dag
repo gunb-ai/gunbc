@@ -20,6 +20,7 @@ import gunbc.floor_demand {
   gunbc_floor_storage_components, gunbc_floor_job_wall_receipt_2026_09_19,
   FloorSeam, SeamStrictPreparation, SeamClaimEvaluationFold, SeamNotYetEntered, SeamUnrecorded,
   receipt_peak_seam, PeakAttributedTo, PeakSeamUnattributable,
+  PeakUnattributableCause, PeakBeatSampledBeforeAnySeam, PeakBeatSeamUnrecorded, ReceiptHasNoBeats, ReceiptTorn,
 }
 import gunbc.fabric_witness_run { floor_execution_requirements }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
@@ -374,14 +375,24 @@ test fn a_peak_beat_without_a_seam_refuses_rather_than_naming_a_phase() -> Bool 
     run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 0,
     beats: [], run_completed: true,
   }
-  peak_seam_refuses(r: unrecorded) && peak_seam_refuses(r: not_yet) && peak_seam_refuses(r: no_beats)
-}
-
-fn peak_seam_refuses(r: FloorHeldSetReceipt) -> Bool {
-  match receipt_peak_seam(r: r) {
-    PeakSeamUnattributable { cause: _ } => true
-    PeakAttributedTo { seam: _, beat: _, bytes: _ } => false
+  // EACH ARM IS ASSERTED BY IDENTITY, not merely "it refused". The three receipts fail for three
+  // different reasons and an earlier revision of this witness greened on any refusal at all, so a
+  // fold that answered one cause for every case passed it (review 69719). The beat number is
+  // asserted too: a cause that names the wrong beat is a located diagnostic pointing at the wrong
+  // place, which is worse than an unlocated one.
+  let a = match receipt_peak_seam(r: unrecorded) {
+    PeakSeamUnattributable { cause: PeakBeatSeamUnrecorded { beat: b } } => b == 1
+    _ => false
   }
+  let b2 = match receipt_peak_seam(r: not_yet) {
+    PeakSeamUnattributable { cause: PeakBeatSampledBeforeAnySeam { beat: b } } => b == 1
+    _ => false
+  }
+  let c = match receipt_peak_seam(r: no_beats) {
+    PeakSeamUnattributable { cause: ReceiptHasNoBeats } => true
+    _ => false
+  }
+  a && b2 && c
 }
 
 // THE INHABITANCE CLAIM, OVER THE DECLARED RECEIPT THE FLEET ACTUALLY SIZES FROM. The two claims
@@ -396,8 +407,12 @@ fn peak_seam_refuses(r: FloorHeldSetReceipt) -> Bool {
 // attributable. It does not retire; it changes polarity, and the successor's landing is what
 // changes it.
 test fn the_standing_receipt_cannot_attribute_its_peak_because_it_predates_the_seam() -> Bool {
+  // NAMES THE ARM: the standing receipt's peak is un-attributable because it was transcribed from
+  // a pre-instrument line, NOT because the run had not yet entered a seam. Those are different
+  // facts with different remedies -- a new run versus a later beat -- and asserting the wrong one
+  // would still have greened under a cause-agnostic match.
   match receipt_peak_seam(r: gunbc_floor_memory_stat_receipt_2026_09_19) {
-    PeakSeamUnattributable { cause: _ } => true
-    PeakAttributedTo { seam: _, beat: _, bytes: _ } => false
+    PeakSeamUnattributable { cause: PeakBeatSeamUnrecorded { beat: _ } } => true
+    _ => false
   }
 }
