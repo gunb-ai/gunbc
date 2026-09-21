@@ -1792,11 +1792,19 @@ type NativeLaneUniverse {
 // `native_driver_plan_facts_path` say what the host must fetch, and the run folds receive what came
 // back. A single call would force one of those two to be wrong.
 //
-// BEHAVIOUR IS PRESERVED EXACTLY, including the parts that look like omissions. `census` with no
-// roots is PLANNED here, not refused, because the rendered main collects an empty vector and lets
-// the run fold answer -- adding a parse-time refusal would be a new wall wearing a refactor's
-// clothes. The three refusal messages are carried verbatim for the same reason: this change moves
-// where a decision is taken, and moves nothing else.
+// THE RENDERED MAIN CALLS THIS AND NOTHING ELSE DECIDES THE VERB. v1.compiler.emit_rust
+// `emit_source_root_eval_driver_main_rs` renders `main` as one `native_driver_parse` call, reads
+// the roots and facts path from the plan, sets the status `native_driver_plan_exit` returns, and
+// dispatches on the verb the plan carries -- the literal comparisons and inline refusals it used to
+// render are deleted in the same change, so these strings are the program's, not a copy of them.
+//
+// BEHAVIOUR IS PRESERVED, including the parts that look like omissions. `census` with no roots is
+// PLANNED here, not refused, because the rendered main collected an empty vector and let the run
+// fold answer -- adding a parse-time refusal would be a new wall wearing a refactor's clothes. The
+// one textual change is the usage line, which no longer names the binary: the emitted main
+// interpolated its crate name there, and a fold that cannot know which crate it was emitted into
+// must not spell one (an earlier draft of this row hardcoded `v1_compiled`, which is the name of
+// the PIPELINE-FREE crate and so was wrong for every binary this plan runs in).
 type NativeDriverVerb
   = NativeDriverCensus { source_roots: FreeMonoid<String> }
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
@@ -1812,7 +1820,7 @@ data native_driver_verb_census_resolve: String = "census-resolve"
 
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: v1_compiled adjudicate <host-facts.tsv> <source-root>... | v1_compiled census <source-root>... | v1_compiled census-resolve <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <source-root>... | census <source-root>... | census-resolve <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
