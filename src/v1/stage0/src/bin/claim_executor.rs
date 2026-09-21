@@ -1170,8 +1170,24 @@ fn run() -> Result<ExitCode, ExitCode> {
                 return Err(ExitCode::from(1));
             }
             eprintln!("required-ci: measurement completed receipt={path}");
-            return Ok(ExitCode::SUCCESS);
         }
+        // THE RECEIPT IS A PUBLICATION, NEVER THE VERDICT. Writing one used to RETURN
+        // `ExitCode::SUCCESS` unconditionally, so `--measurement-receipt` was an escape hatch in
+        // the sense DESIGN §5 forbids: a flag whose only effect is to proceed as if the
+        // refusal had not fired. The contract it assumed -- "some later adjudicator consumes the
+        // receipt and reds" -- was an UNDECLARED assumption about the caller, and the caller that
+        // actually emits `.github/workflows/witnesses.yml` (`gunbc.compiler_gate_workflow`) does
+        // not adjudicate it: it reuses `witness_floor_run_script`, which carries the flag, and
+        // then stops. Measured, job 106378500935 of run 35613461226: `phases_run=2
+        // phases_failed=2`, `required-floor: verdict=FloorRefused unexpected_failures=6`, and the
+        // job and the run both concluded SUCCESS.
+        //
+        // The exit is therefore derived from the phase ledger in EVERY mode, and asking for the
+        // ledger in a file can no longer cost the red. A caller that genuinely wants the run to
+        // continue past a refusal in order to publish and then adjudicate says so in its own
+        // medium -- `gunbc.witness_floor_workflow`'s D0-MEASURE step declares
+        // `continue_on_error: true` and keeps its D0-ADJUDICATE step -- rather than reaching into
+        // this process's exit contract.
         return if phase_failures.is_empty() {
             Ok(ExitCode::SUCCESS)
         } else {
