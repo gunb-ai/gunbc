@@ -1,0 +1,664 @@
+module gunbc.runner_microvm_network_apply
+
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
+import std.algebra { trim }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
+import extdeps.git
+import extdeps.git.inspect
+import product.placement_supply { HostIdentity }
+import gunbc.output_policy { ExpectSuccess }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.actions_run_binding {
+  actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
+  fleet_converge_expected_host_env_name, rlm_expected_revision_env_name,
+  read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent,
+}
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.file_access { FileTreeScope }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_remote_file_write {
+  RemoteFileMode, RemoteFileModeOwnerReadWrite, RemoteFileViaNonInteractiveSudo,
+  TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
+  typed_remote_file_write_seal, converge_typed_remote_file,
+}
+import gunbc.runner_host_deploy {
+  RunnerHostDeploy, runner_host_deploy_for, runner_index_seq,
+  RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused,
+}
+import gunbc.runner_host_grants { bootstrap_principal_is_not_the_grantee }
+import gunbc.runner_host_file_converge {
+  RunnerHostPathMetadata, PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable,
+  runner_host_root_only_find_argv, classify_root_only_paths, runner_host_path_metadata_wire,
+  elevated_argv,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureOwnedDirectory, executor_privileged_operation_argv }
+import gunbc.runner_microvm_network {
+  runner_microvm_shared_host_grain,
+  runner_microvm_nft_table_name,
+}
+import gunbc.runner_microvm_network_converge {
+  StagedFile, converge_staged_files, microvm_network_converge_operations,
+  runner_microvm_staging_dir,
+}
+import extdeps.nftables.ruleset { nft_list_table_arguments_wire, NftInet, nft_family_wire }
+
+// THE MICROVM NETWORK'S MUTATING HALF, EXECUTED BY THE HOST'S ADMINISTRATOR AND BY NOBODY ELSE.
+//
+// WHAT THIS DISSOLVES. gunbc.runner_microvm_network_converge models the whole converge -- the files
+// each slot and each host needs, and the ordered privileged operations that install them -- and
+// grants the job user the READBACKS ONLY. The reason is stated there and is not a preference:
+// every file the converge stages is staged unprivileged, and the job user is the principal every
+// CI step runs as, so `install <a path that principal can write> /etc/systemd/system/x` beside
+// `systemctl restart x` is arbitrary root for any pull request (review 69104). The rule from the
+// 2026-09-21 side-chat review is that a job may REQUEST an operation a trusted controller admits;
+// it may not CHOOSE the content the host then executes as root.
+//
+// SO THE PRINCIPAL CHANGES, NOT THE GRANT. This module is the apply half under
+// gunbc.fleet_bootstrap_principal executor_bootstrap_principal, reached over the fleet SSH edge,
+// exactly as gunbc.runner_host_file_converge already writes root-evaluated files. The job user
+// gains nothing: microvm_network_granted_operations still returns the readbacks alone, and
+// re-admitting the install operations to THAT roster would be granting the job user the pair the
+// frontier refused. The roster has one principal, and it is not this one.
+//
+// THREE THINGS MAKE THE STAGED CONTENT UNCHOOSABLE, AND ALL THREE ARE REQUIRED.
+//
+//   1. THE BYTES COME FROM A FROZEN REVISION. Every staged file is rendered from the .dag model in
+//      the tree this job is checked out at, and the run refuses unless the operator named that
+//      revision as expected_revision AND it is the revision HEAD actually resolves to. A
+//      dispatch-supplied value that does not name the executing source is refused, which is the
+//      admission gunbc.spark.pair_serving_d0_door pair_serving_d0_mode_admission established.
+//   2. THE STAGING DIRECTORY IS ROOT-OWNED AND ITS WHOLE ANCESTOR CHAIN IS VERIFIED ROOT-ONLY
+//      BEFORE ANY BYTE IS WRITTEN. The previous staging root was under the job user's own
+//      /var/lib/gunbc/fleet-converge, and the frontier says outright that staging into another
+//      grantee-owned directory does not satisfy it: the job user could replace the leaf directory
+//      between the check and the install. Checking the leaf alone is the same defect one level up,
+//      so every ancestor is checked, far-side, by one find.
+//   3. THE ADMINISTRATOR WRITES THE STAGED FILES ITSELF, 0600 root:root, through
+//      gunbc.typed_remote_file_write converge_typed_remote_file -- stage, mode, atomic rename,
+//      far-side content comparison against the declared bytes. The job user can neither write nor
+//      read them, so there is no window in which the source of an install is content it chose.
+//
+// WHAT IT STILL DOES NOT CLOSE, SAID HERE RATHER THAN LEFT TO BE DISCOVERED. The job user holds a
+// path-unrestricted NOPASSWD grant over /usr/bin/install and /usr/bin/systemctl on srv1 today, from
+// gunbc.ci_deploy_sudoers and not from anything this module or the operation roster renders. That
+// grant is arbitrary root by itself, so nothing here makes the host safe for untrusted pull
+// requests; what it does is stop the microVM network from being a REASON to grant that pair. The
+// loss is rostered at gunbc.rung_drop the_job_user_holds_a_path_unrestricted_root_grant and the
+// class at gunbc.recurring_failure_mode
+// the_grant_a_frontier_refuses_is_already_held_from_another_authority. Closing the grants is a
+// separate, operator-gated item: their consumers are legacy jobs on the host.
+//
+// AND IT INSTALLS; IT DOES NOT CONVERGE. This module reads back what it installed -- every staged
+// path root-only, every operation's exit, and the ruleset as the kernel lists it -- and records
+// that digest. It does NOT mint a ConvergedSlotNetwork: that value says what the host IS at a
+// generation and is produced only by runner_microvm_network_observe_wet from live readings, which
+// is why the two are separate modes and separate receipts.
+
+// THE STAGING ROOT IS THE CONVERGE'S OWN, NOT A SECOND ONE. gunbc.runner_microvm_network_converge
+// runner_microvm_staging_dir is the authority for where staged content lives and for the source
+// every InstallFile names; this module supplies the scope and the ancestor check over that same
+// value, so the directory the administrator creates and the directory the installs read from cannot
+// be two different facts.
+data runner_microvm_admin_staging_scope: FileTreeScope = FileTreeScope { root_path: runner_microvm_staging_dir }
+
+data runner_microvm_admin_staging_dir_mode: NonEmptyStr = "0700" as NonEmptyStr
+
+data runner_microvm_admin_staging_owner: NonEmptyStr = "root" as NonEmptyStr
+
+// EVERY PREFIX OF THE STAGING ROOT, NOT ONLY THE LEAF. A root-only leaf under a job-user-writable
+// parent can be renamed away and replaced between the check and the install, so the ancestor whose
+// ownership decides the leaf's safety is the one the check must reach.
+fn staging_ancestor_paths() -> List<String> {
+  concat(
+    map(
+      filter(enumerate(chars(s: runner_microvm_staging_dir as String)), pair => pair.second == 47 && pair.first > 0),
+      pair => substring(s: runner_microvm_staging_dir as String, start: 0, end: pair.first),
+    ),
+    [runner_microvm_staging_dir as String],
+  )
+}
+
+// ── The subject: which host, at which revision, under which administrator ────────────────────────
+
+type MicrovmNetworkApplySubject {
+  host: HostIdentity
+  target: SshTarget
+  revision: String
+  slots: List<RunnerSlotIdentity>
+  tap_owner: NonEmptyStr
+}
+
+type MicrovmNetworkApplyAdmission
+  = MicrovmNetworkApplyAdmitted { subject: MicrovmNetworkApplySubject }
+  | MicrovmNetworkApplyRefused { cause: String }
+
+// THE ADMINISTRATOR MAY NOT BE THE JOB USER, AND THAT IS THE WHOLE POINT OF THE MODE. If the two
+// accounts coincide on this host, reaching root "as the administrator" is reaching root as the
+// principal every CI step runs as, and the mode has moved nothing. gunbc.runner_host_file_converge
+// refuses on exactly this condition for exactly this reason.
+fn microvm_network_apply_admission(
+  host: String,
+  expected_revision: String,
+  checked_out_revision: String,
+) -> MicrovmNetworkApplyAdmission {
+  if trim(s: host) == "" {
+    MicrovmNetworkApplyRefused { cause: join(["runner_microvm_network_apply: ", fleet_converge_expected_host_env_name, " is unset; one host per run, named by the dispatch"], "") }
+  } else if trim(s: expected_revision) == "" {
+    MicrovmNetworkApplyRefused { cause: join(["runner_microvm_network_apply: no ", rlm_expected_revision_env_name, "; the bytes this run installs are rendered from a revision, so the run must name the revision it installs"], "") }
+  } else if trim(s: checked_out_revision) == "" {
+    MicrovmNetworkApplyRefused { cause: "runner_microvm_network_apply: HEAD did not resolve, so the executing source cannot be compared to the named revision" }
+  } else if trim(s: expected_revision) != trim(s: checked_out_revision) {
+    MicrovmNetworkApplyRefused { cause: join(["runner_microvm_network_apply: expected_revision ", trim(s: expected_revision), " is not the tree this job runs from (HEAD ", trim(s: checked_out_revision), "); the installed bytes must come from the named revision, not from whatever this checkout happens to be"], "") }
+  } else {
+    microvm_network_apply_admission_for_deploy(host: trim(s: host) as HostIdentity, revision: trim(s: expected_revision))
+  }
+}
+
+fn microvm_network_apply_admission_for_deploy(host: HostIdentity, revision: String) -> MicrovmNetworkApplyAdmission {
+  match runner_host_deploy_for(host: host) {
+    RunnerHostDeployUnmodeled { host: h } =>
+      MicrovmNetworkApplyRefused { cause: join(["runner_microvm_network_apply: ", h as String, " has no runner deploy row, so it is not a runner host"], "") }
+    RunnerHostDeployRefused { host: h, cause: c } =>
+      MicrovmNetworkApplyRefused { cause: join(["runner_microvm_network_apply: ", h as String, " is refused as a runner host (", c, ")"], "") }
+    RunnerHostDeployFound { deploy: d } =>
+      if !bootstrap_principal_is_not_the_grantee(bootstrap: executor_bootstrap_principal, deploy: d) {
+        MicrovmNetworkApplyRefused {
+          cause: join(["runner_microvm_network_apply: the administrator principal ", executor_bootstrap_principal.login as String, " is the job user on ", host as String, ", so the account that stages and installs root-evaluated files would be the one CI jobs run as"], ""),
+        }
+      } else {
+        MicrovmNetworkApplyAdmitted {
+          subject: MicrovmNetworkApplySubject {
+            host: host,
+            target: SshTarget {
+              endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+              principal: executor_bootstrap_principal.login,
+            },
+            revision: revision,
+            slots: map(runner_index_seq(n: d.runner_count), i => RunnerSlotIdentity { host: host, slot_index: i }),
+            tap_owner: d.job_user,
+          },
+        }
+      }
+  }
+}
+
+// ── Legs ─────────────────────────────────────────────────────────────────────────────────────────
+
+type ApplyLeg
+  = ApplyLegRan { exit_code: Int, stdout: String, stderr: String }
+  | ApplyLegRefused { reason: String }
+
+fn run_admin_leg(
+  subject: MicrovmNetworkApplySubject,
+  context: FleetSshExecutionContext,
+  argv: List<String>,
+) -> ApplyLeg
+  uses net: Network
+{
+  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: argv) {
+    TypedArgvExecRefused { reason: why } => ApplyLegRefused { reason: why }
+    TypedArgvExecConverged { result: r } => ApplyLegRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+  }
+}
+
+type AdministratorPrivilege
+  = AdministratorPrivilegeHeld
+  | AdministratorPrivilegeMissing { reason: String }
+
+fn observe_administrator_privilege(
+  subject: MicrovmNetworkApplySubject,
+  context: FleetSshExecutionContext,
+) -> AdministratorPrivilege
+  uses net: Network
+{
+  match run_admin_leg(subject: subject, context: context, argv: elevated_argv(command: ["true"])) {
+    ApplyLegRefused { reason: why } => AdministratorPrivilegeMissing { reason: why }
+    ApplyLegRan { exit_code: c, stdout: _, stderr: e } =>
+      if c == 0 {
+        AdministratorPrivilegeHeld
+      } else {
+        AdministratorPrivilegeMissing { reason: join(["non-interactive sudo as ", subject.target.principal as String, " exit=", to_string(c), " ", trim(s: e)], "") }
+      }
+  }
+}
+
+fn observe_paths_root_only(
+  subject: MicrovmNetworkApplySubject,
+  context: FleetSshExecutionContext,
+  paths: List<String>,
+  kind: String,
+) -> RunnerHostPathMetadata
+  uses net: Network
+{
+  match run_admin_leg(subject: subject, context: context, argv: runner_host_root_only_find_argv(paths: paths, kind: kind)) {
+    ApplyLegRefused { reason: why } => PathsUnobservable { reason: why }
+    ApplyLegRan { exit_code: c, stdout: o, stderr: e } => classify_root_only_paths(requested: paths, exit_code: c, stdout: o, stderr: e)
+  }
+}
+
+// THE DIRECTORY IS CREATED BY THE SAME OPERATION TYPE EVERY OTHER MANAGED DIRECTORY USES, so its
+// argv and the authorization vocabulary stay one fact (gunbc.executor_privileged_operation).
+fn staging_dir_ensure_operation() -> ExecutorPrivilegedOperation {
+  EnsureOwnedDirectory {
+    path: runner_microvm_staging_dir,
+    owner: runner_microvm_admin_staging_owner,
+    group: runner_microvm_admin_staging_owner,
+    mode: runner_microvm_admin_staging_dir_mode,
+  }
+}
+
+fn run_operation(
+  subject: MicrovmNetworkApplySubject,
+  context: FleetSshExecutionContext,
+  op: ExecutorPrivilegedOperation,
+) -> ApplyLeg
+  uses net: Network
+{
+  run_admin_leg(
+    subject: subject,
+    context: context,
+    argv: elevated_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String)),
+  )
+}
+
+type OperationResult {
+  argv: List<String>
+  leg: ApplyLeg
+}
+
+fn operation_result_ok(r: OperationResult) -> Bool {
+  match r.leg {
+    ApplyLegRefused { reason: _ } => false
+    ApplyLegRan { exit_code: c, stdout: _, stderr: _ } => c == 0
+  }
+}
+
+fn operation_result_wire(r: OperationResult) -> String {
+  match r.leg {
+    ApplyLegRefused { reason: why } => join(["REFUSED ", join(r.argv, " "), " -- ", why, "\n"], "")
+    ApplyLegRan { exit_code: c, stdout: _, stderr: e } =>
+      if c == 0 {
+        join(["ok ", join(r.argv, " "), "\n"], "")
+      } else {
+        join(["FAILED exit=", to_string(c), " ", join(r.argv, " "), " -- ", trim(s: e), "\n"], "")
+      }
+  }
+}
+
+// THE OPERATIONS ARE ORDERED AND A FAILURE STOPS THE LINE. Each later operation routinely depends
+// on an earlier one -- a networkd file before the reload that reads it, the ruleset before the unit
+// that loads it -- so continuing past a failure would leave the host in a state no row describes
+// and report the last operation's status as the run's, which is the fabricated output DESIGN
+// section 5 forbids. There is deliberately no tolerable-failure arm.
+fn run_operations_until_failure(
+  subject: MicrovmNetworkApplySubject,
+  context: FleetSshExecutionContext,
+  ops: List<ExecutorPrivilegedOperation>,
+) -> List<OperationResult>
+  uses net: Network
+{
+  fold(
+    ops,
+    init: [],
+    f: (acc, op) =>
+      if length(acc) > 0 && !operation_result_ok(r: last_result(rs: acc)) {
+        acc
+      } else {
+        concat(acc, [OperationResult {
+          argv: elevated_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String)),
+          leg: run_operation(subject: subject, context: context, op: op),
+        }])
+      },
+  )
+}
+
+fn last_result(rs: List<OperationResult>) -> OperationResult {
+  fold(rs, init: head_result(rs: rs), f: (acc, r) => r)
+}
+
+fn head_result(rs: List<OperationResult>) -> OperationResult {
+  fold(
+    rs,
+    init: OperationResult { argv: [], leg: ApplyLegRefused { reason: "no operation ran" } },
+    f: (acc, r) => acc,
+  )
+}
+
+// ── The staged writes ────────────────────────────────────────────────────────────────────────────
+
+type StagedWriteResult {
+  path: NonEmptyStr
+  outcome: StagedWriteOutcome
+}
+
+type StagedWriteOutcome
+  = StagedWritten
+  | StagedWriteRefused { step: String, reason: String }
+
+fn staged_write_ok(r: StagedWriteResult) -> Bool {
+  match r.outcome {
+    StagedWritten => true
+    StagedWriteRefused { step: _, reason: _ } => false
+  }
+}
+
+fn staged_write_wire(r: StagedWriteResult) -> String {
+  match r.outcome {
+    StagedWritten => join(["staged ", r.path as String, "\n"], "")
+    StagedWriteRefused { step: st, reason: why } => join(["STAGE-REFUSED ", r.path as String, " step=", st, " ", why, "\n"], "")
+  }
+}
+
+// 0600 root:root. The job user cannot write the staged bytes, and cannot read them either -- the
+// second matters less for these files than for a key, and costs nothing.
+fn write_staged_file(
+  subject: MicrovmNetworkApplySubject,
+  context: FleetSshExecutionContext,
+  file: StagedFile,
+) -> StagedWriteResult
+  uses net: Network
+{
+  StagedWriteResult {
+    path: file.path,
+    outcome: match converge_typed_remote_file(
+      target: subject.target,
+      context: context,
+      admission: typed_remote_file_write_seal(
+        path: file.path as FilePath,
+        content: file.content,
+        allowed_scope: runner_microvm_admin_staging_scope,
+      ),
+      mode: RemoteFileModeOwnerReadWrite,
+      privilege: RemoteFileViaNonInteractiveSudo,
+    ) {
+      TypedRemoteFileConvergenceRefused { step: st, reason: why } => StagedWriteRefused { step: st, reason: why }
+      TypedRemoteFileConverged { converged: _ } => StagedWritten
+    },
+  }
+}
+
+// ── The readback ─────────────────────────────────────────────────────────────────────────────────
+
+type RulesetReadback
+  = RulesetListed { digest: Sha256Digest, listing: String }
+  | RulesetNotListed { reason: String }
+
+fn ruleset_readback_wire(r: RulesetReadback) -> String {
+  match r {
+    RulesetListed { digest: d, listing: _ } => join(["nft_digest=", d.hex as String, "\n"], "")
+    RulesetNotListed { reason: why } => join(["nft_digest=UNREAD ", why, "\n"], "")
+  }
+}
+
+fn listing_digest(d: Sha256FileDigest, listing: String) -> RulesetReadback {
+  match d {
+    Sha256FileDigestUnavailable { path: _, reason: why } => RulesetNotListed { reason: concat("the listing could not be digested: ", why) }
+    Sha256FileDigest { digest: dg } =>
+      match sha256_hex_digest(hex: dg.hex as String) {
+        Absent => RulesetNotListed { reason: join(["sha256sum answered a value that is not a sha256 hex: ", dg.hex as String], "") }
+        Present { value: v } => RulesetListed { digest: v, listing: listing }
+      }
+  }
+}
+
+// THE LISTING IS TAKEN FROM THE KERNEL THROUGH THE ADMINISTRATOR, so the digest recorded is of the
+// bytes `nft list table` produced on the host and not of this process's own rendering of what it
+// believes it installed. A readback that did not run leaves the run without an installed digest,
+// which refuses; it does not fall back to the rendered text.
+fn read_back_ruleset(
+  subject: MicrovmNetworkApplySubject,
+  context: FleetSshExecutionContext,
+) -> RulesetReadback
+  uses net: Network
+{
+  match run_admin_leg(
+    subject: subject,
+    context: context,
+    argv: elevated_argv(command: concat(
+      ["nft"],
+      map(nft_list_table_arguments_wire(family: nft_family_wire(f: NftInet), name: runner_microvm_nft_table_name as String), w => w),
+    )),
+  ) {
+    ApplyLegRefused { reason: why } => RulesetNotListed { reason: why }
+    ApplyLegRan { exit_code: c, stdout: o, stderr: e } =>
+      if c != 0 {
+        RulesetNotListed { reason: join(["nft list table exit=", to_string(c), " ", trim(s: e)], "") }
+      } else {
+        listing_digest(d: sha256sum_stdin_digest_via_shell(content: o), listing: o)
+      }
+  }
+}
+
+// ── The run ──────────────────────────────────────────────────────────────────────────────────────
+
+type MicrovmNetworkApplyRun {
+  subject: MicrovmNetworkApplySubject
+  privilege: AdministratorPrivilege
+  staging_dir: RunnerHostPathMetadata
+  staged: List<StagedWriteResult>
+  staged_root_only: RunnerHostPathMetadata
+  operations: List<OperationResult>
+  readback: RulesetReadback
+}
+
+fn apply_run_succeeded(run: MicrovmNetworkApplyRun) -> Bool {
+  match run.privilege {
+    AdministratorPrivilegeMissing { reason: _ } => false
+    AdministratorPrivilegeHeld =>
+      path_metadata_ok(m: run.staging_dir)
+        && fold(run.staged, init: true, f: (acc, r) => acc && staged_write_ok(r: r))
+        && path_metadata_ok(m: run.staged_root_only)
+        && length(run.operations) > 0
+        && fold(run.operations, init: true, f: (acc, r) => acc && operation_result_ok(r: r))
+        && match run.readback {
+             RulesetListed { digest: _, listing: _ } => true
+             RulesetNotListed { reason: _ } => false
+           }
+  }
+}
+
+fn path_metadata_ok(m: RunnerHostPathMetadata) -> Bool {
+  match m {
+    PathsRootOnly => true
+    PathsNotRootOnly { paths: _, detail: _ } => false
+    PathsUnobservable { reason: _ } => false
+    PathsNotApplicable => false
+  }
+}
+
+fn privilege_wire(p: AdministratorPrivilege) -> String {
+  match p {
+    AdministratorPrivilegeHeld => "administrator-sudo=held\n"
+    AdministratorPrivilegeMissing { reason: why } => join(["administrator-sudo=REFUSED ", why, "\n"], "")
+  }
+}
+
+fn apply_run_text(run: MicrovmNetworkApplyRun) -> String {
+  join([
+    "microvm-network-apply host=", run.subject.host as String, "\n",
+    "revision=", run.subject.revision, "\n",
+    "administrator=", run.subject.target.principal as String, "\n",
+    privilege_wire(p: run.privilege),
+    "staging_dir=", runner_host_path_metadata_wire(m: run.staging_dir), " ", runner_microvm_staging_dir as String, "\n",
+    join(map(run.staged, r => staged_write_wire(r: r)), ""),
+    "staged_files=", runner_host_path_metadata_wire(m: run.staged_root_only), "\n",
+    join(map(run.operations, r => operation_result_wire(r: r)), ""),
+    ruleset_readback_wire(r: run.readback),
+  ], "")
+}
+
+// THE ORDER IS THE PROPERTY. Privilege first, so a host where the administrator cannot sudo says so
+// by name and nothing is written. Then the staging root and its whole ancestor chain, so the
+// directory the bytes land in is known root-only BEFORE any byte lands. Then the writes, then the
+// staged files' own ownership, and only then the installs. The readback is last and is not
+// optional: without it the run could report only that the operations exited zero.
+fn run_microvm_network_apply(
+  subject: MicrovmNetworkApplySubject,
+  context: FleetSshExecutionContext,
+) -> MicrovmNetworkApplyRun
+  uses net: Network
+{
+  let privilege = observe_administrator_privilege(subject: subject, context: context)
+  match privilege {
+    AdministratorPrivilegeMissing { reason: _ } =>
+      MicrovmNetworkApplyRun {
+        subject: subject,
+        privilege: privilege,
+        staging_dir: PathsNotApplicable,
+        staged: [],
+        staged_root_only: PathsNotApplicable,
+        operations: [],
+        readback: RulesetNotListed { reason: "the administrator holds no non-interactive sudo on this host, so nothing was staged, installed or read back" },
+      }
+    AdministratorPrivilegeHeld => run_privileged_microvm_network_apply(subject: subject, context: context, privilege: privilege)
+  }
+}
+
+fn run_privileged_microvm_network_apply(
+  subject: MicrovmNetworkApplySubject,
+  context: FleetSshExecutionContext,
+  privilege: AdministratorPrivilege,
+) -> MicrovmNetworkApplyRun
+  uses net: Network
+{
+  let ensured = run_operation(subject: subject, context: context, op: staging_dir_ensure_operation())
+  let dir = match ensured {
+    ApplyLegRefused { reason: why } => PathsUnobservable { reason: concat("the staging directory could not be created: ", why) }
+    ApplyLegRan { exit_code: c, stdout: _, stderr: e } =>
+      if c != 0 {
+        PathsUnobservable { reason: join(["the staging directory could not be created; install -d exit=", to_string(c), " ", trim(s: e)], "") }
+      } else {
+        observe_paths_root_only(subject: subject, context: context, paths: staging_ancestor_paths(), kind: "d")
+      }
+  }
+  match dir {
+    PathsRootOnly =>
+      run_staged_microvm_network_apply(subject: subject, context: context, privilege: privilege, dir: dir)
+    _ =>
+      MicrovmNetworkApplyRun {
+        subject: subject,
+        privilege: privilege,
+        staging_dir: dir,
+        staged: [],
+        staged_root_only: PathsNotApplicable,
+        operations: [],
+        readback: RulesetNotListed { reason: "the staging root or one of its ancestors is not root-only, so no bytes were staged" },
+      }
+  }
+}
+
+fn run_staged_microvm_network_apply(
+  subject: MicrovmNetworkApplySubject,
+  context: FleetSshExecutionContext,
+  privilege: AdministratorPrivilege,
+  dir: RunnerHostPathMetadata,
+) -> MicrovmNetworkApplyRun
+  uses net: Network
+{
+  let files = converge_staged_files(
+    slots: subject.slots,
+    host: runner_microvm_shared_host_grain,
+    tap_owner: subject.tap_owner,
+  )
+  let staged = map(files, f => write_staged_file(subject: subject, context: context, file: f))
+  let all_staged = fold(staged, init: true, f: (acc, r) => acc && staged_write_ok(r: r))
+  let staged_meta = if !all_staged {
+    PathsNotApplicable
+  } else {
+    observe_paths_root_only(subject: subject, context: context, paths: map(files, f => f.path as String), kind: "f")
+  }
+  match staged_meta {
+    PathsRootOnly => {
+        let ops = run_operations_until_failure(subject: subject, context: context, ops: microvm_network_converge_operations(slots: subject.slots))
+      let all_ops = length(ops) > 0 && fold(ops, init: true, f: (acc, r) => acc && operation_result_ok(r: r))
+      MicrovmNetworkApplyRun {
+        subject: subject,
+        privilege: privilege,
+        staging_dir: dir,
+        staged: staged,
+        staged_root_only: staged_meta,
+        operations: ops,
+        readback: if all_ops {
+          read_back_ruleset(subject: subject, context: context)
+        } else {
+          RulesetNotListed { reason: "an install operation did not succeed, so the listing would not describe the declared ruleset" }
+        },
+      }
+    }
+    _ =>
+      MicrovmNetworkApplyRun {
+        subject: subject,
+        privilege: privilege,
+        staging_dir: dir,
+        staged: staged,
+        staged_root_only: staged_meta,
+        operations: [],
+        readback: RulesetNotListed { reason: "the staged bytes were not established as root-only, so nothing was installed from them" },
+      }
+  }
+}
+
+// ── The CI entry ─────────────────────────────────────────────────────────────────────────────────
+
+data runner_microvm_network_apply_attempt_raw: String = "runner-microvm-network-apply-ci"
+
+data runner_microvm_network_apply_receipt_path: String = "target/microvm-network-apply-receipt.txt"
+
+fn apply_expected_host() -> String {
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+}
+
+fn apply_expected_revision() -> String {
+  match read_expected_revision() {
+    ExpectedRevisionPresent { revision: r } => r
+    ExpectedRevisionAbsent { variable: _, detail: _ } => ""
+  }
+}
+
+fn apply_checked_out_revision() -> String {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  if !head.success { "" } else { head.sha as String }
+}
+
+fn runner_microvm_network_apply_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  match microvm_network_apply_admission(
+    host: apply_expected_host(),
+    expected_revision: apply_expected_revision(),
+    checked_out_revision: apply_checked_out_revision(),
+  ) {
+    MicrovmNetworkApplyRefused { cause: c } => exit_failure(reason: c)
+    MicrovmNetworkApplyAdmitted { subject: subject } =>
+      match prepare_fleet_ssh_agent_context(attempt_raw: runner_microvm_network_apply_attempt_raw) {
+        FleetSshContextRefused { cause: c } => exit_failure(reason: c)
+        FleetSshContextReady { context: context, receipt: context_receipt } => {
+          let run = run_microvm_network_apply(subject: subject, context: context)
+          let body = join([
+            "runner_microvm_network_apply probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
+            context_receipt,
+            apply_run_text(run: run),
+          ], "")
+          let w = Filesystem.Write(path: runner_microvm_network_apply_receipt_path, content: body)
+          if !w.success {
+            exit_failure(reason: join(["runner_microvm_network_apply: receipt write failed: ", w.error, "\n", body], ""))
+          } else if !apply_run_succeeded(run: run) {
+            exit_failure(reason: body)
+          } else {
+            ExitSuccess
+          }
+        }
+      }
+  }
+}

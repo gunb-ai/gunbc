@@ -858,6 +858,15 @@ data gunbc_ci_runner_microvm_network_observe_target: GunbcRunStepTarget = GunbcR
   function: "runner_microvm_network_observe_wet",
 }
 
+// THE APPLY HALF LIVES IN ITS OWN MODULE, not beside the observe entry, because it executes as the
+// host administrator over the fleet SSH edge and the converge module it renders its content from is
+// consumed by the job user's grant roster -- importing the administrator-edge helpers into that
+// module would close an import cycle through gunbc.runner_host_grants.
+data gunbc_ci_runner_microvm_network_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_network_apply.dag",
+  function: "runner_microvm_network_apply_ci_wet",
+}
+
 data gunbc_ci_runner_host_file_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_host_file_converge.dag",
   function: "runner_host_file_observe_ci_wet",
@@ -1152,6 +1161,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_runner_microvm_host_converge_target,
     gunbc_ci_runner_microvm_network_observe_target,
+    gunbc_ci_runner_microvm_network_apply_target,
     gunbc_ci_runner_host_file_observe_target,
     gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_site_pxe_edge_observe_target,
@@ -2328,6 +2338,16 @@ fn gunbc_ci_runner_microvm_network_observe_invoke() -> String {
     function: gunbc_ci_runner_microvm_network_observe_target.function,
     claim_run: false,
     receipt_rel: "target/microvm-network-observe.txt"
+  )
+}
+
+fn gunbc_ci_runner_microvm_network_apply_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_microvm_network_apply_target.entry,
+    function: gunbc_ci_runner_microvm_network_apply_target.function,
+    claim_run: false,
+    receipt_rel: "target/microvm-network-apply-receipt.txt"
   )
 }
 

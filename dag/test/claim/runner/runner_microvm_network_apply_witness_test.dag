@@ -1,0 +1,105 @@
+module gunbc.test.claim.runner.runner_microvm_network_apply_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.runner_microvm_network_converge { runner_microvm_staging_dir }
+import gunbc.runner_microvm_network_apply {
+  MicrovmNetworkApplyAdmission, MicrovmNetworkApplyAdmitted, MicrovmNetworkApplyRefused,
+  microvm_network_apply_admission, staging_ancestor_paths,
+  RunnerHostPathMetadata, path_metadata_ok,
+  OperationResult, ApplyLeg, ApplyLegRan, ApplyLegRefused, operation_result_ok,
+  RulesetReadback, RulesetListed, RulesetNotListed,
+}
+import gunbc.runner_host_file_converge { PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data a_revision: String = "0123456789abcdef0123456789abcdef01234567"
+
+data another_revision: String = "89abcdef0123456789abcdef0123456789abcdef"
+
+fn admitted(a: MicrovmNetworkApplyAdmission) -> Bool {
+  match a {
+    MicrovmNetworkApplyAdmitted { subject: _ } => true
+    MicrovmNetworkApplyRefused { cause: _ } => false
+  }
+}
+
+fn refusal_cause(a: MicrovmNetworkApplyAdmission) -> String {
+  match a {
+    MicrovmNetworkApplyAdmitted { subject: _ } => ""
+    MicrovmNetworkApplyRefused { cause: c } => c
+  }
+}
+
+// THE INSTALLED BYTES ARE RENDERED FROM A REVISION, SO THE RUN MUST BE AT THAT REVISION. The RED is
+// a dispatch that names one revision while the tree is checked out at another: the operator then
+// authorizes the content of R and the host executes the content of whatever this checkout happens to
+// be. The positive control is the same call with the two equal, which must admit -- without it the
+// refusal could be satisfied by a predicate that refuses everything.
+test fn a_dispatched_revision_that_is_not_the_checked_out_tree_is_refused() -> Bool {
+  !admitted(a: microvm_network_apply_admission(
+    host: operator_host_srv1 as String,
+    expected_revision: a_revision,
+    checked_out_revision: another_revision,
+  ))
+    && string_contains(
+         s: refusal_cause(a: microvm_network_apply_admission(
+           host: operator_host_srv1 as String,
+           expected_revision: a_revision,
+           checked_out_revision: another_revision,
+         )),
+         pattern: another_revision,
+       )
+    && admitted(a: microvm_network_apply_admission(
+         host: operator_host_srv1 as String,
+         expected_revision: a_revision,
+         checked_out_revision: a_revision,
+       ))
+}
+
+// A RUN THAT NAMES NO REVISION AND A RUN THAT NAMES NO HOST BOTH REFUSE, and each says which. An
+// unnamed revision read as "whatever is here" is the same defect as the mismatch above with the
+// evidence removed; an unnamed host is a root-evaluated install fanned across the fleet from an
+// empty variable.
+test fn an_unnamed_host_or_revision_refuses_before_anything_is_reached() -> Bool {
+  !admitted(a: microvm_network_apply_admission(host: "", expected_revision: a_revision, checked_out_revision: a_revision))
+    && !admitted(a: microvm_network_apply_admission(host: operator_host_srv1 as String, expected_revision: "", checked_out_revision: a_revision))
+    && !admitted(a: microvm_network_apply_admission(host: operator_host_srv1 as String, expected_revision: a_revision, checked_out_revision: ""))
+}
+
+// EVERY ANCESTOR OF THE STAGING ROOT IS CHECKED, NOT ONLY THE LEAF. A root-only leaf under a
+// job-user-writable parent can be renamed away and replaced between the check and the install, so a
+// check that enumerated only the leaf would pass on exactly the host state this module exists to
+// refuse. The RED is a fold that returns a one-element list.
+test fn the_staging_ancestor_check_enumerates_every_prefix_and_not_only_the_leaf() -> Bool {
+  staging_ancestor_paths() == ["/var", "/var/lib", runner_microvm_staging_dir as String]
+    && length(staging_ancestor_paths()) > 1
+}
+
+// THE STAGING ROOT IS OUTSIDE THE JOB USER'S OWN TREE. gunbc.runner_host_grants creates
+// /var/lib/gunbc/fleet-converge with owner=job, so a staged file beneath it is content the job user
+// can rewrite -- which is what the frontier says does not satisfy it. The RED is the previous value.
+test fn the_staging_root_is_not_under_the_job_user_owned_converge_state_directory() -> Bool {
+  !string_contains(s: runner_microvm_staging_dir as String, pattern: "/var/lib/gunbc/fleet-converge")
+}
+
+// "I DID NOT LOOK" IS NOT "IT IS SAFE". PathsNotApplicable and PathsUnobservable are the two arms
+// that carry no reading, and reading either as success would let the run install from a staging
+// directory whose ownership nobody established. The positive control is PathsRootOnly.
+test fn an_unread_or_inapplicable_path_metadata_is_not_treated_as_root_only() -> Bool {
+  path_metadata_ok(m: PathsRootOnly)
+    && !path_metadata_ok(m: PathsNotApplicable)
+    && !path_metadata_ok(m: PathsUnobservable { reason: "the find leg did not run" })
+    && !path_metadata_ok(m: PathsNotRootOnly { paths: ["/var/lib/gunbc-microvm-network-stage"], detail: "owned by the job user" })
+}
+
+// A REFUSED LEG IS NOT A SUCCESSFUL OPERATION, AND NEITHER IS A NONZERO EXIT. The RED that matters
+// is the refused arm: a leg the transport never ran has no exit code, and defaulting that to zero
+// would report an install that did not happen as one that did.
+test fn an_operation_succeeds_only_on_a_leg_that_ran_and_exited_zero() -> Bool {
+  operation_result_ok(r: OperationResult { argv: ["sudo", "-n", "true"], leg: ApplyLegRan { exit_code: 0, stdout: "", stderr: "" } })
+    && !operation_result_ok(r: OperationResult { argv: ["sudo", "-n", "false"], leg: ApplyLegRan { exit_code: 1, stdout: "", stderr: "" } })
+    && !operation_result_ok(r: OperationResult { argv: ["sudo", "-n", "true"], leg: ApplyLegRefused { reason: "the remote words are not portable" } })
+}

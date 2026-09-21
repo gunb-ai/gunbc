@@ -263,12 +263,12 @@ test fn every_installed_file_is_staged_with_its_rendered_bytes() -> Bool {
     tap_owner: "ghrunner" as NonEmptyStr,
   )
   map(staged, f => f.path as String) == [
-    "/var/lib/gunbc/fleet-converge/microvm-network/gunbc-tap1.netdev",
-    "/var/lib/gunbc/fleet-converge/microvm-network/gunbc-tap1.network",
-    "/var/lib/gunbc/fleet-converge/microvm-network/gunbc-tap1-ipv6.conf",
-    "/var/lib/gunbc/fleet-converge/microvm-network/microvm.nft",
-    "/var/lib/gunbc/fleet-converge/microvm-network/gunbc-microvm-nft.service",
-    "/var/lib/gunbc/fleet-converge/microvm-network/forward.conf",
+    "/var/lib/gunbc-microvm-network-stage/gunbc-tap1.netdev",
+    "/var/lib/gunbc-microvm-network-stage/gunbc-tap1.network",
+    "/var/lib/gunbc-microvm-network-stage/gunbc-tap1-ipv6.conf",
+    "/var/lib/gunbc-microvm-network-stage/microvm.nft",
+    "/var/lib/gunbc-microvm-network-stage/gunbc-microvm-nft.service",
+    "/var/lib/gunbc-microvm-network-stage/forward.conf",
   ]
     && fold(staged, init: true, f: (acc, x) => acc && x.content != "")
 }

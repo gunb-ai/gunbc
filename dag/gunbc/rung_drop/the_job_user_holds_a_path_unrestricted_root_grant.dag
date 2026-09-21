@@ -1,0 +1,50 @@
+module gunbc.rung_drop.the_job_user_holds_a_path_unrestricted_root_grant
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+// THIS ROW IS A GRAIN CORRECTION, AND SAYING SO IS THE WHOLE POINT. Nothing regressed on
+// 2026-09-21; what happened is that the rung the corpus REPORTS for "which root-evaluated commands
+// the CI job user may run on a runner host" was read off gunbc.executor_privileged_operation, whose
+// construction really does make an unauthorized argv unspellable -- in the ONE sudoers file it
+// renders. The principal that file constrains holds a SECOND, path-unrestricted grant from
+// gunbc.ci_deploy_sudoers, so at the grain that matters (the principal, not the file) the rung is
+// mitigatable and has been for as long as both files have existed. DESIGN section 4b(1) is explicit
+// that a class's rung is the MINIMUM across its in-scope paths and that citing the strongest path
+// while another stays silent is inflation; this row is that minimum, written down.
+//
+// WHY IT IS FILED AS A DROP RATHER THAN ONLY AS A CLASS. The class -- the mechanism by which a
+// refusing authority cannot see what its subject already holds -- is
+// gunbc.recurring_failure_mode.the_grant_a_frontier_refuses_is_already_held_from_another_authority.
+// A class records a pattern; a drop records a STANDING LOSS with a bounded population and a trigger
+// that retires it, and there is one here: until the trigger below holds, every reader of
+// gunbc.runner_microvm_network_converge's frontier, and every reviewer who cites it, is reasoning
+// from a wall the same principal walks around with sudo.
+//
+// THIS ROW DOES NOT NARROW ANYTHING. Closing the grants is a separate, operator-gated item: legacy
+// jobs on the host consume them today, and each grant needs its own consumer census before it can
+// be removed. This row's job is to stop the loss being unrecorded.
+data the_job_user_holds_a_path_unrestricted_root_grant: RungDrop = RungDrop {
+  identity: "the_job_user_holds_a_path_unrestricted_root_grant" as NonEmptyStr,
+
+  subject: "Which root-evaluated commands the CI job user (ghrunner) may run on a runner host -- assessed at the PRINCIPAL, across every authority that renders a sudoers body for it, rather than at one rendered file",
+
+  declared: "2026-09-21",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "the CI job user ghrunner, on every runner host carrying /etc/sudoers.d/gunbc-deploy -- the file gunbc.ci_deploy_sudoers deploy_sudoers_install_shell installs from the deploy apply preamble",
+      "VERIFIED on srv1, 2026-09-21, by reading the live file: ghrunner ALL=(ALL) NOPASSWD: over /usr/bin/install, /usr/bin/systemctl, /usr/bin/rm, /usr/sbin/visudo, /usr/sbin/usermod, /usr/sbin/useradd, /usr/bin/apt-get, /usr/bin/tailscale -- every one a bare command_path with no argv, which is a PosixSudoGrant carrying no argv because that type admits one without",
+      "DECLARED for srv1 alone: the only DeployAccess this repository constructs is gunbc.ci_deploy_access ci_deploy_srv1_access, so srv1 is the host the model says the file is installed on",
+      "UNVERIFIED, AND THEREFORE STATED AS UNVERIFIED RATHER THAN AS ABSENT: whether srv3 and srv4 also carry the file. This lane had no host access and did not read them, and a deploy apply run against either at any point in the past would have installed it. The population is bounded at 'every runner host where that preamble has run', and closing it to a named host list needs a read of /etc/sudoers.d/ on srv2, srv3 and srv4 -- absence is not established by this row",
+      "NOT in the population: /etc/sudoers.d/gunbc-ghrunner, rendered by gunbc.runner_host_grants from gunbc.executor_privileged_operation. Every line of it pins its complete argv and the construction there is sound; it is the file whose strength was being cited for the principal",
+    ],
+    restoration_trigger: "THE CAPABILITY: the CI job user holds NO path-unrestricted root grant on ANY runner host -- every sudoers line rendered for that principal, by every authority that renders one, pins its complete argv, so an operation the model did not declare has no spelling for it -- AND the root-evaluated installs those grants exist to perform run instead under the administrator edge (gunbc.fleet_bootstrap_principal executor_bootstrap_principal over the fleet SSH key), as gunbc.runner_host_file_converge already does for root-evaluated files. BOTH halves are required and the second is why this is not simply a deletion: the grants have live consumers, so removing them without moving their work to the administrator breaks the deploy rather than securing it. WHAT DOES NOT RETIRE THIS ROW, each named because each is the likely mistake: routing the microVM network apply through the administrator edge, which removes the NEW grant this loss would otherwise have justified but leaves every existing one standing; narrowing the sudoers on srv1 by hand, since the generator rewrites the file and the population is not one host; adding a lens that compares the two rendered files, which is validation where construction is available and reports only the hosts someone remembered to compare; and a census of the grants' consumers, which is the INPUT to the operator decision that closes them and not the closure. The row retires on a READ of every runner host's sudoers.d showing no path-only grant for the job user, with the displaced work observed running under the administrator principal.",
+  },
+}
