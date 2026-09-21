@@ -1,0 +1,246 @@
+module v2.test.parse.g0_service_decl_parse_probe
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { ParseArtifact, parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, Outcome, Rejected }
+import v2.std.language_model { LanguageModel }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { well_formed }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SH-3: G0 had no service production. v1 parse_service_def expects keyword
+// `service`, then a dotted name, then a brace body of operations (and optional
+// transport/config). The marker words are literal terminals over ident, not keyword classes. The first native fatal was leftover token `service` at
+// dag/extdeps/access/posix_effective_principal_read_op.dag. The family is the
+// nest below; service-level `config` and the v2-inline operation form remain
+// v1-admitted remainder. Parsing is not lowering: the route rows below pin that a parsed
+// service is refused at the normalized-tree door.
+
+data probe_cached_lm: LanguageModel = dag_language_model()
+
+fn parse_src(src: String) -> Outcome<ParseArtifact> {
+  let lm = probe_cached_lm
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } => parse_module(tokens: ts, grammar: lm.grammar)
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn parses(src: String) -> Bool {
+  match parse_src(src: src) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn smallest_service_parsed() -> Outcome<ParseArtifact> {
+  parse_src(src: smallest_service_source)
+}
+
+// A refusal claim names the PARSE DOOR, so it must establish that the door is the thing that
+// refused. `parse_src` folds a tokenize rejection and a parse rejection into one `Rejected`, so a
+// helper that is merely the negation of `parses` is green whenever ANYTHING fails -- including a
+// fixture that never reached the parser. That is the absorbing arm DESIGN 5 refuses: it widens
+// instead of discriminating, and every one of the five service refusals below would have passed
+// for a reason it is not about. This helper requires tokenize to ACCEPT and parse to REJECT, so the
+// stage is pinned and a fixture that dies in the lexer reds instead of flattering the claim.
+fn refuses_at_parse(src: String) -> Bool {
+  let lm = probe_cached_lm
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data fn_control_source: String = "module m\nfn f() -> Int { 1 }\n"
+
+data smallest_service_source: String = "module m\nservice S {\n  operation Op {\n    input { x: Int }\n    output { y: Int from \"y\" }\n    readonly\n    transport shell { argv: [\"a\"] }\n  }\n}\n"
+
+data missing_name_red_source: String = "module m\nservice {\n  operation Op { input { x: Int } }\n}\n"
+
+data missing_brace_red_source: String = "module m\nservice S\nfn f() -> Int { 1 }\n"
+
+data unknown_modifier_red_source: String = "module m\nservice S {\n  operation Op {\n    input { x: Int }\n    volatile\n    transport shell { argv: [\"x\"] }\n  }\n}\n"
+
+data field_default_source: String = "module m\nservice S {\n  operation Op {\n    input { path: String, max_depth: Int = 1 }\n    transport shell { argv: [\"a\"] }\n  }\n}\n"
+
+data field_default_without_expr_red_source: String = "module m\nservice S {\n  operation Op {\n    input { max_depth: Int = }\n  }\n}\n"
+
+// The service body of dag/extdeps/access/posix_effective_principal_read_op.dag, the first native
+// fatal this family exists to clear: newline-separated output fields, exit, mock_response.
+data posix_effective_principal_service_source: String = "module m\nservice access.PosixEffectivePrincipal {\n  operation Read {\n    input { read: EffectivePosixPrincipalRead }\n    output {\n      exit_code: Int from \"exit_code\"\n      success: Bool from \"exit_success\"\n      stdout: String from \"stdout\"\n      stderr: String from \"stderr\"\n    }\n    readonly\n\n    transport shell { argv: [\"whoami\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"whoami failed\"\n    }\n    mock_response {\n      0 => { exit_code: 1, success: false, stdout: \"\", stderr: \"hermetic effective-principal observation unavailable\" } \"hermetic access.PosixEffectivePrincipal.Read refuses external identity observation\"\n    }\n  }\n}\n"
+
+data remaining_arms_service_source: String = "module m\nservice S {\n  transport rest { base: \"u\" }\n  operation Op {\n    input { x: Int }\n    idempotent\n    hermetic\n    response {\n      200 => Int\n      404 => String \"missing\"\n    }\n  }\n}\n"
+
+data exit_entry_without_arrow_red_source: String = "module m\nservice S {\n  operation Op {\n    exit {\n      0 Unit\n    }\n  }\n}\n"
+
+// v1 parse_mock_response_entries_acc takes the trailing description as optional, so the
+// refusal pinned here is the missing expression, not a missing message.
+data mock_entry_without_expr_red_source: String = "module m\nservice S {\n  operation Op {\n    mock_response {\n      0 =>\n    }\n  }\n}\n"
+
+// The io field tail is service-scoped: a general type field with a default or a `from` key still
+// refuses at parse, and the plain type control shows the refusal is the tail, not the type.
+data plain_type_source: String = "module m\ntype T { x: Int }\n"
+
+data type_field_default_red_source: String = "module m\ntype T { x: Int = 1 }\n"
+
+data type_field_from_red_source: String = "module m\ntype T { x: Int from \"k\" }\n"
+
+test fn fn_control_still_parses_holds() -> Bool {
+  parses(src: fn_control_source)
+}
+
+test fn smallest_service_parses_holds() -> Bool {
+  match smallest_service_parsed() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn smallest_service_tree_is_well_formed_holds() -> Bool {
+  match smallest_service_parsed() {
+    Accepted { value: a, diagnostics: _ } => well_formed(n: a.tree)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn service_without_name_still_refuses_holds() -> Bool {
+  refuses_at_parse(src: missing_name_red_source)
+}
+
+test fn service_without_brace_still_refuses_holds() -> Bool {
+  refuses_at_parse(src: missing_brace_red_source)
+}
+
+test fn unknown_operation_modifier_still_refuses_holds() -> Bool {
+  refuses_at_parse(src: unknown_modifier_red_source)
+}
+
+// RESTORED (gunbc#11955). An earlier revision retired this claim as a 4b(4) climb, arguing that
+// deleting the twelve keyword lex rules left its RED unauthorable. That is the one thing 4b(4)
+// does not permit: a climb dissolves the lower-rung PRODUCTION machinery and never the evidence.
+// The RED is authorable and this fixture IS the authoring -- 4b decides the question at the
+// fixture boundary, not the corpus boundary, and plain source using the marker words as ordinary
+// names is exactly source handed to the compiler by a fixture. Deleting the lex rules removes the
+// mechanism that could break name usability TODAY; it is not evidence that a later lexer or
+// grammar change cannot add one, and this claim is what would notice.
+//
+// G0 IS THE SUBJECT, NOT THE SEED. Seven of the marker words are reserved in the SEED's
+// extdeps.languages.dag.syntax dag_keyword_set, so this text is not writable as .dag source today;
+// it is tokenized here by G0's own lex rules, which carry no keyword entry for any of them. The
+// asymmetry is real and belongs to the seed, not to this family.
+data keyword_as_name_source: String = "module m\nfn f(from: Int, input: Int) -> Int { let transport = from\n transport + input }\n"
+
+// THE STAGE PIN'S OWN CONTROL. refuses_at_parse replaced a helper that was the negation of
+// `parses`, and a stage pin nobody has seen discriminate is indistinguishable from the helper it
+// replaced. This source dies in the LEXER, so the old helper called it a refusal and the new one
+// must not: refuses_at_parse is false here, and false is the passing reading. Delete the tokenize
+// arm of refuses_at_parse and this claim goes red while every service refusal above stays green --
+// which is the point, since those five could not tell the two doors apart either.
+data lexically_invalid_source: String = "module m\nfn f() -> Int { 1 @ 2 }\n"
+
+test fn a_lexical_failure_is_not_a_parse_door_refusal_holds() -> Bool {
+  match refuses_at_parse(src: lexically_invalid_source) {
+    true => false
+    false => true
+  }
+}
+
+test fn service_keywords_remain_usable_as_names_holds() -> Bool {
+  parses(src: keyword_as_name_source)
+}
+
+test fn field_default_parses_holds() -> Bool {
+  parses(src: field_default_source)
+}
+
+test fn field_default_without_expr_still_refuses_holds() -> Bool {
+  refuses_at_parse(src: field_default_without_expr_red_source)
+}
+
+test fn posix_effective_principal_service_parses_holds() -> Bool {
+  parses(src: posix_effective_principal_service_source)
+}
+
+test fn remaining_service_arms_parse_holds() -> Bool {
+  parses(src: remaining_arms_service_source)
+}
+
+test fn exit_entry_without_arrow_still_refuses_holds() -> Bool {
+  refuses_at_parse(src: exit_entry_without_arrow_red_source)
+}
+
+test fn mock_entry_without_expr_still_refuses_holds() -> Bool {
+  refuses_at_parse(src: mock_entry_without_expr_red_source)
+}
+
+test fn plain_type_still_parses_holds() -> Bool {
+  parses(src: plain_type_source)
+}
+
+test fn type_field_default_still_refuses_holds() -> Bool {
+  refuses_at_parse(src: type_field_default_red_source)
+}
+
+test fn type_field_from_key_still_refuses_holds() -> Bool {
+  refuses_at_parse(src: type_field_from_red_source)
+}
+
+// ROUTE, not only parse. A service parses but has no body-lowering producer yet, so normalize must
+// land it on the declared lowered | wrapper-retained frontier (body_lowering_fold
+// body_lower_wrapper_retained_shell) and the normalized-tree door must REFUSE it with a typed reason
+// (normalized_tree admit_normalized_tree) -- never admit an unlowered service shell to resolve.
+// The fn control is the positive half: the same door admits a module with nothing retained.
+fn refused_for_retention(ne: NonEmptyDiagnostics) -> Bool {
+  fold_list(
+    xs: ne.tail,
+    empty: ne.head.reason == ^normalized_tree_reason_wrapper_retention_not_normalized,
+    cons: fn(found, d) { found || d.reason == ^normalized_tree_reason_wrapper_retention_not_normalized }
+  )
+}
+
+fn normalize_refuses_for_retention(src: String) -> Bool {
+  match parse_src(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: a, diagnostics: _ } =>
+      match normalize(parse_tree: a.tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: r } => refused_for_retention(ne: r)
+      }
+  }
+}
+
+fn normalize_admits(src: String) -> Bool {
+  match parse_src(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: a, diagnostics: _ } =>
+      match normalize(parse_tree: a.tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// The route needs only a service declaration, not a populated one: an empty service still emits
+// dag_surface_service_decl with no lowering producer. The populated smallest_service fixture
+// measured 396ms here against the 302ms enrolment margin (floor run 35440687934), paying to parse
+// and normalize an operation this claim never inspects (DESIGN 3, a witness discriminates at one
+// interface).
+data empty_service_source: String = "module m\nservice S {}\n"
+
+test fn parsed_service_is_refused_at_the_normalized_tree_door_holds() -> Bool {
+  normalize_refuses_for_retention(src: empty_service_source)
+}
+
+test fn fn_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
+  normalize_admits(src: fn_control_source)
+}

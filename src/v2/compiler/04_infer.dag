@@ -802,13 +802,29 @@ fn inferred_facts_witness_for_node(tree: InferredTree, node: Node) -> Witness<In
   witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
 }
 
+// A DEMAND FOR A CANONICAL GROUNDING THE FRONTIER LEFT UNDERIVED IS A REFUSAL, AND IT HAS ITS OWN
+// NAME. `infer_grounding_not_derived` is the frontier ADVISORY infer carries on its Accepted path
+// (node_grounding_frontier_note); until 2026-09-21 this arm REFUSED with that same symbol, so a
+// consumer that demanded the grounding -- coercion, translate's fold, eval's constraints -- produced
+// a rejection chain whose fatal was spelled exactly like the advisories riding in front of it, and no
+// reader of the flat chain could tell which link refused (DESIGN section 3: one name, two contracts).
+// eval and translate each name their own gate's refusal; this is the shared root every other demand
+// reaches, so it names its own.
+fn infer_grounding_demanded_not_derived_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_grounding_demanded_not_derived,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn canonical_grounding_from_inferred_facts(
   node: Node,
   facts: InferredFacts,
 ) -> Outcome<CanonicalGrounding> {
   match facts.grounding {
     GroundingNotDerived { node: n } =>
-      outcome_rejected(infer_grounding_not_derived_diagnostic(at: node_locus(node: n)))
+      outcome_rejected(infer_grounding_demanded_not_derived_diagnostic(at: node_locus(node: n)))
     DerivedGrounding { grounding: g } =>
       if node != g.node {
         outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
