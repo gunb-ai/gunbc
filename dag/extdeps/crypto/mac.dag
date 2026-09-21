@@ -142,11 +142,11 @@ fn hmac_zero_extend(octets: List<UInt8>, count: Int) -> List<UInt8> {
   if list_length(items: octets) >= count { octets } else { hmac_zero_extend(octets: octets |> list_push(0), count: count) }
 }
 
-fn hmac_block_key(key: List<UInt8>) -> Result<List<UInt8>, HmacRefusal> {
+fn hmac_block_key(key: List<UInt8>) -> List<UInt8> {
   if list_length(items: key) > sha256_block_octets() {
-    Ok { value: hmac_zero_extend(octets: sha256(message: key), count: sha256_block_octets()) }
+    hmac_zero_extend(octets: sha256(message: key), count: sha256_block_octets())
   } else {
-    Ok { value: hmac_zero_extend(octets: key, count: sha256_block_octets()) }
+    hmac_zero_extend(octets: key, count: sha256_block_octets())
   }
 }
 
@@ -173,9 +173,7 @@ fn hmac_xor_pad(key: List<UInt8>, pad: Word, acc: List<UInt8>) -> Result<List<UI
 }
 
 fn hmac_sha256_octets(key: List<UInt8>, message: List<UInt8>) -> Result<List<UInt8>, HmacRefusal> {
-  match hmac_block_key(key: key) {
-    Err { value: e } => Err { value: e }
-    Ok { value: k0 } =>
+  let k0 = hmac_block_key(key: key)
       match hmac_octet_word(o: hmac_inner_pad_octet) {
         Err { value: e } => Err { value: e }
         Ok { value: ipad } =>
@@ -193,7 +191,6 @@ fn hmac_sha256_octets(key: List<UInt8>, message: List<UInt8>) -> Result<List<UIn
               }
           }
       }
-  }
 }
 
 // The corpus's spelling of a MAC call: key material as lowercase hex (the keyring's form), the
