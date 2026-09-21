@@ -23,7 +23,7 @@ import extdeps.apple.app_attest {
   AppAttestEcdsaSignatureVerification, AppAttestClientDataNonceBinding,
   LaunchExtensionsRequired, LaunchExtensionsOptional, AppAttestLaunchExtensionPolicy,
   AppAttestAttestationReady, AppAttestAttestationRefused, AppAttestEnvironment,
-  app_attest_attestation_object, app_attest_verify, app_attest_verify_assertion, app_attest_environment_of,
+  app_attest_attestation_object, app_attest_verify, app_attest_verify_octets, app_attest_verify_assertion, app_attest_environment_of,
   AppAttestAssertionReady, AppAttestAssertionRefused, app_attest_assertion_object,
 }
 import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
@@ -81,7 +81,7 @@ fn verify_genuine(environment: AppAttestEnvironment, policy: AppAttestLaunchExte
 }
 
 fn verify_bytes(octets: List<UInt8>) -> AttestationVerification {
-  app_attest_verify(environment: AppAttestDevelopment, policy: LaunchExtensionsOptional, admitted_categories: admitted_categories, attestation_b64: reencode(octets: octets), key_id: genuine_key_id, now_epoch: captured_at)
+  app_attest_verify_octets(environment: AppAttestDevelopment, policy: LaunchExtensionsOptional, admitted_categories: admitted_categories, decoded: octets, key_id: genuine_key_id, now_epoch: captured_at)
 }
 
 // ── The genuine object decodes to the independently read values ─────────────────────────────

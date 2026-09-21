@@ -654,6 +654,21 @@ fn app_attest_verify(
   match base64_decode(s: attestation_b64 as String, variant: Standard) {
     Absent => AttestationRefused { cause: AttestationMalformed { cause: AppAttestBase64Invalid } }
     Present { value: decoded } =>
+      app_attest_verify_octets(environment: environment, policy: policy, admitted_categories: admitted_categories, decoded: decoded, key_id: key_id, now_epoch: now_epoch)
+  }
+}
+
+// The verifier over the decoded octets: the wire entry above is base64_decode then this, so a
+// claim that mutates the bytes can reach the same route without re-encoding 4 KB through the
+// sealed carrier and decoding it again (four claims exceeded the floor's wall budget doing so).
+fn app_attest_verify_octets(
+  environment: AppAttestEnvironment,
+  policy: AppAttestLaunchExtensionPolicy,
+  admitted_categories: List<Int>,
+  decoded: List<UInt8>,
+  key_id: AttestKeyId,
+  now_epoch: Int,
+) -> AttestationVerification {
       match app_attest_attestation_object(input: decoded) {
         AppAttestAttestationRefused { cause: c } => AttestationRefused { cause: c }
         AppAttestAttestationReady { value: obj } =>
@@ -673,7 +688,6 @@ fn app_attest_verify(
               }
           }
       }
-  }
 }
 
 // ── Assertions ───────────────────────────────────────────────────────────────────────────────
