@@ -108,11 +108,11 @@ import gunbc.runner_guest_image { runner_guest_agent_unit }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.floor_demand {
   floor_storage_demand, StorageDemandStated, StorageDemandUnrepresentable, floor_memory_requirement,
-  round_up_to_gibibyte_grain, GrainRounded, GrainUnrepresentable,
+  round_up_to_gibibyte_grain,
   gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured, HeldSetReceiptUnrepresentable,
   receipt_last_unstalled_beat, beat_reclaimable_cache,
 }
-import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend, GrainRounded, GrainUnrepresentable }
 import std.checked_arithmetic { int_inclusive_max }
 import gunbc.runner_slot_allocation {
   gunbc_runner_cores_per_slot,

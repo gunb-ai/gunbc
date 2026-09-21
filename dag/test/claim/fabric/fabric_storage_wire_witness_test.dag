@@ -113,7 +113,9 @@ test fn an_answered_200_hands_back_the_body_without_the_status_line() -> Bool {
 // The presented identity crosses the wire as the same arm: a login as that login, absent as absent.
 // A reply of another shape under the identity word is undecodable, not an absent identity -- the
 // absent arm is written by the store side only, never inferred by the caller from a reply it could
-// not read.
+// not read. THE GRAMMAR IS EXACT: a trailing word on `absent`, and a second word after a login, are
+// undecodable -- a malformed reply can never read as the store saying the proxy supplied no login.
+// THE REPLY IS ONE LINE: a continuation after either arm, or a trailing newline, is undecodable.
 test fn a_presented_login_crosses_the_wire_as_that_login_and_absent_as_absent() -> Bool {
   let present = match fabric_storage_unwire_identity(text: fabric_storage_wire_identity(identity: TailnetUser { login: "writer@example.ts.net" as NonEmptyStr })) {
     FabricIdentityPresented { identity: i } => match i { TailnetUser { login: l } => (l as String) == "writer@example.ts.net"  TailnetIdentityAbsent => false }
@@ -132,11 +134,8 @@ test fn a_presented_login_crosses_the_wire_as_that_login_and_absent_as_absent() 
     FabricIdentityReadRefused { fault: _ } => true
     _ => false
   }
-  // THE GRAMMAR IS EXACT: a trailing word on `absent`, and a second word after a login, are
-  // undecodable -- a malformed reply can never read as the store saying the proxy supplied no login.
   let absent_extra = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity absent extra") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
   let present_extra = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity present login extra") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
-  // THE REPLY IS ONE LINE: a continuation after either arm, or a trailing newline, is undecodable.
   let absent_continued = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity absent\nunexpected continuation") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
   let present_continued = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity present writer@example.ts.net\nunexpected continuation") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
   let trailing_newline = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity absent\n") { FabricIdentityReadRefused { fault: _ } => true  _ => false }

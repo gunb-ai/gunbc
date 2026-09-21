@@ -10,7 +10,7 @@ import gunbc.auth.approval_request_client { ApprovalPollStanding }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, fabric_group_hosts }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline }
 import gunbc.spark.v41_runtime_candidate { v41_candidate, V41CandidateStanding, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused }
-import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_hash, d0_intent_text, parse_d0_intent_text, D0ClaimReading, D0ClaimAt, D0ClaimAbsent, D0ClaimUnreadable }
+import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_hash, d0_intent_text, parse_d0_intent_text, parse_d0_frozen_filing, D0ClaimReading, D0ClaimAt, D0ClaimAbsent, D0ClaimUnreadable }
 
 // ── THE ESCALATION → AUTHORIZATION PRODUCER FOR D0 (Cut D, the gate Cut 0 opens) ─────────────
 //
@@ -79,8 +79,14 @@ type D0FiledRequestStanding
   = D0FiledRequestFor { request: AuthorizationRequest<D0Subject>, intent_text: String }
   | D0FiledRequestRefused { reason: NonEmptyStr }
 
-fn d0_filed_request(text: String, group: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr) -> D0FiledRequestStanding {
-  match parse_d0_intent_text(text: text) {
+fn d0_filed_request(text: String, group: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr, execution_revision: NonEmptyStr) -> D0FiledRequestStanding {
+  match parse_d0_frozen_filing(text: text) {
+    Absent => D0FiledRequestRefused { reason: "the frozen filing under this escalation is not one D0 intent with its execution revision" as NonEmptyStr }
+    Present { value: frozen } =>
+      if (frozen.execution_revision as String) != (execution_revision as String) {
+        D0FiledRequestRefused { reason: join(["the consent was filed by revision ", frozen.execution_revision as String, " and this run executes ", execution_revision as String, "; a lifecycle finishes under the executable that began it, or under a modeled migration -- neither is this run"], "") as NonEmptyStr }
+      } else {
+  match parse_d0_intent_text(text: frozen.intent_text) {
     Absent => D0FiledRequestRefused { reason: "the frozen filing under this escalation is not one D0 intent" as NonEmptyStr }
     Present { value: parsed } =>
       if (fabric_group_wire(g: parsed.group) as String) != (fabric_group_wire(g: group) as String) {
@@ -90,8 +96,10 @@ fn d0_filed_request(text: String, group: FabricGroup, escalation_id: NonEmptyStr
       } else {
         match d0_intent_hash(subject: parsed.subject, group: group, transaction: transaction) {
           Absent => D0FiledRequestRefused { reason: "the frozen intent could not be digested (sha256sum unavailable)" as NonEmptyStr }
-          Present { value: i } => D0FiledRequestFor { request: d0_request(escalation_id: escalation_id, subject: parsed.subject, transaction: transaction, intent: i), intent_text: text }
+          Present { value: i } => D0FiledRequestFor { request: d0_request(escalation_id: escalation_id, subject: parsed.subject, transaction: transaction, intent: i), intent_text: frozen.intent_text }
         }
+      }
+  }
       }
   }
 }

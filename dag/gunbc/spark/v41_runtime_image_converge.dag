@@ -1,0 +1,374 @@
+module gunbc.spark.v41_runtime_image_converge
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.container.oci.digest { OciContentDigest, parse_oci_content_digest_wire, render_oci_content_digest_wire }
+import extdeps.exec.command { argv_words }
+import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_6_18_post1_wheel_url }
+import extdeps.posix.sh_invocation { posix_sh_script_command }
+import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.file_access { FileTreeScope }
+import gunbc.host_effect { FleetSsh }
+import gunbc.remote_operation { RemoteArgv, RemoteFileBytes, PlannedRemoteStep }
+import gunbc.typed_remote_file_write {
+  typed_remote_file_write_seal, TypedRemoteFileWriteAdmitted, TypedRemoteFileWriteAdmissionRefused,
+  RemoteFileModeOwnerReadWrite,
+}
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_multi_principal_probe {
+  SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused,
+  spark_converge_target_selection,
+}
+import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_live, release_host_effect_live }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
+import gunbc.spark.remote_step_sequence {
+  run_remote_step_sequence, remote_step_sequence_failed, remote_step_failure_causes_wire,
+}
+import gunbc.spark.vllm_runtime_image_build {
+  VllmImageBuild, VllmImageBuilt, VllmImageBuildRefused, VllmImageIdentity,
+  SparkBuildHostWork, SparkBuildHostSession, SparkBuildHostRan, SparkBuildHostRefused, with_spark_build_host,
+  vllm_build_root, vllm_build_host_effect_term, vllm_build_host_purpose, vllm_build_host_residue,
+  vllm_image_receipt_line,
+}
+import gunbc.spark.v41_source_patch_converge {
+  V41PatchedImageBuild, V41PatchedImageBuilt, V41PatchedImageRefused,
+  converge_vllm_runtime_image_with_patches,
+}
+import gunbc.spark.v41_runtime_candidate {
+  V41PatchesObserved, V41PatchesAbsentByObservation, V41PatchesUnestablished,
+  v41_candidate_inputs, v41_candidate_recipe, v41_candidate_partition, v41_storage_backed_patch_population,
+}
+import gunbc.spark.v41_runtime_realized {
+  V41ProducedRuntimeStanding, V41RuntimeProduced, V41RuntimeProductionUnestablished, V41RuntimeProductionRefused,
+  v41_produced_runtime_image, v41_admit_produced_runtime, v41_produced_runtime_line, v41_runtime_was_produced,
+}
+import gunbc.spark.v41_runtime_image_probe {
+  V41ProbeOutcome, V41ProbeRead, V41ProbeRefused,
+  v41_probe_image_in_place, v41_probe_body, v41_probe_all_present,
+}
+
+// ── PRODUCING THE V4.1 IMAGE, AND WHY THAT IS A DIFFERENT ROOT FROM KEYING IT ──────────────────
+//
+// WHAT THIS MODULE IS FOR. gunbc.spark.v41_runtime_candidate fixes WHAT the DeepSeek V4.1 runtime
+// is -- a vLLM recipe at d2d649e6 with the fleet's 12.1 arch list, three digest-pinned FlashInfer
+// wheels, and the two storage-backed Engram patches -- and nothing in the corpus has ever turned
+// that specification into bytes. docs/plans/dsv41-cut-d-redesign.md D1 states the consequence
+// precisely: the authorization for an experiment names "the PRODUCED runtime image digest", and
+// candidate identity is not authorization. This module is the production, and the produced digest
+// it reads back is admitted against the candidate's own recipe rather than trusted.
+//
+// IT IS A FLEET-CONVERGE MODE AND NOT A CLI ENTRY, for the reason the probe beside it is one:
+// docker's socket on a Spark is root-owned and the managed executor is in no docker group, so the
+// only modeled route to that daemon is the Spark administrator credential, which is materialized
+// inside the fleet job's boundary and cannot be held by an authoring session. That is also why this
+// is not a shell somebody runs: DESIGN section 6 names a hand-authored deployment script as
+// out-of-band actuation, and a fleet mutation here is a dispatch of a modeled mode.
+//
+// FOUR LEGS, IN THIS ORDER, AND EACH ONE IS A PRECONDITION OF THE NEXT:
+//   1. verify the three kernel wheels against the digests the candidate keys;
+//   2. converge the patched source tree and build from it (gunbc.spark.v41_source_patch_converge
+//      owns both -- this module chooses neither the revision nor the patch population);
+//   3. read the produced image's capabilities back from INSIDE its own digest, through the probe
+//      route, because a build that exits zero has reported on itself;
+//   4. admit the produced digest against the candidate as a PRODUCED runtime artifact.
+// A refusal at any leg stops the line and names the leg. Nothing widens.
+
+// ── LEG 1: THE WHEELS THE KEY NAMES ARE THE WHEELS UPSTREAM PUBLISHES ─────────────────────────
+//
+// WHAT THIS ESTABLISHES, STATED AT ITS REAL STRENGTH RATHER THAN AT THE STRENGTH ITS NAME SUGGESTS.
+// Each of the three wheels is fetched from the release the acquisition cites and compared to the
+// sha256 gunbc.spark.v41_runtime_candidate folds into the runtime key. What that discriminates is
+// UPSTREAM DRIFT: a wheel re-published at a different digest, a release asset replaced, a filename
+// that now resolves to other bytes. It runs before the build because the answer changes whether the
+// build should start at all, and a seventy-five-minute compile is an expensive place to learn it.
+//
+// WHAT IT DOES NOT ESTABLISH, AND THIS IS NOT A HEDGE. Upstream's own Dockerfile pip-installs
+// flashinfer from the project index during the build, so these verified files are not, by this
+// leg alone, the bytes the image ends up carrying. Calling this "the image installs the keyed
+// wheels" would be exactly the fabricated-plausible-output failure DESIGN section 5 forbids -- a
+// green check standing for a claim it cannot make.
+//
+// DECLARED FRONTIER -- the binding leg. What closes it is reading the installed distributions back
+// from inside the produced image and comparing them to this population, which is a capability the
+// probe route already has the shape for (it runs python3 inside the image's own digest) and does
+// not yet ask for. Its trigger is that readback existing and refusing, not this file changing.
+fn v41_kernel_wheels() -> List<FlashInferWheel> {
+  v41_candidate_inputs.runtime.kernel_wheels
+}
+
+fn v41_wheel_verify_dir() -> NonEmptyStr {
+  join([vllm_build_root() as String, "/declared-wheels"], "") as NonEmptyStr
+}
+
+// feature:remote-shell-body-emission -- dissolve-on: the same bounded-remote-operation-sequence
+// capability named at gunbc.spark.vllm_runtime_image_build glm53_derived_prepare_script and at
+// gunbc.spark.native_serving_apply's stage scripts. A per-member fetch, a pipe into `sha256sum -c -`
+// and `set -e` as the failure discipline have no carrier to be projected from, in any of the three.
+// This is one class under one trigger, not a fourth debt: modelling it here alone would fork the
+// others on how a remote step is expressed.
+//
+// THE SCRIPT IS FILE CONTENT, NOT AN ARGV WORD, for the reason the GLM prepare script records: the
+// portable-word wall at gunbc.fleet_known_hosts_anchor refuses a word carrying pipes, and the
+// jit-cache wheel's filename alone carries a `+` the allowlist does not admit. It travels as a
+// typed_remote_file_write payload and the only argv is `sh <path>`.
+fn v41_wheel_verify_script() -> String {
+  let dir = v41_wheel_verify_dir() as String
+  join([
+    "set -e\n",
+    fold(v41_kernel_wheels(), init: "", f: (acc, w) => join([
+      acc,
+      "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_6_18_post1_wheel_url(w: w) as String, "\n",
+      "echo '", w.sha256.hex as String, "  ", dir, "/", w.filename as String, "' | sha256sum -c -\n",
+    ], "")),
+  ], "")
+}
+
+fn v41_wheel_verify_script_path() -> NonEmptyStr {
+  join([v41_wheel_verify_dir() as String, "/verify-wheels.sh"], "") as NonEmptyStr
+}
+
+fn v41_wheel_verify_steps() -> List<PlannedRemoteStep>? {
+  match typed_remote_file_write_seal(
+    path: v41_wheel_verify_script_path() as FilePath,
+    content: v41_wheel_verify_script(),
+    allowed_scope: FileTreeScope { root_path: v41_wheel_verify_dir() },
+  ) {
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+    TypedRemoteFileWriteAdmitted { write: script } => Present {
+      value: [
+        PlannedRemoteStep {
+          identity: "declared-wheels-dir" as NonEmptyStr,
+          operation: RemoteArgv {
+            argv: argv_words(command: mkdir_parents_command_at(
+              mkdir_binary: mkdir_path_resolved_program,
+              path: v41_wheel_verify_dir() as String,
+            )),
+          },
+        },
+        PlannedRemoteStep {
+          identity: "declared-wheels-script" as NonEmptyStr,
+          operation: RemoteFileBytes { write: script, mode: RemoteFileModeOwnerReadWrite },
+        },
+        PlannedRemoteStep {
+          identity: "declared-wheels-verify" as NonEmptyStr,
+          operation: RemoteArgv { argv: argv_words(command: posix_sh_script_command(path: v41_wheel_verify_script_path())) },
+        },
+      ],
+    }
+  }
+}
+
+// AN EMPTY POPULATION IS ITS OWN ARM, because a fold over zero wheels reports "every wheel verified"
+// with no evidence behind it -- the widening DESIGN section 5 names, in the one place it would be
+// invisible. The candidate refuses an incomplete kernel closure at keying time, so this arm should be
+// unreachable from the live row; it refuses rather than relying on that.
+type V41KernelWheelVerification
+  = V41KernelWheelsVerified { verified: Int }
+  | V41KernelWheelVerificationRefused { step: NonEmptyStr, cause: String }
+
+fn verify_v41_kernel_wheels(target: SshTarget, context: FleetSshExecutionContext) -> V41KernelWheelVerification
+  uses net: Network
+{
+  if length(v41_kernel_wheels()) == 0 {
+    V41KernelWheelVerificationRefused {
+      step: "declared-wheels-population" as NonEmptyStr,
+      cause: "the candidate names no kernel wheels, so verifying them establishes nothing",
+    }
+  } else {
+    match v41_wheel_verify_steps() {
+      Absent => V41KernelWheelVerificationRefused {
+        step: "declared-wheels-seal" as NonEmptyStr,
+        cause: "the wheel verification payload did not seal against the declared-wheels scope",
+      }
+      Present { value: steps } => {
+        let standings = run_remote_step_sequence(steps: steps, transport: FleetSsh { target: target, context: context })
+        if remote_step_sequence_failed(standings: standings) {
+          V41KernelWheelVerificationRefused {
+            step: "declared-wheels-verify" as NonEmptyStr,
+            cause: remote_step_failure_causes_wire(standings: standings),
+          }
+        } else {
+          V41KernelWheelsVerified { verified: length(v41_kernel_wheels()) }
+        }
+      }
+    }
+  }
+}
+
+fn v41_wheel_verification_line(v: V41KernelWheelVerification) -> String {
+  match v {
+    V41KernelWheelsVerified { verified: n } =>
+      join(["kernel wheels verified=", to_string(n), " against the digests this candidate keys\n"], "")
+    V41KernelWheelVerificationRefused { step: st, cause: why } =>
+      join(["kernel wheels REFUSED step=", st as String, " cause=", why, "\n"], "")
+  }
+}
+
+// ── THE WHOLE PRODUCTION, AS ONE FOLD ─────────────────────────────────────────────────────────
+//
+// THE PROBE IS NOT DECORATION AND IT IS NOT THE ADMISSION EITHER. A build that exits zero has
+// reported on itself; the probe asks the produced bytes, from inside their own configuration digest,
+// whether they register DeepseekV41ForCausalLM on sm_121 and admit the layouts this candidate needs.
+// A produced image that does not is a produced image, honestly keyed, that cannot serve -- so the
+// standing is minted either way and the ENTRY's exit is what the capability reading decides. Folding
+// the capability verdict into the produced standing would make "was this built from the candidate's
+// inputs" and "does it work" one answer, and they are two.
+type V41ProducedRuntime
+  = V41RuntimeProductionComplete {
+      standing: V41ProducedRuntimeStanding
+      probe: V41ProbeOutcome
+      wheels: V41KernelWheelVerification
+      build: VllmImageBuild
+    }
+  | V41RuntimeProductionStopped { step: NonEmptyStr, cause: String, wheels: V41KernelWheelVerification }
+
+fn converge_v41_produced_runtime_image(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  ctx: SparkMaterializeContext,
+) -> V41ProducedRuntime
+  uses net: Network
+{
+  match v41_storage_backed_patch_population() {
+    V41PatchesAbsentByObservation => V41RuntimeProductionStopped {
+      step: "patch-population" as NonEmptyStr,
+      cause: "the storage-backed patch population reads as absent by observation, which is the vanilla tree and not this candidate's runtime",
+      wheels: V41KernelWheelVerificationRefused { step: "not-reached" as NonEmptyStr, cause: "the patch population did not resolve, so no wheel was fetched" },
+    }
+    V41PatchesUnestablished { obligation: o } => V41RuntimeProductionStopped {
+      step: "patch-population" as NonEmptyStr,
+      cause: o as String,
+      wheels: V41KernelWheelVerificationRefused { step: "not-reached" as NonEmptyStr, cause: "the patch population did not resolve, so no wheel was fetched" },
+    }
+    V41PatchesObserved { patches: ps, partition: _ } => {
+      let wheels = verify_v41_kernel_wheels(target: target, context: context)
+      match wheels {
+        V41KernelWheelVerificationRefused { step: st, cause: why } =>
+          V41RuntimeProductionStopped { step: st, cause: why, wheels: wheels }
+        V41KernelWheelsVerified { verified: _ } =>
+          match converge_vllm_runtime_image_with_patches(target: target, context: context, ctx: ctx, r: v41_candidate_recipe(), patches: ps) {
+            V41PatchedImageRefused { step: st, cause: why } =>
+              V41RuntimeProductionStopped { step: st, cause: why, wheels: wheels }
+            V41PatchedImageBuilt { build: build, observed: observed } =>
+              match build {
+                VllmImageBuildRefused { step: st, cause: why } =>
+                  V41RuntimeProductionStopped { step: st, cause: why, wheels: wheels }
+                VllmImageBuilt { identity: identity, already_present: _ } =>
+                  match parse_oci_content_digest_wire(raw: identity.local_config_digest as String) {
+                    Absent => V41RuntimeProductionStopped {
+                      step: "image-readback" as NonEmptyStr,
+                      cause: join(["the daemon answered ", identity.local_config_digest as String, " for the produced image, which is not an OCI content digest"], ""),
+                      wheels: wheels,
+                    }
+                    Present { value: config_digest } =>
+                      V41RuntimeProductionComplete {
+                        standing: v41_admit_produced_runtime(
+                          inputs: v41_candidate_inputs.runtime,
+                          partition: v41_candidate_partition,
+                          image: v41_produced_runtime_image(
+                            tag: identity.tag,
+                            local_config_digest: config_digest,
+                            build_key: identity.build_key,
+                            observed: observed,
+                            provenance: identity.provenance,
+                          ),
+                        ),
+                        probe: v41_probe_image_in_place(ctx: ctx, reference: identity.tag),
+                        wheels: wheels,
+                        build: build,
+                      }
+                  }
+              }
+          }
+      }
+    }
+  }
+}
+
+fn v41_production_receipt(p: V41ProducedRuntime) -> String {
+  match p {
+    V41RuntimeProductionStopped { step: st, cause: why, wheels: w } =>
+      join([v41_wheel_verification_line(v: w), "production STOPPED step=", st as String, " cause=", why, "\n"], "")
+    V41RuntimeProductionComplete { standing: s, probe: probe, wheels: w, build: build } =>
+      join([
+        v41_wheel_verification_line(v: w),
+        vllm_image_receipt_line(b: build),
+        v41_produced_runtime_line(s: s),
+        v41_probe_body(o: probe),
+      ], "")
+  }
+}
+
+// THE THREE THINGS THAT MUST ALL HOLD, and they are conjoined here rather than at the exit so the
+// receipt and the verdict cannot disagree: the wheels verified, the produced digest was admitted
+// against the candidate, and the produced bytes carry every capability the probe asks for.
+fn v41_production_succeeded(p: V41ProducedRuntime) -> Bool {
+  match p {
+    V41RuntimeProductionStopped { step: _, cause: _, wheels: _ } => false
+    V41RuntimeProductionComplete { standing: s, probe: probe, wheels: _, build: _ } =>
+      v41_runtime_was_produced(s: s) && v41_probe_all_present(o: probe)
+  }
+}
+
+// ── THE MODE ENTRY ────────────────────────────────────────────────────────────────────────────
+//
+// OBSERVE-ONLY IS A REFUSAL HERE, the same as for the probe and the vanilla build: an unset target
+// means "every enrolled Spark", and this mode occupies ONE host for hours. It refuses rather than
+// choosing one.
+//
+// THE HOST CLAIM IS THE BUILD'S, NOT THE PROBE'S. The term, the purpose and the residue come from
+// gunbc.spark.vllm_runtime_image_build, because what this mode does to a host is a vLLM source build
+// -- three hours before an unreleased claim reads OVERDUE, and the source directory on the command
+// line of every leg as the residue a crashed lane leaves.
+data v41_production_attempt_raw: String = "v41-runtime-image-produce"
+data v41_production_receipt_path: String = "target/v41-runtime-image-produce-receipt.txt"
+
+fn v41_runtime_image_produce_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: producing this image occupies one host for hours, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: build_host } =>
+      match admit_unplaced_host_live(term: vllm_build_host_effect_term, raw: build_host as String, purpose: vllm_build_host_purpose, residue: vllm_build_host_residue()) {
+        SparkHostRefused { cause: why } => exit_failure(reason: why as String)
+        SparkHostAdmitted { host: _, claim: claim } =>
+          release_host_effect_live(handle: claim, exit: {
+            match with_spark_build_host(
+              host: build_host,
+              attempt_raw: v41_production_attempt_raw,
+              identity_file_name: "gunbc-v41-runtime-image-produce-admin-password" as NonEmptyStr,
+              use: fn(target, context, ctx) {
+                let produced = converge_v41_produced_runtime_image(target: target, context: context, ctx: ctx)
+                SparkBuildHostWork {
+                  receipt: v41_production_receipt(p: produced),
+                  converged: v41_production_succeeded(p: produced),
+                }
+              },
+            ) {
+              SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
+              SparkBuildHostRan { work: work, endpoint: endpoint, executor: executor, trust_receipt: trust_receipt } => {
+                let body = join([
+                  join(["v41 runtime image produce probed_at=", probed_at_word(reading: now) as String, " host=", build_host as String, " endpoint=", endpoint as String, " executor=", executor, "\n"], ""),
+                  trust_receipt,
+                  work.receipt,
+                ], "")
+                let w = Filesystem.Write(path: v41_production_receipt_path, content: body)
+                if !w.success {
+                  exit_failure(reason: join(["v41 runtime image produce receipt write failed: ", w.error], ""))
+                } else if work.converged {
+                  ExitSuccess
+                } else {
+                  exit_failure(reason: join(["the V4.1 runtime image was not produced and admitted:\n", body], ""))
+                }
+              }
+            }})
+      }
+  }
+}

@@ -1,8 +1,8 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, Int, NonEmptyStr, String }
-import std.measure { second_count, minute_count }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { second_count, minute_count, hardware_thread_count, hardware_thread_count_value }
 import v2.std.optional { Present }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_approval_window, mtcollins1_boot_poll_cadence, mtcollins1_boot_poll_tick_budget,
@@ -12,7 +12,9 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_sol_is_held,
   mtcollins1_boot_sol_held_from_observations,
   mtcollins1_sol_observed_from_collector,
-  mtcollins1_boot_terminal_observed,
+  mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_refusal_text, mtcollins1_boot_terminal_cause_text,
+  MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRefused, TerminalPending,
+  HardwareThreadCountMismatch, WorkloadWriteFailed,
   mtcollins1_boot_medium_refusal,
   mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1,
 }
@@ -27,6 +29,7 @@ import std.temporal_effect {
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
 import std.scoped_authorization { authorization_claim_key }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
+  MtCollins1BootSubject, MtCollins1BootMedium,
   mtcollins1_boot_subject, mtcollins1_boot_subject_for, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium_label,
 }
 import gunbc.auth.approval_request_client {
@@ -199,6 +202,93 @@ test fn sol_lease_observation_is_the_collector_we_hold_not_sol_info() -> Bool {
     ) == LeaseInaccessible
 }
 
+// A refusal is compared by its rendered causes, in order: the list pattern is the claim.
+fn refused_with(v: MtCollins1BootTerminalVerdict, texts: List<String>) -> Bool {
+  match v {
+    TerminalRefused { causes: cs } => map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == texts
+    _ => false
+  }
+}
+
+fn refused_with_prefix(v: MtCollins1BootTerminalVerdict, prefix: String) -> Bool {
+  match v {
+    TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => starts_with(s: mtcollins1_boot_terminal_cause_text(cause: c), prefix: prefix))
+    _ => false
+  }
+}
+
+fn is_pending(v: MtCollins1BootTerminalVerdict) -> Bool {
+  match v { TerminalPending { reason: _ } => true  _ => false }
+}
+
+// THE FOUR WALLS OF REVIEW 5269655400, each with its RED and its positive control:
+// (1) a second begin for the machine while the envelope is open refuses -- run B's refusing
+//     section may not inhabit run A's open envelope;
+// (2) a section without its ARGV line never completes -- text before ARGV is not output and an
+//     EXIT before ARGV mints nothing; and a SECOND ARGV is malformed, never a reset (review
+//     5270388845) -- the one-ARGV a_only fixture beside it is the positive control;
+// (3) an unterminated final fragment is not evidence -- "workload-write-rc=1" without its newline
+//     is Pending, with it Refused;
+// (4) a same-name / different-digest subject-medium disagreement renders the digests, never
+//     "names X but the medium row names X". The image name derives from the digest, so that
+//     subject cannot come from the constructor: it is a forged or stale signed subject, built
+//     field-for-field in the fold.
+// Review 69667: in a CLOSED envelope a section that opened and never printed its EXIT line is
+// "unterminated", not "absent", and a section whose printed output already refused is not
+// reported a second time -- closed_unterminated_workload yields exactly the write refusal plus the
+// unterminated edac-after, never a third cause about the workload.
+fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium: MtCollins1BootMedium, clean: String, boot23_open: String) -> Bool {
+  let begin_a = "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=aaaaaaaa-0000-4000-8000-000000000001 begin 2026-09-21T14:47:00Z=====\n"
+  let begin_b = "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=bbbbbbbb-0000-4000-8000-000000000002 begin 2026-09-21T14:52:00Z=====\n"
+  let refusing_nproc = "----SECTION nproc----\n----ARGV nproc: nproc\n80\n----EXIT nproc: 0\n"
+  let restarted = concat(begin_a, begin_b, refusing_nproc)
+  let no_argv = concat(begin_a, "----SECTION nproc----\n80\n----EXIT nproc: 0\n")
+  let exit_before_argv = concat(begin_a, "----SECTION nproc----\n----EXIT nproc: 0\n----ARGV nproc: nproc\n80\n")
+  let two_argv = concat(begin_a, "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----ARGV nproc: second-boundary\n----EXIT nproc: 0\n")
+  let unterminated = concat(begin_a, "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=1")
+  let terminated = concat(unterminated, "\n")
+  let closed_unterminated_workload = concat(begin_a,
+    "----SECTION boot-media----\n----ARGV boot-media: blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
+    "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+    "----SECTION edac-before----\n----ARGV edac-before: (counters)\n/sys/devices/system/edac/mc/mc0/ce_count == 0\n/sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+    "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=1\n",
+    "----SECTION edac-after----\n----ARGV edac-after: (counters)\n/sys/devices/system/edac/mc/mc0/ce_count == 0\n",
+    "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=aaaaaaaa-0000-4000-8000-000000000001 end 2026-09-21T14:55:00Z=====\n")
+  let same_name_other_digest = MtCollins1BootSubject {
+    machine: census_subject.machine,
+    bmc_host: census_subject.bmc_host,
+    image_name: census_subject.image_name,
+    image_sha256: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210" as NonEmptyStr,
+    export_host: census_subject.export_host,
+    export_dir: census_subject.export_dir,
+    selection: census_subject.selection,
+    power_action: census_subject.power_action,
+    execution_revision: census_subject.execution_revision,
+  }
+  (match mtcollins1_boot_terminal_verdict(capture: restarted, subject: census_subject, medium: census_medium) {
+    TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => string_contains(s: mtcollins1_boot_terminal_cause_text(cause: c), pattern: "second begin marker"))
+    _ => false })
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: concat(begin_a, refusing_nproc), subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160"])
+    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: no_argv, subject: census_subject, medium: census_medium))
+    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: exit_before_argv, subject: census_subject, medium: census_medium))
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: two_argv, subject: census_subject, medium: census_medium), texts: ["section nproc carries two ARGV boundaries; which output the exit belongs to is not a fact"])
+    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: unterminated, subject: census_subject, medium: census_medium))
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: closed_unterminated_workload, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", "closed envelope's edac-after section never printed its EXIT line"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: terminated, subject: census_subject, medium: census_medium), texts: ["workload write rc=1"])
+    && (match mtcollins1_boot_terminal_verdict(capture: clean, subject: same_name_other_digest, medium: census_medium) {
+      TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => {
+        let t = mtcollins1_boot_terminal_cause_text(cause: c)
+        string_contains(s: t, pattern: "both name") && string_contains(s: t, pattern: "fedcba98") && string_contains(s: t, pattern: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+      })
+      _ => false })
+}
+
+// Every closed fixture ends its END marker with a newline, as the program does: an END marker whose
+// newline has not arrived is an unterminated fragment and does not close the envelope.
+// The last fixture is BOOT 23 ATTEMPT 3, run 35612872611, as the capture stood eight minutes before
+// the deadline: the envelope open, nproc complete at 80, the workload section still hashing after
+// printing a failed write. The verdict is REFUSED with both causes; the old Bool read it as "not
+// yet" until timeout.
 test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let subject = mtcollins1_boot_subject(execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
   let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
@@ -206,16 +296,16 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let clean = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
-      "----SECTION boot-media----\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
+      "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
         "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
         concat(
-          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
             "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
-              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
-              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+              "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
             ),
           ),
         ),
@@ -225,16 +315,16 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let ghes_ce = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
-      "----SECTION boot-media----\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
+      "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
         "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
         concat(
-          "----SECTION edac-before----\nghes_edac\n== /sys/devices/system/edac/mc/mc0/ce_count == 1\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          "----SECTION edac-before----\n----ARGV edac-before: (counters)\nghes_edac\n== /sys/devices/system/edac/mc/mc0/ce_count == 1\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
             "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
-              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
-              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+              "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
             ),
           ),
         ),
@@ -244,16 +334,16 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let ue = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
-      "----SECTION boot-media----\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
+      "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
         "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
         concat(
-          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 1\n----EXIT edac-before: 0\n",
+          "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 1\n----EXIT edac-before: 0\n",
           concat(
             "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
-              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
-              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+              "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
             ),
           ),
         ),
@@ -263,16 +353,16 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let nproc_elsewhere = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
-      "----SECTION boot-media----\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
+      "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
-        "----SECTION nproc----\n----EXIT nproc: 1\n----SECTION lscpu----\nCPU(s):                               160\n----EXIT lscpu: 0\n",
+        "----SECTION nproc----\n----ARGV nproc: nproc\n----EXIT nproc: 1\n----SECTION lscpu----\n----ARGV lscpu: lscpu\nCPU(s):                               160\n----EXIT lscpu: 0\n",
         concat(
-          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
             "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
-              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
-              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+              "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
             ),
           ),
         ),
@@ -282,16 +372,16 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let digest_mismatch = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
-      "----SECTION boot-media----\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
+      "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
         "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
         concat(
-          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
             "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=no\n----EXIT workload: 0\n",
             concat(
-              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
-              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+              "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
             ),
           ),
         ),
@@ -306,16 +396,16 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let stock_medium = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
-      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
       concat(
         "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
         concat(
-          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
             "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
             concat(
-              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
-              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+              "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
             ),
           ),
         ),
@@ -325,34 +415,54 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let argv_echo_only = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
-      "----SECTION boot-media----\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
+      "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
       concat(
         "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
         concat(
-          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          "----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
           concat(
             "----SECTION workload----\n----ARGV workload: echo workload-write-rc=0; echo workload-digest-stable=yes\nworkload-write-rc=0\n----EXIT workload: 0\n",
             concat(
-              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
-              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+              "----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====\n",
             ),
           ),
         ),
       ),
     ),
   )
-  mtcollins1_boot_terminal_observed(capture: clean, subject: census_subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: clean, subject: subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: stock_medium, subject: census_subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: clean, subject: subject, medium: MtCollins1StockInstallerMedium)
-    && !mtcollins1_boot_terminal_observed(capture: argv_echo_only, subject: census_subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: "BootControlIssued cdrom", subject: census_subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: ghes_ce, subject: census_subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: ue, subject: census_subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: nproc_elsewhere, subject: census_subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: digest_mismatch, subject: census_subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: begin_only, subject: census_subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: begin_with_spurious_end, subject: census_subject, medium: census_medium)
+  let boot23_open = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=8e1d5b0c-2f5e-4d3a-9a1e-0b6f5a1c2d3e begin 2026-09-21T14:47:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----ARGV nproc: nproc\n80\n----EXIT nproc: 0\n",
+        concat(
+          "----SECTION edac-before----\n----ARGV edac-before: (counters)\n/sys/devices/system/edac/mc/mc0/ce_count == 0\n/sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=1\n",
+        ),
+      ),
+    ),
+  )
+  let accepted = match mtcollins1_boot_terminal_verdict(capture: clean, subject: census_subject, medium: census_medium) {
+    TerminalAccepted { run: _, threads: t } => hardware_thread_count_value(t: t) == 160
+    _ => false
+  }
+  accepted
+    && refused_with_prefix(v: mtcollins1_boot_terminal_verdict(capture: clean, subject: subject, medium: census_medium), prefix: "signed subject names")
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: stock_medium, subject: census_subject, medium: census_medium), texts: ["boot-media does not name the census volume GUNBC_MTC1_CENSUS_2404_3"])
+    && refused_with_prefix(v: mtcollins1_boot_terminal_verdict(capture: clean, subject: subject, medium: MtCollins1StockInstallerMedium), prefix: "signed subject names")
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: argv_echo_only, subject: census_subject, medium: census_medium), texts: ["workload digest not stable across passes"])
+    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: "BootControlIssued cdrom", subject: census_subject, medium: census_medium))
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: ghes_ce, subject: census_subject, medium: census_medium), texts: ["edac-before: mc0 ce_count/ue_count not both 0"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: ue, subject: census_subject, medium: census_medium), texts: ["edac-before: mc0 ce_count/ue_count not both 0"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: nproc_elsewhere, subject: census_subject, medium: census_medium), texts: ["nproc exited 1"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: digest_mismatch, subject: census_subject, medium: census_medium), texts: ["workload digest not stable across passes"])
+    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_only, subject: census_subject, medium: census_medium))
+    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_with_spurious_end, subject: census_subject, medium: census_medium))
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: boot23_open, subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160", "workload write rc=1"])
+    && review_5269655400_walls(census_subject: census_subject, census_medium: census_medium, clean: clean, boot23_open: boot23_open)
+    && string_contains(s: mtcollins1_boot_terminal_refusal_text(causes: [HardwareThreadCountMismatch { expected: hardware_thread_count(count: 160), observed: "80" }, WorkloadWriteFailed { rc: "1" }]), pattern: "nproc observed 80, qualification expects 160; workload write rc=1")
 }
 
 test fn boot_loopback_filing_is_srv1_only() -> Bool {

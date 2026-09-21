@@ -1,7 +1,21 @@
 module v2.compiler.native_test_vocabulary
 
+import v2.std.algebra { list_snoc_item }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic {
+  Diagnostic,
+  Locus,
+  NonEmptyDiagnostics,
+  Unavailable,
+  UserInputBoundary,
+  diagnostics_fatal,
+  diagnostics_fatal_reason,
+  diagnostics_singleton
+}
+import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { QualifiedName }
+import v2.std.text { String }
 
 // THE NATIVE-TEST VERDICT VOCABULARY, HOMED BELOW BOTH OF ITS READERS.
 //
@@ -18,11 +32,96 @@ type NativeTestStage
   | NativeTestStageEntry
   | NativeTestStageEval
 
+// A REFUSAL CARRIES WHAT THE FAILING STAGE SAID, NOT ONE SYMBOL COPIED OUT OF IT. The arm used to
+// carry `reason: Symbol` -- the fatal diagnostic's reason and nothing else -- so the stage
+// computed a located cause (v2.std.diagnostic Diagnostic: reason, locus, correction) and the
+// verdict dropped the locus at this boundary; every row the lane persisted and every line the
+// operator read said WHAT refused and never WHERE, and an ambiguous reference reported one
+// symbol where the resolver had named its lookup class and its competing declarations. The
+// verdict now carries the stage's NonEmptyDiagnostics unfolded, for the reason
+// v2.compiler.compile native_module_resolve_verdict already gives at the census grain:
+// summarizing is the CONSUMER's move. The reason every roster keys on is DERIVED --
+// v2.std.diagnostic diagnostics_fatal_reason, the LAST diagnostic, because rejected_with_pending
+// prepends the advisories that rode along -- so a consumer that classifies by reason reads the same symbol
+// it always read, and a consumer that needs the position reads it from the same value.
 type NativeTestVerdict
   = NativeTestPassed
   | NativeTestReturnedFalse
   | NativeTestReturnedOther
-  | NativeTestRefused { stage: NativeTestStage, reason: Symbol }
+  | NativeTestRefused { stage: NativeTestStage, diagnostics: NonEmptyDiagnostics }
+
+// THE ROUTE'S OWN REFUSALS ARE DIAGNOSTICS TOO, LOCATED WHERE THE ROUTE STOPPED. The Entry stage
+// refuses for reasons the pipeline never minted (a declaration the scope does not hold, a
+// declaration that is not an arrow), so it mints the diagnostic itself, with the locus the walk
+// reached. This is the ONLY constructor for a reason-first refusal, and it demands a locus: a
+// producer that has no position to give must say so through the Locus arms rather than through
+// a constructor that lets the position be omitted.
+fn native_test_refused_located(stage: NativeTestStage, reason: Symbol, at: Locus) -> NativeTestVerdict {
+  NativeTestRefused {
+    stage: stage,
+    diagnostics: diagnostics_singleton(d: Diagnostic {
+      reason: reason,
+      at: at,
+      correction: Unavailable { reason: UserInputBoundary }
+    })
+  }
+}
+
+// THE ROUTE'S CLASSIFICATION SITS BEHIND WHAT THE PIPELINE SAID. When an Entry-stage walk refuses
+// with its own diagnostics and the route owes the roster a reason of its own (the module scope
+// could not be walked), the pipeline's chain is kept in carriage order and the route's reason is
+// appended as the fatal, located where the underlying fatal was -- so a consumer folding to the
+// last reason reads the roster's symbol and a consumer reading the chain sees what the walk hit.
+fn native_test_refused_after(stage: NativeTestStage, reason: Symbol, d: NonEmptyDiagnostics) -> NativeTestVerdict {
+  let underlying = diagnostics_fatal(d: d)
+  NativeTestRefused {
+    stage: stage,
+    diagnostics: NonEmptyDiagnostics {
+      head: d.head,
+      tail: list_snoc_item(xs: d.tail, item: Diagnostic {
+        reason: reason,
+        at: underlying.at,
+        correction: Unavailable { reason: UserInputBoundary }
+      })
+    }
+  }
+}
+
+fn native_test_stage_text(stage: NativeTestStage) -> String {
+  match stage {
+    NativeTestStageContext => "context"
+    NativeTestStagePrepare => "prepare"
+    NativeTestStageEntry => "entry"
+    NativeTestStageEval => "eval"
+  }
+}
+
+// ONE LINE PER NON-PASSING VERDICT, FOR THE OPERATOR. The rendered driver prints this beside the
+// JSON row it persists, so the command an operator runs names the failing subject, the stage,
+// the cause and its position -- the same value the row carries, projected once here rather than
+// re-derived by the host from the bytes it just wrote.
+fn native_test_verdict_text(verdict: NativeTestVerdict) -> String {
+  match verdict {
+    NativeTestPassed => "passed"
+    NativeTestReturnedFalse => "returned false"
+    NativeTestReturnedOther => "returned a non-Boolean value"
+    NativeTestRefused { stage: stage, diagnostics: d } =>
+      concat(
+        "refused at ",
+        concat(
+          native_test_stage_text(stage: stage),
+          concat(
+            " cause=",
+            concat(
+              symbol_lexeme(sym: diagnostics_fatal_reason(d: d)),
+              concat(" chain: ", lens_verdict_diagnostics_located_chain_text(d: d))
+            )
+          )
+        )
+      )
+  }
+}
+
 
 type NativeTestObservation {
   module: QualifiedName

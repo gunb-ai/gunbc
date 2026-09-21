@@ -5,7 +5,7 @@ import v2.std.logic { Bool }
 import v2.std.compilers.lexing { ModeledLexRules, TokenStream }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex_rules }
-import v2.std.diagnostic { ByteRange, Textual, WholeFile }
+import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -49,6 +49,7 @@ test fn unterminated_string_locus_covers_the_opening_quote_holds() -> Bool {
           NodeLocus { anchor: _ } => false
           SourcePortLocus { anchor: _, file: _, extent: _ } => false
           InvariantPortLocus { anchor: _, invariant: _ } => false
+          DeclarationLocus { declaration: _ } => false
         }
   }
 }
