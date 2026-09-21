@@ -1,0 +1,59 @@
+module extdeps.standards.rfc_7468
+
+import std.types { Int, String, List }
+import std.logic { Bool }
+import std.integer { UInt8 }
+import std.encoding { base64_decode, Standard }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// RFC 7468, Textual Encodings of PKIX, PKCS, and CMS Structures: §2 (the general encapsulation:
+// a "-----BEGIN <label>-----" line, base64 body lines, "-----END <label>-----"), §5.1 (the
+// CERTIFICATE label). One block per text; a text that is not exactly one labelled block refuses.
+data rfc_7468_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc7468#section-2"
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = rfc_7468_external_authority_anchor
+
+data pem_certificate_label: String = "CERTIFICATE"
+
+type PemRefusal
+  = PemBeginLineAbsent { expected_label: String }
+  | PemEndLineAbsent { expected_label: String }
+  | PemBodyNotBase64
+
+type PemDecode
+  = PemDecoded { der: List<UInt8> }
+  | PemRefused { cause: PemRefusal }
+
+fn pem_begin_line(label: String) -> String {
+  "-----BEGIN " + label + "-----"
+}
+
+fn pem_end_line(label: String) -> String {
+  "-----END " + label + "-----"
+}
+
+fn pem_is_body_line(line: String, label: String) -> Bool {
+  line != "" && line != pem_begin_line(label: label) && line != pem_end_line(label: label)
+}
+
+// The base64 body is the lines strictly between the BEGIN and END lines, joined without the line
+// breaks (§2: whitespace is not part of the encoding).
+fn pem_decode(text: String, label: String) -> PemDecode {
+  let lines = text.split(delimiter: "\n") |> map(l => trim(s: l))
+  if !any(lines, l => l == pem_begin_line(label: label)) { PemRefused { cause: PemBeginLineAbsent { expected_label: label } } }
+  else if !any(lines, l => l == pem_end_line(label: label)) { PemRefused { cause: PemEndLineAbsent { expected_label: label } } }
+  else {
+    let body = join(filter(lines, l => pem_is_body_line(line: l, label: label)), "")
+    match base64_decode(s: body, variant: Standard) {
+      Absent => PemRefused { cause: PemBodyNotBase64 }
+      Present { value: der } => PemDecoded { der: der }
+    }
+  }
+}

@@ -1,0 +1,335 @@
+module test.claim.x509_rfc5280_witness_test
+
+import std.logic { Bool }
+import std.types { Int, String, List, NonEmptyStr }
+import std.integer { UInt8 }
+import std.encoding { base64_decode, Standard }
+import extdeps.crypto.sha2 { sha256 }
+import extdeps.standards.rfc_8949 {
+  CborValue, CborSimple, CborDocumentDecoded, CborDocumentRefused, cbor_decode_document,
+  CborMemberFound, cbor_map_unique_text_member, cbor_byte_string_octets, cbor_array_items,
+}
+import extdeps.standards.x690_der {
+  DerElement, DerRefusal, DerElementRead, DerRefused, der_read_element, der_read_document, DerDocumentRead, DerDocumentRefused,
+  der_children, DerChildrenRead, DerChildrenRefused, der_child_at, der_object_identifier, DerOidRead, DerOidRefused, der_value,
+  DerIndefiniteLengthRefused, DerLengthNotMinimal, DerHighTagNumberRefused, DerTruncated, DerTrailingOctets, DerBitStringUnusedBitsRefused,
+  der_bit_string_octets, DerBitsRead, DerBitsRefused, der_unsigned_integer, DerUnsignedRead, DerUnsignedRefused, DerIntegerMalformed, DerContextSpecific,
+  der_expect_sequence, der_expect, der_tag_octet_string,
+}
+import extdeps.standards.rfc_5280 {
+  X509Certificate, X509Decoded, X509Refused, decode_certificate, X509Refusal, X509DerRefused, X509SignatureAlgorithmMismatch,
+  x509_extension, X509ExtensionFound, X509ExtensionAbsent, X509ExtensionDuplicated,
+  ecdsa_sig_value, EcdsaSigValueRead, EcdsaSigValueRefused, EcdsaSigValueTooWide,
+  oid_ecdsa_with_sha256, oid_ecdsa_with_sha384, oid_id_ec_public_key, oid_prime256v1, oid_secp384r1,
+}
+import extdeps.standards.rfc_7468 { pem_decode, PemDecoded, PemRefused, PemBeginLineAbsent, pem_certificate_label }
+import extdeps.standards.rfc_9052 { CoseEc2P256KeyRead, CoseEc2P256KeyRefused, cose_ec2_p256_key }
+import extdeps.standards.webauthn_authenticator_data { AuthenticatorDataDecoded, AuthenticatorDataRefused, decode_authenticator_data }
+import extdeps.apple.app_attest { apple_app_attestation_root_ca_pem, app_attest_nonce_extension_oid, app_attest_nonce_extension_context_tag }
+import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets, sample_assertion_octets, sample_client_data_hash_b64 }
+
+// THE X.509 READER'S INHABITANCE CLAIMS run over the two certificates inside Apple's real
+// attestation object and over Apple's published root: what the reader establishes is compared
+// to facts openssl reads from the same bytes (recorded beside each claim) and to facts the
+// object carries elsewhere (the credential key, the nonce). Designed DER refusals are claimed
+// beside them so the reader's walls are exercised where a certificate cannot exercise them.
+
+fn x5_member_octets(v: CborValue, key: String) -> List<UInt8> {
+  match cbor_map_unique_text_member(v: v, key: key) {
+    CborMemberFound { value: m } =>
+      match cbor_byte_string_octets(v: m) {
+        Present { value: o } => o
+        Absent => []
+      }
+    _ => []
+  }
+}
+
+fn x5_member_value(v: CborValue, key: String) -> CborValue {
+  match cbor_map_unique_text_member(v: v, key: key) {
+    CborMemberFound { value: m } => m
+    _ => CborSimple { value: 23 }
+  }
+}
+
+fn x5_sample_attestation() -> CborValue {
+  match cbor_decode_document(octets: sample_attestation_octets) {
+    CborDocumentDecoded { value: v } => v
+    CborDocumentRefused { cause: _ } => CborSimple { value: 23 }
+  }
+}
+
+fn sample_x5c(i: Int) -> List<UInt8> {
+  match cbor_array_items(v: x5_member_value(v: x5_member_value(v: x5_sample_attestation(), key: "attStmt"), key: "x5c")) {
+    Absent => []
+    Present { value: items } =>
+      match items |> get(i) {
+        null => []
+        c => match cbor_byte_string_octets(v: c) {
+          Present { value: o } => o
+          Absent => []
+        }
+      }
+  }
+}
+
+fn x509_decoded_or_none(octets: List<UInt8>) -> X509Certificate? {
+  match decode_certificate(octets: octets) {
+    X509Decoded { certificate: c } => Present { value: c }
+    X509Refused { cause: _ } => none
+  }
+}
+
+fn sample_leaf() -> X509Certificate? { x509_decoded_or_none(octets: sample_x5c(i: 0)) }
+fn sample_ca() -> X509Certificate? { x509_decoded_or_none(octets: sample_x5c(i: 1)) }
+
+fn sample_root() -> X509Certificate? {
+  match pem_decode(text: apple_app_attestation_root_ca_pem(), label: pem_certificate_label) {
+    PemRefused { cause: _ } => none
+    PemDecoded { der: der } => x509_decoded_or_none(octets: der)
+  }
+}
+
+// openssl on x5c[0]: Signature Algorithm ecdsa-with-SHA256, ASN1 OID prime256v1, serial
+// 01772f29f748, Issuer CN=Apple App Attestation CA 1, notBefore 210122121335Z, notAfter
+// 210125121335Z; the SPKI point is 65 octets and IS the credential public key the authData
+// carries as a COSE key (Apple's step 4 reads the key from this certificate).
+test fn the_sample_leaf_reads_as_openssl_reads_it() -> Bool {
+  match sample_leaf() {
+    Absent => false
+    Present { value: leaf } => {
+      let credential_point = match decode_authenticator_data(octets: x5_member_octets(v: x5_sample_attestation(), key: "authData")) {
+        AuthenticatorDataRefused { cause: _ } => []
+        AuthenticatorDataDecoded { data: d } =>
+          match d.attested_credential {
+            Absent => []
+            Present { value: c } =>
+              match cose_ec2_p256_key(key: c.credential_public_key) {
+                CoseEc2P256KeyRefused { cause: _ } => []
+                CoseEc2P256KeyRead { sec1_uncompressed: pt } => pt
+              }
+          }
+      }
+      leaf.signature_algorithm == oid_ecdsa_with_sha256
+        && leaf.tbs_signature_algorithm == oid_ecdsa_with_sha256
+        && leaf.spki_algorithm == oid_id_ec_public_key
+        && match leaf.spki_named_curve {
+          Present { value: c } => c == oid_prime256v1
+          Absent => false
+        }
+        && leaf.serial == [1, 119, 47, 41, 247, 72]
+        && leaf.not_before == "210122121335Z" && leaf.not_after == "210125121335Z"
+        && count(leaf.spki_public_key) == 65 && count(credential_point) == 65 && leaf.spki_public_key == credential_point
+        && count(leaf.extensions) == 5
+    }
+  }
+}
+
+// Apple's steps 2 and 3 on real bytes: the nonce in extension 1.2.840.113635.100.8.2 -- DER
+// SEQUENCE { [1] { OCTET STRING } } -- equals SHA-256(authData || clientDataHash).
+fn nonce_of(leaf: X509Certificate) -> List<UInt8> {
+  match x509_extension(cert: leaf, oid: app_attest_nonce_extension_oid as String) {
+    X509ExtensionFound { extension: x } =>
+      match der_expect_sequence(octets: x.value, at: 0) {
+        DerRefused { cause: _ } => []
+        DerElementRead { element: seq } =>
+          match der_expect(octets: x.value, at: seq.value_at, class: DerContextSpecific, tag_number: app_attest_nonce_extension_context_tag, constructed: true) {
+            DerRefused { cause: _ } => []
+            DerElementRead { element: ctx } =>
+              match der_read_element(octets: x.value, at: ctx.value_at) {
+                DerRefused { cause: _ } => []
+                DerElementRead { element: inner } => if inner.tag_number == der_tag_octet_string { der_value(octets: x.value, e: inner) } else { [] }
+              }
+          }
+      }
+    _ => []
+  }
+}
+
+test fn the_sample_nonce_extension_is_sha256_of_auth_data_and_client_data_hash() -> Bool {
+  match sample_leaf() {
+    Absent => false
+    Present { value: leaf } => {
+      let auth_data = x5_member_octets(v: x5_sample_attestation(), key: "authData")
+      let cdh = match base64_decode(s: sample_client_data_hash_b64 as String, variant: Standard) {
+        Present { value: o } => o
+        Absent => []
+      }
+      let nonce = nonce_of(leaf: leaf)
+      count(nonce) == 32 && count(cdh) == 32 && nonce == sha256(message: concat(auth_data, cdh))
+    }
+  }
+}
+
+// openssl on x5c[1]: Signature Algorithm ecdsa-with-SHA384, ASN1 OID secp384r1, Subject
+// CN=Apple App Attestation CA 1. Its subject Name is byte-equal to the leaf's issuer Name -- the
+// chain join RFC 5280 §7.1 admits by exact DER match -- and its key is a 97-octet P-384 point.
+test fn the_sample_ca_chains_from_the_leaf() -> Bool {
+  match sample_leaf() {
+    Absent => false
+    Present { value: leaf } =>
+      match sample_ca() {
+        Absent => false
+        Present { value: ca } =>
+          ca.signature_algorithm == oid_ecdsa_with_sha384
+            && match ca.spki_named_curve {
+              Present { value: c } => c == oid_secp384r1
+              Absent => false
+            }
+            && count(ca.spki_public_key) == 97
+            && ca.subject_octets == leaf.issuer_octets
+            && ca.subject_octets != ca.issuer_octets
+      }
+  }
+}
+
+// The pinned root decodes from its PEM: self-signed (subject == issuer), serial
+// 0bf3be0ef1cdd2e0fb8c6e721f621798, secp384r1, ecdsa-with-SHA384, notAfter 450315000000Z --
+// and it is the CA's issuer, which is what step 1's chain terminates on.
+test fn the_pinned_root_is_the_sample_cas_issuer() -> Bool {
+  match sample_root() {
+    Absent => false
+    Present { value: root } =>
+      match sample_ca() {
+        Absent => false
+        Present { value: ca } =>
+          root.subject_octets == root.issuer_octets
+            && root.serial == [11, 243, 190, 14, 241, 205, 210, 224, 251, 140, 110, 114, 31, 98, 23, 152]
+            && root.signature_algorithm == oid_ecdsa_with_sha384
+            && match root.spki_named_curve {
+              Present { value: c } => c == oid_secp384r1
+              Absent => false
+            }
+            && root.not_after == "450315000000Z"
+            && root.subject_octets == ca.issuer_octets
+      }
+  }
+}
+
+// ECDSA-Sig-Value: the assertion's 70-octet DER signature renders as 64 fixed octets at width
+// 32; the leaf's signature (a P-384 CA signed it) renders as 96 at width 48; the same assertion
+// signature at width 16 refuses as too wide rather than truncating a component.
+test fn ecdsa_sig_values_render_fixed_width_or_refuse() -> Bool {
+  let assertion_sig = match cbor_decode_document(octets: sample_assertion_octets) {
+    CborDocumentDecoded { value: v } => x5_member_octets(v: v, key: "signature")
+    CborDocumentRefused { cause: _ } => []
+  }
+  match ecdsa_sig_value(octets: assertion_sig, width: 32) {
+    EcdsaSigValueRead { r_s_fixed: rs } =>
+      count(rs) == 64
+        && match sample_leaf() {
+          Absent => false
+          Present { value: leaf } =>
+            match ecdsa_sig_value(octets: leaf.signature_octets, width: 48) {
+              EcdsaSigValueRead { r_s_fixed: lrs } => count(lrs) == 96
+              _ => false
+            }
+        }
+        && match ecdsa_sig_value(octets: assertion_sig, width: 16) {
+          EcdsaSigValueTooWide { component_octets: _, width: 16 } => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// CONTROL over real bytes: the leaf with its last octet dropped refuses (a truncated signature
+// BIT STRING), and with one appended refuses as trailing.
+test fn a_cut_or_extended_leaf_refuses() -> Bool {
+  let leaf = sample_x5c(i: 0)
+  match decode_certificate(octets: leaf |> take(count(leaf) - 1)) {
+    X509Decoded { certificate: _ } => false
+    X509Refused { cause: X509DerRefused { cause: DerTruncated { at: _, needed: _, available: _ } } } =>
+      match decode_certificate(octets: leaf |> list_push(0)) {
+        X509Refused { cause: X509DerRefused { cause: DerTrailingOctets { consumed: 761, total: 762 } } } => true
+        _ => false
+      }
+    X509Refused { cause: _ } => false
+  }
+}
+
+// DESIGNED DER REFUSALS (X.690 §8.1.3.6, §10.1, §8.1.2.4, §8.3): an indefinite length; a long
+// form carrying 5 (not minimal); a high tag number; a BIT STRING with 3 unused bits; an INTEGER
+// with a redundant leading zero; an INTEGER with the sign bit set (negative, not admitted).
+test fn der_walls_refuse_by_name() -> Bool {
+  let indefinite = match der_read_element(octets: [48, 128, 0, 0], at: 0) {
+    DerRefused { cause: DerIndefiniteLengthRefused { at: 1 } } => true
+    _ => false
+  }
+  let not_minimal = match der_read_element(octets: [4, 129, 5, 1, 2, 3, 4, 5], at: 0) {
+    DerRefused { cause: DerLengthNotMinimal { at: 1 } } => true
+    _ => false
+  }
+  let high_tag = match der_read_element(octets: [31, 1, 0], at: 0) {
+    DerRefused { cause: DerHighTagNumberRefused { at: 0 } } => true
+    _ => false
+  }
+  let unused_bits = match der_read_element(octets: [3, 2, 3, 255], at: 0) {
+    DerElementRead { element: e } => match der_bit_string_octets(octets: [3, 2, 3, 255], e: e) {
+      DerBitsRefused { cause: DerBitStringUnusedBitsRefused { at: 2, unused: 3 } } => true
+      _ => false
+    }
+    _ => false
+  }
+  let leading_zero = match der_read_element(octets: [2, 2, 0, 1], at: 0) {
+    DerElementRead { element: e } => match der_unsigned_integer(octets: [2, 2, 0, 1], e: e) {
+      DerUnsignedRefused { cause: DerIntegerMalformed { at: 2 } } => true
+      _ => false
+    }
+    _ => false
+  }
+  let negative = match der_read_element(octets: [2, 1, 255], at: 0) {
+    DerElementRead { element: e } => match der_unsigned_integer(octets: [2, 1, 255], e: e) {
+      DerUnsignedRefused { cause: DerIntegerMalformed { at: 2 } } => true
+      _ => false
+    }
+    _ => false
+  }
+  indefinite && not_minimal && high_tag && unused_bits && leading_zero && negative
+}
+
+// The OID decoder on Apple's nonce OID as DER (06 09 2a 86 48 86 f7 63 64 08 02), and on a
+// long-form 0x80-padded value (0x80 0x01 is not minimal base-128) refusing.
+test fn oid_decoding_renders_dotted() -> Bool {
+  let octets = [6, 9, 42, 134, 72, 134, 247, 99, 100, 8, 2]
+  match der_read_element(octets: octets, at: 0) {
+    DerElementRead { element: e } => match der_object_identifier(octets: octets, e: e) {
+      DerOidRead { dotted: d } => d == "1.2.840.113635.100.8.2"
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// A certificate whose outer signatureAlgorithm disagrees with the TBS's refuses by name: built by
+// swapping the outer OID's last octet in the real leaf (ecdsa-with-SHA256 .2 -> ecdsa-with-SHA384 .3).
+test fn an_outer_algorithm_disagreeing_with_the_tbs_refuses() -> Bool {
+  let leaf = sample_x5c(i: 0)
+  match der_read_document(octets: leaf) {
+    DerDocumentRefused { cause: _ } => false
+    DerDocumentRead { element: outer } =>
+      match der_children(octets: leaf, parent: outer) {
+        DerChildrenRefused { cause: _ } => false
+        DerChildrenRead { elements: kids } =>
+          match der_child_at(children: kids, i: 1, at: 0) {
+            DerRefused { cause: _ } => false
+            DerElementRead { element: alg } => {
+              let oid_last = alg.next - 1
+              let mutated = concat(leaf |> take(oid_last), concat([3], leaf |> skip(oid_last + 1)))
+              match decode_certificate(octets: mutated) {
+                X509Refused { cause: X509SignatureAlgorithmMismatch { tbs: t, outer: o } } => t == oid_ecdsa_with_sha256 && o == oid_ecdsa_with_sha384
+                _ => false
+              }
+            }
+          }
+      }
+  }
+}
+
+// The PEM reader refuses a text without the BEGIN line.
+test fn pem_without_a_begin_line_refuses() -> Bool {
+  match pem_decode(text: "MIIC\n-----END CERTIFICATE-----\n", label: pem_certificate_label) {
+    PemRefused { cause: PemBeginLineAbsent { expected_label: "CERTIFICATE" } } => true
+    _ => false
+  }
+}

@@ -1,6 +1,6 @@
 module extdeps.apple.app_attest
 
-import std.types { NonEmptyStr, String, Int }
+import std.types { NonEmptyStr, String, Int, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -67,6 +67,40 @@ type AttestationRefusal
 
 
 data app_attest_nonce_extension_oid: NonEmptyStr = "1.2.840.113635.100.8.2"
+
+
+// ── The trust anchor ─────────────────────────────────────────────────────────────────────────
+// Apple App Attestation Root CA, published at apple.com/certificateauthority as PEM and pinned
+// here byte for byte: CN=Apple App Attestation Root CA, O=Apple Inc., ST=California; serial
+// 0bf3be0ef1cdd2e0fb8c6e721f621798; secp384r1 key; ecdsa-with-SHA384 self-signature; valid
+// 2020-03-18 to 2045-03-15; SHA-256 of the DER
+// 1cb9823ba28ba6ad2d33a006941de2ae4f513ef1d4e831b9f7e0fa7b6242c932. Step 1 of the validation
+// chains x5c to THIS certificate and no other; a rotation is a new pinned row, never a fetch.
+data apple_app_attestation_root_ca_pem_lines: List<String> = [
+  "-----BEGIN CERTIFICATE-----",
+  "MIICITCCAaegAwIBAgIQC/O+DvHN0uD7jG5yH2IXmDAKBggqhkjOPQQDAzBSMSYw",
+  "JAYDVQQDDB1BcHBsZSBBcHAgQXR0ZXN0YXRpb24gUm9vdCBDQTETMBEGA1UECgwK",
+  "QXBwbGUgSW5jLjETMBEGA1UECAwKQ2FsaWZvcm5pYTAeFw0yMDAzMTgxODMyNTNa",
+  "Fw00NTAzMTUwMDAwMDBaMFIxJjAkBgNVBAMMHUFwcGxlIEFwcCBBdHRlc3RhdGlv",
+  "biBSb290IENBMRMwEQYDVQQKDApBcHBsZSBJbmMuMRMwEQYDVQQIDApDYWxpZm9y",
+  "bmlhMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAERTHhmLW07ATaFQIEVwTtT4dyctdh",
+  "NbJhFs/Ii2FdCgAHGbpphY3+d8qjuDngIN3WVhQUBHAoMeQ/cLiP1sOUtgjqK9au",
+  "Yen1mMEvRq9Sk3Jm5X8U62H+xTD3FE9TgS41o0IwQDAPBgNVHRMBAf8EBTADAQH/",
+  "MB0GA1UdDgQWBBSskRBTM72+aEH/pwyp5frq5eWKoTAOBgNVHQ8BAf8EBAMCAQYw",
+  "CgYIKoZIzj0EAwMDaAAwZQIwQgFGnByvsiVbpTKwSga0kP0e8EeDS4+sQmTvb7vn",
+  "53O5+FRXgeLhpJ06ysC5PrOyAjEAp5U4xDgEgllF7En3VcE3iexZZtKeYnpqtijV",
+  "oyFraWVIyd/dganmrduC1bmTBGwD",
+  "-----END CERTIFICATE-----",
+]
+
+fn apple_app_attestation_root_ca_pem() -> String {
+  join(apple_app_attestation_root_ca_pem_lines, "\n")
+}
+
+// The credential certificate's nonce extension value is DER: SEQUENCE { [1] EXPLICIT OCTET
+// STRING nonce } (Apple, step 3: "the single octet string ... under the sequence"), so the
+// extension's OCTET STRING carries a SEQUENCE carrying a context tag carrying the 32 octets.
+data app_attest_nonce_extension_context_tag: Int = 1
 
 // THE APP ID IS "<App ID prefix>.<bundle id>". Apple: the prefix is USUALLY the 10-character team
 // identifier, and is read from the app's Identifier entry in the developer account -- so it is its

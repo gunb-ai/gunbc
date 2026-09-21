@@ -1,0 +1,477 @@
+module extdeps.standards.rfc_5280
+
+import std.types { Int, String, List }
+import std.logic { Bool }
+import std.integer { UInt8 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.x690_der {
+  DerElement, DerRefusal, DerRead, DerElementRead, DerRefused, DerContextSpecific, DerUniversal,
+  der_read_document, DerDocumentRead, DerDocumentRefused,
+  der_children, DerChildrenRead, DerChildrenRefused, der_child_at, der_expect, der_expect_sequence, der_expect_universal,
+  der_value, der_tlv, der_unsigned_integer, DerUnsignedRead, DerUnsignedRefused,
+  der_object_identifier, DerOidRead, DerOidRefused, der_bit_string_octets, DerBitsRead, DerBitsRefused,
+  der_boolean, DerBoolRead, DerBoolRefused,
+  der_tag_integer, der_tag_bit_string, der_tag_octet_string, der_tag_object_identifier, der_tag_boolean, der_tag_utc_time, der_tag_generalized_time, der_tag_sequence,
+  DerTagUnexpected, DerElementAbsent,
+}
+
+// RFC 5280, Internet X.509 PKI Certificate and CRL Profile, §4.1 (the Certificate, TBSCertificate,
+// AlgorithmIdentifier, Validity, SubjectPublicKeyInfo and Extension structures) and §4.1.2.5 (Time
+// as UTCTime or GeneralizedTime); RFC 5480 §2 for the EC SubjectPublicKeyInfo (id-ecPublicKey with
+// a namedCurve parameter) and RFC 5758 §3.2 for the ECDSA signature algorithm identifiers. The
+// signature value is ECDSA-Sig-Value (RFC 5480 §2 / SEC 1): SEQUENCE { r INTEGER, s INTEGER }.
+//
+// This reader decodes the structure and hands out its facts; it does not validate a path. Chain
+// verification (issuer/subject join, validity against a clock, signature under the issuer's key)
+// is the consumer's fold, because which anchors are trusted and which clock is authoritative are
+// the consumer's facts, not the profile's.
+data rfc_5280_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc5280#section-4.1"
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = rfc_5280_external_authority_anchor
+
+// Object identifiers, dotted as the registries spell them.
+data oid_id_ec_public_key: String = "1.2.840.10045.2.1"
+data oid_prime256v1: String = "1.2.840.10045.3.1.7"
+data oid_secp384r1: String = "1.3.132.0.34"
+data oid_ecdsa_with_sha256: String = "1.2.840.10045.4.3.2"
+data oid_ecdsa_with_sha384: String = "1.2.840.10045.4.3.3"
+
+type X509Extension {
+  oid: String
+  critical: Bool
+  value: List<UInt8>
+}
+
+// Names are kept as their DER (the whole Name TLV): the profile's issuer/subject join is byte
+// equality of encoded Names under DER (§7.1 permits comparison by exact encoding match first),
+// and no consumer here reads a Name's attributes.
+type X509Certificate {
+  tbs_octets: List<UInt8>
+  serial: List<UInt8>
+  tbs_signature_algorithm: String
+  issuer_octets: List<UInt8>
+  not_before: String
+  not_after: String
+  subject_octets: List<UInt8>
+  spki_algorithm: String
+  spki_named_curve: String?
+  spki_public_key: List<UInt8>
+  extensions: List<X509Extension>
+  signature_algorithm: String
+  signature_octets: List<UInt8>
+}
+
+type X509Refusal
+  = X509DerRefused { cause: DerRefusal }
+  | X509SignatureAlgorithmMismatch { tbs: String, outer: String }
+  | X509TimeTagUnexpected { at: Int, tag: Int }
+  | X509ExtensionMalformed { at: Int }
+
+type X509Decode
+  = X509Decoded { certificate: X509Certificate }
+  | X509Refused { cause: X509Refusal }
+
+fn x509_der(c: DerRefusal) -> X509Decode {
+  X509Refused { cause: X509DerRefused { cause: c } }
+}
+
+// AlgorithmIdentifier ::= SEQUENCE { algorithm OID, parameters ANY OPTIONAL }.
+type AlgorithmIdentifier
+  = AlgorithmIdentifierRead { algorithm: String, parameters_oid: String? }
+  | AlgorithmIdentifierRefused { cause: DerRefusal }
+
+fn read_algorithm_identifier(octets: List<UInt8>, e: DerElement) -> AlgorithmIdentifier {
+  match der_children(octets: octets, parent: e) {
+    DerChildrenRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
+    DerChildrenRead { elements: kids } =>
+      match der_child_at(children: kids, i: 0, at: e.value_at) {
+        DerRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
+        DerElementRead { element: alg } =>
+          match der_object_identifier(octets: octets, e: alg) {
+            DerOidRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
+            DerOidRead { dotted: oid } =>
+              match kids |> get(1) {
+                null => AlgorithmIdentifierRead { algorithm: oid, parameters_oid: none }
+                p =>
+                  if p.tag_number == der_tag_object_identifier {
+                    match der_object_identifier(octets: octets, e: p) {
+                      DerOidRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
+                      DerOidRead { dotted: curve } => AlgorithmIdentifierRead { algorithm: oid, parameters_oid: Present { value: curve } }
+                    }
+                  } else {
+                    AlgorithmIdentifierRead { algorithm: oid, parameters_oid: none }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn ascii_of(octets: List<UInt8>) -> String {
+  fold(octets, init: "", f: (acc, o) => acc + from_code_point(cp: o))
+}
+
+// Time ::= CHOICE { utcTime UTCTime, generalTime GeneralizedTime }: the contents are kept as the
+// ASCII the certificate carries ("210122121335Z" or "20300313000000Z"); interpretation against a
+// clock is the consumer's.
+type X509Time
+  = X509TimeRead { text: String }
+  | X509TimeRefused { cause: X509Refusal }
+
+fn read_time(octets: List<UInt8>, e: DerElement) -> X509Time {
+  if e.tag_number == der_tag_utc_time || e.tag_number == der_tag_generalized_time {
+    X509TimeRead { text: ascii_of(octets: der_value(octets: octets, e: e)) }
+  } else {
+    X509TimeRefused { cause: X509TimeTagUnexpected { at: e.header_at, tag: e.tag_number } }
+  }
+}
+
+type X509Validity
+  = X509ValidityRead { not_before: String, not_after: String }
+  | X509ValidityRefused { cause: X509Refusal }
+
+fn read_validity(octets: List<UInt8>, e: DerElement) -> X509Validity {
+  match der_children(octets: octets, parent: e) {
+    DerChildrenRefused { cause: c } => X509ValidityRefused { cause: X509DerRefused { cause: c } }
+    DerChildrenRead { elements: kids } =>
+      match der_child_at(children: kids, i: 0, at: e.value_at) {
+        DerRefused { cause: c } => X509ValidityRefused { cause: X509DerRefused { cause: c } }
+        DerElementRead { element: nb } =>
+          match der_child_at(children: kids, i: 1, at: e.value_at) {
+            DerRefused { cause: c } => X509ValidityRefused { cause: X509DerRefused { cause: c } }
+            DerElementRead { element: na } =>
+              match read_time(octets: octets, e: nb) {
+                X509TimeRefused { cause: c } => X509ValidityRefused { cause: c }
+                X509TimeRead { text: b } =>
+                  match read_time(octets: octets, e: na) {
+                    X509TimeRefused { cause: c } => X509ValidityRefused { cause: c }
+                    X509TimeRead { text: a } => X509ValidityRead { not_before: b, not_after: a }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// Extension ::= SEQUENCE { extnID OID, critical BOOLEAN DEFAULT FALSE, extnValue OCTET STRING }.
+type X509ExtensionRead
+  = X509ExtensionOk { extension: X509Extension }
+  | X509ExtensionRefused { cause: X509Refusal }
+
+fn read_extension(octets: List<UInt8>, e: DerElement) -> X509ExtensionRead {
+  match der_children(octets: octets, parent: e) {
+    DerChildrenRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+    DerChildrenRead { elements: kids } =>
+      match der_child_at(children: kids, i: 0, at: e.value_at) {
+        DerRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+        DerElementRead { element: id } =>
+          match der_object_identifier(octets: octets, e: id) {
+            DerOidRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+            DerOidRead { dotted: oid } =>
+              if count(kids) == 2 {
+                match der_child_at(children: kids, i: 1, at: e.value_at) {
+                  DerRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+                  DerElementRead { element: v } =>
+                    if v.tag_number != der_tag_octet_string { X509ExtensionRefused { cause: X509ExtensionMalformed { at: e.header_at } } }
+                    else { X509ExtensionOk { extension: X509Extension { oid: oid, critical: false, value: der_value(octets: octets, e: v) } } }
+                }
+              } else if count(kids) == 3 {
+                match der_child_at(children: kids, i: 1, at: e.value_at) {
+                  DerRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+                  DerElementRead { element: crit } =>
+                    match der_boolean(octets: octets, e: crit) {
+                      DerBoolRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+                      DerBoolRead { value: critical } =>
+                        match der_child_at(children: kids, i: 2, at: e.value_at) {
+                          DerRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+                          DerElementRead { element: v } =>
+                            if v.tag_number != der_tag_octet_string { X509ExtensionRefused { cause: X509ExtensionMalformed { at: e.header_at } } }
+                            else { X509ExtensionOk { extension: X509Extension { oid: oid, critical: critical, value: der_value(octets: octets, e: v) } } }
+                        }
+                    }
+                }
+              } else {
+                X509ExtensionRefused { cause: X509ExtensionMalformed { at: e.header_at } }
+              }
+          }
+      }
+  }
+}
+
+type X509Extensions
+  = X509ExtensionsRead { extensions: List<X509Extension> }
+  | X509ExtensionsRefused { cause: X509Refusal }
+
+fn read_extensions_list(octets: List<UInt8>, kids: List<DerElement>, i: Int, acc: List<X509Extension>) -> X509Extensions {
+  if i >= count(kids) { X509ExtensionsRead { extensions: acc } } else {
+    match kids |> get(i) {
+      null => X509ExtensionsRead { extensions: acc }
+      e =>
+        match read_extension(octets: octets, e: e) {
+          X509ExtensionRefused { cause: c } => X509ExtensionsRefused { cause: c }
+          X509ExtensionOk { extension: x } => read_extensions_list(octets: octets, kids: kids, i: i + 1, acc: acc |> list_push(x))
+        }
+    }
+  }
+}
+
+// extensions [3] EXPLICIT Extensions: the context tag wraps one SEQUENCE OF Extension.
+fn read_tbs_extensions(octets: List<UInt8>, wrapper: DerElement) -> X509Extensions {
+  match der_expect_sequence(octets: octets, at: wrapper.value_at) {
+    DerRefused { cause: c } => X509ExtensionsRefused { cause: X509DerRefused { cause: c } }
+    DerElementRead { element: seq } =>
+      match der_children(octets: octets, parent: seq) {
+        DerChildrenRefused { cause: c } => X509ExtensionsRefused { cause: X509DerRefused { cause: c } }
+        DerChildrenRead { elements: kids } => read_extensions_list(octets: octets, kids: kids, i: 0, acc: [])
+      }
+  }
+}
+
+// The TBSCertificate fields after the optional [0] version: the index of serialNumber depends on
+// whether version is present.
+fn tbs_first_index(kids: List<DerElement>) -> Int {
+  match kids |> get(0) {
+    null => 0
+    e => match e.tag_class {
+      DerContextSpecific => if e.tag_number == 0 { 1 } else { 0 }
+      _ => 0
+    }
+  }
+}
+
+// [3] extensions, wherever it sits after subjectPublicKeyInfo ([1] and [2] unique ids may precede it).
+fn tbs_extensions_element(kids: List<DerElement>, from: Int) -> DerElement? {
+  fold(kids |> skip(from), init: none, f: (acc, e) => match acc {
+    Present { value: found } => Present { value: found }
+    Absent => match e.tag_class {
+      DerContextSpecific => if e.tag_number == 3 { Present { value: e } } else { none }
+      _ => none
+    }
+  })
+}
+
+type SubjectPublicKeyInfo
+  = SpkiRead { algorithm: String, named_curve: String?, public_key: List<UInt8> }
+  | SpkiRefused { cause: DerRefusal }
+
+fn read_spki(octets: List<UInt8>, e: DerElement) -> SubjectPublicKeyInfo {
+  match der_children(octets: octets, parent: e) {
+    DerChildrenRefused { cause: c } => SpkiRefused { cause: c }
+    DerChildrenRead { elements: kids } =>
+      match der_child_at(children: kids, i: 0, at: e.value_at) {
+        DerRefused { cause: c } => SpkiRefused { cause: c }
+        DerElementRead { element: alg } =>
+          match read_algorithm_identifier(octets: octets, e: alg) {
+            AlgorithmIdentifierRefused { cause: c } => SpkiRefused { cause: c }
+            AlgorithmIdentifierRead { algorithm: a, parameters_oid: curve } =>
+              match der_child_at(children: kids, i: 1, at: e.value_at) {
+                DerRefused { cause: c } => SpkiRefused { cause: c }
+                DerElementRead { element: bits } =>
+                  match der_bit_string_octets(octets: octets, e: bits) {
+                    DerBitsRefused { cause: c } => SpkiRefused { cause: c }
+                    DerBitsRead { octets: key } => SpkiRead { algorithm: a, named_curve: curve, public_key: key }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn tbs_child(kids: List<DerElement>, i: Int, at: Int) -> DerRead {
+  der_child_at(children: kids, i: i, at: at)
+}
+
+type TbsRead
+  = TbsOk { certificate_without_signature: X509Certificate }
+  | TbsRefused { cause: X509Refusal }
+
+fn read_tbs(octets: List<UInt8>, tbs: DerElement) -> TbsRead {
+  match der_children(octets: octets, parent: tbs) {
+    DerChildrenRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+    DerChildrenRead { elements: kids } => {
+      let i0 = tbs_first_index(kids: kids)
+      match tbs_child(kids: kids, i: i0, at: tbs.value_at) {
+        DerRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+        DerElementRead { element: serial_e } =>
+          match der_unsigned_integer(octets: octets, e: serial_e) {
+            DerUnsignedRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+            DerUnsignedRead { magnitude: serial } =>
+              match tbs_child(kids: kids, i: i0 + 1, at: tbs.value_at) {
+                DerRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                DerElementRead { element: sig_alg_e } =>
+                  match read_algorithm_identifier(octets: octets, e: sig_alg_e) {
+                    AlgorithmIdentifierRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                    AlgorithmIdentifierRead { algorithm: tbs_alg, parameters_oid: _ } =>
+                      match tbs_child(kids: kids, i: i0 + 2, at: tbs.value_at) {
+                        DerRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                        DerElementRead { element: issuer_e } =>
+                          match tbs_child(kids: kids, i: i0 + 3, at: tbs.value_at) {
+                            DerRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                            DerElementRead { element: validity_e } =>
+                              match read_validity(octets: octets, e: validity_e) {
+                                X509ValidityRefused { cause: c } => TbsRefused { cause: c }
+                                X509ValidityRead { not_before: nb, not_after: na } =>
+                                  match tbs_child(kids: kids, i: i0 + 4, at: tbs.value_at) {
+                                    DerRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                                    DerElementRead { element: subject_e } =>
+                                      match tbs_child(kids: kids, i: i0 + 5, at: tbs.value_at) {
+                                        DerRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                                        DerElementRead { element: spki_e } =>
+                                          match read_spki(octets: octets, e: spki_e) {
+                                            SpkiRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                                            SpkiRead { algorithm: spki_alg, named_curve: curve, public_key: key } =>
+                                              match tbs_extensions_element(kids: kids, from: i0 + 6) {
+                                                Absent => TbsOk { certificate_without_signature: X509Certificate {
+                                                  tbs_octets: der_tlv(octets: octets, e: tbs), serial: serial, tbs_signature_algorithm: tbs_alg,
+                                                  issuer_octets: der_tlv(octets: octets, e: issuer_e), not_before: nb, not_after: na,
+                                                  subject_octets: der_tlv(octets: octets, e: subject_e), spki_algorithm: spki_alg, spki_named_curve: curve, spki_public_key: key,
+                                                  extensions: [], signature_algorithm: "", signature_octets: [],
+                                                } }
+                                                Present { value: ext_e } =>
+                                                  match read_tbs_extensions(octets: octets, wrapper: ext_e) {
+                                                    X509ExtensionsRefused { cause: c } => TbsRefused { cause: c }
+                                                    X509ExtensionsRead { extensions: exts } => TbsOk { certificate_without_signature: X509Certificate {
+                                                      tbs_octets: der_tlv(octets: octets, e: tbs), serial: serial, tbs_signature_algorithm: tbs_alg,
+                                                      issuer_octets: der_tlv(octets: octets, e: issuer_e), not_before: nb, not_after: na,
+                                                      subject_octets: der_tlv(octets: octets, e: subject_e), spki_algorithm: spki_alg, spki_named_curve: curve, spki_public_key: key,
+                                                      extensions: exts, signature_algorithm: "", signature_octets: [],
+                                                    } }
+                                                  }
+                                              }
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+    }
+  }
+}
+
+// Certificate ::= SEQUENCE { tbsCertificate, signatureAlgorithm, signatureValue BIT STRING }. The
+// outer signatureAlgorithm must equal the TBS's (§4.1.1.2), which is what keeps an attacker from
+// naming a weaker algorithm outside the signed bytes.
+fn decode_certificate(octets: List<UInt8>) -> X509Decode {
+  match der_read_document(octets: octets) {
+    DerDocumentRefused { cause: c } => x509_der(c: c)
+    DerDocumentRead { element: outer } =>
+      if outer.tag_number != der_tag_sequence { x509_der(c: DerTagUnexpected { at: 0, expected: der_tag_sequence, found: outer.tag_number }) }
+      else {
+        match der_children(octets: octets, parent: outer) {
+          DerChildrenRefused { cause: c } => x509_der(c: c)
+          DerChildrenRead { elements: kids } =>
+            match der_child_at(children: kids, i: 0, at: outer.value_at) {
+              DerRefused { cause: c } => x509_der(c: c)
+              DerElementRead { element: tbs } =>
+                match der_child_at(children: kids, i: 1, at: outer.value_at) {
+                  DerRefused { cause: c } => x509_der(c: c)
+                  DerElementRead { element: alg_e } =>
+                    match der_child_at(children: kids, i: 2, at: outer.value_at) {
+                      DerRefused { cause: c } => x509_der(c: c)
+                      DerElementRead { element: sig_e } =>
+                        match read_tbs(octets: octets, tbs: tbs) {
+                          TbsRefused { cause: c } => X509Refused { cause: c }
+                          TbsOk { certificate_without_signature: cert } =>
+                            match read_algorithm_identifier(octets: octets, e: alg_e) {
+                              AlgorithmIdentifierRefused { cause: c } => x509_der(c: c)
+                              AlgorithmIdentifierRead { algorithm: outer_alg, parameters_oid: _ } =>
+                                if outer_alg != cert.tbs_signature_algorithm { X509Refused { cause: X509SignatureAlgorithmMismatch { tbs: cert.tbs_signature_algorithm, outer: outer_alg } } }
+                                else {
+                                  match der_bit_string_octets(octets: octets, e: sig_e) {
+                                    DerBitsRefused { cause: c } => x509_der(c: c)
+                                    DerBitsRead { octets: sig } => X509Decoded { certificate: X509Certificate {
+                                      tbs_octets: cert.tbs_octets, serial: cert.serial, tbs_signature_algorithm: cert.tbs_signature_algorithm,
+                                      issuer_octets: cert.issuer_octets, not_before: cert.not_before, not_after: cert.not_after,
+                                      subject_octets: cert.subject_octets, spki_algorithm: cert.spki_algorithm, spki_named_curve: cert.spki_named_curve, spki_public_key: cert.spki_public_key,
+                                      extensions: cert.extensions, signature_algorithm: outer_alg, signature_octets: sig,
+                                    } }
+                                  }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// ── Reading a certificate ────────────────────────────────────────────────────────────────────
+// An extension by OID, unique: §4.2 says a certificate MUST NOT include more than one instance of
+// a particular extension, so two is refused rather than first-wins.
+type X509ExtensionLookup
+  = X509ExtensionFound { extension: X509Extension }
+  | X509ExtensionAbsent { oid: String }
+  | X509ExtensionDuplicated { oid: String }
+
+fn x509_extension(cert: X509Certificate, oid: String) -> X509ExtensionLookup {
+  let hits = fold(cert.extensions, init: [], f: (acc, x) => if x.oid == oid { acc |> list_push(x) } else { acc })
+  if count(hits) == 0 { X509ExtensionAbsent { oid: oid } }
+  else if count(hits) > 1 { X509ExtensionDuplicated { oid: oid } }
+  else {
+    match hits |> get(0) {
+      null => X509ExtensionAbsent { oid: oid }
+      h => X509ExtensionFound { extension: h }
+    }
+  }
+}
+
+// ECDSA-Sig-Value ::= SEQUENCE { r INTEGER, s INTEGER }, rendered as the fixed-width r || s the
+// curve verifiers take (P1363), each coordinate left-padded to `width` octets. A magnitude wider
+// than the coordinate refuses: it is not an element of the order.
+type EcdsaSigValue
+  = EcdsaSigValueRead { r_s_fixed: List<UInt8> }
+  | EcdsaSigValueRefused { cause: DerRefusal }
+  | EcdsaSigValueTooWide { component_octets: Int, width: Int }
+
+fn zero_octets(n: Int, acc: List<UInt8>) -> List<UInt8> {
+  if n <= 0 { acc } else { zero_octets(n: n - 1, acc: acc |> list_push(0)) }
+}
+
+fn left_pad(m: List<UInt8>, width: Int) -> List<UInt8> {
+  concat(zero_octets(n: width - count(m), acc: []), m)
+}
+
+fn ecdsa_sig_value(octets: List<UInt8>, width: Int) -> EcdsaSigValue {
+  match der_read_document(octets: octets) {
+    DerDocumentRefused { cause: c } => EcdsaSigValueRefused { cause: c }
+    DerDocumentRead { element: seq } =>
+      match der_children(octets: octets, parent: seq) {
+        DerChildrenRefused { cause: c } => EcdsaSigValueRefused { cause: c }
+        DerChildrenRead { elements: kids } =>
+          if count(kids) != 2 { EcdsaSigValueRefused { cause: DerElementAbsent { at: seq.value_at } } }
+          else {
+            match der_child_at(children: kids, i: 0, at: seq.value_at) {
+              DerRefused { cause: c } => EcdsaSigValueRefused { cause: c }
+              DerElementRead { element: re } =>
+                match der_child_at(children: kids, i: 1, at: seq.value_at) {
+                  DerRefused { cause: c } => EcdsaSigValueRefused { cause: c }
+                  DerElementRead { element: se } =>
+                    match der_unsigned_integer(octets: octets, e: re) {
+                      DerUnsignedRefused { cause: c } => EcdsaSigValueRefused { cause: c }
+                      DerUnsignedRead { magnitude: r } =>
+                        match der_unsigned_integer(octets: octets, e: se) {
+                          DerUnsignedRefused { cause: c } => EcdsaSigValueRefused { cause: c }
+                          DerUnsignedRead { magnitude: s } =>
+                            if count(r) > width { EcdsaSigValueTooWide { component_octets: count(r), width: width } }
+                            else if count(s) > width { EcdsaSigValueTooWide { component_octets: count(s), width: width } }
+                            else { EcdsaSigValueRead { r_s_fixed: concat(left_pad(m: r, width: width), left_pad(m: s, width: width)) } }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
