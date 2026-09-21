@@ -133,14 +133,16 @@ fn w_refused_with(s: V41CandidateVerdict, fragment: String) -> Bool {
   }
 }
 
-// THE LIVE CANDIDATE HAS NO KEY, AND SAYS WHAT IS MISSING. Patch bytes are not in this change;
-// DigestFile + upsert_decision apply is the next PR. Weight/tokenizer manifests and row-store
+// THE LIVE CANDIDATE'S REMAINING OBLIGATION IS THE ROW STORE ALONE (Cut 0, 2026-09-21): the weight
+// manifest (48 shard digests at dba1be0a) and the tokenizer files are keyed from the publisher's
+// declared digests in extdeps.deepseek.deepseek_v4_1_flash, so neither names an obligation any
+// more; the published-shard row-store content digest is a fleet-side reading and still does.
 // content digest are also open.
 test fn the_live_candidate_is_unestablished_and_names_every_missing_axis() -> Bool {
   match v41_candidate().standing {
     V41CandidateUnestablished { obligations: o } =>
-      any(o, x => (x as String).contains("weight manifest"))
-        && any(o, x => (x as String).contains("tokenizer"))
+      !any(o, x => (x as String).contains("weight manifest"))
+        && !any(o, x => (x as String).contains("tokenizer"))
         && any(o, x => (x as String).contains("published-shard row-store"))
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
     V41CandidateRefused { defects: _ } => false

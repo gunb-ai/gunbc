@@ -27,6 +27,7 @@ import extdeps.safetensors.format {
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_revision, deepseek_v4_1_flash_engram_population,
   DeepseekV41EngramTables, deepseek_v4_1_flash_engram,
+  deepseek_v4_1_flash_weight_manifest_text, deepseek_v4_1_flash_tokenizer_manifest_text,
 }
 import gunbc.spark.vllm_runtime_image_build {
   v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
@@ -37,7 +38,7 @@ import gunbc.spark.vllm_image_identity {
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
 import gunbc.spark.serving_deployment_selection { TopologyShape, topology_shape }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity }
-import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell, sha256sum_stdin_digest_via_shell }
 
 // ── ONE EXACT DeepSeek V4.1 RUNTIME CANDIDATE, AS IDENTITY ONLY ──────────────────────────────────
 //
@@ -696,8 +697,8 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   },
   model_source: V41ModelSourceInputs {
     checkpoint_revision: deepseek_v4_1_flash_revision,
-    weights: V41ManifestUnestablished { obligation: "the weight manifest at dba1be0a is not read: extdeps.deepseek.deepseek_v4_1_flash carries sha256 for the two Engram shards only, not the other 46" as NonEmptyStr },
-    tokenizer: V41ManifestUnestablished { obligation: "the tokenizer file population and digests at dba1be0a are not read" as NonEmptyStr },
+    weights: v41_manifest_digest(text: deepseek_v4_1_flash_weight_manifest_text(), subject: "the weight manifest (48 shards at dba1be0a)"),
+    tokenizer: v41_manifest_digest(text: deepseek_v4_1_flash_tokenizer_manifest_text(), subject: "the tokenizer files at dba1be0a"),
   },
   engram: V41EngramRealizationInputs {
     partition: v41_candidate_partition,
@@ -707,6 +708,23 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   },
   topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
   device: gb10_observed_compute_capability,
+}
+
+// A MANIFEST AXIS IS KEYED BY THE DIGEST OF ITS CANONICAL TEXT: the rows are the publisher's
+// declared digests at the pinned revision (extdeps.deepseek.deepseek_v4_1_flash carries them with
+// their provenance), and the digest over their canonical serialization is what the model-source
+// key consumes -- so a shard digest, a file size or a path that changes changes the key. The
+// digest is taken through the sha256sum realization; unavailable is a typed obligation, never a
+// structural fallback.
+fn v41_manifest_digest(text: String, subject: String) -> V41ManifestStanding {
+  match sha256sum_stdin_digest_via_shell(content: text) {
+    Sha256FileDigestUnavailable { path: _, reason: r } => V41ManifestUnestablished { obligation: join([subject, " could not be digested: ", r], "") as NonEmptyStr }
+    Sha256FileDigest { digest: d } =>
+      match sha256_hex_digest(hex: d.hex as String) {
+        Absent => V41ManifestUnestablished { obligation: join([subject, ": sha256sum did not answer a sha256 digest"], "") as NonEmptyStr }
+        Present { value: h } => V41ManifestObserved { digest: h }
+      }
+  }
 }
 
 fn v41_candidate() -> V41CandidateVerdict {
