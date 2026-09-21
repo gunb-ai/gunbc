@@ -49,17 +49,9 @@ type ApprovalGate<Subject>
   | GateStoreUnreadable { detail: NonEmptyStr }
   | GateAuthorizeRefused { detail: NonEmptyStr }
 
-// HOW AN APPROVED DECISION IS ADMITTED. A run that is about to START under a grant admits it live:
-// std.scoped_authorization decides permission at the observed instant, so a grant whose execute_by
-// has passed refuses. A run that is RESUMING a lifecycle it already began under the grant reads the
-// decision as recorded: the right to start expires, the right to finish what was started does not
-// (the consumer's own claim slot is what proves it started), so the recorded arm hands back the
-// derived authorization and leaves the permission decision to the lifecycle that holds the claim.
-type GateAdmission
-  = AdmitLiveAt { observed_at: Timestamp }
-  | AdmitAsRecorded
-
-fn approval_gate_from_poll<Subject>(poll: ApprovalPollStanding, request: AuthorizationRequest<Subject>, admission: GateAdmission) -> ApprovalGate<Subject> {
+// THE LIVE GATE: std.scoped_authorization decides permission at the observed instant, so a grant
+// whose window has not opened or has closed refuses. This is the only fold that mints GateAdmitted.
+fn approval_gate_from_poll<Subject>(poll: ApprovalPollStanding, request: AuthorizationRequest<Subject>, observed_at: Timestamp) -> ApprovalGate<Subject> {
   match poll {
     PollStillPending => GatePending { escalation_id: request.escalation_id }
     PollNotFiled => GateNotFiled { escalation_id: request.escalation_id }
@@ -72,16 +64,42 @@ fn approval_gate_from_poll<Subject>(poll: ApprovalPollStanding, request: Authori
       match grant_from_approved_decision(request: request, revision: r, decided_by: by, decided_at: at, execute_by: until) {
         GrantForAnotherIntent { requested_revision: a, decided_revision: b } => GateIntentMismatch { requested_revision: a, decided_revision: b }
         GrantDerived { authorization: auth } =>
-          match admission {
-            AdmitAsRecorded => GateAdmitted { authorization: auth }
-            AdmitLiveAt { observed_at: observed } =>
-              match authorize(authorization: auth, request: request, observed_at: observed) {
-                AuthorizationPermitted { grant: _ } => GateAdmitted { authorization: auth }
-                AuthorizationRefused { cause: c } => GateAuthorizeRefused { detail: join(["scoped authorization refused the approved grant for this request: ", authorization_refusal_reason(cause: c)], "") as NonEmptyStr }
-              }
+          match authorize(authorization: auth, request: request, observed_at: observed_at) {
+            AuthorizationPermitted { grant: _ } => GateAdmitted { authorization: auth }
+            AuthorizationRefused { cause: c } => GateAuthorizeRefused { detail: join(["scoped authorization refused the approved grant for this request: ", authorization_refusal_reason(cause: c)], "") as NonEmptyStr }
           }
         _ => GateStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr }
       }
+  }
+}
+
+// THE DECISION AS RECORDED is a different fact from an admission to begin, and it has its own
+// constructor so the two cannot inhabit one arm. An approval over exactly this request's revision
+// is handed back as the authorization it derives to -- expired or not -- and NOTHING here says the
+// caller may act under it: the right to finish what an approval began belongs to the lifecycle
+// that durably claimed it, and only a consumer holding that proof (gunbc.spark.pair_serving_d0_authorization
+// d0_resumable_authorization joins it to the D0 claim slot) may turn a recorded approval into a
+// resume. Every other standing is the live gate's arm, so a caller cannot mistake "not approved"
+// for "recorded".
+type RecordedApproval<Subject>
+  = ApprovalRecorded { authorization: ScopedAuthorization<Subject> }
+  | ApprovalNotRecorded { gate: ApprovalGate<Subject> }
+
+fn approval_recorded_from_poll<Subject>(poll: ApprovalPollStanding, request: AuthorizationRequest<Subject>) -> RecordedApproval<Subject> {
+  match poll {
+    PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+      match grant_from_approved_decision(request: request, revision: r, decided_by: by, decided_at: at, execute_by: until) {
+        GrantForAnotherIntent { requested_revision: a, decided_revision: b } => ApprovalNotRecorded { gate: GateIntentMismatch { requested_revision: a, decided_revision: b } }
+        GrantDerived { authorization: auth } => ApprovalRecorded { authorization: auth }
+        _ => ApprovalNotRecorded { gate: GateStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
+      }
+    PollStillPending => ApprovalNotRecorded { gate: GatePending { escalation_id: request.escalation_id } }
+    PollNotFiled => ApprovalNotRecorded { gate: GateNotFiled { escalation_id: request.escalation_id } }
+    PollExpired => ApprovalNotRecorded { gate: GateExpired }
+    PollUnreadable { detail: d } => ApprovalNotRecorded { gate: GateStoreUnreadable { detail: d } }
+    PollDenied { revision: r, decided_by: _, decided_at: _, reason: why } =>
+      if r != request_revision_of(request: request) { ApprovalNotRecorded { gate: GateIntentMismatch { requested_revision: request_revision_of(request: request), decided_revision: r } } }
+      else { ApprovalNotRecorded { gate: GateDenied { reason: why } } }
   }
 }
 
@@ -171,7 +189,7 @@ fn approval_poll_ticks(remaining: Int, cadence: Second, escalation_id: NonEmptyS
 fn approval_gate_from_outcome<Subject>(outcome: ApprovalPollOutcome, request: AuthorizationRequest<Subject>) -> ApprovalGate<Subject> {
   match outcome {
     PollClockUnreadable => GateStoreUnreadable { detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr }
-    PollObservedAt { standing: standing, observed_at: observed } => approval_gate_from_poll(poll: standing, request: request, admission: AdmitLiveAt { observed_at: observed })
+    PollObservedAt { standing: standing, observed_at: observed } => approval_gate_from_poll(poll: standing, request: request, observed_at: observed)
   }
 }
 

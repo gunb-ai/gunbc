@@ -931,9 +931,11 @@ test fn a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_sub
   })
 }
 
-// THE CLAIM IS AUTHORIZED AT THE INSTANT IT IS MADE: an approval whose execute_by has passed by
-// the time the claim would land is refused at admission -- no claim is taken on the store and no
-// authority write follows -- while the same grant admitted at an instant inside its window claims.
+// THE CLAIM IS AUTHORIZED AT THE INSTANT IT IS MADE, and the window has both bounds: an approval
+// whose execute_by has passed by the time the claim would land is refused at admission, and so is
+// an instant BEFORE the grant (a stale or fabricated clock) -- no claim is taken on the store and
+// no authority write follows either way -- while the same grant admitted at an instant inside its
+// window claims.
 test fn a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_execution() -> Bool {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
@@ -944,12 +946,16 @@ test fn a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_exec
             D0GrantRefused { cause: _ } => true
             _ => false
           }
+          let early = match admit_d0_grant(store: store, authorization: auth, escalation_id: "esc-d0-late" as NonEmptyStr, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-17T23:59:59Z") {
+            D0GrantRefused { cause: _ } => true
+            _ => false
+          }
           let unclaimed = match d0_read_claim(store: store, escalation_id: "esc-d0-late" as NonEmptyStr) { D0ClaimAbsent => true  _ => false }
           let in_window = match admit_d0_grant(store: store, authorization: auth, escalation_id: "esc-d0-late" as NonEmptyStr, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T23:59:59Z") {
             D0GrantAdmitted { admitted: _ } => true
             _ => false
           }
-          late && unclaimed && in_window && d0r_claim_is(store: store, escalation: "esc-d0-late" as NonEmptyStr, by: "tx-d0", completed: false)
+          late && early && unclaimed && in_window && d0r_claim_is(store: store, escalation: "esc-d0-late" as NonEmptyStr, by: "tx-d0", completed: false)
         }
       }
     })

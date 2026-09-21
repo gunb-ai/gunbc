@@ -4,11 +4,13 @@ import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp }
 import std.measure { Second, second, second_count }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash }
-import std.scoped_authorization { AuthorizationRequest }
+import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization, ClaimedBy }
+import gunbc.auth.approval_gate { ApprovalGate, ApprovalRecorded, ApprovalNotRecorded, approval_recorded_from_poll }
+import gunbc.auth.approval_request_client { ApprovalPollStanding }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, fabric_group_hosts }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline }
 import gunbc.spark.v41_runtime_candidate { v41_candidate, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused }
-import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_hash, d0_intent_text, parse_d0_intent_text }
+import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_hash, d0_intent_text, parse_d0_intent_text, D0ClaimReading, D0ClaimAt, D0ClaimAbsent, D0ClaimUnreadable }
 
 // ── THE ESCALATION → AUTHORIZATION PRODUCER FOR D0 (Cut D, the gate Cut 0 opens) ─────────────
 //
@@ -87,4 +89,32 @@ fn d0_filed_request(text: String, group: FabricGroup, escalation_id: NonEmptyStr
 // The intent text a live request is frozen as: the same bytes its intent hash was taken over.
 fn d0_request_intent_text(request: AuthorizationRequest<D0Subject>, group: FabricGroup, transaction: NonEmptyStr) -> String {
   d0_intent_text(subject: request.subject, group: group, transaction: transaction)
+}
+
+// A RECORDED APPROVAL BECOMES A RESUMABLE AUTHORIZATION ONLY AGAINST THE DURABLE CLAIM. The right
+// to finish what an approval began belongs to the lifecycle that claimed it: the claim slot must
+// read ClaimedBy THIS transaction. Any other reading -- absent (nothing began; a start is a live
+// admission and must pass the live gate), held by another attempt, completed, aborted, or
+// unreadable -- refuses here, so "historically approved" never reaches d0_dispatch as an
+// authorization without the proof that distinguishes a resume from a start.
+type D0ResumableAuthorization
+  = D0Resumable { authorization: ScopedAuthorization<D0Subject> }
+  | D0NotRecorded { gate: ApprovalGate<D0Subject> }
+  | D0NotClaimedHere { reason: NonEmptyStr }
+
+fn d0_resumable_authorization(claim: D0ClaimReading, transaction: NonEmptyStr, poll: ApprovalPollStanding, request: AuthorizationRequest<D0Subject>) -> D0ResumableAuthorization {
+  match claim {
+    D0ClaimAt { state: ClaimedBy { attempt: who, claimed_at: _ }, generation: _ } =>
+      if (who as String) == (transaction as String) {
+        match approval_recorded_from_poll(poll: poll, request: request) {
+          ApprovalRecorded { authorization: a } => D0Resumable { authorization: a }
+          ApprovalNotRecorded { gate: g } => D0NotRecorded { gate: g }
+        }
+      } else {
+        D0NotClaimedHere { reason: join(["the consent is claimed by attempt ", who as String, ", not ", transaction as String], "") as NonEmptyStr }
+      }
+    D0ClaimAt { state: _, generation: _ } => D0NotClaimedHere { reason: "the consent's claim is not held: unclaimed, completed or aborted" as NonEmptyStr }
+    D0ClaimAbsent => D0NotClaimedHere { reason: "no claim of the consent exists; this run is a start" as NonEmptyStr }
+    D0ClaimUnreadable { reason: r } => D0NotClaimedHere { reason: r }
+  }
 }

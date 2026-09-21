@@ -18,7 +18,8 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_admit_weight_manifest, deepseek_v4_1_flash_weight_manifest_standing, WeightManifestAdmitted, WeightManifestRefused,
   deepseek_v4_1_flash_index_reading, deepseek_v4_1_flash_safetensors_shard_count, deepseek_v4_1_flash_shard_path,
   deepseek_v4_1_flash_admit_tokenizer_population, deepseek_v4_1_flash_tokenizer_standing, deepseek_v4_1_flash_tokenizer_roles, deepseek_v4_1_flash_tokenizer_required_roles,
-  TokenizerPopulationAdmitted, TokenizerPopulationRefused, TokenizerVocabulary, TokenizerPromptEncoding, RoleNotConsumedByRuntime,
+  TokenizerPopulationAdmitted, TokenizerPopulationRefused, TokenizerVocabulary, TokenizerPromptEncoding, TokenizerSpecialTokens, TokenizerGenerationDefaults, RoleNotConsumedByRuntime, RoleNoSeparateFile, RolePublishedFile,
+  deepseek_v4_1_flash_tokenizer_json_file,
   deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision,
   deepseek_v4_1_flash_encoder_path, deepseek_v4_1_flash_config_path,
   deepseek_v4_1_flash_license_path, deepseek_v4_1_flash_license_spdx,
@@ -229,7 +230,8 @@ test fn the_weight_manifest_admits_exactly_the_48_shards_and_refuses_a_same_size
       length(fs) == 48
         && (match first(fs) { Present { value: f } => (f.path as String) == "model-00001-of-00048.safetensors"  Absent => false })
         && (ix.path as String) == "model.safetensors.index.json"
-        && t == deepseek_v4_1_flash_published_manifest_text(rows: reverse(rows))
+        && t == deepseek_v4_1_flash_published_manifest_text(rows: concat([ix], reverse(rows)))
+        && t != deepseek_v4_1_flash_published_manifest_text(rows: rows)
     WeightManifestRefused { defects: _ } => false
   }
   let owners = (match deepseek_v4_1_flash_published_file(path: deepseek_v4_1_flash_engram_shard_1.file.path) { Present { value: f } => (f.sha256.hex as String) == (deepseek_v4_1_flash_engram_shard_1.sha256.hex as String)  Absent => false })
@@ -252,27 +254,42 @@ test fn the_weight_manifest_admits_exactly_the_48_shards_and_refuses_a_same_size
     && (deepseek_v4_1_flash_shard_path(index: 7, count: 48) as String) == "model-00007-of-00048.safetensors"
 }
 
-// THE TOKENIZER POPULATION IS ADMITTED BY ROLE COVER: every required role carried once, the
-// published files (tokenizer.json, tokenizer_config.json, the encoder module) sorted into one
-// canonical text; a role without a carrier is a named refusal, not an empty line (and dropping
-// the vocabulary row also strands the special-tokens role embedded in its file: two defects).
-test fn the_tokenizer_population_admits_by_role_cover_and_refuses_a_missing_role() -> Bool {
+// THE TOKENIZER POPULATION IS ADMITTED BY ROLE COVER AND KEYED BY THE ROLE MANIFEST: every
+// required role carried once, the published files (tokenizer.json, tokenizer_config.json, the
+// encoder module) sorted into the projection; a role without a carrier is a named refusal (and
+// dropping the vocabulary row also strands the special-tokens role embedded in its file: two
+// defects). The REDs the file projection alone would let through: special tokens moved from
+// embedded to not-consumed, or generation defaults re-established at another revision, keep the
+// file set and change the key; the same rows reordered key identically; one published path with
+// two identities refuses.
+test fn the_tokenizer_role_manifest_is_the_identity_and_a_missing_role_refuses() -> Bool {
+  let rows = deepseek_v4_1_flash_tokenizer_roles
   let admitted = match deepseek_v4_1_flash_tokenizer_standing() {
     TokenizerPopulationAdmitted { files: fs, canonical_text: t } =>
       length(fs) == 3
         && (match first(fs) { Present { value: f } => (f.path as String) == "encoding/encoding.py"  Absent => false })
-        && (t as String).contains("tokenizer_config.json 6ac8c8dc")
+        && t.contains("configuration published-file tokenizer_config.json 6ac8c8dc")
+        && t.contains("special-tokens embedded-in tokenizer.json ")
+        && t.contains("generation-defaults no-separate-file dba1be0a")
     TokenizerPopulationRefused { defects: _ } => false
   }
-  let without_vocabulary = filter(deepseek_v4_1_flash_tokenizer_roles, r => match r.role { TokenizerVocabulary => false  _ => true })
+  let text = match deepseek_v4_1_flash_admit_tokenizer_population(rows: rows, required: deepseek_v4_1_flash_tokenizer_required_roles) { TokenizerPopulationAdmitted { files: _, canonical_text: t } => t  TokenizerPopulationRefused { defects: _ } => "" }
+  let reordered = match deepseek_v4_1_flash_admit_tokenizer_population(rows: reverse(rows), required: deepseek_v4_1_flash_tokenizer_required_roles) { TokenizerPopulationAdmitted { files: _, canonical_text: t } => t == text  TokenizerPopulationRefused { defects: _ } => false }
+  let special_unconsumed = concat(filter(rows, r => match r.role { TokenizerSpecialTokens => false  _ => true }), [deepseek_v4_1_flash_tokenizer_role_row(role: TokenizerSpecialTokens, carrier: RoleNotConsumedByRuntime)])
+  let moved = match deepseek_v4_1_flash_admit_tokenizer_population(rows: special_unconsumed, required: deepseek_v4_1_flash_tokenizer_required_roles) { TokenizerPopulationAdmitted { files: fs, canonical_text: t } => length(fs) == 3 && t != text  TokenizerPopulationRefused { defects: _ } => false }
+  let other_revision = concat(filter(rows, r => match r.role { TokenizerGenerationDefaults => false  _ => true }), [deepseek_v4_1_flash_tokenizer_role_row(role: TokenizerGenerationDefaults, carrier: RoleNoSeparateFile { established_at: "0000000000000000000000000000000000000000" as NonEmptyStr })])
+  let re_established = match deepseek_v4_1_flash_admit_tokenizer_population(rows: other_revision, required: deepseek_v4_1_flash_tokenizer_required_roles) { TokenizerPopulationAdmitted { files: fs, canonical_text: t } => length(fs) == 3 && t != text  TokenizerPopulationRefused { defects: _ } => false }
+  let without_vocabulary = filter(rows, r => match r.role { TokenizerVocabulary => false  _ => true })
   let missing = match deepseek_v4_1_flash_admit_tokenizer_population(rows: without_vocabulary, required: deepseek_v4_1_flash_tokenizer_required_roles) {
-    TokenizerPopulationRefused { defects: d } => length(d) == 2 && any(d, x => (x as String).contains("without a carrier: vocabulary")) && any(d, x => (x as String).contains("embedded in a file no role publishes: tokenizer.json"))
+    TokenizerPopulationRefused { defects: d } => length(d) == 2 && any(d, x => (x as String).contains("without a carrier: vocabulary")) && any(d, x => (x as String).contains("embedded in a file no role publishes with that identity: tokenizer.json"))
     TokenizerPopulationAdmitted { files: _, canonical_text: _ } => false
   }
-  let encoder_unconsumed = concat(filter(deepseek_v4_1_flash_tokenizer_roles, r => match r.role { TokenizerPromptEncoding => false  _ => true }), [deepseek_v4_1_flash_tokenizer_role_row(role: TokenizerPromptEncoding, carrier: RoleNotConsumedByRuntime)])
-  let narrower = match deepseek_v4_1_flash_admit_tokenizer_population(rows: encoder_unconsumed, required: deepseek_v4_1_flash_tokenizer_required_roles) {
-    TokenizerPopulationAdmitted { files: fs, canonical_text: _ } => length(fs) == 2
-    TokenizerPopulationRefused { defects: _ } => false
+  let tj = deepseek_v4_1_flash_tokenizer_json_file
+  let forged_file = deepseek_v4_1_flash_published_file_row(path: tj.path, file_bytes: byte_size(count: 1), sha256_hex: tj.sha256.hex)
+  let forged = concat(filter(rows, r => match r.role { TokenizerPromptEncoding => false  _ => true }), [deepseek_v4_1_flash_tokenizer_role_row(role: TokenizerPromptEncoding, carrier: RolePublishedFile { file: forged_file })])
+  let conflicting = match deepseek_v4_1_flash_admit_tokenizer_population(rows: forged, required: deepseek_v4_1_flash_tokenizer_required_roles) {
+    TokenizerPopulationRefused { defects: d } => any(d, x => (x as String).contains("two identities: tokenizer.json"))
+    TokenizerPopulationAdmitted { files: _, canonical_text: _ } => false
   }
-  admitted && missing && narrower
+  admitted && reordered && moved && re_established && missing && conflicting
 }

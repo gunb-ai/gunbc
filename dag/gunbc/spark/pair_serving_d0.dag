@@ -139,9 +139,12 @@ import gunbc.spark.pair_serving_authority_log {
 // THE ENTRY IS NON-ADMITTING UNTIL THE AUTHORIZATION EXISTS, BY CONSTRUCTION. The dispatch
 // requires an exact, time-bounded operator authorization over the candidate key, this group's
 // EXACT HOST POPULATION, the cleanup baseline and the lease term (std.scoped_authorization
-// OperatorGrant over D0Subject), and a successor that is KEYED (Cut 0). No producer joins an
-// escalation to such a grant is gunbc.spark.pair_serving_d0_authorization (the door files and polls it); it answers
-// D0AuthorizationUnestablished and the entry refuses before its first write. The transaction
+// OperatorGrant over D0Subject), and a successor that is KEYED (Cut 0). The producer that joins an
+// escalation to such a grant is gunbc.spark.pair_serving_d0_authorization (the request over the
+// keyed successor, the frozen filing re-derived on a rerun, the recorded approval joined to this
+// transaction's held claim) consumed through gunbc.auth.approval_gate by the wet door
+// gunbc.spark.pair_serving_d0_door, which files, waits and dispatches; while the candidate is
+// unkeyed the request has no subject and the door refuses before its first write. The transaction
 // itself takes the grant as a value, which is how its real-execution witness drives the whole
 // two-write route with a fixture grant.
 //

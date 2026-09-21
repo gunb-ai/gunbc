@@ -755,11 +755,12 @@ fn deepseek_v4_1_flash_shard_paths() -> List<NonEmptyStr> {
 }
 
 // THE SAFETENSORS INDEX AT THIS REVISION, as a published file (resolved bytes, sha256 taken over
-// them on 2026-09-21) and as READ: its weight_map names deepseek_v4_1_flash_index_tensor_count
-// tensors and, as shard files, exactly the generated paths above -- every one of the 48 appears
-// and no other path does. That reading is what the manifest admission reconciles the file
-// population against: a shard file the index never names, or an index shard no file carries, is
-// a refusal.
+// them on 2026-09-21) and as READ: its weight_map names, as shard files, exactly the generated
+// paths above -- every one of the 48 appears and no other path does (the tensor count it also
+// carries is deepseek_v4_1_flash_index_tensor_count, a fact about the population fold, not about
+// this admission, so the reading does not carry it). That reading is what the manifest admission
+// reconciles the file population against: a shard file the index never names, or an index shard
+// no file carries, is a refusal.
 data deepseek_v4_1_flash_safetensors_index_file: DeepseekV41PublishedFile = DeepseekV41PublishedFile {
   path: deepseek_v4_1_flash_safetensors_index_path,
   file_bytes: byte_size(count: 7470294),
@@ -768,13 +769,11 @@ data deepseek_v4_1_flash_safetensors_index_file: DeepseekV41PublishedFile = Deep
 
 type DeepseekV41IndexReading sole_constructor {
   file: DeepseekV41PublishedFile
-  tensor_count: Nat
   shard_paths: List<NonEmptyStr>
 }
 
 data deepseek_v4_1_flash_index_reading: DeepseekV41IndexReading = DeepseekV41IndexReading {
   file: deepseek_v4_1_flash_safetensors_index_file,
-  tensor_count: deepseek_v4_1_flash_index_tensor_count,
   shard_paths: deepseek_v4_1_flash_shard_paths(),
 }
 
@@ -782,7 +781,9 @@ data deepseek_v4_1_flash_index_reading: DeepseekV41IndexReading = DeepseekV41Ind
 // one size stand in for an omitted row of the same size; admission establishes the exact
 // population: no duplicate path, no path outside the generated shard set, every generated path
 // present (an identity join both ways), the declared count and total, and the index's shard
-// population equal to the files'. Only an admitted manifest has a canonical text; the candidate
+// population equal to the files'. Only an admitted manifest has a canonical text, and that text
+// carries the INDEX FILE as a row beside the shards -- the index is the weight map, so an index
+// that changes is a different model source even over the same shard bytes; the candidate
 // (gunbc.spark.v41_runtime_candidate) consumes this standing, never the raw row list, so a
 // defective population is an unestablished model source rather than a differently keyed one.
 type DeepseekV41WeightManifestStanding
@@ -804,7 +805,7 @@ fn deepseek_v4_1_flash_admit_weight_manifest(rows: List<DeepseekV41PublishedFile
   let index_join = if list_cover(held: paths, expected: index.shard_paths, eq: path_eq) && length(index.shard_paths) == length(paths) { [] as List<NonEmptyStr> } else { ["the index's weight_map shard population is not the file population" as NonEmptyStr] }
   let defects = concat(duplicate, concat(foreign, concat(missing, concat(count, concat(total, index_join)))))
   if length(defects) == 0 {
-    WeightManifestAdmitted { files: sort_by(rows, fn(r) { r.path as String }), index: index.file, canonical_text: deepseek_v4_1_flash_published_manifest_text(rows: rows) }
+    WeightManifestAdmitted { files: sort_by(rows, fn(r) { r.path as String }), index: index.file, canonical_text: deepseek_v4_1_flash_published_manifest_text(rows: concat(rows, [index.file])) }
   } else {
     WeightManifestRefused { defects: defects }
   }
@@ -878,13 +879,39 @@ data deepseek_v4_1_flash_tokenizer_roles: List<DeepseekV41TokenizerRoleRow> = [
 
 data deepseek_v4_1_flash_tokenizer_required_roles: List<DeepseekV41TokenizerRole> = [TokenizerVocabulary, TokenizerConfiguration, TokenizerSpecialTokens, TokenizerPromptEncoding, TokenizerGenerationDefaults]
 
-// THE TOKENIZER POPULATION IS ADMITTED BY ROLE COVER: every required role has exactly one row, an
-// embedding role names a file some published-file row carries, and the files of the published-file
-// rows, distinct by path, are the population whose canonical text keys the tokenizer axis. A role
-// with no row is an obligation, not an empty line in the manifest.
+// THE TOKENIZER POPULATION IS ADMITTED BY ROLE COVER AND KEYED BY THE ROLE MANIFEST: every
+// required role has exactly one row; an embedding role names a file some published-file row
+// carries with the SAME identity (path, size, digest); two published-file rows naming one path
+// with different identities refuse rather than coalesce. The canonical text is the sorted ROLE
+// rows -- role, carrier arm, and the exact file identity, the establishing revision or the
+// not-consumed disposition -- so a role that moves from embedded to not consumed, or a
+// no-separate-file fact re-established at another revision, changes the key while the file set
+// stays the same; the file population is a projection beside it, not the identity. A role with no
+// row is an obligation, not an empty line.
 type DeepseekV41TokenizerStanding
   = TokenizerPopulationAdmitted { files: List<DeepseekV41PublishedFile>, canonical_text: String }
   | TokenizerPopulationRefused { defects: List<NonEmptyStr> }
+
+fn published_file_identity_line(f: DeepseekV41PublishedFile) -> String {
+  join([f.path as String, " ", f.sha256.hex as String, " ", to_string(byte_size_count(b: f.file_bytes))], "")
+}
+
+fn published_file_identity_eq(a: DeepseekV41PublishedFile, b: DeepseekV41PublishedFile) -> Bool {
+  published_file_identity_line(f: a) == published_file_identity_line(f: b)
+}
+
+fn tokenizer_role_line(r: DeepseekV41TokenizerRoleRow) -> String {
+  join([deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String, " ", match r.carrier {
+    RolePublishedFile { file: f } => join(["published-file ", published_file_identity_line(f: f)], "")
+    RoleEmbeddedIn { file: f } => join(["embedded-in ", published_file_identity_line(f: f)], "")
+    RoleNoSeparateFile { established_at: rev } => join(["no-separate-file ", rev as String], "")
+    RoleNotConsumedByRuntime => "not-consumed-by-runtime"
+  }], "")
+}
+
+fn deepseek_v4_1_flash_tokenizer_manifest_text(rows: List<DeepseekV41TokenizerRoleRow>) -> String {
+  join(map(sort_by(rows, fn(r) { deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String }), r => tokenizer_role_line(r: r)), "\n")
+}
 
 fn role_eq(a: DeepseekV41TokenizerRole, b: DeepseekV41TokenizerRole) -> Bool {
   (deepseek_v4_1_flash_tokenizer_role_wire(r: a) as String) == (deepseek_v4_1_flash_tokenizer_role_wire(r: b) as String)
@@ -894,14 +921,16 @@ fn deepseek_v4_1_flash_admit_tokenizer_population(rows: List<DeepseekV41Tokenize
   let roles = map(rows, r => r.role)
   let duplicate = map(duplicated_by_key(rows, fn(r) { deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String }), d => join(["tokenizer role carried twice: ", deepseek_v4_1_flash_tokenizer_role_wire(r: d.role) as String], "") as NonEmptyStr)
   let missing = map(filter(required, q => !list_member(xs: roles, x: q, eq: role_eq)), q => join(["tokenizer role without a carrier: ", deepseek_v4_1_flash_tokenizer_role_wire(r: q) as String], "") as NonEmptyStr)
-  let published = distinct_by_key(fold(rows, init: [] as List<DeepseekV41PublishedFile>, f: (acc, r) => match r.carrier { RolePublishedFile { file: f } => concat(acc, [f])  _ => acc }), fn(f) { f.path as String })
+  let published_all = fold(rows, init: [] as List<DeepseekV41PublishedFile>, f: (acc, r) => match r.carrier { RolePublishedFile { file: f } => concat(acc, [f])  _ => acc })
+  let published = distinct_by_key(published_all, fn(f) { f.path as String })
+  let conflicting = map(filter(duplicated_by_key(published_all, fn(f) { f.path as String }), d => any(filter(published_all, q => path_eq(a: q.path, b: d.path)), q => !published_file_identity_eq(a: q, b: d))), d => join(["published path carried with two identities: ", d.path as String], "") as NonEmptyStr)
   let embedded_unbacked = fold(rows, init: [] as List<NonEmptyStr>, f: (acc, r) => match r.carrier {
-    RoleEmbeddedIn { file: f } => if list_member(xs: map(published, p => p.path), x: f.path, eq: path_eq) { acc } else { concat(acc, [join(["tokenizer role ", deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String, " is embedded in a file no role publishes: ", f.path as String], "") as NonEmptyStr]) }
+    RoleEmbeddedIn { file: f } => if list_member(xs: published, x: f, eq: published_file_identity_eq) { acc } else { concat(acc, [join(["tokenizer role ", deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String, " is embedded in a file no role publishes with that identity: ", f.path as String], "") as NonEmptyStr]) }
     _ => acc
   })
-  let defects = concat(duplicate, concat(missing, embedded_unbacked))
+  let defects = concat(duplicate, concat(missing, concat(conflicting, embedded_unbacked)))
   if length(defects) == 0 {
-    TokenizerPopulationAdmitted { files: sort_by(published, fn(f) { f.path as String }), canonical_text: deepseek_v4_1_flash_published_manifest_text(rows: published) }
+    TokenizerPopulationAdmitted { files: sort_by(published, fn(f) { f.path as String }), canonical_text: deepseek_v4_1_flash_tokenizer_manifest_text(rows: rows) }
   } else {
     TokenizerPopulationRefused { defects: defects }
   }

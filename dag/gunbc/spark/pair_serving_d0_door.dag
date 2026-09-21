@@ -7,7 +7,7 @@ import std.process { ProcessExit, exit_failure }
 import std.resources { Network }
 import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization }
 import gunbc.auth.approval_gate {
-  ApprovalGate, GateAdmitted, GateStoreUnreadable, approval_gate_from_poll, approval_gate_from_outcome, approval_gate_text, AdmitAsRecorded,
+  ApprovalGate, GateAdmitted, GateStoreUnreadable, approval_gate_from_poll, approval_gate_from_outcome, approval_gate_text,
   approval_instant_now, approval_expires_at, approval_standing_read, approval_poll_ticks, PollObservedAt, PollClockUnreadable,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
 }
@@ -21,10 +21,12 @@ import gunbc.spark.pair_serving_d0 {
   D0Subject, d0_dispatch, d0_store_write_wall_standing,
   d0_read_filing, D0FilingAbsent, D0FilingAt, D0FilingUnreadable,
   d0_freeze_filing, D0FilingFrozen, D0FilingAlreadyHeld, D0FilingFreezeRefused,
+  d0_read_claim, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
 }
 import gunbc.spark.pair_serving_d0_authorization {
   D0RequestFor, D0RequestUnestablished, d0_authorization_request, d0_request_intent_text,
   D0FiledRequestFor, D0FiledRequestRefused, d0_filed_request,
+  d0_resumable_authorization, D0Resumable, D0NotRecorded, D0NotClaimedHere,
 }
 
 // ── THE WET DOOR OF D0: file the consent, wait for the operator, then run the transaction ─────
@@ -110,11 +112,12 @@ fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEm
   }
 }
 
-// THE GATE FOR THIS RUN. A first run files and polls live. A rerun reads the decision as recorded
-// -- unless it is still pending, in which case the operator has not yet answered the filing an
-// earlier run made and this run waits on it exactly as that run would have; or not filed at all,
-// which is a run that froze the intent and then failed to reach the broker, so the frozen request
-// (the same bytes, the same revision) is filed now and polled live.
+// THE GATE FOR THIS RUN. A first run files and polls live. A rerun reads the durable claim: held
+// by this transaction, the decision is read AS RECORDED and joined to that proof
+// (d0_resumable_authorization) -- the lifecycle finishes under the consent that began it, expired
+// or not; absent, nothing began, so the standing is polled and admitted LIVE exactly as a first
+// run's (still pending: wait; not filed: the intent was frozen but the broker never reached, so the
+// frozen request is filed now); any other holder or state refuses.
 type D0DoorGate
   = D0DoorAdmitted { authorization: ScopedAuthorization<D0Subject> }
   | D0DoorRefused { reason: String }
@@ -126,22 +129,37 @@ fn d0_door_gate_of(gate: ApprovalGate<D0Subject>) -> D0DoorGate {
   }
 }
 
-fn d0_gate(kind: D0RunKind, expires: Timestamp, issued: Timestamp) -> D0DoorGate
+fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp) -> D0DoorGate
   uses net: Network
 {
   match kind {
     D0RunRefused { reason: r } => D0DoorRefused { reason: r }
     D0FirstRun { request: request } => d0_file_and_poll(request: request, issued: issued, expires: expires)
-    D0Rerun { request: request } =>
-      match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
-        PollClockUnreadable => d0_door_gate_of(gate: GateStoreUnreadable { detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr })
-        PollObservedAt { standing: standing, observed_at: _ } =>
-          match standing {
-            PollNotFiled => d0_file_and_poll(request: request, issued: issued, expires: expires)
-            PollStillPending => d0_poll(request: request, expires: expires)
-            recorded => d0_door_gate_of(gate: approval_gate_from_poll(poll: recorded, request: request, admission: AdmitAsRecorded))
+    D0Rerun { request: request } => {
+      let claim = d0_read_claim(store: store, escalation_id: request.escalation_id)
+      match claim {
+        D0ClaimAbsent =>
+          match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
+            PollClockUnreadable => d0_door_gate_of(gate: GateStoreUnreadable { detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr })
+            PollObservedAt { standing: standing, observed_at: observed } =>
+              match standing {
+                PollNotFiled => d0_file_and_poll(request: request, issued: issued, expires: expires)
+                PollStillPending => d0_poll(request: request, expires: expires)
+                decided => d0_door_gate_of(gate: approval_gate_from_poll(poll: decided, request: request, observed_at: observed))
+              }
+          }
+        _ =>
+          match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
+            PollClockUnreadable => d0_door_gate_of(gate: GateStoreUnreadable { detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr })
+            PollObservedAt { standing: standing, observed_at: _ } =>
+              match d0_resumable_authorization(claim: claim, transaction: transaction, poll: standing, request: request) {
+                D0Resumable { authorization: a } => D0DoorAdmitted { authorization: a }
+                D0NotRecorded { gate: g } => d0_door_gate_of(gate: g)
+                D0NotClaimedHere { reason: r } => D0DoorRefused { reason: join(["the consent cannot be resumed by this run: ", r as String], "") }
+              }
           }
       }
+    }
   }
 }
 
@@ -183,7 +201,7 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
       match approval_instant_now() {
         Absent => refuse(reason: "clock unreadable; cannot mint an approval window")
         Present { value: issued } =>
-          match d0_gate(kind: d0_run_kind(store: store, g: g, escalation_id: authorization as NonEmptyStr, transaction: transaction as NonEmptyStr), expires: approval_expires_at(issued: issued, window: d0_approval_window()), issued: issued) {
+          match d0_gate(store: store, kind: d0_run_kind(store: store, g: g, escalation_id: authorization as NonEmptyStr, transaction: transaction as NonEmptyStr), transaction: transaction as NonEmptyStr, expires: approval_expires_at(issued: issued, window: d0_approval_window()), issued: issued) {
             D0DoorRefused { reason: r } => refuse(reason: r)
             D0DoorAdmitted { authorization: scoped } =>
               match approval_instant_now() {
