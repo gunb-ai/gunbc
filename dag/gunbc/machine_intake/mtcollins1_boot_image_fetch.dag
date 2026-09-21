@@ -12,6 +12,7 @@ import gunbc.machine_intake_boot_image_fetch {
   BootImagePublishFailed,
   BootImagePublishedDigestMismatch,
   BootImagePublicationNotAdmitted,
+  BootImagePresentWithDifferentDigest,
   fetch_verified_boot_image,
 }
 
@@ -51,6 +52,8 @@ fn mtcollins1_render_fetch(outcome: BootImageFetchOutcome) -> ProcessExit {
       exit_failure(reason: concat("mtcollins1 boot image: digest agreed but publishing ", s as String, " to ", d as String, " failed"))
     BootImagePublicationNotAdmitted { export_dir: d, reason: r } =>
       exit_failure(reason: concat("mtcollins1 boot image: the artifact verified but publication into ", d as String, " was NOT admitted: ", r))
+    BootImagePresentWithDifferentDigest { path: p, expected: e, observed: o } =>
+      exit_failure(reason: concat("mtcollins1 boot image: REFUSED, ", p as String, " already exists and holds ", o as String, " rather than the verified ", e as String, "; publication is create-only, so nothing was replaced and the verified bytes remain staged beside it"))
     BootImagePublishedDigestMismatch { path: p, expected: e, observed: o } =>
       exit_failure(reason: concat("mtcollins1 boot image: the move reported success but ", p as String, " now holds ", o as String, " rather than the verified ", e as String, "; the export does NOT contain what this program published and the unit must not be booted from it until that is explained"))
   }

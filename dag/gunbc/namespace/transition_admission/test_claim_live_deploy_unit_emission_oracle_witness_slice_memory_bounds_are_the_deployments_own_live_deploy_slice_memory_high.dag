@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.test_claim_live_deploy_unit_emission_oracle_witness_slice_memory_bounds_are_the_deployments_own_live_deploy_slice_memory_high
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data test_claim_live_deploy_unit_emission_oracle_witness_slice_memory_bounds_are_the_deployments_own_live_deploy_slice_memory_high: TransitionAdmission = TransitionAdmission {
+  label: "REQUALIFICATION `live_deploy_slice_memory_high` home gunbc.live_deploy.slice_bounds" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("test.claim.live_deploy_unit_emission_oracle_witness", "slice_memory_bounds_are_the_deployments_own"),
+    spelling: "live_deploy_slice_memory_high" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.live_deploy.slice_bounds", "live_deploy_slice_memory_high")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11667 as UInt32,
+}

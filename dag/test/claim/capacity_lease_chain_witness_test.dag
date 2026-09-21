@@ -7,12 +7,13 @@ import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_reading_at, 
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
   AppendDecision, AppendAdmitted, AppendStale, decide_append, chain_from_head, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
+  EventDecoded, EventUndecodable,
 }
 import product.capacity.lease { LeaseFence, lease_fence_of, fence_verdict, FenceVerdict, FenceCurrent, FenceObsolete, FenceForeignGrant, LeasePolicy, LeaseGrant, lease_grant, ReleaseLaw, FencedResource, QuiescenceRequired, QuiescenceFact, Quiescent, QuiescenceUnobserved, CapacityAfterExpiry, LeaseNotExpired, CapacityFreed, CapacityHeldPendingQuiescence, capacity_after_expiry }
 import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
-  SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, pool_event_wire_text, pool_event_decode, PoolEventDecode, PoolEventDecoded, PoolEventUndecodable,
+  SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, pool_event_wire_text, pool_event_decode,
   grant_from_admission,
 }
 
@@ -169,11 +170,11 @@ test fn every_pool_event_kind_round_trips_through_its_wire_and_junk_is_refused()
   all(kinds, k => {
     let env = w_env(id: "x", parent: "p", payload: k, at: 42)
     match pool_event_decode(text: pool_event_wire_text(event: env.event)) {
-      PoolEventDecoded { event: e } => pool_event_wire_text(event: e) == pool_event_wire_text(event: env.event) && e.recorded_at == 42
-      PoolEventUndecodable { reason: _ } => false
+      EventDecoded { event: e } => pool_event_wire_text(event: e) == pool_event_wire_text(event: env.event) && e.recorded_at == 42
+      EventUndecodable { reason: _ } => false
     }
   })
-    && (match pool_event_decode(text: "{\"schema\":\"nope\"}") { PoolEventUndecodable { reason: _ } => true  PoolEventDecoded { event: _ } => false })
+    && (match pool_event_decode(text: "{\"schema\":\"nope\"}") { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false })
 }
 
 // A LOWERED CEILING DOES NOT INVALIDATE HISTORY THAT WAS ADMITTED UNDER THE OLD ONE.

@@ -1,0 +1,301 @@
+module test.claim.jade_first_contact_model_witness
+
+import std.types { Bool, List, Nat, String }
+import std.measure { ClockBasis, ObservationInstant, ProcessMonotonic, SharedMonotonic, WallClock, nanosecond }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
+import gunbc.machine_intake_bmc_firmware_family_discriminator {
+  FamilyAmbiguous,
+  FamilyDiscriminated,
+  FamilyIndeterminate,
+  ManagerIdentityObservation,
+  discriminate_family,
+  family_standing_from_discrimination,
+  megarac_oem_key,
+  openbmc_oem_key,
+}
+import gunbc.machine_intake_factory_segment_lease {
+  LeaseDeadlineIncomparable,
+  LeaseOverranDeadline,
+  LeaseWithinDeadline,
+  LeasedSegmentAddress,
+  SegmentAddressAlreadyPresent,
+  SegmentAddressLeftAsFound,
+  SegmentAddressNeverPlaced,
+  SegmentAddressPlaced,
+  SegmentAddressPlacementRefused,
+  SegmentAddressReleaseRefused,
+  SegmentAddressReleased,
+  disposition_for_unplaced,
+  host_was_left_as_found,
+  lease_time_standing,
+}
+import std.dissolution { DissolutionFired, DissolutionPending, DissolutionUnbound, dissolution_status }
+import std.roster_frontier { DeclSubject, PathSubject, frontier_rows_keyed_roster_build, frontier_rows_well_formed }
+import std.keyed_roster { KeyedRosterBuildDuplicateKey, KeyedRosterBuilt }
+import gunbc.machine_intake_jade_first_contact_frontier { jade_first_contact_frontier_rows }
+import gunbc.machine_intake_mtjade1_factory_network {
+  BmcNetworkObservedDhcpLease,
+  BmcNetworkUnobserved,
+  DocumentStatesStatic,
+  FactoryNetworkDivergesFromDocument,
+  FactoryNetworkMatchesDocument,
+  FactoryNetworkUnobserved,
+  factory_bmc_network_standing,
+  mt_jade_gsg_bmc_network_expectation,
+  mtjade1_bmc_observed_network,
+  mtjade1_bmc_address,
+  mtjade1_factory_bmc_network_standing,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn manager_with(oem: List<String>) -> ManagerIdentityObservation {
+  ManagerIdentityObservation {
+    manager_id: "bmc",
+    firmware_version: "fixture",
+    model: "fixture",
+    oem_keys: oem,
+  }
+}
+
+// THE FOLD THAT MAY CONSTRUCT A FAMILY, EXERCISED IN ALL FOUR DIRECTIONS. Each conjunct fails on a
+// different real defect: dropping either Oem discriminator, collapsing the both-keys case into a
+// family, or letting an unrecognised Manager answer anything but indeterminate.
+test fn w_manager_oem_key_discriminates_exactly_one_family() -> Bool {
+  match discriminate_family(observation: manager_with(oem: [openbmc_oem_key as String])) {
+    FamilyDiscriminated { family: OpenBmc, basis: _ } => true
+    FamilyDiscriminated { family: _, basis: _ } => false
+    FamilyIndeterminate { basis: _ } => false
+    FamilyAmbiguous { basis: _ } => false
+  }
+    && match discriminate_family(observation: manager_with(oem: [megarac_oem_key as String])) {
+      FamilyDiscriminated { family: AmiMegaRac, basis: _ } => true
+      FamilyDiscriminated { family: _, basis: _ } => false
+      FamilyIndeterminate { basis: _ } => false
+      FamilyAmbiguous { basis: _ } => false
+    }
+    && match discriminate_family(
+      observation: manager_with(oem: [openbmc_oem_key as String, megarac_oem_key as String]),
+    ) {
+      FamilyAmbiguous { basis: _ } => true
+      FamilyDiscriminated { family: _, basis: _ } => false
+      FamilyIndeterminate { basis: _ } => false
+    }
+    && match discriminate_family(observation: manager_with(oem: ["Vendor_Unmodelled"])) {
+      FamilyIndeterminate { basis: _ } => true
+      FamilyDiscriminated { family: _, basis: _ } => false
+      FamilyAmbiguous { basis: _ } => false
+    }
+}
+
+// ONLY A DISCRIMINATED FAMILY BECOMES OBSERVED. The red is a fold that promotes ambiguity or an
+// unrecognised Manager into FamilyObserved, which would select a rotation route against a stack
+// nobody identified.
+test fn w_only_discrimination_promotes_to_family_observed() -> Bool {
+  match family_standing_from_discrimination(
+    discrimination: FamilyDiscriminated { family: OpenBmc, basis: "fixture" },
+  ) {
+    FamilyObserved { family: OpenBmc } => true
+    FamilyObserved { family: _ } => false
+    FamilyUnobserved { discriminator: _ } => false
+  }
+    && match family_standing_from_discrimination(
+      discrimination: FamilyAmbiguous { basis: "fixture: both Oem keys" },
+    ) {
+      FamilyUnobserved { discriminator: _ } => true
+      FamilyObserved { family: _ } => false
+    }
+    && match family_standing_from_discrimination(
+      discrimination: FamilyIndeterminate { basis: "fixture: no modeled key" },
+    ) {
+      FamilyUnobserved { discriminator: _ } => true
+      FamilyObserved { family: _ } => false
+    }
+}
+
+fn fixture_instant(basis: ClockBasis, nanos: Nat) -> ObservationInstant {
+  ObservationInstant {
+    domain: ProcessMonotonic { process: "fixture-run" },
+    basis: basis,
+    since_origin: nanosecond(count: nanos),
+  }
+}
+
+fn fixture_lease(deadline_nanos: Nat) -> LeasedSegmentAddress {
+  LeasedSegmentAddress {
+    device: "enP3p3s0f1",
+    cidr: "10.0.7.3/29",
+    acquired_at: fixture_instant(basis: WallClock, nanos: 0),
+    deadline: fixture_instant(basis: WallClock, nanos: deadline_nanos),
+  }
+}
+
+// THE ONLY DISPOSITION IN WHICH SRV1 WAS NOT LEFT AS FOUND IS A REFUSED RELEASE. The red is a fold
+// that reports a failed `ip addr del` as clean, which is exactly the leak this lease exists to
+// prevent - an address still on a production interface while the run returns findings.
+test fn w_only_a_refused_release_leaves_the_host_changed() -> Bool {
+  host_was_left_as_found(
+    disposition: SegmentAddressReleased {
+      lease: fixture_lease(deadline_nanos: 100),
+      released_at: fixture_instant(basis: WallClock, nanos: 50),
+    },
+  )
+    && host_was_left_as_found(
+      disposition: SegmentAddressLeftAsFound {
+        device: "enP3p3s0f1",
+        cidr: "10.0.7.3/29",
+        basis: "fixture: address present before the run",
+      },
+    )
+    && host_was_left_as_found(
+      disposition: SegmentAddressNeverPlaced {
+        device: "enP3p3s0f1",
+        cidr: "10.0.7.3/29",
+        cause: "fixture: placement refused",
+      },
+    )
+    && host_was_left_as_found(
+      disposition: SegmentAddressReleaseRefused {
+        lease: fixture_lease(deadline_nanos: 100),
+        cause: "fixture: ip addr del exited nonzero",
+      },
+    ) == false
+}
+
+// AN ACQUISITION THE RUN DID NOT PLACE PAIRS TO A DISPOSITION WITHOUT TOUCHING THE DEVICE, and a
+// placed one has no such shortcut. The red is a pairing that hands SegmentAddressPlaced a
+// disposition the run never earned by actually deleting the address.
+test fn w_unplaced_acquisitions_pair_without_a_delete() -> Bool {
+  match disposition_for_unplaced(
+    acquisition: SegmentAddressAlreadyPresent {
+      device: "enP3p3s0f1",
+      cidr: "10.0.7.3/29",
+      basis: "fixture: ip addr show already lists it",
+    },
+  ) {
+    Present { value: SegmentAddressLeftAsFound { device: _, cidr: _, basis: _ } } => true
+    Present { value: _ } => false
+    Absent => false
+  }
+    && match disposition_for_unplaced(
+      acquisition: SegmentAddressPlacementRefused {
+        device: "enP3p3s0f1",
+        cidr: "10.0.7.3/29",
+        cause: "fixture: ip addr add exited nonzero",
+      },
+    ) {
+      Present { value: SegmentAddressNeverPlaced { device: _, cidr: _, cause: _ } } => true
+      Present { value: _ } => false
+      Absent => false
+    }
+    && match disposition_for_unplaced(
+      acquisition: SegmentAddressPlaced { lease: fixture_lease(deadline_nanos: 100) },
+    ) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+// THE DEADLINE REFUSES ACROSS CLOCK DOMAINS RATHER THAN GUESSING. The red is a comparison that
+// calls an incomparable pair either live or expired.
+test fn w_lease_deadline_is_three_valued_across_clock_domains() -> Bool {
+  match lease_time_standing(
+    lease: fixture_lease(deadline_nanos: 100),
+    now: fixture_instant(basis: WallClock, nanos: 50),
+  ) {
+    LeaseWithinDeadline => true
+    LeaseOverranDeadline => false
+    LeaseDeadlineIncomparable { basis: _ } => false
+  }
+    && match lease_time_standing(
+      lease: fixture_lease(deadline_nanos: 100),
+      now: fixture_instant(basis: WallClock, nanos: 500),
+    ) {
+      LeaseOverranDeadline => true
+      LeaseWithinDeadline => false
+      LeaseDeadlineIncomparable { basis: _ } => false
+    }
+    && match lease_time_standing(
+      lease: fixture_lease(deadline_nanos: 100),
+      now: ObservationInstant {
+        domain: SharedMonotonic { origin: "fixture-other-domain" },
+        basis: WallClock,
+        since_origin: nanosecond(count: 50),
+      },
+    ) {
+      LeaseDeadlineIncomparable { basis: _ } => true
+      LeaseWithinDeadline => false
+      LeaseOverranDeadline => false
+    }
+}
+
+// THE UNIT DIVERGES FROM ITS OWN SHIPPING DOCUMENT, and the fold says so in both directions rather
+// than only about this unit. The red is a comparison that files an observed static under a
+// document expecting DHCP as agreement.
+test fn w_observed_static_diverges_from_the_gsg_dhcp_expectation() -> Bool {
+  match mtjade1_factory_bmc_network_standing {
+    FactoryNetworkDivergesFromDocument { expectation: _, observed: _, divergence: _ } => true
+    FactoryNetworkMatchesDocument { expectation: _ } => false
+    FactoryNetworkUnobserved { discriminator: _ } => false
+  }
+    && match factory_bmc_network_standing(
+      expectation: DocumentStatesStatic { citation: "fixture: a document that states a static default" },
+      observed: mtjade1_bmc_observed_network,
+    ) {
+      FactoryNetworkMatchesDocument { expectation: _ } => true
+      FactoryNetworkDivergesFromDocument { expectation: _, observed: _, divergence: _ } => false
+      FactoryNetworkUnobserved { discriminator: _ } => false
+    }
+    && match factory_bmc_network_standing(
+      expectation: mt_jade_gsg_bmc_network_expectation,
+      observed: BmcNetworkObservedDhcpLease {
+        address: mtjade1_bmc_address,
+        prefix: 29,
+        basis: "fixture: a lease the router did issue",
+      },
+    ) {
+      FactoryNetworkMatchesDocument { expectation: _ } => true
+      FactoryNetworkDivergesFromDocument { expectation: _, observed: _, divergence: _ } => false
+      FactoryNetworkUnobserved { discriminator: _ } => false
+    }
+    && match factory_bmc_network_standing(
+      expectation: mt_jade_gsg_bmc_network_expectation,
+      observed: BmcNetworkUnobserved { discriminator: "fixture: nothing read yet" },
+    ) {
+      FactoryNetworkUnobserved { discriminator: _ } => true
+      FactoryNetworkMatchesDocument { expectation: _ } => false
+      FactoryNetworkDivergesFromDocument { expectation: _, observed: _, divergence: _ } => false
+    }
+}
+
+// THE FRONTIER IS FOLDED, NOT COUNTED. Duplicate subjects fail the keyed build; a subject outside
+// the three modules this roster is about fails the scope conjunct; and a dissolution bound forward
+// to a symbol this closure cannot name fails the last one. No cardinality literal: a count cannot
+// tell a dropped row from a dropped-and-replaced one, which is the failure the roster exists for.
+test fn w_first_contact_frontier_is_keyed_scoped_and_unbound() -> Bool {
+  frontier_rows_well_formed(rows: jade_first_contact_frontier_rows)
+    && match frontier_rows_keyed_roster_build(rows: jade_first_contact_frontier_rows) {
+      KeyedRosterBuilt { rows: _ } => true
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    }
+    && all(
+      jade_first_contact_frontier_rows,
+      row => match row.subject {
+        DeclSubject { ref: r } =>
+          (r.module_path as String) == "gunbc.machine_intake_bmc_firmware_family_discriminator"
+            || (r.module_path as String) == "gunbc.machine_intake_factory_segment_lease"
+            || (r.module_path as String) == "gunbc.machine_intake_mtjade1_factory_network"
+        PathSubject { path: _ } => false
+      },
+    )
+    && all(
+      jade_first_contact_frontier_rows,
+      row => match dissolution_status(condition: row.dissolution, present_decls: []) {
+        DissolutionUnbound => true
+        DissolutionPending => false
+        DissolutionFired => false
+      },
+    )
+}

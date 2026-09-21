@@ -105,8 +105,13 @@ pub use required_floor_runner::{
 };
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
+mod required_lane_resolution_census;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
+pub use required_lane_resolution_census::{
+    entry_closure_module_identities, required_floor_nominal_subject_module_identities,
+    source_root_ingest_module_identities, ModuleIdentityPopulation,
+};
 
 pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
     entry_resolve::required_lane_judged_module_identities()
@@ -20061,6 +20066,29 @@ fn release_revision_text_valid(text: &str) -> bool {
             .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
 }
 
+/// The liveness path this server answers WITHOUT entering the evaluator.
+///
+/// Seed realization of `gunbc.serve_liveness` `serve_liveness_path`. It is a constant here rather
+/// than a value read from the graph for the reason the endpoint exists at all: a path resolved by
+/// evaluating `.dag` would be unavailable in exactly the state this endpoint reports on.
+const SERVE_LIVENESS_PATH: &str = "/livez";
+
+/// The member name the liveness document publishes its release revision under.
+///
+/// THIS PROCESS IS THE ONLY PRODUCER OF THAT DOCUMENT, and that is a correction rather than a
+/// convenience (review 68036). The first cut also declared the document in `.dag` and called that
+/// declaration its authority, which gave one document two producers that could drift while the
+/// `.dag` one had no consumer and the claim over it asserted against bytes nobody served. The
+/// `.dag` side is now the READER — `gunbc.serve_liveness` `observe_serve_liveness` — so the
+/// producer here has exactly one counterpart and the counterpart executes over what this writes.
+///
+/// The NAME is `gunbc.running_release_identity` `running_release_revision_key`, the same member
+/// `/healthz` publishes its revision under, because "which release is this process" is one fact and
+/// a second spelling of it would be a nickname that drifts. It is duplicated here for the same
+/// reason the path is — no fold can run at this seam — and `release_revision_text_valid` already
+/// carries the precedent of one rule realized at two boundaries.
+const SERVE_LIVENESS_REVISION_KEY: &str = "revision";
+
 /// The process-wide evaluation budget this serve process enforces.
 ///
 /// PROCESS-WIDE, NOT PER-ROUTE, and the distinction is load-bearing rather than a simplification.
@@ -20370,6 +20398,45 @@ pub fn handle_serve(
                 // Idle or cleanly-closed connection: no request was made, so the
                 // connection is dropped without a response.
                 Ok(None) => {}
+                // THE ONE ROUTE ANSWERED BEFORE THE EVALUATOR IS ENTERED.
+                //
+                // Seed realization of `gunbc.serve_liveness` — that module owns the path, the
+                // document and the single status, and states why the answer cannot live behind an
+                // evaluation. The short version, because it is the reason this branch is here and
+                // not a `.dag` row: the conditions that make a served process unhealthy are the
+                // conditions that make an expensive evaluation fail, so a health endpoint reachable
+                // only through the evaluator answers "healthy" or nothing — and "nothing" is
+                // indistinguishable from a dead host. Boot 15 was that outage (side-chat ruling
+                // 2026-09-19; the request is #11557).
+                //
+                // Every field is a value this process validated BEFORE it bound: the release
+                // revision was checked for shape and the process exited if it was not a revision,
+                // the entry is the armed contract's subject, and the address is the one
+                // `local_addr` reported. So there is nothing here that can be unavailable while
+                // the connection is writable, which is why the module declares exactly one status.
+                //
+                // NO BUDGET IS ARMED and no `.dag` function is called, deliberately: arming a
+                // deadline around a `format!` would be ceremony, and reaching the evaluator at all
+                // would reintroduce the dependency this endpoint exists to remove.
+                Ok(Some((method, path, _body, _identity)))
+                    if method == "GET" && path == SERVE_LIVENESS_PATH =>
+                {
+                    serve_write_response(
+                        &mut stream,
+                        200,
+                        "application/json; charset=utf-8",
+                        &format!(
+                            "{{\"live\":true,\"{}\":{},\"entry_function\":{},\"bound_host\":{},\"bound_port\":{}}}",
+                            SERVE_LIVENESS_REVISION_KEY,
+                            serve_json_string(&release_revision),
+                            serve_json_string(serve_budget_refusal::serve_contract_entry(
+                                &armed_contract
+                            )),
+                            serve_json_string(&bound.ip().to_string()),
+                            bound.port(),
+                        ),
+                    )
+                }
                 Ok(Some((method, path, body, tailscale_identity))) => {
                     let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
                         (Some("method".to_string()), str_value(method)),

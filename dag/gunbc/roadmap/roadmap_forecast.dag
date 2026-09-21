@@ -50,6 +50,7 @@ import gunbc.roadmap_sizing {
 }
 import gunbc.roadmap_belt { BeltCapacity }
 import gunbc.roadmap_authority {
+  roadmap_acceptance_event_history_load,
   declared_roadmap_nodes,
   active_roadmap_nodes_for_accepted,
   active_roadmap_edges_for_accepted,
@@ -260,7 +261,7 @@ fn observation_for_link(
 // The whole build refuses rather than proceeding on a population it cannot trust, which is the
 // shape the sibling HistoryAcceptanceCarrierLoadRefused arm already uses for a bad population.
 fn roadmap_cycle_time_observation_builds() -> List<CycleTimeObservationBuild> {
-  match roadmap_acceptance_receipts() {
+  match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {
     RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
       [CycleTimeHistoryRefused {
         refusal: HistoryAcceptanceCarrierLoadRefused { detail: detail },
@@ -1069,7 +1070,7 @@ fn live_roadmap_schedule_forecast(
   anchor: ForecastAnchorObservation,
 ) -> ScheduleForecastResult {
   roadmap_schedule_forecast_over(
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     assumptions: assumptions,
     anchor: anchor,
   )

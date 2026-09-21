@@ -31,6 +31,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
 data find_program: NonEmptyStr = "find"
 
+// xargs SHIPS WITH findutils, not coreutils, which is why it is homed here beside find rather than
+// in extdeps.tools.gnu_coreutils. The pairing is the usual one: find -print0 emits NUL-separated
+// names so that a name containing a newline or a space cannot be split, and xargs -0 is the only
+// reader that consumes that encoding. Same PATH-resolved spelling reasoning as find_program above.
+data xargs_program: NonEmptyStr = "xargs"
+
 // -lname IS A GNU EXTENSION and it matches the TARGET of a symbolic link, not the link's own name --
 // which is the whole reason this operation exists rather than a plain -name walk. Its pattern is a
 // GLOB, so a bracketed literal such as socket:[12345] is read as a character class and matches

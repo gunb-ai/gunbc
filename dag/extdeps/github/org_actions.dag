@@ -61,12 +61,3 @@ service github.CliOrgRunnerGroups {
     }
   }
 }
-
-// TOKEN-SCOPE FACT, observed by execution 2026-08-30: these endpoints require org
-// administration scope. A repository-scoped integration token receives HTTP 403
-// {"message":"Resource not accessible by integration"} - observed against
-// /orgs/gunb-ai/actions/runners and /repos/gunb-ai/gunbc-private/actions/runners from
-// this session's gh credential. So a fleet convergence of org settings has a CREDENTIAL
-// precondition, not merely an API binding; the refusal string is the discriminator a
-// reader of a failed converge run should match against.
-data org_admin_scope_refusal_fragment: NonEmptyStr = "Resource not accessible by integration"

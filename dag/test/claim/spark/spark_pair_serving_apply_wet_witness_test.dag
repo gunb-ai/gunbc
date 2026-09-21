@@ -1,0 +1,37 @@
+module test.claim.spark.spark_pair_serving_apply_wet_witness
+
+import std.logic { Bool }
+import std.types { String, List }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.spark.pair_serving_apply { spark_pair_apply_plans, spark_pair_apply_plan_refusals }
+import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE APPLY SEAM'S LIVE BINDING, EXECUTED. test.claim.spark.spark_pair_serving_apply_witness drives
+// the plan fold over a SUPPLIED roster; this is the other half of DESIGN §3's pairing obligation:
+// spark_pair_apply_plans reads the executor's hostname, resolves its event log layout and reads
+// every claimed group's authority from the log before planning anything. On the wet lane's
+// runner that read does not reach a log, so every claimed group's plan is a refusal that NAMES
+// THE READ -- "the serving authority could not be read" -- and nothing is planned from the
+// resting row. Deleting the log read, or letting an unreadable log fall back to the row, turns
+// these refusals into plans and this claim red.
+test fn the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet() -> Bool {
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: _ } => false
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match now_epoch_seconds() {
+        Absent => false
+        Present { value: at } => {
+          let plans = spark_pair_apply_plans(executor: executor, at: at)
+          let refusals = spark_pair_apply_plan_refusals(plans: plans)
+          length(plans) == length(spark_pair_serving_authorities)
+            && length(refusals) == length(plans)
+            && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read"))
+        }
+      }
+  }
+}

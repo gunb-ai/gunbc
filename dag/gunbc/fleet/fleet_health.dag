@@ -1,0 +1,262 @@
+module gunbc.fleet_health
+
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
+import std.algebra { trim }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.nat { Nat }
+import std.measure { celsius_count }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.goal_assessment {
+  GoalAssessmentRefused,
+  GoalDiverged,
+  GoalIndeterminate,
+  GoalInspected,
+  GoalObservationRefused,
+  GoalSatisfied,
+  ObservationAttempt,
+  ObservationEstablished,
+  ObservationRefused,
+}
+import v2.std.algebra { non_empty_to_list }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent { ComputeHost, fleet_intent_known_hosts }
+import gunbc.fleet_fan_tach_expectation {
+  HostFanTachExpectationAbsent,
+  HostFanTachExpectationDuplicate,
+  HostFanTachExpectationEstablished,
+  HostFanTachExpectationHeaderDuplicated,
+  host_fan_tach_expectation_admission,
+}
+import product.fan_tach_health { FanTachDeviation, fan_tach_goal }
+import product.host_health {
+  FleetHealthDeviation,
+  FleetHealthReceipt,
+  FleetHealthUnknown,
+  HostAssessmentRefusedAt,
+  HostHealthGoal,
+  HostObservationRefusedAt,
+  HostUnknownAt,
+  KeyedHostObservation,
+  NoPriorBaseline,
+  TemperatureExpectation,
+  TemperatureLimitUnestablished,
+  TemperatureRosterDeclared,
+  assess_fleet_health,
+  host_health_goal,
+}
+import gunbc.fleet_health_observe { BmcTelemetryProfile, observe_host_health }
+import gunbc.bmc_custody_read {
+  CustodyCredentialAbsent,
+  CustodyCredentialHeld,
+  CustodyCredentialUnreadable,
+  bmc_custody_credential,
+}
+import gunbc.bmc_health_reader { bmc_health_reader_secret_id, bmc_health_reader_username }
+import gunbc.auth.access_token_source {
+  AccessTokenEnsureRefused,
+  AccessTokenReady,
+  AccessTokenSourceSelected,
+  AccessTokenSourceUnavailable,
+  AccessTokenUpsertRequired,
+  access_token_upsert_required_reason,
+  ensure_access_token,
+  select_access_token_source,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+  asrock_altrad8ud_1l2t_catalog,
+  asrock_altrad8ud_redfish_chassis_id,
+}
+
+// HEALTH-0: ONE READ-ONLY, OUT-OF-BAND HEALTH CHECK OVER THE WHOLE FLEET.
+//
+// A separate protocol beside convergence, not an arm of it (side-chat ruling 2026-09-18): it has no
+// plan, no apply, no lease and no mutation, and nothing in its closure can express one. The roster is
+// fleet_intent_known_hosts, so a newly enrolled host becomes a health obligation without an edit
+// here, and a host the collector cannot read stays in the denominator as a located refusal.
+//
+// The goal is derived per host from what the fleet already declares: the fan expectation rows, and
+// the board's temperature sensor roster. No temperature limit is cited yet, so every sensor's limit
+// is unestablished -- which can never produce a green -- while the BMC's own threshold verdict is
+// still carried as evidence. The baseline is NoPriorBaseline: selecting an admitted baseline is
+// HEALTH-1, and the input seam for it is already HostHealthGoal.baseline.
+
+// THE SAMPLING POLICY, declared once. Five samples per window, and a fan is healthy when at least
+// three of them read rotation: the dated 20-sample specimens (gunbc.fleet_fan_tach_observation) show
+// healthy fans reading zero 1-4 times in 20 and srv1's degraded ones 11 and 16, so a 60% floor
+// separates them, and this is that floor at five samples.
+data fleet_health_samples: Nat = 5
+data fleet_health_minimum_rotating: Int = 3
+
+// THE ALTRAD8UD-1L2T TEMPERATURE ROSTER. Both BMC images the fleet runs publish exactly these twenty
+// temperature sensors (read with the gunbc_health account 2026-09-18: ASRock 2.07 as Sensors
+// temperature_*, OpenBMC 3.22 in Thermal.Temperatures, identical name sets), so it is a board fact.
+// No limit is cited for any of them yet.
+data altrad8ud_temperature_sensors: List<NonEmptyStr> = [
+  "TEMP_CARD_SIDE", "TEMP_Core_VRD", "TEMP_DIMM_A1", "TEMP_DIMM_B1", "TEMP_DIMM_C1", "TEMP_DIMM_D1",
+  "TEMP_DIMM_E1", "TEMP_DIMM_F1", "TEMP_DIMM_G1", "TEMP_DIMM_H1", "TEMP_DIMM_VRD", "TEMP_M2_1",
+  "TEMP_M2_2", "TEMP_MB", "TEMP_RCA_VR", "TEMP_SOC", "TEMP_SOC_VRD", "TEMP_TR1", "TEMP_VR", "TEMP_X550",
+]
+
+fn host_telemetry_profile(host: ComputeHost) -> ObservationAttempt<BmcTelemetryProfile, NonEmptyStr> {
+  match host.baseboard {
+    Absent => ObservationRefused { cause: concat("host ", host.identity as String, " declares no baseboard, so no BMC to read") as NonEmptyStr }
+    Present { value: board } =>
+      if board.catalog != asrock_altrad8ud_1l2t_catalog {
+        ObservationRefused { cause: concat("host ", host.identity as String, "'s board has no Redfish telemetry profile") as NonEmptyStr }
+      } else {
+        ObservationEstablished { observed: BmcTelemetryProfile {
+          host: host.identity,
+          bmc_host: board.bmc.host,
+          chassis_id: asrock_altrad8ud_redfish_chassis_id,
+          surface_catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+        } }
+      }
+  }
+}
+
+fn host_goal(host: ComputeHost) -> ObservationAttempt<HostHealthGoal, NonEmptyStr> {
+  match host_fan_tach_expectation_admission(host: host.identity) {
+    HostFanTachExpectationEstablished { expectation } => ObservationEstablished { observed: host_health_goal(
+      host: host.identity,
+      fans: fan_tach_goal(expectation: expectation, minimum_rotating: fleet_health_minimum_rotating),
+      temperatures: TemperatureRosterDeclared { sensors: map(altrad8ud_temperature_sensors, s => TemperatureExpectation { sensor: s, limit: TemperatureLimitUnestablished }) },
+      baseline: NoPriorBaseline,
+    ) }
+    HostFanTachExpectationAbsent => ObservationRefused { cause: concat("host ", host.identity as String, " has no fan expectation row") as NonEmptyStr }
+    HostFanTachExpectationDuplicate { count: _ } => ObservationRefused { cause: concat("host ", host.identity as String, " has duplicate fan expectation rows") as NonEmptyStr }
+    HostFanTachExpectationHeaderDuplicated { header: _ } => ObservationRefused { cause: concat("host ", host.identity as String, " declares a fan header twice") as NonEmptyStr }
+  }
+}
+
+// EVERY ROSTERED HOST NEEDS A GOAL. A host whose goal cannot be derived refuses the fleet check,
+// because assessing the rest would shrink the denominator by exactly the host nobody could describe.
+fn fleet_health_goals() -> ObservationAttempt<List<HostHealthGoal>, NonEmptyStr> {
+  let empty: List<HostHealthGoal> = []
+  let initial: ObservationAttempt<List<HostHealthGoal>, NonEmptyStr> = ObservationEstablished { observed: empty }
+  let reversed = fold(fleet_intent_known_hosts, init: initial, f: (acc, h) => match acc {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: goals } => match host_goal(host: h) {
+      ObservationRefused { cause } => ObservationRefused { cause: cause }
+      ObservationEstablished { observed: g } => ObservationEstablished { observed: concat([g], goals) }
+    }
+  })
+  match reversed {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: goals } => ObservationEstablished { observed: reverse(goals) }
+  }
+}
+
+fn observe_rostered_host(host: ComputeHost, token: Secret) -> KeyedHostObservation
+  uses net: Network
+{
+  match host_telemetry_profile(host: host) {
+    ObservationRefused { cause } => return KeyedHostObservation { host: host.identity, attempt: ObservationRefused { cause: cause } }
+    ObservationEstablished { observed: telemetry } =>
+      match bmc_custody_credential(secret_id: bmc_health_reader_secret_id(host: host.identity), token: token) {
+        CustodyCredentialAbsent => return KeyedHostObservation { host: host.identity, attempt: ObservationRefused { cause: "the health-reader credential is not in custody; converge it with gunbc.tools.bmc_health_reader_converge" } }
+        CustodyCredentialUnreadable { cause: c } => return KeyedHostObservation { host: host.identity, attempt: ObservationRefused { cause: concat("the health-reader credential could not be read from custody: ", c) as NonEmptyStr } }
+        CustodyCredentialHeld { password: p } => return KeyedHostObservation {
+          host: host.identity,
+          attempt: observe_host_health(telemetry: telemetry, reader_login: bmc_health_reader_username, reader_password: p as Secret, samples: fleet_health_samples),
+        }
+      }
+  }
+}
+
+// A BMC message can span lines; one receipt line per finding keeps the receipt greppable.
+fn one_line(text: String) -> String {
+  join(map(split(s: text, delimiter: "\n"), l => trim(s: l)), " ")
+}
+
+fn render_receipt(receipt: FleetHealthReceipt) -> String {
+  let lines = flat_map(receipt.hosts, i => match i {
+    GoalObservationRefused { subject, goal: _, request: _, cause } => [concat(subject as String, ": NOT OBSERVED -- ", cause as String)]
+    GoalInspected { subject, goal: _, request: _, observed: _, assessment } => match assessment {
+      GoalSatisfied { evidence: _ } => [concat(subject as String, ": HEALTHY")]
+      GoalDiverged { deviations } => concat([concat(subject as String, ": DIVERGED")], map(non_empty_to_list(deviations), d => concat("  deviation: ", one_line(text: to_string(d)))))
+      GoalIndeterminate { known_deviations, unknowns } => concat(
+        [concat(subject as String, ": INDETERMINATE (", to_string(count(known_deviations)), " deviation(s), ", to_string(count(non_empty_to_list(unknowns))), " unknown(s))")],
+        concat(map(known_deviations, d => concat("  deviation: ", one_line(text: to_string(d)))), map(non_empty_to_list(unknowns), u => concat("  unknown: ", one_line(text: to_string(u))))),
+      )
+      GoalAssessmentRefused { cause } => [concat(subject as String, ": ASSESSMENT REFUSED -- ", to_string(cause))]
+    }
+  })
+  let verdict = match receipt.assessment {
+    GoalSatisfied { evidence: _ } => "fleet: HEALTHY"
+    GoalDiverged { deviations: _ } => "fleet: DIVERGED"
+    GoalIndeterminate { known_deviations: _, unknowns: _ } => "fleet: INDETERMINATE"
+    GoalAssessmentRefused { cause } => concat("fleet: REFUSED -- ", to_string(cause))
+  }
+  join(concat(lines, [verdict]), "\n")
+}
+
+// THE EVALUATION REALIZATION THIS ROUTE IS QUALIFIED UNDER: recompute, selected with
+// GUNBC_EVAL_MEMO=0 (extdeps.realization.eval_memo's recompute realization, semantics identical by
+// that provider's contract). The seed's eval-frame memo keys every pure call before admission, and
+// the Redfish decoders thread whole response bodies through recursive pure calls, so under the
+// memo every call re-hashes the document: the 1.08 MB srv3 event log decoded in ~430 s of CPU
+// memo-on against ~27 s memo-off. Qualified 2026-09-19 on the captured OOB responses (full srv3
+// log, Thermal, a Sensor, a refusal): the complete decoded output was byte-identical under both
+// realizations. The general defect is its own lane (work item adhoc-955f2d4f-274); this route does
+// not wait for it. The invocation, and the re-derivation of this route's receipt, is:
+//   GUNBC_EVAL_MEMO=0 GUNBC_GCP_ACCESS_TOKEN_FILE=<token> GUNBC_FLEET_HEALTH_RECEIPT=<path> \
+//     gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_health.dag --function fleet_health_check
+// The receipt's first line discloses which realization actually ran, so a run under the memo is
+// visible as such rather than assumed.
+data fleet_health_realization_env: NonEmptyStr = "GUNBC_EVAL_MEMO" as NonEmptyStr
+
+fn realization_line() -> String {
+  match shell.Env.Get(name: fleet_health_realization_env).value {
+    Present { value: v } => if trim(s: v) == "0" {
+      "evaluation realization: recompute (GUNBC_EVAL_MEMO=0), the qualified realization for this route"
+    } else {
+      concat("evaluation realization: eval-frame memo (GUNBC_EVAL_MEMO=", v, "), NOT the qualified realization for this route")
+    }
+    Absent => "evaluation realization: eval-frame memo (GUNBC_EVAL_MEMO unset), NOT the qualified realization for this route"
+  }
+}
+
+// THE RECEIPT IS AN ARTIFACT, NOT ONLY A MESSAGE. A nonzero exit carries the rendered receipt as its
+// reason; the same text is written to the path named by this variable when it is set, so a green run
+// leaves a durable record too. Unset means no file, which is the operator's choice, not a failure.
+data fleet_health_receipt_env: NonEmptyStr = "GUNBC_FLEET_HEALTH_RECEIPT"
+
+fn write_receipt(rendered: String) -> Bool {
+  match shell.Env.Get(name: fleet_health_receipt_env).value {
+    Absent => true
+    Present { value: path } => if trim(s: path) == "" { true } else { Filesystem.Write(path: trim(s: path), content: concat(rendered, "\n")).success }
+  }
+}
+
+// THE ENTRY. Exit 0 only when the whole fleet is satisfied; every other answer is nonzero and the
+// receipt says which hosts and why. Read only end to end.
+fn fleet_health_check() -> ProcessExit
+  uses net: Network
+{
+  match fleet_health_goals() {
+    ObservationRefused { cause } => return exit_failure(reason: concat("fleet health: no goal: ", cause as String))
+    ObservationEstablished { observed: goals } => match select_access_token_source() {
+      AccessTokenSourceUnavailable { cause: c } => return exit_failure(reason: c as String)
+      AccessTokenSourceSelected { source: s } => match ensure_access_token(source: s) {
+        AccessTokenUpsertRequired { plan: p } => return exit_failure(reason: access_token_upsert_required_reason(plan: p))
+        AccessTokenEnsureRefused { reason: r } => return exit_failure(reason: r as String)
+        AccessTokenReady { token: t } => {
+          let observations = map(fleet_intent_known_hosts, h => observe_rostered_host(host: h, token: t))
+          let receipt = assess_fleet_health(goals: goals, observations: observations)
+          let rendered = concat(realization_line(), "\n", render_receipt(receipt: receipt))
+          let written = write_receipt(rendered: rendered)
+          if written == false {
+            return exit_failure(reason: concat("fleet health: the receipt could not be written to ", fleet_health_receipt_env as String, "\n", rendered))
+          }
+          return match receipt.assessment {
+            GoalSatisfied { evidence: _ } => ExitSuccess
+            _ => exit_failure(reason: rendered)
+          }
+        }
+      }
+    }
+  }
+}

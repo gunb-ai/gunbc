@@ -122,6 +122,8 @@ type HostOperation =
   | ProcfsReadStat
   | ProcfsReadPidStat { pid: NonEmptyStr }
   | ProcfsReadPidCgroup { pid: NonEmptyStr }
+  | ProcfsReadNetTcp
+  | ProcfsReadNetTcp6
   | GetconfClockTicksPerSecond
   | Sha256SumFile { path: NonEmptyStr }
 
@@ -236,6 +238,14 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
     ProcfsReadPidCgroup { pid: p } => bind_operation_invocation(
       at: procfs_operation_ref(operation: "ReadPidCgroup"),
       bindings: [operation_argv_bind_text(name: "pid", text: p as String)],
+    )
+    ProcfsReadNetTcp => bind_operation_invocation(
+      at: procfs_operation_ref(operation: "ReadNetTcp"),
+      bindings: [],
+    )
+    ProcfsReadNetTcp6 => bind_operation_invocation(
+      at: procfs_operation_ref(operation: "ReadNetTcp6"),
+      bindings: [],
     )
     GetconfClockTicksPerSecond => bind_operation_invocation(
       at: OperationRef {
@@ -361,6 +371,14 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
     }
     ProcfsReadPidCgroup { pid: p } => {
       let result = linux.Procfs.ReadPidCgroup(pid: p)
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    ProcfsReadNetTcp => {
+      let result = linux.Procfs.ReadNetTcp()
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    ProcfsReadNetTcp6 => {
+      let result = linux.Procfs.ReadNetTcp6()
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
     GetconfClockTicksPerSecond => {

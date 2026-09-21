@@ -10,14 +10,16 @@ import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, a
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
-import gunbc.fabric_db_placement { fabric_db_listen_port, fabric_db_https_port }
+import gunbc.fabric_storage_placement { fabric_storage_listen_port, fabric_storage_https_port }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.live_deploy.spec {
+  gunbc_approval_broker_unit_name, gunbc_approval_broker_slice_unit_name,
+  gunbc_approval_broker_unit_path, deployment_owns_the_host_approval_broker,
   DeploymentSpec,
   DeploymentDependencyStep,
   ensured_subject_identity,
-  deployment_fabric_db_steps,
-  deployment_fabric_db_serve_endpoint,
+  deployment_fabric_storage_steps,
+  deployment_fabric_storage_serve_endpoint,
   EnsuredPackage,
   TailscalePackage,
   TmuxPackage,
@@ -64,7 +66,7 @@ import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_lab_dashboard_instance,
   srv1_live_dashboard_instance,
-  dashboard_instance_fabric_db_root,
+  dashboard_instance_fabric_storage_root,
 }
 import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
@@ -97,8 +99,21 @@ import gunbc.live_deploy.effect_leaf {
   apt_install_unelevated_effect,
   dpkg_status_effect,
 }
+import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, ExecStart,
+}
+import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
+import gunbc.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
+import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison }
 import gunbc.live_deploy.emit {
-  live_deploy_fabric_db_unit_file,
+  approval_broker_tree_receipt_path_for,
+  approval_broker_release_dir,
+  approval_broker_release_binary_path,
+  approval_broker_dark_install_script,
+  apply_approval_broker_unit_write_steps, approval_broker_lifecycle_steps,
+  live_deploy_approval_broker_unit_file,
+  live_deploy_fabric_storage_unit_file,
   emit_release_member_effects,
   deploy_retract_frame_comments,
   deploy_apply_receipt_steps,
@@ -181,6 +196,12 @@ data witness_cap_authorization: CapConvergeDecision = cap_converge_decision(
 data witness_apply_script_text: String = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization)
 
 data witness_retract_script_text: String = live_deploy_retract_script_for(spec: deployment_spec_srv1())
+
+// ── STAGE 1 OF THE APPROVAL-BROKER CUTOVER: THE ADDITIVE INSTALL ────────────────────────────
+data witness_approval_broker_dark_script_text: String = approval_broker_dark_install_script(
+  spec: deployment_spec_srv1(),
+  revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+)
 
 fn witness_apply_script() -> String {
   witness_apply_script_text
@@ -771,12 +792,12 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && !(live.service.repo_root == twin.service.repo_root)
     && !(live.service.serve_binary == twin.service.serve_binary)
     && count(live_paths) > 0
-    && count(twin_paths) + count(deployment_fabric_db_steps(instance: srv1_live_dashboard_instance(), names: live.names)) == count(live_paths)
-    && count(deployment_fabric_db_steps(instance: srv1_lab_dashboard_instance(), names: twin.names)) == 0
+    && count(twin_paths) + count(deployment_fabric_storage_steps(instance: srv1_live_dashboard_instance(), names: live.names)) == count(live_paths)
+    && count(deployment_fabric_storage_steps(instance: srv1_lab_dashboard_instance(), names: twin.names)) == 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 
-data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric_db_placement fabric_db_placed_on), so production carries exactly those members more than the twin, and the twin none. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
+data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
 
 data non_degeneracy_without_transcription_note: String = "THE COUNTS ABOVE STOPPED BEING LITERALS (review, 2026-07-30 — the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464). Five was read off the live owned roster, so authoring a correct sixth member reds a claim that has nothing to say about members, and the reviewer's habit becomes editing the number until the day the number is wrong for a real reason. #7478 adds exactly such a member.\\n\\nDeleting the conjunct outright would have been the wrong fix, which is why this is a replacement rather than a removal: `all` over an empty list is vacuously true, so without a non-degeneracy guard a twin whose owned set collapsed to nothing would satisfy the disjointness claim perfectly. The literal was doing real work in a way its shape disguised.\\n\\nWhat replaces it says the same thing without reading the roster's size into the test: the production set is non-empty, and the twin mirrors it one-for-one. Both survive a member being added — the relation is between two live rosters rather than between one roster and a number a human typed — and the second is strictly stronger than the literal pair, since it would also catch a twin that gained or lost a member production did not."
 
@@ -1071,6 +1092,12 @@ fn preamble_step_command(step: PipelineStep) -> String {
 // authority as the operation it guards (gunbc.executor_privileged_operation), so the login arrives
 // single-quoted -- equivalent shell, one fewer place that decides quoting. What the witness owes is
 // that the check runs and short-circuits the useradd, which is what it now asserts.
+// THE COUNT IS 3 RATHER THAN 2 BECAUSE C7 ADDED A THIRD PREAMBLE STEP: the provider-state root's
+// ensure (gunbc.live_deploy.emit provider_state_ensure_steps), derived from the spec so that no
+// deploy can omit it. The conjunct is kept at an exact count rather than relaxed to `>= 2`: it
+// exists so that a step creeping into the preamble is noticed here, and a bound that admits any
+// number of new steps would stop noticing. This claim's own subject -- that the publication
+// principal is ensured as a nologin system account -- is unchanged and still asserted below.
 test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_account() -> Bool {
   let spec = deployment_spec_srv1()
   let ensure = deploy_publication_principal_ensure_command(spec: spec)
@@ -1085,7 +1112,7 @@ test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_accou
     && string_contains(s: ensure, pattern: "--system")
     && string_contains(s: ensure, pattern: "--no-create-home")
     && string_contains(s: ensure, pattern: "/usr/sbin/nologin")
-    && count(preamble) == 2
+    && count(preamble) == 3
     && any(preamble, step => preamble_step_command(step: step) == ensure)
 }
 
@@ -1216,23 +1243,23 @@ test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
     && member_fragment_text(member: ServiceProcess, plan: full) == ""
 }
 
-fn step_is_fabric_db_store(step: DeploymentStep) -> Bool {
+fn step_is_fabric_storage_store(step: DeploymentStep) -> Bool {
   match step {
-    Dependency { step: dep } => (ensured_subject_identity(subject: dep.subject) as String) == (dashboard_instance_fabric_db_root(instance: srv1_live_dashboard_instance()) as String)
+    Dependency { step: dep } => (ensured_subject_identity(subject: dep.subject) as String) == (dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String)
     ArtifactStep { step: _ } => false
   }
 }
 
 // The fabric DB's store is created on the placement host's apply path, as an ensured directory.
-test fn the_fabric_db_store_root_reaches_the_srv1_apply_path() -> Bool {
-  any(deployment_spec_srv1().steps, st => step_is_fabric_db_store(step: st))
+test fn the_fabric_storage_store_root_reaches_the_srv1_apply_path() -> Bool {
+  any(deployment_spec_srv1().steps, st => step_is_fabric_storage_store(step: st))
 }
 
 // THE LOG IS NOT DEPLOYMENT STATE: no retract may remove the store. Moving this root back into the
 // owned roster (where the event-log mirror root sat, torn down with rm -rf) turns this red.
-test fn no_retract_can_remove_the_fabric_db_store() -> Bool {
+test fn no_retract_can_remove_the_fabric_storage_store() -> Bool {
   any(deployment_spec_srv1().steps, st =>
-    step_is_fabric_db_store(step: st) && match deployment_step_teardown_disposition(step: st) {
+    step_is_fabric_storage_store(step: st) && match deployment_step_teardown_disposition(step: st) {
       TeardownRefuses { cause: _ } => true
       TeardownActs => false
     })
@@ -1366,17 +1393,238 @@ test fn the_writer_reverts_only_the_authorized_target_units() -> Bool {
 
 
 
+// ── THE ADDITIVE INSTALL TOUCHES THE ROADMAP UNIT IN NO WAY ─────────────────────────────────
+// THIS IS THE CLAIM THE STAGE EXISTS TO SATISFY, not a hygiene check on a script. Roadmap
+// redeploys are FROZEN at the current release until the cutover completes (operator directive
+// 2026-09-19), and the first stage has to add a second served process without disturbing the one
+// already serving. A daemon-reload does not restart running units, so the roadmap keeps its PID and
+// its incarnation -- but only while nothing in this script names its unit.
+//
+// THE RED IS THE EDIT THAT WOULD BREAK THE FREEZE: route the dark install through the ordinary
+// apply member effects, which enable and restart gunbc-roadmap.service, and the first conjunct
+// fails. The positive conjuncts keep the claim from being satisfiable by an empty script.
+test fn the_dark_install_never_names_the_roadmap_unit() -> Bool {
+  let script = witness_approval_broker_dark_script_text
+  !string_contains(s: script, pattern: deployment_spec_srv1().service.unit_name as String)
+    && string_contains(s: script, pattern: gunbc_approval_broker_unit_name as String)
+    && string_contains(s: script, pattern: gunbc_approval_broker_slice_unit_name as String)
+}
+
+// IT CARRIES THE ADMITTED REVISION. The next cutover stage reads the release identity back off the
+// dark process; a unit whose ExecStart named no revision, or a different one, would make every
+// later reading a measurement of a build nobody deployed.
+test fn the_dark_install_execstart_carries_the_admitted_revision() -> Bool {
+  string_contains(
+    s: witness_approval_broker_dark_script_text,
+    pattern: join(["--release-revision ", deploy_witness_release_revision as String], ""),
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// THE TWIN'S APPLY MUST NOT RE-OWN THE HOST'S BROKER — review 68094
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// teardown_safety_witness_note above says the twin claims were written over the RETRACT order
+// "because teardown is the destructive direction and a claim about apply would not have caught it".
+// The approval broker is the case where that stopped being true: it is a HOST singleton whose unit
+// content is instance-derived, so the destructive direction for it is APPLY -- srv1-lab writing
+// /etc/systemd/system/gunbc-approval-broker.service with the lab tree's WorkingDirectory and
+// restarting it, killing production's broker on the same port.
+//
+// THE SUBJECT IS THE STEP LIST, NOT THE RENDERED SCRIPT, and that is a correction the floor forced:
+// the first cut rendered a whole second apply script per claim to grep it for a unit name, which
+// cost about 200k eval steps each against a 72300 budget. Rendering an entire deploy program to ask
+// whether four steps were produced is DESIGN section 3's claim-reaches-too-far in its plainest
+// form -- the claim's subject was one interface and its cost was the whole emitter's. Asking the
+// producers directly is cheaper AND stronger: an empty list cannot be serialized into a script that
+// happens not to mention the unit.
+//
+// THE RED IS THE SAME EDIT AS BEFORE: drop the ownership predicate from
+// apply_approval_broker_unit_write_steps or approval_broker_lifecycle_steps and the twin's lists
+// stop being empty.
+
+test fn a_twin_apply_neither_writes_nor_restarts_the_host_broker() -> Bool {
+  let twin = srv1_twin_spec()
+  count(apply_approval_broker_unit_write_steps(
+    spec: twin,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )) == 0
+    && count(approval_broker_lifecycle_steps(spec: twin)) == 0
+}
+
+// THE POSITIVE CONTROL, without which the claim above is satisfied by an emitter that never writes
+// the broker at all -- a different defect with the same green.
+test fn the_owning_apply_does_write_and_restart_the_host_broker() -> Bool {
+  let live = deployment_spec_srv1()
+  count(apply_approval_broker_unit_write_steps(
+    spec: live,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )) > 0
+    && count(approval_broker_lifecycle_steps(spec: live)) > 0
+    && deployment_owns_the_host_approval_broker(spec: live)
+    && !deployment_owns_the_host_approval_broker(spec: srv1_twin_spec())
+}
+
+// BOTH INSTALL PATHS BIND THE BROKER'S ONE PORT. The staged install and the release apply must
+// describe the SAME process, so a reading taken at one is about the other. This reads the unit
+// VALUE rather than either rendered script, for the same cost reason as above -- the port is a
+// directive on a unit, and rendering two deploy programs to find it was paying for the emitter.
+test fn both_install_paths_bind_the_brokers_one_port() -> Bool {
+  let unit = live_deploy_approval_broker_unit_file(
+    spec: deployment_spec_srv1(),
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )
+  service_has_execstart_containing(
+    file: unit,
+    fragment: join([" --port ", to_string(approval_broker_listen_port)], ""),
+  )
+}
+
+fn service_has_execstart_containing(file: SystemdUnitFile, fragment: String) -> Bool {
+  match file {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      any(directives, d => match d {
+        ExecStart { command: c } => string_contains(s: c as String, pattern: fragment)
+        _ => false
+      })
+    _ => false
+  }
+}
+
+// A NON-OWNER REACHING THE STAGED DARK INSTALL REFUSES LOUDLY rather than rendering a script that
+// installs nothing and reports success -- the absorbing fallback at the seam where an operator is
+// being told a stage completed. This one DOES render, because the refusal marker is a property of
+// the emitted text and there is nothing cheaper that observes it.
+test fn a_twin_dark_install_refuses_rather_than_emitting_an_empty_stage() -> Bool {
+  let script = approval_broker_dark_install_script(
+    spec: srv1_twin_spec(),
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )
+  string_contains(s: script, pattern: "__GUNBC_DEPLOY_REFUSED__")
+    && !string_contains(s: script, pattern: gunbc_approval_broker_unit_path() as String)
+}
+
+// ── THE BROKER UNIT'S BYTE ORACLE: LOOPBACK, AND ITS OWN TREE ───────────────────────────────
+// BOTH HALVES ARE STAGE-A REGRESSIONS, so this is two receipts rather than one assertion.
+//
+// --host 127.0.0.1: the unit inherited the ROADMAP instance's listen_host and bound 0.0.0.0. That
+// state PASSED its own readiness probe, because the probe dials 127.0.0.1 and 0.0.0.0 includes
+// loopback -- so nothing downstream could notice the broker was reachable from anything able to
+// route to srv1, past the tailnet front door and therefore past the identity header the decide
+// route requires. THE NEGATIVE CONJUNCT IS THE DISCRIMINATING ONE: asserting 127.0.0.1 is present
+// stays green on a unit that binds both.
+//
+// WorkingDirectory: it pointed at the roadmap's deployed tree, frozen at a release predating this
+// module, so the entry could not resolve and systemd restart-looped the unit. The second negative
+// conjunct pins the roadmap root specifically, because the failure mode is not an ABSENT working
+// directory but a plausible WRONG one.
+test fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree() -> Bool {
+  let unit = serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(
+    spec: deployment_spec_srv1(),
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  ))
+  let release_dir = approval_broker_release_dir(
+    root: srv1_gunbc_approval_broker_root as String,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )
+  string_contains(s: unit, pattern: join(["--host ", approval_broker_listen_host as String, " --port "], ""))
+    && !string_contains(s: unit, pattern: "0.0.0.0")
+    && string_contains(s: unit, pattern: join(["WorkingDirectory=", release_dir], ""))
+    && !string_contains(s: unit, pattern: join(["WorkingDirectory=", srv1_gunbc_repo_root as String, "\n"], ""))
+    && string_contains(s: unit, pattern: join(["ExecStart=", release_dir, "/gunbc serve"], ""))
+    && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
+}
+
+// AND THE DARK INSTALL PUTS A TREE THERE, because a unit pointed at an EMPTY directory
+// restart-loops exactly as one pointed at the wrong directory does. Asserting the unit's path
+// alone would not have caught the stage-A failure.
+test fn the_dark_install_populates_the_broker_tree() -> Bool {
+  let script = witness_approval_broker_dark_script_text
+  let release_dir = approval_broker_release_dir(
+    root: srv1_gunbc_approval_broker_root as String,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )
+  string_contains(s: script, pattern: release_dir)
+    && string_contains(s: script, pattern: "rsync -a --delete")
+    && string_contains(s: script, pattern: approval_broker_tree_receipt_path_for(
+      root: srv1_gunbc_approval_broker_root as String,
+      revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    ))
+}
+
+// ── THE UNIT AND THE INSTALL NAME THE SAME BINARY, AND IT IS THE CANDIDATE'S ─────────────────
+// THE DEFECT THIS EXISTS FOR WAS SHIPPED AND CAUGHT BEFORE STAGE A RAN AGAIN (review 69066,
+// operator ruling 2026-09-20). ExecStart named /opt/gunbc/bin/gunbc -- the ROADMAP's binary, frozen
+// at a release predating this module. It would have started, refused to parse the broker's own
+// sources, and restart-looped: the same symptom as the empty tree, from the other half of the pair,
+// and the claim above could not see it because the tree was by then perfectly correct.
+//
+// WHAT THE THREE CONJUNCTS DISCRIMINATE, each against a different way of getting this wrong. The
+// first fails if the install stops copying a binary at all -- the state stage A was actually in.
+// The second fails if the unit and the install disagree about WHERE it lands, which is the failure
+// that installs a real binary and starts a missing one. The third fails on the specific regression
+// of pointing ExecStart back at the shared instance path, which is the tempting repair because it
+// is the one that makes the unit look complete.
+//
+// THE FOURTH CONJUNCT IS THE RED FOR THE SPEC-SIDE HALF OF THE REPAIR. DeploymentServiceConfig has
+// no constant that is true for this service, so gunbc.live_deploy.spec parks a refusal marker in
+// serve_binary rather than a plausible path. That marker is only honest while nothing renders it --
+// so this asserts it does not appear in the unit, and a future edit that reconnects ExecStart to the
+// config field fails here with the marker's own text naming the cause, instead of shipping a unit
+// systemd rejects on a host.
+//
+// ITS CEILING: this says the emitted bytes name a copy of the verified artifact at the path the unit
+// starts. It does NOT say that binary can parse the sources beside it -- that is a fact about two
+// files on a host, and the stage-A readback is where it is established, by the process answering
+// /livez at all.
+test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
+  let script = witness_approval_broker_dark_script_text
+  let unit = serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(
+    spec: deployment_spec_srv1(),
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  ))
+  let binary = approval_broker_release_binary_path(
+    root: srv1_gunbc_approval_broker_root as String,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )
+  string_contains(s: script, pattern: join(["install -m 0755 \"$PWD\"/target/release/gunbc ", binary], ""))
+    && string_contains(s: unit, pattern: join(["ExecStart=", binary, " serve"], ""))
+    && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
+    && !string_contains(s: unit, pattern: approval_broker_serve_binary_is_per_release_poison)
+}
+
+// ── THE DIGEST IS SUBSTITUTED, NOT SPLICED BARE ─────────────────────────────────────────────
+// THE DEFECT THIS EXISTS FOR ACTUALLY SHIPPED (review 69066). The receipt command rendered
+// `printf '...%s\n' (cd /opt/... | cut -d' ' -f1) | install ...` -- a BARE parenthesised group in
+// printf's argument position, which is a bash SYNTAX ERROR, and with strict options at the head of
+// the same script it aborts the whole dark install before any step runs.
+//
+// IT SHIPPED BECAUSE THE ONLY CHECKS WERE SHAPE CHECKS over bytes nobody executed: string_contains
+// for "rsync -a --delete" and for the receipt path. Both stayed green over a script that could not
+// parse. That is DESIGN section 5's "a .contains() grep is not a consumer" landing as a defect
+// rather than as a caution.
+//
+// WHAT THIS CLAIM IS AND IS NOT. It is still a shape check -- a .dag claim cannot run bash -- but it
+// DISCRIMINATES THIS CLASS rather than merely witnessing presence: the first conjunct fails on the
+// exact bytes that shipped, and the second fails if the substitution is reintroduced unquoted, which
+// would word-split a digest containing whitespace. What it does NOT establish is that the script
+// parses; only executing it does, and the honest place for that is the stage-A run itself.
+test fn the_receipt_command_substitutes_the_digest_rather_than_splicing_it() -> Bool {
+  let script = witness_approval_broker_dark_script_text
+  string_contains(s: script, pattern: "\"$(cd ")
+    && !string_contains(s: script, pattern: "%s\\n' (cd ")
+}
+
 // THE FABRIC DB ENDPOINT IS LOOPBACK-BOUND AND ROUTED ONLY BY TAILSCALE: its unit runs the fabric DB
 // handler on 127.0.0.1 (never 0.0.0.0, which would put the backend's unauthenticated identity header
 // on the network), and its route is tailscale serve's 10000 listener at the root mount, proxying to
 // exactly that port.
-test fn the_fabric_db_unit_binds_loopback_and_its_route_is_the_only_way_in() -> Bool {
-  let unit = serialize_systemd_unit_file(file: live_deploy_fabric_db_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
-  let route = deployment_fabric_db_serve_endpoint()
-  unit.contains("--function fabric_db_serve_handle")
-    && unit.contains(join(["--host 127.0.0.1 --port ", to_string(fabric_db_listen_port)], ""))
+test fn the_fabric_storage_unit_binds_loopback_and_its_route_is_the_only_way_in() -> Bool {
+  let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
+  let route = deployment_fabric_storage_serve_endpoint()
+  unit.contains("--function fabric_storage_serve_handle")
+    && unit.contains(join(["--host 127.0.0.1 --port ", to_string(fabric_storage_listen_port)], ""))
     && !unit.contains("0.0.0.0")
-    && route.https_port == fabric_db_https_port
-    && (route.backend as String) == to_string(fabric_db_listen_port)
+    && route.https_port == fabric_storage_https_port
+    && (route.backend as String) == to_string(fabric_storage_listen_port)
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
 }

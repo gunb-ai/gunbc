@@ -5,6 +5,7 @@ import std.algebra { FreeSemigroup, FreeMonoid, Empty, Cons }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import v2.std.optional { Present, Absent }
+import gunbc.spark.pair_serving_authority_log { HostEffectRecord }
 import gunbc.fleet_intent_network {
   operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
   operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
@@ -33,6 +34,7 @@ import gunbc.spark.host_commitment {
   HoldsUndischargedRpcReservation,
   CellRoleUndecidable,
   OccupiedByServingArm,
+  OccupiedByHostEffect,
   SparkHostRulingCommitment,
   ReservedForServingSubject,
   ClaimedServingGroupMember,
@@ -95,6 +97,7 @@ fn fixture_standings(held: List<HostIdentity>, arms: List<ServingArmHostClaim>) 
     arm_claims: arms,
     held_reservation_hosts: held,
     serving_reservations: [],
+    host_effects: [] as List<HostEffectRecord>
   )
 }
 
@@ -112,6 +115,7 @@ fn fixture_standing(assignments: List<SparkCellRoleAssignment>, claimed: List<Cl
     arm_claims: arms,
     held_reservation_hosts: held,
     serving_reservations: [],
+    host_effects: [] as List<HostEffectRecord>,
     host: host,
   )
 }
@@ -128,6 +132,7 @@ fn is_cell_role(c: SparkHostCommitment) -> Bool {
         MemberOfClaimedServingGroup { group: _ } => false
         OccupiedByServingArm { claim: _ } => false
         HoldsUndischargedRpcReservation => false
+        OccupiedByHostEffect { purpose: _, executor: _ } => false
         CellRoleUndecidable { assignments: _ } => false
       }
     RulingDerivedCommitment { cause: _ } => false
@@ -142,6 +147,7 @@ fn is_group_member(c: SparkHostCommitment) -> Bool {
         CommittedToCellRole { role: _ } => false
         OccupiedByServingArm { claim: _ } => false
         HoldsUndischargedRpcReservation => false
+        OccupiedByHostEffect { purpose: _, executor: _ } => false
         CellRoleUndecidable { assignments: _ } => false
       }
     RulingDerivedCommitment { cause: _ } => false
@@ -156,6 +162,7 @@ fn is_held_reservation(c: SparkHostCommitment) -> Bool {
         MemberOfClaimedServingGroup { group: _ } => false
         CommittedToCellRole { role: _ } => false
         OccupiedByServingArm { claim: _ } => false
+        OccupiedByHostEffect { purpose: _, executor: _ } => false
         CellRoleUndecidable { assignments: _ } => false
       }
     RulingDerivedCommitment { cause: _ } => false
@@ -243,6 +250,7 @@ test fn a_host_with_an_ambiguous_role_is_committed_rather_than_free() -> Bool {
             MemberOfClaimedServingGroup { group: _ } => false
             OccupiedByServingArm { claim: _ } => false
             HoldsUndischargedRpcReservation => false
+            OccupiedByHostEffect { purpose: _, executor: _ } => false
           }
         RulingDerivedCommitment { cause: _ } => false
       }
@@ -305,6 +313,7 @@ test fn a_multi_cause_host_renders_every_cause_with_both_separators() -> Bool {
     arm_claims: [],
     held_reservation_hosts: [operator_host_srv9],
     serving_reservations: [],
+    host_effects: [] as List<HostEffectRecord>,
     host: operator_host_srv9,
   ) {
     Absent => false
@@ -384,6 +393,7 @@ fn placed_by_the_group_b_arm(host: HostIdentity) -> Bool {
         CommittedToCellRole { role: _ } => false
         MemberOfClaimedServingGroup { group: _ } => false
         HoldsUndischargedRpcReservation => false
+        OccupiedByHostEffect { purpose: _, executor: _ } => false
         CellRoleUndecidable { assignments: _ } => false
       })
   }
@@ -446,6 +456,7 @@ test fn the_group_b_head_host_is_committed_and_its_cause_names_the_assignment() 
                  CommittedToCellRole { role: _ } => false
                  MemberOfClaimedServingGroup { group: _ } => false
                  HoldsUndischargedRpcReservation => false
+                 OccupiedByHostEffect { purpose: _, executor: _ } => false
                  CellRoleUndecidable { assignments: _ } => false
                })
            }
@@ -468,7 +479,7 @@ test fn an_arm_claim_commits_only_the_host_it_names() -> Bool {
 // ── RED 5: THE ONE ADMISSION SEAM REFUSES A CLAIMED HOST, AND SAYS WHY ────────────────────────
 //
 // The three effectful roots -- the source build, the image build entry and the published-image probe
-// -- all reach a host through `admit_unplaced_host`. This is the control that the seam refuses a
+// -- all reach a host through `admit_unplaced_host_live` (the resting projection here supplies the same standings shape). This is the control that the seam refuses a
 // claimed target and that its refusal names the actual cause rather than a generic sentence, which is
 // what the deleted hand-maintained producer list could never do.
 //
@@ -658,6 +669,7 @@ test fn a_host_held_against_a_subject_names_the_unheld_causes() -> Bool {
              CommittedToCellRole { role: _ } => false
              MemberOfClaimedServingGroup { group: _ } => false
              HoldsUndischargedRpcReservation => false
+             OccupiedByHostEffect { purpose: _, executor: _ } => false
              CellRoleUndecidable { assignments: _ } => false
            }
          RulingDerivedCommitment { cause: _ } => false
@@ -689,6 +701,7 @@ fn fixture_admissible_to_a(held: List<HostIdentity>) -> List<HostIdentity> {
       arm_claims: [ServingArmHostClaim { arm: fixture_arm, host: operator_host_srv9, basis: "fixture" as NonEmptyStr }],
       held_reservation_hosts: held,
       serving_reservations: [],
+    host_effects: [] as List<HostEffectRecord>
     ),
     subject: pair_unit_a,
   )
@@ -723,6 +736,7 @@ test fn a_declared_reservation_is_held_by_its_subject_and_against_every_other() 
       hosts: [operator_host_srv8],
       basis: ServingRulingCitation { decider: "fixture" as NonEmptyStr, ruled_on: "fixture" as NonEmptyStr, ruled: "fixture" as NonEmptyStr },
     }],
+    host_effects: [] as List<HostEffectRecord>,
   )
   let to_arm = spark_admissible_hosts_to(standings: standings, subject: arm_subject)
   let to_a = spark_admissible_hosts_to(standings: standings, subject: pair_unit_a)
@@ -749,6 +763,7 @@ test fn an_unclaimed_serving_role_and_any_training_role_are_held_by_nobody() -> 
     arm_claims: [],
     held_reservation_hosts: [],
     serving_reservations: [],
+    host_effects: [] as List<HostEffectRecord>
   )
   let to_a = spark_admissible_hosts_to(standings: standings, subject: pair_unit_a)
   !contains_host(hosts: to_a, host: operator_host_srv7)
