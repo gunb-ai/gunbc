@@ -17,6 +17,7 @@ import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, EnsureSystemAccount, executor_privileged_operation_converge_command,
 }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllGroupTraverse }
 import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
@@ -32,6 +33,20 @@ data approval_ntfy_state_root: NonEmptyStr = "/var/lib/gunbc-ntfy"
 // dirname would be a second computation over the same fact, and the converge roster needs the
 // directory to ensure ownership on it.
 data approval_ntfy_config_dir: NonEmptyStr = "/etc/gunbc-ntfy"
+
+// THE MODE OF THE DIRECTORIES THIS DEPLOYMENT OWNS, DECLARED ONCE AND HERE. It sits with the
+// deployment rather than with a converge because it is a fact about what this service needs, not
+// about who is installing it -- and there are two installers. gunbc.auth.approval_ntfy_converge
+// ensures the config directory for the server's config; gunbc.host_credential_custody_converge
+// ensures THE SAME DIRECTORY for the publisher token that lives in it. Each previously named its
+// own octal, so one directory had two authorities for its mode and two converges could flap it on
+// every run; the arm is now stated once and both read it.
+//
+// GROUP-TRAVERSABLE IS THE REQUIREMENT, not a taste. The server runs as approval_ntfy_principal_name
+// and must enter the directory to read a config it may never rewrite, and the publisher token
+// beneath it is group-readable -- a group-readable file under a directory the group cannot enter is
+// unreadable, which is the refusal the custody admission gate exists to raise.
+data approval_ntfy_dir_mode: DeclaredDirectoryMode = DirectoryOwnerAllGroupTraverse
 data approval_ntfy_config_file_name: NonEmptyStr = "server.yml"
 data approval_ntfy_config_path: NonEmptyStr = join([approval_ntfy_config_dir as String, "/", approval_ntfy_config_file_name as String], "") as NonEmptyStr
 data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
