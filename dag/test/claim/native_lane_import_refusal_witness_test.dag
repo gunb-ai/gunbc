@@ -12,9 +12,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int }
-import v2.std.algebra { contains, fold_list, length, list_snoc_item }
+import v2.std.algebra { any, contains, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import gunbc.witness_v2_native_route { native_route_identity_qualified }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -340,4 +340,30 @@ test fn an_unlabelable_declaration_inside_the_universe_refuses_typed() -> Bool {
     Rejected { diagnostics: d } => d.head.reason == ^native_lane_identity_label_refused
     Accepted { value: _, diagnostics: _ } => false
   }
+}
+
+// THE FILE-AS-TARGET SPELLING REFUSES AND NAMES THE RIGHT ONE (manager ruling 2026-09-21). Under
+// the lane's correspondence `//v2/test:selection_probe` asks for a DECLARATION named
+// `selection_probe` in module `v2.test`; none exists, but module `v2.test.selection_probe` does, so
+// the route refuses rather than answering with an empty universe, and the detail carries the
+// module spelling. A route that returned universe 0 here reds the first conjunct.
+test fn a_single_target_naming_a_module_refuses_with_the_module_spelling() -> Bool {
+  match parse_target_pattern(text: "//v2/test:selection_probe") {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(ingest: selection_combined_ingest, pattern: pattern) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          d.head.reason == ^native_lane_pattern_names_a_module
+            && any(xs: d.tail, predicate: fn(x) {
+                 string_contains(s: symbol_lexeme(sym: x.reason), pattern: "//v2/test/selection_probe:all")
+               })
+      }
+  }
+}
+
+// The positive side: the spelling the refusal suggests selects the module's declarations.
+test fn the_suggested_module_spelling_selects_the_module() -> Bool {
+  selected_admits(ingest: selection_combined_ingest, text: "//v2/test/selection_probe:all", qualified: "v2.test.selection_probe.probe_one")
+  && selected_admits(ingest: selection_combined_ingest, text: "//v2/test/selection_probe:all", qualified: "v2.test.selection_probe.probe_two")
 }
