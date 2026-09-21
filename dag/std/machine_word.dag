@@ -778,24 +778,21 @@ fn word_from_octets(width: WordWidth, octets: QualifiedOctets, endianness: Endia
   }
 }
 
-// THE PROJECTION TAKES THE CARRIER, SO THE REFUSAL ARM IT NEEDED IS GONE.
+// `octet_int_values` STOOD HERE AND IS DELETED, because the repair that removed its transform left
+// it as a second name for one concept (review 69619).
 //
-// octet_int_values mapped o.value over raw members with no qualification and no refusal arm, on the
-// base64 decode production route. The first repair gave it a typed refusal and re-checked its
-// members -- validation multiplied by helper count, the shape a carrier exists to replace. The
-// second took List<QualifiedWord>, which was WORSE than it looked: that carrier proves a value
-// inhabits its own width, so a sanctioned Width16 member projected 256 as an octet value and the
-// re-check had been removed. Naming an ELEMENT TYPE here DOES NOT make the Word-list call fail to
-// typecheck -- that was this annotation's third wrong claim in a row and it is measured false at the
-// count check. What the parameter buys is that there is no width FIELD for this helper to inspect,
-// so the helper has nothing left to refuse and the result is a plain List<Int>; what it does NOT
-// buy is that the members are octets at all. Both gaps -- wrong element type, and an unconstructed
-// in-type value like a bare 256 -- are mitigation, stated at their homes rather than re-argued
-// here, and neither is closed by this signature.
-fn octet_int_values(octets: QualifiedOctets) -> List<Int> {
-  qualified_octet_members(q: octets)
-}
-
+// IT HAD A REAL BODY: `qualified_octet_members(...) |> map(o => uint8_int_value(v: o))`, the
+// crossing out of the uninhabited `UInt8` carrier. Deleting `uint8_int_value` collapsed the map to
+// the identity, so the function became `qualified_octet_members(q: octets)` with that accessor's
+// exact signature -- a wrapper whose whole content was its delegate. DESIGN section 3 names that
+// the recurring violation: a second name for one concept duplicates work at the meaning layer and
+// again in everything derived. Keeping it "for the callers" would have left the fork for a later
+// consolidation, which is the deferred cost section 2 prices.
+//
+// THE FOUR CALL SITES NOW NAME THE ACCESSOR DIRECTLY -- `std.encoding` `base64_decode_step_flush`
+// and three rows of `test.claim.machine_word_witness`. Two historical receipts still SPELL the old
+// name (`std.integer`'s inhabitance annotation and this file's count-check note) because they record
+// what the route ANSWERED at a past head; they are past-tense measurements, not live citations.
 // THE DECLARATIONS THIS MODULE LANDS AHEAD OF THEIR CONSUMERS, AS ROWS RATHER THAN AS PROSE.
 //
 // DESIGN section 3c admits exactly three states for a new declaration: consumed by execution here,

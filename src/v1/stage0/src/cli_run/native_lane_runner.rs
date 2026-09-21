@@ -86,9 +86,15 @@ const MALFORMED_MATERIALIZED_PATH: &str = "target/v2-native-lane/malformed-contr
 /// The source root is a directory of its own because the CLI walks a root RECURSIVELY for every
 /// `.dag` file under it: a control sharing a directory with other fixtures would ingest whatever
 /// their authors add next, so what the door compiled would stop being a fact this harness states.
-/// The subject is the module that directory's one file declares, and the witness word is a
-/// declaration name from that same file — which is what makes the positive control an assertion
-/// about THIS subject's emission rather than about stdout being non-empty.
+/// The subject is the module that directory's one file declares.
+///
+/// `CLI_DOOR_EMITTED_WITNESS` IS NOT READ BY ANY CONTROL TODAY, and an earlier version of this
+/// paragraph said it was — that it made "the positive control an assertion about THIS subject's
+/// emission". There is no such control: the door cannot emit, so the admitting arm is
+/// `PinnedRefusalHeld`, which requires stdout to be EMPTY. The constant is held for the FLIP
+/// INSTRUCTION only, as the assertion a future regression control must make once the door emits.
+/// Describing a control no code runs is the rung inflation DESIGN section 4b(1) forbids, and it is
+/// the same defect this file's own annotations were corrected for once already (review 69621).
 const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door";
 const CLI_DOOR_ENTRY_MODULE: &str = "fixture.native_cli_door.door_probe";
 const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
@@ -1190,10 +1196,14 @@ pub struct V2NativeCliHeld {
     /// nonzero value is visible in the receipt on the day the door starts emitting.
     pub door_exit_status: i64,
     pub door_emitted_bytes: i64,
-    /// The status the same binary took when the one argument the positive control supplies was
-    /// removed. It is beside the green deliberately: the pair is the evidence, and a reader given
-    /// only the green would have no way to tell an executing door from one that exits 0 on
-    /// anything.
+    /// The status the same binary took when `--entry` was removed from the emit probe's argv.
+    ///
+    /// THIS IS THE ARM THAT ESTABLISHES THE ENTRYPOINT EXECUTES, and it is recorded beside the emit
+    /// probe's status because the PAIR is the evidence: one argument differs between the two spawns,
+    /// and they reach DIFFERENT located causes, which is what distinguishes a door that decides from
+    /// one that fails uniformly. An earlier version of this doc called the emit arm "the green" and
+    /// spoke of "the one argument the positive control supplies" -- both wrong since that arm became
+    /// an expecting-red probe, and corrected rather than left standing (review 69621).
     pub door_refusal_exit_status: i64,
 }
 
@@ -1217,7 +1227,7 @@ pub struct V2NativeCliHeld {
 /// used to end "a green here plus those witnesses is 'the decisions hold and the door compiles',
 /// not 'the door has been walked through'" — an accurate description of an instrument that stopped
 /// at cargo. It no longer stops there: `walk_cli_door` below spawns the binary this preparation
-/// produced, twice, and admits it only on an emission that names its subject and a refusal that
+/// produced, twice, and admits it only on a refusal whose determining reason is pinned and a refusal that
 /// names its cause. So the door IS walked through, on a fixture closure.
 ///
 /// WHAT IS STILL NOT CLAIMED, and the distinction is the whole reason the door exists. This is not
