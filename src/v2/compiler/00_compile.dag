@@ -28,7 +28,10 @@ import v2.workflow.floor_discovery_source_authority {
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import extdeps.bazel.label { Label, LabelParsed, LabelRefused }
-import extdeps.bazel.target_pattern { TargetPattern, target_pattern_matches }
+import extdeps.bazel.target_pattern {
+  TargetPattern, TargetPatternParsed, TargetPatternRefused, TargetPatternRefusal,
+  parse_target_pattern, target_pattern_matches, target_pattern_refusal_text
+}
 import v2.std.logic { Bool }
 import v2.std.integer { integer_int_to_decimal_string }
 import v2.compiler.emit { emit }
@@ -1848,7 +1851,7 @@ type NativeLaneUniverse {
 type NativeDriverVerb
   = NativeDriverCensus { source_roots: FreeMonoid<String> }
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
-  | NativeDriverAdjudicate { facts_path: String, source_roots: FreeMonoid<String> }
+  | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
 
 type NativeDriverPlan
   = NativeDriverPlanned { verb: NativeDriverVerb }
@@ -1860,9 +1863,22 @@ data native_driver_verb_census_resolve: String = "census-resolve"
 
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <source-root>... | census <source-root>... | census-resolve <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <target-pattern> <source-root>... | census <source-root>... | census-resolve <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
+
+data native_driver_adjudicate_needs_pattern: String = "REFUSED: adjudicate takes a target pattern after the host facts file and before the source roots"
+
+// THE PATTERN OPERAND IS PARSED BY ITS AUTHORITY, AND A BAD ONE IS A COMMAND-LINE REFUSAL. The text
+// goes to `extdeps.bazel.target_pattern` `parse_target_pattern` unchanged; its typed cause is
+// rendered by that module's own `target_pattern_refusal_text`, and the plan refuses with the misuse
+// status like every other unusable argv -- no universe is derived for a pattern that does not parse.
+fn native_driver_pattern_refused_detail(word: String, cause: TargetPatternRefusal) -> String {
+  concat(
+    concat(concat("REFUSED: adjudicate target pattern ", word), " -- "),
+    target_pattern_refusal_text(r: cause)
+  )
+}
 
 // THE STATE IS THE VERB ALREADY DECIDED, which is why there is no separate "mode" field. Once the
 // first word is read the remaining words mean something different for each verb -- roots for two of
@@ -1873,7 +1889,8 @@ type NativeDriverParseState
   | DriverCensusRoots { roots: FreeMonoid<String> }
   | DriverCensusResolveRoots { roots: FreeMonoid<String> }
   | DriverAdjudicateSeekFacts
-  | DriverAdjudicateRoots { facts_path: String, roots: FreeMonoid<String> }
+  | DriverAdjudicateSeekPattern { facts_path: String }
+  | DriverAdjudicateRoots { facts_path: String, pattern: TargetPattern, roots: FreeMonoid<String> }
   | DriverParseRefused { reason: Symbol, detail: String }
 
 fn native_driver_unknown_verb_detail(word: String) -> String {
@@ -1908,9 +1925,23 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
     DriverCensusResolveRoots { roots: roots } =>
       DriverCensusResolveRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverAdjudicateSeekFacts =>
-      DriverAdjudicateRoots { facts_path: word, roots: [] }
-    DriverAdjudicateRoots { facts_path: facts_path, roots: roots } =>
-      DriverAdjudicateRoots { facts_path: facts_path, roots: list_snoc_item(xs: roots, item: word) }
+      DriverAdjudicateSeekPattern { facts_path: word }
+    DriverAdjudicateSeekPattern { facts_path: facts_path } =>
+      match parse_target_pattern(text: word) {
+        TargetPatternRefused { cause: cause } =>
+          DriverParseRefused {
+            reason: ^native_driver_adjudicate_pattern_refused,
+            detail: native_driver_pattern_refused_detail(word: word, cause: cause)
+          }
+        TargetPatternParsed { pattern: pattern } =>
+          DriverAdjudicateRoots { facts_path: facts_path, pattern: pattern, roots: [] }
+      }
+    DriverAdjudicateRoots { facts_path: facts_path, pattern: pattern, roots: roots } =>
+      DriverAdjudicateRoots {
+        facts_path: facts_path,
+        pattern: pattern,
+        roots: list_snoc_item(xs: roots, item: word)
+      }
   }
 }
 
@@ -1935,9 +1966,14 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensus { source_roots: roots } }
     DriverCensusResolveRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverCensusResolve { source_roots: roots } }
-    DriverAdjudicateRoots { facts_path: facts_path, roots: roots } =>
+    DriverAdjudicateSeekPattern { facts_path: _ } =>
+      NativeDriverPlanRefused {
+        reason: ^native_driver_adjudicate_without_pattern,
+        detail: native_driver_adjudicate_needs_pattern
+      }
+    DriverAdjudicateRoots { facts_path: facts_path, pattern: pattern, roots: roots } =>
       NativeDriverPlanned {
-        verb: NativeDriverAdjudicate { facts_path: facts_path, source_roots: roots }
+        verb: NativeDriverAdjudicate { facts_path: facts_path, pattern: pattern, source_roots: roots }
       }
   }
 }
@@ -1959,7 +1995,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
       match verb {
         NativeDriverCensus { source_roots: roots } => roots
         NativeDriverCensusResolve { source_roots: roots } => roots
-        NativeDriverAdjudicate { facts_path: _, source_roots: roots } => roots
+        NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
       }
   }
 }
