@@ -83,6 +83,12 @@ import extdeps.filesystem.filesystem_io {
   FilesystemExactPathKindUnrecognized,
   filesystem_exact_read,
   filesystem_failure_kind_name,
+  FilesystemCreateNew,
+  FilesystemCreated,
+  FilesystemCreateTargetOccupied,
+  FilesystemCreateRefused,
+  FilesystemCreateKindUnrecognized,
+  filesystem_create_new,
 }
 import std.fabric_storage {
   FabricObject,
@@ -137,6 +143,69 @@ data verification_checkout_git_binding_frontier: FrontierRow = frontier_row_decl
   ),
 )
 
+// ── WHAT A PATH INSIDE A SNAPSHOT MAY BE ─────────────────────────────────────────────────────
+//
+// A TEXT PREFIX IS NOT CONTAINMENT, and the first writing of this module used one. It asked
+// `starts_with(path, "public/")` and called the answer "inside the composition" -- so a manifest
+// entry whose directory read `public/../..` passed, and the materialization then created that
+// directory and wrote a file OUTSIDE the destination entirely. The bytes were honest: every object
+// hashed to the ref that named it and the store verified all of them. Integrity of the CONTENTS
+// says nothing about where they land, and conflating the two is how a content-addressed store
+// becomes an arbitrary-write primitive.
+//
+// SO A PATH IS ADMITTED, NOT CHECKED AT THE POINT OF USE. `RelativeSourcePath` is sole-constructed
+// behind `admit_relative_source_path`, so a path that was never admitted cannot be passed to
+// anything that writes -- the containment question is answered once, at construction, rather than
+// re-asked by every consumer that remembers to. This is also the carrier
+// `gunbc.scm.object_store.CorpusManifestEntry` and `gunbc.scm.write_spine_ingress` both name as
+// their own widening trigger: "a path type whose CONSTRUCTION refuses an empty segment and a
+// parent-directory segment". It exists now.
+//
+// THE SEGMENT RULES ARE AN EXHAUSTIVE ENUMERATION OF FORMS, not a sample of dangerous-looking text,
+// and the argument is worth writing down because it is what makes this a wall. Over a POSIX
+// "/"-separated relative path, a segment equal to ".." can occur in exactly four positions and each
+// has a distinct textual form: the whole path (`..`), the first segment (`../` prefix), an interior
+// segment (`/../` infix), or the last segment (`/..` suffix). The same four hold for ".". An empty
+// segment is a leading "/", a trailing "/", or an interior "//". There is no fifth position, so the
+// disjunction below is complete rather than heuristic -- which is precisely the question DESIGN
+// section 4b says to ask before writing a check: is the forbidden state still authorable once this
+// runs? For a "/"-separated relative path, it is not.
+//
+// SCOPE, stated rather than implied: separators are "/" only. A backslash is an ordinary character
+// in a POSIX path component and is admitted as one; a realization on a platform where it separates
+// would need its own admission, and would be a different carrier rather than a wider one.
+type RelativeSourcePath sole_constructor {
+  text: NonEmptyStr
+}
+
+fn relative_source_path_text(path: RelativeSourcePath) -> NonEmptyStr {
+  path.text
+}
+
+type RelativePathAdmission
+  = RelativePathAdmitted { path: RelativeSourcePath }
+  | RelativePathRefused { text: String, cause: String }
+
+fn admit_relative_source_path(text: String) -> RelativePathAdmission {
+  if text == "" {
+    RelativePathRefused { text: text, cause: "the path is empty" }
+  } else if starts_with(s: text, prefix: "/") {
+    RelativePathRefused { text: text, cause: "the path is absolute" }
+  } else if ends_with(s: text, suffix: "/") {
+    RelativePathRefused { text: text, cause: "the path ends in a separator, so its last segment is empty" }
+  } else if string_contains(s: text, pattern: "//") {
+    RelativePathRefused { text: text, cause: "the path holds an empty segment" }
+  } else if text == ".." || starts_with(s: text, prefix: "../")
+    || string_contains(s: text, pattern: "/../") || ends_with(s: text, suffix: "/..") {
+    RelativePathRefused { text: text, cause: "the path holds a parent-directory segment and would leave the destination" }
+  } else if text == "." || starts_with(s: text, prefix: "./")
+    || string_contains(s: text, pattern: "/./") || ends_with(s: text, suffix: "/.") {
+    RelativePathRefused { text: text, cause: "the path holds a current-directory segment, so it is not canonical" }
+  } else {
+    RelativePathAdmitted { path: RelativeSourcePath { text: text as NonEmptyStr } }
+  }
+}
+
 // ── THE COMPOSITION ──────────────────────────────────────────────────────────────────────────
 //
 // A source composition is WHICH ROOTS a snapshot is made of, and it is a closed variant rather than
@@ -188,10 +257,15 @@ fn snapshot_root_boundary(root: NonEmptyStr) -> String {
   join([root as String, "/"], "")
 }
 
-fn snapshot_path_inside_composition(composition: SourceComposition, path: String) -> Bool {
+// THE ROOT TEST IS FIRST-SEGMENT EQUALITY, AND IT IS SOUND ONLY OVER AN ADMITTED PATH. Once no
+// segment is empty and none is "." or "..", `starts_with(text, "<root>/")` says exactly "the first
+// segment is <root>" -- "publicity/x" does not match "public/", and nothing can re-enter the
+// destination from outside because nothing can leave it. The parameter type is what carries that
+// precondition: this function cannot be called on a string somebody has not admitted.
+fn snapshot_path_inside_composition(composition: SourceComposition, path: RelativeSourcePath) -> Bool {
   any(
     source_composition_roots(composition: composition),
-    root => starts_with(s: path, prefix: snapshot_root_boundary(root: root)),
+    root => starts_with(s: relative_source_path_text(path: path) as String, prefix: snapshot_root_boundary(root: root)),
   )
 }
 
@@ -250,6 +324,7 @@ type SnapshotCaptureRefusal
   | SnapshotFileAbsent { path: String }
   | SnapshotFileEmpty { path: String }
   | SnapshotPathOutsideComposition { path: String, composition: String }
+  | SnapshotPathNotRelative { path: String, cause: String }
   | SnapshotStoreRefusedObject { path: String, fault: String }
   | SnapshotManifestNotStored { fault: String }
 
@@ -276,6 +351,9 @@ type SnapshotMaterializeRefusal
   | SnapshotEntryUnavailable { object: String, fault: String }
   | SnapshotEntryMalformed { detail: String }
   | SnapshotEntryOutsideComposition { path: String, composition: String }
+  | SnapshotEntryPathNotRelative { path: String, cause: String }
+  | SnapshotDuplicatePath { path: String }
+  | SnapshotDestinationNotCreated { parent: String }
   | SnapshotDirectoryNotCreated { directory: String }
   | SnapshotFileNotWritten { path: String, detail: String }
 
@@ -374,10 +452,13 @@ fn snapshot_capture_step(
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      let relative = snapshot_inclusion_relative_path(inclusion: inclusion)
+      match admit_relative_source_path(text: snapshot_inclusion_relative_path(inclusion: inclusion)) {
+        RelativePathRefused { text: t, cause: c } =>
+          snapshot_capture_refuse(acc: acc, cause: SnapshotPathNotRelative { path: t, cause: c })
+        RelativePathAdmitted { path: relative } =>
       if !snapshot_path_inside_composition(composition: composition, path: relative) {
         snapshot_capture_refuse(acc: acc, cause: SnapshotPathOutsideComposition {
-          path: relative,
+          path: relative_source_path_text(path: relative) as String,
           composition: source_composition_wire(composition: composition) as String,
         })
       } else {
@@ -403,6 +484,7 @@ fn snapshot_capture_step(
               )
             }
         }
+      }
       }
   }
 }
@@ -474,20 +556,28 @@ fn snapshot_write_file(
     snapshot_materialize_refuse(acc: acc, cause: SnapshotDirectoryNotCreated { directory: directory })
   } else {
     let path = join([directory, "/", name as String], "")
-    let written = Filesystem.Write(path: path, content: content as String)
-    if written.success {
-      SnapshotMaterializeAcc { files: acc.files + 1, refusal: acc.refusal }
-    } else {
-      snapshot_materialize_refuse(acc: acc, cause: SnapshotFileNotWritten { path: path, detail: written.error })
+    let written = Filesystem.WriteCreateNew(path: path, content: content as String)
+    match filesystem_create_new(
+      path: path,
+      success: written.success,
+      error: written.error,
+      error_kind: written.error_kind,
+    ) {
+      FilesystemCreated { path: _ } =>
+        SnapshotMaterializeAcc { files: acc.files + 1, refusal: acc.refusal }
+      FilesystemCreateTargetOccupied { path: p } =>
+        snapshot_materialize_refuse(acc: acc, cause: SnapshotDuplicatePath { path: p })
+      FilesystemCreateRefused { path: p, kind: k, error: _ } =>
+        snapshot_materialize_refuse(acc: acc, cause: SnapshotFileNotWritten {
+          path: p,
+          detail: filesystem_failure_kind_name(kind: k),
+        })
+      FilesystemCreateKindUnrecognized { path: p, observed: o, error: _ } =>
+        snapshot_materialize_refuse(acc: acc, cause: SnapshotFileNotWritten { path: p, detail: o })
     }
   }
 }
 
-// AN ENTRY IS EXACTLY TWO LINKS AND A DIRECTORY, AND ANYTHING ELSE IS MALFORMED RATHER THAN
-// INTERPRETED. The store verified the entry's bytes against the ref that named it, so an entry with
-// the wrong link count is not corruption -- it is an object of another kind under a manifest link,
-// and reading the first two links of it anyway is how a snapshot quietly materializes something
-// else's data.
 fn snapshot_materialize_entry_content(
   destination: NonEmptyStr,
   composition: SourceComposition,
@@ -496,20 +586,24 @@ fn snapshot_materialize_entry_content(
   name: NonEmptyStr,
   content: NonEmptyStr,
 ) -> SnapshotMaterializeAcc {
-  let relative = join([directory as String, "/", name as String], "")
-  if !snapshot_path_inside_composition(composition: composition, path: relative) {
-    snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryOutsideComposition {
-      path: relative,
-      composition: source_composition_wire(composition: composition) as String,
-    })
-  } else {
-    snapshot_write_file(
-      destination: destination,
-      acc: acc,
-      relative_directory: directory,
-      name: name,
-      content: content,
-    )
+  match admit_relative_source_path(text: join([directory as String, "/", name as String], "")) {
+    RelativePathRefused { text: t, cause: c } =>
+      snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryPathNotRelative { path: t, cause: c })
+    RelativePathAdmitted { path: relative } =>
+      if !snapshot_path_inside_composition(composition: composition, path: relative) {
+        snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryOutsideComposition {
+          path: relative_source_path_text(path: relative) as String,
+          composition: source_composition_wire(composition: composition) as String,
+        })
+      } else {
+        snapshot_write_file(
+          destination: destination,
+          acc: acc,
+          relative_directory: directory,
+          name: name,
+          content: content,
+        )
+      }
   }
 }
 
@@ -628,14 +722,44 @@ fn snapshot_materialize_step(
   }
 }
 
-// THE COMPOSITION IS ADMITTED BEFORE ANY BYTE IS WRITTEN, and that ordering is the contract rather
-// than an optimization. An executor that expected a public-only snapshot and was handed one
-// carrying a private root must not end up with the private bytes on its disk and a refusal in its
-// log; the refusal has to happen while the only thing that has moved is a digest.
+// THE DESTINATION IS CREATED BY THIS CALL, AND THAT IS WHAT MAKES THE TREE EXACT.
+//
+// A CALLER-SUPPLIED DIRECTORY CANNOT CARRY AN EXACT-MEMBERSHIP CLAIM, and the first writing of this
+// function accepted one. Whatever already sat in it survived and was then walked by the executor as
+// though it had come from the snapshot -- so "the executor received the intended source" was false
+// in the one direction nobody looks: not a missing file, an EXTRA one. A stale module from an
+// earlier run, or anything a third party had put there, compiled beside the snapshot's own bytes
+// with every digest verifying.
+//
+// So the parameter is the PARENT, and the destination is a fresh directory this call creates inside
+// it through `mktemp -d`, whose name no caller chose and whose contents are therefore exactly what
+// the manifest put there. Membership is established by construction rather than by inspecting a
+// directory afterwards, which is DESIGN section 5's preference stated for a filesystem: the
+// polluted-destination state is unwritable, not validated.
+//
+// THREE CONSEQUENCES FOLLOW FROM THE SAME PROPERTY, and they are the three the reviewer asked for.
+// A prepopulated destination cannot add source, because no destination the route did not create is
+// ever written to. Duplicate logical paths refuse rather than overwrite, because every file lands
+// through `Filesystem.WriteCreateNew` in a tree that started empty, so the second occurrence of a
+// path finds the first one there. And a failed or partial materialization can never later be
+// accepted as complete: the tree it left behind is not reachable by any subsequent call -- each one
+// makes its own -- and the only value that says "complete" is the receipt, which exists on no
+// refusal arm.
+//
+// IT IS ALSO WHAT ANSWERS THE SYMLINK QUESTION, stated plainly rather than claimed as a check. This
+// route creates directories and regular files and nothing else, into a tree that began empty, so no
+// component of any path it writes can be a symlink: there was nothing to plant one, and a regular
+// file cannot be traversed as a directory. A caller-supplied destination is exactly where a planted
+// symlink component would have come from, and there is no longer such a thing.
+//
+// THE COMPOSITION IS ADMITTED BEFORE THE DESTINATION IS EVEN CREATED. An executor that expected a
+// public-only snapshot and was handed one carrying a private root must not end up with the private
+// bytes on its disk and a refusal in its log; on this ordering nothing has been created at all when
+// that refusal fires.
 fn materialize_source_snapshot(
   store: FabricStorageFileRoot,
   manifest: FabricObjectRef,
-  destination: NonEmptyStr,
+  destination_parent: NonEmptyStr,
   expected: SourceComposition,
 ) -> SnapshotMaterialization {
   match fabric_storage_file_get(root: store, object: manifest) {
@@ -656,30 +780,40 @@ fn materialize_source_snapshot(
           },
         }
       } else {
-        match fold(
-          found.content.links,
-          init: SnapshotMaterializeAcc { files: 0, refusal: none },
-          f: fn(acc, entry_ref) {
-            snapshot_materialize_step(
-              store: store,
-              destination: destination,
-              composition: expected,
-              acc: acc,
-              entry_ref: entry_ref,
-            )
-          },
-        ) {
-          SnapshotMaterializeAcc { files: files, refusal: refusal } =>
-            match refusal {
-              Present { value: cause } => SnapshotMaterializeRefused { cause: cause }
-              Absent =>
-                SnapshotMaterialized {
-                  manifest: manifest,
-                  destination: destination,
-                  files: files,
-                  composition: wire as String,
-                }
-            }
+        let made = shell.Mktemp.DirWithTemplate(
+          template: join([destination_parent as String, "/gunbc-snapshot-XXXXXX"], "") as FilePath,
+        )
+        if !made.success {
+          SnapshotMaterializeRefused {
+            cause: SnapshotDestinationNotCreated { parent: destination_parent as String },
+          }
+        } else {
+          let destination = trim(s: made.path as String) as NonEmptyStr
+          match fold(
+            found.content.links,
+            init: SnapshotMaterializeAcc { files: 0, refusal: none },
+            f: fn(acc, entry_ref) {
+              snapshot_materialize_step(
+                store: store,
+                destination: destination,
+                composition: expected,
+                acc: acc,
+                entry_ref: entry_ref,
+              )
+            },
+          ) {
+            SnapshotMaterializeAcc { files: files, refusal: refusal } =>
+              match refusal {
+                Present { value: cause } => SnapshotMaterializeRefused { cause: cause }
+                Absent =>
+                  SnapshotMaterialized {
+                    manifest: manifest,
+                    destination: destination,
+                    files: files,
+                    composition: wire as String,
+                  }
+              }
+          }
         }
       }
   }

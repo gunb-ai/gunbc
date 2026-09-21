@@ -44,12 +44,21 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.gunbc
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.fabric_storage { FabricObject, FabricObjectRef, fabric_object_ref_of, fabric_object_ref_wire }
+import std.fabric_storage {
+  FabricObject,
+  FabricObjectRef,
+  FabricPut,
+  FabricObjectStored,
+  FabricPutRefused,
+  fabric_object_ref_of,
+  fabric_object_ref_wire,
+}
 import gunbc.fabric_storage_file_store {
   FabricStorageFileRoot,
   fabric_storage_file_root,
   fabric_storage_file_root_ensure,
   fabric_storage_object_path,
+  fabric_storage_file_put,
   FabricStorageRootStanding,
   FabricStorageRootReady,
   FabricStorageRootRefused,
@@ -71,8 +80,13 @@ import gunbc.fabric_source_snapshot {
   SnapshotEntryUnavailable,
   SnapshotEntryMalformed,
   SnapshotEntryOutsideComposition,
+  SnapshotEntryPathNotRelative,
+  SnapshotDuplicatePath,
+  SnapshotDestinationNotCreated,
   SnapshotDirectoryNotCreated,
   SnapshotFileNotWritten,
+  snapshot_entry_object,
+  snapshot_manifest_object,
   capture_source_snapshot,
   materialize_source_snapshot,
   snapshot_leaf_object,
@@ -165,6 +179,8 @@ type SnapshotScenario
   | MissingObjectScenario
   | CorruptedBytesScenario
   | CompositionMismatchScenario
+  | EscapingPathScenario
+  | DuplicatePathScenario
 
 fn snapshot_scenario_name(scenario: SnapshotScenario) -> String {
   match scenario {
@@ -172,11 +188,20 @@ fn snapshot_scenario_name(scenario: SnapshotScenario) -> String {
     MissingObjectScenario => "missing-object"
     CorruptedBytesScenario => "corrupted-bytes"
     CompositionMismatchScenario => "composition-mismatch"
+    EscapingPathScenario => "escaping-path"
+    DuplicatePathScenario => "duplicate-path"
   }
 }
 
 fn snapshot_scenarios() -> List<SnapshotScenario> {
-  [ExecutedRequestScenario, MissingObjectScenario, CorruptedBytesScenario, CompositionMismatchScenario]
+  [
+    ExecutedRequestScenario,
+    MissingObjectScenario,
+    CorruptedBytesScenario,
+    CompositionMismatchScenario,
+    EscapingPathScenario,
+    DuplicatePathScenario,
+  ]
 }
 
 // THE OUTCOME IS LOCATED. A conjunction over four scenarios answers false and says nothing about
@@ -326,7 +351,7 @@ fn snapshot_request_environment(binary: ScmAcceptanceBinary) -> DispatchHostEnvi
   }
 }
 
-fn run_snapshot_request(workspace: SnapshotWorkspace, binary: ScmAcceptanceBinary) -> ExecutedRequest {
+fn run_snapshot_request(destination: String, binary: ScmAcceptanceBinary) -> ExecutedRequest {
   match validation_operation_command(
     validation: snapshot_handoff_validation(),
     environment: snapshot_request_environment(binary: binary),
@@ -335,7 +360,7 @@ fn run_snapshot_request(workspace: SnapshotWorkspace, binary: ScmAcceptanceBinar
     Absent => RequestUnspellable
     Present { value: command } =>
       let ran = gunbc.WitnessBin.Run(
-        workdir: workspace.destination as FilePath,
+        workdir: destination as FilePath,
         bin_path: command.program,
         args: command.args,
       )
@@ -369,6 +394,9 @@ fn capture_for_scenario(workspace: SnapshotWorkspace) -> CapturedSnapshot {
 
 fn snapshot_refusal_wire(cause: SnapshotMaterializeRefusal) -> String {
   match cause {
+    SnapshotEntryPathNotRelative { path: _, cause: _ } => "entry-path-not-relative"
+    SnapshotDuplicatePath { path: _ } => "duplicate-path"
+    SnapshotDestinationNotCreated { parent: _ } => "destination-not-created"
     SnapshotManifestUnavailable { manifest: _, fault: f } => join(["manifest-unavailable:", f], "")
     SnapshotCompositionMismatch { expected: _, found: _ } => "composition-mismatch"
     SnapshotEntryUnavailable { object: _, fault: f } => join(["entry-unavailable:", f], "")
@@ -405,7 +433,7 @@ fn run_executed_request_scenario(workspace: SnapshotWorkspace, binary: ScmAccept
       match materialize_source_snapshot(
         store: workspace.store,
         manifest: manifest,
-        destination: workspace.destination as NonEmptyStr,
+        destination_parent: workspace.destination as NonEmptyStr,
         expected: snapshot_handoff_composition(),
       ) {
         SnapshotMaterializeRefused { cause: c } =>
@@ -414,15 +442,15 @@ fn run_executed_request_scenario(workspace: SnapshotWorkspace, binary: ScmAccept
             step: "materialize",
             detail: snapshot_refusal_wire(cause: c),
           }
-        SnapshotMaterialized { manifest: consumed, destination: _, files: files, composition: _ } =>
-          if shell.Test.IsDirectory(path: join([workspace.destination, "/.git"], "") as FilePath).is_directory {
+        SnapshotMaterialized { manifest: consumed, destination: created, files: files, composition: _ } =>
+          if shell.Test.IsDirectory(path: join([created as String, "/.git"], "") as FilePath).is_directory {
             SnapshotScenarioFailed {
               scenario: "executed-request",
               step: "no-git",
               detail: "the destination holds a git directory",
             }
           } else {
-            match run_snapshot_request(workspace: workspace, binary: binary) {
+            match run_snapshot_request(destination: created as String, binary: binary) {
               RequestUnspellable =>
                 SnapshotScenarioFailed {
                   scenario: "executed-request",
@@ -470,7 +498,7 @@ fn run_corrupted_bytes_scenario(workspace: SnapshotWorkspace, binary: ScmAccepta
         match materialize_source_snapshot(
           store: workspace.store,
           manifest: manifest,
-          destination: workspace.destination as NonEmptyStr,
+          destination_parent: workspace.destination as NonEmptyStr,
           expected: snapshot_handoff_composition(),
         ) {
           SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
@@ -514,7 +542,7 @@ fn run_missing_object_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptan
         match materialize_source_snapshot(
           store: workspace.store,
           manifest: manifest,
-          destination: workspace.destination as NonEmptyStr,
+          destination_parent: workspace.destination as NonEmptyStr,
           expected: snapshot_handoff_composition(),
         ) {
           SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
@@ -550,7 +578,7 @@ fn run_composition_mismatch_scenario(workspace: SnapshotWorkspace, binary: ScmAc
       match materialize_source_snapshot(
         store: workspace.store,
         manifest: manifest,
-        destination: workspace.destination as NonEmptyStr,
+        destination_parent: workspace.destination as NonEmptyStr,
         expected: PublicOnlyComposition { public_root: snapshot_public_prefix },
       ) {
         SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
@@ -562,11 +590,15 @@ fn run_composition_mismatch_scenario(workspace: SnapshotWorkspace, binary: ScmAc
         SnapshotMaterializeRefused { cause: c } =>
           match c {
             SnapshotCompositionMismatch { expected: e, found: f } =>
-              if shell.Test.IsDirectory(path: join([workspace.destination, "/dag"], "") as FilePath).is_directory {
+              // THE WHOLE PARENT MUST STILL BE EMPTY. The destination is created by the
+              // materialization itself, so a refusal that fires before creation leaves the parent
+              // with no snapshot directory in it at all -- a stronger fact than "the private root
+              // is absent", and one that cannot be satisfied by a partial tree under another name.
+              if length(Filesystem.List(path: workspace.destination).entries) != 0 {
                 SnapshotScenarioFailed {
                   scenario: "composition-mismatch",
                   step: "materialize",
-                  detail: "the refusal arrived after the private root had been written",
+                  detail: "the refusal arrived after a destination had been created",
                 }
               } else {
                 SnapshotScenarioPassed {
@@ -577,6 +609,175 @@ fn run_composition_mismatch_scenario(workspace: SnapshotWorkspace, binary: ScmAc
             _ =>
               SnapshotScenarioFailed {
                 scenario: "composition-mismatch",
+                step: "materialize",
+                detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
+              }
+          }
+      }
+  }
+}
+
+
+// THE TRAVERSAL CONTROL, AND ITS MANIFEST IS HONEST IN EVERY RESPECT BUT ONE. Every object below is
+// stored through the real store and hashes to the ref that names it, so the integrity half of this
+// route passes completely -- which is the point. A content-addressed store says what the bytes ARE
+// and nothing about where they go, so the escape has to be refused by the path rule or not at all.
+// The manifest is assembled here rather than captured because capture refuses it at the same wall:
+// building it directly is what puts the materialization boundary under test on its own.
+fn escaping_entry_manifest(workspace: SnapshotWorkspace) -> FabricObjectRef? {
+  match fabric_storage_file_put(root: workspace.store, object: snapshot_leaf_object(body: "outside.dag" as NonEmptyStr)) {
+    FabricPutRefused { fault: _ } => none
+    FabricObjectStored { object: name_ref } =>
+      match fabric_storage_file_put(root: workspace.store, object: snapshot_leaf_object(body: "module escaped\n" as NonEmptyStr)) {
+        FabricPutRefused { fault: _ } => none
+        FabricObjectStored { object: content_ref } =>
+          match fabric_storage_file_put(
+            root: workspace.store,
+            object: snapshot_entry_object(
+              name: name_ref,
+              content: content_ref,
+              directory: "public/../.." as NonEmptyStr,
+            ),
+          ) {
+            FabricPutRefused { fault: _ } => none
+            FabricObjectStored { object: entry_ref } =>
+              match fabric_storage_file_put(
+                root: workspace.store,
+                object: snapshot_manifest_object(
+                  entries: [entry_ref],
+                  composition: snapshot_handoff_composition(),
+                ),
+              ) {
+                FabricPutRefused { fault: _ } => none
+                FabricObjectStored { object: manifest } => Present { value: manifest }
+              }
+          }
+      }
+  }
+}
+
+fn run_escaping_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
+  match escaping_entry_manifest(workspace: workspace) {
+    Absent =>
+      SnapshotScenarioFailed {
+        scenario: "escaping-path",
+        step: "author-manifest",
+        detail: "the store would not hold the escaping manifest",
+      }
+    Present { value: manifest } =>
+      match materialize_source_snapshot(
+        store: workspace.store,
+        manifest: manifest,
+        destination_parent: workspace.destination as NonEmptyStr,
+        expected: snapshot_handoff_composition(),
+      ) {
+        SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
+          SnapshotScenarioFailed {
+            scenario: "escaping-path",
+            step: "materialize",
+            detail: "a manifest whose entry leaves the destination materialized instead of refusing",
+          }
+        SnapshotMaterializeRefused { cause: c } =>
+          match c {
+            SnapshotEntryPathNotRelative { path: p, cause: why } =>
+              // THE REFUSAL MUST PRECEDE THE WRITE, NOT FOLLOW IT. `public/../..` resolves to the
+              // parent of the parent, so the file this entry describes would have landed beside the
+              // workspace rather than inside the snapshot. Asserting only the refusal arm would pass
+              // for an implementation that wrote the file and then complained.
+              if shell.Test.IsFile(path: join([workspace.root, "/outside.dag"], "") as FilePath).is_file {
+                SnapshotScenarioFailed {
+                  scenario: "escaping-path",
+                  step: "materialize",
+                  detail: "the refusal arrived after the escaping file had been written",
+                }
+              } else {
+                SnapshotScenarioPassed {
+                  scenario: "escaping-path",
+                  detail: join(["refused ", p, ": ", why], ""),
+                }
+              }
+            _ =>
+              SnapshotScenarioFailed {
+                scenario: "escaping-path",
+                step: "materialize",
+                detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
+              }
+          }
+      }
+  }
+}
+
+// THE DUPLICATE CONTROL. Two entries naming one path are two different objects -- different bytes,
+// different refs, both verifying -- so nothing upstream of the write can tell them apart. Whichever
+// landed second would have silently replaced the first, and the resulting tree would be one the
+// manifest does not describe while every digest in it checked out.
+fn duplicate_entry_manifest(workspace: SnapshotWorkspace) -> FabricObjectRef? {
+  match fabric_storage_file_put(root: workspace.store, object: snapshot_leaf_object(body: "twice.dag" as NonEmptyStr)) {
+    FabricPutRefused { fault: _ } => none
+    FabricObjectStored { object: name_ref } =>
+      match fabric_storage_file_put(root: workspace.store, object: snapshot_leaf_object(body: "module first\n" as NonEmptyStr)) {
+        FabricPutRefused { fault: _ } => none
+        FabricObjectStored { object: first_content } =>
+          match fabric_storage_file_put(root: workspace.store, object: snapshot_leaf_object(body: "module second\n" as NonEmptyStr)) {
+            FabricPutRefused { fault: _ } => none
+            FabricObjectStored { object: second_content } =>
+              match fabric_storage_file_put(
+                root: workspace.store,
+                object: snapshot_entry_object(name: name_ref, content: first_content, directory: "dag" as NonEmptyStr),
+              ) {
+                FabricPutRefused { fault: _ } => none
+                FabricObjectStored { object: first_entry } =>
+                  match fabric_storage_file_put(
+                    root: workspace.store,
+                    object: snapshot_entry_object(name: name_ref, content: second_content, directory: "dag" as NonEmptyStr),
+                  ) {
+                    FabricPutRefused { fault: _ } => none
+                    FabricObjectStored { object: second_entry } =>
+                      match fabric_storage_file_put(
+                        root: workspace.store,
+                        object: snapshot_manifest_object(
+                          entries: [first_entry, second_entry],
+                          composition: snapshot_handoff_composition(),
+                        ),
+                      ) {
+                        FabricPutRefused { fault: _ } => none
+                        FabricObjectStored { object: manifest } => Present { value: manifest }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn run_duplicate_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
+  match duplicate_entry_manifest(workspace: workspace) {
+    Absent =>
+      SnapshotScenarioFailed {
+        scenario: "duplicate-path",
+        step: "author-manifest",
+        detail: "the store would not hold the duplicate manifest",
+      }
+    Present { value: manifest } =>
+      match materialize_source_snapshot(
+        store: workspace.store,
+        manifest: manifest,
+        destination_parent: workspace.destination as NonEmptyStr,
+        expected: snapshot_handoff_composition(),
+      ) {
+        SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
+          SnapshotScenarioFailed {
+            scenario: "duplicate-path",
+            step: "materialize",
+            detail: "two entries naming one path materialized instead of refusing",
+          }
+        SnapshotMaterializeRefused { cause: c } =>
+          match c {
+            SnapshotDuplicatePath { path: p } =>
+              SnapshotScenarioPassed { scenario: "duplicate-path", detail: join(["refused ", p], "") }
+            _ =>
+              SnapshotScenarioFailed {
+                scenario: "duplicate-path",
                 step: "materialize",
                 detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
               }
@@ -601,6 +802,8 @@ fn run_snapshot_scenario(scenario: SnapshotScenario, binary: ScmAcceptanceBinary
         MissingObjectScenario => run_missing_object_scenario(workspace: workspace, binary: binary)
         CorruptedBytesScenario => run_corrupted_bytes_scenario(workspace: workspace, binary: binary)
         CompositionMismatchScenario => run_composition_mismatch_scenario(workspace: workspace, binary: binary)
+        EscapingPathScenario => run_escaping_path_scenario(workspace: workspace)
+        DuplicatePathScenario => run_duplicate_path_scenario(workspace: workspace)
       }
       let cleaned = shell.Remove.RecursiveForce(path: workspace.root as FilePath)
       if cleaned.success {

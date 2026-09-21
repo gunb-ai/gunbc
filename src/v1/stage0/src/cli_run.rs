@@ -2085,11 +2085,27 @@ pub(crate) const CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER: &str =
 /// to cwd-relative or absolute spellings as index keys.
 fn process_workspace_root() -> PathBuf {
     PROCESS_WORKSPACE_ROOT
-        .get_or_init(resolve_process_workspace_root)
+        .get_or_init(|| {
+            (
+                resolve_process_workspace_root(),
+                WorkspaceRootBasis::Discovered,
+            )
+        })
+        .0
         .clone()
 }
 
-static PROCESS_WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
+/// THE ROOT AND THE RULE THAT NAMED IT ARE ONE CELL, so the report cannot disagree with the bind.
+///
+/// They were two facts in the first writing -- the root memoized here, the basis returned by
+/// `bind_process_workspace_root` -- and the already-bound path then answered `Declared` for ANY
+/// pre-set root, including one this `get_or_init` had just discovered on a read that happened
+/// before the bind. The verb printed `[workspace-root] declared <root>` for a root the request
+/// never named: a report that names the wrong rule, at the one boundary that exists to make the
+/// selection observable, which is worse than printing nothing (DESIGN section 5 -- no fabricated
+/// plausible output). Caught by review 69584 on gunbc#11960. Storing the pair makes the
+/// disagreement unconstructible rather than checked.
+static PROCESS_WORKSPACE_ROOT: OnceLock<(PathBuf, WorkspaceRootBasis)> = OnceLock::new();
 
 /// Why a request may NAME its workspace root, and why discovery is asked FIRST.
 ///
@@ -2126,13 +2142,38 @@ static PROCESS_WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
 /// the caller, because a selection nobody can observe is indistinguishable from a silent one.
 pub(crate) fn declared_workspace_root(source_roots: &[String]) -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok()?;
+    match declared_workspace_root_from(&cwd, source_roots) {
+        DeclaredBase::Named(root) => Some(root),
+        DeclaredBase::NotNamed | DeclaredBase::RootAbsent { .. } => None,
+    }
+}
+
+/// THE TWO WAYS THE REQUEST CAN FAIL TO NAME A BASE ARE DIFFERENT FACTS AND SEND A CALLER TO
+/// DIFFERENT PLACES. "You named no base" is a property of the SPELLINGS -- an absolute root, or one
+/// that escapes cwd, leaves nothing for this rule to read. "A root you named is not there" is a
+/// property of the TREE, and it is the state a typo produces. Answering both with one `None` made
+/// the refusal say "no workspace root" to someone whose real problem was a misspelled directory,
+/// and it is the conflation DESIGN section 5 refuses: the line must stop, and the stop must say
+/// where. Named by the side-chat review of gunbc#11960.
+pub(crate) enum DeclaredBase {
+    Named(PathBuf),
+    NotNamed,
+    RootAbsent { root: String },
+}
+
+/// The rule itself, over an explicit base. `declared_workspace_root` memoizes nothing and adds
+/// only the ambient read, so this is where the decision lives and where it is measured -- the same
+/// split `workspace_root` / `workspace_root_from` already uses, and for the same reason: the tests
+/// in this lane may not chdir (the concurrent-cwd gate above), so a rule that could only be
+/// exercised by moving the process could not be exercised at all.
+pub(crate) fn declared_workspace_root_from(cwd: &Path, source_roots: &[String]) -> DeclaredBase {
     if source_roots.is_empty() {
-        return None;
+        return DeclaredBase::NotNamed;
     }
     for root in source_roots {
         let spelled = Path::new(root);
         if spelled.is_absolute() {
-            return None;
+            return DeclaredBase::NotNamed;
         }
         // A ROOT THAT ESCAPES cwd MEANS cwd IS NOT THE BASE, and this clause is here because the
         // rule without it was wrong in a way that still passed: run from `src/` with
@@ -2145,13 +2186,43 @@ pub(crate) fn declared_workspace_root(source_roots: &[String]) -> Option<PathBuf
             .components()
             .any(|c| !matches!(c, std::path::Component::Normal(_)))
         {
-            return None;
-        }
-        if !cwd.join(spelled).is_dir() {
-            return None;
+            return DeclaredBase::NotNamed;
         }
     }
-    Some(cwd)
+    for root in source_roots {
+        if !cwd.join(Path::new(root)).is_dir() {
+            return DeclaredBase::RootAbsent { root: root.clone() };
+        }
+    }
+    DeclaredBase::Named(cwd.to_path_buf())
+}
+
+/// Every RELATIVE source root must resolve under the base that was bound, whichever rule named it.
+///
+/// This is the (C) separation applied to the discovered arm as well: a misspelled root under a
+/// discoverable checkout previously reached `anchor_source_root` and PANICKED at exit 101, naming
+/// the right directory in a message with no exit contract. It now refuses here, typed, before any
+/// module is read -- and it does NOT refuse an absolute root, because `anchor_source_root` owns a
+/// re-anchoring rule for absolute spellings baked by another runner's checkout (sccache) and
+/// second-guessing it here would refuse invocations that legitimately work.
+fn relative_roots_resolve_under(base: &Path, source_roots: &[String]) -> Result<(), String> {
+    for root in source_roots {
+        let spelled = Path::new(root);
+        if spelled.is_absolute() {
+            continue;
+        }
+        if !base.join(spelled).is_dir() {
+            return Err(format!(
+                "source root {root} does not resolve under the workspace root {}.\n  \
+                 cause: a declared root is the subject of the run, so a root that is not there is \
+                 a refusal rather than a smaller corpus.\n  \
+                 remedy: correct the spelling, or run from the directory the roots are named \
+                 relative to.",
+                base.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Bind the process workspace root once, from the request, before anything reads it.
@@ -2161,6 +2232,7 @@ pub(crate) fn declared_workspace_root(source_roots: &[String]) -> Option<PathBuf
 /// carries no exit contract and prints no diagnostic a caller can act on, which is precisely what
 /// DESIGN section 5 forbids at a boundary whose job is to refuse precisely.
 /// Which of the two rules named the base, so the choice is reported rather than inferred.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WorkspaceRootBasis {
     /// The request named it: every `--source-root` is relative and resolves under cwd.
     Declared,
@@ -2180,32 +2252,47 @@ impl WorkspaceRootBasis {
 pub fn bind_process_workspace_root(
     source_roots: &[String],
 ) -> Result<(PathBuf, WorkspaceRootBasis), String> {
-    if let Some(root) = PROCESS_WORKSPACE_ROOT.get() {
-        return Ok((root.clone(), WorkspaceRootBasis::Declared));
+    if let Some((root, basis)) = PROCESS_WORKSPACE_ROOT.get() {
+        return Ok((root.clone(), *basis));
     }
-    if let Some(discovered) = try_resolve_process_workspace_root() {
-        let _ = PROCESS_WORKSPACE_ROOT.set(discovered.clone());
-        bind_checkout_root(discovered.clone());
-        return Ok((discovered, WorkspaceRootBasis::Discovered));
-    }
-    match declared_workspace_root(source_roots) {
-        Some(declared) => {
-            let _ = PROCESS_WORKSPACE_ROOT.set(declared.clone());
-            bind_checkout_root(declared.clone());
-            Ok((declared, WorkspaceRootBasis::Declared))
-        }
-        None => Err(format!(
-            "no workspace root: every --source-root would have to resolve under the current \
-             directory {}, and none of its ancestors is a git checkout carrying Cargo.toml \
-             beside dag/.\n  cause: the root is the base every repo-relative module key is \
-             spelled against, so a run without one would key its module graph and its content \
-             indices differently.\n  remedy: name the source roots relative to the directory the \
-             run starts in.",
-            std::env::current_dir()
-                .map(|d| d.display().to_string())
-                .unwrap_or_else(|_| "<unavailable>".into()),
-        )),
-    }
+    let cwd = std::env::current_dir().map_err(|e| {
+        format!("no workspace root: the process working directory is unavailable ({e})")
+    })?;
+    let (root, basis) = match try_resolve_process_workspace_root() {
+        Some(discovered) => (discovered, WorkspaceRootBasis::Discovered),
+        None => match declared_workspace_root_from(&cwd, source_roots) {
+            DeclaredBase::Named(declared) => (declared, WorkspaceRootBasis::Declared),
+            // THE TWO REFUSALS BELOW ARE THE POINT OF THE SPLIT. A caller whose root is misspelled
+            // is told which root; a caller who named no base at all is told that, and neither is
+            // told the other's story.
+            DeclaredBase::RootAbsent { root } => {
+                return Err(format!(
+                    "no workspace root: there is no checkout to discover one from, and the \
+                     declared source root {root} does not resolve under the current directory \
+                     {}.\n  cause: with no checkout, the request is the only thing that can name \
+                     a base, and a root that is not there cannot name one.\n  remedy: correct the \
+                     spelling, or run from the directory the roots are named relative to.",
+                    cwd.display()
+                ));
+            }
+            DeclaredBase::NotNamed => {
+                return Err(format!(
+                    "no workspace root: none of the current directory {}'s ancestors is a git \
+                     checkout carrying Cargo.toml beside dag/, and the request names no base \
+                     either -- every --source-root would have to be a relative path of ordinary \
+                     components.\n  cause: the root is the base every repo-relative module key is \
+                     spelled against, so a run without one would key its module graph and its \
+                     content indices differently.\n  remedy: name the source roots relative to the \
+                     directory the run starts in.",
+                    cwd.display()
+                ));
+            }
+        },
+    };
+    relative_roots_resolve_under(&root, source_roots)?;
+    let _ = PROCESS_WORKSPACE_ROOT.set((root.clone(), basis));
+    bind_checkout_root(root.clone());
+    Ok((root, basis))
 }
 
 /// The discovery half of [`resolve_process_workspace_root`], without the panic, so the boundary
@@ -2564,6 +2651,52 @@ mod process_workspace_root_tests {
         workspace_root,
     };
     use std::path::Path;
+
+    #[test]
+    fn declared_workspace_root_names_cwd_when_every_root_is_under_it() {
+        // The base is PASSED, never entered: this lane's tests may not chdir. Both roots are
+        // ordinary relative spellings under it -- the shape an executor's invocation has.
+        let ws = super::workspace_root();
+        match super::declared_workspace_root_from(&ws, &["dag".to_string(), "src/v2".to_string()]) {
+            super::DeclaredBase::Named(named) => assert_eq!(named, ws),
+            _ => panic!("two ordinary roots under the base must name it"),
+        }
+    }
+
+    #[test]
+    fn declared_workspace_root_refuses_a_root_that_escapes_cwd() {
+        // `src/../dag` IS a directory, so an is_dir() guard admits it while it resolves
+        // outside cwd -- the input that made the first cut of this rule accept a
+        // subdirectory as the base and key every module against it. Disqualifying the
+        // rule is the point: the run then takes the discovered root, unchanged.
+        let src = super::workspace_root().join("src");
+        assert!(
+            src.join("../dag").is_dir(),
+            "the input must be one an is_dir() guard admits"
+        );
+        for spelling in ["../dag", "./v2", "/tmp"] {
+            assert!(
+                matches!(
+                    super::declared_workspace_root_from(&src, &[spelling.to_string()]),
+                    super::DeclaredBase::NotNamed
+                ),
+                "{spelling} must leave the request naming no base"
+            );
+        }
+        assert!(matches!(
+            super::declared_workspace_root_from(&src, &[]),
+            super::DeclaredBase::NotNamed
+        ));
+        // A ROOT THAT IS SIMPLY NOT THERE IS A DIFFERENT ANSWER, and keeping the two apart is what
+        // lets the refusal name the misspelled root instead of reporting a missing workspace.
+        assert!(matches!(
+            super::declared_workspace_root_from(
+                &super::workspace_root(),
+                &["no-such-root".to_string()]
+            ),
+            super::DeclaredBase::RootAbsent { .. }
+        ));
+    }
 
     #[test]
     fn process_workspace_root_locates_cargo_and_dag() {

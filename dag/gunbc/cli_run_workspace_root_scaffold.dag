@@ -40,3 +40,24 @@ data cli_run_source_root_anchor_loc_delta_net: Int = 43
 data cli_run_source_root_anchor_test_discriminator_present_root: String = "try_anchor_source_root_resolves_declared_present_root"
 
 data cli_run_source_root_anchor_test_discriminator_absent_root: String = "try_anchor_source_root_skips_declared_absent_root"
+
+data cli_run_workspace_root_selection_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "bind_process_workspace_root",
+    field: WholeDeclaration
+  }
+}
+
+data cli_run_workspace_root_selection_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bind_process_workspace_root — the two-rule workspace-root SELECTION (discovery is the incumbent authority; where no checkout exists the request names the base, strictly, and neither rule applying refuses at exit 2) is authored in HAND-Rust beside the discovery walk it wraps, and a selection is policy rather than plumbing, so it owes a .dag authority that the walk alone did not. It exists because discovery cannot answer for an executor handed an immutable source snapshot by content identity (gunbc.fabric_source_snapshot) — it panicked there, so source without a repository was unrunnable rather than unsupported. DISSOLVES WHEN the workspace root reaches the compiler as a MODELED FIELD OF THE REQUEST decided in .dag — v2.cli.compile_cli's plan naming the base the way it already names the source roots and the verb — at which point this selection is a fold over that plan and the Rust retains no rule. NOT dissolved by the discovery walk moving, by the refusal being reworded, or by Chunk F landing the roots walk without carrying the root itself: the trigger is the CAPABILITY of a request-carried root, not any artifact that would contribute to one")
+
+data cli_run_workspace_root_selection_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
+
+data cli_run_workspace_root_selection_loc_delta_measure: String = "code lines -- comments, blank lines and tests excluded -- of the declarations this scaffold binds: declared_workspace_root, declared_workspace_root_from, bind_process_workspace_root, try_resolve_process_workspace_root, bind_checkout_root, WorkspaceRootBasis and its impl, and the verb's binding in main.rs. It INCLUDES the 25 lines of the discovery walk relocated into try_resolve_process_workspace_root, which are not net-new to the seed: the measure is stated so the figure can be checked rather than trusted, because a bare count invites a reader to compare it with the rows above, whose measure is not recorded"
+
+data cli_run_workspace_root_selection_loc_delta_net: Int = 107
+
+data cli_run_workspace_root_selection_test_discriminator_declared: String = "declared_workspace_root_names_cwd_when_every_root_is_under_it"
+
+data cli_run_workspace_root_selection_test_discriminator_escapes_cwd: String = "declared_workspace_root_refuses_a_root_that_escapes_cwd"

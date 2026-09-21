@@ -22,6 +22,11 @@ import gunbc.fabric_source_snapshot {
   source_composition_wire,
   source_composition_roots,
   snapshot_path_inside_composition,
+  RelativeSourcePath,
+  RelativePathAdmission,
+  RelativePathAdmitted,
+  RelativePathRefused,
+  admit_relative_source_path,
   snapshot_inclusion_relative_path,
   SnapshotInclusion,
 }
@@ -56,6 +61,51 @@ test fn composition_wire_carries_the_public_root() -> Bool {
   (here as String) != (elsewhere as String)
 }
 
+fn path_is_refused(text: String) -> Bool {
+  match admit_relative_source_path(text: text) {
+    RelativePathRefused { text: _, cause: _ } => true
+    RelativePathAdmitted { path: _ } => false
+  }
+}
+
+fn inside(composition: SourceComposition, text: String) -> Bool {
+  match admit_relative_source_path(text: text) {
+    RelativePathRefused { text: _, cause: _ } => false
+    RelativePathAdmitted { path: p } =>
+      snapshot_path_inside_composition(composition: composition, path: p)
+  }
+}
+
+// A PARENT-DIRECTORY SEGMENT HAS FOUR POSITIONS AND THE ADMISSION CLAIMS ALL FOUR. This is the
+// claim the module's exhaustiveness argument is worth writing down for: over a "/"-separated
+// relative path, `..` can be the whole path, the first segment, an interior segment or the last
+// segment, and there is no fifth position. A rule that caught three of them would look like a wall
+// and be a sieve, and the one it would most plausibly miss is the trailing form.
+test fn every_position_of_a_parent_segment_is_refused() -> Bool {
+  path_is_refused(text: "..")
+    && path_is_refused(text: "../x.dag")
+    && path_is_refused(text: "public/../../outside.dag")
+    && path_is_refused(text: "public/dag/..")
+}
+
+// THE OTHER THREE FORMS THAT WOULD LEAVE OR DEGENERATE THE TREE.
+test fn an_absolute_or_degenerate_path_is_refused() -> Bool {
+  path_is_refused(text: "")
+    && path_is_refused(text: "/etc/passwd")
+    && path_is_refused(text: "public//x.dag")
+    && path_is_refused(text: "public/x.dag/")
+    && path_is_refused(text: "./public/x.dag")
+    && path_is_refused(text: "public/./x.dag")
+}
+
+// AND THE ORDINARY PATH STILL PASSES, which is the half that keeps the rule from being a refusal
+// that happens to be safe. A wall nothing can get through is not a wall, it is a wall-shaped hole
+// in the capability.
+test fn an_ordinary_relative_path_is_admitted() -> Bool {
+  !path_is_refused(text: "public/dag/gunbc/x.dag")
+    && !path_is_refused(text: "dag/test/claim/y.dag")
+}
+
 // THE BOUNDARY, AND THE PREFIX THAT IS NOT A ROOT. "publicity/x.dag" starts with "public" and is
 // under no declared root; admitting it would let a path outside the composition ride in on a bare
 // prefix test, which is the defect gunbc.roadmap_execution_contract allowed_prefix_boundary exists
@@ -65,10 +115,10 @@ test fn a_prefix_that_is_not_a_root_is_outside() -> Bool {
     public_root: "public" as NonEmptyStr,
     private_root: "dag" as NonEmptyStr,
   }
-  snapshot_path_inside_composition(composition: composition, path: "public/dag/gunbc/x.dag")
-    && snapshot_path_inside_composition(composition: composition, path: "dag/test/claim/x.dag")
-    && !snapshot_path_inside_composition(composition: composition, path: "publicity/x.dag")
-    && !snapshot_path_inside_composition(composition: composition, path: "src/v2/std/x.dag")
+  inside(composition: composition, text: "public/dag/gunbc/x.dag")
+    && inside(composition: composition, text: "dag/test/claim/x.dag")
+    && !inside(composition: composition, text: "publicity/x.dag")
+    && !inside(composition: composition, text: "src/v2/std/x.dag")
 }
 
 // A PUBLIC-ONLY EXECUTOR HAS NO PRIVATE ROOT AT ALL, so a private path is outside its composition
@@ -76,7 +126,7 @@ test fn a_prefix_that_is_not_a_root_is_outside() -> Bool {
 // preference.
 test fn a_public_only_composition_excludes_the_private_root() -> Bool {
   let composition = PublicOnlyComposition { public_root: "public" as NonEmptyStr }
-  !snapshot_path_inside_composition(composition: composition, path: "dag/test/claim/x.dag")
+  !inside(composition: composition, text: "dag/test/claim/x.dag")
     && (length(source_composition_roots(composition: composition)) == 1)
 }
 
