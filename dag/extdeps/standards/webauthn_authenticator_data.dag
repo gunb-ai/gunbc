@@ -3,6 +3,7 @@ module extdeps.standards.webauthn_authenticator_data
 import std.types { Int, List }
 import std.logic { Bool }
 import std.integer { UInt8 }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.standards.rfc_8949 { CborValue, CborDecode, CborDecoded, CborRefused, CborRefusal, cbor_decode_item }
@@ -32,9 +33,25 @@ data webauthn_authenticator_data_external_authority_anchor: ExternalAuthority = 
 
 data extdeps_external_authority_anchor: ExternalAuthority = webauthn_authenticator_data_external_authority_anchor
 
-data authenticator_data_rp_id_hash_octets: Int = 32
-data authenticator_data_prefix_octets: Int = 37
-data authenticator_data_aaguid_octets: Int = 16
+// The fixed widths of §6.1 as measured sizes (std.measure ByteSize, the corpus's one carrier for
+// an octet count -- review 69674 of gunbc#11970), and the offsets the layout derives from them:
+// flags follow the hash, the counter follows the flags, the prefix is hash + flags + counter.
+data authenticator_data_rp_id_hash_size: ByteSize = byte_size(count: 32)
+data authenticator_data_flags_size: ByteSize = byte_size(count: 1)
+data authenticator_data_sign_count_size: ByteSize = byte_size(count: 4)
+data authenticator_data_aaguid_size: ByteSize = byte_size(count: 16)
+data authenticator_data_credential_id_length_size: ByteSize = byte_size(count: 2)
+
+fn authenticator_data_flags_offset() -> Int {
+  byte_size_count(b: authenticator_data_rp_id_hash_size)
+}
+
+fn authenticator_data_sign_count_offset() -> Int {
+  authenticator_data_flags_offset() + byte_size_count(b: authenticator_data_flags_size)
+}
+
+// rpIdHash || flags || signCount: 37 octets.
+data authenticator_data_prefix_size: ByteSize = byte_size(count: byte_size_count(b: authenticator_data_rp_id_hash_size) + byte_size_count(b: authenticator_data_flags_size) + byte_size_count(b: authenticator_data_sign_count_size))
 
 type AuthenticatorFlags {
   user_present: Bool
@@ -76,7 +93,7 @@ type AuthenticatorData {
 }
 
 type AuthenticatorDataRefusal
-  = AuthenticatorDataTruncated { at: Int, needed: Int, available: Int }
+  = AuthenticatorDataTruncated { at: Int, needed: ByteSize, available: ByteSize }
   | AuthenticatorDataCredentialKeyRefused { cause: CborRefusal }
   | AuthenticatorDataExtensionsRefused { cause: CborRefusal }
   | AuthenticatorDataTrailingOctets { consumed: Int, total: Int }
@@ -110,7 +127,7 @@ fn slice(octets: List<UInt8>, at: Int, n: Int) -> List<UInt8> {
 
 fn truncated_if_short(octets: List<UInt8>, at: Int, needed: Int) -> AuthenticatorDataRefusal? {
   let available = count(octets) - at
-  if available < needed { Present { value: AuthenticatorDataTruncated { at: at, needed: needed, available: available } } } else { none }
+  if available < needed { Present { value: AuthenticatorDataTruncated { at: at, needed: byte_size(count: needed), available: byte_size(count: if available < 0 { 0 } else { available }) } } } else { none }
 }
 
 type AttestedCredentialRead
@@ -120,13 +137,13 @@ type AttestedCredentialRead
 // aaguid || credentialIdLength || credentialId || credentialPublicKey, from `at`. The COSE key is
 // one CBOR item whose end the CBOR decoder reports, which is what lets extensions follow it.
 fn read_attested_credential(octets: List<UInt8>, at: Int) -> AttestedCredentialRead {
-  match truncated_if_short(octets: octets, at: at, needed: authenticator_data_aaguid_octets + 2) {
+  match truncated_if_short(octets: octets, at: at, needed: byte_size_count(b: authenticator_data_aaguid_size) + byte_size_count(b: authenticator_data_credential_id_length_size)) {
     Present { value: r } => AttestedCredentialRefused { cause: r }
     Absent => {
-      let aaguid = slice(octets: octets, at: at, n: authenticator_data_aaguid_octets)
-      let id_at = at + authenticator_data_aaguid_octets + 2
-      match big_endian_at(octets: octets, at: at + authenticator_data_aaguid_octets, n: 2, acc: 0) {
-        Absent => AttestedCredentialRefused { cause: AuthenticatorDataTruncated { at: at + authenticator_data_aaguid_octets, needed: 2, available: 0 } }
+      let aaguid = slice(octets: octets, at: at, n: byte_size_count(b: authenticator_data_aaguid_size))
+      let id_at = at + byte_size_count(b: authenticator_data_aaguid_size) + byte_size_count(b: authenticator_data_credential_id_length_size)
+      match big_endian_at(octets: octets, at: at + byte_size_count(b: authenticator_data_aaguid_size), n: byte_size_count(b: authenticator_data_credential_id_length_size), acc: 0) {
+        Absent => AttestedCredentialRefused { cause: AuthenticatorDataTruncated { at: at + byte_size_count(b: authenticator_data_aaguid_size), needed: byte_size(count: byte_size_count(b: authenticator_data_credential_id_length_size)), available: byte_size(count: 0) } }
         Present { value: id_len } =>
       match truncated_if_short(octets: octets, at: id_at, needed: id_len) {
         Present { value: r } => AttestedCredentialRefused { cause: r }
@@ -171,20 +188,20 @@ fn authenticator_data_finish(octets: List<UInt8>, rp_id_hash: List<UInt8>, flags
 // THE WHOLE STRUCTURE, consuming every octet: what the flags say is present must be present and
 // nothing else may follow. For the assertion reading see decode_authenticator_data_prefix.
 fn decode_authenticator_data(octets: List<UInt8>) -> AuthenticatorDataDecode {
-  match truncated_if_short(octets: octets, at: 0, needed: authenticator_data_prefix_octets) {
+  match truncated_if_short(octets: octets, at: 0, needed: byte_size_count(b: authenticator_data_prefix_size)) {
     Present { value: r } => AuthenticatorDataRefused { cause: r }
     Absent => {
-      match decode_authenticator_data_prefix(octets: octets |> take(authenticator_data_prefix_octets)) {
+      match decode_authenticator_data_prefix(octets: octets |> take(byte_size_count(b: authenticator_data_prefix_size))) {
         AuthenticatorDataPrefixRefused { cause: r } => AuthenticatorDataRefused { cause: r }
         AuthenticatorDataPrefixDecoded { prefix: p } =>
           if p.flags.attested_credential_data_included {
-            match read_attested_credential(octets: octets, at: authenticator_data_prefix_octets) {
+            match read_attested_credential(octets: octets, at: byte_size_count(b: authenticator_data_prefix_size)) {
               AttestedCredentialRefused { cause: r } => AuthenticatorDataRefused { cause: r }
               AttestedCredentialRead { credential: c, next: n } =>
                 authenticator_data_finish(octets: octets, rp_id_hash: p.rp_id_hash, flags: p.flags, sign_count: p.sign_count, credential: Present { value: c }, at: n)
             }
           } else {
-            authenticator_data_finish(octets: octets, rp_id_hash: p.rp_id_hash, flags: p.flags, sign_count: p.sign_count, credential: none, at: authenticator_data_prefix_octets)
+            authenticator_data_finish(octets: octets, rp_id_hash: p.rp_id_hash, flags: p.flags, sign_count: p.sign_count, credential: none, at: byte_size_count(b: authenticator_data_prefix_size))
           }
       }
     }
@@ -206,20 +223,20 @@ type AuthenticatorDataPrefixDecode
   | AuthenticatorDataPrefixRefused { cause: AuthenticatorDataRefusal }
 
 fn decode_authenticator_data_prefix(octets: List<UInt8>) -> AuthenticatorDataPrefixDecode {
-  match truncated_if_short(octets: octets, at: 0, needed: authenticator_data_prefix_octets) {
+  match truncated_if_short(octets: octets, at: 0, needed: byte_size_count(b: authenticator_data_prefix_size)) {
     Present { value: r } => AuthenticatorDataPrefixRefused { cause: r }
     Absent =>
-      if count(octets) != authenticator_data_prefix_octets {
-        AuthenticatorDataPrefixRefused { cause: AuthenticatorDataTrailingOctets { consumed: authenticator_data_prefix_octets, total: count(octets) } }
+      if count(octets) != byte_size_count(b: authenticator_data_prefix_size) {
+        AuthenticatorDataPrefixRefused { cause: AuthenticatorDataTrailingOctets { consumed: byte_size_count(b: authenticator_data_prefix_size), total: count(octets) } }
       } else {
-        match octet_at(octets: octets, at: 32) {
-          Absent => AuthenticatorDataPrefixRefused { cause: AuthenticatorDataTruncated { at: 32, needed: 1, available: 0 } }
+        match octet_at(octets: octets, at: authenticator_data_flags_offset()) {
+          Absent => AuthenticatorDataPrefixRefused { cause: AuthenticatorDataTruncated { at: authenticator_data_flags_offset(), needed: byte_size(count: byte_size_count(b: authenticator_data_flags_size)), available: byte_size(count: 0) } }
           Present { value: flags_octet } =>
-            match big_endian_at(octets: octets, at: 33, n: 4, acc: 0) {
-              Absent => AuthenticatorDataPrefixRefused { cause: AuthenticatorDataTruncated { at: 33, needed: 4, available: 0 } }
+            match big_endian_at(octets: octets, at: authenticator_data_sign_count_offset(), n: byte_size_count(b: authenticator_data_sign_count_size), acc: 0) {
+              Absent => AuthenticatorDataPrefixRefused { cause: AuthenticatorDataTruncated { at: authenticator_data_sign_count_offset(), needed: byte_size(count: byte_size_count(b: authenticator_data_sign_count_size)), available: byte_size(count: 0) } }
               Present { value: sign_count } =>
                 AuthenticatorDataPrefixDecoded { prefix: AuthenticatorDataPrefix {
-                  rp_id_hash: slice(octets: octets, at: 0, n: authenticator_data_rp_id_hash_octets),
+                  rp_id_hash: slice(octets: octets, at: 0, n: byte_size_count(b: authenticator_data_rp_id_hash_size)),
                   flags: authenticator_flags_of(octet: flags_octet),
                   sign_count: sign_count,
                 } }
