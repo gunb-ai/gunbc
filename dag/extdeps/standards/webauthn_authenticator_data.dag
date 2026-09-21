@@ -85,15 +85,23 @@ type AuthenticatorDataDecode
   = AuthenticatorDataDecoded { data: AuthenticatorData }
   | AuthenticatorDataRefused { cause: AuthenticatorDataRefusal }
 
-fn octet_or_zero(octets: List<UInt8>, at: Int) -> Int {
+// An octet read that refuses on absence rather than answering zero (review 69598 of
+// gunbc#11970): every caller has already established the length, and the read still owes a
+// located refusal instead of a fabricated value should that ever stop being true.
+fn octet_at(octets: List<UInt8>, at: Int) -> Int? {
   match octets |> get(at) {
-    null => 0
-    o => o
+    null => none
+    o => Present { value: o }
   }
 }
 
-fn big_endian_at(octets: List<UInt8>, at: Int, n: Int, acc: Int) -> Int {
-  if n <= 0 { acc } else { big_endian_at(octets: octets, at: at + 1, n: n - 1, acc: acc * 256 + octet_or_zero(octets: octets, at: at)) }
+fn big_endian_at(octets: List<UInt8>, at: Int, n: Int, acc: Int) -> Int? {
+  if n <= 0 { Present { value: acc } } else {
+    match octet_at(octets: octets, at: at) {
+      Absent => none
+      Present { value: o } => big_endian_at(octets: octets, at: at + 1, n: n - 1, acc: acc * 256 + o)
+    }
+  }
 }
 
 fn slice(octets: List<UInt8>, at: Int, n: Int) -> List<UInt8> {
@@ -116,8 +124,10 @@ fn read_attested_credential(octets: List<UInt8>, at: Int) -> AttestedCredentialR
     Present { value: r } => AttestedCredentialRefused { cause: r }
     Absent => {
       let aaguid = slice(octets: octets, at: at, n: authenticator_data_aaguid_octets)
-      let id_len = big_endian_at(octets: octets, at: at + authenticator_data_aaguid_octets, n: 2, acc: 0)
       let id_at = at + authenticator_data_aaguid_octets + 2
+      match big_endian_at(octets: octets, at: at + authenticator_data_aaguid_octets, n: 2, acc: 0) {
+        Absent => AttestedCredentialRefused { cause: AuthenticatorDataTruncated { at: at + authenticator_data_aaguid_octets, needed: 2, available: 0 } }
+        Present { value: id_len } =>
       match truncated_if_short(octets: octets, at: id_at, needed: id_len) {
         Present { value: r } => AttestedCredentialRefused { cause: r }
         Absent =>
@@ -128,6 +138,7 @@ fn read_attested_credential(octets: List<UInt8>, at: Int) -> AttestedCredentialR
               next: n,
             }
           }
+      }
       }
     }
   }
@@ -163,17 +174,18 @@ fn decode_authenticator_data(octets: List<UInt8>) -> AuthenticatorDataDecode {
   match truncated_if_short(octets: octets, at: 0, needed: authenticator_data_prefix_octets) {
     Present { value: r } => AuthenticatorDataRefused { cause: r }
     Absent => {
-      let rp_id_hash = slice(octets: octets, at: 0, n: authenticator_data_rp_id_hash_octets)
-      let flags = authenticator_flags_of(octet: octet_or_zero(octets: octets, at: 32))
-      let sign_count = big_endian_at(octets: octets, at: 33, n: 4, acc: 0)
-      if flags.attested_credential_data_included {
-        match read_attested_credential(octets: octets, at: authenticator_data_prefix_octets) {
-          AttestedCredentialRefused { cause: r } => AuthenticatorDataRefused { cause: r }
-          AttestedCredentialRead { credential: c, next: n } =>
-            authenticator_data_finish(octets: octets, rp_id_hash: rp_id_hash, flags: flags, sign_count: sign_count, credential: Present { value: c }, at: n)
-        }
-      } else {
-        authenticator_data_finish(octets: octets, rp_id_hash: rp_id_hash, flags: flags, sign_count: sign_count, credential: none, at: authenticator_data_prefix_octets)
+      match decode_authenticator_data_prefix(octets: octets |> take(authenticator_data_prefix_octets)) {
+        AuthenticatorDataPrefixRefused { cause: r } => AuthenticatorDataRefused { cause: r }
+        AuthenticatorDataPrefixDecoded { prefix: p } =>
+          if p.flags.attested_credential_data_included {
+            match read_attested_credential(octets: octets, at: authenticator_data_prefix_octets) {
+              AttestedCredentialRefused { cause: r } => AuthenticatorDataRefused { cause: r }
+              AttestedCredentialRead { credential: c, next: n } =>
+                authenticator_data_finish(octets: octets, rp_id_hash: p.rp_id_hash, flags: p.flags, sign_count: p.sign_count, credential: Present { value: c }, at: n)
+            }
+          } else {
+            authenticator_data_finish(octets: octets, rp_id_hash: p.rp_id_hash, flags: p.flags, sign_count: p.sign_count, credential: none, at: authenticator_data_prefix_octets)
+          }
       }
     }
   }
@@ -200,11 +212,19 @@ fn decode_authenticator_data_prefix(octets: List<UInt8>) -> AuthenticatorDataPre
       if count(octets) != authenticator_data_prefix_octets {
         AuthenticatorDataPrefixRefused { cause: AuthenticatorDataTrailingOctets { consumed: authenticator_data_prefix_octets, total: count(octets) } }
       } else {
-        AuthenticatorDataPrefixDecoded { prefix: AuthenticatorDataPrefix {
-          rp_id_hash: slice(octets: octets, at: 0, n: authenticator_data_rp_id_hash_octets),
-          flags: authenticator_flags_of(octet: octet_or_zero(octets: octets, at: 32)),
-          sign_count: big_endian_at(octets: octets, at: 33, n: 4, acc: 0),
-        } }
+        match octet_at(octets: octets, at: 32) {
+          Absent => AuthenticatorDataPrefixRefused { cause: AuthenticatorDataTruncated { at: 32, needed: 1, available: 0 } }
+          Present { value: flags_octet } =>
+            match big_endian_at(octets: octets, at: 33, n: 4, acc: 0) {
+              Absent => AuthenticatorDataPrefixRefused { cause: AuthenticatorDataTruncated { at: 33, needed: 4, available: 0 } }
+              Present { value: sign_count } =>
+                AuthenticatorDataPrefixDecoded { prefix: AuthenticatorDataPrefix {
+                  rp_id_hash: slice(octets: octets, at: 0, n: authenticator_data_rp_id_hash_octets),
+                  flags: authenticator_flags_of(octet: flags_octet),
+                  sign_count: sign_count,
+                } }
+            }
+        }
       }
   }
 }

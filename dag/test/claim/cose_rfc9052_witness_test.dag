@@ -3,6 +3,7 @@ module test.claim.cose_rfc9052_witness_test
 import std.logic { Bool }
 import std.types { Int, List }
 import std.integer { UInt8 }
+import std.measure { byte_size_count }
 import extdeps.standards.rfc_8949 { CborValue, CborUnsigned, CborNegative, CborByteString, CborMap, CborArray, CborEntry }
 import extdeps.standards.rfc_9052 {
   CoseEc2P256KeyRead, CoseEc2P256KeyRefused, cose_ec2_p256_key,
@@ -80,16 +81,17 @@ test fn a_wrong_type_curve_or_algorithm_refuses_by_name() -> Bool {
   }
 }
 
-// A 31-octet x refuses naming label -2 and 31; a y that is not a byte string refuses with 0.
+// A 31-octet x refuses naming label -2, 31 declared against the 32 the signature suite owns; a y
+// that is not a byte string refuses with 0 declared.
 test fn a_malformed_coordinate_refuses_with_its_label() -> Bool {
   match cose_ec2_p256_key(key: ec2_key(kty: 2, alg: 0 - 7, crv: 1, x: coordinate(n: 31, fill: 1, acc: []), y: coordinate(n: 32, fill: 2, acc: []))) {
-    CoseEc2P256KeyRefused { cause: CoseKeyCoordinateMalformed { label: lx, octets: 31 } } =>
-      lx == 0 - 2 && match cose_ec2_p256_key(key: CborMap { entries: [
+    CoseEc2P256KeyRefused { cause: CoseKeyCoordinateMalformed { label: lx, declared: dx, expected: ex } } =>
+      lx == 0 - 2 && byte_size_count(b: dx) == 31 && byte_size_count(b: ex) == 32 && match cose_ec2_p256_key(key: CborMap { entries: [
         cose_entry(k: 1, v: label(n: 2)), cose_entry(k: 3, v: label(n: 0 - 7)), cose_entry(k: 0 - 1, v: label(n: 1)),
         cose_entry(k: 0 - 2, v: CborByteString { octets: coordinate(n: 32, fill: 1, acc: []) }),
         cose_entry(k: 0 - 3, v: label(n: 5)),
       ] }) {
-        CoseEc2P256KeyRefused { cause: CoseKeyCoordinateMalformed { label: ly, octets: 0 } } => ly == 0 - 3
+        CoseEc2P256KeyRefused { cause: CoseKeyCoordinateMalformed { label: ly, declared: dy, expected: _ } } => ly == 0 - 3 && byte_size_count(b: dy) == 0
         _ => false
       }
     _ => false
