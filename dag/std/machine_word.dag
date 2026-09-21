@@ -5,7 +5,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.measure { bits_per_byte, BitWidth, bit_width, bit_width_count }
-import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, qualified_octets, qualified_octet_members }
+import std.integer { UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, qualified_octets, qualified_octet_members }
 import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
 
 // THE FIXED-WIDTH MACHINE WORD, AND WHY IT IS A VALUE-LEVEL WIDTH.
@@ -91,7 +91,7 @@ type OctetsResult
   | OctetsRefused { cause: WordRefusal }
 
 type RawOctetsResult
-  = RawOctetsReady { octets: List<UInt8> }
+  = RawOctetsReady { octets: List<Int> }
   | RawOctetsRefused { cause: WordRefusal }
 
 type CarryingSum {
@@ -278,11 +278,20 @@ fn qualified_word_unwrap(q: QualifiedWord) -> Word {
   q.word
 }
 
-// THE ROUND TRIP NEEDS NO UNWRAP ANY MORE. word_to_octets answers List<UInt8> and word_from_octets
-// takes List<UInt8>, so feeding one into the other is direct -- which is what SHA-2 block packing
-// does. The previous qualified_words_to_words existed only because the two sides disagreed about
-// what an octet was; naming the octet UInt8 on both sides removed the disagreement rather than
+// THE ROUND TRIP NEEDS NO UNWRAP ANY MORE. word_to_octets answers the same element type
+// word_from_octets takes, so feeding one into the other is direct -- which is what SHA-2 block
+// packing does. The previous qualified_words_to_words existed only because the two sides disagreed
+// about what an octet was; agreeing on ONE element type removed the disagreement rather than
 // bridging it.
+//
+// THAT ELEMENT TYPE IS `Int`, AND IT WAS `UInt8` UNTIL 2026-09-21. `UInt8` is
+// `Compose<UInt, MachineWidth<8>>` and `std.machine_constraints` declares `Compose` as `Phantom` --
+// an UNINHABITED carrier. So `List<UInt8>` here never described these values: what flows through is
+// what `uint8_of_int` admitted, which is an `Int`. The spelling claimed a width that no value in the
+// list could carry and that nothing checked, and it only failed to break anything because
+// `std.machine_word` is not in either emitted closure -- the first one that reaches it would get
+// `E0308 expected PhantomData<...>, found i64`. The admission is unchanged: `uint8_of_int` is still
+// the only way into this accumulator and still refuses anything outside [0, 2^8).
 
 // The ONE producer of QualifiedWord. word_of_int establishes both facts a helper below here needs:
 // the width is realizable and the value inhabits it.
@@ -601,7 +610,7 @@ fn word_octet_count(w: WordWidth) -> Int {
 // The octet modulus is a constant OF the octet width, so it is read here rather than received, and
 // each member is built through std.integer uint8_of_int, which carries the refusal rather than
 // asserting the range.
-fn octets_little_endian_accumulate(value: Int, remaining: Int, acc: List<UInt8>) -> RawOctetsResult {
+fn octets_little_endian_accumulate(value: Int, remaining: Int, acc: List<Int>) -> RawOctetsResult {
   if remaining <= 0 {
     RawOctetsReady { octets: acc }
   } else {
@@ -683,7 +692,7 @@ fn word_to_octets(a: Word, endianness: Endianness) -> OctetsResult {
   }
 }
 
-fn octets_big_endian_value(octets: List<UInt8>, radix: Int, acc: Int) -> Int {
+fn octets_big_endian_value(octets: List<Int>, radix: Int, acc: Int) -> Int {
   match octets.first() {
     Absent => acc
     Present { value: head } =>
@@ -734,7 +743,7 @@ fn octets_big_endian_value(octets: List<UInt8>, radix: Int, acc: Int) -> Int {
 // straight back into the overflow. The helper now takes RealizableWidth, and THAT half is a real
 // compile-time wall, measured: `RealizableWidth { width: Width64 }` is refused with "missing
 // required field 'modulus'", so reaching this helper by naming a width alone does not compile. The
-// List<UInt8> half is NOT a wall -- a List<Word> reaches it and typechecks, dying only at runtime
+// element-type half is NOT a wall -- a List<Word> reaches it and typechecks, dying only at runtime
 // -- so the two parameters sit on different rungs and are not claimed together. Member construction
 // is mitigation at std.integer, not this signature.
 fn word_from_octets_realizable(width: RealizableWidth, octets: QualifiedOctets, endianness: Endianness) -> WordResult {
@@ -776,8 +785,8 @@ fn word_from_octets(width: WordWidth, octets: QualifiedOctets, endianness: Endia
 // members -- validation multiplied by helper count, the shape a carrier exists to replace. The
 // second took List<QualifiedWord>, which was WORSE than it looked: that carrier proves a value
 // inhabits its own width, so a sanctioned Width16 member projected 256 as an octet value and the
-// re-check had been removed. Taking List<UInt8> DOES NOT make the Word-list call fail to typecheck
-// -- that was this annotation's third wrong claim in a row and it is measured false above at the
+// re-check had been removed. Naming an ELEMENT TYPE here DOES NOT make the Word-list call fail to
+// typecheck -- that was this annotation's third wrong claim in a row and it is measured false at the
 // count check. What the parameter buys is that there is no width FIELD for this helper to inspect,
 // so the helper has nothing left to refuse and the result is a plain List<Int>; what it does NOT
 // buy is that the members are octets at all. Both gaps -- wrong element type, and an unconstructed
