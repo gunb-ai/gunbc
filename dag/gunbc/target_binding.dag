@@ -34,6 +34,7 @@ type TargetProducer
   | PrimitiveEgressCensusSeedProducer
   | FloorMemoryQualificationProducer
   | RequiredLaneResolutionCensusProducer
+  | BareReferenceChannelOutcomeProducer
 
 type TargetBinding {
   target: Label
@@ -437,3 +438,61 @@ type CompileCleanDiagnosticCensusRefusalCause
 type CompileCleanDiagnosticCensusStanding
   = CompileCleanDiagnosticCensusCompleted { observation: CompileCleanDiagnosticCensusObservation }
   | CompileCleanDiagnosticCensusRefused { cause: CompileCleanDiagnosticCensusRefusalCause }
+
+// ---------------------------------------------------------------------------------------------
+// THE BARE-REFERENCE CHANNEL'S OUTCOME CARRIERS
+// ---------------------------------------------------------------------------------------------
+
+// WHAT THIS INSTRUMENT OBSERVES, AND WHAT IT DELIBERATELY DOES NOT.
+//
+// `gunbc.recurring_failure_mode.bare_reference_channel_declines_a_pull_in_silence` records that
+// the loader's bare half declines silently, and names its next rung as a CARRIER for declined
+// names -- which does not exist and is not built here. This instrument needs none, because it asks
+// a different and answerable question: for one source file, did the bare half RUN, and which
+// modules did it PULL. Both are already values the loader computes, so the observation is at the
+// grain of the decision's OUTCOME rather than at the grain of the distant symptom (an unresolved
+// type reported modules away) or of the reason (which only the carrier could supply).
+//
+// SO THIS IS THE RUNG-2 STEP AND NOT THE CEILING. A gate that changes behaviour turns the target
+// red; a decline still writes nothing anywhere. The invalid state stays writable and safety
+// depends on this target executing, which is rung 2 by DESIGN section 4b's own definition.
+type BareChannelEligibility
+  = BareChannelRuns
+  | BareChannelDisabledByImportLine
+
+// ELIGIBILITY IS A SEPARATE FIELD FROM THE PULL SET AND MUST STAY ONE. An eligible file that
+// pulled nothing (every arm of `pullable` declined) and a file whose channel never ran (one import
+// line anywhere) both end with an empty set, and they are the two DIFFERENT gates this fixture set
+// exists to tell apart. Folding them would make the entry-three row unable to fail for its own
+// reason.
+type BareReferenceChannelEntryReading {
+  module_path: NonEmptyStr
+  eligibility: BareChannelEligibility
+  pulled_modules: List<String>
+}
+
+// The expectation is stated as an OUTCOME plus the condition the entry isolates, so a divergence
+// reads as "entry X, which isolates gate one, now pulls" rather than as a bare set difference.
+type BareReferenceChannelExpectation {
+  module_path: NonEmptyStr
+  isolated_condition: NonEmptyStr
+  eligibility: BareChannelEligibility
+  pulled_modules: List<String>
+}
+
+// SUBJECT-UNREACHED IS NOT A DIVERGENCE, on the rule every instrument on this seam follows: a
+// missing fixture root observed nothing, and reporting that as a moved gate would be a fabricated
+// reading.
+type BareReferenceChannelSubjectCause
+  = BareChannelFixtureRootAbsent { root: String }
+  | BareChannelEntryAbsent { module_path: String }
+  | BareChannelIndexRefused { detail: String }
+
+// TWO ARMS, NOT THREE. A "diverged" arm carrying pre-joined pairs would give the verdict two
+// homes -- the producer deciding once by choosing an arm and the classifier deciding again -- and
+// the arm the producer chose would be the one a reader trusted. The producer READS and the
+// classifier DECIDES: `BareReferenceChannelRead` carries what was observed and nothing about
+// whether it was expected.
+type BareReferenceChannelStanding
+  = BareReferenceChannelRead { readings: List<BareReferenceChannelEntryReading> }
+  | BareReferenceChannelSubjectUnreached { cause: BareReferenceChannelSubjectCause }
