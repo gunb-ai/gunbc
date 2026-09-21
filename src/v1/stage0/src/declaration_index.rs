@@ -1799,20 +1799,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "price",
     ),
     (
-        "gunbc.host_memory_observation",
-        "gunbc_ci_legacy_host_fixed_overhead_disposition",
-        "gunbc.ci_floor_measurement",
-        "gunbc_ci_legacy_host_modeled_residents",
-        "",
-    ),
-    (
-        "gunbc.host_memory_observation",
-        "gunbc_ci_managed_host_fixed_overhead_disposition",
-        "gunbc.ci_floor_measurement",
-        "gunbc_ci_managed_host_quiescent_meminfo_read",
-        "",
-    ),
-    (
         "gunbc.claude_setup_token_enrollment",
         "claude_enrollment_exact_version_read_back_scaffold",
         "extdeps.cloud.gcp.secret_manager",
@@ -1873,6 +1859,20 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "host_budget_source_seed_mirror_disposition",
         "gunbc.host_budget_source",
         "host_budget_source_emitted_into_stage0",
+        "",
+    ),
+    (
+        "gunbc.host_memory_observation",
+        "gunbc_ci_legacy_host_fixed_overhead_disposition",
+        "gunbc.ci_floor_measurement",
+        "gunbc_ci_legacy_host_modeled_residents",
+        "",
+    ),
+    (
+        "gunbc.host_memory_observation",
+        "gunbc_ci_managed_host_fixed_overhead_disposition",
+        "gunbc.ci_floor_measurement",
+        "gunbc_ci_managed_host_quiescent_meminfo_read",
         "",
     ),
     (

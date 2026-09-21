@@ -1,0 +1,51 @@
+module extdeps.iproute2.ip_show
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.iproute2.ip_neigh { ip_program }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/ip-address.8.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.iproute2.ip_show",
+      decl_name: "ip_show_oneline_flag",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE BINARY IS CONSUMED FROM extdeps.iproute2.ip_neigh rather than re-declared: one `ip` on a host,
+// one row naming it.
+//
+// -o PUTS EACH OBJECT ON ONE LINE, which is what makes a reading countable and greppable without a
+// parser: without it `ip addr show` wraps one interface across several lines and a line count stops
+// meaning anything. Reading is unprivileged, unlike the flush in the sibling module.
+data ip_show_oneline_flag: NonEmptyStr = "-o"
+
+data ip_show_ipv4_family_flag: NonEmptyStr = "-4"
+
+fn ip_addr_show_command(device: String) -> ArgvCommand {
+  argv_command(
+    program: ip_program,
+    arguments: [ip_show_oneline_flag as String, ip_show_ipv4_family_flag as String, "addr", "show", "dev", device],
+  )
+}
+
+fn ip_route_show_command(device: String) -> ArgvCommand {
+  argv_command(
+    program: ip_program,
+    arguments: [ip_show_oneline_flag as String, ip_show_ipv4_family_flag as String, "route", "show", "dev", device],
+  )
+}
