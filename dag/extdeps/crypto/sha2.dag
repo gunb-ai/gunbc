@@ -209,6 +209,19 @@ fn sha256_hex(message: List<UInt8>) -> String {
 }
 
 // ── SHA-384 (§6.5): the SHA-512 computation, truncated ──────────────────────────────────────
+// WHY THIS IS A SECOND PIPELINE AND NOT THE SHA-256 ONE OVER A WIDER WORD -- a stated divergence
+// (DESIGN §3b), not an unstated one (review 69625 of gunbc#11981). The two hashes are one algorithm
+// over one parameter -- the word (32 or 64 bits), with the rotation amounts, round count, block size
+// and length-field width following from it -- and the family fold beside this module
+// (extdeps.crypto.nist_prime_curve) is exactly that move for the curves. The word, though, is not a
+// value this substrate can fold over yet: std.bitwise carries UInt32 and a two-halves Word64 as
+// two unrelated carriers with two operation families, and a fold parameterised by the word needs
+// the width of MachineWidth<N> readable in a body -- the compile-time reification gunbc#11819
+// names (operator ruling 2026-09-20), which is also what blocks native emission of this closure.
+// When that lands, the two pipelines collapse into one over a supplied word width; until then the
+// SHA-512 half below mirrors the SHA-256 half step for step, and each mirrored step cites the
+// section it realizes so the correspondence is checkable.
+//
 // §4.2.3: the first 64 bits of the fractional parts of the cube roots of the first 80 primes.
 // Written as Word64 halves; derived from the definition, not transcribed from a table.
 data sha512_round_constants: List<Word64> = [

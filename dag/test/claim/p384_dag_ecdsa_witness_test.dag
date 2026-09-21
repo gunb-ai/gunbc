@@ -24,7 +24,7 @@ import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets }
 //
 // COST, stated so it is not read as coverage: the two verification claims are the P-384 twin of
 // #11645's eight P-256 verifications, which the floor budget-refuses (one interpreted P-256
-// verify = 13.5 GiB, 192-734 s); at 17 limbs these cost more, so their executing evidence is a
+// verify = 13.5 GiB, 192-734 s); at 16 limbs these cost more, so their executing evidence is a
 // dedicated native gunbc test row (side-chat ruling 5260787321) or a local run on a quiet host
 // -- never a green floor. The on-curve claims are a few field multiplications and run anywhere.
 

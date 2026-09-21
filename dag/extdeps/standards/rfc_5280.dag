@@ -3,6 +3,7 @@ module extdeps.standards.rfc_5280
 import std.types { Int, String, List, Timestamp }
 import std.logic { Bool }
 import std.integer { UInt8 }
+import std.bignat { bignat_pad_front }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.standards.x690_der {
@@ -52,6 +53,25 @@ type X509Extension {
 // Names are kept as their DER (the whole Name TLV): the profile's issuer/subject join is byte
 // equality of encoded Names under DER (§7.1 permits comparison by exact encoding match first),
 // and no consumer here reads a Name's attributes.
+//
+// THE TBS IS ITS OWN CARRIER: read_tbs returns what the signed part establishes and nothing about
+// the signature, so a certificate whose signature fields are unread has no constructor (review
+// 69626 of gunbc#11975: an earlier cut filled them with "" and [] to be overwritten later, which is
+// a fabricated value in an exported carrier). decode_certificate completes it.
+type X509TbsFields {
+  tbs_octets: List<UInt8>
+  serial: List<UInt8>
+  tbs_signature_algorithm: String
+  issuer_octets: List<UInt8>
+  not_before: String
+  not_after: String
+  subject_octets: List<UInt8>
+  spki_algorithm: String
+  spki_named_curve: String?
+  spki_public_key: List<UInt8>
+  extensions: List<X509Extension>
+}
+
 type X509Certificate {
   tbs_octets: List<UInt8>
   serial: List<UInt8>
@@ -66,6 +86,15 @@ type X509Certificate {
   extensions: List<X509Extension>
   signature_algorithm: String
   signature_octets: List<UInt8>
+}
+
+fn x509_certificate_of(tbs: X509TbsFields, signature_algorithm: String, signature_octets: List<UInt8>) -> X509Certificate {
+  X509Certificate {
+    tbs_octets: tbs.tbs_octets, serial: tbs.serial, tbs_signature_algorithm: tbs.tbs_signature_algorithm,
+    issuer_octets: tbs.issuer_octets, not_before: tbs.not_before, not_after: tbs.not_after,
+    subject_octets: tbs.subject_octets, spki_algorithm: tbs.spki_algorithm, spki_named_curve: tbs.spki_named_curve, spki_public_key: tbs.spki_public_key,
+    extensions: tbs.extensions, signature_algorithm: signature_algorithm, signature_octets: signature_octets,
+  }
 }
 
 type X509Refusal
@@ -302,7 +331,7 @@ fn sequence_child(kids: List<DerElement>, i: Int, at: Int) -> DerRead {
 }
 
 type TbsRead
-  = TbsOk { certificate_without_signature: X509Certificate }
+  = TbsOk { fields: X509TbsFields }
   | TbsRefused { cause: X509Refusal }
 
 fn read_tbs(octets: List<UInt8>, tbs: DerElement) -> TbsRead {
@@ -341,20 +370,20 @@ fn read_tbs(octets: List<UInt8>, tbs: DerElement) -> TbsRead {
                                             SpkiRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
                                             SpkiRead { algorithm: spki_alg, named_curve: curve, public_key: key } =>
                                               match tbs_extensions_element(kids: kids, from: i0 + 6) {
-                                                Absent => TbsOk { certificate_without_signature: X509Certificate {
+                                                Absent => TbsOk { fields: X509TbsFields {
                                                   tbs_octets: der_tlv(octets: octets, e: tbs), serial: serial, tbs_signature_algorithm: tbs_alg,
                                                   issuer_octets: der_tlv(octets: octets, e: issuer_e), not_before: nb, not_after: na,
                                                   subject_octets: der_tlv(octets: octets, e: subject_e), spki_algorithm: spki_alg, spki_named_curve: curve, spki_public_key: key,
-                                                  extensions: [], signature_algorithm: "", signature_octets: [],
+                                                  extensions: [],
                                                 } }
                                                 Present { value: ext_e } =>
                                                   match read_tbs_extensions(octets: octets, wrapper: ext_e) {
                                                     X509ExtensionsRefused { cause: c } => TbsRefused { cause: c }
-                                                    X509ExtensionsRead { extensions: exts } => TbsOk { certificate_without_signature: X509Certificate {
+                                                    X509ExtensionsRead { extensions: exts } => TbsOk { fields: X509TbsFields {
                                                       tbs_octets: der_tlv(octets: octets, e: tbs), serial: serial, tbs_signature_algorithm: tbs_alg,
                                                       issuer_octets: der_tlv(octets: octets, e: issuer_e), not_before: nb, not_after: na,
                                                       subject_octets: der_tlv(octets: octets, e: subject_e), spki_algorithm: spki_alg, spki_named_curve: curve, spki_public_key: key,
-                                                      extensions: exts, signature_algorithm: "", signature_octets: [],
+                                                      extensions: exts,
                                                     } }
                                                   }
                                               }
@@ -396,20 +425,15 @@ fn decode_certificate(octets: List<UInt8>) -> X509Decode {
                       DerElementRead { element: sig_e } =>
                         match read_tbs(octets: octets, tbs: tbs) {
                           TbsRefused { cause: c } => X509Refused { cause: c }
-                          TbsOk { certificate_without_signature: cert } =>
+                          TbsOk { fields: tbs_fields } =>
                             match read_algorithm_identifier(octets: octets, e: alg_e) {
                               AlgorithmIdentifierRefused { cause: c } => x509_der(c: c)
                               AlgorithmIdentifierRead { algorithm: outer_alg, parameters_oid: _ } =>
-                                if outer_alg != cert.tbs_signature_algorithm { X509Refused { cause: X509SignatureAlgorithmMismatch { tbs: cert.tbs_signature_algorithm, outer: outer_alg } } }
+                                if outer_alg != tbs_fields.tbs_signature_algorithm { X509Refused { cause: X509SignatureAlgorithmMismatch { tbs: tbs_fields.tbs_signature_algorithm, outer: outer_alg } } }
                                 else {
                                   match der_bit_string_octets(octets: octets, e: sig_e) {
                                     DerBitsRefused { cause: c } => x509_der(c: c)
-                                    DerBitsRead { octets: sig } => X509Decoded { certificate: X509Certificate {
-                                      tbs_octets: cert.tbs_octets, serial: cert.serial, tbs_signature_algorithm: cert.tbs_signature_algorithm,
-                                      issuer_octets: cert.issuer_octets, not_before: cert.not_before, not_after: cert.not_after,
-                                      subject_octets: cert.subject_octets, spki_algorithm: cert.spki_algorithm, spki_named_curve: cert.spki_named_curve, spki_public_key: cert.spki_public_key,
-                                      extensions: cert.extensions, signature_algorithm: outer_alg, signature_octets: sig,
-                                    } }
+                                    DerBitsRead { octets: sig } => X509Decoded { certificate: x509_certificate_of(tbs: tbs_fields, signature_algorithm: outer_alg, signature_octets: sig) }
                                   }
                                 }
                             }
@@ -450,12 +474,10 @@ type EcdsaSigValue
   | EcdsaSigValueRefused { cause: DerRefusal }
   | EcdsaSigValueTooWide { component_octets: Int, width: Int }
 
-fn zero_octets(n: Int, acc: List<UInt8>) -> List<UInt8> {
-  if n <= 0 { acc } else { zero_octets(n: n - 1, acc: acc |> list_push(0)) }
-}
-
+// Left-padding is std.bignat's bignat_pad_front, the one zero-fill the corpus already owns
+// (review 69626 of gunbc#11975: a private copy here was a re-mint).
 fn left_pad(m: List<UInt8>, width: Int) -> List<UInt8> {
-  concat(zero_octets(n: width - count(m), acc: []), m)
+  bignat_pad_front(octets: m, zeros: width - count(m))
 }
 
 fn ecdsa_sig_value(octets: List<UInt8>, width: Int) -> EcdsaSigValue {
