@@ -245,7 +245,7 @@ test fn the_serve_unit_matches_the_deployed_bytes() -> Bool {
 // resource-control authority; a change to either shows up here as the deployed bytes changing.
 test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc deployment cgroup bound for gunbc-roadmap.service\n\n[Slice]\nMemoryMax=27917287424\nMemoryHigh=25769803776\nMemorySwapMax=0\n"
+  emitted == "[Unit]\nDescription=gunbc deployment cgroup bound for gunbc-roadmap.service\n\n[Slice]\nMemoryMax=42949672960\nMemoryHigh=38654705664\nMemorySwapMax=0\n"
 }
 
 
@@ -261,7 +261,7 @@ test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
 // that into an immediate kill at a declared bound.
 test fn the_approval_broker_slice_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_approval_broker_slice_unit_doc(), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc approval broker cgroup bound (separate from the roadmap deployment slice)\n\n[Slice]\nMemoryMax=6442450944\nMemoryHigh=5368709120\nMemorySwapMax=0\n"
+  emitted == "[Unit]\nDescription=gunbc approval broker cgroup bound (separate from the roadmap deployment slice)\n\n[Slice]\nMemoryMax=10737418240\nMemoryHigh=9663676416\nMemorySwapMax=0\n"
 }
 
 // THE BROKER UNIT. Every difference from the roadmap unit above is the split: a different

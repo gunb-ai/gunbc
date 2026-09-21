@@ -68,9 +68,21 @@ import std.measure { ByteSize, byte_size }
 // is a demand question (DESIGN section 2) this row does not answer and does not hide. That this
 // number EQUALS the runner slot's is a coincidence of two rulings on one day, not a derivation: the
 // row is authored here, and the witness pins that by reading this declaration, not by inequality.
-data live_deploy_slice_memory_max: ByteSize = byte_size(27917287424)
+//
+// RE-SIZED 2026-09-21 (operator ruling, 40 GiB max / 36 GiB high) BECAUSE THE SLICE GAINED A FOURTH
+// MEMBER. The 26 GiB envelope was sized for serve peak + convergence peak. The fabric DB endpoint
+// (gunbc-roadmap-fabric-storage.service, #11723) installs into this same slice, and every member
+// is the same binary resolving the same corpus at boot: the first deploy carrying it observed the
+// slice pinned at its cap -- belt, publication and fabric-storage each at roughly 7.5 GB after their
+// boot resolve and gunbc-roadmap.service OOM-killed inside the slice on its restart -- so the old
+// envelope could not hold the members it now installs. The instrument is systemd-cgtop over
+// gunbc.slice/gunbc-roadmap.slice beside the unit journal's "memory peak" line for each member;
+// re-derive there. Four members at the observed resolve footprint plus the convergence oneshot is
+// the demand; why one resolve costs ~7.5 GB stays the demand question named above. The runner slot
+// no longer equals this row, which is the decoupling the passage above argued for.
+data live_deploy_slice_memory_max: ByteSize = byte_size(42949672960)
 
-data live_deploy_slice_memory_high: ByteSize = byte_size(25769803776)
+data live_deploy_slice_memory_high: ByteSize = byte_size(38654705664)
 
 // THE SLICE FORBIDS SWAP, because the deployment is a latency-bound operator-facing service and a
 // swapped page is a stall on the request path, not a memory saving. The host it shares (srv1) also
@@ -141,6 +153,18 @@ data live_deploy_slice_memory_swap_max: ByteSize = byte_size(0)
 // The authority for all of it, including the retirement trigger, is
 // gunbc.auth.approval_broker_demand broker_demand_reset_unavailable; re-derive there rather than
 // from this sentence.
-data approval_broker_slice_memory_max: ByteSize = byte_size(6442450944)
+//
+// RE-SIZED 2026-09-21 (operator ruling, 10 GiB max / 9 GiB high). The qualitative expectation above
+// -- a much smaller process because its routes consult nothing the roadmap's footprint is made of
+// -- was wrong about WHEN the footprint is paid: the broker is the same `gunbc serve` binary and
+// resolves the same corpus at boot before it answers any route, and its sibling serve processes in
+// the roadmap slice (fabric-storage, belt, publication) each sit at roughly 7.5 GB after that
+// resolve (systemd-cgtop, 2026-09-21). A 6 GiB cap is therefore below the broker's boot resolve, so
+// approval_broker_dark_install could never reach a listening broker -- which is how the 2026-09-19
+// dark install "never listened". The subject is still not measured per route class; the stage-3
+// protocol above stands, and these rows are tightened from broker_demand_observed_max when it runs.
+// The instrument for this figure is the sibling serves' cgroup accounting, named honestly as a
+// reading of the same binary's boot resolve rather than of the broker itself.
+data approval_broker_slice_memory_max: ByteSize = byte_size(10737418240)
 
-data approval_broker_slice_memory_high: ByteSize = byte_size(5368709120)
+data approval_broker_slice_memory_high: ByteSize = byte_size(9663676416)
