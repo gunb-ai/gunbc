@@ -7,6 +7,7 @@ import std.dissolution {
   dissolution_status, unbound_dissolution, retires_dissolution,
 }
 import std.human_intervention { FleetOnce, DeviceOnce, EveryProvision }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import gunbc.spark.bootstrap_provision {
   fleet_cloud_principal_standing,
   CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
@@ -489,33 +490,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
   },
-// THIS ROW READS FleetOnce WHILE THE STEP IT EMBEDS DECLARES EveryProvision, AND THAT IS A STATED
-// DIVERGENCE RATHER THAN AN OVERSIGHT (review 69472, DESIGN 3b: the middle value is admitted, the
-// unstated one is the red). The two answer different questions through one shared type.
-//
-// THE STEP'S AXIS IS BURDEN MULTIPLICITY: how does this human cost scale. Its own annotation rules
-// that registering an App is paid once per App PROVISIONED and multiplies with the number of Apps,
-// which is why FleetOnce was withdrawn there -- it was right for exactly one App and wrong the moment
-// this fleet adopts a second.
-//
-// THIS ROW'S AXIS IS WHAT unattended_required READS OFF IT: whether the effect must complete with no
-// human present, because "there is no human at the end of a cron". Registering the census App is not
-// at the end of a cron -- provisioning an App is itself a human decision, and this fleet provisions
-// this one once.
-//
-// THE CONSEQUENCE OF NOT DIVERGING WAS MEASURED, NOT GUESSED. With the row deriving its frequency
-// from the step, select_authorization_pattern returns NoAdmissiblePattern and this site lands in
-// undecidable_sites: EVERY candidate, HumanOnlyStep included, violates constraint_unattended_required,
-// because no pattern completes an effect with no API and no human. That verdict would be the
-// selection faithfully reporting a premise this row does not hold -- an effect GitHub requires an
-// owner to perform is not one that must run unattended -- so adopting the step's value here would
-// assert something false about the effect in order to make two fields agree.
-//
-// WHAT THE DIVERGENCE ACTUALLY LOCATES is one type carrying two questions:
-// std.human_intervention HumanInterventionFrequency is read as burden multiplicity by the
-// intervention roster and as an attendance premise by unattended_required. Splitting it is a change
-// to that authority and to every consumer of it, which is not this row's to make; naming it here is
-// the honest disposition until someone takes it.
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.github_app_acquisition", decl_name: "app_registration_submit_intervention"),
     effect: PrivilegedEffect {
@@ -639,3 +613,40 @@ fn reason_trigger_fired(r: ReasonedDivergence) -> Bool {
 fn reasoned_divergences_with_fired_triggers() -> List<ReasonedDivergence> {
   filter(reasoned_divergences(), r => reason_trigger_fired(r: r))
 }
+
+// THE FREQUENCY DIVERGENCE IS A DECLARED STALL, AND THIS IS ITS CARRIER (review 69643). The census
+// row for app_registration_submit_intervention reads FleetOnce while the step it embeds reads
+// EveryProvision. That is a STATED divergence rather than an oversight (DESIGN §3b: the middle value
+// is admitted, the unstated one is the red), and the two answer different questions through one
+// shared type: the step's axis is burden multiplicity -- how this human cost scales -- while the
+// row's is an attendance premise.
+//
+// THE CONSEQUENCE OF NOT DIVERGING WAS MEASURED, NOT GUESSED. With the row deriving its frequency
+// from the step, select_authorization_pattern returns NoAdmissiblePattern and the site lands in
+// undecidable_sites: EVERY candidate, HumanOnlyStep included, violates
+// constraint_unattended_required, because no pattern completes an effect with no API and no human.
+// That verdict would be the selection faithfully reporting a premise this row does not hold -- an
+// effect GitHub requires an owner to perform is not one that must run unattended -- so adopting the
+// step's value would assert something false about the effect in order to make two fields agree.
+//
+// THIS PARAGRAPH USED TO SIT INSIDE THE CENSUS LIST, BESIDE THE ROW, AND THAT WAS TWO DEFECTS AT
+// ONCE. It put the whole stall where no Accepted program could read it -- DESIGN §6 says the mark on
+// the CARRIER is the authority rather than a parallel ledger, and §4c says an annotation is never
+// evidence that a machine claim holds. And an annotation inside a declaration body is not modeled at
+// all: the module carried a parse refusal for it, which this move clears. The reasoning survives
+// here because it is irreducible rationale about why the construction has its shape; the CLAIM that
+// the stall is declared, and the capability that retires it, now live on the row below.
+//
+// divergence_reason STAYS none ON THE ROW, and that is not an oversight. That field carries
+// realized-vs-selected, where RealizedHumanStep and HumanOnlyStep genuinely do agree; the frequency
+// question is a different axis, which is precisely why it needs its own carrier instead of being
+// pressed into a field that answers something else.
+data human_intervention_frequency_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.human_intervention", decl_name: "HumanInterventionFrequency"),
+    reason: "one type answers two questions, so two honest readings of the same effect disagree by construction. The intervention roster reads HumanInterventionFrequency as BURDEN MULTIPLICITY -- how many times an operator performs this -- and unattended_required reads it as an ATTENDANCE PREMISE -- whether the effect must complete with nobody present. Registering the census App is once per fleet on the first reading and requires an owner in a browser on the second, so the census row and the step it embeds carry different values of one type without either being wrong. No consumer can currently tell which reading it is getting",
+    dissolution: unbound_dissolution(
+      description: "NAMED CAPABILITY: HumanInterventionFrequency is split into the two questions it conflates, so burden multiplicity and attendance premise are separate declared facts and every consumer names which one it reads. SUFFICIENT FOR a privileged-effect row and the human step it embeds to agree by construction rather than by a stated divergence, and for select_authorization_pattern to evaluate unattended_required against the attendance fact instead of against a multiplicity count. NOT satisfied by adopting the step's value on this row, which would assert that an effect GitHub requires an owner to perform must run unattended; nor by widening divergence_reason, which carries realized-vs-selected and answers a different question"
+    )
+  )
+]
