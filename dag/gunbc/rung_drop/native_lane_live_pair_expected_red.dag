@@ -1,0 +1,48 @@
+module gunbc.rung_drop.native_lane_live_pair_expected_red
+
+import std.types { List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-09-21 (v2 foundation manager ruling, no-regression standard for gunbc#11952; the
+// enrollment is gunbc.witness_v2_native_route native_route_live_pair_standing). The native lane's
+// live-verdict pair is the control that proves the emitted evaluator DISCRIMINATES -- a false
+// test must return false and a true test true -- so an inert evaluator reporting everything green
+// cannot pass admission. On main 79e745b4 and on gunbc#11952's head alike the pair is NOT
+// OBSERVED: the module both controls live in, v2.native_lane_fixture.control, is refused at
+// prepare with resolve_ambiguous_on_global_bare on the bare SubstrateInputsOnly (the emitted
+// binary's census-resolve names it), as is the whole population. So no head can observe the pair
+// until the resolver changes, and a required clause would refuse every receipt for a reason no
+// lane change can move.
+//
+// WHAT IS LOST: live evidence that the native evaluator distinguishes a false result from a true
+// one. The enrollment keeps the clause MECHANICAL for the two states that matter -- a refusal
+// with a different stage or reason refuses as not observed (a moved wall), and an observed
+// control refuses as live_pair_observed_while_enrolled_red (the flip) -- but while the pinned
+// refusal holds, admission accepts a receipt in which the evaluator was never shown to
+// discriminate. That is the rung this row declares dropped.
+
+data native_lane_live_pair_expected_red_population: List<String> = [
+  "v2.native_lane_fixture.control native_lane_false_control (live-verdict control: must return false)",
+  "v2.native_lane_fixture.control native_lane_true_control (live-verdict control: must pass)",
+]
+
+data native_lane_live_pair_expected_red: RungDrop = RungDrop {
+  identity: "native_lane_live_pair_expected_red" as NonEmptyStr,
+
+  subject: "The native lane's live-verdict control pair as a required admission clause",
+
+  declared: "2026-09-21",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "gunbc.witness_v2_native_route LivePairExpectedRed: the clause holds only at the pinned refusal (prepare, resolve_ambiguous_on_global_bare), refuses a moved wall as not observed, and refuses an observed control as live_pair_observed_while_enrolled_red"
+    },
+    population: native_lane_live_pair_expected_red_population,
+    restoration_trigger: "THE LIVE PAIR IS OBSERVED ON THE NATIVE ROUTE AND THE STANDING FLIPS: the native resolver admits the retained forms (v2 foundation package 12, the namespace candidate rule) so that v2.native_lane_fixture.control resolves, a native lane run observes native_lane_false_control returning false AND native_lane_true_control passing, and gunbc.witness_v2_native_route native_route_live_pair_standing is set to LivePairRequired in the same change. Sufficient for: admission refusing any receipt whose evaluator does not discriminate. A resolver change that moves the pinned refusal to another cause does NOT retire this row; it re-pins it."
+  }
+}
