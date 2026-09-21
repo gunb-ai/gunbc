@@ -195,6 +195,16 @@ data envelope_vectors: List<EnvelopeVector> = [
   EnvelopeVector { name: "enrollment_path", body: device_enrollment_path(enrollment_id: enrollment_id_for_code(code: "482913")) as String },
 ]
 
+// The body of one named envelope vector, so a claim can drive a route with the same bytes the
+// Swift mirror decodes (review 69752 of gunbc#12000: the writer-gate claim owes an execution on
+// every mutating route). `none` when no vector carries the name.
+fn envelope_vector_body(name: String) -> String? {
+  match first(filter(envelope_vectors, v => v.name == name)) {
+    Present { value: v } => Present { value: v.body }
+    Absent => none
+  }
+}
+
 fn envelope_vector_json(v: EnvelopeVector) -> JsonValue {
   json_object(members: [
     json_kv(key: "name", value: json_string(s: v.name as String)),
