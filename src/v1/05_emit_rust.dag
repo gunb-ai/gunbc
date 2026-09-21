@@ -17989,6 +17989,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \}", "\n",
       "        \}", "\n",
       "    \}", "\n",
+      "\}", "\n",
       "\n")
   }
 }
