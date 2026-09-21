@@ -142,14 +142,21 @@ type CapacityProbeRead
   = ProbeFields { fields: CapacityProbeFields }
   | ProbeUnreadable { detail: String }
 
-fn field_at(lines: List<String>, n: Nat) -> String {
-  trim(s: lines.skip(n: n).first())
+// A FIELD THAT IS NOT THERE IS ABSENT, NOT EMPTY. `first()` on a shorter list answers `none`, and
+// coercing that to "" would hand every consumer a reading it cannot distinguish from a field that
+// was present and blank -- the widen DESIGN section 5 refuses. Every caller already returns an
+// Optional and already length-guards, so propagating costs nothing and keeps absence answerable.
+fn field_at(lines: List<String>, n: Nat) -> String? {
+  match lines.skip(n: n).first() {
+    Absent => none
+    Present { value: v } => Present { value: trim(s: v) }
+  }
 }
 
 fn field_named(lines: List<String>, name: ProbeFieldName) -> String? {
   match slot_index(want: name) {
     Absent => none
-    Present { value: n } => Present { value: field_at(lines: lines, n: n) }
+    Present { value: n } => field_at(lines: lines, n: n)
   }
 }
 
@@ -278,7 +285,7 @@ fn after_startup_prefix(line: String, kind: VllmStartupLine) -> String? {
   if list_length(items: parts) < 2 {
     none
   } else {
-    Present { value: trim(s: field_at(lines: parts, n: 1)) }
+    field_at(lines: parts, n: 1)
   }
 }
 
@@ -286,7 +293,10 @@ fn tokens_from_gpu_kv_cache_size_line(line: String) -> Int? {
   match after_startup_prefix(line: line, kind: GpuKvCacheSize) {
     Absent => none
     Present { value: after } =>
-      parse_int(s: replace(s: trim(s: split(s: after, delimiter: " ").first()), from: ",", to: ""))
+      match split(s: after, delimiter: " ").first() {
+        Absent => none
+        Present { value: w } => parse_int(s: replace(s: trim(s: w), from: ",", to: ""))
+      }
   }
 }
 
@@ -298,7 +308,10 @@ fn hundredths_from_maximum_concurrency_line(line: String) -> Int? {
       if list_length(items: segs) < 2 {
         none
       } else {
-        hundredths_from_two_digit_x(lexeme: field_at(lines: segs, n: list_length(items: segs) - 1))
+        match field_at(lines: segs, n: list_length(items: segs) - 1) {
+          Absent => none
+          Present { value: lexeme } => hundredths_from_two_digit_x(lexeme: lexeme)
+        }
       }
     }
   }
@@ -320,11 +333,16 @@ fn hundredths_from_two_digit_x(lexeme: String) -> Int? {
       if list_length(items: parts) != 2 {
         none
       } else {
-        let frac = field_at(lines: parts, n: 1)
+        match field_at(lines: parts, n: 1) {
+        Absent => none
+        Present { value: frac } =>
         if string_length(s: frac) != 2 {
           none
         } else {
-          match parse_int(s: field_at(lines: parts, n: 0)) {
+          match field_at(lines: parts, n: 0) {
+            Absent => none
+            Present { value: whole_lexeme } =>
+          match parse_int(s: whole_lexeme) {
             Absent => none
             Present { value: whole } =>
               match parse_int(s: frac) {
@@ -337,6 +355,8 @@ fn hundredths_from_two_digit_x(lexeme: String) -> Int? {
                   }
               }
           }
+        }
+        }
         }
       }
     }

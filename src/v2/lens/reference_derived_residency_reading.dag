@@ -1,5 +1,8 @@
 module v2.lens.reference_derived_residency_reading
 
+import v2.lens.common.construction_justification { ConstructionJustification, ConstructionClass, WallAfterGrounding }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+
 import gunbc.namespace_reference_derived_residency_qualification {
   CarrierKeyPopulation,
   CarrierReadability,
@@ -239,4 +242,21 @@ fn carrier_reading_from_type_decl(
     population: carrier_key_population_of(decl: decl),
     readability: carrier_readability_of(decl: decl),
   }
+}
+
+// WHY THIS LENS IS VALIDATION AND NOT CONSTRUCTION, at the grain DESIGN section 6 asks for.
+//
+// THE CLASS IS DECIDABLE, so this is not outside the modeled guarantee. Both questions this lens
+// answers -- does the field's declared type mention `Node`, and is it held per member of a
+// population -- are read off the producer's own type declaration, which is exactly why this module
+// derives the reading instead of hand-authoring it.
+//
+// WHAT IS MISSING IS THE SINGLE AUTHORITY THAT WOULD MAKE THE UNQUALIFIED STATE UNWRITABLE. Today
+// the qualification carrier and the producer declaration are two structures that must agree, and a
+// lens is what notices when they stop agreeing. Construction would make the qualification a
+// projection OF the declaration, so a carrier could not be written with a reading its own type does
+// not support, and this lens would have nothing left to check. That is a wall after grounding:
+// decidable now, waiting on the authority it would be derived from.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

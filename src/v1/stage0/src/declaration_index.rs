@@ -1799,14 +1799,14 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "price",
     ),
     (
-        "gunbc.ci_floor_measurement",
+        "gunbc.host_memory_observation",
         "gunbc_ci_legacy_host_fixed_overhead_disposition",
         "gunbc.ci_floor_measurement",
         "gunbc_ci_legacy_host_modeled_residents",
         "",
     ),
     (
-        "gunbc.ci_floor_measurement",
+        "gunbc.host_memory_observation",
         "gunbc_ci_managed_host_fixed_overhead_disposition",
         "gunbc.ci_floor_measurement",
         "gunbc_ci_managed_host_quiescent_meminfo_read",
