@@ -742,6 +742,8 @@ fn bare_reference_channel_expectations() -> List<BareReferenceChannelExpectation
   ]
 }
 
+// RENDERING ONLY. This is a lossy projection of the eligibility carrier and is never a comparison
+// basis: `bare_channel_reading_agrees` compares the FIELD, for the reason stated there.
 fn bare_channel_eligibility_runs(e: BareChannelEligibility) -> Bool {
   match e {
     BareChannelRuns => true
@@ -762,12 +764,19 @@ fn bare_channel_module_sets_equal(expected: List<String>, observed: List<String>
     && ((observed |> filter(m => !bare_channel_module_named(modules: expected, wanted: m)) |> count) == 0)
 }
 
+// THE ELIGIBILITY FIELDS ARE COMPARED DIRECTLY, NEVER THROUGH THE Bool PROJECTION BESIDE THEM.
+//
+// `bare_channel_eligibility_runs` is a LOSSY projection and exists for rendering only. Comparing
+// two eligibilities through it is equivalent today, when the carrier has two arms, and stops being
+// equivalent the moment it gains a third -- which is exactly what the ceiling receipt anticipates
+// when the decline carrier lands, since a declined name's arm is a state the channel reached. A
+// projection comparison would then read two DISTINCT non-running states as agreeing, and this
+// authority would silently disagree with its own host mirror. Compare the field.
 fn bare_channel_reading_agrees(
   expected: BareReferenceChannelExpectation,
   observed: BareReferenceChannelEntryReading
 ) -> Bool {
-  (bare_channel_eligibility_runs(e: expected.eligibility)
-    == bare_channel_eligibility_runs(e: observed.eligibility))
+  (expected.eligibility == observed.eligibility)
     && bare_channel_module_sets_equal(
          expected: expected.pulled_modules,
          observed: observed.pulled_modules
