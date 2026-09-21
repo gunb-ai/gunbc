@@ -16,7 +16,7 @@ import product.fabric.memory_grant {
   MemoryGrantRefusal, GrantBelowStatedMinimum, GrantAboveCeiling,
   MemoryGrantStanding, RequirementCheckedAtOrAbove, NoRequirementStatedCompatibilityDefault,
   issue_memory_grant, memory_grant_standing, memory_grant_standing_text,
-  memory_grant_standing_is_requirement_checked, memory_grant_required_minimum, memory_grant_bytes,
+  memory_grant_required_minimum, memory_grant_bytes,
 }
 import gunbc.fabric_memory_grant_policy {
   MicroVmMemoryGrantAuthority, MicroVmMemoryGrantPolicy,
@@ -90,6 +90,16 @@ fn fixture_policy(allowance: Int, ceiling: Int, permit: MemoryCompatibilityPermi
   }
 }
 
+// THE WITNESS MATCHES THE STANDING ARM ITSELF. A Bool predicate over this coproduct lived on the
+// carrier in an earlier revision and had no consumer but this file (DESIGN 3c: a witness is not a
+// consumer), so it was deleted; every site here has the MemoryGrantStanding in hand and matches it.
+fn standing_is_requirement_checked(s: MemoryGrantStanding) -> Bool {
+  match s {
+    RequirementCheckedAtOrAbove { required: _, granted: _ } => true
+    NoRequirementStatedCompatibilityDefault { permit: _, granted: _ } => false
+  }
+}
+
 fn requirement(bytes: Int) -> MemoryRequirement {
   MemoryRequirement { min_bytes: byte_size(bytes) }
 }
@@ -158,7 +168,7 @@ test fn a_grant_exactly_at_the_stated_minimum_is_issued_and_checked() -> Bool {
     MemoryGrantRefused { refusal: _ } => false
     MemoryGranted { grant: g } =>
       issued_bytes(issue: issue) == 4 * gib()
-        && memory_grant_standing_is_requirement_checked(s: memory_grant_standing(g: g))
+        && standing_is_requirement_checked(s: memory_grant_standing(g: g))
         && match memory_grant_required_minimum(g: g) {
              Present { value: r } => byte_size_count(b: r.min_bytes) == 4 * gib()
              Absent => false
@@ -208,8 +218,8 @@ test fn a_defaulted_grant_does_not_render_as_requirement_checked() -> Bool {
         MemoryGranted { grant: strong } =>
           let weak_standing = memory_grant_standing(g: weak)
           let strong_standing = memory_grant_standing(g: strong)
-          !memory_grant_standing_is_requirement_checked(s: weak_standing)
-            && memory_grant_standing_is_requirement_checked(s: strong_standing)
+          !standing_is_requirement_checked(s: weak_standing)
+            && standing_is_requirement_checked(s: strong_standing)
             && memory_grant_standing_text(s: weak_standing) != memory_grant_standing_text(s: strong_standing)
             && string_contains(s: memory_grant_standing_text(s: weak_standing), pattern: "permitted by fixture_permit")
             && !string_contains(s: memory_grant_standing_text(s: weak_standing), pattern: "memory requirement checked")
@@ -314,7 +324,7 @@ test fn an_absent_memory_axis_under_a_permit_is_granted_the_permit_default() -> 
   match microvm_memory_grant(policy: policy, work: work_id(), attempt: attempt_id(), requirement: none) {
     MemoryGrantIssued { grant: g } =>
       byte_size_count(b: memory_grant_bytes(g: g)) == 3 * gib()
-        && !memory_grant_standing_is_requirement_checked(s: memory_grant_standing(g: g))
+        && !standing_is_requirement_checked(s: memory_grant_standing(g: g))
     GrantRefusedByLaw { refusal: _ } => false
     GrantRefusedUnrepresentable { sizing: _ } => false
     GrantRefusedUnstatedAxisWithoutPermit => false
@@ -399,7 +409,7 @@ test fn the_fleet_policy_binding_grants_an_unstated_axis_under_its_own_permit() 
       match microvm_memory_grant(policy: p, work: work_id(), attempt: attempt_id(), requirement: none) {
         MemoryGrantIssued { grant: g } =>
           byte_size_count(b: memory_grant_bytes(g: g)) == byte_size_count(b: gunbc_microvm_memory_compatibility_default)
-            && !memory_grant_standing_is_requirement_checked(s: memory_grant_standing(g: g))
+            && !standing_is_requirement_checked(s: memory_grant_standing(g: g))
             && string_contains(s: memory_grant_standing_text(s: memory_grant_standing(g: g)), pattern: "permitted by gunbc_microvm_memory_compatibility_permit")
         GrantRefusedByLaw { refusal: _ } => false
         GrantRefusedUnrepresentable { sizing: _ } => false
@@ -410,6 +420,6 @@ test fn the_fleet_policy_binding_grants_an_unstated_axis_under_its_own_permit() 
 
 fn fleet_grant_is_checked_at_or_above(g: MemoryGrant<NonEmptyStr, MicroVmMemoryGrantAuthority>, minimum: Int) -> Bool {
   byte_size_count(b: memory_grant_bytes(g: g)) >= minimum
-    && memory_grant_standing_is_requirement_checked(s: memory_grant_standing(g: g))
+    && standing_is_requirement_checked(s: memory_grant_standing(g: g))
     && byte_size_count(b: memory_grant_bytes(g: g)) % gib() == 0
 }

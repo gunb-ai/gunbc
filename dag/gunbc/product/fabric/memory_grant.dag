@@ -1,6 +1,6 @@
 module product.fabric.memory_grant
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String }
 import std.measure { ByteSize, FiniteByteSize, byte_size_count, finite_byte_size_count }
 import std.decl_ref { DeclarationRef }
 import product.fabric.envelope { MemoryRequirement }
@@ -224,15 +224,5 @@ fn memory_grant_standing_text(s: MemoryGrantStanding) -> String {
       join(["memory requirement checked: the Work states a minimum of ", to_string(byte_size_count(b: q)), " bytes and this attempt is authorized to consume ", to_string(byte_size_count(b: g)), " bytes"], "")
     NoRequirementStatedCompatibilityDefault { permit: p, granted: g } =>
       join(["the Work stated no memory requirement; fleet compatibility policy nevertheless granted ", to_string(byte_size_count(b: g)), " bytes, permitted by ", p.permitted_by.decl_name as String, " because ", p.reason as String, " -- no memory requirement was checked for this attempt"], "")
-  }
-}
-
-// THE PREDICATE A CONSUMER ASKS INSTEAD OF READING THE SENTENCE. It exists so the weaker standing
-// is countable -- a fleet can report how many of its attempts run on a compatibility default -- and
-// so no consumer reaches for a substring test on the rendered text to find out.
-fn memory_grant_standing_is_requirement_checked(s: MemoryGrantStanding) -> Bool {
-  match s {
-    RequirementCheckedAtOrAbove { required: _, granted: _ } => true
-    NoRequirementStatedCompatibilityDefault { permit: _, granted: _ } => false
   }
 }
