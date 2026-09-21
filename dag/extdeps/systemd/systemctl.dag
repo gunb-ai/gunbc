@@ -336,6 +336,52 @@ type UnitFileState
   | UnitTransient
   | UnitBad
 
+// THE GRACEFUL ASK IS ONE OPERATION, NOT A SIGNAL PARAMETER, and the reason is extdeps.posix.signal's:
+// a service that accepts an arbitrary signal name accepts every signal anyone ever wants. There is
+// deliberately no SIGKILL sibling here. A caller that needs a forced end wants the CGROUP's subtree
+// and not this unit's -- a process in a sibling cgroup under the same slice is not reached by a unit
+// kill -- and the kernel answers that directly through cgroup.kill
+// (extdeps.linux.cgroup_v2 cgroup_v2_kill_path), atomically against forking. Adding a KillUnitKill
+// here would put a second, weaker answer beside it and the weaker one reads like the obvious choice.
+//
+// `--kill-whom=all` is the substance rather than a default made explicit: the default reaches the
+// main process only, and a stop that signals only the main process leaves exactly the children
+// gunbc.runner_microvm_lifecycle's CgroupSubtreePopulated exists to catch. systemd.kill(5) documents
+// both flags.
+// THE PROPERTY REACHES systemctl AS ITS WIRE SPELLING, NOT AS A VARIANT NAME, AND THE DIFFERENCE IS
+// A SILENT EMPTY READING RATHER THAN A FAILURE.
+//
+// These two operations used to take a SystemdUnitProperty and interpolate it straight into
+// `--property={property}`, which renders the VARIANT name. systemd_unit_property_wire exists in
+// extdeps.systemd precisely because the two spellings are not always the same string: `ActiveState`
+// is both, `InvocationIDProperty` is spelled `InvocationID` on the wire, and so are
+// `SliceProperty`, `ExecStartProperty`, `IdProperty`, `KillModeProperty` and the rest of the
+// `*Property` family. systemctl does not refuse a property it does not know -- it prints NOTHING and
+// exits 0 -- so every consumer naming one of those read an empty string back with success true and
+// had no way to tell that from a property whose value is genuinely empty.
+//
+// MEASURED, NOT INFERRED (gunbc#11803, srv1, wet): a claim reading ActiveState through this operation
+// PASSES and a claim reading InvocationID through it FAILS, on the same live unit, in the same run --
+// which is the discriminator, because a broken operation would have failed both and a broken unit
+// would have failed both. At the shell on the same host, `--property=InvocationID --value` prints the
+// id and `--property=InvocationIDProperty --value` prints nothing with exit 0.
+//
+// SO THE INPUT IS THE WIRE WORD, produced by extdeps.systemd systemd_unit_property_wire, and the
+// argv binds it as a plain variable exactly as the sibling SetProperty does.
+//
+// A SEALED CARRIER READ AS {property.wire} WAS TRIED HERE AND WITHDRAWN. It closed the spelling hole
+// by construction, which is strictly better, but a FIELD ACCESS is not bindable by the argv
+// materializer -- bind_argv_expr admits a string literal, a variable and an interpolation over
+// those, and refuses everything else as ArgvExpressionUnsupported -- so both operations left the
+// materializable set and the enrolled binding claims went red (review 69392, measured on srv1: two
+// claims in test.claim.operation_argv_binding_wall_witness red, green again after this).
+//
+// WHAT REMAINS IS CALLER DISCIPLINE AND IT IS WEAKER, STATED PLAINLY. Every caller converts through
+// systemd_unit_property_wire today and nothing stops the next one passing a literal; that is the
+// same gap review 69084 named, reopened deliberately because the alternative breaks a wall that
+// actually executes. The trigger that closes it again is argv element evaluation in the
+// materializer, which `std.operation_argv` already carries as declared residue.
+//
 service systemd.Systemctl {
   operation Enable {
     input { unit: NonEmptyStr }
@@ -407,6 +453,38 @@ service systemd.Systemctl {
     }
     mock_response {
       0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Stop"
+    }
+  }
+
+  operation ResetFailedUnit {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "reset-failed", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl reset-failed failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.ResetFailedUnit"
+    }
+  }
+
+  operation KillUnitTerm {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "kill", "--signal=SIGTERM", "--kill-whom=all", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl kill --signal=SIGTERM failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.KillUnitTerm"
     }
   }
 
@@ -491,7 +569,7 @@ service systemd.Systemctl {
   }
 
   operation ShowProperty {
-    input { unit: NonEmptyStr, property: SystemdUnitProperty }
+    input { unit: NonEmptyStr, property: NonEmptyStr }
     output {
       value: String from "stdout"
       success: Bool from "exit_success"
@@ -508,7 +586,7 @@ service systemd.Systemctl {
   }
 
   operation ShowUserProperty {
-    input { unit: NonEmptyStr, property: SystemdUnitProperty }
+    input { unit: NonEmptyStr, property: NonEmptyStr }
     output {
       value: String from "stdout"
       success: Bool from "exit_success"

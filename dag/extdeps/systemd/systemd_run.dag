@@ -132,6 +132,20 @@ fn systemd_run_transient_wait_unit_argv(unit: NonEmptyStr, properties: List<Syst
 }
 
 
+// RunTransient AND RunTransientRetained DIFFER BY --collect AND THAT IS A DECISION ABOUT EVIDENCE.
+//
+// The argument is already made in this file for the user-manager variant and it holds identically
+// here: --collect unloads the unit the moment it exits, which discards Result, ExecMainStatus and
+// the unit's Environment -- exactly the terminal state a caller starts a transient unit in order to
+// read afterwards. A unit lingering in `failed` IS the evidence; a collected one is an absence
+// indistinguishable from never having run, and a caller reading an exit status through it gets a
+// fabricated number.
+//
+// SO THE CHOICE IS THE CALLER'S AND IT IS NAMED. A fire-and-forget start that nobody will interrogate
+// keeps --collect and leaves no residue. A caller that must later say WHY the unit ended, or which
+// attempt it was started for, takes the retained form and owes an explicit reset of the unit when it
+// is done with it -- gunbc.runner_microvm_lifecycle_realize does exactly that after its teardown
+// readbacks. Making it a flag on one operation would have hidden that obligation.
 service systemd.SystemdRun {
   operation RunTransient {
     input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
@@ -150,6 +164,23 @@ service systemd.SystemdRun {
     }
   }
 
+
+  operation RunTransientRetained {
+    input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemd-run", "--unit={unit}", property_argv, "--", command_argv] }
+    exit {
+      0 => Unit
+      nonzero => String "systemd-run transient unit start failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "Running as unit: demo.service", stderr: "" } "hermetic systemd.SystemdRun.RunTransientRetained"
+    }
+  }
 
   operation RunTransientAndWait {
     input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
