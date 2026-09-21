@@ -248,6 +248,13 @@ test fn attributed_occurrence_carries_a_byte_range_holds() -> Bool {
 // (v1.compiler.emit_rust emit_source_root_eval_driver_main_rs). A caret literal here would be a
 // different input wearing the specimen's name, and would have reported a mangled symbol while the
 // real path rendered correctly -- so this supplies the value the real walk supplies.
+//
+// THE PATH NAMES NO COMMITTED FILE, AND THAT IS DELIBERATE (review 69628). An earlier revision also
+// committed `fixtures/native_cli_door/door_probe.dag` holding this same text. Nothing read it: the
+// claim constructs its read from the string below and uses the path only as an identity, so the
+// file was a second source for one fact, free to drift from this one -- DESIGN section 2's
+// duplication test, and section 6's "new artifact with no final consumer". The string is the single
+// source; the path is a value under test (it is what the rendered line must name), not a lookup.
 data door_probe_source: String = "module fixture.native_cli_door.door_probe\n\nimport v2.std.logic { Bool }\n\nfn door_probe_fn() -> Bool { true }\n"
 
 data door_probe_path: String = "fixtures/native_cli_door/door_probe.dag"

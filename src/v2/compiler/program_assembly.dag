@@ -339,6 +339,11 @@ fn program_assembly_read_to_normalized_root(
   }
 }
 
+// THE FAILING READ'S OWN SPANS ARE MERGED IN BEFORE THE REFUSAL IS BUILT (`carried`), and that is
+// the point of the repair review 69607 asked for: a file that parsed and then failed to normalize
+// or graft is exactly the file whose diagnostic needs locating, and its index would otherwise be
+// dropped one step before the renderer asked for it. Both refusing arms below -- the read's own
+// refusal and the module-name derivation's -- carry it, so neither loses what was recorded.
 fn program_assembly_fold_step(
   state: ProgramAssemblyLocatedFoldState,
   read: DagSourceReadWitness,
@@ -357,10 +362,6 @@ fn program_assembly_fold_step(
         residue: residue,
         seed: seed
       )
-      // THE FAILING READ'S OWN SPANS ARE MERGED IN BEFORE THE REFUSAL IS BUILT, and that is the
-      // whole point of the repair: a file that parsed and then failed to normalize or graft is
-      // exactly the file whose diagnostic needs locating, and its index would otherwise be dropped
-      // one step before the renderer asked for it.
       let carried = span_index_merge(base: spans, incoming: result.spans)
       match result.produced {
         Accepted { value: tree, diagnostics: _ } =>
@@ -410,6 +411,10 @@ fn dag_prepared_grammar() -> Outcome<PreparedGrammar> {
   prepare_grammar(grammar: dag_grammar())
 }
 
+// THE GRAMMAR REFUSAL REPORTS AN EMPTY INDEX AND THAT IS AN ANSWER, NOT A DROP. An invalid grammar
+// fails the whole assembly before any module is parsed, so no occurrence was ever minted and there
+// is nothing recorded to carry -- which is a different fact from the per-read refusals above, where
+// something WAS recorded and losing it was the defect.
 fn program_assembly_fold_ingest_located(
   ingest: SourceRootIngest,
   lm: LanguageModel
@@ -425,8 +430,6 @@ fn program_assembly_fold_ingest_located(
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
         Rejected { diagnostics: d } =>
-          // An invalid grammar fails the assembly before any module is parsed, so no occurrence was
-          // minted and there is no index to carry. Empty here is the answer, not a drop.
           ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: span_index_empty() }
         Accepted { value: prepared, diagnostics: residue } =>
           fold_list(
