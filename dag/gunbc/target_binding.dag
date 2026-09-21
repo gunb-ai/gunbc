@@ -14,10 +14,9 @@ import std.integer { Int }
 // transport belongs to the later realization layer, not to either side of this model relation.
 // FloorMemoryQualificationProducer supervises a required-floor run inside a cgroup it shares with
 // the child, then reads memory.peak and memory.events from OUTSIDE the dead process. Deliberately
-// NOT the `RequiredFloorProducer` variant, which remains unbound: what this produces is a memory
-// QUALIFICATION, not a floor verdict, and reusing a differently-named slot for a different fact
-// is the meaning fork DESIGN section 3 forbids. (Hoisted to module grain: a source annotation
-// inside a declaration body is not modeled and refuses to parse.)
+// NOT the RequiredFloorProducer variant, which remains unbound: what it produces is a memory
+// QUALIFICATION, not a floor verdict, and reusing a differently-named slot for a different fact is
+// the meaning fork DESIGN section 3 forbids.
 type TargetProducer
   = SelfHostProducer
   | RequiredFloorProducer

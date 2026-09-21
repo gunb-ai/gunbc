@@ -1,0 +1,82 @@
+module extdeps.iproute2.ip_address
+
+import std.types { Bool, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/ip-address.8.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.iproute2.ip_address",
+      decl_name: "ip_binary_path",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data ip_binary_path: NonEmptyStr = "/usr/sbin/ip"
+
+// ip-address(8) from iproute2. THREE OPERATIONS AND ONE OF THEM IS A WRITE TO A PRODUCTION HOST,
+// which is the fact this module exists to make visible rather than convenient.
+//
+// A secondary address added to a live interface changes that host's L3 identity for as long as it
+// is there. `ip addr add` is not idempotent in the way a converge wants -- a second add of the
+// same address exits nonzero with "File exists" -- so the caller reads Show first and decides,
+// rather than adding blind and swallowing the failure. That is why Show is here at all: without
+// it the only way to make add idempotent is to ignore its exit status, which is the fail-open §5
+// refuses.
+//
+// Delete is the paired release and it is NOT optional for the caller: an address left behind
+// outliers the run that placed it and belongs to nobody. The lifetime belongs in a lease at the
+// consumer, not in a comment here, because this module cannot see whether the caller crashed.
+//
+// The `dev` argument is an interface name and the address is CIDR: both are interpolated as
+// declared inputs, never assembled from a literal in the caller.
+service iproute2.IpAddress {
+  operation ShowDevice {
+    input { device: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["ip", "-o", "-4", "addr", "show", "dev", "{device}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ip addr show failed for the named device"
+    }
+  }
+
+  operation AddSecondary {
+    input { device: NonEmptyStr, cidr: NonEmptyStr }
+    output { body: String from "stdout", transport_stderr: String from "stderr", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["ip", "addr", "add", "{cidr}", "dev", "{device}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ip addr add refused; the address was not placed"
+    }
+  }
+
+  operation DeleteSecondary {
+    input { device: NonEmptyStr, cidr: NonEmptyStr }
+    output { body: String from "stdout", transport_stderr: String from "stderr", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["ip", "addr", "del", "{cidr}", "dev", "{device}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ip addr del refused; the address may still be on the device"
+    }
+  }
+}
