@@ -12,7 +12,10 @@ import gunbc.machine_intake_mtcollins1_census_medium_readback {
   CensusRecordAdmitted, CensusRecordRefused, mtcollins1_census_record_standing,
   mtcollins1_census_record_argv, mtcollins1_census_readback_argv,
   mtcollins1_census_medium_served_path, mtcollins1_census_record_path, mtcollins1_census_build_key,
+  remote_answer_of,
 }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import extdeps.ssh.session { SshSessionExecResult }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
