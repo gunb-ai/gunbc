@@ -512,3 +512,78 @@ test fn a_torn_receipt_reading_standing_names_the_tear_not_an_absence() -> Bool 
     _ => false
   }
 }
+
+// THE FOUR ARMS THAT HAD NO CLAIM, DRIVEN. Found by auditing every arm of the two cause
+// coproducts against the folds that produce them, after review 69767 caught the second instance
+// in a session of a fold collapsing an arm nothing claimed. An arm a fold can produce and no
+// claim can reach is green by construction, which is the same defect the reviewer found twice --
+// so the audit is the repair, not another individual fix.
+test fn an_unreadable_seam_on_the_peak_beat_is_its_own_cause() -> Bool {
+  let r = FloorHeldSetReceipt {
+    run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
+    beats: [seamed_beat(n: 4, seam: SeamUnreadable, anon: 900, file: 100, shmem: 90, unevictable: 0, stall: 0)],
+    run_completed: true, swap_policy: SwapDisabled,
+  }
+  match receipt_peak_seam(r: r) {
+    PeakSeamUnattributable { cause: PeakBeatSeamUnreadable { beat: b } } => b == 4
+    _ => false
+  }
+}
+
+// AN UNREAD STALL ON THE PEAK BEAT IS REPORTED AS SUCH, not silently accepted as calm. Without
+// this arm a beat whose stall window did not read would reach the swap test and could answer
+// PeakIsDemand -- a figure allowed to SIZE a guest, resting on a beat nobody observed.
+test fn a_peak_beat_whose_stall_did_not_read_is_not_a_demand() -> Bool {
+  let unread_peak = FloorMemoryStatBeat {
+    beat: 9, seam: SeamClaimEvaluationFold, charge: byte_size(100),
+    anon: byte_size(900), file: byte_size(100), shmem: byte_size(90), unevictable: byte_size(0),
+    slab_unreclaimable: byte_size(4), slab_reclaimable: byte_size(1000), kernel_stack: byte_size(3),
+    pagetables: byte_size(2), percpu: byte_size(1), sock: byte_size(0), file_dirty: byte_size(0),
+    stall: StallUnread,
+  }
+  let r = FloorHeldSetReceipt {
+    run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
+    beats: [unread_peak], run_completed: true, swap_policy: SwapDisabled,
+  }
+  match receipt_peak_reading_standing(r: r) {
+    PeakIsLowerBound { cause: PeakBeatStallUnread { beat: b } } => b == 9
+    _ => false
+  }
+}
+
+// THE TWO SWAP ARMS, WHICH DIFFER IN HOW THE CEILING WAS OBTAINED AND NOT ONLY IN ITS VALUE.
+// SwapMaxDeclaredUnread cites a row; SwapMaxRead is an instrument that read the file. Both censor
+// a peak, and each reports its own cause, so a reader is told whether the ceiling behind the
+// censoring was READ or merely DECLARED -- which is the distinction DESIGN 4d exists to keep.
+// A read ceiling of zero is not censoring at all, and that boundary is driven here too.
+test fn both_swap_arms_censor_and_a_read_zero_ceiling_does_not() -> Bool {
+  let declared = FloorHeldSetReceipt {
+    run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
+    beats: [seamed_beat(n: 1, seam: SeamClaimEvaluationFold, anon: 900, file: 100, shmem: 90, unevictable: 0, stall: 0)],
+    run_completed: true,
+    swap_policy: SwapMaxDeclaredUnread { declared: byte_size(34359738368), declaring_authority: "fixture row" },
+  }
+  let read_nonzero = FloorHeldSetReceipt {
+    run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
+    beats: [seamed_beat(n: 1, seam: SeamClaimEvaluationFold, anon: 900, file: 100, shmem: 90, unevictable: 0, stall: 0)],
+    run_completed: true, swap_policy: SwapMaxRead { swap_max: byte_size(4096) },
+  }
+  let read_zero = FloorHeldSetReceipt {
+    run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
+    beats: [seamed_beat(n: 1, seam: SeamClaimEvaluationFold, anon: 900, file: 100, shmem: 90, unevictable: 0, stall: 0)],
+    run_completed: true, swap_policy: SwapMaxRead { swap_max: byte_size(0) },
+  }
+  let a = match receipt_peak_reading_standing(r: declared) {
+    PeakIsLowerBound { cause: SwapCouldAbsorbAnonymousPages { declared_swap_max: d } } => byte_size_count(b: d) == 34359738368
+    _ => false
+  }
+  let b = match receipt_peak_reading_standing(r: read_nonzero) {
+    PeakIsLowerBound { cause: SwapPolicyIsRead { swap_max: m } } => byte_size_count(b: m) == 4096
+    _ => false
+  }
+  let c = match receipt_peak_reading_standing(r: read_zero) {
+    PeakIsDemand => true
+    _ => false
+  }
+  a && b && c
+}
