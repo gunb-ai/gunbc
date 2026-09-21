@@ -219,10 +219,6 @@ fn der_expect_sequence(octets: List<UInt8>, at: Int) -> DerRead {
   der_expect(octets: octets, at: at, class: DerUniversal, tag_number: der_tag_sequence, constructed: true)
 }
 
-fn der_expect_universal(octets: List<UInt8>, at: Int, tag_number: Int) -> DerRead {
-  der_expect(octets: octets, at: at, class: DerUniversal, tag_number: tag_number, constructed: false)
-}
-
 // The elements inside a constructed element, in order, consuming exactly its contents.
 type DerChildren
   = DerChildrenRead { elements: List<DerElement> }

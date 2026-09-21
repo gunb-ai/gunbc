@@ -17,7 +17,7 @@ import extdeps.standards.x690_der {
   der_expect_sequence, der_expect, der_tag_octet_string,
 }
 import extdeps.standards.rfc_5280 {
-  X509Certificate, X509Decoded, X509Refused, decode_certificate, X509Refusal, X509DerRefused, X509SignatureAlgorithmMismatch,
+  X509Certificate, X509Decoded, X509Refused, decode_certificate, X509Refusal, X509DerRefused, X509SignatureAlgorithmMismatch, X509ExtensionDefaultEncoded,
   x509_extension, X509ExtensionFound, X509ExtensionAbsent, X509ExtensionDuplicated,
   ecdsa_sig_value, EcdsaSigValueRead, EcdsaSigValueRefused, EcdsaSigValueTooWide,
   oid_ecdsa_with_sha256, oid_ecdsa_with_sha384, oid_id_ec_public_key, oid_prime256v1, oid_secp384r1,
@@ -111,16 +111,16 @@ test fn the_sample_leaf_reads_as_openssl_reads_it() -> Bool {
           }
       }
       leaf.signature_algorithm == oid_ecdsa_with_sha256
-        && leaf.tbs_signature_algorithm == oid_ecdsa_with_sha256
-        && leaf.spki_algorithm == oid_id_ec_public_key
-        && match leaf.spki_named_curve {
+        && leaf.tbs.tbs_signature_algorithm == oid_ecdsa_with_sha256
+        && leaf.tbs.spki_algorithm == oid_id_ec_public_key
+        && match leaf.tbs.spki_named_curve {
           Present { value: c } => c == oid_prime256v1
           Absent => false
         }
-        && leaf.serial == [1, 119, 47, 41, 247, 72]
-        && leaf.not_before == "210122121335Z" && leaf.not_after == "210125121335Z"
-        && count(leaf.spki_public_key) == 65 && count(credential_point) == 65 && leaf.spki_public_key == credential_point
-        && count(leaf.extensions) == 5
+        && leaf.tbs.serial == [1, 119, 47, 41, 247, 72]
+        && leaf.tbs.not_before == "210122121335Z" && leaf.tbs.not_after == "210125121335Z"
+        && count(leaf.tbs.spki_public_key) == 65 && count(credential_point) == 65 && leaf.tbs.spki_public_key == credential_point
+        && count(leaf.tbs.extensions) == 5
     }
   }
 }
@@ -172,13 +172,13 @@ test fn the_sample_ca_chains_from_the_leaf() -> Bool {
         Absent => false
         Present { value: ca } =>
           ca.signature_algorithm == oid_ecdsa_with_sha384
-            && match ca.spki_named_curve {
+            && match ca.tbs.spki_named_curve {
               Present { value: c } => c == oid_secp384r1
               Absent => false
             }
-            && count(ca.spki_public_key) == 97
-            && ca.subject_octets == leaf.issuer_octets
-            && ca.subject_octets != ca.issuer_octets
+            && count(ca.tbs.spki_public_key) == 97
+            && ca.tbs.subject_octets == leaf.tbs.issuer_octets
+            && ca.tbs.subject_octets != ca.tbs.issuer_octets
       }
   }
 }
@@ -193,15 +193,15 @@ test fn the_pinned_root_is_the_sample_cas_issuer() -> Bool {
       match sample_ca() {
         Absent => false
         Present { value: ca } =>
-          root.subject_octets == root.issuer_octets
-            && root.serial == [11, 243, 190, 14, 241, 205, 210, 224, 251, 140, 110, 114, 31, 98, 23, 152]
+          root.tbs.subject_octets == root.tbs.issuer_octets
+            && root.tbs.serial == [11, 243, 190, 14, 241, 205, 210, 224, 251, 140, 110, 114, 31, 98, 23, 152]
             && root.signature_algorithm == oid_ecdsa_with_sha384
-            && match root.spki_named_curve {
+            && match root.tbs.spki_named_curve {
               Present { value: c } => c == oid_secp384r1
               Absent => false
             }
-            && root.not_after == "450315000000Z"
-            && root.subject_octets == ca.issuer_octets
+            && root.tbs.not_after == "450315000000Z"
+            && root.tbs.subject_octets == ca.tbs.issuer_octets
       }
   }
 }
@@ -353,6 +353,18 @@ test fn an_outer_algorithm_disagreeing_with_the_tbs_refuses() -> Bool {
             }
           }
       }
+  }
+}
+
+// DER ADMITS ONE ENCODING OF A DEFAULTED COMPONENT (X.690 §11.5): the real leaf with its
+// basicConstraints `critical TRUE` octet (0xff at offset 400) rewritten to 0x00 -- an explicit
+// FALSE, which DER must omit -- refuses as X509ExtensionDefaultEncoded at that octet's element.
+test fn an_explicit_default_critical_refuses() -> Bool {
+  let leaf = sample_x5c(i: 0)
+  let mutated = concat(leaf |> take(400), concat([0], leaf |> skip(401)))
+  match decode_certificate(octets: mutated) {
+    X509Refused { cause: X509ExtensionDefaultEncoded { at: 398 } } => true
+    _ => false
   }
 }
 

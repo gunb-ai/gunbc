@@ -54,10 +54,10 @@ type X509Extension {
 // equality of encoded Names under DER (§7.1 permits comparison by exact encoding match first),
 // and no consumer here reads a Name's attributes.
 //
-// THE TBS IS ITS OWN CARRIER: read_tbs returns what the signed part establishes and nothing about
-// the signature, so a certificate whose signature fields are unread has no constructor (review
-// 69626 of gunbc#11975: an earlier cut filled them with "" and [] to be overwritten later, which is
-// a fabricated value in an exported carrier). decode_certificate completes it.
+// THE TBS IS ITS OWN CARRIER, NESTED ONCE: read_tbs returns what the signed part establishes and
+// nothing about the signature, so a certificate whose signature fields are unread has no
+// constructor (review 69626 of gunbc#11975), and X509Certificate carries that record rather than
+// re-declaring its fields (review 69648: two declarations of one field set drift).
 type X509TbsFields {
   tbs_octets: List<UInt8>
   serial: List<UInt8>
@@ -73,28 +73,9 @@ type X509TbsFields {
 }
 
 type X509Certificate {
-  tbs_octets: List<UInt8>
-  serial: List<UInt8>
-  tbs_signature_algorithm: String
-  issuer_octets: List<UInt8>
-  not_before: String
-  not_after: String
-  subject_octets: List<UInt8>
-  spki_algorithm: String
-  spki_named_curve: String?
-  spki_public_key: List<UInt8>
-  extensions: List<X509Extension>
+  tbs: X509TbsFields
   signature_algorithm: String
   signature_octets: List<UInt8>
-}
-
-fn x509_certificate_of(tbs: X509TbsFields, signature_algorithm: String, signature_octets: List<UInt8>) -> X509Certificate {
-  X509Certificate {
-    tbs_octets: tbs.tbs_octets, serial: tbs.serial, tbs_signature_algorithm: tbs.tbs_signature_algorithm,
-    issuer_octets: tbs.issuer_octets, not_before: tbs.not_before, not_after: tbs.not_after,
-    subject_octets: tbs.subject_octets, spki_algorithm: tbs.spki_algorithm, spki_named_curve: tbs.spki_named_curve, spki_public_key: tbs.spki_public_key,
-    extensions: tbs.extensions, signature_algorithm: signature_algorithm, signature_octets: signature_octets,
-  }
 }
 
 type X509Refusal
@@ -102,6 +83,7 @@ type X509Refusal
   | X509SignatureAlgorithmMismatch { tbs: String, outer: String }
   | X509TimeTagUnexpected { at: Int, tag: Int }
   | X509ExtensionMalformed { at: Int }
+  | X509ExtensionDefaultEncoded { at: Int }
 
 type X509Decode
   = X509Decoded { certificate: X509Certificate }
@@ -155,10 +137,10 @@ type X509Time
   | X509TimeRefused { cause: X509Refusal }
 
 fn read_time(octets: List<UInt8>, e: DerElement) -> X509Time {
-  if e.tag_number == der_tag_utc_time || e.tag_number == der_tag_generalized_time {
-    X509TimeRead { text: ascii_of(octets: der_value(octets: octets, e: e)) }
-  } else {
-    X509TimeRefused { cause: X509TimeTagUnexpected { at: e.header_at, tag: e.tag_number } }
+  let tag = if e.tag_number == der_tag_generalized_time { der_tag_generalized_time } else { der_tag_utc_time }
+  match der_element_expect_universal(e: e, tag_number: tag) {
+    Present { value: _ } => X509TimeRefused { cause: X509TimeTagUnexpected { at: e.header_at, tag: e.tag_number } }
+    Absent => X509TimeRead { text: ascii_of(octets: der_value(octets: octets, e: e)) }
   }
 }
 
@@ -190,6 +172,9 @@ fn read_validity(octets: List<UInt8>, e: DerElement) -> X509Validity {
 }
 
 // Extension ::= SEQUENCE { extnID OID, critical BOOLEAN DEFAULT FALSE, extnValue OCTET STRING }.
+// A present `critical` must be TRUE: X.690 §11.5 forbids DER from encoding a component equal to
+// its default, so an explicit FALSE is a second encoding of one structure and refuses (review
+// 69648 of gunbc#11975).
 type X509ExtensionRead
   = X509ExtensionOk { extension: X509Extension }
   | X509ExtensionRefused { cause: X509Refusal }
@@ -205,11 +190,9 @@ fn read_extension(octets: List<UInt8>, e: DerElement) -> X509ExtensionRead {
             DerOidRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
             DerOidRead { dotted: oid } =>
               if count(kids) == 2 {
-                match der_child_at(children: kids, i: 1, at: e.value_at) {
+                match typed_child(kids: kids, i: 1, at: e.value_at, tag_number: der_tag_octet_string, constructed: false) {
                   DerRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
-                  DerElementRead { element: v } =>
-                    if v.tag_number != der_tag_octet_string { X509ExtensionRefused { cause: X509ExtensionMalformed { at: e.header_at } } }
-                    else { X509ExtensionOk { extension: X509Extension { oid: oid, critical: false, value: der_value(octets: octets, e: v) } } }
+                  DerElementRead { element: v } => X509ExtensionOk { extension: X509Extension { oid: oid, critical: false, value: der_value(octets: octets, e: v) } }
                 }
               } else if count(kids) == 3 {
                 match typed_child(kids: kids, i: 1, at: e.value_at, tag_number: der_tag_boolean, constructed: false) {
@@ -218,11 +201,12 @@ fn read_extension(octets: List<UInt8>, e: DerElement) -> X509ExtensionRead {
                     match der_boolean(octets: octets, e: crit) {
                       DerBoolRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
                       DerBoolRead { value: critical } =>
-                        match der_child_at(children: kids, i: 2, at: e.value_at) {
-                          DerRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
-                          DerElementRead { element: v } =>
-                            if v.tag_number != der_tag_octet_string { X509ExtensionRefused { cause: X509ExtensionMalformed { at: e.header_at } } }
-                            else { X509ExtensionOk { extension: X509Extension { oid: oid, critical: critical, value: der_value(octets: octets, e: v) } } }
+                        if !critical { X509ExtensionRefused { cause: X509ExtensionDefaultEncoded { at: crit.header_at } } }
+                        else {
+                          match typed_child(kids: kids, i: 2, at: e.value_at, tag_number: der_tag_octet_string, constructed: false) {
+                            DerRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+                            DerElementRead { element: v } => X509ExtensionOk { extension: X509Extension { oid: oid, critical: true, value: der_value(octets: octets, e: v) } }
+                          }
                         }
                     }
                 }
@@ -433,7 +417,7 @@ fn decode_certificate(octets: List<UInt8>) -> X509Decode {
                                 else {
                                   match der_bit_string_octets(octets: octets, e: sig_e) {
                                     DerBitsRefused { cause: c } => x509_der(c: c)
-                                    DerBitsRead { octets: sig } => X509Decoded { certificate: x509_certificate_of(tbs: tbs_fields, signature_algorithm: outer_alg, signature_octets: sig) }
+                                    DerBitsRead { octets: sig } => X509Decoded { certificate: X509Certificate { tbs: tbs_fields, signature_algorithm: outer_alg, signature_octets: sig } }
                                   }
                                 }
                             }
@@ -455,7 +439,7 @@ type X509ExtensionLookup
   | X509ExtensionDuplicated { oid: String }
 
 fn x509_extension(cert: X509Certificate, oid: String) -> X509ExtensionLookup {
-  let hits = fold(cert.extensions, init: [], f: (acc, x) => if x.oid == oid { acc |> list_push(x) } else { acc })
+  let hits = fold(cert.tbs.extensions, init: [], f: (acc, x) => if x.oid == oid { acc |> list_push(x) } else { acc })
   if count(hits) == 0 { X509ExtensionAbsent { oid: oid } }
   else if count(hits) > 1 { X509ExtensionDuplicated { oid: oid } }
   else {
