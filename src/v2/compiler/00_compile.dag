@@ -1805,6 +1805,14 @@ type NativeLaneUniverse {
 // interpolated its crate name there, and a fold that cannot know which crate it was emitted into
 // must not spell one (an earlier draft of this row hardcoded `v1_compiled`, which is the name of
 // the PIPELINE-FREE crate and so was wrong for every binary this plan runs in).
+// `facts_path` IS EXISTING BEHAVIOUR OF A KNOWN-WRONG SHAPE (operator ruling 2026-09-21). The host
+// facts it names -- seed, closure and executable identities, old-route and malformed-control
+// verdicts -- are OBSERVED by the runner, and a user must never hand-author them as a file passed on
+// argv. It is kept only because nothing else supplies them yet, so removing it would starve the
+// lane. RETIREMENT TRIGGER, a capability rather than an artifact: the runner-side producer that
+// observes host facts feeds this plan. At that point `NativeDriverAdjudicate` loses `facts_path`,
+// and the public verb becomes `test` over a target pattern (v2 foundation package 9). No other
+// change retires it.
 type NativeDriverVerb
   = NativeDriverCensus { source_roots: FreeMonoid<String> }
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
