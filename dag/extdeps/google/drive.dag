@@ -398,6 +398,17 @@ service drive.Permissions {
 // where test.claim.review_sheet_transport_pin_witness search_query_carries_the_declared_property_key
 // reads the query BUILT from the declaration and therefore ties the declaration to the search. The
 // write side has no such tie and is asserted by a human reading two lines.
+// GetFile IS AN EXACT READ OF ONE FILE, WHICH IS A DIFFERENT QUESTION FROM A SEARCH. ListFiles
+// answers what matches a query; GetFile answers whether THIS id names a file this credential can
+// open, and the two can disagree in the direction that matters -- a file exists and is readable
+// while no query this client can write reaches it, which is exactly the appProperties visibility
+// gap. gunbc.review_sheet_declared_id_admission needs the second question and cannot get it from
+// the first.
+//
+// ITS FIELD MASK NAMES EVERY REQUIRED FIELD OF THE DECLARED RESPONSE TYPE, and that is a
+// correctness requirement rather than tidiness: DriveFile requires id, name and mimeType, so a
+// mask of "id" alone decodes short and a landed read reports as a transport failure. Asking for
+// the fields the type declares keeps the decode total.
 service drive.Files {
   config {
     endpoint: drive_api_base
@@ -423,6 +434,26 @@ service drive.Files {
     }
     response {
       200 => DriveFileList
+      400 => DriveError
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+
+  operation GetFile {
+    input { file_id: String }
+    output { file: DriveFile, outcome: RestOutcome }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/files/\{file_id\}",
+      query: { supportsAllDrives: "true", fields: "id,name,mimeType" }
+    }
+    response {
+      200 => DriveFile
       400 => DriveError
       401 => DriveError
       403 => DriveError
