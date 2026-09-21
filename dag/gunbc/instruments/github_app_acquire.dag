@@ -758,6 +758,36 @@ type CensusAppInstallationReading
   | InstallationsUndecodable { decode: InstallationRecordDecode }
   | InstallationsUnreadable { reason: NonEmptyStr }
 
+// ONE PRODUCER FOR "WHAT DID /app/installations SAY", AND THE TWO CONSUMERS ONLY RENDER IT. Two
+// entry points need that fact -- the installations report and the acquisition receipt -- and an
+// earlier cut of this PR authored the whole ladder twice: the same call, the same five
+// classify_rest_outcome arms, the same three decode arms, in two functions. They had already drifted
+// inside the same commit, with two different sentences for the identical 401 condition (review
+// 69482). Two sources for one semantic fact is the parallel authority DESIGN 6 names as a tell and
+// DESIGN 2 prices, and it undercuts this PR's own thesis: one fact, one establishment.
+//
+// THE TRANSPORT ARMS FOLD INTO InstallationsUnreadable RATHER THAN BEING CARRIED SEPARATELY, because
+// every one of them answers the same question the same way -- the list was not read -- and the arm
+// already carries the reason that distinguishes them for a human. What must NOT collapse is
+// unreadable into EMPTY, and that stays two arms: "the JWT was stale" and "the App has no
+// installation" prescribe opposite acts.
+fn read_census_app_installations() -> CensusAppInstallationReading uses net: Network {
+  let result = github.AppInstallations.ListInstallations(auth_token: "" as Secret)
+  match classify_rest_outcome(standing: RestReadExchange { rest: result.outcome }) {
+    RestExchangeStatusRefused { status: status, body: body } =>
+      InstallationsUnreadable {
+        reason: join([
+          "GET /app/installations refused with status ", to_string(status),
+          ". It needs an RS256-signed App JWT in GITHUB_APP_JWT, minted externally from the stored pem; this instrument does not sign one itself, because the census App key is not custodied as a file where it runs. Body: ", body,
+        ], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause: c } => InstallationsUnreadable { reason: c }
+    RestExchangeUndecodable { status: _, cause: c } => InstallationsUnreadable { reason: c }
+    RestExchangeCommitAmbiguous { detail: d } => InstallationsUnreadable { reason: d }
+    RestExchangeSucceeded => decode_installation_records(records: result.result)
+  }
+}
+
 fn decode_installation_records(records: List<GitHubAppInstallationRecord>) -> CensusAppInstallationReading {
   fold(records, init: InstallationsRead { installations: [] }, f: fn(acc, record) {
     match acc {
@@ -799,24 +829,12 @@ fn installation_token_plan_line(installation: GitHubAppInstallation) -> String {
 }
 
 fn census_app_installations_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
-  let result = github.AppInstallations.ListInstallations(auth_token: "" as Secret)
-  match classify_rest_outcome(standing: RestReadExchange { rest: result.outcome }) {
-    RestExchangeStatusRefused { status: status, body: body } =>
-      exit_failure(reason: join([
-        "GET /app/installations refused with status ", to_string(status),
-        ". It needs an RS256-signed App JWT in GITHUB_APP_JWT, minted externally from the stored pem; this instrument does not sign one itself, because the census App key is not custodied as a file where it runs. Body: ", body,
-      ], ""))
-    RestExchangeUnreached { cause: c } => exit_failure(reason: c as String)
-    RestExchangeUndecodable { status: _, cause: c } => exit_failure(reason: c as String)
-    RestExchangeCommitAmbiguous { detail: d } => exit_failure(reason: d as String)
-    RestExchangeSucceeded =>
-      match decode_installation_records(records: result.result) {
-        InstallationsUnreadable { reason: r } => exit_failure(reason: r as String)
-        InstallationsUndecodable { decode: _ } =>
-          exit_failure(reason: "an installation record did not decode; refusing rather than reporting a partial budget")
-        InstallationsRead { installations: installations } =>
-          installations_read_exit(installations: installations)
-      }
+  match read_census_app_installations() {
+    InstallationsUnreadable { reason: r } => exit_failure(reason: r as String)
+    InstallationsUndecodable { decode: _ } =>
+      exit_failure(reason: "an installation record did not decode; refusing rather than reporting a partial budget")
+    InstallationsRead { installations: installations } =>
+      installations_read_exit(installations: installations)
   }
 }
 
@@ -876,34 +894,19 @@ fn live_installation_standing(registration: RegistrationStanding) -> Installatio
   match registration {
     RegistrationNotEstablished { reason: r } =>
       installation_standing_for(registration: RegistrationNotEstablished { reason: r }, installations: [])
-    RegistrationEstablished { app_id: id, slug: slug } => {
-      let result = github.AppInstallations.ListInstallations(auth_token: "" as Secret)
-      match classify_rest_outcome(standing: RestReadExchange { rest: result.outcome }) {
-        RestExchangeStatusRefused { status: status, body: body } =>
+    RegistrationEstablished { app_id: id, slug: slug } =>
+      match read_census_app_installations() {
+        InstallationsUnreadable { reason: r } => InstallationUnreadable { reason: r }
+        InstallationsUndecodable { decode: _ } =>
           InstallationUnreadable {
-            reason: join([
-              "GET /app/installations refused with status ", to_string(status),
-              ": the installation fact could not be read, which is NOT the same as the App having no installation. It needs an RS256-signed App JWT in GITHUB_APP_JWT, minted externally from the stored pem. Body: ", body,
-            ], "") as NonEmptyStr
+            reason: "an installation record did not decode; refusing rather than reading a partial list as an absence" as NonEmptyStr
           }
-        RestExchangeUnreached { cause: c } => InstallationUnreadable { reason: c }
-        RestExchangeUndecodable { status: _, cause: c } => InstallationUnreadable { reason: c }
-        RestExchangeCommitAmbiguous { detail: d } => InstallationUnreadable { reason: d }
-        RestExchangeSucceeded =>
-          match decode_installation_records(records: result.result) {
-            InstallationsUnreadable { reason: r } => InstallationUnreadable { reason: r }
-            InstallationsUndecodable { decode: _ } =>
-              InstallationUnreadable {
-                reason: "an installation record did not decode; refusing rather than reading a partial list as an absence" as NonEmptyStr
-              }
-            InstallationsRead { installations: installations } =>
-              installation_standing_for(
-                registration: RegistrationEstablished { app_id: id, slug: slug },
-                installations: installations,
-              )
-          }
+        InstallationsRead { installations: installations } =>
+          installation_standing_for(
+            registration: RegistrationEstablished { app_id: id, slug: slug },
+            installations: installations,
+          )
       }
-    }
   }
 }
 
