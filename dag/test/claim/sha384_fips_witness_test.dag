@@ -1,0 +1,32 @@
+module test.claim.sha384_fips_witness_test
+
+import std.logic { Bool }
+import std.types { String, List }
+import std.integer { UInt8 }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha384, sha384_hex }
+
+fn sha384_ascii(s: String) -> List<UInt8> {
+  bytes_octets(b: utf8_encode_bytes(s: s))
+}
+
+// ── SHA-384: FIPS 180-2 Appendix D, the published examples ────────────────────────────────────
+test fn sha384_of_the_empty_message_is_the_published_value() -> Bool {
+  sha384_hex(message: []) == "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b"
+}
+
+test fn sha384_of_abc_is_the_published_one_block_value() -> Bool {
+  sha384_hex(message: sha384_ascii(s: "abc")) == "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
+}
+
+// 896 bits: the padding no longer fits the first 1024-bit block, so this is the two-block path.
+test fn sha384_of_the_896_bit_message_is_the_published_two_block_value() -> Bool {
+  sha384_hex(message: sha384_ascii(s: "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu")) == "09330c33f71147e83d192fc782cd1b4753111b173b3b05d22fa08086e3b0f712fcc7c71a557e2db966c3e9fa91746039"
+}
+
+// One changed octet changes the digest, and the digest is 48 octets: the discriminating red.
+test fn sha384_of_a_one_octet_change_is_a_different_digest() -> Bool {
+  let a = sha384(message: sha384_ascii(s: "abc"))
+  let b = sha384(message: sha384_ascii(s: "abd"))
+  count(a) == 48 && count(b) == 48 && a != b
+}

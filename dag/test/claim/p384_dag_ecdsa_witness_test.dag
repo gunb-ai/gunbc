@@ -1,0 +1,152 @@
+module test.claim.p384_dag_ecdsa_witness_test
+
+import std.logic { Bool }
+import std.types { Int, String, List }
+import std.integer { UInt8 }
+import std.bignat { BigNat, bignat_from_octets }
+import extdeps.crypto.sha2 { sha256, sha384 }
+import extdeps.crypto.nist_p384 { p384_on_curve, p384_point_octets_on_curve, p384_ecdsa_verify_octets, p384_gx, p384_gy }
+import extdeps.standards.rfc_8949 {
+  CborValue, CborSimple, CborDocumentDecoded, CborDocumentRefused, cbor_decode_document,
+  CborMemberFound, cbor_map_unique_text_member, cbor_byte_string_octets, cbor_array_items,
+}
+import extdeps.standards.rfc_5280 { X509Certificate, X509Decoded, X509Refused, decode_certificate, ecdsa_sig_value, EcdsaSigValueRead }
+import extdeps.standards.rfc_7468 { pem_decode, PemDecoded, PemRefused, pem_certificate_label }
+import extdeps.apple.app_attest { apple_app_attestation_root_ca_pem }
+import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets }
+
+// P-384 as the parameter row it is: the arithmetic is extdeps.crypto.nist_prime_curve's, already
+// claimed on P-256 by test.claim.p256_dag_ecdsa_witness_test over RFC 6979 and Wycheproof; what
+// this module claims is that P-384's published parameters describe a curve the family fold
+// accepts, that Apple's real P-384 keys lie on it, and -- the chain step itself -- that the
+// sample's credential certificate verifies under Apple App Attestation CA 1's key with SHA-256
+// and CA 1 under the pinned root with SHA-384.
+//
+// COST, stated so it is not read as coverage: the two verification claims are the P-384 twin of
+// #11645's eight P-256 verifications, which the floor budget-refuses (one interpreted P-256
+// verify = 13.5 GiB, 192-734 s); at 17 limbs these cost more, so their executing evidence is a
+// dedicated native gunbc test row (side-chat ruling 5260787321) or a local run on a quiet host
+// -- never a green floor. The on-curve claims are a few field multiplications and run anywhere.
+
+fn p384_member_value(v: CborValue, key: String) -> CborValue {
+  match cbor_map_unique_text_member(v: v, key: key) {
+    CborMemberFound { value: m } => m
+    _ => CborSimple { value: 23 }
+  }
+}
+
+fn p384_sample_x5c(i: Int) -> List<UInt8> {
+  match cbor_decode_document(octets: sample_attestation_octets) {
+    CborDocumentRefused { cause: _ } => []
+    CborDocumentDecoded { value: att } =>
+      match cbor_array_items(v: p384_member_value(v: p384_member_value(v: att, key: "attStmt"), key: "x5c")) {
+        Absent => []
+        Present { value: items } =>
+          match items |> get(i) {
+            null => []
+            c => match cbor_byte_string_octets(v: c) {
+              Present { value: o } => o
+              Absent => []
+            }
+          }
+      }
+  }
+}
+
+fn p384_cert(octets: List<UInt8>) -> X509Certificate? {
+  match decode_certificate(octets: octets) {
+    X509Decoded { certificate: c } => Present { value: c }
+    X509Refused { cause: _ } => none
+  }
+}
+
+fn p384_root() -> X509Certificate? {
+  match pem_decode(text: apple_app_attestation_root_ca_pem(), label: pem_certificate_label) {
+    PemRefused { cause: _ } => none
+    PemDecoded { der: der } => p384_cert(octets: der)
+  }
+}
+
+// SP 800-186 §3.2.1.4: the base point satisfies the curve equation.
+test fn the_p384_base_point_is_on_the_curve() -> Bool {
+  p384_on_curve(x: p384_gx, y: p384_gy)
+}
+
+// A point with the y coordinate of G incremented by one is not.
+test fn a_point_beside_the_base_point_is_off_the_curve() -> Bool {
+  !p384_on_curve(x: p384_gx, y: bignat_from_octets(octets: [54, 23, 222, 74, 150, 38, 44, 111, 93, 158, 152, 191, 146, 146, 220, 41, 248, 244, 29, 189, 40, 154, 20, 124, 233, 218, 49, 19, 181, 240, 184, 192, 10, 96, 177, 206, 29, 126, 129, 157, 122, 67, 29, 124, 144, 234, 14, 96]))
+}
+
+// Apple's real P-384 keys -- CA 1's from the sample chain, the root's from the pinned PEM -- are
+// points on this curve. A wrong parameter row would reject them.
+test fn apples_ca_and_root_keys_are_on_p384() -> Bool {
+  match p384_cert(octets: p384_sample_x5c(i: 1)) {
+    Absent => false
+    Present { value: ca } =>
+      match p384_root() {
+        Absent => false
+        Present { value: root } => p384_point_octets_on_curve(point: ca.spki_public_key) && p384_point_octets_on_curve(point: root.spki_public_key)
+      }
+  }
+}
+
+// APPLE'S STEP 1, FIRST LINK, ON REAL BYTES: the credential certificate's ecdsa-with-SHA256
+// signature verifies under CA 1's P-384 key over the leaf's TBSCertificate.
+test fn the_sample_leaf_verifies_under_ca_1_with_sha256() -> Bool {
+  match p384_cert(octets: p384_sample_x5c(i: 0)) {
+    Absent => false
+    Present { value: leaf } =>
+      match p384_cert(octets: p384_sample_x5c(i: 1)) {
+        Absent => false
+        Present { value: ca } =>
+          match ecdsa_sig_value(octets: leaf.signature_octets, width: 48) {
+            EcdsaSigValueRead { r_s_fixed: rs } =>
+              match p384_ecdsa_verify_octets(key: ca.spki_public_key, signature: rs, digest: sha256(message: leaf.tbs_octets)) {
+                Present { value: v } => v
+                Absent => false
+              }
+            _ => false
+          }
+      }
+  }
+}
+
+// APPLE'S STEP 1, SECOND LINK: CA 1's ecdsa-with-SHA384 signature verifies under the pinned root.
+test fn the_sample_ca_verifies_under_the_pinned_root_with_sha384() -> Bool {
+  match p384_cert(octets: p384_sample_x5c(i: 1)) {
+    Absent => false
+    Present { value: ca } =>
+      match p384_root() {
+        Absent => false
+        Present { value: root } =>
+          match ecdsa_sig_value(octets: ca.signature_octets, width: 48) {
+            EcdsaSigValueRead { r_s_fixed: rs } =>
+              match p384_ecdsa_verify_octets(key: root.spki_public_key, signature: rs, digest: sha384(message: ca.tbs_octets)) {
+                Present { value: v } => v
+                Absent => false
+              }
+            _ => false
+          }
+      }
+  }
+}
+
+// CONTROL: the same leaf signature against a digest of one different octet is false, not absent.
+test fn the_sample_leaf_signature_is_false_over_other_bytes() -> Bool {
+  match p384_cert(octets: p384_sample_x5c(i: 0)) {
+    Absent => false
+    Present { value: leaf } =>
+      match p384_cert(octets: p384_sample_x5c(i: 1)) {
+        Absent => false
+        Present { value: ca } =>
+          match ecdsa_sig_value(octets: leaf.signature_octets, width: 48) {
+            EcdsaSigValueRead { r_s_fixed: rs } =>
+              match p384_ecdsa_verify_octets(key: ca.spki_public_key, signature: rs, digest: sha256(message: leaf.tbs_octets |> list_push(0))) {
+                Present { value: v } => !v
+                Absent => false
+              }
+            _ => false
+          }
+      }
+  }
+}

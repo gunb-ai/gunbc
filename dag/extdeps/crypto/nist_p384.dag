@@ -1,0 +1,59 @@
+module extdeps.crypto.nist_p384
+
+import std.types { Int, List, Bool }
+import std.integer { UInt8 }
+import std.bignat { BigNat, bignat_from_octets }
+import extdeps.crypto.nist_prime_curve { PrimeCurve, prime_curve, curve_on_curve, curve_ecdsa_verify_octets }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// The NIST P-384 curve (SP 800-186 §3.2.1.4): the parameter row of extdeps.crypto.nist_prime_curve
+// beside P-256's. WHO CONSUMES IT: the App Attest chain step (extdeps.apple.app_attest, validation
+// step 1) -- Apple's App Attestation CA 1 and Root CA both hold secp384r1 keys, so the credential
+// certificate is verified under a P-384 key with SHA-256 and the CA under the root with SHA-384
+// (extdeps.apple.app_attest_sample_ios_14_4 reads both algorithms from the real chain). The digest
+// is supplied by the caller for exactly that reason: the hash is the signature algorithm's, not
+// the curve's.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "csrc.nist.gov/pubs/sp/800/186/final"
+  }
+}
+
+// ── Domain parameters (SP 800-186 §3.2.1.4), as published octets ────────────────────────────
+// Octets rather than a decode, for the reason extdeps.crypto.nist_p256 records: a decode has a
+// failure arm and the curve's defining integers may not have one. Big-endian, 48 octets each, as
+// SEC 1 renders them; p = 2^384 − 2^128 − 2^96 + 2^32 − 1.
+data p384_p_octets: List<UInt8> = [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 254, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255]
+data p384_n_octets: List<UInt8> = [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 199, 99, 77, 129, 244, 55, 45, 223, 88, 26, 13, 178, 72, 176, 167, 122, 236, 236, 25, 106, 204, 197, 41, 115]
+data p384_b_octets: List<UInt8> = [179, 49, 47, 167, 226, 62, 231, 228, 152, 142, 5, 107, 227, 248, 45, 25, 24, 29, 156, 110, 254, 129, 65, 18, 3, 20, 8, 143, 80, 19, 135, 90, 198, 86, 57, 141, 138, 46, 209, 157, 42, 133, 200, 237, 211, 236, 42, 239]
+data p384_gx_octets: List<UInt8> = [170, 135, 202, 34, 190, 139, 5, 55, 142, 177, 199, 30, 243, 32, 173, 116, 110, 29, 59, 98, 139, 167, 155, 152, 89, 247, 65, 224, 130, 84, 42, 56, 85, 2, 242, 93, 191, 85, 41, 108, 58, 84, 94, 56, 114, 118, 10, 183]
+data p384_gy_octets: List<UInt8> = [54, 23, 222, 74, 150, 38, 44, 111, 93, 158, 152, 191, 146, 146, 220, 41, 248, 244, 29, 189, 40, 154, 20, 124, 233, 218, 49, 19, 181, 240, 184, 192, 10, 96, 177, 206, 29, 126, 129, 157, 122, 67, 29, 124, 144, 234, 14, 95]
+
+data p384_p: BigNat = bignat_from_octets(octets: p384_p_octets)
+data p384_n: BigNat = bignat_from_octets(octets: p384_n_octets)
+data p384_gx: BigNat = bignat_from_octets(octets: p384_gx_octets)
+data p384_gy: BigNat = bignat_from_octets(octets: p384_gy_octets)
+
+// 384-bit moduli in 24-bit limbs: the family fold derives 17 from the coordinate width.
+data p384_curve: PrimeCurve = prime_curve(p_octets: p384_p_octets, n_octets: p384_n_octets, b_octets: p384_b_octets, gx_octets: p384_gx_octets, gy_octets: p384_gy_octets, coordinate_octets: 48)
+
+fn p384_on_curve(x: BigNat, y: BigNat) -> Bool {
+  curve_on_curve(c: p384_curve, x: x, y: y)
+}
+
+// A SEC 1 uncompressed point (97 octets) is on the curve with both coordinates below p.
+fn p384_point_octets_on_curve(point: List<UInt8>) -> Bool {
+  count(point) == 97
+    && (point |> take(1)) == [4]
+    && p384_on_curve(x: bignat_from_octets(octets: point |> skip(1) |> take(48)), y: bignat_from_octets(octets: point |> skip(49)))
+}
+
+// ── ECDSA verification (FIPS 186-5 §6.4.2) over a supplied digest ───────────────────────────
+// key: the 97-octet SEC 1 uncompressed point. signature: the 96-octet r || s. digest: SHA-256 or
+// SHA-384 of the signed bytes (32 or 48 octets; both are at most the coordinate width, so §6.4.2
+// step 3 truncates nothing). Answers as curve_ecdsa_verify_octets does.
+fn p384_ecdsa_verify_octets(key: List<UInt8>, signature: List<UInt8>, digest: List<UInt8>) -> Bool? {
+  curve_ecdsa_verify_octets(c: p384_curve, key: key, signature: signature, digest: digest)
+}

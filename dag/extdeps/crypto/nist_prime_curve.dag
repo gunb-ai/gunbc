@@ -1,0 +1,233 @@
+module extdeps.crypto.nist_prime_curve
+
+import std.types { Int, List, Bool }
+import std.integer { UInt8 }
+import std.bignat {
+  BigNat, MontgomeryModulus, bignat_from_octets, bignat_compare, bignat_is_zero, bignat_bits, bignat_zero_limbs, bignat_one,
+  montgomery_modulus, montgomery_mul, montgomery_add, montgomery_sub, montgomery_to, montgomery_from,
+  montgomery_inverse_prime, montgomery_reduce_once,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// The NIST prime-field curves as ONE family (SP 800-186 §3.2.1): short Weierstrass
+// y² = x³ − 3x + b over GF(p), a = −3 for every member, with ECDSA verification over them
+// (FIPS 186-5 §6.4.2). The group law and the verification fold are written once here over a
+// supplied PrimeCurve; extdeps.crypto.nist_p256 and extdeps.crypto.nist_p384 are its parameter
+// rows. This is DESIGN §2's horizontal move: P-256 and P-384 differ in five published integers and
+// one width, not in arithmetic, and a second copy of the Jacobian formulas would be the fork §3
+// forbids. The formulas are the P-256 ones that landed in gunbc#11645, moved, not rewritten.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "csrc.nist.gov/pubs/sp/800/186/final"
+  }
+}
+
+// The domain parameters as the curve modules publish them, plus the two Montgomery contexts
+// derived from p and n. coordinate_octets is the SEC 1 field-element width (32 for P-256, 48 for
+// P-384); hash truncation in the verifier is decided from it.
+type PrimeCurve {
+  p: BigNat
+  n: BigNat
+  b: BigNat
+  gx: BigNat
+  gy: BigNat
+  field: MontgomeryModulus
+  order: MontgomeryModulus
+  coordinate_octets: Int
+}
+
+// 24-bit limbs: the width that holds `bits` bits, plus one limb of headroom the Montgomery folds
+// in std.bignat expect (P-256 landed with 11 for 256 bits; 384 bits takes 17 by the same rule).
+fn prime_curve_limb_width(bits: Int) -> Int {
+  (bits + 23) / 24 + 1
+}
+
+fn prime_curve(p_octets: List<UInt8>, n_octets: List<UInt8>, b_octets: List<UInt8>, gx_octets: List<UInt8>, gy_octets: List<UInt8>, coordinate_octets: Int) -> PrimeCurve {
+  let p = bignat_from_octets(octets: p_octets)
+  let n = bignat_from_octets(octets: n_octets)
+  let width = prime_curve_limb_width(bits: coordinate_octets * 8)
+  PrimeCurve {
+    p: p, n: n, b: bignat_from_octets(octets: b_octets), gx: bignat_from_octets(octets: gx_octets), gy: bignat_from_octets(octets: gy_octets),
+    field: montgomery_modulus(m: p, width: width), order: montgomery_modulus(m: n, width: width),
+    coordinate_octets: coordinate_octets,
+  }
+}
+
+// ── Jacobian points over the field, coordinates in Montgomery form ──────────────────────────
+// (X, Y, Z) represents (X/Z², Y/Z³); Z = 0 is the point at infinity.
+type JacobianPoint {
+  x: BigNat
+  y: BigNat
+  z: BigNat
+}
+
+fn curve_fmul(c: PrimeCurve, a: BigNat, b: BigNat) -> BigNat { montgomery_mul(ctx: c.field, a: a, b: b) }
+fn curve_fadd(c: PrimeCurve, a: BigNat, b: BigNat) -> BigNat { montgomery_add(ctx: c.field, a: a, b: b) }
+fn curve_fsub(c: PrimeCurve, a: BigNat, b: BigNat) -> BigNat { montgomery_sub(ctx: c.field, a: a, b: b) }
+fn curve_fsqr(c: PrimeCurve, a: BigNat) -> BigNat { montgomery_mul(ctx: c.field, a: a, b: a) }
+
+data jacobian_infinity: JacobianPoint = JacobianPoint { x: bignat_zero_limbs(), y: bignat_zero_limbs(), z: bignat_zero_limbs() }
+
+fn jacobian_is_infinity(p: JacobianPoint) -> Bool {
+  bignat_is_zero(a: p.z)
+}
+
+fn curve_affine(c: PrimeCurve, x: BigNat, y: BigNat) -> JacobianPoint {
+  JacobianPoint { x: montgomery_to(ctx: c.field, a: x), y: montgomery_to(ctx: c.field, a: y), z: montgomery_to(ctx: c.field, a: bignat_one()) }
+}
+
+// Doubling for a = −3 (Bernstein and Lange, Explicit-Formulas Database, dbl-2001-b).
+fn curve_double(c: PrimeCurve, p: JacobianPoint) -> JacobianPoint {
+  if jacobian_is_infinity(p: p) { p } else {
+    let delta = curve_fsqr(c: c, a: p.z)
+    let gamma = curve_fsqr(c: c, a: p.y)
+    let beta = curve_fmul(c: c, a: p.x, b: gamma)
+    let t = curve_fmul(c: c, a: curve_fsub(c: c, a: p.x, b: delta), b: curve_fadd(c: c, a: p.x, b: delta))
+    let alpha = curve_fadd(c: c, a: curve_fadd(c: c, a: t, b: t), b: t)
+    let beta4 = curve_fadd(c: c, a: curve_fadd(c: c, a: beta, b: beta), b: curve_fadd(c: c, a: beta, b: beta))
+    let x3 = curve_fsub(c: c, a: curve_fsqr(c: c, a: alpha), b: curve_fadd(c: c, a: beta4, b: beta4))
+    let yz = curve_fadd(c: c, a: p.y, b: p.z)
+    let z3 = curve_fsub(c: c, a: curve_fsub(c: c, a: curve_fsqr(c: c, a: yz), b: gamma), b: delta)
+    let g2 = curve_fsqr(c: c, a: gamma)
+    let g4 = curve_fadd(c: c, a: curve_fadd(c: c, a: g2, b: g2), b: curve_fadd(c: c, a: g2, b: g2))
+    let g8 = curve_fadd(c: c, a: g4, b: g4)
+    let y3 = curve_fsub(c: c, a: curve_fmul(c: c, a: alpha, b: curve_fsub(c: c, a: beta4, b: x3)), b: g8)
+    JacobianPoint { x: x3, y: y3, z: z3 }
+  }
+}
+
+// Addition (Explicit-Formulas Database, add-2007-bl), with its two exceptional inputs decided rather
+// than fed through: equal points double, opposite points give infinity.
+fn curve_add(c: PrimeCurve, p: JacobianPoint, q: JacobianPoint) -> JacobianPoint {
+  if jacobian_is_infinity(p: p) { q } else if jacobian_is_infinity(p: q) { p } else {
+    let z1z1 = curve_fsqr(c: c, a: p.z)
+    let z2z2 = curve_fsqr(c: c, a: q.z)
+    let u1 = curve_fmul(c: c, a: p.x, b: z2z2)
+    let u2 = curve_fmul(c: c, a: q.x, b: z1z1)
+    let s1 = curve_fmul(c: c, a: curve_fmul(c: c, a: p.y, b: q.z), b: z2z2)
+    let s2 = curve_fmul(c: c, a: curve_fmul(c: c, a: q.y, b: p.z), b: z1z1)
+    let h = curve_fsub(c: c, a: u2, b: u1)
+    let rr = curve_fsub(c: c, a: s2, b: s1)
+    if bignat_is_zero(a: h) {
+      if bignat_is_zero(a: rr) { curve_double(c: c, p: p) } else { jacobian_infinity }
+    } else {
+      let h2 = curve_fadd(c: c, a: h, b: h)
+      let i = curve_fsqr(c: c, a: h2)
+      let j = curve_fmul(c: c, a: h, b: i)
+      let r = curve_fadd(c: c, a: rr, b: rr)
+      let v = curve_fmul(c: c, a: u1, b: i)
+      let x3 = curve_fsub(c: c, a: curve_fsub(c: c, a: curve_fsqr(c: c, a: r), b: j), b: curve_fadd(c: c, a: v, b: v))
+      let s1j = curve_fmul(c: c, a: s1, b: j)
+      let y3 = curve_fsub(c: c, a: curve_fmul(c: c, a: r, b: curve_fsub(c: c, a: v, b: x3)), b: curve_fadd(c: c, a: s1j, b: s1j))
+      let zz = curve_fadd(c: c, a: p.z, b: q.z)
+      let z3 = curve_fmul(c: c, a: curve_fsub(c: c, a: curve_fsub(c: c, a: curve_fsqr(c: c, a: zz), b: z1z1), b: z2z2), b: h)
+      JacobianPoint { x: x3, y: y3, z: z3 }
+    }
+  }
+}
+
+// ── u1·G + u2·Q by Shamir's simultaneous method ─────────────────────────────────────────────
+type ShamirBit {
+  u1: Int
+  u2: Int
+}
+
+fn curve_zip_bits(a: List<Int>, b: List<Int>, acc: List<ShamirBit>) -> List<ShamirBit> {
+  match a {
+    Empty => acc
+    Cons { head: x, tail: at } =>
+      match b {
+        Empty => curve_zip_bits(a: at, b: [], acc: acc |> list_push(ShamirBit { u1: x, u2: 0 }))
+        Cons { head: y, tail: bt } => curve_zip_bits(a: at, b: bt, acc: acc |> list_push(ShamirBit { u1: x, u2: y }))
+      }
+  }
+}
+
+fn curve_double_scalar(c: PrimeCurve, u1: BigNat, g: JacobianPoint, u2: BigNat, q: JacobianPoint) -> JacobianPoint {
+  let gq = curve_add(c: c, p: g, q: q)
+  fold(reverse(curve_zip_bits(a: bignat_bits(a: u1), b: bignat_bits(a: u2), acc: [])), init: jacobian_infinity, f: (acc, bit) => {
+    let d = curve_double(c: c, p: acc)
+    if bit.u1 == 1 && bit.u2 == 1 { curve_add(c: c, p: d, q: gq) }
+    else if bit.u1 == 1 { curve_add(c: c, p: d, q: g) }
+    else if bit.u2 == 1 { curve_add(c: c, p: d, q: q) }
+    else { d }
+  })
+}
+
+// ── Public key validation (SP 800-186 §D.1.1 partial validation: on the curve, in range) ─────
+fn curve_on_curve(c: PrimeCurve, x: BigNat, y: BigNat) -> Bool {
+  let xm = montgomery_to(ctx: c.field, a: x)
+  let ym = montgomery_to(ctx: c.field, a: y)
+  let bm = montgomery_to(ctx: c.field, a: c.b)
+  let x3 = curve_fmul(c: c, a: curve_fsqr(c: c, a: xm), b: xm)
+  let three_x = curve_fadd(c: c, a: curve_fadd(c: c, a: xm, b: xm), b: xm)
+  bignat_compare(a: curve_fsqr(c: c, a: ym), b: curve_fadd(c: c, a: curve_fsub(c: c, a: x3, b: three_x), b: bm)) == 0
+}
+
+fn bignat_below(a: BigNat, m: BigNat) -> Bool {
+  bignat_compare(a: a, b: m) < 0
+}
+
+fn bignat_nonzero_below(a: BigNat, m: BigNat) -> Bool {
+  !bignat_is_zero(a: a) && bignat_below(a: a, m: m)
+}
+
+// Split a list after `n` elements.
+type OctetSplit {
+  front: List<UInt8>
+  back: List<UInt8>
+}
+
+fn octet_split(xs: List<UInt8>, n: Int) -> OctetSplit {
+  fold(xs, init: OctetSplit { front: [], back: [] }, f: (acc, x) =>
+    if count(acc.front) < n { OctetSplit { front: acc.front |> list_push(x), back: acc.back } }
+    else { OctetSplit { front: acc.front, back: acc.back |> list_push(x) } })
+}
+
+// ── ECDSA verification (FIPS 186-5 §6.4.2), over a SUPPLIED DIGEST ──────────────────────────
+// key: the SEC 1 uncompressed point 0x04 || X || Y (1 + 2·coordinate_octets). signature: the
+// fixed-width r || s (2·coordinate_octets). digest: the hash of the message, already computed by
+// the caller, because which hash signs a curve is the SIGNATURE ALGORITHM's fact and not the
+// curve's -- Apple's chain signs a P-384 key with SHA-256 at one link and SHA-384 at the next
+// (extdeps.apple.app_attest_sample_ios_14_4). Answers:
+//   Present true  -- the signature verifies;
+//   Present false -- well-formed inputs, and it does not;
+//   Absent        -- an input is not an admitted encoding: wrong length, a prefix other than 0x04,
+//                    a coordinate ≥ p, a point off the curve, r or s outside [1, n−1], or a digest
+//                    longer than the coordinate (the caller must truncate per §6.4.2 step 3; none of
+//                    the (curve, hash) pairs in use here need it, so it is refused rather than done).
+fn curve_ecdsa_verify_octets(c: PrimeCurve, key: List<UInt8>, signature: List<UInt8>, digest: List<UInt8>) -> Bool? {
+  let w = c.coordinate_octets
+  if count(key) != 1 + 2 * w || count(signature) != 2 * w || count(digest) > w { none } else {
+    let prefixed = octet_split(xs: key, n: 1)
+    if prefixed.front != [4] { none } else {
+      let coords = octet_split(xs: prefixed.back, n: w)
+      let qx = bignat_from_octets(octets: coords.front)
+      let qy = bignat_from_octets(octets: coords.back)
+      let rs = octet_split(xs: signature, n: w)
+      let r = bignat_from_octets(octets: rs.front)
+      let s = bignat_from_octets(octets: rs.back)
+      if !bignat_below(a: qx, m: c.p) || !bignat_below(a: qy, m: c.p) || !curve_on_curve(c: c, x: qx, y: qy) { none }
+      else if !bignat_nonzero_below(a: r, m: c.n) || !bignat_nonzero_below(a: s, m: c.n) { none }
+      else { Present { value: curve_verify_checked(c: c, qx: qx, qy: qy, r: r, s: s, digest: digest) } }
+    }
+  }
+}
+
+// e = the digest as an integer. With the digest no longer than the coordinate, e < 2^(8w) < 2n,
+// so one reduction suffices; likewise the final v = x mod n, because x < p < 2n.
+fn curve_verify_checked(c: PrimeCurve, qx: BigNat, qy: BigNat, r: BigNat, s: BigNat, digest: List<UInt8>) -> Bool {
+  let e = montgomery_reduce_once(ctx: c.order, a: bignat_from_octets(octets: digest))
+  let sm = montgomery_to(ctx: c.order, a: s)
+  let w = montgomery_inverse_prime(ctx: c.order, a: sm)
+  let u1 = montgomery_from(ctx: c.order, a: montgomery_mul(ctx: c.order, a: montgomery_to(ctx: c.order, a: e), b: w))
+  let u2 = montgomery_from(ctx: c.order, a: montgomery_mul(ctx: c.order, a: montgomery_to(ctx: c.order, a: r), b: w))
+  let point = curve_double_scalar(c: c, u1: u1, g: curve_affine(c: c, x: c.gx, y: c.gy), u2: u2, q: curve_affine(c: c, x: qx, y: qy))
+  if jacobian_is_infinity(p: point) { false } else {
+    let zinv = montgomery_inverse_prime(ctx: c.field, a: point.z)
+    let x = montgomery_from(ctx: c.field, a: curve_fmul(c: c, a: point.x, b: curve_fsqr(c: c, a: zinv)))
+    bignat_compare(a: montgomery_reduce_once(ctx: c.order, a: x), b: r) == 0
+  }
+}

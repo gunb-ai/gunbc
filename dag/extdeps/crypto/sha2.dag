@@ -2,14 +2,16 @@ module extdeps.crypto.sha2
 
 import std.types { Int, List, String }
 import std.integer { UInt8, UInt32 }
-import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_shr, word32_rotr, bitwise_pow2 }
+import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_shr, word32_rotr, bitwise_pow2, Word64, word64_and, word64_xor, word64_not, word64_add, word64_shr, word64_rotr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.numeric.base16 { base16_encode_lower }
 
-// SHA-256 per FIPS 180-4 (Secure Hash Standard), computed in the substrate. extdeps.crypto.hash owns
-// the Digest carrier and cites the same standard; this module is the computation that produces the
-// bytes such a digest names. Every operation it needs is in std.bitwise.
+// SHA-256 and SHA-384 per FIPS 180-4 (Secure Hash Standard), computed in the substrate.
+// extdeps.crypto.hash owns the Digest carrier and cites the same standard; this module is the
+// computation that produces the bytes such a digest names. Every operation it needs is in
+// std.bitwise: 32-bit words for SHA-256 (§6.2), 64-bit words for SHA-384 (§6.5, the SHA-512
+// computation with its own initial state and the output truncated to 384 bits).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -204,4 +206,198 @@ fn sha256(message: List<UInt8>) -> List<UInt8> {
 // The lowercase hex rendering extdeps.crypto.hash Digest.hex carries.
 fn sha256_hex(message: List<UInt8>) -> String {
   base16_encode_lower(octets: sha256(message: message))
+}
+
+// ── SHA-384 (§6.5): the SHA-512 computation, truncated ──────────────────────────────────────
+// §4.2.3: the first 64 bits of the fractional parts of the cube roots of the first 80 primes.
+// Written as Word64 halves; derived from the definition, not transcribed from a table.
+data sha512_round_constants: List<Word64> = [
+  Word64 { hi: 1116352408, lo: 3609767458 }, Word64 { hi: 1899447441, lo: 602891725 }, Word64 { hi: 3049323471, lo: 3964484399 }, Word64 { hi: 3921009573, lo: 2173295548 },
+  Word64 { hi: 961987163, lo: 4081628472 }, Word64 { hi: 1508970993, lo: 3053834265 }, Word64 { hi: 2453635748, lo: 2937671579 }, Word64 { hi: 2870763221, lo: 3664609560 },
+  Word64 { hi: 3624381080, lo: 2734883394 }, Word64 { hi: 310598401, lo: 1164996542 }, Word64 { hi: 607225278, lo: 1323610764 }, Word64 { hi: 1426881987, lo: 3590304994 },
+  Word64 { hi: 1925078388, lo: 4068182383 }, Word64 { hi: 2162078206, lo: 991336113 }, Word64 { hi: 2614888103, lo: 633803317 }, Word64 { hi: 3248222580, lo: 3479774868 },
+  Word64 { hi: 3835390401, lo: 2666613458 }, Word64 { hi: 4022224774, lo: 944711139 }, Word64 { hi: 264347078, lo: 2341262773 }, Word64 { hi: 604807628, lo: 2007800933 },
+  Word64 { hi: 770255983, lo: 1495990901 }, Word64 { hi: 1249150122, lo: 1856431235 }, Word64 { hi: 1555081692, lo: 3175218132 }, Word64 { hi: 1996064986, lo: 2198950837 },
+  Word64 { hi: 2554220882, lo: 3999719339 }, Word64 { hi: 2821834349, lo: 766784016 }, Word64 { hi: 2952996808, lo: 2566594879 }, Word64 { hi: 3210313671, lo: 3203337956 },
+  Word64 { hi: 3336571891, lo: 1034457026 }, Word64 { hi: 3584528711, lo: 2466948901 }, Word64 { hi: 113926993, lo: 3758326383 }, Word64 { hi: 338241895, lo: 168717936 },
+  Word64 { hi: 666307205, lo: 1188179964 }, Word64 { hi: 773529912, lo: 1546045734 }, Word64 { hi: 1294757372, lo: 1522805485 }, Word64 { hi: 1396182291, lo: 2643833823 },
+  Word64 { hi: 1695183700, lo: 2343527390 }, Word64 { hi: 1986661051, lo: 1014477480 }, Word64 { hi: 2177026350, lo: 1206759142 }, Word64 { hi: 2456956037, lo: 344077627 },
+  Word64 { hi: 2730485921, lo: 1290863460 }, Word64 { hi: 2820302411, lo: 3158454273 }, Word64 { hi: 3259730800, lo: 3505952657 }, Word64 { hi: 3345764771, lo: 106217008 },
+  Word64 { hi: 3516065817, lo: 3606008344 }, Word64 { hi: 3600352804, lo: 1432725776 }, Word64 { hi: 4094571909, lo: 1467031594 }, Word64 { hi: 275423344, lo: 851169720 },
+  Word64 { hi: 430227734, lo: 3100823752 }, Word64 { hi: 506948616, lo: 1363258195 }, Word64 { hi: 659060556, lo: 3750685593 }, Word64 { hi: 883997877, lo: 3785050280 },
+  Word64 { hi: 958139571, lo: 3318307427 }, Word64 { hi: 1322822218, lo: 3812723403 }, Word64 { hi: 1537002063, lo: 2003034995 }, Word64 { hi: 1747873779, lo: 3602036899 },
+  Word64 { hi: 1955562222, lo: 1575990012 }, Word64 { hi: 2024104815, lo: 1125592928 }, Word64 { hi: 2227730452, lo: 2716904306 }, Word64 { hi: 2361852424, lo: 442776044 },
+  Word64 { hi: 2428436474, lo: 593698344 }, Word64 { hi: 2756734187, lo: 3733110249 }, Word64 { hi: 3204031479, lo: 2999351573 }, Word64 { hi: 3329325298, lo: 3815920427 },
+  Word64 { hi: 3391569614, lo: 3928383900 }, Word64 { hi: 3515267271, lo: 566280711 }, Word64 { hi: 3940187606, lo: 3454069534 }, Word64 { hi: 4118630271, lo: 4000239992 },
+  Word64 { hi: 116418474, lo: 1914138554 }, Word64 { hi: 174292421, lo: 2731055270 }, Word64 { hi: 289380356, lo: 3203993006 }, Word64 { hi: 460393269, lo: 320620315 },
+  Word64 { hi: 685471733, lo: 587496836 }, Word64 { hi: 852142971, lo: 1086792851 }, Word64 { hi: 1017036298, lo: 365543100 }, Word64 { hi: 1126000580, lo: 2618297676 },
+  Word64 { hi: 1288033470, lo: 3409855158 }, Word64 { hi: 1501505948, lo: 4234509866 }, Word64 { hi: 1607167915, lo: 987167468 }, Word64 { hi: 1816402316, lo: 1246189591 },
+]
+
+// §5.3.4: the first 64 bits of the fractional parts of the square roots of the 9th through 16th
+// primes -- SHA-384's initial state, which is what distinguishes it from SHA-512 besides truncation.
+type Sha512State {
+  a: Word64
+  b: Word64
+  c: Word64
+  d: Word64
+  e: Word64
+  f: Word64
+  g: Word64
+  h: Word64
+}
+
+data sha384_initial_state: Sha512State = Sha512State {
+  a: Word64 { hi: 3418070365, lo: 3238371032 }, b: Word64 { hi: 1654270250, lo: 914150663 }, c: Word64 { hi: 2438529370, lo: 812702999 }, d: Word64 { hi: 355462360, lo: 4144912697 }, e: Word64 { hi: 1731405415, lo: 4290775857 }, f: Word64 { hi: 2394180231, lo: 1750603025 }, g: Word64 { hi: 3675008525, lo: 1694076839 }, h: Word64 { hi: 1203062813, lo: 3204075428 }
+}
+
+// §4.1.3 functions.
+fn sha512_ch(x: Word64, y: Word64, z: Word64) -> Word64 {
+  word64_xor(a: word64_and(a: x, b: y), b: word64_and(a: word64_not(a: x), b: z))
+}
+
+fn sha512_maj(x: Word64, y: Word64, z: Word64) -> Word64 {
+  word64_xor(a: word64_xor(a: word64_and(a: x, b: y), b: word64_and(a: x, b: z)), b: word64_and(a: y, b: z))
+}
+
+fn sha512_big_sigma0(x: Word64) -> Word64 {
+  word64_xor(a: word64_xor(a: word64_rotr(a: x, n: 28), b: word64_rotr(a: x, n: 34)), b: word64_rotr(a: x, n: 39))
+}
+
+fn sha512_big_sigma1(x: Word64) -> Word64 {
+  word64_xor(a: word64_xor(a: word64_rotr(a: x, n: 14), b: word64_rotr(a: x, n: 18)), b: word64_rotr(a: x, n: 41))
+}
+
+fn sha512_small_sigma0(x: Word64) -> Word64 {
+  word64_xor(a: word64_xor(a: word64_rotr(a: x, n: 1), b: word64_rotr(a: x, n: 8)), b: word64_shr(a: x, n: 7))
+}
+
+fn sha512_small_sigma1(x: Word64) -> Word64 {
+  word64_xor(a: word64_xor(a: word64_rotr(a: x, n: 19), b: word64_rotr(a: x, n: 61)), b: word64_shr(a: x, n: 6))
+}
+
+// The message schedule as the same sliding window SHA-256 uses, over 64-bit words (§6.4.2 step 1).
+type Sha512Window {
+  w0: Word64
+  w1: Word64
+  w2: Word64
+  w3: Word64
+  w4: Word64
+  w5: Word64
+  w6: Word64
+  w7: Word64
+  w8: Word64
+  w9: Word64
+  w10: Word64
+  w11: Word64
+  w12: Word64
+  w13: Word64
+  w14: Word64
+  w15: Word64
+}
+
+fn sha512_window_push(w: Sha512Window, next: Word64) -> Sha512Window {
+  Sha512Window {
+    w0: w.w1, w1: w.w2, w2: w.w3, w3: w.w4, w4: w.w5, w5: w.w6, w6: w.w7, w7: w.w8,
+    w8: w.w9, w9: w.w10, w10: w.w11, w11: w.w12, w12: w.w13, w13: w.w14, w14: w.w15, w15: next,
+  }
+}
+
+fn sha512_window_next(w: Sha512Window) -> Word64 {
+  word64_add(a: word64_add(a: sha512_small_sigma1(x: w.w14), b: w.w9), b: word64_add(a: sha512_small_sigma0(x: w.w1), b: w.w0))
+}
+
+data word64_zero: Word64 = Word64 { hi: 0, lo: 0 }
+
+data sha512_empty_window: Sha512Window = Sha512Window {
+  w0: word64_zero, w1: word64_zero, w2: word64_zero, w3: word64_zero, w4: word64_zero, w5: word64_zero, w6: word64_zero, w7: word64_zero,
+  w8: word64_zero, w9: word64_zero, w10: word64_zero, w11: word64_zero, w12: word64_zero, w13: word64_zero, w14: word64_zero, w15: word64_zero,
+}
+
+// Eight octets make one word: the first four accumulate into hi, the next four into lo.
+type Sha512WordFold {
+  window: Sha512Window
+  hi: Int
+  lo: Int
+  filled: Int
+}
+
+fn sha512_block_window(block: List<UInt8>) -> Sha512Window {
+  fold(block, init: Sha512WordFold { window: sha512_empty_window, hi: 0, lo: 0, filled: 0 }, f: (acc, octet) =>
+    if acc.filled == 7 {
+      Sha512WordFold { window: sha512_window_push(w: acc.window, next: Word64 { hi: acc.hi, lo: acc.lo * 256 + octet }), hi: 0, lo: 0, filled: 0 }
+    } else if acc.filled < 4 {
+      Sha512WordFold { window: acc.window, hi: acc.hi * 256 + octet, lo: 0, filled: acc.filled + 1 }
+    } else {
+      Sha512WordFold { window: acc.window, hi: acc.hi, lo: acc.lo * 256 + octet, filled: acc.filled + 1 }
+    }
+  ).window
+}
+
+// ── Compression (§6.4.2) ─────────────────────────────────────────────────────────────────────
+type Sha512Rounds {
+  state: Sha512State
+  window: Sha512Window
+}
+
+fn sha512_round(r: Sha512Rounds, k: Word64) -> Sha512Rounds {
+  let s = r.state
+  let t1 = word64_add(a: word64_add(a: word64_add(a: s.h, b: sha512_big_sigma1(x: s.e)), b: word64_add(a: sha512_ch(x: s.e, y: s.f, z: s.g), b: k)), b: r.window.w0)
+  let t2 = word64_add(a: sha512_big_sigma0(x: s.a), b: sha512_maj(x: s.a, y: s.b, z: s.c))
+  Sha512Rounds {
+    state: Sha512State { a: word64_add(a: t1, b: t2), b: s.a, c: s.b, d: s.c, e: word64_add(a: s.d, b: t1), f: s.e, g: s.f, h: s.g },
+    window: sha512_window_push(w: r.window, next: sha512_window_next(w: r.window)),
+  }
+}
+
+fn sha512_compress(h: Sha512State, block: List<UInt8>) -> Sha512State {
+  let done = fold(sha512_round_constants, init: Sha512Rounds { state: h, window: sha512_block_window(block: block) }, f: (r, k) => sha512_round(r: r, k: k))
+  let s = done.state
+  Sha512State {
+    a: word64_add(a: h.a, b: s.a), b: word64_add(a: h.b, b: s.b), c: word64_add(a: h.c, b: s.c), d: word64_add(a: h.d, b: s.d),
+    e: word64_add(a: h.e, b: s.e), f: word64_add(a: h.f, b: s.f), g: word64_add(a: h.g, b: s.g), h: word64_add(a: h.h, b: s.h),
+  }
+}
+
+// ── Padding (§5.1.2) and block parsing (§5.2.2) ─────────────────────────────────────────────
+// The message, 0x80, the fewest zero octets that leave the length ≡ 112 (mod 128), then the bit
+// length as a 128-bit big-endian integer; messages here are far below 2^64 bits, so the high
+// eight octets are zero and the low eight are the same rendering SHA-256 uses.
+fn sha512_padded(message: List<UInt8>) -> List<UInt8> {
+  let len = count(message)
+  let zeros = (239 - len % 128) % 128
+  list_append_octets(
+    left: list_append_octets(left: message |> list_push(128), right: sha256_zero_octets(n: zeros + 8, acc: [])),
+    right: sha256_length_octets(bits: len * 8),
+  )
+}
+
+type Sha512BlockFold {
+  state: Sha512State
+  block: List<UInt8>
+}
+
+fn sha384_state_of(message: List<UInt8>) -> Sha512State {
+  fold(sha512_padded(message: message), init: Sha512BlockFold { state: sha384_initial_state, block: [] }, f: (acc, octet) => {
+    let block = acc.block |> list_push(octet)
+    if count(block) == 128 {
+      Sha512BlockFold { state: sha512_compress(h: acc.state, block: block), block: [] }
+    } else {
+      Sha512BlockFold { state: acc.state, block: block }
+    }
+  }).state
+}
+
+fn word64_octets(w: Word64) -> List<UInt8> {
+  list_append_octets(left: sha256_word_octets(w: w.hi), right: sha256_word_octets(w: w.lo))
+}
+
+// The 48-octet digest: the leftmost six words a..f of the final state (§6.5 step 3).
+fn sha384(message: List<UInt8>) -> List<UInt8> {
+  let s = sha384_state_of(message: message)
+  fold([s.a, s.b, s.c, s.d, s.e, s.f], init: [], f: (acc, w) => list_append_octets(left: acc, right: word64_octets(w: w)))
+}
+
+fn sha384_hex(message: List<UInt8>) -> String {
+  base16_encode_lower(octets: sha384(message: message))
 }
