@@ -806,6 +806,11 @@ test fn the_bare_channel_rendering_names_the_channel_and_the_pull_set() -> Bool 
 // THE ROW IS REAL ON THE SAME SEAM ITS SIBLINGS USE: the label is canonical and the registry the
 // production entry builds admits it, so a binding that never reached `instrument_bindings()` reds
 // here rather than being discovered at the first invocation.
+//
+// THE SUBJECT IS THE FIXTURE ROOT AND NOTHING ELSE, which is what makes this instrument's reading
+// stable: a corpus-wide change cannot move it, so a moved reading means a moved gate. An
+// invocation that reached `dag` would be measuring a different population under this target's
+// name -- hence the last conjunct pins the source roots.
 test fn the_bare_channel_instrument_is_a_real_row_on_the_shared_registry() -> Bool {
   let label = bare_reference_channel_outcome_label()
   (match label_canonicality(label: label) {
@@ -819,10 +824,6 @@ test fn the_bare_channel_instrument_is_a_real_row_on_the_shared_registry() -> Bo
             && label_eq(a: b.target, b: label)
         TargetInvocationRouteRefused { cause: _ } => false
       })
-  // THE SUBJECT IS THE FIXTURE ROOT AND NOTHING ELSE, which is what makes this instrument's
-  // reading stable: a corpus-wide change cannot move it, so a moved reading means a moved gate.
-  // An invocation that reached `dag` would be measuring a different population under this
-  // target's name.
   && (bare_reference_channel_source_roots() == ["fixtures/bare_reference_channel"])
 }
 
