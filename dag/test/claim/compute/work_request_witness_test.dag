@@ -8,7 +8,8 @@ import gunbc.compute.work_provider_local {
   unit_termination_frees_capacity, unit_termination_wire, compute_attempt_completed,
   ProvideResult, ProvideFresh, ProvideAttached, HostRecordStatus, HostRecordWritten, HostRecordLost,
   provide_result_host_record, provide_result_ending, provide_result_document, host_record_was_written, host_record_wire,
-  compute_with_lost_host_record, ComputeLayout, compute_layout, compute_unit_properties,
+  compute_with_lost_host_record, provide_result_with_host_record, host_record_join,
+  ComputeLayout, compute_layout, compute_unit_properties,
   compute_kill_mode_property, compute_kill_mode_value,
 }
 import std.measure { kibibyte }
@@ -91,6 +92,14 @@ test fn the_stored_outcome_round_trips_and_a_broken_one_is_unreadable() -> Bool 
 // looks like an answer, a property that came back EMPTY, and a start that is still PENDING all
 // arrive as readings and are wrong only in how they are read (side-chat review at 5ee0cce).
 //
+// THE PREDICATE IS EXACTLY FOUR WORDS LONG AND EVERY OTHER READING KEEPS THE CHARGE: occupied
+// keeps; authoritative absence releases; completed AND POSITIVELY EMPTY releases; everything else
+// keeps. The revision before this one read "not occupied AND (absent OR completed)", so
+// completed + UNKNOWN released -- and this cell ASSERTED that, which is the worse half: a control
+// that pins the defect is not a control (side-chat verdict at f5344b28). A bound KillMode says what
+// systemd WILL do; it is not a reading of what is true, and an unreadable cgroup establishes
+// nothing beside a completed wait.
+//
 // A COMPLETED WAIT NEVER OVERRIDES A POSITIVE POPULATION, which is the row the previous revision
 // got backwards: completion was tested FIRST and returned immediately, so {completed, populated 1}
 // RELEASED -- a launcher's success overriding the kernel saying processes are still there. Under
@@ -128,8 +137,8 @@ test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
   let populated_no_completion = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 1\n"))
   let undecodable = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "garbage\n"))
   unit_termination_frees_capacity(t: completed_empty)
-    && unit_termination_frees_capacity(t: completed_unknown)
     && unit_termination_frees_capacity(t: absent)
+    && !unit_termination_frees_capacity(t: completed_unknown)
     && !unit_termination_frees_capacity(t: completed_populated)
     && !unit_termination_frees_capacity(t: empty_no_completion)
     && !unit_termination_frees_capacity(t: populated_no_completion)
@@ -138,6 +147,7 @@ test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
     && !unit_termination_frees_capacity(t: pending)
     && !unit_termination_frees_capacity(t: undecodable)
     && string_contains(s: unit_termination_wire(t: completed_populated), pattern: "STILL POPULATED")
+    && string_contains(s: unit_termination_wire(t: completed_unknown), pattern: "establishes nothing even beside a completed wait")
     && string_contains(s: unit_termination_wire(t: empty_no_completion), pattern: "did not complete")
     && string_contains(s: unit_termination_wire(t: pending), pattern: "pending")
     && string_contains(s: unit_termination_wire(t: misleading), pattern: "UNESTABLISHED")
@@ -176,13 +186,13 @@ test fn a_lost_host_record_changes_no_contract_the_next_caller_reads() -> Bool {
     && string_contains(s: host_record_wire(h: provide_result_host_record(r: lost)), pattern: "STILL HELD")
 }
 
-// THE TERMINATION POLICY THE RELEASE DECISION LEANS ON IS ACTUALLY BOUND ON THE INVOCATION. A
-// completed wait is allowed to confirm a release only because KillMode=control-group means systemd
-// tears the cgroup down with the unit; under process or none a forked child outlives the main
-// process and goes on using the memory this seat accounts for. systemd's DEFAULT is
-// control-group -- but a default is not a declaration, and a drop-in or a future default could
-// change it while this provider kept reasoning from the old one. So it is bound, and this cell is
-// what makes "bound" a fact rather than a sentence.
+// THIS CHECKS INVOCATION WIRING, NOT A RUNTIME POLICY READBACK, and the distinction is the whole
+// honesty of the cell. It reads the argv this provider CONSTRUCTS and establishes that the
+// KillMode word is in it. It does NOT establish what systemd applied: a drop-in, a manager that
+// rejected the property, or a unit started by some other path are all outside what any fold over
+// our own argv can see. That is precisely why the release predicate does not lean on the binding --
+// completion must still be confirmed by a positively empty cgroup, and this row only ensures we are
+// not ALSO shipping an invocation that opts into the dangerous mode.
 test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -> Bool {
   let props = compute_unit_properties(
     layout: compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc"),
@@ -190,4 +200,31 @@ test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -
   contains(props, join([compute_kill_mode_property, "=", compute_kill_mode_value], ""))
     && compute_kill_mode_value == "control-group"
     && count(filter(props, p => starts_with(s: p, prefix: "MemoryMax="))) == 1
+}
+
+// A LOSS ANYWHERE IN THE CHAIN REACHES A TERMINAL CONSUMER, which is the property three separate
+// seams were erasing: compute_provide_dependent returned only the child's result, so a BUILD that
+// lost its record followed by a successful dependent reported clean; and compile_entry_cli and
+// run_selected_module both read only the work's ending (side-chat verdict at f5344b28).
+//
+// The join is what carries it, and it accumulates rather than letting the later arm win -- both
+// details are kept because they name different identities and an operator needs each. The work
+// contract is untouched by all of this: the ending and the document are exactly what was stored.
+test fn a_lost_record_on_a_dependency_survives_a_successful_dependent() -> Bool {
+  let succeeded = WorkSucceeded { identity: "child", outputs: [], log_path: "/l" }
+  let document = work_outcome_wire(o: succeeded, subject: tree(hex: tree_a), op: work_default_build())
+  let clean_child = ProvideFresh { outcome: succeeded, document: document, host_record: HostRecordWritten }
+  let attached_child = ProvideAttached { identity: "child", ending: "succeeded", document: document, host_record: HostRecordWritten }
+  let build_lost = HostRecordLost { detail: "the build's lease is still held" }
+  let carried_fresh = provide_result_with_host_record(r: clean_child, carried: build_lost)
+  let carried_attached = provide_result_with_host_record(r: attached_child, carried: build_lost)
+  let both_lost = host_record_join(a: build_lost, b: HostRecordLost { detail: "and the dependent lost its reading" })
+  !host_record_was_written(h: provide_result_host_record(r: carried_fresh))
+    && !host_record_was_written(h: provide_result_host_record(r: carried_attached))
+    && provide_result_ending(r: carried_fresh) == "succeeded"
+    && provide_result_document(r: carried_fresh) == document
+    && provide_result_ending(r: carried_attached) == "succeeded"
+    && host_record_was_written(h: provide_result_host_record(r: clean_child))
+    && string_contains(s: host_record_wire(h: both_lost), pattern: "still held")
+    && string_contains(s: host_record_wire(h: both_lost), pattern: "lost its reading")
 }

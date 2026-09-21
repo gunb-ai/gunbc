@@ -19,6 +19,7 @@ import gunbc.roadmap_execution_contract { GitWorkspaceCapability }
 import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry }
 import gunbc.compute.work_provider_local {
   ProvideResult, ProvideFresh, ProvideAttached, compute_provide, provide_result_succeeded, provide_result_ending, provide_result_identity, provide_result_document,
+  HostRecordStatus, HostRecordWritten, HostRecordLost, provide_result_host_record, host_record_wire, host_record_was_written,
 }
 import gunbc.compute.test_selection {
   SelectedFile, select_witness_files, classify_witness_module, planned_functions_joined,
@@ -86,7 +87,7 @@ fn show_file(instance: HostDashboardInstance, worktree: String, commit: String, 
 
 // One selected module's result in the report.
 type ModuleRun
-  = ModuleRan { label: String, module_path: String, planned: List<String>, declined: List<WitnessStanding>, ending: String, identity: String, document: String }
+  = ModuleRan { label: String, module_path: String, planned: List<String>, declined: List<WitnessStanding>, ending: String, identity: String, document: String, host_record: String }
   | ModuleAllDeclined { label: String, module_path: String, declined: List<WitnessStanding> }
   | ModuleUnreadable { label: String, path: String, reason: String }
   | ModuleNotAWitness { label: String, path: String, reason: String }
@@ -105,15 +106,22 @@ fn run_selected_module(instance: HostDashboardInstance, worktree: String, commit
             ModuleRan {
               label: render_label(l: label), module_path: module_path, planned: planned, declined: declined,
               ending: provide_result_ending(r: result), identity: provide_result_identity(r: result), document: provide_result_document(r: result),
+              host_record: host_record_wire(h: provide_result_host_record(r: result)),
             }
           }
       }
   }
 }
 
+// A HOST-RECORD LOSS COUNTS AGAINST THE MODULE'S VERDICT, and that is the point of carrying it this
+// far. The worker CLIs are where a compute result stops being a value and becomes an exit code, so a
+// loss that reaches here and is not counted is a loss nobody ever hears about: the dependent request
+// dropped it at one seam (compute_provide_dependent) and these two consumers dropped it at the next
+// (side-chat review at f5344b28). The work's own ending is still reported verbatim in the receipt --
+// what changes is only whether the run is called clean.
 fn module_run_succeeded(r: ModuleRun) -> Bool {
   match r {
-    ModuleRan { label: _, module_path: _, planned: _, declined: _, ending, identity: _, document: _ } => ending == "succeeded"
+    ModuleRan { label: _, module_path: _, planned: _, declined: _, ending, identity: _, document: _, host_record: record } => ending == "succeeded" && record == ""
     ModuleAllDeclined { label: _, module_path: _, declined: _ } => true
     ModuleUnreadable { label: _, path: _, reason: _ } => false
     ModuleNotAWitness { label: _, path: _, reason: _ } => true
@@ -129,7 +137,7 @@ fn standing_json(s: WitnessStanding) -> JsonValue {
 
 fn module_run_json(r: ModuleRun) -> JsonValue {
   match r {
-    ModuleRan { label, module_path, planned, declined, ending, identity, document: _ } =>
+    ModuleRan { label, module_path, planned, declined, ending, identity, document: _, host_record: record } =>
       json_object(members: [
         json_kv(key: "label", value: json_string(s: label)),
         json_kv(key: "module", value: json_string(s: module_path)),
@@ -137,6 +145,7 @@ fn module_run_json(r: ModuleRun) -> JsonValue {
         json_kv(key: "declined", value: json_array(elements: map(declined, standing_json))),
         json_kv(key: "ending", value: json_string(s: ending)),
         json_kv(key: "identity", value: json_string(s: identity)),
+        json_kv(key: "host_record", value: json_string(s: record)),
       ])
     ModuleAllDeclined { label, module_path, declined } =>
       json_object(members: [
@@ -164,7 +173,7 @@ fn test_run_report_json(r: TestRunReport) -> JsonValue {
         json_kv(key: "pattern", value: json_string(s: pattern)),
         json_kv(key: "snapshot_commit", value: json_string(s: commit)),
         json_kv(key: "selected", value: json_int(n: count(modules))),
-        json_kv(key: "succeeded", value: json_int(n: count(filter(modules, m => match m { ModuleRan { label: _, module_path: _, planned: _, declined: _, ending, identity: _, document: _ } => ending == "succeeded"  _ => false })))),
+        json_kv(key: "succeeded", value: json_int(n: count(filter(modules, m => match m { ModuleRan { label: _, module_path: _, planned: _, declined: _, ending, identity: _, document: _, host_record: record } => ending == "succeeded" && record == ""  _ => false })))),
         json_kv(key: "not_succeeded", value: json_int(n: count(filter(modules, m => !module_run_succeeded(r: m))))),
         json_kv(key: "modules", value: json_array(elements: map(modules, module_run_json))),
       ])
@@ -264,9 +273,12 @@ fn compile_entry_cli(repo_root: String, worktree: String, entry: String, receipt
           SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc compile: snapshot refused at ", step, ": ", detail], "") }
           SnapshotResolved { commit } => {
             let result = compute_provide(instance: instance, commit: commit, op: CompileEntry { entry: entry as FilePath })
-            let receipt = Filesystem.Write(path: receipt_path, content: provide_result_document(r: result))
+            let record = provide_result_host_record(r: result)
+            let receipt = Filesystem.Write(path: receipt_path, content: join([provide_result_document(r: result), host_record_wire(h: record)], ""))
             if !receipt.success {
               ExitFailure { code: 2, reason: join(["gunbc compile: receipt could not be written to ", receipt_path, ": ", receipt.error, "; outcome was ", provide_result_document(r: result)], "") }
+            } else if !host_record_was_written(h: record) {
+              ExitFailure { code: 1, reason: join(["gunbc compile: the work ended ", provide_result_ending(r: result), " and its stored record is authoritative, but ", host_record_wire(h: record)], "") }
             } else if provide_result_succeeded(r: result) {
               ExitSuccess
             } else {

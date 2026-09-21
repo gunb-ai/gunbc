@@ -171,12 +171,12 @@ type HostRecordStatus
 
 type ProvideResult
   = ProvideFresh { outcome: WorkOutcome, document: String, host_record: HostRecordStatus }
-  | ProvideAttached { identity: String, ending: String, document: String }
+  | ProvideAttached { identity: String, ending: String, document: String, host_record: HostRecordStatus }
 
 fn provide_result_host_record(r: ProvideResult) -> HostRecordStatus {
   match r {
     ProvideFresh { outcome: _, document: _, host_record: h } => h
-    ProvideAttached { identity: _, ending: _, document: _ } => HostRecordWritten
+    ProvideAttached { identity: _, ending: _, document: _, host_record: h } => h
   }
 }
 
@@ -184,6 +184,29 @@ fn host_record_wire(h: HostRecordStatus) -> String {
   match h {
     HostRecordWritten => ""
     HostRecordLost { detail: d } => join(["; HOST RECORD LOST: ", d], "")
+  }
+}
+
+// JOINING TWO HOST-RECORD FACTS: a loss anywhere in the chain is a loss the caller must hear about,
+// so the arms accumulate rather than the later one winning. Both details are kept because they name
+// different identities and an operator needs each one.
+fn host_record_join(a: HostRecordStatus, b: HostRecordStatus) -> HostRecordStatus {
+  match a {
+    HostRecordWritten => b
+    HostRecordLost { detail: da } =>
+      match b {
+        HostRecordWritten => HostRecordLost { detail: da }
+        HostRecordLost { detail: db } => HostRecordLost { detail: join([da, "; and ", db], "") }
+      }
+  }
+}
+
+fn provide_result_with_host_record(r: ProvideResult, carried: HostRecordStatus) -> ProvideResult {
+  match r {
+    ProvideFresh { outcome: o, document: d, host_record: h } =>
+      ProvideFresh { outcome: o, document: d, host_record: host_record_join(a: carried, b: h) }
+    ProvideAttached { identity: i, ending: e, document: d, host_record: h } =>
+      ProvideAttached { identity: i, ending: e, document: d, host_record: host_record_join(a: carried, b: h) }
   }
 }
 
@@ -197,28 +220,28 @@ fn host_record_was_written(h: HostRecordStatus) -> Bool {
 fn provide_result_succeeded(r: ProvideResult) -> Bool {
   match r {
     ProvideFresh { outcome, document: _, host_record: _ } => work_outcome_ending(o: outcome) == "succeeded"
-    ProvideAttached { identity: _, ending, document: _ } => ending == "succeeded"
+    ProvideAttached { identity: _, ending, document: _, host_record: _ } => ending == "succeeded"
   }
 }
 
 fn provide_result_identity(r: ProvideResult) -> String {
   match r {
     ProvideFresh { outcome, document: _, host_record: _ } => gunbc.compute.work_request.work_outcome_identity(o: outcome)
-    ProvideAttached { identity, ending: _, document: _ } => identity
+    ProvideAttached { identity, ending: _, document: _, host_record: _ } => identity
   }
 }
 
 fn provide_result_ending(r: ProvideResult) -> String {
   match r {
     ProvideFresh { outcome, document: _, host_record: _ } => work_outcome_ending(o: outcome)
-    ProvideAttached { identity: _, ending, document: _ } => ending
+    ProvideAttached { identity: _, ending, document: _, host_record: _ } => ending
   }
 }
 
 fn provide_result_document(r: ProvideResult) -> String {
   match r {
     ProvideFresh { outcome: _, document, host_record: _ } => document
-    ProvideAttached { identity: _, ending: _, document } => document
+    ProvideAttached { identity: _, ending: _, document, host_record: _ } => document
   }
 }
 
@@ -258,9 +281,12 @@ fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
 // treating a completed wait as an empty cgroup (side-chat review at 773825cf). Binding it makes the
 // policy a fact of the invocation.
 //
-// IT IS BOUND *AND* THE EVIDENCE IS STILL REQUIRED. A positive populated=1 is never discarded in
-// favour of a completed wait, because a bound policy says what systemd will do and the cgroup says
-// what is true.
+// IT IS BOUND *AND* THE EVIDENCE IS STILL REQUIRED, IN BOTH DIRECTIONS. A positive populated=1 is
+// never discarded in favour of a completed wait; and an UNREADABLE population is not licensed by one
+// either. A bound policy says what systemd WILL do, the cgroup says what IS true, and "I could not
+// look" is not the second (side-chat review at f5344b28). Completion confirms a release only beside
+// a positively empty cgroup -- or, short-circuiting all of this, a manager that has no record of
+// the unit at all.
 data compute_kill_mode_property: String = "KillMode"
 data compute_kill_mode_value: String = "control-group"
 
@@ -428,12 +454,22 @@ fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
           ], ""),
         }
       } else {
-        UnitAttemptCompleted {
-          detail: join([
-            "systemd-run --wait returned success under ", compute_kill_mode_property, "=", compute_kill_mode_value,
-            ", so the unit ran to completion and its cgroup was torn down; ",
-            match population { PopulationEmpty { detail: pd } => pd  PopulationUnknown { detail: pd } => join(["population unread (", pd, ") and not positively occupied"], "")  PopulationOccupied { detail: pd } => pd },
-          ], ""),
+        match population {
+          PopulationEmpty { detail: pd } =>
+            UnitAttemptCompleted {
+              detail: join([
+                "systemd-run --wait returned success under ", compute_kill_mode_property, "=", compute_kill_mode_value,
+                " and ", pd,
+              ], ""),
+            }
+          _ =>
+            UnitTerminationUnavailable {
+              detail: join([
+                "the attempt completed, but the population could not be read (",
+                match population { PopulationUnknown { detail: pd } => pd  PopulationEmpty { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
+                ") -- a bound KillMode says what systemd WILL do, not what is true, so an unreadable cgroup establishes nothing even beside a completed wait",
+              ], ""),
+            }
         }
       }
   }
@@ -642,7 +678,7 @@ fn compute_with_lost_host_record(
   ], "")
   match settled {
     ProvideFresh { outcome: o, document: d, host_record: _ } => ProvideFresh { outcome: o, document: d, host_record: HostRecordLost { detail: detail } }
-    ProvideAttached { identity: i, ending: e, document: d } => ProvideAttached { identity: i, ending: e, document: d }
+    ProvideAttached { identity: i, ending: e, document: d, host_record: h } => ProvideAttached { identity: i, ending: e, document: d, host_record: h }
   }
 }
 // BLOCKER (7): ONE CONTRACT, AND THE CONTRACT IS THE STORED RECORD. This arm used to hand the
@@ -775,7 +811,7 @@ fn compute_provide_leaf(
   let attached = if stored.success { stored_outcome_decode(text: stored.content) } else { StoredOutcomeUnreadable { reason: "no stored outcome" } }
   if stored_outcome_is_success(r: attached) {
     match attached {
-      StoredOutcomeFound { ending, identity: stored_identity, document } => ProvideAttached { identity: stored_identity, ending: ending, document: document }
+      StoredOutcomeFound { ending, identity: stored_identity, document } => ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: HostRecordWritten }
       StoredOutcomeUnreadable { reason } => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: reason } }, subject: subject, op: op)
     }
   } else if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.store_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir)) {
@@ -926,14 +962,23 @@ fn compute_provide(instance: HostDashboardInstance, commit: String, op: WorkOper
   }
 }
 
+// THE DEPENDENCY'S LOST RECORD TRAVELS WITH THE RESULT, because the caller of a dependent request
+// never sees the dependency's own result. Returning the second leaf's result alone silently dropped
+// the fact that the BUILD failed to record its side facts -- the stuck lease or the lost consumption
+// reading vanished at exactly the seam where nobody was left to report it (side-chat review at
+// f5344b28). The work contract is untouched; only the host-record fact is joined.
 fn compute_provide_dependent(instance: HostDashboardInstance, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> ProvideResult {
   let build = compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency_store: "")
   if provide_result_succeeded(r: build) {
     let build_identity = provide_result_identity(r: build)
-    compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency_store: compute_layout(instance: instance, identity_hex: build_identity).store_dir)
+    provide_result_with_host_record(
+      r: compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency_store: compute_layout(instance: instance, identity_hex: build_identity).store_dir),
+      carried: provide_result_host_record(r: build))
   } else {
     let identity = work_identity_hex(id: work_identity(subject: subject, op: op, toolchain: toolchain))
-    compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: provide_result_identity(r: build), ending: provide_result_ending(r: build) } }, subject: subject, op: op)
+    provide_result_with_host_record(
+      r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: provide_result_identity(r: build), ending: provide_result_ending(r: build) } }, subject: subject, op: op),
+      carried: provide_result_host_record(r: build))
   }
 }
 
