@@ -18,7 +18,7 @@ import extdeps.standards.rfc_5280 { X509Certificate, X509TbsFields, X509Decoded,
 import extdeps.standards.rfc_7468 { pem_decode, PemDecoded, PemRefused, pem_certificate_label }
 import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_team_identifier, sample_bundle_identifier,
-  sample_assertion_counter,
+  sample_assertion_counter, sample_client_data,
 }
 
 // THE VERIFIER FOLDS OVER APPLE'S REAL OBJECT. The sample predates the two extension steps (9 and
@@ -36,7 +36,7 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
 fn sample_expectation() -> AttestationExpectation {
   AttestationExpectation {
     key_id: sample_key_id_b64 as AttestKeyId,
-    client_data: "wurzelpfropf" as NonEmptyStr,
+    client_data: sample_client_data,
     app_id: app_attest_app_id(prefix: sample_team_identifier as AppIdPrefix, bundle_id: sample_bundle_identifier),
     environment: AppAttestDevelopment,
     observed_at: "2021-01-23T12:13:35Z",
@@ -100,7 +100,7 @@ fn assertion_expectation() -> AssertionExpectation {
   AssertionExpectation {
     key_id: sample_key_id_b64 as AttestKeyId,
     public_key_point_b64url: "BIjANKGQqn28WgYVAcZUKAOUJYIZiz8cxUZzyjua0gtBUoJnpU9f26BGn6-0a7aZCjlr8E-UpJ1DIMgcerJAo5g=" as NonEmptyStr,
-    client_data: "wurzelpfropf" as NonEmptyStr,
+    client_data: sample_client_data,
     app_id: app_attest_app_id(prefix: sample_team_identifier as AppIdPrefix, bundle_id: sample_bundle_identifier),
     admitted_validation_categories: [2, 3, 4],
     expected_bundle_version: "1" as NonEmptyStr,
@@ -123,7 +123,7 @@ test fn the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions() -> 
 }
 
 // STEPS 1-3 ON REAL BYTES: Apple's assertion signature verifies under the credential key for
-// nonce = SHA-256(authenticatorData || SHA-256("wurzelpfropf")); and is false for other client
+// nonce = SHA-256(authenticatorData || SHA-256(sample_client_data)); and is false for other client
 // data. One interpreted P-256 verification each (gunbc#11645's cost shape) -- executable on a
 // quiet host, budget-refused by the floor, native row is the enrolled evidence.
 test fn the_sample_assertion_signature_verifies_under_the_credential_key() -> Bool {

@@ -43,12 +43,11 @@ data sample_bundle_identifier: NonEmptyStr = "de.vincent-haupert.apple-appattest
 // keyIdBase64, standard base64 of the 32-octet key id.
 data sample_key_id_b64: NonEmptyStr = "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3M="
 
-// clientDataHashSha256Base64: the app attested over SHA-256 of the client data "wurzelpfropf".
-// CONSUMED BY A NAMED LATER CHANGE (DESIGN section 3c, the trigger stated here): the X.509
-// witness of the App Attest step-2 PR (gunbc#11975, test.claim.x509_rfc5280_witness_test) reads
-// it to establish nonce == SHA-256(authData || clientDataHash) over the credential certificate's
-// extension; step 1 has no reader of it and carries it because the corpus publishes the two
-// facts as one record.
+// clientDataBase64 decodes to the text "wurzelpfropf" -- the client data the app attested over and
+// signed the assertion for -- and clientDataHashSha256Base64 is its SHA-256. The text is the one
+// carrier of that datum (review 69725 of gunbc#11989: a witness literal is not an authority); the
+// hash row is consumed by the step-2 nonce claim, the text by the verifier witnesses (gunbc#11989).
+data sample_client_data: NonEmptyStr = "wurzelpfropf"
 data sample_client_data_hash_b64: NonEmptyStr = "i+ZcylFa0JfJU5Z9GNY12G3XihQu09B3UmvtEca+xns="
 
 // The assertion's authenticatorData is 37 octets with counter 1.
