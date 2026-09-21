@@ -18,6 +18,8 @@ import gunbc.executor_privileged_operation {
 }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
+import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 
 // ── The self-hosted notification server on srv1 ──────────────────────────────────────────────
 // It follows gunbc-publication exactly: its own system account, its own state directory owned by
@@ -187,12 +189,39 @@ fn approval_ntfy_server_install_intervention() -> HumanIntervention {
   )
 }
 
-fn approval_ntfy_publisher_token_intervention() -> HumanIntervention {
+// THE PUBLISHER TOKEN'S HOME IS SECRET MANAGER, AND DELIVERY IS NOT A HUMAN STEP. It reaches srv1
+// through gunbc.host_credential_custody_converge ApprovalNtfyPublisherToken -- root:gunbc-ntfy 0640
+// in a root:gunbc-ntfy 0750 directory, read back -- so the earlier row that had an operator write
+// the token where the unit could read it is DELETED, not narrowed beside the custody row.
+//
+// `latest`, NOT A PIN, and deliberately unlike the approval MAC keys: a pin protects signatures in
+// flight from a rotation, and a publisher token signs nothing -- a rotation re-delivered by the
+// custody mode is the whole remedy.
+data approval_ntfy_publisher_token_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "approval-ntfy-publisher-token"),
+  version: "latest",
+)
+
+// WHAT STAYS HUMAN IS THE MINT, and it is a different fact from delivery. ntfy issues the token to a
+// user that must first exist on the server, and the token must not be minted by anything the
+// requester can read; so a person creates the user, issues the token, and adds it as a version of
+// the secret above. Delivery then runs from the model.
+fn approval_ntfy_publisher_token_mint_intervention() -> HumanIntervention {
   approval_ntfy_intervention(
-    identity: "approval-ntfy-publisher-token",
+    identity: "approval-ntfy-publisher-token-mint",
     frequency: FleetOnce,
-    subject: "gunbc-ntfy publisher credential",
-    instruction: "On srv1, create the ntfy user the broker publishes as and record its access token where the unit can read it as a systemd credential. The token must NOT be committed, placed in the unit's Environment=, or passed on any argv: extdeps.ntfy.ntfy makes the credential a required input precisely so an unauthenticated publish is not expressible, and gunbc.credential_argv_exposure forbids the argv form. A machine cannot do this because the token does not exist until a person creates it, and it must not be minted by anything the requester can read.",
+    subject: "gunbc-ntfy publisher credential, minted into Secret Manager",
+    instruction: join([
+      "On srv1, create the ntfy user the broker publishes as and issue its access token; add the",
+      " token as a new version of ",
+      secret_ref_version_resource(ref: approval_ntfy_publisher_token_secret_ref),
+      " and nowhere else -- not committed, not in the unit's Environment=, not on any argv",
+      " (gunbc.credential_argv_exposure). Delivery to srv1 is NOT part of this step: dispatch",
+      " fleet-converge mode host_credential_custody_converge with credential",
+      " approval_ntfy_publisher_token on srv1, after the accessor row in",
+      " gunbc.auth.fleet_secret_accessor_roster has been ensured. A machine cannot mint because the",
+      " token does not exist until a person creates it on the server.",
+    ], "") as NonEmptyStr,
   )
 }
 
@@ -247,7 +276,7 @@ fn approval_ntfy_human_burden() -> ProvisioningHumanBurden {
     interventions: [
       approval_ntfy_account_intervention(),
       approval_ntfy_server_install_intervention(),
-      approval_ntfy_publisher_token_intervention(),
+      approval_ntfy_publisher_token_mint_intervention(),
       approval_ntfy_subscriber_grant_intervention(),
       approval_ntfy_phone_subscription_intervention(),
       approval_ntfy_relay_withdrawal_intervention(),
