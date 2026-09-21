@@ -5,7 +5,7 @@ import extdeps.bazel.label {
   Label, PackageName, RootPackage, PackagePath, TargetName,
   LabelParse, LabelParsed, LabelRefused, LabelRefusal,
   PackageSegmentsParse, PackageSegmentsOk, PackageSegmentsRefused,
-  parse_label, parse_package_segments, render_package, package_eq, label_eq,
+  parse_label, parse_package_segments, render_package, package_eq, label_eq, label_refusal_text,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
 import extdeps.uri { Uri, Https }
@@ -152,8 +152,10 @@ fn render_target_pattern(pattern: TargetPattern) -> String {
 fn target_pattern_refusal_text(r: TargetPatternRefusal) -> String {
   match r {
     PatternNotAbsolute { text } => join(["target pattern is not absolute (must start with //): ", text], "")
-    PatternPackageRefused { cause: _ } => "target pattern names a package the label grammar refuses"
-    PatternLabelRefused { cause: _ } => "target pattern names a single target the label grammar refuses"
+    PatternPackageRefused { cause } =>
+      concat("target pattern names a package the label grammar refuses: ", label_refusal_text(r: cause))
+    PatternLabelRefused { cause } =>
+      concat("target pattern names a single target the label grammar refuses: ", label_refusal_text(r: cause))
     PatternAllTargetsUnsupported { text } => join([":all-targets has no meaning over a corpus of test modules: ", text], "")
   }
 }

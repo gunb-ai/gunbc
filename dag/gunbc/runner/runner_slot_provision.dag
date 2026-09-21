@@ -461,8 +461,13 @@ fn runner_slot_member_observed(instance_name: String, provenance: RunnerSlotProv
 // It works on INDICES, not rendered names, so the fabric identity is compared as an identity and
 // never by parsing a slot number back out of a string it was just formatted into.
 //
-// CONSEQUENCE ON THE FLEET: srv3 desires twenty against a committed width of twenty-one. srv1, srv2
-// and srv4 carry no fabric member and are unchanged.
+// CONSEQUENCE ON THE FLEET: srv3 AND srv4 are the fabric execution hosts and each gives up two
+// members, so each desires two fewer runners than its committed width; srv1 and srv2 carry no
+// fabric member and are unchanged. The membership is gunbc.runner_slot_allocation
+// fabric_execution_slot_identities and the widths are gunbc_runner_committed_width -- named rather
+// than transcribed, because the previous form of this sentence quoted a desired count and a width
+// from the one-execution-host fleet and both were falsified without it, srv4's carve by gunbc#11625
+// and the widths by the axis moves the authority's own note records.
 fn desired_runner_slot_members(deploy: RunnerHostDeploy) -> List<RunnerSlotMember> {
   let host = deploy.host_label as HostIdentity
   map(

@@ -1,0 +1,376 @@
+module v2.test.claim.native_route.native_refusal_detail
+
+import gunbc.witness_v2_native_route { NativeRouteMemberRow, native_route_member_row_text }
+import v2.compiler.compile {
+  NativeLaneModuleContextRowsDecided,
+  NativeLaneModuleResolution,
+  NativeLaneModuleResolveRowsDecided,
+  NativeLaneModuleResolved,
+  NativeLaneUniverseModule,
+  NativeTestContext,
+  native_lane_file_refusal_index,
+  native_lane_module_resolution,
+  native_test_context_from_ingest
+}
+import v2.compiler.native_test_vocabulary {
+  NativeTestFileRefusal,
+  NativeTestPassed,
+  NativeTestRefused,
+  NativeTestReturnedFalse,
+  NativeTestReturnedOther,
+  NativeTestStage,
+  NativeTestStageContext,
+  NativeTestStageEntry,
+  NativeTestStageEval,
+  NativeTestStagePrepare,
+  NativeTestVerdict
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { any, count_where, fold_list, length }
+import v2.std.collection { Map }
+import v2.std.integer { Int }
+import std.algebra { Cons, Empty }
+import v2.std.artifact { Artifact, SourceFile }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic {
+  Accepted,
+  DeclarationLocus,
+  Diagnostic,
+  InvariantPortLocus,
+  NodeLocus,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  diagnostics_fatal,
+  diagnostics_fatal_reason
+}
+import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+import std.occurrence_identity { OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE ROW THE NATIVE ROUTE PERSISTS, AND THE BOUNDARY IS native_lane_module_resolution.
+// That fold is the producer of every Prepare- and Context-stage member row the emitted driver
+// writes to its rows file and judges through the admission authority; the JSON the lane persists
+// and the `[native-verdict]` line the operator reads are projections of the value it returns. So
+// the claims here read THAT value -- not the resolver's Outcome one layer down, whose located
+// diagnostics were always there, and whose loss at this boundary is the defect the package
+// closes: a NativeTestRefused verdict that carried one reason symbol where the failing stage had
+// produced a located chain.
+//
+// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL (DESIGN section 3: the boundary's inputs are
+// values, everything above it is production). Each specimen is a few lines of `.dag` that reach
+// tokenize, parse, normalize and resolve through the same native_test_context_from_ingest the
+// driver's adjudicate mode assembles and the same native_lane_module_resolution it calls per
+// universe module. Nothing here is a hand-built diagnostic or a hand-built row.
+//
+// FOUR SPECIMENS, EACH THE DISCRIMINATOR FOR ONE CLAUSE OF THE PACKAGE'S DONE LINE.
+// - shadow: a reference whose name is bound TWICE on its lexical chain (an ancestor namespace and
+//   a nearer ancestor both declare it; the referencing module declares neither). The resolver's
+//   lexical collector refuses this as ambiguous rather than picking the nearer binder, and it has
+//   both candidates' qualified paths in hand -- the case where competing declarations ARE
+//   available, so the row must name them.
+// - collision: a reference bound NOWHERE on its chain whose bare name two unrelated modules
+//   declare. The namespace-only policy falls through to the corpus-wide bare index, which
+//   collapsed the two binders to one ambiguous state at fill time -- the case where the lookup
+//   class is nameable and the competing declarations are NOT retained, so the row must say the
+//   class and must not fabricate a list.
+// - unbound: one absent callee, the plainest resolve refusal; its diagnostic is anchored at the
+//   referencing node, so the row must identify that node's occurrence.
+// - clean: a module that resolves, so a route that refused everything cannot green the rest.
+
+data ndp_shadow_outer_source: String = "module v2.ndp.shadow\n\nimport v2.std.logic { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
+
+data ndp_shadow_inner_source: String = "module v2.ndp.shadow.inner\n\nimport v2.std.logic { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
+
+data ndp_shadow_leaf_source: String = "module v2.ndp.shadow.inner.leaf\n\nimport v2.std.logic { Bool }\n\nfn leaf_value(p: Bool) -> Bool { twin_value(p) }\n"
+
+data ndp_collision_left_source: String = "module v2.ndq.left\n\nimport v2.std.logic { Bool }\n\nfn lone_value(p: Bool) -> Bool { p }\n"
+
+data ndp_collision_right_source: String = "module v2.ndq.right\n\nimport v2.std.logic { Bool }\n\nfn lone_value(p: Bool) -> Bool { p }\n"
+
+data ndp_collision_user_source: String = "module v2.ndq.user\n\nimport v2.std.logic { Bool }\n\nfn user_value(p: Bool) -> Bool { lone_value(p) }\n"
+
+data ndp_unbound_source: String = "module v2.ndp.unbound\n\nimport v2.std.logic { Bool }\n\nfn unbound_value(p: Bool) -> Bool { ndp_absent_callee(p) }\n"
+
+data ndp_clean_source: String = "module v2.ndp.clean\n\nimport v2.std.logic { Bool }\n\nfn clean_value(p: Bool) -> Bool { p }\n"
+
+fn ndp_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data ndp_ingest: SourceRootIngest = [
+  ndp_read(source: ndp_shadow_outer_source, id: ^ndp_shadow_outer_artifact, unit: ^ndp_shadow_outer_cu, path: "dag/ndp_shadow.dag"),
+  ndp_read(source: ndp_shadow_inner_source, id: ^ndp_shadow_inner_artifact, unit: ^ndp_shadow_inner_cu, path: "dag/ndp_shadow_inner.dag"),
+  ndp_read(source: ndp_shadow_leaf_source, id: ^ndp_shadow_leaf_artifact, unit: ^ndp_shadow_leaf_cu, path: "dag/ndp_shadow_leaf.dag"),
+  ndp_read(source: ndp_collision_left_source, id: ^ndp_collision_left_artifact, unit: ^ndp_collision_left_cu, path: "dag/ndp_left.dag"),
+  ndp_read(source: ndp_collision_right_source, id: ^ndp_collision_right_artifact, unit: ^ndp_collision_right_cu, path: "dag/ndp_right.dag"),
+  ndp_read(source: ndp_collision_user_source, id: ^ndp_collision_user_artifact, unit: ^ndp_collision_user_cu, path: "dag/ndp_user.dag"),
+  ndp_read(source: ndp_unbound_source, id: ^ndp_unbound_artifact, unit: ^ndp_unbound_cu, path: "dag/ndp_unbound.dag"),
+  ndp_read(source: ndp_clean_source, id: ^ndp_clean_artifact, unit: ^ndp_clean_cu, path: "dag/ndp_clean.dag")
+]
+
+fn ndp_universe_module(module: String, path: Symbol, declaration: String) -> NativeLaneUniverseModule {
+  NativeLaneUniverseModule { module: module, path: path, declarations: [declaration] }
+}
+
+// ONE NULLARY PRODUCER, FORCED ONCE, for the reason v2.test.claim.native_census.whole_tree_census_resolve
+// gives on its own producer: the floor builds a fresh evaluation frame per claim, and every claim
+// here inspects one row of a value that costs one whole-ingest front end plus four resolves to
+// build. Enrolled WARM in v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm;
+// the stored value is four NativeLaneModuleResolution arms carrying rows, diagnostics, symbols
+// and nodes -- no closures, no resolution context -- so it is portable across claim frames.
+type NdpResolutions
+  = NdpContextRefused
+  | NdpResolutionsDecided {
+      shadow: NativeLaneModuleResolution
+      collision: NativeLaneModuleResolution
+      unbound: NativeLaneModuleResolution
+      clean: NativeLaneModuleResolution
+    }
+
+fn ndp_resolutions() -> NdpResolutions {
+  match native_test_context_from_ingest(ingest: ndp_ingest) {
+    Rejected { diagnostics: _ } => NdpContextRefused
+    Accepted { value: context, diagnostics: _ } => {
+      let index = native_lane_file_refusal_index(refusals: context.file_refusals)
+      NdpResolutionsDecided {
+        shadow: native_lane_module_resolution(
+          context: context,
+          refusal_index: index,
+          entry: ndp_universe_module(module: "v2.ndp.shadow.inner.leaf", path: ^ndp_shadow_leaf_cu, declaration: "leaf_value")
+        ),
+        collision: native_lane_module_resolution(
+          context: context,
+          refusal_index: index,
+          entry: ndp_universe_module(module: "v2.ndq.user", path: ^ndp_collision_user_cu, declaration: "user_value")
+        ),
+        unbound: native_lane_module_resolution(
+          context: context,
+          refusal_index: index,
+          entry: ndp_universe_module(module: "v2.ndp.unbound", path: ^ndp_unbound_cu, declaration: "unbound_value")
+        ),
+        clean: native_lane_module_resolution(
+          context: context,
+          refusal_index: index,
+          entry: ndp_universe_module(module: "v2.ndp.clean", path: ^ndp_clean_cu, declaration: "clean_value")
+        )
+      }
+    }
+  }
+}
+
+// THE ONE ROW A ONE-DECLARATION MODULE FANS OUT TO, at the Prepare stage. Context-stage rows and a
+// resolved module are the wrong arm for every refusing specimen here and answer Absent, so a
+// specimen the front end refused, or one the resolver accepted, cannot satisfy a claim about the
+// resolver's refusal detail.
+fn ndp_prepare_row(resolution: NativeLaneModuleResolution) -> Optional<NativeRouteMemberRow> {
+  match resolution {
+    NativeLaneModuleResolveRowsDecided { rows: rows } =>
+      if length(xs: rows) == 1 {
+        fold_list(xs: rows, empty: optional_absent(), cons: fn(_acc, row) { optional_present(value: row) })
+      } else {
+        optional_absent()
+      }
+    NativeLaneModuleContextRowsDecided { rows: _ } => optional_absent()
+    NativeLaneModuleResolved { resolved: _ } => optional_absent()
+  }
+}
+
+fn ndp_prepare_refusal(row: NativeRouteMemberRow) -> Optional<NonEmptyDiagnostics> {
+  match row.verdict {
+    NativeTestRefused { stage: stage, diagnostics: d } =>
+      match stage {
+        NativeTestStagePrepare => optional_present(value: d)
+        NativeTestStageContext => optional_absent()
+        NativeTestStageEntry => optional_absent()
+        NativeTestStageEval => optional_absent()
+      }
+    NativeTestPassed => optional_absent()
+    NativeTestReturnedFalse => optional_absent()
+    NativeTestReturnedOther => optional_absent()
+  }
+}
+
+fn ndp_diagnostics_list(d: NonEmptyDiagnostics) -> List<Diagnostic> {
+  Cons { head: d.head, tail: d.tail }
+}
+
+fn ndp_chain_has_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  any(xs: ndp_diagnostics_list(d: d), predicate: fn(diag) { diag.reason == reason })
+}
+
+// A COMPETING DECLARATION IS NAMED BY ITS QUALIFIED PATH ON A DeclarationLocus -- the structural
+// segments, compared structurally. A row that spelled the path into some other locus arm, or
+// that carried the binder's node in place of its name, does not satisfy this.
+fn ndp_chain_names_competing_declaration(d: NonEmptyDiagnostics, dotted: String) -> Bool {
+  any(xs: ndp_diagnostics_list(d: d), predicate: fn(diag) {
+    diag.reason == ^resolve_ambiguous_competing_declaration
+      && match diag.at {
+        DeclarationLocus { declaration: declaration } =>
+          declaration == qualified_name_from_dotted_string(dotted: dotted)
+        Textual { file: _, extent: _ } => false
+        NodeLocus { anchor: _ } => false
+        SourcePortLocus { anchor: _, file: _, extent: _ } => false
+        InvariantPortLocus { anchor: _, invariant: _ } => false
+      }
+  })
+}
+
+fn ndp_competing_declaration_count(d: NonEmptyDiagnostics) -> Int {
+  count_where(xs: ndp_diagnostics_list(d: d), predicate: fn(diag) {
+    diag.reason == ^resolve_ambiguous_competing_declaration
+  })
+}
+
+fn ndp_fatal_is_at_minted_occurrence(d: NonEmptyDiagnostics) -> Bool {
+  let fatal = diagnostics_fatal(d: d)
+  match fatal.at {
+    NodeLocus { anchor: a } =>
+      match a.at.occurrence_id {
+        OccurrenceMinted { id: _ } => true
+        OccurrenceProjected { id: _, caused_by: _ } => true
+        OccurrenceSynthetic => false
+      }
+    Textual { file: _, extent: _ } => false
+    SourcePortLocus { anchor: _, file: _, extent: _ } => false
+    InvariantPortLocus { anchor: _, invariant: _ } => false
+    DeclarationLocus { declaration: _ } => false
+  }
+}
+
+fn ndp_shadow_refusal() -> Optional<NonEmptyDiagnostics> {
+  match ndp_resolutions() {
+    NdpContextRefused => optional_absent()
+    NdpResolutionsDecided { shadow: shadow, collision: _, unbound: _, clean: _ } =>
+      match ndp_prepare_row(resolution: shadow) {
+        Absent => optional_absent()
+        Present { value: row } => ndp_prepare_refusal(row: row)
+      }
+  }
+}
+
+fn ndp_collision_refusal() -> Optional<NonEmptyDiagnostics> {
+  match ndp_resolutions() {
+    NdpContextRefused => optional_absent()
+    NdpResolutionsDecided { shadow: _, collision: collision, unbound: _, clean: _ } =>
+      match ndp_prepare_row(resolution: collision) {
+        Absent => optional_absent()
+        Present { value: row } => ndp_prepare_refusal(row: row)
+      }
+  }
+}
+
+fn ndp_unbound_refusal() -> Optional<NonEmptyDiagnostics> {
+  match ndp_resolutions() {
+    NdpContextRefused => optional_absent()
+    NdpResolutionsDecided { shadow: _, collision: _, unbound: unbound, clean: _ } =>
+      match ndp_prepare_row(resolution: unbound) {
+        Absent => optional_absent()
+        Present { value: row } => ndp_prepare_refusal(row: row)
+      }
+  }
+}
+
+// THE FAILING SUBJECT IDENTIFIES ITS ACTUAL CAUSE AND ITS SOURCE OCCURRENCE. The cause is the
+// fatal (last) diagnostic's reason -- the same symbol the admission authority classifies by --
+// and the occurrence is the node the resolver anchored it at, carried as a minted occurrence
+// identity rather than dropped. A verdict that kept only the reason has no locus to read here.
+test fn unbound_reference_row_locates_its_source_occurrence_holds() -> Bool {
+  match ndp_unbound_refusal() {
+    Absent => false
+    Present { value: d } =>
+      diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+        && ndp_fatal_is_at_minted_occurrence(d: d)
+  }
+}
+
+// AMBIGUITY NAMES ITS LOOKUP CLASS AND BOTH COMPETING DECLARATIONS. The fatal stays the reason
+// every roster owns; the class and the two binders ride in front of it. Either binder alone is
+// not enough: a chain that named one has picked, which is what the refusal exists not to do.
+test fn shadowed_reference_row_names_lookup_class_and_both_competing_declarations_holds() -> Bool {
+  match ndp_shadow_refusal() {
+    Absent => false
+    Present { value: d } =>
+      diagnostics_fatal_reason(d: d) == ^resolve_reason_ambiguous_symbol
+        && ndp_chain_has_reason(d: d, reason: ^resolve_ambiguous_on_lexical_chain)
+        && ndp_chain_names_competing_declaration(d: d, dotted: "v2.ndp.shadow.inner.twin_value")
+        && ndp_chain_names_competing_declaration(d: d, dotted: "v2.ndp.shadow.twin_value")
+        && ndp_competing_declaration_count(d: d) == 2
+  }
+}
+
+// THE GLOBAL-BARE CLASS IS NAMED AND NO CANDIDATE LIST IS FABRICATED. The bare index collapsed its
+// binders at fill time, so "where available" is honestly "not here": the class row says which
+// lookup was ambiguous and the chain carries zero competing-declaration rows.
+test fn global_bare_collision_row_names_its_lookup_class_without_fabricating_candidates_holds() -> Bool {
+  match ndp_collision_refusal() {
+    Absent => false
+    Present { value: d } =>
+      diagnostics_fatal_reason(d: d) == ^resolve_reason_ambiguous_symbol
+        && ndp_chain_has_reason(d: d, reason: ^resolve_ambiguous_on_global_bare)
+        && !ndp_chain_has_reason(d: d, reason: ^resolve_ambiguous_on_lexical_chain)
+        && ndp_competing_declaration_count(d: d) == 0
+  }
+}
+
+// THE OPERATOR'S LINE IS THE CONSUMER-LEVEL CONTROL. native_route_member_row_text is what the
+// emitted driver prints beside each persisted non-passing row, so this is the surface an operator
+// reads. It must name the subject, the stage, the fatal cause, and -- the detail this package
+// carries through -- the position: here, a competing declaration by its qualified path. A
+// mutation that folds the verdict back to its fatal reason keeps the first three words and loses
+// the fourth, which is exactly the clause that goes red.
+test fn operator_line_names_subject_stage_cause_and_competing_declaration_holds() -> Bool {
+  match ndp_resolutions() {
+    NdpContextRefused => false
+    NdpResolutionsDecided { shadow: shadow, collision: _, unbound: _, clean: _ } =>
+      match ndp_prepare_row(resolution: shadow) {
+        Absent => false
+        Present { value: row } => {
+          let line = native_route_member_row_text(row: row)
+          string_contains(s: line, pattern: "v2.ndp.shadow.inner.leaf.leaf_value refused at prepare cause=resolve_reason_ambiguous_symbol")
+            && string_contains(s: line, pattern: "resolve_ambiguous_competing_declaration @ declaration v2.ndp.shadow.twin_value")
+            && string_contains(s: line, pattern: "resolve_ambiguous_competing_declaration @ declaration v2.ndp.shadow.inner.twin_value")
+        }
+      }
+  }
+}
+
+// THE UNBOUND ROW'S LINE RENDERS THE OCCURRENCE, NOT ITS ABSENCE. lens_verdict_diagnostic_locus_text
+// answered "<node locus, no file>" for every node-anchored diagnostic; the line now carries the
+// occurrence the failing stage anchored at.
+test fn operator_line_renders_the_source_occurrence_holds() -> Bool {
+  match ndp_unbound_refusal() {
+    Absent => false
+    Present { value: d } =>
+      string_contains(s: lens_verdict_diagnostic_locus_text(d: diagnostics_fatal(d: d)), pattern: "node occurrence #")
+  }
+}
+
+// THE DENOMINATOR: a module that resolves. Without it every claim above is satisfied by a route
+// that refuses everything for any reason.
+test fn clean_module_resolves_holds() -> Bool {
+  match ndp_resolutions() {
+    NdpContextRefused => false
+    NdpResolutionsDecided { shadow: _, collision: _, unbound: _, clean: clean } =>
+      match clean {
+        NativeLaneModuleResolved { resolved: _ } => true
+        NativeLaneModuleContextRowsDecided { rows: _ } => false
+        NativeLaneModuleResolveRowsDecided { rows: _ } => false
+      }
+  }
+}

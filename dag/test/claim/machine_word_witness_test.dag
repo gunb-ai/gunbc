@@ -319,7 +319,7 @@ fn empty_octets() -> QualifiedOctets {
 
 fn raw_octets_of(result: RawOctetsResult) -> List<Int> {
   match result {
-    RawOctetsReady { octets: octets } => octets |> map(o => uint8_int_value(v: o))
+    RawOctetsReady { octets: octets } => octets
     RawOctetsRefused { cause: _ } => []
   }
 }
@@ -385,7 +385,7 @@ test fn an_octet_cannot_be_built_out_of_range_holds() -> Bool {
 
 test fn an_octet_admits_the_byte_range_holds() -> Bool {
   match uint8_of_int(value: 255) {
-    UInt8Ready { value: v } => uint8_int_value(v: v) == 255
+    UInt8Ready { value: v } => v == 255
     UInt8OutOfRange { observed: _ } => false
   }
 }

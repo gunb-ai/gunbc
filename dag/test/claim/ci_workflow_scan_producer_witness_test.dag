@@ -14,13 +14,10 @@ import extdeps.github.code_search {
 }
 import gunbc.ci_workflow_source_read {
   CodeSearchPageRead,
-  CodeSearchPageComplete,
-  CodeSearchPageTruncated,
   CodeSearchPageRefused,
   classify_code_search_page,
 }
 import gunbc.github_observation_record {
-  ObservationCompleteness,
   ObservationComplete,
   ObservationTruncatedUpstream,
   ObservationMorePagesRemain,

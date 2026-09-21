@@ -22,11 +22,11 @@ import product.fabric.envelope { StorageRequirement }
 import gunbc.fabric_witness_run { floor_execution_requirements }
 import gunbc.floor_demand {
   floor_storage_demand, StorageDemandStated, StorageDemandUnrepresentable,
-  round_up_to_gibibyte_grain, GrainRounded, GrainUnrepresentable,
+  round_up_to_gibibyte_grain,
   gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured, HeldSetReceiptUnrepresentable,
   receipt_last_unstalled_beat, beat_reclaimable_cache,
 }
-import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend, GrainRounded, GrainUnrepresentable }
 import std.disposition { Disposition, SingleAuthority }
 import product.fabric.isolation {
   IsolationProfile,

@@ -1,0 +1,193 @@
+module v2.test.claim.native_driver_plan
+
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.process { ExitFailure, ExitSuccess }
+import extdeps.bazel.target_pattern { render_target_pattern }
+import extdeps.process.gnu_bash_exit { exit_code_misuse }
+import v2.compiler.compile {
+  NativeDriverAdjudicate, NativeDriverCensus, NativeDriverCensusResolve,
+  NativeDriverPlanRefused, NativeDriverPlanned,
+  native_driver_adjudicate_needs_facts, native_driver_adjudicate_needs_pattern, native_driver_parse, native_driver_plan_exit,
+  native_driver_plan_source_roots, native_driver_usage,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THESE ARMS EXIST TO PIN. The verb surface used to live in the rendered main: three literal
+// comparisons and three inline refusals in emitted Rust, which no witness could reach. Moving the
+// decision here is only an improvement if the decision is now EXERCISED, so every verb the driver
+// admits and every refusal it can raise has an arm, and what the host reads -- the roots accessor
+// and the adjudicate verb's facts path -- is checked against a plan rather than against argv.
+//
+// The refusal arms assert the EXACT message the rendered main printed. That is deliberate and it is
+// not a change detector: these strings are this program's command-line contract, the change being
+// made is a move rather than a redesign, and an arm that accepted any refusal text would pass
+// while the contract silently changed under it.
+
+fn parsed_verb_is_census(argv: List<String>) -> Bool {
+  match native_driver_parse(argv: argv) {
+    NativeDriverPlanRefused { reason: _, detail: _ } => false
+    NativeDriverPlanned { verb: verb } =>
+      match verb {
+        NativeDriverCensus { source_roots: _ } => true
+        NativeDriverCensusResolve { source_roots: _ } => false
+        NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
+      }
+  }
+}
+
+fn parsed_verb_is_census_resolve(argv: List<String>) -> Bool {
+  match native_driver_parse(argv: argv) {
+    NativeDriverPlanRefused { reason: _, detail: _ } => false
+    NativeDriverPlanned { verb: verb } =>
+      match verb {
+        NativeDriverCensus { source_roots: _ } => false
+        NativeDriverCensusResolve { source_roots: _ } => true
+        NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
+      }
+  }
+}
+
+fn parsed_verb_is_adjudicate(argv: List<String>) -> Bool {
+  match native_driver_parse(argv: argv) {
+    NativeDriverPlanRefused { reason: _, detail: _ } => false
+    NativeDriverPlanned { verb: verb } =>
+      match verb {
+        NativeDriverCensus { source_roots: _ } => false
+        NativeDriverCensusResolve { source_roots: _ } => false
+        NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => true
+      }
+  }
+}
+
+fn refusal_detail(argv: List<String>) -> String {
+  match native_driver_parse(argv: argv) {
+    NativeDriverPlanned { verb: _ } => ""
+    NativeDriverPlanRefused { reason: _, detail: detail } => detail
+  }
+}
+
+fn planned_root_count(argv: List<String>) -> Int {
+  length(xs: native_driver_plan_source_roots(plan: native_driver_parse(argv: argv)))
+}
+
+fn planned_facts_path(argv: List<String>) -> String {
+  match native_driver_parse(argv: argv) {
+    NativeDriverPlanRefused { reason: _, detail: _ } => ""
+    NativeDriverPlanned { verb: verb } =>
+      match verb {
+        NativeDriverAdjudicate { facts_path: path, pattern: _, source_roots: _ } => path
+        NativeDriverCensus { source_roots: _ } => ""
+        NativeDriverCensusResolve { source_roots: _ } => ""
+      }
+  }
+}
+
+fn plan_exit_is_misuse(argv: List<String>) -> Bool {
+  match native_driver_plan_exit(plan: native_driver_parse(argv: argv)) {
+    ExitSuccess => false
+    ExitFailure { code: code, reason: _ } => code == exit_code_misuse
+  }
+}
+
+fn plan_exit_is_success(argv: List<String>) -> Bool {
+  match native_driver_plan_exit(plan: native_driver_parse(argv: argv)) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+test fn the_census_verb_plans_with_its_roots_holds() -> Bool {
+  parsed_verb_is_census(argv: ["census", "dag", "src/v2"])
+  && (planned_root_count(argv: ["census", "dag", "src/v2"]) == 2)
+  && plan_exit_is_success(argv: ["census", "dag", "src/v2"])
+}
+
+test fn the_census_resolve_verb_is_not_the_census_verb_holds() -> Bool {
+  parsed_verb_is_census_resolve(argv: ["census-resolve", "dag"])
+  && !parsed_verb_is_census(argv: ["census-resolve", "dag"])
+}
+
+// The first word after `adjudicate` is the facts path and the second the target pattern; NEITHER is a source root -- the distinction
+// the rendered main made by consuming one argument before collecting the rest.
+test fn adjudicate_takes_its_facts_path_before_the_roots_holds() -> Bool {
+  parsed_verb_is_adjudicate(argv: ["adjudicate", "host-facts.tsv", "//v2/test/...", "dag", "src/v2"])
+  && (planned_facts_path(argv: ["adjudicate", "host-facts.tsv", "//v2/test/...", "dag", "src/v2"]) == "host-facts.tsv")
+  && (planned_root_count(argv: ["adjudicate", "host-facts.tsv", "//v2/test/...", "dag", "src/v2"]) == 2)
+}
+
+test fn only_adjudicate_names_a_facts_path_holds() -> Bool {
+  (planned_facts_path(argv: ["census", "dag"]) == "")
+  && (planned_facts_path(argv: ["census-resolve", "dag"]) == "")
+}
+
+// Preserved behaviour, asserted so a later reader does not "fix" it: the rendered main planned a
+// census with no roots and let the run fold answer. A parse-time refusal here would be a new wall.
+test fn a_census_with_no_roots_is_planned_not_refused_holds() -> Bool {
+  parsed_verb_is_census(argv: ["census"])
+  && (planned_root_count(argv: ["census"]) == 0)
+}
+
+test fn an_empty_command_line_refuses_with_the_usage_holds() -> Bool {
+  (refusal_detail(argv: []) == native_driver_usage)
+  && plan_exit_is_misuse(argv: [])
+}
+
+test fn an_unknown_verb_refuses_and_names_the_word_holds() -> Bool {
+  (refusal_detail(argv: ["adjudicat", "x"])
+    == "REFUSED: unknown mode adjudicat -- expected adjudicate, census or census-resolve")
+  && plan_exit_is_misuse(argv: ["adjudicat", "x"])
+}
+
+test fn adjudicate_without_a_facts_path_refuses_holds() -> Bool {
+  (refusal_detail(argv: ["adjudicate"]) == native_driver_adjudicate_needs_facts)
+  && plan_exit_is_misuse(argv: ["adjudicate"])
+}
+
+// A refused plan names nothing to fetch, so the host walks no directory and reads no file for one.
+test fn a_refused_plan_names_no_roots_and_no_facts_path_holds() -> Bool {
+  (planned_root_count(argv: ["nonsense", "dag", "src/v2"]) == 0)
+  && (planned_facts_path(argv: ["nonsense", "dag", "src/v2"]) == "")
+}
+
+// The first bad word is the located cause; later words cannot repair it, and cannot change which
+// refusal is reported.
+test fn a_later_word_cannot_repair_an_unknown_verb_holds() -> Bool {
+  refusal_detail(argv: ["nonsense", "census"])
+    == "REFUSED: unknown mode nonsense -- expected adjudicate, census or census-resolve"
+}
+
+// THE PATTERN OPERAND: carried to the plan as the authority parsed it, and refused at the command
+// line when it does not parse or is missing -- misuse (status 2), never a derived universe.
+fn planned_pattern_render(argv: List<String>) -> String {
+  match native_driver_parse(argv: argv) {
+    NativeDriverPlanRefused { reason: _, detail: _ } => ""
+    NativeDriverPlanned { verb: verb } =>
+      match verb {
+        NativeDriverAdjudicate { facts_path: _, pattern: p, source_roots: _ } => render_target_pattern(pattern: p)
+        NativeDriverCensus { source_roots: _ } => ""
+        NativeDriverCensusResolve { source_roots: _ } => ""
+      }
+  }
+}
+
+test fn adjudicate_carries_its_parsed_target_pattern_holds() -> Bool {
+  (planned_pattern_render(argv: ["adjudicate", "f.tsv", "//v2/test/parse:expression_bodied_fn_decl_parse", "src/v2"])
+    == "//v2/test/parse:expression_bodied_fn_decl_parse")
+  && (planned_pattern_render(argv: ["adjudicate", "f.tsv", "//v2/test/parse/...", "src/v2"]) == "//v2/test/parse/...")
+}
+
+test fn adjudicate_with_an_unparseable_pattern_refuses_as_misuse_holds() -> Bool {
+  plan_exit_is_misuse(argv: ["adjudicate", "f.tsv", "v2/test/parse", "src/v2"])
+  && string_contains(s: refusal_detail(argv: ["adjudicate", "f.tsv", "v2/test/parse", "src/v2"]), pattern: "not absolute")
+  && (planned_root_count(argv: ["adjudicate", "f.tsv", "v2/test/parse", "src/v2"]) == 0)
+}
+
+test fn adjudicate_without_a_pattern_refuses_holds() -> Bool {
+  (refusal_detail(argv: ["adjudicate", "f.tsv"]) == native_driver_adjudicate_needs_pattern)
+  && plan_exit_is_misuse(argv: ["adjudicate", "f.tsv"])
+}

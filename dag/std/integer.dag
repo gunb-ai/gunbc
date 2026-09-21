@@ -42,8 +42,24 @@ type UInt = Nat
 // bypassing it with a bare Int. Rung: mitigatable. NEXT-RUNG TRIGGER, shared with std.machine_word's
 // word carrier: sole construction over UInt8, which makes the unconstructed value unwritable and
 // turns this refusal into a state with no constructor.
+// THE READY ARM CARRIES AN `Int`, AND SAYING `UInt8` HERE WAS THE DEFECT.
+//
+// `UInt8` is `Compose<UInt, MachineWidth<8>>` and `Compose` is `Phantom`: it has NO INHABITANT. So
+// this arm claimed to hold a value of a type that cannot hold one, and `uint8_of_int` below
+// constructed it by putting an `Int` there -- which the checker admitted only because the
+// composition is transparent to `Int` at a formal. The emitted target is not transparent, and the
+// first consumer to emit this closure got `E0308 expected PhantomData<(i64, MachineWidth<()>)>,
+// found i64`. The field now says what it holds.
+//
+// THE ADMISSION IS UNCHANGED AND SO IS THE RUNG. `uint8_of_int` still refuses anything outside
+// [0, 2^8), and this arm is still reachable only through it; what changed is that the arm no longer
+// asserts a width in its TYPE that nothing checks and no value can carry. NO ENFORCED RUNG DROPS:
+// no wall is removed, because there was never a wall here -- a phantom brand checks nothing.
+// Stating the width in the type is the (b) climb, and it needs a NEWTYPE over the carrier with sole
+// construction, which is the trigger on
+// `gunbc.recurring_failure_mode.bounded_natural_arithmetic_evaluated_as_unbounded_int`.
 type UInt8Result
-  = UInt8Ready { value: UInt8 }
+  = UInt8Ready { value: Int }
   | UInt8OutOfRange { observed: Int }
 
 fn uint8_of_int(value: Int) -> UInt8Result {
@@ -56,10 +72,6 @@ fn uint8_of_int(value: Int) -> UInt8Result {
         UInt8Ready { value: value }
       }
   }
-}
-
-fn uint8_int_value(v: UInt8) -> Int {
-  v + 0
 }
 
 // THE ADMISSION IS CARRIED BY A SEALED CARRIER, BECAUSE A PHANTOM BRAND CANNOT CARRY IT.
@@ -78,7 +90,7 @@ fn uint8_int_value(v: UInt8) -> Int {
 // still UInt8 and there is still one of those -- it is the PROOF ABOUT a list of them, which is a
 // different fact and therefore a different carrier.
 type QualifiedOctets sole_constructor {
-  members: List<UInt8>
+  members: List<Int>
 }
 
 type QualifiedOctetsResult
@@ -130,7 +142,7 @@ type QualifiedOctetsResult
 // worth nothing. Neither admitted caller is one -- the fold mints only the list it has verified in
 // full, and word_to_octets takes a Word and a width rather than a member list. That is the property a reviewer should check when the roster
 // grows, and it is why the roster is two names rather than a convenience.
-fn qualified_octets(members: List<UInt8>) -> QualifiedOctets
+fn qualified_octets(members: List<Int>) -> QualifiedOctets
   admit_callers: [
     decl_ref(module_path: "std.integer", decl_name: "uint8_octets_of_ints"),
     decl_ref(module_path: "std.machine_word", decl_name: "word_to_octets")
@@ -163,7 +175,7 @@ fn first_uint8_out_of_range(remaining: List<Int>) -> Int? {
 
 // The reader. It is total and needs no refusal: the carrier IS the proof, so there is nothing left to
 // check, and that is the whole point of having made it a type.
-fn qualified_octet_members(q: QualifiedOctets) -> List<UInt8> {
+fn qualified_octet_members(q: QualifiedOctets) -> List<Int> {
   q.members
 }
 

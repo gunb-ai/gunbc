@@ -1,0 +1,203 @@
+module v2.workflow.emitted_closure_crate_partition
+
+import std.types { List, String, Bool, Int }
+import v2.std.algebra { any }
+import v2.workflow.compiler_closure_ingest_transport { closure_entry }
+import v2.lens.module_graph {
+  ModuleDeclarationFact,
+  ModuleDependencyEdge,
+  dependency_closure,
+  dependency_resolution_facts_live,
+  module_declaration_facts_live
+}
+import v2.std.collection { empty_map, map_get, map_insert }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.compilers.compilation_unit { ModuleDag, ModuleDagEdge, ModuleId }
+import v2.workflow.rust_crate_partition {
+  PartitionPolicy,
+  PolicyPartitionParam,
+  ResolvePartitionOutcome,
+  resolve_partition_outcome,
+  rust_crate_partition_declared_core_target
+}
+
+// THE MODULE DAG OF THE RETAINED EMITTED COMPILER CLOSURE, DERIVED -- NOT AUTHORED. The subject is
+// the closure the self-host route emits: v2.compiler.compile's, whose entry is imported from its
+// home, v2.workflow.compiler_closure_ingest_transport closure_entry. The pool is BOTH roots, a
+// stated divergence from that module's single closure_source_root:
+// src/v2 imports std.* and extdeps.* from dag/, so a src/v2-only pool leaves those imports
+// undeclared and drops them from the DAG rather than refusing. Nodes are the declared modules the closure reaches and edges are the resolved
+// dependency facts among them, both read from v2.lens.module_graph -- the one edge-source seam
+// (dependency_edge_source_migration_note), so the namespace terminal step changes this DAG by
+// changing that producer and nothing here. There is no roster to keep in step: a new import is a
+// new edge the next time this runs.
+//
+// WHAT THIS DAG DOES NOT CARRY, stated so nothing reads its absence as a fact. exports and
+// type_definitions are empty maps. The interfaces a partition_fold_outcome would derive from them
+// are the source_authority ingest's to supply (the frontier v2.workflow.rust_crate_partition
+// stage0_frontier_grounding_target names), so this DAG is fed to resolve_partition_outcome -- which
+// reads modules and edges only -- and to NOTHING that builds CompilationUnit interfaces. The edges
+// are source dependency edges: emitter-added and runtime edges are not in them, and they enter
+// when the emitted-crate rendering does (demand_engine_program names the classification).
+
+data emitted_compiler_closure_pool_roots: List<String> = ["dag", "src/v2"]
+
+fn emitted_closure_path_set(paths: List<String>) -> Map<String, Bool> {
+  paths |> fold(init: empty_map(), f: fn(acc, path) { map_insert(acc, path, true) })
+}
+
+fn emitted_closure_module_by_path(
+  declarations: List<ModuleDeclarationFact>,
+  closure: Map<String, Bool>
+) -> Map<String, String> {
+  declarations |> fold(init: empty_map(), f: fn(acc, decl) {
+    match map_get(closure, decl.path) {
+      Accepted { value: Present { value: _ }, diagnostics: _ } => map_insert(acc, decl.path, decl.module)
+      Accepted { value: Absent, diagnostics: _ } => acc
+      Rejected { diagnostics: _ } => acc
+    }
+  })
+}
+
+fn emitted_closure_module_at(by_path: Map<String, String>, path: String) -> Optional<String> {
+  match map_get(by_path, path) {
+    Accepted { value: found, diagnostics: _ } => found
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+// A DERIVED DAG IS EITHER THE WHOLE CLOSURE OR A REFUSAL. A dependency an in-closure module
+// requires but the pool does not declare is not an edge to drop: dropping it yields a SMALLER
+// graph that partitions cleanly and reads as a completed closure, which is the absorbing fallback
+// DESIGN section 5 forbids. So the entry must be declared, and every dependency reached from it
+// must resolve to a declared module in the closure; the first that does not is refused with its
+// importer and target. Modules of the pool the entry does not reach are never inspected.
+type ModuleDagDerivationRefusal
+  = ClosureEntryUndeclared { entry_path: String }
+  | ClosureDependencyUnresolved { importer_path: String, target_module: String }
+
+type ModuleDagDerivation
+  = ModuleDagDerived { module_dag: ModuleDag }
+  | ModuleDagDerivationRefused { cause: ModuleDagDerivationRefusal }
+
+type ClosureEdgeFold {
+  edges: List<ModuleDagEdge>
+  refusal: Optional<ModuleDagDerivationRefusal>
+}
+
+fn closure_entry_declared(entry_path: String, declarations: List<ModuleDeclarationFact>) -> Bool {
+  declarations |> any(decl => decl.path == entry_path)
+}
+
+fn closure_edge_step(
+  acc: ClosureEdgeFold,
+  edge: ModuleDependencyEdge,
+  by_path: Map<String, String>,
+  module_set: Map<String, Bool>
+) -> ClosureEdgeFold {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match emitted_closure_module_at(by_path: by_path, path: edge.path) {
+        Absent => acc
+        Present { value: importer } => {
+          let unresolved = ClosureEdgeFold {
+            edges: acc.edges,
+            refusal: Present { value: ClosureDependencyUnresolved { importer_path: edge.path, target_module: edge.target_module } }
+          }
+          if !edge.target_declared {
+            unresolved
+          } else {
+            match map_get(module_set, edge.target_module) {
+              Accepted { value: Present { value: _ }, diagnostics: _ } =>
+                if importer == edge.target_module {
+                  acc
+                } else {
+                  ClosureEdgeFold {
+                    edges: acc.edges |> list_push(ModuleDagEdge { from: importer as ModuleId, to: edge.target_module as ModuleId }),
+                    refusal: Absent
+                  }
+                }
+              Accepted { value: Absent, diagnostics: _ } => unresolved
+              Rejected { diagnostics: _ } => unresolved
+            }
+          }
+        }
+      }
+  }
+}
+
+fn module_dag_from_dependency_facts(
+  entry_path: String,
+  edges: List<ModuleDependencyEdge>,
+  declarations: List<ModuleDeclarationFact>
+) -> ModuleDagDerivation {
+  if !closure_entry_declared(entry_path: entry_path, declarations: declarations) {
+    ModuleDagDerivationRefused { cause: ClosureEntryUndeclared { entry_path: entry_path } }
+  } else {
+    let closure = emitted_closure_path_set(
+      paths: dependency_closure(entry_path: entry_path, edges: edges, nodes: declarations)
+    )
+    let by_path = emitted_closure_module_by_path(declarations: declarations, closure: closure)
+    let modules = declarations |> fold(init: [], f: fn(acc, decl) {
+      match emitted_closure_module_at(by_path: by_path, path: decl.path) {
+        Present { value: module_id } => acc |> list_push(module_id as ModuleId)
+        Absent => acc
+      }
+    })
+    let module_set = modules |> fold(init: empty_map(), f: fn(acc, module_id) { map_insert(acc, module_id as String, true) })
+    let folded = edges |> fold(init: ClosureEdgeFold { edges: [], refusal: Absent }, f: fn(acc, edge) {
+      closure_edge_step(acc: acc, edge: edge, by_path: by_path, module_set: module_set)
+    })
+    match folded.refusal {
+      Present { value: cause } => ModuleDagDerivationRefused { cause: cause }
+      Absent =>
+        ModuleDagDerived {
+          module_dag: ModuleDag {
+            modules: modules,
+            edges: folded.edges,
+            exports: empty_map(),
+            type_definitions: empty_map(),
+          }
+        }
+    }
+  }
+}
+
+fn emitted_compiler_closure_module_dag() -> ModuleDagDerivation {
+  let roots = emitted_compiler_closure_pool_roots
+  module_dag_from_dependency_facts(
+    entry_path: closure_entry,
+    edges: dependency_resolution_facts_live(pool_roots: roots, importer_roots: roots, exclude_substrings: []),
+    declarations: module_declaration_facts_live(pool_roots: roots)
+  )
+}
+
+// The retained emitted compiler closure, partitioned by the balanced policy at the declared core
+// target. CONSUMER, stated as DESIGN section 3c requires: nothing on the emitted build route
+// consumes this assignment yet. The self-host route emits the closure as one crate; the consumer
+// that renders this assignment as a Cargo workspace -- manifests, cross-crate paths, the facade --
+// is the emitted-crate rendering package (Pkg7d), and that is this declaration's declared frontier
+// and its trigger. Until then its executing consumer is the inhabitance claim in
+// v2.test.claim.emitted_closure_crate_partition, which runs the same route over fixture source trees.
+type EmittedClosurePartitionOutcome
+  = EmittedClosureDagRefused { cause: ModuleDagDerivationRefusal }
+  | EmittedClosureResolved { outcome: ResolvePartitionOutcome }
+
+fn derived_policy_partition(derivation: ModuleDagDerivation, policy: PartitionPolicy) -> EmittedClosurePartitionOutcome {
+  match derivation {
+    ModuleDagDerivationRefused { cause: cause } => EmittedClosureDagRefused { cause: cause }
+    ModuleDagDerived { module_dag: module_dag } =>
+      EmittedClosureResolved {
+        outcome: resolve_partition_outcome(parameter: PolicyPartitionParam { policy: policy }, module_dag: module_dag)
+      }
+  }
+}
+
+fn emitted_compiler_closure_policy_partition() -> EmittedClosurePartitionOutcome {
+  derived_policy_partition(
+    derivation: emitted_compiler_closure_module_dag(),
+    policy: PartitionPolicy { target_crate_count: rust_crate_partition_declared_core_target }
+  )
+}

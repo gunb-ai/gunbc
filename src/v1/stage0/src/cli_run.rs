@@ -9447,6 +9447,72 @@ fn build_both_closure_edge_index(
     Ok(edges.clone())
 }
 
+/// THE BARE-REFERENCE CHANNEL'S OUTCOME, PER ENTRY, READ AT THE DECISION AND NOT AT A SYMPTOM.
+///
+/// `gunbc.recurring_failure_mode.bare_reference_channel_declines_a_pull_in_silence` states the
+/// class's ceiling as a loader-side CARRIER for declined names, which does not exist. This reading
+/// needs none: it does not ask why a name was declined, it asks the OUTCOME both gates jointly
+/// decide — for one source file, did the bare half run at all, and which modules did it pull. Both
+/// answers are already values on `BothClosureEdgeIndex`; nothing is inferred from whether a type
+/// resolved thirteen modules away.
+///
+/// Module paths, never file paths, in and out: a path is the positional citation DESIGN section 3
+/// keeps out of a stable identity, and the caller's expectation table would decay on a file rename
+/// that changed no behaviour.
+pub struct BareReferenceChannelEntryReading {
+    pub module_path: String,
+    /// False exactly when gate one (`source_declares_import_lines`) turned the channel off for
+    /// this file — which is a DIFFERENT state from an eligible file that pulled nothing, and the
+    /// two must never be folded: one is a channel that never ran, the other is every arm of
+    /// `pullable` declining.
+    pub bare_channel_eligible: bool,
+    /// The modules gate two pulled, each the head of a provider's import closure, sorted.
+    pub pulled_modules: Vec<String>,
+}
+
+/// One index build, one reading per named entry. Refuses — never widens — on an entry the index
+/// does not carry (root existence is the caller's subject-unreached question, not this leaf's): an empty pull set from a module that was never read would be
+/// indistinguishable from a decline, which is the absorbing answer DESIGN section 5 forbids.
+pub fn bare_reference_channel_readings(
+    source_roots: &[String],
+    module_paths: &[String],
+) -> Result<Vec<BareReferenceChannelEntryReading>, String> {
+    let index = build_multi_entry_index(source_roots);
+    let mut module_of_file: HashMap<String, String> = HashMap::new();
+    for (module, source) in index.source_files.iter() {
+        module_of_file.insert(workspace_relative_repo_path(&source.path), module.clone());
+    }
+    let mut readings = Vec::new();
+    for module_path in module_paths {
+        let Some(source) = index.source_files.get(module_path.as_str()) else {
+            return Err(format!(
+                "bare-reference-channel: no module '{module_path}' under source roots: {}",
+                source_roots.join(", ")
+            ));
+        };
+        let file = workspace_relative_repo_path(&source.path);
+        let edges = build_both_closure_edge_index(&index, source)?;
+        let bare_channel_eligible = edges.bare_scan_eligible.contains(&file);
+        let mut pulled_modules: Vec<String> = Vec::new();
+        for pulled in edges.bare_out.get(&file).into_iter().flatten() {
+            let Some(module) = module_of_file.get(pulled.as_str()) else {
+                return Err(format!(
+                    "bare-reference-channel: pulled file '{pulled}' has no module in the index"
+                ));
+            };
+            pulled_modules.push(module.clone());
+        }
+        pulled_modules.sort();
+        pulled_modules.dedup();
+        readings.push(BareReferenceChannelEntryReading {
+            module_path: module_path.clone(),
+            bare_channel_eligible,
+            pulled_modules,
+        });
+    }
+    Ok(readings)
+}
+
 /// Explicit whole-pool demand: regen reads all rows in reverse, and floor preparation
 /// serves every entry. Entry compiles never call this boundary.
 fn whole_pool_closure_edge_index(
