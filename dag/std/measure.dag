@@ -4,6 +4,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat }
+import std.checked_arithmetic { IntegerOverflow, IntegerAdd, BinaryOperands, int_inclusive_max }
 import std.algebra { FieldOfFractions }
 import std.types { Int, Bool, String, NonEmptyStr }
 import std.decl_ref { DeclarationRef }
@@ -790,6 +791,54 @@ fn finite_byte_size_from_byte_size(size: ByteSize) -> FiniteByteSizeBuild {
       FiniteByteSizeBuilt { size: finite_byte_size(count: positive) }
     PositiveMeasureCountRefused { cause: _ } =>
       FiniteByteSizeNonPositive { observed: observed }
+  }
+}
+
+// THE WHOLE-GIBIBYTE GRAIN AS A FiniteByteSize, CONSTRUCTED RATHER THAN VALIDATED. The scale
+// factor is a positive constant, so building it through finite_byte_size_from_byte_size would
+// hand every consumer a NonPositive arm that can never fire -- a match on a state the construction
+// already excludes. The predecessor form is the direct route PositiveMeasureCount offers.
+fn gibibyte_grain() -> FiniteByteSize {
+  finite_byte_size(count: positive_measure_count(predecessor: gibibyte_scale_factor_bytes() - 1))
+}
+
+// ROUNDING A BYTE COUNT UP TO A GRAIN, ONCE, WITH THE GRAIN A DECLARED INPUT.
+//
+// This is the corpus's one rounder. It replaced gunbc.floor_demand's gibibyte-fixed
+// round_up_to_gibibyte_grain, which now binds this function to gibibyte_grain: a policy whose grain
+// is one of its declared inputs could not reuse a rounder that fixed the grain, and minting a second
+// one beside it was the DESIGN 3 fork. The grain is a FiniteByteSize so the modulus is never zero
+// -- a zero grain is not a finer grain, it is the absence of one, and division by it has no answer
+// to refuse with.
+//
+// THE ADDITION IS ABSENT ON PURPOSE, AND IT MUST NOT BE HELPFULLY RESTORED. The former form
+// pre-checked `n + (grain - 1)` through checked_int_add and answered the wrong question: that add
+// is not the value returned, so it refuses inputs whose ceiling fits. For a POWER-OF-TWO grain the
+// two questions coincide -- 2^63 is a multiple of every such grain, so the last aligned count is
+// exactly max - (grain - 1) and both forms refuse the same set, which is why the gibibyte binding's
+// existing witnesses could not tell them apart -- and for any other grain they do not: at grain
+// 1000 the last aligned count sits above max - 999, its ceiling is itself, and the checked add
+// refused it. Here the pad is derived first, (grain - n mod grain) mod grain, strictly below the
+// grain and computed without leaving the range; the one comparison, n > int_inclusive_max() - pad,
+// is exactly "does the ceiling fit", and n + pad is evaluated only after it has been established
+// to. That is the same subtraction construction gunbc.runner_microvm guest_memory_fits uses and
+// DESIGN 4b names as rung 4 over a checked-add guard at rung 1. The refusal still carries an
+// IntegerOverflow cause, and it names the operation that was NOT performed: the add of n and pad.
+type GrainRounding
+  = GrainRounded { bytes: ByteSize }
+  | GrainUnrepresentable { cause: IntegerOverflow }
+
+fn round_up_to_grain(bytes: ByteSize, grain: FiniteByteSize) -> GrainRounding {
+  let n = byte_size_count(b: bytes)
+  let g = finite_byte_size_count(size: grain)
+  let remainder = n % g
+  let pad = if remainder == 0 { 0 } else { g - remainder }
+  if n > int_inclusive_max() - pad {
+    GrainUnrepresentable {
+      cause: IntegerOverflow { operation: IntegerAdd, operands: BinaryOperands { lhs: n, rhs: pad } },
+    }
+  } else {
+    GrainRounded { bytes: byte_size(n + pad) }
   }
 }
 

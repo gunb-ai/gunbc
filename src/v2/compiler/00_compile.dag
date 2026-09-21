@@ -12,9 +12,13 @@ import gunbc.witness_v2_native_route {
   native_route_live_control_false_declaration,
   native_route_live_control_module,
   native_route_live_control_true_declaration,
+  native_route_label_in_package,
+  native_route_module_package_text,
+  native_route_default_pattern,
   native_route_universe_member,
   required_v2_native_job_name
 }
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryAccepted,
   FloorDiscoveryRefused,
@@ -23,6 +27,8 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_finalize_source_outcomes
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import extdeps.bazel.label { Label, LabelParsed, LabelRefused }
+import extdeps.bazel.target_pattern { TargetPattern, target_pattern_matches }
 import v2.std.logic { Bool }
 import v2.std.integer { integer_int_to_decimal_string }
 import v2.compiler.emit { emit }
@@ -61,7 +67,9 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStageEntry,
   NativeTestStageEval,
   NativeTestStagePrepare,
-  NativeTestVerdict
+  NativeTestVerdict,
+  native_test_refused_after,
+  native_test_refused_located
 }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
@@ -109,6 +117,10 @@ import v2.std.diagnostic {
   NonEmptyDiagnostics,
   Outcome,
   Some,
+  Textual,
+  WholeFile,
+  declaration_locus,
+  diagnostics_fatal_reason,
   invariant_port_locus,
   Rejected,
   Unavailable,
@@ -122,7 +134,7 @@ import v2.std.diagnostic {
 import v2.std.node { Arrow, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.cross_tree.resolution {
   SourceRootIndex,
@@ -1177,8 +1189,9 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // defect (a grammar that fails to prepare), never on corpus data. native_test_prepare_module
 // pays resolve + infer ONCE per module. native_test_eval_one pays entry resolution +
 // evaluation per declaration and NEVER rejects: every failure it can reach is a typed
-// NativeTestRefused verdict carrying the stage and the diagnostic's head reason, so a census
-// over observations has no silent remainder.
+// NativeTestRefused verdict carrying the stage and the failing stage's own diagnostics -- the
+// located chain, not one reason copied out of it -- so a census over observations has no
+// silent remainder and a row that refused says where.
 //
 // THE PREPARE GRAIN IS TWO HALVES, AND THE SEAM IS THE PORTABILITY BOUNDARY. A seed-interpreted
 // witness that drives this route evaluates in the required floor's per-claim frame, and the
@@ -1229,15 +1242,11 @@ type NativeTestContextFoldState {
 
 // The LAST diagnostic is the cause that actually refused the file; the head is the advisory
 // that rode along. Both are carried because ownership is keyed by grain.
-fn native_test_fatal_reason(d: NonEmptyDiagnostics) -> Symbol {
-  fold_list(xs: d.tail, empty: d.head.reason, cons: fn(_acc, diag) { diag.reason })
-}
-
 fn native_test_file_refusal(path: Symbol, d: NonEmptyDiagnostics) -> NativeTestFileRefusal {
   NativeTestFileRefusal {
     path: path,
     head_reason: d.head.reason,
-    fatal_reason: native_test_fatal_reason(d: d)
+    fatal_reason: diagnostics_fatal_reason(d: d)
   }
 }
 
@@ -1470,12 +1479,32 @@ fn native_test_observation_refused(
   module: QualifiedName,
   declaration: Symbol,
   stage: NativeTestStage,
+  diagnostics: NonEmptyDiagnostics
+) -> NativeTestObservation {
+  NativeTestObservation {
+    module: module,
+    declaration: declaration,
+    verdict: NativeTestRefused { stage: stage, diagnostics: diagnostics }
+  }
+}
+
+// THE ROUTE'S OWN ENTRY REFUSALS ARE LOCATED AT THE DECLARATION THEY ARE ABOUT. A declaration the
+// scope does not hold, or holds as something other than an arrow, has no node the route can
+// anchor (the first has no node at all; the second's node is its whole body), and it has exactly
+// one identity: the qualified `<module>.<declaration>` the test identity already names.
+fn native_test_entry_refused(
+  module: QualifiedName,
+  declaration: Symbol,
   reason: Symbol
 ) -> NativeTestObservation {
   NativeTestObservation {
     module: module,
     declaration: declaration,
-    verdict: NativeTestRefused { stage: stage, reason: reason }
+    verdict: native_test_refused_located(
+      stage: NativeTestStageEntry,
+      reason: reason,
+      at: declaration_locus(declaration: qualified_name_snoc(qn: module, segment: declaration))
+    )
   }
 }
 
@@ -1494,7 +1523,7 @@ fn native_test_eval_body(
         module: prepared.module,
         declaration: declaration,
         stage: NativeTestStageEval,
-        reason: native_test_fatal_reason(d: d)
+        diagnostics: d
       )
     Accepted { value: rv, diagnostics: _ } =>
       if v2_eval_runtime_bool_is_true(value: rv) {
@@ -1524,20 +1553,22 @@ fn native_test_eval_one(
   declaration: Symbol
 ) -> NativeTestObservation {
   match native_test_module_scope_node(root: prepared.inferred.root, module: prepared.module) {
-    Rejected { diagnostics: _ } =>
-      native_test_observation_refused(
+    Rejected { diagnostics: d } =>
+      NativeTestObservation {
         module: prepared.module,
         declaration: declaration,
-        stage: NativeTestStageEntry,
-        reason: ^native_test_entry_module_scope_unresolved
-      )
+        verdict: native_test_refused_after(
+          stage: NativeTestStageEntry,
+          reason: ^native_test_entry_module_scope_unresolved,
+          d: d
+        )
+      }
     Accepted { value: scope, diagnostics: _ } =>
       match native_test_decl_in_children(children: scope.children, name: declaration) {
         Absent =>
-          native_test_observation_refused(
+          native_test_entry_refused(
             module: prepared.module,
             declaration: declaration,
-            stage: NativeTestStageEntry,
             reason: ^native_test_entry_declaration_not_found
           )
         Present { value: target } =>
@@ -1549,7 +1580,7 @@ fn native_test_eval_one(
                     module: prepared.module,
                     declaration: declaration,
                     stage: NativeTestStageEntry,
-                    reason: native_test_fatal_reason(d: d)
+                    diagnostics: d
                   )
                 Accepted { value: body, diagnostics: _ } =>
                   native_test_eval_body(
@@ -1559,10 +1590,9 @@ fn native_test_eval_one(
                   )
               }
             _ =>
-              native_test_observation_refused(
+              native_test_entry_refused(
                 module: prepared.module,
                 declaration: declaration,
-                stage: NativeTestStageEntry,
                 reason: ^native_test_entry_declaration_not_arrow
               )
           }
@@ -1773,30 +1803,126 @@ type NativeLaneUniverse {
   module_sources: List<NativeRouteModuleSource>
 }
 
-fn native_lane_universe_module_for_source(facts: NativeLaneSourceFacts) -> List<NativeLaneUniverseModule> {
-  match facts.module {
-    Absent => []
-    Present { value: declared } =>
-      if native_route_universe_member(module_qn: declared) {
-        let declarations = fold_list(
-          xs: facts.discovery.rows,
-          empty: [],
-          cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.function) }
-        )
-        if length(xs: declarations) == 0 {
-          []
-        } else {
-          [NativeLaneUniverseModule {
-            module: declared,
-            path: facts.path,
-            declarations: declarations
-          }]
-        }
-      } else {
-        []
+// THE POPULATION IS A SELECTION: EVERY UNIVERSE IDENTITY IS A LABEL, AND THE PATTERN DECIDES.
+// `native_lane_label_universe` spells each identity of every universe member as a `Label` ONCE --
+// the module's package text once per module, `parse_label` once per declaration -- and carries the
+// parsed label forward; `native_lane_universe_module_for_source` then admits by
+// `extdeps.bazel.target_pattern` `target_pattern_matches` over the CARRIED label, the one matcher,
+// within the floor's universe. There is one decision site for a refused label and one parse per
+// identity (review 69565: the earlier pre-pass and filter each re-derived every label).
+// `the_default_pattern_admits_every_universe_member` pins that the default narrows nothing.
+//
+// THE UNIVERSE AND THE SELECTION ARE TWO AUTHORITIES. The universe is the floor's
+// (`native_route_universe_member`, the required gate's own prefix): only its members are labeled at
+// all, so a module outside it -- including a declaration no label can name, `test fn all` -- is
+// neither the lane's population nor the lane's defect (review 69555). The pattern only narrows
+// WITHIN the universe; a pattern reaching outside it selects nothing rather than widening the lane.
+//
+// PER IDENTITY IS THE GRAIN THE SINGLE-TARGET FORM NEEDS: `//pkg:name` names a declaration, not a
+// module. A MODULE WITH NO ADMITTED DECLARATION IS NOT IN THE UNIVERSE, so the emptiness check
+// sits below the filter.
+type NativeLaneLabeledIdentity {
+  declaration: String
+  label: Label
+}
+
+type NativeLaneLabeledSource {
+  module: String
+  path: Symbol
+  identities: List<NativeLaneLabeledIdentity>
+}
+
+type NativeLaneSourceLabels
+  = NativeLaneSourceLabeled { identities: List<NativeLaneLabeledIdentity> }
+  | NativeLaneSourceLabelRefused { identity: String }
+
+type NativeLaneLabeling
+  = NativeLaneLabeled { sources: List<NativeLaneLabeledSource> }
+  | NativeLaneLabelRefused { identity: String }
+
+// ONE PACKAGE TEXT PER MODULE, ONE PARSE PER DECLARATION. The first refused declaration absorbs:
+// it is the located cause, and a later row cannot repair it.
+fn native_lane_label_rows(declared: String, rows: List<FloorDiscoveryRow>) -> NativeLaneSourceLabels {
+  let package_text = native_route_module_package_text(module_qn: declared)
+  fold_list(
+    xs: rows,
+    empty: NativeLaneSourceLabeled { identities: [] },
+    cons: fn(state, row) {
+      match state {
+        NativeLaneSourceLabelRefused { identity: _ } => state
+        NativeLaneSourceLabeled { identities: identities } =>
+          match native_route_label_in_package(package_text: package_text, declaration: row.function) {
+            LabelRefused { cause: _ } =>
+              NativeLaneSourceLabelRefused { identity: concat(concat(declared, "."), row.function) }
+            LabelParsed { label: label } =>
+              NativeLaneSourceLabeled {
+                identities: list_snoc_item(
+                  xs: identities,
+                  item: NativeLaneLabeledIdentity { declaration: row.function, label: label }
+                )
+              }
+          }
       }
+    }
+  )
+}
+
+// ONLY UNIVERSE MEMBERS ARE LABELED. A source with no declared module never reaches here (the
+// unowned-row refusal runs first), and a module outside the floor's universe is skipped whole.
+fn native_lane_label_universe(facts: List<NativeLaneSourceFacts>) -> NativeLaneLabeling {
+  fold_list(
+    xs: facts,
+    empty: NativeLaneLabeled { sources: [] },
+    cons: fn(acc, f) {
+      match acc {
+        NativeLaneLabelRefused { identity: _ } => acc
+        NativeLaneLabeled { sources: sources } =>
+          match f.module {
+            Absent => acc
+            Present { value: declared } =>
+              if !native_route_universe_member(module_qn: declared) {
+                acc
+              } else {
+                match native_lane_label_rows(declared: declared, rows: f.discovery.rows) {
+                  NativeLaneSourceLabelRefused { identity: identity } =>
+                    NativeLaneLabelRefused { identity: identity }
+                  NativeLaneSourceLabeled { identities: identities } =>
+                    NativeLaneLabeled {
+                      sources: list_snoc_item(
+                        xs: sources,
+                        item: NativeLaneLabeledSource { module: declared, path: f.path, identities: identities }
+                      )
+                    }
+                }
+              }
+          }
+      }
+    }
+  )
+}
+
+fn native_lane_universe_module_for_source(
+  pattern: TargetPattern,
+  source: NativeLaneLabeledSource
+) -> List<NativeLaneUniverseModule> {
+  let declarations = fold_list(
+    xs: source.identities,
+    empty: [],
+    cons: fn(acc, identity) {
+      if target_pattern_matches(pattern: pattern, target: identity.label) {
+        list_snoc_item(xs: acc, item: identity.declaration)
+      } else {
+        acc
+      }
+    }
+  )
+  if length(xs: declarations) == 0 {
+    []
+  } else {
+    [NativeLaneUniverseModule { module: source.module, path: source.path, declarations: declarations }]
   }
 }
+
 
 // THE DERIVATION IS THE FLOOR'S OWN PRODUCER, FINALIZED THE FLOOR'S OWN WAY. The per-source
 // states are handed to floor_discovery_finalize_source_outcomes untouched — so a walk failure, a
@@ -1825,6 +1951,15 @@ fn native_lane_unowned_row_path(facts: List<NativeLaneSourceFacts>) -> Optional<
 }
 
 fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse> {
+  native_lane_universe_selected(ingest: ingest, pattern: native_route_default_pattern())
+}
+
+// THE SELECTED UNIVERSE: the same derivation, every refusal intact, over the identities `pattern`
+// admits. `native_lane_universe` is this at the default pattern and is what the lane's rendered
+// main calls; a caller naming a narrower pattern gets a narrower population through the same
+// producer -- never a filter applied to the default universe after the fact, so a corpus refusal
+// outside the pattern still refuses (a narrower question does not make a broken corpus sound).
+fn native_lane_universe_selected(ingest: SourceRootIngest, pattern: TargetPattern) -> Outcome<NativeLaneUniverse> {
   let facts = native_lane_source_facts(ingest: ingest)
   match native_lane_malformed_import_row(facts: facts) {
     Present { value: f } =>
@@ -1845,7 +1980,12 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
             detail: symbol_lexeme(sym: unowned)
           )
         Absent =>
-          native_lane_universe_after_ownership(facts: facts)
+          match native_lane_label_universe(facts: facts) {
+            NativeLaneLabelRefused { identity: identity } =>
+              native_lane_refused(reason: ^native_lane_identity_label_refused, detail: identity)
+            NativeLaneLabeled { sources: sources } =>
+              native_lane_universe_after_ownership(pattern: pattern, facts: facts, sources: sources)
+          }
       }
   }
 }
@@ -1854,7 +1994,11 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
 // it is an expression: `.dag` has no early `return` to fall through, so the accepted path has to be
 // the other arm of the same match. Splitting it keeps that arm one call wide instead of indenting
 // the entire derivation inside a match arm. Consumer: native_lane_universe, the only caller.
-fn native_lane_universe_after_ownership(facts: List<NativeLaneSourceFacts>) -> Outcome<NativeLaneUniverse> {
+fn native_lane_universe_after_ownership(
+  pattern: TargetPattern,
+  facts: List<NativeLaneSourceFacts>,
+  sources: List<NativeLaneLabeledSource>
+) -> Outcome<NativeLaneUniverse> {
   match floor_discovery_finalize_source_outcomes(
     outcomes: fold_list(xs: facts, empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: f.discovery) })
   ) {
@@ -1862,11 +2006,11 @@ fn native_lane_universe_after_ownership(facts: List<NativeLaneSourceFacts>) -> O
       native_lane_refused(reason: ^native_lane_universe_derivation_refused, detail: reason)
     FloorDiscoveryAccepted { rows: _ } => {
       let modules = fold_list(
-        xs: facts,
+        xs: sources,
         empty: [],
-        cons: fn(acc, f) {
+        cons: fn(acc, source) {
           fold_list(
-            xs: native_lane_universe_module_for_source(facts: f),
+            xs: native_lane_universe_module_for_source(pattern: pattern, source: source),
             empty: acc,
             cons: fn(inner, m) { list_snoc_item(xs: inner, item: m) }
           )
@@ -2451,7 +2595,7 @@ type NativeLaneModuleResolution
 // fork DESIGN section 3 forbids, in the place it would matter most: the two spellings would then be
 // free to disagree about whether a file the context refused is a module that resolved.
 // THE VERDICT CARRIES THE DIAGNOSTICS UNFOLDED, and that is the whole reason this is a separate
-// declaration rather than an inlined precheck. native_test_fatal_reason collapses NonEmptyDiagnostics
+// declaration rather than an inlined precheck. diagnostics_fatal_reason collapses NonEmptyDiagnostics
 // to its LAST reason, which is the right summary for a member row whose grain is the declaration and
 // the wrong one for a census whose grain is the occurrence: v2.compiler.03_resolve emits one
 // diagnostic PER REFUSED NODE, each carrying its own locus, so a fold to one reason discards every
@@ -2497,17 +2641,18 @@ fn native_lane_module_resolution(
       NativeLaneModuleContextRowsDecided {
         rows: native_lane_module_refusal_rows(
           entry: entry,
-          verdict: NativeTestRefused { stage: NativeTestStageContext, reason: fr.fatal_reason }
+          verdict: native_test_refused_located(
+            stage: NativeTestStageContext,
+            reason: fr.fatal_reason,
+            at: Textual { file: fr.path, extent: WholeFile }
+          )
         )
       }
     NativeModuleResolveRefused { diagnostics: d } =>
       NativeLaneModuleResolveRowsDecided {
         rows: native_lane_module_refusal_rows(
           entry: entry,
-          verdict: NativeTestRefused {
-            stage: NativeTestStagePrepare,
-            reason: native_test_fatal_reason(d: d)
-          }
+          verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
         )
       }
     NativeModuleResolveAccepted { resolved: resolved } =>
@@ -2527,10 +2672,7 @@ fn native_lane_module_inference(
       NativeLaneModuleRowsDecided {
         rows: native_lane_module_refusal_rows(
           entry: entry,
-          verdict: NativeTestRefused {
-            stage: NativeTestStagePrepare,
-            reason: native_test_fatal_reason(d: d)
-          }
+          verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
         )
       }
     Accepted { value: prepared, diagnostics: _ } =>
@@ -2698,10 +2840,7 @@ fn native_lane_controls(context: NativeTestContext) -> NativeLaneControls {
   ) {
     Rejected { diagnostics: d } =>
       {
-        let refused = NativeTestRefused {
-          stage: NativeTestStagePrepare,
-          reason: native_test_fatal_reason(d: d)
-        }
+        let refused = NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
         NativeLaneControls {
           false_control: optional_present(value: refused),
           true_control: optional_present(value: refused)
