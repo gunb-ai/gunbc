@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_intent_network { operator_host_srv2 }
-import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, cell_is_ready }
+import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, cell_is_ready, cell_readiness_line }
 import gunbc.runner_microvm { gunbc_runner_guest_image }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, MicroVmAttemptResult, MicroVmAttemptAccepted, microvm_attempt,
@@ -21,7 +21,10 @@ import gunbc.runner_microvm_network {
   TapPresentUnheld, TapHeld, TapIpv6Disabled, ResidueAbsent, RulesetListed,
   ConvergedSlot, ConvergedSlotNetwork, HelperStanding, AutoAssignmentAbsentFromKernel,
   runner_slot_network, runner_slot_host_cidr,
+  host_residue_readback, ruleset_readback, ExpectationTableEmptyFact, different_generation,
+  SlotNetworkReadback, SlotNetworkConfirmed, SlotNetworkRefuted, SlotNetworkUnobservable,
 }
+import gunbc.runner_microvm_lifecycle_realize { unreadable_slot_network_readings }
 import gunbc.runner_attempt_launch { GroundClear, GroundOccupied }
 import gunbc.runner_microvm_cell_readiness {
   CellReadinessRecord, CellAttemptInFlight, CellSettled,
@@ -44,13 +47,16 @@ import gunbc.runner_microvm_lifecycle {
   BringUpEvent, BringUpTransition, BringUpAdvanced, BringUpRefusedForeignIncarnation,
   BringUpRefusedOutOfOrder, advance_bring_up,
   TerminalTrigger, VmmExited, RunnerExited, ControllerLost, ResourcesFoundOnRecovery, StopRequested,
+  UnitExitStatusReading, ExitStatusRead, ExitStatusUnread,
   StopAdmission, StopAdmitted, StopRefusedStaleIncarnation, stop_request_admission,
-  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded,
+  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, ForceStopOutcomeUnobservable,
+  StopFoundAlreadyQuiescent, ForceNotAsked,
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent,
   SubjectSlotNetwork,
   ObservedTeardown, ObservedStop, ObservedCgroup, ObservedPath, TeardownSettlement,
   TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject, TeardownSubject,
+  TeardownReadbackSubjectUnobservable, UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
   SubjectInvocation, attempt_teardown_readback, settle_teardown,
 }
 
@@ -221,7 +227,7 @@ fn observed_for(id: AttemptIdentity, facts: HostFacts) -> ObservedTeardown {
   ObservedTeardown {
     host: id.attempt.slot.host as String,
     generation: id.allocation_generation,
-    stop: ObservedStop { unit: runner_microvm_attempt_unit_name(attempt: id.attempt), invocation_id: id.invocation_id, outcome: facts.stop },
+    stop: ObservedStop { unit: runner_microvm_attempt_unit_name(attempt: id.attempt), invocation_id: UnitInvocationRead { invocation_id: id.invocation_id }, outcome: facts.stop },
     cgroup: ObservedCgroup { root: fabric_cell_slice_name(slot: id.attempt.slot) as NonEmptyStr, readback: facts.cgroup },
     mounts: ObservedPath { path: runner_microvm_attempt_jail_base(attempt: id.attempt), readback: facts.mounts },
     attempt_storage: ObservedPath { path: runner_microvm_attempt_dir(attempt: id.attempt), readback: facts.attempt_storage },
@@ -301,7 +307,7 @@ test fn a_sigterm_ignoring_child_is_force_stopped_and_the_cell_returns_only_on_a
 // A DOUBLE-FORK moves the survivor into a child cgroup; the recursive readback still finds it.
 test fn a_double_forked_survivor_in_a_child_cgroup_quarantines() -> Bool {
   is_quarantined(r: readiness_after(
-    trigger: VmmExited { exit_code: 0 },
+    trigger: VmmExited { status: ExitStatusRead { exit_code: 0 } },
     host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreePopulated { pids: [5151], cgroups: ["srv2-04.slice/escape.scope" as NonEmptyStr] }),
   ))
 }
@@ -310,6 +316,219 @@ test fn a_double_forked_survivor_in_a_child_cgroup_quarantines() -> Bool {
 // afterwards -- the listing is a later instant, and the task that outlived SIGKILL is the fact.
 test fn an_unkillable_task_quarantines_even_if_the_listing_later_reads_empty() -> Bool {
   is_quarantined(r: readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [777] }, cgroup: CgroupSubtreeEmpty)))
+}
+
+// A FORCE WHOSE RESULT COULD NOT BE READ IS UNOBSERVABLE, AND ITS RECEIPT NAMES NO PIDS.
+//
+// THIS IS THE CLAIM THE THIRD ARM OWES AND IT DISCRIMINATES ON THE KIND, NOT ON THE VERDICT. Both
+// this and ForceStopBoundExceeded quarantine the cell, so a claim that only asked "is it
+// quarantined" would have been equally green before the arm existed -- which is exactly how the
+// defect survived: the controller reported an exceeded bound with an EMPTY survivor list whenever
+// the cgroup could not be read, and the receipt said "pids  survived the bounded force-stop". So
+// what is asserted here is that the unproven fact is UNOBSERVABLE rather than REFUTED, and that its
+// text carries the read failure's own reason instead of a pid sentence.
+test fn a_force_whose_result_could_not_be_read_is_unobservable_and_names_no_pids() -> Bool {
+  let unreadable: CellReadiness? = readiness_after(
+    trigger: StopRequested,
+    host: clean_host(
+      stop: ForceStopOutcomeUnobservable { reason: "the cell's cgroup subtree could not be read after the bounded force-stop: EIO" as NonEmptyStr },
+      cgroup: CgroupSubtreeEmpty,
+    ),
+  )
+  is_quarantined(r: unreadable)
+    && unproven_mentions(r: unreadable, needle: "no-surviving-processes: unobservable")
+    && !unproven_mentions(r: unreadable, needle: "survived the bounded force-stop")
+}
+
+// THE PAIR THAT KEEPS THE CLAIM ABOVE FROM BEING SATISFIED BY A DECODER THAT SAYS `unobservable` TO
+// EVERYTHING: a real exceeded bound still reports REFUTED and still names its pid.
+test fn an_exceeded_bound_still_refutes_and_still_names_its_pids() -> Bool {
+  let exceeded: CellReadiness? = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [777] }, cgroup: CgroupSubtreeEmpty))
+  is_quarantined(r: exceeded)
+    && unproven_mentions(r: exceeded, needle: "pids 777 survived the bounded force-stop")
+    && !unproven_mentions(r: exceeded, needle: "no-surviving-processes: unobservable")
+}
+
+// AND THE CASE THE DETAIL RENDERING WAS WRONG FOR: the subtree reports live processes and no pid can
+// be named. It is a refutation -- the kernel saw something -- but the sentence must not be the
+// pid sentence with a hole where the pid goes.
+test fn an_exceeded_bound_with_no_nameable_pid_says_so() -> Bool {
+  let unnamed: CellReadiness? = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [] }, cgroup: CgroupSubtreeEmpty))
+  is_quarantined(r: unnamed)
+    && unproven_mentions(r: unnamed, needle: "none could be named")
+    && !unproven_mentions(r: unnamed, needle: "pids  survived")
+}
+
+// THE READINESS IS OPTIONAL BECAUSE readiness_after IS: an Absent reading is a settlement that never
+// happened, and it must not satisfy a claim about what a receipt SAYS. Absent reads as "does not
+// mention", which fails the positive half of every claim below and would pass the negative half
+// alone -- so each claim asserts both halves, and a missing settlement cannot pass either pair.
+fn unproven_mentions(r: CellReadiness?, needle: String) -> Bool {
+  match r {
+    Absent => false
+    Present { value: readiness } => string_contains(s: cell_readiness_line(readiness: readiness), pattern: needle)
+  }
+}
+
+// A UNIT WHOSE INVOCATION COULD NOT BE READ REFUSES THE READBACK AS UNOBSERVABLE, NOT AS FOREIGN.
+//
+// THE DISCRIMINATION IS ON THE KIND, BECAUSE THE VERDICT IS THE SAME. Both arms refuse the readback
+// and neither settles or releases anything, so a claim that asked only "did it refuse" would have
+// been green before the arm existed -- and before it existed, the empty reading did not reach a
+// refusal at all: it crossed into NonEmptyStr inside a record literal, which is decided only when it
+// evaluates (review 69057). What is asserted is that an UNREAD invocation is reported as
+// unobservable AND names the invocation subject, while a foreign one is still reported as foreign.
+//
+// THE PAIR IS THE POINT. A binder that answered "unobservable" to everything would pass the first
+// half alone, and one that answered "foreign" to everything would pass the second.
+test fn an_unreadable_unit_invocation_refuses_as_unobservable_and_a_foreign_one_as_foreign() -> Bool {
+  match identity(generation: 1, invocation: "inv-a") {
+    Absent => false
+    Present { value: id } =>
+      match bound_of(id: id) {
+        Absent => false
+        Present { value: b } => {
+          let clean = clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty)
+          let unread = match binding_with_invocation(bound: b, id: id, facts: clean, reading: UnitInvocationUnread { reason: "the unit carries no assignment" as NonEmptyStr }) {
+            TeardownReadbackSubjectUnobservable { subject: SubjectInvocation, reason: _ } => true
+            _ => false
+          }
+          let foreign = match binding_with_invocation(bound: b, id: id, facts: clean, reading: UnitInvocationRead { invocation_id: "inv-somebody-else" as NonEmptyStr }) {
+            TeardownReadbackForeignSubject { subject: SubjectInvocation, expected: _, observed: _ } => true
+            _ => false
+          }
+          let own = match teardown_binding(bound: b, id: id, facts: clean) {
+            TeardownReadbackBound { readback: _ } => true
+            _ => false
+          }
+          unread && foreign && own
+        }
+      }
+  }
+}
+
+// AN UNREADABLE INVOCATION SETTLES NOTHING, which is the consequence that matters: the cell keeps its
+// in-flight record, so the next admission owes recovery rather than being handed a released cell.
+test fn an_unreadable_unit_invocation_settles_nothing() -> Bool {
+  match identity(generation: 1, invocation: "inv-a") {
+    Absent => false
+    Present { value: id } =>
+      match bound_of(id: id) {
+        Absent => false
+        Present { value: b } =>
+          match binding_with_invocation(
+            bound: b,
+            id: id,
+            facts: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty),
+            reading: UnitInvocationUnread { reason: "the unit's Environment could not be read" as NonEmptyStr },
+          ) {
+            TeardownReadbackBound { readback: _ } => false
+            _ => true
+          }
+      }
+  }
+}
+
+// THE OPTIONAL FIXTURE IS HANDLED THE SAME WAY teardown_binding HANDLES IT: an Absent fixture yields
+// a refusal naming the SLOT NETWORK subject, which neither claim above accepts, so a skipped readback
+// cannot read as a pass.
+fn binding_with_invocation(
+  bound: CellBoundAttempt,
+  id: AttemptIdentity,
+  facts: HostFacts?,
+  reading: UnitInvocationReading,
+) -> TeardownReadbackBinding {
+  match facts {
+    Absent => TeardownReadbackForeignSubject { subject: SubjectSlotNetwork, expected: "a readable fixture", observed: "no subject" }
+    Present { value: f } =>
+      attempt_teardown_readback(bound: bound, observed: observed_with_invocation(id: id, facts: f, reading: reading))
+  }
+}
+
+fn observed_with_invocation(id: AttemptIdentity, facts: HostFacts, reading: UnitInvocationReading) -> ObservedTeardown {
+  let base = observed_for(id: id, facts: facts)
+  ObservedTeardown {
+    host: base.host,
+    generation: base.generation,
+    stop: ObservedStop { unit: base.stop.unit, invocation_id: reading, outcome: base.stop.outcome },
+    cgroup: base.cgroup,
+    mounts: base.mounts,
+    attempt_storage: base.attempt_storage,
+    credential_disk: base.credential_disk,
+    network: base.network,
+  }
+}
+
+// AN UNOBSERVABLE INVOCATION LEAVES RECOVERY OWED, WHICH IS THE WHOLE POINT OF NOT SETTLING.
+//
+// The arm refuses the readback, so nothing is written -- and the consequence that matters is what the
+// NEXT admission then sees. The in-flight record still stands, so the cell answers CellRecoveryRequired
+// rather than being admitted or released. Without this the refusal is only a local fact; with it, the
+// chain from "the unit could not say which attempt it was" to "the cell is not handed to anyone" is
+// asserted end to end.
+//
+// AND IT IS WHY THE RETAINED UNIT MUST OUTLIVE THE BINDING. A controller that unloaded the unit
+// before the binding was known would leave this record standing AND destroy the only place the
+// attempt's invocation id still exists, so the recovery this claim establishes would arrive at a unit
+// it could not read either -- a loop whose every pass destroys what the next pass needs (side-chat
+// ruling on gunbc#11803).
+test fn an_unreadable_unit_invocation_leaves_the_cell_owing_recovery() -> Bool {
+  match identity(generation: 1, invocation: "inv-a") {
+    Absent => false
+    Present { value: id } =>
+      match bound_of(id: id) {
+        Absent => false
+        Present { value: b } => {
+          let refused = match binding_with_invocation(
+            bound: b,
+            id: id,
+            facts: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty),
+            reading: UnitInvocationUnread { reason: "the unit's Environment could not be read" as NonEmptyStr },
+          ) {
+            TeardownReadbackBound { readback: _ } => false
+            _ => true
+          }
+          let in_flight = [CellAttemptInFlight { cell: cell, generation: 1, attempt: in_flight(id: id) }]
+          let owes_recovery = match cell_incarnation_admission(
+            store: StoreRead { ownership: StoreRootOwned, records: in_flight },
+            cell: cell,
+            allocation_generation: 2,
+          ) {
+            CellRecoveryRequired { bound: _ } => true
+            _ => false
+          }
+          refused && owes_recovery
+        }
+      }
+  }
+}
+
+// THE TWO ARMS ADDED FOR CAUSALITY DEFER TO THE CGROUP, AND THE PAIR IS WHAT MAKES THAT MEANINGFUL.
+//
+// StopFoundAlreadyQuiescent (nothing was running to ask) and ForceNotAsked (the kill could not be
+// requested) both leave the surviving-process fact to the cgroup, because that fact is about
+// PROCESSES and an empty subtree establishes it however the cell got empty. What must NOT happen is
+// either one overriding a populated subtree into a pass, or either one being treated like
+// ForceStopBoundExceeded, which refutes even over an empty listing because the listing is a later
+// instant. So each arm is asserted over BOTH cgroup readings.
+test fn the_already_quiescent_and_force_not_asked_arms_defer_to_the_cgroup() -> Bool {
+  let quiescent_clean = readiness_after(trigger: StopRequested, host: clean_host(stop: StopFoundAlreadyQuiescent, cgroup: CgroupSubtreeEmpty))
+  let quiescent_dirty = readiness_after(trigger: StopRequested, host: clean_host(stop: StopFoundAlreadyQuiescent, cgroup: CgroupSubtreePopulated { pids: [4242], cgroups: ["srv2-04.slice" as NonEmptyStr] }))
+  let not_asked_clean = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceNotAsked { reason: "writing cgroup.kill failed: EACCES" as NonEmptyStr }, cgroup: CgroupSubtreeEmpty))
+  let not_asked_dirty = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceNotAsked { reason: "writing cgroup.kill failed: EACCES" as NonEmptyStr }, cgroup: CgroupSubtreePopulated { pids: [5151], cgroups: ["srv2-04.slice" as NonEmptyStr] }))
+  is_ready(r: quiescent_clean)
+    && is_quarantined(r: quiescent_dirty)
+    && is_ready(r: not_asked_clean)
+    && is_quarantined(r: not_asked_dirty)
+}
+
+// AND NEITHER IS AN EXCEEDED BOUND. The exceeded arm refutes over an EMPTY cgroup -- that is its
+// whole point, the task outlived the kill and the listing is later -- so a claim that only checked
+// the dirty cases above would pass with these three arms collapsed into one.
+test fn an_exceeded_bound_refutes_where_the_deferring_arms_do_not() -> Bool {
+  is_quarantined(r: readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [777] }, cgroup: CgroupSubtreeEmpty)))
+    && is_ready(r: readiness_after(trigger: StopRequested, host: clean_host(stop: ForceNotAsked { reason: "writing cgroup.kill failed: EACCES" as NonEmptyStr }, cgroup: CgroupSubtreeEmpty)))
+    && is_ready(r: readiness_after(trigger: StopRequested, host: clean_host(stop: StopFoundAlreadyQuiescent, cgroup: CgroupSubtreeEmpty)))
 }
 
 // A FAILED CGROUP READ QUARANTINES, and the quarantine is never released by a later Ready readback
@@ -740,5 +959,55 @@ test fn a_slot_network_readback_for_another_slot_cannot_settle_this_attempt() ->
               }
           }
       }
+  }
+}
+
+// A LITERAL GENERATION IN A READING IS NOT INERT: IT REROUTES THE FACT TO THE WRONG CAUSE.
+//
+// `unreadable_slot_network_readings` reports the honest state of a host that cannot read its slot
+// network at all. Two of its seven facts are HOST-grain and carry a host and a generation, and
+// `host_residue_readback` / `ruleset_readback` gate on `at_receipt`, which compares them against the
+// subject's receipt. A literal `0` there does not merely lose a number: for every subject whose
+// converged generation is not zero -- this witness's is 7 -- both facts answer `different_generation`,
+// whose sealed reason says the reading was taken against a different converge generation, and the
+// built reason naming the real cause is discarded. The verdict stays `SlotNetworkUnobservable` and
+// the cell is quarantined either way, so the loss is invisible at the verdict and the operator is
+// sent to reconcile a generation instead of to a host that has no conntrack binary.
+//
+// THE CLAIM DISCRIMINATES PER FACT AND DELIBERATELY NOT THROUGH `slot_network_verdict`: that fold
+// returns the FIRST unobservable fact and `tap` precedes both of these, so a verdict-level assertion
+// would report the tap's reason and stay green with both host-grain facts misrouted.
+test fn the_host_grain_readings_carry_the_receipts_generation_not_a_literal() -> Bool {
+  match slot_network_sanitation_subject(slot: witness_slot, receipt: witness_receipt()) {
+    SanitationSubjectAdmitted { subject: s } =>
+      let r = unreadable_slot_network_readings(s: s, after: StoppedGracefully)
+      r.expectations.generation == converged_generation
+        && r.ruleset.generation == converged_generation
+        && cause_of(readback: host_residue_readback(s: s, fact: ExpectationTableEmptyFact, r: r.expectations)) == "host-cannot-read"
+        && cause_of(readback: ruleset_readback(s: s, r: r.ruleset)) == "host-cannot-read"
+    SanitationSubjectRefused { refusal: _ } => false
+  }
+}
+
+// "host-cannot-read" names the reason THIS module built; "stale-generation" is the sealed string
+// `different_generation` substitutes. Reading the cause rather than the arm is what makes the red
+// discriminating: both answers are `SlotNetworkUnobservable`, so an arm-level check cannot see it.
+fn cause_of(readback: SlotNetworkReadback) -> String {
+  match readback {
+    SlotNetworkConfirmed => "confirmed"
+    SlotNetworkRefuted { fact: _, detail: _ } => "refuted"
+    SlotNetworkUnobservable { fact: _, reason: why } =>
+      if (why as String) == stale_generation_reason() { "stale-generation" } else { "host-cannot-read" }
+  }
+}
+
+// THE SEALED REASON IS DERIVED FROM ITS OWN AUTHORITY, never transcribed. `different_generation` owns
+// that sentence; copying it here would be a second copy that keeps agreeing with a string this
+// witness no longer reads (DESIGN section 3), and the comparison would go quietly true if the
+// authority reworded it.
+fn stale_generation_reason() -> String {
+  match different_generation(fact: ExpectationTableEmptyFact) {
+    SlotNetworkUnobservable { fact: _, reason: why } => why as String
+    _ => ""
   }
 }

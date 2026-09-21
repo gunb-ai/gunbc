@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtcollins1_boot_authorization
 
-import std.types { Bool, List, NonEmptyStr, String, Timestamp }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.effect_grant { NamespacePosition, ServiceOpTree, Write }
 import std.scoped_authorization {
@@ -8,20 +8,6 @@ import std.scoped_authorization {
   AttemptIdentity,
   AuthorizationScope,
   AuthorizationRequest,
-  ScopedAuthorization,
-  AuthorizationGranted,
-  AuthorizationDenied,
-  authorize,
-  AuthorizationPermitted,
-  AuthorizationRefused,
-}
-import gunbc.auth.approval_decision_store {
-  grant_from_approved_decision, GrantDerived, GrantForAnotherIntent,
-  request_revision_of,
-}
-import gunbc.auth.approval_request_client {
-  ApprovalPollStanding, PollApproved, PollDenied, PollExpired, PollStillPending,
-  PollNotFiled, PollUnreadable,
 }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name, mtcollins1_boot_export_dir }
 import gunbc.machine_intake_mtcollins1_boot_image_fetch { mtcollins1_boot_image_sha256 }
@@ -36,6 +22,11 @@ import extdeps.bmc.ipmi_boot_selection {
 }
 import extdeps.toolchain.types { architecture_diagnostic_name }
 
+// THE GATE IS THE SHARED ONE. The operator's decision over this subject is read through
+// gunbc.auth.approval_gate, generic over the subject: ApprovalGate<MtCollins1BootSubject> and
+// approval_gate_from_poll, admitted live at the observed instant. Nothing about the gate is a fact
+// about Mt. Collins, so nothing about it is declared here.
+//
 type MtCollins1BootSubject {
   machine: NonEmptyStr
   bmc_host: NonEmptyStr
@@ -63,7 +54,20 @@ type MtCollins1BootMedium
   = MtCollins1StockInstallerMedium
   | MtCollins1CensusMedium { output_digest: NonEmptyStr }
 
-data mtcollins1_boot_medium: MtCollins1BootMedium = MtCollins1StockInstallerMedium
+// CENSUS STAGE 0D. The digest is the publish receipt of mtcollins1_census_image_publish_wet executed
+// on srv2 (machine-id cf5ea13d79fd4c8fa7e67f3dbbf7c7f2) at 2026-09-21T04:13:45Z-04:16:31Z from exact
+// revision a345a03090cf86bea4e0d262e51f7f917e703653 with the release binaries of run 35554362854
+// (gunbc sha256 5859d0bcaeb21237a8432515aed4a85743000a74931a86ab7e5627be8406466f), receipt sha256
+// f680ea2d7a9803ff969397c700e43c63f616a5463c88ccd1b0784e08bce17ebc: image_name
+// gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso, build_key ad4bf3fd18230604,
+// published_path /srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso. The
+// transport was SSH rather than the fleet-converge job because srv2 hosts no runner slots since
+// 2026-09-19; the modeled entry, its srv2 admission and its receipt were the same. This row is
+// publication-time evidence only: mtcollins1_census_medium_readback re-measures the served path on
+// srv2 before the signed subject is minted, every run.
+data mtcollins1_boot_medium: MtCollins1BootMedium = MtCollins1CensusMedium {
+  output_digest: "6455b3b9ae11214d3800c7a6eaea289e5151c0e145049e45210f9295869b5d8c",
+}
 
 // THE CENSUS ARM AUTHORS ONE FACT, THE MEASURED OUTPUT DIGEST from the publish receipt. The image name
 // derives from that digest through the same build input that owns the census volume id
@@ -169,6 +173,11 @@ fn mtcollins1_boot_intent_hash(subject: MtCollins1BootSubject) -> ContentHash {
 
 data mtcollins1_boot_purpose: NonEmptyStr = "Attach the diskless Ubuntu live image already exported on srv2 to Mt. Collins unit 1 over BMC virtual media, set one-shot CD boot, and power-cycle the host. This interrupts anything the unit is currently running." as NonEmptyStr
 
+// THE GATE IS THE SHARED ONE. The operator's decision over this subject is read through
+// gunbc.auth.approval_gate, generic over the subject: ApprovalGate<MtCollins1BootSubject> and
+// approval_gate_from_poll, admitted live at the observed instant. Nothing about the gate is a fact
+// about Mt. Collins, so nothing about it is declared here.
+//
 fn mtcollins1_boot_authorization_request(
   escalation_id: NonEmptyStr,
   attempt: AttemptIdentity,
@@ -185,55 +194,3 @@ fn mtcollins1_boot_authorization_request(
     destructive: true,
   }
 }
-
-type MtCollins1BootGate
-  = BootGateAdmitted { authorization: ScopedAuthorization<MtCollins1BootSubject> }
-  | BootGatePending { escalation_id: NonEmptyStr }
-  | BootGateDenied { reason: NonEmptyStr }
-  | BootGateExpired
-  | BootGateNotFiled { escalation_id: NonEmptyStr }
-  | BootGateIntentMismatch { requested_revision: NonEmptyStr, decided_revision: NonEmptyStr }
-  | BootGateStoreUnreadable { detail: NonEmptyStr }
-  | BootGateAuthorizeRefused { detail: NonEmptyStr }
-
-fn mtcollins1_boot_gate_from_poll(
-  poll: ApprovalPollStanding,
-  request: AuthorizationRequest<MtCollins1BootSubject>,
-  observed_at: Timestamp,
-) -> MtCollins1BootGate {
-  match poll {
-    PollStillPending => BootGatePending { escalation_id: request.escalation_id }
-    PollNotFiled => BootGateNotFiled { escalation_id: request.escalation_id }
-    PollExpired => BootGateExpired
-    PollUnreadable { detail: d } => BootGateStoreUnreadable { detail: d }
-    PollDenied { revision: r, decided_by: _, decided_at: _, reason: why } =>
-      if r != request_revision_of(request: request) {
-        BootGateIntentMismatch {
-          requested_revision: request_revision_of(request: request),
-          decided_revision: r,
-        }
-      } else {
-        BootGateDenied { reason: why }
-      }
-    PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
-      match grant_from_approved_decision(
-        request: request,
-        revision: r,
-        decided_by: by,
-        decided_at: at,
-        execute_by: until,
-      ) {
-        GrantForAnotherIntent { requested_revision: a, decided_revision: b } =>
-          BootGateIntentMismatch { requested_revision: a, decided_revision: b }
-        GrantDerived { authorization: auth } =>
-          match authorize(authorization: auth, request: request, observed_at: observed_at) {
-            AuthorizationPermitted { grant: _ } => BootGateAdmitted { authorization: auth }
-            AuthorizationRefused { cause: _ } =>
-              BootGateAuthorizeRefused { detail: "scoped authorization refused the HTTP grant for this request" as NonEmptyStr }
-          }
-        _ =>
-          BootGateStoreUnreadable { detail: "approved GET standing did not yield a grant" as NonEmptyStr }
-      }
-  }
-}
-

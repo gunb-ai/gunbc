@@ -15,7 +15,11 @@ import v2.cli.compile_cli {
   v2_cli_plan_source_roots,
   v2_cli_run
 }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.algebra { length, list_head, HeadAbsent, HeadFound }
+import v2.std.artifact { Artifact, SourceFile }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { DagTree }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
@@ -297,5 +301,67 @@ test fn a_refused_outcome_exits_failure_holds() -> Bool {
   ) {
     ExitSuccess => false
     ExitFailure { code: code, reason: _ } => code != 0
+  }
+}
+
+// THE REFUSAL NAMES THE REFUSING LINK, NOT THE FIRST ADVISORY. This is the run-level claim the emit
+// arm's frontier above does not block: a refusal at ASSEMBLE happens before the single-module
+// emit frontier is reached, so a supplied ingest holding one file with tokens left after its module
+// body refuses through the real front end (tokenize, parse, normalize over dag_language_model),
+// with the grammar's overlap-residue advisory riding in front. The outcome's `reason` must be the
+// FATAL -- the last link, parse_g0_tokens_remain -- and the detail must locate it: the compilation
+// unit the front end was handed (v2.compiler.program_assembly names the read's compilation_unit as
+// the diagnostic file) and the byte extent of the first remaining token. Before this change the `reason` field carried the head,
+// which on every such refusal is the same grammar-global advisory, so three different broken
+// entries refused with one indistinguishable reason (gunbc#11507 measured it on the built binary).
+data cli_probe_entry_source: String = "module v2.cli_probe.entry\n\nimport v2.std.logic { Bool }\n\nfn cli_probe_entry_value(p: Bool) -> Bool { p }\n"
+
+data cli_probe_trailing_source: String = "module v2.cli_probe.trailing\n\nimport v2.std.logic { Bool }\n\nfn cli_probe_trailing_value(p: Bool) -> Bool { p }\n) ) )\n"
+
+fn cli_probe_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data cli_probe_trailing_ingest: SourceRootIngest = [
+  cli_probe_read(source: cli_probe_entry_source, id: ^cli_probe_entry_artifact, unit: ^cli_probe_entry_cu, path: "dag/cli_probe_entry.dag"),
+  cli_probe_read(source: cli_probe_trailing_source, id: ^cli_probe_trailing_artifact, unit: ^cli_probe_trailing_cu, path: "dag/cli_probe_trailing.dag")
+]
+
+data argv_emit_cli_probe_entry: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons {
+    head: "--entry",
+    tail: Cons {
+      head: "v2.cli_probe.entry",
+      tail: Cons { head: "--source-root", tail: Cons { head: "dag", tail: Empty } }
+    }
+  }
+}
+
+// ONE NULLARY PRODUCER, FORCED ONCE (v2.workflow.floor_pure_producer_share, WARM): the run pays a
+// grammar preparation and a two-file front end, which is more than one claim's budget, and both
+// claims below inspect one field of its outcome.
+fn cli_probe_trailing_outcome() -> CliRunOutcome {
+  v2_cli_run(
+    plan: v2_cli_parse(argv: argv_of(items: argv_emit_cli_probe_entry)),
+    ingest: cli_probe_trailing_ingest
+  )
+}
+
+test fn a_trailing_token_refusal_names_the_refusing_link_as_its_reason_holds() -> Bool {
+  outcome_refusal_reason(outcome: cli_probe_trailing_outcome()) == ^parse_g0_tokens_remain
+}
+
+test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
+  match cli_probe_trailing_outcome() {
+    CliRunRefused { reason: _, detail: detail } =>
+      string_contains(s: detail, pattern: "FATAL AT cli_probe_trailing_cu bytes ")
+        && string_contains(s: detail, pattern: "parse_g0_tokens_remain @ cli_probe_trailing_cu bytes ")
+    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } => false
   }
 }

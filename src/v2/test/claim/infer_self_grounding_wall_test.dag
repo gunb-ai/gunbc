@@ -44,7 +44,7 @@ import v2.compiler.infer {
 }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_pick_if_body_fixture }
 import v2.std.algebra { list_snoc_item }
-import v2.std.diagnostic { Accepted, Rejected, Some, None, NonEmptyDiagnostics }
+import v2.std.diagnostic { Accepted, Rejected, Some, None, NonEmptyDiagnostics, diagnostics_fatal_reason }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node {
@@ -198,7 +198,7 @@ fn wall_grounding_for_node_refused(root: Node) -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match canonical_grounding_for_node(tree: tree, node: root) {
-        Rejected { diagnostics: r } => r.head.reason == ^infer_grounding_not_derived
+        Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^infer_grounding_demanded_not_derived
         Accepted { value: _, diagnostics: _ } => false
       }
   }

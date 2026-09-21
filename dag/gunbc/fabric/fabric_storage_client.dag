@@ -13,7 +13,10 @@ import std.fabric_storage {
   FabricPut, FabricPutRefused, FabricHeadRead, FabricHeadReadRefused,
   FabricHeadAdvance, FabricHeadAdvanceRefused, FabricClosureRead, FabricClosureRefused,
 }
-import gunbc.fabric_storage_wire { fabric_storage_unwire_head, fabric_storage_unwire_put, fabric_storage_unwire_advance, fabric_storage_unwire_closure }
+import gunbc.fabric_storage_wire {
+  fabric_storage_unwire_head, fabric_storage_unwire_put, fabric_storage_unwire_advance, fabric_storage_unwire_closure,
+  FabricIdentityRead, FabricIdentityUnproxied, FabricIdentityReadRefused, fabric_storage_unwire_identity,
+}
 import gunbc.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
@@ -146,6 +149,23 @@ fn fabric_storage_closure(binding: FabricStorageBinding, name: NonEmptyStr, boun
       match served_post(endpoint: e, operation: "closure", request: join([name as String, " ", to_string(bound)], "")) {
         ServedFault { fault: f } => FabricClosureRefused { fault: f }
         ServedAnswered { body: b } => fabric_storage_unwire_closure(text: b)
+      }
+  }
+}
+
+// ── THE PRESENTED IDENTITY, READ ─────────────────────────────────────────────────────────────
+// Not a store operation and not in std.fabric_storage: a reading of the principal THIS caller
+// presents at the served door, taken through the same round trip its writes take. The placed host
+// answers FabricIdentityUnproxied -- its writes run in process and no proxy stands between it and
+// the files, so there is no header to read and none is invented.
+fn fabric_storage_presented_identity(binding: FabricStorageBinding) -> FabricIdentityRead {
+  match binding {
+    FabricStorageBindingUnplaced => FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
+    FabricStorageLocalFiles { root: _ } => FabricIdentityUnproxied
+    FabricStorageServed { endpoint: e } =>
+      match served_post(endpoint: e, operation: "identity", request: "") {
+        ServedFault { fault: f } => FabricIdentityReadRefused { fault: f }
+        ServedAnswered { body: b } => fabric_storage_unwire_identity(text: b)
       }
   }
 }

@@ -382,3 +382,37 @@ fn fabric_boot_origin_standing() -> R2OriginStanding {
       }
   }
 }
+
+// ONE STANDING PER PURPOSE, SELECTED BY AN EXHAUSTIVE MATCH, so a third purpose cannot be allocated
+// without stating its standing -- and every consumer that walks the allocation roster (the bucket
+// converge in gunbc.cloudflare.r2_bucket_ensure) reaches each purpose's declared jurisdiction here
+// rather than defaulting it at the call site.
+fn bucket_purpose_origin_standing(purpose: BucketPurpose) -> R2OriginStanding {
+  match purpose {
+    FabricDurableOrigin {} => fabric_durable_origin_standing()
+    FabricBootOrigin {} => fabric_boot_origin_standing()
+  }
+}
+
+// THE BUCKET-ADMIN CREDENTIAL IS THE FLEET'S, NOT A BUCKET'S. It is account-scoped (bucket creation is
+// an account operation) and is spent only by gunbc.cloudflare.r2_bucket_ensure, so it hangs off no
+// R2OriginBucket; it inhabits the same OriginCredentialStanding, and its custody locus is disjoint
+// from the bootstrap's so the bucket converge never holds the key that mints.
+data cloudflare_r2_bucket_admin_secret_id: NonEmptyStr = "cloudflare-r2-bucket-admin-token"
+
+// PINNED ON THE EXECUTED MINT (2026-09-19): run_bucket_admin created this container, minted the token
+// and stored its value at version 1, verified by exact-version readback; the receipt is on gunbc#11721.
+// The token id is the S3 access key id and is not a secret; a rotation changes both rows together.
+data cloudflare_r2_bucket_admin_secret_version: NonEmptyStr = "1"
+
+data cloudflare_r2_bucket_admin_access_key_id: NonEmptyStr = "6f287fdeeffcfd409f7a8f2450fa2d4f"
+
+fn fleet_r2_bucket_admin_credential() -> OriginCredentialStanding {
+  OriginCredentialPinned {
+    access_key_id: cloudflare_r2_bucket_admin_access_key_id,
+    token_value: secret_ref_pin_version(
+      ref: fleet_secret_ref(secret_id: cloudflare_r2_bucket_admin_secret_id),
+      version: cloudflare_r2_bucket_admin_secret_version,
+    ),
+  }
+}
