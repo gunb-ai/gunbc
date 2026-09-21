@@ -160,6 +160,27 @@ fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
 // hosts need an observation, the legacy pair need their deployments modeled. Neither successor
 // exists, both name what would replace them, and writing either one fires the lens for that arm
 // alone.
+//
+// WHERE THE DEBT ROWS LIVE FOLLOWED THESE DECLARATIONS; WHAT THEY CITE DID NOT (2026-09-21). Both
+// scaffolds were extracted from gunbc.ci_floor_measurement into this module, and the two
+// PRE_EXISTING_CITATION_DEBT rows that excuse their citations were left keyed to the old home. A
+// debt row's identity is the citation SITE -- who cites, and what is cited -- so moving the citing
+// declaration without moving the key left the rows matching nothing (stale) and these two citations
+// unexcused (absent): four findings, one move.
+//
+// ONLY THE CITING HALF OF THAT KEY MOVED, DELIBERATELY. The cited module stays
+// gunbc.ci_floor_measurement because where the successor lands is still undecided --
+// v2.test.lens_disposition_redundancy.disposition_redundancy_test
+// redundancy_region_budget_per_service_overhead_locator records an earlier attempt to repoint the
+// cited half here on proximity grounds, which broke six declaration findings and was withdrawn as
+// the author's aesthetic judgement rather than a decision the corpus had taken. It is still not
+// taken. A reader who repoints these to this module is repeating that attempt, not completing it.
+//
+// THE ROWS WERE RE-KEYED RATHER THAN DELETED, and the check's own advice says delete. That advice
+// is right for a SPENT row -- one whose citation stopped refusing -- and these still refuse, at a
+// new address. Deleting them would not retire two obligations; it would leave two live citations
+// with nothing excusing them. The debt population is unchanged: same two scaffolds, same two
+// unauthored successors, same two dissolution conditions.
 
 data gunbc_ci_managed_host_fixed_overhead_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
