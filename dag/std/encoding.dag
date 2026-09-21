@@ -229,11 +229,32 @@ fn base64_sextet_char_at(alphabet: String, group: Word, offset: Int) -> String? 
 //
 // `base64_decode_values`, `base64_decode`, `utf8_admit_octet` and `utf8_decode_octets` are NOT fed
 // by that carrier -- `base64_decode_values` mints its own result from a `List<Int>` -- so they are a
-// SEPARATE PRODUCER of the same class and are deliberately out of this change's scope. Their
-// consumers (`extdeps.npm` `npm_sri_base64_payload_is_canonical`, `extdeps.mercurial`
-// `mercurial_node_id_from_octets` and its `octetNN: UInt8` fields) are likewise untouched. That
-// producer is its own decision, and retyping a public network surface here would be the second
-// authority `std.machine_word`'s own note warns against.
+// SEPARATE PRODUCER of the same class. Their consumers (`extdeps.npm`
+// `npm_sri_base64_payload_is_canonical`, `extdeps.mercurial` `mercurial_node_id_from_octets` and its
+// `octetNN: UInt8` fields) sit behind that producer. Retyping a public network surface here would be
+// the second authority `std.machine_word`'s own note warns against.
+//
+// ONE OF THEM WAS TOUCHED, AND AN EARLIER VERSION OF THIS NOTE SAID OTHERWISE. `utf8_admit_octet`
+// called `uint8_int_value(v: b)` to cross out of `UInt8`; that function is an identity add over an
+// uninhabited carrier and is DELETED, so the call site now reads `word_of_int(width: Width8,
+// value: b)` with `b` still spelled `UInt8`. Saying the decode path was untouched was false about
+// this one function, and the correction is recorded rather than quietly rewritten (review 69606).
+//
+// WHY THE ELEMENT TYPE IS STILL `UInt8` HERE, WHICH IS A STATED GAP AND NOT A CLAIM OF CORRECTNESS.
+// `b: Int` alone does not repair the emission: `base64_decode` answers `List<UInt8>?` and feeds
+// `utf8_decode_octets`, so today BOTH sides of that call spell `UInt8` and the boundary typechecks
+// under emission (`PhantomData` meets `PhantomData`) while the mismatch sits INSIDE
+// `utf8_admit_octet` at the `Int` formal of `word_of_int`. Retyping the two utf8 declarations moves
+// that mismatch onto the `base64_decode` call boundary instead of removing it. Removing it requires
+// retyping `base64_decode_values` and `base64_decode` -- and therefore the npm and mercurial
+// surfaces behind them -- which is the separate producer's own decision.
+//
+// WHAT IS AND IS NOT NEW HERE: this closure did not emit cleanly BEFORE this change either. The
+// deleted crossing rendered as `compile_error!` ("operator realization: host operator `+` on
+// structural operand std.integer.UInt8"), so the decode path carried an emission defect of a
+// different shape. This change did not introduce a working path's failure; it exchanged one
+// unemittable form for another at a site it had to touch, and neither is reached by any closure the
+// instruments emit today.
 fn base64_group_of_octets(x: Int, y: Int, z: Int) -> WordResult {
   match uint8_octets_of_ints(values: [0, x, y, z]) {
     QualifiedOctetsRefused { observed: o } => WordRefused { cause: WordValueOutOfRange { width: Width8, value: o } }
