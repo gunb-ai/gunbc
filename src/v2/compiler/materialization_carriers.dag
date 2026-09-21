@@ -87,11 +87,29 @@ data compile_stage_memo_demand_identity: String = "compile-pipeline-stage"
 //    nonterminal it demanded can be demanded again there.
 //  - a NULLABLE nonterminal: it can succeed consuming nothing, so the next demand on the same
 //    successful path starts at the same position and may be the same nonterminal.
-// With neither, every nonterminal on the one successful path consumes at least one token, so two
-// demands of one nonterminal are either ancestor and descendant at one position -- left
-// recursion, which grammar validation refuses (grammar_has_left_recursion_given) -- or disjoint
-// spans at different positions. So each (nonterminal, position) is demanded at most once, and the
-// ladder's single-demand arm is the derived answer, not a guess.
+// WHY THESE TWO ARE EXHAUSTIVE -- an argument over the constructors, so a new construct is
+// checked against it rather than against a list. A second demand of one (N, p) needs two demand
+// events for N at the same position p. Take any two such events in one parse's execution and
+// ask how the parse got from the first to the second. Either
+//  (a) the first event's subtree was ABANDONED and execution resumed at a position <= p: that
+//      needs a construct that attempts a branch and continues after its failure. In GrammarExpr
+//      only three do -- Choice (tries left, then right from the same position), Optional and
+//      Repeat (try the element, then continue from the same position). Terminal, LiteralTerminal
+//      and Nonterminal never resume after failure (they propagate it), and Sequence fails as a
+//      whole when either side fails, so the resuming point is always an enclosing
+//      Choice/Optional/Repeat. The abandoned subtree must contain the N demand, hence the
+//      "attempted branch demands a nonterminal" condition. Or
+//  (b) both events are on the SURVIVING path: then either one is an ancestor of the other at the
+//      same position, which is left recursion (refused by grammar_has_left_recursion_given), or
+//      they are ordered in the token stream and everything demanded between the first N's start
+//      and the second consumed zero tokens -- which requires the first N itself to consume
+//      nothing, i.e. N is nullable.
+// So (a) is a discarding backtrack site and (b) a nullable nonterminal; there is no third route.
+// THE OBLIGATION ON A NEW CONSTRUCT: if it can resume after a failed attempt, it is a discarding
+// site and expr_parse_demand_fold in v2.compiler.parse must count it; if it can succeed consuming
+// nothing, the nullable fixpoint must include it. Parser error recovery (sync tokens) is outside
+// this argument: it is assumed to resume strictly later, and a recovery mode that re-enters at
+// the failed position is a third route that must be counted before it lands.
 //
 // Counting a Choice whose left branch token dispatch would never enter is a structural
 // over-approximation computed AS the answer (DESIGN section 5's admitted neighbour of the

@@ -390,12 +390,21 @@ fn derived_memo_materialization(root: GrammarRoot) -> Optional<Materialization> 
   }
 }
 
+// Through a typed parameter: a bare constructor inside the generic optional_present has no
+// expected type to resolve against, while a declared Materialization parameter supplies one.
+fn derived_memo_materialization_is(root: GrammarRoot, want: Materialization) -> Bool {
+  match derived_memo_materialization(root: root) {
+    Absent => false
+    Present { value: got } => got == want
+  }
+}
+
 test fn parse_memo_demand_derived_discharged_when_the_grammar_abandons_a_demand() -> Bool {
-  derived_memo_materialization(root: abandoned_path_root()) == optional_present(value: Memoize)
+  derived_memo_materialization_is(root: abandoned_path_root(), want: Memoize)
 }
 
 test fn parse_memo_demand_derived_single_when_the_grammar_cannot_recur() -> Bool {
-  derived_memo_materialization(root: linear_root()) == optional_present(value: Recompute)
+  derived_memo_materialization_is(root: linear_root(), want: Recompute)
 }
 
 type ParseFullRun {
@@ -461,6 +470,14 @@ fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
   }
 }
 
+fn linear_run_forced(m: Materialization) -> Optional<ParseFullRun> {
+  linear_run(forced: optional_present(value: m))
+}
+
+fn linear_run_forced_memoize() -> Optional<ParseFullRun> {
+  linear_run_forced(m: Memoize)
+}
+
 fn parse_full_run_same_parse(a: ParseFullRun, b: ParseFullRun) -> Bool {
   (a.remaining == b.remaining)
     && (a.captured == b.captured)
@@ -476,7 +493,7 @@ test fn parse_memo_direct_arm_preserves_the_whole_parse() -> Bool {
   match linear_run(forced: optional_absent()) {
     Absent => false
     Present { value: direct } =>
-      match linear_run(forced: optional_present(value: Memoize)) {
+      match linear_run_forced_memoize() {
         Absent => false
         Present { value: stored } =>
           (parse_full_run_hits(run: stored) == 0)
