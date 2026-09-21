@@ -7,7 +7,7 @@ import extdeps.linux.procfs
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
 import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
 import product.capacity.event_chain { PartitionId }
-import product.capacity.pool_events { SeatRequest, PoolReleased }
+import product.capacity.pool_events { SeatRequest, PoolReleased, pool_full_wire }
 import product.capacity.lease { LeasePolicy, LeaseGrant, QuiescenceRequired }
 import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootStanding, FabricStorageRootReady, FabricStorageRootRefused }
@@ -228,6 +228,11 @@ fn compute_reserve_on(subject: ComputeCapacitySubject, reference: NonEmptyStr, t
   }
 }
 
+// A REFUSED ACQUIRE IS NOT AUTOMATICALLY A FULL POOL. The carrier renders every pool refusal into
+// SeatFull, so the reason survives only in the wire; a DuplicateReference reported as capacity sent
+// an operator looking for a busy host while srv1 had 400 GiB free (2026-09-21). The marker is read
+// from the authority that writes it (product.capacity.pool_events pool_full_wire), never re-spelled
+// here, and anything else is a ledger refusal with its text carried through.
 fn compute_seat(subject: ComputeCapacitySubject, reference: NonEmptyStr, now: EpochSecs, term_seconds: Nat) -> ComputeReservation {
   let store = compute_capacity_store(subject: subject)
   match fabric_seat_acquire(
@@ -241,7 +246,12 @@ fn compute_seat(subject: ComputeCapacitySubject, reference: NonEmptyStr, now: Ep
     budget: compute_partition_read_budget,
   ) {
     SeatGranted { grant: g, generation: _, attempts_used: _ } => ComputeReserved { grant: g, partition: subject.partition, amount: subject.request, store: store }
-    SeatFull { wire: w, attempts_used: n } => ComputeCapacityFull { wire: join([w, " (attempt ", to_string(value: n), ")"], "") }
+    SeatFull { wire: w, attempts_used: n } =>
+      if starts_with(s: w, prefix: pool_full_wire) {
+        ComputeCapacityFull { wire: join([w, " (attempt ", to_string(value: n), ")"], "") }
+      } else {
+        ComputeReservationRefused { detail: join(["the capacity ledger refused the acquire: ", w, " (attempt ", to_string(value: n), ")"], "") }
+      }
     other => ComputeReservationRefused { detail: seat_acquisition_wire(a: other) }
   }
 }

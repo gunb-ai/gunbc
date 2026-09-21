@@ -245,6 +245,12 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity" },
       entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
       function: "competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity",

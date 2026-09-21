@@ -186,11 +186,27 @@ type SeatProposal
   = SeatProposed { event: ChainEvent<PoolEvent>, expected_head: HeadExpectation }
   | SeatRefused { wire: String }
 
+// THE ONE SPELLING OF "THE POOL HAD NO ROOM", named because a consumer has to be able to tell that
+// refusal from every other reason an acquire can be refused and the wire is currently the only place
+// the distinction survives. SeatRefused carries a rendered string for all of them, so a consumer
+// that wants "full" versus "the ledger said no" reads THIS row rather than authoring a second
+// literal of its own (DESIGN 3). The reason it matters is measured: gunbc.compute.host_capacity
+// mapped every SeatRefused onto a capacity refusal, and a DuplicateReference -- a ledger fact with
+// nothing to do with capacity -- was reported to an operator as a full pool on a host with 400 GiB
+// free (srv1, 2026-09-21).
+//
+// THE HONEST FIX IS A TYPED ARM AND IT IS NOT THIS. SeatRefused / SeatFull should carry the
+// distinction in their constructors instead of in rendered text; that widens
+// gunbc.fabric_event_log.SeatAcquisition and every existing match on SeatFull, so it is its own
+// change. DECLARED FRONTIER (DESIGN 3c), trigger: the next consumer that needs a third
+// classification, or the first one that must branch on a refusal this row cannot name.
+data pool_full_wire: String = "pool-full"
+
 fn seat_refusal_wire<Q, S>(r: PoolRefusal<Q, S>) -> String {
   match r {
     LedgerRefusal { refusal: lr } =>
       match lr {
-        ExceedsAppropriation { requested: _, committed: _, ceiling: _ } => "pool-full"
+        ExceedsAppropriation { requested: _, committed: _, ceiling: _ } => pool_full_wire
         _ => pool_refusal_wire(r: r)
       }
     _ => pool_refusal_wire(r: r)

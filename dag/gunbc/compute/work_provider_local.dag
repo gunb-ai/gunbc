@@ -65,6 +65,7 @@ type ComputeLayout {
   target_dir: String
   log_path: String
   outcome_path: String
+  consumption_path: String
 }
 
 fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
@@ -81,6 +82,7 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
     target_dir: join([root, "/target"], ""),
     log_path: join([work_dir, "/log"], ""),
     outcome_path: join([work_dir, "/outcome.json"], ""),
+    consumption_path: join([work_dir, "/consumption"], ""),
   }
 }
 
@@ -299,7 +301,7 @@ fn compute_provide_leaf(
     if !lease.success {
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: layout.lease_path } }, subject: subject, op: op)
     } else {
-      let reservation = compute_reserve(instance: instance, reference: identity as NonEmptyStr, term_seconds: compute_reservation_term_seconds)
+      let reservation = compute_reserve(instance: instance, reference: compute_reservation_reference(identity: identity), term_seconds: compute_reservation_term_seconds)
       match reservation {
         ComputeCapacityFull { wire: w } =>
           compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostComputeCapacityFull { wire: w })
@@ -321,7 +323,8 @@ fn compute_provide_leaf(
           // is no ending on which the seat stays held.
           let returned = compute_release(reservation: reservation, reason: join(["work ", work_outcome_ending(o: outcome)], "") as NonEmptyStr)
           let document = work_outcome_wire(o: outcome, subject: subject, op: op)
-          let written = Filesystem.Write(path: layout.outcome_path, content: join([document, "\n", compute_capacity_standing_wire(s: standing), "\n"], ""))
+          let measured = Filesystem.Write(path: layout.consumption_path, content: join([compute_capacity_standing_wire(s: standing), "\n"], ""))
+          let written = Filesystem.Write(path: layout.outcome_path, content: document)
           let released = Filesystem.Delete(path: layout.lease_path)
           if written.success && released.success && compute_release_landed(r: returned) {
             ProvideFresh { outcome: outcome, document: document }
@@ -334,6 +337,7 @@ fn compute_provide_leaf(
                     "outcome written: ", if written.success { "yes" } else { written.error },
                     "; lease released: ", if released.success { "yes" } else { released.error },
                     "; reservation released: ", compute_release_wire(r: returned),
+                    "; consumption recorded: ", if measured.success { "yes" } else { measured.error },
                     "; work ended ", work_outcome_ending(o: outcome),
                   ], ""),
                 },
@@ -344,6 +348,24 @@ fn compute_provide_leaf(
       }
     }
   }
+}
+
+// THE CONSUMPTION READING IS ITS OWN FILE AND MUST NOT JOIN THE OUTCOME DOCUMENT. It was appended
+// to outcome.json first, and the first real run on srv1 (2026-09-21) is what said why that is
+// wrong: the stored outcome is PARSED by the attach path (stored_outcome_decode), so a line
+// appended after the JSON made every later caller of a SUCCEEDED identity read
+// StoredOutcomeUnreadable and rebuild -- the contract's "two callers, one build" silently dead, and
+// the provider's own dependent request refusing on a dependency that had in fact succeeded. A
+// realization's measurement does not get to change the shape of the contract's document.
+
+// THE RESERVATION REFERENCE NAMES AN ATTEMPT, NOT A WORK IDENTITY, and the first real run on srv1
+// (2026-09-21) is what forced the distinction. The identity is stable by construction -- that is its
+// whole job -- so using it as the encumbrance reference meant the SECOND request for the same
+// identity hit the ledger's DuplicateReference refusal and was reported as a capacity refusal on a
+// host with 400 GiB free. The pool's reference is the name of one HOLD, and two holds of one
+// identity at different times are two holds; the identity stays in the receipt, where it belongs.
+fn compute_reservation_reference(identity: String) -> NonEmptyStr {
+  join([identity, "@", clock_now_probed_at_or_unknown() as String], "") as NonEmptyStr
 }
 
 // A REQUEST REFUSED FOR CAPACITY HOLDS NOTHING. The producer lease is dropped on the way out, so a
