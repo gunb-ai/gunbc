@@ -141,8 +141,8 @@ fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptySt
       match claim {
         D0ClaimAbsent =>
           match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
-            PollClockUnreadable => D0DoorRefused { reason: "clock unreadable; refusing to judge expiry against a fabricated instant" }
-            PollObservedAt { standing: standing, observed_at: observed } =>
+            StandingClockUnreadable => D0DoorRefused { reason: "clock unreadable; refusing to judge expiry against a fabricated instant" }
+            StandingReadAt { standing: standing, observed_at: observed } =>
               match standing {
                 PollNotFiled => d0_file_and_poll(request: request, issued: issued, expires: expires)
                 PollStillPending => d0_poll(request: request, expires: expires)

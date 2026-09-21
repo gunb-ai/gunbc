@@ -55,6 +55,7 @@ import gunbc.spark.pair_serving_d0 {
   D0GrantRefused,
 }
 import gunbc.spark.pair_serving_d0_authorization { d0_filed_request, D0FiledRequestFor, D0FiledRequestRefused }
+import gunbc.spark.pair_serving_d0_door { d0_run_kind, D0FirstRun, D0Rerun, D0RunRefused }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import std.scoped_authorization { ClaimedBy, CompletedBy, AbortedBy }
 import product.placement_supply { HostIdentity }
@@ -958,6 +959,33 @@ test fn a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_exec
           late && early && unclaimed && in_window && d0r_claim_is(store: store, escalation: "esc-d0-late" as NonEmptyStr, by: "tx-d0", completed: false)
         }
       }
+    })
+  })
+}
+
+// THE DOOR DECIDES WHICH RUN THIS IS FROM THE STORE, BY REAL EXECUTION: with nothing frozen and the
+// live candidate unkeyed (the row-store digest is still owed) a first run refuses before filing --
+// and freezes nothing; once a filing is frozen under the escalation, the same call is a rerun
+// carrying the frozen request, with no live subject consulted; and the frozen filing under another
+// transaction's name refuses.
+test fn the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution() -> Bool {
+  d0r_with_hash(scenario: fn(h) {
+    d0r_with_remote(scenario: fn(dir, store) {
+      let esc = "esc-d0-door" as NonEmptyStr
+      let first = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr) {
+        D0RunRefused { reason: r } => r.contains("row-store") || r.contains("refused")
+        D0FirstRun { request: _ } => false
+        D0Rerun { request: _ } => false
+      }
+      let nothing_frozen = match d0_read_filing(store: store, escalation_id: esc) { D0FilingAbsent => true  _ => false }
+      let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: h, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+      let frozen = match d0_freeze_filing(store: store, escalation_id: esc, intent_text: d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr)) { D0FilingFrozen => true  _ => false }
+      let rerun = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr) {
+        D0Rerun { request: r } => content_hash_equal(left: r.subject.successor, right: h) && (r.escalation_id as String) == "esc-d0-door"
+        _ => false
+      }
+      let other = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-else" as NonEmptyStr) { D0RunRefused { reason: r } => r.contains("tx-d0")  _ => false }
+      first && nothing_frozen && frozen && rerun && other
     })
   })
 }
