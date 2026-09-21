@@ -18,7 +18,7 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
-  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0,
+  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkNativeServingApply, fleet_converge_mutation_group_for,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
   fleet_converge_workflow, expected_fleet_converge_yml,
@@ -28,7 +28,7 @@ import gunbc.host_reset_return {
   DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
   ResetDispatchAdmitted, ResetDispatchNotThisMode, ResetDispatchObserverUnnamed, admit_reset_dispatch,
 }
-import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_pair_serving_d0_invoke, gunbc_ci_pair_serving_d0_sm_connect_timeout_seconds, gunbc_ci_pair_serving_d0_sm_max_time_seconds }
+import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_pair_serving_d0_invoke, gunbc_ci_sm_connect_timeout, gunbc_ci_sm_max_time, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_mtcollins1_fan_observe_invoke }
 import std.measure { minute_count, second_count }
 import gunbc.spark.pair_serving_d0_door { pair_serving_d0_step_timeout_minutes, d0_prelude_allowance, d0_approval_window, d0_transaction_allowance }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
@@ -551,8 +551,10 @@ test fn the_fabric_writer_identity_receipt_upload_survives_a_failed_observation(
 
 // THE D0 DOOR MODE BINDS THE HOST, THE CONSENT AND THE EXPECTED REVISION INTO ITS ENVIRONMENT
 // (no group: the mode is Group A by construction), consumes the fleet ssh key (the transaction
-// reads the group's hosts), the consent is an INPUT, never the run id, and the credential-free
-// admission step is emitted BEFORE the WIF token, the fleet key and the submission key.
+// reads the group's hosts), the consent is an INPUT, never the run id, the credential-free
+// admission step is emitted BEFORE the WIF token, the fleet key and the submission key, and the
+// job's concurrency domain for this mode is Group A's arm, shared with the pair-serving apply and
+// distinct from Group B's native arm and from any executor domain.
 test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_before_credentials() -> Bool {
   let env = step_env_text(step: fleet_converge_pair_serving_d0_step())
   let admit_env = step_env_text(step: fleet_converge_pair_serving_d0_admit_step())
@@ -570,20 +572,29 @@ test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_befo
     && !string_contains(s: yml, pattern: "d0_group")
     && string_contains(s: before_wif, pattern: "id: pair_serving_d0_admit")
     && !string_contains(s: before_wif, pattern: "id: pair_serving_d0\n")
+    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv2")
+    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") != fleet_converge_mutation_group_for(mode: SparkNativeServingApply, host: "srv1")
+    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") != fleet_converge_mutation_group_for(mode: FullHostPlan, host: "srv1")
+    && string_contains(s: yml, pattern: "github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-arm-mutation-deepseek-group-a'")
+    && string_contains(s: yml, pattern: "github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-arm-mutation-deepseek-group-a'")
 }
 
 // THE OPERATIONAL BOUNDS ARE A MAINTAINED INTERFACE, NOT A ONE-HEAD TEXT: the emitted invocation
 // carries the Secret Manager connect and total bounds, the prelude allowance covers the total
 // bound, the step timeout is the sum of the window and the two allowances rounded up, and a key
-// fetch that fails does not stop the door (no set -e exit on the curl; the door decides).
+// fetch that fails does not stop the door (no set -e exit on the curl; the door decides); and the
+// same bounds reach every prelude that fetches a secret, because they consume one producer.
 test fn the_pair_serving_d0_invocation_is_bounded_and_the_step_timeout_is_the_declared_sum() -> Bool {
   let inv = gunbc_ci_pair_serving_d0_invoke()
   let secs = (second_count(s: d0_approval_window()) as Int) + (second_count(s: d0_transaction_allowance) as Int) + (second_count(s: d0_prelude_allowance) as Int)
-  string_contains(s: inv, pattern: join(["--connect-timeout ", to_string(gunbc_ci_pair_serving_d0_sm_connect_timeout_seconds)], ""))
-    && string_contains(s: inv, pattern: join(["--max-time ", to_string(gunbc_ci_pair_serving_d0_sm_max_time_seconds)], ""))
-    && (second_count(s: d0_prelude_allowance) as Int) >= gunbc_ci_pair_serving_d0_sm_max_time_seconds + gunbc_ci_pair_serving_d0_sm_connect_timeout_seconds
+  string_contains(s: inv, pattern: join(["--connect-timeout ", to_string(second_count(s: gunbc_ci_sm_connect_timeout))], ""))
+    && string_contains(s: inv, pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+    && second_count(s: d0_prelude_allowance) >= second_count(s: gunbc_ci_sm_max_time) + second_count(s: gunbc_ci_sm_connect_timeout)
     && string_contains(s: inv, pattern: "if DEST_FILE=")
     && string_contains(s: inv, pattern: "a held lifecycle resumes without it")
     && (minute_count(m: pair_serving_d0_step_timeout_minutes()) as Int) == (secs + 59) / 60
     && (minute_count(m: pair_serving_d0_step_timeout_minutes()) as Int) == 47
+    && string_contains(s: gunbc_ci_approval_keyring_converge_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+    && string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+    && string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }

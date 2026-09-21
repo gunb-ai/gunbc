@@ -402,7 +402,7 @@ fn parse_d0_intent_text(text: String) -> D0IntentParsed? {
 // revision is frozen beside the intent, as the last line, and a rerun must execute it or refuse
 // (the door compares). A modeled recovery migration may later supersede that; "latest main is
 // compatible with every pending lifecycle" is not an implicit fallback.
-data d0_frozen_revision_key: String = "execution_revision="
+data d0_frozen_revision_field: String = "execution_revision"
 
 type D0FrozenFiling {
   intent_text: String
@@ -410,7 +410,7 @@ type D0FrozenFiling {
 }
 
 fn d0_frozen_filing_text(intent_text: String, execution_revision: NonEmptyStr) -> String {
-  join([intent_text, d0_frozen_revision_key, execution_revision as String, "\n"], "")
+  join([intent_text, d0_frozen_revision_field, "=", execution_revision as String, "\n"], "")
 }
 
 fn parse_d0_frozen_filing(text: String) -> D0FrozenFiling? {
@@ -420,7 +420,7 @@ fn parse_d0_frozen_filing(text: String) -> D0FrozenFiling? {
     let last = line_at(lines: lines, i: n - 2)
     if line_at(lines: lines, i: n - 1) != "" { none }
     else {
-      match intent_field(line: last, key: "execution_revision") {
+      match intent_field(line: last, key: d0_frozen_revision_field) {
         Absent => none
         Present { value: rev } =>
           if rev == "" { none } else {

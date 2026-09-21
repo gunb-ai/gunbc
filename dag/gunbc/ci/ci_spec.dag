@@ -56,7 +56,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref }
-import std.measure { second, millisecond, Minute, minute, minute_count, second_count }
+import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count }
 import std.nat { Nat }
 
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
@@ -1608,10 +1608,28 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
 // than stylistic: these steps read both as shell variables, so a caller that has not set them
 // decodes into an empty path. The boot prelude's second fetch already relies on exactly this by
 // reassigning DEST_FILE around its call.
+// ONE PINNED SECRET MANAGER VERSION TO THE FILE $DEST_FILE NAMES: the auth header the prelude wrote
+// (HDR_FILE), a bounded curl of the secret's access URL to RESP_FILE, the base64 payload decoded
+// into DEST_FILE. Every prelude that materializes a secret -- the BMC credential, the capability
+// and submission MAC keys, the D0 door's submission key -- consumes THIS producer, so the transport
+// bounds and the decode are one fact (review 69591: a fourth authored copy of this fetch had
+// arrived carrying bounds the other three lacked). The bounds: a handshake to Secret Manager and
+// one small payload.
+data gunbc_ci_sm_connect_timeout: Second = second(count: 10)
+data gunbc_ci_sm_max_time: Second = second(count: 60)
+
+fn gunbc_ci_sm_secret_to_dest_file_command(url: String) -> String {
+  join([
+    "curl -sSf --connect-timeout ", to_string(second_count(s: gunbc_ci_sm_connect_timeout)),
+    " --max-time ", to_string(second_count(s: gunbc_ci_sm_max_time)),
+    " -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", url, "\" && ", gunbc_ci_sm_decode_payload_to_file(),
+  ], "")
+}
+
 fn gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: NonEmptyStr) -> List<PipelineStep> {
   [
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: concat("curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
+    Do { run: ci_retry_body_run(command: gunbc_ci_sm_secret_to_dest_file_command(url: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref))) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$DEST_FILE\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(dest_path_env as String, "=\"$DEST_FILE\""))) },
   ]
@@ -2516,9 +2534,9 @@ fn gunbc_ci_approval_keyring_converge_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
     Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$CAP_FILE\" \"$SUB_FILE\"' EXIT") },
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$CAP_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_capability_mac_access_url(), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$CAP_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_capability_mac_access_url()))) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$CAP_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_submission_mac_access_url(), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_submission_mac_access_url()))) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(approval_capability_mac_key_path_env as String, "=\"$CAP_FILE\""))) },
     Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
@@ -2555,7 +2573,7 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "trap 'if [ -f \"$SOL_PID_FILE\" ]; then kill \"$(cat \"$SOL_PID_FILE\")\" 2>/dev/null || true; fi; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SUB_FILE\" \"$SOL_PID_FILE\"' EXIT") },
   ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: host_reset_bmc_credential_path_env)).concat([
     Do { run: ci_retry_body_run(command: "HOLD_BMC=\"$DEST_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_submission_mac_access_url(), concat("\"; ", concat(gunbc_ci_sm_decode_payload_to_file(), "; DEST_FILE=\"$HOLD_BMC\""))))) },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; ", concat(gunbc_ci_sm_secret_to_dest_file_command(url: approval_submission_mac_access_url()), "; DEST_FILE=\"$HOLD_BMC\""))) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
     Do { run: ci_retry_body_run(command: "mkdir -p \"$GITHUB_WORKSPACE/artifacts\"") },
@@ -2584,9 +2602,8 @@ data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: Dissolu
 // made total must not narrow to "recoverable while Secret Manager answers". A fetch that fails
 // leaves the key path env unset and the door decides -- a run that must file refuses there with a
 // typed cause (gunbc.auth.approval_gate approval_file_stored_request), a resume proceeds. The
-// transport is bounded (10 s connect, 60 s total) inside the prelude allowance.
-data gunbc_ci_pair_serving_d0_sm_connect_timeout_seconds: Int = 10
-data gunbc_ci_pair_serving_d0_sm_max_time_seconds: Int = 60
+// transport is the one shared fetch (gunbc_ci_sm_secret_to_dest_file_command), bounded inside the
+// prelude allowance.
 
 fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
   [
@@ -2598,9 +2615,7 @@ fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$SUB_FILE\"' EXIT") },
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
     Do { run: ci_retry_body_run(command: join([
-      "if DEST_FILE=\"$SUB_FILE\"; curl -sSf --connect-timeout ", to_string(gunbc_ci_pair_serving_d0_sm_connect_timeout_seconds),
-      " --max-time ", to_string(gunbc_ci_pair_serving_d0_sm_max_time_seconds),
-      " -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", approval_submission_mac_access_url(), "\" && ", gunbc_ci_sm_decode_payload_to_file(),
+      "if DEST_FILE=\"$SUB_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_submission_mac_access_url()),
       "; then chmod 600 \"$SUB_FILE\"; export ", approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\"; else rm -f \"$SUB_FILE\"; echo 'submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it'; fi",
     ], "")) },
   ]

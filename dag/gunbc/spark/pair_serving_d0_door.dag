@@ -89,7 +89,7 @@ fn d0_approval_window() -> Second {
 // cadence), plus two OPERATOR-SELECTED outer allowances -- the transaction's, over its bounded
 // fabric reads, host reads and log writes (not derived from those bounds), and the prelude's, which
 // must exceed the Secret Manager transport's own connect and total bounds (gunbc.ci_spec
-// gunbc_ci_pair_serving_d0_prelude: 10 s connect, 60 s total).
+// gunbc_ci_sm_connect_timeout, gunbc_ci_sm_max_time).
 data d0_transaction_allowance: Second = second(count: 900)
 data d0_prelude_allowance: Second = second(count: 120)
 

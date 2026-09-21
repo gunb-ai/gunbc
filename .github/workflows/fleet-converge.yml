@@ -176,7 +176,7 @@ jobs:
       actions: read
       id-token: write
     concurrency:
-      group: ${{ github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
+      group: ${{ github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-arm-mutation-deepseek-group-a' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-arm-mutation-deepseek-group-a' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
       cancel-in-progress: false
     steps:
       - name: Checkout
@@ -554,7 +554,7 @@ jobs:
           DEST_FILE="$RUNNER_TEMP/mtcollins1-bmc-credential"
           trap 'rm -f "$HDR_FILE" "$RESP_FILE" "$DEST_FILE"' EXIT
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          curl -sSf -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access"; python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
           chmod 600 "$DEST_FILE"
           export GUNBC_MTCOLLINS1_BMC_CREDENTIAL_FILE="$DEST_FILE"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -726,9 +726,9 @@ jobs:
           SUB_FILE="$RUNNER_TEMP/approval-submission-mac-key"
           trap 'rm -f "$HDR_FILE" "$RESP_FILE" "$CAP_FILE" "$SUB_FILE"' EXIT
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          DEST_FILE="$CAP_FILE"; curl -sSf -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-capability-mac-key/versions/1:access"; python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          DEST_FILE="$CAP_FILE"; curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-capability-mac-key/versions/1:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
           chmod 600 "$CAP_FILE"
-          DEST_FILE="$SUB_FILE"; curl -sSf -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access"; python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          DEST_FILE="$SUB_FILE"; curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
           chmod 600 "$SUB_FILE"
           export GUNBC_APPROVAL_CAPABILITY_MAC_KEY_FILE="$CAP_FILE"
           export GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE="$SUB_FILE"
@@ -753,11 +753,11 @@ jobs:
           SOL_OUT="$GITHUB_WORKSPACE/artifacts/mtcollins1-boot-sol.capture"
           trap 'if [ -f "$SOL_PID_FILE" ]; then kill "$(cat "$SOL_PID_FILE")" 2>/dev/null || true; fi; rm -f "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$SUB_FILE" "$SOL_PID_FILE"' EXIT
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          curl -sSf -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access"; python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
           chmod 600 "$DEST_FILE"
           export GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE="$DEST_FILE"
           HOLD_BMC="$DEST_FILE"
-          DEST_FILE="$SUB_FILE"; curl -sSf -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access"; python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"; DEST_FILE="$HOLD_BMC"
+          DEST_FILE="$SUB_FILE"; curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"; DEST_FILE="$HOLD_BMC"
           chmod 600 "$SUB_FILE"
           export GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE="$SUB_FILE"
           mkdir -p "$GITHUB_WORKSPACE/artifacts"

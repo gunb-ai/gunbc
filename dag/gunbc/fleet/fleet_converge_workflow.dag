@@ -67,7 +67,7 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes,
   gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout,
   fleet_host_mutation_concurrency_group_expression,
-  fleet_arm_mutation_group_glm_group_b_native,
+  fleet_arm_mutation_group_glm_group_b_native, fleet_arm_mutation_group_deepseek_group_a,
   checked_job_timeout_minutes,
   JobTimeoutWithinCeiling,
   JobTimeoutExceedsCeiling,
@@ -929,7 +929,10 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // two coincide. `spark_native_serving_apply` does not: it reaches out from whichever executor was
 // selected and relaunches Group B's four cage-2 hosts, so two dispatches naming different executors
 // would land in different domains and queue behind nothing while reloading the same 328 GB arm. Its
-// group is therefore constant for the arm.
+// group is therefore constant for the arm. `pair_serving_d0` and `spark_serving_apply` are the same
+// shape for Group A: the door moves Group A's authority and hosts from the broker host and the pair
+// apply rewrites Group A's units from any executor, so both land in Group A's arm group and queue
+// behind each other -- an apply that read Active before D0's suspension CAS cannot execute across it.
 //
 // AND THIS IS BELT, NOT THE WALL, which is worth saying because a reader could take it for the
 // protection. Actions concurrency cannot help a direct CLI invocation, which is how this entry is
@@ -938,12 +941,43 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // The wall is the source-level lock: gunbc.spark.native_serving_apply acquires an O_EXCL fence per
 // unit carrying a kernel-UUID transaction identity, and every leg that removes an artifact refuses
 // unless it owns that identity.
+// WHICH DOMAIN A MODE MUTATES is one modeled fact per mode, exhaustive, and the concurrency
+// expression is derived from it: a mode whose subject is an arm names that arm's group; every
+// other mode's subject is its executor.
+type FleetMutationDomain
+  = ArmDomain { group: String }
+  | ExecutorDomain
+
+fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> FleetMutationDomain {
+  match mode {
+    SparkNativeServingApply => ArmDomain { group: fleet_arm_mutation_group_glm_group_b_native }
+    PairServingD0 => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkServingApply => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    _ => ExecutorDomain
+  }
+}
+
+// The group a dispatch lands in, for a mode and the executor it named.
+fn fleet_converge_mutation_group_for(mode: FleetConvergeWorkflowMode, host: String) -> String {
+  match fleet_converge_mode_mutation_domain(mode: mode) {
+    ArmDomain { group: g } => g
+    ExecutorDomain => join([fleet_host_mutation_group_prefix, host], "")
+  }
+}
+
+fn fleet_converge_arm_domain_clause(mode: FleetConvergeWorkflowMode) -> String {
+  match fleet_converge_mode_mutation_domain(mode: mode) {
+    ArmDomain { group: g } => join(["github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: mode), "' && '", g, "' || "], "")
+    ExecutorDomain => ""
+  }
+}
+
 data fleet_converge_mutation_concurrency_group_expression: String = join([
-  "${{ github.event.inputs.mode == '",
-  fleet_converge_workflow_mode_wire(mode: SparkNativeServingApply),
-  "' && '", fleet_arm_mutation_group_glm_group_b_native,
-  "' || format('", fleet_host_mutation_group_prefix, "{0}', ", fleet_host_input_expression, ") }}",
+  "${{ ",
+  join(map(fleet_converge_workflow_modes, m => fleet_converge_arm_domain_clause(mode: m)), ""),
+  "format('", fleet_host_mutation_group_prefix, "{0}', ", fleet_host_input_expression, ") }}",
 ], "")
+
 data fleet_converge_spark_runtime_image_probe_step_if: String = fleet_converge_mode_step_if(mode: SparkRuntimeImageProbe)
 
 data fleet_converge_dashboard_deploy_step_if: String = fleet_converge_mode_step_if(mode: DashboardDeploy)
