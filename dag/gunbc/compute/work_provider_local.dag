@@ -660,6 +660,15 @@ fn compute_run_and_settle(
 // the lost record rides as its own fact. The CLI turns that fact into a nonzero exit with both
 // halves named, which is how a recording failure stays visible without becoming a verdict about
 // work that really did run.
+//
+// AND IT GOES THROUGH THE ONE JOIN RATHER THAN MATCHING THE ARMS ITSELF. It matched them, and the
+// ProvideAttached arm returned the status it was handed while DISCARDING the detail it had just
+// built -- the exact vanish this function exists to prevent, one arm along, in the function whose
+// annotation describes the vanish (review 69724). It was latent only because the single call site
+// passes a fresh result, which is the kind of "safe today" that stops being true at the next call
+// site. Two spellings of one join is the fork DESIGN 3 forbids, so there is now one:
+// provide_result_with_host_record, which already handled both arms and accumulates rather than
+// letting either side win.
 fn compute_with_lost_host_record(
   settled: ProvideResult,
   layout: ComputeLayout,
@@ -676,10 +685,7 @@ fn compute_with_lost_host_record(
       join(["THE PRODUCER LEASE AT ", layout.lease_path, " IS ALSO STILL HELD (", dropped_error, ") AND NOTHING NOW RECORDS THAT IT IS STALE: an operator must remove the name before this identity can be produced again"], "")
     },
   ], "")
-  match settled {
-    ProvideFresh { outcome: o, document: d, host_record: _ } => ProvideFresh { outcome: o, document: d, host_record: HostRecordLost { detail: detail } }
-    ProvideAttached { identity: i, ending: e, document: d, host_record: h } => ProvideAttached { identity: i, ending: e, document: d, host_record: h }
-  }
+  provide_result_with_host_record(r: settled, carried: HostRecordLost { detail: detail })
 }
 // BLOCKER (7): ONE CONTRACT, AND THE CONTRACT IS THE STORED RECORD. This arm used to hand the
 // caller a refusal while the outcome document already said the run had SUCCEEDED, and then state
