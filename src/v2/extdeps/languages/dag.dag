@@ -1739,7 +1739,30 @@ fn dag_grammar_type_variant_expr() -> GrammarExpr {
       left: dag_grammar_optional(
         element: dag_grammar_nonterminal(production: ^dag_production_where_refinement_clause)
       ),
-      right: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_field_decl_block))
+      right: dag_grammar_optional(
+        element: dag_grammar_choice(
+          left: dag_grammar_nonterminal(production: ^dag_production_field_decl_block),
+          right: dag_grammar_nonterminal(production: ^dag_production_positional_variant_payload)
+        )
+      )
+    )
+  )
+}
+
+// A variant's payload has two spellings of one field list: `Name { f: T }` and the
+// positional `Name(T)`, which v1.compiler.parse parse_positional_variant_type_fields reads as
+// exactly one field named "0". Positional arity is ONE, as in v1: `Name(T, U)` still refuses
+// (tokens remain), so this row admits nothing the seed does not. It lives only in the
+// variant slot -- `type R(T)` is not a type_decl body in v1, and it is not one here. The two
+// consumers that treat a fielded variant as structure, namespace_graft_type_decl_named_edge
+// and body_lower_is_structure_preserved_emitted, name this production beside
+// dag_surface_field_decl_block.
+fn dag_grammar_positional_variant_payload_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_lparen),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
+      right: dag_grammar_terminal(token_class: ^dag_token_rparen)
     )
   )
 }
@@ -1753,6 +1776,20 @@ fn dag_grammar_type_alias_rhs_expr() -> GrammarExpr {
         right: dag_grammar_nonterminal(production: ^dag_production_type_variant)
       )
     )
+  )
+}
+
+// The coproduct form may open with a separator: `type H =\n  | A\n  | B`, the layout
+// most multi-line sums in the corpus use and v1.compiler.parse admits. The leading `|`
+// is consumed HERE, before the type_alias_rhs nonterminal, so the rhs production's
+// captured shape -- variant, then (pipe variant)* -- is the same with or without it, and
+// sugar_fold_coproduct_pipe_chain and namespace_graft_type_decl_target, which read that
+// production by identity, see one shape. A bare `|` with no variant after it still
+// refuses: the optional is a prefix of the rhs, never a substitute for it.
+fn dag_grammar_type_alias_rhs_after_eq_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_pipe)),
+    right: dag_grammar_nonterminal(production: ^dag_production_type_alias_rhs)
   )
 }
 
@@ -1793,7 +1830,7 @@ fn dag_grammar_type_decl_expr() -> GrammarExpr {
               left: dag_grammar_nonterminal(production: ^dag_production_field_decl_block),
               right: dag_grammar_sequence(
                 left: dag_grammar_terminal(token_class: ^dag_token_eq),
-                right: dag_grammar_nonterminal(production: ^dag_production_type_alias_rhs)
+                right: dag_grammar_type_alias_rhs_after_eq_expr()
               )
             )
           )
@@ -2463,6 +2500,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_field_decl_block_expr(),
     emitted: ^dag_surface_field_decl_block
   )
+  let positional_variant_payload = dag_grammar_production(
+    name: ^dag_production_positional_variant_payload,
+    expression: dag_grammar_positional_variant_payload_expr(),
+    emitted: ^dag_surface_positional_variant_payload
+  )
   let fn_body = dag_grammar_production(
     name: ^dag_production_fn_body,
     expression: dag_grammar_fn_body_expr(),
@@ -2604,6 +2646,7 @@ fn dag_grammar_root() -> GrammarRoot {
       type_alias_rhs,
       import_block,
       field_decl_block,
+      positional_variant_payload,
       fn_body,
       stmt_seq,
       stmt,

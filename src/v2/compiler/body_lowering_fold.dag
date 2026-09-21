@@ -495,6 +495,7 @@ fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_type_variant)
     || (emitted == ^dag_surface_type_alias_rhs)
     || (emitted == ^dag_surface_field_decl_block)
+    || (emitted == ^dag_surface_positional_variant_payload)
     || (emitted == ^dag_surface_fn_type)
     || (emitted == ^dag_surface_field_init)
     || (emitted == ^dag_surface_where_refinement_clause)
