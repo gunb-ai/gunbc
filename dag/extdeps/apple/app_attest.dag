@@ -379,13 +379,6 @@ fn credential_certificate_nonce(leaf: X509Certificate) -> List<UInt8>? {
   }
 }
 
-fn app_attest_decode_certificate(octets: List<UInt8>, which: String) -> AttestationRefusal? {
-  match decode_certificate(octets: octets) {
-    X509Decoded { certificate: _ } => none
-    X509Refused { cause: _ } => Present { value: AttestationChainUntrusted { detail: which + " certificate does not decode as X.509" } }
-  }
-}
-
 fn app_attest_certificate(octets: List<UInt8>) -> X509Certificate? {
   match decode_certificate(octets: octets) {
     X509Decoded { certificate: c } => Present { value: c }
