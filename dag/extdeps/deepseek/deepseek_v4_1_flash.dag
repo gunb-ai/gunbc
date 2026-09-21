@@ -2,6 +2,8 @@ module extdeps.deepseek.deepseek_v4_1_flash
 
 import std.types { NonEmptyStr, String, Bool, List }
 import std.nat { Nat, nat_range_inclusive }
+import std.list { list_cover, list_member, duplicated_by_key, distinct_by_key }
+import std.decimal { zero_pad_left }
 import std.measure {
   TokenCount, token_count, token_count_value,
   ParameterCount, parameter_count,
@@ -644,12 +646,14 @@ data deepseek_v4_1_flash_engram_shards: List<DeepseekV41EngramShard> = [
 
 // THE WEIGHT MANIFEST: every safetensors shard at this revision with the publisher's sha256 (the
 // LFS object id) and whole-file size, read from `hub_repo_tree_api_url` at dba1be0a on 2026-09-21
-// (48 files; deepseek_v4_1_flash_weight_manifest_agrees_with_tree folds their sizes against
-// deepseek_v4_1_flash_safetensors_tree_file_bytes, and the two Engram shard rows are DERIVED from
-// deepseek_v4_1_flash_engram_shard_1 / _14, the rows that own them, rather than declared twice). These are the publisher's DECLARED digests, cited to the tree API at the
-// revision; a fleet-side reading over bytes present on a Spark is the same declared frontier as
-// the Engram rows (DSV41-10). The manifest is what the V4.1 candidate's weights axis is keyed by:
-// gunbc.spark.v41_runtime_candidate digests its canonical text.
+// (48 files; deepseek_v4_1_flash_admit_weight_manifest establishes the exact population -- every
+// generated shard path once, the index's shard set, the count, the sizes summed against
+// deepseek_v4_1_flash_safetensors_tree_file_bytes -- and the two Engram shard rows are DERIVED from
+// deepseek_v4_1_flash_engram_shard_1 / _14, the rows that own them, rather than declared twice).
+// These are the publisher's DECLARED digests, cited to the tree API at the revision; a fleet-side
+// reading over bytes present on a Spark is the same declared frontier as the Engram rows
+// (DSV41-10). The ADMITTED manifest is what the V4.1 candidate's weights axis is keyed by:
+// gunbc.spark.v41_runtime_candidate digests its canonical text and never the raw rows.
 // A PUBLISHED FILE AT THIS REVISION: its path, whole-file size and the publisher's sha256. One
 // record for every file the candidate is keyed by -- the weight shards and the tokenizer files --
 // and one canonical serialization (deepseek_v4_1_flash_published_manifest_text) for both lists.
@@ -657,6 +661,12 @@ type DeepseekV41PublishedFile sole_constructor {
   path: NonEmptyStr
   file_bytes: ByteSize
   sha256: Sha256Digest
+}
+
+// A row from its three facts -- the one constructor a claim may supply a population through
+// (the record is sole_constructor: production rows are declared here, with their provenance).
+fn deepseek_v4_1_flash_published_file_row(path: NonEmptyStr, file_bytes: ByteSize, sha256_hex: Sha256DigestHex) -> DeepseekV41PublishedFile {
+  DeepseekV41PublishedFile { path: path, file_bytes: file_bytes, sha256: Sha256Digest { hex: sha256_hex } }
 }
 
 // The two Engram shards are the rows deepseek_v4_1_flash_engram_shard_1 / _14 already own (path,
@@ -719,25 +729,89 @@ data deepseek_v4_1_flash_weight_manifest: List<DeepseekV41PublishedFile> = conca
   map(deepseek_v4_1_flash_engram_shards, s => deepseek_v4_1_flash_published_file_of_engram(shard: s)),
 )
 
-// One line per file, path then digest then size, in list order: the canonical text of a
-// manifest, so its digest is a function of exactly its rows.
+// THE CANONICAL TEXT OF A FILE POPULATION: one line per file -- path, digest, size -- with the
+// rows SORTED BY PATH. A population is set-like (the identity rule for shard and wheel
+// populations: reordering the same files leaves the identity unchanged), so list order may not
+// reach the digest; the path is injective over an admitted population (duplicates refuse before
+// this text is written), the digest is fixed-width and the size is decimal, so the encoding is
+// injective too: a path, a digest or a size that changes changes the text.
 fn deepseek_v4_1_flash_published_manifest_text(rows: List<DeepseekV41PublishedFile>) -> String {
-  join(map(rows, r => join([r.path as String, " ", r.sha256.hex as String, " ", to_string(byte_size_count(b: r.file_bytes))], "")), "\n")
+  join(map(sort_by(rows, fn(r) { r.path as String }), r => join([r.path as String, " ", r.sha256.hex as String, " ", to_string(byte_size_count(b: r.file_bytes))], "")), "\n")
 }
 
-fn deepseek_v4_1_flash_weight_manifest_text() -> String {
-  deepseek_v4_1_flash_published_manifest_text(rows: deepseek_v4_1_flash_weight_manifest)
+fn deepseek_v4_1_flash_published_rows_bytes(rows: List<DeepseekV41PublishedFile>) -> ByteSize {
+  byte_size(count: fold(rows, init: 0, f: (acc, r) => acc + byte_size_count(b: r.file_bytes)))
 }
 
-// THE MANIFEST RECONCILES AGAINST THE TREE'S TOTAL BY A FOLD, not by a sentence: the 48 rows'
-// sizes sum to deepseek_v4_1_flash_safetensors_tree_file_bytes, or the manifest is not the tree.
-fn deepseek_v4_1_flash_weight_manifest_bytes() -> ByteSize {
-  byte_size(count: fold(deepseek_v4_1_flash_weight_manifest, init: 0, f: (acc, r) => acc + byte_size_count(b: r.file_bytes)))
+// THE GENERATED SHARD PATHS: `model-<i>-of-<n>.safetensors` for i in 1..n, the only paths a
+// safetensors shard population of n may carry. The admission below is an identity join against
+// them in both directions.
+fn deepseek_v4_1_flash_shard_path(index: Nat, count: Nat) -> NonEmptyStr {
+  join(["model-", zero_pad_left(digits: to_string(index), width: 5), "-of-", zero_pad_left(digits: to_string(count), width: 5), ".safetensors"], "") as NonEmptyStr
 }
 
-fn deepseek_v4_1_flash_weight_manifest_agrees_with_tree() -> Bool {
-  byte_size_count(b: deepseek_v4_1_flash_weight_manifest_bytes()) == byte_size_count(b: deepseek_v4_1_flash_safetensors_tree_file_bytes)
-    && length(deepseek_v4_1_flash_weight_manifest) == deepseek_v4_1_flash_safetensors_shard_count
+fn deepseek_v4_1_flash_shard_paths() -> List<NonEmptyStr> {
+  map(nat_range_inclusive(1, deepseek_v4_1_flash_safetensors_shard_count), i => deepseek_v4_1_flash_shard_path(index: i, count: deepseek_v4_1_flash_safetensors_shard_count))
+}
+
+// THE SAFETENSORS INDEX AT THIS REVISION, as a published file (resolved bytes, sha256 taken over
+// them on 2026-09-21) and as READ: its weight_map names deepseek_v4_1_flash_index_tensor_count
+// tensors and, as shard files, exactly the generated paths above -- every one of the 48 appears
+// and no other path does. That reading is what the manifest admission reconciles the file
+// population against: a shard file the index never names, or an index shard no file carries, is
+// a refusal.
+data deepseek_v4_1_flash_safetensors_index_file: DeepseekV41PublishedFile = DeepseekV41PublishedFile {
+  path: deepseek_v4_1_flash_safetensors_index_path,
+  file_bytes: byte_size(count: 7470294),
+  sha256: Sha256Digest { hex: "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8" as Sha256DigestHex },
+}
+
+type DeepseekV41IndexReading sole_constructor {
+  file: DeepseekV41PublishedFile
+  tensor_count: Nat
+  shard_paths: List<NonEmptyStr>
+}
+
+data deepseek_v4_1_flash_index_reading: DeepseekV41IndexReading = DeepseekV41IndexReading {
+  file: deepseek_v4_1_flash_safetensors_index_file,
+  tensor_count: deepseek_v4_1_flash_index_tensor_count,
+  shard_paths: deepseek_v4_1_flash_shard_paths(),
+}
+
+// THE WEIGHT MANIFEST IS ADMITTED, NOT COUNTED. A count and a byte total let a duplicated row of
+// one size stand in for an omitted row of the same size; admission establishes the exact
+// population: no duplicate path, no path outside the generated shard set, every generated path
+// present (an identity join both ways), the declared count and total, and the index's shard
+// population equal to the files'. Only an admitted manifest has a canonical text; the candidate
+// (gunbc.spark.v41_runtime_candidate) consumes this standing, never the raw row list, so a
+// defective population is an unestablished model source rather than a differently keyed one.
+type DeepseekV41WeightManifestStanding
+  = WeightManifestAdmitted { files: List<DeepseekV41PublishedFile>, index: DeepseekV41PublishedFile, canonical_text: String }
+  | WeightManifestRefused { defects: List<NonEmptyStr> }
+
+fn path_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  (a as String) == (b as String)
+}
+
+fn deepseek_v4_1_flash_admit_weight_manifest(rows: List<DeepseekV41PublishedFile>, index: DeepseekV41IndexReading, shard_count: Nat, tree_bytes: ByteSize) -> DeepseekV41WeightManifestStanding {
+  let generated = map(nat_range_inclusive(1, shard_count), i => deepseek_v4_1_flash_shard_path(index: i, count: shard_count))
+  let paths = map(rows, r => r.path)
+  let duplicate = map(duplicated_by_key(rows, fn(r) { r.path as String }), d => join(["path declared more than once: ", d.path as String], "") as NonEmptyStr)
+  let foreign = map(filter(paths, p => !list_member(xs: generated, x: p, eq: path_eq)), p => join(["path outside the generated shard set: ", p as String], "") as NonEmptyStr)
+  let missing = map(filter(generated, g => !list_member(xs: paths, x: g, eq: path_eq)), g => join(["generated shard path absent: ", g as String], "") as NonEmptyStr)
+  let count = if length(rows) == shard_count { [] as List<NonEmptyStr> } else { [join(["row count ", to_string(length(rows)), " is not the shard count ", to_string(shard_count)], "") as NonEmptyStr] }
+  let total = if byte_size_count(b: deepseek_v4_1_flash_published_rows_bytes(rows: rows)) == byte_size_count(b: tree_bytes) { [] as List<NonEmptyStr> } else { ["the rows' sizes do not sum to the tree's safetensors bytes" as NonEmptyStr] }
+  let index_join = if list_cover(held: paths, expected: index.shard_paths, eq: path_eq) && length(index.shard_paths) == length(paths) { [] as List<NonEmptyStr> } else { ["the index's weight_map shard population is not the file population" as NonEmptyStr] }
+  let defects = concat(duplicate, concat(foreign, concat(missing, concat(count, concat(total, index_join)))))
+  if length(defects) == 0 {
+    WeightManifestAdmitted { files: sort_by(rows, fn(r) { r.path as String }), index: index.file, canonical_text: deepseek_v4_1_flash_published_manifest_text(rows: rows) }
+  } else {
+    WeightManifestRefused { defects: defects }
+  }
+}
+
+fn deepseek_v4_1_flash_weight_manifest_standing() -> DeepseekV41WeightManifestStanding {
+  deepseek_v4_1_flash_admit_weight_manifest(rows: deepseek_v4_1_flash_weight_manifest, index: deepseek_v4_1_flash_index_reading, shard_count: deepseek_v4_1_flash_safetensors_shard_count, tree_bytes: deepseek_v4_1_flash_safetensors_tree_file_bytes)
 }
 
 // A PUBLISHED FILE BY PATH, from the manifest: the one read the Engram shard rows derive from.
@@ -745,17 +819,96 @@ fn deepseek_v4_1_flash_published_file(path: NonEmptyStr) -> DeepseekV41Published
   first(filter(deepseek_v4_1_flash_weight_manifest, r => (r.path as String) == (path as String)))
 }
 
-// THE TOKENIZER FILES at this revision, digested over the bytes the Hub served for
-// `hub_resolve_url` at dba1be0a on 2026-09-21 (they are not LFS objects, so the tree API carries
-// only their git blob id; the sha256 was taken over the resolved bytes). Same standing as the
-// weight manifest: declared here, verified fleet-side.
-data deepseek_v4_1_flash_tokenizer_files: List<DeepseekV41PublishedFile> = [
-  DeepseekV41PublishedFile { path: "tokenizer.json" as NonEmptyStr, file_bytes: byte_size(count: 6367257), sha256: Sha256Digest { hex: "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b" as Sha256DigestHex } },
-  DeepseekV41PublishedFile { path: "tokenizer_config.json" as NonEmptyStr, file_bytes: byte_size(count: 801), sha256: Sha256Digest { hex: "6ac8c8dc065ed118161d02dd532749ae3f52c243deac27872134fae2f50d8547" as Sha256DigestHex } },
+// THE TOKENIZER POPULATION, BY ROLE. Every role a serving runtime needs of the tokenizer side is
+// named and each says how the publisher carries it at this revision: an exact published file, a
+// file another role's file embeds it in, no separate file at all (established by reading the tree
+// at the revision), or not consumed by this runtime. The files at this revision (tree API at
+// dba1be0a, 2026-09-21): tokenizer.json, tokenizer_config.json and encoding/encoding.py; there is
+// no special_tokens_map.json, no generation_config.json and no Jinja chat template
+// (deepseek_v4_1_flash_encoder_has_no_jinja_chat_template) -- the prompt encoding IS the encoder
+// module. The digests were taken over the resolved bytes (the tokenizer files are not LFS objects,
+// so the tree API carries only their git blob id).
+type DeepseekV41TokenizerRole
+  = TokenizerVocabulary
+  | TokenizerConfiguration
+  | TokenizerSpecialTokens
+  | TokenizerPromptEncoding
+  | TokenizerGenerationDefaults
+
+fn deepseek_v4_1_flash_tokenizer_role_wire(r: DeepseekV41TokenizerRole) -> NonEmptyStr {
+  match r {
+    TokenizerVocabulary => "vocabulary" as NonEmptyStr
+    TokenizerConfiguration => "configuration" as NonEmptyStr
+    TokenizerSpecialTokens => "special-tokens" as NonEmptyStr
+    TokenizerPromptEncoding => "prompt-encoding" as NonEmptyStr
+    TokenizerGenerationDefaults => "generation-defaults" as NonEmptyStr
+  }
+}
+
+type DeepseekV41RoleCarrier
+  = RolePublishedFile { file: DeepseekV41PublishedFile }
+  | RoleEmbeddedIn { file: DeepseekV41PublishedFile }
+  | RoleNoSeparateFile { established_at: NonEmptyStr }
+  | RoleNotConsumedByRuntime
+
+type DeepseekV41TokenizerRoleRow sole_constructor {
+  role: DeepseekV41TokenizerRole
+  carrier: DeepseekV41RoleCarrier
+}
+
+fn deepseek_v4_1_flash_tokenizer_role_row(role: DeepseekV41TokenizerRole, carrier: DeepseekV41RoleCarrier) -> DeepseekV41TokenizerRoleRow {
+  DeepseekV41TokenizerRoleRow { role: role, carrier: carrier }
+}
+
+data deepseek_v4_1_flash_tokenizer_json_file: DeepseekV41PublishedFile = DeepseekV41PublishedFile { path: "tokenizer.json" as NonEmptyStr, file_bytes: byte_size(count: 6367257), sha256: Sha256Digest { hex: "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b" as Sha256DigestHex } }
+data deepseek_v4_1_flash_tokenizer_config_file: DeepseekV41PublishedFile = DeepseekV41PublishedFile { path: "tokenizer_config.json" as NonEmptyStr, file_bytes: byte_size(count: 801), sha256: Sha256Digest { hex: "6ac8c8dc065ed118161d02dd532749ae3f52c243deac27872134fae2f50d8547" as Sha256DigestHex } }
+data deepseek_v4_1_flash_encoder_file: DeepseekV41PublishedFile = DeepseekV41PublishedFile { path: deepseek_v4_1_flash_encoder_path, file_bytes: byte_size(count: 37316), sha256: Sha256Digest { hex: "502bdaec8a3fd88ebc24c4721a7038fbe42f2063c664638127056107920035c1" as Sha256DigestHex } }
+
+// Special tokens: tokenizer.json carries the added-token table (1283 entries) and
+// tokenizer_config.json names bos/eos/pad among them; there is no special_tokens_map.json.
+// Generation defaults: no generation_config.json at the revision; sampling defaults are the
+// runtime's, not the publisher's.
+data deepseek_v4_1_flash_tokenizer_roles: List<DeepseekV41TokenizerRoleRow> = [
+  DeepseekV41TokenizerRoleRow { role: TokenizerVocabulary, carrier: RolePublishedFile { file: deepseek_v4_1_flash_tokenizer_json_file } },
+  DeepseekV41TokenizerRoleRow { role: TokenizerConfiguration, carrier: RolePublishedFile { file: deepseek_v4_1_flash_tokenizer_config_file } },
+  DeepseekV41TokenizerRoleRow { role: TokenizerSpecialTokens, carrier: RoleEmbeddedIn { file: deepseek_v4_1_flash_tokenizer_json_file } },
+  DeepseekV41TokenizerRoleRow { role: TokenizerPromptEncoding, carrier: RolePublishedFile { file: deepseek_v4_1_flash_encoder_file } },
+  DeepseekV41TokenizerRoleRow { role: TokenizerGenerationDefaults, carrier: RoleNoSeparateFile { established_at: deepseek_v4_1_flash_revision } },
 ]
 
-fn deepseek_v4_1_flash_tokenizer_manifest_text() -> String {
-  deepseek_v4_1_flash_published_manifest_text(rows: deepseek_v4_1_flash_tokenizer_files)
+data deepseek_v4_1_flash_tokenizer_required_roles: List<DeepseekV41TokenizerRole> = [TokenizerVocabulary, TokenizerConfiguration, TokenizerSpecialTokens, TokenizerPromptEncoding, TokenizerGenerationDefaults]
+
+// THE TOKENIZER POPULATION IS ADMITTED BY ROLE COVER: every required role has exactly one row, an
+// embedding role names a file some published-file row carries, and the files of the published-file
+// rows, distinct by path, are the population whose canonical text keys the tokenizer axis. A role
+// with no row is an obligation, not an empty line in the manifest.
+type DeepseekV41TokenizerStanding
+  = TokenizerPopulationAdmitted { files: List<DeepseekV41PublishedFile>, canonical_text: String }
+  | TokenizerPopulationRefused { defects: List<NonEmptyStr> }
+
+fn role_eq(a: DeepseekV41TokenizerRole, b: DeepseekV41TokenizerRole) -> Bool {
+  (deepseek_v4_1_flash_tokenizer_role_wire(r: a) as String) == (deepseek_v4_1_flash_tokenizer_role_wire(r: b) as String)
+}
+
+fn deepseek_v4_1_flash_admit_tokenizer_population(rows: List<DeepseekV41TokenizerRoleRow>, required: List<DeepseekV41TokenizerRole>) -> DeepseekV41TokenizerStanding {
+  let roles = map(rows, r => r.role)
+  let duplicate = map(duplicated_by_key(rows, fn(r) { deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String }), d => join(["tokenizer role carried twice: ", deepseek_v4_1_flash_tokenizer_role_wire(r: d.role) as String], "") as NonEmptyStr)
+  let missing = map(filter(required, q => !list_member(xs: roles, x: q, eq: role_eq)), q => join(["tokenizer role without a carrier: ", deepseek_v4_1_flash_tokenizer_role_wire(r: q) as String], "") as NonEmptyStr)
+  let published = distinct_by_key(fold(rows, init: [] as List<DeepseekV41PublishedFile>, f: (acc, r) => match r.carrier { RolePublishedFile { file: f } => concat(acc, [f])  _ => acc }), fn(f) { f.path as String })
+  let embedded_unbacked = fold(rows, init: [] as List<NonEmptyStr>, f: (acc, r) => match r.carrier {
+    RoleEmbeddedIn { file: f } => if list_member(xs: map(published, p => p.path), x: f.path, eq: path_eq) { acc } else { concat(acc, [join(["tokenizer role ", deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String, " is embedded in a file no role publishes: ", f.path as String], "") as NonEmptyStr]) }
+    _ => acc
+  })
+  let defects = concat(duplicate, concat(missing, embedded_unbacked))
+  if length(defects) == 0 {
+    TokenizerPopulationAdmitted { files: sort_by(published, fn(f) { f.path as String }), canonical_text: deepseek_v4_1_flash_published_manifest_text(rows: published) }
+  } else {
+    TokenizerPopulationRefused { defects: defects }
+  }
+}
+
+fn deepseek_v4_1_flash_tokenizer_standing() -> DeepseekV41TokenizerStanding {
+  deepseek_v4_1_flash_admit_tokenizer_population(rows: deepseek_v4_1_flash_tokenizer_roles, required: deepseek_v4_1_flash_tokenizer_required_roles)
 }
 
 // THE SHARD FILES REACH THE POPULATION FOLD, so the tensor extents are bounded by the payload each

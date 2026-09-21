@@ -1,7 +1,7 @@
 module test.claim.deepseek.deepseek_v4_1_flash_authority_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
-import std.measure { token_count, token_count_value, token_count_remaining_in_window, byte_size_count }
+import std.measure { token_count, token_count_value, token_count_remaining_in_window, byte_size_count, byte_size }
 import std.roster_frontier {
   FrontierRow,
   frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
@@ -12,9 +12,13 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_display_
 import extdeps.huggingface.hub { hub_blob_url, hub_repo_tree_api_url, hub_repo_https_uri }
 import extdeps.uri { uri_wire }
 import extdeps.deepseek.deepseek_v4_1_flash {
-  deepseek_v4_1_flash_weight_manifest, deepseek_v4_1_flash_weight_manifest_agrees_with_tree, deepseek_v4_1_flash_published_file,
-  deepseek_v4_1_flash_engram_shard_1, deepseek_v4_1_flash_engram_shard_14, deepseek_v4_1_flash_tokenizer_files,
-  deepseek_v4_1_flash_published_manifest_text, deepseek_v4_1_flash_weight_manifest_text, deepseek_v4_1_flash_tokenizer_manifest_text,
+  deepseek_v4_1_flash_weight_manifest, deepseek_v4_1_flash_published_file,
+  deepseek_v4_1_flash_engram_shard_1, deepseek_v4_1_flash_engram_shard_14,
+  deepseek_v4_1_flash_published_manifest_text, deepseek_v4_1_flash_published_file_row, deepseek_v4_1_flash_tokenizer_role_row,
+  deepseek_v4_1_flash_admit_weight_manifest, deepseek_v4_1_flash_weight_manifest_standing, WeightManifestAdmitted, WeightManifestRefused,
+  deepseek_v4_1_flash_index_reading, deepseek_v4_1_flash_safetensors_shard_count, deepseek_v4_1_flash_shard_path,
+  deepseek_v4_1_flash_admit_tokenizer_population, deepseek_v4_1_flash_tokenizer_standing, deepseek_v4_1_flash_tokenizer_roles, deepseek_v4_1_flash_tokenizer_required_roles,
+  TokenizerPopulationAdmitted, TokenizerPopulationRefused, TokenizerVocabulary, TokenizerPromptEncoding, RoleNotConsumedByRuntime,
   deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision,
   deepseek_v4_1_flash_encoder_path, deepseek_v4_1_flash_config_path,
   deepseek_v4_1_flash_license_path, deepseek_v4_1_flash_license_spdx,
@@ -210,17 +214,65 @@ test fn dsml_block_name_is_the_encoder_leading_space_not_v4_tool_calls() -> Bool
     && string_contains(s: deepseek_v4_1_flash_dsml_tool_calls_open(), pattern: deepseek_v4_1_flash_dsml_token as String)
 }
 
-// THE WEIGHT MANIFEST IS THE TREE, BY FOLD: 48 rows whose sizes sum to the tree total the module
-// carries; the two Engram shards in it are the rows their owners declare (one source for path,
-// size and digest); the canonical text is one serialization shared with the tokenizer manifest,
-// and the two manifests are distinct texts.
-test fn the_weight_manifest_reconciles_with_the_tree_and_owns_each_shard_once() -> Bool {
-  deepseek_v4_1_flash_weight_manifest_agrees_with_tree()
-    && length(deepseek_v4_1_flash_weight_manifest) == 48
-    && (match deepseek_v4_1_flash_published_file(path: deepseek_v4_1_flash_engram_shard_1.file.path) { Present { value: f } => (f.sha256.hex as String) == (deepseek_v4_1_flash_engram_shard_1.sha256.hex as String)  Absent => false })
+// THE WEIGHT MANIFEST IS ADMITTED AS AN EXACT POPULATION, NOT COUNTED: the declared 48 rows admit
+// (every generated path once, the index's shard set equal to the files', the tree total); the two
+// Engram shards in it are the rows their owners declare (one source for path, size and digest).
+// The REDs are the mutations a count-and-total fold lets through: one shard replaced by a
+// duplicate of another shard OF THE SAME SIZE keeps the count and the total and must refuse
+// (duplicate AND absent, named); a foreign path refuses; and the admitted canonical text is
+// order-free -- the same rows reversed key identically -- while a path, a size or a digest that
+// changes changes it.
+test fn the_weight_manifest_admits_exactly_the_48_shards_and_refuses_a_same_size_duplicate() -> Bool {
+  let rows = deepseek_v4_1_flash_weight_manifest
+  let admitted = match deepseek_v4_1_flash_weight_manifest_standing() {
+    WeightManifestAdmitted { files: fs, index: ix, canonical_text: t } =>
+      length(fs) == 48
+        && (match first(fs) { Present { value: f } => (f.path as String) == "model-00001-of-00048.safetensors"  Absent => false })
+        && (ix.path as String) == "model.safetensors.index.json"
+        && t == deepseek_v4_1_flash_published_manifest_text(rows: reverse(rows))
+    WeightManifestRefused { defects: _ } => false
+  }
+  let owners = (match deepseek_v4_1_flash_published_file(path: deepseek_v4_1_flash_engram_shard_1.file.path) { Present { value: f } => (f.sha256.hex as String) == (deepseek_v4_1_flash_engram_shard_1.sha256.hex as String)  Absent => false })
     && (match deepseek_v4_1_flash_published_file(path: deepseek_v4_1_flash_engram_shard_14.file.path) { Present { value: f } => (f.sha256.hex as String) == (deepseek_v4_1_flash_engram_shard_14.sha256.hex as String)  Absent => false })
-    && (match deepseek_v4_1_flash_published_file(path: "model-00049-of-00048.safetensors" as NonEmptyStr) { Absent => true  Present { value: _ } => false })
-    && deepseek_v4_1_flash_weight_manifest_text() == deepseek_v4_1_flash_published_manifest_text(rows: deepseek_v4_1_flash_weight_manifest)
-    && deepseek_v4_1_flash_weight_manifest_text() != deepseek_v4_1_flash_tokenizer_manifest_text()
-    && length(deepseek_v4_1_flash_tokenizer_files) == 2
+  // rows 3 and 4 have the same size: drop row 4 and repeat row 3 -- count 48, total unchanged.
+  let row3 = rows |> skip(n: 2) |> take(n: 1)
+  let swapped = concat(rows |> take(n: 3), concat(row3, rows |> skip(n: 4)))
+  let same_size_duplicate = match deepseek_v4_1_flash_admit_weight_manifest(rows: swapped, index: deepseek_v4_1_flash_index_reading, shard_count: deepseek_v4_1_flash_safetensors_shard_count, tree_bytes: deepseek_v4_1_flash_safetensors_tree_file_bytes) {
+    WeightManifestRefused { defects: d } => any(d, x => (x as String).contains("more than once: model-00003")) && any(d, x => (x as String).contains("absent: model-00004"))
+    WeightManifestAdmitted { files: _, index: _, canonical_text: _ } => false
+  }
+  let foreign = match deepseek_v4_1_flash_admit_weight_manifest(rows: concat(rows |> take(n: 47), [deepseek_v4_1_flash_published_file_row(path: "model-00049-of-00048.safetensors" as NonEmptyStr, file_bytes: deepseek_v4_1_flash_engram_shard_14.file.file_bytes, sha256_hex: deepseek_v4_1_flash_engram_shard_14.sha256.hex)]), index: deepseek_v4_1_flash_index_reading, shard_count: deepseek_v4_1_flash_safetensors_shard_count, tree_bytes: deepseek_v4_1_flash_safetensors_tree_file_bytes) {
+    WeightManifestRefused { defects: d } => any(d, x => (x as String).contains("outside the generated shard set: model-00049"))
+    WeightManifestAdmitted { files: _, index: _, canonical_text: _ } => false
+  }
+  let text = deepseek_v4_1_flash_published_manifest_text(rows: rows)
+  let resized = map(rows, r => if (r.path as String) == "model-00002-of-00048.safetensors" { deepseek_v4_1_flash_published_file_row(path: r.path, file_bytes: byte_size(count: byte_size_count(b: r.file_bytes) + 1), sha256_hex: r.sha256.hex) } else { r })
+  admitted && owners && same_size_duplicate && foreign
+    && text != deepseek_v4_1_flash_published_manifest_text(rows: resized)
+    && (deepseek_v4_1_flash_shard_path(index: 7, count: 48) as String) == "model-00007-of-00048.safetensors"
+}
+
+// THE TOKENIZER POPULATION IS ADMITTED BY ROLE COVER: every required role carried once, the
+// published files (tokenizer.json, tokenizer_config.json, the encoder module) sorted into one
+// canonical text; a role without a carrier is a named refusal, not an empty line (and dropping
+// the vocabulary row also strands the special-tokens role embedded in its file: two defects).
+test fn the_tokenizer_population_admits_by_role_cover_and_refuses_a_missing_role() -> Bool {
+  let admitted = match deepseek_v4_1_flash_tokenizer_standing() {
+    TokenizerPopulationAdmitted { files: fs, canonical_text: t } =>
+      length(fs) == 3
+        && (match first(fs) { Present { value: f } => (f.path as String) == "encoding/encoding.py"  Absent => false })
+        && (t as String).contains("tokenizer_config.json 6ac8c8dc")
+    TokenizerPopulationRefused { defects: _ } => false
+  }
+  let without_vocabulary = filter(deepseek_v4_1_flash_tokenizer_roles, r => match r.role { TokenizerVocabulary => false  _ => true })
+  let missing = match deepseek_v4_1_flash_admit_tokenizer_population(rows: without_vocabulary, required: deepseek_v4_1_flash_tokenizer_required_roles) {
+    TokenizerPopulationRefused { defects: d } => length(d) == 2 && any(d, x => (x as String).contains("without a carrier: vocabulary")) && any(d, x => (x as String).contains("embedded in a file no role publishes: tokenizer.json"))
+    TokenizerPopulationAdmitted { files: _, canonical_text: _ } => false
+  }
+  let encoder_unconsumed = concat(filter(deepseek_v4_1_flash_tokenizer_roles, r => match r.role { TokenizerPromptEncoding => false  _ => true }), [deepseek_v4_1_flash_tokenizer_role_row(role: TokenizerPromptEncoding, carrier: RoleNotConsumedByRuntime)])
+  let narrower = match deepseek_v4_1_flash_admit_tokenizer_population(rows: encoder_unconsumed, required: deepseek_v4_1_flash_tokenizer_required_roles) {
+    TokenizerPopulationAdmitted { files: fs, canonical_text: _ } => length(fs) == 2
+    TokenizerPopulationRefused { defects: _ } => false
+  }
+  admitted && missing && narrower
 }

@@ -1,35 +1,30 @@
 module gunbc.spark.pair_serving_d0_door
 
-import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp }
+import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs }
 import std.measure { Second, second, second_count }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, exit_failure }
 import std.resources { Network }
-import std.algebra { trim }
 import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization }
-import extdeps.clock { Clock }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.http.client
-import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
-import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.auth.approval_capability { utc_instant_is_canonical }
-import gunbc.auth.approval_request_client {
-  stored_request_from_authorization, sign_stored_request, approval_submit_url, approval_status_url, approval_poll_standing,
-  SubmissionMacReady, SubmissionMacKeyNotHex, ApprovalPollStanding, PollStillPending, PollUnreadable, PollExpired,
+import gunbc.auth.approval_gate {
+  ApprovalGate, GateAdmitted, GateStoreUnreadable, approval_gate_from_poll, approval_gate_from_outcome, approval_gate_text, AdmitAsRecorded,
+  approval_instant_now, approval_expires_at, approval_standing_read, approval_poll_ticks, PollObservedAt, PollClockUnreadable,
+  approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
 }
-import gunbc.auth.approval_status_wire { parse_filed_approval_status, FiledApprovalStatus, StatusUnreadable, submission_body_admits_poll }
-import gunbc.auth.approval_request_submission { submission_envelope_json }
-import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
-import gunbc.actions_run_binding { actions_variable_trimmed }
-import extdeps.github.actions_environment { github_runner_temp_variable_name }
+import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, stored_request_from_authorization }
+import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.fabric_switch_observed { FabricGroup, parse_fabric_group, fabric_group_hosts }
 import gunbc.spark.pair_serving_authority_log { current_pair_serving_authority }
-import gunbc.spark.pair_serving_d0 { D0Subject, d0_dispatch, d0_store_write_wall_standing }
+import gunbc.spark.pair_serving_d0 {
+  D0Subject, d0_dispatch, d0_store_write_wall_standing,
+  d0_read_filing, D0FilingAbsent, D0FilingAt, D0FilingUnreadable,
+  d0_freeze_filing, D0FilingFrozen, D0FilingAlreadyHeld, D0FilingFreezeRefused,
+}
 import gunbc.spark.pair_serving_d0_authorization {
-  D0RequestFor, D0RequestUnestablished, d0_authorization_request,
-  D0AuthorizationGate, D0GateAdmitted, D0GatePending, d0_gate_from_poll, d0_gate_text,
+  D0RequestFor, D0RequestUnestablished, d0_authorization_request, d0_request_intent_text,
+  D0FiledRequestFor, D0FiledRequestRefused, d0_filed_request,
 }
 
 // ── THE WET DOOR OF D0: file the consent, wait for the operator, then run the transaction ─────
@@ -38,16 +33,33 @@ import gunbc.spark.pair_serving_d0_authorization {
 //     --function pair_serving_d0_wet --arg group=group-a --arg transaction=<word> --arg authorization=<escalation id>
 //
 // THE ORDER IS THE SAFETY. Nothing on the fleet moves before, in this order: the store's two write
-// walls stand (gunbc.spark.pair_serving_d0 d0_store_write_wall_standing); the subject exists --
-// the V4.1 candidate is keyed (Cut 0) and the group's hosts are read; the request over the exact
-// operation is FILED with the approval broker under the named escalation id, signed with the
-// submission key (gunbc.auth.approval_keyring_pins); the operator's decision is polled for a
-// bounded window; an approval over exactly this request's revision yields the grant, which
-// std.scoped_authorization authorizes at the observed instant; and only then is the transaction
-// dispatched (gunbc.spark.pair_serving_d0 d0_dispatch), under that grant. Every other poll
-// outcome is a typed refusal naming what the operator or the run must do. This is the route
-// gunbc.machine_intake_mtcollins1_boot_run takes for the Mt. Collins boot, over D0's subject:
-// the same broker, the same signed filing, the same decision-to-grant derivation.
+// walls stand (gunbc.spark.pair_serving_d0 d0_store_write_wall_standing); the store this executor
+// reaches is resolved; the FILING under the named escalation is read from it, which decides
+// whether this run is the first or a rerun; the request over the exact operation is either
+// re-derived from the frozen filing (rerun) or built from the live authorities -- the V4.1
+// candidate keyed (Cut 0), the group's hosts read -- frozen, and FILED with the approval broker,
+// signed with the submission key (gunbc.auth.approval_keyring_pins); the operator's decision is
+// polled for a bounded window; and only then is the transaction dispatched
+// (gunbc.spark.pair_serving_d0 d0_dispatch), which reads the durable claim and the authority
+// history and decides start, resume, complete or abort. Every other poll outcome is a typed
+// refusal naming what the operator or the run must do. The broker route is gunbc.auth.approval_gate,
+// the same one gunbc.machine_intake_mtcollins1_boot_run binds to the Mt. Collins boot.
+//
+// A RERUN IS DECIDED BY THE STORE, NOT BY THE CLOCK OR THE SOURCE. The lifecycle #11555 made
+// recoverable can outlive the grant's window, the candidate's key and the group's host roster:
+// once the claim is held and the pending state is written, the transaction must reach a terminal
+// under the request the operator consented to. So a rerun never rebuilds the subject from live
+// source and never re-files -- it reads the frozen intent, re-derives the identical request, reads
+// the broker's decision AS RECORDED (an approval past its execute_by is still the approval that
+// started this lifecycle), and hands the grant to the dispatcher, which alone decides whether a
+// fresh start is still permitted (it re-authorizes at a fresh instant before claiming) or the
+// held lifecycle simply continues (no permission re-decided). A first run that finds the filing
+// already frozen is a rerun that did not know it, and proceeds as one.
+//
+// THE CLAIM IS TIMESTAMPED WHERE IT IS MADE. The instant that authorizes and stamps the claim is
+// probed after the poll returns, immediately before dispatch: a grant that expired between the
+// admitting poll and the claim refuses, a claim never predates the operator's decision, and an
+// unreadable clock there refuses rather than handing a rendering to the authorization boundary.
 //
 // WHERE IT RUNS. The broker is reached on its loopback origin (approval_loopback_origin), so the
 // door runs on the broker's host, from a fleet-converge workflow mode that supplies the
@@ -57,92 +69,100 @@ import gunbc.spark.pair_serving_d0_authorization {
 data d0_poll_cadence: Second = second(count: 15)
 data d0_poll_tick_budget: Int = 120
 data d0_submit_timeout: Second = second(count: 30)
+data d0_submit_body_file_name: String = "pair-serving-d0-approval-submit.json"
 
 fn d0_approval_window() -> Second {
   second(count: d0_poll_tick_budget * (second_count(s: d0_poll_cadence) as Int))
-}
-
-fn d0_instant_from_probe(reading: NonEmptyStr?) -> Timestamp? {
-  match reading {
-    Absent => none
-    Present { value: ts } => if utc_instant_is_canonical(t: ts as Timestamp) { Present { value: ts as Timestamp } } else { none }
-  }
-}
-
-fn d0_status_from_get(success: Bool, body: String) -> FiledApprovalStatus {
-  if success { parse_filed_approval_status(body: body) }
-  else { StatusUnreadable { detail: "status GET did not succeed; the decision's standing is unknown, not pending" as NonEmptyStr } }
-}
-
-fn d0_poll_ticks(remaining: Int, request: AuthorizationRequest<D0Subject>, expires_at: Timestamp) -> D0AuthorizationGate
-  uses net: Network
-{
-  match d0_instant_from_probe(reading: clock_now_probed_at()) {
-    Absent => d0_gate_from_poll(poll: PollUnreadable { detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr }, request: request, observed_at: expires_at)
-    Present { value: observed } =>
-      if remaining <= 0 {
-        d0_gate_from_poll(poll: PollExpired, request: request, observed_at: observed)
-      } else {
-        let got = http.Client.GetLocalhostBounded(url: approval_status_url(escalation_id: request.escalation_id))
-        let standing = approval_poll_standing(status: d0_status_from_get(success: got.success, body: got.body), observed_at: observed, expires_at: expires_at)
-        match standing {
-          PollStillPending => {
-            let _paced = sleep_delay_seconds_second_carrier_projection(duration: d0_poll_cadence)
-            d0_poll_ticks(remaining: remaining - 1, request: request, expires_at: expires_at)
-          }
-          _ => d0_gate_from_poll(poll: standing, request: request, observed_at: observed)
-        }
-      }
-  }
 }
 
 fn refuse(reason: String) -> ProcessExit {
   exit_failure(reason: join(["pair_serving_d0: ", reason], ""))
 }
 
-// File the request with the broker; true when the broker admits a poll for it.
-type D0Filing
-  = D0Filed
-  | D0FilingRefused { reason: String }
+// WHICH RUN THIS IS, from the filing slot: the frozen intent (rerun) or none yet (first run).
+type D0RunKind
+  = D0FirstRun { request: AuthorizationRequest<D0Subject> }
+  | D0Rerun { request: AuthorizationRequest<D0Subject> }
+  | D0RunRefused { reason: String }
 
-fn d0_file_request(request: AuthorizationRequest<D0Subject>, issued: Timestamp, expires: Timestamp) -> D0Filing
+fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr) -> D0RunKind {
+  match d0_read_filing(store: store, escalation_id: escalation_id) {
+    D0FilingUnreadable { reason: r } => D0RunRefused { reason: join(["the filing under this escalation could not be read: ", r as String], "") }
+    D0FilingAt { text: t } =>
+      match d0_filed_request(text: t, group: g, escalation_id: escalation_id, transaction: transaction) {
+        D0FiledRequestRefused { reason: r } => D0RunRefused { reason: r as String }
+        D0FiledRequestFor { request: request, intent_text: _ } => D0Rerun { request: request }
+      }
+    D0FilingAbsent =>
+      match d0_authorization_request(group: g, escalation_id: escalation_id, transaction: transaction) {
+        D0RequestUnestablished { obligations: o } => D0RunRefused { reason: join(["the consent has no subject to be asked over: ", join(map(o, x => x as String), "; ")], "") }
+        D0RequestFor { request: request } =>
+          match d0_freeze_filing(store: store, escalation_id: escalation_id, intent_text: d0_request_intent_text(request: request, group: g, transaction: transaction)) {
+            D0FilingFreezeRefused { reason: r } => D0RunRefused { reason: r as String }
+            D0FilingFrozen => D0FirstRun { request: request }
+            D0FilingAlreadyHeld { text: t } =>
+              match d0_filed_request(text: t, group: g, escalation_id: escalation_id, transaction: transaction) {
+                D0FiledRequestRefused { reason: r } => D0RunRefused { reason: r as String }
+                D0FiledRequestFor { request: filed, intent_text: _ } => D0Rerun { request: filed }
+              }
+          }
+      }
+  }
+}
+
+// THE GATE FOR THIS RUN. A first run files and polls live. A rerun reads the decision as recorded
+// -- unless it is still pending, in which case the operator has not yet answered the filing an
+// earlier run made and this run waits on it exactly as that run would have; or not filed at all,
+// which is a run that froze the intent and then failed to reach the broker, so the frozen request
+// (the same bytes, the same revision) is filed now and polled live.
+type D0DoorGate
+  = D0DoorAdmitted { authorization: ScopedAuthorization<D0Subject> }
+  | D0DoorRefused { reason: String }
+
+fn d0_door_gate_of(gate: ApprovalGate<D0Subject>) -> D0DoorGate {
+  match gate {
+    GateAdmitted { authorization: scoped } => D0DoorAdmitted { authorization: scoped }
+    other => D0DoorRefused { reason: join(["the consent was not admitted: ", approval_gate_text(g: other)], "") }
+  }
+}
+
+fn d0_gate(kind: D0RunKind, expires: Timestamp, issued: Timestamp) -> D0DoorGate
   uses net: Network
 {
-  let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
-  if sub_path == "" {
-    D0FilingRefused { reason: join([approval_submission_mac_key_path_env as String, " is unset; the consent cannot be filed"], "") }
-  } else {
-    let key_read = Filesystem.Read(path: sub_path)
-    if !key_read.success {
-      D0FilingRefused { reason: join(["submission MAC key unreadable: ", key_read.error], "") }
-    } else {
-      match sign_stored_request(key_material: trim(s: key_read.content), request: stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires)) {
-        SubmissionMacKeyNotHex { key_id: k } => D0FilingRefused { reason: join(["submission MAC key is not hex: ", k as String], "") }
-        SubmissionMacReady { tag_hex: tag } => {
-          let tmp = actions_variable_trimmed(name: github_runner_temp_variable_name as NonEmptyStr)
-          if tmp == "" {
-            D0FilingRefused { reason: "RUNNER_TEMP is unset; cannot write the submit body" }
-          } else {
-            let body_path = join([tmp, "/pair-serving-d0-approval-submit.json"], "")
-            let written = Filesystem.WriteOwnerOnly(path: body_path, content: submission_envelope_json(request: stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires), tag_hex: tag))
-            if !written.success {
-              D0FilingRefused { reason: join(["could not write the submit body: ", written.error], "") }
-            } else {
-              let posted = http.Client.PostJsonFromFile(url: approval_submit_url(), request_body_file: body_path as NonEmptyStr, max_seconds: to_string(second_count(s: d0_submit_timeout)) as NonEmptyStr)
-              let _wiped = Filesystem.Delete(path: body_path)
-              if submission_body_admits_poll(body: posted.body) { D0Filed } else { D0FilingRefused { reason: join(["POST /approvals refused: ", posted.body], "") } }
-            }
+  match kind {
+    D0RunRefused { reason: r } => D0DoorRefused { reason: r }
+    D0FirstRun { request: request } => d0_file_and_poll(request: request, issued: issued, expires: expires)
+    D0Rerun { request: request } =>
+      match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
+        PollClockUnreadable => d0_door_gate_of(gate: GateStoreUnreadable { detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr })
+        PollObservedAt { standing: standing, observed_at: _ } =>
+          match standing {
+            PollNotFiled => d0_file_and_poll(request: request, issued: issued, expires: expires)
+            PollStillPending => d0_poll(request: request, expires: expires)
+            recorded => d0_door_gate_of(gate: approval_gate_from_poll(poll: recorded, request: request, admission: AdmitAsRecorded))
           }
-        }
       }
-    }
+  }
+}
+
+fn d0_poll(request: AuthorizationRequest<D0Subject>, expires: Timestamp) -> D0DoorGate
+  uses net: Network
+{
+  d0_door_gate_of(gate: approval_gate_from_outcome(outcome: approval_poll_ticks(remaining: d0_poll_tick_budget, cadence: d0_poll_cadence, escalation_id: request.escalation_id, expires_at: expires), request: request))
+}
+
+fn d0_file_and_poll(request: AuthorizationRequest<D0Subject>, issued: Timestamp, expires: Timestamp) -> D0DoorGate
+  uses net: Network
+{
+  match approval_file_stored_request(stored: stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires), body_file_name: d0_submit_body_file_name, submit_timeout: d0_submit_timeout) {
+    ApprovalFilingRefused { reason: r } => D0DoorRefused { reason: r }
+    ApprovalFiled => d0_poll(request: request, expires: expires)
   }
 }
 
 fn pair_serving_d0_wet(group: String, transaction: String, authorization: String) -> ProcessExit
   uses net: Network
 {
-  let now = probed_at_word(reading: clock_now_probed_at()) as String
   match parse_fabric_group(wire: group) {
     Absent => refuse(reason: join(["`", group, "` names no fabric group"], ""))
     Present { value: g } =>
@@ -154,35 +174,29 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
       match d0_store_write_wall_standing() {
         Present { value: wall } => refuse(reason: wall)
         Absent =>
-      match d0_authorization_request(group: g, escalation_id: authorization as NonEmptyStr, transaction: transaction as NonEmptyStr) {
-        D0RequestUnestablished { obligations: o } => refuse(reason: join(["the consent has no subject to be asked over: ", join(map(o, x => x as String), "; ")], ""))
-        D0RequestFor { request: request } =>
-      match d0_instant_from_probe(reading: clock_now_probed_at()) {
+      match observe_executor_reach() {
+        ExecutorReachUnknown { cause: c } => refuse(reason: c)
+        ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match event_log_store_for_host(short_hostname: executor) {
+        HostStoreRefused { detail: d } => refuse(reason: d)
+        HostStoreResolved { store: store, executor: _ } =>
+      match approval_instant_now() {
         Absent => refuse(reason: "clock unreadable; cannot mint an approval window")
-        Present { value: issued } => {
-          let expires = Clock.TimestampAdd(timestamp: issued, offset: second_count(s: d0_approval_window())).result
-          match d0_file_request(request: request, issued: issued, expires: expires) {
-            D0FilingRefused { reason: r } => refuse(reason: r)
-            D0Filed =>
-              match d0_poll_ticks(remaining: d0_poll_tick_budget, request: request, expires_at: expires) {
-                D0GateAdmitted { authorization: scoped } =>
-                  match observe_executor_reach() {
-                    ExecutorReachUnknown { cause: c } => refuse(reason: c)
-                    ExecutorReachKnown { short_hostname: executor, path: _ } =>
-                      match event_log_store_for_host(short_hostname: executor) {
-                        HostStoreRefused { detail: d } => refuse(reason: d)
-                        HostStoreResolved { store: store, executor: _ } =>
-                          match now_epoch_seconds() {
-                            Absent => refuse(reason: "the clock could not be read as epoch seconds")
-                            Present { value: at } =>
-                              d0_dispatch(store: store, g: g, group: group, current_hosts: fabric_group_hosts(g: g), scoped: scoped, tx: transaction as NonEmptyStr, esc: authorization as NonEmptyStr, executor: executor as NonEmptyStr, at: at, now: now, current: current_pair_serving_authority(store: store, group: g, at: at))
-                          }
-                      }
+        Present { value: issued } =>
+          match d0_gate(kind: d0_run_kind(store: store, g: g, escalation_id: authorization as NonEmptyStr, transaction: transaction as NonEmptyStr), expires: approval_expires_at(issued: issued, window: d0_approval_window()), issued: issued) {
+            D0DoorRefused { reason: r } => refuse(reason: r)
+            D0DoorAdmitted { authorization: scoped } =>
+              match approval_instant_now() {
+                Absent => refuse(reason: "clock unreadable at the claim; the consent is admitted but no instant can authorize or stamp the claim")
+                Present { value: now } =>
+                  match now_epoch_seconds() {
+                    Absent => refuse(reason: "the clock could not be read as epoch seconds")
+                    Present { value: at } =>
+                      d0_dispatch(store: store, g: g, group: group, current_hosts: fabric_group_hosts(g: g), scoped: scoped, tx: transaction as NonEmptyStr, esc: authorization as NonEmptyStr, executor: executor as NonEmptyStr, at: at, now: now, current: current_pair_serving_authority(store: store, group: g, at: at))
                   }
-                other => refuse(reason: join(["the consent was not admitted: ", d0_gate_text(g: other)], ""))
               }
           }
-        }
+      }
       }
       }
       }

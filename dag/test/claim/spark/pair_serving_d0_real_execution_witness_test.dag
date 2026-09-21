@@ -51,7 +51,11 @@ import gunbc.spark.pair_serving_d0 {
   AdmittedD0Grant, D0GrantAdmitted, D0GrantClaimLost, D0GrantForAnotherPopulation, admit_d0_grant, resume_d0_grant, d0_intent_hash, d0_authorized_action,
   D0ClaimReading, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable, d0_read_claim, d0_terminate_claim, D0ClaimTerminated,
   D0Recovery, D0RecoverStart, D0RecoverFirstWrite, D0RecoverResume, D0RecoverComplete, D0RecoverAbort, D0RecoveryRefused, d0_recovery,
+  d0_intent_text, d0_freeze_filing, D0FilingFrozen, D0FilingAlreadyHeld, D0FilingFreezeRefused, d0_read_filing, D0FilingAt, D0FilingAbsent, D0FilingUnreadable,
+  D0GrantRefused,
 }
+import gunbc.spark.pair_serving_d0_authorization { d0_filed_request, D0FiledRequestFor, D0FiledRequestRefused }
+import gunbc.auth.approval_decision_store { request_revision_of }
 import std.scoped_authorization { ClaimedBy, CompletedBy, AbortedBy }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1 }
@@ -894,4 +898,60 @@ fn d0r_committed_to_group_a(standings: List<SparkHostStanding>, host: HostIdenti
     Present { value: SparkHostCommitted { host: _, commitments: c } } =>
       any(spark_authority_held_causes_of(c: c), o => match o { MemberOfClaimedServingGroup { group: FabricGroupA } => true  _ => false })
   }
+}
+
+// THE FILING IS FROZEN ONCE AND READ BACK AS THE SAME REQUEST, on the real store: the first
+// freeze lands at generation 1; a second freeze of the same escalation is refused as already
+// held and hands back the frozen text; the text re-derives the request the operator decided over
+// (same revision) with NO live subject consulted -- a rerun after the candidate re-keys or the
+// hosts move still finds the request it filed; and a rerun naming another transaction under the
+// same escalation is refused rather than resumed.
+test fn a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution() -> Bool {
+  d0r_with_hash(scenario: fn(h) {
+    d0r_with_remote(scenario: fn(dir, store) {
+      let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: h, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+      let text = d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr)
+      let esc = "esc-d0-filing" as NonEmptyStr
+      let absent_before = match d0_read_filing(store: store, escalation_id: esc) { D0FilingAbsent => true  _ => false }
+      let frozen = match d0_freeze_filing(store: store, escalation_id: esc, intent_text: text) { D0FilingFrozen => true  _ => false }
+      let held = match d0_freeze_filing(store: store, escalation_id: esc, intent_text: join([text, "tampered"], "")) { D0FilingAlreadyHeld { text: t } => t == text  _ => false }
+      let read = match d0_read_filing(store: store, escalation_id: esc) { D0FilingAt { text: t } => t == text  _ => false }
+      let same_request = match d0r_w_authorization(successor: h, tx: "tx-d0" as NonEmptyStr, escalation: esc) {
+        Absent => false
+        Present { value: AuthorizationGranted { grant: g, claim: _ } } =>
+          match d0_filed_request(text: text, group: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr) {
+            D0FiledRequestFor { request: r, intent_text: _ } => (request_revision_of(request: r) as String) == (serialize_content_hash(hash: g.intent_hash) as String) && content_hash_equal(left: r.subject.successor, right: h)
+            D0FiledRequestRefused { reason: _ } => false
+          }
+        Present { value: _ } => false
+      }
+      let other_tx = match d0_filed_request(text: text, group: FabricGroupA, escalation_id: esc, transaction: "tx-else" as NonEmptyStr) { D0FiledRequestRefused { reason: _ } => true  _ => false }
+      absent_before && frozen && held && read && same_request && other_tx
+    })
+  })
+}
+
+// THE CLAIM IS AUTHORIZED AT THE INSTANT IT IS MADE: an approval whose execute_by has passed by
+// the time the claim would land is refused at admission -- no claim is taken on the store and no
+// authority write follows -- while the same grant admitted at an instant inside its window claims.
+test fn a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_execution() -> Bool {
+  d0r_with_hash(scenario: fn(h) {
+    d0r_with_remote(scenario: fn(dir, store) {
+      match d0r_w_authorization(successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-d0-late" as NonEmptyStr) {
+        Absent => false
+        Present { value: auth } => {
+          let late = match admit_d0_grant(store: store, authorization: auth, escalation_id: "esc-d0-late" as NonEmptyStr, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-19T00:00:01Z") {
+            D0GrantRefused { cause: _ } => true
+            _ => false
+          }
+          let unclaimed = match d0_read_claim(store: store, escalation_id: "esc-d0-late" as NonEmptyStr) { D0ClaimAbsent => true  _ => false }
+          let in_window = match admit_d0_grant(store: store, authorization: auth, escalation_id: "esc-d0-late" as NonEmptyStr, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T23:59:59Z") {
+            D0GrantAdmitted { admitted: _ } => true
+            _ => false
+          }
+          late && unclaimed && in_window && d0r_claim_is(store: store, escalation: "esc-d0-late" as NonEmptyStr, by: "tx-d0", completed: false)
+        }
+      }
+    })
+  })
 }

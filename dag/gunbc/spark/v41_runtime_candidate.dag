@@ -27,7 +27,8 @@ import extdeps.safetensors.format {
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_revision, deepseek_v4_1_flash_engram_population,
   DeepseekV41EngramTables, deepseek_v4_1_flash_engram,
-  deepseek_v4_1_flash_weight_manifest_text, deepseek_v4_1_flash_tokenizer_manifest_text,
+  deepseek_v4_1_flash_weight_manifest_standing, WeightManifestAdmitted, WeightManifestRefused,
+  deepseek_v4_1_flash_tokenizer_standing, TokenizerPopulationAdmitted, TokenizerPopulationRefused,
 }
 import gunbc.spark.vllm_runtime_image_build {
   v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
@@ -697,8 +698,8 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   },
   model_source: V41ModelSourceInputs {
     checkpoint_revision: deepseek_v4_1_flash_revision,
-    weights: v41_manifest_digest(text: deepseek_v4_1_flash_weight_manifest_text(), subject: "the weight manifest (48 shards at dba1be0a)"),
-    tokenizer: v41_manifest_digest(text: deepseek_v4_1_flash_tokenizer_manifest_text(), subject: "the tokenizer files at dba1be0a"),
+    weights: v41_weight_manifest_standing(),
+    tokenizer: v41_tokenizer_standing(),
   },
   engram: V41EngramRealizationInputs {
     partition: v41_candidate_partition,
@@ -710,12 +711,28 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   device: gb10_observed_compute_capability,
 }
 
-// A MANIFEST AXIS IS KEYED BY THE DIGEST OF ITS CANONICAL TEXT: the rows are the publisher's
-// declared digests at the pinned revision (extdeps.deepseek.deepseek_v4_1_flash carries them with
-// their provenance), and the digest over their canonical serialization is what the model-source
-// key consumes -- so a shard digest, a file size or a path that changes changes the key. The
-// digest is taken through the sha256sum realization; unavailable is a typed obligation, never a
-// structural fallback.
+// A MANIFEST AXIS IS KEYED BY THE DIGEST OF AN ADMITTED POPULATION'S CANONICAL TEXT. The rows are
+// the publisher's declared digests at the pinned revision (extdeps.deepseek.deepseek_v4_1_flash
+// carries them with their provenance); the candidate never digests the raw row list -- it consumes
+// the module's admission (exact shard cover, index reconciliation, role cover), so a defective
+// population is an UNESTABLISHED model source naming its defects, never a differently keyed one.
+// The canonical text is order-free (sorted by path), so a shard digest, a file size or a path
+// that changes changes the key and a reordering does not. The digest is taken through the
+// sha256sum realization; unavailable is a typed obligation, never a structural fallback.
+fn v41_weight_manifest_standing() -> V41ManifestStanding {
+  match deepseek_v4_1_flash_weight_manifest_standing() {
+    WeightManifestRefused { defects: d } => V41ManifestUnestablished { obligation: join(["the weight manifest is not an admitted population: ", join(map(d, x => x as String), "; ")], "") as NonEmptyStr }
+    WeightManifestAdmitted { files: _, index: _, canonical_text: t } => v41_manifest_digest(text: t, subject: "the admitted weight manifest (48 shards at dba1be0a)")
+  }
+}
+
+fn v41_tokenizer_standing() -> V41ManifestStanding {
+  match deepseek_v4_1_flash_tokenizer_standing() {
+    TokenizerPopulationRefused { defects: d } => V41ManifestUnestablished { obligation: join(["the tokenizer population is not admitted: ", join(map(d, x => x as String), "; ")], "") as NonEmptyStr }
+    TokenizerPopulationAdmitted { files: _, canonical_text: t } => v41_manifest_digest(text: t, subject: "the admitted tokenizer population at dba1be0a")
+  }
+}
+
 fn v41_manifest_digest(text: String, subject: String) -> V41ManifestStanding {
   match sha256sum_stdin_digest_via_shell(content: text) {
     Sha256FileDigestUnavailable { path: _, reason: r } => V41ManifestUnestablished { obligation: join([subject, " could not be digested: ", r], "") as NonEmptyStr }

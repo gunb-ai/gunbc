@@ -1,0 +1,218 @@
+module gunbc.auth.approval_gate
+
+import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp }
+import std.measure { Second, second_count }
+import v2.std.optional { Present, Absent }
+import std.resources { Network }
+import std.algebra { trim }
+import std.scoped_authorization {
+  AuthorizationRequest, ScopedAuthorization, authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
+}
+import extdeps.clock { Clock }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.http.client
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.github.actions_environment { github_runner_temp_variable_name }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.auth.approval_capability { utc_instant_is_canonical }
+import gunbc.auth.approval_decision_store { grant_from_approved_decision, GrantDerived, GrantForAnotherIntent, request_revision_of, StoredApprovalRequest }
+import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
+import gunbc.auth.approval_request_client {
+  sign_stored_request, approval_submit_url, approval_status_url, approval_poll_standing,
+  SubmissionMacReady, SubmissionMacKeyNotHex,
+  ApprovalPollStanding, PollApproved, PollDenied, PollExpired, PollStillPending, PollNotFiled, PollUnreadable,
+}
+import gunbc.auth.approval_request_submission { submission_envelope_json }
+import gunbc.auth.approval_status_wire { parse_filed_approval_status, FiledApprovalStatus, StatusUnreadable, submission_body_admits_poll }
+
+// THE OPERATOR'S DECISION AS A GATE, ONCE, FOR EVERY SUBJECT. A run that needs the operator's
+// consent files a signed request with the approval broker, polls its standing, and turns an
+// approval over the exact request revision into the ScopedAuthorization<Subject> it acts under.
+// Every ingredient of that route is already generic over the subject (std.scoped_authorization,
+// gunbc.auth.approval_decision_store), so the gate is too: the Mt. Collins boot and the pair-serving
+// D0 transaction each rebind it to their subject rather than carrying a copy (DESIGN 2: net concepts
+// must not grow by re-invention -- the second adopter is when the shared fold becomes payable).
+//
+// A gate is a reading of the broker's standing joined to one request. It names, distinctly, every
+// way the run does not proceed: the decision is still pending, was never filed, expired undecided,
+// was denied, was taken over another intent, could not be read, or is a grant std.scoped_authorization
+// refuses for this request. Only GateAdmitted carries an authorization.
+
+type ApprovalGate<Subject>
+  = GateAdmitted { authorization: ScopedAuthorization<Subject> }
+  | GatePending { escalation_id: NonEmptyStr }
+  | GateNotFiled { escalation_id: NonEmptyStr }
+  | GateDenied { reason: NonEmptyStr }
+  | GateExpired
+  | GateIntentMismatch { requested_revision: NonEmptyStr, decided_revision: NonEmptyStr }
+  | GateStoreUnreadable { detail: NonEmptyStr }
+  | GateAuthorizeRefused { detail: NonEmptyStr }
+
+// HOW AN APPROVED DECISION IS ADMITTED. A run that is about to START under a grant admits it live:
+// std.scoped_authorization decides permission at the observed instant, so a grant whose execute_by
+// has passed refuses. A run that is RESUMING a lifecycle it already began under the grant reads the
+// decision as recorded: the right to start expires, the right to finish what was started does not
+// (the consumer's own claim slot is what proves it started), so the recorded arm hands back the
+// derived authorization and leaves the permission decision to the lifecycle that holds the claim.
+type GateAdmission
+  = AdmitLiveAt { observed_at: Timestamp }
+  | AdmitAsRecorded
+
+fn approval_gate_from_poll<Subject>(poll: ApprovalPollStanding, request: AuthorizationRequest<Subject>, admission: GateAdmission) -> ApprovalGate<Subject> {
+  match poll {
+    PollStillPending => GatePending { escalation_id: request.escalation_id }
+    PollNotFiled => GateNotFiled { escalation_id: request.escalation_id }
+    PollExpired => GateExpired
+    PollUnreadable { detail: d } => GateStoreUnreadable { detail: d }
+    PollDenied { revision: r, decided_by: _, decided_at: _, reason: why } =>
+      if r != request_revision_of(request: request) { GateIntentMismatch { requested_revision: request_revision_of(request: request), decided_revision: r } }
+      else { GateDenied { reason: why } }
+    PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+      match grant_from_approved_decision(request: request, revision: r, decided_by: by, decided_at: at, execute_by: until) {
+        GrantForAnotherIntent { requested_revision: a, decided_revision: b } => GateIntentMismatch { requested_revision: a, decided_revision: b }
+        GrantDerived { authorization: auth } =>
+          match admission {
+            AdmitAsRecorded => GateAdmitted { authorization: auth }
+            AdmitLiveAt { observed_at: observed } =>
+              match authorize(authorization: auth, request: request, observed_at: observed) {
+                AuthorizationPermitted { grant: _ } => GateAdmitted { authorization: auth }
+                AuthorizationRefused { cause: c } => GateAuthorizeRefused { detail: join(["scoped authorization refused the approved grant for this request: ", authorization_refusal_reason(cause: c)], "") as NonEmptyStr }
+              }
+          }
+        _ => GateStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr }
+      }
+  }
+}
+
+fn approval_gate_text<Subject>(g: ApprovalGate<Subject>) -> String {
+  match g {
+    GateAdmitted { authorization: _ } => "admitted"
+    GatePending { escalation_id: e } => join(["escalation ", e as String, " is still pending the operator's decision"], "")
+    GateNotFiled { escalation_id: e } => join(["escalation ", e as String, " is not filed with the approval broker"], "")
+    GateDenied { reason: r } => join(["the operator denied the request: ", r as String], "")
+    GateExpired => "the approval window expired before a decision"
+    GateIntentMismatch { requested_revision: a, decided_revision: b } => join(["the decision is over another intent (requested ", a as String, ", decided ", b as String, ")"], "")
+    GateStoreUnreadable { detail: d } => join(["the approval store could not be read: ", d as String], "")
+    GateAuthorizeRefused { detail: d } => d as String
+  }
+}
+
+// ── THE INSTANT ──────────────────────────────────────────────────────────────────────────────
+// A clock probe is admitted as an instant only when it is canonical UTC; the probe's own
+// "clock-unreadable" rendering and any other non-instant refuse, so no String reaches a
+// permission decision or a claim as a timestamp.
+fn approval_instant_from_probe(reading: NonEmptyStr?) -> Timestamp? {
+  match reading {
+    Absent => none
+    Present { value: ts } => if utc_instant_is_canonical(t: ts as Timestamp) { Present { value: ts as Timestamp } } else { none }
+  }
+}
+
+fn approval_instant_now() -> Timestamp? {
+  approval_instant_from_probe(reading: clock_now_probed_at())
+}
+
+fn approval_expires_at(issued: Timestamp, window: Second) -> Timestamp {
+  Clock.TimestampAdd(timestamp: issued, offset: second_count(s: window)).result
+}
+
+// ── THE STANDING READ ────────────────────────────────────────────────────────────────────────
+fn approval_status_from_get(success: Bool, body: String) -> FiledApprovalStatus {
+  if success { parse_filed_approval_status(body: body) }
+  else { StatusUnreadable { detail: "status GET did not succeed; the decision's standing is unknown, not pending" as NonEmptyStr } }
+}
+
+// THE EFFECTFUL READS ARE NOT GENERIC -- the language realizes no declaration carrying both type
+// parameters and a `uses` row -- and they need not be: what the broker is asked about is the
+// escalation id, and what comes back is a standing at an instant. The subject enters only in the
+// pure gate fold above, which the caller applies to the standing the read returns.
+type ApprovalPollOutcome
+  = PollObservedAt { standing: ApprovalPollStanding, observed_at: Timestamp }
+  | PollClockUnreadable
+
+// One read of the broker's standing for this escalation, judged at a fresh canonical instant.
+fn approval_standing_read(escalation_id: NonEmptyStr, expires_at: Timestamp) -> ApprovalPollOutcome
+  uses net: Network
+{
+  match approval_instant_now() {
+    Absent => PollClockUnreadable
+    Present { value: observed } => {
+      let got = http.Client.GetLocalhostBounded(url: approval_status_url(escalation_id: escalation_id))
+      PollObservedAt { standing: approval_poll_standing(status: approval_status_from_get(success: got.success, body: got.body), observed_at: observed, expires_at: expires_at), observed_at: observed }
+    }
+  }
+}
+
+// THE BOUNDED POLL. Each tick reads the standing at a fresh instant; a pending decision paces and
+// ticks again until the budget is spent, and any other standing is returned WITH the instant of
+// that read, so the caller admits it live at the instant of THAT read -- never an earlier tick's.
+fn approval_poll_ticks(remaining: Int, cadence: Second, escalation_id: NonEmptyStr, expires_at: Timestamp) -> ApprovalPollOutcome
+  uses net: Network
+{
+  match approval_standing_read(escalation_id: escalation_id, expires_at: expires_at) {
+    PollClockUnreadable => PollClockUnreadable
+    PollObservedAt { standing: standing, observed_at: observed } =>
+      if remaining <= 0 {
+        PollObservedAt { standing: PollExpired, observed_at: observed }
+      } else {
+        match standing {
+          PollStillPending => {
+            let _paced = sleep_delay_seconds_second_carrier_projection(duration: cadence)
+            approval_poll_ticks(remaining: remaining - 1, cadence: cadence, escalation_id: escalation_id, expires_at: expires_at)
+          }
+          _ => PollObservedAt { standing: standing, observed_at: observed }
+        }
+      }
+  }
+}
+
+// The gate over a poll outcome, admitted live at the outcome's own instant.
+fn approval_gate_from_outcome<Subject>(outcome: ApprovalPollOutcome, request: AuthorizationRequest<Subject>) -> ApprovalGate<Subject> {
+  match outcome {
+    PollClockUnreadable => GateStoreUnreadable { detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr }
+    PollObservedAt { standing: standing, observed_at: observed } => approval_gate_from_poll(poll: standing, request: request, admission: AdmitLiveAt { observed_at: observed })
+  }
+}
+
+// ── THE FILING ───────────────────────────────────────────────────────────────────────────────
+// The signed submission: the MAC key the keyring pinned, the stored request over this window,
+// the envelope written owner-only under RUNNER_TEMP, one POST, the body wiped. Every refusal
+// names what was missing and happens before the broker is reached.
+type ApprovalFiling
+  = ApprovalFiled
+  | ApprovalFilingRefused { reason: String }
+
+fn approval_file_stored_request(stored: StoredApprovalRequest, body_file_name: String, submit_timeout: Second) -> ApprovalFiling
+  uses net: Network
+{
+  let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
+  if sub_path == "" {
+    ApprovalFilingRefused { reason: join([approval_submission_mac_key_path_env as String, " is unset; the request cannot be filed"], "") }
+  } else {
+    let key_read = Filesystem.Read(path: sub_path)
+    if !key_read.success {
+      ApprovalFilingRefused { reason: join(["submission MAC key unreadable: ", key_read.error], "") }
+    } else {
+      match sign_stored_request(key_material: trim(s: key_read.content), request: stored) {
+        SubmissionMacKeyNotHex { key_id: k } => ApprovalFilingRefused { reason: join(["submission MAC key is not hex: ", k as String], "") }
+        SubmissionMacReady { tag_hex: tag } => {
+          let tmp = actions_variable_trimmed(name: github_runner_temp_variable_name as NonEmptyStr)
+          if tmp == "" {
+            ApprovalFilingRefused { reason: "RUNNER_TEMP is unset; cannot write the submit body" }
+          } else {
+            let body_path = join([tmp, "/", body_file_name], "")
+            let written = Filesystem.WriteOwnerOnly(path: body_path, content: submission_envelope_json(request: stored, tag_hex: tag))
+            if !written.success {
+              ApprovalFilingRefused { reason: join(["could not write the submit body: ", written.error], "") }
+            } else {
+              let posted = http.Client.PostJsonFromFile(url: approval_submit_url(), request_body_file: body_path as NonEmptyStr, max_seconds: to_string(second_count(s: submit_timeout)) as NonEmptyStr)
+              let _wiped = Filesystem.Delete(path: body_path)
+              if submission_body_admits_poll(body: posted.body) { ApprovalFiled } else { ApprovalFilingRefused { reason: join(["POST /approvals refused: ", posted.body], "") } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -7,17 +7,17 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, serialize_content_hash }
 import std.scoped_authorization { AuthorizationRequest, AuthorizationGranted }
 import gunbc.auth.approval_decision_store { request_revision_of }
-import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, PollExpired, PollUnreadable, PollDenied, PollApproved }
+import gunbc.auth.approval_request_client { PollApproved }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import std.measure { second }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
-import gunbc.spark.pair_serving_d0 { D0Subject, d0_request }
+import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_text, d0_intent_hash }
 import gunbc.spark.pair_serving_d0_authorization {
   D0SubjectFor, D0SubjectUnestablished, d0_live_subject,
-  D0GateAdmitted, D0GatePending, D0GateNotFiled, D0GateDenied, D0GateExpired, D0GateIntentMismatch, D0GateStoreUnreadable, D0GateAuthorizeRefused,
-  d0_gate_from_poll, d0_gate_text,
+  D0FiledRequestFor, D0FiledRequestRefused, d0_filed_request,
 }
+import gunbc.auth.approval_gate { approval_gate_from_poll, AdmitLiveAt, AdmitAsRecorded, GateAdmitted, GateAuthorizeRefused, GateIntentMismatch }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -40,10 +40,36 @@ test fn the_live_subject_exists_exactly_when_the_candidate_is_keyed() -> Bool {
   }
 }
 
-// THE GATE OVER EVERY POLL ARM. Approved over this request's revision admits; approved or denied
-// over another revision is an intent mismatch (the operator decided something else); denied,
-// expired, not filed, pending and unreadable are each their own standing and none admits.
-test fn the_gate_admits_only_an_approval_over_this_requests_revision() -> Bool {
+// THE FILED REQUEST IS THE FROZEN TEXT, EXACTLY. The intent text a live request is frozen as
+// parses back to the same subject and digests to the same revision, so a rerun re-derives the
+// request the operator decided over; the same text under another group or transaction is refused
+// as another filing, not resumed; and a hosts order in the text is not identity (the wire sorts).
+test fn a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction() -> Bool {
+  match w_sha(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
+    Absent => false
+    Present { value: successor } => {
+      let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+      let text = d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-1" as NonEmptyStr)
+      let same = match d0_filed_request(text: text, group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr) {
+        D0FiledRequestFor { request: r, intent_text: t } =>
+          t == text
+            && (match d0_intent_hash(subject: subject, group: FabricGroupA, transaction: "tx-1" as NonEmptyStr) { Present { value: h } => (request_revision_of(request: r) as String) == (serialize_content_hash(hash: h) as String)  Absent => false })
+            && length(r.subject.hosts) == 4
+            && (r.escalation_id as String) == "d0-esc-1"
+        D0FiledRequestRefused { reason: _ } => false
+      }
+      let other_tx = match d0_filed_request(text: text, group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-2" as NonEmptyStr) { D0FiledRequestRefused { reason: r } => (r as String).contains("tx-1")  _ => false }
+      let garbage = match d0_filed_request(text: "not an intent", group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr) { D0FiledRequestRefused { reason: _ } => true  _ => false }
+      let edited = match d0_filed_request(text: join([text, "x"], ""), group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr) { D0FiledRequestRefused { reason: _ } => true  _ => false }
+      same && other_tx && garbage && edited
+    }
+  }
+}
+
+// THE RECORDED ADMISSION IS FOR A RESUME ONLY: the same approved decision that the live admission
+// refuses after execute_by is handed back as recorded, so a lifecycle that already holds the claim
+// can finish; an approval over another revision is a mismatch under either admission.
+test fn an_expired_approval_is_refused_live_and_handed_back_as_recorded() -> Bool {
   match w_sha(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
     Absent => false
     Present { value: intent } => {
@@ -51,16 +77,10 @@ test fn the_gate_admits_only_an_approval_over_this_requests_revision() -> Bool {
       let rev = request_revision_of(request: req)
       let at = "2026-09-21T02:00:00Z" as Timestamp
       let until = "2026-09-21T03:00:00Z" as Timestamp
-      (match d0_gate_from_poll(poll: PollApproved { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, request: req, observed_at: at) { D0GateAdmitted { authorization: AuthorizationGranted { grant: g, claim: _ } } => (g.escalation_id as String) == "d0-esc-1" && (g.granted_by as String) == "operator"  _ => false })
-        && (match d0_gate_from_poll(poll: PollApproved { revision: "sha256:0000" as NonEmptyStr, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, request: req, observed_at: at) { D0GateIntentMismatch { requested_revision: a, decided_revision: b } => (a as String) == (rev as String) && (b as String) == "sha256:0000"  _ => false })
-        && (match d0_gate_from_poll(poll: PollApproved { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, request: req, observed_at: "2026-09-21T04:00:00Z" as Timestamp) { D0GateAuthorizeRefused { detail: _ } => true  _ => false })
-        && (match d0_gate_from_poll(poll: PollDenied { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, reason: "not now" as NonEmptyStr }, request: req, observed_at: at) { D0GateDenied { reason: r } => (r as String) == "not now"  _ => false })
-        && (match d0_gate_from_poll(poll: PollDenied { revision: "sha256:0000" as NonEmptyStr, decided_by: "operator" as NonEmptyStr, decided_at: at, reason: "not now" as NonEmptyStr }, request: req, observed_at: at) { D0GateIntentMismatch { requested_revision: _, decided_revision: _ } => true  _ => false })
-        && (match d0_gate_from_poll(poll: PollStillPending, request: req, observed_at: at) { D0GatePending { escalation_id: e } => (e as String) == "d0-esc-1"  _ => false })
-        && (match d0_gate_from_poll(poll: PollNotFiled, request: req, observed_at: at) { D0GateNotFiled { escalation_id: _ } => true  _ => false })
-        && (match d0_gate_from_poll(poll: PollExpired, request: req, observed_at: at) { D0GateExpired => true  _ => false })
-        && (match d0_gate_from_poll(poll: PollUnreadable { detail: "store" as NonEmptyStr }, request: req, observed_at: at) { D0GateStoreUnreadable { detail: _ } => true  _ => false })
-        && d0_gate_text(g: D0GateExpired).contains("expired")
+      let approved = PollApproved { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }
+      (match approval_gate_from_poll(poll: approved, request: req, admission: AdmitLiveAt { observed_at: "2026-09-21T04:00:00Z" as Timestamp }) { GateAuthorizeRefused { detail: _ } => true  _ => false })
+        && (match approval_gate_from_poll(poll: approved, request: req, admission: AdmitAsRecorded) { GateAdmitted { authorization: AuthorizationGranted { grant: g, claim: _ } } => (g.escalation_id as String) == "d0-esc-1"  _ => false })
+        && (match approval_gate_from_poll(poll: PollApproved { revision: "sha256:0000" as NonEmptyStr, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, request: req, admission: AdmitAsRecorded) { GateIntentMismatch { requested_revision: _, decided_revision: _ } => true  _ => false })
     }
   }
 }
