@@ -821,11 +821,35 @@ fn bare_reference_channel_termination(s: BareReferenceChannelStanding) -> Invoca
   }
 }
 
+// THE CAUSE CARRIES A PAYLOAD AND THE RENDERING SURFACES IT. Matching without binding the field
+// would drop the one fact a reader of an unreached subject needs -- WHICH root, WHICH entry, WHICH
+// refusal -- and leave a located cause rendering as an unlocated sentence.
 fn bare_channel_subject_cause_rendered(c: BareReferenceChannelSubjectCause) -> String {
   match c {
-    BareChannelFixtureRootAbsent => "fixture source root absent"
-    BareChannelEntryAbsent => "fixture entry absent from the module index"
-    BareChannelIndexRefused => "module index refused"
+    BareChannelFixtureRootAbsent { root: r } => concat("fixture source root absent: ", r)
+    BareChannelEntryAbsent { module_path: m } =>
+      concat("fixture entry absent from the module index: ", m)
+    BareChannelIndexRefused { detail: d } => concat("module index refused: ", d)
+  }
+}
+
+// THE STANDING RENDERING, in the producer's own vocabulary and never in the aggregate's words:
+// no PASSED, no FAILED. A read standing reports what was observed and how many expectations went
+// unmet; an unreached subject reports its located cause and reports NO counts, because a run that
+// observed nothing has no populations to report and printing `unmet=0` there would read as a
+// clean result.
+fn bare_reference_channel_standing_rendered(s: BareReferenceChannelStanding) -> String {
+  match s {
+    BareReferenceChannelRead { readings: rs } =>
+      join([
+        "bare-reference-channel-outcome: entries=", to_string(rs |> count),
+        " unmet=", to_string(bare_reference_channel_unmet_expectations(readings: rs) |> count)
+      ], "")
+    BareReferenceChannelSubjectUnreached { cause: c } =>
+      concat(
+        "bare-reference-channel-outcome: subject unreached: ",
+        bare_channel_subject_cause_rendered(c: c)
+      )
   }
 }
 

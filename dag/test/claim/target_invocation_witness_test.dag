@@ -37,6 +37,7 @@ import gunbc.target_binding {
   BareReferenceChannelEntryReading,
   BareReferenceChannelStanding, BareReferenceChannelRead,
   BareReferenceChannelSubjectUnreached, BareChannelFixtureRootAbsent,
+  BareChannelEntryAbsent, BareChannelIndexRefused,
 }
 import gunbc.target_invocation {
   TargetInvocationRoute, TargetInvocationRouted, TargetInvocationRouteRefused,
@@ -71,6 +72,8 @@ import gunbc.instrument_targets {
   bare_reference_channel_holds,
   bare_reference_channel_termination,
   bare_channel_reading_rendered,
+  bare_reference_channel_standing_rendered,
+  bare_reference_channel_source_roots,
 }
 import gunbc.build_target {
   BuildTarget, TestRule,
@@ -816,4 +819,54 @@ test fn the_bare_channel_instrument_is_a_real_row_on_the_shared_registry() -> Bo
             && label_eq(a: b.target, b: label)
         TargetInvocationRouteRefused { cause: _ } => false
       })
+  // THE SUBJECT IS THE FIXTURE ROOT AND NOTHING ELSE, which is what makes this instrument's
+  // reading stable: a corpus-wide change cannot move it, so a moved reading means a moved gate.
+  // An invocation that reached `dag` would be measuring a different population under this
+  // target's name.
+  && (bare_reference_channel_source_roots() == ["fixtures/bare_reference_channel"])
+}
+
+// AN UNREACHED SUBJECT RENDERS ITS LOCATED CAUSE AND REPORTS NO COUNTS, and both halves are
+// asserted. A renderer that dropped the payload would answer "fixture source root absent" without
+// saying WHICH, which is a located cause rendering as an unlocated sentence; and one that printed
+// `unmet=0` for a run that observed nothing would read as a clean result, which is the conflation
+// the three exit statuses exist to prevent.
+test fn the_bare_channel_standing_rendering_locates_an_unreached_subject() -> Bool {
+  let root_absent = bare_reference_channel_standing_rendered(
+    s: BareReferenceChannelSubjectUnreached {
+      cause: BareChannelFixtureRootAbsent { root: "fixtures/bare_reference_channel" }
+    }
+  )
+  let entry_absent = bare_reference_channel_standing_rendered(
+    s: BareReferenceChannelSubjectUnreached {
+      cause: BareChannelEntryAbsent { module_path: "probe.brc.bare_alias_consumer" }
+    }
+  )
+  let index_refused = bare_reference_channel_standing_rendered(
+    s: BareReferenceChannelSubjectUnreached {
+      cause: BareChannelIndexRefused { detail: "pulled file has no module in the index" }
+    }
+  )
+  (root_absent == "bare-reference-channel-outcome: subject unreached: fixture source root absent: fixtures/bare_reference_channel")
+    && (entry_absent == "bare-reference-channel-outcome: subject unreached: fixture entry absent from the module index: probe.brc.bare_alias_consumer")
+    && (index_refused == "bare-reference-channel-outcome: subject unreached: module index refused: pulled file has no module in the index")
+    && !string_contains(s: root_absent, pattern: "unmet=")
+}
+
+// A READ STANDING REPORTS BOTH POPULATIONS, and the unmet count is DERIVED from the readings by
+// the same fold the verdict uses -- so a rendering that disagreed with the termination would be
+// two authorities for one answer.
+test fn the_bare_channel_standing_rendering_reports_the_read_populations() -> Bool {
+  (bare_reference_channel_standing_rendered(
+     s: BareReferenceChannelRead { readings: brc_agreeing_readings() }
+   ) == "bare-reference-channel-outcome: entries=4 unmet=0")
+  && (bare_reference_channel_standing_rendered(
+        s: BareReferenceChannelRead {
+          readings: brc_readings_with(
+            module_path: "probe.brc.bare_alias_consumer" as NonEmptyStr,
+            eligibility: BareChannelRuns {},
+            pulled_modules: ["probe.brc.alias_home"]
+          )
+        }
+      ) == "bare-reference-channel-outcome: entries=4 unmet=1")
 }
