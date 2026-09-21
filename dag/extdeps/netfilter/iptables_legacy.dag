@@ -31,13 +31,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // subsystems, and only reading both says what is actually installed.
 data iptables_legacy_save_program: NonEmptyStr = "iptables-legacy-save"
 
-// SAVE TAKES NO ARGUMENTS FOR A WHOLE-HOST DUMP. iptables-save(8) prints every table it can read on
-// stdout; the arguments it does accept (-t, -c) NARROW that, so the empty list is the complete
-// reading rather than a default.
-data iptables_legacy_save_arguments: List<NonEmptyStr> = []
-
 // NO ArgvCommand BUILDER HERE, DELIBERATELY. The only consumer in this repository reaches this
 // program through a privileged read projection that prepends its own sudo binary path, so it needs
 // the ARGUMENT WORDS and not a command whose program field it would discard. Adding a builder
 // nothing calls would be the dangling declaration DESIGN 3c refuses; it belongs here the day a
 // direct invocation exists to consume it.
+//
+// SAVE TAKES NO ARGUMENTS FOR A WHOLE-HOST DUMP. iptables-save(8) prints every table it can read on
+// stdout; the arguments it does accept (-t, -c) NARROW that, so the empty list is the complete
+// reading rather than a default.
+data iptables_legacy_save_arguments: List<NonEmptyStr> = []
