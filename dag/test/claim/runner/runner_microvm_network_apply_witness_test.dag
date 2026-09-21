@@ -11,7 +11,8 @@ import gunbc.runner_microvm_network_apply {
   OperationResult, ApplyLeg, ApplyLegRan, ApplyLegRefused, operation_result_ok,
   RulesetReadback, RulesetListed, RulesetNotListed,
 }
-import gunbc.runner_host_file_converge { PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable }
+import gunbc.runner_host_file_converge { PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable, runner_host_path_ancestors }
+import gunbc.file_access { path_ancestor_prefixes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -102,4 +103,28 @@ test fn an_operation_succeeds_only_on_a_leg_that_ran_and_exited_zero() -> Bool {
   operation_result_ok(r: OperationResult { argv: ["sudo", "-n", "true"], leg: ApplyLegRan { exit_code: 0, stdout: "", stderr: "" } })
     && !operation_result_ok(r: OperationResult { argv: ["sudo", "-n", "false"], leg: ApplyLegRan { exit_code: 1, stdout: "", stderr: "" } })
     && !operation_result_ok(r: OperationResult { argv: ["sudo", "-n", "true"], leg: ApplyLegRefused { reason: "the remote words are not portable" } })
+}
+
+// THE SHARED PREFIX FOLD ANSWERS ONE QUESTION AND LEAVES THE REST TO ITS CALLERS, and that split is
+// what makes it shareable. It was authored twice -- once here and once in
+// gunbc.runner_host_file_converge -- because that module's version filtered to its own /etc scope,
+// so it could not be called (review 69712). The reds this pins are the two ways the consolidation
+// could have gone wrong: the shared fold silently including the leaf (which would make the /etc
+// caller test the FILE for directory ownership), and it silently applying a scope (which would make
+// this module's staging-root check return nothing at all, passing vacuously because an empty
+// requested set is trivially root-only).
+test fn the_shared_prefix_fold_excludes_the_leaf_and_applies_no_scope() -> Bool {
+  path_ancestor_prefixes(path: "/var/lib/gunbc-microvm-network-stage")
+    == ["/var", "/var/lib"]
+    && path_ancestor_prefixes(path: "/etc/systemd/system/unit.service")
+         == ["/etc", "/etc/systemd", "/etc/systemd/system"]
+}
+
+// AND THE /etc CALLER STILL FILTERS TO ITS OWN SCOPE, so consolidating the fold did not widen what
+// that module checks. The red is runner_host_path_ancestors starting to return /var or a bare
+// prefix outside its write scope.
+test fn the_etc_caller_keeps_its_scope_filter_after_the_fold_moved() -> Bool {
+  runner_host_path_ancestors(path: "/etc/systemd/system/unit.service")
+    == ["/etc", "/etc/systemd", "/etc/systemd/system"]
+    && runner_host_path_ancestors(path: "/var/lib/elsewhere/file") == []
 }

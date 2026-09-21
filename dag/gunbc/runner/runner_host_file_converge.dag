@@ -28,7 +28,7 @@ import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.file_access { FileTreeScope }
+import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command }
@@ -474,10 +474,7 @@ type RunnerHostPathMetadata
 // file's own directory. Each is a prefix of the path ending just before one of its separators.
 fn runner_host_path_ancestors(path: String) -> List<String> {
   filter(
-    map(
-      filter(enumerate(chars(s: path)), pair => pair.second == 47 && pair.first > 0),
-      pair => substring(s: path, start: 0, end: pair.first),
-    ),
+    path_ancestor_prefixes(path: path),
     a => a == (runner_host_file_scope.root_path as String)
       || starts_with(s: a, prefix: concat(runner_host_file_scope.root_path as String, "/")),
   )

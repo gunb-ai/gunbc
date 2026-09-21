@@ -21,7 +21,7 @@ import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextR
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
-import gunbc.file_access { FileTreeScope }
+import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.typed_remote_file_write {
   RemoteFileMode, RemoteFileModeOwnerReadWrite, RemoteFileViaNonInteractiveSudo,
@@ -112,15 +112,22 @@ data runner_microvm_admin_staging_dir_mode: NonEmptyStr = "0700" as NonEmptyStr
 
 data runner_microvm_admin_staging_owner: NonEmptyStr = "root" as NonEmptyStr
 
-// EVERY PREFIX OF THE STAGING ROOT, NOT ONLY THE LEAF. A root-only leaf under a job-user-writable
+// EVERY PREFIX OF THE STAGING ROOT, AND THE ROOT ITSELF. A root-only leaf under a job-user-writable
 // parent can be renamed away and replaced between the check and the install, so the ancestor whose
 // ownership decides the leaf's safety is the one the check must reach.
+//
+// THE PREFIXES COME FROM gunbc.file_access, WHICH IS THE ONE PLACE THAT DERIVES THEM. This fold was
+// copied here from gunbc.runner_host_file_converge runner_host_path_ancestors, separator codepoint
+// included, because that function filters to its own /etc scope and so could not be called directly
+// (review 69712). Copying it made two answers to "what are the ancestor directories of this path",
+// free to drift on trailing slashes, on the separator, and on whether the leaf is included -- which
+// is the re-invention DESIGN section 2 names as the test that an edit moved redundancy rather than
+// removing it. The shared fold is now unfiltered and leaf-free, and each caller composes: that one
+// filters to its write scope, this one appends the leaf, because here the staging ROOT is itself a
+// directory whose ownership the run depends on.
 fn staging_ancestor_paths() -> List<String> {
   concat(
-    map(
-      filter(enumerate(chars(s: runner_microvm_staging_dir as String)), pair => pair.second == 47 && pair.first > 0),
-      pair => substring(s: runner_microvm_staging_dir as String, start: 0, end: pair.first),
-    ),
+    path_ancestor_prefixes(path: runner_microvm_staging_dir as String),
     [runner_microvm_staging_dir as String],
   )
 }
