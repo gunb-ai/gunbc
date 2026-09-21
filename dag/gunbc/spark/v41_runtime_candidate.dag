@@ -522,10 +522,11 @@ fn v41_row_store_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
 }
 
 // AN UNRECONCILED MEMBERSHIP IS AN UNESTABLISHED AXIS, NOT A KEYABLE ONE. This module's own law is that
-// no key is minted for an axis with a hole in it. The checkpoint's Engram population closes against the
-// twelve rows that were READ rather than against the revision's 96085-name index, so a thirteenth Engram
-// tensor at this revision would be neither reconciled nor refused -- and a partition can be total and
-// disjoint over the twelve while missing it entirely. Keying here would hash "the Engram tensors we
+// no key is minted for an axis with a hole in it. A population closed only against the rows that were
+// READ, rather than against the revision's full index, would let a thirteenth Engram tensor pass
+// neither reconciled nor refused -- and a partition can be total and disjoint over the twelve while
+// missing it entirely. (The live population is closed against the full index since
+// deepseek_v4_1_flash_engram_index_selection; a scoped closure still lands here.) Keying here would hash "the Engram tensors we
 // happen to have read" and call it the Engram realization, and two different future candidates over
 // different readings of the same checkpoint would share it. So the residual the population carries is
 // folded onto this axis as an obligation, and it is the only one of the three standings that can be

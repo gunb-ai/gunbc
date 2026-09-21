@@ -29,7 +29,7 @@ import gunbc.spark.v41_runtime_candidate {
 }
 import extdeps.safetensors.format {
   SafetensorsPopulationStanding, safetensors_population_standing,
-  MembershipClosedAgainstFullIndex,
+  MembershipClosedAgainstFullIndex, MembershipScopedToReadRows,
 }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram,
@@ -278,29 +278,42 @@ test fn the_partition_is_admitted_with_derived_bytes_and_a_malformed_one_refuses
     })
 }
 
-// THE LIVE CHECKPOINT CANNOT KEY ITS ENGRAM AXIS, AND THAT IS THE POINT. The population closes against
-// the twelve rows that were read rather than against the revision's index, so a thirteenth Engram tensor
-// would be neither reconciled nor refused and a partition can be total over the twelve while missing it.
-// The fixture standing differs from the live one in the closure ALONE -- same members, same shards, same
-// reading -- so this pair discriminates the membership residual and nothing else.
-test fn an_unreconciled_membership_leaves_the_engram_axis_unestablished() -> Bool {
-  let live = v41_candidate_standing(c: V41CandidateInputs {
+// A MEMBERSHIP SCOPED TO THE ROWS READ STILL CANNOT KEY, AND THE LIVE ONE NOW CAN. The live population
+// closes against the full index (extdeps.deepseek.deepseek_v4_1_flash
+// deepseek_v4_1_flash_engram_index_selection), so with an observed row store the axis keys. The scoped
+// standing differs from it in the closure ALONE -- same members, same shards, same reading -- and must
+// stay unestablished, so this pair discriminates the membership closure and nothing else.
+fn w_engram_with(population: SafetensorsPopulationStanding) -> V41CandidateVerdict {
+  v41_candidate_standing(c: V41CandidateInputs {
     runtime: w_default(patches: w_two_patches()).runtime,
     model_source: w_default(patches: w_two_patches()).model_source,
     engram: V41EngramRealizationInputs {
       partition: v41_candidate_partition,
-      population: deepseek_v4_1_flash_engram_population,
+      population: population,
       row_store_encoding: V41ManifestObserved { digest: w_sha(c: "c") },
       route: engram_route_b_identity,
     },
     topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
     device: gb10_observed_compute_capability,
   })
-  match live.standing {
+}
+
+test fn a_scoped_membership_is_unestablished_and_the_closed_live_population_keys() -> Bool {
+  let scoped = safetensors_population_standing(
+    members: deepseek_v4_1_flash_engram_index_members,
+    shards: deepseek_v4_1_flash_engram_shard_files,
+    closure: MembershipScopedToReadRows { read_rows: 12, unenumerated: "fixture: the index is not enumerated" as NonEmptyStr },
+    reading: deepseek_v4_1_flash_engram_population_reading,
+  )
+  (match w_engram_with(population: scoped).standing {
     V41CandidateUnestablished { obligations: o } => any(o, x => (x as String).contains("membership is reconciled against 12 index rows that were read"))
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
     V41CandidateRefused { defects: _ } => false
-  }
+  }) && (match w_engram_with(population: deepseek_v4_1_flash_engram_population).standing {
+    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => true
+    V41CandidateUnestablished { obligations: _ } => false
+    V41CandidateRefused { defects: _ } => false
+  })
 }
 
 // A TOTAL, DISJOINT PARTITION CAN STILL BE THE WRONG WAY ROUND, AND THE CHEAP TEST FOR IT IS NOT ENOUGH.
