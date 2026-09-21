@@ -3,10 +3,14 @@ module test.claim.compute.work_request_witness_test
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.compute.work_provider_local {
-  UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitTerminatedObserved, UnitPopulated, UnitTerminationUnavailable,
+  UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitPopulated, UnitTerminationUnavailable,
   UnitPropertyReading, UnitObservations, unit_termination_decide,
   unit_termination_frees_capacity, unit_termination_wire, compute_attempt_completed,
+  ProvideResult, ProvideFresh, ProvideAttached, HostRecordStatus, HostRecordWritten, HostRecordLost,
+  provide_result_host_record, provide_result_ending, provide_result_document, host_record_was_written, host_record_wire,
+  compute_with_lost_host_record, ComputeLayout, compute_layout,
 }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
@@ -85,34 +89,56 @@ test fn the_stored_outcome_round_trips_and_a_broken_one_is_unreadable() -> Bool 
 // looks like an answer, a property that came back EMPTY, and a start that is still PENDING all
 // arrive as readings and are wrong only in how they are read (side-chat review at 5ee0cce).
 //
+// A COMPLETED WAIT NEVER OVERRIDES A POSITIVE POPULATION, which is the row the previous revision
+// got backwards: completion was tested FIRST and returned immediately, so {completed, populated 1}
+// RELEASED -- a launcher's success overriding the kernel saying processes are still there. Under
+// KillMode=process or none a forked child outlives the main process exactly like that. Contrary
+// evidence wins now, and a positive populated=1 is never discarded.
+//
+// AND A MOMENTARILY EMPTY CGROUP IS NOT TERMINAL ON ITS OWN: populated=0 WITHOUT an established
+// completion used to release, and a realized cgroup can be empty between execs. Uncertain
+// completion keeps the charge.
+//
 // THE PENDING-START ROW IS THE ONE THIS CELL EXISTS FOR. An empty ControlGroup was read as observed
 // termination, and it equally describes a unit whose start has not spawned yet -- systemd realizes
 // the cgroup AT SPAWN. That made a whole unbacked launch reachable: reserve, start pending, the
 // LAUNCHER lost while this driver lives on, settlement sees the empty property, releases, and the
 // job then starts against memory nobody holds. It must establish nothing.
+fn reading(queried: Bool, value: String) -> UnitPropertyReading {
+  UnitPropertyReading { queried: queried, value: value }
+}
+
+fn decided(done: Bool, load: UnitPropertyReading, cg: UnitPropertyReading, ev: UnitPropertyReading) -> UnitTermination {
+  unit_termination_decide(o: UnitObservations { attempt_completed: done, load_state: load, control_group: cg, events: ev })
+}
+
 test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
-  let no_events = UnitPropertyReading { queried: false, value: "" }
-  let completed = unit_termination_decide(o: UnitObservations { attempt_completed: true, load_state: UnitPropertyReading { queried: false, value: "" }, control_group: UnitPropertyReading { queried: false, value: "" }, events: no_events })
-  let absent = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "not-found" }, control_group: UnitPropertyReading { queried: false, value: "" }, events: no_events })
-  let misleading = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: false, value: "Failed to connect to bus: not-found" }, control_group: UnitPropertyReading { queried: false, value: "" }, events: no_events })
-  let empty_load = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "" }, control_group: UnitPropertyReading { queried: true, value: "/x" }, events: UnitPropertyReading { queried: true, value: "populated 0\n" } })
-  let pending = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "loaded" }, control_group: UnitPropertyReading { queried: true, value: "" }, events: no_events })
-  let populated = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "loaded" }, control_group: UnitPropertyReading { queried: true, value: "/x" }, events: UnitPropertyReading { queried: true, value: "populated 1\n" } })
-  let failed_unit = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "failed" }, control_group: UnitPropertyReading { queried: true, value: "/x" }, events: UnitPropertyReading { queried: true, value: "populated 1\n" } })
-  let ended = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "loaded" }, control_group: UnitPropertyReading { queried: true, value: "/x" }, events: UnitPropertyReading { queried: true, value: "populated 0\n" } })
-  let undecodable = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "loaded" }, control_group: UnitPropertyReading { queried: true, value: "/x" }, events: UnitPropertyReading { queried: true, value: "garbage\n" } })
-  unit_termination_frees_capacity(t: completed)
+  let no_events = reading(queried: false, value: "")
+  let unread = reading(queried: false, value: "")
+  let completed_empty = decided(done: true, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))
+  let completed_populated = decided(done: true, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 1\n"))
+  let completed_unknown = decided(done: true, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: ""), ev: no_events)
+  let absent = decided(done: false, load: reading(queried: true, value: "not-found"), cg: unread, ev: no_events)
+  let misleading = decided(done: false, load: reading(queried: false, value: "Failed to connect to bus: not-found"), cg: unread, ev: no_events)
+  let empty_load = decided(done: false, load: reading(queried: true, value: ""), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))
+  let pending = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: ""), ev: no_events)
+  let empty_no_completion = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))
+  let populated_no_completion = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 1\n"))
+  let undecodable = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "garbage\n"))
+  unit_termination_frees_capacity(t: completed_empty)
+    && unit_termination_frees_capacity(t: completed_unknown)
     && unit_termination_frees_capacity(t: absent)
-    && unit_termination_frees_capacity(t: ended)
+    && !unit_termination_frees_capacity(t: completed_populated)
+    && !unit_termination_frees_capacity(t: empty_no_completion)
+    && !unit_termination_frees_capacity(t: populated_no_completion)
     && !unit_termination_frees_capacity(t: misleading)
     && !unit_termination_frees_capacity(t: empty_load)
     && !unit_termination_frees_capacity(t: pending)
-    && !unit_termination_frees_capacity(t: populated)
-    && !unit_termination_frees_capacity(t: failed_unit)
     && !unit_termination_frees_capacity(t: undecodable)
+    && string_contains(s: unit_termination_wire(t: completed_populated), pattern: "STILL POPULATED")
+    && string_contains(s: unit_termination_wire(t: empty_no_completion), pattern: "did not complete")
     && string_contains(s: unit_termination_wire(t: pending), pattern: "pending")
     && string_contains(s: unit_termination_wire(t: misleading), pattern: "UNESTABLISHED")
-    && string_contains(s: unit_termination_wire(t: populated), pattern: "STILL POPULATED")
 }
 
 // A COMPLETED ATTEMPT RELEASES, AND AN ATTEMPT THAT DID NOT COMPLETE DOES NOT RELEASE ON ITS OWN.
@@ -125,4 +151,25 @@ test fn the_attempt_completion_fact_is_not_the_works_ending() -> Bool {
     && !compute_attempt_completed(outcome: WorkFailed { identity: "a", exit_code: 1, log_path: "/l" })
     && !compute_attempt_completed(outcome: WorkCancelled { identity: "a" })
     && !compute_attempt_completed(outcome: WorkRefusedByInfrastructure { identity: "a", cause: HostComputeCapacityFull { wire: "pool-full" } })
+}
+
+// THE STORED RECORD AND THE RETURNED OUTCOME AGREE, WHATEVER HAPPENED TO THIS HOST'S OWN RECORD.
+// The fusion was made twice in opposite directions -- a refusal handed to the caller over a stored
+// success, then a synthesized refusal over a published outcome -- and both times the next attacher
+// read something different from the caller. Losing the host record now changes the host_record
+// fact and NOTHING about the work, so re-requesting the identity yields the same ending the first
+// caller was told; what the first caller additionally gets is the recording failure, which is the
+// only consumer that could act on it.
+test fn a_lost_host_record_changes_no_contract_the_next_caller_reads() -> Bool {
+  let succeeded = WorkSucceeded { identity: "abc", outputs: [], log_path: "/l" }
+  let document = work_outcome_wire(o: succeeded, subject: tree(hex: tree_a), op: work_default_build())
+  let settled = ProvideFresh { outcome: succeeded, document: document, host_record: HostRecordWritten }
+  let layout = compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc")
+  let lost = compute_with_lost_host_record(settled: settled, layout: layout, dropped_ok: false, dropped_error: "EBUSY", error: "ENOSPC")
+  provide_result_ending(r: lost) == provide_result_ending(r: settled)
+    && provide_result_document(r: lost) == provide_result_document(r: settled)
+    && provide_result_ending(r: lost) == "succeeded"
+    && host_record_was_written(h: provide_result_host_record(r: settled))
+    && !host_record_was_written(h: provide_result_host_record(r: lost))
+    && string_contains(s: host_record_wire(h: provide_result_host_record(r: lost)), pattern: "STILL HELD")
 }

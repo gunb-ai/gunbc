@@ -503,15 +503,6 @@ fn seat_release_wire(r: SeatRelease) -> String {
   }
 }
 
-fn seat_release_landed(r: SeatRelease) -> Bool {
-  match r {
-    SeatReleased { reference: _, id: _ } => true
-    SeatNotHeld { reference: _, wire: _ } => false
-    SeatReleaseContended { attempts: _ } => false
-    SeatReleaseRefused { step: _, reason: _ } => false
-  }
-}
-
 fn seat_acquisition_wire(a: SeatAcquisition) -> String {
   match a {
     SeatGranted { grant: g, generation: gen, attempts_used: n } => join(["granted ", g.reference as String, " fence=", g.fence.grant as String, "@", to_string(gen), " expires_at=", to_string(g.expires_at), " attempt=", to_string(n)], "")
