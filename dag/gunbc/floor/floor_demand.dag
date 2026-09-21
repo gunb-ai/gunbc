@@ -4,7 +4,8 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { nat_max }
 import std.measure {
   ByteSize, byte_size, byte_size_count, Second, second, EventsPerMinute, events_per_minute, events_per_minute_count,
-  gibibyte_scale_factor_bytes, MeasureSubtraction, measure_sub, Memory, One, HardwareThreadCount, hardware_thread_count,
+  MeasureSubtraction, measure_sub, Memory, One, HardwareThreadCount, hardware_thread_count,
+  GrainRounding, GrainRounded, GrainUnrepresentable, round_up_to_grain, gibibyte_grain,
 }
 import std.disposition { Disposition, SingleAuthority }
 import std.checked_arithmetic {
@@ -589,19 +590,14 @@ fn storage_components_total(components: List<StorageComponentReceipt>) -> Checke
 
 // ROUNDED UP TO WHOLE-GIBIBYTE GRAIN, in the fail-closed direction the corpus already applies to
 // demand figures (gunbc.whole_corpus_compile_admission, gunbc.runner_slot_allocation): rounding
-// down would admit a workspace the measured sum does not fit. THE ROUND-UP IS CHECKED: n + (g - 1)
-// is the one addition here, pre-checked through std.checked_arithmetic, so a count within
-// grain - 1 of the bound refuses instead of wrapping to a small multiple of the grain.
-type GrainRounding
-  = GrainRounded { bytes: ByteSize }
-  | GrainUnrepresentable { cause: IntegerOverflow }
-
+// down would admit a workspace the measured sum does not fit. THE ROUNDER IS std.measure
+// round_up_to_grain AND THIS IS ITS GIBIBYTE BINDING, not a second rounder: the checked
+// `n + (g - 1)` this function used to carry fixed the grain, so a policy with a declared grain
+// could not reuse it, and asked the wrong overflow question for any grain that is not a power of
+// two (at the gibibyte the two questions coincide, so every consumer's refusal set is unchanged).
+// The refusal arm and its IntegerOverflow cause are unchanged for every consumer.
 fn round_up_to_gibibyte_grain(bytes: ByteSize) -> GrainRounding {
-  let g = gibibyte_scale_factor_bytes()
-  match checked_int_add(a: byte_size_count(b: bytes), b: g - 1) {
-    CheckedIntOverflow { cause: c } => GrainUnrepresentable { cause: c }
-    CheckedIntReady { value: n } => GrainRounded { bytes: byte_size((n / g) * g) }
-  }
+  round_up_to_grain(bytes: bytes, grain: gibibyte_grain())
 }
 
 // THE FLOOR'S STORAGE DEMAND, OR THE OVERFLOW THAT KEPT IT FROM BEING STATED. A consumer that

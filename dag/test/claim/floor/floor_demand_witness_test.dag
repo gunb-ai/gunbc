@@ -1,7 +1,7 @@
 module test.claim.floor_demand_witness_test
 
 import std.types { Bool, String, List, Int }
-import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, second, second_count, events_per_minute, events_per_minute_count, MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, second, second_count, events_per_minute, events_per_minute_count, MeasureDifference, MeasureSubtrahendExceedsMinuend, GrainRounded, GrainUnrepresentable }
 import std.checked_arithmetic { int_inclusive_max, CheckedIntReady, CheckedIntOverflow }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import gunbc.floor_demand {
@@ -14,7 +14,7 @@ import gunbc.floor_demand {
   gunbc_floor_uncensored_demand_receipt, gunbc_floor_throttle_pin_receipt_2026_09_19,
   gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored,
   floor_storage_demand, StorageDemandStated, StorageDemandUnrepresentable, held_set_standing_of,
-  HeldSetPeakAt, HeldSetPeakNoBeats, HeldSetPeakUnrepresentable, GrainRounded, GrainUnrepresentable,
+  HeldSetPeakAt, HeldSetPeakNoBeats, HeldSetPeakUnrepresentable,
   HeldSetReceiptUnrepresentable,
   StorageComponentReceipt, storage_components_total, round_up_to_gibibyte_grain,
   gunbc_floor_storage_components, gunbc_floor_job_wall_receipt_2026_09_19,
