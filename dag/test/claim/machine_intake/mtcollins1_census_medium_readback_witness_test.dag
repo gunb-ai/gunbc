@@ -1,0 +1,106 @@
+module test.claim.machine_intake.mtcollins1_census_medium_readback_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, NonEmptyStr, String }
+import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1CensusMedium, MtCollins1StockInstallerMedium }
+import gunbc.machine_intake_mtcollins1_census_medium_readback {
+  CensusMediumReadbackAgreed, CensusMediumReadbackDiverged, CensusMediumReadbackNotCensus,
+  CensusMediumReadbackRecordUnreadable, CensusMediumReadbackRecordMalformed, CensusMediumReadbackRecordDisagrees,
+  CensusMediumReadbackImageUnreadable, CensusMediumReadbackMeasureMalformed,
+  RemoteAnswer, mtcollins1_census_medium_readback_from_answers, mtcollins1_census_readback_refusal,
+  mtcollins1_census_medium_served_path, mtcollins1_census_record_path, mtcollins1_census_build_key,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data recorded: NonEmptyStr = "6455b3b9ae11214d3800c7a6eaea289e5151c0e145049e45210f9295869b5d8c"
+data other: String = "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
+data census: MtCollins1CensusMedium = MtCollins1CensusMedium { output_digest: recorded }
+data srv2: NonEmptyStr = "srv2"
+
+fn ok(stdout: String) -> RemoteAnswer { RemoteAnswer { exit_code: 0, stdout: stdout, stderr: "" } }
+fn failed(code: Int, stderr: String) -> RemoteAnswer { RemoteAnswer { exit_code: code, stdout: "", stderr: stderr } }
+fn record_ok() -> RemoteAnswer { ok(stdout: concat(recorded as String, "\n")) }
+fn measure_ok() -> RemoteAnswer { ok(stdout: concat(recorded as String, "  /srv/bmc/x.iso\n")) }
+
+// THE CHAIN DERIVES FROM ONE INPUT: the served path from the digest through the image stem, the
+// record path from the build key through the same stem, the build key from the census inputs.
+test fn the_served_path_and_the_record_path_derive_from_the_census_input() -> Bool {
+  (mtcollins1_census_medium_served_path(medium: census) as String) == "/srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso"
+    && (mtcollins1_census_record_path() as String) == concat("/srv/bmc/.gunbc-mtcollins1-census-ubuntu-24.04.3-arm64.", mtcollins1_census_build_key() as String, ".built")
+    && (mtcollins1_census_build_key() as String) == "ad4bf3fd18230604"
+}
+
+test fn a_record_and_a_file_that_both_repeat_the_selected_digest_agree_and_retain_every_value() -> Bool {
+  match mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: record_ok(), measure: measure_ok()) {
+    CensusMediumReadbackAgreed { host: h, build_key: k, recorded_digest: r, image_name: n, served_path: p, measured_digest: m } =>
+      (h as String) == "srv2" && (k as String) == "ad4bf3fd18230604" && (r as String) == (recorded as String) && (m as String) == (recorded as String)
+        && (n as String) == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso"
+        && (p as String) == "/srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso"
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING REDS, one per link of the chain.
+test fn an_unreadable_record_refuses_before_the_file_is_consulted() -> Bool {
+  match mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: failed(code: 1, stderr: "cat: No such file or directory"), measure: measure_ok()) {
+    CensusMediumReadbackRecordUnreadable { record_path: _, reason: why } => string_contains(s: why, pattern: "exit=1")
+    _ => false
+  }
+}
+
+test fn a_malformed_record_is_malformed_not_diverged() -> Bool {
+  match mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: ok(stdout: "not a digest\n"), measure: measure_ok()) {
+    CensusMediumReadbackRecordMalformed { record_path: _, content: _ } => true
+    _ => false
+  }
+}
+
+test fn a_record_naming_other_bytes_than_the_medium_row_disagrees_even_when_the_file_matches_the_record() -> Bool {
+  match mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: ok(stdout: concat(other, "\n")), measure: ok(stdout: concat(other, "  /srv/bmc/x.iso\n"))) {
+    CensusMediumReadbackRecordDisagrees { record_path: _, recorded: r, selected: sel } => (r as String) == other && (sel as String) == (recorded as String)
+    _ => false
+  }
+}
+
+test fn a_missing_image_is_unreadable_not_diverged() -> Bool {
+  match mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: record_ok(), measure: failed(code: 1, stderr: "sha256sum: No such file")) {
+    CensusMediumReadbackImageUnreadable { served_path: _, reason: why } => string_contains(s: why, pattern: "No such file")
+    _ => false
+  }
+}
+
+test fn a_truncated_measurement_is_malformed_not_agreed() -> Bool {
+  match mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: record_ok(), measure: ok(stdout: "6455b3b9ae11214d  /srv/bmc/x.iso\n")) {
+    CensusMediumReadbackMeasureMalformed { served_path: _, content: _ } => true
+    _ => false
+  }
+}
+
+test fn a_file_whose_bytes_differ_from_the_record_diverges() -> Bool {
+  match mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: record_ok(), measure: ok(stdout: concat(other, "  /srv/bmc/x.iso\n"))) {
+    CensusMediumReadbackDiverged { served_path: _, recorded: r, measured: m } => (r as String) == (recorded as String) && (m as String) == other
+    _ => false
+  }
+}
+
+test fn the_stock_medium_has_no_census_readback() -> Bool {
+  match mtcollins1_census_medium_readback_from_answers(medium: MtCollins1StockInstallerMedium, host: srv2, record: record_ok(), measure: measure_ok()) {
+    CensusMediumReadbackNotCensus => true
+    _ => false
+  }
+}
+
+// ONLY AGREEMENT PASSES THE GATE; every other arm refuses naming its link and leaves the controller
+// untouched.
+test fn only_an_agreed_readback_lets_the_boot_proceed() -> Bool {
+  let agreed = mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: record_ok(), measure: measure_ok())
+  let diverged = mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: record_ok(), measure: ok(stdout: concat(other, "  x\n")))
+  let disagrees = mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: ok(stdout: concat(other, "\n")), measure: measure_ok())
+  let unreadable = mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: failed(code: 255, stderr: "ssh: connect refused"), measure: measure_ok())
+  (match mtcollins1_census_readback_refusal(readback: agreed) { Absent => true  Present { value: _ } => false })
+    && (match mtcollins1_census_readback_refusal(readback: diverged) { Present { value: w } => string_contains(s: w, pattern: "controller untouched") && string_contains(s: w, pattern: "6455b3b9")  Absent => false })
+    && (match mtcollins1_census_readback_refusal(readback: disagrees) { Present { value: w } => string_contains(s: w, pattern: "does not describe the current derivation")  Absent => false })
+    && (match mtcollins1_census_readback_refusal(readback: unreadable) { Present { value: w } => string_contains(s: w, pattern: "connect refused")  Absent => false })
+    && (match mtcollins1_census_readback_refusal(readback: CensusMediumReadbackNotCensus) { Present { value: _ } => true  Absent => false })
+}

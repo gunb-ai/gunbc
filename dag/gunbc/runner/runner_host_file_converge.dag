@@ -105,7 +105,8 @@ import gunbc.runner_slot_retirement {
   CgroupEventsBatchRead,
   CgroupEventsBatchUnread,
 }
-import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_grantee }
+import gunbc.runner_host_grants {  bootstrap_principal_is_not_the_grantee }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 
 // THE HOST FILES A RUNNER HOST MUST CARRY FOR ITS SLOTS TO BE TORN DOWN WHOLE, CONVERGED OVER THE
 // FLEET EDGE AS THE HOST'S ADMINISTRATOR.
