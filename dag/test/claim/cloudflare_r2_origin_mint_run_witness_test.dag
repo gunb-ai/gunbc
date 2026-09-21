@@ -427,11 +427,19 @@ test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> 
   }
 }
 
-// THE PIN'S RESOURCE NAME JOINS THIS FLEET'S PROJECT NUMBER, not a transcribed AccessVersion string.
-// secret_ref_version_resource is derived from the origin declaration; resolve_returned_version is
-// the same identity join the bootstrap fetch uses. A pin that names another project fails while
-// fleet_secrets_project_number stays put. The EXACT arm is the one asserted, because the origin pin
-// is a number: an alias resolution here would mean the pin had stopped naming one generation.
+// WHAT THIS ROW ESTABLISHES, STATED AT ITS ACTUAL STRENGTH (review 69703). It supplies `returned` as
+// secret_ref_version_resource(ref: locus) -- the request name rebuilt from the very locus the join is
+// then asked about -- so project, secret and version agree BY CONSTRUCTION and no foreign-project pin
+// can ever reach this call. The one fact it discriminates is that the origin pin is an EXACT version
+// rather than the alias: the alias arm goes red if the pin stops naming one generation. An earlier
+// wording of this comment, which this PR wrote, claimed "a pin that names another project fails while
+// fleet_secrets_project_number stays put", and that is a claim this row cannot carry.
+//
+// THE FOREIGN-PROJECT RED IS AUTHORABLE, SO IT IS AUTHORED, in the row below rather than asserted
+// here. DESIGN §4b's top rung is explicit that a check whose forbidden state cannot be expressed
+// where it runs is a decoration -- permanently green, carrying no information, and worse than absent
+// because it gets cited as coverage. Restating this row downward would have satisfied the finding and
+// left the wall unbuilt.
 test fn r2_origin_read_pin_names_this_project_version() -> Bool {
   match fabric_durable_origin_standing() {
     R2OriginUnallocated { purpose: _ } => false
@@ -448,6 +456,31 @@ test fn r2_origin_read_pin_names_this_project_version() -> Bool {
             SecretRefVersionResolvedExact { version: _ } => true
             SecretRefVersionResolvedAlias { alias: _, version: _ } => false
             SecretRefVersionResolutionRefused { requested: _, returned: _ } => false
+          }
+      }
+  }
+}
+
+// THE WALL THE ROW ABOVE CANNOT BE: an independent returned identity, naming the same secret and the
+// same version in ANOTHER project, supplied rather than rebuilt from the locus. This is the only row
+// here whose red depends on the join comparing projects at all -- deleting the project comparison
+// from resolve_returned_version leaves the exact-arm row above green and turns this one red.
+test fn r2_origin_read_pin_refuses_a_foreign_project_answer() -> Bool {
+  match fabric_durable_origin_standing() {
+    R2OriginUnallocated { purpose: _ } => false
+    R2OriginAllocated { bucket: bucket } =>
+      match bucket.read_credential {
+        OriginCredentialUnminted { mint_entry: _ } => false
+        OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
+        OriginCredentialPinned { access_key_id: _, token_value: locus } =>
+          match resolve_returned_version(
+            returned: join(["projects/999999999999/secrets/", locus.secret as String, "/versions/", locus.version as String], "") as SmResolvedVersionIdentity,
+            ref: locus,
+            project_number: fleet_secrets_project_number,
+          ) {
+            SecretRefVersionResolvedExact { version: _ } => false
+            SecretRefVersionResolvedAlias { alias: _, version: _ } => false
+            SecretRefVersionResolutionRefused { requested: _, returned: _ } => true
           }
       }
   }
