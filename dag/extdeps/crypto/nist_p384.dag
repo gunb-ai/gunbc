@@ -36,7 +36,7 @@ data p384_n: BigNat = bignat_from_octets(octets: p384_n_octets)
 data p384_gx: BigNat = bignat_from_octets(octets: p384_gx_octets)
 data p384_gy: BigNat = bignat_from_octets(octets: p384_gy_octets)
 
-// 384-bit moduli in 24-bit limbs: the family fold derives 17 from the coordinate width.
+// 384-bit moduli in 24-bit limbs: the family fold derives 16 from the coordinate width.
 data p384_curve: PrimeCurve = prime_curve(p_octets: p384_p_octets, n_octets: p384_n_octets, b_octets: p384_b_octets, gx_octets: p384_gx_octets, gy_octets: p384_gy_octets, coordinate_octets: 48)
 
 fn p384_on_curve(x: BigNat, y: BigNat) -> Bool {

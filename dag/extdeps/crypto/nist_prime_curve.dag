@@ -38,10 +38,13 @@ type PrimeCurve {
   coordinate_octets: Int
 }
 
-// 24-bit limbs: the width that holds `bits` bits, plus one limb of headroom the Montgomery folds
-// in std.bignat expect (P-256 landed with 11 for 256 bits; 384 bits takes 17 by the same rule).
+// 24-bit limbs: the fewest that hold `bits` bits -- the ceiling of bits / 24, which is the 11 P-256
+// shipped with in gunbc#11645 (256 -> 11) and gives 384 -> 16. R = 2^(24·width) exceeds the modulus
+// by construction; std.bignat's Montgomery folds carry their own working headroom. A first cut of
+// this fold added a limb here and its annotation claimed 11 anyway (review 69614 of gunbc#11981):
+// a silent ~19% cost on every multiply, caught by a reviewer computing the expression.
 fn prime_curve_limb_width(bits: Int) -> Int {
-  (bits + 23) / 24 + 1
+  (bits + 23) / 24
 }
 
 fn prime_curve(p_octets: List<UInt8>, n_octets: List<UInt8>, b_octets: List<UInt8>, gx_octets: List<UInt8>, gy_octets: List<UInt8>, coordinate_octets: Int) -> PrimeCurve {
