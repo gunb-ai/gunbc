@@ -25,11 +25,24 @@ test fn compile_stage_memo_provider_preserves_catalog_retention() -> Bool {
     && (compile_stage_memo_provider_id() == compile_stage_memo_id)
 }
 
+// The parse demand's site is derived from the grammar's recurrence census, so the carrier is
+// asked for a census rather than for one grammar-less answer. The real producer's route -- a real
+// grammar through compute_grammar_first_analysis into the table -- is the inhabitance claim in
+// v2.test.provenance.parse_memo_frame_replay.
+fn recurrent_census() -> ParseMemoRecurrence {
+  ParseMemoRecurrence { discarding_backtrack_sites: 1, nullable_nonterminals: 0 }
+}
+
+fn nullable_only_census() -> ParseMemoRecurrence {
+  ParseMemoRecurrence { discarding_backtrack_sites: 0, nullable_nonterminals: 1 }
+}
+
 test fn parse_table_carrier_inhabits_realization() -> Bool {
-  let step = parse_table_realized_step()
+  let step = parse_table_realized_step(r: recurrent_census())
   (step.materialization == Memoize)
     && (step.placement == LocalInProcess)
-    && (parse_table_memo_materialization() == Memoize)
+    && (parse_table_memo_materialization_for(r: recurrent_census()) == Memoize)
+    && (parse_table_memo_materialization_for(r: parse_memo_no_recurrence) == Recompute)
 }
 
 // Recompute, not Memoize, and the change is a correction rather than a regression: the
@@ -48,8 +61,18 @@ test fn parse_table_empty_uses_catalog_identity() -> Bool {
   parse_table_carrier_grounded_on_catalog()
 }
 
+// Both arms read off the VERDICT: a refusal also prescribes Memoize, so the prescription alone
+// could not tell a discharge from an unmet obligation. The nullable-only census discriminates the
+// second recurrence source -- dropping it from parse_memo_recurrence_is_possible reds here.
 test fn parse_table_demand_is_discharged_by_its_catalog_provider() -> Bool {
-  parse_table_memo_verdict_is_discharged()
+  parse_table_memo_verdict_is_discharged_for(r: recurrent_census())
+    && parse_table_memo_verdict_is_discharged_for(r: nullable_only_census())
+    && !parse_table_memo_verdict_is_discharged_for(r: parse_memo_no_recurrence)
+}
+
+test fn parse_table_demand_without_recurrence_is_accepted_single_recompute() -> Bool {
+  parse_table_memo_verdict_is_single_recompute_for(r: parse_memo_no_recurrence)
+    && !parse_table_memo_verdict_is_single_recompute_for(r: recurrent_census())
 }
 
 test fn compile_stage_demand_is_accepted_single_recompute() -> Bool {

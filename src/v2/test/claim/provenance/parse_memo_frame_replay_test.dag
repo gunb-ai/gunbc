@@ -322,3 +322,165 @@ test fn parse_memo_hit_replays_nested_frames_like_a_memo_free_parse() -> Bool {
       }
   }
 }
+
+// THE PARSE MEMO'S DEMAND CASE IS DERIVED BY THE REAL PRODUCER, AND THE DIRECT ARM PRESERVES THE
+// WHOLE PARSE. v2.compiler.parse compute_grammar_first_analysis rules each grammar's
+// (nonterminal, position) demand through std.materialization_ladder once, and every table built
+// from that analysis carries the answer. Two grammars, one per arm the grammar can reach:
+//
+//   abandoned_path_root above: S's Choice abandons a left branch that demands R and X, so X can be
+//   asked again at position 2 -- the ladder discharges the demand to the in-process provider and
+//   the table stores (Memoize).
+//
+//   S = R X y      R = a a      X = b      tokens: a a b y
+//
+//   no Choice, Optional or Repeat abandons a nonterminal demand and nothing is nullable, so each
+//   (nonterminal, position) is asked at most once -- AcceptedSingleRecompute, and the table does
+//   no memo work (Recompute).
+//
+// The direct arm is qualified on the full result, not on acceptance: the same tokens under the
+// same analysis with the store FORCED ON must record zero hits -- the census's claim, checked by
+// execution -- and must return the identical remaining input, tree, diagnostics and provenance
+// state (allocator, span index, frame). If the census missed a recurrence the forced run hits and
+// this reds; if the direct arm changed the parse, the equality reds.
+fn linear_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^linear_s,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^linear_s,
+        expression: Sequence {
+          left: Nonterminal { production: ^linear_r },
+          right: Sequence {
+            left: Nonterminal { production: ^linear_x },
+            right: abandoned_terminal(token_class: ^abandoned_tok_y)
+          }
+        },
+        emitted: grammar_atom(identity: ^linear_s)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^linear_r,
+        expression: Sequence {
+          left: abandoned_terminal(token_class: ^abandoned_tok_a),
+          right: abandoned_terminal(token_class: ^abandoned_tok_a)
+        },
+        emitted: grammar_atom(identity: ^linear_r)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^linear_x,
+        expression: abandoned_terminal(token_class: ^abandoned_tok_b),
+        emitted: grammar_atom(identity: ^linear_x)
+      },
+      tail: std.algebra.Empty } }
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn derived_memo_materialization(root: GrammarRoot) -> Optional<Materialization> {
+  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^abandoned_path_grammar_contract)
+  match grammar_validate_for_parse(root: root, at: contract_locus) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: validated, diagnostics: _ } =>
+      optional_present(value: parse_table_for_production_analyzed(
+        validated: validated,
+        analysis: compute_grammar_first_analysis(root: validated.root),
+        all_tokens: abandoned_path_tokens()
+      ).materialization)
+  }
+}
+
+test fn parse_memo_demand_derived_discharged_when_the_grammar_abandons_a_demand() -> Bool {
+  derived_memo_materialization(root: abandoned_path_root()) == optional_present(value: Memoize)
+}
+
+test fn parse_memo_demand_derived_single_when_the_grammar_cannot_recur() -> Bool {
+  derived_memo_materialization(root: linear_root()) == optional_present(value: Recompute)
+}
+
+type ParseFullRun {
+  remaining: List<Token>
+  captured: Node
+  diagnostics: List<Diagnostic>
+  prov: ParseProvenanceState
+  hits: Int
+}
+
+fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
+  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^abandoned_path_grammar_contract)
+  match grammar_validate_for_parse(root: linear_root(), at: contract_locus) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: validated, diagnostics: _ } =>
+      let tokens = abandoned_path_tokens()
+      let root = validated.root
+      let base = parse_table_for_production_analyzed(
+        validated: validated,
+        analysis: compute_grammar_first_analysis(root: root),
+        all_tokens: tokens
+      )
+      let table = ParseTableRealization {
+        artifact_kind: base.artifact_kind,
+        provider_id: base.provider_id,
+        materialization: match forced {
+          Absent => base.materialization
+          Present { value: m } => m
+        },
+        grammar_digest: base.grammar_digest,
+        token_stream_digest: base.token_stream_digest,
+        entries: base.entries,
+        memo_hits: base.memo_hits,
+        memo_misses: base.memo_misses,
+        memo_lookup_calls: base.memo_lookup_calls,
+        nullable_set: base.nullable_set,
+        first_rows: base.first_rows,
+        productions_by_name: base.productions_by_name,
+        prepared_exprs: base.prepared_exprs
+      }
+      match grammar_lookup_production(root: root, name: root.start) {
+        Violates { diagnostic: _ } => optional_absent()
+        Holds { value: production } =>
+          match parse_expr(
+            expr: production.expression,
+            tokens: tokens,
+            all_tokens: tokens,
+            root: root,
+            table: table,
+            prov: parse_prov_initial()
+          ) {
+            ParseExprRejected { diagnostics: _, table: _ } => optional_absent()
+            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov, table: final_table } =>
+              optional_present(value: ParseFullRun {
+                remaining: remaining,
+                captured: captured,
+                diagnostics: diags,
+                prov: prov,
+                hits: final_table.memo_hits
+              })
+          }
+      }
+  }
+}
+
+fn parse_full_run_same_parse(a: ParseFullRun, b: ParseFullRun) -> Bool {
+  (a.remaining == b.remaining)
+    && (a.captured == b.captured)
+    && (a.diagnostics == b.diagnostics)
+    && (a.prov == b.prov)
+}
+
+fn parse_full_run_hits(run: ParseFullRun) -> Int {
+  run.hits
+}
+
+test fn parse_memo_direct_arm_preserves_the_whole_parse() -> Bool {
+  match linear_run(forced: optional_absent()) {
+    Absent => false
+    Present { value: direct } =>
+      match linear_run(forced: optional_present(value: Memoize)) {
+        Absent => false
+        Present { value: stored } =>
+          (parse_full_run_hits(run: stored) == 0)
+            && parse_full_run_same_parse(a: direct, b: stored)
+      }
+  }
+}

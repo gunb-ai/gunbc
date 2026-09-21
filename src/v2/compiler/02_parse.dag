@@ -105,7 +105,9 @@ import v2.std.integer { integer_int_content_digest }
 import v2.compiler.materialization_carriers {
   parse_table_memo_artifact_kind,
   parse_table_memo_provider_id,
-  parse_table_memo_materialization,
+  ParseMemoRecurrence,
+  parse_table_memo_materialization_for,
+  parse_memo_no_recurrence,
   materialization_allows_memo_store,
 }
 import v2.extdeps.languages.dag {
@@ -676,7 +678,7 @@ fn parse_table_for_production_analyzed(
   ParseTableRealization {
     artifact_kind: v2.compiler.materialization_carriers.parse_table_memo_artifact_kind(),
     provider_id: v2.compiler.materialization_carriers.parse_table_memo_provider_id(),
-    materialization: v2.compiler.materialization_carriers.parse_table_memo_materialization(),
+    materialization: analysis.memo_materialization,
     grammar_digest: analysis.grammar_digest,
     token_stream_digest: parse_token_stream_digest(all_tokens: all_tokens),
     entries: empty_map(),
@@ -701,11 +703,13 @@ fn parse_table_for_production(
   )
 }
 
+// The empty grammar has no productions, so its recurrence census is zero on both counts and its
+// demand case is the ladder's single-demand arm: nothing is asked twice, so nothing is stored.
 fn parse_table_empty() -> ParseTable {
   ParseTableRealization {
     artifact_kind: v2.compiler.materialization_carriers.parse_table_memo_artifact_kind(),
     provider_id: v2.compiler.materialization_carriers.parse_table_memo_provider_id(),
-    materialization: v2.compiler.materialization_carriers.parse_table_memo_materialization(),
+    materialization: parse_table_memo_materialization_for(r: parse_memo_no_recurrence),
     grammar_digest: content_hash(n: grammar_empty_node()),
     token_stream_digest: symbol_identity_digest(sym: ^parse_table_empty_token_stream),
     entries: empty_map(),
@@ -1497,6 +1501,7 @@ type GrammarFirstAnalysis {
   grammar_digest: Hash
   productions_by_name: Map<Symbol, GrammarProduction>
   choice_residue: List<GrammarChoiceAmbiguityRow>
+  memo_materialization: Materialization
 }
 
 fn grammar_empty_terminal_list() -> List<FirstKey> {
@@ -2464,7 +2469,75 @@ fn compute_grammar_first_analysis_given(
     prepared_exprs: prep.prepared_exprs,
     grammar_digest: parse_grammar_digest(validated: ValidatedGrammarRoot { root: root }),
     productions_by_name: grammar_production_index(productions: root.productions),
-    choice_residue: prep.residue
+    choice_residue: prep.residue,
+    memo_materialization: parse_table_memo_materialization_for(
+      r: parse_memo_recurrence_census(root: root, nullable_set: nullable_set)
+    )
+  }
+}
+
+// THE PARSE MEMO'S DEMAND CASE, READ OFF THE GRAMMAR ONCE PER PREPARATION. The meaning of both
+// counts, and why they are the whole of within-parse recurrence, is stated on
+// v2.compiler.materialization_carriers ParseMemoRecurrence. This fold only reads the structure:
+// a site is DISCARDING when the branch it may abandon -- a Choice's left, an Optional's or a
+// Repeat's element -- demands a nonterminal, since only an abandoned nonterminal demand can be
+// asked again at the position the parse resumes from.
+type ParseDemandFold {
+  demands_nonterminal: Bool
+  discarding_sites: Int
+}
+
+fn parse_demand_fold_site(attempted: ParseDemandFold) -> Int {
+  if attempted.demands_nonterminal { 1 } else { 0 }
+}
+
+fn parse_demand_fold_leaf() -> ParseDemandFold {
+  ParseDemandFold { demands_nonterminal: false, discarding_sites: 0 }
+}
+
+fn expr_parse_demand_fold(expr: GrammarExpr) -> ParseDemandFold {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_, _) { parse_demand_fold_leaf() },
+      literal_terminal: fn(_, _) { parse_demand_fold_leaf() },
+      nonterminal: fn(_) { ParseDemandFold { demands_nonterminal: true, discarding_sites: 0 } },
+      sequence: fn(l, r) {
+        ParseDemandFold {
+          demands_nonterminal: l.demands_nonterminal || r.demands_nonterminal,
+          discarding_sites: l.discarding_sites + r.discarding_sites
+        }
+      },
+      choice: fn(l, r) {
+        ParseDemandFold {
+          demands_nonterminal: l.demands_nonterminal || r.demands_nonterminal,
+          discarding_sites: l.discarding_sites + r.discarding_sites + parse_demand_fold_site(attempted: l)
+        }
+      },
+      optional: fn(e) {
+        ParseDemandFold {
+          demands_nonterminal: e.demands_nonterminal,
+          discarding_sites: e.discarding_sites + parse_demand_fold_site(attempted: e)
+        }
+      },
+      repeat: fn(e) {
+        ParseDemandFold {
+          demands_nonterminal: e.demands_nonterminal,
+          discarding_sites: e.discarding_sites + parse_demand_fold_site(attempted: e)
+        }
+      }
+    }
+  )
+}
+
+fn parse_memo_recurrence_census(root: GrammarRoot, nullable_set: List<Symbol>) -> ParseMemoRecurrence {
+  ParseMemoRecurrence {
+    discarding_backtrack_sites: fold_list(
+      xs: root.productions,
+      empty: 0,
+      cons: fn(acc, p) { acc + expr_parse_demand_fold(expr: p.expression).discarding_sites }
+    ),
+    nullable_nonterminals: length(xs: nullable_set)
   }
 }
 
