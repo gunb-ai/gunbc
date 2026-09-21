@@ -1,11 +1,16 @@
 module test.claim.approval_device_enrolment_code_witness_test
 
 import std.logic { Bool }
-import std.types { String, NonEmptyStr, Timestamp, List }
+import std.types { String, NonEmptyStr, Timestamp, List, Secret }
 import std.process { ExitSuccess }
 import gunbc.auth.approval_device_routes {
   EnrolmentCodeDeliveryReceipt, enrolment_code_delivery_line, enrolment_code_notification, approval_enrolment_code_notification_title,
+  issue_and_deliver_enrolment_code_until, deliver_enrolment_code, EnrolmentCodeDelivered, EnrolmentCodeIssuedNotDelivered, EnrolmentCodeIssuanceRefused,
 }
+import gunbc.auth.approval_request_submission { PublisherTokenLoaded, PublisherTokenUnavailable }
+import gunbc.auth.approval_ntfy_deployment { hermetic_ntfy_publish_message_id }
+import gunbc.auth.approval_device_redemption { observe_enrolment_slot, EnrolmentCodeUnspent }
+import extdeps.shell
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import gunbc.auth.approval_device_enrolment_code_issue { enrolment_code_issue_remote_argv, enrolment_code_issue_refuses_off_srv1 }
 import gunbc.live_deploy.emit { RevisionBoundAtEmission }
@@ -15,23 +20,64 @@ import gunbc.fleet_converge_workflow {
   ApprovalDeviceEnrolmentCodeIssue, fleet_converge_workflow_mode_wire, fleet_converge_workflow_modes, fleet_converge_mode_fleet_ssh_key_demand, FleetSshKeyConsumed,
 }
 
-// THE CODE NEVER REACHES THE STEP LOG (decision msg_a1d8d1b9): the receipt record carries no code
-// field, so the line rendered from it cannot contain one -- and this claim asserts that over a
-// designed code rather than trusting the type: the rendered line does NOT contain the code, while
-// the notification body, the one rendering the code is allowed, DOES. Deleting the receipt
-// carrier and rendering from the issuance directly reds the first half.
+// THE CODE NEVER REACHES THE STEP LOG (decision msg_a1d8d1b9), asserted over the producer and not
+// over a receipt the claim builds: deliver_enrolment_code runs the publish through
+// ntfy.Publish.PublishMessage's hermetic arm, the Delivered receipt's message id is the published
+// message's id (wiring it to the code reds this), the line rendered from that receipt does NOT
+// contain the code while the notification body -- the one rendering the code is allowed -- does,
+// and without a publisher token the same fold reports IssuedNotDelivered rather than publishing.
 data fx_code: NonEmptyStr = "9f3ac1d2"
 data fx_expires: Timestamp = "2026-09-21T20:10:00Z"
 
-test fn the_receipt_line_carries_the_delivery_but_never_the_code() -> Bool {
-  let line = enrolment_code_delivery_line(r: EnrolmentCodeDeliveryReceipt { topic: approval_ntfy_topic as NonEmptyStr, message_id: "m-42", expires_at: fx_expires })
+test fn the_delivered_receipt_comes_from_the_published_message_and_its_line_never_carries_the_code() -> Bool {
   let message = enrolment_code_notification(code: fx_code, expires_at: fx_expires)
-  !string_contains(s: line, pattern: fx_code as String)
-    && string_contains(s: line, pattern: "message_id=m-42")
-    && string_contains(s: line, pattern: "expires=" + fx_expires)
+  (match deliver_enrolment_code(code: fx_code, expires_at: fx_expires, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }) {
+    EnrolmentCodeDelivered { receipt: r } => {
+      let line = enrolment_code_delivery_line(r: r)
+      (r.message_id as String) == hermetic_ntfy_publish_message_id
+        && r.topic == approval_ntfy_topic
+        && r.expires_at == fx_expires
+        && !string_contains(s: line, pattern: fx_code as String)
+        && string_contains(s: line, pattern: "message_id=" + hermetic_ntfy_publish_message_id)
+        && string_contains(s: line, pattern: "expires=" + fx_expires)
+    }
+    _ => false
+  })
+    && (match deliver_enrolment_code(code: fx_code, expires_at: fx_expires, publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }) {
+      EnrolmentCodeIssuedNotDelivered { expires_at: x, cause: c } => x == fx_expires && string_contains(s: c, pattern: "absent")
+      _ => false
+    })
     && string_contains(s: message.body as String, pattern: fx_code as String)
     && message.title == approval_enrolment_code_notification_title
     && message.topic == approval_ntfy_topic
+}
+
+// THE SLOT IS WRITTEN BEFORE ANY DELIVERY, by real execution against a fresh root: the write goes
+// through the file CAS, which the hermetic route has no arm for, so this claim runs on the wet
+// route (claim_batch --wet). Without a publisher token the outcome is IssuedNotDelivered and the
+// issued-code slot is readable afterwards; a second issuance of the same code refuses on the
+// occupied slot. Dropping the write, or publishing before it, reds this.
+test fn the_code_slot_is_written_before_delivery_by_real_execution() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_enrol.XXXXXX").path
+  let root = root_path as NonEmptyStr
+  let publisher = PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }
+  let first = issue_and_deliver_enrolment_code_until(root: root, now: "2026-09-21T20:00:00Z", expires_at: fx_expires, code: fx_code, publisher: publisher)
+  let slot = observe_enrolment_slot(root: root, code: fx_code)
+  let second = issue_and_deliver_enrolment_code_until(root: root, now: "2026-09-21T20:00:00Z", expires_at: fx_expires, code: fx_code, publisher: publisher)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  (match first {
+    EnrolmentCodeIssuedNotDelivered { expires_at: x, cause: _ } => x == fx_expires
+    _ => false
+  })
+    && (match slot {
+      EnrolmentCodeUnspent { challenge: c } => c.code == fx_code && c.expires_at == fx_expires
+      _ => false
+    })
+    && (match second {
+      EnrolmentCodeIssuanceRefused { cause: c } => string_contains(s: c, pattern: "occupied")
+      _ => false
+    })
+    && removed.success
 }
 
 // The remote argv runs the release's own binary over the release's own tree, as the operator's

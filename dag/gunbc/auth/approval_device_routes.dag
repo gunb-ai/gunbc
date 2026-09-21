@@ -591,33 +591,43 @@ type EnrolmentCodeIssuance
   | EnrolmentCodeIssuedNotDelivered { expires_at: Timestamp, cause: String }
   | EnrolmentCodeIssuanceRefused { cause: String }
 
-fn issue_and_deliver_enrolment_code(now: Timestamp, code: NonEmptyStr, publisher: PublisherTokenRead) -> EnrolmentCodeIssuance {
-  let expires_at = device_instant_plus(t: now, s: approval_enrolment_code_window)
-  match issue_enrolment_code(root: approval_device_store_root, code: code, issued_at: now, expires_at: expires_at) {
+fn issue_and_deliver_enrolment_code(root: NonEmptyStr, now: Timestamp, code: NonEmptyStr, publisher: PublisherTokenRead) -> EnrolmentCodeIssuance {
+  issue_and_deliver_enrolment_code_until(root: root, now: now, expires_at: device_instant_plus(t: now, s: approval_enrolment_code_window), code: code, publisher: publisher)
+}
+
+// The window arithmetic above is the one Clock read. Below it the route is two folds so each is
+// executed by a claim on the route it has (review 69755 of gunbc#12013): the slot write runs on
+// the wet route against a fresh root, and the publish -- with the receipt minted from the
+// published message and never from the code -- runs on the hermetic ntfy arm.
+fn issue_and_deliver_enrolment_code_until(root: NonEmptyStr, now: Timestamp, expires_at: Timestamp, code: NonEmptyStr, publisher: PublisherTokenRead) -> EnrolmentCodeIssuance {
+  match issue_enrolment_code(root: root, code: code, issued_at: now, expires_at: expires_at) {
     DeviceStoreSlotOccupied => EnrolmentCodeIssuanceRefused { cause: "the minted code's slot is already occupied; run again" }
     DeviceStoreRefused { detail: d } => EnrolmentCodeIssuanceRefused { cause: d as String }
-    DeviceStoreWritten =>
-      match publisher {
-        PublisherTokenUnavailable { path: _, detail: d } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "publisher token unavailable: " + d }
-        PublisherTokenLoaded { token: t } => {
-          let message = enrolment_code_notification(code: code, expires_at: expires_at)
-          let sent = ntfy.Publish.PublishMessage(
-            access_token: t,
-            topic: message.topic,
-            title: message.title,
-            body: message.body,
-            priority: ntfy_priority_wire(p: message.priority),
-            click: message.click,
-            cache: ntfy_cache_wire(c: message.cache),
-          )
-          match ntfy_publish_outcome_of(rest: sent.outcome, message_id: sent.message_id) {
-            NtfyPublished { message_id: m } => EnrolmentCodeDelivered { receipt: EnrolmentCodeDeliveryReceipt { topic: message.topic as NonEmptyStr, message_id: m, expires_at: expires_at } }
-            NtfyPublishRefused { status: st, detail: d } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "ntfy refused " + to_string(st) + ": " + d }
-            NtfyPublishUnreached { cause: c } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "ntfy unreached: " + c }
-            NtfyPublishUndecodable { status: st, cause: c } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "ntfy answer undecodable (" + to_string(st) + "): " + c }
-          }
-        }
+    DeviceStoreWritten => deliver_enrolment_code(code: code, expires_at: expires_at, publisher: publisher)
+  }
+}
+
+fn deliver_enrolment_code(code: NonEmptyStr, expires_at: Timestamp, publisher: PublisherTokenRead) -> EnrolmentCodeIssuance {
+  match publisher {
+    PublisherTokenUnavailable { path: _, detail: d } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "publisher token unavailable: " + d }
+    PublisherTokenLoaded { token: t } => {
+      let message = enrolment_code_notification(code: code, expires_at: expires_at)
+      let sent = ntfy.Publish.PublishMessage(
+        access_token: t,
+        topic: message.topic,
+        title: message.title,
+        body: message.body,
+        priority: ntfy_priority_wire(p: message.priority),
+        click: message.click,
+        cache: ntfy_cache_wire(c: message.cache),
+      )
+      match ntfy_publish_outcome_of(rest: sent.outcome, message_id: sent.message_id) {
+        NtfyPublished { message_id: m } => EnrolmentCodeDelivered { receipt: EnrolmentCodeDeliveryReceipt { topic: message.topic as NonEmptyStr, message_id: m, expires_at: expires_at } }
+        NtfyPublishRefused { status: st, detail: d } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "ntfy refused " + to_string(st) + ": " + d }
+        NtfyPublishUnreached { cause: c } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "ntfy unreached: " + c }
+        NtfyPublishUndecodable { status: st, cause: c } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "ntfy answer undecodable (" + to_string(st) + "): " + c }
       }
+    }
   }
 }
 
@@ -628,7 +638,7 @@ fn issue_device_enrolment_code() -> CliWireResponse {
       match mint_enrolment_code() {
         Absent => CliWireUnprintable { cause: "the entropy read did not yield the requested octets" }
         Present { value: code } =>
-          match issue_and_deliver_enrolment_code(now: now, code: code, publisher: read_publisher_token()) {
+          match issue_and_deliver_enrolment_code(root: approval_device_store_root, now: now, code: code, publisher: read_publisher_token()) {
             EnrolmentCodeDelivered { receipt: r } => CliWirePrintable { bytes: enrolment_code_delivery_line(r: r), exit: ExitSuccess }
             EnrolmentCodeIssuedNotDelivered { expires_at: x, cause: c } => CliWireUnprintable { cause: ("a code was issued but not delivered (" + c + "); it expires at " + x + " unknown to anyone; run again") as NonEmptyStr }
             EnrolmentCodeIssuanceRefused { cause: c } => CliWireUnprintable { cause: c as NonEmptyStr }
