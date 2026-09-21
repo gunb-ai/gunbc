@@ -366,6 +366,11 @@ test fn the_peak_seam_names_the_beat_that_established_the_peak_not_the_largest_c
 // are exercised, because they arise for different reasons and a fold that passed either one
 // through would let an un-attributed peak read as attributed -- which is the whole failure this
 // carrier exists to prevent.
+// EACH ARM IS ASSERTED BY IDENTITY, not merely "it refused". The three receipts below fail for
+// three different reasons, and an earlier revision of this witness greened on any refusal at all
+// -- so a fold that answered one cause for every case passed it (review 69719). The beat number
+// is asserted too: a cause that names the wrong beat is a located diagnostic pointing at the
+// wrong place, which is worse than an unlocated one.
 test fn a_peak_beat_without_a_seam_refuses_rather_than_naming_a_phase() -> Bool {
   let unrecorded = FloorHeldSetReceipt {
     run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
@@ -383,11 +388,6 @@ test fn a_peak_beat_without_a_seam_refuses_rather_than_naming_a_phase() -> Bool 
     run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 0,
     beats: [], run_completed: true, swap_policy: SwapDisabled,
   }
-  // EACH ARM IS ASSERTED BY IDENTITY, not merely "it refused". The three receipts fail for three
-  // different reasons and an earlier revision of this witness greened on any refusal at all, so a
-  // fold that answered one cause for every case passed it (review 69719). The beat number is
-  // asserted too: a cause that names the wrong beat is a located diagnostic pointing at the wrong
-  // place, which is worse than an unlocated one.
   let a = match receipt_peak_seam(r: unrecorded) {
     PeakSeamUnattributable { cause: PeakBeatSeamUnrecorded { beat: b } } => b == 1
     _ => false
