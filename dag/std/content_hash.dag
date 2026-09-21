@@ -1,6 +1,9 @@
 module std.content_hash
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, List }
+import std.integer { UInt8 }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
 
 // CRYPTOGRAPHIC CARRIER WALL (reviews 45441/45460/45496; same law as extdeps.git.object_store
 // git_object_id_text_note). Sha256Digest.hex and Sha1Digest.hex are Sha256DigestHex / Sha1DigestHex
@@ -127,6 +130,68 @@ fn as_content_hash_sha1(digest: Sha1Digest) -> ContentHash {
 
 fn as_content_hash_sha512(digest: Sha512Digest) -> ContentHash {
   Sha512Hash(digest)
+}
+
+// ── THE COMPUTING MINT ───────────────────────────────────────────────────────────────────────
+//
+// EVERY OTHER Sha256Digest MINT IN THIS MODULE PARSES A DIGEST SOMEONE ELSE COMPUTED.
+// sha256_hex_digest validates sixty-four lowercase hex digits; sha256_digest_content_hash bridges a
+// cited extdeps.crypto.hash Digest; parse_content_hash reads one off a wire. None of them HASHES
+// BYTES, so until now the only digest this module could MINT from a value was Fnv1a64Structural --
+// a sixty-four-bit non-cryptographic fingerprint, which is a LOCATOR and not a durable
+// intersubjective identity (DESIGN A3). These two functions close that gap: the preimage goes in,
+// the digest comes out, and the family is Sha256.
+//
+// WHY THIS IMPORT IS NOT A LAYER INVERSION. extdeps.crypto.sha2 owns the COMPUTATION -- FIPS 180-4,
+// cited at its own external authority anchor, witnessed against the standard's vectors by
+// test.claim.sha256_fips_witness_test. This module owns the CARRIER and its construction walls.
+// Those are two facts, and the mint is where they meet: the digest text sha256_hex produces is
+// handed to the SAME validating wall every other Sha256Digest goes through, so a computed digest is
+// construction-walled exactly like a parsed one and no second admission path exists (DESIGN 3).
+// Acyclicity holds -- extdeps.crypto.sha2's import closure does not reach std.content_hash.
+//
+// THE OPTIONAL IS NOT CEREMONY AND IT IS NOT UNREACHABLE-BY-CONSTRUCTION EITHER. base16_encode_lower
+// over sha256's thirty-two octets does yield sixty-four lowercase hex digits, but that fact lives in
+// list LENGTHS, which no declared type here carries, so the compiler cannot derive it and this module
+// must not assert it. Answering `none` is the typed refusal DESIGN 5 requires of an arm that cannot
+// establish its answer; fabricating a digest to keep the signature total would be the fabricated
+// plausible output that section forbids by name. It is also the corpus's existing shape at the same
+// boundary -- extdeps.crypto.hash sha256_digest_content_hash returns ContentHash? for exactly this
+// reason -- so this is one authority's idiom reused, not a second one (DESIGN 3).
+//
+// RUNG, STATED AT THE MINIMUM ACROSS ITS PATHS (DESIGN 4b(1)). Under the INTERPRETER this computes
+// real FIPS 180-4 SHA-256: the witness is discriminating because extdeps.crypto.sha2 never relies on
+// a type to wrap -- every thirty-two-bit operation routes through std.bitwise word32_add /
+// word32_rotr / word32_and, which take word32_modulus EXPLICITLY, so unbounded-Int evaluation lands
+// on the same residues the standard specifies. That is a fact about the COMPUTATION and is never
+// evidence that UInt32 wraps. Under NATIVE EMISSION this path does not execute at all:
+// std.operator_realization refuses infix arithmetic on Compose<UInt, MachineWidth<N>> operands, so
+// std.bitwise and everything above it is emit-blocked (gunbc.recurring_failure_mode
+// bounded_natural_arithmetic_evaluated_as_unbounded_int). A class's rung is the minimum across its
+// in-scope paths, so the honest rung of this mint is the EMITTED one, which is silent. Citing the
+// interpreted path alone would be rung inflation.
+
+// The canonical byte preimage of a text value: its UTF-8 encoding, through the same two seams every
+// other byte-length and byte-digest consumer in the corpus uses (std.materialization_object reaches
+// the object's byte count this way). Pure -- these are host-realized seams, not effects, so a mint
+// built on them keeps fabric ref-minting pure and fabric_object_verified a pure check.
+fn content_hash_utf8_octets(value: String) -> List<UInt8> {
+  bytes_octets(b: utf8_encode_bytes(s: value))
+}
+
+// The computed SHA-256 of a text value's UTF-8 bytes, routed through the module's own validating
+// wall. This is the cryptographic counterpart of content_hash_atom.
+fn sha256_digest_of_value(value: String) -> Sha256Digest? {
+  sha256_hex_digest(hex: sha256_hex(message: content_hash_utf8_octets(value: value)))
+}
+
+// The computed cryptographic counterpart of content_hash_of_value, and the one a caller that wants
+// a durable identity rather than a locator should reach for.
+fn content_hash_of_value_cryptographic(value: NonEmptyStr) -> ContentHash? {
+  match sha256_digest_of_value(value: value as String) {
+    Present { value: d } => Present { value: as_content_hash_cryptographic(digest: d) }
+    Absent => none
+  }
 }
 
 fn content_hash_of_value(value: NonEmptyStr) -> ContentHash {
