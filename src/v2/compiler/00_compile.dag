@@ -27,7 +27,7 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_finalize_source_outcomes
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
-import extdeps.bazel.label { Label, LabelParsed, LabelRefused, PackageName, render_package }
+import extdeps.bazel.label { Label, LabelParsed, LabelRefused, render_package }
 import extdeps.bazel.target_pattern {
   TargetPattern, TargetPatternParsed, TargetPatternRefused, TargetPatternRefusal,
   SingleTarget, PackageTargets, SubtreeTargets,
@@ -2201,18 +2201,16 @@ fn native_lane_universe_selected(ingest: SourceRootIngest, pattern: TargetPatter
   }
 }
 
-// THE OWNERSHIP ARM IS ITS OWN DECLARATION RATHER THAN A NESTED BLOCK, because the refusal above
-// it is an expression: `.dag` has no early `return` to fall through, so the accepted path has to be
-// the other arm of the same match. Splitting it keeps that arm one call wide instead of indenting
-// the entire derivation inside a match arm. Consumer: native_lane_universe, the only caller.
 // A SINGLE TARGET THAT NAMES A MODULE IS A MISSPELLING, AND IT REFUSES WITH THE RIGHT ONE (manager
 // ruling 2026-09-21). Under this lane's correspondence a module namespace is a PACKAGE and a
 // declaration is a TARGET, so `//v2/test/parse:expression_bodied_fn_decl_parse` asks for a
 // declaration of that name in module `v2.test.parse`. When no identity answers it AND a universe
 // module is named `<package>.<target>`, the author meant that module -- the file-as-target
 // spelling -- and an empty universe would be a silent wrong answer. The refusal names the module
-// spelling, `//<package>/<target>:all`. A single target that matches nothing and names no module
-// is left to the caller's own emptiness contract.
+// spelling, `//<package>/<target>:all`. The comparison is made in PACKAGE-TEXT space with the one
+// correspondence the selection already uses (gunbc.witness_v2_native_route
+// `native_route_module_package_text`), never by an inverse fold back to namespaces. A single
+// target that matches nothing and names no module is left to the caller's own emptiness contract.
 fn native_lane_pattern_named_module(
   pattern: TargetPattern,
   modules: List<NativeLaneUniverseModule>,
@@ -2225,28 +2223,21 @@ fn native_lane_pattern_named_module(
       if length(xs: modules) > 0 {
         optional_absent()
       } else {
-        let package_ns = native_route_package_namespace_text(package: label.package)
-        let candidate = if package_ns == "" {
+        let package_text = render_package(p: label.package)
+        let candidate_package_text = if package_text == "" {
           label.target.name as String
         } else {
-          concat(concat(package_ns, "."), label.target.name as String)
+          concat(concat(package_text, "/"), label.target.name as String)
         }
-        match list_find_first(xs: sources, predicate: fn(s) { s.module == candidate }) {
+        match list_find_first(
+          xs: sources,
+          predicate: fn(s) { native_route_module_package_text(module_qn: s.module) == candidate_package_text }
+        ) {
           Absent => optional_absent()
-          Present { value: _ } => optional_present(value: candidate)
+          Present { value: s } => optional_present(value: s.module)
         }
       }
   }
-}
-
-fn native_route_package_namespace_text(package: PackageName) -> String {
-  fold_list(
-    xs: split(s: render_package(p: package), delimiter: "/"),
-    empty: "",
-    cons: fn(acc, segment) {
-      if acc == "" { concat("", segment) } else { concat(concat(acc, "."), segment) }
-    }
-  )
 }
 
 fn native_lane_pattern_names_a_module_detail(pattern: TargetPattern, module_qn: String) -> String {
@@ -2262,6 +2253,10 @@ fn native_lane_pattern_names_a_module_detail(pattern: TargetPattern, module_qn: 
   )
 }
 
+// THE OWNERSHIP ARM IS ITS OWN DECLARATION RATHER THAN A NESTED BLOCK, because the refusal above
+// it is an expression: `.dag` has no early `return` to fall through, so the accepted path has to be
+// the other arm of the same match. Splitting it keeps that arm one call wide instead of indenting
+// the entire derivation inside a match arm. Consumer: native_lane_universe, the only caller.
 fn native_lane_universe_after_ownership(
   pattern: TargetPattern,
   facts: List<NativeLaneSourceFacts>,
