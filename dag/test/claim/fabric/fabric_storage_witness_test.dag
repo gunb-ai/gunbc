@@ -11,72 +11,185 @@ import std.fabric_storage {
 // Evidence for the pure half of std.fabric_storage: the canonical preimage round-trips, is
 // self-delimiting in a stream, refuses truncation, and a fetched object is verified against the ref
 // it was asked for. Values are supplied; the store realization's evidence is its own witness.
+//
+// WHY EVERY CLAIM HERE THREADS AN OPTIONAL, AND WHY IT IS NOT AVOIDABLE BY SUPPLYING THE REF.
+// DESIGN section 3's standing rule says to supply a boundary's inputs rather than compute them, and
+// a link ref looks exactly like something to supply. It cannot be: FabricObjectRef is
+// sole_constructor, so no module but std.fabric_storage can build one, and both ingresses
+// (fabric_object_ref_of, fabric_object_ref_of_wire) answer an Optional because the digest mint can
+// refuse. That is the carrier working as designed -- there is no expression anywhere else that
+// produces a ref naming bytes it did not hash -- so the threading below is the type telling the
+// truth, not ceremony, and the one thing a witness must never do here is invent a ref to keep its
+// own shape tidy.
+//
+// THE MINT IS THE INHABITANCE CLAIM. the_mint_computes_a_real_sha256_digest runs the real path and
+// pins the digest against a value computed outside this corpus, so the supplied-shape claims below
+// it are readings rather than hypotheses (DESIGN section 3 pairing obligation).
+
+// THE ORACLE, AND IT IS INDEPENDENT OF THIS REPOSITORY. root_object's canonical preimage is
+// exactly the forty-one bytes `fabric_storage.object;B16:{"event":"root"}` -- the tag, no links, the
+// body length, the body -- and this is the SHA-256 of those bytes as computed by coreutils
+// sha256sum and, separately, by a Python hashlib run that agreed with it. Neither computation can
+// see this corpus, so the literal is grounded in an external authority rather than copied from a
+// measurement of the tree it checks (DESIGN section 5: a measurement taken from the current tree is
+// not an oracle). Re-derive it, do not adjust it to match a new answer: if this goes red the
+// question is what changed about the preimage or the digest, never whether the constant is stale.
+data fabric_storage_root_object_expected_wire: String = "sha256:6fccc7fc79c56ea89adfcdef847e160cdc96071797d7c123d50955406465fb7c"
 
 fn root_object() -> FabricObject {
   FabricObject { links: [], body: "{\"event\":\"root\"}" }
 }
 
-fn child_object() -> FabricObject {
-  FabricObject { links: [fabric_object_ref_of(object: root_object())], body: "{\"event\":\"child\";\"note\":\"B7:colon\"}" }
+fn child_object() -> FabricObject? {
+  match fabric_object_ref_of(object: root_object()) {
+    Absent => none
+    Present { value: r } =>
+      Present { value: FabricObject { links: [r], body: "{\"event\":\"child\";\"note\":\"B7:colon\"}" } }
+  }
 }
 
 test fn an_object_with_links_round_trips_through_its_preimage() -> Bool {
-  match fabric_object_decode(preimage: fabric_object_preimage(object: child_object()) as String) {
+  match child_object() {
     Absent => false
-    Present { value: o } => fabric_object_ref_eq(a: fabric_object_ref_of(object: o), b: fabric_object_ref_of(object: child_object()))
+    Present { value: c } =>
+      match fabric_object_decode(preimage: fabric_object_preimage(object: c) as String) {
+        Absent => false
+        Present { value: o } =>
+          match fabric_object_ref_of(object: o) {
+            Absent => false
+            Present { value: a } =>
+              match fabric_object_ref_of(object: c) {
+                Absent => false
+                Present { value: b } => fabric_object_ref_eq(a: a, b: b)
+              }
+          }
+      }
   }
 }
 
 test fn a_truncated_preimage_decodes_to_nothing_rather_than_a_prefix() -> Bool {
-  let p = fabric_object_preimage(object: child_object()) as String
-  match fabric_object_decode(preimage: substring(s: p, start: 0, end: length(p) - 1)) {
-    Absent => true
-    Present { value: _ } => false
+  match child_object() {
+    Absent => false
+    Present { value: c } => {
+      let p = fabric_object_preimage(object: c) as String
+      match fabric_object_decode(preimage: substring(s: p, start: 0, end: length(p) - 1)) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    }
   }
 }
 
 test fn two_preimages_concatenated_decode_as_a_stream_of_two() -> Bool {
-  let text = join([fabric_object_preimage(object: child_object()) as String, fabric_object_preimage(object: root_object()) as String], "")
-  match fabric_objects_decode_stream(text: text, acc: []) {
+  match child_object() {
     Absent => false
-    Present { value: xs } => length(xs) == 2
+    Present { value: c } => {
+      let text = join([fabric_object_preimage(object: c) as String, fabric_object_preimage(object: root_object()) as String], "")
+      match fabric_objects_decode_stream(text: text, acc: []) {
+        Absent => false
+        Present { value: xs } => length(xs) == 2
+      }
+    }
   }
 }
 
 test fn distinct_links_give_distinct_refs_for_one_body() -> Bool {
-  let bare = FabricObject { links: [], body: child_object().body }
-  !fabric_object_ref_eq(a: fabric_object_ref_of(object: bare), b: fabric_object_ref_of(object: child_object()))
+  match child_object() {
+    Absent => false
+    Present { value: c } => {
+      let bare = FabricObject { links: [], body: c.body }
+      match fabric_object_ref_of(object: bare) {
+        Absent => false
+        Present { value: a } =>
+          match fabric_object_ref_of(object: c) {
+            Absent => false
+            Present { value: b } => !fabric_object_ref_eq(a: a, b: b)
+          }
+      }
+    }
+  }
 }
 
 test fn a_ref_survives_its_wire_form() -> Bool {
-  let r = fabric_object_ref_of(object: root_object())
-  match fabric_object_ref_of_wire(wire: fabric_object_ref_wire(object: r) as String) {
+  match fabric_object_ref_of(object: root_object()) {
     Absent => false
-    Present { value: back } => fabric_object_ref_eq(a: r, b: back)
+    Present { value: r } =>
+      match fabric_object_ref_of_wire(wire: fabric_object_ref_wire(object: r) as String) {
+        Absent => false
+        Present { value: back } => fabric_object_ref_eq(a: r, b: back)
+      }
   }
 }
 
 test fn bytes_that_do_not_hash_to_the_asked_ref_are_corrupt_not_served() -> Bool {
-  match fabric_object_verified(asked: fabric_object_ref_of(object: root_object()), content: child_object()) {
-    FabricObjectVerified { stored: _ } => false
-    FabricObjectVerificationFailed { fault: f } => match f { FabricObjectCorrupt { object: _, detail: _ } => true  _ => false }
+  match fabric_object_ref_of(object: root_object()) {
+    Absent => false
+    Present { value: r } =>
+      match child_object() {
+        Absent => false
+        Present { value: c } =>
+          match fabric_object_verified(asked: r, content: c) {
+            FabricObjectVerified { stored: _ } => false
+            FabricObjectVerificationFailed { fault: f } => match f { FabricObjectCorrupt { object: _, detail: _ } => true  _ => false }
+          }
+      }
   }
 }
 
 test fn bytes_that_hash_to_the_asked_ref_verify() -> Bool {
-  match fabric_object_verified(asked: fabric_object_ref_of(object: root_object()), content: root_object()) {
-    FabricObjectVerified { stored: _ } => true
-    FabricObjectVerificationFailed { fault: _ } => false
+  match fabric_object_ref_of(object: root_object()) {
+    Absent => false
+    Present { value: r } =>
+      match fabric_object_verified(asked: r, content: root_object()) {
+        FabricObjectVerified { stored: _ } => true
+        FabricObjectVerificationFailed { fault: _ } => false
+      }
   }
 }
 
 test fn an_absent_expectation_is_refused_by_a_present_head() -> Bool {
-  let at = FabricHeadAt { object: fabric_object_ref_of(object: root_object()), generation: 1 }
-  !fabric_head_admits(expected: ExpectHeadAbsent, observed: at) && fabric_head_admits(expected: ExpectHeadAbsent, observed: FabricHeadAbsent)
+  match fabric_object_ref_of(object: root_object()) {
+    Absent => false
+    Present { value: r } => {
+      let at = FabricHeadAt { object: r, generation: 1 }
+      !fabric_head_admits(expected: ExpectHeadAbsent, observed: at) && fabric_head_admits(expected: ExpectHeadAbsent, observed: FabricHeadAbsent)
+    }
+  }
 }
 
 test fn an_expectation_of_another_object_is_refused_by_the_head() -> Bool {
-  let at = FabricHeadAt { object: fabric_object_ref_of(object: root_object()), generation: 1 }
-  !fabric_head_admits(expected: ExpectHeadAt { object: fabric_object_ref_of(object: child_object()) }, observed: at)
-    && fabric_head_admits(expected: ExpectHeadAt { object: fabric_object_ref_of(object: root_object()) }, observed: at)
+  match fabric_object_ref_of(object: root_object()) {
+    Absent => false
+    Present { value: r } =>
+      match child_object() {
+        Absent => false
+        Present { value: c } =>
+          match fabric_object_ref_of(object: c) {
+            Absent => false
+            Present { value: cr } => {
+              let at = FabricHeadAt { object: r, generation: 1 }
+              !fabric_head_admits(expected: ExpectHeadAt { object: cr }, observed: at)
+                && fabric_head_admits(expected: ExpectHeadAt { object: r }, observed: at)
+            }
+          }
+      }
+  }
+}
+
+// THE INHABITANCE CLAIM, AND THE ONLY ONE HERE THAT WOULD CATCH A DIGEST THAT STOPPED BEING SHA-256.
+//
+// Every claim above asks whether refs AGREE with each other, and all of them would stay green under
+// any deterministic digest -- including the fnv1a64 locator this module just moved off. So none of
+// them is evidence that the mint is cryptographic. This one is: the expected text is the SHA-256 of
+// the exact preimage bytes, computed OUTSIDE this corpus by coreutils sha256sum, so it is an
+// independent oracle rather than a measurement copied from the tree it checks (DESIGN section 5).
+//
+// IT GOES RED IF THE MINT CHANGES FAMILY, changes preimage, or stops computing FIPS 180-4 at all.
+// That is the discriminating property the agreement claims cannot supply.
+test fn the_mint_computes_a_real_sha256_digest() -> Bool {
+  match fabric_object_ref_of(object: root_object()) {
+    Absent => false
+    Present { value: r } =>
+      (fabric_object_ref_wire(object: r) as String) == fabric_storage_root_object_expected_wire
+  }
 }
