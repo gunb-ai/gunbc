@@ -183,7 +183,11 @@ fn vf_root() -> X509Certificate? {
 
 // THE REFUSING ARMS, cheap and discriminating over the real leaf and CA: a subject whose signature
 // algorithm is not an ECDSA one the verifier carries is Absent; an issuer whose key names no curve
-// is Absent; an issuer on a curve the verifier does not carry is Absent. None is a verdict.
+// is Absent; an issuer on a curve the verifier does not carry is Absent. None is a verdict. The
+// VERIFYING links -- Apple's step 1 on real bytes -- are the two computations
+// test.claim.p384_dag_ecdsa_witness_test enrols over the same sample and are not re-made here
+// (review 69668 of gunbc#11989); their executing route is the native gunbc test row the frontier
+// names.
 test fn chain_link_refuses_an_unsupported_algorithm_or_curve_by_absence() -> Bool {
   match vf_x5c(i: 0) {
     Absent => false
@@ -217,33 +221,3 @@ test fn chain_link_refuses_an_unsupported_algorithm_or_curve_by_absence() -> Boo
   }
 }
 
-// THE VERIFYING LINKS -- Apple's step 1 on real bytes: the leaf under CA 1 (SHA-256 digest,
-// P-384 key) and CA 1 under the pinned root (SHA-384, P-384). ENROLLED, NOT EXECUTED on the
-// interpreter: a P-384 verification at 16 limbs exceeds what a session container holds (one P-256
-// verify is 15.5 GiB); the native gunbc test row the frontier names is their executing route, as
-// for #11645's eight P-256 rows.
-test fn the_sample_leaf_link_verifies_under_ca_1() -> Bool {
-  match vf_x5c(i: 0) {
-    Absent => false
-    Present { value: leaf } => match vf_x5c(i: 1) {
-      Absent => false
-      Present { value: ca } => match chain_link_verifies(subject: leaf, issuer: ca) {
-        Present { value: v } => v
-        Absent => false
-      }
-    }
-  }
-}
-
-test fn the_sample_ca_link_verifies_under_the_pinned_root() -> Bool {
-  match vf_x5c(i: 1) {
-    Absent => false
-    Present { value: ca } => match vf_root() {
-      Absent => false
-      Present { value: root } => match chain_link_verifies(subject: ca, issuer: root) {
-        Present { value: v } => v
-        Absent => false
-      }
-    }
-  }
-}

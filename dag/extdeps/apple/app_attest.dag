@@ -102,11 +102,12 @@ data app_attest_nonce_extension_oid: NonEmptyStr = "1.2.840.113635.100.8.2"
 
 // ── The trust anchor ─────────────────────────────────────────────────────────────────────────
 // Apple App Attestation Root CA, published at apple.com/certificateauthority as PEM and pinned
-// here byte for byte: CN=Apple App Attestation Root CA, O=Apple Inc., ST=California; serial
-// 0bf3be0ef1cdd2e0fb8c6e721f621798; secp384r1 key; ecdsa-with-SHA384 self-signature; valid
-// 2020-03-18 to 2045-03-15; SHA-256 of the DER
-// 1cb9823ba28ba6ad2d33a006941de2ae4f513ef1d4e831b9f7e0fa7b6242c932. Step 1 of the validation
-// chains x5c to THIS certificate and no other; a rotation is a new pinned row, never a fetch.
+// here byte for byte: CN=Apple App Attestation Root CA, O=Apple Inc., ST=California; secp384r1
+// key; ecdsa-with-SHA384 self-signature. Step 1 of the validation chains x5c to THIS certificate
+// and no other; a rotation is a new pinned row, never a fetch. ITS IDENTITY IS A DATA ROW, NOT
+// PROSE: apple_app_attestation_root_ca_sha256_hex below is the SHA-256 of the DER these lines
+// decode to, and test.claim.x509_rfc5280_witness_test computes the digest over the decoded PEM and
+// compares (review 69660 of gunbc#11975), so an edited line reds a claim rather than a comment.
 data apple_app_attestation_root_ca_pem_lines: List<String> = [
   "-----BEGIN CERTIFICATE-----",
   "MIICITCCAaegAwIBAgIQC/O+DvHN0uD7jG5yH2IXmDAKBggqhkjOPQQDAzBSMSYw",
@@ -127,6 +128,9 @@ data apple_app_attestation_root_ca_pem_lines: List<String> = [
 fn apple_app_attestation_root_ca_pem() -> String {
   join(apple_app_attestation_root_ca_pem_lines, "\n")
 }
+
+// SHA-256 of the root's DER, as `openssl x509 -outform der | sha256sum` reads it from Apple's PEM.
+data apple_app_attestation_root_ca_sha256_hex: NonEmptyStr = "1cb9823ba28ba6ad2d33a006941de2ae4f513ef1d4e831b9f7e0fa7b6242c932"
 
 // The credential certificate's nonce extension value is DER: SEQUENCE { [1] EXPLICIT OCTET
 // STRING nonce } (Apple, step 3: "the single octet string ... under the sequence"), so the
@@ -566,14 +570,17 @@ fn decode_attestation(object: List<UInt8>) -> AttestationDecode {
   }
 }
 
+// The two chain links are SEQUENCED, not listed: a list evaluates both elements, and each is the
+// most expensive computation in the corpus, so a refused first link must not buy the second
+// (review 69668 of gunbc#11989).
 fn attestation_refusal(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
   match attestation_structural_refusal(parts: d.parts, leaf: d.leaf, ca: d.ca, root: d.root, auth: d.auth, e: e) {
     Present { value: r } => Present { value: r }
     Absent =>
-      first_attestation_refusal(rs: [
-        chain_link_refusal(subject: d.leaf, issuer: d.ca, which: "credential certificate"),
-        chain_link_refusal(subject: d.ca, issuer: d.root, which: "intermediate"),
-      ])
+      match chain_link_refusal(subject: d.leaf, issuer: d.ca, which: "credential certificate") {
+        Present { value: r } => Present { value: r }
+        Absent => chain_link_refusal(subject: d.ca, issuer: d.root, which: "intermediate")
+      }
   }
 }
 

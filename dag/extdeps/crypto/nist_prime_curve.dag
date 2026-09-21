@@ -201,20 +201,42 @@ fn octet_split(xs: List<UInt8>, n: Int) -> OctetSplit {
 //                    a coordinate ≥ p, a point off the curve, r or s outside [1, n−1], or a digest
 //                    longer than the coordinate (the caller must truncate per §6.4.2 step 3; none of
 //                    the (curve, hash) pairs in use here need it, so it is refused rather than done).
-fn curve_ecdsa_verify_octets(c: PrimeCurve, key: List<UInt8>, signature: List<UInt8>, digest: List<UInt8>) -> Bool? {
+// ── Admitting a SEC 1 point ──────────────────────────────────────────────────────────────────
+// ONE PREDICATE for "these octets name a point this curve's arithmetic may be fed": the length,
+// the 0x04 prefix, BOTH COORDINATES BELOW p (std.bignat's Montgomery routines assume reduced
+// residues; an unreduced one computes garbage rather than refusing), and the curve equation. The
+// verifier and every public-key check consume this one fold, so no entry point can skip a
+// precondition another one keeps (review 69664 of gunbc#11981).
+type AdmittedPoint
+  = PointAdmitted { x: BigNat, y: BigNat }
+  | PointNotAdmitted
+
+fn curve_admit_point_octets(c: PrimeCurve, point: List<UInt8>) -> AdmittedPoint {
   let w = c.coordinate_octets
-  if count(key) != 1 + 2 * w || count(signature) != 2 * w || count(digest) > w { none } else {
-    let prefixed = octet_split(xs: key, n: 1)
-    if prefixed.front != [4] { none } else {
+  if count(point) != 1 + 2 * w { PointNotAdmitted } else {
+    let prefixed = octet_split(xs: point, n: 1)
+    if prefixed.front != [4] { PointNotAdmitted } else {
       let coords = octet_split(xs: prefixed.back, n: w)
       let qx = bignat_from_octets(octets: coords.front)
       let qy = bignat_from_octets(octets: coords.back)
-      let rs = octet_split(xs: signature, n: w)
-      let r = bignat_from_octets(octets: rs.front)
-      let s = bignat_from_octets(octets: rs.back)
-      if !bignat_below(a: qx, m: c.p) || !bignat_below(a: qy, m: c.p) || !curve_on_curve(c: c, x: qx, y: qy) { none }
-      else if !bignat_nonzero_below(a: r, m: c.n) || !bignat_nonzero_below(a: s, m: c.n) { none }
-      else { Present { value: curve_verify_checked(c: c, qx: qx, qy: qy, r: r, s: s, digest: digest) } }
+      if !bignat_below(a: qx, m: c.p) || !bignat_below(a: qy, m: c.p) || !curve_on_curve(c: c, x: qx, y: qy) { PointNotAdmitted }
+      else { PointAdmitted { x: qx, y: qy } }
+    }
+  }
+}
+
+fn curve_ecdsa_verify_octets(c: PrimeCurve, key: List<UInt8>, signature: List<UInt8>, digest: List<UInt8>) -> Bool? {
+  let w = c.coordinate_octets
+  if count(signature) != 2 * w || count(digest) > w { none } else {
+    match curve_admit_point_octets(c: c, point: key) {
+      PointNotAdmitted => none
+      PointAdmitted { x: qx, y: qy } => {
+        let rs = octet_split(xs: signature, n: w)
+        let r = bignat_from_octets(octets: rs.front)
+        let s = bignat_from_octets(octets: rs.back)
+        if !bignat_nonzero_below(a: r, m: c.n) || !bignat_nonzero_below(a: s, m: c.n) { none }
+        else { Present { value: curve_verify_checked(c: c, qx: qx, qy: qy, r: r, s: s, digest: digest) } }
+      }
     }
   }
 }

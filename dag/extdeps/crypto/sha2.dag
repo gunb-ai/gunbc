@@ -222,8 +222,8 @@ fn sha256_hex(message: List<UInt8>) -> String {
 // SHA-512 half below mirrors the SHA-256 half step for step, and each mirrored step cites the
 // section it realizes so the correspondence is checkable.
 //
-// §4.2.3: the first 64 bits of the fractional parts of the cube roots of the first 80 primes.
-// Written as Word64 halves; derived from the definition, not transcribed from a table.
+// §4.2.3: the first 64 bits of the fractional parts of the cube roots of the first 80 primes,
+// cited to FIPS 180-4 and written as Word64 halves.
 data sha512_round_constants: List<Word64> = [
   Word64 { hi: 1116352408, lo: 3609767458 }, Word64 { hi: 1899447441, lo: 602891725 }, Word64 { hi: 3049323471, lo: 3964484399 }, Word64 { hi: 3921009573, lo: 2173295548 },
   Word64 { hi: 961987163, lo: 4081628472 }, Word64 { hi: 1508970993, lo: 3053834265 }, Word64 { hi: 2453635748, lo: 2937671579 }, Word64 { hi: 2870763221, lo: 3664609560 },
