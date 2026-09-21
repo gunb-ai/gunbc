@@ -229,6 +229,28 @@ data nft_program: NonEmptyStr = "nft"
 // 172.30.0.0/16` may come back with its operands reordered or its defaults spelled. So an applied
 // file and a listing differ in bytes while agreeing in meaning, and a digest comparison is only
 // honest between two LISTINGS.
-fn nft_list_table_command(family: NftFamily, name: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: nft_program, arguments: ["list", "table", nft_family_wire(f: family), name as String])
+//
+// THE WORDS ARE DECLARED ONCE FOR THE SAME REASON AS THE CONNTRACK LISTING: a direct invocation
+// builds an ArgvCommand here, and a privileged read projection prepends a sudo binary path and needs
+// the same words after it. One upstream fact, one source (DESIGN 3).
+// THE WORD ORDER IS OWNED HERE ONCE AND TAKEN BY BOTH ENTRY POINTS. A caller that already holds the
+// family as its wire spelling -- a privileged-read projection whose operation carries it as a plain
+// word -- must not re-spell `list table` to avoid the NftFamily type, so it takes this variant and
+// the typed one delegates to it.
+fn nft_list_table_arguments_wire(family_wire: NonEmptyStr, name: NonEmptyStr) -> List<NonEmptyStr> {
+  ["list" as NonEmptyStr, "table" as NonEmptyStr, family_wire, name]
 }
+
+fn nft_list_table_arguments(family: NftFamily, name: NonEmptyStr) -> List<NonEmptyStr> {
+  nft_list_table_arguments_wire(family_wire: nft_family_wire(f: family) as NonEmptyStr, name: name)
+}
+
+fn nft_list_table_command(family: NftFamily, name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: nft_program, arguments: map(nft_list_table_arguments(family: family, name: name), a => a as String))
+}
+
+// THE WHOLE RULESET, EVERY FAMILY AND TABLE. nft(8): `list ruleset` prints the complete active
+// ruleset in nft's own syntax, which is what a host-wide readback needs when the table set is not
+// known in advance -- `list table` requires naming one. Same argument-authority shape as above.
+data nft_list_ruleset_arguments: List<NonEmptyStr> = ["list", "ruleset"]
+
