@@ -9,12 +9,13 @@ import std.scoped_authorization { AuthorizationRequest, AuthorizationGranted }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved, PollNotFiled, PollStillPending, PollDenied }
 import gunbc.auth.approval_gate { StandingReadAt, StandingClockUnreadable, ApprovalDenied }
-import gunbc.spark.pair_serving_d0_door { d0_absent_claim_step, D0AbsentClaimClockUnreadable, D0AbsentClaimFileFrozen, D0AbsentClaimEnterPoll, D0AbsentClaimDecided }
+import gunbc.spark.pair_serving_d0_door { d0_absent_claim_step, D0AbsentClaimClockUnreadable, D0AbsentClaimFileFrozen, D0AbsentClaimEnterPoll, D0AbsentClaimDecided, pair_serving_d0_mode_admission, D0ModeAdmitted, D0ModeRefused }
+import gunbc.spark.fabric_switch_observed { fabric_group_wire }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import std.measure { second }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
-import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_text, d0_intent_hash }
+import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_text, d0_intent_hash, d0_frozen_filing_text, parse_d0_frozen_filing }
 import gunbc.spark.v41_runtime_candidate { V41CandidateRefused, V41CandidateUnestablished }
 import gunbc.spark.pair_serving_d0_authorization {
   D0SubjectFor, D0SubjectUnestablished, D0SubjectRefused, d0_live_subject, d0_subject_of_candidate,
@@ -50,28 +51,33 @@ test fn the_live_subject_exists_exactly_when_the_candidate_is_keyed() -> Bool {
   live && refused && pending
 }
 
-// THE FILED REQUEST IS THE FROZEN TEXT, EXACTLY. The intent text a live request is frozen as
-// parses back to the same subject and digests to the same revision, so a rerun re-derives the
-// request the operator decided over; the same text under another group or transaction is refused
-// as another filing, not resumed; and a hosts order in the text is not identity (the wire sorts).
+// THE FILED REQUEST IS THE FROZEN TEXT, EXACTLY, AND THE EXECUTABLE THAT FILED IT. The intent
+// text a live request is frozen as, with the execution revision as its last line, parses back to
+// the same subject and digests to the same revision, so a rerun re-derives the request the
+// operator decided over; the same filing under another transaction, another executing revision,
+// or an intent frozen without its revision, is refused rather than resumed.
 test fn a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction() -> Bool {
   match w_sha(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
     Absent => false
     Present { value: successor } => {
       let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
-      let text = d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-1" as NonEmptyStr)
-      let same = match d0_filed_request(text: text, group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr) {
+      let intent = d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-1" as NonEmptyStr)
+      let text = d0_frozen_filing_text(intent_text: intent, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr)
+      let round_trip = match parse_d0_frozen_filing(text: text) { Present { value: f } => f.intent_text == intent && (f.execution_revision as String) == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"  Absent => false }
+      let other_revision = match d0_filed_request(text: text, group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr, execution_revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as NonEmptyStr) { D0FiledRequestRefused { reason: r } => (r as String).contains("filed by revision aaaa")  _ => false }
+      let same = match d0_filed_request(text: text, group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) {
         D0FiledRequestFor { request: r, intent_text: t } =>
-          t == text
+          t == intent
             && (match d0_intent_hash(subject: subject, group: FabricGroupA, transaction: "tx-1" as NonEmptyStr) { Present { value: h } => (request_revision_of(request: r) as String) == (serialize_content_hash(hash: h) as String)  Absent => false })
             && length(r.subject.hosts) == 4
             && (r.escalation_id as String) == "d0-esc-1"
         D0FiledRequestRefused { reason: _ } => false
       }
-      let other_tx = match d0_filed_request(text: text, group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-2" as NonEmptyStr) { D0FiledRequestRefused { reason: r } => (r as String).contains("tx-1")  _ => false }
-      let garbage = match d0_filed_request(text: "not an intent", group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr) { D0FiledRequestRefused { reason: _ } => true  _ => false }
-      let edited = match d0_filed_request(text: join([text, "x"], ""), group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr) { D0FiledRequestRefused { reason: _ } => true  _ => false }
-      same && other_tx && garbage && edited
+      let other_tx = match d0_filed_request(text: text, group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-2" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0FiledRequestRefused { reason: r } => (r as String).contains("tx-1")  _ => false }
+      let garbage = match d0_filed_request(text: "not an intent", group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0FiledRequestRefused { reason: _ } => true  _ => false }
+      let edited = match d0_filed_request(text: join([text, "x"], ""), group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0FiledRequestRefused { reason: _ } => true  D0FiledRequestFor { request: _, intent_text: _ } => false }
+      let unfrozen = match d0_filed_request(text: intent, group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0FiledRequestRefused { reason: _ } => true  _ => false }
+      round_trip && other_revision && same && other_tx && garbage && edited && unfrozen
     }
   }
 }
@@ -123,4 +129,22 @@ test fn a_frozen_filing_with_no_claim_files_polls_or_decides_live_by_the_read() 
         && (match d0_absent_claim_step(read: StandingClockUnreadable, request: req) { D0AbsentClaimClockUnreadable => true  _ => false })
     }
   }
+}
+
+// THE MODE'S ADMISSION IS PURE AND CARRIES THE LOWER DOOR'S EXACT ARGUMENTS: srv1 declared and
+// srv1 running, a consent and a revision admit Group A with transaction = authorization = the
+// consent and the revision as given; there is no way to name Group B; another declared host, a
+// kernel host that is not srv1 under a declared srv1, a blank consent, a blank revision, and a
+// revision that is not the checked-out tree's HEAD each refuse.
+test fn the_mode_admits_only_srv1_group_a_and_a_named_consent_and_revision() -> Bool {
+  let rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) {
+    D0ModeAdmitted { group: g, transaction: tx, authorization: a, execution_revision: r } => (fabric_group_wire(g: g) as String) == "group-a" && (tx as String) == "d0-esc-1" && (a as String) == "d0-esc-1" && (r as String) == rev
+    D0ModeRefused { reason: _ } => false
+  })
+    && (match pair_serving_d0_mode_admission(declared_host: "srv2", kernel_host: "srv2", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("srv2")  _ => false })
+    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv2", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("runs on srv2")  _ => false })
+    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("GUNBC_D0_CONSENT")  _ => false })
+    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: "", checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("expected_revision")  _ => false })
+    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") { D0ModeRefused { reason: r } => r.contains("not the tree this job runs from")  _ => false })
 }

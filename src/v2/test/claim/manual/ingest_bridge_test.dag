@@ -42,7 +42,7 @@ import v2.std.compilers.target_model {
   TargetModel, target_model_emit_transforms_empty
 }
 import v2.std.coercion { Identity }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected, invariant_port_locus }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_fatal_reason, invariant_port_locus }
 import v2.std.logic { Bool }
 import v2.std.node {
   Conj,
@@ -264,7 +264,8 @@ test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() ->
         )
       ) {
         Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
+        Rejected { diagnostics: d } =>
+          diagnostics_fatal_reason(d: d) == ^infer_grounding_demanded_not_derived
       }
   }
 }

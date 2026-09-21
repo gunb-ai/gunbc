@@ -11,7 +11,7 @@ import v2.compiler.resolve {
 }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { empty_map }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -126,7 +126,7 @@ fn policy_pilot_resolve_rejects_with_reason(
     identity: identity
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == reason
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
   }
 }
 
