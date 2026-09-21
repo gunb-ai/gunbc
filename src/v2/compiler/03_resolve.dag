@@ -22,7 +22,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { length, list_snoc_item }
+import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -44,6 +44,8 @@ import v2.std.diagnostic {
   CorrectionNotModeled,
   Diagnostic,
   Diagnostics,
+  NonEmptyDiagnostics,
+  declaration_locus,
   node_locus,
   Outcome,
   UserInputBoundary,
@@ -66,6 +68,7 @@ import v2.std.symbol_index {
   GlobalBareLookupAmbiguous,
   GlobalBareLookupUnbound,
   LexicalAmbiguous,
+  LexicalBindingCandidate,
   LexicalHit,
   LexicalUnbound,
   SymbolIndex,
@@ -430,6 +433,78 @@ fn ambiguous_symbol_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
+// WHICH LOOKUP WAS AMBIGUOUS, AND BETWEEN WHAT. The three lookups that can answer "two binders"
+// are different questions -- the lexical chain from the referencing position upward, the
+// corpus-wide bare-name index, and a dotted path whose head is bound on the chain while the
+// whole path also hits absolutely -- and a reader repairing the reference needs to know which
+// one, because the repair differs (qualify the reference; rename one declaration; drop the
+// shadowing binder). The competing declarations ride WHERE THE LOOKUP RETAINED THEM: the lexical
+// collector keeps every candidate's path; the global-bare index collapsed its binders to one
+// GlobalBareAmbiguous state at fill time and has nothing to name, which this arm says by carrying
+// nothing rather than by naming a list it does not have; the qualified case names the absolute
+// path that competed. Collapsing all three to one bare SymbolIndexAtomAmbiguous was where the
+// class and the candidates were dropped -- one symbol standing where the resolver had a list.
+type AmbiguousLookupClass
+  = AmbiguousOnLexicalChain { candidates: FreeMonoid<LexicalBindingCandidate> }
+  | AmbiguousOnGlobalBare
+  | AmbiguousQualifiedHeadShadowsAbsolute { path: QualifiedName }
+
+fn ambiguous_lookup_class_diagnostic(n: Node, reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// A COMPETING DECLARATION IS NAMED BY ITS QUALIFIED IDENTITY, NOT CARRIED AS ITS NODE. The index
+// holds each binder's declaration node, and locating the row there would drag the binder's whole
+// body into every persisted row that reports the ambiguity; DeclarationLocus is the citation form
+// (DESIGN section 3: name the symbol, not the position), and it is all a reader needs to find it.
+fn ambiguous_competing_declaration_diagnostic(path: QualifiedName) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_ambiguous_competing_declaration,
+    at: declaration_locus(declaration: path),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// THE ORDER IS CARRIAGE ORDER: class first, competing declarations next, the refusal LAST. The
+// fatal diagnostic of a rejection is its last one (rejected_with_pending prepends what rode
+// along; every consumer that folds to the cause folds to the tail), so the class row and the
+// candidate rows sit in the advisory position and resolve_reason_ambiguous_symbol keeps its place
+// as the reason every roster owns. A consumer that read the HEAD as the cause read an advisory
+// whenever any pending diagnostic was merged in front; that reading was never the contract.
+fn ambiguous_symbol_diagnostics(n: Node, class: AmbiguousLookupClass) -> NonEmptyDiagnostics {
+  let fatal = ambiguous_symbol_diagnostic(n: n)
+  match class {
+    AmbiguousOnLexicalChain { candidates: candidates } =>
+      NonEmptyDiagnostics {
+        head: ambiguous_lookup_class_diagnostic(n: n, reason: ^resolve_ambiguous_on_lexical_chain),
+        tail: list_snoc_item(
+          xs: fold_list(
+            xs: candidates,
+            empty: Empty,
+            cons: fn(acc, candidate) {
+              list_snoc_item(xs: acc, item: ambiguous_competing_declaration_diagnostic(path: candidate.path))
+            }
+          ),
+          item: fatal
+        )
+      }
+    AmbiguousOnGlobalBare =>
+      NonEmptyDiagnostics {
+        head: ambiguous_lookup_class_diagnostic(n: n, reason: ^resolve_ambiguous_on_global_bare),
+        tail: [fatal]
+      }
+    AmbiguousQualifiedHeadShadowsAbsolute { path: path } =>
+      NonEmptyDiagnostics {
+        head: ambiguous_lookup_class_diagnostic(n: n, reason: ^resolve_ambiguous_qualified_head_shadows_absolute),
+        tail: [ambiguous_competing_declaration_diagnostic(path: path), fatal]
+      }
+  }
+}
+
 fn namespace_has_canonical_symbol(namespace: Namespace, name: Symbol) -> Bool {
   namespace.canonical_symbols.member(name)
 }
@@ -458,7 +533,7 @@ fn symbol_index_node_identity(node: Node, fallback: Symbol) -> Symbol {
 
 type SymbolIndexAtomLookup
   = SymbolIndexAtomHit { canonical: Symbol, path: QualifiedName }
-  | SymbolIndexAtomAmbiguous
+  | SymbolIndexAtomAmbiguous { class: AmbiguousLookupClass }
   | SymbolIndexAtomUnbound
 
 fn lookup_symbol_index_atom_identity(
@@ -475,7 +550,8 @@ fn lookup_symbol_index_atom_identity(
         canonical: symbol_index_node_identity(node: node, fallback: name),
         path: path
       }
-    LexicalAmbiguous { candidates: _ } => SymbolIndexAtomAmbiguous
+    LexicalAmbiguous { candidates: candidates } =>
+      SymbolIndexAtomAmbiguous { class: AmbiguousOnLexicalChain { candidates: candidates } }
     LexicalUnbound =>
       match ctx.policy {
         NamespaceOnlyY =>
@@ -488,7 +564,7 @@ fn lookup_symbol_index_atom_identity(
                 canonical: symbol_index_node_identity(node: node, fallback: name),
                 path: path
               }
-            GlobalBareLookupAmbiguous => SymbolIndexAtomAmbiguous
+            GlobalBareLookupAmbiguous => SymbolIndexAtomAmbiguous { class: AmbiguousOnGlobalBare }
             GlobalBareLookupUnbound => SymbolIndexAtomUnbound
           }
         ImportScoped => SymbolIndexAtomUnbound
@@ -558,7 +634,10 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
                 value: Rejected {
                   diagnostics: rejected_with_pending(
                     pending: diagnostics_merge(outer: pending, inner: chain_pending),
-                    rejected: diagnostics_singleton(d: ambiguous_symbol_diagnostic(n: n))
+                    rejected: ambiguous_symbol_diagnostics(
+                      n: n,
+                      class: AmbiguousQualifiedHeadShadowsAbsolute { path: path }
+                    )
                   )
                 }
               )
@@ -688,11 +767,11 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
           match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
             SymbolIndexAtomHit { canonical: canonical, path: path } =>
               resolve_atom_bound(ctx: ctx, n: n, canonical: canonical, path: path, pending: pending)
-            SymbolIndexAtomAmbiguous =>
+            SymbolIndexAtomAmbiguous { class: class } =>
               Rejected {
                 diagnostics: rejected_with_pending(
                   pending: pending,
-                  rejected: diagnostics_singleton(d: ambiguous_symbol_diagnostic(n: n))
+                  rejected: ambiguous_symbol_diagnostics(n: n, class: class)
                 )
               }
             SymbolIndexAtomUnbound =>

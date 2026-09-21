@@ -3,34 +3,35 @@ module v2.test.claim.rust_crate_partition_witness
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
 import std.types { NonEmptyStr }
-import v2.std.collection { Absent, Present, empty_map, map_insert }
+import v2.std.collection { Absent, Present, empty_map, map_get, map_insert }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.compilers.compilation_unit {
-  CompilationUnit,
   CompilationUnitId,
   HandExplicit,
   ModuleDag,
   ModuleDagEdge,
   ModuleId,
   PolicyDerived,
-  PartitionFoldOk,
-  PartitionFoldOutcome,
-  PartitionFoldRefused,
-  PartitionR4Refused,
-  PartitionR4Valid,
   ByValueTypeCycle,
   LinkageCycle,
   SccSplit,
   UnitGraphCycle,
-  partition_fold_outcome,
   partition_provenance_eq,
   partition_provenance_hand_explicit,
   partition_provenance_policy_derived,
   partition_unit_by_id
 }
 import v2.workflow.rust_crate_partition {
+  AssignmentNamesModuleOutsideDag,
+  AssignmentOmitsModule,
+  ExplicitPartition,
+  ExplicitPartitionParam,
+  PartitionParameter,
+  PartitionRustAdmissibilityRefused,
   PolicyPartitionParam,
-  PolicyResolverUnimplemented,
+  PolicyTargetCountNotPositive,
   PartitionPolicy,
+  ResolvePartitionOutcome,
   ResolvePartitionRefused,
   ResolvePartitionOk,
   resolve_partition_outcome,
@@ -56,11 +57,14 @@ import v2.workflow.rust_crate_partition {
   stage0_partition_r4_valid,
   stage0_unit_runtime,
   stage0_unit_v1_infer,
-  stage0_unit_v1_artifact,
-  validate_partition_r4
+  stage0_unit_v1_artifact
 }
 
-data witness_red_control_note: String = "Discriminating RED: (1) assign std_algebra and std_nat to different units while keeping std_nat -> std_algebra edge → validate_partition_r4 returns SccSplit refusal; (2) fabricate a cyclic unit dep graph → UnitGraphCycle refusal; (3) drop a module from explicit assignment → partition_fold_outcome refuses or unit member count diverges."
+// Every red control below runs through resolve_partition_outcome itself, the one entry an
+// assignment passes before anything may realize it: an SCC divided between units, a unit graph
+// with a cycle, a module left unowned, a module the DAG does not carry, and a non-positive policy
+// target each refuse with their own cause. The policy positives assert the ROUTE -- PolicyDerived
+// provenance naming the resolver -- as well as the answer.
 
 data witness_mod_a: ModuleId = "witness.scc.a" as NonEmptyStr
 data witness_mod_b: ModuleId = "witness.scc.b" as NonEmptyStr
@@ -93,64 +97,153 @@ fn witness_forced_scc_split_assignment() -> Map<ModuleId, CompilationUnitId> {
     |> map_insert(witness_mod_c, witness_unit_y)
 }
 
-test fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
-  let dag = witness_triangle_scc_dag()
-  let assignment = witness_forced_scc_split_assignment()
-  let units = match partition_fold_outcome(module_dag: dag, assignment: assignment) {
-    PartitionFoldOk { units: units } => units
-    PartitionFoldRefused { cause: _ } => []
-  }
-  match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
-    PartitionR4Refused { cause: SccSplit { detail: _ } } => true
-    PartitionR4Refused { cause: UnitGraphCycle { detail: _ } } => false
-    PartitionR4Refused { cause: LinkageCycle { detail: _ } } => false
-    PartitionR4Refused { cause: ByValueTypeCycle { detail: _ } } => false
-    PartitionR4Valid => false
+fn witness_explicit(assignment: Map<ModuleId, CompilationUnitId>) -> PartitionParameter {
+  ExplicitPartitionParam { partition: ExplicitPartition { assignment: assignment } }
+}
+
+fn witness_refused_by_rust_rule(outcome: ResolvePartitionOutcome) -> String {
+  match outcome {
+    ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: SccSplit { detail: _ } } } => "scc-split"
+    ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: UnitGraphCycle { detail: _ } } } => "unit-graph-cycle"
+    ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: LinkageCycle { detail: _ } } } => "linkage-cycle"
+    ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: ByValueTypeCycle { detail: _ } } } => "by-value-type-cycle"
+    ResolvePartitionRefused { cause: PolicyTargetCountNotPositive { policy: _ } } => "target-not-positive"
+    ResolvePartitionRefused { cause: AssignmentOmitsModule { module_id: _ } } => "omits-module"
+    ResolvePartitionRefused { cause: AssignmentNamesModuleOutsideDag { module_id: _ } } => "outside-dag"
+    ResolvePartitionOk { assignment: _, provenance: _ } => "admitted"
   }
 }
 
-fn witness_acyclic_module_dag() -> ModuleDag {
+test fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
+  witness_refused_by_rust_rule(outcome: resolve_partition_outcome(
+    parameter: witness_explicit(assignment: witness_forced_scc_split_assignment()),
+    module_dag: witness_triangle_scc_dag()
+  )) == "scc-split"
+}
+
+data witness_mod_r: ModuleId = "witness.unit.r" as NonEmptyStr
+data witness_mod_s: ModuleId = "witness.unit.s" as NonEmptyStr
+
+// Acyclic at module grain, cyclic at unit grain: p -> q crosses P -> Q and r -> s crosses Q -> P.
+fn witness_crossing_module_dag() -> ModuleDag {
   ModuleDag {
-    modules: [witness_mod_p, witness_mod_q],
-    edges: [ModuleDagEdge { from: witness_mod_p, to: witness_mod_q }],
+    modules: [witness_mod_p, witness_mod_q, witness_mod_r, witness_mod_s],
+    edges: [
+      ModuleDagEdge { from: witness_mod_p, to: witness_mod_q },
+      ModuleDagEdge { from: witness_mod_r, to: witness_mod_s },
+    ],
     exports: empty_map(),
     type_definitions: empty_map(),
   }
 }
 
-fn witness_two_unit_assignment_no_scc_split() -> Map<ModuleId, CompilationUnitId> {
+fn witness_crossing_unit_assignment() -> Map<ModuleId, CompilationUnitId> {
   empty_map()
     |> map_insert(witness_mod_p, witness_unit_p)
+    |> map_insert(witness_mod_s, witness_unit_p)
     |> map_insert(witness_mod_q, witness_unit_q)
-}
-
-fn witness_cyclic_unit_graph() -> List<CompilationUnit> {
-  [
-    CompilationUnit {
-      id: witness_unit_p,
-      members: [witness_mod_p],
-      interface: [],
-      deps: [witness_unit_q]
-    },
-    CompilationUnit {
-      id: witness_unit_q,
-      members: [witness_mod_q],
-      interface: [],
-      deps: [witness_unit_p]
-    }
-  ]
+    |> map_insert(witness_mod_r, witness_unit_q)
 }
 
 test fn witness_r4_refuses_unit_graph_cycle_holds() -> Bool {
-  let dag = witness_acyclic_module_dag()
-  let assignment = witness_two_unit_assignment_no_scc_split()
-  let units = witness_cyclic_unit_graph()
-  match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
-    PartitionR4Refused { cause: UnitGraphCycle { detail: _ } } => true
-    PartitionR4Refused { cause: SccSplit { detail: _ } } => false
-    PartitionR4Refused { cause: LinkageCycle { detail: _ } } => false
-    PartitionR4Refused { cause: ByValueTypeCycle { detail: _ } } => false
-    PartitionR4Valid => false
+  witness_refused_by_rust_rule(outcome: resolve_partition_outcome(
+    parameter: witness_explicit(assignment: witness_crossing_unit_assignment()),
+    module_dag: witness_crossing_module_dag()
+  )) == "unit-graph-cycle"
+}
+
+test fn explicit_assignment_leaving_a_module_unowned_refuses() -> Bool {
+  witness_refused_by_rust_rule(outcome: resolve_partition_outcome(
+    parameter: witness_explicit(assignment: empty_map()
+      |> map_insert(witness_mod_p, witness_unit_p)
+      |> map_insert(witness_mod_q, witness_unit_q)
+      |> map_insert(witness_mod_r, witness_unit_q)),
+    module_dag: witness_crossing_module_dag()
+  )) == "omits-module"
+}
+
+test fn explicit_assignment_naming_a_module_outside_the_dag_refuses() -> Bool {
+  witness_refused_by_rust_rule(outcome: resolve_partition_outcome(
+    parameter: witness_explicit(assignment: witness_forced_scc_split_assignment() |> map_insert(witness_mod_p, witness_unit_x)),
+    module_dag: witness_triangle_scc_dag()
+  )) == "outside-dag"
+}
+
+test fn policy_target_below_one_refuses() -> Bool {
+  witness_refused_by_rust_rule(outcome: resolve_partition_outcome(
+    parameter: PolicyPartitionParam { policy: PartitionPolicy { target_crate_count: 0 } },
+    module_dag: witness_crossing_module_dag()
+  )) == "target-not-positive"
+}
+
+// A chain with one cycle in the middle: e -> d -> {c <-> b} -> a. Five modules, two targets.
+data witness_chain_a: ModuleId = "witness.chain.a" as NonEmptyStr
+data witness_chain_b: ModuleId = "witness.chain.b" as NonEmptyStr
+data witness_chain_c: ModuleId = "witness.chain.c" as NonEmptyStr
+data witness_chain_d: ModuleId = "witness.chain.d" as NonEmptyStr
+data witness_chain_e: ModuleId = "witness.chain.e" as NonEmptyStr
+
+fn witness_chain_dag(edges: List<ModuleDagEdge>) -> ModuleDag {
+  ModuleDag {
+    modules: [witness_chain_a, witness_chain_b, witness_chain_c, witness_chain_d, witness_chain_e],
+    edges: edges,
+    exports: empty_map(),
+    type_definitions: empty_map(),
+  }
+}
+
+fn witness_chain_edges() -> List<ModuleDagEdge> {
+  [
+    ModuleDagEdge { from: witness_chain_e, to: witness_chain_d },
+    ModuleDagEdge { from: witness_chain_d, to: witness_chain_c },
+    ModuleDagEdge { from: witness_chain_c, to: witness_chain_b },
+    ModuleDagEdge { from: witness_chain_b, to: witness_chain_c },
+    ModuleDagEdge { from: witness_chain_b, to: witness_chain_a },
+  ]
+}
+
+fn witness_policy_two() -> PartitionParameter {
+  PolicyPartitionParam { policy: PartitionPolicy { target_crate_count: 2 } }
+}
+
+fn witness_owner(assignment: Map<ModuleId, CompilationUnitId>, module_id: ModuleId) -> String {
+  match map_get(assignment, module_id) {
+    Accepted { value: Present { value: unit }, diagnostics: _ } => unit as String
+    Accepted { value: Absent, diagnostics: _ } => "unowned"
+    Rejected { diagnostics: _ } => "unowned"
+  }
+}
+
+// The positive control, and the route: the policy arm admits, stamps PolicyDerived naming the
+// resolver, gives every module an owner, keeps the cycle {b, c} in one unit, and puts the
+// dependency end of the chain in the first unit. Five modules over two units is a quota of three:
+// a, then {b, c}, fill the first unit; d and e open the second.
+test fn policy_partition_admits_a_balanced_acyclic_assignment() -> Bool {
+  match resolve_partition_outcome(parameter: witness_policy_two(), module_dag: witness_chain_dag(edges: witness_chain_edges())) {
+    ResolvePartitionOk { assignment: assignment, provenance: PolicyDerived { policy: policy } } =>
+      (policy.decl_name as String) == "policy_partition_assignment"
+        && witness_owner(assignment: assignment, module_id: witness_chain_a) == "policy-unit-0"
+        && witness_owner(assignment: assignment, module_id: witness_chain_b) == "policy-unit-0"
+        && witness_owner(assignment: assignment, module_id: witness_chain_c) == "policy-unit-0"
+        && witness_owner(assignment: assignment, module_id: witness_chain_d) == "policy-unit-1"
+        && witness_owner(assignment: assignment, module_id: witness_chain_e) == "policy-unit-1"
+    ResolvePartitionOk { assignment: _, provenance: HandExplicit } => false
+    ResolvePartitionRefused { cause: _ } => false
+  }
+}
+
+// The mutation control: one import edge is added, and the assignment the resolver derives must
+// move with it. a -> e closes the whole chain into one cycle, so the resolver may no longer split
+// it and every module shares e's owner -- where the unmutated positive control puts a and e in
+// different units. A resolver that ignored its edges would read the positive control's owners and
+// fail here.
+test fn a_mutated_import_edge_moves_the_policy_assignment() -> Bool {
+  let mutated = witness_chain_edges() |> list_push(ModuleDagEdge { from: witness_chain_a, to: witness_chain_e })
+  match resolve_partition_outcome(parameter: witness_policy_two(), module_dag: witness_chain_dag(edges: mutated)) {
+    ResolvePartitionOk { assignment: assignment, provenance: _ } =>
+      witness_owner(assignment: assignment, module_id: witness_chain_a) == witness_owner(assignment: assignment, module_id: witness_chain_e)
+        && witness_owner(assignment: assignment, module_id: witness_chain_b) == witness_owner(assignment: assignment, module_id: witness_chain_e)
+    ResolvePartitionRefused { cause: _ } => false
   }
 }
 
@@ -171,18 +264,6 @@ test fn witness_interim_physical_crate_count_holds() -> Bool {
 
 test fn witness_interim_module_bearing_unit_count_holds() -> Bool {
   stage0_module_bearing_unit_count() == rust_crate_partition_module_bearing_unit_target
-}
-
-test fn witness_policy_partition_refuses_holds() -> Bool {
-  match resolve_partition_outcome(
-    parameter: PolicyPartitionParam {
-      policy: PartitionPolicy { target_crate_count: rust_crate_partition_declared_core_target }
-    },
-    module_dag: stage0_module_dag
-  ) {
-    ResolvePartitionRefused { cause: PolicyResolverUnimplemented { policy: _ } } => true
-    ResolvePartitionOk { assignment: _ } => false
-  }
 }
 
 test fn witness_interim_provenance_is_hand_explicit_holds() -> Bool {
@@ -279,7 +360,7 @@ test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
 
 test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
   match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: stage0_module_dag) {
-    ResolvePartitionOk { assignment: resolved } => {
+    ResolvePartitionOk { assignment: resolved, provenance: _ } => {
       let expected = stage0_interim_explicit_assignment()
       (resolved |> count) == (expected |> count)
     }

@@ -40,10 +40,10 @@ import v2.std.grammar_choice_ambiguity {
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.diagnostic { Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual }
+import v2.std.diagnostic { DeclarationLocus, Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
-import v2.std.qualified_name { QualifiedName }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
 
 data non_empty_symbol_chain_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "cut_over_assemble_rejection_chain — NonEmptySymbolChain is FreeSemigroup<Symbol> by shape. std.algebra FreeSemigroup is already in the tree. Dissolve when the four mints in v2.compiler.self_host.frontier_probe_assemble_detail (non_empty_symbol_chain_from_non_empty_parse_stage, non_empty_symbol_chain_from_non_empty_diagnostics, non_empty_symbol_chain_from_parse_stage_head, non_empty_symbol_chain_from_diagnostic_list) and the literal in v2.test.fixture.frontier_probe_cause_location_manifest_fixture construct FreeSemigroup<Symbol>, then delete this type. The previous event name migrate_when_free_semigroup_available has already fired.")
@@ -148,6 +148,7 @@ type FrontierProbeCauseLocation
   = CauseLocationTextual { file: String, extent: Extent }
   | CauseLocationSourcePort { port: Symbol, file: String, extent: Extent }
   | CauseLocationInvariantPort { port: Symbol, invariant: Symbol }
+  | CauseLocationDeclaration { declaration: String }
   | CauseLocationNodeNotSerializable
 
 fn frontier_probe_cause_location_from_locus(at: Locus) -> FrontierProbeCauseLocation {
@@ -159,6 +160,8 @@ fn frontier_probe_cause_location_from_locus(at: Locus) -> FrontierProbeCauseLoca
       CauseLocationSourcePort { port: p.at, file: symbol_lexeme(sym: f), extent: e }
     InvariantPortLocus { anchor: p, invariant: invariant } =>
       CauseLocationInvariantPort { port: p.at, invariant: invariant }
+    DeclarationLocus { declaration: declaration } =>
+      CauseLocationDeclaration { declaration: qualified_name_to_dotted_string(qn: declaration) }
   }
 }
 

@@ -174,6 +174,18 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "the node grounding frontier (v2.compiler.infer node_grounding_frontier_note) observed at prepare, where the carried diagnostic is fatal rather than eval-gated; flips to Blocking when the count zeroes, which the frontier note's dissolve-on conditions own. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (2 v2.test.* members, both in v2.test.manual.recompute_trace_probe)"
   },
   CauseOwnership {
+    cause: ^infer_grounding_demanded_not_derived,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a consumer demanded a canonical grounding (coercion, translate's coerce fold, eval's constraints) of a node the grounding frontier left underived (v2.compiler.infer node_grounding_frontier_note). Until 2026-09-21 this refusal was spelled with the advisory's own symbol, infer_grounding_not_derived; same frontier, split out so a chain can tell the refusing link from the frontier rows in front of it. Flips to Blocking when the count zeroes, which the frontier note's dissolve-on conditions own"
+  },
+  CauseOwnership {
+    cause: ^translate_rejected_grounding_not_derived,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "translate's grounding gate refuses a node it must emit whose inferred facts carry no DerivedGrounding -- the node grounding frontier (v2.compiler.infer node_grounding_frontier_note) observed at emission. Until 2026-09-21 this refusal was spelled with the advisory's own symbol, infer_grounding_not_derived, so its population was counted under that row; it is the same frontier at the emit stage, split out so a chain can tell the refusing link from the frontier rows in front of it. Flips to Blocking when the count zeroes, which the frontier note's dissolve-on conditions own"
+  },
+  CauseOwnership {
     cause: ^eval_rejected_grounding_not_derived,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,

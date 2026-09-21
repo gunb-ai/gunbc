@@ -55,13 +55,30 @@ authority a future repair is written against. The remaining cuts were designed b
 they replace the approach in the closed #11596 rather than salvaging it — that PR decided the
 meaning of each reading inside effectful routing, which is why it took ten review rounds.
 
-- **Cut 2 (A)** — producers: the shared marker-query constructor, the Drive superseded-marker
-  producer, and the subject-bound operator-declaration reader. They emit `LegacyExtentEvidence`
-  and call the one complete join. They decide no standing. This cut discharges the kernel's
-  enrolled consumer frontier, whose triggers name **execution** rather than import.
-- **Cut 3 (C1)** — declared-id admission: reconcile a `LegacyFileSelection` against a standing, a
-  contradicting observation, an exact file-by-id preflight and the intended subject. Until this
-  runs, a selected file beside an unresolved extent stays unresolved.
+- **Cut 2 (A)** — LANDED. The shared marker-query constructor is
+  `gunbc.review_sheet_drive_converge` `review_sheet_marker_query`, one shape over a field
+  parameter; the Drive superseded-marker producer and the subject-bound operator-declaration
+  reader are `gunbc.review_sheet_legacy_extent_producer`; the decision over a standing is
+  `gunbc.review_sheet_identity_converge` `ensure_review_spreadsheet_on_identity`, which REPLACED
+  the observation-only `ensure_review_spreadsheet` rather than landing beside it. The production
+  caller is `gunbc.review_sheet_spreadsheet_actuator` `converge_review_spreadsheet`, reached from
+  the argv-free `converge_drive_half_cli`. Two of the kernel's three frontier rows retired by
+  execution; `LegacyFileSelection` remains.
+  **The behaviour change worth knowing before the next live run:** a current-marked file beside an
+  unsettled superseded extent now REFUSES instead of adopting, and the discharge is an operator
+  declaration at `review_sheet_legacy_declaration_path` carrying the subject in its content.
+- **Cut 3 (C1)** — LANDED, as `gunbc.review_sheet_declared_id_admission`. `declared_id_candidacy`
+  reconciles a `LegacyFileSelection` against the intended subject, the standing and a contradicting
+  observation, in that order and before any request; `preflight_file_by_id` is a new
+  `drive.Files.GetFile` whose field mask names every required field of `DriveFile`, and
+  `admit_preflighted_file` binds the readback to the requested id rather than to the status.
+  `converge_review_spreadsheet` asks the admission first and reports
+  `SpreadsheetAdoptedByDeclaredId` for an admitted one. **The refusal that must not be widened:** a
+  selection beside an unresolved extent stays unresolved — the operator has said which file they
+  chose, not that no other lineage exists. The discharge is an `"absent"` declaration, which is a
+  statement about the world and has a kernel arm.
+  The operator declaration file now admits two `legacy_extent` values, `"absent"` and `"selected"`;
+  a `"selected"` one also carries `file_id`. Both carry all five subject members.
 - **Cut 4 (C2)** — `UpdateFileProperties` PATCH and the readback that asserts the patched file id
   rather than a count. The field mask must name every required field of its declared response
   type; `fields=id` against a `DriveFile` decodes short and reports a landed write as a transport

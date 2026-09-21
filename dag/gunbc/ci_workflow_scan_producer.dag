@@ -5,9 +5,7 @@ import std.nat { Nat, nat_range_inclusive }
 import std.resources { Network }
 import extdeps.github.code_search {
   CodeSearchPageSize,
-  CodeSearchPage,
   CodeSearchHit,
-  code_search_hits_read,
   retrievable_result_ceiling,
   deepest_retrievable_page,
 }
@@ -20,7 +18,6 @@ import gunbc.ci_workflow_source_read {
 }
 import gunbc.github_observation_record {
   GithubObservation,
-  GithubObservationRequest,
   CodeSearchPageRequest,
   digest_unobservable,
   ObservationCompleteness,
@@ -28,7 +25,6 @@ import gunbc.github_observation_record {
   ObservationTruncatedUpstream,
   ObservationMorePagesRemain,
   ObservationRefused,
-  ObservationBudgetStanding,
   github_observation,
   budget_unobservable,
 }

@@ -3,7 +3,9 @@
 
 use self::IntegerOverflowSemantics::*;
 use self::OverflowReturnValueRule::*;
+use self::QualifiedOctetsResult::*;
 use self::Signedness::*;
+use self::UInt8Result::*;
 pub use crate::std_algebra::{AbelianGroup, GroupCompletion};
 pub use crate::std_induction::int_pow_bounded;
 pub use crate::std_machine_constraints::{Compose, MachineWidth, PointerWidth};
@@ -49,6 +51,98 @@ pub type UInt128 =
 pub type Int = i64;
 
 pub type UInt = i64;
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UInt8Result {
+    UInt8Ready { value: i64 },
+    UInt8OutOfRange { observed: i64 },
+}
+
+pub fn uint8_of_int(value: Int) -> Rc<UInt8Result> {
+    match crate::std_induction::int_pow_bounded(2, uint8_channel_bit_width_int()) {
+        std::option::Option::None => Rc::new(UInt8Result::UInt8OutOfRange {
+            observed: value.clone(),
+        }),
+        Some(modulus) => {
+            if ((value.clone() < 0) || (value.clone() >= modulus.clone())) {
+                Rc::new(UInt8Result::UInt8OutOfRange {
+                    observed: value.clone(),
+                })
+            } else {
+                Rc::new(UInt8Result::UInt8Ready {
+                    value: value.clone(),
+                })
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct QualifiedOctets {
+    members: Rc<Vec<i64>>,
+}
+impl QualifiedOctets {
+    pub fn members(&self) -> Rc<Vec<i64>> {
+        self.members.clone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(tag = "_variant")]
+pub enum QualifiedOctetsResult {
+    QualifiedOctetsReady { value: Rc<QualifiedOctets> },
+    QualifiedOctetsRefused { observed: i64 },
+}
+
+pub fn qualified_octets(members: Rc<Vec<i64>>) -> Rc<QualifiedOctets> {
+    Rc::new(QualifiedOctets {
+        members: members.clone(),
+    })
+}
+
+pub fn uint8_octets_of_ints(values: Rc<Vec<i64>>) -> Rc<QualifiedOctetsResult> {
+    match first_uint8_out_of_range(values.clone()) {
+        Some(observed) => Rc::new(QualifiedOctetsResult::QualifiedOctetsRefused {
+            observed: observed.clone(),
+        }),
+        std::option::Option::None => Rc::new(QualifiedOctetsResult::QualifiedOctetsReady {
+            value: qualified_octets(values.clone()),
+        }),
+    }
+}
+
+pub fn first_uint8_out_of_range(mut __tco_loop_remaining: Rc<Vec<i64>>) -> Option<Int> {
+    loop {
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining;
+        match remaining.clone().first().cloned() {
+            std::option::Option::None => {
+                break std::option::Option::None;
+            }
+            Some(head) => match (*uint8_of_int(head.clone())).clone() {
+                UInt8Result::UInt8OutOfRange { observed: o, .. } => {
+                    break Some(o.clone());
+                }
+                UInt8Result::UInt8Ready { value: _, .. } => {
+                    let __tco_0 = Rc::new(
+                        remaining
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
+                    __tco_loop_remaining = __tco_0;
+                    continue;
+                }
+            },
+        }
+    }
+}
+
+pub fn qualified_octet_members(q: Rc<QualifiedOctets>) -> Rc<Vec<i64>> {
+    q.members()
+}
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
