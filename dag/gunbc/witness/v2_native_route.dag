@@ -12,9 +12,9 @@ import extdeps.bazel.target_pattern { SubtreeTargets, TargetPattern }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
-  NativeTestFileRefusal, native_test_verdict_text, native_test_stage_text
+  NativeTestFileRefusal, native_test_verdict_text, native_test_stage_eq
 }
-import v2.std.diagnostic { diagnostics_fatal_reason }
+import v2.std.diagnostic { Some, diagnostics_fatal_reason, diagnostics_has_reason }
 import v2.workflow.compile_door_cause_ownership {
   CauseLane, DiagnosticGrain, FatalGrain, HeadGrain, cause_ownership_lookup, known_frontier_causes
 }
@@ -928,10 +928,6 @@ data native_route_live_pair_standing: NativeRouteLivePairStanding = LivePairExpe
   trigger: "the native resolver admits the retained forms (v2 foundation package 12, the namespace candidate rule)"
 }
 
-fn native_route_stage_eq(a: NativeTestStage, b: NativeTestStage) -> Bool {
-  native_test_stage_text(stage: a) == native_test_stage_text(stage: b)
-}
-
 // A CONTROL MATCHES THE ENROLLMENT ONLY AS THE PINNED REFUSAL, ON ALL THREE AXES: the stage, the
 // FATAL reason (`diagnostics_fatal_reason` -- the last diagnostic, never the head, which is
 // whatever advisory was pending first; review 69726), and the lookup CLASS carried somewhere in the
@@ -950,9 +946,9 @@ fn native_route_control_is_pinned_red(
     Present { value: v } =>
       match v {
         NativeTestRefused { stage: s, diagnostics: d } =>
-          native_route_stage_eq(a: s, b: stage)
+          native_test_stage_eq(a: s, b: stage)
             && diagnostics_fatal_reason(d: d) == fatal_reason
-            && (d.head.reason == class_reason || any(xs: d.tail, predicate: fn(x) { x.reason == class_reason }))
+            && diagnostics_has_reason(d: Some { diagnostics: d }, reason: class_reason)
         NativeTestPassed => false
         NativeTestReturnedFalse => false
         NativeTestReturnedOther => false
