@@ -2534,6 +2534,36 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_2GPKWK8FXAKETC8ATH3MJEXEXC",
+      id: "fleet-convergence-census-closure",
+      owner: "fleet",
+      path: "docs/plans/convergence-one-program.md",
+      t: fields(
+        headline: "Every effect that changes a machine goes through the one checked route",
+        boundary: "The census already lists every effect that changes lasting state. Work through what it lists, one family of effects at a time, and for each one say who chose the desired state, what looked at reality, what compared them, what plan was allowed, what carried it out, and what checked afterwards. Where the honest answer is that it never converged, rename it to what it actually does.",
+        displaced_cost: "Effects that change real machines while calling themselves converged, so nobody can tell which ones were actually checked.",
+        first_slice: "Close one effect family, and let the census say which are left.",
+        red_control: "An effect that reports success from its own write, with nothing reading the result back, must not pass.",
+        out_of_scope: "No new migrations invented here; the census is the list.",
+        handback: "The census, with every family either closed, truthfully renamed, or named as outstanding."
+      )
+    ),
+    active(
+      identity: "rn_W964QANFVKCPEBGKP50F0036KH",
+      id: "fleet-convergence-legacy-deletion",
+      owner: "fleet",
+      path: "docs/plans/convergence-one-program.md",
+      t: fields(
+        headline: "Delete the routes that were replaced, and make them hard to grow back",
+        boundary: "Once the checked route is the real one, the older ways of changing the same machine state are deleted rather than left beside it. A check then refuses a change that adds a new one, by comparing against the list of things that actually produce effects rather than by searching for suspicious names.",
+        displaced_cost: "A replaced route left standing is where the next author looks first, so the old way quietly comes back.",
+        first_slice: "Delete one superseded route whose replacement is executing, and prove what refuses when it is gone.",
+        red_control: "Re-adding a second route for an effect that already has a checked one must fail the check.",
+        out_of_scope: "No behaviour moves here; anything still needing one belongs in the census work.",
+        handback: "Nothing left that changes lasting state outside the checked route, and a check that says so."
+      )
+    ),
+    active(
       identity: "rn_Y33HNQA0BZ3S6FGMNT96M526MM",
       id: "fleet-dashboard-instance-membership",
       owner: "fleet",
@@ -3331,6 +3361,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fleet-bmc-policy-convergence", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "shell-gate-migration"),
+    edge(child: "fleet-convergence-census-closure", parent: "fleet-closed-loop-converge"),
+    edge(child: "fleet-convergence-legacy-deletion", parent: "fleet-convergence-census-closure"),
     edge(child: "fleet-dashboard-instance-membership", parent: "fleet-state-frontier"),
     edge(child: "roadmap-serve-emitted-realization", parent: "fleet-state-frontier"),
     edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
