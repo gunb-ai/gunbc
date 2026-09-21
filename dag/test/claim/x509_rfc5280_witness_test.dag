@@ -240,6 +240,28 @@ test fn extra_children_refuse() -> Bool {
   }
 }
 
+// §4.2 FORBIDS TWO INSTANCES OF ONE EXTENSION: the real leaf with its keyUsage extension (16
+// octets at 405) spliced in twice, the three enclosing lengths rewritten -- [3] 0x81ff -> 0x820110
+// and the extensions SEQUENCE 0x81fc -> 0x82010c (each header one octet wider), TBS 0x027b ->
+// 0x028d, outer 0x02f5 -> 0x0307 -- decodes as DER and refuses X509ExtensionDuplicated for
+// 2.5.29.15 when that extension is looked up.
+test fn a_duplicated_extension_refuses_on_lookup() -> Bool {
+  let leaf = sample_x5c(i: 0)
+  let key_usage = leaf |> skip(405) |> take(16)
+  let mutated = concat(
+    concat(concat(leaf |> take(2), [3, 7]), concat(leaf |> skip(4) |> take(2), [2, 141])),
+    concat(concat(leaf |> skip(8) |> take(377), [163, 130, 1, 16, 48, 130, 1, 12]), concat(leaf |> skip(391) |> take(14), concat(key_usage, leaf |> skip(405)))),
+  )
+  match decode_certificate(octets: mutated) {
+    X509Refused { cause: _ } => false
+    X509Decoded { certificate: c } =>
+      match x509_extension(cert: c, oid: "2.5.29.15") {
+        X509ExtensionDuplicated { oid: "2.5.29.15" } => count(c.tbs.extensions) == 6
+        _ => false
+      }
+  }
+}
+
 // ECDSA-Sig-Value: the assertion's 70-octet DER signature renders as 64 fixed octets at width
 // 32; the leaf's signature (a P-384 CA signed it) renders as 96 at width 48; the same assertion
 // signature at width 16 refuses as too wide rather than truncating a component.

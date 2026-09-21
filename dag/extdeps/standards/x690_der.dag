@@ -28,19 +28,16 @@ type DerTagClass
   | DerContextSpecific
   | DerPrivate
 
-// Universal tag numbers this profile reads (§8.1.2.4, Table 2 -- the numbers are the standard's).
+// Universal tag numbers this profile reads (§8.1.2.4, Table 2 -- the numbers are the standard's);
+// a tag no reader consumes is not rostered here (review 69676 of gunbc#11975).
 data der_tag_boolean: Int = 1
 data der_tag_integer: Int = 2
 data der_tag_bit_string: Int = 3
 data der_tag_octet_string: Int = 4
-data der_tag_null: Int = 5
 data der_tag_object_identifier: Int = 6
-data der_tag_utf8_string: Int = 12
-data der_tag_printable_string: Int = 19
 data der_tag_utc_time: Int = 23
 data der_tag_generalized_time: Int = 24
 data der_tag_sequence: Int = 16
-data der_tag_set: Int = 17
 
 // One element located in its buffer: where its contents start and how long they are, and where
 // the next element begins. The contents are not copied out; readers slice on demand, and the
