@@ -6,7 +6,7 @@ import std.content_hash { ContentHash, serialize_content_hash }
 import std.artifact_store { artifact_realization_digest }
 import std.decl_ref { DeclarationRef }
 import v2.std.optional { Present, Absent }
-import gunbc.spark.v41_runtime_candidate { v41_input }
+import gunbc.spark.v41_identity_input { v41_input }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncoding, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
 }

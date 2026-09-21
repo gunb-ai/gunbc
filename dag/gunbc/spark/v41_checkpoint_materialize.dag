@@ -1,0 +1,638 @@
+module gunbc.spark.v41_checkpoint_materialize
+
+import std.types { String, Bool, Int, List, NonEmptyStr, Secret }
+import std.nat { Nat }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.algebra { trim }
+import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
+import std.measure { byte_size_count }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.crypto.hash { sha256sum_argv, sha256sum_line_digest }
+import extdeps.huggingface.hub { hub_resolve_url, hub_repo_cache_directory_name }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  DeepseekV41PublishedFile,
+  deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision,
+  deepseek_v4_1_flash_weight_manifest_standing, WeightManifestAdmitted, WeightManifestRefused,
+  deepseek_v4_1_flash_tokenizer_standing, TokenizerPopulationAdmitted, TokenizerPopulationRefused,
+  deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
+}
+import gunbc.artifact_acquisition {
+  AcquisitionSubject, AcquisitionSource, SourceArgv, SourceUrl, ContentDigestSha256, UpstreamRevision,
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch, AcquisitionProbeFailed,
+  AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused,
+  AcquisitionAttempt, AttemptTerminal, AttemptFailedKey, AttemptRejected, AttemptUnreachable,
+  VerifyMechanismFailed, PublishFailed,
+  AcquisitionHandler, acquire_artifact, acquisition_refusal_text, acquisition_succeeded,
+}
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run, HostCli,
+  SparkTransferState, TransferAbsent, TransferRunning, TransferExitedClean, TransferExitedFailed, TransferStateUnreadable,
+  spark_transfer_state, spark_transfer_clear,
+  TransferStartOutcome, TransferStarted, TransferStartRejected, TransferStartUnreachable, spark_transfer_start_argv,
+  SparkTransferSupervision, SupervisedExitClean, SupervisedExitFailed, SupervisedStillRunning, SupervisedTransferUnitAbsent, SupervisionLost,
+  spark_transfer_supervise,
+}
+import gunbc.spark.model_snapshot_acquisition { spark_hub_cache_root }
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition }
+import gunbc.spark.v41_engram_row_store {
+  V41PublishedSpan, V41PublishedSpanPlan, V41PublishedSpansPlanned, V41PublishedSpansUnplannable,
+  V41PublishedSpanDigest, v41_published_span_plan,
+}
+import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.host_commitment { spark_serving_admissible_hosts }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_known_hosts_anchor {
+  fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
+  fleet_openssh_trust_policy_of,
+}
+import gunbc.spark.grant_privileged_operation {
+  read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
+}
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
+}
+import gunbc.fleet_multi_principal_probe {
+  SparkConvergeTargetSelection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly,
+  SparkConvergeTargetRefused, spark_converge_target_selection,
+}
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+
+// ── THE PUBLISHED V4.1 CHECKPOINT, MATERIALIZED ON ONE GROUP A SPARK ───────────────────────────
+//
+// WHAT THIS MODE DOES. It brings the ADMITTED population of the published DeepSeek V4.1 Flash
+// checkpoint -- the 48 weight shards, the safetensors index and the three tokenizer files, each with
+// the publisher's sha256 at the pinned revision -- into one directory on the selected Spark, and then
+// reads the sha256 of the storage-backed Engram spans out of the two Engram shards it just verified.
+// Every file is one gunbc.artifact_acquisition subject keyed ContentDigestSha256, so the four states
+// that module separates hold per file: a present file with the right digest is a noop, a present file
+// with the wrong digest REFUSES and is left in place for an operator, an absent file is fetched to a
+// staging path and published only after its digest matches, and a probe that cannot tell refuses.
+//
+// WHAT IT WRITES, AND WHAT IT DOES NOT. Bytes at rest under v41_checkpoint_directory, and nothing
+// else: no process beyond the transfer's own transient unit, no container, no seat, no serving offer,
+// no live device allocation. That is why it may run on Group A's hosts while they are committed to the
+// pair-serving subject (operator, 2026-09-17: stage onto group A; proud-deer-538 ruling 2026-09-21).
+//
+// THE ADMISSION IT TAKES AND THE STRONGER ONE IT DOES NOT. A host is admitted when the Group A pair
+// subject (PairServingUnitOn FabricGroupA) holds it, read through gunbc.spark.host_commitment
+// spark_serving_admissible_hosts, and any other host refuses. Concurrency is Group A's arm domain in
+// gunbc.fleet_converge_workflow, so this mode serializes with D0 and the pair-serving apply. It lands NO
+// host-effect claim: host_commitment has no claim a committed host can carry on its owner's behalf, and
+// modeling one there (a committed-host staging claim) is the stronger construction. It is not taken
+// here, by ruling; the next reader should see that it was a choice.
+//
+// IT OBSERVES, IT DOES NOT ASSUME. Nobody knows whether srv5..srv8 hold this checkpoint already. So
+// every file is digested where it would be, and a host that already holds a verified copy in its Hub
+// cache is offered to the fold as the first source (a local copy) before the network.
+
+data v41_checkpoint_directory: NonEmptyStr = "/home/briansrls/models/deepseek-ai--DeepSeek-V4.1-Flash/dba1be0a40aa45a94ad051997016db3960a90277" as NonEmptyStr
+data v41_checkpoint_staging_directory: NonEmptyStr = "/home/briansrls/models/deepseek-ai--DeepSeek-V4.1-Flash/.gunbc-staging" as NonEmptyStr
+
+// ── THE POPULATION IS THE ADMITTED ONE, NEVER THE RAW ROWS ───────────────────────────────────
+//
+// The weight manifest and the tokenizer population are admitted by extdeps.deepseek.deepseek_v4_1_flash
+// (exact shard cover reconciled against the index, role cover); a refused standing is a refused mode.
+type V41CheckpointPopulation
+  = V41CheckpointPopulationAdmitted { files: List<DeepseekV41PublishedFile> }
+  | V41CheckpointPopulationRefused { defects: List<NonEmptyStr> }
+
+fn v41_checkpoint_population() -> V41CheckpointPopulation {
+  match deepseek_v4_1_flash_weight_manifest_standing() {
+    WeightManifestRefused { defects: d } => V41CheckpointPopulationRefused { defects: map(d, x => join(["weight manifest: ", x as String], "") as NonEmptyStr) }
+    WeightManifestAdmitted { files: weights, index: index, canonical_text: _ } =>
+      match deepseek_v4_1_flash_tokenizer_standing() {
+        TokenizerPopulationRefused { defects: d } => V41CheckpointPopulationRefused { defects: map(d, x => join(["tokenizer population: ", x as String], "") as NonEmptyStr) }
+        TokenizerPopulationAdmitted { files: tokenizer, canonical_text: _ } =>
+          V41CheckpointPopulationAdmitted { files: concat(concat(weights, [index]), tokenizer) }
+      }
+  }
+}
+
+fn v41_checkpoint_bytes(files: List<DeepseekV41PublishedFile>) -> Nat {
+  fold(files, init: 0, f: (acc, r) => acc + byte_size_count(b: r.file_bytes))
+}
+
+// ── ONE ACQUISITION SUBJECT PER PUBLISHED FILE ─────────────────────────────────────────────────
+
+fn v41_install_path(path: NonEmptyStr) -> NonEmptyStr {
+  join([v41_checkpoint_directory as String, "/", path as String], "") as NonEmptyStr
+}
+
+// THE STAGING NAME FLATTENS THE REPO PATH, so every staged file sits in one directory and a nested
+// member (encoding/encoding.py) needs no staging tree of its own.
+fn v41_staging_path(path: NonEmptyStr) -> NonEmptyStr {
+  join([v41_checkpoint_staging_directory as String, "/", join(split(s: path as String, delimiter: "/"), "__"), ".partial"], "") as NonEmptyStr
+}
+
+fn v41_parent_directory(path: NonEmptyStr) -> NonEmptyStr {
+  let parts = split(s: path as String, delimiter: "/")
+  if length(parts) < 2 { v41_checkpoint_directory } else {
+    join([v41_checkpoint_directory as String, "/", join(map(filter(enumerate(parts), p => p.first + 1 < length(parts)), p => p.second), "/")], "") as NonEmptyStr
+  }
+}
+
+fn v41_hub_cache_copy_path(path: NonEmptyStr) -> NonEmptyStr {
+  join([
+    spark_hub_cache_root as String, "/", hub_repo_cache_directory_name(repo: deepseek_v4_1_flash_hub_repo) as String,
+    "/snapshots/", deepseek_v4_1_flash_revision as String, "/", path as String,
+  ], "") as NonEmptyStr
+}
+
+data v41_hub_cache_source_identity: NonEmptyStr = "spark-hub-cache-copy" as NonEmptyStr
+data v41_hub_resolve_source_identity: NonEmptyStr = "huggingface-resolve" as NonEmptyStr
+
+// TWO SOURCES, BOTH WRITING THE STAGING PATH. The Hub cache copy is a local copy of the same revision
+// if one is there; the resolve URL at the pinned revision is the network route. Neither is trusted:
+// the fold digests the staged bytes against the manifest row before anything is published.
+fn v41_checkpoint_sources(file: DeepseekV41PublishedFile) -> List<AcquisitionSource> {
+  [
+    AcquisitionSource {
+      identity: v41_hub_cache_source_identity,
+      locator: SourceArgv { argv: ["cp", "--reflink=auto", "--", v41_hub_cache_copy_path(path: file.path) as String, v41_staging_path(path: file.path) as String] },
+    },
+    AcquisitionSource {
+      identity: v41_hub_resolve_source_identity,
+      locator: SourceArgv { argv: [
+        "curl", "--fail", "--location", "--silent", "--show-error", "--retry", "5",
+        "--output", v41_staging_path(path: file.path) as String,
+        hub_resolve_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: file.path) as String,
+      ] },
+    },
+  ]
+}
+
+fn v41_checkpoint_subject(file: DeepseekV41PublishedFile) -> AcquisitionSubject {
+  AcquisitionSubject {
+    identity: file.path,
+    key: ContentDigestSha256 { hex: file.sha256.hex as NonEmptyStr },
+    install_path: v41_install_path(path: file.path),
+    staging_path: Present { value: v41_staging_path(path: file.path) },
+    parent_directory: v41_parent_directory(path: file.path),
+    sources: v41_checkpoint_sources(file: file),
+  }
+}
+
+// ── THE DIGEST IS COMPARED HERE, SO A MISMATCH IS A MISMATCH ───────────────────────────────────
+//
+// sha256sum answers the digest of the bytes and this module compares it to the manifest row. That is
+// a real oracle, unlike a verifier that only says pass or fail, so a disagreement is a DigestMismatch
+// and an unreadable answer is a probe failure: the two stay apart.
+type V41FileDigestReading
+  = V41FileDigestRead { hex: String }
+  | V41FileDigestUnread { cause: NonEmptyStr }
+
+fn v41_read_file_digest(ctx: SparkMaterializeContext, path: NonEmptyStr) -> V41FileDigestReading {
+  match spark_remote_run(ctx: ctx, argv: sha256sum_argv(path: path as String)) {
+    RemoteUnreachable { cause: c } => V41FileDigestUnread { cause: join(["the digest leg did not run: ", c], "") as NonEmptyStr }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 { V41FileDigestUnread { cause: join(["sha256sum exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr } } else {
+        match sha256sum_line_digest(line: out) {
+          Absent => V41FileDigestUnread { cause: join(["sha256sum answered no digest: ", out], "") as NonEmptyStr }
+          Present { value: d } => V41FileDigestRead { hex: d.hex as String }
+        }
+      }
+  }
+}
+
+fn v41_observe(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> AcquisitionObservation {
+  match spark_remote_run(ctx: ctx, argv: ["test", "-e", subject.install_path as String]) {
+    RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+    RemoteRan { exit_code: present, stdout: _, stderr: err } =>
+      if present == 1 { AcquisitionAbsent } else if present != 0 {
+        AcquisitionProbeFailed { reason: join(["the presence test exited ", to_string(present), ": ", trim(s: err)], "") as NonEmptyStr }
+      } else {
+        match v41_read_file_digest(ctx: ctx, path: subject.install_path) {
+          V41FileDigestUnread { cause: c } => AcquisitionProbeFailed { reason: c }
+          V41FileDigestRead { hex: h } =>
+            if h == (v41_subject_hex(subject: subject) as String) { AcquisitionVerified } else { AcquisitionDigestMismatch }
+        }
+      }
+  }
+}
+
+fn v41_subject_hex(subject: AcquisitionSubject) -> NonEmptyStr {
+  match subject.key {
+    ContentDigestSha256 { hex: h } => h
+    UpstreamRevision { revision: r } => r
+  }
+}
+
+fn v41_ensure_parent(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
+  match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", subject.parent_directory as String, v41_checkpoint_staging_directory as String]) {
+    RemoteUnreachable { cause: _ } => false
+    RemoteRan { exit_code: e, stdout: _, stderr: _ } => e == 0
+  }
+}
+
+// ── ONE SOURCE'S ATTEMPT ───────────────────────────────────────────────────────────────────────
+//
+// THE TRANSFER IS gunbc.spark.model_snapshot_materialize's DETACHED UNIT, reused rather than
+// re-spelled: it runs under pid 1, survives the ssh leg and a cancelled CI step, and a rerun reattaches
+// to it. What differs is what happens after it: the STAGED bytes are digested, published by rename
+// only when they match, and removed when they do not -- so the install path only ever holds a file
+// that passed, and a wrong download never touches a right file.
+//
+// CURL'S EXIT STATUS SEPARATES "COULD NOT REACH" FROM "REACHED AND REFUSED" (curl(1) EXIT CODES): 6
+// could not resolve, 7 could not connect, 28 timed out, 35 TLS handshake failed, 52 empty reply and 56
+// receive failure are the network's; anything else (22 is an HTTP error) is the source answering.
+// ONE RUN DOES NOT WAIT OUT A DOWNLOAD. The fleet-converge job carries one spark step at its tier's
+// timeout, far short of half a terabyte, so a run supervises each transfer for a few polls and moves
+// on: every absent file's transfer is STARTED in the first run and keeps running detached, and a later
+// run reattaches, verifies what finished and publishes it. The still-running files are reported as
+// such (re-run to reattach), which is the transport's own typed carry-on, not a failure.
+data v41_checkpoint_supervision_polls: Nat = 3
+
+data v41_curl_unreachable_statuses: List<String> = ["6", "7", "28", "35", "52", "56"]
+
+fn v41_attempt(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  if (origin.identity as String) == (v41_hub_cache_source_identity as String) {
+    match spark_remote_run(ctx: ctx, argv: ["test", "-f", v41_hub_cache_copy_path(path: subject.identity) as String]) {
+      RemoteUnreachable { cause: _ } => AttemptUnreachable
+      RemoteRan { exit_code: e, stdout: _, stderr: _ } =>
+        if e != 0 { AttemptUnreachable } else { v41_attempt_transfer(ctx: ctx, subject: subject, origin: origin) }
+    }
+  } else {
+    v41_attempt_transfer(ctx: ctx, subject: subject, origin: origin)
+  }
+}
+
+// A TRANSFER THIS RUN DID NOT START IS STILL THIS FILE'S TRANSFER. A running unit is reattached; a
+// unit that exited clean left a complete staged file, which is verified rather than fetched again; a
+// unit systemd has already reaped (a transient unit that exits is garbage-collected) may have left one
+// too, so a staged file is digested before anything is started. Only a staged file under a unit that
+// exited CLEAN is known complete, so only its mismatch is the source's failed key; a staged file with
+// no unit may be a cancelled transfer's partial, and it is removed and fetched again.
+fn v41_attempt_transfer(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match spark_transfer_state(ctx: ctx, subject: subject) {
+    TransferStateUnreadable { cause: _ } => AttemptUnreachable
+    TransferRunning => v41_after_transfer(ctx: ctx, subject: subject, origin: origin)
+    TransferExitedClean => if !spark_transfer_clear(ctx: ctx, subject: subject) { AttemptUnreachable } else { v41_verify_staged(ctx: ctx, subject: subject, origin: origin) }
+    TransferExitedFailed { status: _ } => if !spark_transfer_clear(ctx: ctx, subject: subject) { AttemptUnreachable } else { v41_start_transfer(ctx: ctx, subject: subject, origin: origin) }
+    TransferAbsent => v41_adopt_or_start(ctx: ctx, subject: subject, origin: origin)
+  }
+}
+
+fn v41_adopt_or_start(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match spark_remote_run(ctx: ctx, argv: ["test", "-f", v41_staged(subject: subject) as String]) {
+    RemoteUnreachable { cause: _ } => AttemptUnreachable
+    RemoteRan { exit_code: e, stdout: _, stderr: _ } =>
+      if e != 0 { v41_start_transfer(ctx: ctx, subject: subject, origin: origin) } else {
+        match v41_read_file_digest(ctx: ctx, path: v41_staged(subject: subject)) {
+          V41FileDigestUnread { cause: c } =>
+            AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed { identity: subject.identity, source: origin.identity, reason: c } } }
+          V41FileDigestRead { hex: h } =>
+            if h == (v41_subject_hex(subject: subject) as String) { v41_publish(ctx: ctx, subject: subject, origin: origin) } else {
+              let removed = spark_remote_run(ctx: ctx, argv: ["rm", "-f", "--", v41_staged(subject: subject) as String])
+              v41_start_transfer(ctx: ctx, subject: subject, origin: origin)
+            }
+        }
+      }
+  }
+}
+
+fn v41_start_transfer(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match origin.locator {
+    SourceUrl { url: u } => AttemptRejected { detail: join(["source ", origin.identity as String, " carries a URL (", u as String, ") and this transport runs an argv on the Spark"], "") as NonEmptyStr }
+    SourceArgv { argv: a } =>
+      match spark_transfer_start_argv(ctx: ctx, subject: subject, argv: a) {
+        TransferStartUnreachable { cause: _ } => AttemptUnreachable
+        TransferStartRejected { detail: d } => AttemptRejected { detail: d }
+        TransferStarted => v41_after_transfer(ctx: ctx, subject: subject, origin: origin)
+      }
+  }
+}
+
+fn v41_after_transfer(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match spark_transfer_supervise(ctx: ctx, subject: subject, remaining: v41_checkpoint_supervision_polls) {
+    SupervisionLost { cause: _ } => AttemptUnreachable
+    SupervisedStillRunning { polls: n } =>
+      AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+        identity: subject.identity, source: origin.identity,
+        reason: join(["the transfer is STILL RUNNING after ", to_string(n), " polls and has not been killed; re-run to reattach to it. This is not a failed transfer"], "") as NonEmptyStr,
+      } } }
+    SupervisedExitFailed { status: st } =>
+      if any(v41_curl_unreachable_statuses, s => s == st) { AttemptUnreachable } else {
+        AttemptRejected { detail: join(["source ", origin.identity as String, " exited with status ", st, "; the host ran it, so this is not a reachability failure"], "") as NonEmptyStr }
+      }
+    SupervisedTransferUnitAbsent => v41_verify_staged(ctx: ctx, subject: subject, origin: origin)
+    SupervisedExitClean => v41_verify_staged(ctx: ctx, subject: subject, origin: origin)
+  }
+}
+
+fn v41_staged(subject: AcquisitionSubject) -> NonEmptyStr {
+  match subject.staging_path {
+    Present { value: s } => s
+    Absent => v41_staging_path(path: subject.identity)
+  }
+}
+
+fn v41_verify_staged(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match v41_read_file_digest(ctx: ctx, path: v41_staged(subject: subject)) {
+    V41FileDigestUnread { cause: c } =>
+      AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed { identity: subject.identity, source: origin.identity, reason: c } } }
+    V41FileDigestRead { hex: h } =>
+      if h != (v41_subject_hex(subject: subject) as String) {
+        let removed = spark_remote_run(ctx: ctx, argv: ["rm", "-f", "--", v41_staged(subject: subject) as String])
+        AttemptFailedKey
+      } else {
+        v41_publish(ctx: ctx, subject: subject, origin: origin)
+      }
+  }
+}
+
+// PUBLISH IS A RENAME WITHIN ONE FILESYSTEM, so the install path goes from absent to the verified
+// bytes in one step and never holds a partial file.
+fn v41_publish(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match spark_remote_run(ctx: ctx, argv: ["mv", "-f", "--", v41_staged(subject: subject) as String, subject.install_path as String]) {
+    RemoteRan { exit_code: e, stdout: _, stderr: _ } =>
+      if e == 0 {
+        AttemptTerminal { outcome: AcquisitionFetched { identity: subject.identity, install_path: subject.install_path, source: origin } }
+      } else {
+        AttemptTerminal { outcome: AcquisitionRefused { cause: PublishFailed { identity: subject.identity, source: origin.identity, install_path: subject.install_path } } }
+      }
+    RemoteUnreachable { cause: _ } =>
+      AttemptTerminal { outcome: AcquisitionRefused { cause: PublishFailed { identity: subject.identity, source: origin.identity, install_path: subject.install_path } } }
+  }
+}
+
+fn v41_checkpoint_handler(ctx: SparkMaterializeContext) -> AcquisitionHandler {
+  AcquisitionHandler {
+    observe: fn(subject) { v41_observe(ctx: ctx, subject: subject) },
+    ensure_parent: fn(subject) { v41_ensure_parent(ctx: ctx, subject: subject) },
+    attempt: fn(subject, origin) { v41_attempt(ctx: ctx, subject: subject, origin: origin) },
+  }
+}
+
+// ── THE DISK REQUIREMENT, STATED AND CHECKED BEFORE ANY FETCH ──────────────────────────────────
+//
+// The requirement is the bytes of every admitted file NOT already at its install path at its declared
+// size -- the population's own sizes, never a transcribed figure. A file present at the right size
+// already occupies its space; if its digest is wrong the fold refuses it, it does not re-fetch over it.
+// Staging and install share one filesystem, so a publish is a rename and needs no second copy. The
+// available bytes are df's answer for the filesystem that will hold the directory.
+type V41DiskReading
+  = V41DiskRead { required: Nat, available: Nat, population: Nat }
+  | V41DiskUnread { cause: NonEmptyStr }
+
+fn v41_line_size_for(listing: List<String>, path: NonEmptyStr) -> String? {
+  match first(filter(listing, l => {
+    let parts = split(s: l, delimiter: " ")
+    length(parts) == 2 && (match get(xs: parts, index: 1) { Present { value: p } => p == (path as String)  Absent => false })
+  })) {
+    Absent => none
+    Present { value: l } => get(xs: split(s: l, delimiter: " "), index: 0)
+  }
+}
+
+fn v41_required_bytes(files: List<DeepseekV41PublishedFile>, listing: List<String>) -> Nat {
+  v41_checkpoint_bytes(files: filter(files, f => match v41_line_size_for(listing: listing, path: f.path) {
+    Present { value: s } => s != to_string(byte_size_count(b: f.file_bytes))
+    Absent => true
+  }))
+}
+
+fn v41_parse_nat(s: String) -> Nat? {
+  match parse_int(s: trim(s: s)) {
+    Absent => none
+    Present { value: n } => match checked_int_magnitude(a: n) {
+      CheckedNatOverflow { cause: _ } => none
+      CheckedNatReady { value: v } => if n < 0 { none } else { Present { value: v } }
+    }
+  }
+}
+
+fn v41_read_disk(ctx: SparkMaterializeContext, files: List<DeepseekV41PublishedFile>) -> V41DiskReading {
+  let dir = v41_checkpoint_directory as String
+  match spark_remote_run(ctx: ctx, argv: ["sh", "-c", join(["if [ -d '", dir, "' ]; then find '", dir, "' -type f -printf '%s %P\\n'; fi"], "")]) {
+    RemoteUnreachable { cause: c } => V41DiskUnread { cause: join(["the directory listing did not run: ", c], "") as NonEmptyStr }
+    RemoteRan { exit_code: e, stdout: listing, stderr: err } =>
+      if e != 0 { V41DiskUnread { cause: join(["the directory listing exited ", to_string(e), ": ", trim(s: err)], "") as NonEmptyStr } } else {
+        match spark_remote_run(ctx: ctx, argv: ["sh", "-c", join(["d='", dir, "'; while [ ! -e \"$d\" ]; do d=$(dirname \"$d\"); done; df -B1 --output=avail \"$d\" | tail -n 1"], "")]) {
+          RemoteUnreachable { cause: c } => V41DiskUnread { cause: join(["the free-space read did not run: ", c], "") as NonEmptyStr }
+          RemoteRan { exit_code: e2, stdout: avail, stderr: err2 } =>
+            if e2 != 0 { V41DiskUnread { cause: join(["df exited ", to_string(e2), ": ", trim(s: err2)], "") as NonEmptyStr } } else {
+              match v41_parse_nat(s: avail) {
+                Absent => V41DiskUnread { cause: join(["df answered no byte count: ", avail], "") as NonEmptyStr }
+                Present { value: a } => V41DiskRead {
+                  required: v41_required_bytes(files: files, listing: split(s: listing, delimiter: "\n")),
+                  available: a,
+                  population: v41_checkpoint_bytes(files: files),
+                }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn v41_disk_line(d: V41DiskReading) -> String {
+  match d {
+    V41DiskUnread { cause: c } => join(["disk unread: ", c as String, "\n"], "")
+    V41DiskRead { required: r, available: a, population: p } =>
+      join(["disk required_bytes=", to_string(r), " available_bytes=", to_string(a), " population_bytes=", to_string(p), " directory=", v41_checkpoint_directory as String, "\n"], "")
+  }
+}
+
+// ── THE STORAGE-BACKED SPANS, READ FROM THE VERIFIED SHARDS ───────────────────────────────────
+//
+// The plan is gunbc.spark.v41_engram_row_store v41_published_span_plan over the candidate's partition,
+// the same derivation the key admits the readings against. dd reads exactly the span; pipefail keeps a
+// failed read from passing as the digest of an empty stream.
+fn v41_span_read_argv(sp: V41PublishedSpan) -> List<String> {
+  ["bash", "-c", join([
+    "set -o pipefail; dd if='", v41_install_path(path: sp.shard) as String,
+    "' bs=4M iflag=skip_bytes,count_bytes skip=", to_string(sp.file_offset), " count=", to_string(sp.length),
+    " status=none | sha256sum",
+  ], "")]
+}
+
+type V41SpanReadOutcome
+  = V41SpanRead { reading: V41PublishedSpanDigest }
+  | V41SpanUnread { span: V41PublishedSpan, cause: NonEmptyStr }
+
+fn v41_read_span(ctx: SparkMaterializeContext, sp: V41PublishedSpan) -> V41SpanReadOutcome {
+  match spark_remote_run(ctx: ctx, argv: v41_span_read_argv(sp: sp)) {
+    RemoteUnreachable { cause: c } => V41SpanUnread { span: sp, cause: c as NonEmptyStr }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 { V41SpanUnread { span: sp, cause: join(["the span read exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr } } else {
+        match sha256sum_line_digest(line: out) {
+          Absent => V41SpanUnread { span: sp, cause: join(["sha256sum answered no digest: ", out], "") as NonEmptyStr }
+          Present { value: d } => match sha256_hex_digest(hex: d.hex as String) {
+            Absent => V41SpanUnread { span: sp, cause: "sha256sum answered a digest that is not lowercase sha256 hex" as NonEmptyStr }
+            Present { value: h } => V41SpanRead { reading: V41PublishedSpanDigest { span: sp, sha256: h } }
+          }
+        }
+      }
+  }
+}
+
+// THE RECEIPT LINE IS THE TRANSCRIPTION SOURCE for gunbc.spark.v41_engram_row_store
+// v41_published_span_readings: every field the reading row carries, in its order.
+fn v41_span_line(o: V41SpanReadOutcome) -> String {
+  match o {
+    V41SpanRead { reading: r } => join(["span ", r.span.tensor as String, " ", r.span.shard as String, " ", to_string(r.span.file_offset), " ", to_string(r.span.length), " sha256=", r.sha256.hex as String, "\n"], "")
+    V41SpanUnread { span: sp, cause: c } => join(["span-unread ", sp.tensor as String, " ", sp.shard as String, ": ", c as String, "\n"], "")
+  }
+}
+
+fn v41_span_is_read(o: V41SpanReadOutcome) -> Bool {
+  match o {
+    V41SpanRead { reading: _ } => true
+    V41SpanUnread { span: _, cause: _ } => false
+  }
+}
+
+// ── ONE RUN ────────────────────────────────────────────────────────────────────────────────────
+
+type V41FileReceipt sole_constructor {
+  path: NonEmptyStr
+  outcome: AcquisitionOutcome
+}
+
+fn v41_file_line(r: V41FileReceipt) -> String {
+  match r.outcome {
+    AcquisitionAlreadyPresent { identity: _, install_path: p } => join(["file ", r.path as String, " already-present ", p as String, "\n"], "")
+    AcquisitionFetched { identity: _, install_path: p, source: s } => join(["file ", r.path as String, " fetched ", p as String, " source=", s.identity as String, "\n"], "")
+    AcquisitionRefused { cause: c } => join(["file ", r.path as String, " refused: ", acquisition_refusal_text(cause: c), "\n"], "")
+  }
+}
+
+type V41MaterializeRun
+  = V41MaterializeRefusedBeforeFetch { cause: NonEmptyStr, disk: V41DiskReading }
+  | V41MaterializeRan { disk: V41DiskReading, files: List<V41FileReceipt>, spans: List<V41SpanReadOutcome> }
+
+fn v41_materialize_checkpoint(ctx: SparkMaterializeContext) -> V41MaterializeRun {
+  match v41_checkpoint_population() {
+    V41CheckpointPopulationRefused { defects: d } =>
+      V41MaterializeRefusedBeforeFetch { cause: join(["the published population is not admitted: ", join(map(d, x => x as String), "; ")], "") as NonEmptyStr, disk: V41DiskUnread { cause: "not read: the population refused first" as NonEmptyStr } }
+    V41CheckpointPopulationAdmitted { files: files } => {
+      let disk = v41_read_disk(ctx: ctx, files: files)
+      match disk {
+        V41DiskUnread { cause: c } => V41MaterializeRefusedBeforeFetch { cause: join(["the disk requirement could not be checked, so nothing was fetched: ", c as String], "") as NonEmptyStr, disk: disk }
+        V41DiskRead { required: r, available: a, population: _ } =>
+          if a < r {
+            V41MaterializeRefusedBeforeFetch { cause: join(["the checkpoint needs ", to_string(r), " more bytes under ", v41_checkpoint_directory as String, " and the filesystem has ", to_string(a), " available, so nothing was fetched"], "") as NonEmptyStr, disk: disk }
+          } else {
+            let receipts = map(files, f => V41FileReceipt { path: f.path, outcome: acquire_artifact(subject: v41_checkpoint_subject(file: f), handler: v41_checkpoint_handler(ctx: ctx)) })
+            V41MaterializeRan { disk: disk, files: receipts, spans: v41_spans_after(ctx: ctx, receipts: receipts) }
+          }
+      }
+    }
+  }
+}
+
+// THE SPANS ARE READ ONLY FROM SHARDS THIS RUN VERIFIED. A span read from a shard that refused would
+// be a digest of bytes nobody vouched for.
+fn v41_spans_after(ctx: SparkMaterializeContext, receipts: List<V41FileReceipt>) -> List<V41SpanReadOutcome> {
+  match v41_published_span_plan(partition: v41_candidate_partition, sharded: deepseek_v4_1_flash_engram_sharded_entries, shards: deepseek_v4_1_flash_engram_shard_files) {
+    V41PublishedSpansUnplannable { defects: d } => [] as List<V41SpanReadOutcome>
+    V41PublishedSpansPlanned { spans: plan } =>
+      map(plan, sp =>
+        if any(receipts, r => (r.path as String) == (sp.shard as String) && acquisition_succeeded(outcome: r.outcome)) {
+          v41_read_span(ctx: ctx, sp: sp)
+        } else {
+          V41SpanUnread { span: sp, cause: join(["shard ", sp.shard as String, " was not verified by this run, so its span is not read"], "") as NonEmptyStr }
+        })
+  }
+}
+
+fn v41_run_succeeded(run: V41MaterializeRun) -> Bool {
+  match run {
+    V41MaterializeRefusedBeforeFetch { cause: _, disk: _ } => false
+    V41MaterializeRan { disk: _, files: fs, spans: sps } =>
+      all(fs, r => acquisition_succeeded(outcome: r.outcome)) && length(sps) > 0 && all(sps, s => v41_span_is_read(o: s))
+  }
+}
+
+fn v41_run_body(run: V41MaterializeRun) -> String {
+  match run {
+    V41MaterializeRefusedBeforeFetch { cause: c, disk: d } => join([v41_disk_line(d: d), "refused-before-fetch: ", c as String, "\n"], "")
+    V41MaterializeRan { disk: d, files: fs, spans: sps } =>
+      join(concat(concat([v41_disk_line(d: d)], map(fs, r => v41_file_line(r: r))), map(sps, s => v41_span_line(o: s))), "")
+  }
+}
+
+// ── THE ENTRY, RUN AS THE spark_v41_checkpoint_materialize FLEET-CONVERGE MODE ────────────────
+//
+// The host comes from SPARK_CONVERGE_TARGET and must be one the Group A pair subject holds; an unset
+// target refuses rather than sweeping, because this writes half a terabyte to one host.
+data v41_checkpoint_ci_attempt_raw: String = "v41-checkpoint-materialize-ci"
+data v41_checkpoint_ci_receipt_path: String = "target/v41-checkpoint-materialize-receipt.txt"
+
+fn v41_group_a_admission(raw: HostIdentity, held: List<HostIdentity>) -> String? {
+  if any(held, h => host_identity_eq(a: h, b: raw)) { none } else {
+    Present { value: join([raw as String, " is not held by the Group A pair subject (PairServingUnitOn FabricGroupA); this mode stages the V4.1 checkpoint only onto hosts that subject holds, which are: ", join(map(held, h => h as String), ", ")], "") }
+  }
+}
+
+fn v41_checkpoint_materialize_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode writes the V4.1 checkpoint to ONE host, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: target_host } =>
+      match v41_group_a_admission(raw: target_host, held: spark_serving_admissible_hosts(subject: PairServingUnitOn { group: FabricGroupA })) {
+        Present { value: why } => exit_failure(reason: why)
+        Absent =>
+          match observe_executor_reach() {
+            ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_checkpoint_materialize_ci: ", c], ""))
+            ExecutorReachKnown { short_hostname: executor, path: path } =>
+              match read_bootstrap_credential() {
+                BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+                BootstrapCredentialReady { secret: administrator } =>
+                  match fleet_ssh_attempt_identity(raw: v41_checkpoint_ci_attempt_raw) {
+                    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+                    Present { value: attempt } => {
+                      let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+                      match fleet_openssh_trust_policy_of(outcome: materialization) {
+                        Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                        Present { value: trust } =>
+                          match with_materialized_ssh_key_file(
+                            identity_file_name: "gunbc-v41-checkpoint-materialize-admin-password" as NonEmptyStr,
+                            secret_bytes: administrator as Secret,
+                            use: fn(file) {
+                              v41_materialize_checkpoint(ctx: SparkMaterializeContext {
+                                host: target_host,
+                                trust: trust,
+                                path: path,
+                                admin_credential: administrator as Secret,
+                                admin_credential_file: file,
+                                executor: HostCli,
+                              })
+                            },
+                          ) {
+                            MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                            MaterializedSshKeyFileBracketCompleted { value: run } => {
+                              let body = join([
+                                join(["v41 checkpoint materialize probed_at=", probed_at_word(reading: now) as String, " host=", target_host as String, " revision=", deepseek_v4_1_flash_revision as String, "\n"], ""),
+                                v41_run_body(run: run),
+                                join(["executor=", executor, "\n"], ""),
+                                known_hosts_materialization_receipt(outcome: materialization),
+                              ], "")
+                              let w = Filesystem.Write(path: v41_checkpoint_ci_receipt_path, content: body)
+                              if !w.success {
+                                exit_failure(reason: join(["v41 checkpoint materialize receipt write failed: ", w.error], ""))
+                              } else if v41_run_succeeded(run: run) {
+                                ExitSuccess
+                              } else {
+                                exit_failure(reason: join(["the checkpoint is not fully materialized and read on ", target_host as String, ":\n", body], ""))
+                              }
+                            }
+                          }
+                      }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}

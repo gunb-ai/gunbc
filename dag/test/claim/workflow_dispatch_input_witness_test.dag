@@ -18,7 +18,7 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
-  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
+  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkV41CheckpointMaterialize, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
   fleet_converge_workflow, expected_fleet_converge_yml,
@@ -583,6 +583,19 @@ test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_befo
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") != fleet_converge_mutation_group_for(mode: FleetApply, host: "srv2")
     && string_contains(s: yml, pattern: "github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1'")
     && string_contains(s: yml, pattern: "github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1'")
+}
+
+// THE CHECKPOINT MATERIALIZE MODE IS IN GROUP A'S ARM DOMAIN, NOT ITS EXECUTOR'S: whichever executor a
+// dispatch names, it queues behind D0 and the pair apply, and two dispatches for two Group A hosts
+// queue behind each other. The emitted step reads the target and runs the modeled entry.
+test fn the_v41_checkpoint_materialize_mode_serializes_on_group_a() -> Bool {
+  let yml = expected_fleet_converge_yml_content()
+  fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv3") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
+    && fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv2") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv2")
+    && fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv2") != fleet_converge_mutation_group_for(mode: SparkNativeServingApply, host: "srv2")
+    && string_contains(s: yml, pattern: "github.event.inputs.mode == 'spark_v41_checkpoint_materialize' && 'gunbc-host-mutation-srv1'")
+    && string_contains(s: yml, pattern: "id: spark_v41_checkpoint_materialize")
+    && string_contains(s: yml, pattern: "--function v41_checkpoint_materialize_ci_wet")
 }
 
 // THE OPERATIONAL BOUNDS ARE A MAINTAINED INTERFACE, NOT A ONE-HEAD TEXT: the emitted invocation

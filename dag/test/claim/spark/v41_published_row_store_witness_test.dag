@@ -1,0 +1,116 @@
+module test.claim.spark.v41_published_row_store_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
+}
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition }
+import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import gunbc.spark.v41_engram_row_store {
+  V41PublishedSpan, V41PublishedSpanPlan, V41PublishedSpansPlanned, V41PublishedSpansUnplannable,
+  V41PublishedSpanDigest, V41PublishedSpanReadings, V41PublishedSpansRead, V41PublishedSpansUnread,
+  V41PublishedRowStoreKey, V41PublishedRowStoreKeyed, V41PublishedRowStoreUnestablished, V41PublishedRowStoreRefused,
+  v41_published_span_plan, v41_published_row_store_key,
+}
+
+// THE KEY OVER THE PUBLISHED STORAGE-BACKED SPANS, AT ITS OWN INTERFACE. The span digests are SUPPLIED
+// values -- a fixture of the reading a Spark would return -- because this claim is about what the key
+// does with a reading, not about a host. The plan the readings are joined against is the REAL
+// derivation over the publisher's header rows, so the regions below are the ones the mode reads.
+
+fn w_sha(c: String) -> Sha256Digest {
+  Sha256Digest { hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "") as Sha256DigestHex }
+}
+
+fn w_plan(p: V41EngramResidencyPartition) -> List<V41PublishedSpan> {
+  match v41_published_span_plan(partition: p, sharded: deepseek_v4_1_flash_engram_sharded_entries, shards: deepseek_v4_1_flash_engram_shard_files) {
+    V41PublishedSpansPlanned { spans: s } => s
+    V41PublishedSpansUnplannable { defects: _ } => [] as List<V41PublishedSpan>
+  }
+}
+
+fn w_read(spans: List<V41PublishedSpan>, c: String) -> V41PublishedSpanReadings {
+  V41PublishedSpansRead { host: "srv5" as NonEmptyStr, observed_at: "fixture" as NonEmptyStr, spans: map(spans, sp => V41PublishedSpanDigest { span: sp, sha256: w_sha(c: c) }) }
+}
+
+fn w_key(p: V41EngramResidencyPartition, r: V41PublishedSpanReadings) -> V41PublishedRowStoreKey {
+  v41_published_row_store_key(partition: p, sharded: deepseek_v4_1_flash_engram_sharded_entries, shards: deepseek_v4_1_flash_engram_shard_files, readings: r)
+}
+
+fn w_hex(k: V41PublishedRowStoreKey) -> String {
+  match k {
+    V41PublishedRowStoreKeyed { digest: d } => d.hex as String
+    V41PublishedRowStoreUnestablished { obligation: _ } => ""
+    V41PublishedRowStoreRefused { defects: _ } => ""
+  }
+}
+
+fn w_refused_with(k: V41PublishedRowStoreKey, fragment: String) -> Bool {
+  match k {
+    V41PublishedRowStoreRefused { defects: d } => any(d, x => (x as String).contains(fragment))
+    V41PublishedRowStoreKeyed { digest: _ } => false
+    V41PublishedRowStoreUnestablished { obligation: _ } => false
+  }
+}
+
+// A DIFFERENT TABLE SET: layer 14's embed pair stays storage-backed, layer 1's does not.
+data w_other_partition: V41EngramResidencyPartition = V41EngramResidencyPartition {
+  storage_backed: ["layers.14.engram.embed.weight" as NonEmptyStr, "layers.14.engram.embed.scale" as NonEmptyStr],
+  resident: [] as List<NonEmptyStr>,
+}
+
+// THE PLAN IS THE PUBLISHER'S HEADER ARITHMETIC: four spans, and layer 1's weight starts after the
+// 8-byte length prefix and shard 47's 656-byte header.
+test fn the_span_plan_names_the_four_storage_backed_regions() -> Bool {
+  let plan = w_plan(p: v41_candidate_partition)
+  length(plan) == 4
+    && any(plan, sp => (sp.tensor as String) == "layers.1.engram.embed.weight" && (sp.shard as String) == "model-00047-of-00048.safetensors" && sp.file_offset == 664 && sp.length == 98305579008)
+    && any(plan, sp => (sp.tensor as String) == "layers.14.engram.embed.scale" && (sp.shard as String) == "model-00048-of-00048.safetensors" && sp.file_offset == 8 + 664 + 98308270592)
+}
+
+// POSITIVE CONTROL: the exact plan, read, keys.
+test fn a_reading_of_exactly_the_planned_spans_keys() -> Bool {
+  w_hex(k: w_key(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "a"))).length() == 64
+}
+
+// THE DISCRIMINATING RED: a digest over a different table set does not key the candidate's partition.
+// Readings of layer 14's pair alone are two spans short and refuse by name.
+test fn a_digest_over_a_different_table_set_does_not_key() -> Bool {
+  let other = w_read(spans: w_plan(p: w_other_partition), c: "a")
+  w_refused_with(k: w_key(p: v41_candidate_partition, r: other), fragment: "layers.1.engram.embed.weight")
+    && w_refused_with(k: w_key(p: v41_candidate_partition, r: other), fragment: "was not read")
+}
+
+// AND A READING OF A TENSOR THE PARTITION KEEPS RESIDENT IS FOREIGN, EVEN ALONGSIDE THE RIGHT FOUR.
+test fn a_reading_of_a_resident_tensor_refuses_as_foreign() -> Bool {
+  let resident_span = V41PublishedSpan { tensor: "layers.1.engram.q_weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr, file_offset: 664 + 101377628352, length: 40960 }
+  w_refused_with(k: w_key(p: v41_candidate_partition, r: w_read(spans: concat(w_plan(p: v41_candidate_partition), [resident_span]), c: "a")), fragment: "is not a span this partition stores")
+}
+
+// THE RIGHT TENSOR OVER ANOTHER REGION IS NOT ITS READING.
+test fn a_shifted_region_refuses() -> Bool {
+  let shifted = map(w_plan(p: v41_candidate_partition), sp => V41PublishedSpan { tensor: sp.tensor, shard: sp.shard, file_offset: sp.file_offset + 1, length: sp.length })
+  w_refused_with(k: w_key(p: v41_candidate_partition, r: w_read(spans: shifted, c: "a")), fragment: "was not read")
+}
+
+// THE KEY MOVES WITH THE BYTES AND WITH THE SPEC, NOT WITH THE ORDER THE READINGS ARRIVED IN.
+test fn the_key_moves_with_the_bytes_and_the_table_set() -> Bool {
+  let base = w_hex(k: w_key(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "a")))
+  let other_bytes = w_hex(k: w_key(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "b")))
+  let reversed = w_hex(k: w_key(p: v41_candidate_partition, r: w_read(spans: reverse(w_plan(p: v41_candidate_partition)), c: "a")))
+  let other_set = w_hex(k: w_key(p: w_other_partition, r: w_read(spans: w_plan(p: w_other_partition), c: "a")))
+  base.length() == 64 && other_bytes.length() == 64 && other_set.length() == 64
+    && base != other_bytes && base == reversed && base != other_set
+}
+
+// UNREAD IS AN OBLIGATION, NEVER A KEY; and the live row is unread until a run's receipt lands.
+test fn an_unread_reading_is_unestablished() -> Bool {
+  match w_key(p: v41_candidate_partition, r: V41PublishedSpansUnread { obligation: "fixture: not read" as NonEmptyStr }) {
+    V41PublishedRowStoreUnestablished { obligation: o } => (o as String).contains("not read")
+    V41PublishedRowStoreKeyed { digest: _ } => false
+    V41PublishedRowStoreRefused { defects: _ } => false
+  }
+}

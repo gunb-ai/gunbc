@@ -29,7 +29,8 @@ import gunbc.typed_remote_file_write {
   RemoteFileModeOwnerReadWrite, RemoteFileAsSessionPrincipal,
 }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.spark.v41_runtime_candidate { V41EnginePatch, v41_patch_applicability_defects, v41_input }
+import gunbc.spark.v41_runtime_candidate { V41EnginePatch, v41_patch_applicability_defects }
+import gunbc.spark.v41_identity_input { v41_input }
 import gunbc.spark.vllm_runtime_image_build {
   VllmSourceState, VllmSourceAtRevision, VllmSourceRefused, VllmImageBuild, VllmImageBuildRefused,
   ImageLegRan, ImageLegFailed, ImageUncheckedRan, ImageUncheckedFailed,

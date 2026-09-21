@@ -11,12 +11,12 @@ import v2.std.optional { Present, Absent }
 import extdeps.safetensors.format {
   SafetensorsEntry, SafetensorsDtype, SafeF8E4M3, SafeF8E8M0,
   safetensors_dtype_byte_width, safetensors_dtype_token,
+  SafetensorsShardedEntry, SafetensorsShardFile, safetensors_entry_span, safetensors_shard_declared_overhead,
 }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
 import extdeps.toolchain.architecture_profile { Endianness, LittleEndian, endianness_token }
-import gunbc.spark.v41_runtime_candidate {
-  V41EngramResidencyPartition,
-  v41_input,
-}
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition, v41_input }
 import gunbc.fabric.engram_materialization { engram_component_identity }
 
 // ── A RANK-LOCAL ENGRAM ROW STORE, AS A STRUCTURAL IDENTITY ────────────────────────────────────
@@ -730,3 +730,155 @@ fn v41_rank_digest_of(e: V41RowStoreEncoding, rank: Nat) -> ContentHash? {
   }
 }
 
+
+// ── THE PUBLISHED ROW-STORE ENCODING KEY: THE TRANSFORM'S INPUT, READ, PLUS ITS SPEC ──────────
+//
+// WHAT THE CANDIDATE'S row_store_encoding AXIS IS KEYED BY (ruling, proud-deer-538, 2026-09-21). The
+// encoding is a deterministic function of two things: the bytes of the storage-backed tensors in the
+// published shards, and this module's encoding spec. So the key is sha256 over one canonical text
+// naming the spec key and, for each storage-backed tensor, the shard, the file span and the sha256 of
+// exactly those bytes, read on a Spark from the materialized shard. A different table set changes both
+// the spec key and the set of spans, and a reading over any other region refuses, so the key names
+// this realization and nothing near it.
+//
+// THIS IS NOT THE FOUR ROW-STORE IDENTITIES, and the two must not be read as one fact. The rank files
+// are the encoder's PRODUCED artifacts. They are digested by whole-file sha256, which is what the
+// file-backed patch checks on open, and D1 authorizes over them as a readback of the encoder's output.
+// This key is the keyed side of that split, the same keyed-versus-produced split the runtime lane
+// keeps for the image digest. No encoder over the published shards exists yet, and this key does not
+// stand in for one.
+
+// WHERE EACH STORAGE-BACKED TENSOR'S BYTES ARE, DERIVED FROM THE PUBLISHER'S HEADER ROWS. A span's file
+// offset is the 8-byte length prefix plus the shard's JSON header plus the entry's payload-relative
+// begin; its length is the entry's span. The mode that reads the host consumes this same plan, so the
+// region read and the region admitted come from one derivation.
+type V41PublishedSpan {
+  tensor: NonEmptyStr
+  shard: NonEmptyStr
+  file_offset: Nat
+  length: Nat
+}
+
+type V41PublishedSpanPlan
+  = V41PublishedSpansPlanned { spans: List<V41PublishedSpan> }
+  | V41PublishedSpansUnplannable { defects: List<NonEmptyStr> }
+
+fn v41_published_span_of(e: SafetensorsShardedEntry, shards: List<SafetensorsShardFile>) -> V41PublishedSpan? {
+  let rows = filter(shards, f => (f.path as String) == (e.shard as String))
+  if length(rows) != 1 { none } else {
+    match first(rows) {
+      Absent => none
+      Present { value: f } => Present { value: V41PublishedSpan {
+        tensor: e.entry.name,
+        shard: e.shard,
+        file_offset: byte_size_count(b: safetensors_shard_declared_overhead(header_bytes: f.header_bytes)) + e.entry.begin_offset,
+        length: byte_size_count(b: safetensors_entry_span(e: e.entry)),
+      } }
+    }
+  }
+}
+
+fn v41_published_span_plan(partition: V41EngramResidencyPartition, sharded: List<SafetensorsShardedEntry>, shards: List<SafetensorsShardFile>) -> V41PublishedSpanPlan {
+  let missing = map(
+    filter(partition.storage_backed, n => length(filter(sharded, e => (e.entry.name as String) == (n as String))) != 1),
+    n => join(["storage-backed tensor ", n as String, " is not exactly one header row in the published population, so there is no span to read"], "") as NonEmptyStr)
+  let selected = filter(sharded, e => any(partition.storage_backed, n => (n as String) == (e.entry.name as String)))
+  let unbound = map(
+    filter(selected, e => match v41_published_span_of(e: e, shards: shards) { Absent => true, Present { value: _ } => false }),
+    e => join(["shard ", e.shard as String, " of ", e.entry.name as String, " is not exactly one shard file row, so its header length and the span's file offset are unknown"], "") as NonEmptyStr)
+  let defects = concat(missing, unbound)
+  if length(defects) != 0 { V41PublishedSpansUnplannable { defects: defects } } else {
+    V41PublishedSpansPlanned { spans: flat_map(selected, e => match v41_published_span_of(e: e, shards: shards) {
+      Absent => [] as List<V41PublishedSpan>
+      Present { value: sp } => [sp]
+    }).sort_by(sp => sp.tensor as String) }
+  }
+}
+
+// ONE SPAN'S READING: the region that was read and the sha256 of exactly its bytes.
+type V41PublishedSpanDigest {
+  span: V41PublishedSpan
+  sha256: Sha256Digest
+}
+
+// THE RECEIPT OF A HOST READ. Unread is the standing until a dispatched read's receipt is transcribed
+// here from gunbc.spark.v41_checkpoint_materialize's receipt file, with the host and time it names.
+type V41PublishedSpanReadings
+  = V41PublishedSpansRead { host: NonEmptyStr, observed_at: NonEmptyStr, spans: List<V41PublishedSpanDigest> }
+  | V41PublishedSpansUnread { obligation: NonEmptyStr }
+
+type V41PublishedRowStoreKey
+  = V41PublishedRowStoreKeyed { digest: Sha256Digest }
+  | V41PublishedRowStoreUnestablished { obligation: NonEmptyStr }
+  | V41PublishedRowStoreRefused { defects: List<NonEmptyStr> }
+
+fn v41_span_eq(a: V41PublishedSpan, b: V41PublishedSpan) -> Bool {
+  (a.tensor as String) == (b.tensor as String) && (a.shard as String) == (b.shard as String) && a.file_offset == b.file_offset && a.length == b.length
+}
+
+// THE READINGS ARE JOINED TO THE PLAN BY IDENTITY, NOT COUNTED. Every planned span must be read
+// exactly once, over exactly its region; a reading of a tensor the plan does not name, or of the right
+// tensor over another region, refuses. That is the RED the brief names: a digest over a different table
+// set cannot key.
+fn v41_span_reading_defects(plan: List<V41PublishedSpan>, read: List<V41PublishedSpanDigest>) -> List<NonEmptyStr> {
+  let unread = map(filter(plan, sp => length(filter(read, r => v41_span_eq(a: r.span, b: sp))) == 0),
+    sp => join(["the planned span of ", sp.tensor as String, " (", sp.shard as String, " at ", to_string(sp.file_offset), " for ", to_string(sp.length), " bytes) was not read"], "") as NonEmptyStr)
+  let twice = map(filter(plan, sp => length(filter(read, r => v41_span_eq(a: r.span, b: sp))) > 1),
+    sp => join(["the span of ", sp.tensor as String, " was read more than once, so which digest is its reading is undecided"], "") as NonEmptyStr)
+  let foreign = map(filter(read, r => !any(plan, sp => v41_span_eq(a: r.span, b: sp))),
+    r => join(["a reading of ", r.span.tensor as String, " (", r.span.shard as String, " at ", to_string(r.span.file_offset), " for ", to_string(r.span.length), " bytes) is not a span this partition stores"], "") as NonEmptyStr)
+  concat(concat(unread, twice), foreign)
+}
+
+fn v41_slices_of(sharded: List<SafetensorsShardedEntry>, partition: V41EngramResidencyPartition) -> List<V41TensorSlice> {
+  flat_map(filter(sharded, e => any(partition.storage_backed, n => (n as String) == (e.entry.name as String))).sort_by(e => e.entry.name as String), e =>
+    match get(xs: e.entry.shape, index: 0) {
+      Absent => [] as List<V41TensorSlice>
+      Present { value: rows } => match v41_layer_index_from_tensor_name(name: e.entry.name) {
+        Absent => [] as List<V41TensorSlice>
+        Present { value: layer } => [v41_tensor_slice(name: e.entry.name, global_rows: rows, layer: layer)]
+      }
+    })
+}
+
+fn v41_published_row_store_text(spec_key: ContentHash, read: List<V41PublishedSpanDigest>) -> String {
+  join(concat(
+    [join(["encoding_spec ", serialize_content_hash(hash: spec_key) as String, "\n"], "")],
+    map(read.sort_by(r => r.span.tensor as String), r => join([
+      "span ", r.span.tensor as String, " ", r.span.shard as String, " ", to_string(r.span.file_offset), " ", to_string(r.span.length), " ", r.sha256.hex as String, "\n",
+    ], ""))), "")
+}
+
+fn v41_published_row_store_key(partition: V41EngramResidencyPartition, sharded: List<SafetensorsShardedEntry>, shards: List<SafetensorsShardFile>, readings: V41PublishedSpanReadings) -> V41PublishedRowStoreKey {
+  let slice_defects = concat(
+    v41_missing_storage_backed_defects(population: map(sharded, e => e.entry), partition: partition),
+    flat_map(v41_selected_storage_entries(population: map(sharded, e => e.entry), partition: partition), e => v41_tensor_slice_defects(e: e)))
+  if length(slice_defects) != 0 { V41PublishedRowStoreRefused { defects: slice_defects } } else {
+    match v41_published_span_plan(partition: partition, sharded: sharded, shards: shards) {
+      V41PublishedSpansUnplannable { defects: d } => V41PublishedRowStoreRefused { defects: d }
+      V41PublishedSpansPlanned { spans: plan } =>
+        match readings {
+          V41PublishedSpansUnread { obligation: o } => V41PublishedRowStoreUnestablished { obligation: o }
+          V41PublishedSpansRead { host: _, observed_at: _, spans: read } => {
+            let defects = v41_span_reading_defects(plan: plan, read: read)
+            if length(defects) != 0 { V41PublishedRowStoreRefused { defects: defects } } else {
+              let spec = v41_encoding_spec_with_slices(partition: partition, slices: v41_slices_of(sharded: sharded, partition: partition))
+              match sha256sum_stdin_digest_via_shell(content: v41_published_row_store_text(spec_key: v41_encoding_spec_key(spec: spec), read: read)) {
+                Sha256FileDigestUnavailable { path: _, reason: r } => V41PublishedRowStoreUnestablished { obligation: join(["the published row-store key text could not be digested: ", r], "") as NonEmptyStr }
+                Sha256FileDigest { digest: d } => match sha256_hex_digest(hex: d.hex as String) {
+                  Absent => V41PublishedRowStoreUnestablished { obligation: "sha256sum did not answer a sha256 digest over the published row-store key text" as NonEmptyStr }
+                  Present { value: h } => V41PublishedRowStoreKeyed { digest: h }
+                }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+// THE LIVE READING. Unread until a dispatched spark_v41_checkpoint_materialize run's receipt is
+// transcribed here; the candidate's row_store_encoding axis stays Unestablished on exactly this.
+data v41_published_span_readings: V41PublishedSpanReadings = V41PublishedSpansUnread {
+  obligation: "no published-shard row-store content digest exists: the storage-backed spans of shards model-00047/00048 have not been read on a Spark (spark_v41_checkpoint_materialize reads them after the shards verify, and its receipt is transcribed into gunbc.spark.v41_engram_row_store v41_published_span_readings)" as NonEmptyStr,
+}

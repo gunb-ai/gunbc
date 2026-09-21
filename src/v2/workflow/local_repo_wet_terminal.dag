@@ -1367,6 +1367,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_published_row_store_witness", function: "a_reading_of_exactly_the_planned_spans_keys" },
+      entry: "dag/test/claim/spark/v41_published_row_store_witness_test.dag",
+      function: "a_reading_of_exactly_the_planned_spans_keys",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_published_row_store_witness", function: "the_key_moves_with_the_bytes_and_the_table_set" },
+      entry: "dag/test/claim/spark/v41_published_row_store_witness_test.dag",
+      function: "the_key_moves_with_the_bytes_and_the_table_set",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.shell_spawn_refused_real_execution_witness", function: "absent_binary_is_a_typed_spawn_refusal" },
       entry: "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
       function: "absent_binary_is_a_typed_spawn_refusal",

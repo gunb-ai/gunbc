@@ -1,0 +1,105 @@
+module test.claim.spark.v41_checkpoint_materialize_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { byte_size_count }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import extdeps.deepseek.deepseek_v4_1_flash { DeepseekV41PublishedFile, deepseek_v4_1_flash_safetensors_tree_file_bytes }
+import gunbc.artifact_acquisition { ContentDigestSha256, UpstreamRevision, SourceArgv, SourceUrl }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.host_commitment { spark_serving_admissible_hosts }
+import gunbc.spark.v41_engram_row_store { V41PublishedSpan }
+import gunbc.spark.v41_checkpoint_materialize {
+  V41CheckpointPopulation, V41CheckpointPopulationAdmitted, V41CheckpointPopulationRefused,
+  v41_checkpoint_population, v41_checkpoint_bytes, v41_checkpoint_subject, v41_required_bytes,
+  v41_group_a_admission, v41_span_read_argv, v41_checkpoint_directory,
+}
+
+// THE MODE'S PURE DECISIONS, OVER THE REAL ADMITTED POPULATION. Nothing here reaches a host: the
+// host legs are the mode's to run (fleet-converge spark_v41_checkpoint_materialize), and these rows
+// establish what it will ask for and what it refuses before it asks.
+
+fn w_files() -> List<DeepseekV41PublishedFile> {
+  match v41_checkpoint_population() {
+    V41CheckpointPopulationAdmitted { files: f } => f
+    V41CheckpointPopulationRefused { defects: _ } => [] as List<DeepseekV41PublishedFile>
+  }
+}
+
+fn w_file(path: String) -> List<DeepseekV41PublishedFile> {
+  filter(w_files(), f => (f.path as String) == path)
+}
+
+// THE POPULATION IS 48 SHARDS, THE INDEX AND THREE TOKENIZER FILES, and its shard bytes are the
+// publisher's tree total -- the disk requirement is derived from these rows, never transcribed.
+test fn the_admitted_population_is_the_shards_the_index_and_the_tokenizer() -> Bool {
+  let fs = w_files()
+  let shards = filter(fs, f => (f.path as String).ends_with(".safetensors"))
+  length(fs) == 52 && length(shards) == 48
+    && v41_checkpoint_bytes(files: shards) == byte_size_count(b: deepseek_v4_1_flash_safetensors_tree_file_bytes)
+    && length(w_file(path: "model.safetensors.index.json")) == 1
+    && length(w_file(path: "encoding/encoding.py")) == 1
+}
+
+// EACH SUBJECT IS KEYED BY THE MANIFEST ROW'S SHA256, lands under the pinned-revision directory, stages
+// beside it, and offers the Hub cache copy before the resolve URL at the pinned revision.
+test fn a_subject_carries_the_rows_digest_and_the_pinned_route() -> Bool {
+  match first(w_file(path: "encoding/encoding.py")) {
+    Absent => false
+    Present { value: f } => {
+      let s = v41_checkpoint_subject(file: f)
+      let key_ok = match s.key {
+        ContentDigestSha256 { hex: h } => (h as String) == (f.sha256.hex as String)
+        UpstreamRevision { revision: _ } => false
+      }
+      let url_ok = match get(xs: s.sources, index: 1) {
+        Absent => false
+        Present { value: src } => match src.locator {
+          SourceArgv { argv: a } => any(a, w => w == "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/resolve/dba1be0a40aa45a94ad051997016db3960a90277/encoding/encoding.py")
+          SourceUrl { url: _ } => false
+        }
+      }
+      key_ok && url_ok && length(s.sources) == 2
+        && (s.install_path as String) == join([v41_checkpoint_directory as String, "/encoding/encoding.py"], "")
+        && (s.parent_directory as String) == join([v41_checkpoint_directory as String, "/encoding"], "")
+    }
+  }
+}
+
+// THE REQUIREMENT IS THE BYTES NOT ALREADY THERE AT THEIR DECLARED SIZE: nothing present needs all of
+// it, everything present at size needs none, and one file at the wrong size needs exactly that file.
+test fn the_disk_requirement_counts_only_what_is_missing() -> Bool {
+  let fs = w_files()
+  let all_present = map(fs, f => join([to_string(byte_size_count(b: f.file_bytes)), " ", f.path as String], ""))
+  let one_short = map(fs, f => if (f.path as String) == "tokenizer.json" { "1 tokenizer.json" } else { join([to_string(byte_size_count(b: f.file_bytes)), " ", f.path as String], "") })
+  let tok = match first(w_file(path: "tokenizer.json")) { Present { value: t } => byte_size_count(b: t.file_bytes)  Absent => 0 }
+  v41_required_bytes(files: fs, listing: [] as List<String>) == v41_checkpoint_bytes(files: fs)
+    && v41_required_bytes(files: fs, listing: all_present) == 0
+    && v41_required_bytes(files: fs, listing: one_short) == tok
+    && tok > 0
+}
+
+// ONLY A HOST THE GROUP A PAIR SUBJECT HOLDS IS ADMITTED, read through the real admissibility.
+test fn only_a_group_a_host_is_admitted() -> Bool {
+  let held = spark_serving_admissible_hosts(subject: PairServingUnitOn { group: FabricGroupA })
+  length(held) == 4
+    && (match v41_group_a_admission(raw: "srv5" as HostIdentity, held: held) { Absent => true  Present { value: _ } => false })
+    && (match v41_group_a_admission(raw: "srv8" as HostIdentity, held: held) { Absent => true  Present { value: _ } => false })
+    && (match v41_group_a_admission(raw: "srv9" as HostIdentity, held: held) { Absent => false  Present { value: why } => why.contains("not held by the Group A pair subject") })
+    && (match v41_group_a_admission(raw: "srv1" as HostIdentity, held: held) { Absent => false  Present { value: _ } => true })
+}
+
+// THE SPAN READ IS EXACTLY THE PLANNED REGION, and a failed read cannot pass as an empty stream's digest.
+test fn the_span_read_reads_exactly_its_region() -> Bool {
+  let argv = v41_span_read_argv(sp: V41PublishedSpan { tensor: "layers.1.engram.embed.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr, file_offset: 664, length: 98305579008 })
+  match get(xs: argv, index: 2) {
+    Absent => false
+    Present { value: script } =>
+      script.contains("set -o pipefail")
+        && script.contains("skip=664 count=98305579008")
+        && script.contains("iflag=skip_bytes,count_bytes")
+        && script.contains(join([v41_checkpoint_directory as String, "/model-00047-of-00048.safetensors"], ""))
+  }
+}

@@ -989,6 +989,13 @@ data gunbc_ci_spark_runtime_image_probe_target: GunbcRunStepTarget = GunbcRunSte
   function: "v41_published_image_probe_ci_wet",
 }
 
+// THE PUBLISHED V4.1 CHECKPOINT ON ONE GROUP A SPARK (gunbc.spark.v41_checkpoint_materialize): the same
+// administrator credential as the runtime-image probe, because every leg runs privileged on the Spark.
+data gunbc_ci_spark_v41_checkpoint_materialize_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_checkpoint_materialize.dag",
+  function: "v41_checkpoint_materialize_ci_wet",
+}
+
 data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_receipt_collector.dag",
   function: "collect_fleet_convergence_wet",
@@ -2478,6 +2485,17 @@ fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
     function: gunbc_ci_spark_runtime_image_probe_target.function,
     claim_run: false,
     receipt_rel: "target/v41-published-image-probe-receipt.txt"
+  )
+}
+
+fn gunbc_ci_spark_v41_checkpoint_materialize_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_checkpoint_materialize_target.entry,
+    function: gunbc_ci_spark_v41_checkpoint_materialize_target.function,
+    claim_run: false,
+    receipt_rel: "target/v41-checkpoint-materialize-receipt.txt"
   )
 }
 

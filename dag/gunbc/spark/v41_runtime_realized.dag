@@ -12,8 +12,8 @@ import std.realization { Placement, LocalFilesystem, RemoteNetwork, LocalInProce
 import v2.std.optional { Present, Absent }
 import gunbc.spark.v41_runtime_candidate {
   V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
-  v41_input,
 }
+import gunbc.spark.v41_identity_input { v41_input }
 import gunbc.spark.v41_source_patch_converge { V41ObservedSourceIdentity }
 import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
 import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
