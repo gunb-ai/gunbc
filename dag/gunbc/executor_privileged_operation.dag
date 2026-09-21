@@ -25,7 +25,7 @@ import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
-import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb }
+import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb, systemctl_restart_verb }
 import gunbc.fleet_posix_accounts {
   ci_runner_sudo_binary_path,
   SudoInstall,
@@ -33,8 +33,22 @@ import gunbc.fleet_posix_accounts {
   SudoUseradd,
   SudoUsermod,
   SudoSystemctl,
+  SudoNft,
+  SudoConntrack,
+  SudoIptablesLegacySave,
+  SudoNfct,
 }
+import extdeps.tools.conntrack { conntrack_list_expectations_arguments }
+import extdeps.nftables.ruleset { nft_list_ruleset_arguments, nft_list_table_arguments_wire }
+import extdeps.netfilter.iptables_legacy { iptables_legacy_save_arguments }
+import extdeps.netfilter.nfct { nfct_helper_list_arguments }
 
+// A GRANTED READ IS AN OPERATION TOO. ReadNftTable mutates nothing, and it is here because the
+// sudoers roster is derived from this type: listing a table needs CAP_NET_ADMIN, so a readback that
+// is not an operation is a command nobody authorized -- and a converge that cannot READ what it
+// installed can only report that the install returned zero, which is the inference DESIGN section 5
+// forbids standing in for evidence.
+//
 // THE OPERATION, PARAMETERIZED. Not a nullary enum of binaries: a binary path alone cannot say
 // which directory it may create or who ends up owning it, and granting whole /usr/bin/install is
 // granting root. Every field here narrows the authorization.
@@ -60,6 +74,12 @@ type ExecutorPrivilegedOperation
       mode: NonEmptyStr
     }
   | SystemdReloadUnit { unit: NonEmptyStr }
+  | SystemdRestartUnit { unit: NonEmptyStr }
+  | ReadNftTable { family: NonEmptyStr, table: NonEmptyStr }
+  | ReadNftRuleset
+  | ReadConntrackExpectations
+  | ReadLegacyXtablesRules
+  | ReadUserspaceConntrackHelpers
 
 // THE ONE PROJECTION. Everything else in this module derives from this function, so there is
 // exactly one place where an operation becomes words.
@@ -111,6 +131,16 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       systemctl_reload_verb,
       u
     ]
+    SystemdRestartUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_restart_verb,
+      u
+    ]
+    ReadNftRuleset => concat([ci_runner_sudo_binary_path(b: SudoNft)], nft_list_ruleset_arguments)
+    ReadConntrackExpectations => concat([ci_runner_sudo_binary_path(b: SudoConntrack)], conntrack_list_expectations_arguments)
+    ReadLegacyXtablesRules => concat([ci_runner_sudo_binary_path(b: SudoIptablesLegacySave)], iptables_legacy_save_arguments)
+    ReadUserspaceConntrackHelpers => concat([ci_runner_sudo_binary_path(b: SudoNfct)], nfct_helper_list_arguments)
+    ReadNftTable { family: f, table: t } => concat([ci_runner_sudo_binary_path(b: SudoNft)], nft_list_table_arguments_wire(family_wire: f, name: t))
     SystemdDaemonReload => [
       ci_runner_sudo_binary_path(b: SudoSystemctl),
       "daemon-reload" as NonEmptyStr
@@ -306,6 +336,12 @@ fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -
     SystemdSetUnitProperty { unit: _, assignment: _ } => NoPrecondition
     InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => NoPrecondition
     SystemdReloadUnit { unit: _ } => NoPrecondition
+    SystemdRestartUnit { unit: _ } => NoPrecondition
+    ReadNftTable { family: _, table: _ } => NoPrecondition
+    ReadNftRuleset => NoPrecondition
+    ReadConntrackExpectations => NoPrecondition
+    ReadLegacyXtablesRules => NoPrecondition
+    ReadUserspaceConntrackHelpers => NoPrecondition
   }
 }
 

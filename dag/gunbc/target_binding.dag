@@ -34,6 +34,7 @@ type TargetProducer
   | PrimitiveEgressCensusSeedProducer
   | FloorMemoryQualificationProducer
   | RequiredLaneResolutionCensusProducer
+  | BareReferenceChannelOutcomeProducer
 
 type TargetBinding {
   target: Label
@@ -437,3 +438,66 @@ type CompileCleanDiagnosticCensusRefusalCause
 type CompileCleanDiagnosticCensusStanding
   = CompileCleanDiagnosticCensusCompleted { observation: CompileCleanDiagnosticCensusObservation }
   | CompileCleanDiagnosticCensusRefused { cause: CompileCleanDiagnosticCensusRefusalCause }
+
+// ---------------------------------------------------------------------------------------------
+// THE BARE-REFERENCE CHANNEL'S OUTCOME CARRIERS
+// ---------------------------------------------------------------------------------------------
+
+// WHAT THIS INSTRUMENT OBSERVES, AND WHAT IT DELIBERATELY DOES NOT.
+//
+// `gunbc.recurring_failure_mode.bare_reference_channel_declines_a_pull_in_silence` records that
+// the loader's bare half declines silently, and names its next rung as a CARRIER for declined
+// names -- which does not exist and is not built here. This instrument needs none, because it asks
+// a different and answerable question: for one source file, did the bare half RUN, and which
+// modules did it PULL. Both are already values the loader computes, so the observation is at the
+// grain of the decision's OUTCOME rather than at the grain of the distant symptom (an unresolved
+// type reported modules away) or of the reason (which only the carrier could supply).
+//
+// THIS CARRIER STATES NO RUNG, AND THE OMISSION IS DELIBERATE. The class's rung is the ledger
+// row's fact and has exactly one home -- `gunbc.recurring_failure_mode`
+// `bare_reference_channel_declines_a_pull_in_silence`, which reports 1 and says why. An earlier
+// revision of this annotation claimed rung 2 here; that was a second statement of one fact on the
+// carrier a reader meets first, which is the DESIGN section 3 fork, and it was wrong on the
+// merits besides: a gate that changes behaviour turns this target red for whoever RUNS it and
+// blocks no landing, and section 4b rung 2 is a mechanism that exposes AND blocks. Read the rung
+// from the row.
+type BareChannelEligibility
+  = BareChannelRuns
+  | BareChannelDisabledByImportLine
+
+// ELIGIBILITY IS A SEPARATE FIELD FROM THE PULL SET AND MUST STAY ONE. An eligible file that
+// pulled nothing (every arm of `pullable` declined) and a file whose channel never ran (one import
+// line anywhere) both end with an empty set, and they are the two DIFFERENT gates this fixture set
+// exists to tell apart. Folding them would make the entry-three row unable to fail for its own
+// reason.
+type BareReferenceChannelEntryReading {
+  module_path: NonEmptyStr
+  eligibility: BareChannelEligibility
+  pulled_modules: List<String>
+}
+
+// The expectation is stated as an OUTCOME plus the condition the entry isolates, so a divergence
+// reads as "entry X, which isolates gate one, now pulls" rather than as a bare set difference.
+type BareReferenceChannelExpectation {
+  module_path: NonEmptyStr
+  isolated_condition: NonEmptyStr
+  eligibility: BareChannelEligibility
+  pulled_modules: List<String>
+}
+
+// SUBJECT-UNREACHED IS NOT A DIVERGENCE, on the rule every instrument on this seam follows: a
+// missing fixture root observed nothing, and reporting that as a moved gate would be a fabricated
+// reading.
+type BareReferenceChannelSubjectCause
+  = BareChannelFixtureRootAbsent { root: String }
+  | BareChannelEntryAbsent { module_path: String }
+  | BareChannelIndexRefused { detail: String }
+
+// TWO ARMS, NOT THREE. A "diverged" arm carrying pre-joined pairs would give the verdict two
+// homes -- the producer deciding once by choosing an arm and the classifier deciding again -- and
+// the arm the producer chose would be the one a reader trusted. The producer READS and the
+// classifier DECIDES: `BareReferenceChannelRead` carries what was observed and nothing about
+// whether it was expected.
+type BareReferenceChannelStanding
+  = BareReferenceChannelRead { readings: List<BareReferenceChannelEntryReading> }
+  | BareReferenceChannelSubjectUnreached { cause: BareReferenceChannelSubjectCause }

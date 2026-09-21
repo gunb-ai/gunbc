@@ -330,11 +330,11 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
     }
     SystemctlShowProperty { unit: u, property: p } => {
-      let result = systemd.Systemctl.ShowProperty(unit: u, property: p)
+      let result = systemd.Systemctl.ShowProperty(unit: u, property: systemd_unit_property_wire(property: p))
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
     SystemctlShowUserProperty { unit: u, property: p } => {
-      let result = systemd.Systemctl.ShowUserProperty(unit: u, property: p)
+      let result = systemd.Systemctl.ShowUserProperty(unit: u, property: systemd_unit_property_wire(property: p))
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
     SystemctlShowLoadState { unit: u } => {

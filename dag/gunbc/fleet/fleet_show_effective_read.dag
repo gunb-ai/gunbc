@@ -130,19 +130,27 @@ fn runner_unit_live_read_row_from_stdout(
   probed_at: NonEmptyStr,
 ) -> RunnerUnitLiveReadRow? {
   let parts = split(s: stdout, delimiter: "\n")
-  if length(parts) >= 3 {
-    Present {
-      value: RunnerUnitLiveReadRow {
-        unit: unit,
-        memory_max_raw: trim(parts.first()),
-        memory_swap_max_raw: trim(parts.skip(n: 1).first()),
-        memory_high_raw: trim(parts.skip(n: 2).first()),
-        memory_current_raw: "",
-        probed_at: probed_at,
+  match parts.first() {
+    Absent => none
+    Present { value: max_raw } =>
+      match parts.skip(n: 1).first() {
+        Absent => none
+        Present { value: swap_max_raw } =>
+          match parts.skip(n: 2).first() {
+            Absent => none
+            Present { value: high_raw } =>
+              Present {
+                value: RunnerUnitLiveReadRow {
+                  unit: unit,
+                  memory_max_raw: trim(max_raw),
+                  memory_swap_max_raw: trim(swap_max_raw),
+                  memory_high_raw: trim(high_raw),
+                  memory_current_raw: "",
+                  probed_at: probed_at,
+                }
+              }
+          }
       }
-    }
-  } else {
-    none
   }
 }
 

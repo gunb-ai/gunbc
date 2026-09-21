@@ -565,7 +565,19 @@ import v2.std.collection { List }
 // prepare_grammar's did. The instrument that decides this row is the required floor's
 // [floor-shared-fill] ledger showing disposition=Stored at preparation, joined against
 // required_floor_claim_cost.tsv showing the four identities reaching verdict_reached=true.
+// THE NATIVE REFUSAL DETAIL PROBE ROW IS THE SAME GROUND A FOURTH TIME, ON THE SAME PRODUCER.
+// v2.test.claim.native_route.native_refusal_detail drives native_test_context_from_ingest over one
+// eight-specimen supplied ingest and native_lane_module_resolution over four of its modules; its
+// six claims each inspect one row of that value. The stored value is four
+// NativeLaneModuleResolution arms -- rows, diagnostics, symbols, nodes -- with no resolution
+// context and no closure, portable for the same reason census_probe_outcomes is. WARM for the
+// same ceiling arithmetic: the fill is a front end plus four resolves, more than one claim's budget.
+// THE CLI TRAILING-TOKEN PROBE ROW: v2.test.cli.v2_native_cli drives v2_cli_run over a two-file
+// supplied ingest whose second file refuses at parse; two claims read one field each of the
+// CliRunOutcome. Stored value is a refused outcome (a Symbol and a String), portable.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
+  "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
