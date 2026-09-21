@@ -12,6 +12,10 @@ import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, 
   harness_worker_guidance, harness_probe_guidance,
 }
 import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
+import gunbc.roadmap.roadmap_submission {
+  submission_schema, submission_decode, SubmissionDecoded, SubmissionNotDecodable, SubmissionReady,
+}
+import gunbc.harness.harness_guidance { submission_declaration_skeleton }
 import std.measure { token_count_value, second_count }
 import gunbc.harness.harness_wire { harness_engine_context_window, harness_context_budget_for }
 import gunbc.harness.harness_reasoning_wire {
@@ -361,4 +365,46 @@ test fn the_worker_is_told_the_one_test_command_and_nothing_else() -> Bool {
     && prose.contains("/x/attempts/n-a1/.gunbc-compile-receipt.json")
     && any(conclusions, c => match c { TestWithTheProcess { command } => command.contains("test_run.dag")  _ => false })
     && !any(harness_conclusions(rows: [is_worker(), at(premise: TestProcessIs { command: "x", receipt_path: "r" })]), c => match c { TestWithTheProcess { command: _ } => true  _ => false })
+}
+
+// DRIFT CONTROL, keyed to the decoder and not to the sentence. The completion term must project the
+// decoder's contract: the schema member's exact VALUE (so a schema version bump in
+// gunbc.roadmap.roadmap_submission follows into the prompt), every exact key name the decoder reads,
+// and the consequence of omitting it. The old text taught "known limitations" as prose and never
+// named the schema member; this control is red on that text.
+test fn the_submission_term_projects_the_decoders_contract() -> Bool {
+  let prose = harness_guidance_prose(rows: harness_worker_guidance())
+  prose.contains(submission_schema as String)
+    && prose.contains("\"schema\": \"")
+    && prose.contains("\"readiness\"")
+    && prose.contains("\"explanation\"")
+    && prose.contains("\"limitations\"")
+    && !prose.contains("known_limitations")
+    && prose.contains("does not decode")
+}
+
+// THE SKELETON IS READ BACK THROUGH THE REAL DECODER. The contains-checks above can be satisfied by
+// a text that merely mentions the keys; this half decodes the guided skeleton itself, so the
+// prompt's copy-verbatim shape is proven to be a declaration the belt accepts, with the ready
+// vocabulary spelled the decoder's way.
+test fn the_guided_skeleton_decodes_as_a_ready_submission() -> Bool {
+  match submission_decode(text: submission_declaration_skeleton()) {
+    SubmissionNotDecodable { reason: _ } => false
+    SubmissionDecoded { submission } =>
+      match submission.readiness {
+        SubmissionReady => true
+        _ => false
+      }
+  }
+}
+
+// RED CONTROL, planted verbatim from production. This is the artifact shape workers actually wrote
+// on the attempts that yielded (no schema member, a "known_limitations" key): it must NOT decode,
+// and the control fails if the decoder ever starts accepting it silently -- that acceptance would
+// be a schema change, which belongs in submission_schema with the prompt following it.
+test fn the_production_shape_without_the_schema_member_is_not_a_declaration() -> Bool {
+  match submission_decode(text: "{\"readiness\": \"ready\", \"explanation\": \"did the work\", \"known_limitations\": [\"no soak\"]}") {
+    SubmissionNotDecodable { reason: _ } => true
+    SubmissionDecoded { submission: _ } => false
+  }
 }

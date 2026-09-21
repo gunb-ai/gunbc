@@ -3,7 +3,10 @@ module gunbc.harness.harness_guidance
 import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, harness_tool_wire_name }
-import gunbc.roadmap.roadmap_submission { submission_artifact_name }
+import gunbc.roadmap.roadmap_submission {
+  submission_artifact_name, submission_schema, submission_text, submission_readiness_key,
+  WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
+}
 
 // THE PROMPT IS A SYLLOGISM: GROUNDED PREMISES IN, DERIVED CONCLUSIONS OUT.
 //
@@ -105,6 +108,22 @@ fn harness_capability_text(capability: HarnessCapability) -> String {
   }
 }
 
+// THE SKELETON IS THE EMITTER'S OWN SERIALIZATION, so the text the worker copies is byte-for-byte
+// what submission_decode_document accepts -- the schema member with its exact value, the exact key
+// names, and the readiness vocabulary all projected, never re-spelled. Production receipt
+// (2026-09-21, attempts of shell-dag-cron-entry-line-builder and shell-dag-ci-fmt-gate-line):
+// workers wrote a plausible artifact with no schema member and a "known_limitations" key; every one
+// read SubmissionUndecodable, the belt swept preservation-only checkpoints, and no candidate ever
+// advanced. The placeholder values are instructions, not data -- only readiness carries a
+// vocabulary.
+fn submission_declaration_skeleton() -> String {
+  submission_text(submission: WorkerSubmission {
+    readiness: SubmissionReady,
+    explanation: "what you changed and how you verified it",
+    limitations: "what remains unverified or out of scope",
+  })
+}
+
 fn harness_completion_term_text(term: HarnessCompletionTerm) -> String {
   match term {
     FilesOnDiskDiffer => "the files on disk differ"
@@ -112,7 +131,13 @@ fn harness_completion_term_text(term: HarnessCompletionTerm) -> String {
     SubmissionDeclared { artifact } =>
       join([
         "you have written ", artifact,
-        " at the worktree root declaring how the task ends: readiness (ready | blocked | needs-context), an explanation, and your known limitations. Writing it is how you end the task -- the harness captures the tree as it stands then and binds your declaration to that capture. Ending without it is a yield, not a submission: your work is preserved as a checkpoint and never advances to authoritative verification",
+        " at the worktree root declaring how the task ends. Its exact shape -- copy it verbatim and fill the two free-text values: ",
+        submission_declaration_skeleton(),
+        " . readiness is one of ",
+        submission_readiness_key(r: SubmissionReady), " | ",
+        submission_readiness_key(r: SubmissionBlocked), " | ",
+        submission_readiness_key(r: SubmissionNeedsContext),
+        ", and the schema member is required and exact: an artifact without it does not decode, an undecodable artifact is not a declaration, and the tree is then preserved as a checkpoint that never advances. Writing it is how you end the task -- the harness captures the tree as it stands then and binds your declaration to that capture. Ending without it is a yield, not a submission: your work is preserved as a checkpoint and never advances to authoritative verification",
       ], "")
   }
 }
@@ -303,7 +328,7 @@ fn harness_worker_guidance() -> List<HarnessGroundedPremise> {
     grounded(premise: CompletionRequires { term: AcceptanceCheckPasses },
              module_path: "gunbc.roadmap_execution_contract", decl_name: "ValidationOperation"),
     grounded(premise: CompletionRequires { term: SubmissionDeclared { artifact: submission_artifact_name as String } },
-             module_path: "gunbc.roadmap.roadmap_submission", decl_name: "submission_artifact_name"),
+             module_path: "gunbc.roadmap.roadmap_submission", decl_name: "submission_schema"),
     grounded(premise: CapabilityWithheld { capability: CommitTheChange },
              module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
     grounded(premise: CapabilityWithheld { capability: PublishTheBranch },
