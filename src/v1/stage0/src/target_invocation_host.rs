@@ -877,13 +877,12 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
             },
             message: format!(
                 "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={} \
-                 door_universe={} door_refusal_reason=\"{}\"",
+                 door_refusal_reason=\"{}\"",
                 held.closure_identity,
                 held.binary_identity,
                 held.seed_identity,
                 held.exit_status,
                 held.warning_count,
-                held.door_universe,
                 held.door_refusal_reason,
             ),
         },

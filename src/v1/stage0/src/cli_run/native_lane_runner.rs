@@ -1055,12 +1055,23 @@ pub struct SelfHostHeld {
     pub seed_identity: String,
     pub exit_status: i64,
     pub warning_count: i64,
-    /// What the built driver observed when this instrument STARTED it: the size of the universe
-    /// its accepting control derived, and the cause it gave for refusing the poison specimen.
-    /// Carried as the refusal's own sentence rather than as a Bool, so a receipt reader can see
-    /// WHICH refusal fired — the flattening this file's `run_native_binary` annotation records
-    /// having already cost one unanswerable question.
-    pub door_universe: i64,
+    /// The cause the built driver gave for refusing the poison specimen when this instrument
+    /// STARTED it. Carried as the refusal's own sentence rather than as a Bool, so a receipt reader
+    /// can see WHICH refusal fired — the flattening this file's `run_native_binary` annotation
+    /// records having already cost one unanswerable question.
+    ///
+    /// A `door_universe` FIELD STOOD BESIDE THIS AND IS DELETED (review 69673). It read
+    /// `clean.terminal.universe` from a CENSUS marker, and the census arm of this file's own
+    /// decoder fills `universe: 0` unconditionally because census markers carry no such key — its
+    /// annotation says so in terms: "THE CENSUS ARM'S ZEROS ARE NOT A MEASUREMENT AND NOTHING READS
+    /// THEM ... If a future consumer wants a count from a census marker, the honest change is a
+    /// per-mode marker type, not a zero that has quietly become load-bearing." This field was that
+    /// consumer, and its doc called the struct fill "the size of the universe its accepting control
+    /// derived". That is the fabricated plausible output DESIGN section 5 forbids outright, and
+    /// section 4b(1)'s rung inflation in a receipt. It is REMOVED rather than re-described, because
+    /// the accepting arm's real evidence is the assertion the control already makes -- mode is
+    /// `census` and there are ZERO per-file refusals over a well-formed root -- and a receipt field
+    /// that restates a required constant adds nothing a reader can act on.
     pub door_refusal_reason: String,
 }
 
@@ -1105,7 +1116,7 @@ pub struct SelfHostHeld {
 /// the question is whether the ENTRYPOINT executes and the front end answers, and adjudication
 /// would additionally derive and judge the whole `v2.test.*` universe — the hours-long subject of
 /// the required-v2-native route, and a different claim.
-fn walk_eval_driver_door(binary: &Path, workspace: &Path) -> Result<(u64, String), String> {
+fn walk_eval_driver_door(binary: &Path, workspace: &Path) -> Result<String, String> {
     let clean_root = workspace.join(WELL_FORMED_CONTROL_ROOT);
     if !clean_root.is_dir() {
         return Err(format!(
@@ -1138,8 +1149,13 @@ fn walk_eval_driver_door(binary: &Path, workspace: &Path) -> Result<(u64, String
             clean_root.display()
         ));
     }
-    let universe = clean.terminal.universe;
-    eprintln!("self-host: driver accepted the clean root — mode=census universe={universe}");
+    // WHAT IS PRINTED IS WHAT THE MARKER ACTUALLY CARRIES. A census marker is
+    // `{"_terminal":"complete","mode":"census","file_refusals":N}`; `rows`, `universe`, `admitted`
+    // and `summary` are struct fill for fields this mode does not have.
+    eprintln!(
+        "self-host: driver accepted the clean root — mode={} file_refusals={}",
+        clean.terminal.mode, clean.terminal.file_refusals
+    );
 
     // THE ROOT IS ABSOLUTE HERE AND RELATIVE IN `run_required_v2_native`, and the difference is the
     // caller's cwd rather than a preference. That lane anchors at the workspace root before it
@@ -1168,7 +1184,7 @@ fn walk_eval_driver_door(binary: &Path, workspace: &Path) -> Result<(u64, String
         "self-host: driver refused the poison specimen — path=\"{}\" reason=\"{}\"",
         refusal.path, refusal.fatal_reason
     );
-    Ok((universe, refusal.fatal_reason.clone()))
+    Ok(refusal.fatal_reason.clone())
 }
 
 pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
@@ -1190,7 +1206,7 @@ pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
     // NOT HOLD, and a refusal above is the subject never having been reached; those are different
     // terminations with different exit statuses, and the instrument seam is the one place that
     // knows the vocabulary. Deciding it here too would give one fact two homes.
-    let (door_universe, door_refusal_reason) =
+    let door_refusal_reason =
         walk_eval_driver_door(&prepared.binary_path, &super::process_workspace_root())?;
     Ok(SelfHostHeld {
         closure_identity: prepared.closure_identity,
@@ -1198,7 +1214,6 @@ pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
         seed_identity: prepared.seed_identity,
         exit_status: prepared.build.exit_status,
         warning_count: prepared.build.warning_count,
-        door_universe: door_universe as i64,
         door_refusal_reason,
     })
 }
@@ -1225,8 +1240,15 @@ pub struct V2NativeCliHeld {
     /// in the admitting arm, and an emitting door answers `ProbeGreened`, which is an `Err` — so the
     /// receipt is never built at all. The field records the probe's stdout length, which the
     /// admitting arm requires to be zero, and that is all it records. Describing an observation the
-    /// code cannot make is the inflation DESIGN section 4b(1) forbids, and it is the third time this
-    /// file has carried that shape (reviews 69621, 69654).
+    /// code cannot make is the inflation DESIGN section 4b(1) forbids, and this file has now carried
+    /// that shape four times (reviews 69621, 69654, 69673, and the `CLI_DOOR_EMITTED_WITNESS`
+    /// paragraph).
+    ///
+    /// AND BOTH STATUSES ARE CONFIRMATIONS RATHER THAN VARIABLES, said here so the next reader does
+    /// not mistake them for measurements either. `door_exit_status` and `door_refusal_exit_status`
+    /// are each required to equal `CLI_DOOR_REFUSAL_EXIT`, so a written receipt always shows 1 in
+    /// both. They are recorded because the receipt should state what the door was OBSERVED to do
+    /// rather than assert it silently — not because either can differ in a receipt that exists.
     pub door_exit_status: i64,
     pub door_emitted_bytes: i64,
     /// The status the same binary took when `--entry` was removed from the emit probe's argv.
