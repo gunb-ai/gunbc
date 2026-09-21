@@ -362,7 +362,7 @@ fn parse_table_memo_verdict_is_single_recompute_for(r: ParseMemoRecurrence) -> B
 
 // The discriminating RED for the fail-closed arm: an identity the ladder never ruled on has no
 // admitted decision, so the door must refuse the store rather than inherit the permissive
-// answer. Deleting the Absent arm of admitted_prescription makes this return Memoize.
+// answer. Deleting the Absent arm of admitted_from makes this return Memoize.
 data unruled_demand_identity: String = "identity-the-ladder-never-ruled-on"
 
 fn unruled_identity_prescription() -> Materialization {
@@ -374,7 +374,7 @@ fn unruled_identity_prescription() -> Materialization {
 // discharges the single-site demand, so this is the same identity and the same provider,
 // refused for a reason that is about scope rather than absence -- exactly the arm that
 // ladder_verdict_prescribes answers Memoize for. Restoring the bare prescription (dropping the
-// green test in admitted_prescription) makes this return Memoize and the control fails.
+// green test in admitted_from) makes this return Memoize and the control fails.
 fn refused_scope_prescription() -> Materialization {
   admitted_from(
     verdicts: parse_table_memo_plural_verdicts(providers: v2_compiler_cache_providers()),
