@@ -380,6 +380,14 @@ type RunSwapPolicy
   | SwapMaxDeclaredUnread { declared: ByteSize, declaring_authority: NonEmptyStr }
   | SwapDisabled
 
+// run_completed MEANS THE MEASURED WORKLOAD RAN TO ITS END, NOT THAT THE FLOOR RETURNED CLEAN,
+// and the distinction decides a reading. Its consumer is receipt_peak_reading_standing, which asks
+// whether the peak could have been TRUNCATED -- a run that stopped early never reached whatever it
+// would have held later, so its maximum is a lower bound for that reason alone. A run whose
+// workload completed and whose VERDICT was a refusal is a different fact: the memory it held is
+// the memory it held, whatever any witness decided. Reading the field as "the floor was clean"
+// would mark every refusing run truncated and mask every other censoring cause behind it, which
+// is what it did to the 2026-09-21 receipt until this was stated.
 type FloorHeldSetReceipt {
   run_id: NonEmptyStr
   runner_unit: NonEmptyStr
@@ -608,6 +616,13 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
 // during the fold -- reclaim giving the cache back to make room for anonymous memory, the
 // opposite of cache accumulation.
 //
+// ITS WORKLOAD RAN TO ITS END, WHICH IS WHY run_completed IS TRUE ON A RUN THAT REFUSED. The
+// floor executed preparation and the whole claim-evaluation fold -- twenty-three beats, the
+// anonymous set rising to its peak and falling again as the fold released scopes -- and the
+// refusal came afterwards, from an unrelated lane (a local-repo wet terminal in
+// test.claim.mtcollins1_census_image_local_wet, a module this change does not touch). The peak is
+// therefore not truncated, which is the only question that field's consumer asks.
+//
 // STILL CENSORED, AND THE POLICY IS WHY. This ran at the live 26 GiB / 25 GiB row with swap
 // available, and its own beats record the consequence: the peak beat carries a stall of 11
 // faults/min, beat 19 reads 77, and beat 22 reads 3225 while the run's heartbeat shows host
@@ -784,7 +799,7 @@ data gunbc_floor_memory_stat_receipt_2026_09_21: FloorHeldSetReceipt = FloorHeld
       stall: StallRead { rate: events_per_minute(count: 251) },
     },
   ],
-  run_completed: false,
+  run_completed: true,
   swap_policy: SwapMaxDeclaredUnread {
     declared: byte_size(34359738368),
     declaring_authority: "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_swap_max",
