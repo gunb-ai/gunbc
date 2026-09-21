@@ -198,6 +198,23 @@ fn der_expect(octets: List<UInt8>, at: Int, class: DerTagClass, tag_number: Int,
   }
 }
 
+// The same expectation over an element already read (a positional child), so a reader that walks
+// a SEQUENCE's children can assert each one's type before interpreting it.
+fn der_element_expect(e: DerElement, class: DerTagClass, tag_number: Int, constructed: Bool) -> DerRefusal? {
+  if !der_class_matches(a: e.tag_class, b: class) { Present { value: DerClassUnexpected { at: e.header_at } } }
+  else if e.tag_number != tag_number { Present { value: DerTagUnexpected { at: e.header_at, expected: tag_number, found: e.tag_number } } }
+  else if e.constructed != constructed { Present { value: DerConstructedUnexpected { at: e.header_at, expected: constructed } } }
+  else { none }
+}
+
+fn der_element_expect_sequence(e: DerElement) -> DerRefusal? {
+  der_element_expect(e: e, class: DerUniversal, tag_number: der_tag_sequence, constructed: true)
+}
+
+fn der_element_expect_universal(e: DerElement, tag_number: Int) -> DerRefusal? {
+  der_element_expect(e: e, class: DerUniversal, tag_number: tag_number, constructed: false)
+}
+
 fn der_expect_sequence(octets: List<UInt8>, at: Int) -> DerRead {
   der_expect(octets: octets, at: at, class: DerUniversal, tag_number: der_tag_sequence, constructed: true)
 }
@@ -318,18 +335,22 @@ fn der_object_identifier(octets: List<UInt8>, e: DerElement) -> DerOid {
   }
 }
 
-// BIT STRING (§8.6): the first contents octet counts unused trailing bits. Keys and signatures
-// are whole octets, so any unused count but zero refuses.
+// BIT STRING (§8.6): the first contents octet counts unused trailing bits (§8.6.2.3: the contents
+// are at least that octet, so an empty contents field refuses BEFORE anything is read -- a read
+// at value_at with no contents would be the next element's identifier, review 69616 of
+// gunbc#11975). Keys and signatures are whole octets, so any unused count but zero refuses.
 type DerBits
   = DerBitsRead { octets: List<UInt8> }
   | DerBitsRefused { cause: DerRefusal }
 
 fn der_bit_string_octets(octets: List<UInt8>, e: DerElement) -> DerBits {
+  if e.value_len < 1 { DerBitsRefused { cause: DerTruncated { at: e.value_at, needed: 1, available: 0 } } } else {
   match der_octet(octets: octets, at: e.value_at) {
     Absent => DerBitsRefused { cause: DerTruncated { at: e.value_at, needed: 1, available: 0 } }
     Present { value: unused } =>
       if unused != 0 { DerBitsRefused { cause: DerBitStringUnusedBitsRefused { at: e.value_at, unused: unused } } }
       else { DerBitsRead { octets: der_slice(octets: octets, at: e.value_at + 1, n: e.value_len - 1) } }
+  }
   }
 }
 
