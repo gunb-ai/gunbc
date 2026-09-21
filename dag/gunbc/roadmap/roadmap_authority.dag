@@ -2332,6 +2332,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ), v1_interpreter_primitive_dispatch_authority_execution_contract()),
     active(
+      identity: "rn_2CB9RP256VFYH7KM4NXQ8WDT3A",
+      id: "v1-interpreter-p256-verify-cost-shape",
+      owner: "self-host",
+      path: "dag/extdeps/crypto/nist_p256.dag",
+      t: fields(
+        headline: "Find why one interpreted P-256 verification costs 13.5 GiB and minutes, and remove the cost shape rather than the workload",
+        boundary: "The receipt is gunbc#11645: one interpreted p256_ecdsa_verify_octets peaks at 13.5 GiB resident (VmHWM 14,132,132 kB) and takes 192 s to 734 s depending on host residency, so the required floor budget-refuses all eight members of test.claim.p256_dag_ecdsa_witness_test and the interpreted approval broker cannot verify a device signature, an App Attest assertion or an attestation chain in usable time. The arithmetic is std.bignat Montgomery multiplication over limb lists and the double-scalar ladder in extdeps.crypto.nist_p256; a 256-bit verification is a few thousand field multiplications, so a resident set in the tens of gigabytes is a cost-shape defect in how the interpreter realizes those folds (DESIGN section 6, bare minimum cost), not a property of the workload. The instrument that re-derives the figure is `claim_batch --source-root dag --source-root src/v2 --hermetic --entry dag/test/claim/p256_dag_ecdsa_witness_test.dag --functions the_rfc6979_sample_signature_verifies` read by its [witness] line and the process VmHWM; no number in this row is authoritative over that run. This is the B arm of the 2026-09-21 approval-app decision (parent ruling on msg_4d665941): filed for the v1-performance program, NOT started by the approval lane, whose terminal shape is the natively emitted verifier bound as one realization handler of the extdeps.crypto.signature and extdeps.apple.app_attest seams once MachineWidth<N> reification lands.",
+        displaced_cost: "Every interpreted consumer of std.bignat pays it: the approval device routes (four ECDSA verifications per phone approval), the App Attest chain (two P-384 verifications per enrolment), and any future big-integer fold. Until the shape is found, the approval broker's device routes have no execution route except the native emission that #11819 gates, and the floor cannot enroll the eight P-256 witnesses at all.",
+        first_slice: "Re-derive the slice (DESIGN section 6b): what one montgomery_mul allocates and retains in the interpreter, whether the memo or the List<Int> limb representation is what pins memory, and which link is the earliest unjustified boundary -- before any cache, batch or knob is proposed at the symptom link.",
+        red_control: "The eight P-256 witnesses executing to a terminal verdict inside the floor's per-claim budget, with VmHWM read from the same run, and the RFC 6979 and Wycheproof refusal members still refusing.",
+        out_of_scope: "No host-Rust verification primitive (operator refusal on #11588/#11592 stands); no widening of the floor budget to admit the current cost; no change to the P-256 arithmetic's semantics -- the vectors are the oracle.",
+        handback: "The named boundary and its repair, the eight witnesses enrolled and green in the floor, and the [witness] eval-step and VmHWM readings beside the #11645 figures they replace."
+      )
+    ),
+    active(
       identity: "rn_J4Q81A4BJ8TXN6ZE4481RMB3Y9",
       id: "v1-interpreter-quarantine",
       owner: "self-host",
