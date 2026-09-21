@@ -161,6 +161,7 @@ pub enum TargetProducer {
     PrimitiveEgressCensusDag,
     PrimitiveEgressCensusSeed,
     RequiredLaneResolutionCensus,
+    BareReferenceChannelOutcome,
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -241,6 +242,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("required-lane-resolution-census"),
             TargetProducer::RequiredLaneResolutionCensus,
+        ),
+        (
+            instrument_label("bare-reference-channel-outcome"),
+            TargetProducer::BareReferenceChannelOutcome,
         ),
     ]
 }
@@ -414,6 +419,182 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE BARE-REFERENCE CHANNEL'S OUTCOME OVER THE FOUR HERMETIC ENTRIES
+// ---------------------------------------------------------------------------------------------
+
+/// `gunbc.instrument_targets` `bare_reference_channel_source_roots`. The subject is the
+/// instrument's own fact on the rule every sibling here follows, and it is a FIXTURE root rather
+/// than the live corpus: the reading must not move when `dag` does.
+fn bare_reference_channel_source_roots() -> Vec<String> {
+    vec!["fixtures/bare_reference_channel".to_string()]
+}
+
+/// `gunbc.target_binding` `BareChannelEligibility`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BareChannelEligibility {
+    Runs,
+    DisabledByImportLine,
+}
+
+/// `gunbc.instrument_targets` `bare_reference_channel_expectations`, mirrored. Each row states the
+/// OUTCOME the entry's one isolated condition produces, so a gate that moves flips exactly the row
+/// that isolates it.
+struct BareChannelExpectation {
+    module_path: &'static str,
+    isolated_condition: &'static str,
+    eligibility: BareChannelEligibility,
+    pulled_modules: &'static [&'static str],
+}
+
+fn bare_reference_channel_expectations() -> Vec<BareChannelExpectation> {
+    vec![
+        BareChannelExpectation {
+            module_path: "probe.brc.bare_record_consumer",
+            isolated_condition: "no imports; bare reference to a RECORD type -- pullable holds",
+            eligibility: BareChannelEligibility::Runs,
+            pulled_modules: &["probe.brc.record_home"],
+        },
+        BareChannelExpectation {
+            module_path: "probe.brc.bare_alias_consumer",
+            isolated_condition:
+                "no imports; bare reference to a nullary type alias -- every arm of pullable declines",
+            eligibility: BareChannelEligibility::Runs,
+            pulled_modules: &[],
+        },
+        BareChannelExpectation {
+            module_path: "probe.brc.imported_record_consumer",
+            isolated_condition:
+                "the row-one reference plus ONE unrelated import line -- gate one turns the channel off",
+            eligibility: BareChannelEligibility::DisabledByImportLine,
+            pulled_modules: &[],
+        },
+        BareChannelExpectation {
+            module_path: "probe.brc.transitive_alias_consumer",
+            isolated_condition:
+                "no imports; a bare CALL whose callee imports the alias home -- the alias arrives as a passenger",
+            eligibility: BareChannelEligibility::Runs,
+            pulled_modules: &["probe.brc.alias_home", "probe.brc.passenger_home"],
+        },
+    ]
+}
+
+fn bare_channel_eligibility_rendered(e: BareChannelEligibility) -> &'static str {
+    match e {
+        BareChannelEligibility::Runs => "RUNS",
+        BareChannelEligibility::DisabledByImportLine => "DISABLED",
+    }
+}
+
+/// `gunbc.instrument_targets` `bare_reference_channel_holds`, mirrored: set equality at identity
+/// grain, never a count, and eligibility compared as its own field so an ineligible channel and an
+/// eligible one that pulled nothing can never satisfy each other's row.
+fn run_bare_reference_channel_outcome() -> InvocationOutcome {
+    let source_roots = bare_reference_channel_source_roots();
+    let missing: Vec<String> = source_roots
+        .iter()
+        .filter(|r| !std::path::Path::new(r.as_str()).exists())
+        .cloned()
+        .collect();
+    if !missing.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!(
+                "bare-reference-channel-outcome: subject unreached (fixture source root absent): {}",
+                missing.join(", ")
+            ),
+        };
+    }
+    let expectations = bare_reference_channel_expectations();
+    let entries: Vec<String> = expectations
+        .iter()
+        .map(|e| e.module_path.to_string())
+        .collect();
+    let readings = match cli_run::bare_reference_channel_readings(&source_roots, &entries) {
+        Ok(readings) => readings,
+        Err(detail) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "bare-reference-channel-outcome: subject unreached (module index refused): {detail}"
+                ),
+            };
+        }
+    };
+    let mut lines: Vec<String> = Vec::new();
+    let mut unmet: Vec<String> = Vec::new();
+    for expected in expectations.iter() {
+        let matched: Vec<&cli_run::BareReferenceChannelEntryReading> = readings
+            .iter()
+            .filter(|r| r.module_path == expected.module_path)
+            .collect();
+        let [observed] = matched.as_slice() else {
+            unmet.push(format!(
+                "bare-reference-channel-outcome: UNMET {} ({}): expected exactly one reading, got {}",
+                expected.module_path,
+                expected.isolated_condition,
+                matched.len()
+            ));
+            continue;
+        };
+        let observed_eligibility = if observed.bare_channel_eligible {
+            BareChannelEligibility::Runs
+        } else {
+            BareChannelEligibility::DisabledByImportLine
+        };
+        let expected_pulled: Vec<String> = {
+            let mut v: Vec<String> = expected
+                .pulled_modules
+                .iter()
+                .map(|m| (*m).to_string())
+                .collect();
+            v.sort();
+            v
+        };
+        lines.push(format!(
+            "bare-reference-channel-outcome: {} channel={} pulled=[{}]",
+            observed.module_path,
+            bare_channel_eligibility_rendered(observed_eligibility),
+            observed.pulled_modules.join(", ")
+        ));
+        if observed_eligibility != expected.eligibility
+            || observed.pulled_modules != expected_pulled
+        {
+            unmet.push(format!(
+                "bare-reference-channel-outcome: UNMET {} ({}): expected channel={} pulled=[{}], observed channel={} pulled=[{}]",
+                expected.module_path,
+                expected.isolated_condition,
+                bare_channel_eligibility_rendered(expected.eligibility),
+                expected_pulled.join(", "),
+                bare_channel_eligibility_rendered(observed_eligibility),
+                observed.pulled_modules.join(", "),
+            ));
+        }
+    }
+    let mut message = format!(
+        "bare-reference-channel-outcome: entries={} unmet={}",
+        // THE READINGS, NOT THE EXPECTATIONS, because that is what the `.dag` authority renders
+        // (`gunbc.instrument_targets` `bare_reference_channel_standing_rendered` counts the
+        // readings). The two cannot differ today -- one reading is demanded per expectation -- so
+        // this is not a defect being fixed but a drift point being closed, of exactly the kind
+        // `gunbc.bare_reference_channel_outcome_seed_growth` enrolls this mirror for.
+        readings.len(),
+        unmet.len()
+    );
+    for line in lines.iter().chain(unmet.iter()) {
+        message.push('\n');
+        message.push_str(line);
+    }
+    InvocationOutcome {
+        termination: if unmet.is_empty() {
+            Termination::ObservationHeld
+        } else {
+            Termination::ObservationDidNotHold
+        },
+        message,
+    }
+}
+
 /// THE REALIZATION DISPATCH, AND IT IS THE ONLY PLACE A PRODUCER IS NAMED. Selecting a realization
 /// is itself realization (DESIGN section 3): periphery, never the route above or the CLI surface.
 fn run_producer(producer: TargetProducer) -> InvocationOutcome {
@@ -452,6 +633,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive-egress-census-seed",
             "primitive_egress_census_seed_exit",
         ),
+        TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
         TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
             "required-lane-resolution-census",
             "dag/gunbc/required_lane_resolution_census_live.dag",

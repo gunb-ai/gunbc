@@ -20,6 +20,7 @@ import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
+import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite, R2AccountBucketAdmin,
@@ -90,6 +91,7 @@ import gunbc.ci_spec {
   gunbc_ci_app_key_version_verify_mint_script,
   gunbc_ci_app_key_version_verify_verdict_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
+  gunbc_ci_fabric_writer_identity_observe_invoke,
   gunbc_ci_mtcollins1_census_image_publish_invoke,
   gunbc_ci_r2_mint_preflight_invoke,
   gunbc_ci_r2_bucket_ensure_invoke,
@@ -227,6 +229,7 @@ type FleetConvergeWorkflowMode
   | ApprovalKeyringConverge
   | MtCollins1Boot
   | MtCollins1FanObserve
+  | FabricWriterIdentityObserve
   | MtCollins1CensusImagePublish
   | OrgRunnerRosterObserve
 
@@ -266,6 +269,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     ApprovalKeyringConverge => "approval_keyring_converge"
     MtCollins1Boot => "mtcollins1_boot"
     MtCollins1FanObserve => "mtcollins1_fan_observe"
+    FabricWriterIdentityObserve => "fabric_writer_identity_observe"
     MtCollins1CensusImagePublish => "mtcollins1_census_image_publish"
     OrgRunnerRosterObserve => "org_runner_roster_observe"
   }
@@ -292,7 +296,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, MicrovmControllerAppKeyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, MicrovmControllerAppKeyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -349,6 +353,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     ApprovalKeyringConverge => none
     MtCollins1Boot => none
     MtCollins1FanObserve => none
+    FabricWriterIdentityObserve => none
     MtCollins1CensusImagePublish => none
     OrgRunnerRosterObserve => none
   }
@@ -455,6 +460,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     ApprovalKeyringConverge => FleetSshKeyConsumed
     MtCollins1Boot => FleetSshKeyConsumed
     MtCollins1FanObserve => FleetSshKeyNotConsumed
+    FabricWriterIdentityObserve => FleetSshKeyNotConsumed
     MtCollins1CensusImagePublish => FleetSshKeyNotConsumed
   }
 }
@@ -1614,6 +1620,43 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
   }
 }
 
+// THE READING THE WRITER-ROSTER WALL WAITS FOR (gunbc.fabric_writer_identity_observe): from the
+// fleet host the dispatch names, through tailscale serve, what Tailscale-User-Login the fabric DB's
+// door sees. Reads only; the receipt is the roster's ground. Dispatched once per fleet host.
+data fleet_converge_fabric_writer_identity_observe_step_if: String = fleet_converge_mode_step_if(mode: FabricWriterIdentityObserve)
+
+// THE RECEIPT IS UPLOADED WHETHER OR NOT THE OBSERVATION SUCCEEDED. The observer writes its
+// receipt and then exits failure for an unproxied or unread reading -- the placed host's own
+// reading is exactly that -- and a step condition with no status function is implicitly
+// success(), which would skip the upload on the one run whose receipt matters most.
+data fleet_converge_fabric_writer_identity_observe_receipt_if: String = join(["always() && ", fleet_converge_mode_step_if(mode: FabricWriterIdentityObserve)], "")
+
+fn fleet_converge_fabric_writer_identity_observe_step() -> Step {
+  RunStep {
+    name: Present { value: "Fabric writer identity: the login this host presents at the fabric DB's served door (reads only)" },
+    id: Present { value: "fabric_writer_identity_observe" },
+    run: gunbc_ci_fabric_writer_identity_observe_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_fabric_writer_identity_observe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_fabric_writer_identity_observe_receipt_upload_step() -> Step {
+  fleet_converge_receipt_upload_step(
+    id: "fabric_writer_identity_observe_receipt_upload",
+    name: "Upload fabric writer identity receipt",
+    artifact: "fabric-writer-identity",
+    path: fabric_writer_identity_receipt_path,
+    if_condition: fleet_converge_fabric_writer_identity_observe_receipt_if
+  )
+}
+
 fn fleet_converge_app_key_version_verify_verdict_step() -> Step {
   RunStep {
     name: Present { value: "App key version verify: typed verdict and rotation-deadline standing" },
@@ -2369,6 +2412,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_app_key_version_verify_receipt_upload_step(),
         fleet_converge_mtcollins1_fan_observe_step(),
         fleet_converge_mtcollins1_fan_observe_receipt_upload_step(),
+        fleet_converge_fabric_writer_identity_observe_step(),
+        fleet_converge_fabric_writer_identity_observe_receipt_upload_step(),
         fleet_converge_mtcollins1_census_image_publish_step(),
         fleet_converge_mtcollins1_census_image_publish_receipt_upload_step(),
         fleet_converge_r2_mint_preflight_step(),

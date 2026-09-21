@@ -3,6 +3,7 @@ module gunbc.seed_growth_admission
 import gunbc.evaluation_store_address_census_seed_growth { evaluation_store_address_census_seed_growth_justification }
 import gunbc.primitive_egress_census_seed_growth { primitive_egress_census_seed_growth_justification }
 import gunbc.required_lane_resolution_census_seed_growth { required_lane_resolution_census_seed_growth_justification }
+import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel_outcome_seed_growth_justification }
 import gunbc.persisted_resolved_graph_consumer_test_seed_growth {
   persisted_resolved_graph_format_wall_seed_growth_justification,
   resolved_graph_provider_ctx_reuse_seed_growth_justification
@@ -299,7 +300,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     scope_rank_view_seed_growth_justification,
     floor_teardown_attribution_seed_growth_justification,
     primitive_egress_census_seed_growth_justification,
-    required_lane_resolution_census_seed_growth_justification
+    required_lane_resolution_census_seed_growth_justification,
+    bare_reference_channel_outcome_seed_growth_justification
   ]
 }
 
