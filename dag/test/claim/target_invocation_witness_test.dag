@@ -814,6 +814,6 @@ test fn the_bare_channel_instrument_is_a_real_row_on_the_shared_registry() -> Bo
         TargetInvocationRouted { binding: b } =>
           (b.producer == BareReferenceChannelOutcomeProducer {})
             && label_eq(a: b.target, b: label)
-        TargetInvocationRouteRefused { refusal: _ } => false
+        TargetInvocationRouteRefused { cause: _ } => false
       })
 }
