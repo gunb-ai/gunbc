@@ -1,0 +1,241 @@
+module strategy.panel_ruling_procedure
+
+import std.types { NonEmptyStr, List, Int, String }
+import std.logic { Bool }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import strategy.workflow_stage_gate {
+  SelectionAssessment, SelectionAssessmentOutcome, seal_assessment,
+  ProcedureRegistration, register_procedure, PanelConfigured,
+  ProcedureSupportsSelection, ProcedureRejectsSelection, ProcedurePending, ProcedureRefused,
+}
+
+// A SECOND COMPARISON PROCEDURE WHOSE NATIVE ANSWER IS STRUCTURALLY UNLIKE THE FIRST.
+//
+// WHAT THIS MODULE IS, STATED PLAINLY: it has NO production consumer today. It exists as the second
+// procedure authority, and its job is to make one structural claim falsifiable -- that the
+// projection obligation is genuinely PER PROCEDURE and not a generic adapter wearing a procedure's
+// name. A single projection that served both this and the pareto procedure would put the generic
+// workflow back in the business of owning every procedure's result vocabulary, which is the layer
+// inversion section 3 forbids.
+//
+// It is therefore NOT presented as shipped strategy capability, and no roadmap item claims it.
+// Section 6 presumes an artifact with no final consumer is scaffold; the justification here is that
+// it is a DISCRIMINATING CONTROL for a structural property, which is a consumer -- but a control is
+// what it is, and calling it a capability would be the misrepresentation. Its adoption condition:
+// the first real committee, planning-board or review-panel gate in this program binds to it, at
+// which point the ruling rows become production data and this note is deleted.
+
+// ONE ROW PER REPEATED JUROR, AND ALL OF THEM. The arm this replaces was named PanelJurorVotedTwice
+// and carried a single juror, which was false twice over: it was emitted for THREE ballots as
+// readily as two, and with two separately repeated jurors it named whichever the vote rows happened
+// to list first. A diagnosis that changes under a permutation of its own input is order as
+// undeclared policy, and dropping the second repeated juror is the state loss this procedure
+// refuses everywhere else.
+type RepeatedJuror {
+  juror: DeclarationRef
+  ballots: Int
+}
+
+type PanelVote
+  = VoteFor { juror: DeclarationRef }
+  | VoteAgainst { juror: DeclarationRef, because: NonEmptyStr }
+  | VoteAbstain { juror: DeclarationRef }
+
+// THE REQUEST CARRIES THE NOMINATION AND THE FIELD. The procedure answers a question put to it --
+// "does the panel support THIS nomination over THIS declared population" -- rather than choosing a
+// winner of its own. A native answer naming its own chosen candidate would be a SECOND AUTHORITY
+// for the selected identity beside SelectionDecision.selects, rejoined afterwards by equality.
+type PanelRulingRequest {
+  self_ref: DeclarationRef,
+  nominated: DeclarationRef,
+  considered: List<DeclarationRef>,
+  votes: List<PanelVote>,
+}
+
+// The procedure's own vocabulary: jurors and a quorum, no axes, no readings, no dominance.
+type PanelRulingStanding
+  = PanelSupportsNomination { carried_by: Int }
+  | PanelRejectsNomination { against: Int }
+  | PanelAwaitingQuorum { present: Int, required: Int }
+  | PanelRulingRefused { cause: NonEmptyStr }
+  | PanelRollRepeatsJurors { repeated: List<RepeatedJuror> }
+
+fn juror_of(v: PanelVote) -> DeclarationRef {
+  match v {
+    VoteFor { juror } => juror,
+    VoteAgainst { juror, because } => juror,
+    VoteAbstain { juror } => juror,
+  }
+}
+
+// A ROLL WITH ONE JUROR ON IT TWICE HAS NOT RULED, AND EVERY COUNT BELOW ASSUMED IT HAD.
+//
+// quorum was count(r.votes) and the tallies counted BALLOTS, so one juror voting twice carried a
+// three-juror quorum on their own and moved the tally by two. Worse, nothing stopped the same juror
+// appearing once For and once Against, which is not a close vote -- it is a roll that does not
+// describe a panel.
+//
+// This is decidable from the request alone, so it refuses rather than being repaired: deduplicating
+// silently would be the absorbing fallback, answering for a panel whose roll never said what it
+// meant. It is checked BEFORE quorum and before the nomination, because a roll that is not a roll
+// cannot be read for either.
+fn ballots_cast_by(r: PanelRulingRequest, juror: DeclarationRef) -> Int {
+  fold(r.votes, init: 0, f: fn(n, other) {
+    if declaration_ref_eq(a: juror, b: juror_of(v: other)) { n + 1 } else { n }
+  })
+}
+
+fn already_named(rs: List<RepeatedJuror>, juror: DeclarationRef) -> Bool {
+  fold(rs, init: false, f: fn(acc, rj) { if declaration_ref_eq(a: rj.juror, b: juror) { true } else { acc } })
+}
+
+data no_repeated_jurors: List<RepeatedJuror> = []
+
+// Every repeated juror, once each. The once-each guard is identity, not position: it suppresses the
+// SAME juror's later ballots, never a DIFFERENT juror's first one.
+fn repeated_jurors(r: PanelRulingRequest) -> List<RepeatedJuror> {
+  fold(r.votes, init: no_repeated_jurors, f: fn(acc, v) {
+    let juror = juror_of(v: v)
+    let ballots = ballots_cast_by(r: r, juror: juror)
+    if ballots > 1 && !already_named(rs: acc, juror: juror) {
+      concat(acc, [RepeatedJuror { juror: juror, ballots: ballots }])
+    } else { acc }
+  })
+}
+
+fn votes_for(r: PanelRulingRequest) -> Int {
+  fold(r.votes, init: 0, f: fn(acc, v) {
+    match v {
+      VoteFor { juror } => acc + 1,
+      VoteAgainst { juror, because } => acc,
+      VoteAbstain { juror } => acc,
+    }
+  })
+}
+
+fn votes_against(r: PanelRulingRequest) -> Int {
+  fold(r.votes, init: 0, f: fn(acc, v) {
+    match v {
+      VoteFor { juror } => acc,
+      VoteAgainst { juror, because } => acc + 1,
+      VoteAbstain { juror } => acc,
+    }
+  })
+}
+
+// A NOMINATION THE PANEL NEVER CONSIDERED IS NOT A REJECTION, IT IS A REFUSAL. The panel cannot
+// speak to a candidate absent from the field it was given.
+// A NON-POSITIVE QUORUM IS NOT A PANEL POLICY. At quorum 0 the awaiting-quorum guard is
+// `count(votes) < 0`, which no roll satisfies, so an EMPTY roll fell through to the tally and
+// 0 >= 0 returned PanelRejectsNomination: a panel that never met, rejecting a nomination. The
+// quorum is declared configuration, so this is decidable from the configuration alone and refuses
+// rather than being clamped -- clamping to 1 would answer for a policy nobody declared.
+fn run_panel(r: PanelRulingRequest, quorum: Int) -> PanelRulingStanding {
+  let repeated = repeated_jurors(r: r)
+  if quorum < 1 {
+    PanelRulingRefused { cause: "the panel declared a non-positive quorum, which no roll can satisfy" }
+  } else if count(repeated) > 0 {
+    PanelRollRepeatsJurors { repeated: repeated }
+  } else {
+    run_panel_on_a_valid_roll(r: r, quorum: quorum)
+  }
+}
+
+fn run_panel_on_a_valid_roll(r: PanelRulingRequest, quorum: Int) -> PanelRulingStanding {
+  if !contains_nominee(considered: r.considered, nominated: r.nominated) {
+    PanelRulingRefused { cause: "the nomination was not in the population the panel considered" }
+  } else if count(r.votes) < quorum {
+    PanelAwaitingQuorum { present: count(r.votes), required: quorum }
+  } else if votes_against(r: r) >= votes_for(r: r) {
+    PanelRejectsNomination { against: votes_against(r: r) }
+  } else {
+    PanelSupportsNomination { carried_by: votes_for(r: r) }
+  }
+}
+
+fn contains_nominee(considered: List<DeclarationRef>, nominated: DeclarationRef) -> Bool {
+  fold(considered, init: false, f: fn(acc, c) { if declaration_ref_eq(a: c, b: nominated) { true } else { acc } })
+}
+
+// The projection, lossy in the same deliberate way: the tallies stay on the panel's side.
+fn outcome_of_ruling(s: PanelRulingStanding) -> SelectionAssessmentOutcome {
+  match s {
+    PanelSupportsNomination { carried_by } => ProcedureSupportsSelection,
+    PanelRejectsNomination { against } => ProcedureRejectsSelection,
+    PanelAwaitingQuorum { present, required } => ProcedurePending,
+    PanelRulingRefused { cause } => ProcedureRefused,
+    PanelRollRepeatsJurors { repeated } => ProcedureRefused,
+  }
+}
+
+// The nomination and the compared population come FROM THE REQUEST, never copied in beside it.
+// THE SAME BINDING, FOR A PROCEDURE WHOSE DECIDING POLICY IS A QUORUM RATHER THAN AN AXIS ROSTER.
+// The quorum moved off the request and onto the procedure for exactly the reason the axes did: a
+// panel identity that can be worn by a 3-of-5 rule and a 1-of-5 rule names two contracts. What
+// varies per ruling -- who was nominated, who was considered, how they voted -- stays on the
+// request. The residual is the same cross-declaration one stated in the pareto adapter.
+type PanelProcedure sole_constructor {
+  registration: ProcedureRegistration,
+  quorum: Int,
+}
+
+fn panel_procedure(identity: DeclarationRef, quorum: Int) -> PanelProcedure {
+  PanelProcedure {
+    registration: register_procedure(
+      identity: identity,
+      configuration: PanelConfigured { quorum: quorum }),
+    quorum: quorum,
+  }
+}
+
+// The same readable account, for the same reason: a supported ruling carried by three jurors and one
+// carried by two are the same OUTCOME and not the same ruling.
+// THE BALLOT COUNTS ARE IN THE KEY BECAUSE THEY ARE THE FACT. The previous arm carried a `ballots`
+// payload that every control dropped, so a 3 -> 99 mutation stayed green: the payload was authored,
+// projected nowhere, and asserted by nobody.
+fn repeated_ballots_key(rs: List<RepeatedJuror>) -> String {
+  fold(rs, init: "", f: fn(acc, rj) { join([acc, to_string(rj.ballots), ";"], "") })
+}
+
+fn ruling_detail_key(s: PanelRulingStanding) -> String {
+  match s {
+    PanelSupportsNomination { carried_by } => join(["supports_by:", to_string(carried_by)], ""),
+    PanelRejectsNomination { against } => join(["rejects_by:", to_string(against)], ""),
+    PanelAwaitingQuorum { present, required } => join(["awaiting:", to_string(present), "/", to_string(required)], ""),
+    PanelRulingRefused { cause } => "refused",
+    PanelRollRepeatsJurors { repeated } => join(["repeats_jurors:", to_string(count(repeated)), ":", repeated_ballots_key(rs: repeated)], ""),
+  }
+}
+
+// THE SAME RETENTION, FOR THE SAME REASON. The tallies stay on the panel's side of the projection,
+// and they stay in EXISTENCE: which jurors carried it is the panel's answer, and throwing it away
+// would leave the workflow's four-arm outcome as the only surviving account of a ruling it is not
+// allowed to read in detail.
+type PanelRuling sole_constructor {
+  assessment: SelectionAssessment,
+  standing: PanelRulingStanding,
+}
+
+// THE SAME OBLIGATION IN A DIFFERENT VOCABULARY, which is the whole point of there being two
+// procedures: a nomination carried by three jurors and one carried by two are a single OUTCOME and
+// two rulings. The account is this procedure's own, and a generic workflow that tried to type it
+// would be owning both procedures' result vocabularies.
+fn assess_by_panel(
+  gate: DeclarationRef,
+  procedure: PanelProcedure,
+  request: PanelRulingRequest,
+) -> PanelRuling {
+  let standing = run_panel(r: request, quorum: procedure.quorum)
+  PanelRuling {
+    standing: standing,
+    assessment: seal_assessment(
+      self_ref: request.self_ref,
+      gate: gate,
+      procedure: procedure.registration,
+      selected: request.nominated,
+      compared_population: request.considered,
+      outcome: outcome_of_ruling(s: standing),
+      native_account: ruling_detail_key(s: standing),
+    ),
+  }
+}

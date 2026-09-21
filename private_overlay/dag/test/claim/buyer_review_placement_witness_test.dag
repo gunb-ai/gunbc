@@ -1,0 +1,237 @@
+module test.claim.buyer_review_placement_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import product.placement_supply { HostIdentity }
+import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.durable_cas_file_store { cas_key_is_slot_addressable }
+import strategy.buyer_review_placement {
+  BuyerReviewExecutorAdmission,
+  BuyerReviewExecutorAdmitted,
+  BuyerReviewExecutorHostnameUnreadable,
+  BuyerReviewExecutorWrongHost,
+  buyer_review_executor_host,
+  buyer_review_executor_admission_of,
+  buyer_review_drive_marker_value,
+  buyer_review_hold_slot_key,
+  dedicated_unit_of, recorded_execution_of, recovery_verdict_of, recovery_host_refusal_of,
+  BuyerReviewRecoveryAdmission, RecoveryRefusedHostnameUnreadable, RecoveryRefusedWrongHost, RecoveryNothingHeld,
+  RecoveryAdmitted, RecoveryRefusedOwnerStillLive, RecoveryRefusedOwnerUnrecognized, RecoveryRefusedExecutionUnobservable, RecoveryRefusedSlotUnreadable,
+  BootTimeRead, BootTimeText, BootTimeRefused,
+  UnitInvocationRead, UnitInvocationActive, UnitInvocationNone, UnitInvocationRefused,
+  BuyerReviewRecoveryVerdict, VerdictTerminated, VerdictOwnerStillLive, VerdictOwnerUnrecognized, VerdictExecutionUnobservable,
+  TerminatedByReboot, TerminatedUnitInactive, TerminatedUnitReinvoked,
+}
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+
+fn admission_tag(a: BuyerReviewExecutorAdmission) -> String {
+  match a {
+    BuyerReviewExecutorAdmitted => "admitted"
+    BuyerReviewExecutorHostnameUnreadable { cause: c } => concat("unreadable:", c)
+    BuyerReviewExecutorWrongHost { expected: e, observed: o } => concat("wrong:", concat(e as String, concat("/", o)))
+  }
+}
+
+fn the_designated_host_is_admitted_holds() -> Bool {
+  admission_tag(a: buyer_review_executor_admission_of(capture: HostnameShortCaptured { value: "srv1" })) == "admitted"
+}
+
+fn another_host_is_refused_naming_both_hosts_holds() -> Bool {
+  admission_tag(a: buyer_review_executor_admission_of(capture: HostnameShortCaptured { value: "srv2" })) == "wrong:srv1/srv2"
+}
+
+fn an_unreadable_hostname_is_its_own_refusal_not_a_wrong_host_holds() -> Bool {
+  admission_tag(a: buyer_review_executor_admission_of(capture: HostnameShortCaptureRefused { reason: "hostname -s exited unsuccessfully" }))
+    == "unreadable:hostname -s exited unsuccessfully"
+}
+
+fn a_session_container_hostname_is_refused_holds() -> Bool {
+  admission_tag(a: buyer_review_executor_admission_of(capture: HostnameShortCaptured { value: "090ec81ceecf" })) == "wrong:srv1/090ec81ceecf"
+}
+
+fn the_executor_host_is_the_fleet_row_srv1_holds() -> Bool {
+  (buyer_review_executor_host as String) == "srv1"
+}
+
+fn the_drive_marker_and_the_hold_key_are_one_identity_holds() -> Bool {
+  (buyer_review_drive_marker_value() as String) == (buyer_review_hold_slot_key() as String)
+}
+
+fn the_hold_key_is_slot_addressable_holds() -> Bool {
+  cas_key_is_slot_addressable(key: buyer_review_hold_slot_key())
+}
+
+// THE RUN MUST BE ITS OWN UNIT. Only a dedicated gunbc-buyer-review-*.service cgroup names an
+// execution whose end systemd can witness; a login session or a shared service cannot.
+fn unit_tag(path: String) -> String {
+  match dedicated_unit_of(cgroup_path: path) {
+    Present { value: u } => u as String
+    Absent => "none"
+  }
+}
+
+fn a_dedicated_buyer_review_unit_is_recognized_holds() -> Bool {
+  unit_tag(path: "/system.slice/gunbc-buyer-review-20260919a.service") == "gunbc-buyer-review-20260919a.service"
+}
+
+fn a_login_session_or_other_unit_is_not_an_execution_holds() -> Bool {
+  unit_tag(path: "/user.slice/user-1000.slice/session-3.scope") == "none"
+    && unit_tag(path: "/system.slice/gunbc-runner-srv1-01.service") == "none"
+    && unit_tag(path: "/system.slice/gunbc-buyer-review-.service") == "none"
+}
+
+// THE OWNER REF ROUND-TRIPS, so recovery reads back exactly the execution that took the hold.
+fn a_buyer_review_owner_ref_parses_to_its_execution_holds() -> Bool {
+  match recorded_execution_of(owner: "buyer-review|1789700000|gunbc-buyer-review-x.service|0123abcd" as DurableHoldOwnerRef) {
+    Present { value: r } =>
+      (r.boot_time as String) == "1789700000" && (r.unit as String) == "gunbc-buyer-review-x.service" && (r.invocation as String) == "0123abcd"
+    Absent => false
+  }
+}
+
+// Two specimens, because they are two walls: a foreign ref of the wrong arity, and one that has the
+// buyer-review shape in every field but the tag. Only the second exercises the tag check.
+fn a_foreign_owner_ref_is_unrecognized_holds() -> Bool {
+  let wrong_arity = match recorded_execution_of(owner: "fabric|cell-7|srv3" as DurableHoldOwnerRef) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  let wrong_tag = match recorded_execution_of(owner: "fabric|1789700000|gunbc-buyer-review-x.service|0123abcd" as DurableHoldOwnerRef) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  wrong_arity && wrong_tag
+}
+
+fn owner_fixture() -> DurableHoldOwnerRef {
+  "buyer-review|1789700000|gunbc-buyer-review-x.service|0123abcd" as DurableHoldOwnerRef
+}
+
+fn verdict_text(v: BuyerReviewRecoveryVerdict) -> String {
+  match v {
+    VerdictTerminated { termination: t } =>
+      match t {
+        TerminatedByReboot { recorded_boot: r, current_boot: c } => join(["reboot:", r as String, "->", c as String], "")
+        TerminatedUnitInactive { unit: u, recorded_invocation: i } => join(["inactive:", u as String, ":", i as String], "")
+        TerminatedUnitReinvoked { unit: u, recorded_invocation: i, current_invocation: c } => join(["reinvoked:", u as String, ":", i as String, "->", c as String], "")
+      }
+    VerdictOwnerStillLive => "still-live"
+    VerdictOwnerUnrecognized => "unrecognized"
+    VerdictExecutionUnobservable { cause: c } => concat("unobservable:", c)
+  }
+}
+
+// THE VERDICT OVER SUPPLIED READS. It carries no release authority: the warrant that does is minted
+// only by buyer_review_recovery_admission from its own reads (see the forged-warrant probe).
+fn a_changed_boot_admits_recovery_naming_both_boots_holds() -> Bool {
+  verdict_text(v: recovery_verdict_of(owner: owner_fixture(), current_boot: BootTimeText { value: "1789800000" }, invocation: UnitInvocationActive { invocation: "0123abcd" }))
+    == "reboot:1789700000->1789800000"
+}
+
+fn an_inactive_unit_in_the_same_boot_admits_recovery_holds() -> Bool {
+  verdict_text(v: recovery_verdict_of(owner: owner_fixture(), current_boot: BootTimeText { value: "1789700000" }, invocation: UnitInvocationNone))
+    == "inactive:gunbc-buyer-review-x.service:0123abcd"
+}
+
+fn a_reinvoked_unit_admits_recovery_naming_both_invocations_holds() -> Bool {
+  verdict_text(v: recovery_verdict_of(owner: owner_fixture(), current_boot: BootTimeText { value: "1789700000" }, invocation: UnitInvocationActive { invocation: "ffff0000" }))
+    == "reinvoked:gunbc-buyer-review-x.service:0123abcd->ffff0000"
+}
+
+fn the_same_live_invocation_refuses_recovery_holds() -> Bool {
+  verdict_text(v: recovery_verdict_of(owner: owner_fixture(), current_boot: BootTimeText { value: "1789700000" }, invocation: UnitInvocationActive { invocation: "0123abcd" }))
+    == "still-live"
+}
+
+fn an_unreadable_boot_or_unit_refuses_rather_than_assuming_holds() -> Bool {
+  verdict_text(v: recovery_verdict_of(owner: owner_fixture(), current_boot: BootTimeRefused { cause: "no btime" }, invocation: UnitInvocationNone))
+    == "unobservable:no btime"
+    && verdict_text(v: recovery_verdict_of(owner: owner_fixture(), current_boot: BootTimeText { value: "1789700000" }, invocation: UnitInvocationRefused { cause: "systemctl failed" }))
+    == "unobservable:systemctl failed"
+}
+
+fn a_hold_owned_by_something_else_is_never_recovered_holds() -> Bool {
+  verdict_text(v: recovery_verdict_of(owner: "fabric|cell-7|srv3" as DurableHoldOwnerRef, current_boot: BootTimeText { value: "1789800000" }, invocation: UnitInvocationNone))
+    == "unrecognized"
+}
+
+// RECOVERY IS HOST-GATED. A wrong or unreadable host is its own refusal and can never read as
+// "nothing held", which would report a stuck srv1 hold as clear from another machine.
+fn host_refusal_tag(host: BuyerReviewExecutorAdmission) -> String {
+  match recovery_host_refusal_of(host: host) {
+    Absent => "proceed"
+    Present { value: r } =>
+      match r {
+        RecoveryRefusedHostnameUnreadable { cause: c } => concat("unreadable:", c)
+        RecoveryRefusedWrongHost { expected: e, observed: o } => join(["wrong:", e as String, "/", o], "")
+        RecoveryNothingHeld => "nothing-held"
+        RecoveryAdmitted { warrant: _ } => "other"
+        RecoveryRefusedOwnerStillLive { owner: _, generation: _ } => "other"
+        RecoveryRefusedOwnerUnrecognized { owner: _, generation: _ } => "other"
+        RecoveryRefusedExecutionUnobservable { owner: _, cause: _ } => "other"
+        RecoveryRefusedSlotUnreadable { detail: _ } => "other"
+      }
+  }
+}
+
+fn recovery_on_another_host_refuses_as_wrong_host_not_nothing_held_holds() -> Bool {
+  host_refusal_tag(host: buyer_review_executor_admission_of(capture: HostnameShortCaptured { value: "srv2" })) == "wrong:srv1/srv2"
+}
+
+fn recovery_with_an_unreadable_hostname_refuses_as_unreadable_holds() -> Bool {
+  host_refusal_tag(host: buyer_review_executor_admission_of(capture: HostnameShortCaptureRefused { reason: "hostname failed" })) == "unreadable:hostname failed"
+}
+
+fn recovery_on_srv1_proceeds_to_the_slot_holds() -> Bool {
+  host_refusal_tag(host: buyer_review_executor_admission_of(capture: HostnameShortCaptured { value: "srv1" })) == "proceed"
+}
+
+fn buyer_review_placement_witness_main() -> ProcessExit {
+  if !the_designated_host_is_admitted_holds() { exit_failure(reason: "the_designated_host_is_admitted") } else {
+  if !another_host_is_refused_naming_both_hosts_holds() { exit_failure(reason: "another_host_is_refused_naming_both_hosts") } else {
+  if !an_unreadable_hostname_is_its_own_refusal_not_a_wrong_host_holds() { exit_failure(reason: "an_unreadable_hostname_is_its_own_refusal_not_a_wrong_host") } else {
+  if !a_session_container_hostname_is_refused_holds() { exit_failure(reason: "a_session_container_hostname_is_refused") } else {
+  if !the_executor_host_is_the_fleet_row_srv1_holds() { exit_failure(reason: "the_executor_host_is_the_fleet_row_srv1") } else {
+  if !the_drive_marker_and_the_hold_key_are_one_identity_holds() { exit_failure(reason: "the_drive_marker_and_the_hold_key_are_one_identity") } else {
+  if !the_hold_key_is_slot_addressable_holds() { exit_failure(reason: "the_hold_key_is_slot_addressable") } else {
+  if !a_dedicated_buyer_review_unit_is_recognized_holds() { exit_failure(reason: "a_dedicated_buyer_review_unit_is_recognized") } else {
+  if !a_login_session_or_other_unit_is_not_an_execution_holds() { exit_failure(reason: "a_login_session_or_other_unit_is_not_an_execution") } else {
+  if !a_buyer_review_owner_ref_parses_to_its_execution_holds() { exit_failure(reason: "a_buyer_review_owner_ref_parses_to_its_execution") } else {
+  if !a_foreign_owner_ref_is_unrecognized_holds() { exit_failure(reason: "a_foreign_owner_ref_is_unrecognized") } else {
+  if !a_changed_boot_admits_recovery_naming_both_boots_holds() { exit_failure(reason: "a_changed_boot_admits_recovery_naming_both_boots") } else {
+  if !an_inactive_unit_in_the_same_boot_admits_recovery_holds() { exit_failure(reason: "an_inactive_unit_in_the_same_boot_admits_recovery") } else {
+  if !a_reinvoked_unit_admits_recovery_naming_both_invocations_holds() { exit_failure(reason: "a_reinvoked_unit_admits_recovery_naming_both_invocations") } else {
+  if !the_same_live_invocation_refuses_recovery_holds() { exit_failure(reason: "the_same_live_invocation_refuses_recovery") } else {
+  if !an_unreadable_boot_or_unit_refuses_rather_than_assuming_holds() { exit_failure(reason: "an_unreadable_boot_or_unit_refuses_rather_than_assuming") } else {
+  if !a_hold_owned_by_something_else_is_never_recovered_holds() { exit_failure(reason: "a_hold_owned_by_something_else_is_never_recovered") } else {
+  if !recovery_on_another_host_refuses_as_wrong_host_not_nothing_held_holds() { exit_failure(reason: "recovery_on_another_host_refuses_as_wrong_host_not_nothing_held") } else {
+  if !recovery_with_an_unreadable_hostname_refuses_as_unreadable_holds() { exit_failure(reason: "recovery_with_an_unreadable_hostname_refuses_as_unreadable") } else {
+  if !recovery_on_srv1_proceeds_to_the_slot_holds() { exit_failure(reason: "recovery_on_srv1_proceeds_to_the_slot") } else {
+    ExitSuccess
+  } } } } } } } } } } } } } } } } } } } }
+}
+
+// CLAIM ENROLMENT. Each claim body above is an ordinary fn, so this module's entry point calls the
+// fn rather than the claim and no declaration references test code (v1.compiler.compile
+// test_reference_debt_dissolution). The `test fn` wrappers below are the enrolment markers the
+// witness runner enters; each keeps its claim name unchanged.
+test fn the_designated_host_is_admitted() -> Bool { the_designated_host_is_admitted_holds() }
+test fn another_host_is_refused_naming_both_hosts() -> Bool { another_host_is_refused_naming_both_hosts_holds() }
+test fn an_unreadable_hostname_is_its_own_refusal_not_a_wrong_host() -> Bool { an_unreadable_hostname_is_its_own_refusal_not_a_wrong_host_holds() }
+test fn a_session_container_hostname_is_refused() -> Bool { a_session_container_hostname_is_refused_holds() }
+test fn the_executor_host_is_the_fleet_row_srv1() -> Bool { the_executor_host_is_the_fleet_row_srv1_holds() }
+test fn the_drive_marker_and_the_hold_key_are_one_identity() -> Bool { the_drive_marker_and_the_hold_key_are_one_identity_holds() }
+test fn the_hold_key_is_slot_addressable() -> Bool { the_hold_key_is_slot_addressable_holds() }
+test fn a_dedicated_buyer_review_unit_is_recognized() -> Bool { a_dedicated_buyer_review_unit_is_recognized_holds() }
+test fn a_login_session_or_other_unit_is_not_an_execution() -> Bool { a_login_session_or_other_unit_is_not_an_execution_holds() }
+test fn a_buyer_review_owner_ref_parses_to_its_execution() -> Bool { a_buyer_review_owner_ref_parses_to_its_execution_holds() }
+test fn a_foreign_owner_ref_is_unrecognized() -> Bool { a_foreign_owner_ref_is_unrecognized_holds() }
+test fn a_changed_boot_admits_recovery_naming_both_boots() -> Bool { a_changed_boot_admits_recovery_naming_both_boots_holds() }
+test fn an_inactive_unit_in_the_same_boot_admits_recovery() -> Bool { an_inactive_unit_in_the_same_boot_admits_recovery_holds() }
+test fn a_reinvoked_unit_admits_recovery_naming_both_invocations() -> Bool { a_reinvoked_unit_admits_recovery_naming_both_invocations_holds() }
+test fn the_same_live_invocation_refuses_recovery() -> Bool { the_same_live_invocation_refuses_recovery_holds() }
+test fn an_unreadable_boot_or_unit_refuses_rather_than_assuming() -> Bool { an_unreadable_boot_or_unit_refuses_rather_than_assuming_holds() }
+test fn a_hold_owned_by_something_else_is_never_recovered() -> Bool { a_hold_owned_by_something_else_is_never_recovered_holds() }
+test fn recovery_on_another_host_refuses_as_wrong_host_not_nothing_held() -> Bool { recovery_on_another_host_refuses_as_wrong_host_not_nothing_held_holds() }
+test fn recovery_with_an_unreadable_hostname_refuses_as_unreadable() -> Bool { recovery_with_an_unreadable_hostname_refuses_as_unreadable_holds() }
+test fn recovery_on_srv1_proceeds_to_the_slot() -> Bool { recovery_on_srv1_proceeds_to_the_slot_holds() }

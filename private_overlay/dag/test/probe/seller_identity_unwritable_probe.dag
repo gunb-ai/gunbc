@@ -1,0 +1,70 @@
+module test.probe.seller_identity_unwritable_probe
+
+// THIS MODULE MUST NOT RESOLVE. The buyer pipeline is exempt from eBay's Marketplace Account
+// Deletion notifications on the statement that it persists no eBay user data, and eBay states that
+// incorrect information may cost penalties or the account. That statement stays true only if a
+// seller's identity cannot be written into the persisted listing types at all -- so the evidence
+// is source the compiler refuses. Each construction below is the most tempting way the identity
+// would come back: an operator transcribing the seller's username into an entry, and the evidence
+// row carrying it toward the sheet.
+//
+// THIS REFUSAL IS THE SUBSTANCE OF A DECLARATION FILED WITH eBAY. On 2026-09-11 the Production
+// keyset was exempted from Marketplace Account Deletion on the reason "I do not persist eBay data",
+// with a disclosure stating that no eBay user personal data is stored "and our data model has no
+// field that can hold them". THIS PROBE DOES NOT ESTABLISH THAT CLAUSE. It guards exactly two named
+// fields on two types, and both constructions below refuse while a title, a url or an aspect value
+// carries an identity -- that text is not policed, and it arrives from the Browse API as well as
+// from an operator. Their absence is NECESSARY for the filed assertion and does not prove it.
+// Adding a dedicated identity field back -- however useful seller reputation is to a parts buyer --
+// contradicts the filed assertion and requires reassessing the filing first; eBay states that
+// incorrect information may bring penalties or a disabled account. Do not remove this wall without
+// that reassessment.
+//
+// IT IS NOT A KNOWN RED. It retires only if the identity field is deliberately re-added, and then
+// the exemption statement is false and must be withdrawn with it.
+
+import std.types { NonEmptyStr, Int, List }
+import std.process { ProcessExit, ExitSuccess }
+import strategy.buyer_review_sheet { OperatorListingEntry, ListingEvidence, OperatorEntered, SellerFeedbackRead, LotUniformityUnstated }
+
+data forged_entry: OperatorListingEntry = OperatorListingEntry {
+  listing_key: "100000000001",
+  url: "https://www.ebay.com/itm/100000000001",
+  title: "32GB DDR4 ECC RDIMM",
+  entered_at: "2026-09-11",
+  item_price_micro: 50000000,
+  shipping_micro: none,
+  lot_size: 1,
+  available_estimate: none,
+  quantity_verified: 0,
+  condition: none,
+  seller: "some-ebay-username",
+  seller_feedback_permille: Present { value: 995 },
+  seller_feedback_count: Present { value: 800 },
+  stated_aspects: [],
+  lot_uniformity: LotUniformityUnstated,
+  photo_count: 1,
+}
+
+data forged_evidence: ListingEvidence = ListingEvidence {
+  listing_key: "100000000001",
+  url: "https://www.ebay.com/itm/100000000001",
+  title: "32GB DDR4 ECC RDIMM",
+  source: OperatorEntered { entered_at: "2026-09-11" },
+  item_price_micro: 50000000,
+  shipping_micro: none,
+  lot_size: 1,
+  available_estimate: none,
+  quantity_verified: 0,
+  condition: none,
+  seller: "some-ebay-username",
+  seller_feedback: SellerFeedbackRead { permille: 995, count: 800 },
+  stated_aspects: [],
+  part_numbers: [],
+  lot_uniformity: LotUniformityUnstated,
+  photo_count: 1,
+}
+
+fn probe_main() -> ProcessExit {
+  ExitSuccess
+}

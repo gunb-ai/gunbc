@@ -1,0 +1,388 @@
+module strategy.mobo_x_architecture
+
+import std.types { NonEmptyStr, List, Bool }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// MOBO-X-1: THE EXACT REV-A ARCHITECTURE AS A TOTAL ROLE SELECTION. Every board role the Rev-A
+// Altra compute tile could carry is a row here, and every row holds exactly one of three arms:
+// SelectedForRevA (the role is on the board, with the grounds that earned it), ExplicitlyAbsent
+// (the role is off the board for a stated reason, so its absence is a decision and not a gap), or
+// BlockedByNamedFact (the role's presence cannot be decided yet, and the row names the exact fact
+// that blocks it and the receipt that resolves it). Totality at the row grain is structural — the
+// disposition field has no optional form, so a role in the roster cannot lack a standing. The
+// roster itself is the DECLARED role universe for Rev-A: adding a role is adding a row, which is a
+// reviewed change, never a silent omission. What this module does NOT do: bind exact parts, pin
+// counts, or draw schematics — those are MOBO-X-2 through MOBO-X-5C's subjects, and a selection
+// here names the rung that owns its realization rather than pre-empting it.
+type RevARoleDisposition
+  = SelectedForRevA {
+      selection: NonEmptyStr
+      first_grounds: DeclarationRef
+      additional_grounds: List<DeclarationRef>
+    }
+  | ExplicitlyAbsent {
+      reason: NonEmptyStr
+      first_grounds: DeclarationRef
+      additional_grounds: List<DeclarationRef>
+    }
+  | BlockedByNamedFact {
+      unresolved: NonEmptyStr
+      blocking_fact: DeclarationRef
+      resolution: NonEmptyStr
+    }
+
+type RevABoardRole {
+  identity: NonEmptyStr
+  subject: NonEmptyStr
+  disposition: RevARoleDisposition
+}
+
+// THE PROCESSOR IS THE ONE FACT EVERY OTHER ROW DERIVES FROM: one Ampere Altra Q80-30 — the part
+// the sellable-unit contract was sized against (76 units on one Q80) and the part the operator
+// already owns sixty-two of — in the Lotes AZIFA072 socket body whose drawing and STEP are held
+// copies, under the ILM4926 retention designation the datasheet names.
+data role_processor_socket: RevABoardRole = RevABoardRole {
+  identity: "processor-socket",
+  subject: "the CPU package, its socket body and its retention scheme",
+  disposition: SelectedForRevA {
+    selection: "one Ampere Altra Q80-30 (FCLGA 4926) in the Lotes AZIFA072 socket body under the ILM4926 retention designation; the AZIF0222 retention-assembly request is outstanding and late-binds through MOBO-X-3's placement envelope",
+    first_grounds: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q8030_catalog"),
+    additional_grounds: [
+      decl_ref(module_path: "extdeps.cpu_attachment.lotes_azifa072", decl_name: "azifa072_held_copies"),
+      decl_ref(module_path: "extdeps.cpu_attachment.ilm4926", decl_name: "ilm4926"),
+      decl_ref(module_path: "strategy.ci_node_build", decl_name: "altra_q80_lot"),
+    ],
+  },
+}
+
+// ONE SOCKET, AND THE ABSENCE OF THE SECOND IS A ROW. MOBO-X-0 refused the 128-unit shape on a
+// one-socket Q80 and sized the SKU to what one Q80-30 hosts; a second socket would earn the whole
+// two-socket interconnect, power and firmware dependency population with no admitted consumer,
+// which is exactly the unearned relationship the fabric dependency law refuses.
+data role_second_processor_socket: RevABoardRole = RevABoardRole {
+  identity: "second-processor-socket",
+  subject: "a second CPU socket and everything only a 2P board carries",
+  disposition: ExplicitlyAbsent {
+    reason: "Rev-A is one-socket: the sellable contract is sized to one Q80-30, and a second socket creates a dependency population (CCIX links, doubled power tree, 2P firmware path) with no consumer",
+    first_grounds: decl_ref(module_path: "strategy.ci_sellable_unit", decl_name: "ci_sellable_unit"),
+    additional_grounds: [
+      decl_ref(module_path: "strategy.compute_fabric_model", decl_name: "dependency_law_note"),
+    ],
+  },
+}
+
+// The socket-to-socket coherent interconnect exists only between two sockets; with the second
+// socket absent it has no far end. A separate row rather than a footnote on the socket row,
+// because the platform guide carries its lane population as a first-class fact and a reader
+// checking "was CCIX considered" must find a decision, not an inference.
+data role_two_socket_interconnect: RevABoardRole = RevABoardRole {
+  identity: "two-socket-coherent-interconnect",
+  subject: "the socket-to-socket CCIX link population",
+  disposition: ExplicitlyAbsent {
+    reason: "no second socket, so the two x16 socket-to-socket links have no far end to route to",
+    first_grounds: decl_ref(module_path: "extdeps.cpu.ampere_altra_platform_hw_design.platform", decl_name: "altra_two_socket_ccix_port_count"),
+    additional_grounds: [],
+  },
+}
+
+// The memory ROLE is selected — direct-attached registered DDR4 on the package's own controllers
+// is the only memory architecture the part has, and the sellable contract's byte law is what the
+// population must back. The routed TOPOLOGY is deliberately not selected here: that is the next
+// rung's receipt, and the blocked row below is what keeps this row from quietly answering it.
+data role_system_memory: RevABoardRole = RevABoardRole {
+  identity: "system-memory",
+  subject: "main memory architecture",
+  disposition: SelectedForRevA {
+    selection: "direct-attached registered DDR4 on the package's memory controllers, populated to back the 76-unit contract requirement through the byte law",
+    first_grounds: decl_ref(module_path: "extdeps.cpu.ampere_altra_memory_controller", decl_name: "altra_memory_generation"),
+    additional_grounds: [
+      decl_ref(module_path: "extdeps.cpu.ampere_altra_platform_hw_design.platform", decl_name: "altra_platform_memory_generation"),
+      decl_ref(module_path: "strategy.ci_sellable_unit", decl_name: "ci_sellable_unit"),
+    ],
+  },
+}
+
+// THE ROUTED MEMORY TOPOLOGY IS BLOCKED, NOT PROVISIONALLY SELECTED. The 4-channel x 1DPC x
+// 64 GiB 2Rx4 answer in the MOBO-X-2 rung subject is a hypothesis; the held Mt. Collins unit's
+// own memtest receipt records that the DIMM count and slot map are not yet confirmed against the
+// physical positions, and the channel census that confirms them is precisely MOBO-X-2's subject.
+// Selecting a topology here would put the selection ahead of the evidence the next rung exists to
+// produce.
+data role_memory_routed_topology: RevABoardRole = RevABoardRole {
+  identity: "memory-routed-topology",
+  subject: "how many channels Rev-A routes, at which DPC and DIMM capacity",
+  disposition: BlockedByNamedFact {
+    unresolved: "the held unit's channel census has not been performed, so which channels can be depopulated without losing the contract's bytes is unmeasured; 4ch x 1DPC x 64 GiB 2Rx4 is the provisional hypothesis, not a selection",
+    blocking_fact: decl_ref(module_path: "strategy.mt_collins_held_unit", decl_name: "mt_collins_first_memtest"),
+    resolution: "MOBO-X-2's MemoryChannelResponseReceipt over the held unit selects the routed topology",
+  },
+}
+
+// NO EXPANSION SLOT. The package exposes 96 PCIe-only lanes; capacity is not an obligation to
+// route, and MOBO-X-5C's rule — every routed lane has one exact consumer — has no slot-shaped
+// consumer to satisfy. A CI compute tile's I/O is its network interface and whatever the boot
+// materialization decision earns, both of which are their own rows.
+data role_pcie_expansion: RevABoardRole = RevABoardRole {
+  identity: "pcie-expansion-slots",
+  subject: "general-purpose PCIe expansion connectors",
+  disposition: ExplicitlyAbsent {
+    reason: "no consumer demands a slot; every routed lane must have one exact consumer, and lanes without consumers are unearned matter",
+    first_grounds: decl_ref(module_path: "extdeps.cpu.ampere_altra_platform_hw_design.platform", decl_name: "altra_pcie_only_lane_count"),
+    additional_grounds: [
+      decl_ref(module_path: "strategy.compute_fabric_model", decl_name: "derivation_stance_note"),
+    ],
+  },
+}
+
+// The network interface is the tile's service boundary: CI jobs, boot materialization and
+// management traffic all arrive over it, and the fabric model obliges every storage binding to
+// emit a network demand this interface must carry. Controller, speed and port count bind at
+// MOBO-X-5C, where each routed lane meets its exact consumer.
+data role_network_interface: RevABoardRole = RevABoardRole {
+  identity: "network-interface",
+  subject: "the board's network fabric attachment",
+  disposition: SelectedForRevA {
+    selection: "an on-board network interface as the tile's sole service boundary; controller, speed and port count bind at MOBO-X-5C",
+    first_grounds: decl_ref(module_path: "strategy.compute_fabric_model", decl_name: "network_burden_note"),
+    additional_grounds: [
+      decl_ref(module_path: "strategy.compute_fabric_model", decl_name: "boot_decomposition_note"),
+    ],
+  },
+}
+
+// LOCAL BOOT STORAGE IS BLOCKED ON THE FABRIC'S BOOT-MATERIALIZATION SELECTION. The fabric model
+// decomposes boot into authority x materialization x availability and holds candidates from
+// network-to-RAM (no local device at all) through a local ephemeral root; no selection receipt
+// exists. A device routed now is unearned matter if RAM-root wins; a missing footprint is a
+// respin if it loses. The placement rung can reserve the footprint either way, which is exactly
+// what a provisional placement envelope is for.
+data role_local_boot_storage: RevABoardRole = RevABoardRole {
+  identity: "local-boot-storage",
+  subject: "any board-local boot or scratch storage device",
+  disposition: BlockedByNamedFact {
+    unresolved: "whether Rev-A carries any local storage device or boots to RAM over the network is the fabric's open boot-materialization selection",
+    blocking_fact: decl_ref(module_path: "strategy.compute_fabric_model", decl_name: "boot_decomposition_note"),
+    resolution: "a BootMaterialization selection receipt in strategy.compute_fabric_model; MOBO-X-3's ProvisionalPlacementEnvelope reserves the footprint until it lands",
+  },
+}
+
+// A MANAGED TILE IS THE OBSERVED OPERATING MODE, NOT A PREFERENCE. The held Mt. Collins unit was
+// brought up, memory-tested and power-observed entirely over its BMC — remote media, serial over
+// LAN, sensor readings — with no local console. Rev-A carries a BMC; the management stack and
+// part bind at MOBO-X-4 (firmware and management contract) and MOBO-X-5C (schematic).
+data role_bmc_management: RevABoardRole = RevABoardRole {
+  identity: "bmc-management",
+  subject: "the baseboard management controller and its management plane",
+  disposition: SelectedForRevA {
+    selection: "an on-board BMC as the sole bring-up, recovery and observation path; stack and part bind at MOBO-X-4 and MOBO-X-5C",
+    first_grounds: decl_ref(module_path: "strategy.mt_collins_held_unit", decl_name: "mt_collins_bmc_access"),
+    additional_grounds: [
+      decl_ref(module_path: "extdeps.cpu.ampere_altra_platform_hw_design.platform", decl_name: "altra_platform_section_coverage_note"),
+    ],
+  },
+}
+
+// Boot firmware storage for the platform's boot chain. The platform guide devotes its boot
+// sequences and bring-up sections to this path and its bibliography names the firmware-facing
+// specifications; the exact firmware, boot and recovery contract is MOBO-X-4's whole subject, so
+// this row selects the role and nothing else.
+data role_boot_firmware_storage: RevABoardRole = RevABoardRole {
+  identity: "boot-firmware-storage",
+  subject: "non-volatile storage for the platform boot chain",
+  disposition: SelectedForRevA {
+    selection: "on-board non-volatile firmware storage for the platform boot chain; the firmware, boot, management and recovery contract is MOBO-X-4's subject",
+    first_grounds: decl_ref(module_path: "extdeps.cpu.ampere_altra_platform_hw_design.platform", decl_name: "altra_platform_section_coverage_note"),
+    additional_grounds: [
+      decl_ref(module_path: "extdeps.cpu.ampere_altra_platform_hw_design.platform", decl_name: "altra_platform_bibliography"),
+    ],
+  },
+}
+
+// Power input and the on-board voltage-regulation tree. The platform guide's section 4 is the
+// vendor grounding for the VRD implementations and their layout references; the fabric's power
+// decomposition is the authority for how the input side is framed (AC/DC conversion x
+// distribution voltage x board adaptation, never "one giant PSU"). Every rail's producer,
+// consumers, tolerance, current, sequencing, fault arm and measurement point bind at MOBO-X-5A.
+data role_power_input_and_vrd: RevABoardRole = RevABoardRole {
+  identity: "power-input-and-vrd",
+  subject: "the board's power input and voltage-regulation tree",
+  disposition: SelectedForRevA {
+    selection: "one DC power input and an on-board voltage-regulation tree; the full power tree and sequencing bind at MOBO-X-5A",
+    first_grounds: decl_ref(module_path: "strategy.compute_fabric_model", decl_name: "power_decomposition_note"),
+    additional_grounds: [
+      decl_ref(module_path: "extdeps.cpu.ampere_altra_platform_hw_design.platform", decl_name: "altra_platform_referenced_documents"),
+    ],
+  },
+}
+
+// Reference clocking per the platform guide: the 100 MHz reference input is a stated platform
+// fact. Clock distribution binds at MOBO-X-5B beside DDR, reset and boot.
+data role_clock_distribution: RevABoardRole = RevABoardRole {
+  identity: "clock-distribution",
+  subject: "reference clock generation and distribution",
+  disposition: SelectedForRevA {
+    selection: "100 MHz reference clocking per the platform guide; distribution binds at MOBO-X-5B",
+    first_grounds: decl_ref(module_path: "extdeps.cpu.ampere_altra_platform_hw_design.platform", decl_name: "altra_refclk_frequency"),
+    additional_grounds: [],
+  },
+}
+
+// Reset and sequencing logic. The guide's stated PERST scheme is CPLD-decoded — the package has
+// no dedicated per-controller PERST — so a sequencing device is a platform requirement, not a
+// convenience. Its programming and the sequencing order bind at MOBO-X-5B and MOBO-X-5A.
+data role_reset_sequencing_logic: RevABoardRole = RevABoardRole {
+  identity: "reset-sequencing-logic",
+  subject: "reset decode and power-sequencing logic",
+  disposition: SelectedForRevA {
+    selection: "CPLD-decoded PERST and sequencing per the platform guide's stated scheme; order and programming bind at MOBO-X-5A/5B",
+    first_grounds: decl_ref(module_path: "extdeps.cpu.ampere_altra_platform_hw_design.platform", decl_name: "altra_pcie_reset_scheme"),
+    additional_grounds: [],
+  },
+}
+
+// Wet bring-up needs a debug path that works before the network does. The guide's hardware
+// bring-up section is the vendor grounding; the exact header population binds at MOBO-X-5C.
+data role_debug_bringup: RevABoardRole = RevABoardRole {
+  identity: "debug-bringup",
+  subject: "UART, JTAG and debug header population for first bring-up",
+  disposition: SelectedForRevA {
+    selection: "a debug path that works before the network does; exact header population binds at MOBO-X-5C",
+    first_grounds: decl_ref(module_path: "extdeps.cpu.ampere_altra_platform_hw_design.platform", decl_name: "altra_platform_section_coverage_note"),
+    additional_grounds: [],
+  },
+}
+
+// HEADLESS, BY OBSERVATION RATHER THAN FASHION: the held unit's first memory test was booted,
+// executed and verdict-read with the screen unseen — NFS remote media, serial over LAN and power
+// rails were the instruments. No consumer demands a display path beyond whatever the selected BMC
+// stack happens to provide, and that provision is the BMC row's fact, not a board role.
+data role_video_display: RevABoardRole = RevABoardRole {
+  identity: "video-display",
+  subject: "any dedicated display output path",
+  disposition: ExplicitlyAbsent {
+    reason: "headless: bring-up and operation are observed over the BMC; no consumer demands a dedicated display path",
+    first_grounds: decl_ref(module_path: "strategy.mt_collins_held_unit", decl_name: "mt_collins_first_memtest"),
+    additional_grounds: [
+      decl_ref(module_path: "strategy.mt_collins_held_unit", decl_name: "mt_collins_bmc_access"),
+    ],
+  },
+}
+
+// No host USB ports: media and recovery arrive via BMC remote media, observed working on the held
+// unit (NFS-mounted virtual CD, no local keyboard). A debug-only need belongs to the debug row.
+data role_usb_host_ports: RevABoardRole = RevABoardRole {
+  identity: "usb-host-ports",
+  subject: "external host USB connectivity",
+  disposition: ExplicitlyAbsent {
+    reason: "no consumer: media and recovery arrive via BMC remote media; debug-only needs are the debug-bringup role's",
+    first_grounds: decl_ref(module_path: "strategy.mt_collins_held_unit", decl_name: "mt_collins_bmc_access"),
+    additional_grounds: [],
+  },
+}
+
+// No hot plug: the package has no native hot-plug controller — the guide's stated realization is
+// an external controller — and with no expansion slots there is nothing to hot-plug into.
+data role_pcie_hot_plug: RevABoardRole = RevABoardRole {
+  identity: "pcie-hot-plug",
+  subject: "PCIe hot-plug support",
+  disposition: ExplicitlyAbsent {
+    reason: "no native hot-plug controller exists on the package and Rev-A routes no slot; an external controller would be matter with no consumer",
+    first_grounds: decl_ref(module_path: "extdeps.cpu.ampere_altra_platform_hw_design.platform", decl_name: "altra_has_native_hot_plug_controller"),
+    additional_grounds: [],
+  },
+}
+
+// TPM absence is a decision row so that a future customer attestation demand re-opens it as a
+// named change rather than discovering a silent gap. Today no modeled consumer demands hardware
+// attestation; the fabric's stance — no unearned matter — is the ground.
+data role_tpm_attestation: RevABoardRole = RevABoardRole {
+  identity: "tpm-attestation",
+  subject: "a trusted-platform / hardware attestation device",
+  disposition: ExplicitlyAbsent {
+    reason: "no modeled attestation consumer; a customer attestation demand row is what re-opens this as a named change",
+    first_grounds: decl_ref(module_path: "strategy.compute_fabric_model", decl_name: "derivation_stance_note"),
+    additional_grounds: [],
+  },
+}
+
+data rev_a_roles: List<RevABoardRole> = [
+  role_processor_socket,
+  role_second_processor_socket,
+  role_two_socket_interconnect,
+  role_system_memory,
+  role_memory_routed_topology,
+  role_pcie_expansion,
+  role_network_interface,
+  role_local_boot_storage,
+  role_bmc_management,
+  role_boot_firmware_storage,
+  role_power_input_and_vrd,
+  role_clock_distribution,
+  role_reset_sequencing_logic,
+  role_debug_bringup,
+  role_video_display,
+  role_usb_host_ports,
+  role_pcie_hot_plug,
+  role_tpm_attestation,
+]
+
+// Parametric on purpose: the witness constructs a duplicate roster and shows this refuse it, so
+// the wall is executed evidence rather than a fn that can only ever see the one green input.
+fn identities_are_unique(roles: List<RevABoardRole>) -> Bool {
+  fold(roles, init: 0, f: (acc, g) =>
+    acc + fold(roles, init: 0, f: (n, h) => if h.identity == g.identity { n + 1 } else { n })
+  ) == count(roles)
+}
+
+fn role_identities_are_unique() -> Bool {
+  identities_are_unique(roles: rev_a_roles)
+}
+
+fn role_is_selected(identity: NonEmptyStr) -> Bool {
+  fold(rev_a_roles, init: false, f: (acc, r) =>
+    acc || (r.identity == identity && match r.disposition {
+      SelectedForRevA { selection: _, first_grounds: _, additional_grounds: _ } => true
+      ExplicitlyAbsent { reason: _, first_grounds: _, additional_grounds: _ } => false
+      BlockedByNamedFact { unresolved: _, blocking_fact: _, resolution: _ } => false
+    })
+  )
+}
+
+fn role_is_absent(identity: NonEmptyStr) -> Bool {
+  fold(rev_a_roles, init: false, f: (acc, r) =>
+    acc || (r.identity == identity && match r.disposition {
+      SelectedForRevA { selection: _, first_grounds: _, additional_grounds: _ } => false
+      ExplicitlyAbsent { reason: _, first_grounds: _, additional_grounds: _ } => true
+      BlockedByNamedFact { unresolved: _, blocking_fact: _, resolution: _ } => false
+    })
+  )
+}
+
+fn role_is_blocked(identity: NonEmptyStr) -> Bool {
+  fold(rev_a_roles, init: false, f: (acc, r) =>
+    acc || (r.identity == identity && match r.disposition {
+      SelectedForRevA { selection: _, first_grounds: _, additional_grounds: _ } => false
+      ExplicitlyAbsent { reason: _, first_grounds: _, additional_grounds: _ } => false
+      BlockedByNamedFact { unresolved: _, blocking_fact: _, resolution: _ } => true
+    })
+  )
+}
+
+// Every blocked row must say what is unresolved and what resolves it; a blocked arm with an empty
+// resolution is an untracked stall, which the ladder forbids.
+fn blocked_roles_name_their_resolution() -> Bool {
+  fold(rev_a_roles, init: true, f: (acc, r) =>
+    acc && match r.disposition {
+      SelectedForRevA { selection: _, first_grounds: _, additional_grounds: _ } => true
+      ExplicitlyAbsent { reason: _, first_grounds: _, additional_grounds: _ } => true
+      BlockedByNamedFact { unresolved: u, blocking_fact: _, resolution: res } => u != "" && res != ""
+    }
+  )
+}
+
+fn role_count() -> Nat { count(rev_a_roles) }
+
+fn blocked_role_count() -> Nat {
+  count(filter(rev_a_roles, r => role_is_blocked(identity: r.identity)))
+}

@@ -1,0 +1,454 @@
+module strategy.buyer_review_placement
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.decl_ref { decl_ref }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldObservation,
+  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+}
+import gunbc.durable_exclusive_hold_file_store {
+  observe_file_hold, file_hold_release_assess, file_hold_release_commit,
+  FileHoldReleaseAssessment, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
+  FileHoldReleaseOutcome, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable,
+  FileHoldReleaseKeyNotSlotAddressable,
+}
+import gunbc.host_operation_exec {
+  HostOperationOutcome, HostOperationObserved, HostOperationRefused, ProcfsReadStat, ProcfsReadPidCgroup,
+  host_operation_exec,
+}
+import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_read }
+import extdeps.systemd { InvocationIDProperty }
+import extdeps.linux.proc_stat { BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch, proc_stat_boot_time }
+import extdeps.linux.proc_self_cgroup {
+  CurrentCgroupObserved, MembershipMissing, MembershipAmbiguous, MembershipMalformed, read_unified_cgroup_membership,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.host_effect { LocalShell }
+import gunbc.hostname_read { HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
+
+// THE BUYER SHEET HAS ONE WRITER HOST, AND IT IS A ROW, NOT AN ARGUMENT. The buyer-sheet lock is a file
+// compare-and-set, and a file on one host excludes nothing on another, so single-writer holds only if
+// every admitted run is on the same host. That host is bound here to the existing fleet row rather than
+// spelled again, and it is deliberately NOT a parameter: a caller allowed to choose both the expected host
+// and the observed one can admit itself. The long-term placement is fabric; this row is the interim, and
+// it is deleted when buyer-review refresh becomes admitted fabric work whose hold covers every executor
+// fabric may select.
+data buyer_review_executor_host: HostIdentity = operator_host_srv1
+
+// THREE OUTCOMES, KEPT APART ON PURPOSE. The existing hostname-gated callers flatten a refused hostname
+// read to the empty string and compare that, which makes "could not tell which host this is" read as
+// "this is the wrong host" -- two refusals with different remedies collapsed into one. The buyer route
+// keeps them distinct: an unreadable hostname is an observation failure, a mismatch is a placement fact.
+type BuyerReviewExecutorAdmission
+  = BuyerReviewExecutorAdmitted
+  | BuyerReviewExecutorHostnameUnreadable { cause: String }
+  | BuyerReviewExecutorWrongHost { expected: HostIdentity, observed: String }
+
+// The decision is pure over a supplied capture, so claims can discriminate it without depending on which
+// machine they happen to run on. The effectful admission below is the only production route, and it is a
+// single read feeding this.
+fn buyer_review_executor_admission_of(capture: HostnameShortCapture) -> BuyerReviewExecutorAdmission {
+  match capture {
+    HostnameShortCaptureRefused { reason: r } => BuyerReviewExecutorHostnameUnreadable { cause: r }
+    HostnameShortCaptured { value: v } =>
+      if v == (buyer_review_executor_host as String) {
+        BuyerReviewExecutorAdmitted
+      } else {
+        BuyerReviewExecutorWrongHost { expected: buyer_review_executor_host, observed: v }
+      }
+  }
+}
+
+fn buyer_review_executor_admission() -> BuyerReviewExecutorAdmission {
+  buyer_review_executor_admission_of(capture: hostname_short_read(transport: LocalShell))
+}
+
+// ONE LOGICAL IDENTITY FOR THE BUYER SHEET, AND EVERYTHING THAT NAMES IT DERIVES FROM IT. The Drive
+// properties marker finds the spreadsheet; the hold slot key serializes writers to it. If those were two
+// independently spelled strings, a rename of one would leave the lock guarding a sheet the converge no
+// longer targets -- a lock that holds perfectly and protects nothing. The display name is presentation
+// only and is not identity: Drive find-or-create keys on the marker.
+data buyer_review_sheet_identity: NonEmptyStr = "buyer-review-sheet"
+
+data buyer_review_sheet_display_name: NonEmptyStr = "Buyer review sheet"
+
+fn buyer_review_drive_marker_value() -> NonEmptyStr {
+  buyer_review_sheet_identity
+}
+
+fn buyer_review_hold_slot_key() -> NonEmptyStr {
+  buyer_review_sheet_identity
+}
+
+// THE HOLD ROOT IS A FIXED srv1 PATH, beside the other gunbc state roots under /var/lib/gunbc. It is a
+// row, not a parameter of the run, so two runs cannot disagree about where the one slot lives.
+data buyer_review_hold_root: NonEmptyStr = "/var/lib/gunbc/buyer-review/holds"
+
+// THE RUN'S IDENTITY IS ITS SYSTEMD INVOCATION, NOT ITS PID. A run executes as a transient unit named
+// with this prefix (systemd-run --unit=gunbc-buyer-review-<anything>.service, and later the timer's
+// service). A pid is reused within a boot; a unit invocation id is minted fresh on every start, and a
+// unit is only re-invoked after its previous invocation's cgroup has emptied. So (boot, unit,
+// invocation) names one execution and says when it is over. The unit is read from /proc/self/cgroup
+// of the reading child, which inherits the run's cgroup at fork (cgroups(7)).
+data buyer_review_unit_prefix: String = "gunbc-buyer-review-"
+
+data buyer_review_unit_suffix: String = ".service"
+
+data buyer_review_owner_tag: String = "buyer-review"
+
+type BuyerReviewExecution sole_constructor {
+  boot_time: NonEmptyStr
+  unit: NonEmptyStr
+  invocation: NonEmptyStr
+}
+
+type BuyerReviewExecutionRefusal
+  = ExecutionBootTimeUnread { cause: String }
+  | ExecutionCgroupUnread { cause: String }
+  | ExecutionNotADedicatedUnit { cgroup_path: String }
+  | ExecutionInvocationUnread { unit: NonEmptyStr, cause: String }
+  | ExecutionUnitNotActive { unit: NonEmptyStr }
+
+type BuyerReviewExecutionObservation
+  = BuyerReviewExecutionObserved { execution: BuyerReviewExecution }
+  | BuyerReviewExecutionRefused { refusal: BuyerReviewExecutionRefusal }
+
+type BootTimeRead
+  = BootTimeText { value: NonEmptyStr }
+  | BootTimeRefused { cause: String }
+
+fn current_boot_time() -> BootTimeRead {
+  match host_operation_exec(transport: LocalShell, operation: ProcfsReadStat) {
+    HostOperationRefused { operation: _, reason: r } => BootTimeRefused { cause: r }
+    HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
+      if !ok {
+        BootTimeRefused { cause: "reading /proc/stat did not succeed" }
+      } else {
+        match proc_stat_boot_time(content: out) {
+          BootTimeObserved { epoch_seconds: e } => BootTimeText { value: to_string(e) as NonEmptyStr }
+          BootTimeLineAbsent => BootTimeRefused { cause: "/proc/stat has no btime line" }
+          BootTimeUnparseable { field: f } => BootTimeRefused { cause: concat("/proc/stat btime is not an integer: ", f) }
+          BootTimeBeforeEpoch { field: f } => BootTimeRefused { cause: concat("/proc/stat btime is before the epoch: ", f) }
+        }
+      }
+  }
+}
+
+fn last_path_segment(path: String) -> String {
+  match split(s: path, delimiter: "/") |> filter(seg => seg != "") |> last {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn dedicated_unit_of(cgroup_path: String) -> NonEmptyStr? {
+  let leaf = last_path_segment(path: cgroup_path)
+  if starts_with(s: leaf, prefix: buyer_review_unit_prefix)
+    && ends_with(s: leaf, suffix: buyer_review_unit_suffix)
+    && string_length(s: leaf) > string_length(s: buyer_review_unit_prefix) + string_length(s: buyer_review_unit_suffix) {
+    Present { value: leaf as NonEmptyStr }
+  } else {
+    none
+  }
+}
+
+type UnitInvocationRead
+  = UnitInvocationActive { invocation: NonEmptyStr }
+  | UnitInvocationNone
+  | UnitInvocationRefused { cause: String }
+
+fn unit_invocation(unit: NonEmptyStr) -> UnitInvocationRead {
+  match systemctl_show_property_read(transport: LocalShell, unit: unit, property: InvocationIDProperty) {
+    SystemdPropertyCaptured { value: v } =>
+      if trim(s: v) == "" { UnitInvocationNone } else { UnitInvocationActive { invocation: trim(s: v) as NonEmptyStr } }
+    SystemdPropertyBlank => UnitInvocationNone
+    SystemdPropertyCaptureRefused { reason: r } => UnitInvocationRefused { cause: r }
+  }
+}
+
+// THE ONLY MINT OF A BuyerReviewExecution: it performs all three reads itself, so no caller can
+// author an execution identity for a run it is not.
+fn buyer_review_execution_observe() -> BuyerReviewExecutionObservation {
+  match current_boot_time() {
+    BootTimeRefused { cause: c } => BuyerReviewExecutionRefused { refusal: ExecutionBootTimeUnread { cause: c } }
+    BootTimeText { value: boot } =>
+      match host_operation_exec(transport: LocalShell, operation: ProcfsReadPidCgroup { pid: "self" }) {
+        HostOperationRefused { operation: _, reason: r } =>
+          BuyerReviewExecutionRefused { refusal: ExecutionCgroupUnread { cause: r } }
+        HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
+          if !ok {
+            BuyerReviewExecutionRefused { refusal: ExecutionCgroupUnread { cause: "reading /proc/self/cgroup did not succeed" } }
+          } else {
+            match read_unified_cgroup_membership(content: out) {
+              MembershipMissing =>
+                BuyerReviewExecutionRefused { refusal: ExecutionCgroupUnread { cause: "no unified (v2) cgroup line" } }
+              MembershipAmbiguous { first: a, second: b } =>
+                BuyerReviewExecutionRefused { refusal: ExecutionCgroupUnread { cause: concat("two unified cgroup lines: ", concat(a as String, concat(" and ", b as String))) } }
+              MembershipMalformed { cause: _ } =>
+                BuyerReviewExecutionRefused { refusal: ExecutionCgroupUnread { cause: "malformed /proc/self/cgroup" } }
+              CurrentCgroupObserved { relative_path: path } =>
+                match dedicated_unit_of(cgroup_path: path as String) {
+                  Absent => BuyerReviewExecutionRefused { refusal: ExecutionNotADedicatedUnit { cgroup_path: path as String } }
+                  Present { value: unit } =>
+                    match unit_invocation(unit: unit) {
+                      UnitInvocationRefused { cause: c } =>
+                        BuyerReviewExecutionRefused { refusal: ExecutionInvocationUnread { unit: unit, cause: c } }
+                      UnitInvocationNone => BuyerReviewExecutionRefused { refusal: ExecutionUnitNotActive { unit: unit } }
+                      UnitInvocationActive { invocation: inv } =>
+                        BuyerReviewExecutionObserved {
+                          execution: BuyerReviewExecution { boot_time: boot, unit: unit, invocation: inv },
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+// THE OWNER REF IS AN ENCODING OF THE EXECUTION, so recovery can read back whose hold it is. Unit
+// names cannot contain '|' and invocation ids are hex, so the four fields split unambiguously.
+// THE ONLY PRODUCER OF A buyer-review OWNER REF, and it takes the sealed execution: an owner ref for
+// a boot, unit or invocation that was never observed has no route to being written.
+fn buyer_review_owner_ref(execution: BuyerReviewExecution) -> DurableHoldOwnerRef {
+  join([buyer_review_owner_tag, execution.boot_time as String, execution.unit as String, execution.invocation as String], "|") as DurableHoldOwnerRef
+}
+
+type RecordedExecution {
+  boot_time: NonEmptyStr
+  unit: NonEmptyStr
+  invocation: NonEmptyStr
+}
+
+fn recorded_execution_of(owner: DurableHoldOwnerRef) -> RecordedExecution? {
+  let parts = split(s: owner as String, delimiter: "|")
+  if (parts |> count) != 4 {
+    none
+  } else {
+    match parts |> first {
+      Absent => none
+      Present { value: tag } =>
+        if tag != buyer_review_owner_tag {
+          none
+        } else {
+          match parts |> skip(n: 1) |> first {
+            Absent => none
+            Present { value: boot } =>
+              match parts |> skip(n: 2) |> first {
+                Absent => none
+                Present { value: unit } =>
+                  match parts |> skip(n: 3) |> first {
+                    Absent => none
+                    Present { value: inv } =>
+                      if boot == "" || inv == "" {
+                        none
+                      } else {
+                        match dedicated_unit_of(cgroup_path: unit) {
+                          Absent => none
+                          Present { value: u } =>
+                            Present { value: RecordedExecution { boot_time: boot as NonEmptyStr, unit: u, invocation: inv as NonEmptyStr } }
+                        }
+                      }
+                  }
+              }
+          }
+        }
+    }
+  }
+}
+
+// TERMINATION IS OBSERVED, NEVER ASSUMED. A different boot means every process of the recorded
+// execution is gone. Within the same boot, the recorded invocation is over when its unit has no
+// active invocation or a different one: systemd mints a new invocation id per start, and does not
+// start a unit again until the previous invocation's cgroup is empty.
+type BuyerReviewExecutionTerminated
+  = TerminatedByReboot { recorded_boot: NonEmptyStr, current_boot: NonEmptyStr }
+  | TerminatedUnitInactive { unit: NonEmptyStr, recorded_invocation: NonEmptyStr }
+  | TerminatedUnitReinvoked { unit: NonEmptyStr, recorded_invocation: NonEmptyStr, current_invocation: NonEmptyStr }
+
+// THE VERDICT IS PURE AND CARRIES NO AUTHORITY. It compares a recorded execution with supplied
+// reads, so a caller choosing both sides could make it say anything; that is why it returns a
+// verdict and never a warrant. Release authority is BuyerReviewRecoveryWarrant below, minted only by
+// buyer_review_recovery_admission, which performs every read itself (the pattern
+// strategy.selfhost_coverage uses: seal the authorization, not only the answer).
+type BuyerReviewRecoveryVerdict
+  = VerdictTerminated { termination: BuyerReviewExecutionTerminated }
+  | VerdictOwnerStillLive
+  | VerdictOwnerUnrecognized
+  | VerdictExecutionUnobservable { cause: String }
+
+fn recovery_verdict_of(owner: DurableHoldOwnerRef, current_boot: BootTimeRead, invocation: UnitInvocationRead) -> BuyerReviewRecoveryVerdict {
+  match recorded_execution_of(owner: owner) {
+    Absent => VerdictOwnerUnrecognized
+    Present { value: rec } =>
+      match current_boot {
+        BootTimeRefused { cause: c } => VerdictExecutionUnobservable { cause: c }
+        BootTimeText { value: now } =>
+          if (now as String) != (rec.boot_time as String) {
+            VerdictTerminated { termination: TerminatedByReboot { recorded_boot: rec.boot_time, current_boot: now } }
+          } else {
+            match invocation {
+              UnitInvocationRefused { cause: c } => VerdictExecutionUnobservable { cause: c }
+              UnitInvocationNone =>
+                VerdictTerminated { termination: TerminatedUnitInactive { unit: rec.unit, recorded_invocation: rec.invocation } }
+              UnitInvocationActive { invocation: cur } =>
+                if (cur as String) == (rec.invocation as String) {
+                  VerdictOwnerStillLive
+                } else {
+                  VerdictTerminated { termination: TerminatedUnitReinvoked { unit: rec.unit, recorded_invocation: rec.invocation, current_invocation: cur } }
+                }
+            }
+          }
+      }
+  }
+}
+
+type BuyerReviewRecoveryWarrant sole_constructor {
+  owner: DurableHoldOwnerRef
+  generation: CasGeneration
+  termination: BuyerReviewExecutionTerminated
+}
+
+type BuyerReviewRecoveryAdmission
+  = RecoveryAdmitted { warrant: BuyerReviewRecoveryWarrant }
+  | RecoveryRefusedHostnameUnreadable { cause: String }
+  | RecoveryRefusedWrongHost { expected: HostIdentity, observed: String }
+  | RecoveryNothingHeld
+  | RecoveryRefusedOwnerStillLive { owner: DurableHoldOwnerRef, generation: CasGeneration }
+  | RecoveryRefusedOwnerUnrecognized { owner: DurableHoldOwnerRef, generation: CasGeneration }
+  | RecoveryRefusedExecutionUnobservable { owner: DurableHoldOwnerRef, cause: String }
+  | RecoveryRefusedSlotUnreadable { detail: String }
+
+// RECOVERY IS PLACED BEFORE IT READS ANYTHING. The hold root is host-local, so recovery run on the
+// wrong host would read the wrong store and could report "nothing held" while srv1's hold stands.
+// The host admission therefore runs first, and a wrong or unreadable host is its own refusal.
+fn recovery_host_refusal_of(host: BuyerReviewExecutorAdmission) -> BuyerReviewRecoveryAdmission? {
+  match host {
+    BuyerReviewExecutorAdmitted => none
+    BuyerReviewExecutorHostnameUnreadable { cause: c } => Present { value: RecoveryRefusedHostnameUnreadable { cause: c } }
+    BuyerReviewExecutorWrongHost { expected: e, observed: o } => Present { value: RecoveryRefusedWrongHost { expected: e, observed: o } }
+  }
+}
+
+fn buyer_review_recovery_admission() -> BuyerReviewRecoveryAdmission {
+  match recovery_host_refusal_of(host: buyer_review_executor_admission()) {
+    Present { value: refused } => refused
+    Absent => recovery_admission_on_the_executor_host()
+  }
+}
+
+// THE ONLY MINT OF A BuyerReviewRecoveryWarrant, admitted only from the host-gated entry above. Every
+// input to the verdict is read here: the slot, the current boot and the recorded unit's invocation.
+fn recovery_admission_on_the_executor_host() -> BuyerReviewRecoveryAdmission
+  admit_callers: [
+    decl_ref(module_path: "strategy.buyer_review_placement", decl_name: "buyer_review_recovery_admission"),
+  ]
+  = match observe_file_hold(root: buyer_review_hold_root, key: buyer_review_hold_slot_key()) {
+    HoldSlotAbsent => RecoveryNothingHeld
+    HoldSlotFree { generation: _, released_by: _ } => RecoveryNothingHeld
+    HoldSlotUndecodable { generation: _, detail: d } => RecoveryRefusedSlotUnreadable { detail: d as String }
+    HoldObservationUnavailable { cause: _ } => RecoveryRefusedSlotUnreadable { detail: "the hold slot could not be observed" }
+    HoldSlotHeld { generation: g, owner: o } =>
+      match recorded_execution_of(owner: o) {
+        Absent => RecoveryRefusedOwnerUnrecognized { owner: o, generation: g }
+        Present { value: rec } =>
+          match recovery_verdict_of(owner: o, current_boot: current_boot_time(), invocation: unit_invocation(unit: rec.unit)) {
+            VerdictTerminated { termination: t } =>
+              RecoveryAdmitted { warrant: BuyerReviewRecoveryWarrant { owner: o, generation: g, termination: t } }
+            VerdictOwnerStillLive => RecoveryRefusedOwnerStillLive { owner: o, generation: g }
+            VerdictOwnerUnrecognized => RecoveryRefusedOwnerUnrecognized { owner: o, generation: g }
+            VerdictExecutionUnobservable { cause: c } => RecoveryRefusedExecutionUnobservable { owner: o, cause: c }
+          }
+      }
+  }
+
+// RECOVERY RELEASES ONLY WHAT ADMISSION PROVED TERMINAL, through the ordinary owner-plus-generation
+// release. There is no force flag and no path that skips the generation: if the hold moved between
+// the admission read and the release read, file_hold_release_assess refuses.
+fn termination_text(t: BuyerReviewExecutionTerminated) -> String {
+  match t {
+    TerminatedByReboot { recorded_boot: r, current_boot: c } => join(["reboot:", r as String, "->", c as String], "")
+    TerminatedUnitInactive { unit: u, recorded_invocation: i } => join(["inactive:", u as String, ":", i as String], "")
+    TerminatedUnitReinvoked { unit: u, recorded_invocation: i, current_invocation: c } =>
+      join(["reinvoked:", u as String, ":", i as String, "->", c as String], "")
+  }
+}
+
+type BuyerReviewRecoveryOutcome
+  = RecoveryNotAdmitted { admission: BuyerReviewRecoveryAdmission }
+  | RecoveryReleaseRefused { termination: BuyerReviewExecutionTerminated, assessment: FileHoldReleaseAssessment }
+  | RecoveryReleaseCommitted { termination: BuyerReviewExecutionTerminated, outcome: FileHoldReleaseOutcome }
+
+fn recover_admitted(w: BuyerReviewRecoveryWarrant) -> BuyerReviewRecoveryOutcome {
+  let assessment = file_hold_release_assess(
+    root: buyer_review_hold_root,
+    slot_key: buyer_review_hold_slot_key(),
+    owner: w.owner,
+    acquired_generation: w.generation,
+    released_by: concat("buyer-review-recovery|", termination_text(t: w.termination)) as DurableHoldReleaseRef,
+  )
+  match assessment {
+    FileHoldReleasePlanned { plan: p } => RecoveryReleaseCommitted { termination: w.termination, outcome: file_hold_release_commit(plan: p) }
+    FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => RecoveryReleaseRefused { termination: w.termination, assessment: assessment }
+  }
+}
+
+fn buyer_review_recover() -> BuyerReviewRecoveryOutcome {
+  let admission = buyer_review_recovery_admission()
+  match admission {
+    RecoveryAdmitted { warrant: w } => recover_admitted(w: w)
+    RecoveryRefusedHostnameUnreadable { cause: _ } => RecoveryNotAdmitted { admission: admission }
+    RecoveryRefusedWrongHost { expected: _, observed: _ } => RecoveryNotAdmitted { admission: admission }
+    RecoveryNothingHeld => RecoveryNotAdmitted { admission: admission }
+    RecoveryRefusedOwnerStillLive { owner: _, generation: _ } => RecoveryNotAdmitted { admission: admission }
+    RecoveryRefusedOwnerUnrecognized { owner: _, generation: _ } => RecoveryNotAdmitted { admission: admission }
+    RecoveryRefusedExecutionUnobservable { owner: _, cause: _ } => RecoveryNotAdmitted { admission: admission }
+    RecoveryRefusedSlotUnreadable { detail: _ } => RecoveryNotAdmitted { admission: admission }
+  }
+}
+
+fn recovery_admission_text(a: BuyerReviewRecoveryAdmission) -> String {
+  match a {
+    RecoveryAdmitted { warrant: w } =>
+      join(["admitted ", w.owner as String, " at generation ", to_string(cas_generation_count(g: w.generation)), " (", termination_text(t: w.termination), ")"], "")
+    RecoveryRefusedHostnameUnreadable { cause: c } => concat("refused: cannot tell which host this is, and the hold is host-local: ", c)
+    RecoveryRefusedWrongHost { expected: e, observed: o } => join(["refused: recovery must run on ", e as String, ", this is ", o], "")
+    RecoveryNothingHeld => "the buyer-sheet hold is not held; nothing to recover"
+    RecoveryRefusedOwnerStillLive { owner: o, generation: _ } => concat("refused: the owning execution is still live: ", o as String)
+    RecoveryRefusedOwnerUnrecognized { owner: o, generation: _ } => concat("refused: the hold is owned by something that is not a buyer-review execution: ", o as String)
+    RecoveryRefusedExecutionUnobservable { owner: o, cause: c } => join(["refused: cannot observe whether ", o as String, " has ended: ", c], "")
+    RecoveryRefusedSlotUnreadable { detail: d } => concat("refused: the hold slot is unreadable: ", d)
+  }
+}
+
+// THE OPERATOR'S RECOVERY ENTRY: run on srv1 after a buyer-review run died holding the sheet. It
+// releases only a hold whose owning execution is observed over, and exits non-zero on every
+// refusal so a stuck hold is never reported as cleared.
+fn buyer_review_recover_main() -> ProcessExit {
+  match buyer_review_recover() {
+    RecoveryNotAdmitted { admission: a } =>
+      match a {
+        RecoveryNothingHeld => ExitSuccess
+        RecoveryRefusedHostnameUnreadable { cause: _ } => exit_failure(reason: recovery_admission_text(a: a))
+        RecoveryRefusedWrongHost { expected: _, observed: _ } => exit_failure(reason: recovery_admission_text(a: a))
+        RecoveryAdmitted { warrant: _ } => exit_failure(reason: "admitted recovery was not acted on")
+        RecoveryRefusedOwnerStillLive { owner: _, generation: _ } => exit_failure(reason: recovery_admission_text(a: a))
+        RecoveryRefusedOwnerUnrecognized { owner: _, generation: _ } => exit_failure(reason: recovery_admission_text(a: a))
+        RecoveryRefusedExecutionUnobservable { owner: _, cause: _ } => exit_failure(reason: recovery_admission_text(a: a))
+        RecoveryRefusedSlotUnreadable { detail: _ } => exit_failure(reason: recovery_admission_text(a: a))
+      }
+    RecoveryReleaseRefused { termination: t, assessment: _ } =>
+      exit_failure(reason: concat("recovery was admitted but the release assessment refused (the hold moved?): ", termination_text(t: t)))
+    RecoveryReleaseCommitted { termination: t, outcome: o } =>
+      match o {
+        FileHoldReleased { slot_key: _, generation: _ } => ExitSuccess
+        FileHoldReleaseLost { slot_key: _ } => exit_failure(reason: "recovery release lost the race; the hold moved")
+        FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: "recovery release: the hold store was unavailable")
+        FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => exit_failure(reason: "recovery release: the hold key is not slot-addressable")
+      }
+  }
+}

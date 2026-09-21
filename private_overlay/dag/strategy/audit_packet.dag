@@ -1,0 +1,676 @@
+module strategy.audit_packet
+
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import strategy.private_witness_workflow { source_roots }
+import std.markdown {
+  MarkdownDocument, MarkdownBlock, MarkdownInline, TextInline, CodeInline, StrongInline,
+  HeadingBlock, ParagraphBlock, TableBlock, ThematicBreak, UnorderedListBlock,
+  MarkdownListItem, MarkdownTableRow, MarkdownTableCell, MarkdownAlignment, AlignLeft,
+  H1, H2, H3,
+  markdown_document_to_fragment,
+}
+import std.markup { Fragment }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import extdeps.external_authority {
+  CitedFigureStanding, CitedToAuthority, TranscribedUncited,
+}
+import v2.std.decl_index { DeclFact, decl_facts, ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import v2.std.decl_ref_resolution {
+  DeclarationRefResolution, DeclarationRefResolved, DeclarationRefModuleAbsent,
+  DeclarationRefDeclarationAbsent, DeclarationRefFieldAbsent, DeclarationRefAmbiguous,
+  DeclarationIdentity, resolve_declaration_ref, declaration_ref_resolution_arm_key,
+}
+
+// THE AUDIT BUTTON. One entry, one regime, one packet: for every control a framework asks about,
+// what does THIS TREE actually carry, derived by resolving the citation rather than asserted by
+// whoever wrote the row. Operator direction 2026-09-12: "i should be able to press a single button
+// ... and say 'get me all HIPPA data, for an audit i'm conducting right now'".
+//
+// EVIDENCE INVENTORY, NEVER A LEGAL CONCLUSION. A standing below says whether evidence EXISTS and
+// of what kind. It never says the evidence satisfies the framework, and no arm can be read that
+// way: there is no Compliant arm and no Bool. Sufficiency is counsel's, on this inventory.
+//
+// WHY A LENS RATHER THAN A STORED ANSWER. A packet stored beside the tree is a second authority for
+// what the tree contains and is wrong the first time a declaration moves (DESIGN 3). Every row here
+// resolves through v2.std.decl_ref_resolution against the live corpus, so a roster citing something
+// that no longer exists REFUSES THE PACKET rather than printing a stale green - the same rule as a
+// stale symbol citation. That refusal is the discriminating red the witness mutates.
+//
+// NOTHING IS COMMITTED. The packet is emitted on demand by running the button; there is no
+// ProjectedArtifact row for it, because a committed packet would be a dated claim about a tree that
+// has moved on, and the operator's question is always asked of the tree AS OF NOW.
+
+// THE ASK, NOT THE CARRIER. evidence_kind names WHAT AN AUDITOR ASKS FOR; the carrier names what
+// this repository has. Keeping them apart is what makes a mismatch visible - a framework asking for
+// an executed refusal and a roster answering with a prose register row is a legible gap, and it
+// would be invisible if one field did both jobs.
+type EvidenceKind
+  = PolicyDocumentAsk
+  | ContractTermAsk
+  | ControlRecordAsk
+  | ExecutedRefusalAsk
+  | ChangeRecordAsk
+  | InventoryRosterAsk
+  | TrainingRecordAsk
+  | TestExerciseAsk
+
+// THE CARRIER IS THE INPUT, THE STANDING IS THE OUTPUT. A roster row states where the evidence
+// would be; the lens states what resolving it found. They are different facts and a single field
+// carrying both would let a roster author assert a standing, which is the whole thing this module
+// exists to stop.
+type EvidenceCarrier
+  = ReceiptCarrier { producer: DeclarationRef, receipts: List<DeclarationRef> }
+  | DeclaredCarrier { declaration: DeclarationRef }
+  | RegisterProseCarrier { register_row: DeclarationRef }
+  | ObligationCarrier { obligation: NonEmptyStr }
+  | PolicyExclusionCarrier { policy: DeclarationRef, enforcement: EvidenceCarrier }
+
+// FIVE ARMS, ONE MATCH, NO Bool. ExcludedByPolicy carries the ENFORCEMENT STANDING inside it, which
+// is the whole reason the excluded regime is the discriminating case: an exclusion with nothing
+// enforcing it is an assertion, and the shape refuses to let it be written as a bare exclusion.
+// The arms are spelled Evidence* because .dag variant names resolve corpus-wide - a bare `Absent`
+// would collide with the option constructor every module already uses.
+type EvidenceStanding
+  = EvidenceExecuted { receipts: List<DeclarationRef> }
+  | EvidenceTyped { carrier: DeclarationRef }
+  | EvidenceProse { register_row: DeclarationRef }
+  | EvidenceAbsent { obligation: NonEmptyStr }
+  | EvidenceExcludedByPolicy { policy: DeclarationRef, enforcement: EvidenceStanding }
+
+// THE QUESTION IS PINNED OR IT IS TYPED AS UNPINNED (DESIGN 4d). A framework request list written
+// from memory is an inference, and asserting it as the framework's requirement is the
+// over-assertion arm. Every question below therefore carries CitedFigureStanding: either a citation
+// to the authority's own text, or TranscribedUncited naming the read that would ground it. The
+// standing is rendered beside the question, so a reader can never mistake one for the other.
+type AuditControl {
+  id: NonEmptyStr
+  question: NonEmptyStr
+  question_standing: CitedFigureStanding
+  evidence_kind: EvidenceKind
+  carrier: EvidenceCarrier
+}
+
+// AN OVERLAP IS A MAP BETWEEN ROSTERS, and it exists for the excluded regime. "Not applicable" is
+// the answer this register was corrected away from: a HIPAA auditor asking about encryption is
+// answered by the SOC 2 control that carries it, plus the exclusion policy, plus what enforces the
+// exclusion - never by silence.
+type ControlOverlap {
+  control_id: NonEmptyStr
+  other_regime_id: NonEmptyStr
+  other_control_id: NonEmptyStr
+  note: NonEmptyStr
+}
+
+// THE AUTHORITY PIN IS A FIELD AND IT IS EMPTY, WHICH IS THE HONEST STATE. The pin shape this
+// repository owns is std.citation CitationTarget - expected representation, retrieval observation,
+// content hash - and a pin may only be minted from a RETRIEVAL THAT HAPPENED. No regime text has
+// been retrieved and hashed by this lane, and there is no sha256-over-bytes primitive to compute
+// one from a transcription, so authoring a pin here would fabricate the one fact a pin exists to
+// carry. The field is therefore the standing itself: every regime today is TranscribedUncited with
+// the read obligation naming the official text to retrieve. It climbs when a retrieval observation
+// lands, at which point authority becomes CitedToAuthority and the packet says so without any
+// change to this type.
+type AuditRegime {
+  regime_id: NonEmptyStr
+  register_row: DeclarationRef
+  posture_summary: String
+  authority: CitedFigureStanding
+  controls: List<AuditControl>
+  overlaps: List<ControlOverlap>
+}
+
+// A REFUSAL IS TYPED AND LOCATED. Located at the CONTROL, which is the grain an operator can act
+// on: "row soc2-change-management cites gunbc.merge_admission::gone, declaration-absent".
+type ControlRefusal
+  = CarrierCitationUnresolved {
+      control_id: NonEmptyStr
+      reference: DeclarationRef
+      arm: String
+    }
+  | ReceiptCitationNotARecordedValue {
+      control_id: NonEmptyStr
+      reference: DeclarationRef
+      kind: String
+    }
+  | ReceiptCarrierHasNoReceipts {
+      control_id: NonEmptyStr
+      producer: DeclarationRef
+    }
+  | ExecutionEvidenceUnestablished {
+      control_id: NonEmptyStr
+      producer: DeclarationRef
+    }
+  | RegisterRowUnresolved {
+      regime_id: NonEmptyStr
+      reference: DeclarationRef
+      arm: String
+    }
+
+type ControlReading {
+  control: AuditControl
+  standing: EvidenceStanding
+}
+
+// THE PACKET REFUSES WHOLE. A packet with one bad citation and sixty good ones is not a packet with
+// a footnote: it is a document whose provenance is unknown, handed to an auditor. Every refusal is
+// carried and counted so the repair list is the output, never a first-failure abort.
+type AuditPacket
+  = PacketRendered { regime: AuditRegime, readings: List<ControlReading> }
+  | PacketRefused { regime_id: NonEmptyStr, refusals: List<ControlRefusal> }
+
+// CARRIER READING: one carrier walked once, yielding either its standing or the refusals it
+// produced. PolicyExclusionCarrier recurses through this same function, so an exclusion whose
+// enforcement cites a missing declaration refuses exactly as a top-level citation does.
+type CarrierReading
+  = CarrierStood { standing: EvidenceStanding }
+  | CarrierRefused { refusals: List<ControlRefusal> }
+
+// THE POOL ROOTS ARE THE RUNNER'S, READ FROM THE RUNNER. strategy.private_witness_workflow owns how
+// the corpus is composed -- public dag + src/v2 + the private overlay, inside a detached worktree --
+// and its source_roots row is that fact. This lens imports it rather than restating it, so a fourth
+// root added to the runner changes what the packet resolves against in the same commit; a second
+// literal here would have kept the packet answering about a corpus the runner had stopped using
+// (review 65028).
+data audit_decl_facts: List<DeclFact> = decl_facts(pool_roots: source_roots)
+
+data audit_module_facts: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: source_roots)
+
+fn evidence_kind_key(k: EvidenceKind) -> String {
+  match k {
+    PolicyDocumentAsk => "policy document"
+    ContractTermAsk => "contract term"
+    ControlRecordAsk => "control record"
+    ExecutedRefusalAsk => "executed refusal"
+    ChangeRecordAsk => "change record"
+    InventoryRosterAsk => "inventory roster"
+    TrainingRecordAsk => "training record"
+    TestExerciseAsk => "test exercise"
+  }
+}
+
+
+// EXECUTION IS NOT ESTABLISHABLE FROM THIS TREE, AND THE LENS SAYS SO RATHER THAN MANUFACTURING IT.
+//
+// The first cut let a ReceiptCarrier stand as Executed when its citations RESOLVED. Three things
+// were wrong with that at once, and the operator's merge review named all three (2026-09-13):
+// an empty receipt list passed, because nothing required the list to be nonempty; any DataItem
+// passed, so ORDINARY CONFIGURATION DATA qualified as execution evidence; and the witness itself
+// labelled gunbc.merge_admission current_gate_roster_hash - a content hash of a policy roster - as
+// a receipt of a run. A standing that says "this ran" on the strength of "this name resolves" is
+// the fabricated-plausible-output failure applied to an audit packet.
+//
+// WHAT WOULD ESTABLISH IT: a receipt is a value a RUN produced, so the evidence has to be bound to
+// the execution that produced it - a declaration the producer wrote, carrying the attempt it
+// records. Nothing in either tree does that today: run receipts are minted at runtime into .gunbc/
+// and are not declarations at all, and the receipt VALUES that exist as declarations are authored
+// in test modules, which the declaration index deliberately does not cover (std.decl_ref
+// CitationIndexCoverage). So a ReceiptCarrier REFUSES, with the reason stated and counted, and no
+// roster row uses one. EvidenceExecuted keeps its place in the standing vocabulary because it is
+// the standing this climb produces - not a shape to be filled in by whatever resolves today.
+//
+// DISSOLUTION NAMES THE CAPABILITY: a producer that records its execution receipts as declarations
+// carrying the attempt identity they belong to, and a resolver read that can bind a cited receipt
+// to that producer. Until both exist, execution stays unestablished and the packet says Absent
+// rather than Executed - a true statement about this repository rather than a flattering one.
+fn receipt_carrier_refusals(
+  control_id: NonEmptyStr,
+  producer: DeclarationRef,
+  receipts: List<DeclarationRef>,
+) -> List<ControlRefusal> {
+  if count(receipts) == 0 {
+    [ReceiptCarrierHasNoReceipts { control_id: control_id, producer: producer }]
+  } else {
+    concat(
+      [ExecutionEvidenceUnestablished { control_id: control_id, producer: producer }],
+      fold(receipts, init: [], f: fn(acc, r) {
+        concat(acc, receipt_citation_refusals(control_id: control_id, reference: r))
+      }),
+    )
+  }
+}
+
+// A RECEIPT CITATION MUST AT MINIMUM NAME A RECORDED VALUE. This is the weaker of the two checks
+// and it survives because it discriminates a different defect: a row citing a fn or a type as its
+// receipt is wrong about WHAT IT NAMED, independently of whether execution is establishable at all.
+// It is never sufficient - a DataItem is exactly the "ordinary data" the review refused as
+// execution evidence - which is why it runs beside the unestablished refusal rather than instead
+// of it.
+//
+// ONE MATCH, ZERO-OR-ONE OUT, rather than a Bool and then a second walk to name the kind in the
+// diagnostic: the refusal needs the kind, so the match that decides admissibility produces it.
+fn receipt_kind_refusals(
+  control_id: NonEmptyStr,
+  reference: DeclarationRef,
+  kind: ItemKind,
+) -> List<ControlRefusal> {
+  match kind {
+    DataItem => []
+    FnItem => [ReceiptCitationNotARecordedValue { control_id: control_id, reference: reference, kind: "fn" }]
+    TypeItem => [ReceiptCitationNotARecordedValue { control_id: control_id, reference: reference, kind: "type" }]
+    ServiceItem => [ReceiptCitationNotARecordedValue { control_id: control_id, reference: reference, kind: "service" }]
+    OtherItem => [ReceiptCitationNotARecordedValue { control_id: control_id, reference: reference, kind: "other" }]
+  }
+}
+
+fn citation_refusals(
+  control_id: NonEmptyStr,
+  reference: DeclarationRef,
+) -> List<ControlRefusal> {
+  let resolution = resolve_declaration_ref(ref: reference, facts: audit_decl_facts, modules: audit_module_facts)
+  match resolution {
+    DeclarationRefResolved { declaration_identity: _ } => []
+    DeclarationRefModuleAbsent { reference: _ } =>
+      [CarrierCitationUnresolved {
+        control_id: control_id,
+        reference: reference,
+        arm: declaration_ref_resolution_arm_key(resolution: resolution),
+      }]
+    DeclarationRefDeclarationAbsent { reference: _ } =>
+      [CarrierCitationUnresolved {
+        control_id: control_id,
+        reference: reference,
+        arm: declaration_ref_resolution_arm_key(resolution: resolution),
+      }]
+    DeclarationRefFieldAbsent { reference: _ } =>
+      [CarrierCitationUnresolved {
+        control_id: control_id,
+        reference: reference,
+        arm: declaration_ref_resolution_arm_key(resolution: resolution),
+      }]
+    DeclarationRefAmbiguous { reference: _, candidates: _ } =>
+      [CarrierCitationUnresolved {
+        control_id: control_id,
+        reference: reference,
+        arm: declaration_ref_resolution_arm_key(resolution: resolution),
+      }]
+  }
+}
+
+fn receipt_citation_refusals(
+  control_id: NonEmptyStr,
+  reference: DeclarationRef,
+) -> List<ControlRefusal> {
+  match resolve_declaration_ref(ref: reference, facts: audit_decl_facts, modules: audit_module_facts) {
+    DeclarationRefResolved { declaration_identity: id } =>
+      receipt_kind_refusals(control_id: control_id, reference: reference, kind: id.kind)
+    DeclarationRefModuleAbsent { reference: r } =>
+      citation_refusals(control_id: control_id, reference: r)
+    DeclarationRefDeclarationAbsent { reference: r } =>
+      citation_refusals(control_id: control_id, reference: r)
+    DeclarationRefFieldAbsent { reference: r } =>
+      citation_refusals(control_id: control_id, reference: r)
+    DeclarationRefAmbiguous { reference: r, candidates: _ } =>
+      citation_refusals(control_id: control_id, reference: r)
+  }
+}
+
+fn read_carrier(control_id: NonEmptyStr, carrier: EvidenceCarrier) -> CarrierReading {
+  match carrier {
+    ObligationCarrier { obligation } =>
+      CarrierStood { standing: EvidenceAbsent { obligation: obligation } }
+
+    RegisterProseCarrier { register_row } => {
+      let refusals = citation_refusals(control_id: control_id, reference: register_row)
+      if count(refusals) == 0 {
+        CarrierStood { standing: EvidenceProse { register_row: register_row } }
+      } else {
+        CarrierRefused { refusals: refusals }
+      }
+    }
+
+    DeclaredCarrier { declaration } => {
+      let refusals = citation_refusals(control_id: control_id, reference: declaration)
+      if count(refusals) == 0 {
+        CarrierStood { standing: EvidenceTyped { carrier: declaration } }
+      } else {
+        CarrierRefused { refusals: refusals }
+      }
+    }
+
+    ReceiptCarrier { producer, receipts } => {
+      let all = concat(
+        citation_refusals(control_id: control_id, reference: producer),
+        receipt_carrier_refusals(control_id: control_id, producer: producer, receipts: receipts),
+      )
+      CarrierRefused { refusals: all }
+    }
+
+    PolicyExclusionCarrier { policy, enforcement } => {
+      let policy_refusals = citation_refusals(control_id: control_id, reference: policy)
+      match read_carrier(control_id: control_id, carrier: enforcement) {
+        CarrierRefused { refusals: inner } =>
+          CarrierRefused { refusals: concat(policy_refusals, inner) }
+        CarrierStood { standing: inner_standing } =>
+          if count(policy_refusals) == 0 {
+            CarrierStood {
+              standing: EvidenceExcludedByPolicy { policy: policy, enforcement: inner_standing },
+            }
+          } else {
+            CarrierRefused { refusals: policy_refusals }
+          }
+      }
+    }
+  }
+}
+
+// ONE WALK, NOT TWO. Every control is read ONCE into a ControlOutcome; the refusal set and the
+// reading set are both projections of that single walk. An earlier cut resolved the roster twice --
+// once to collect refusals, once to build readings -- which is DESIGN section 2 redundancy at the
+// most expensive grain this module has, since each citation is a keyed read of the declaration
+// census.
+type ControlOutcome {
+  control: AuditControl
+  reading: CarrierReading
+}
+
+fn control_outcome(c: AuditControl) -> ControlOutcome {
+  ControlOutcome { control: c, reading: read_carrier(control_id: c.id, carrier: c.carrier) }
+}
+
+fn outcome_refusals(o: ControlOutcome) -> List<ControlRefusal> {
+  match o.reading {
+    CarrierStood { standing: _ } => []
+    CarrierRefused { refusals: rs } => rs
+  }
+}
+
+fn outcome_readings(outcomes: List<ControlOutcome>) -> List<ControlReading> {
+  fold(outcomes, init: [], f: fn(acc, o) {
+    match o.reading {
+      CarrierStood { standing: s } => concat(acc, [ControlReading { control: o.control, standing: s }])
+      CarrierRefused { refusals: _ } => acc
+    }
+  })
+}
+
+// THE LENS. Walk the roster once, resolving every citation against the live corpus. If any citation
+// failed, the packet REFUSES WHOLE and carries every refusal -- a packet with one bad citation and
+// sixty good ones is a document whose provenance is unknown, handed to an auditor, and the operator
+// needs the whole repair list rather than the first break.
+// THE HEADER CITATION IS A CITATION. The packet prints "Register row: strategy.compliance_posture
+// ::regime_soc2" above every control, and for one revision nothing resolved it: renaming that row
+// to regime_soc2_MUTANT still produced a successful packet DISPLAYING the nonexistent declaration,
+// because the witness checked regime IDS and the lens walked only the controls (operator merge
+// review, 2026-09-13). A packet whose own provenance line points at nothing is the stale-citation
+// failure at the most visible place in the document.
+fn register_row_refusals(regime: AuditRegime) -> List<ControlRefusal> {
+  let resolution = resolve_declaration_ref(
+    ref: regime.register_row,
+    facts: audit_decl_facts,
+    modules: audit_module_facts,
+  )
+  match resolution {
+    DeclarationRefResolved { declaration_identity: _ } => []
+    DeclarationRefModuleAbsent { reference: r } =>
+      [RegisterRowUnresolved { regime_id: regime.regime_id, reference: r, arm: declaration_ref_resolution_arm_key(resolution: resolution) }]
+    DeclarationRefDeclarationAbsent { reference: r } =>
+      [RegisterRowUnresolved { regime_id: regime.regime_id, reference: r, arm: declaration_ref_resolution_arm_key(resolution: resolution) }]
+    DeclarationRefFieldAbsent { reference: r } =>
+      [RegisterRowUnresolved { regime_id: regime.regime_id, reference: r, arm: declaration_ref_resolution_arm_key(resolution: resolution) }]
+    DeclarationRefAmbiguous { reference: r, candidates: _ } =>
+      [RegisterRowUnresolved { regime_id: regime.regime_id, reference: r, arm: declaration_ref_resolution_arm_key(resolution: resolution) }]
+  }
+}
+
+fn packet(regime: AuditRegime) -> AuditPacket {
+  let outcomes = map(regime.controls, c => control_outcome(c: c))
+  let refusals = concat(
+    register_row_refusals(regime: regime),
+    fold(outcomes, init: [], f: fn(acc, o) { concat(acc, outcome_refusals(o: o)) }),
+  )
+  if count(refusals) == 0 {
+    PacketRendered { regime: regime, readings: outcome_readings(outcomes: outcomes) }
+  } else {
+    PacketRefused { regime_id: regime.regime_id, refusals: refusals }
+  }
+}
+
+fn standing_key(s: EvidenceStanding) -> String {
+  match s {
+    EvidenceExecuted { receipts: _ } => "Executed"
+    EvidenceTyped { carrier: _ } => "Typed"
+    EvidenceProse { register_row: _ } => "Prose"
+    EvidenceAbsent { obligation: _ } => "Absent"
+    EvidenceExcludedByPolicy { policy: _, enforcement: e } =>
+      join(["ExcludedByPolicy -> ", standing_key(s: e)], "")
+  }
+}
+
+fn standing_detail(s: EvidenceStanding) -> String {
+  match s {
+    EvidenceExecuted { receipts: rs } =>
+      join(map(rs, r => declaration_ref_display_key(ref: r)), "; ")
+    EvidenceTyped { carrier: c } => declaration_ref_display_key(ref: c)
+    EvidenceProse { register_row: r } => declaration_ref_display_key(ref: r)
+    EvidenceAbsent { obligation: o } => o as String
+    EvidenceExcludedByPolicy { policy: p, enforcement: e } =>
+      join([
+        "policy ", declaration_ref_display_key(ref: p),
+        " | enforced by ", standing_detail(s: e),
+      ], "")
+  }
+}
+
+fn question_standing_note(standing: CitedFigureStanding) -> String {
+  match standing {
+    CitedToAuthority { authority: a } => join(["cited: ", a.uri as String], "")
+    TranscribedUncited { read_obligation: o } =>
+      join(["UNCITED - read obligation: ", o as String], "")
+  }
+}
+
+fn refusal_line(r: ControlRefusal) -> String {
+  match r {
+    CarrierCitationUnresolved { control_id, reference, arm } =>
+      join([
+        "control ", control_id as String, " cites ", declaration_ref_display_key(ref: reference),
+        " - ", arm,
+      ], "")
+    ReceiptCarrierHasNoReceipts { control_id, producer } =>
+      join([
+        "control ", control_id as String, " claims execution evidence from ",
+        declaration_ref_display_key(ref: producer),
+        " and cites no receipts at all - an empty receipt list is not evidence that anything ran",
+      ], "")
+    ExecutionEvidenceUnestablished { control_id, producer } =>
+      join([
+        "control ", control_id as String, " cites ", declaration_ref_display_key(ref: producer),
+        " as an execution producer, and this tree cannot establish execution: no declaration records",
+        " a run's receipts bound to the attempt that produced them, so a resolving name is not proof",
+        " that anything ran. Leave the control Absent with its obligation until a producer does.",
+      ], "")
+    RegisterRowUnresolved { regime_id, reference, arm } =>
+      join([
+        "regime ", regime_id as String, " cites register row ",
+        declaration_ref_display_key(ref: reference), " - ", arm,
+      ], "")
+    ReceiptCitationNotARecordedValue { control_id, reference, kind } =>
+      join([
+        "control ", control_id as String, " cites ", declaration_ref_display_key(ref: reference),
+        " as a receipt, but it resolves to a ", kind, " declaration, not a recorded value",
+      ], "")
+  }
+}
+
+fn cell(text: String) -> MarkdownTableCell {
+  MarkdownTableCell { inlines: [TextInline { text: text }] }
+}
+
+fn code_cell(text: String) -> MarkdownTableCell {
+  MarkdownTableCell { inlines: [CodeInline { text: text }] }
+}
+
+fn reading_row(r: ControlReading) -> MarkdownTableRow {
+  MarkdownTableRow {
+    cells: [
+      code_cell(text: r.control.id as String),
+      cell(text: r.control.question as String),
+      cell(text: evidence_kind_key(k: r.control.evidence_kind)),
+      cell(text: standing_key(s: r.standing)),
+      cell(text: standing_detail(s: r.standing)),
+      cell(text: question_standing_note(standing: r.control.question_standing)),
+    ],
+  }
+}
+
+fn overlap_item(o: ControlOverlap) -> MarkdownListItem {
+  MarkdownListItem {
+    blocks: [ParagraphBlock {
+      inlines: [TextInline {
+        text: join([
+          o.control_id as String, " -> ", o.other_regime_id as String, " ",
+          o.other_control_id as String, ": ", o.note as String,
+        ], ""),
+      }],
+    }],
+  }
+}
+
+data packet_footer: String = "THIS IS AN EVIDENCE INVENTORY, NOT A COMPLIANCE OPINION. Every standing above says whether evidence EXISTS in this repository and of what kind: Executed (receipts recorded in the tree), Typed (a construction carrying the control), Prose (a register row naming the intended carrier), Absent (a stated obligation with nothing carrying it yet), ExcludedByPolicy (a product-policy exclusion, shown together with what enforces it). NO CONTROL READS Executed: this tree cannot establish that anything ran, because no declaration records a run's receipts bound to the attempt that produced them, so a control whose evidence would be execution reads Absent with that obligation rather than borrowing a configuration value as proof. NO STANDING SAYS THE EVIDENCE SATISFIES THE FRAMEWORK - that judgement is counsel's, made on this inventory. Questions marked UNCITED are transcriptions of what such an audit typically asks, not quotations of the framework's own text; the read obligation beside each names what would ground it. Every citation above was resolved against the live corpus at render time - a packet that renders is a packet whose every citation resolved, and a roster row citing something that no longer exists refuses the whole packet rather than printing a stale row."
+
+data packet_absent_note: String = "ROSTER COMPLETENESS IS UNESTABLISHED, AND AN ABSENT ROW IS STILL A TRUE STATEMENT. These control rows are PROVISIONAL: they are what such an audit is understood to ask, transcribed rather than read off the framework's own text, so this packet cannot claim to carry every control the framework asks about - and it does not. What it does claim is that no row was dropped for being uncomfortable: a control nothing in this repository carries appears here as Absent with the obligation stated, because an omitted row reads as coverage. The provenance column says which questions are transcribed; closing that gap is the authority-pin retrieval, and it does not block reading what is here."
+
+fn regime_blocks(regime: AuditRegime, readings: List<ControlReading>) -> List<MarkdownBlock> {
+  concat(
+    [
+      HeadingBlock {
+        level: H1,
+        inlines: [TextInline { text: join(["Audit packet: ", regime.regime_id as String], "") }],
+      },
+      ParagraphBlock {
+        inlines: [TextInline {
+          text: join([
+            "Register row: ", declaration_ref_display_key(ref: regime.register_row),
+            " | framework authority: ", question_standing_note(standing: regime.authority),
+          ], ""),
+        }],
+      },
+      ParagraphBlock { inlines: [TextInline { text: regime.posture_summary }] },
+      ParagraphBlock { inlines: [TextInline { text: packet_absent_note }] },
+      HeadingBlock { level: H2, inlines: [TextInline { text: "Controls" }] },
+      TableBlock {
+        header: MarkdownTableRow {
+          cells: [
+            cell(text: "control"),
+            cell(text: "what the auditor asks"),
+            cell(text: "evidence asked for"),
+            cell(text: "standing"),
+            cell(text: "carrier"),
+            cell(text: "question provenance"),
+          ],
+        },
+        alignments: [AlignLeft, AlignLeft, AlignLeft, AlignLeft, AlignLeft, AlignLeft],
+        rows: map(readings, r => reading_row(r: r)),
+      },
+    ],
+    concat(
+      if count(regime.overlaps) == 0 {
+        []
+      } else {
+        [
+          HeadingBlock { level: H2, inlines: [TextInline { text: "Where these controls are answered instead" }] },
+          UnorderedListBlock { items: map(regime.overlaps, o => overlap_item(o: o)) },
+        ]
+      },
+      [
+        ThematicBreak,
+        HeadingBlock { level: H3, inlines: [TextInline { text: "What this document is" }] },
+        ParagraphBlock { inlines: [TextInline { text: packet_footer }] },
+      ],
+    ),
+  )
+}
+
+fn refusal_blocks(regime_id: NonEmptyStr, refusals: List<ControlRefusal>) -> List<MarkdownBlock> {
+  [
+    HeadingBlock {
+      level: H1,
+      inlines: [TextInline {
+        text: join(["REFUSED: audit packet ", regime_id as String], ""),
+      }],
+    },
+    ParagraphBlock {
+      inlines: [
+        StrongInline {
+          inlines: [TextInline {
+            text: "No packet was produced. A roster row cites a declaration the corpus does not carry, so the packet's provenance is unknown and it is refused whole rather than rendered with a gap.",
+          }],
+        },
+      ],
+    },
+    UnorderedListBlock {
+      items: map(refusals, r => MarkdownListItem {
+        blocks: [ParagraphBlock { inlines: [CodeInline { text: refusal_line(r: r) }] }],
+      }),
+    },
+  ]
+}
+
+fn packet_document(p: AuditPacket) -> MarkdownDocument {
+  match p {
+    PacketRendered { regime, readings } =>
+      MarkdownDocument { blocks: regime_blocks(regime: regime, readings: readings) }
+    PacketRefused { regime_id, refusals } =>
+      MarkdownDocument { blocks: refusal_blocks(regime_id: regime_id, refusals: refusals) }
+  }
+}
+
+// ON-DEMAND EMISSION, ONE DIRECTION: markdown model -> std.markup fragment -> html serializer.
+// Escaping is the corpus authority's problem, not this module's, and nothing is written to disk.
+//
+// THE REJECTION IS CARRIED, NOT FLATTENED INTO THE BYTES. packet_html used to answer a rejected
+// emit with the STRING "REJECTED: ...", and the caller then computed its exit from the AuditPacket
+// alone - so a packet that rendered nothing would have printed one line and exited ZERO, which is
+// the one failure mode that routed around the sum the exit matches on (review 65043). The emit
+// outcome is now its own arm, and the process entry must answer for it.
+//
+// WHETHER A ROSTER CAN REACH IT IS NOT ESTABLISHED HERE, and the fix does not depend on it:
+// extdeps.languages.html refuses a rejected URL or a raw-text hazard, and this renderer emits only
+// text, code and strong inlines today, so no roster row reaches the arm as authored. A control
+// question carrying a link would, and the arm would then decide whether an auditor gets a blank
+// page with a success status. Carrying it costs one match; leaving it uncarried costs that.
+type PacketRendering
+  = PacketBytes { html: String }
+  | PacketRenderRejected { reason: String }
+
+fn render_packet(p: AuditPacket) -> PacketRendering {
+  match try_serialize_html_source(node: markdown_document_to_fragment(doc: packet_document(p: p))) {
+    EmitOk { html: h } => PacketBytes { html: h }
+    EmitRejected { reason: r } => PacketRenderRejected { reason: r }
+  }
+}
+
+fn rendering_bytes(rendering: PacketRendering) -> String {
+  match rendering {
+    PacketBytes { html } => html
+    PacketRenderRejected { reason } =>
+      join([
+        "REJECTED: the audit packet could not be emitted - ", reason,
+        ". No packet was produced, and this is not an empty answer: the document exists and the",
+        " emitter refused its bytes. Repair the roster row whose text the emitter refused.",
+      ], "")
+  }
+}
+
+fn packet_refusal_count(p: AuditPacket) -> Int {
+  match p {
+    PacketRendered { regime: _, readings: _ } => 0
+    PacketRefused { regime_id: _, refusals: rs } => count(rs)
+  }
+}
+
+fn packet_standing_keys(p: AuditPacket) -> List<String> {
+  match p {
+    PacketRendered { regime: _, readings: rs } => map(rs, r => standing_key(s: r.standing))
+    PacketRefused { regime_id: _, refusals: _ } => []
+  }
+}
+
+fn packet_refusal_lines(p: AuditPacket) -> List<String> {
+  match p {
+    PacketRendered { regime: _, readings: _ } => []
+    PacketRefused { regime_id: _, refusals: rs } => map(rs, r => refusal_line(r: r))
+  }
+}

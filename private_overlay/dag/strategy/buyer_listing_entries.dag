@@ -1,0 +1,52 @@
+module strategy.buyer_listing_entries
+
+import std.types { Int, String, NonEmptyStr, List }
+import strategy.buyers_pipeline { demand_ddr4_rdimm }
+import strategy.buyer_review_sheet {
+  OperatorListingEntry, PurchaseIntent, ReviewSheet,
+  ddr4_rdimm_search, demand_searches, evidence_from_operator_entry, current_api_source_standing,
+  api_source_standing_text, review_sheet, render_review_sheet_csv, render_review_notes_csv,
+  review_scan_schedule, schedule_admission, schedule_admission_text, wanted_line,
+  SheetCsvOk, SheetCsvUnjoined,
+}
+
+// THE ROWS THE OPERATOR AND THE SCAN FILL, AND THE SHEET THEY PROJECT TO. The operator's listings
+// are the floor: each is transcribed from a listing page into an OperatorListingEntry here and the
+// sheet regenerates from them. Purchase intents are committed here after review. Nothing here buys.
+data ddr4_rdimm_operator_entries: List<OperatorListingEntry> = []
+
+data purchase_intents: List<PurchaseIntent> = []
+
+data ddr4_rdimm_sheet_csv_path: NonEmptyStr = "docs/strategy/buyer-ddr4-32g-rdimm-sheet-generated.csv"
+
+data ddr4_rdimm_notes_csv_path: NonEmptyStr = "docs/strategy/buyer-ddr4-32g-rdimm-notes-generated.csv"
+
+// The module that produces the artifact above is the one a drift refusal must name, so the name
+// is a row here rather than a literal at the enrolment site: the enrolled row already imports
+// this module's path and bytes, and spelling its module name by hand beside them would be a
+// second naming of something the containment tree already owns.
+data buyer_listing_entries_authority: NonEmptyStr = "strategy.buyer_listing_entries"
+
+fn ddr4_rdimm_sheet() -> ReviewSheet {
+  review_sheet(
+    s: ddr4_rdimm_search,
+    evidence: map(ddr4_rdimm_operator_entries, e => evidence_from_operator_entry(e: e)),
+    api_source: current_api_source_standing(),
+  )
+}
+
+fn expected_ddr4_rdimm_sheet_csv() -> String {
+  match render_review_sheet_csv(sheet: ddr4_rdimm_sheet()) {
+    SheetCsvOk { bytes: b } => b
+    SheetCsvUnjoined { listing_key: lk, key: k } =>
+      join(["REJECTED: unjoined column ", k as String, " on listing ", lk as String], "")
+  }
+}
+
+fn expected_ddr4_rdimm_notes_csv() -> String {
+  render_review_notes_csv(sheet: ddr4_rdimm_sheet(), standing: [
+    api_source_standing_text(s: current_api_source_standing()),
+    schedule_admission_text(a: schedule_admission(schedule: review_scan_schedule, searches: demand_searches)),
+    wanted_line(demand: demand_ddr4_rdimm, intents: purchase_intents),
+  ])
+}

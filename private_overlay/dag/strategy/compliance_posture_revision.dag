@@ -1,0 +1,326 @@
+module strategy.compliance_posture_revision
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_display_key }
+import std.content_hash {
+  ContentHash, Fnv1a64Structural,
+  content_hash_atom, content_hash_combine_structural, content_hash_tagged,
+}
+import gunbc.operator_fan_declaration { OperatorStatement }
+import extdeps.regulation.united_states { united_states }
+import product.fabric.provider_route {
+  CompliancePostureRevision, PermittedJurisdictionPopulation,
+  PermittedJurisdictionsEnumerated, PermittedJurisdictionsUnread,
+}
+
+// THE COMPLIANCE POSTURE REVISION - the value product.fabric.provider_admission admit_provider_use
+// reads as `active`, minted here and nowhere else. It sits BESIDE strategy.compliance_posture and is
+// a different fact from it: that module is the per-regime standing register (which construction
+// carries SOC 2, GDPR, PCI, and what stays paperwork), this one is the JURISDICTION POPULATION a
+// route's located paths are compared against, at a revision a permit records so that re-posturing
+// makes standing permits stale rather than silently tolerated. Forking the register to carry a
+// jurisdiction would put one name on two contracts, which is the section 3 meaning fork.
+//
+// WHAT THE RULING SAYS, carried below as an attributable statement rather than a paraphrase. The
+// operator, 2026-09-12 ~22:40Z, on M2: "it's totally dependent on our first customers - we would err
+// to find customers in our preferred region (i.e. US) - but we can't choose the market always - i
+// wouldn't make any hard rules - i think we should seek ALL compliance regardless as soon as
+// possible, i see no reason not to start."
+//
+// THE TRAP, AND IT IS THE WHOLE OF THIS MODULE. "No hard rules" does not mean permit-everything.
+// A posture that permits every jurisdiction is the absorbing widen DESIGN section 5 forbids by
+// name: it destroys the refusal the admission spine exists to produce, and it is worse than no
+// posture, because a wall that admits everything reads as coverage. There is no wildcard arm here,
+// no jurisdiction enum is minted, and the PermittedJurisdictionsUnread arm the population type
+// carries REFUSES rather than widening - none of that is weakened, and the witness holds it by
+// execution.
+//
+// THE HONEST ENCODING IS DEMAND-DIRECTED. The permitted population ENUMERATES the jurisdictions
+// whose route facts have been READ AND CLEARED, and nothing else enters it. It is not authored as a
+// list: it is DERIVED from the clearance rows below, each of which names the route-facts declaration
+// that was read and the executed admission that cleared it, so a jurisdiction with no read route
+// behind it has no way in. Zero clearances derive the UNREAD arm - nobody has read anything - which
+// refuses, and the obligation it names is the census item that would read one.
+//
+// THE SENTENCE TO GET RIGHT: A NON-US CUSTOMER IS NEVER REFUSED BY RULE. They are served after their
+// route is read, and not before. A route whose located path sits outside the enumerated set refuses
+// as TransferOrLocationUnresolved naming that jurisdiction, and the remedy that refusal names is to
+// go and READ that route - census its nine-path closure, clear it, add the clearance row - after
+// which the same route admits under the next revision. That is the difference between a POLICY,
+// which would say "US only", and a POSTURE, which says "what has been read". The expansion trigger
+// is therefore a named customer whose route sits outside the set, and it is cited from
+// strategy.m2_demand_directed_recut rather than restated, because that module already declares it
+// and two spellings of one trigger is the fork section 3 consolidates later at interest.
+//
+// WHAT IS NOT A POSTURE FACT, deliberately absent. The operator's "preferred region (i.e. US)" is a
+// commercial preference over which customers to pursue. It is CUSTOMER-SELECTION POLICY under
+// std.decision (DESIGN section 3d) and belongs where customer candidates are ranked, not in
+// admission; encoding it here would turn a preference into a refusal, which is exactly the hard rule
+// the operator declined to make. It is not modeled in this module and this module does not decide
+// where it will be.
+//
+// STATED DIVERGENCE (DESIGN section 3b): the ruling is carried in gunbc.operator_fan_declaration's
+// OperatorStatement, which is the corpus's one typed carrier for "what an operator said, as a fact
+// the compiler can read" - declarant, date, the question asked, the words said. It lives in a fan
+// module because that is where the need first arose; hoisting it to std is a public change and not
+// this lane's, and minting a second carrier here would be the nickname section 3 forbids. Reuse
+// with the layer oddity stated beats a fork with nothing stated.
+
+// THE RULING, AS SAID. The prompt is recorded at the strength it was relayed: the m2-compliance-spine
+// lane carried the quotation and the time, and the operator's own question text did not travel with
+// it, so the prompt names the question the plan items hold rather than claiming a verbatim.
+data m2_posture_ruling: OperatorStatement = OperatorStatement {
+  declarant: "repository operator",
+  declared_at: 1789252800000,
+  prompt: "which compliance posture and supported geography M2 (first external customer) should declare - the question strategy.year_end_plan item_m2_launch_intent holds as operator-exclusive (gunbc-private#97 adds a sibling item, m2-compliance-posture, for the same ruling; it is not on private main at this writing); relayed by the m2-compliance-spine lane at approximately 22:40Z on 2026-09-12, the operator's own prompt text not carried with the quotation",
+  quotation: "For M2 - i would write down - it's totally dependent on our first customers - we would err to find customers in our preferred region (i.e. US) - but we can't choose the market always - i wouldn't make any hard rules - i think we should seek ALL compliance regardless as soon as possible, i see no reason not to start.",
+}
+
+// A CLEARANCE IS THE ONLY WAY INTO THE PERMITTED POPULATION. It names the jurisdiction's own
+// declaration, the ProviderRouteFacts declaration whose nine-path closure was READ under it, and
+// the executed admission that CLEARED that closure. Because the population is derived from these
+// rows, a jurisdiction cannot be permitted by writing its name in a list.
+//
+// WHAT CHECKS THE CITATIONS, at its real strength (review 64881 caught a wrong module path in
+// refused_by below, and nothing had gone red). The jurisdiction is reached by IMPORT - the value is
+// extdeps.regulation.united_states united_states.declaration, a real edge the resolver checks, so a
+// misspelled jurisdiction has no spelling here. The route-facts and admission references are
+// decl_ref data: public gunbc's declaration-index citation gate reads those, but it runs over the
+// public floor and not over this overlay, so within this repository they are checked by review and
+// by the private witness's own equality on them, not by a gate. Stated so the row is not read as
+// carrying a guarantee this repository does not execute.
+//
+// WHAT A CLEARANCE DOES NOT ESTABLISH. That the cited admission actually admitted the cited facts is
+// that admission's claim, executed in its own witness; this row carries the reference so an auditor
+// holding the posture reaches it, and carries no verdict of its own.
+type JurisdictionClearance {
+  jurisdiction: DeclarationRef
+  route_facts_read: DeclarationRef
+  cleared_by: DeclarationRef
+}
+
+// THE UNITED STATES, GROUNDED ON THE ONE OWN-METAL CLOSURE THAT HAS BEEN READ. Our own metal at
+// US-NY: gunbc.spark.first_party_serving spark_first_party_route_facts answers all nine paths for
+// units the operator states sit at his NYC home (spark_fleet_site_allocation, keyed on the site whose
+// civil zone gunbc.fleet.fleet_site_locale records as America/New_York), and spark_first_party_admission
+// admits it by execution in test.claim.spark.spark_first_party_serving_witness_test. That is a read
+// closure on operator-owned hardware under US law, and it is the whole grounding of this row.
+//
+// AT ITS REAL GRAIN, so the row is not read as more than it is: that closure was read for
+// first-party self-use, and its own located paths cite the site allocation in the jurisdiction slot
+// rather than this declaration - the site being where the metal sits, this being the law it sits
+// under. The customer-facing own-metal route (strategy.m2_demand_directed_recut seed_own_site) still
+// owes its own census row under strategy.year_end_plan item_provider_route_census; when that row is
+// read, it cites extdeps.regulation.united_states directly and this clearance's route_facts_read
+// moves to it. Nothing here claims that census is done.
+data clearance_united_states_own_metal: JurisdictionClearance = JurisdictionClearance {
+  jurisdiction: united_states.declaration,
+  route_facts_read: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_route_facts"),
+  cleared_by: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_admission"),
+}
+
+// THE R2 DURABLE ORIGIN IS NOT A CLEARANCE, AND ITS ABSENCE IS THE POSTURE WORKING. Its location
+// was read (gunbc#11213, product.supplier.cloudflare_r2, against Cloudflare's own data-location
+// documentation) and the read REFUSES: the bucket is allocated under R2JurisdictionDefault
+// (gunbc.cloudflare.r2_origin fabric_durable_origin_standing), and upstream documents that a bucket
+// with no jurisdiction selected is placed Automatically in the closest available region TO THE CALLER
+// at creation, that Location Hints are "a best effort and not a guarantee", and that only a
+// Jurisdictional Restriction (eu, us, fedramp) guarantees where objects are stored and processed.
+// So R2JurisdictionDefault is a CHOICE NOBODY MADE, not a location: all nine of the route's paths are
+// ProviderPathUnread and admit_provider_use refuses it as ProviderRouteFactsIncomplete. Treating the
+// default as a residency commitment would have fabricated the exact fact this posture rests on.
+//
+// It is therefore ONE MORE ROUTE AWAITING A READ, carried below as a typed row rather than an
+// exclusion, with the read that resolves it named so the remedy is visible from the posture.
+data m2_jurisdiction_clearances: List<JurisdictionClearance> = [
+  clearance_united_states_own_metal,
+]
+
+// A ROUTE WHOSE READ CAME BACK REFUSING IS NEITHER CLEARED NOR EXCLUDED. The row names the facts
+// declaration that refuses, the executed witness that shows it refusing, and the read that would
+// discharge it. It is the demand-directed sentence applied to our own supplier rather than to a
+// customer: not refused by rule, served after read. The witness holds the two rosters DISJOINT on
+// route_facts, so a route cannot be both cleared and awaiting.
+type RouteAwaitingRead {
+  route_facts: DeclarationRef
+  refused_by: DeclarationRef
+  resolving_read: NonEmptyStr
+}
+
+// THE RESOLVING READ IS NAMED, NOT ACTED ON. Recreating a production bucket is an operational
+// decision the m2-compliance-spine lane is routing to the operator; this row states what discharges
+// the refusal and takes no step toward it.
+data awaiting_r2_durable_origin: RouteAwaitingRead = RouteAwaitingRead {
+  route_facts: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_durable_origin_route_facts"),
+  refused_by: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "the_durable_origin_refuses_as_downstream_unassessed"),
+  resolving_read: "EITHER a Cloudflare statement naming where gunbai-fabric-origin's objects are stored and processed and which entity operates request handling for it, OR the origin recreated under the R2 `us` Jurisdictional Restriction, which Cloudflare documents as a residency guarantee (extdeps.cloudflare.r2_data_location r2_jurisdiction_us) - at which point the nine paths take Located, the route is censused and cleared, and a clearance row citing extdeps.regulation.united_states lands above. NOT resolved by R2JurisdictionDefault, by Automatic placement, or by a Location Hint.",
+}
+
+data m2_routes_awaiting_read: List<RouteAwaitingRead> = [
+  awaiting_r2_durable_origin,
+]
+// THE RULING GROUNDS THIS ENUMERATION THROUGH THE REVISION HASH, NOT THROUGH A FIELD ON THE ARM.
+//
+// This construction carried basis: m2_posture_ruling, and the arm gunbc#11194 landed carries first and
+// further only, so the field is dropped here (ruling by snappy-pike-154, 2026-09-13, escalated by
+// quick-owl-739 after the entry reded with `field 'basis' not found in type
+// PermittedJurisdictionsEnumerated`).
+//
+// DROPPING IT LOSES NOTHING, AND THE REASON IS STRONGER THAN THE ONE FIRST REACHED FOR. The weak version
+// -- that the ruling is still citable from the posture row -- is true and is not the point. The ruling is
+// an INPUT TO posture_revision_hash: that fold combines the ruling's declarant and quotation with every
+// clearance digest to produce CompliancePostureRevision.revision. So the enumeration cannot drift from the
+// ruling that authorised it without the revision changing, which is what makes a permit minted against a
+// superseded posture refuse as PostureRevisionStale. A citation field says where to look; a hash input
+// makes the two unable to disagree. Verified by reading posture_revision_hash rather than taken on report.
+// The ruling is also carried as provenance on the launch-intent row, so the reference itself is not lost.
+//
+// AND NOT BECAUSE basis DUPLICATED THE ENCLOSING authority, which is the reason the public deletion was
+// argued from and is FALSE HERE. At the two public production sites the two references were identical; at
+// this site they are not -- authority names m2_compliance_posture_revision and basis named m2_posture_ruling,
+// which are different declarations. The honest sentence about the public change is that the arm carries no
+// grounding slot at all and each consumer binds its grounding its own way: by hash here, by a sibling field
+// there. Recorded so that whoever reads the public reasoning does not delete a field that was carrying
+// something on the strength of a property that held only where it was measured.
+
+// THE POPULATION IS DERIVED, AND THE EMPTY CASE IS THE UNREAD ARM. One match on the head of the
+// clearance roster: a first clearance becomes `first`, the rest become `further`, and no clearance
+// at all becomes PermittedJurisdictionsUnread naming the census item as the obligation - because
+// with zero read routes, nobody has read what this posture permits, and the type's own annotation
+// is why that must refuse rather than enumerate nothing or permit everything. The basis is the
+// ruling, cited as the declaration that carries its words and its date.
+fn permitted_population(clearances: List<JurisdictionClearance>) -> PermittedJurisdictionPopulation {
+  match clearances.first() {
+    Absent => PermittedJurisdictionsUnread {
+      obligation: decl_ref(module_path: "strategy.year_end_plan", decl_name: "item_provider_route_census"),
+    }
+    Present { value: head } => PermittedJurisdictionsEnumerated {
+      first: head.jurisdiction,
+      further: map(skip(clearances, 1), c => c.jurisdiction),
+    }
+  }
+}
+
+// THE REVISION IS A CONTENT HASH OF WHAT THE POSTURE SAYS, not a label. It folds every clearance's
+// three references and the ruling's declarant and words into one structural digest, so adding a
+// clearance, moving a grounding, or changing the basis changes the revision, and every permit minted against the
+// old one goes stale by PostureRevisionStale rather than by anyone remembering to bump a string.
+fn clearance_digest(c: JurisdictionClearance) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_combine_structural(
+      left: content_hash_atom(value: declaration_ref_display_key(ref: c.jurisdiction) as NonEmptyStr),
+      right: content_hash_atom(value: declaration_ref_display_key(ref: c.route_facts_read) as NonEmptyStr),
+    ),
+    right: content_hash_atom(value: declaration_ref_display_key(ref: c.cleared_by) as NonEmptyStr),
+  )
+}
+
+fn posture_revision_hash(clearances: List<JurisdictionClearance>, ruling: OperatorStatement) -> ContentHash {
+  content_hash_tagged(
+    tag: "strategy.compliance_posture_revision",
+    payload: fold(
+      clearances,
+      init: content_hash_combine_structural(
+        left: content_hash_atom(value: ruling.declarant),
+        right: content_hash_atom(value: ruling.quotation),
+      ),
+      f: fn(acc, c) { content_hash_combine_structural(left: acc, right: clearance_digest(c: c)) },
+    ),
+  )
+}
+
+// NO DROP ENROLLMENTS. The one enrolled drop in the corpus is Spark's own usage-stats telemetry
+// path, bound to its own posture; a customer route carrying an undocumented-jurisdiction path is not
+// excused by that, and enrolling it here would be a second exception nobody declared.
+fn posture_revision(clearances: List<JurisdictionClearance>) -> CompliancePostureRevision {
+  CompliancePostureRevision {
+    authority: decl_ref(module_path: "strategy.compliance_posture_revision", decl_name: "m2_compliance_posture_revision"),
+    revision: posture_revision_hash(clearances: clearances, ruling: m2_posture_ruling),
+    permitted_jurisdictions: permitted_population(clearances: clearances),
+    jurisdiction_drop_enrollments: [],
+  }
+}
+
+// THE DEMAND-DIRECTED POSTURE IS ONE CARRIER: the clearances that derive the permitted population,
+// the routes whose reads refused, the trigger that expands the roster, and the public revision the
+// admission reads - DERIVED from the clearances by the constructor below, so the revision and the
+// roster cannot be edited apart. The public CompliancePostureRevision is a projection of this row;
+// the fields the public type does not carry are the ones a reader needs to know what to go and do.
+//
+// THE EXPANSION TRIGGER'S CONSUMER, stated at its real strength (DESIGN section 3c). It is read by
+// execution in test.claim.compliance_posture_revision_witness as part of this carrier, and by a
+// human reading a TransferOrLocationUnresolved refusal who follows it to what expands the set. What
+// does NOT yet consume it is the refusal itself: product.fabric.provider_admission's arm names the
+// offending jurisdiction and not the posture's trigger, so a caller holding the refusal has to come
+// here to find the remedy. DECLARED FRONTIER, trigger: ProviderUseRefusal carrying the posture's
+// expansion trigger on its jurisdiction arms, SUFFICIENT FOR a refused caller to read what expands
+// the set without consulting the posture module. That is a public change and not this lane's.
+type DemandDirectedPosture {
+  clearances: List<JurisdictionClearance>
+  awaiting_read: List<RouteAwaitingRead>
+  expansion_trigger: DeclarationRef
+  revision: CompliancePostureRevision
+}
+
+fn demand_directed_posture(
+  clearances: List<JurisdictionClearance>,
+  awaiting_read: List<RouteAwaitingRead>,
+  expansion_trigger: DeclarationRef,
+) -> DemandDirectedPosture {
+  DemandDirectedPosture {
+    clearances: clearances,
+    awaiting_read: awaiting_read,
+    expansion_trigger: expansion_trigger,
+    revision: posture_revision(clearances: clearances),
+  }
+}
+
+// THE EXPANSION TRIGGER, CITED. strategy.m2_demand_directed_recut design_partner_scope already says
+// what expands the admitted population - a named customer whose workload requires a route outside
+// the seeds, censused as THAT route and refused until the census completes. This module inhabits
+// that law rather than restating it.
+data m2_demand_directed_posture: DemandDirectedPosture = demand_directed_posture(
+  clearances: m2_jurisdiction_clearances,
+  awaiting_read: m2_routes_awaiting_read,
+  expansion_trigger: decl_field_ref(
+    module_path: "strategy.m2_demand_directed_recut",
+    decl_name: "design_partner_scope",
+    field_name: "expansion_trigger",
+  ),
+)
+
+// THE ACTIVE REVISION. This is the value handed to admit_provider_use as `active` and recorded in
+// every RouteScopeSanction row written under it; test.claim.compliance_posture_revision_witness
+// executes it through that decision on both sides of the enumerated set.
+data m2_compliance_posture_revision: CompliancePostureRevision = m2_demand_directed_posture.revision
+
+// ── THE LAUNCH-INTENT ROW ─────────────────────────────────────────────────────────────────────
+//
+// strategy.year_end_plan item_m2_launch_intent is OperatorExclusive, and the ruling above IS its
+// operator-exclusive content. The typed row is here rather than in the plan because the plan's
+// PlanItem carries prose, and the two things this row must carry are not prose: a TERMINAL INTENT
+// that has exactly one admitted value, and the ACTIVE POSTURE REVISION as a content hash that is the
+// same value the admission reads - by construction, read off the declaration above, never copied.
+//
+// THE TYPE CANNOT NAME A SUPPORTED GEOGRAPHY, AND THAT IS THE DESIGN. Currently supported geography is
+// DERIVED from the admitted route population under the active posture; a launch-intent row that
+// named one would be a second authority for a derived fact, and the day it disagreed with the
+// derivation the answer would depend on which file someone opened. So there is no geography field,
+// and TerminalSupportIntent has one constructor: the ruling admits exactly one terminal intent, and a
+// second arm ("US only", "US and EU") would be precisely the hard rule it declined to make, given a
+// spelling. One arm is not decoration here; it is the absence of the others made unwritable.
+type TerminalSupportIntent = MaximalLawfulGlobalSupport {}
+
+type LaunchIntent {
+  terminal_intent: TerminalSupportIntent
+  active_posture: ContentHash
+  provenance: DeclarationRef
+  plan_item: DeclarationRef
+}
+
+data m2_launch_intent: LaunchIntent = LaunchIntent {
+  terminal_intent: MaximalLawfulGlobalSupport {},
+  active_posture: m2_compliance_posture_revision.revision,
+  provenance: decl_ref(module_path: "strategy.compliance_posture_revision", decl_name: "m2_posture_ruling"),
+  plan_item: decl_ref(module_path: "strategy.year_end_plan", decl_name: "item_m2_launch_intent"),
+}

@@ -1,0 +1,196 @@
+module strategy.mt_jade_class
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import extdeps.ocp.mt_jade.platform { mt_jade_motherboard_mechanical }
+import extdeps.ocp.mt_jade.memory_mixing {
+  MixingNotSupported,
+  MixingUndetermined,
+  MixedDimmSupportResolved,
+  Mixing1rAnd2r,
+  SameChannel,
+  DifferentChannel,
+  mt_jade_mixed_dimm_support,
+}
+import gunbc.secret_provision { fleet_secret_ref }
+import strategy.ci_node_build { mt_jade_system_lot }
+
+// THE UNIT CLASS, NOT THE EBAY SERIAL. The marketplace listing id lives once, on
+// strategy.mt_jade_held_specimen. Operator may buy more units of this class. Barebones listings
+// often omit DRAM; this specimen's photographs show an installed dual-RJ45 host adapter, so NIC
+// occupancy is not a class default. Per-unit FRU, BMC endpoint and SecretRef are authored at arrival.
+
+data class_label: NonEmptyStr = "wiwynn-mt-jade-2u-dual-altra"
+
+data specimen_is_not_the_class: Bool = true
+
+data first_power_on_blocked_until_mains_cord_matches_site: Bool = true
+
+type ShippedMainsCordStanding
+  = CordUnobserved {
+      operator_hypothesis: NonEmptyStr
+      discriminator_owed: NonEmptyStr
+    }
+
+data shipped_mains_cord: ShippedMainsCordStanding = CordUnobserved {
+  operator_hypothesis: "The cord in the box is likely 240 V-only. That is an operator hypothesis about this shipment, not a cited PSU fact. OCP Rev 1.0 and the Wiwynn SV328R sheet name CRPS and do not name IEC 60320 C14 vs C20 or the AC range of the fitted modules.",
+  discriminator_owed: "Photograph the PSU inlet (C14 vs C20) and the shipped cord's plug and voltage marking before applying site mains. Do not power the unit on a 120 V circuit through a 240 V-only cord.",
+}
+
+type ChassisDepthStanding
+  = DepthUnobserved {
+      operator_hypothesis: NonEmptyStr
+      discriminator_owed: NonEmptyStr
+    }
+
+data chassis_depth_for_rails: ChassisDepthStanding = DepthUnobserved {
+  operator_hypothesis: "Wiwynn SV328R depth is 770.2 mm in the datasheet modeled on public PR gunbc#11529. Until that module is on public main, millimetre depth is not a class fact this overlay can cite.",
+  discriminator_owed: "After extdeps.wiwynn.sv328r.specifications is on public main, cite sv328r_depth_micrometers and confirm the rail kit against that figure. Do not assume Foxconn Mt. Collins rails fit.",
+}
+
+type ClassPurchaseNeed
+  = NeedDramAtOneDpc { planned_modules: Nat, slots_on_board: Int }
+  | NeedMainsCordMatchingObservedInlet { reason: NonEmptyStr }
+  | NeedRailsFor2uDepthClass { reason: NonEmptyStr }
+
+data class_purchase_needs: List<ClassPurchaseNeed> = [
+  NeedDramAtOneDpc {
+    planned_modules: mt_jade_system_lot.planned_dimm_population,
+    slots_on_board: mt_jade_motherboard_mechanical.ddr4_dimms_total,
+  },
+  NeedMainsCordMatchingObservedInlet {
+    reason: "Site power is 120 V class unless the operator says otherwise. Buy C13-C14 or C19-C20 jumpers only after the inlet is photographed. Dual CRPS wants two matching cords for 1+1.",
+  },
+  NeedRailsFor2uDepthClass {
+    reason: "Do not assume Collins rails fit this 2U class. Buy rails only after chassis depth is cited from the public SV328R module.",
+  },
+]
+
+type ArrivalGate
+  = DoNotApplyMainsUntilCordMatchesSite
+  | PhotographPsuInletAndShippedCord
+  | ReinstallAirflowDuctBeforeLoad
+  | IsolateDedicatedLowerBmcRj45
+  | LeaveUpperHostRj45DisconnectedUntilCensus
+  | PowerOnePsuFirstThenSecond
+  | CapturePriorLifeReadOnlyBeforeWrites
+  | DeclareIntakeSubjectAndBmcEndpoint
+  | PinFleetSecretRef
+  | ObserveBmcFirmwareFamilyBeforeMegaracFolds
+  | RouteDestructiveStepsThroughPhoneApproval
+  | DoNotOrderNicUntilUpperAdapterCensus
+
+data arrival_gates: List<ArrivalGate> = [
+  DoNotApplyMainsUntilCordMatchesSite,
+  PhotographPsuInletAndShippedCord,
+  ReinstallAirflowDuctBeforeLoad,
+  IsolateDedicatedLowerBmcRj45,
+  LeaveUpperHostRj45DisconnectedUntilCensus,
+  PowerOnePsuFirstThenSecond,
+  CapturePriorLifeReadOnlyBeforeWrites,
+  DeclareIntakeSubjectAndBmcEndpoint,
+  PinFleetSecretRef,
+  ObserveBmcFirmwareFamilyBeforeMegaracFolds,
+  RouteDestructiveStepsThroughPhoneApproval,
+  DoNotOrderNicUntilUpperAdapterCensus,
+]
+
+data credential_ref_constructor: NonEmptyStr = "gunbc.secret_provision fleet_secret_ref, then secret_ref_pin_version once the secret exists. Pattern beside mtcollins1: bmc-mtcollins1-gunbc. A Jade unit gets its own secret_id, never a reused Collins password."
+
+fn jade_class_secret_ref_shape_is_fleet() -> Bool {
+  let sample = fleet_secret_ref(secret_id: "bmc-mtjade-class-placeholder")
+  (sample.secret as String) == "bmc-mtjade-class-placeholder"
+    && (sample.version as String) == "pending"
+}
+
+type BringupTransfer
+  = ReusesPublicFold { symbol: NonEmptyStr }
+  | UnitSpecificMustBeAuthored { symbol_pattern: NonEmptyStr, reason: NonEmptyStr }
+  | DoesNotTransferUntilObserved { symbol: NonEmptyStr, reason: NonEmptyStr }
+
+data collins_bringup_transfers: List<BringupTransfer> = [
+  ReusesPublicFold { symbol: "gunbc.machine_intake_subject" },
+  ReusesPublicFold { symbol: "gunbc.machine_intake_phase" },
+  ReusesPublicFold { symbol: "gunbc.machine_intake_disposition" },
+  ReusesPublicFold { symbol: "gunbc.machine_intake_bmc_secure derive_bmc_secure" },
+  ReusesPublicFold { symbol: "gunbc.machine_intake_bmc_rotation_route" },
+  ReusesPublicFold { symbol: "gunbc.machine_intake_boot_image_fetch" },
+  ReusesPublicFold { symbol: "gunbc.machine_intake_pre_os_observer" },
+  ReusesPublicFold { symbol: "gunbc.machine_intake_pre_os_capture_replay" },
+  ReusesPublicFold { symbol: "gunbc.machine_intake_pre_os_bringup_verdict" },
+  ReusesPublicFold { symbol: "gunbc.machine_intake_oob_boot_handoff" },
+  ReusesPublicFold { symbol: "gunbc.auth.approval_* (phone approval for destructive steps; landing #11483/#11484)" },
+  ReusesPublicFold { symbol: "gunbc.machine_intake_ethernet" },
+  ReusesPublicFold { symbol: "gunbc.machine_intake_power_supply" },
+  UnitSpecificMustBeAuthored {
+    symbol_pattern: "gunbc.machine_intake_mtjadeN_* (subject, endpoint, SecretRef, DIMM observations)",
+    reason: "mtcollins1_* is unit-1 Foxconn receipts. A Jade unit is a new MachineIntakeSubject plus BmcControllerEndpoint plus pinned fleet_secret_ref. Copying mtcollins1_endpoint is a silent wrong host.",
+  },
+  DoesNotTransferUntilObserved {
+    symbol: "gunbc.machine_intake_megarac_media_attach / megarac_pre_os_channel / megarac_served_ui_catalog_observation",
+    reason: "OCP Rev 1.0 cites AMI MegaRAC OR OpenBMC. Collins MegaRAC was observed on one Foxconn unit (AmiMegaRac in mtcollins1_access_observation). OpenBMC already has meta-jade. Reusing megarac_* before a family receipt is the expectation-as-observation inversion in extdeps.ampere.mt_collins_product_brief.bmc.",
+  },
+  DoesNotTransferUntilObserved {
+    symbol: "gunbc.machine_intake_mtcollins1_boot_image_fetch / mtcollins1_media_attach / NFS export on srv2",
+    reason: "Collins boots a diskless image over BMC virtual media from srv2. That is a site realization, not a platform fact. A Jade unit may share the export only after its BMC family and remote-media surface are observed.",
+  },
+  DoesNotTransferUntilObserved {
+    symbol: "extdeps.ampere.mt_collins_product_brief.memory_population (J-slot / 1U fill order)",
+    reason: "Jade same-channel mixing is extdeps.ocp.mt_jade.memory_mixing, already modeled. Collins 2DRx4 dual-die-package lesson lives in extdeps.memory.micron and docs/probes/mtcollins1_2rx4_group_outcome_2026-09-12.md — reuse the lesson, not the Collins connector map.",
+  },
+  DoesNotTransferUntilObserved {
+    symbol: "gunbc.tools.bmc_first_contact",
+    reason: "That tool hardcodes OpenBMC factory login and Redfish GetSystem. Collins had no Redfish. Jade BMC family is unobserved. First contact is protocol-neutral HTTPS/Redfish/IPMI/SSH/TLS/DHCP, then a family-specific actuator.",
+  },
+  DoesNotTransferUntilObserved {
+    symbol: "gunbc.machine_intake_mtcollins1_platform_observation ControllerInterface.is_dedicated_management_port",
+    reason: "A Bool cannot represent host data plus BMC NCSI on one upper RJ45. Use gunbc.machine_intake_ethernet PhysicalEthernetPort and EthernetFunctionBinding.",
+  },
+]
+
+fn same_channel_1r_2r_is_not_supported() -> Bool {
+  match mt_jade_mixed_dimm_support(placement: SameChannel, axis: Mixing1rAnd2r) {
+    MixedDimmSupportResolved { cell } => match cell.support {
+      MixingNotSupported => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn different_channel_1r_2r_is_undetermined() -> Bool {
+  match mt_jade_mixed_dimm_support(placement: DifferentChannel, axis: Mixing1rAnd2r) {
+    MixedDimmSupportResolved { cell } => match cell.support {
+      MixingUndetermined => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn planned_fill_is_half_the_slots() -> Bool {
+  mt_jade_system_lot.planned_dimm_population == 16
+    && mt_jade_motherboard_mechanical.ddr4_dimms_total == 32
+}
+
+fn transfer_row_count() -> Int {
+  fold(collins_bringup_transfers, init: 0, f: fn(acc, _) { acc + 1 })
+}
+
+fn purchase_need_count() -> Int {
+  fold(class_purchase_needs, init: 0, f: fn(acc, _) { acc + 1 })
+}
+
+fn arrival_gate_count() -> Int {
+  fold(arrival_gates, init: 0, f: fn(acc, _) { acc + 1 })
+}
+
+fn reuses_public_fold_count() -> Int {
+  fold(collins_bringup_transfers, init: 0, f: fn(acc, t) {
+    acc + match t {
+      ReusesPublicFold { symbol: _ } => 1
+      UnitSpecificMustBeAuthored { symbol_pattern: _, reason: _ } => 0
+      DoesNotTransferUntilObserved { symbol: _, reason: _ } => 0
+    }
+  })
+}

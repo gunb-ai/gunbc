@@ -1,0 +1,126 @@
+module test.claim.wholesale_journeys_witness
+
+import std.types { Bool, Int }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { decl_ref }
+import strategy.wholesale_batch_floor { repair_interval_plan_losing }
+import strategy.wholesale_journeys {
+  journeys, journey_count, journey_unowned_count, journey_is_acceptable, acceptable_journey_count,
+  journey_ownership_complete, ownership_complete_journey_count,
+  journey_colo_raw, journey_colo_managed, journey_colo_hosted, journey_apartment_raw, journey_apartment_managed, journey_apartment_hosted,
+  gap_closer_count, every_gap_names_a_listed_closer, every_closer_is_a_plan_item,
+  gap_closers, step_repair_interval_for, step_is_unowned, step_gap,
+  all_handoffs_unspecified, buyer_zone_exists_in_public_topology, handoff_is_specified,
+  no_site_is_observed, selected_journey_is_accepted, journey_accepted_for, accepted_journeys,
+  production_readiness_binds_selected_site_journey, production_readiness_carries, production_site_is_colo, production_site_is_apartment,
+  boundary_raw, site_colo, site_apartment, site_observations,
+  Journey, JourneyStep, WireGuardOverlay, StepReceipt, AcceptanceExpectation, SiteObservationReceipt,
+  derive_accepted_journey, outcome_is_accepted, step_cold_boot, step_intake, step_oob, production_expectation,
+}
+
+// SIX JOURNEYS, TWO SITES BY THREE BOUNDARY ARMS, AND NONE IS ACCEPTABLE OR EVEN FULLY OWNED. Raw
+// metal carries three unowned steps (buyer zone, egress, the journey itself); managed substrate
+// five (plus fabric buyer demand and the unselected cache realization); hosted capacity the same
+// five. The counts are the finding.
+fn journeys_are_the_six_and_none_is_acceptable() -> Bool {
+  journey_count() == 6
+    && acceptable_journey_count() == 0
+    && ownership_complete_journey_count() == 0
+    && journey_unowned_count(j: journey_colo_raw) == 3
+    && journey_unowned_count(j: journey_apartment_raw) == 3
+    && journey_unowned_count(j: journey_colo_managed) == 5
+    && journey_unowned_count(j: journey_apartment_managed) == 5
+    && journey_unowned_count(j: journey_colo_hosted) == 5
+    && journey_unowned_count(j: journey_apartment_hosted) == 5
+    && !journey_is_acceptable(j: journey_colo_raw)
+    && !journey_ownership_complete(j: journey_colo_raw)
+}
+
+// OWNERSHIP IS NOT ACCEPTANCE (review repair, P1): the accepted-journey record is empty, the exact
+// lookup for any buyer refuses, and the selected lookup refuses because nothing is selected.
+fn acceptance_is_a_receipt_not_a_plan() -> Bool {
+  let e = AcceptanceExpectation { buyer: "probe", node: "n1", contract_revision: "c1", security_profile_revision: "s1", journey_revision: "j1" }
+  count(accepted_journeys) == 0
+    && count(site_observations) == 0
+    && !journey_accepted_for(e: e, boundary: boundary_raw, site: site_colo)
+    && !selected_journey_is_accepted()
+    && no_site_is_observed()
+}
+
+// THE ONE DERIVATION ACCEPTS A FULLY RECEIPTED JOURNEY AND REFUSES THE REST (review repair, P1):
+// a probe journey of three owned steps with a specified handoff; one receipt per step bound to the
+// expectation and a site observation for the node -> accepted. Wrong node, a missing step, a stale
+// contract revision on one receipt, and a journey with an unowned step each refuse.
+fn derivation_accepts_only_exact_receipts() -> Bool {
+  let e = AcceptanceExpectation { buyer: "ubi", node: "n1", contract_revision: "c1", security_profile_revision: "s1", journey_revision: "j1" }
+  let wrong_node = AcceptanceExpectation { buyer: "ubi", node: "n2", contract_revision: "c1", security_profile_revision: "s1", journey_revision: "j1" }
+  let probe = Journey { id: "probe", site: site_apartment, boundary: boundary_raw, handoff: WireGuardOverlay { terminated_at: "probe vps" }, steps: [step_cold_boot, step_intake, step_oob] }
+  let seal = decl_ref(module_path: "strategy.wholesale_journeys", decl_name: "accepted_journeys")
+  let r1 = StepReceipt { step_key: step_cold_boot.key, buyer: "ubi", node: "n1", contract_revision: "c1", security_profile_revision: "s1", journey_revision: "j1", receipt: seal }
+  let r2 = StepReceipt { step_key: step_intake.key, buyer: "ubi", node: "n1", contract_revision: "c1", security_profile_revision: "s1", journey_revision: "j1", receipt: seal }
+  let r3 = StepReceipt { step_key: step_oob.key, buyer: "ubi", node: "n1", contract_revision: "c1", security_profile_revision: "s1", journey_revision: "j1", receipt: seal }
+  let r3_stale = StepReceipt { step_key: step_oob.key, buyer: "ubi", node: "n1", contract_revision: "c0", security_profile_revision: "s1", journey_revision: "j1", receipt: seal }
+  let seen = [SiteObservationReceipt { site: site_apartment, node: "n1", observed_at: "2026-12-01", receipt: seal }]
+  outcome_is_accepted(o: derive_accepted_journey(j: probe, e: e, receipts: [r1, r2, r3], observations: seen, sealing_receipt: seal))
+    && !outcome_is_accepted(o: derive_accepted_journey(j: probe, e: wrong_node, receipts: [r1, r2, r3], observations: seen, sealing_receipt: seal))
+    && !outcome_is_accepted(o: derive_accepted_journey(j: probe, e: e, receipts: [r1, r2], observations: seen, sealing_receipt: seal))
+    && !outcome_is_accepted(o: derive_accepted_journey(j: probe, e: e, receipts: [r1, r2, r3_stale], observations: seen, sealing_receipt: seal))
+    && !outcome_is_accepted(o: derive_accepted_journey(j: probe, e: e, receipts: [r1, r2, r3], observations: [], sealing_receipt: seal))
+    && !outcome_is_accepted(o: derive_accepted_journey(j: journey_apartment_raw, e: e, receipts: [r1, r2, r3], observations: seen, sealing_receipt: seal))
+}
+
+// PRODUCTION READINESS BINDS THE SELECTED SITE'S JOURNEY: no site is selected, both edges are
+// conditional today, and the binding predicate holds vacuously - it would refuse a selection.
+fn production_readiness_binding_holds() -> Bool {
+  !production_site_is_colo()
+    && !production_site_is_apartment()
+    && !production_readiness_carries(item_id: "wholesale-colo-journey-acceptance")
+    && !production_readiness_carries(item_id: "wholesale-apartment-journey-acceptance")
+    && production_readiness_binds_selected_site_journey()
+}
+
+// EVERY GAP NAMES A CLOSER AND EVERY CLOSER EXISTS IN THE PLAN. Six closers: the five the current
+// journeys name, plus wholesale-repair-interval-admission for the repair-interval step's latent
+// PlanDoesNotFit arm.
+fn gaps_close_through_real_plan_items() -> Bool {
+  gap_closer_count() == 6
+    && every_gap_names_a_listed_closer()
+    && every_closer_is_a_plan_item()
+}
+
+// THE LATENT ARM, FORCED TO FIRE. The fleet's current figures fit, so the PlanDoesNotFit arm never
+// runs in the journeys above and a wrong closer on it would read as correct until the day a pool or
+// fleet figure changed (review 68258: it named the four-node pilot the step's own comment ruled out).
+// Losing five nodes drives it: the step must be Unowned, closed by the item that owns the transition,
+// and that closer must be one the roster lists.
+fn the_not_fitting_repair_arm_closes_through_its_owner() -> Bool {
+  let step = step_repair_interval_for(a: repair_interval_plan_losing(lost_nodes: 5))
+  step_is_unowned(s: step)
+    && step_gap(s: step) == "wholesale-repair-interval-admission"
+    && count(filter(gap_closers, c => c == step_gap(s: step))) == 1
+}
+
+// THE EXPOSED INTERFACE IS UNSPECIFIED ON BOTH SITES, AND THE PUBLIC TOPOLOGY HAS NO BUYER ZONE.
+fn handoff_and_buyer_zone_are_open() -> Bool {
+  all_handoffs_unspecified()
+    && !handoff_is_specified(h: journey_colo_raw.handoff)
+    && !buyer_zone_exists_in_public_topology
+}
+
+fn wholesale_journeys_witness_all() -> Bool {
+  journeys_are_the_six_and_none_is_acceptable()
+    && acceptance_is_a_receipt_not_a_plan()
+    && derivation_accepts_only_exact_receipts()
+    && production_readiness_binding_holds()
+    && gaps_close_through_real_plan_items()
+    && the_not_fitting_repair_arm_closes_through_its_owner()
+    && handoff_and_buyer_zone_are_open()
+}
+
+fn wholesale_journeys_witness_main() -> ProcessExit {
+  if wholesale_journeys_witness_all() {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "wholesale_journeys_witness_all returned false" }
+  }
+}

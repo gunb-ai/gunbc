@@ -1,0 +1,119 @@
+module strategy.buyer_review_projection
+
+import std.types { String, NonEmptyStr, List }
+import gunbc.review_sheet_projection {
+  ReviewColumn,
+  ReviewColumnKind,
+  DerivedField,
+  OperatorEntered,
+  ReviewSheetSchema,
+  DerivedCell,
+  ProjectionRow,
+  ReviewSheetProjection,
+}
+import strategy.buyer_review_sheet {
+  ReviewSheet,
+  ReviewRow,
+  SheetColumn,
+  DerivedFromResponse,
+  DerivedComputed,
+  OperatorColumn,
+  cell_by_key,
+  listing_identity_header,
+  CellFound,
+  ColumnUnjoined,
+}
+
+// THE SHEET LANE'S CONVERGENCE INPUT. still-crab-505 owns Google Sheets realization and
+// classify_review_sheet; this lane owns scan and ranking. The projection is the seam: every
+// derived column is a Browse/computed field, operator columns are OperatorEntered, and nothing
+// here writes a cell.
+//
+// THIS MODULE EXISTS BECAUSE THE VARIANT NAME OperatorEntered already means an observation
+// provenance in strategy.buyer_review_sheet. Importing the public ReviewColumnKind arm into that
+// file is a meaning fork of one spelling. The adapter is the consumer of both without renaming
+// either authority.
+
+fn review_column_kind(c: SheetColumn) -> ReviewColumnKind {
+  match c.region {
+    DerivedFromResponse { field: f } => DerivedField { source_field: f }
+    DerivedComputed { from: f } => DerivedField { source_field: f }
+    OperatorColumn => OperatorEntered
+  }
+}
+
+type ReviewSheetSchemaBuild
+  = ReviewSheetSchemaOk { schema: ReviewSheetSchema }
+  | ReviewSheetSchemaIdentityUnjoined { key: NonEmptyStr }
+
+fn review_sheet_schema_of(sheet: ReviewSheet) -> ReviewSheetSchemaBuild {
+  match listing_identity_header(columns: sheet.columns) {
+    ColumnUnjoined { key: k } => ReviewSheetSchemaIdentityUnjoined { key: k }
+    CellFound { value: h } => ReviewSheetSchemaOk {
+      schema: ReviewSheetSchema {
+        identity_column: h as NonEmptyStr,
+        columns: map(
+          filter(sheet.columns, c => (c.key as String) != "listing_key"),
+          c => ReviewColumn { name: c.header, kind: review_column_kind(c: c) },
+        ),
+      },
+    }
+  }
+}
+
+type DerivedCellsBuild
+  = DerivedCellsOk { cells: List<DerivedCell> }
+  | DerivedCellsUnjoined { key: NonEmptyStr }
+
+type ReviewSheetProjectionResult
+  = ReviewSheetProjectionOk { projection: ReviewSheetProjection }
+  | ReviewSheetProjectionUnjoined { listing_id: NonEmptyStr, key: NonEmptyStr }
+  | ReviewSheetProjectionIdentityUnjoined { key: NonEmptyStr }
+
+fn derived_cells_of(row: ReviewRow, columns: List<SheetColumn>) -> DerivedCellsBuild {
+  fold(columns, init: DerivedCellsOk { cells: [] }, f: fn(acc, c) {
+    match acc {
+      DerivedCellsUnjoined { key: k } => DerivedCellsUnjoined { key: k }
+      DerivedCellsOk { cells: cs } =>
+        if (c.key as String) == "listing_key" {
+          DerivedCellsOk { cells: cs }
+        } else {
+          match c.region {
+            OperatorColumn => DerivedCellsOk { cells: cs }
+            DerivedFromResponse { field: _ } => match cell_by_key(cells: row.cells, key: c.key) {
+              CellFound { value: v } => DerivedCellsOk { cells: concat(cs, [DerivedCell { column: c.header, value: v }]) }
+              ColumnUnjoined { key: k } => DerivedCellsUnjoined { key: k }
+            }
+            DerivedComputed { from: _ } => match cell_by_key(cells: row.cells, key: c.key) {
+              CellFound { value: v } => DerivedCellsOk { cells: concat(cs, [DerivedCell { column: c.header, value: v }]) }
+              ColumnUnjoined { key: k } => DerivedCellsUnjoined { key: k }
+            }
+          }
+        }
+    }
+  })
+}
+
+fn review_sheet_projection_of(sheet: ReviewSheet) -> ReviewSheetProjectionResult {
+  match review_sheet_schema_of(sheet: sheet) {
+    ReviewSheetSchemaIdentityUnjoined { key: k } => ReviewSheetProjectionIdentityUnjoined { key: k }
+    ReviewSheetSchemaOk { schema: schema } =>
+      fold(sheet.rows, init: ReviewSheetProjectionOk {
+        projection: ReviewSheetProjection { schema: schema, rows: [] },
+      }, f: fn(acc, r) {
+        match acc {
+          ReviewSheetProjectionIdentityUnjoined { key: k } => ReviewSheetProjectionIdentityUnjoined { key: k }
+          ReviewSheetProjectionUnjoined { listing_id: lid, key: k } => ReviewSheetProjectionUnjoined { listing_id: lid, key: k }
+          ReviewSheetProjectionOk { projection: p } => match derived_cells_of(row: r, columns: sheet.columns) {
+            DerivedCellsOk { cells: cs } => ReviewSheetProjectionOk {
+              projection: ReviewSheetProjection {
+                schema: p.schema,
+                rows: concat(p.rows, [ProjectionRow { listing_id: r.listing_key, derived: cs }]),
+              },
+            }
+            DerivedCellsUnjoined { key: k } => ReviewSheetProjectionUnjoined { listing_id: r.listing_key, key: k }
+          }
+        }
+      })
+  }
+}

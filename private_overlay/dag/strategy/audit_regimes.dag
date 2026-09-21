@@ -1,0 +1,1126 @@
+module strategy.audit_regimes
+
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import strategy.compliance_posture {
+  ComplianceRegime, CompliancePosture,
+  DesignConstraintNow, DeferredUntil, ExcludedByProductPolicy, NotApplicable,
+  compliance_regimes,
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
+import strategy.audit_packet {
+  AuditRegime, AuditControl, ControlOverlap, EvidenceCarrier,
+  ReceiptCarrier, DeclaredCarrier, RegisterProseCarrier, ObligationCarrier, PolicyExclusionCarrier,
+  EvidenceKind, PolicyDocumentAsk, ContractTermAsk, ControlRecordAsk, ExecutedRefusalAsk,
+  ChangeRecordAsk, InventoryRosterAsk, TrainingRecordAsk, TestExerciseAsk,
+  AuditPacket, PacketRendered, PacketRefused, packet,
+  PacketRendering, PacketBytes, PacketRenderRejected, render_packet, rendering_bytes,
+}
+
+// THE TWELVE ROSTERS, ONE PER REGISTER ROW. strategy.compliance_posture names twelve regimes and
+// says, in prose, which construction will carry each. This module turns that into the question an
+// auditor actually asks - one row per control - so the answer can be DERIVED by resolving the
+// carrier instead of read out of the register's paragraph.
+//
+// THIS MODULE DOES NOT EDIT THE REGISTER. It reads it: every row whose evidence is still the
+// register's own prose cites the register row itself, and renders as Prose. Replacing those prose
+// carriers with roster rows inside compliance_posture is a SECOND change, after the posture
+// revision carrier lands beside it.
+//
+// EVERY QUESTION IS TRANSCRIBED, NOT QUOTED (DESIGN 4d). No framework text has been retrieved by
+// this lane. What a SOC 2 or HIPAA audit "typically asks" is an inference from practice, and
+// asserting it as the framework's requirement would be the over-assertion arm of epistemic
+// humility. So every question below carries TranscribedUncited with the read that would ground it,
+// the packet prints that beside each row, and the rows climb one at a time as texts are retrieved
+// and pinned.
+//
+// WHAT A ROSTER MAY NOT DO is omit a control because nothing carries it. An Absent row is a true
+// statement about this repository; an omitted row is a claim that the framework does not ask.
+
+// A ROSTER IS WHAT THIS MODULE OWNS: the controls a framework is understood to ask about, the
+// declaration carrying the register row they belong to, and the overlap map. Posture, and the
+// population of regimes itself, belong to the register and are read from it.
+//
+// register_row is authored rather than derived because a .dag value cannot name the declaration
+// that holds it: the register's rows are ComplianceRegime VALUES, and the packet cites the
+// DECLARATION. That citation is resolved by the lens like every other, so a renamed register row
+// refuses the packet rather than printing a dead name.
+type RegimeRoster {
+  regime_id: NonEmptyStr
+  register_row: DeclarationRef
+  authority: CitedFigureStanding
+  controls: List<AuditControl>
+  overlaps: List<ControlOverlap>
+}
+
+fn transcribed(read_obligation: String) -> CitedFigureStanding {
+  TranscribedUncited { read_obligation: read_obligation }
+}
+
+fn register_row(name: String) -> DeclarationRef {
+  decl_ref(module_path: "strategy.compliance_posture", decl_name: name)
+}
+
+fn control(
+  id: String,
+  question: String,
+  read_obligation: String,
+  kind: EvidenceKind,
+  carrier: EvidenceCarrier,
+) -> AuditControl {
+  AuditControl {
+    id: id,
+    question: question,
+    question_standing: transcribed(read_obligation: read_obligation),
+    evidence_kind: kind,
+    carrier: carrier,
+  }
+}
+
+fn typed_by(module_path: String, decl_name: String) -> EvidenceCarrier {
+  DeclaredCarrier { declaration: decl_ref(module_path: module_path, decl_name: decl_name) }
+}
+
+fn prose_of(regime_decl: String) -> EvidenceCarrier {
+  RegisterProseCarrier { register_row: register_row(name: regime_decl) }
+}
+
+fn owed(obligation: String) -> EvidenceCarrier {
+  ObligationCarrier { obligation: obligation }
+}
+
+// READ OBLIGATIONS NAME THE OFFICIAL TEXT AND THE RETRIEVAL, not "look it up". A read obligation a
+// reader cannot execute is the same unpinned claim in a longer sentence.
+data soc2_read: String = "Retrieve the AICPA Trust Services Criteria (TSP section 100, current edition) from the AICPA and pin the criterion text for each control below; the points of focus, not this transcription, are what an auditor works from."
+data hipaa_read: String = "Retrieve 45 CFR Parts 160 and 164 (HIPAA Administrative Simplification, Security and Breach Notification Rules) from eCFR and pin the safeguard text; HHS business-associate guidance is a second citation, not a substitute for the rule text."
+data gdpr_read: String = "Retrieve Regulation (EU) 2016/679 from EUR-Lex and pin Articles 28, 30, 32, 33, 44-49; EDPB guidance on Article 3 territorial scope is a second citation."
+data pci_read: String = "Retrieve PCI DSS v4.x and SAQ-A from the PCI Security Standards Council document library and pin the eligibility criteria and the SAQ-A requirement set."
+data us_state_read: String = "Retrieve the operative text of each state statute this row spans (CCPA/CPRA as amended, NJ Data Protection Act, NY SHIELD Act) from each state's official code publisher and pin the processor-contract and reasonable-security provisions."
+data iso_read: String = "Retrieve ISO/IEC 27001:2022 and its Annex A control set from ISO and pin the clause text; the standard is licensed, so the pin is to the purchased copy's representation."
+data sanctions_read: String = "Retrieve OFAC's sanctions compliance program framework and the SDN list publication terms from the US Treasury and pin the five program elements."
+data export_read: String = "Retrieve the EAR (15 CFR Parts 730-774) from eCFR and pin the deemed-export and end-use/end-user provisions; ITAR (22 CFR 120-130) is a second citation for the excluded class."
+data data_act_read: String = "Retrieve Regulation (EU) 2023/2854 (Data Act) from EUR-Lex and pin Chapter VI switching, export and charge provisions with their application dates."
+data breach_read: String = "Retrieve each notification statute this matrix spans (GDPR Art. 33/34, NJ, NY, and the contractual clocks in the DPA and cyber policy) and pin the recipient, deadline, threshold and sequencing text per row."
+data nis2_read: String = "Retrieve Directive (EU) 2022/2555 from EUR-Lex and pin the Annex I/II scope entries and the size-cap provisions, plus the national implementation that would apply."
+data dora_read: String = "Retrieve Regulation (EU) 2022/2554 from EUR-Lex and pin Article 30 contractual provisions and the critical-ICT-third-party designation criteria."
+
+// ---------------------------------------------------------------------------
+// SOC 2 - the largest roster, and the one enterprise procurement asks for first.
+// ---------------------------------------------------------------------------
+
+data soc2_controls: List<AuditControl> = [
+  control(
+    id: "soc2-change-management",
+    question: "How does a change reach production, and what record shows the change was reviewed and tested before it did?",
+    read_obligation: soc2_read,
+    kind: ChangeRecordAsk,
+    carrier: typed_by(module_path: "gunbc.merge_admission", decl_name: "merge_admission_enforcement_policy"),
+  ),
+  control(
+    id: "soc2-change-gate-roster",
+    question: "Which checks must pass before a merge is admitted, and how is that set itself controlled against silent edit?",
+    read_obligation: soc2_read,
+    kind: ChangeRecordAsk,
+    carrier: typed_by(module_path: "gunbc.merge_admission", decl_name: "current_gate_roster_hash"),
+  ),
+  control(
+    id: "soc2-required-lanes",
+    question: "Which CI lanes are required rather than advisory, and what makes a failing lane block a merge?",
+    read_obligation: soc2_read,
+    kind: ControlRecordAsk,
+    carrier: typed_by(module_path: "gunbc.witness_floor_workflow", decl_name: "required_lanes_roster"),
+  ),
+  control(
+    id: "soc2-logical-access",
+    question: "How is access to production systems and secrets granted, scoped and revoked?",
+    read_obligation: soc2_read,
+    kind: ControlRecordAsk,
+    carrier: typed_by(module_path: "gunbc.auth.secret_access_admission", decl_name: "SecretAccessAdmission"),
+  ),
+  control(
+    id: "soc2-privileged-access",
+    question: "Which grants are privileged, who holds them, and what bounds their use?",
+    read_obligation: soc2_read,
+    kind: ControlRecordAsk,
+    carrier: typed_by(module_path: "std.scoped_authorization", decl_name: "AuthorizationScope"),
+  ),
+  control(
+    id: "soc2-credential-rotation",
+    question: "How often are credentials rotated, and what evidences a completed rotation?",
+    read_obligation: soc2_read,
+    kind: ControlRecordAsk,
+    carrier: typed_by(module_path: "gunbc.auth.secret_rotation", decl_name: "SecretRotationIntent"),
+  ),
+  control(
+    id: "soc2-access-review",
+    question: "Show the periodic review of who has access, with the joiner/mover/leaver records behind it.",
+    read_obligation: soc2_read,
+    kind: ControlRecordAsk,
+    carrier: owed("No access-review construction exists. Owed: a typed review cycle over the grant roster, producing a receipt per reviewed principal, with the leaver path revoking before the review rather than at it."),
+  ),
+  control(
+    id: "soc2-vendor-review",
+    question: "Which subprocessors and vendors are used, and what review and contract terms cover each?",
+    read_obligation: soc2_read,
+    kind: InventoryRosterAsk,
+    carrier: owed("No subprocessor roster exists as a typed carrier. Owed: one row per subprocessor with its data classes, region, contract reference and review date, and a change-notice obligation joined to the customer DPA."),
+  ),
+  control(
+    id: "soc2-incident-response",
+    question: "What is the incident response process, who owns it, and show an exercise of it.",
+    read_obligation: soc2_read,
+    kind: TestExerciseAsk,
+    carrier: owed("No incident-response control exists. Owed: typed incident states with an owner, the notification matrix row this repository already names as an obligation, and a recorded exercise - the exercise, not the document, is what the audit consumes."),
+  ),
+  control(
+    id: "soc2-vulnerability-management",
+    question: "How are vulnerabilities discovered, triaged and patched within a stated window?",
+    read_obligation: soc2_read,
+    kind: ControlRecordAsk,
+    carrier: owed("No vulnerability-management control exists. Owed: a dependency and image inventory joined to an advisory feed, with a typed remediation deadline per severity and a receipt per closed finding."),
+  ),
+  control(
+    id: "soc2-backup-restore",
+    question: "What is backed up, how often, and when was a restore last tested?",
+    read_obligation: soc2_read,
+    kind: TestExerciseAsk,
+    carrier: prose_of(regime_decl: "compliance_storage_tie_note"),
+  ),
+  control(
+    id: "soc2-physical-access",
+    question: "Who can physically reach the machines, and how is that control inherited from the facility?",
+    read_obligation: soc2_read,
+    kind: ControlRecordAsk,
+    carrier: owed("Physical access is inherited from the colocation facility and no inheritance row exists. Owed: the facility's own attestation as a cited authority, plus the list of controls this repository relies on it for rather than implements."),
+  ),
+  control(
+    id: "soc2-monitoring",
+    question: "What is monitored, what alerts, and who responds?",
+    read_obligation: soc2_read,
+    kind: ControlRecordAsk,
+    carrier: owed("No monitoring control exists as a typed carrier. Owed: the observed surfaces, the alert conditions, the recipient, and the standing evidence that an alert reached a person."),
+  ),
+  control(
+    id: "soc2-training",
+    question: "What security training do personnel receive, and how is completion recorded?",
+    read_obligation: soc2_read,
+    kind: TrainingRecordAsk,
+    carrier: owed("No training control exists. At current headcount this is one person, which changes the evidence shape but not the obligation: a dated completion record per person per period."),
+  ),
+  control(
+    id: "soc2-encryption",
+    question: "How is customer data encrypted at rest and in transit, and how are the keys managed?",
+    read_obligation: soc2_read,
+    kind: ControlRecordAsk,
+    carrier: owed("No encryption control exists as a typed carrier. This row was added because the HIPAA roster had nowhere honest to point: its encryption question was mapped onto the access-admission carrier, which answers who may reach a secret and says nothing about how bytes are protected (review 65003). Owed: the at-rest and in-transit surfaces named with what encrypts each, and the key custody - per-tenant keys are also what makes the GDPR deletion states answerable under cross-tenant dedup."),
+  ),
+  control(
+    id: "soc2-asset-inventory",
+    question: "What systems and assets are in scope, and how is the inventory kept current?",
+    read_obligation: soc2_read,
+    kind: InventoryRosterAsk,
+    carrier: typed_by(module_path: "strategy.asset_inventory", decl_name: "q80_inventory_lot"),
+  ),
+  control(
+    id: "soc2-continuity",
+    question: "What happens if the primary site or provider is lost, and when was that tested?",
+    read_obligation: soc2_read,
+    kind: TestExerciseAsk,
+    carrier: owed("No continuity control exists. The storage-tiering row already records the argument that a single provider or credential failure domain out-blasts disposable drives; what is owed is the tested second recovery copy and the exit path, not a further statement of the risk."),
+  ),
+]
+
+data roster_soc2: RegimeRoster = RegimeRoster {
+  regime_id: "soc2-type2",
+  register_row: register_row(name: "regime_soc2"),
+  authority: transcribed(read_obligation: soc2_read),
+  controls: soc2_controls,
+  overlaps: [],
+}
+
+// ---------------------------------------------------------------------------
+// HIPAA - the discriminating regime. The posture is EXCLUSION BY PRODUCT POLICY, which is a
+// product decision and not a legal impossibility, so every row must show the policy, what
+// ENFORCES the policy, and where the underlying control is answered for every other customer.
+// "Not applicable" is exactly the answer this register was corrected away from.
+// ---------------------------------------------------------------------------
+
+// THE EXCLUSION IS NOT RE-ENCODED HERE. strategy.compliance_posture already owns whether a regime
+// is excluded by product policy - ExcludedByProductPolicy on the register row - and an earlier cut
+// hardcoded a PolicyExclusionCarrier around every HIPAA control, which is the same fact authored
+// twice: re-posture the register and the roster would have gone on wrapping (review 65088). The
+// wrap is now DERIVED from the posture the register carries, by the one match below, so this
+// roster states controls and the register states posture.
+
+data hipaa_controls: List<AuditControl> = [
+  control(
+    id: "hipaa-baa",
+    question: "Is a business associate agreement in place, and what does it cover?",
+    read_obligation: hipaa_read,
+    kind: ContractTermAsk,
+    carrier: owed("No BAA is offered. The enforcing construction owed is the contract term itself as a typed carrier - a prohibition in the terms of service with a stated consequence - rather than the register's paragraph describing it."),
+  ),
+  control(
+    id: "hipaa-workload-prohibition",
+    question: "How is it ensured that regulated health data is not processed on this infrastructure?",
+    read_obligation: hipaa_read,
+    kind: ExecutedRefusalAsk,
+    carrier: owed("The REFUSAL MECHANISM exists and the PHI RULE does not, and those are different facts (review 65003). product.fabric.provider_admission carries a prohibited-use program arm and the typed refusal it produces - the sanctions roster's abuse-prohibited-use row cites them, and the overlap map below points here - but no declared rule in that program names protected health information, so nothing in this tree refuses a PHI workload today. Owed: a prohibited-use rule naming PHI, joined to that program. Citing the program itself as PHI enforcement would report the machinery as the policy."),
+  ),
+  control(
+    id: "hipaa-known-phi-refusal",
+    question: "What happens when a workload is known to carry protected health information?",
+    read_obligation: hipaa_read,
+    kind: ExecutedRefusalAsk,
+    carrier: owed("Same gap as the row above, at the moment of admission rather than in the policy: DispositionStanding can carry a refusal with its cause, but no cause declared anywhere in the tree is 'this workload carries PHI'. Owed: the standing minted from the PHI rule, which is what would make a known-PHI workload refuse rather than merely be refusable."),
+  ),
+  control(
+    id: "hipaa-detected-phi-containment",
+    question: "What happens when protected health information is detected after the fact - suspend, contain, return or delete?",
+    read_obligation: hipaa_read,
+    kind: ControlRecordAsk,
+    carrier: owed("The register states the intended posture - suspend, contain, return-or-delete, incident obligations preserved - and nothing carries it. Owed: typed containment states with the disposition of the data at each, because an exclusion whose detection path is undefined is an exclusion in name only."),
+  ),
+  control(
+    id: "hipaa-encryption",
+    question: "How is data encrypted at rest and in transit?",
+    read_obligation: hipaa_read,
+    kind: ControlRecordAsk,
+    carrier: owed("Answered for every customer by the SOC 2 roster rather than by a HIPAA-specific control; see the overlap map below. HHS holds that encrypted ePHI without the key can still make a provider a business associate, so encryption is not what carries this exclusion and is not offered as though it were."),
+  ),
+  control(
+    id: "hipaa-access-control",
+    question: "Who can access customer data, and how is that access controlled and reviewed?",
+    read_obligation: hipaa_read,
+    kind: ControlRecordAsk,
+    carrier: DeclaredCarrier {
+      declaration: decl_ref(module_path: "gunbc.auth.secret_access_admission", decl_name: "SecretAccessAdmission"),
+    },
+  ),
+  control(
+    id: "hipaa-breach-notification",
+    question: "What is the breach notification obligation and its clock?",
+    read_obligation: hipaa_read,
+    kind: PolicyDocumentAsk,
+    carrier: prose_of(regime_decl: "regime_breach_matrix"),
+  ),
+  control(
+    id: "hipaa-audit-controls",
+    question: "What audit controls record access to systems that could hold protected health information?",
+    read_obligation: hipaa_read,
+    kind: ControlRecordAsk,
+    carrier: owed("Answered by the SOC 2 monitoring control, which is itself Absent today; see the overlap map. Stating it as inherited coverage would report as present a control neither roster carries."),
+  ),
+]
+
+data hipaa_overlaps: List<ControlOverlap> = [
+  ControlOverlap {
+    control_id: "hipaa-encryption",
+    other_regime_id: "soc2-type2",
+    other_control_id: "soc2-encryption",
+    note: "Encryption is a SOC 2 roster question for every customer and reads Absent there too - one repair closes both rows. It previously pointed at the access-admission row, which answers who may reach a secret and not how bytes are protected; that was two answers for one question (review 65003).",
+  },
+  ControlOverlap {
+    control_id: "hipaa-access-control",
+    other_regime_id: "soc2-type2",
+    other_control_id: "soc2-logical-access",
+    note: "Both rows cite gunbc.auth.secret_access_admission SecretAccessAdmission - the same carrier, which is why this is an overlap rather than two constructions.",
+  },
+  ControlOverlap {
+    control_id: "hipaa-workload-prohibition",
+    other_regime_id: "sanctions-and-abuse",
+    other_control_id: "abuse-prohibited-use",
+    note: "The prohibited-use refusal mechanism lives on the sanctions-and-abuse roster and reads Typed there. This row stays Absent because that program declares no PHI rule: the mechanism is present, the policy it would enforce is not.",
+  },
+  ControlOverlap {
+    control_id: "hipaa-known-phi-refusal",
+    other_regime_id: "sanctions-and-abuse",
+    other_control_id: "sanctions-disposition-record",
+    note: "The disposition carrier that would record a refusal and its cause is the same one the sanctions roster cites; what is missing here is a declared PHI cause for it to carry, not the carrier.",
+  },
+  ControlOverlap {
+    control_id: "hipaa-audit-controls",
+    other_regime_id: "soc2-type2",
+    other_control_id: "soc2-monitoring",
+    note: "Both rosters read Absent here, and they read Absent for one reason: no monitoring carrier exists. One repair closes both rows.",
+  },
+  ControlOverlap {
+    control_id: "hipaa-breach-notification",
+    other_regime_id: "breach-notification-matrix",
+    other_control_id: "breach-matrix-rows",
+    note: "The notification clocks live in the breach matrix regime, which is a matrix over jurisdiction, role and data class rather than a per-regime control.",
+  },
+]
+
+data roster_hipaa: RegimeRoster = RegimeRoster {
+  regime_id: "hipaa",
+  register_row: register_row(name: "regime_hipaa"),
+  authority: transcribed(read_obligation: hipaa_read),
+  controls: hipaa_controls,
+  overlaps: hipaa_overlaps,
+}
+
+// ---------------------------------------------------------------------------
+// The remaining ten. Mostly Absent by construction, and that is the point: the rosters exist so
+// that pressing the button for any register row returns the framework's questions with this
+// repository's honest answer, rather than returning nothing for ten of twelve regimes.
+// ---------------------------------------------------------------------------
+
+data gdpr_controls: List<AuditControl> = [
+  control(
+    id: "gdpr-art28-dpa",
+    question: "Is there a processor agreement meeting Article 28, and what does it bind?",
+    read_obligation: gdpr_read,
+    kind: ContractTermAsk,
+    carrier: prose_of(regime_decl: "regime_gdpr"),
+  ),
+  control(
+    id: "gdpr-records-of-processing",
+    question: "Show the records of processing for both roles - controller and processor.",
+    read_obligation: gdpr_read,
+    kind: InventoryRosterAsk,
+    carrier: owed("No records of processing exist as a typed carrier. Owed: one row per processing activity with role, purpose, data classes, recipients, transfers and retention - for BOTH roles, which the register already distinguishes."),
+  ),
+  control(
+    id: "gdpr-deletion",
+    question: "When a customer asks for deletion, what is actually deleted, and when?",
+    read_obligation: gdpr_read,
+    kind: ControlRecordAsk,
+    carrier: owed("The register names the intended construction - deletion as typed states covering access revocation, logical reference deletion, key destruction, physical deletion, backup expiry and legal hold - and nothing carries it yet. Owed: those states as a coproduct, with a per-tenant key so that 'your bytes were erased' is answerable under cross-tenant deduplication."),
+  ),
+  control(
+    id: "gdpr-subprocessors",
+    question: "Which subprocessors process personal data, and how are customers notified of changes?",
+    read_obligation: gdpr_read,
+    kind: InventoryRosterAsk,
+    carrier: owed("Shares the missing subprocessor roster with the SOC 2 vendor-review row; one construction closes both."),
+  ),
+  control(
+    id: "gdpr-transfers",
+    question: "What transfers leave the EEA, and on what lawful basis?",
+    read_obligation: gdpr_read,
+    kind: ContractTermAsk,
+    carrier: owed("No transfer assessment exists. Owed: the transfer map - object storage, logs, telemetry, backups and support access, not just the runner - joined to the mechanism relied on for each."),
+  ),
+  control(
+    id: "gdpr-region-admission",
+    question: "If a customer pins a region, what enforces the pin across every data path?",
+    read_obligation: gdpr_read,
+    kind: ExecutedRefusalAsk,
+    carrier: owed("NOTHING ENFORCES A REGION PIN, and this row said otherwise for one revision. It cited gunbc.fabric_executor_class CapacityClassAdmission, whose producer admits an executor against a CAPACITY CLASS - control-plane versus customer - and never reads a region: the module does not contain the word (operator merge review, 2026-09-13). Capacity segregation is not geographic enforcement. Owed: an admission that refuses placement, object storage, logs, telemetry, backups and support access outside the customer's pinned region, since a pin the runner honours and the log sink does not is not a pin."),
+  ),
+  control(
+    id: "gdpr-security-art32",
+    question: "What technical and organisational measures secure the processing?",
+    read_obligation: gdpr_read,
+    kind: ControlRecordAsk,
+    carrier: owed("Answered in substance by the SOC 2 roster's access, change and monitoring rows, and therefore Absent to exactly the extent those are. No separate Article 32 statement is offered, because a statement that restates absent controls reads as coverage."),
+  ),
+  control(
+    id: "gdpr-dsr-assistance",
+    question: "How does the processor assist the controller with data subject requests?",
+    read_obligation: gdpr_read,
+    kind: ContractTermAsk,
+    carrier: owed("No assistance path exists. Owed: the tenant-scoped read that answers an access request and the deletion states that answer an erasure request, plus the contractual response window."),
+  ),
+]
+
+data roster_gdpr: RegimeRoster = RegimeRoster {
+  regime_id: "gdpr-processor",
+  register_row: register_row(name: "regime_gdpr"),
+  authority: transcribed(read_obligation: gdpr_read),
+  controls: gdpr_controls,
+  overlaps: [],
+}
+
+data pci_controls: List<AuditControl> = [
+  control(
+    id: "pci-saq-a-eligibility",
+    question: "On what basis does this entity self-assess at SAQ-A rather than a fuller SAQ?",
+    read_obligation: pci_read,
+    kind: PolicyDocumentAsk,
+    carrier: prose_of(regime_decl: "regime_pci"),
+  ),
+  control(
+    id: "pci-no-card-data",
+    question: "Where could a primary account number enter the system, and what prevents it?",
+    read_obligation: pci_read,
+    kind: ExecutedRefusalAsk,
+    carrier: owed("The register's invariant - no card-data type exists - is necessary and not sufficient, and it is not carried by a construction that refuses. Owed: the payment-event redaction path and the absence of PAN in logs, analytics, support and webhooks, each as a typed refusal rather than an absence nobody checks."),
+  ),
+  control(
+    id: "pci-provider-aoc",
+    question: "Show the attestation of compliance for the payment provider whose elements render the payment page.",
+    read_obligation: pci_read,
+    kind: PolicyDocumentAsk,
+    carrier: owed("No provider attestation is held as a cited authority. Owed: the provider's current AOC retrieved and pinned, because SAQ-A eligibility depends on it and a lapsed attestation changes the eligibility rather than merely the paperwork."),
+  ),
+  control(
+    id: "pci-page-elements",
+    question: "Which scripts execute on the payment page, and who controls them?",
+    read_obligation: pci_read,
+    kind: InventoryRosterAsk,
+    carrier: owed("No script inventory exists for the payment page. This is the row the register's external review added: a browser tag can observe what the backend never stores, so the backend invariant does not answer it."),
+  ),
+  control(
+    id: "pci-annual-validation",
+    question: "When was the SAQ last completed and by whom?",
+    read_obligation: pci_read,
+    kind: ControlRecordAsk,
+    carrier: owed("No SAQ has been completed. Owed: the dated self-assessment, which is an annual obligation rather than a launch one."),
+  ),
+]
+
+data roster_pci: RegimeRoster = RegimeRoster {
+  regime_id: "pci-dss-saq-a",
+  register_row: register_row(name: "regime_pci"),
+  authority: transcribed(read_obligation: pci_read),
+  controls: pci_controls,
+  overlaps: [],
+}
+
+data us_state_controls: List<AuditControl> = [
+  control(
+    id: "us-state-processor-terms",
+    question: "Do the processor terms carry the instructions, confidentiality, security, subprocessor, deletion and assessment obligations each state requires?",
+    read_obligation: us_state_read,
+    kind: ContractTermAsk,
+    carrier: prose_of(regime_decl: "regime_us_state_privacy"),
+  ),
+  control(
+    id: "us-state-reasonable-security",
+    question: "What reasonable security safeguards are in place, in the terms the applicable state statute uses?",
+    read_obligation: us_state_read,
+    kind: ControlRecordAsk,
+    carrier: owed("Rides the same carriers as the GDPR-processor security row and is Absent to the same extent."),
+  ),
+  control(
+    id: "us-state-threshold-applicability",
+    question: "Which controller thresholds are crossed, in which states, as of when?",
+    read_obligation: us_state_read,
+    kind: PolicyDocumentAsk,
+    carrier: owed("No applicability matrix exists as a typed carrier. Owed: one row per state with its threshold, the measured figure and the date measured - the figures are the kind that change under you and a transcription without a date is not re-derivable."),
+  ),
+  control(
+    id: "us-state-deletion-return",
+    question: "On termination, is customer personal data deleted or returned, and on what clock?",
+    read_obligation: us_state_read,
+    kind: ContractTermAsk,
+    carrier: owed("Shares the missing typed deletion states with the GDPR row; one construction closes both."),
+  ),
+]
+
+data roster_us_state: RegimeRoster = RegimeRoster {
+  regime_id: "us-state-privacy",
+  register_row: register_row(name: "regime_us_state_privacy"),
+  authority: transcribed(read_obligation: us_state_read),
+  controls: us_state_controls,
+  overlaps: [],
+}
+
+data iso_controls: List<AuditControl> = [
+  control(
+    id: "iso-isms-scope",
+    question: "What is the scope of the information security management system?",
+    read_obligation: iso_read,
+    kind: PolicyDocumentAsk,
+    carrier: prose_of(regime_decl: "regime_iso27001"),
+  ),
+  control(
+    id: "iso-risk-assessment",
+    question: "Show the risk assessment and treatment plan, and the statement of applicability.",
+    read_obligation: iso_read,
+    kind: PolicyDocumentAsk,
+    carrier: owed("No ISMS documentation exists, and it is owed NOW rather than on demand: the register postures this regime as agent-buildable controls under seek-all-now, with only the paid certification audit demand-triggered (strategy.compliance_posture regime_iso27001). The evidence base is shared with SOC 2, so what is owed here is the risk assessment, treatment plan and statement of applicability as rows over that base - not a second set of controls, and not a wait."),
+  ),
+  control(
+    id: "iso-annex-a-controls",
+    question: "Which Annex A controls are applicable, and what implements each?",
+    read_obligation: iso_read,
+    kind: ControlRecordAsk,
+    carrier: owed("Owed as a mapping from the SOC 2 roster above to Annex A, produced once rather than maintained twice - two rosters over one evidence base is the fork this repository's own design forbids."),
+  ),
+  control(
+    id: "iso-management-review",
+    question: "Show the management review and internal audit records.",
+    read_obligation: iso_read,
+    kind: ControlRecordAsk,
+    carrier: owed("No management review or internal audit cycle exists. The cycle is buildable now and is part of the agent-buildable set the register names; what stays demand-triggered is the paid certification audit that would INSPECT it, not the running of it. A review cycle first evidenced on the day a certificate is sought has no history to show."),
+  ),
+]
+
+data roster_iso: RegimeRoster = RegimeRoster {
+  regime_id: "iso-27001",
+  register_row: register_row(name: "regime_iso27001"),
+  authority: transcribed(read_obligation: iso_read),
+  controls: iso_controls,
+  overlaps: [],
+}
+
+data sanctions_controls: List<AuditControl> = [
+  control(
+    id: "sanctions-program",
+    question: "Describe the risk-based sanctions compliance program and who owns it.",
+    read_obligation: sanctions_read,
+    kind: PolicyDocumentAsk,
+    carrier: prose_of(regime_decl: "regime_sanctions_abuse"),
+  ),
+  control(
+    id: "sanctions-screening",
+    question: "Who is screened against which lists, and when are they rescreened?",
+    read_obligation: sanctions_read,
+    kind: ControlRecordAsk,
+    carrier: owed("No screening construction exists. The register's correction is the load-bearing part: the payment processor's own KYC is an input and not the compliance authority, because it cannot screen a free technical trial, organisation members, workload end users or IP geography."),
+  ),
+  control(
+    id: "sanctions-disposition-record",
+    question: "For a hit, is the transaction blocked or rejected, and what record is kept?",
+    read_obligation: sanctions_read,
+    kind: ControlRecordAsk,
+    carrier: typed_by(module_path: "product.fabric.provider_admission", decl_name: "DispositionStanding"),
+  ),
+  control(
+    id: "sanctions-program-arms",
+    question: "Which programs are evaluated before a workload is admitted?",
+    read_obligation: sanctions_read,
+    kind: ExecutedRefusalAsk,
+    carrier: typed_by(module_path: "product.fabric.provider_admission", decl_name: "DispositionProgram"),
+  ),
+  control(
+    id: "abuse-prohibited-use",
+    question: "What uses are prohibited, and what refuses a prohibited workload?",
+    read_obligation: sanctions_read,
+    kind: ExecutedRefusalAsk,
+    carrier: typed_by(module_path: "product.fabric.provider_admission", decl_name: "ProviderUseRefusal"),
+  ),
+]
+
+data roster_sanctions: RegimeRoster = RegimeRoster {
+  regime_id: "sanctions-and-abuse",
+  register_row: register_row(name: "regime_sanctions_abuse"),
+  authority: transcribed(read_obligation: sanctions_read),
+  controls: sanctions_controls,
+  overlaps: [],
+}
+
+data export_controls_roster: List<AuditControl> = [
+  control(
+    id: "export-excluded-classes",
+    question: "Which controlled technical data classes are excluded, and by what representation from the customer?",
+    read_obligation: export_read,
+    kind: ContractTermAsk,
+    carrier: prose_of(regime_decl: "regime_export_controls"),
+  ),
+  control(
+    id: "export-region-spill",
+    question: "What prevents data from moving to a region the customer did not choose?",
+    read_obligation: export_read,
+    kind: ExecutedRefusalAsk,
+    carrier: owed("Same correction as the GDPR region row: ExecutorSanction classifies an executor by capacity class and carries no region, so citing it as what prevents regional spill was an over-assertion the packet would have rendered as Typed. Owed: the region as an admission fact on every data path, which is also what the EU Data Act exit and the export-control rows depend on."),
+  ),
+  control(
+    id: "export-support-access",
+    question: "Can support or administrative staff outside the region access customer data?",
+    read_obligation: export_read,
+    kind: ControlRecordAsk,
+    carrier: owed("Overseas support and administrative access is a data-access path and nothing models it as one. Owed: support access as an admitted route under the same region admission the workload is subject to, rather than an out-of-band capability."),
+  ),
+  control(
+    id: "export-end-use-screening",
+    question: "How are prohibited end uses and restricted parties screened?",
+    read_obligation: export_read,
+    kind: ControlRecordAsk,
+    carrier: typed_by(module_path: "product.fabric.provider_admission", decl_name: "DispositionProgram"),
+  ),
+]
+
+data roster_export: RegimeRoster = RegimeRoster {
+  regime_id: "export-controls",
+  register_row: register_row(name: "regime_export_controls"),
+  authority: transcribed(read_obligation: export_read),
+  controls: export_controls_roster,
+  overlaps: [],
+}
+
+data data_act_controls: List<AuditControl> = [
+  control(
+    id: "data-act-scope",
+    question: "Is this service a data processing service within the Regulation's meaning?",
+    read_obligation: data_act_read,
+    kind: PolicyDocumentAsk,
+    carrier: prose_of(regime_decl: "regime_eu_data_act"),
+  ),
+  control(
+    id: "data-act-switching",
+    question: "What is the documented process for a customer to switch to another provider?",
+    read_obligation: data_act_read,
+    kind: PolicyDocumentAsk,
+    carrier: owed("No switching process is documented. Owed as a process rather than a capability: the customer-facing steps, the maximum transition window, and what the provider does at each."),
+  ),
+  control(
+    id: "data-act-export",
+    question: "Can a customer export their data AND metadata in a machine-readable form?",
+    read_obligation: data_act_read,
+    kind: ControlRecordAsk,
+    carrier: owed("The register's argument is that the content-addressed storage abstraction makes this cheap IF modelled now - exportable tenant-scoped data is a read of the durable tier. Owed: the export as a construction, because an argument that it would be cheap is not an export."),
+  ),
+  control(
+    id: "data-act-egress-charges",
+    question: "What is charged for the switching process, and what changes on 2027-01-12?",
+    read_obligation: data_act_read,
+    kind: ContractTermAsk,
+    carrier: owed("No pricing term addresses switching. Owed: the term itself, dated against the Regulation's application dates, because the prohibition on charging for the switching process arrives on a fixed date rather than on a trigger."),
+  ),
+  control(
+    id: "data-act-post-switch-deletion",
+    question: "After a customer switches away, what is deleted and when?",
+    read_obligation: data_act_read,
+    kind: ControlRecordAsk,
+    carrier: owed("Shares the missing typed deletion states with the GDPR row."),
+  ),
+]
+
+data roster_data_act: RegimeRoster = RegimeRoster {
+  regime_id: "eu-data-act",
+  register_row: register_row(name: "regime_eu_data_act"),
+  authority: transcribed(read_obligation: data_act_read),
+  controls: data_act_controls,
+  overlaps: [],
+}
+
+data breach_controls: List<AuditControl> = [
+  control(
+    id: "breach-matrix-rows",
+    question: "For each jurisdiction, role and data class: who must be notified, by when, above what threshold, and in what order?",
+    read_obligation: breach_read,
+    kind: PolicyDocumentAsk,
+    carrier: prose_of(regime_decl: "regime_breach_matrix"),
+  ),
+  control(
+    id: "breach-sequencing",
+    question: "Where a statute constrains the ORDER of notifications, what enforces the order?",
+    read_obligation: breach_read,
+    kind: ControlRecordAsk,
+    carrier: owed("Nothing enforces sequencing. The register already records that New Jersey requires State Police notice before customer disclosure - a sequencing constraint is part of the obligation, so a matrix carrying deadlines without order is incomplete rather than merely terse."),
+  ),
+  control(
+    id: "breach-contractual-clocks",
+    question: "Which contractual or insurer clocks are shorter than the statutory ones?",
+    read_obligation: breach_read,
+    kind: ContractTermAsk,
+    carrier: owed("No contractual clock inventory exists. Owed as rows beside the statutory ones, because the binding deadline is the shortest applicable one and it is frequently contractual."),
+  ),
+]
+
+data roster_breach: RegimeRoster = RegimeRoster {
+  regime_id: "breach-notification-matrix",
+  register_row: register_row(name: "regime_breach_matrix"),
+  authority: transcribed(read_obligation: breach_read),
+  controls: breach_controls,
+  overlaps: [],
+}
+
+data nis2_controls: List<AuditControl> = [
+  control(
+    id: "nis2-scope",
+    question: "Is this entity in scope, on which Annex entry and at what size class?",
+    read_obligation: nis2_read,
+    kind: PolicyDocumentAsk,
+    carrier: prose_of(regime_decl: "regime_nis2"),
+  ),
+  control(
+    id: "nis2-risk-measures",
+    question: "Which risk management measures are implemented?",
+    read_obligation: nis2_read,
+    kind: ControlRecordAsk,
+    carrier: owed("Owed NOW, not after classification: the register postures NIS2 as agent-buildable controls under seek-all-now and separates them from the open applicability question (strategy.compliance_posture regime_nis2). The measures overlap the SOC 2 roster and are built there once; what remains unresolved is size, national implementation and EU-representation, which is a counsel FLAG rather than a reason for the control work to wait."),
+  ),
+  control(
+    id: "nis2-incident-reporting",
+    question: "What is the incident reporting path and its deadlines?",
+    read_obligation: nis2_read,
+    kind: ControlRecordAsk,
+    carrier: owed("Owed as rows of the breach-notification matrix rather than as a separate path - and owed now, since the register puts the incident-notification clocks in the agent-buildable set. Confirming applicability changes who must be notified, not whether the matrix row exists."),
+  ),
+]
+
+data roster_nis2: RegimeRoster = RegimeRoster {
+  regime_id: "nis2",
+  register_row: register_row(name: "regime_nis2"),
+  authority: transcribed(read_obligation: nis2_read),
+  controls: nis2_controls,
+  overlaps: [],
+}
+
+data dora_controls: List<AuditControl> = [
+  control(
+    id: "dora-contract-terms",
+    question: "Do the contract terms carry locations, security, subcontracting, audit and cooperation, continuity and exit?",
+    read_obligation: dora_read,
+    kind: ContractTermAsk,
+    carrier: prose_of(regime_decl: "regime_dora"),
+  ),
+  control(
+    id: "dora-exit-strategy",
+    question: "Show the exit strategy and evidence that it has been tested.",
+    read_obligation: dora_read,
+    kind: TestExerciseAsk,
+    carrier: owed("Shares the missing export and exit construction with the EU Data Act row - the technical substance is the same and only the contractual framing differs - and the register postures it as buildable now, with only the DORA-shaped legal drafting demand-triggered by the first EU financial customer."),
+  ),
+  control(
+    id: "dora-register-of-information",
+    question: "Can the financial entity's register of information be populated from what this provider supplies?",
+    read_obligation: dora_read,
+    kind: InventoryRosterAsk,
+    carrier: owed("Owed as the supplier-side fields a customer's register needs - entity identifiers, service description, locations, subcontractors - which the missing subprocessor roster would supply."),
+  ),
+  control(
+    id: "dora-audit-cooperation",
+    question: "What audit and inspection rights does the customer have?",
+    read_obligation: dora_read,
+    kind: ContractTermAsk,
+    carrier: owed("No audit-rights term exists. Owed in the contract, and this packet is the artefact such a right would consume."),
+  ),
+]
+
+data roster_dora: RegimeRoster = RegimeRoster {
+  regime_id: "dora",
+  register_row: register_row(name: "regime_dora"),
+  authority: transcribed(read_obligation: dora_read),
+  controls: dora_controls,
+  overlaps: [],
+}
+
+// THE ROSTER LIST IS NOT THE REGIME LIST. These are CONTROL ROSTERS keyed by the register's own
+// regime id; the population of regimes is the register's (strategy.compliance_posture
+// compliance_regimes), and audit_regimes below is derived from it by joining on that id. An earlier
+// cut authored a second list of twelve and kept it equal to the register with a witness - two
+// sources and a check, where DESIGN section 5 asks for one authority and a derivation (review
+// 65088). A regime the register carries and this list does not now REFUSES, typed and named,
+// instead of quietly shrinking the population.
+data regime_rosters: List<RegimeRoster> = [
+  roster_soc2,
+  roster_gdpr,
+  roster_pci,
+  roster_us_state,
+  roster_iso,
+  roster_hipaa,
+  roster_sanctions,
+  roster_export,
+  roster_data_act,
+  roster_breach,
+  roster_nis2,
+  roster_dora,
+]
+
+// ONE MATCH ON THE POSTURE THE REGISTER DECLARES. An excluded regime's controls are wrapped so that
+// every row shows the exclusion policy AND what enforces it; every other posture leaves the control
+// carrier as the roster authored it. Re-posturing HIPAA in the register is therefore all it takes
+// to stop the packet rendering exclusions - no roster edit, and no possibility of the two
+// disagreeing.
+fn posture_carrier(
+  posture: CompliancePosture,
+  register_row: DeclarationRef,
+  carrier: EvidenceCarrier,
+) -> EvidenceCarrier {
+  match posture {
+    ExcludedByProductPolicy { policy: _ } =>
+      PolicyExclusionCarrier { policy: register_row, enforcement: carrier }
+    DesignConstraintNow { carrier: _ } => carrier
+    DeferredUntil { trigger: _ } => carrier
+    NotApplicable { reason: _ } => carrier
+  }
+}
+
+fn postured_control(c: AuditControl, posture: CompliancePosture, register_row: DeclarationRef) -> AuditControl {
+  AuditControl {
+    id: c.id,
+    question: c.question,
+    question_standing: c.question_standing,
+    evidence_kind: c.evidence_kind,
+    carrier: posture_carrier(posture: posture, register_row: register_row, carrier: c.carrier),
+  }
+}
+
+fn postured_controls(roster: RegimeRoster, posture: CompliancePosture) -> List<AuditControl> {
+  map(roster.controls, c => postured_control(c: c, posture: posture, register_row: roster.register_row))
+}
+
+// THE REGISTER'S OWN POSTURE TEXT, RENDERED FROM THE REGISTER. Roster prose that restates a posture
+// rots the day the register is re-postured - review 65109 caught exactly that, with ISO and NIS2
+// obligations still saying "deferred" after the register had moved them to agent-buildable controls
+// under seek-all-now. The prose is corrected, and beside it the packet now prints the posture the
+// register carries AT RENDER TIME, derived by this match rather than transcribed: a reader sees the
+// register's current decision even if a roster sentence ages.
+fn posture_summary(posture: CompliancePosture) -> String {
+  match posture {
+    DesignConstraintNow { carrier: c } =>
+      join(["Register posture: DESIGN CONSTRAINT NOW - ", c as String], "")
+    DeferredUntil { trigger: t } =>
+      join(["Register posture: DEFERRED UNTIL - ", t as String], "")
+    ExcludedByProductPolicy { policy: p } =>
+      join(["Register posture: EXCLUDED BY PRODUCT POLICY - ", p as String], "")
+    NotApplicable { reason: r } =>
+      join(["Register posture: NOT APPLICABLE - ", r as String], "")
+  }
+}
+
+type RegimeBinding
+  = RegimeBound { regime: AuditRegime }
+  | RegimeRosterMissing { regime_id: NonEmptyStr }
+
+fn roster_for(regime_id: String) -> List<RegimeRoster> {
+  filter(regime_rosters, r => r.regime_id as String == regime_id)
+}
+
+fn bind_regime(r: ComplianceRegime) -> RegimeBinding {
+  match list_head(xs: roster_for(regime_id: r.id as String)) {
+    HeadAbsent => RegimeRosterMissing { regime_id: r.id }
+    HeadFound { value: roster } =>
+      RegimeBound {
+        regime: AuditRegime {
+          regime_id: r.id,
+          register_row: roster.register_row,
+          posture_summary: posture_summary(posture: r.posture),
+          authority: roster.authority,
+          controls: postured_controls(roster: roster, posture: r.posture),
+          overlaps: roster.overlaps,
+        },
+      }
+  }
+}
+
+data regime_bindings: List<RegimeBinding> = map(compliance_regimes, r => bind_regime(r: r))
+
+fn bound_regimes(bindings: List<RegimeBinding>) -> List<AuditRegime> {
+  fold(bindings, init: [], f: fn(acc, b) {
+    match b {
+      RegimeBound { regime } => concat(acc, [regime])
+      RegimeRosterMissing { regime_id: _ } => acc
+    }
+  })
+}
+
+fn regimes_without_rosters(bindings: List<RegimeBinding>) -> List<NonEmptyStr> {
+  fold(bindings, init: [], f: fn(acc, b) {
+    match b {
+      RegimeBound { regime: _ } => acc
+      RegimeRosterMissing { regime_id: id } => concat(acc, [id])
+    }
+  })
+}
+
+// THE REGIMES THE BUTTON ANSWERS FOR, derived from the register in the register's order.
+data audit_regimes: List<AuditRegime> = bound_regimes(bindings: regime_bindings)
+
+fn regime_control_ids(r: AuditRegime) -> List<String> {
+  map(r.controls, c => c.id as String)
+}
+
+// AN OVERLAP IS A CITATION TOO, and until review 65003 nothing checked it: the witness counted the
+// overlaps and read none of them, so a row could point at a control that does not exist - or, as it
+// did, at a control answering a different question - and the packet printed it as the place the
+// question is answered. The join below is what the witness folds; the note beside each row is prose
+// and stays a reviewer's problem, but the TARGET is now decidable.
+fn overlap_target_exists(o: ControlOverlap) -> Bool {
+  fold(audit_regimes, init: false, f: fn(acc, r) {
+    if acc {
+      true
+    } else {
+      r.regime_id as String == o.other_regime_id as String
+        && fold(regime_control_ids(r: r), init: false, f: fn(a, c) {
+             if a { true } else { c == o.other_control_id as String }
+           })
+    }
+  })
+}
+
+fn unresolved_overlaps(r: AuditRegime) -> List<ControlOverlap> {
+  filter(r.overlaps, o => !overlap_target_exists(o: o))
+}
+
+fn overlap_source_exists(r: AuditRegime, o: ControlOverlap) -> Bool {
+  fold(regime_control_ids(r: r), init: false, f: fn(a, c) {
+    if a { true } else { c == o.control_id as String }
+  })
+}
+
+fn misattached_overlaps(r: AuditRegime) -> List<ControlOverlap> {
+  filter(r.overlaps, o => !overlap_source_exists(r: r, o: o))
+}
+
+fn find_regime(regime_id: String) -> List<AuditRegime> {
+  filter(audit_regimes, r => r.regime_id as String == regime_id)
+}
+
+// DISPATCH READS THE BINDING, NOT THE FLATTENED LIST. bound_regimes drops the RegimeRosterMissing
+// arm by construction, so asking the flattened list "is there a regime with this id" answered NO
+// for a regime the REGISTER carries whose control roster is missing - the button then said "no such
+// regime in the compliance register", which is a false statement about the register and throws away
+// the one diagnosis that would have been actionable (operator merge review, 2026-09-13). Two
+// materially different failures were wearing one message. They are now two.
+fn binding_regime_id(b: RegimeBinding) -> String {
+  match b {
+    RegimeBound { regime } => regime.regime_id as String
+    RegimeRosterMissing { regime_id } => regime_id as String
+  }
+}
+
+fn binding_for(regime_id: String) -> List<RegimeBinding> {
+  filter(regime_bindings, b => binding_regime_id(b: b) == regime_id)
+}
+
+fn missing_roster_refusal(regime_id: String) -> String {
+  join([
+    "REFUSED: regime '", regime_id,
+    "' IS carried by the compliance register (strategy.compliance_posture compliance_regimes) and",
+    " this module carries no control roster for it, so there is no packet to emit and no honest",
+    " empty one either. Add a RegimeRoster whose regime_id is '", regime_id,
+    "' - an unrostered register row is a regime the operator cannot audit, which is a different",
+    " defect from asking for a regime that does not exist.",
+  ], "")
+}
+
+// The button over a binding, so the missing-roster path is reachable from a witness: every register
+// row carries a roster today, so nothing can reach that arm through an id.
+fn button_for_binding(binding: RegimeBinding) -> CliWireResponse {
+  match binding {
+    RegimeBound { regime } => button_for_regime(regime: regime)
+    RegimeRosterMissing { regime_id } =>
+      CliWirePrintable {
+        bytes: missing_roster_refusal(regime_id: regime_id as String),
+        exit: ExitFailure {
+          code: 1,
+          reason: join([
+            "regime ", regime_id as String,
+            " is in the compliance register and has no control roster in strategy.audit_regimes",
+          ], ""),
+        },
+      }
+  }
+}
+
+// THE BUTTON, AND THERE IS ONLY ONE OF IT. An earlier cut had two entries - a String-returning
+// renderer and a CliWireResponse process entry - each constructing the unknown-regime refusal from
+// its own literal list, and the witness pinned the renderer while the operator ran the process
+// entry. That is the second-authority defect this module argues against elsewhere, applied to its
+// own front door: the untested copy could have had its ExitFailure turned into ExitSuccess and the
+// roster would have stayed green (review 64979). One construction now, and the witness mutates ITS
+// exit.
+//
+//   gunbc run --source-root dag --source-root src/v2 --source-root private_overlay/dag \
+//     --entry private_overlay/dag/strategy/audit_regimes.dag --function audit_button \
+//     --arg regime_id=hipaa
+//
+// It prints the packet and EXITS NONZERO when there is no packet to trust - an unknown regime id,
+// or a roster row whose citation no longer resolves. A refused packet still PRINTS, because its
+// content is the repair list; printing and exiting zero is the shape that would let a broken roster
+// reach an auditor. gunbc.cli_wire exists for exactly this pair of facts.
+fn unknown_regime_refusal(regime_id: String) -> String {
+  join([
+    "REFUSED: no regime '", regime_id,
+    "' in the compliance register roster. Known ids: ",
+    join(map(audit_regimes, r => r.regime_id as String), ", "),
+  ], "")
+}
+
+// THE EXIT MATCHES THE SUM, not a Bool over it. Reading a coproduct through an is_* predicate and
+// then branching discards the payload the refusal needs - here, how many rows must be repaired -
+// and forces a second walk to recover it (the DispositionStanding precedent in
+// product.fabric.provider_admission). One match, and the count comes from the arm.
+fn packet_exit(regime_id: String, p: AuditPacket) -> ProcessExit {
+  match p {
+    PacketRendered { regime: _, readings: _ } => ExitSuccess
+    PacketRefused { regime_id: _, refusals: rs } =>
+      ExitFailure {
+        code: 1,
+        reason: join([
+          "audit packet refused for ", regime_id, ": ", to_string(count(rs)),
+          " roster row(s) cite a declaration the corpus does not carry; the printed document names every one.",
+        ], ""),
+      }
+  }
+}
+
+// Split from audit_button so the refusal path is REACHABLE FROM A WITNESS: a refusing roster cannot
+// be reached through a regime id, because every id in the register resolves today. The fixtures
+// exercise this, and audit_button is one lookup in front of it.
+// THE RESPONSE IS DECIDED BY BOTH FACTS: whether the roster resolved, and whether the document
+// could be emitted at all. A rejected emit exits NONZERO even over a packet that resolved, because
+// the reader is holding no packet either way - and the bytes still say which, because a refusal a
+// reader cannot diagnose is a blank page with a status attached.
+fn button_response(regime_id: String, p: AuditPacket, rendering: PacketRendering) -> CliWireResponse {
+  match rendering {
+    PacketRenderRejected { reason } =>
+      CliWirePrintable {
+        bytes: rendering_bytes(rendering: rendering),
+        exit: ExitFailure {
+          code: 1,
+          reason: join(["audit packet for ", regime_id, " could not be emitted: ", reason], ""),
+        },
+      }
+    PacketBytes { html: _ } =>
+      CliWirePrintable {
+        bytes: rendering_bytes(rendering: rendering),
+        exit: packet_exit(regime_id: regime_id, p: p),
+      }
+  }
+}
+
+// Split from audit_button so the refusal path is REACHABLE FROM A WITNESS: a refusing roster cannot
+// be reached through a regime id, because every id in the register resolves today.
+fn button_for_regime(regime: AuditRegime) -> CliWireResponse {
+  let p = packet(regime: regime)
+  button_response(regime_id: regime.regime_id as String, p: p, rendering: render_packet(p: p))
+}
+
+fn audit_button(regime_id: String) -> CliWireResponse {
+  match list_head(xs: binding_for(regime_id: regime_id)) {
+    HeadAbsent =>
+      CliWirePrintable {
+        bytes: unknown_regime_refusal(regime_id: regime_id),
+        exit: ExitFailure {
+          code: 1,
+          reason: join(["no such regime in the compliance register: ", regime_id], ""),
+        },
+      }
+    HeadFound { value: binding } => button_for_binding(binding: binding)
+  }
+}
+
+// ONE PROJECTION, ONE MATCH, BOTH FACTS. This front door used to carry button_exited_zero and
+// button_exit_reason: a Bool over the two-arm ProcessExit, and then a SECOND walk of the same
+// response to recover the payload the Bool discarded - which is the shape strategy.audit_packet
+// forbids in its own body where packet_is_refused used to be (review 65019 caught the module
+// contradicting itself at its front door). A reader of a CLI response wants both facts a CLI
+// produces, so the projection hands over both at once.
+//
+// THE UNPRINTABLE ARM IS REAL AND IS NOT THIS MODULE'S TO PRODUCE. gunbc.cli_wire makes the illegal
+// pairing -- no bytes, yet a success exit -- unwritable by giving CliWireUnprintable no exit field.
+// The button never constructs it (it renders through std.markdown, not through a terminal-write
+// projection), but a reader of a response must still answer for it, and answering "no bytes, did
+// not exit zero" is the honest projection rather than a default that hides a refusal.
+type ButtonReading {
+  bytes: String
+  exited_zero: Bool
+  exit_reason: String
+}
+
+fn read_button(response: CliWireResponse) -> ButtonReading {
+  match response {
+    CliWirePrintable { bytes, exit: e } =>
+      match e {
+        ExitSuccess => ButtonReading { bytes: bytes, exited_zero: true, exit_reason: "" }
+        ExitFailure { code: _, reason: r } =>
+          ButtonReading { bytes: bytes, exited_zero: false, exit_reason: r }
+      }
+    CliWireUnprintable { cause } =>
+      ButtonReading {
+        bytes: join(["REFUSED: nothing printable - ", cause as String], ""),
+        exited_zero: false,
+        exit_reason: cause as String,
+      }
+  }
+}

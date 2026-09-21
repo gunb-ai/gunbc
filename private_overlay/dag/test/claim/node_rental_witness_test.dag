@@ -1,0 +1,307 @@
+module test.claim.node_rental_witness
+
+import std.types { Bool, Int, List }
+import strategy.calendar_date { CalendarDate }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import strategy.node_rental_page { expected_node_rental_html }
+import strategy.node_rental {
+  RentalRow, market_rows, hetzner_row, oci_row, gcp_row, gcp_spot_row,
+  admissible_as_competitive_floor,
+  region_is_known, supply_is_known, supply_is_purchasable, not_orderable_reading_count,
+  hetzner_cax_supply_readings, derive_supply_standing, supply_standing_label,
+  DatedSupplyReading, DisplayedOrderable, DisplayedNotOrderable,
+  hetzner_supply_closing_experiments, supply_closing_experiment_count,
+  wholesale_argument_needs_quantity_enquiry,
+  hetzner_wholesale_quantity_enquiry, hetzner_verified_account_cax_order,
+  hetzner_cax_order_outside_hel1_nbg1, hetzner_public_sku_availability_history,
+  principal_is_operator, enquiry_is_awaiting_reply, enquiry_is_answered,
+  OperatorEnquiryAnswered,
+  arm_reseller_supply_bracket, bracket_is_closed,
+  ubicloud_supplier_hypotheses, ubicloud_x64_hetzner_hypothesis,
+  ubicloud_arm_hetzner_dedicated_hypothesis,
+  hypothesis_establishes_supply_relationship,
+  established_supply_relationship_count,
+  processor_model_is_a_supply_discriminator,
+}
+import strategy.wholesale_buyer {
+  wholesale_inquiries, wholesale_argument, wholesale_argument_is_ungrounded,
+  end_customer_rate_is_not_our_wholesale_bid,
+  hetzner_may_not_be_cited_as_reseller_cost_floor, blacksmith_catalog_is_cited,
+  blacksmith_authority_is_cited, our_slice_cost_micro,
+  WholesaleInquiry, ubicloud_inquiry, blacksmith_inquiry,
+  console_reading_is_scoped_not_orderable,
+  evidence_census_is_not_a_market_claim,
+  hetzner_reseller_quantity, reseller_quantity_is_quoted, reseller_quantity_is_not_offered,
+  ResellerQuantityQuoted, ResellerQuantityNotOffered,
+  reseller_quantity_standing_is_classified, facing_bid_is_classified,
+}
+
+// MEMBERSHIP BOTH WAYS, NO NUMERIC LITERAL. A fifth named row is added to named_retail_rows;
+// a stranger in market_rows fails the actual→expected direction; a missing named row fails
+// expected→actual. count(xs) == count(ys) accepted a same-cardinality swap — see the
+// substitution controls below.
+fn list_holds(xs: List<RentalRow>, wanted: RentalRow) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || (x == wanted) })
+}
+
+fn roster_is_identity_join(actual: List<RentalRow>, expected: List<RentalRow>) -> Bool {
+  all(expected, e => list_holds(xs: actual, wanted: e))
+    && all(actual, a => list_holds(xs: expected, wanted: a))
+}
+
+data named_retail_rows: List<RentalRow> = [hetzner_row, oci_row, gcp_spot_row, gcp_row]
+
+fn census_is_the_named_retail_rows() -> Bool {
+  roster_is_identity_join(actual: market_rows, expected: named_retail_rows)
+    && admissible_as_competitive_floor(r: hetzner_row) == false
+    && admissible_as_competitive_floor(r: oci_row) == false
+    && admissible_as_competitive_floor(r: gcp_row) == false
+    && admissible_as_competitive_floor(r: gcp_spot_row) == false
+}
+
+// SAME CARDINALITY, DIFFERENT MEMBERSHIP. oci_row stands where hetzner_row should. The count
+// grain that shipped in #56 is true of this list; the identity join is not. That pair is the
+// discriminating RED: without it the join can be rewritten back into a count and stay green.
+data substituted_retail_rows: List<RentalRow> = [oci_row, oci_row, gcp_spot_row, gcp_row]
+
+fn count_grain_accepts_substituted_retail() -> Bool {
+  count(substituted_retail_rows) == count(named_retail_rows)
+}
+
+fn identity_join_refuses_substituted_retail() -> Bool {
+  roster_is_identity_join(actual: substituted_retail_rows, expected: named_retail_rows) == false
+}
+
+// NONEMPTY IS NOT IDENTITY. #64's first witness accepted any nonempty request id, date and scope.
+// These exact literals bind the Answered arm to #55's request receipt and keep the vendor refusal
+// at CAX Cloud grain: dedicated Ampere was not answered.
+fn hetzner_reply_identity_date_and_scope_are_exact() -> Bool {
+  let reply_is_exact = match hetzner_wholesale_quantity_enquiry.principal {
+    OperatorEnquiryAnswered { enquiry, reply } =>
+      enquiry.request_id == "2026091103000909"
+        && enquiry.sent_on == "2026-09-11 (date encoded in the Hetzner request ID; submitted the evening of 2026-09-10 US time)"
+        && enquiry.asked == "Sent by Brian Searls for Gunbai LLC (https://gunb.ai). Asked: which Arm configurations, standard or via Custom Solutions, are offered, where, and with what provisioning time (Ampere Altra / Altra Max preferred, alternatives welcome, Europe acceptable); a suggested starting configuration with current pricing, setup fees and minimum commitment; volume and longer-term pricing; dedicated versus shared CPU and restrictions on sustained CPU-intensive build/CI load; conditions on using the capacity to provide compute services to our customers; and whether the CAX unavailability on our account is capacity or an account requirement. DIVERGES FROM THE experiment FIELD, deliberately: no named volume or named term was stated, by operator decision, because we have not yet chosen one and inventing one would get ahead of what is available. The reply may therefore be a starting offer rather than a quote for a named quantity."
+        && reply.replied_on == "2026-09-11"
+        && reply.replied_by == "Hetzner Online support, personal reply by email under request 2026091103000909 (the same ID the automated acknowledgement carried). Signed by a support agent, not presented as a Custom Solutions offer."
+        && reply.leaves_open == "No quantity, price or term was quoted for any Arm configuration. The reply did not address Arm outside Cloud (dedicated Ampere servers, the Altra / Altra Max request), setup fees, volume pricing, or conditions on reselling compute to our customers. It routes larger or longer-term arrangements to Custom Solutions even though the enquiry was filed on the Custom Solutions form, so it is not established that Custom Solutions has seen it. A vendor statement is not an order attempt; hetzner_verified_account_cax_order and hetzner_cax_order_outside_hel1_nbg1 stay as written."
+        && reply.next_recommendation == "The unanswered supply questions make Hivelocity, phoenixNAP and OCI the next recommended Arm vendors to investigate. This is an UNSENT recommendation: no fallback dispatch, owner, acceptance or receipt is modeled here. Re-asking Hetzner Custom Solutions directly about dedicated Ampere remains an operator decision and is worth doing only with a named volume and term, which was deliberately not stated in the first enquiry. Do not re-ask Cloud support for CAX capacity; the answer is on record here."
+    _ => false
+  }
+  let standing_is_exact = match hetzner_reseller_quantity {
+    ResellerQuantityNotOffered { observed_on, scope, experiment } =>
+      observed_on == "2026-09-11"
+        && scope == "Hetzner Cloud Arm (CAX): no additional capacity for new deployments, no provisioning date, no reservation. Stated by Hetzner support in the reply filed on hetzner_wholesale_quantity_enquiry. Not a statement about dedicated Ampere servers, which the reply did not address, and not permanent: the vendor says availability changes dynamically."
+        && experiment.question == "Can Hetzner supply a RESELLER with QUANTITY under a term commitment?"
+    _ => false
+  }
+  reply_is_exact && standing_is_exact
+}
+
+fn closing_experiments_name_principal_and_quantity_first() -> Bool {
+  supply_closing_experiment_count() == 4
+    && count(hetzner_supply_closing_experiments) == 4
+    && wholesale_argument_needs_quantity_enquiry() == false
+    && hetzner_wholesale_quantity_enquiry.question == "Can Hetzner supply a RESELLER with QUANTITY under a term commitment?"
+    && principal_is_operator(p: hetzner_wholesale_quantity_enquiry.principal)
+    && enquiry_is_answered(p: hetzner_wholesale_quantity_enquiry.principal)
+    && enquiry_is_awaiting_reply(p: hetzner_wholesale_quantity_enquiry.principal) == false
+    && enquiry_is_answered(p: hetzner_verified_account_cax_order.principal) == false
+    && enquiry_is_awaiting_reply(p: hetzner_verified_account_cax_order.principal) == false
+    && reseller_quantity_is_not_offered(s: hetzner_reseller_quantity)
+    && reseller_quantity_is_quoted(s: hetzner_reseller_quantity) == false
+    && principal_is_operator(p: hetzner_verified_account_cax_order.principal)
+    && principal_is_operator(p: hetzner_cax_order_outside_hel1_nbg1.principal)
+    && principal_is_operator(p: hetzner_public_sku_availability_history.principal) == false
+    && reseller_quantity_standing_is_classified(s: hetzner_reseller_quantity)
+    && hetzner_reply_identity_date_and_scope_are_exact()
+}
+
+fn hetzner_scoped_not_orderable_from_three_readings() -> Bool {
+  region_is_known(r: hetzner_row.region)
+    && supply_is_known(s: hetzner_row.supply)
+    && supply_is_purchasable(s: hetzner_row.supply) == false
+    && not_orderable_reading_count(s: hetzner_row.supply) == 3
+    && count(hetzner_cax_supply_readings) == 3
+    && console_reading_is_scoped_not_orderable(r: hetzner_row)
+    && hetzner_may_not_be_cited_as_reseller_cost_floor()
+    && closing_experiments_name_principal_and_quantity_first()
+}
+
+fn oci_region_unrecorded_gcp_region_joined_supply_unread() -> Bool {
+  region_is_known(r: oci_row.region) == false
+    && supply_is_known(s: oci_row.supply) == false
+    && region_is_known(r: gcp_row.region)
+    && supply_is_known(s: gcp_row.supply) == false
+    && region_is_known(r: gcp_spot_row.region) == false
+    && supply_is_known(s: gcp_spot_row.supply) == false
+    && admissible_as_competitive_floor(r: oci_row) == false
+    && admissible_as_competitive_floor(r: gcp_row) == false
+}
+
+// A QUOTE IS AUTHORABLE. This fixture is not a market observation. If the Quoted arm is deleted,
+// this reds; if a live quote is filed on hetzner_reseller_quantity, the live row match still
+// classifies and this fixture still greens.
+fn a_dated_quantity_quote_is_representable() -> Bool {
+  reseller_quantity_is_quoted(s: ResellerQuantityQuoted {
+    units: 1,
+    observed_on: "fixture-not-a-market-observation",
+    source: "test.claim.node_rental_witness a_dated_quantity_quote_is_representable",
+    experiment: hetzner_wholesale_quantity_enquiry,
+  })
+}
+
+fn inquiry_list_holds(xs: List<WholesaleInquiry>, wanted: WholesaleInquiry) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || (x == wanted) })
+}
+
+fn inquiry_roster_is_identity_join(actual: List<WholesaleInquiry>, expected: List<WholesaleInquiry>) -> Bool {
+  all(expected, e => inquiry_list_holds(xs: actual, wanted: e))
+    && all(actual, a => inquiry_list_holds(xs: expected, wanted: a))
+}
+
+data named_wholesale_inquiries: List<WholesaleInquiry> = [ubicloud_inquiry, blacksmith_inquiry]
+
+data substituted_wholesale_inquiries: List<WholesaleInquiry> = [ubicloud_inquiry, ubicloud_inquiry]
+
+fn count_grain_accepts_substituted_inquiries() -> Bool {
+  count(substituted_wholesale_inquiries) == count(named_wholesale_inquiries)
+}
+
+fn identity_join_refuses_substituted_inquiries() -> Bool {
+  inquiry_roster_is_identity_join(actual: substituted_wholesale_inquiries, expected: named_wholesale_inquiries) == false
+}
+
+fn buyer_side_is_not_a_retail_row() -> Bool {
+  inquiry_roster_is_identity_join(actual: wholesale_inquiries, expected: named_wholesale_inquiries)
+    && facing_bid_is_classified(p: ubicloud_inquiry.what_they_would_pay_us)
+    && facing_bid_is_classified(p: blacksmith_inquiry.what_they_would_pay_us)
+    && end_customer_rate_is_not_our_wholesale_bid(i: ubicloud_inquiry)
+    && end_customer_rate_is_not_our_wholesale_bid(i: blacksmith_inquiry)
+    && blacksmith_catalog_is_cited()
+    && blacksmith_authority_is_cited()
+    && a_dated_quantity_quote_is_representable()
+}
+
+fn argument_survives_as_ungrounded_not_as_a_fake_win() -> Bool {
+  wholesale_argument_is_ungrounded(a: wholesale_argument())
+    && our_slice_cost_micro() != 0
+    && evidence_census_is_not_a_market_claim() != ""
+}
+
+// A SHARED PROCESSOR SKU ESTABLISHES NO SUPPLY RELATIONSHIP. This exercises the arms rather than
+// asserting the declarations exist: the x64 hypothesis is the one the retracted inference read as
+// strong evidence, so it is the discriminating case - if anyone re-promotes it to
+// SupplyRelationshipObserved, established_supply_relationship_count goes to one and this goes red.
+fn shared_sku_establishes_no_supply_relationship() -> Bool {
+  count(ubicloud_supplier_hypotheses) == 2
+    && established_supply_relationship_count() == 0
+    && hypothesis_establishes_supply_relationship(h: ubicloud_x64_hetzner_hypothesis) == false
+    && hypothesis_establishes_supply_relationship(h: ubicloud_arm_hetzner_dedicated_hypothesis) == false
+    && processor_model_is_a_supply_discriminator() == false
+    && bracket_is_closed(b: arm_reseller_supply_bracket) == false
+}
+
+// THE DISCRIMINATING FIXTURES FOR THE LATEST-READING FOLD. These exist because the corpus CANNOT
+// author the red: every committed reading is DisplayedNotOrderable, so the arm that used to fail
+// open was never taken by real data and a fold whose failing input is unauthorable in the corpus
+// is a decoration (DESIGN §4b). A fixture can author it, so it does.
+//
+// AGAINST THE OLD FOLD, THE FIRST OF THESE IS RED. `any_reading_orderable` was date-blind, so an
+// early orderable reading made the series purchasable forever regardless of every later negative.
+// It now derives not-purchasable because the LATEST reading decides.
+data fixture_orderable_early: DatedSupplyReading = DatedSupplyReading {
+  observed_on: CalendarDate { year: 2026, month: 9, day: 5 },
+  account_scope: "fixture",
+  regions_named: "fixture",
+  shown: DisplayedOrderable { note: "fixture: shown orderable on the earlier date" },
+  source: "fixture: test.claim.node_rental_witness",
+}
+
+data fixture_not_orderable_late: DatedSupplyReading = DatedSupplyReading {
+  observed_on: CalendarDate { year: 2026, month: 9, day: 10 },
+  account_scope: "fixture",
+  regions_named: "fixture",
+  shown: DisplayedNotOrderable { sku_grain: "fixture: shown not orderable on the later date" },
+  source: "fixture: test.claim.node_rental_witness",
+}
+
+data fixture_not_orderable_early: DatedSupplyReading = DatedSupplyReading {
+  observed_on: CalendarDate { year: 2026, month: 9, day: 5 },
+  account_scope: "fixture",
+  regions_named: "fixture",
+  shown: DisplayedNotOrderable { sku_grain: "fixture: shown not orderable on the earlier date" },
+  source: "fixture: test.claim.node_rental_witness",
+}
+
+data fixture_orderable_late: DatedSupplyReading = DatedSupplyReading {
+  observed_on: CalendarDate { year: 2026, month: 9, day: 10 },
+  account_scope: "fixture",
+  regions_named: "fixture",
+  shown: DisplayedOrderable { note: "fixture: shown orderable on the later date" },
+  source: "fixture: test.claim.node_rental_witness",
+}
+
+// SAME DATE, DIFFERENT DISPLAY: nothing in the series orders these, so the fold must REFUSE rather
+// than pick one (§5: a failure arm refuses, never widens).
+data fixture_orderable_same_day: DatedSupplyReading = DatedSupplyReading {
+  observed_on: CalendarDate { year: 2026, month: 9, day: 10 },
+  account_scope: "fixture",
+  regions_named: "fixture",
+  shown: DisplayedOrderable { note: "fixture: contested same-day orderable" },
+  source: "fixture: test.claim.node_rental_witness",
+}
+
+fn a_stale_orderable_does_not_survive_a_later_negative() -> Bool {
+  supply_standing_label(s: derive_supply_standing(readings: [fixture_orderable_early, fixture_not_orderable_late]))
+    == "not orderable to this account"
+    && supply_is_purchasable(s: derive_supply_standing(readings: [fixture_orderable_early, fixture_not_orderable_late])) == false
+}
+
+// THE POSITIVE CONTROL ON THE SAME FOLD. Without it, an implementation that answered
+// not-purchasable unconditionally would pass the test above and be indistinguishable from a wall.
+fn a_later_orderable_does_establish_purchasable() -> Bool {
+  supply_standing_label(s: derive_supply_standing(readings: [fixture_not_orderable_early, fixture_orderable_late]))
+    == "purchasable"
+    && supply_is_purchasable(s: derive_supply_standing(readings: [fixture_not_orderable_early, fixture_orderable_late]))
+}
+
+fn a_contested_latest_date_refuses_rather_than_picking() -> Bool {
+  supply_standing_label(s: derive_supply_standing(readings: [fixture_not_orderable_late, fixture_orderable_same_day]))
+    == "supply readings conflict"
+    && supply_is_purchasable(s: derive_supply_standing(readings: [fixture_not_orderable_late, fixture_orderable_same_day])) == false
+    && supply_is_known(s: derive_supply_standing(readings: [fixture_not_orderable_late, fixture_orderable_same_day])) == false
+}
+
+fn an_empty_series_is_unobserved() -> Bool {
+  supply_standing_label(s: derive_supply_standing(readings: [])) == "supply unobserved"
+}
+
+fn node_rental_witness_all() -> Bool {
+  census_is_the_named_retail_rows()
+    && count_grain_accepts_substituted_retail()
+    && identity_join_refuses_substituted_retail()
+    && count_grain_accepts_substituted_inquiries()
+    && identity_join_refuses_substituted_inquiries()
+    && hetzner_scoped_not_orderable_from_three_readings()
+    && oci_region_unrecorded_gcp_region_joined_supply_unread()
+    && buyer_side_is_not_a_retail_row()
+    && argument_survives_as_ungrounded_not_as_a_fake_win()
+    && shared_sku_establishes_no_supply_relationship()
+    && a_stale_orderable_does_not_survive_a_later_negative()
+    && a_later_orderable_does_establish_purchasable()
+    && a_contested_latest_date_refuses_rather_than_picking()
+    && an_empty_series_is_unobserved()
+}
+
+fn node_rental_witness_main() -> ProcessExit {
+  if node_rental_witness_all() {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "node_rental_witness_all returned false" }
+  }
+}
+
+fn node_rental_emit_cli() -> CliWireResponse {
+  CliWirePrintable { bytes: expected_node_rental_html(), exit: ExitSuccess }
+}

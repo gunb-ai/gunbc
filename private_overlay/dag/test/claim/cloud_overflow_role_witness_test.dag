@@ -1,0 +1,274 @@
+module test.claim.cloud_overflow_role_witness
+
+import std.types { Bool, Int, String, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.interval { degenerate_interval }
+import std.pareto { AxisReading, ParetoEntry }
+import std.decision {
+  CandidateFieldEstablished,
+  CausalModelUnestablished,
+  SensitivityUnestablished,
+  RealizationSelectionResult,
+  SelectedWithin,
+  SelectionNeedsEvidence,
+  SelectionNeedsPolicy,
+  NoFeasibleRealization,
+  CandidateFieldUnestablished,
+  RealizationSelectionRefused,
+  mint_receipt,
+  mint_scope,
+}
+import strategy.node_rental { admissible_as_competitive_floor, hetzner_row, gcp_row }
+import strategy.cloud_overflow_role {
+  axis_extra_cloud_spend,
+  axis_role_actuable,
+  candidate_none,
+  candidate_burst,
+  candidate_x86,
+  candidate_control_plane,
+  cloud_overflow_role_selection,
+  entry_none,
+  entry_burst,
+  entry_x86,
+  entry_control_plane,
+  live_overflow_field,
+  overflow_assessment,
+  overflow_candidate_field,
+  overflow_closed_roster,
+  overflow_constraint_authority,
+  overflow_evidence_snapshot,
+  overflow_policy,
+  overflow_quota_increase_authorized,
+  overflow_role_subject,
+  term_extra_cloud_spend,
+  var_cloud_role,
+  select_cloud_overflow_role,
+  selection_arm_name,
+}
+
+fn spend(micro: Int) -> AxisReading {
+  AxisReading {
+    axis: axis_extra_cloud_spend,
+    interval_micro: degenerate_interval(point: micro),
+  }
+}
+
+fn actuable(micro: Int) -> AxisReading {
+  AxisReading {
+    axis: axis_role_actuable,
+    interval_micro: degenerate_interval(point: micro),
+  }
+}
+
+fn priced(identity: DeclarationRef, label: NonEmptyStr, micro: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: identity,
+    display_label: label,
+    readings: [spend(micro: micro), actuable(micro: 1)],
+    missing_inputs: [],
+  }
+}
+
+// LIVE FIELD and a fully priced closed field both NeedEvidence: the causal model is unread.
+fn live_needs_evidence() -> Bool {
+  match cloud_overflow_role_selection() {
+    SelectionNeedsEvidence { needs: ns } => (count(ns) > 0) && !overflow_quota_increase_authorized(pick: cloud_overflow_role_selection())
+    SelectedWithin { candidate: _, receipt: _ } => false
+    SelectionNeedsPolicy { survivors: _ } => false
+    CandidateFieldUnestablished { causes: _ } => false
+    NoFeasibleRealization { causes: _ } => false
+    RealizationSelectionRefused { defects: _ } => false
+  }
+}
+
+fn priced_field_still_needs_causal_evidence() -> Bool {
+  match select_cloud_overflow_role(field: [
+    priced(identity: candidate_none, label: "nothing" as NonEmptyStr, micro: 0),
+    priced(identity: candidate_burst, label: "burst" as NonEmptyStr, micro: 1000),
+    priced(identity: candidate_x86, label: "x86" as NonEmptyStr, micro: 2000),
+    priced(identity: candidate_control_plane, label: "control plane" as NonEmptyStr, micro: 3000),
+  ]) {
+    SelectionNeedsEvidence { needs: ns } =>
+      (count(ns) > 0)
+        && !overflow_quota_increase_authorized(pick: select_cloud_overflow_role(field: [
+          priced(identity: candidate_none, label: "nothing" as NonEmptyStr, micro: 0),
+          priced(identity: candidate_burst, label: "burst" as NonEmptyStr, micro: 1000),
+          priced(identity: candidate_x86, label: "x86" as NonEmptyStr, micro: 2000),
+          priced(identity: candidate_control_plane, label: "control plane" as NonEmptyStr, micro: 3000),
+        ]))
+    _ => false
+  }
+}
+
+fn causal_model_is_unestablished() -> Bool {
+  match overflow_assessment().causal_model {
+    CausalModelUnestablished { subject: s, read_obligation: o } =>
+      declaration_ref_eq(a: s, b: overflow_role_subject.identity) && (o != "")
+    _ => false
+  }
+    && match overflow_assessment().sensitivities.first() {
+      Absent => false
+      Present { value: row } => match row {
+        SensitivityUnestablished { term: t, variable: v, obligation: o } =>
+          declaration_ref_eq(a: t, b: term_extra_cloud_spend.identity)
+            && declaration_ref_eq(a: v, b: var_cloud_role.identity)
+            && (o != "")
+        _ => false
+      }
+    }
+}
+
+// DISCRIMINATING RED: a singleton priced field that selects itself must not authorize a quota increase.
+fn singleton_priced_does_not_authorize() -> Bool {
+  let pick = SelectedWithin {
+    candidate: priced(identity: candidate_burst, label: "burst" as NonEmptyStr, micro: 1000),
+    receipt: mint_receipt(
+      scope: mint_scope(
+        decision_subject: overflow_role_subject.identity,
+        candidate_field_identity: overflow_candidate_field,
+        candidate_field_standing: CandidateFieldEstablished { identities: [candidate_burst] },
+        constraint_authority: overflow_constraint_authority,
+        funded_axes: [axis_extra_cloud_spend, axis_role_actuable],
+        evidence_snapshot: overflow_evidence_snapshot,
+      ),
+      pareto_survivors: [candidate_burst],
+      policy_authority: overflow_policy,
+      selected_identity: candidate_burst,
+    ),
+  }
+  !overflow_quota_increase_authorized(pick: pick)
+    && match select_cloud_overflow_role(field: [
+      priced(identity: candidate_burst, label: "burst" as NonEmptyStr, micro: 1000),
+    ]) {
+      SelectedWithin { candidate: _, receipt: _ } =>
+        !overflow_quota_increase_authorized(pick: select_cloud_overflow_role(field: [
+          priced(identity: candidate_burst, label: "burst" as NonEmptyStr, micro: 1000),
+        ]))
+      _ => true
+    }
+}
+
+fn spend_only_axes_do_not_authorize() -> Bool {
+  let pick = SelectedWithin {
+    candidate: priced(identity: candidate_burst, label: "burst" as NonEmptyStr, micro: 1000),
+    receipt: mint_receipt(
+      scope: mint_scope(
+        decision_subject: overflow_role_subject.identity,
+        candidate_field_identity: overflow_candidate_field,
+        candidate_field_standing: CandidateFieldEstablished { identities: overflow_closed_roster },
+        constraint_authority: overflow_constraint_authority,
+        funded_axes: [axis_extra_cloud_spend],
+        evidence_snapshot: overflow_evidence_snapshot,
+      ),
+      pareto_survivors: [candidate_burst],
+      policy_authority: overflow_policy,
+      selected_identity: candidate_burst,
+    ),
+  }
+  !overflow_quota_increase_authorized(pick: pick)
+}
+
+fn closed_burst_receipt(subject: DeclarationRef, selected: DeclarationRef) -> RealizationSelectionResult<ParetoEntry> {
+  SelectedWithin {
+    candidate: priced(identity: candidate_burst, label: "burst" as NonEmptyStr, micro: 1000),
+    receipt: mint_receipt(
+      scope: mint_scope(
+        decision_subject: subject,
+        candidate_field_identity: overflow_candidate_field,
+        candidate_field_standing: CandidateFieldEstablished { identities: overflow_closed_roster },
+        constraint_authority: overflow_constraint_authority,
+        funded_axes: [axis_extra_cloud_spend, axis_role_actuable],
+        evidence_snapshot: overflow_evidence_snapshot,
+      ),
+      pareto_survivors: [candidate_burst],
+      policy_authority: overflow_policy,
+      selected_identity: selected,
+    ),
+  }
+}
+
+// DISCRIMINATING RED: a closed-field receipt for a foreign subject must not authorize this quota.
+fn foreign_subject_does_not_authorize() -> Bool {
+  !overflow_quota_increase_authorized(pick: closed_burst_receipt(
+    subject: decl_ref(module_path: "test.claim.cloud_overflow_role_witness", decl_name: "foreign_overflow_subject"),
+    selected: candidate_burst,
+  ))
+}
+
+// DISCRIMINATING RED: burst candidate paired with a receipt that selected none must not authorize.
+fn selected_identity_mismatch_does_not_authorize() -> Bool {
+  !overflow_quota_increase_authorized(pick: closed_burst_receipt(
+    subject: overflow_role_subject.identity,
+    selected: candidate_none,
+  ))
+}
+
+// ACCEPTED POSITIVE CONTROL: a fixture receipt that matches this assessment on every field
+// authorizes. Live selection stays NeedsEvidence; this is not a live authorization.
+fn closed_burst_receipt_authorizes() -> Bool {
+  overflow_quota_increase_authorized(pick: closed_burst_receipt(
+    subject: overflow_role_subject.identity,
+    selected: candidate_burst,
+  ))
+}
+
+// DISCRIMINATING RED: two zero-spend survivors with UniqueSurvivorRequired need policy, they are not Optimal.
+fn two_zeros_need_policy() -> Bool {
+  match select_cloud_overflow_role(field: [
+    priced(identity: candidate_none, label: "nothing" as NonEmptyStr, micro: 0),
+    priced(identity: candidate_burst, label: "burst" as NonEmptyStr, micro: 0),
+  ]) {
+    SelectionNeedsPolicy { survivors: sv } => count(sv) == 2
+    SelectionNeedsEvidence { needs: ns } => count(ns) > 0
+    _ => false
+  }
+}
+
+fn live_none_is_complete() -> Bool {
+  (count(entry_none().missing_inputs) == 0) && (count(entry_none().readings) == 2)
+}
+
+fn live_control_plane_has_listed_spend() -> Bool {
+  (count(entry_control_plane().missing_inputs) == 1) && (count(entry_control_plane().readings) == 1)
+}
+
+fn priced_spend_does_not_drop_control_plane_unread() -> Bool {
+  match select_cloud_overflow_role(field: [
+    priced(identity: candidate_none, label: "nothing" as NonEmptyStr, micro: 0),
+    priced(identity: candidate_burst, label: "burst" as NonEmptyStr, micro: 1000),
+    priced(identity: candidate_x86, label: "x86" as NonEmptyStr, micro: 2000),
+    entry_control_plane(),
+  ]) {
+    SelectionNeedsEvidence { needs: ns } => count(ns) > 0
+    _ => false
+  }
+}
+
+fn overflow_gaps_follow_floor_predicates() -> Bool {
+  (admissible_as_competitive_floor(r: hetzner_row) == (count(entry_burst().missing_inputs) == 0))
+    && (admissible_as_competitive_floor(r: gcp_row) == (count(entry_x86().missing_inputs) == 0))
+}
+
+fn failed(name: String, ok: Bool) -> String {
+  if ok { "" } else { join([name, " "], "") }
+}
+
+fn cloud_overflow_role_witness_main() -> ProcessExit {
+  let f = join([
+    failed(name: "live_needs_evidence", ok: live_needs_evidence()),
+    failed(name: "priced_field_still_needs_causal_evidence", ok: priced_field_still_needs_causal_evidence()),
+    failed(name: "causal_model_is_unestablished", ok: causal_model_is_unestablished()),
+    failed(name: "singleton_priced_does_not_authorize", ok: singleton_priced_does_not_authorize()),
+    failed(name: "spend_only_axes_do_not_authorize", ok: spend_only_axes_do_not_authorize()),
+    failed(name: "foreign_subject_does_not_authorize", ok: foreign_subject_does_not_authorize()),
+    failed(name: "selected_identity_mismatch_does_not_authorize", ok: selected_identity_mismatch_does_not_authorize()),
+    failed(name: "closed_burst_receipt_authorizes", ok: closed_burst_receipt_authorizes()),
+    failed(name: "two_zeros_need_policy", ok: two_zeros_need_policy()),
+    failed(name: "live_none_is_complete", ok: live_none_is_complete()),
+    failed(name: "live_control_plane_has_listed_spend", ok: live_control_plane_has_listed_spend()),
+    failed(name: "priced_spend_does_not_drop_control_plane_unread", ok: priced_spend_does_not_drop_control_plane_unread()),
+    failed(name: "overflow_gaps_follow_floor_predicates", ok: overflow_gaps_follow_floor_predicates()),
+  ], "")
+  if f == "" { ExitSuccess } else { exit_failure(reason: join(["cloud overflow role witness FAILED: ", f, " arm=", selection_arm_name(pick: cloud_overflow_role_selection())], "")) }
+}

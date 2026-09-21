@@ -1,0 +1,640 @@
+module strategy.wholesale_journeys
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.decl_ref { DeclarationRef }
+import strategy.year_end_plan { find_item, item_is_done, item_wholesale_production_readiness, completion_binding_dep_ids }
+import strategy.wholesale_batch_floor {
+  RepairIntervalPlanAssessment, PlanFitsUnderAssumptions, PlanDoesNotFit, repair_interval_plan,
+  ServiceBoundary, RawBareMetal, ManagedSubstrate, ManagedFabricCapacity, selected_boundary, BoundaryStanding,
+  NetworkCommercialStanding, network_commercials, CacheRealization, cache_realization,
+}
+
+// THE END-TO-END JOURNEYS A WHOLESALE BUYER ACTUALLY TAKES, WHO OWNS EACH STEP, AND WHETHER ONE
+// HAS BEEN EXECUTED AND ACCEPTED.
+//
+// Operator direction 2026-09-14: the plan must accept security, networking and fabric as JOURNEYS -
+// a node cold-boots, the buyer reaches it over their VLAN, the fabric selects for their work, the
+// cache (if one is selected) serves it, egress leaves on their path, a node dies and is replaced,
+// the buyer offboards - on a colo cabinet AND on the operator's apartment network, for every arm
+// of the service boundary.
+//
+// TWO PROPOSITIONS, KEPT APART (review repair 2026-09-14): OWNERSHIP - every step is implemented,
+// designed, planned, or UNOWNED with its gap and closer - and ACCEPTANCE - every step carries an
+// Accepted receipt keyed to a buyer, a node and a journey revision. A journey whose steps are
+// merely Planned has complete ownership and is NOT acceptable; nothing here reads a plan item's
+// existence as execution. Acceptance is looked up EXACTLY for the selected buyer, boundary and
+// production site, never as a global count.
+//
+// THE FINDING THAT MOTIVATED IT, stated once: gunbc.product.network_topology's reachability zones
+// are ContainerRunner, HostLan, BmcManagement and TailscaleMesh. THERE IS NO BUYER ZONE, and a
+// ContainerRunner CAN reach BmcManagement. Closing that is a public-repo change (first gap below).
+
+// ---------------------------------------------------------------------------------------------
+// 1. THE AXES. Site and boundary change the handoff and the security surface. The boundary is
+// wholesale_batch_floor's ServiceBoundary - this module mints no second vocabulary.
+// ---------------------------------------------------------------------------------------------
+
+type SiteVariant
+  = ColoCabinet { note: NonEmptyStr }
+  | ApartmentOverlay { note: NonEmptyStr }
+
+fn site_label(v: SiteVariant) -> NonEmptyStr {
+  match v {
+    ColoCabinet { note } => "colo" as NonEmptyStr,
+    ApartmentOverlay { note } => "apartment" as NonEmptyStr,
+  }
+}
+
+fn boundary_label(b: ServiceBoundary) -> NonEmptyStr {
+  match b {
+    RawBareMetal { note } => "raw-bare-metal" as NonEmptyStr,
+    ManagedSubstrate { note } => "managed-substrate" as NonEmptyStr,
+    ManagedFabricCapacity { note } => "managed-fabric-capacity" as NonEmptyStr,
+  }
+}
+
+// A SITE ROW IS A STANDING, NOT A REALIZATION (review repair 2026-09-14). "A+B, a routed /29, a
+// 1 Gbps commit on a 10G handoff" is what the RFQ REQUESTED; "WireGuard to a small VPS" is what
+// home_hosting lists as a verification obligation. Neither is an observed site fact yet.
+type SiteJourneyStanding
+  = SiteJourneyCandidate { site: SiteVariant, note: NonEmptyStr }
+  | SiteJourneyRequested { site: SiteVariant, request: NonEmptyStr }
+  | SiteJourneySelected { site: SiteVariant, receipt: NonEmptyStr }
+  | SiteJourneyTurnedUp { site: SiteVariant, receipt: NonEmptyStr }
+  | SiteJourneyObserved { site: SiteVariant, receipt: NonEmptyStr }
+
+data site_colo: SiteVariant = ColoCabinet {
+  note: "One high-density cabinet with a rack switch we configure; the buyer's attachment would be an L2 VLAN or an L3 VRF on it. Power, feeds, addressing and transit are the RFQ's asks, carried as standings elsewhere.",
+}
+
+data site_apartment: SiteVariant = ApartmentOverlay {
+  note: "strategy.home_hosting: residential ISP, single feed. There is no L2 VLAN to hand a buyer; an L3 overlay terminated off-site is the CANDIDATE attachment. The row exists because it is what proves the design before a colo is signed.",
+}
+
+// The colo row consumes the commercial standing: Requested while the RFQ is out, Selected once a
+// quote is accepted, TurnedUp only when colo-turnup-rack-acceptance is Done.
+fn colo_site_standing() -> SiteJourneyStanding {
+  if count(filter(find_item(id: "colo-turnup-rack-acceptance"), i => item_is_done(i: i))) == 1 {
+    SiteJourneyTurnedUp { site: site_colo, receipt: "colo-turnup-rack-acceptance Done" }
+  } else {
+    match network_commercials {
+      NetworkCommercialRequested { physical_handoff_mbps, committed_mbps, burst_ceiling_mbps, asked_of } =>
+        SiteJourneyRequested { site: site_colo, request: "RFQ issued 2026-09-14 to five facilities: 16 kW A+B, a 1 Gbps commit on a 10G handoff, a routed /29 (network_commercials Requested)" },
+      NetworkCommercialQuoted { physical_handoff_mbps, committed_mbps, burst_ceiling_mbps, billing_method, facility, quoted_on } =>
+        SiteJourneyRequested { site: site_colo, request: "quoted, not yet accepted" },
+      NetworkCommercialAccepted { committed_mbps, billing_method, contract } =>
+        SiteJourneySelected { site: site_colo, receipt: contract },
+      NetworkCommercialMeasured { committed_mbps, measured_p95_mbps, window } =>
+        SiteJourneySelected { site: site_colo, receipt: window },
+    }
+  }
+}
+
+// The apartment row consumes home-soft-launch-readiness; the overlay is a candidate until observed.
+fn apartment_site_standing() -> SiteJourneyStanding {
+  if count(filter(find_item(id: "home-soft-launch-readiness"), i => item_is_done(i: i))) == 1 {
+    SiteJourneySelected { site: site_apartment, receipt: "home-soft-launch-readiness Done; overlay realization still to be observed on a buyer prefix" }
+  } else {
+    SiteJourneyCandidate { site: site_apartment, note: "home_hosting lists static addressing, upload behaviour, ISP terms and a WireGuard tunnel to a VPS as verification obligations, not observed state" }
+  }
+}
+
+// A SITE IS OBSERVED ONLY BY A RECEIPT (review repair 2026-09-14, P1): turn-up and home readiness
+// produce TurnedUp and Selected; the Observed arm is produced by derive_accepted_journey from a
+// SiteObservationReceipt, and the live list of those is empty.
+type SiteObservationReceipt {
+  site: SiteVariant
+  node: NonEmptyStr
+  observed_at: NonEmptyStr
+  receipt: DeclarationRef
+}
+
+data site_observations: List<SiteObservationReceipt> = []
+
+fn site_observed_by_receipt(v: SiteVariant, observations: List<SiteObservationReceipt>) -> Bool {
+  count(filter(observations, o => site_label(v: o.site) == site_label(v: v))) >= 1
+}
+
+fn site_standing_is_observed(s: SiteJourneyStanding) -> Bool {
+  match s {
+    SiteJourneyCandidate { site, note } => false,
+    SiteJourneyRequested { site, request } => false,
+    SiteJourneySelected { site, receipt } => false,
+    SiteJourneyTurnedUp { site, receipt } => false,
+    SiteJourneyObserved { site, receipt } => true,
+  }
+}
+
+fn site_standing_for(v: SiteVariant) -> SiteJourneyStanding {
+  if site_observed_by_receipt(v: v, observations: site_observations) {
+    SiteJourneyObserved { site: v, receipt: "site_observations" }
+  } else {
+    match v {
+      ColoCabinet { note } => colo_site_standing(),
+      ApartmentOverlay { note } => apartment_site_standing(),
+    }
+  }
+}
+
+// HOW THE BUYER ATTACHES. This is the exposed interface, and today it is unspecified on both sites.
+type HandoffInterface
+  = L2Vlan { vlan_note: NonEmptyStr }
+  | L3Vrf { vrf_note: NonEmptyStr }
+  | WireGuardOverlay { terminated_at: NonEmptyStr }
+  | HandoffUnspecified { obligation: NonEmptyStr }
+
+fn handoff_is_specified(h: HandoffInterface) -> Bool {
+  match h {
+    L2Vlan { vlan_note } => true,
+    L3Vrf { vrf_note } => true,
+    WireGuardOverlay { terminated_at } => true,
+    HandoffUnspecified { obligation } => false,
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// 2. STEP STANDING. Ownership arms and ONE acceptance arm; only the latter is execution.
+// ---------------------------------------------------------------------------------------------
+
+type JourneyStepStanding
+  = Unowned { gap: NonEmptyStr, closes_via: NonEmptyStr }
+  | Planned { plan_item: NonEmptyStr }
+  | Designed { module: NonEmptyStr }
+  | Implemented { module: NonEmptyStr }
+  | Accepted { receipt: DeclarationRef, buyer: NonEmptyStr, node: NonEmptyStr, journey_revision: NonEmptyStr, observed_at: NonEmptyStr }
+
+type JourneyStep {
+  key: NonEmptyStr
+  standing: JourneyStepStanding
+  acceptance_receipt: NonEmptyStr
+}
+
+fn step_is_unowned(s: JourneyStep) -> Bool {
+  match s.standing {
+    Unowned { gap, closes_via } => true,
+    Planned { plan_item } => false,
+    Designed { module } => false,
+    Implemented { module } => false,
+    Accepted { receipt, buyer, node, journey_revision, observed_at } => false,
+  }
+}
+
+fn step_is_accepted(s: JourneyStep) -> Bool {
+  match s.standing {
+    Unowned { gap, closes_via } => false,
+    Planned { plan_item } => false,
+    Designed { module } => false,
+    Implemented { module } => false,
+    Accepted { receipt, buyer, node, journey_revision, observed_at } => true,
+  }
+}
+
+fn step_gap(s: JourneyStep) -> NonEmptyStr {
+  match s.standing {
+    Unowned { gap, closes_via } => closes_via,
+    Planned { plan_item } => "none" as NonEmptyStr,
+    Designed { module } => "none" as NonEmptyStr,
+    Implemented { module } => "none" as NonEmptyStr,
+    Accepted { receipt, buyer, node, journey_revision, observed_at } => "none" as NonEmptyStr,
+  }
+}
+
+type Journey {
+  id: NonEmptyStr
+  site: SiteVariant
+  boundary: ServiceBoundary
+  handoff: HandoffInterface
+  steps: List<JourneyStep>
+}
+
+// ---------------------------------------------------------------------------------------------
+// 3. THE SHARED STEPS. Cited by module; the same step reads the same way on every journey.
+// ---------------------------------------------------------------------------------------------
+
+data step_cold_boot: JourneyStep = JourneyStep {
+  key: "node cold-boots from a staging host over the management VLAN",
+  standing: Implemented { module: "gunbc.boot_artifact_delivery (bound by wholesale-boot-delivery-binding); fleet_decisions management-network Decided" },
+  acceptance_receipt: "one cold-host execution: exact digest delivered, intended host consumed it, nonce callback returned, override restored, media detached",
+}
+
+data step_intake: JourneyStep = JourneyStep {
+  key: "node qualified and admitted to the fleet",
+  standing: Implemented { module: "gunbc.machine_intake (arrival, provisioning, placement) -> FleetAdmissionReceipt" },
+  acceptance_receipt: "a current FleetAdmissionReceipt under the production policy",
+}
+
+data step_buyer_zone: JourneyStep = JourneyStep {
+  key: "buyer reaches their nodes and nothing else",
+  standing: Unowned {
+    gap: "gunbc.product.network_topology has zones ContainerRunner, HostLan, BmcManagement, TailscaleMesh - no buyer zone - and admits ContainerRunner -> BmcManagement. The isolation the offer promises cannot be stated in the model.",
+    closes_via: "wholesale-buyer-network-handoff",
+  },
+  acceptance_receipt: "a BuyerTenant zone in the public topology with reachability BuyerTenant -> BuyerTenant only, and a demonstrated refusal from the buyer segment to BmcManagement, HostLan and our ContainerRunner",
+}
+
+data step_oob: JourneyStep = JourneyStep {
+  key: "BMC reachable by us through a gateway, never by the buyer, never from the public block",
+  standing: Planned { plan_item: "wholesale-oob-management-realization" },
+  acceptance_receipt: "private BMC subnet, gateway asset, break-glass drill, no /29 address on any BMC",
+}
+
+data step_egress: JourneyStep = JourneyStep {
+  key: "buyer workload egresses on the buyer path with abuse notices routable to the buyer",
+  standing: Unowned {
+    gap: "network_topology NetworkEgressClass and tenant-boundary-minimum's flow receipts are per OUR job. Nothing types the buyer segment's egress policy, NAT or public-IP ownership, or how an abuse notice for a buyer flow reaches the buyer.",
+    closes_via: "wholesale-buyer-network-handoff",
+  },
+  acceptance_receipt: "an egress flow from a buyer node observed on the buyer path, attributed to the buyer, with the abuse-contact route written into the security responsibility matrix",
+}
+
+// LOCAL ON THE APARTMENT, REMOTE HANDS ON THE COLO (review repair 2026-09-14, P1): the colo join
+// consumes turn-up through health observability, so the apartment journey cites the local item.
+fn step_fault_replace_for(v: SiteVariant) -> JourneyStep {
+  JourneyStep {
+    key: "a node is culled, its slots re-place onto the failover pool, the buyer's identity moves",
+    standing: Planned {
+      plan_item: match v {
+        ColoCabinet { note } => "wholesale-hardware-serviceability" as NonEmptyStr,
+        ApartmentOverlay { note } => "wholesale-local-fault-spare-activation" as NonEmptyStr,
+      },
+    },
+    acceptance_receipt: "injected uncorrectable event -> cordon -> spare accepted through the buyer integration -> repaired node readmitted with a new FleetAdmissionReceipt",
+  }
+}
+
+data step_offboard: JourneyStep = JourneyStep {
+  key: "buyer offboards: credentials revoked, local media erased, BMC reset, network identity withdrawn",
+  standing: Planned { plan_item: "wholesale-offboarding-erasure" },
+  acceptance_receipt: "the rehearsal receipts on one node",
+}
+
+// The closer of the whole-journey step is the SITE'S acceptance item: the apartment journey is
+// executable before a colo is signed, the colo journey only after turn-up (review repair, P1).
+fn step_journey_accepted_for(v: SiteVariant) -> JourneyStep {
+  JourneyStep {
+    key: "the whole journey executed once, end to end, and accepted",
+    standing: Unowned {
+      gap: "The gate joins hardware receipts and drills; nothing asserts the steps between them ran in sequence on one node for one buyer.",
+      closes_via: match v {
+        ColoCabinet { note } => "wholesale-colo-journey-acceptance" as NonEmptyStr,
+        ApartmentOverlay { note } => "wholesale-apartment-journey-acceptance" as NonEmptyStr,
+      },
+    },
+    acceptance_receipt: "one node, one buyer, every step above receipted in order, on the named site variant",
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// 4. THE BOUNDARY-SPECIFIC STEPS.
+// ---------------------------------------------------------------------------------------------
+
+// RAW METAL: the buyer brings the plane. We expose an attachment, power, and a mediated reinstall.
+data step_raw_handoff_reinstall: JourneyStep = JourneyStep {
+  key: "buyer reinstalls a node through our BMC-mediated path without BMC access",
+  standing: Planned { plan_item: "wholesale-provider-integration" },
+  acceptance_receipt: "buyer image booted on one node through the bound delivery plan, initiated by the buyer through the management broker",
+}
+
+// MANAGED SUBSTRATE: our fabric selects for the buyer's work.
+data step_fabric_select: JourneyStep = JourneyStep {
+  key: "the fabric selects a cell for the buyer's work and grants it",
+  standing: Unowned {
+    gap: "gunbc.fabric_control_plane selects via product.fabric.selection, reserves by compare-and-set, and grants; demand enters through fabric_quota and executor_class, and provider_admission seals permits FOR OUR ROUTES. No arm carries a wholesale buyer as the demand source with its own quota and permit.",
+    closes_via: "wholesale-fabric-buyer-demand",
+  },
+  acceptance_receipt: "a buyer-attributed Demand admitted, a cell reserved by compare-and-set, an ExecutionGrant issued and metered to the buyer",
+}
+
+// THE CACHE STEP IS PROJECTED FROM THE SELECTED REALIZATION (review repair 2026-09-14, P1). No
+// journey asserts that a buyer's job "hits the rack cache" before the joint decision selects a
+// rack cache; only that arm needs a tenancy ruling and a rack-cache receipt.
+fn step_cache_for(r: CacheRealization) -> JourneyStep {
+  match r {
+    NoCacheSelected { basis } => JourneyStep {
+      key: "the buyer's job fetches from the origin over the buyer's admitted network path (no cache selected)",
+      standing: Planned { plan_item: "wholesale-origin-boot-cache-realization" },
+      acceptance_receipt: "origin fetch and per-node throughput observed on a buyer job inside the admitted envelope",
+    },
+    NodeRamCacheSelected { basis } => JourneyStep {
+      key: "the buyer's job is served from a node-local RAM cache that never holds another tenant's bytes",
+      standing: Planned { plan_item: "wholesale-origin-boot-cache-realization" },
+      acceptance_receipt: "hit, miss and origin fetch receipted on a buyer job; the cache is per node and per buyer by construction",
+    },
+    NodeDiskCacheSelected { basis } => JourneyStep {
+      key: "the buyer's job is served from node-local disk cache that never holds another tenant's bytes",
+      standing: Planned { plan_item: "wholesale-origin-boot-cache-realization" },
+      acceptance_receipt: "hit, miss and origin fetch receipted on a buyer job; erasure of the disk cache receipted at offboarding",
+    },
+    RackCacheSelected { tenancy_ruling } => JourneyStep {
+      key: "the buyer's job hits the rack cache without seeing another tenant's bytes",
+      standing: Planned { plan_item: "wholesale-network-decision" },
+      acceptance_receipt: "the rack cache under its tenancy ruling observed on a buyer job: hit, miss and origin fetch each receipted, and a cross-tenant read refused",
+    },
+    CacheRealizationUnselected { obligation } => JourneyStep {
+      key: "the buyer's job is served by whatever cache realization the joint decision selects",
+      standing: Unowned {
+        gap: "No cache realization is selected (wholesale_batch_floor cache_realization). cache-tier-fabric already records that a digest proves which bytes arrived and NOT who was allowed; if a rack cache is selected under a reseller with downstream tenants, tenancy is per-buyer, per-downstream-tenant, or absent, and must be ruled with it.",
+        closes_via: "wholesale-network-decision",
+      },
+      acceptance_receipt: "the selected realization observed on a buyer job with the receipts its arm names",
+    },
+  }
+}
+
+data step_cache: JourneyStep = step_cache_for(r: cache_realization)
+
+// MANAGED FABRIC CAPACITY: the buyer requests allocations through the provider interface and never
+// learns a host identity; a culled host re-places its allocations and the buyer sees a customer
+// event only when the envelope, the recovery window, data or security is violated.
+// THE FLEET'S OWN COVERAGE OF THE REPAIR INTERVAL, read from wholesale_batch_floor's planning
+// assessment rather than restated. NEITHER ARM IS Implemented, and that is the honest reading: the
+// assessment is arithmetic over six planning figures, so the best it can say is Planned behind the
+// work that resolves them. Implemented would need the public failure-scenario fold answering on
+// admitted capacity and committed demand, which is a different question than this module can ask
+// today. AND THE PLAN ITEM IS THE ONE THAT OWNS THE WHOLE TRANSITION, not a prerequisite of it:
+// wholesale-repair-interval-admission, whose exit criterion discharges all six assumptions and then
+// requires the grounded public decision. An earlier revision pointed at wholesale-pilot-acceptance,
+// which accepts four pilot nodes and leaves the cadence, failure rate, slot shape, pool size and the
+// full-fleet population ungrounded - a Done there would have read as ownership of the whole step.
+fn step_repair_interval_for(a: RepairIntervalPlanAssessment) -> JourneyStep {
+  match a {
+    PlanFitsUnderAssumptions { lost_nodes, surviving_slots, required_slots, assumptions } => JourneyStep {
+      key: "a culled host re-places the buyer's allocations from surviving capacity, and the failed host waits for the next maintenance visit",
+      standing: Planned { plan_item: "wholesale-repair-interval-admission" },
+      acceptance_receipt: "the planning figures this rests on resolved - a host observed offering slots, the fleet route exercised, the slot shape negotiated, the pool sized on a measured cull rate - and then product.fabric.failure_scenario_admission surviving the accumulated-failure scenario on committed demand and admitted capacity",
+    },
+    PlanDoesNotFit { lost_nodes, surviving_slots, required_slots, assumptions } => JourneyStep {
+      key: "the buyer's envelope survives the failures that accumulate between maintenance visits",
+      standing: Unowned {
+        gap: "The declared fleet does not cover the reserved block after the repair interval's accumulated failures plus one node. Buy pool nodes, shorten the visit interval, or admit exercised external routes as surviving supply.",
+        closes_via: "wholesale-repair-interval-admission",
+      },
+      acceptance_receipt: "the accumulated-failure scenario surviving with the pool as sized",
+    },
+  }
+}
+
+data step_repair_interval: JourneyStep = step_repair_interval_for(a: repair_interval_plan())
+
+data step_hosted_product_surface: JourneyStep = JourneyStep {
+  key: "the buyer requests, receives and releases allocations through the provider interface (capacity API, its agent on our capacity, or a logical host pool) and never a host identity",
+  standing: Planned { plan_item: "wholesale-provider-integration" },
+  acceptance_receipt: "an allocation requested, placed, restarted elsewhere after an injected host cull inside the recovery window, and released - with the buyer's view showing units and time, never a serial number (wholesale_batch_floor event_visibility)",
+}
+
+// ---------------------------------------------------------------------------------------------
+// 5. THE SIX JOURNEYS: two sites by the three boundary arms.
+// ---------------------------------------------------------------------------------------------
+
+data handoff_colo_unspecified: HandoffInterface = HandoffUnspecified {
+  obligation: "L2 VLAN or L3 VRF on the rack switch; routed vs attached prefix; who configures the switch; MTU; the buyer's path to reinstall. Specified by wholesale-buyer-network-handoff.",
+}
+
+data handoff_apartment_unspecified: HandoffInterface = HandoffUnspecified {
+  obligation: "An L3 overlay terminated off-site (WireGuard to a VPS is the candidate) with the buyer's prefix routed over it; NAT on residential egress; no A+B. Specified by wholesale-buyer-network-handoff as the apartment row.",
+}
+
+data boundary_raw: ServiceBoundary = RawBareMetal { note: "journey probe: the buyer owns boot, storage and software plane" }
+data boundary_managed: ServiceBoundary = ManagedSubstrate { note: "journey probe: GUNBAI owns host OS, staging and whatever cache is selected" }
+data boundary_hosted: ServiceBoundary = ManagedFabricCapacity { note: "journey probe: the buyer consumes a logical capacity envelope through the provider interface; GUNBAI owns placement" }
+
+fn raw_steps(v: SiteVariant) -> List<JourneyStep> {
+  [step_cold_boot, step_intake, step_buyer_zone, step_oob, step_raw_handoff_reinstall, step_egress, step_fault_replace_for(v: v), step_offboard, step_journey_accepted_for(v: v)]
+}
+
+fn managed_steps(v: SiteVariant) -> List<JourneyStep> {
+  [step_cold_boot, step_intake, step_buyer_zone, step_oob, step_fabric_select, step_cache, step_egress, step_fault_replace_for(v: v), step_offboard, step_journey_accepted_for(v: v)]
+}
+
+fn hosted_steps(v: SiteVariant) -> List<JourneyStep> {
+  [step_cold_boot, step_intake, step_buyer_zone, step_oob, step_fabric_select, step_cache, step_hosted_product_surface, step_repair_interval, step_egress, step_fault_replace_for(v: v), step_offboard, step_journey_accepted_for(v: v)]
+}
+
+data journey_colo_raw: Journey = Journey { id: "colo-raw-bare-metal", site: site_colo, boundary: boundary_raw, handoff: handoff_colo_unspecified, steps: raw_steps(v: site_colo) }
+data journey_colo_managed: Journey = Journey { id: "colo-managed-substrate", site: site_colo, boundary: boundary_managed, handoff: handoff_colo_unspecified, steps: managed_steps(v: site_colo) }
+data journey_colo_hosted: Journey = Journey { id: "colo-hosted-capacity", site: site_colo, boundary: boundary_hosted, handoff: handoff_colo_unspecified, steps: hosted_steps(v: site_colo) }
+data journey_apartment_raw: Journey = Journey { id: "apartment-raw-bare-metal", site: site_apartment, boundary: boundary_raw, handoff: handoff_apartment_unspecified, steps: raw_steps(v: site_apartment) }
+data journey_apartment_managed: Journey = Journey { id: "apartment-managed-substrate", site: site_apartment, boundary: boundary_managed, handoff: handoff_apartment_unspecified, steps: managed_steps(v: site_apartment) }
+data journey_apartment_hosted: Journey = Journey { id: "apartment-hosted-capacity", site: site_apartment, boundary: boundary_hosted, handoff: handoff_apartment_unspecified, steps: hosted_steps(v: site_apartment) }
+
+data journeys: List<Journey> = [journey_colo_raw, journey_colo_managed, journey_colo_hosted, journey_apartment_raw, journey_apartment_managed, journey_apartment_hosted]
+
+// ---------------------------------------------------------------------------------------------
+// 6. OWNERSHIP AND ACCEPTANCE, DERIVED. Two predicates, never one.
+// ---------------------------------------------------------------------------------------------
+
+fn journey_count() -> Int { count(journeys) }
+
+fn journey_unowned_count(j: Journey) -> Int { count(filter(j.steps, s => step_is_unowned(s: s))) }
+
+fn journey_ownership_complete(j: Journey) -> Bool { journey_unowned_count(j: j) == 0 }
+
+// ACCEPTABLE = every step Accepted, the handoff specified, and the site observed. Planned is not
+// executed; Implemented is not executed for this buyer on this node.
+// ACCEPTABLE = ownership complete, the handoff specified, the site observed by receipt, and an
+// AcceptedJourney row for this site and boundary produced by derive_accepted_journey. Authored
+// step standings never make a journey acceptable; only the derivation does.
+fn journey_is_acceptable(j: Journey) -> Bool {
+  journey_ownership_complete(j: j)
+    && handoff_is_specified(h: j.handoff)
+    && site_standing_is_observed(s: site_standing_for(v: j.site))
+    && count(filter(accepted_journeys, a => boundary_label(b: a.boundary) == boundary_label(b: j.boundary) && site_label(v: a.site) == site_label(v: j.site))) >= 1
+}
+
+fn ownership_complete_journey_count() -> Int { count(filter(journeys, j => journey_ownership_complete(j: j))) }
+fn acceptable_journey_count() -> Int { count(filter(journeys, j => journey_is_acceptable(j: j))) }
+
+// THE ACCEPTED-JOURNEY RECORD, keyed by the facts a receipt must bind. Empty today.
+type AcceptedJourney {
+  buyer: NonEmptyStr
+  boundary: ServiceBoundary
+  site: SiteVariant
+  node: NonEmptyStr
+  contract_revision: NonEmptyStr
+  security_profile_revision: NonEmptyStr
+  journey_revision: NonEmptyStr
+  receipt: DeclarationRef
+}
+
+data accepted_journeys: List<AcceptedJourney> = []
+
+// THE ONE ACCEPTANCE DERIVATION (review repair 2026-09-14, P1). Every step of the journey must
+// carry exactly one receipt bound to the expected buyer, node and revisions; the site must carry an
+// observation receipt for the same node; anything missing, duplicated, stale or foreign refuses.
+type StepReceipt {
+  step_key: NonEmptyStr
+  buyer: NonEmptyStr
+  node: NonEmptyStr
+  contract_revision: NonEmptyStr
+  security_profile_revision: NonEmptyStr
+  journey_revision: NonEmptyStr
+  receipt: DeclarationRef
+}
+
+type AcceptanceExpectation {
+  buyer: NonEmptyStr
+  node: NonEmptyStr
+  contract_revision: NonEmptyStr
+  security_profile_revision: NonEmptyStr
+  journey_revision: NonEmptyStr
+}
+
+type JourneyAcceptanceOutcome
+  = JourneyAccepted { accepted: AcceptedJourney }
+  | JourneyRefused { reason: NonEmptyStr }
+
+fn receipt_matches(r: StepReceipt, e: AcceptanceExpectation) -> Bool {
+  r.buyer == e.buyer
+    && r.node == e.node
+    && r.contract_revision == e.contract_revision
+    && r.security_profile_revision == e.security_profile_revision
+    && r.journey_revision == e.journey_revision
+}
+
+fn step_receipt_count(j: Journey, step: JourneyStep, receipts: List<StepReceipt>, e: AcceptanceExpectation) -> Int {
+  count(filter(receipts, r => r.step_key == step.key && receipt_matches(r: r, e: e)))
+}
+
+fn derive_accepted_journey(j: Journey, e: AcceptanceExpectation, receipts: List<StepReceipt>, observations: List<SiteObservationReceipt>, sealing_receipt: DeclarationRef) -> JourneyAcceptanceOutcome {
+  let every_step_once = all(j.steps, st => step_receipt_count(j: j, step: st, receipts: receipts, e: e) == 1)
+  let no_foreign = all(receipts, r => count(filter(j.steps, st => st.key == r.step_key)) == 1 && receipt_matches(r: r, e: e))
+  let site_seen = count(filter(observations, o => site_label(v: o.site) == site_label(v: j.site) && o.node == e.node)) >= 1
+  if !journey_ownership_complete(j: j) {
+    JourneyRefused { reason: "ownership incomplete: an unowned step cannot be receipted" }
+  } else if !handoff_is_specified(h: j.handoff) {
+    JourneyRefused { reason: "handoff unspecified" }
+  } else if !every_step_once {
+    JourneyRefused { reason: "a step has no receipt, or more than one, bound to the expected buyer, node and revisions" }
+  } else if !no_foreign {
+    JourneyRefused { reason: "a receipt names a step not on this journey, or a different node, buyer or revision" }
+  } else if !site_seen {
+    JourneyRefused { reason: "no site observation receipt for this site and node" }
+  } else {
+    JourneyAccepted { accepted: AcceptedJourney { buyer: e.buyer, boundary: j.boundary, site: j.site, node: e.node, contract_revision: e.contract_revision, security_profile_revision: e.security_profile_revision, journey_revision: e.journey_revision, receipt: sealing_receipt } }
+  }
+}
+
+fn outcome_is_accepted(o: JourneyAcceptanceOutcome) -> Bool {
+  match o {
+    JourneyAccepted { accepted } => true,
+    JourneyRefused { reason } => false,
+  }
+}
+
+// The exact lookup binds node and every revision, not just the labels.
+fn journey_accepted_for(e: AcceptanceExpectation, boundary: ServiceBoundary, site: SiteVariant) -> Bool {
+  count(filter(accepted_journeys, a =>
+    a.buyer == e.buyer && a.node == e.node
+      && a.contract_revision == e.contract_revision
+      && a.security_profile_revision == e.security_profile_revision
+      && a.journey_revision == e.journey_revision
+      && boundary_label(b: a.boundary) == boundary_label(b: boundary) && site_label(v: a.site) == site_label(v: site))) >= 1
+}
+
+// WHAT PRODUCTION READINESS EXPECTS: set when the contract, security profile and journey revisions
+// are frozen; unset refuses.
+type ExpectationStanding
+  = ExpectationSet { expectation: AcceptanceExpectation }
+  | ExpectationUnset { obligation: NonEmptyStr }
+
+data production_expectation: ExpectationStanding = ExpectationUnset {
+  obligation: "wholesale-production-contract-execution freezes the contract revision, wholesale-security-admission the security-profile revision, and the journey revision is this module's at acceptance time; the node is the pilot node the buyer accepted.",
+}
+
+// THE PRODUCTION SITE IS A SELECTION, and the exact lookup needs it beside the buyer and boundary.
+type ProductionSiteStanding
+  = ProductionSiteSelected { site: SiteVariant, receipt: NonEmptyStr }
+  | ProductionSiteUnselected { obligation: NonEmptyStr }
+
+data production_site: ProductionSiteStanding = ProductionSiteUnselected {
+  obligation: "fleet_decisions siting is Deferred and colo-contract-execution is NotStarted; the apartment overlay is the site available today for the FIRST acceptance, the colo cabinet for production after turn-up.",
+}
+
+fn production_site_is_colo() -> Bool {
+  match production_site {
+    ProductionSiteSelected { site, receipt } =>
+      match site {
+        ColoCabinet { note } => true,
+        ApartmentOverlay { note } => false,
+      },
+    ProductionSiteUnselected { obligation } => false,
+  }
+}
+
+fn production_site_is_apartment() -> Bool {
+  match production_site {
+    ProductionSiteSelected { site, receipt } =>
+      match site {
+        ColoCabinet { note } => false,
+        ApartmentOverlay { note } => true,
+      },
+    ProductionSiteUnselected { obligation } => false,
+  }
+}
+
+// The exact lookup: the selected buyer, the selected boundary, the selected production site.
+// Unselected anything is a refusal, not a vacuous pass.
+fn selected_journey_is_accepted() -> Bool {
+  match selected_boundary {
+    BoundarySelected { boundary, buyer, ruled_on } =>
+      match production_site {
+        ProductionSiteSelected { site, receipt } =>
+          match production_expectation {
+            ExpectationSet { expectation } => expectation.buyer == buyer && journey_accepted_for(e: expectation, boundary: boundary, site: site),
+            ExpectationUnset { obligation } => false,
+          },
+        ProductionSiteUnselected { obligation } => false,
+      },
+    UndecidedPendingDiscovery { obligation } => false,
+  }
+}
+
+// PRODUCTION READINESS BINDS THE SELECTED SITE'S JOURNEY (review repair 2026-09-14, P1). The plan
+// carries both site items as ConditionalRequires edges; once a production site is selected the
+// matching edge must be unconditional, and the witness refuses the selection otherwise.
+fn production_readiness_carries(item_id: NonEmptyStr) -> Bool {
+  count(filter(completion_binding_dep_ids(i: item_wholesale_production_readiness), d => d == item_id)) == 1
+}
+
+fn production_readiness_binds_selected_site_journey() -> Bool {
+  (!production_site_is_colo() || production_readiness_carries(item_id: "wholesale-colo-journey-acceptance"))
+    && (!production_site_is_apartment() || production_readiness_carries(item_id: "wholesale-apartment-journey-acceptance"))
+}
+
+// The distinct gaps standing today, as the plan items that close them.
+// wholesale-repair-interval-admission is listed although no gap names it TODAY: it closes the
+// repair-interval step's PlanDoesNotFit arm, which fires only when the declared pool stops covering
+// the accumulated failures. An unlisted closer on a latent arm would turn every_gap_names_a_listed_closer
+// red the first time the arm fired, which is the moment the gap matters (review 68258).
+data gap_closers: List<NonEmptyStr> = [
+  "wholesale-buyer-network-handoff",
+  "wholesale-fabric-buyer-demand",
+  "wholesale-network-decision",
+  "wholesale-apartment-journey-acceptance",
+  "wholesale-colo-journey-acceptance",
+  "wholesale-repair-interval-admission",
+]
+
+fn gap_closer_count() -> Int { count(gap_closers) }
+
+fn every_gap_names_a_listed_closer() -> Bool {
+  all(journeys, j => all(j.steps, s => !step_is_unowned(s: s) || count(filter(gap_closers, c => c == step_gap(s: s))) == 1))
+}
+
+fn every_closer_is_a_plan_item() -> Bool {
+  all(gap_closers, c => count(find_item(id: c)) == 1)
+}
+
+fn all_handoffs_unspecified() -> Bool {
+  all(journeys, j => !handoff_is_specified(h: j.handoff))
+}
+
+fn no_site_is_observed() -> Bool {
+  !site_standing_is_observed(s: site_standing_for(v: site_colo)) && !site_standing_is_observed(s: site_standing_for(v: site_apartment))
+}
+
+data buyer_zone_exists_in_public_topology: Bool = false
+
+data buyer_zone_note: NonEmptyStr = "gunbc.product.network_topology NetworkReachabilityZone read 2026-09-14: ContainerRunner, HostLan, BmcManagement, TailscaleMesh. Flip this to true only when a BuyerTenant zone and its reachability rows land in the public repository; the private overlay cannot add them."
+
+data reading_note: NonEmptyStr = "How to read this module. Six journeys, two sites by the three arms of wholesale_batch_floor's ServiceBoundary. OWNERSHIP: every step is implemented, designed, planned, or UNOWNED with its gap and closer. ACCEPTANCE: a step is executed only when it carries an Accepted receipt keyed to a buyer, a node and a journey revision, and a journey is acceptable only when every step is, the handoff is specified and the site is observed. Today no journey is acceptable and none has complete ownership: the buyer zone does not exist in the public topology, no handoff is specified, no cache realization is selected, no site is observed, and nothing has executed a journey end to end. The lookup that production readiness consumes is exact - selected buyer, selected boundary, selected production site - and every one of those is unselected."

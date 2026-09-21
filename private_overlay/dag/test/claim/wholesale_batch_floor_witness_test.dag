@@ -1,0 +1,520 @@
+module test.claim.wholesale_batch_floor_witness
+
+import std.types { Bool, Int }
+import strategy.calendar_date { CalendarDate }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.rack_power_engineering { collins_fleet_nodes }
+import strategy.node_rental { supply_is_purchasable }
+import strategy.wholesale_batch_floor {
+  billable_nodes, installed_nodes, deployed_nodes, replacement_chassis, failover_pool_nodes, cores_per_billable_node,
+  allocation_model_is_decided, failover_pool_is_a_planning_figure, slot_shape_is_negotiated, slots_per_node,
+  fabric_capacity_contract, contract_invariants_hold, reserved_capacity_is_failure_adjusted, recovery_window_is_agreed,
+  physical_units, failure_reserve_units, event_visibility, event_is_internal, class_priority, ReservedFloor, ProviderScavenger,
+  envelope_ceiling_is_coherent, slots_per_node_by_cores, slots_per_node_by_memory_target, block_slots, failover_pool_slots, failover_pool_covers_one_node,
+  failures_accumulated_before_repair, fleet_failures_before_repair, 
+  RepairIntervalPlanAssessment, PlanFitsUnderAssumptions, PlanDoesNotFit,
+  repair_interval_plan, repair_interval_plan_losing, plan_assumptions,
+  memory_gib_per_billable_node, batch_cores, planning_it_watts, committed_kw,
+  excluded_row_count, site_is_quoted, site_month_low_micro, site_month_high_micro,
+  floor_per_node_month_low_micro, floor_per_node_month_high_micro,
+  floor_per_core_month_low_micro, floor_per_core_month_high_micro,
+  unquoted_row_count, batch_floor_is_measured,
+  offer_tiers, tier_count, tier_pilot, tier_standard, tier_founding, tier_expansion, tier_scale,
+  tier_micro_per_core_month, owned_batch_tiers_clear_high_floor, no_tier_is_a_free_option,
+  saleable_backed_tier_count, tier_is_backed_by_saleable_nodes, expansion_tranche_floor_is_priced, expansion_tier_is_priced_against_its_floor,
+  tranche_capital_gap_best_micro, tranche_capital_gap_worst_micro, cadence_is_self_funded, next_tranche_acquisition_low_micro, next_tranche_acquisition_high_micro,
+  first_rack_cash_low_micro, first_rack_cash_high_micro, first_rack_cash_with_spares_low_micro, first_rack_cash_with_spares_high_micro,
+  admitted_capital_count, first_rack_capital_is_admitted, r2_readiness_binds_storage_when_boundary_uses_r2, boundary_uses_gunbai_origin,
+  r2_readiness_carries_storage_unconditionally, cache_realization_is_selected,
+  CapitalSource, ReconciledEntityCash, ExecutedDebtDraw, CapitalAllocation, ReserveStanding, ReservesDeclared, reserves,
+  RequiredCash, RequiredPriced, capital_standing_of, capital_is_admitted, capital_sources, capital_allocations,
+  site_entry, first_rack_required_cash, capital_pilot,
+  security_control_count, security_admission_standing, security_admission_standing_of, security_is_admitted, security_is_refused,
+  every_control_names_a_real_item, security_controls, SecurityControl, GunbaiOwned, BuyerOwned,
+  offer_item_done_implies_accepted, buyer_leaf_requirement, one_gig_counterexample,
+  responded_facility_count, quoted_facility_count, stated_lead_time_floor_days,
+  declined_facility_count, quotable_shortlist_count, silent_facility_count, named_contact_count,
+  response_is_a_declination, digital_fortress_response, netrality_named_contact,
+  netrality_visit_invitation, visit_was_taken, visit_is_declined_by_us,
+  founding_mrc_micro, founding_contribution_low_micro, founding_contribution_high_micro,
+  comparator_rows, cloud_hive_proton_pair, cloud_hive_meteor_pair, phoenixnap_q80_pair_12_month,
+  comparator_is_admissible_floor, admissible_comparator_count, discount_permille,
+  quote_shortlist_count, shortlist_none_outside_published_maximum, shortlist_covered_count,
+  shortlist_unresolved_count, conditional_candidate_count, certified_at_commit_count, shortlist_partition_is_total,
+  quote_is_live, site_quote_is_expired, pilot_conversion_credit_total_micro,
+  rfq_ask_count, buyer_term_quotes_on_file,
+  boundary_is_selected, offer_capacity_is_conditional, infrastructure_realizations,
+  realization_pair_from_fleet, realization_r2_only, realization_buyer_own_plane,
+  realization_additional_pair, billable_nodes_under, realization_is_admissible,
+  realizations_supporting_the_offer, conditional_inclusion_count, standard_node_inclusions,
+  requested_committed_mbps_per_billable_node, network_commercials_are_settled, headroom_watts_at_commit,
+  backed_tier_count, tier_is_backed_by_inventory, rfq_addendum_count, wholesale_gate_deps_exact,
+  network_disposition_is_resolved, leaf_speed_is_decided, infrastructure_pair_is_deferred,
+  staging_is_selected, r2_standing_for, r2_is_applicable, RawBareMetal, ManagedSubstrate,
+  floor_observed_as_of, SiteCostStanding, Quoted, RfqCoverage, coverage_matches_request,
+  effective_site_cost_of, standing_is_quoted, site_quote_is_incompatible, planning_band,
+  contract_node_target, experiment_points, required_points_missing_count, not_required_point_count,
+  ten_gbe_points_required, offer_is_accepted, managed_fabric_capacity_is_selected,
+  compliance_gate_binds_m2_for_fabric_capacity, compliance_gate_carries_m2_unconditionally,
+  disposition_admits_production, BlocksProduction, ContractuallyExcluded,
+}
+
+// THE BATCH IS THE OWNED FLEET LESS THE REPLACEMENT CHASSIS AND THE FAILOVER POOL, NEVER A TYPED-IN
+// NUMBER (allocation-model ruling 2026-09-14): twenty deployed; sixteen dedicated and four pooled is
+// the declared PLANNING FIGURE (failover_pool_sizing), which every number below reads;
+// 160 cores and a 512 GiB target each; 2,560 dedicated cores; 13,650 W of planning load for the 21.
+fn batch_is_derived_from_the_fleet() -> Bool {
+  billable_nodes() == collins_fleet_nodes - replacement_chassis - failover_pool_nodes
+    && billable_nodes() == 16
+    && deployed_nodes() == 20
+    && installed_nodes() == 21
+    && cores_per_billable_node() == 160
+    && memory_gib_per_billable_node() == 512
+    && batch_cores() == 2560
+    && planning_it_watts() == 13650
+    && committed_kw * 1000 > planning_it_watts()
+}
+
+// SLOTS ARE THE UNIT OF SALE AND THE BINDING RESOURCE IS COMPUTED, NOT ASSUMED: 40 slots by cores;
+// the 512 GiB target backs MORE units than the cores through the sellable unit's byte law (about 183
+// at 3 decimal GB each), so cores bind at the target and memory would bind only at the held unit's
+// ~256 GiB reading. The pool absorbs at least one node's slots.
+fn slots_are_memory_bound_and_the_pool_covers_a_node() -> Bool {
+  allocation_model_is_decided()
+    && failover_pool_is_a_planning_figure()
+    && !slot_shape_is_negotiated()
+    && slots_per_node_by_cores() == 40
+    && slots_per_node_by_memory_target() >= slots_per_node_by_cores()
+    && slots_per_node() == slots_per_node_by_cores()
+    && slots_per_node() <= slots_per_node_by_memory_target()
+    && block_slots() == billable_nodes() * slots_per_node()
+    && failover_pool_covers_one_node()
+    && failover_pool_slots() == 4 * slots_per_node()
+}
+
+// THE FLOOR IS A LOWER BOUND AND SAYS SO. The site is a band, the unquoted rows are inherited and
+// nonzero, two rows are excluded by ruling, and the standing refuses to call itself measured.
+fn floor_refuses_to_be_measured() -> Bool {
+  !site_is_quoted(as_of: floor_observed_as_of)
+    && unquoted_row_count() > 0
+    && excluded_row_count() == 2
+    && !batch_floor_is_measured(as_of: floor_observed_as_of)
+}
+
+// THE ARITHMETIC, AT THE GRAIN THE MEMO QUOTES. 16 kW x $200-300 + $300-800 transit = $3,500-5,600
+// a month; over SIXTEEN dedicated nodes $218.75-350 each; about $1.37-2.19 per dedicated core. The
+// pool's four nodes are carried by the sixteen, which is what a failover promise costs.
+fn floor_arithmetic_holds() -> Bool {
+  site_month_low_micro(as_of: floor_observed_as_of) == 3500000000
+    && site_month_high_micro(as_of: floor_observed_as_of) == 5600000000
+    && floor_per_node_month_low_micro(as_of: floor_observed_as_of) == 218750000
+    && floor_per_node_month_high_micro(as_of: floor_observed_as_of) == 350000000
+    && floor_per_node_month_low_micro(as_of: floor_observed_as_of) < floor_per_node_month_high_micro(as_of: floor_observed_as_of)
+    && floor_per_core_month_low_micro(as_of: floor_observed_as_of) == 1367187
+    && floor_per_core_month_high_micro(as_of: floor_observed_as_of) == 2187500
+}
+
+// EVERY OWNED-BATCH TIER CLEARS THE HIGH END OF THE BAND, AND THE TIERS ARE ORDERED BY COMMITMENT.
+// The cheapest price buys the longest term; nothing is a free option. Expansion tiers are never
+// checked against this floor (review repair, P1).
+fn tiers_clear_the_floor_and_are_ordered() -> Bool {
+  tier_count() == 5
+    && owned_batch_tiers_clear_high_floor(as_of: floor_observed_as_of)
+    && no_tier_is_a_free_option()
+    && tier_pilot.micro_per_node_month > tier_standard.micro_per_node_month
+    && tier_standard.micro_per_node_month > tier_founding.micro_per_node_month
+    && tier_founding.micro_per_node_month > tier_expansion.micro_per_node_month
+    && tier_expansion.micro_per_node_month > tier_scale.micro_per_node_month
+    && tier_micro_per_core_month(t: tier_founding) == 3125000
+}
+
+// THE FOUNDING BLOCK'S NUMBERS under the pool model: $8,000 MRC on sixteen nodes; $2,400-4,500 a
+// month of cash contribution against the band, before every unquoted row.
+fn founding_block_contribution() -> Bool {
+  founding_mrc_micro() == 8000000000
+    && founding_contribution_low_micro(as_of: floor_observed_as_of) == 2400000000
+    && founding_contribution_high_micro(as_of: floor_observed_as_of) == 4500000000
+}
+
+// NO COMPARATOR IS A PURCHASABLE FLOOR TODAY. Cloud Hive is read first-party and out of stock;
+// phoenixNAP is relayed and unread. The founding tier still sits under both memory-matched pairs.
+fn comparators_are_references_not_floors() -> Bool {
+  count(comparator_rows) == 3
+    && admissible_comparator_count() == 0
+    && !supply_is_purchasable(s: cloud_hive_meteor_pair.supply)
+    && !supply_is_purchasable(s: cloud_hive_proton_pair.supply)
+    && !comparator_is_admissible_floor(r: phoenixnap_q80_pair_12_month)
+    && discount_permille(t: tier_founding, r: cloud_hive_meteor_pair) > 150
+    && discount_permille(t: tier_founding, r: cloud_hive_meteor_pair) < 200
+    && discount_permille(t: tier_founding, r: phoenixnap_q80_pair_12_month) > 280
+    && discount_permille(t: tier_founding, r: phoenixnap_q80_pair_12_month) < 300
+}
+
+// THE SHORTLIST IS PARTITIONED BY THE CENSUS'S OWN RELATION. Five facilities: two covered by a
+// published air floor (DataBank Orangeburg), three unresolved because the page names no cooling
+// medium (Iron Mountain, Netrality, Digital Fortress), none outside a published maximum. Digital
+// Fortress is additionally CONDITIONAL - its 15 kW floor sits below the commit - so exactly two
+// are certified at 16 kW. Unresolved is never read as admitted.
+fn shortlist_is_admitted_by_the_census() -> Bool {
+  quote_shortlist_count() == 5
+    && shortlist_none_outside_published_maximum()
+    && shortlist_partition_is_total()
+    && shortlist_covered_count() == 2
+    && shortlist_unresolved_count() == 3
+    && conditional_candidate_count() == 1
+    && certified_at_commit_count() == 2
+    && rfq_ask_count() == 8
+}
+
+// A QUOTE IS LIVE ONLY INSIDE ITS WINDOW, AND THE PILOT CREDIT IS PER NODE (Codex review, PR #123).
+// The site is a band today so nothing is expired; the predicate is probed on both sides of a window.
+fn quote_validity_and_pilot_credit() -> Bool {
+  !site_quote_is_expired(as_of: floor_observed_as_of)
+    && !site_quote_is_incompatible()
+    && quote_is_live(quoted_on: CalendarDate { year: 2026, month: 9, day: 10 }, valid_until: CalendarDate { year: 2026, month: 10, day: 1 }, as_of: CalendarDate { year: 2026, month: 9, day: 14 })
+    && !quote_is_live(quoted_on: CalendarDate { year: 2026, month: 8, day: 10 }, valid_until: CalendarDate { year: 2026, month: 9, day: 1 }, as_of: CalendarDate { year: 2026, month: 9, day: 14 })
+    && quote_is_live(quoted_on: CalendarDate { year: 2026, month: 9, day: 14 }, valid_until: CalendarDate { year: 2026, month: 9, day: 14 }, as_of: CalendarDate { year: 2026, month: 9, day: 14 })
+    && !quote_is_live(quoted_on: CalendarDate { year: 2026, month: 9, day: 20 }, valid_until: CalendarDate { year: 2026, month: 10, day: 1 }, as_of: CalendarDate { year: 2026, month: 9, day: 14 })
+    && pilot_conversion_credit_total_micro(t: tier_pilot) == 200000000
+    && pilot_conversion_credit_total_micro(t: tier_founding) == 0
+}
+
+// THE BUYER HAS NOT BID. The tiers are our ask; wholesale_buyer still holds zero term quotes.
+fn buyer_side_is_unquoted() -> Bool {
+  buyer_term_quotes_on_file() == 0
+}
+
+// THE TWENTY IS CONDITIONAL ON THE BOUNDARY, AND THE CONDITION IS COMPUTED. Under the pair-from-
+// fleet arm the same 21 machines yield 14 dedicated; the R2-only arm is refused by storage tiering;
+// exactly two of four realizations support the offer's sixteen; the boundary is undecided.
+fn capacity_is_conditional_on_the_realization() -> Bool {
+  !boundary_is_selected()
+    && offer_capacity_is_conditional()
+    && count(infrastructure_realizations) == 4
+    && billable_nodes_under(r: realization_pair_from_fleet) == 14
+    && billable_nodes_under(r: realization_buyer_own_plane) == 16
+    && billable_nodes_under(r: realization_additional_pair) == 16
+    && !realization_is_admissible(r: realization_r2_only)
+    && count(realizations_supporting_the_offer()) == 2
+}
+
+// THE STANDARD NODE NAMES ITS LINES; five are conditional on a receipt (memory, leaf link, OOB, spare, transit).
+// 1 Gbps over sixteen dedicated nodes is 62 Mbps each (integer). A 15 kW cabinet leaves 1,350 W over the planning load.
+fn inclusions_and_network_are_stated() -> Bool {
+  count(standard_node_inclusions) == 7
+    && conditional_inclusion_count() == 5
+    && requested_committed_mbps_per_billable_node() == 62
+    && !network_commercials_are_settled()
+    && headroom_watts_at_commit(kw: 15) == 1350
+    && headroom_watts_at_commit(kw: 16) == 2350
+}
+
+// ONLY THE FIRST THREE TIERS PRICE INVENTORY THAT EXISTS, AND THAT INVENTORY IS CHASSIS, NOT
+// SALEABLE NODES (review repair, P1): no tier is backed by twenty admitted nodes plus a matched spare.
+// The expansion tiers are indicative and their tranche floor is unpriced, so they are compared against
+// nothing rather than against the owned batch's sunk-capex floor.
+fn expansion_tiers_are_forecast_only() -> Bool {
+  backed_tier_count() == 3
+    && saleable_backed_tier_count() == 0
+    && !tier_is_backed_by_saleable_nodes(t: tier_founding)
+    && !expansion_tranche_floor_is_priced()
+    && expansion_tier_is_priced_against_its_floor(t: tier_founding)
+    && !expansion_tier_is_priced_against_its_floor(t: tier_expansion)
+    && tier_is_backed_by_inventory(t: tier_founding)
+    && !tier_is_backed_by_inventory(t: tier_expansion)
+    && !tier_is_backed_by_inventory(t: tier_scale)
+}
+
+// THE ADDENDUM EXISTS AND THE WHOLESALE GATE'S CONJUNCTION IS EXACT.
+fn addendum_and_gate() -> Bool {
+  rfq_addendum_count() == 5 && wholesale_gate_deps_exact()
+}
+
+// NETWORK, STAGING AND R2 ARE OPEN, AND THE REGISTER AGREES: leaf speed is Decided (1 GbE) in
+// fleet_decisions, the infrastructure pair is Deferred, no disposition and no staging placement is
+// selected here, and R2 is conditional on the boundary - not applicable to raw metal, conditional
+// (write credential unminted) for a managed substrate.
+fn network_and_bootstrap_are_open() -> Bool {
+  !network_disposition_is_resolved()
+    && leaf_speed_is_decided()
+    && infrastructure_pair_is_deferred()
+    && !staging_is_selected()
+    && !r2_is_applicable(r: r2_standing_for(b: RawBareMetal { note: "probe" }))
+    && r2_is_applicable(r: r2_standing_for(b: ManagedSubstrate { note: "probe" }))
+}
+
+// A QUOTE THAT DOES NOT COVER THE REQUEST, OR HAS EXPIRED, RETURNS THE FLOOR TO THE BAND (review
+// repair, P1). Probed on constructed Quoted arms: a covering live quote is read; a 15 kW quote and an
+// expired 16 kW quote both resolve to planning_band, so their figures never reach the arithmetic.
+fn incompatible_or_expired_quotes_fall_back_to_the_band() -> Bool {
+  let covering = RfqCoverage { committed_kw: 16, a_b_feeds_independent: true, air_cooled: true, handoff_mbps: 10000, committed_mbps: 1000, billing_method_stated: true, overage_stated: true, cabinet_fits_fleet: true }
+  let fifteen = RfqCoverage { committed_kw: 15, a_b_feeds_independent: true, air_cooled: true, handoff_mbps: 10000, committed_mbps: 1000, billing_method_stated: true, overage_stated: true, cabinet_fits_fleet: true }
+  let thin_commit = RfqCoverage { committed_kw: 16, a_b_feeds_independent: true, air_cooled: true, handoff_mbps: 10000, committed_mbps: 100, billing_method_stated: true, overage_stated: true, cabinet_fits_fleet: true }
+  let live = CalendarDate { year: 2026, month: 12, day: 31 }
+  let stale = CalendarDate { year: 2026, month: 9, day: 1 }
+  let quoted_live = Quoted { facility: "probe", per_kw_month_micro: 250000000, transit_month_micro: 500000000, quoted_on: floor_observed_as_of, valid_until: live, coverage: covering, receipt: "probe" }
+  let quoted_short = Quoted { facility: "probe", per_kw_month_micro: 250000000, transit_month_micro: 500000000, quoted_on: floor_observed_as_of, valid_until: live, coverage: fifteen, receipt: "probe" }
+  let quoted_stale = Quoted { facility: "probe", per_kw_month_micro: 250000000, transit_month_micro: 500000000, quoted_on: floor_observed_as_of, valid_until: stale, coverage: covering, receipt: "probe" }
+  coverage_matches_request(c: covering)
+    && !coverage_matches_request(c: fifteen)
+    && !coverage_matches_request(c: thin_commit)
+    && standing_is_quoted(standing: effective_site_cost_of(standing: quoted_live, as_of: floor_observed_as_of))
+    && !standing_is_quoted(standing: effective_site_cost_of(standing: quoted_short, as_of: floor_observed_as_of))
+    && !standing_is_quoted(standing: effective_site_cost_of(standing: quoted_stale, as_of: floor_observed_as_of))
+    && !standing_is_quoted(standing: planning_band)
+}
+
+// THE TARGET IS 512 GiB; THE REALIZED INCLUSION IS CONDITIONAL (P2). Five conditional rows now.
+fn memory_is_a_target_not_a_fleet_fact() -> Bool {
+  contract_node_target.memory_gib == 512
+    && contract_node_target.cores == cores_per_billable_node()
+    && conditional_inclusion_count() == 5
+}
+
+// THE 10 GbE POINTS ARE NOT REQUIRED TODAY AND THAT IS NOT MISSING EVIDENCE (P2): three 1 GbE
+// points await receipts, two 10 GbE points stand NotRunNotRequired, no trigger names them.
+fn ten_gbe_is_not_required_and_not_missing() -> Bool {
+  count(experiment_points) == 5
+    && !ten_gbe_points_required()
+    && required_points_missing_count() == 3
+    && not_required_point_count() == 2
+}
+
+// THE OFFER HAS NO POSITIVE ANSWER YET, AND THE COMPLIANCE BINDING HOLDS (P1, P2): no buyer has
+// accepted; the boundary is not hosted capacity, so the conditional m2 edge is admissible today,
+// and it is in fact still conditional. A control that BlocksProduction refuses; an excluded one admits.
+fn offer_unresolved_and_compliance_binding_holds() -> Bool {
+  !offer_is_accepted()
+    && !managed_fabric_capacity_is_selected()
+    && !compliance_gate_carries_m2_unconditionally()
+    && compliance_gate_binds_m2_for_fabric_capacity()
+    && !disposition_admits_production(d: BlocksProduction { control: "probe" })
+    && disposition_admits_production(d: ContractuallyExcluded { control: "probe", clause: "probe" })
+}
+
+// PACE IS A FUNDED AXIS AND CAPITAL IS UNADMITTED (finance review, 2026-09-14). The next twenty at
+// the first lot's chassis price plus 320 modules: $64,678-77,478 minimum. Under the pool model the
+// tranche deposit is 16 x $475 = $7,600 and the founding contribution $2,400-4,500: quarterly cadence
+// leaves $43.6k-62.7k unfunded, and ANNUAL cadence is no longer self-funded even in the best case
+// ($3.1k short; $41.1k worst) - the pool's four nodes are what the sixteen's price now carries; the first rack is $30.7k-46.6k before spares and
+// site-entry rows; nothing is admitted until the reconciliation lands.
+fn pace_and_capital_are_derived() -> Bool {
+  next_tranche_acquisition_low_micro() == 64678060000
+    && next_tranche_acquisition_high_micro() == 77478060000
+    && tranche_capital_gap_best_micro(interval_months: 3, as_of: floor_observed_as_of) == 43578060000
+    && tranche_capital_gap_worst_micro(interval_months: 3, as_of: floor_observed_as_of) == 62678060000
+    && tranche_capital_gap_best_micro(interval_months: 12, as_of: floor_observed_as_of) == 3078060000
+    && tranche_capital_gap_worst_micro(interval_months: 12, as_of: floor_observed_as_of) == 41078060000
+    && !cadence_is_self_funded(interval_months: 3, as_of: floor_observed_as_of)
+    && !cadence_is_self_funded(interval_months: 12, as_of: floor_observed_as_of)
+    && tranche_capital_gap_best_micro(interval_months: 12, as_of: floor_observed_as_of) > 0
+    && first_rack_cash_low_micro(as_of: floor_observed_as_of) == 30676000000
+    && first_rack_cash_high_micro(as_of: floor_observed_as_of) == 46562000000
+    && first_rack_cash_with_spares_low_micro(as_of: floor_observed_as_of) == 31956000000
+    && first_rack_cash_with_spares_high_micro(as_of: floor_observed_as_of) == 48482000000
+    && admitted_capital_count() == 0
+    && !first_rack_capital_is_admitted()
+    && count(capital_sources) == 0
+    && count(capital_allocations) == 0
+}
+
+// CAPITAL IS DERIVED FROM DATED SOURCES AND A UNIQUE ALLOCATION LEDGER (review repair, P1). Probed
+// on constructed ledgers: a funded pilot admits; the same dollars allocated twice refuse; an
+// undrawn-in-the-future debt draw is not usable; undeclared reserves refuse; the live first rack is
+// unreconciled because site entry is unquoted.
+fn capital_is_derived_not_authored() -> Bool {
+  let as_of = floor_observed_as_of
+  let entity = ReconciledEntityCash { source_id: "mercury", amount_micro: 60000000000, as_of: CalendarDate { year: 2026, month: 9, day: 14 }, receipt: "probe" }
+  let future_debt = ExecutedDebtDraw { source_id: "loc", amount_micro: 50000000000, available_at: CalendarDate { year: 2026, month: 12, day: 1 }, terms: "probe", receipt: "probe" }
+  let declared = ReservesDeclared { tax_reserve_micro: 10000000000, company_reserve_micro: 10000000000, preserved_personal_runway_micro: 0, as_of: as_of, receipt: "probe" }
+  let pilot_need = RequiredPriced { micro: 7680000000 }
+  let one_alloc = [CapitalAllocation { deployment: "pilot", source_id: "mercury", amount_micro: 7680000000 }]
+  let double_alloc = [CapitalAllocation { deployment: "pilot", source_id: "mercury", amount_micro: 40000000000 }, CapitalAllocation { deployment: "first-rack", source_id: "mercury", amount_micro: 40000000000 }]
+  let debt_alloc = [CapitalAllocation { deployment: "pilot", source_id: "loc", amount_micro: 7680000000 }]
+  capital_is_admitted(c: capital_standing_of(deployment: "pilot", required: pilot_need, sources: [entity], allocations: one_alloc, r: declared, as_of: as_of))
+    && !capital_is_admitted(c: capital_standing_of(deployment: "pilot", required: pilot_need, sources: [entity], allocations: double_alloc, r: declared, as_of: as_of))
+    && !capital_is_admitted(c: capital_standing_of(deployment: "pilot", required: pilot_need, sources: [entity, future_debt], allocations: debt_alloc, r: declared, as_of: as_of))
+    && !capital_is_admitted(c: capital_standing_of(deployment: "pilot", required: pilot_need, sources: [entity], allocations: one_alloc, r: reserves, as_of: as_of))
+    && !capital_is_admitted(c: capital_standing_of(deployment: "first-rack", required: first_rack_required_cash(e: site_entry, as_of: as_of), sources: [entity], allocations: one_alloc, r: declared, as_of: as_of))
+    && !capital_is_admitted(c: capital_pilot)
+}
+
+// THE SECURITY ROSTER IS A POPULATION, AND THE STANDING FOLDS IT (review repair, P2): fifteen
+// controls, every owned row names a real plan item, the live standing is Refused (three rows block
+// production), a roster with only buyer-owned rows admits, and deleting the blocking rows leaves
+// Unresolved, never Admitted, while owned realizations are not Done.
+fn security_admission_folds_the_roster() -> Bool {
+  let buyer_only = [SecurityControl { key: "probe", ownership: BuyerOwned { basis: "probe" } }]
+  let owned_open = [SecurityControl { key: "probe", ownership: GunbaiOwned { realization_item: "wholesale-off-host-security-logging" } }]
+  security_control_count() == 15
+    && every_control_names_a_real_item()
+    && security_is_refused(st: security_admission_standing())
+    && !security_is_admitted(st: security_admission_standing())
+    && security_is_admitted(st: security_admission_standing_of(roster: buyer_only))
+    && !security_is_admitted(st: security_admission_standing_of(roster: owned_open))
+    && !security_is_refused(st: security_admission_standing_of(roster: owned_open))
+}
+
+// THE OFFER ITEM CANNOT BE DONE ON A DECLINE, and the 10 GbE triggers are inputs, not the decision.
+fn offer_wall_and_experiment_inputs() -> Bool {
+  offer_item_done_implies_accepted()
+    && !ten_gbe_points_required()
+}
+
+// R2 AND CACHE ARE BOUND TO THE BOUNDARY, NOT ASSUMED (review repair, P1): no boundary uses the
+// origin today, the storage edge is conditional, the binding holds, and no cache realization is selected.
+fn r2_and_cache_follow_the_boundary() -> Bool {
+  !boundary_uses_gunbai_origin()
+    && !r2_readiness_carries_storage_unconditionally()
+    && r2_readiness_binds_storage_when_boundary_uses_r2()
+    && !cache_realization_is_selected()
+}
+
+// TWO FACILITIES HAVE ANSWERED AND NEITHER ANSWER IS A QUOTE: Netrality's phone answer is a lead
+// time (28 days), not a price, and Digital Fortress's is a refusal. The site stays a band and the
+// plan's turn-up floor carries the lead time. A declination contributes NO lead time -- the floor
+// must stay 28 and not collapse toward the zero the new arm returns.
+fn facility_responses_are_not_quotes() -> Bool {
+  responded_facility_count() == 2
+    && quoted_facility_count() == 0
+    && stated_lead_time_floor_days() == 28
+    && !site_is_quoted(as_of: floor_observed_as_of)
+}
+
+// THE THREE POPULATIONS UNDER ONE RFQ, AND THEY MUST SUM. Five went out; one refused (Digital
+// Fortress Piscataway, 2026-09-16), one answered without quoting (Netrality), and the rest are
+// silent. quotable_shortlist_count is the shortlist less the refusals -- four -- and it is DERIVED,
+// so a second declination moves it without anybody editing a literal. The discriminating red: if
+// the declination were recorded as an ordinary response the quotable count would stay five while a
+// facility that said no sat inside it.
+fn colo_rfq_field_partitions() -> Bool {
+  response_is_a_declination(r: digital_fortress_response)
+    && declined_facility_count() == 1
+    && quotable_shortlist_count() == 4
+    && silent_facility_count() == 3
+    && quotable_shortlist_count() + declined_facility_count() == quote_shortlist_count()
+    && silent_facility_count() + responded_facility_count() == quote_shortlist_count()
+}
+
+// A NAMED CONTACT IS NOT A RESPONSE AND NOT A QUOTE. Both facilities that answered produced a
+// person; neither produced an opportunity reference, and neither produced a price. The claim is
+// that the contact roster and the quote state stay independent -- two names, zero quotes.
+// AN OPEN INVITATION AND A DECLINED ONE ARE DIFFERENT STATES, and the claim asserts the second.
+// Recording the invitation alone would read as still-open to a Q2 reader, and flipping the row back
+// to VisitInvited is the discriminating red -- which the FIRST cut of this claim could not see,
+// because it asked whether an invitation exists and every arm says yes (review 67304, finding 1).
+// The comment named a red the assertion could not produce, which is worse than a missing claim: it
+// reads as coverage. visit_is_declined_by_us matches the arm, so the flip reds.
+fn the_netrality_visit_is_declined_not_open() -> Bool {
+  visit_is_declined_by_us(v: netrality_visit_invitation)
+    && !visit_was_taken(v: netrality_visit_invitation)
+}
+
+fn named_contacts_are_not_quotes() -> Bool {
+  named_contact_count() == 2
+    && quoted_facility_count() == 0
+    && netrality_named_contact.person as String == "Ammar Petiwala"
+}
+
+// THE FABRIC CAPACITY CONTRACT HOLDS ITS INVARIANTS AND HIDES THE RIGHT EVENTS (operator ruling
+// 2026-09-14): the guaranteed floor is failure-adjusted (physical units less the pool), THE CEILING
+// IS A MAXIMUM AND SO SITS ABOVE THE FLOOR AND AT THE DEPLOYED FLEET'S CAPACITY (Codex review,
+// PR #136 - an earlier cut put the ceiling at the pool alone, below the floor it was meant to cap),
+// no serial number is contracted, scavenger work yields and cannot reduce the envelope, the recovery
+// window is still unresolved, and a host cull with no allocation restart, no floor breach and no
+// recovery overrun is an internal fleet event - while any of those four is a customer event.
+fn fabric_contract_invariants_and_visibility() -> Bool {
+  contract_invariants_hold(c: fabric_capacity_contract)
+    && reserved_capacity_is_failure_adjusted(c: fabric_capacity_contract)
+    && fabric_capacity_contract.envelope.guaranteed_units == physical_units() - failure_reserve_units()
+    && envelope_ceiling_is_coherent(c: fabric_capacity_contract)
+    && fabric_capacity_contract.envelope.burst_ceiling_units == physical_units()
+    && fabric_capacity_contract.envelope.burst_ceiling_units > fabric_capacity_contract.envelope.guaranteed_units
+    && !recovery_window_is_agreed(c: fabric_capacity_contract)
+    && class_priority(c: ReservedFloor) < class_priority(c: ProviderScavenger)
+    && event_is_internal(v: event_visibility(allocation_restarted: false, floor_breached: false, recovery_exceeded: false, security_relevant: false))
+    && !event_is_internal(v: event_visibility(allocation_restarted: true, floor_breached: false, recovery_exceeded: false, security_relevant: false))
+    && !event_is_internal(v: event_visibility(allocation_restarted: false, floor_breached: true, recovery_exceeded: false, security_relevant: false))
+    && !event_is_internal(v: event_visibility(allocation_restarted: false, floor_breached: false, recovery_exceeded: true, security_relevant: false))
+    && !event_is_internal(v: event_visibility(allocation_restarted: false, floor_breached: false, recovery_exceeded: false, security_relevant: true))
+}
+
+// THE REPAIR CADENCE BOUND. Accumulation over supplied values - twenty nodes at 50 per thousand
+// node-years lose one node over a year and one over a month, rounded up - then the fleet's own
+// planning figures, which accumulate one failure before a visit.
+fn plan_tag(a: RepairIntervalPlanAssessment) -> String {
+  match a {
+    PlanFitsUnderAssumptions { lost_nodes, surviving_slots, required_slots, assumptions } => "fits",
+    PlanDoesNotFit { lost_nodes, surviving_slots, required_slots, assumptions } => "does-not-fit",
+  }
+}
+
+fn plan_assumption_count(a: RepairIntervalPlanAssessment) -> Int {
+  match a {
+    PlanFitsUnderAssumptions { lost_nodes, surviving_slots, required_slots, assumptions } => count(assumptions),
+    PlanDoesNotFit { lost_nodes, surviving_slots, required_slots, assumptions } => count(assumptions),
+  }
+}
+
+fn repair_cadence_sizes_the_pool() -> Bool {
+  failures_accumulated_before_repair(nodes: 20, failures_per_thousand_node_years: 50, interval_days: 365) == 1
+    && failures_accumulated_before_repair(nodes: 20, failures_per_thousand_node_years: 50, interval_days: 30) == 1
+    && failures_accumulated_before_repair(nodes: 20, failures_per_thousand_node_years: 1000, interval_days: 365) == 20
+    && failures_accumulated_before_repair(nodes: 20, failures_per_thousand_node_years: 0, interval_days: 365) == 0
+    && fleet_failures_before_repair() == 1
+    && plan_tag(a: repair_interval_plan()) == "fits"
+}
+
+// THE ASSESSMENT IS ARITHMETIC UNDER NAMED ASSUMPTIONS, AND IT SAYS SO. Twenty deployed nodes against
+// a sixteen-node block fit losing four and not five - the pool of four read rather than restated - and
+// every arm carries the SIX planning figures it rests on, not the two an earlier revision named. The
+// route exercise is one of them, which is why no arm of this can claim the fleet survives anything.
+fn the_plan_is_arithmetic_under_named_assumptions() -> Bool {
+  plan_tag(a: repair_interval_plan()) == "fits"
+    && plan_tag(a: repair_interval_plan_losing(lost_nodes: 4)) == "fits"
+    && plan_tag(a: repair_interval_plan_losing(lost_nodes: 5)) == "does-not-fit"
+    && plan_assumption_count(a: repair_interval_plan()) == 6
+    && count(plan_assumptions()) == 6
+}
+
+fn wholesale_batch_floor_witness_all() -> Bool {
+  batch_is_derived_from_the_fleet()
+    && slots_are_memory_bound_and_the_pool_covers_a_node()
+    && repair_cadence_sizes_the_pool()
+    && the_plan_is_arithmetic_under_named_assumptions()
+    && fabric_contract_invariants_and_visibility()
+    && floor_refuses_to_be_measured()
+    && floor_arithmetic_holds()
+    && tiers_clear_the_floor_and_are_ordered()
+    && founding_block_contribution()
+    && comparators_are_references_not_floors()
+    && shortlist_is_admitted_by_the_census()
+    && buyer_side_is_unquoted()
+    && quote_validity_and_pilot_credit()
+    && capacity_is_conditional_on_the_realization()
+    && inclusions_and_network_are_stated()
+    && expansion_tiers_are_forecast_only()
+    && addendum_and_gate()
+    && network_and_bootstrap_are_open()
+    && incompatible_or_expired_quotes_fall_back_to_the_band()
+    && memory_is_a_target_not_a_fleet_fact()
+    && ten_gbe_is_not_required_and_not_missing()
+    && offer_unresolved_and_compliance_binding_holds()
+    && pace_and_capital_are_derived()
+    && r2_and_cache_follow_the_boundary()
+    && capital_is_derived_not_authored()
+    && security_admission_folds_the_roster()
+    && offer_wall_and_experiment_inputs()
+    && facility_responses_are_not_quotes()
+    && colo_rfq_field_partitions()
+    && named_contacts_are_not_quotes()
+    && the_netrality_visit_is_declined_not_open()
+}
+
+fn wholesale_batch_floor_witness_main() -> ProcessExit {
+  if wholesale_batch_floor_witness_all() {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "wholesale_batch_floor_witness_all returned false" }
+  }
+}

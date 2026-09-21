@@ -1,0 +1,279 @@
+module strategy.retention_decision
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
+import std.decision {
+  DecisionSubject, DecisionVariable, DecisionConstraint, ContextParameter,
+  ObjectiveMeasure, ObjectiveTerm, ObjectiveTermSensitivity, ChoiceDomain, DecisionAssessment,
+  SensitivityUnestablished, ConstraintUnestablished, ParameterUnestablished,
+  PhysicalModelUnestablished, CausalModelUnestablished, UniqueSurvivorRequired,
+  RealizationSelectionResult, SelectedWithin, SelectionNeedsEvidence, SelectionNeedsPolicy,
+  CandidateFieldUnestablished, NoFeasibleRealization, RealizationSelectionRefused,
+  select_realization,
+}
+import std.pareto { AxisGap, AxisGoal, LowerIsBetter, ParetoEntry, SelectionAxis }
+import v2.std.optional { Absent, Present }
+
+// RETENTION IS A DECIDED QUANTITY, NOT A NUMBER THE OPERATOR SUPPLIES PER CATEGORY (operator
+// direction 2026-09-18: frame it as an optimization problem to tune later, expressed now in its
+// tradeoffs). strategy.data_map already owns the POLICY vocabulary - RetentionPeriodStanding,
+// RetentionTier, settled versus undetermined periods - and this module does not restate it. What
+// data_map lacks is the DERIVATION from obligations and measurements to a period, which is this.
+//
+// IT CONSUMES std.decision RATHER THAN MINTING A SECOND SELECTION ALGEBRA (DESIGN section 3d).
+// Hard constraints EXCLUDE candidates before ranking, so storage cost can never shorten a period an
+// obligation requires. A first sketch, retention = max(floor, demand), had no CEILING; data
+// minimization and contractual maxima cap retention, so ceilings are constraints in their own right.
+
+// THE STORAGE ROLE IS PART OF THE KEY. One data category can occupy several roles, and a miss costs
+// something different in each, so one duration per category would collapse them.
+type StorageRole
+  = DurableCustomerOutput
+  | MaterializedCopy
+  | CustomerInspectableLog
+  | EvidentiaryRecord
+
+fn miss_cost_shape(role: StorageRole) -> NonEmptyStr {
+  match role {
+    DurableCustomerOutput => "UNBOUNDED WHEN REPRODUCTION FAILS: a rollback to an old image cannot assume a rebuild reproduces it once a dependency is patched or a base image retagged.",
+    MaterializedCopy => "BOUNDED AND COMPUTABLE: recomputation or transfer, the case the materialization ladder already prices.",
+    CustomerInspectableLog => "BOUNDED BUT NOT RECONSTRUCTIBLE: re-running a failed job does not reproduce the failure, so a miss costs the investigation.",
+    EvidentiaryRecord => "EXTERNAL: a miss costs the ability to justify an enforcement action under dispute, so an obligation floor governs rather than economics.",
+  }
+}
+
+// THE PROMISE CONVERTS AN OPTIMISATION INTO AN OBLIGATION, and none is published today, so artifact
+// retention is economics alone. Publishing one is a commercial decision this module reads, never
+// computes.
+type AvailabilityPromise
+  = NoPromisePublished { consequence: NonEmptyStr }
+  | PromisedWindow { published_as: NonEmptyStr, window: NonEmptyStr }
+
+data artifact_availability_promise: AvailabilityPromise = NoPromisePublished {
+  consequence: "No window is published, so artifact retention is decided on economics and early eviction breaches nothing. Publishing one would move DurableCustomerOutput from the objective into the constraints.",
+}
+
+fn promise_is_published(p: AvailabilityPromise) -> Bool {
+  match p {
+    NoPromisePublished { consequence } => false,
+    PromisedWindow { published_as, window } => true,
+  }
+}
+
+data retention_period_variable: DecisionVariable = DecisionVariable {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "retention_period_variable"),
+}
+
+data storage_role_parameter: ContextParameter = ContextParameter {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "storage_role_parameter"),
+}
+
+data obligation_floor_constraint: DecisionConstraint = DecisionConstraint {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "obligation_floor_constraint"),
+}
+
+data minimisation_ceiling_constraint: DecisionConstraint = DecisionConstraint {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "minimisation_ceiling_constraint"),
+}
+
+data promised_window_constraint: DecisionConstraint = DecisionConstraint {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "promised_window_constraint"),
+}
+
+// EVERY OBJECTIVE TERM IS UNGROUNDED TODAY, and ObjectiveTerm requires a CitedFigureStanding, so an
+// ungrounded term cannot be written as though measured.
+data storage_cost_term: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "storage_cost_term"),
+  ground: TranscribedUncited { read_obligation: "Cost per byte-month at the durable origin actually used, from its posted rate. Cheap to ground." },
+}
+
+data fetch_cost_term: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "fetch_cost_term"),
+  ground: TranscribedUncited { read_obligation: "Egress and request cost per fetch at that provider. Cheap to ground." },
+}
+
+data recomputation_cost_term: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "recomputation_cost_term"),
+  ground: TranscribedUncited { read_obligation: "Cost of reproducing rather than serving. For MaterializedCopy the ladder's recomputation figure; for DurableCustomerOutput NOT DEFINED, because reproduction may fail, and it must not be valued at zero there." },
+}
+
+data reuse_by_age_term: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "reuse_by_age_term"),
+  ground: TranscribedUncited { read_obligation: "Observed fetch rate as a function of object age. The measurement that decides this, and it requires traffic." },
+}
+
+// DECLARED RATHER THAN OMITTED: what a guaranteed window is worth to a customer needs a paying
+// customer. Omitting it would let the objective read as complete without its commercial half.
+data availability_value_term: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "availability_value_term"),
+  ground: TranscribedUncited { read_obligation: "What a customer pays for a guaranteed artifact window. Not groundable from our own costs." },
+}
+
+data retention_objective: ObjectiveMeasure = ObjectiveMeasure {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "retention_objective"),
+  goal: LowerIsBetter,
+  terms: [storage_cost_term, fetch_cost_term, recomputation_cost_term, reuse_by_age_term, availability_value_term],
+}
+
+data retention_choice_domain: ChoiceDomain = ChoiceDomain {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "retention_choice_domain"),
+  variables: [retention_period_variable],
+}
+
+data retention_subject: DecisionSubject = DecisionSubject {
+  identity: decl_ref(module_path: "strategy.retention_decision", decl_name: "retention_subject"),
+  question: "For a given data category and storage role, how long is an object retained? Derived from the objective terms subject to the constraints, never authored per category. The operator supplies promises and shapes; periods follow from evidence.",
+  parameters: [storage_role_parameter],
+  constraints: [obligation_floor_constraint, minimisation_ceiling_constraint, promised_window_constraint],
+  objective: retention_objective,
+  choice_domain: retention_choice_domain,
+}
+
+// LOGS: the operator answered the SHAPE on 2026-09-18, not the duration. A deletion-phase answer
+// (trash, then permanent after 30 days) is a different fact from how long a log stays fetchable,
+// and an earlier reading conflated them.
+data log_retention_shape: NonEmptyStr = "Operator, 2026-09-18: minimise log retention by default. Short default, a longer tail for FAILED jobs because a customer cannot know they need a log until the job fails, and indefinite retention while a record is under investigation or appeal - the evidentiary hold overriding the default rather than being weighed against it."
+
+// ABUSE AND SANCTIONS: the tier population, received 2026-09-18 from a side-chat census, keyed as
+// retention/abuse-sanctions/<tier>/<storage-role> so a decision notice, a case record, an event log
+// and a search index cannot inherit one duration because they concern the same incident.
+type AbuseTier
+  = SignalNoCase
+  | ScreeningHistory
+  | OpenInvestigation
+  | ClosedInvestigation
+  | EnforcementDecision
+  | AppealOrDispute
+  | LegalHold
+
+// WHICH TIERS STOP EXPIRY OUTRIGHT. A tier under active investigation, appeal or legal hold may not
+// expire while that state holds - the obligation stops the clock rather than being weighed. The
+// others are ranked on evidence like any other role.
+fn tier_suspends_expiry(t: AbuseTier) -> Bool {
+  match t {
+    SignalNoCase => false,
+    ScreeningHistory => false,
+    OpenInvestigation => true,
+    ClosedInvestigation => false,
+    EnforcementDecision => false,
+    AppealOrDispute => true,
+    LegalHold => true,
+  }
+}
+
+fn objective_terms() -> List<ObjectiveTerm> { retention_objective.terms }
+
+// GROUNDED-NESS IS READ THROUGH THE OWNING MODULE'S ACCESSOR, not by matching its coproduct here
+// (review 67537): extdeps.external_authority already answers whether a figure still owes a read.
+fn term_is_grounded(t: ObjectiveTerm) -> Bool {
+  match cited_figure_read_obligation(standing: t.ground) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn grounded_term_count() -> Int { count(filter(objective_terms(), t => term_is_grounded(t: t))) }
+
+// ---------------------------------------------------------------------------------------------
+// THE SELECTION, BY THE KERNEL. The first cut of this module declared that it consumed
+// std.decision and then HAND-COMPUTED its verdict as a local boolean - a second producer of the
+// fact the header said it would not produce, and a witness that would stay green if the kernel
+// disagreed (review 67537). The verdict is now whatever select_realization returns over a real
+// candidate field, exactly as strategy.cloud_overflow_role does it.
+// ---------------------------------------------------------------------------------------------
+
+data retention_candidate_field: DeclarationRef = decl_ref(module_path: "strategy.retention_decision", decl_name: "retention_candidate_field")
+data retention_constraint_authority: DeclarationRef = decl_ref(module_path: "strategy.retention_decision", decl_name: "retention_constraint_authority")
+data retention_policy: DeclarationRef = decl_ref(module_path: "strategy.retention_decision", decl_name: "retention_policy")
+data retention_evidence_snapshot: DeclarationRef = decl_ref(module_path: "strategy.retention_decision", decl_name: "retention_evidence_snapshot")
+data axis_total_retention_cost: DeclarationRef = decl_ref(module_path: "strategy.retention_decision", decl_name: "axis_total_retention_cost")
+
+// THREE PERIOD BANDS, NOT A CONTINUUM, because a band is what an operator can act on and the
+// solver's job today is only to say which band evidence would favour.
+data candidate_period_short: DeclarationRef = decl_ref(module_path: "strategy.retention_decision", decl_name: "candidate_period_short")
+data candidate_period_medium: DeclarationRef = decl_ref(module_path: "strategy.retention_decision", decl_name: "candidate_period_medium")
+data candidate_period_long: DeclarationRef = decl_ref(module_path: "strategy.retention_decision", decl_name: "candidate_period_long")
+
+data retention_read_obligation: NonEmptyStr = "No fetch-by-age curve, storage rate or egress rate has been read for any durable origin in use, so no period band has a cost reading. Reopen when traffic produces a fetch curve and the origin's posted rates are read."
+
+fn retention_axes() -> List<SelectionAxis> {
+  [SelectionAxis { identity: axis_total_retention_cost, goal: LowerIsBetter }]
+}
+
+fn gap_unpriced(band: NonEmptyStr) -> AxisGap {
+  AxisGap {
+    axis: axis_total_retention_cost,
+    cause: join([band, " retention has no cost reading: storage, egress and reuse-by-age are all unread"], "") as NonEmptyStr,
+  }
+}
+
+fn band_entry(identity: DeclarationRef, label: NonEmptyStr) -> ParetoEntry {
+  ParetoEntry { identity: identity, display_label: label, readings: [], missing_inputs: [gap_unpriced(band: label)] }
+}
+
+fn live_retention_field() -> List<ParetoEntry> {
+  [
+    band_entry(identity: candidate_period_short, label: "short"),
+    band_entry(identity: candidate_period_medium, label: "medium"),
+    band_entry(identity: candidate_period_long, label: "long"),
+  ]
+}
+
+fn term_sensitivity_unestablished(t: ObjectiveTerm) -> ObjectiveTermSensitivity {
+  SensitivityUnestablished { term: t.identity, variable: retention_period_variable.identity, obligation: retention_read_obligation }
+}
+
+fn retention_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: retention_subject,
+    sensitivities: map(objective_terms(), t => term_sensitivity_unestablished(t: t)),
+    constraints: [
+      ConstraintUnestablished { constraint: obligation_floor_constraint.identity, obligation: "No category has had its obligation floor read from a cited authority." },
+      ConstraintUnestablished { constraint: minimisation_ceiling_constraint.identity, obligation: "No data-minimization or contractual ceiling has been read." },
+      ConstraintUnestablished { constraint: promised_window_constraint.identity, obligation: "No availability window is published; see artifact_availability_promise." },
+    ],
+    parameters: [
+      ParameterUnestablished { parameter: storage_role_parameter.identity, obligation: "The subject is evaluated per storage role; no role is bound in this general assessment." },
+    ],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelUnestablished { subject: retention_subject.identity, read_obligation: retention_read_obligation },
+    causal_model: CausalModelUnestablished { subject: retention_subject.identity, read_obligation: retention_read_obligation },
+  }
+}
+
+fn retention_selection() -> RealizationSelectionResult<ParetoEntry> {
+  select_realization(
+    assessment: retention_assessment(),
+    candidate_field_identity: retention_candidate_field,
+    field: live_retention_field(),
+    axes: retention_axes(),
+    constraints: [],
+    constraint_authority: retention_constraint_authority,
+    policy: UniqueSurvivorRequired { identity: retention_policy },
+    evidence_snapshot: retention_evidence_snapshot,
+  )
+}
+
+fn selection_arm_name(pick: RealizationSelectionResult<ParetoEntry>) -> NonEmptyStr {
+  match pick {
+    SelectedWithin { candidate: _, receipt: _ } => "SelectedWithin"
+    SelectionNeedsEvidence { needs: _ } => "SelectionNeedsEvidence"
+    SelectionNeedsPolicy { survivors: _ } => "SelectionNeedsPolicy"
+    CandidateFieldUnestablished { causes: _ } => "CandidateFieldUnestablished"
+    NoFeasibleRealization { causes: _ } => "NoFeasibleRealization"
+    RealizationSelectionRefused { defects: _ } => "RealizationSelectionRefused"
+  }
+}
+
+fn period_was_selected(pick: RealizationSelectionResult<ParetoEntry>) -> Bool {
+  match pick {
+    SelectedWithin { candidate: _, receipt: _ } => true
+    SelectionNeedsEvidence { needs: _ } => false
+    SelectionNeedsPolicy { survivors: _ } => false
+    CandidateFieldUnestablished { causes: _ } => false
+    NoFeasibleRealization { causes: _ } => false
+    RealizationSelectionRefused { defects: _ } => false
+  }
+}

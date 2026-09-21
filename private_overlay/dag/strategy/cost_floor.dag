@@ -1,0 +1,236 @@
+module strategy.cost_floor
+
+import std.types { Int, NonEmptyStr, List, Bool }
+import std.nat { Nat }
+import strategy.ci_node_build {
+  candidate_mt_collins_32, known_capex_micro, capex_life_months, sellable_units,
+}
+import strategy.ci_site_cost {
+  rent_and_common_area, standing_micro, dia_planning_micro_per_month,
+  node_electricity_micro_per_month, hours_per_month,
+}
+import strategy.ci_operations { imputed_labour_cost_micro }
+import strategy.rack_power_engineering { collins_fleet_nodes, collins_node_planning_watts }
+
+// THE COST FLOOR, DERIVED - and refusing to be a number while it cannot be one.
+//
+// strategy.ci_runner_economics already computes a cost, and states in prose that the figure
+// excludes support, abuse response, payment processing, storage and cache, insurance, switching,
+// spares, control plane and operator time. A prose exclusion list is the problem this module
+// exists to fix: an excluded cost is INVISIBLE rather than unpriced, so the figure reads as a
+// floor while omitting most of what a floor is made of, and nothing in the type system stops a
+// reader treating it as complete. Here every omission is a ROW with an Unquoted standing, so the
+// floor can report what it does not know and refuse to present itself as settled.
+//
+// The three standings are not decoration. Measured is a receipt. PlanningFigure is a number with
+// a stated basis that DISSOLVES into a measurement someone owes. Unquoted contributes ZERO to the
+// sum and appears in the refusal, which is what makes the computed value an honest LOWER BOUND
+// rather than an estimate of the truth - the real floor is above it by the sum of everything
+// nobody has priced.
+//
+// WHY UTILIZATION IS THE ARGUMENT AND NOT A CONSTANT. Nearly all of this cost is fixed per node
+// per month, so cost per SOLD unit-minute is fixed cost divided by units times minutes times
+// utilization. Utilization is therefore not one input among many - it is the divisor, and a
+// floor quoted without one is meaningless. At 30 percent the same fleet must charge roughly
+// three and a third times what it charges fully loaded.
+
+type ComponentStanding
+  = Measured { micro_per_node_month: Int, receipt: NonEmptyStr }
+  | PlanningFigure { micro_per_node_month: Int, basis: NonEmptyStr, dissolves_to: NonEmptyStr }
+  | Unquoted { obligation: NonEmptyStr }
+
+type FloorComponent {
+  key: NonEmptyStr
+  standing: ComponentStanding
+}
+
+fn component_micro(c: FloorComponent) -> Int {
+  match c.standing {
+    Measured { micro_per_node_month, receipt } => micro_per_node_month,
+    PlanningFigure { micro_per_node_month, basis, dissolves_to } => micro_per_node_month,
+    Unquoted { obligation } => 0,
+  }
+}
+
+fn component_is_priced(c: FloorComponent) -> Bool {
+  match c.standing {
+    Measured { micro_per_node_month, receipt } => true,
+    PlanningFigure { micro_per_node_month, basis, dissolves_to } => true,
+    Unquoted { obligation } => false,
+  }
+}
+
+fn component_is_measured(c: FloorComponent) -> Bool {
+  match c.standing {
+    Measured { micro_per_node_month, receipt } => true,
+    PlanningFigure { micro_per_node_month, basis, dissolves_to } => false,
+    Unquoted { obligation } => false,
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE COMPONENTS. Each priced row derives from a module that already owns its inputs; nothing
+// here restates a number that lives somewhere else.
+// ---------------------------------------------------------------------------------------------
+
+fn capex_per_node_month_micro() -> Int {
+  known_capex_micro(c: candidate_mt_collins_32) / capex_life_months
+}
+
+data component_capex: FloorComponent = FloorComponent {
+  key: "capex-amortization",
+  standing: PlanningFigure {
+    micro_per_node_month: 0,
+    basis: "Node acquisition amortised straight-line over the declared life, read from ci_node_build rather than restated. The value is supplied by capex_per_node_month_micro rather than stored here, because a stored copy of a derived number is the thing that goes stale.",
+    dissolves_to: "Landed cost receipts per node including duty and freight, and a life assumption tested against actual retirement rather than assumed at 36 months.",
+  },
+}
+
+// TWO AUTHORITIES ANSWER "HOW MANY NODES SHARE THE SITE COST" AND THEY DISAGREE.
+// rack_power_engineering.collins_fleet_nodes is 21 - the fleet actually owned. ci_site_cost
+// .admitted_node_count is 6 - the nodes a site is modelled as admitting. Both are real facts
+// about different questions, but only one can be the divisor here, and picking the larger one
+// silently would flatter every figure downstream by a factor of three and a half.
+//
+// This module divides by the OWNED fleet and says so, because the floor is a question about
+// the business rather than about one room. The other divisor is not discarded: it is computed
+// beside it, so the sensitivity is a value a consumer can read rather than a caveat in prose
+// that the next reader will not see. If the site truly admits six, the honest floor is the
+// second figure and the first is optimistic.
+fn site_divisor_nodes() -> Int { collins_fleet_nodes }
+
+fn rent_per_node_month_micro() -> Int {
+  standing_micro(s: rent_and_common_area) / site_divisor_nodes()
+}
+
+fn dia_per_node_month_micro() -> Int {
+  dia_planning_micro_per_month / site_divisor_nodes()
+}
+
+// The same floor with site fixed costs spread across ci_site_cost's admitted count instead.
+fn priced_per_node_month_at_divisor_micro(nodes: Int) -> Int {
+  if nodes <= 0 {
+    0
+  } else {
+    capex_per_node_month_micro()
+      + standing_micro(s: rent_and_common_area) / nodes
+      + dia_planning_micro_per_month / nodes
+      + electricity_per_node_month_micro()
+      + operator_per_node_month_micro()
+  }
+}
+
+fn floor_at_divisor_micro(nodes: Int, utilization_permille: Int) -> Int {
+  if utilization_permille <= 0 || nodes <= 0 {
+    0
+  } else {
+    priced_per_node_month_at_divisor_micro(nodes: nodes) * 1000
+      / (units_per_node() * minutes_per_month * utilization_permille)
+  }
+}
+
+fn electricity_per_node_month_micro() -> Int {
+  node_electricity_micro_per_month(node_watts: collins_node_planning_watts)
+}
+
+// Operator time is the component ci_runner_economics excludes and the one most likely to
+// dominate at low node counts: it is nearly flat per site, so it divides by node count the way
+// rent does. ci_operations already imputes it at an hourly rate for unpaid founder time, which
+// is the correct treatment - no cash leaves the business, which is exactly why it must appear,
+// because unpaid founder time is the cheapest capital available and the first to run out.
+fn operator_per_node_month_micro() -> Int {
+  imputed_labour_cost_micro(nodes: collins_fleet_nodes, sites: 1, assisted: true) / collins_fleet_nodes
+}
+
+data component_unquoted_support: FloorComponent = FloorComponent {
+  key: "customer-support",
+  standing: Unquoted { obligation: "Time answering customers, distinct from the fleet operation ci_operations sizes. Unpriced, so the floor below understates by it." },
+}
+
+data component_unquoted_abuse: FloorComponent = FloorComponent {
+  key: "abuse-response",
+  standing: Unquoted { obligation: "Crypto mining, egress abuse and account fraud on a CI platform running untrusted code. Structurally certain to be nonzero and entirely unpriced." },
+}
+
+data component_unquoted_payments: FloorComponent = FloorComponent {
+  key: "payment-processing",
+  standing: Unquoted { obligation: "Card fees, chargebacks and failed-payment handling. Roughly proportional to revenue rather than to nodes, so it does not shrink with utilisation the way the fixed lines do." },
+}
+
+data component_unquoted_storage: FloorComponent = FloorComponent {
+  key: "storage-cache-egress",
+  standing: Unquoted { obligation: "Origin object storage, the rack cache tier, artifact retention and any egress. cache-tier-fabric designs it and nothing prices it; ci_storage_tiering plans 180 TB per day of restore traffic at the full-rack figure." },
+}
+
+data component_unquoted_spares: FloorComponent = FloorComponent {
+  key: "spares-and-replacement",
+  standing: Unquoted { obligation: "Failed DIMMs, PSUs, drives in the infrastructure pair, and the CPU inventory held against board scarcity. asset_lifecycle tracks the assets; nothing charges their replacement to a unit-minute." },
+}
+
+data component_unquoted_insurance: FloorComponent = FloorComponent {
+  key: "insurance-and-legal",
+  standing: Unquoted { obligation: "Liability and equipment cover, plus the compliance surface: publication, transparency-act filing, GDPR posture and any SOC 2 engagement, which is a practitioner fee and not a control baseline." },
+}
+
+data component_unquoted_control_plane: FloorComponent = FloorComponent {
+  key: "control-plane",
+  standing: Unquoted { obligation: "Scheduler, API, billing and status surfaces, and per control-plane-siting they must NOT share a failure domain with the fleet - so they are their own hosting cost rather than a spare node." },
+}
+
+data component_unquoted_network_hardware: FloorComponent = FloorComponent {
+  key: "network-hardware",
+  standing: Unquoted { obligation: "Switching, cabling and the infrastructure pair's own capex. strategy.procurement_order enumerates the lines and refuses to total them, so no figure exists to charge here." },
+}
+
+data unquoted_components: List<FloorComponent> = [
+  component_unquoted_support, component_unquoted_abuse, component_unquoted_payments,
+  component_unquoted_storage, component_unquoted_spares, component_unquoted_insurance,
+  component_unquoted_control_plane, component_unquoted_network_hardware,
+]
+
+// ---------------------------------------------------------------------------------------------
+// THE FLOOR. Priced components summed, divided by sold unit-minutes at a stated utilisation.
+// ---------------------------------------------------------------------------------------------
+
+fn priced_per_node_month_micro() -> Int {
+  capex_per_node_month_micro()
+    + rent_per_node_month_micro()
+    + dia_per_node_month_micro()
+    + electricity_per_node_month_micro()
+    + operator_per_node_month_micro()
+}
+
+data minutes_per_month: Int = 43200
+
+fn units_per_node() -> Int {
+  sellable_units(c: candidate_mt_collins_32)
+}
+
+// The floor per SOLD unit-minute. Utilisation is a permille argument because it is the divisor
+// and a floor without one is not a figure at all.
+fn floor_micro_per_unit_minute(utilization_permille: Int) -> Int {
+  if utilization_permille <= 0 {
+    0
+  } else {
+    priced_per_node_month_micro() * 1000
+      / (units_per_node() * minutes_per_month * utilization_permille)
+  }
+}
+
+type FloorStanding
+  = FloorMeasured { micro_per_unit_minute: Int }
+  | FloorLowerBound { micro_per_unit_minute: Int, unquoted_count: Int, causes: NonEmptyStr }
+
+fn floor_standing(utilization_permille: Int) -> FloorStanding {
+  if count(unquoted_components) == 0 {
+    FloorMeasured { micro_per_unit_minute: floor_micro_per_unit_minute(utilization_permille: utilization_permille) }
+  } else {
+    FloorLowerBound {
+      micro_per_unit_minute: floor_micro_per_unit_minute(utilization_permille: utilization_permille),
+      unquoted_count: count(unquoted_components),
+      causes: "A LOWER BOUND AND NEVER A COST. Every unquoted component contributes zero, so the true floor is above this figure by their sum, and that sum is unknown rather than small - abuse response and storage egress on a platform running untrusted code are structurally certain to be material. Every priced component is a PLANNING figure rather than a measurement: node power is assumed at 650 W and dissolves into a clamp-meter reading, transit is an unquoted placeholder, sellable units per node rest on a memory census that has two incompatible readings, and operator time is imputed opportunity cost rather than cash. Quote this only as the answer to what the fleet costs BEFORE the things nobody has priced.",
+    }
+  }
+}
+
+data floor_reading_note: NonEmptyStr = "How to read this against a competitor's PRICE. Their price includes their unquoted components and their margin; this figure includes neither, so a floor below their price does not mean the same product can be sold there. What it does establish is the direction of the constraint: if the floor sits far below a competitor's rate, being priced above them is a POSITIONING choice rather than a cost necessity, and the honest conversation is about what the premium buys. If the floor sits near or above it, the position is forced and no amount of negotiation changes it."

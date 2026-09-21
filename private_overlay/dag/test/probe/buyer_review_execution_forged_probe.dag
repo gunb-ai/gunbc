@@ -1,0 +1,41 @@
+module test.probe.buyer_review_execution_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. A BuyerReviewExecution names the run that owns the buyer-sheet hold,
+// and recovery trusts it to say which systemd invocation must be over before the hold is released.
+// Its only mint is strategy.buyer_review_placement buyer_review_execution_observe, which performs the
+// boot, cgroup and invocation reads itself. A caller that could write one could claim to be a run it
+// is not, and take or release the hold under that name.
+
+import std.types { NonEmptyStr }
+import strategy.buyer_review_placement { BuyerReviewExecution, BuyerReviewRecoveryWarrant, TerminatedByReboot, BuyerReviewRecoveryAdmission, recovery_admission_on_the_executor_host }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import std.durable_compare_and_set { cas_generation_first }
+
+fn forged_execution() -> BuyerReviewExecution {
+  BuyerReviewExecution {
+    boot_time: "1789700000",
+    unit: "gunbc-buyer-review-forged.service",
+    invocation: "0123abcd",
+  }
+}
+
+fn probe_main() -> NonEmptyStr {
+  forged_execution().unit
+}
+
+// THE RELEASE WARRANT IS THE SECOND WALL. recover_admitted commits a real release, so the warrant it
+// requires must not be writable outside buyer_review_recovery_admission, which reads the slot, the
+// boot and the unit invocation itself.
+fn forged_warrant() -> BuyerReviewRecoveryWarrant {
+  BuyerReviewRecoveryWarrant {
+    owner: "buyer-review|1789700000|gunbc-buyer-review-live.service|0123abcd" as DurableHoldOwnerRef,
+    generation: cas_generation_first(),
+    termination: TerminatedByReboot { recorded_boot: "1789700000", current_boot: "1789800000" },
+  }
+}
+
+// THE THIRD WALL: the ungated warrant mint. Called from anywhere but the host-gated entry, it would
+// read (and could release through) whatever host-local store this machine has.
+fn ungated_recovery() -> BuyerReviewRecoveryAdmission {
+  recovery_admission_on_the_executor_host()
+}

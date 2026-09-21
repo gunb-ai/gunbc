@@ -1,0 +1,8 @@
+module test.claim.ci_economics_frontier_witness
+
+import std.process { ProcessExit }
+import test.claim.ci_economics_witness { economics_frontier_main }
+
+fn economics_frontier_quarantine_main() -> ProcessExit {
+  economics_frontier_main()
+}

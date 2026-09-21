@@ -1,0 +1,214 @@
+module test.claim.wholesale_supply_packet_witness
+
+import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import strategy.wholesale_supply_packet {
+  wholesale_packet_invariants, packet_count, wholesale_seller_packets,
+  packet_blacksmith, packet_circleci, packet_depot, packet_github_actions,
+  packet_warpbuild, packet_ubicloud,
+  arm_shape_labels,
+  expected_wholesale_packet_csv, wholesale_packet_csv_path,
+  every_packet_holds, csv_omits_hetzner_console_cap,
+  packet_holds_count, packet_holds_catalogs, packet_holds_outreach,
+  packet_holds_cost, packet_holds_citations, packet_holds_cited_authorities, packet_holds_draft, packet_holds_asks,
+  packet_holds_inquiries,
+  packet_holds_host,
+  packet_outreach_is_prepared,
+  draft_text_omits_node_unit_inventory_count,
+  packet_draft_omits_transcribed_listed_price_text,
+  cax41_listed_monthly_usd_wire,
+  dangling_send_read_refuses,
+  declaration_ref_resolves,
+  PreparedUnsent, DraftBlocked, PacketOutreach,
+  HostCited, HostStandingUnstated, HostStanding,
+  blacksmith_arm_capacity_ref, depot_arm_capacity_ref, github_actions_arm_capacity_ref,
+}
+import extdeps.ci_runner.types {
+  ArmCapacityChannel, SellerOwnMetalStated, ResoldNamedCloud, CustomerAccountNamedCloud,
+  CloudOperatorIsTheSeller, SoftwareOnCustomerHosts, CapacityChannelUnread,
+}
+import extdeps.ci_runner.blacksmith { blacksmith_runner_catalog, blacksmith_arm_capacity }
+import extdeps.ci_runner.depot { depot_arm_capacity }
+import extdeps.ci_runner.github_actions { github_actions_arm_capacity }
+import extdeps.ci_runner.warpbuild { warpbuild_runner_catalog }
+
+fn witness_channel_eq(a: ArmCapacityChannel, b: ArmCapacityChannel) -> Bool {
+  match a {
+    SellerOwnMetalStated => match b {
+      SellerOwnMetalStated => true
+      ResoldNamedCloud { vendor_words: _ } => false
+      CustomerAccountNamedCloud { vendor_words: _ } => false
+      CloudOperatorIsTheSeller { vendor_words: _ } => false
+      SoftwareOnCustomerHosts => false
+      CapacityChannelUnread => false
+    }
+    ResoldNamedCloud { vendor_words: aw } => match b {
+      SellerOwnMetalStated => false
+      ResoldNamedCloud { vendor_words: bw } => aw == bw
+      CustomerAccountNamedCloud { vendor_words: _ } => false
+      CloudOperatorIsTheSeller { vendor_words: _ } => false
+      SoftwareOnCustomerHosts => false
+      CapacityChannelUnread => false
+    }
+    CustomerAccountNamedCloud { vendor_words: aw } => match b {
+      SellerOwnMetalStated => false
+      ResoldNamedCloud { vendor_words: _ } => false
+      CustomerAccountNamedCloud { vendor_words: bw } => aw == bw
+      CloudOperatorIsTheSeller { vendor_words: _ } => false
+      SoftwareOnCustomerHosts => false
+      CapacityChannelUnread => false
+    }
+    CloudOperatorIsTheSeller { vendor_words: aw } => match b {
+      SellerOwnMetalStated => false
+      ResoldNamedCloud { vendor_words: _ } => false
+      CustomerAccountNamedCloud { vendor_words: _ } => false
+      CloudOperatorIsTheSeller { vendor_words: bw } => aw == bw
+      SoftwareOnCustomerHosts => false
+      CapacityChannelUnread => false
+    }
+    SoftwareOnCustomerHosts => match b {
+      SellerOwnMetalStated => false
+      ResoldNamedCloud { vendor_words: _ } => false
+      CustomerAccountNamedCloud { vendor_words: _ } => false
+      CloudOperatorIsTheSeller { vendor_words: _ } => false
+      SoftwareOnCustomerHosts => true
+      CapacityChannelUnread => false
+    }
+    CapacityChannelUnread => match b {
+      SellerOwnMetalStated => false
+      ResoldNamedCloud { vendor_words: _ } => false
+      CustomerAccountNamedCloud { vendor_words: _ } => false
+      CloudOperatorIsTheSeller { vendor_words: _ } => false
+      SoftwareOnCustomerHosts => false
+      CapacityChannelUnread => true
+    }
+  }
+}
+
+fn cited_host_channel(h: HostStanding, expected: ArmCapacityChannel, authority: DeclarationRef) -> Bool {
+  match h {
+    HostCited { channel, authority: a } =>
+      declaration_ref_eq(a: a, b: authority) && witness_channel_eq(a: channel, b: expected)
+    HostStandingUnstated { catalog: _ } => false
+  }
+}
+
+fn host_channels_round_trip() -> Bool {
+  cited_host_channel(
+    h: packet_blacksmith.host,
+    expected: blacksmith_arm_capacity,
+    authority: blacksmith_arm_capacity_ref,
+  )
+    && cited_host_channel(
+      h: packet_depot.host,
+      expected: depot_arm_capacity,
+      authority: depot_arm_capacity_ref,
+    )
+    && cited_host_channel(
+      h: packet_github_actions.host,
+      expected: github_actions_arm_capacity,
+      authority: github_actions_arm_capacity_ref,
+    )
+}
+
+fn warpbuild_arm_pattern_is_read_not_transcribed() -> Bool {
+  count(filter(arm_shape_labels(availability: warpbuild_runner_catalog), l =>
+    string_contains(s: l as String, pattern: "warp-ubuntu-latest-arm64-")
+  )) > 0
+}
+
+fn blacksmith_arm_is_read() -> Bool {
+  count(arm_shape_labels(availability: blacksmith_runner_catalog)) > 0
+}
+
+fn six_sellers_and_unsent() -> Bool {
+  packet_count() == 6
+    && count(wholesale_seller_packets) == 6
+    && packet_outreach_is_prepared(o: packet_blacksmith.outreach)
+    && packet_outreach_is_prepared(o: packet_circleci.outreach)
+    && packet_outreach_is_prepared(o: packet_depot.outreach)
+    && packet_outreach_is_prepared(o: packet_github_actions.outreach)
+    && packet_outreach_is_prepared(o: packet_warpbuild.outreach)
+    && packet_outreach_is_prepared(o: packet_ubicloud.outreach)
+}
+
+fn csv_is_a_projection() -> Bool {
+  string_contains(s: expected_wholesale_packet_csv(), pattern: "seller_id")
+    && string_contains(s: expected_wholesale_packet_csv(), pattern: "ubicloud")
+    && string_contains(s: expected_wholesale_packet_csv(), pattern: "concurrency-unstated:strategy.cost_floor::floor_micro_per_unit_minute")
+    && string_contains(s: expected_wholesale_packet_csv(), pattern: "cited:SellerOwnMetalStated:extdeps.ci_runner.blacksmith::blacksmith_arm_capacity")
+    && string_contains(s: expected_wholesale_packet_csv(), pattern: "cited:ResoldNamedCloud:extdeps.ci_runner.depot::depot_arm_capacity")
+    && string_contains(s: expected_wholesale_packet_csv(), pattern: "cited:ResoldNamedCloud:extdeps.ci_runner.github_actions::github_actions_arm_capacity")
+    && string_contains(s: expected_wholesale_packet_csv(), pattern: "send_obligation_must_read")
+    && string_contains(s: expected_wholesale_packet_csv(), pattern: "strategy.wholesale_supply_packet::packet_blacksmith")
+    && string_contains(s: wholesale_packet_csv_path as String, pattern: "docs/strategy/")
+}
+
+fn fixture_draft_stating_node_count() -> String {
+  "We operate 12 nodes of dedicated Ampere capacity."
+}
+
+fn fixture_draft_stating_listed_monthly() -> String {
+  join(["Listed CAX monthly is ", cax41_listed_monthly_usd_wire(), "."], "")
+}
+
+fn draft_reds_discriminate() -> Bool {
+  !draft_text_omits_node_unit_inventory_count(text: fixture_draft_stating_node_count())
+    && !packet_draft_omits_transcribed_listed_price_text(text: fixture_draft_stating_listed_monthly())
+}
+
+fn flag(b: Bool) -> String { if b { "1" } else { "0" } }
+
+fn resolver_reds_discriminate() -> Bool {
+  !declaration_ref_resolves(r: decl_ref(
+    module_path: "strategy.wholesale_supply_packet",
+    decl_name: "no_such_declaration",
+  ))
+    && !declaration_ref_resolves(r: decl_ref(
+      module_path: "strategy.no_such_wholesale_packet_module",
+      decl_name: "no_such_declaration",
+    ))
+}
+
+fn wholesale_supply_packet_witness_main() -> ProcessExit {
+  let inv = wholesale_packet_invariants()
+  let holds = every_packet_holds()
+  let omit = csv_omits_hetzner_console_cap()
+  let six = six_sellers_and_unsent()
+  let warp = warpbuild_arm_pattern_is_read_not_transcribed()
+  let bs = blacksmith_arm_is_read()
+  let csv = csv_is_a_projection()
+  let inquiries = packet_holds_inquiries()
+  let host = packet_holds_host() && host_channels_round_trip()
+  let reds = draft_reds_discriminate()
+  let resolver_reds = resolver_reds_discriminate()
+  let dangling = dangling_send_read_refuses()
+  let ok = inv && six && warp && bs && csv && inquiries && host && reds && resolver_reds && dangling
+  let bytes = join([
+    "holds=", flag(b: holds),
+    " count=", flag(b: packet_holds_count()),
+    " catalogs=", flag(b: packet_holds_catalogs()),
+    " outreach=", flag(b: packet_holds_outreach()),
+    " cost=", flag(b: packet_holds_cost()),
+    " citations=", flag(b: packet_holds_citations()),
+    " cited=", flag(b: packet_holds_cited_authorities()),
+    " draft=", flag(b: packet_holds_draft()),
+    " asks=", flag(b: packet_holds_asks()),
+    " omit=", flag(b: omit),
+    " six=", flag(b: six),
+    " warp=", flag(b: warp),
+    " blacksmith=", flag(b: bs),
+    " csv=", flag(b: csv),
+    " inquiries=", flag(b: inquiries),
+    " host=", flag(b: host),
+    " draft_reds=", flag(b: reds),
+    " resolver_reds=", flag(b: resolver_reds),
+    " dangling_must_read=", flag(b: dangling),
+  ], "")
+  if ok {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: bytes }
+  }
+}

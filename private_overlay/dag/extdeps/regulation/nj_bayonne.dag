@@ -1,0 +1,147 @@
+module extdeps.regulation.nj_bayonne
+
+import std.types { NonEmptyStr, EpochMs }
+import extdeps.version { VersionIdentity }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import std.citation { CitationSelector, CitationTarget, citation_target, citation_exact_pin, RawResponseBody }
+import std.content_hash { Sha256Digest }
+import extdeps.external_authority { ExternalSubjectRef }
+import extdeps.uri { uri_https }
+import extdeps.regulation.types {
+  RegulatoryInstrument, IssuingAuthority, GovernmentLevel, Municipal,
+  InstrumentLifecycle, Adopted, EffectiveDate, EffectiveDatePendingEvidence,
+  ExecutiveDisposition, SignedOn,
+  SubjectStanding, DefinitionExcerpt,
+  InstrumentForce, ProhibitionOfUse,
+  SpatialExtent, EveryZoningDistrict,
+  GovernedSubject,
+  TemporalApplication, Prospective,
+  ApplicabilityBasis, PrincipalUseZoning,
+  InstrumentProvenance, OfficialAnnouncement,
+}
+
+// THE CITY OF BAYONNE, HUDSON COUNTY, NEW JERSEY - the jurisdiction is the independently
+// governed upstream (DESIGN "External upstream decomposition"), and its ordinances are its
+// rows. Adding Jersey City must not require editing this module.
+//
+// STANDING CORRECTED 2026-08-30 (analyst ruling DU-0.5). The prior revision carried this as
+// an OperatorReported prohibition on "construction of new data centers", framed as the
+// MOTIVATING OBSERVED INSTANCE proving the instrument class is nonempty. Both halves were
+// stale by the time they were written:
+//
+//   1. The instrument is adopted law, not an operator report. Bayonne O-26-74 was introduced
+//      2026-07-22, adopted unanimously 2026-08-12, and signed by the mayor 2026-08-13.
+//   2. The class is not merely nonempty, it is LARGE. Thirty-odd New Jersey municipalities
+//      adopted data-center prohibitions during 2026, several of them candidate market areas of
+//      ours, so "proves the class exists" understated it badly. It does NOT establish that
+//      prohibition is the modal municipal posture - an earlier revision of this comment said
+//      exactly that, and it is a prevalence claim requiring a complete denominator over the
+//      state's municipalities plus a classification of each. The only instrument in hand is an
+//      incomplete roster, which cannot establish a rate any more than it can establish an
+//      absence. Retracted here as well as in the consuming survey, since a retraction that
+//      leaves the original standing in another file has not retracted anything.
+//
+// The paraphrase "construction of new data centers" was also wrong in a way that mattered:
+// the ordinance reaches establishment, construction, EXPANSION, AND OPERATION, so it is not
+// a construction-permitting rule that an existing building sidesteps.
+
+data bayonne_city: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "extdeps.regulation.nj_bayonne",
+    decl_name: "bayonne_city",
+    field: WholeDeclaration,
+  },
+}
+
+data bayonne_zoning_officer: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.regulation.nj_bayonne",
+  decl_name: "bayonne_city",
+  field: NamedField { field_name: "zoning_officer" },
+}
+
+data bayonne_council: IssuingAuthority = IssuingAuthority {
+  subject: DeclarationRef {
+    module_path: "extdeps.regulation.nj_bayonne",
+    decl_name: "bayonne_city",
+    field: WholeDeclaration,
+  },
+  level: Municipal,
+}
+
+// PROVENANCE IS THE CITY'S OWN ADOPTION ANNOUNCEMENT, PINNED BY DIGEST - and it is an
+// ANNOUNCEMENT, not the enacted text. The distinction is the whole point of the arm: the
+// announcement establishes designation, vote, and dates, and quotes the operative language;
+// it is not the certified ordinance, and the definition below is therefore quoted from the
+// city's own publication of it rather than read off the adopted instrument.
+//
+// The digest pins the representation retrieved 2026-08-30. This is a CMS-rendered page, so a
+// later reconciliation mismatch means the representation moved, NOT that the fact is wrong -
+// std.citation already separates those two outcomes, which is why the pin is carried through
+// that carrier rather than as a bare URL.
+data bayonne_o_26_74_digest: Sha256Digest = Sha256Digest {
+  hex: "8fc27431f43b225789a7b0cb6c97a77c3f51c018116ddf1b54032398f749b537",
+}
+
+data bayonne_o_26_74_citation: CitationTarget<CitationSelector> = citation_target(
+  expected_pin: citation_exact_pin(
+    source: bayonne_city,
+    access_route: uri_https(locator: "www.bayonnenj.org/News/View/12378/mayor-nadrowski-and-city-council-approve-ordinance-prohibiting-data-centers-in-bayonne"),
+    byte_domain: RawResponseBody,
+    version: "retrieved-2026-08-30" as VersionIdentity,
+    expected_identity: bayonne_o_26_74_digest,
+  ),
+  selector: none,
+)
+
+// The definition, quoted from the city's publication. It is carried VERBATIM rather than
+// paraphrased because every consequential question about this instrument - and the one that
+// decides whether our own use is reached - turns on its exact terms: it keys on PRINCIPAL
+// USE, it reaches a "portion thereof", and it directs that it "shall be liberally construed".
+// A paraphrase would silently drop whichever of those three the paraphraser found least
+// salient, which is exactly what the previous revision did.
+// AN EXCERPT, DECLARED AS ONE (review of PR #24). The first revision stored this text in a
+// record shaped like a complete definition and claimed in the commit message that the
+// seven-paragraph definition was carried verbatim. It is not: the City's announcement states
+// the ordinance contains seven definition paragraphs and then publishes the CORE paragraph
+// plus the seventh's liberal-construction conclusion. Storing an excerpt in a complete-looking
+// carrier let a consumer read a partial definition as the governed one - and the two adjacent
+// fields lied in the same direction, since neither "no exclusions" nor an explicit false on
+// liberal construction can be read off a partial source. DefinitionExcerpt makes all three
+// unreachable until the certified text is retrieved.
+data bayonne_data_center_subject: GovernedSubject = GovernedSubject {
+  defined_term: "Data Center",
+  standing: DefinitionExcerpt {
+    excerpt: "any building, structure, facility, campus, or portion thereof, the principal use of which is the housing, operation, storage, management, processing, transmission, routing, hosting, distribution, maintenance, security, or exchange of digital or electronic data through computer servers, server racks, networking equipment, telecommunications equipment, electronic data storage systems, cloud computing infrastructure, artificial intelligence infrastructure, or other high-density digital information technology infrastructure, regardless of the terminology, trade name, ownership structure, or business model used to describe the facility. [seventh paragraph, conclusion] this definition shall be liberally construed to include facilities whose principal purpose is the operation of large-scale digital infrastructure, regardless of the name or description used by the owner, operator, tenant, or applicant.",
+    missing_sections: "Paragraphs 2 through 6 of the seven-paragraph definition, and the whole of any exclusions or accessory-use carve-outs. The City's announcement publishes the core paragraph and the seventh's conclusion only.",
+    obligation: "Retrieve the certified adopted text of O-26-74 from the City Clerk or the codified ordinance register and replace this with ExactDefinition.",
+  },
+}
+
+// Not a district-by-district restriction: the ordinance removes the use from EVERY zoning
+// district in the city, so no parcel search inside Bayonne reaches a permitted district.
+data bayonne_o_26_74: RegulatoryInstrument = RegulatoryInstrument {
+  self_ref: DeclarationRef { module_path: "extdeps.regulation.nj_bayonne", decl_name: "bayonne_o_26_74", field: WholeDeclaration },
+  designation: "O-26-74",
+  issuer: bayonne_council,
+  lifecycle: Adopted {
+    adopted_at: 1786492800000,
+    executive: SignedOn { at: 1786579200000 },
+    effective: EffectiveDatePendingEvidence {
+      obligation: "Retrieve the publication/filing receipt establishing O-26-74's effective date. Until then no application-timing question against this instrument is decidable.",
+    },
+  },
+  force: ProhibitionOfUse,
+  extent: EveryZoningDistrict,
+  subject: bayonne_data_center_subject,
+  temporal: Prospective {
+    vested_rights_preserved: true,
+    note: "Applies prospectively and does not affect a development approval, permit, or authorization that became FINAL AND VESTED before the effective date - while expressly creating no new vested right or nonconforming use where none otherwise exists under the Municipal Land Use Law. After the effective date no application for development, zoning permit, construction permit, certificate of occupancy, variance, conditional use approval, or other land use approval may authorize the establishment, construction, EXPANSION, or OPERATION of a Data Center.",
+  },
+  provenance: OfficialAnnouncement {
+    citation: bayonne_o_26_74_citation,
+    obligation: "Retrieve the certified adopted text of O-26-74 from the city clerk or the codified ordinance register, and re-derive the definition and applicability rows from it. Until then every term here is quoted from the city's announcement, which is the issuer but not the instrument.",
+  },
+  enforcer: bayonne_zoning_officer,
+  applicability_basis: PrincipalUseZoning { zoning_officer: bayonne_zoning_officer },
+  note: "Adopted unanimously (5-0). Bayonne is not itself a candidate market area; it is carried because it is the best-documented instrument of the class and because its neighbour Jersey City, which IS a candidate, adopted one of its own.",
+}

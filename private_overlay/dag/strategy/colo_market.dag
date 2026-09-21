@@ -1,0 +1,638 @@
+module strategy.colo_market
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat }
+import std.measure { money_per_month_micros,
+  watt_count, ampere_count, volt_count, rack_unit_count, bandwidth_count,
+}
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.interval { OrderedClosedInterval, degenerate_interval }
+import std.pareto {
+  AxisGoal, LowerIsBetter, HigherIsBetter,
+  SelectionAxis, AxisReading, AxisGap, ParetoEntry, ParetoStanding,
+  ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence,
+  entry_standing, pareto_label,
+}
+import strategy.ci_node_build { node_watts }
+import extdeps.colo.types {
+  ColoFacilityRow, RetailPlanRow, PowerAllocation, AllocatedWatts, FeedAmps, FeedAmpsVoltsUnstated, PowerUnread,
+  TransitAllocation, UnmeteredPort, MeteredTransfer, TransitUnread,
+  Ipv4Allocation, Ipv4Usable, Ipv4Unread,
+}
+import extdeps.colo.dataverge { dataverge_jersey_city }
+import extdeps.colo.interserver { interserver_secaucus, interserver_quarter_rack_plan, interserver_half_rack_plan }
+import extdeps.colo.h5 { h5_secaucus }
+import extdeps.colo.centersquare { centersquare_weehawken }
+import extdeps.colo.digital_realty { digital_realty_ewr10, digital_realty_ewr20 }
+import extdeps.colo.three_sixty_five { three_sixty_five_carlstadt, three_sixty_five_weehawken, three_sixty_five_bridgewater, three_sixty_five_philadelphia }
+import extdeps.colo.coresite { coresite_ny2 }
+import extdeps.colo.equinix { equinix_ny4 }
+import extdeps.colo.halsey_165 { halsey_165_newark }
+import extdeps.colo.hivelocity { hivelocity_jfk1 }
+import extdeps.colo.colocation_america { colocation_america_njdc1 }
+import extdeps.colo.qts { qts_piscataway }
+import extdeps.colo.iron_mountain { iron_mountain_nje1 }
+import extdeps.colo.netrality { netrality_401_n_broad }
+import extdeps.colo.tierpoint { tierpoint_philadelphia, tierpoint_allentown }
+import extdeps.colo.natcoweb { natcoweb_clifton, natcoweb_plan_10u, natcoweb_plan_20u, natcoweb_plan_full_cabinet }
+import extdeps.colo.summit { summit_secaucus }
+import extdeps.colo.evocative { evocative_ewr1 }
+
+// THE COLOCATION SELECTION (operator direction 2026-08-18: price and shop colocation near
+// Jersey City, extdeps-model every local operator, and run the selection as a Pareto
+// standing). The cited facility and plan rows live in the public repo's extdeps.colo
+// modules; THIS module owns everything that is ours rather than the world's - which
+// facilities are candidates, the distance estimates, the business refusals, the reference
+// loads, and the derived request-for-quote list. A quote-only facility enters the selection
+// and lands NotComputable with its RFQ named, which makes the shopping to-do
+// list a derived projection of the model rather than a note beside it.
+
+// Distances are PLANNING ESTIMATES of road distance from Jersey City, derived from the
+// cited street addresses by map reading on 2026-08-18. They are deliberately coarse - the
+// axis exists to separate a two-mile facility from a ninety-five-mile one, not to rank
+// six against eight.
+data natcoweb_published_but_refused_note: NonEmptyStr = "The Natcoweb plans are the census's only other published prices, and every one of them lands NotComputable rather than on the comparable field: their power is amps with no stated voltage, so the power reading is a typed absence and the spine refuses the comparison. That is the correct standing derived rather than asserted - the sticker prices bound space cost but cannot be compared watt-for-watt against the InterServer tiers until a quote supplies voltage and usable continuous watts (and bandwidth-upgrade pricing for the 10 Mbps commit)."
+
+data distance_basis_note: NonEmptyStr = "Road-distance planning estimates from Jersey City, read off the cited addresses 2026-08-18; not measured drives. The operator-burden directive prices travel, so this axis gates before any quote does at the Pennsylvania end of the census."
+
+type OfferPricing
+  = PublishedPlan { plan: RetailPlanRow }
+  | QuoteOnly { rfq: NonEmptyStr }
+
+// DISTANCE IS EVIDENCE, AND WE DO NOT HAVE IT. The old field was a bare Int named "estimate", and
+// this module said in its own prose that the number was deliberately coarse and not meant to rank
+// nearby facilities. Feeding it to a selection axis as a point contradicted that: [7,7] asserts the
+// road distance IS seven miles, so a seven-mile facility beat an eight-mile one on the strength of
+// two guesses. The estimate is retained because it is genuinely useful for eyeballing a shortlist,
+// but it is now carried in an arm that CANNOT reach the frontier, and the only arm that can is the
+// one holding a measured route. Nothing here invents a width: there is no retained bound, receipt or
+// rounding protocol to derive one from, so the honest state is absence, not a guessed corridor.
+type DistanceEvidence
+  = DistanceMeasured { interval_miles: OrderedClosedInterval<Int>, receipt: NonEmptyStr }
+  | DistanceUnmeasured { planning_estimate_miles: Int, obligation: NonEmptyStr }
+
+type ColoOfferCandidate {
+  id: NonEmptyStr
+  facility: ColoFacilityRow
+  pricing: OfferPricing
+  distance: DistanceEvidence
+}
+
+data colo_candidates: List<ColoOfferCandidate> = [
+  ColoOfferCandidate {
+    id: "interserver-quarter",
+    facility: interserver_secaucus,
+    pricing: PublishedPlan { plan: interserver_quarter_rack_plan },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 7,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "interserver-half",
+    facility: interserver_secaucus,
+    pricing: PublishedPlan { plan: interserver_half_rack_plan },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 7,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "natcoweb-10u",
+    facility: natcoweb_clifton,
+    pricing: PublishedPlan { plan: natcoweb_plan_10u },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 12,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "natcoweb-20u",
+    facility: natcoweb_clifton,
+    pricing: PublishedPlan { plan: natcoweb_plan_20u },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 12,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "natcoweb-cab",
+    facility: natcoweb_clifton,
+    pricing: PublishedPlan { plan: natcoweb_plan_full_cabinet },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 12,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "dataverge-jc",
+    facility: dataverge_jersey_city,
+    pricing: QuoteOnly { rfq: "DataVerge Jersey City: quote a half cabinet and a full cabinet against the ask sheet, plus per-U rates for a 1U gateway - the closest facility in the census and the finest granularity near the operator." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 2,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "h5-secaucus",
+    facility: h5_secaucus,
+    pricing: QuoteOnly { rfq: "H5 Secaucus: quote a half and full cabinet against the ask sheet; same corridor as InterServer, so the quote prices the incumbent published tiers directly." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 7,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "centersquare-ewr2",
+    facility: centersquare_weehawken,
+    pricing: QuoteOnly { rfq: "Centersquare EWR2: quote a single secure cabinet against the ask sheet; ask whether small-footprint retail is taken at all or routed to partners." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 6,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "digital-realty-ewr10",
+    facility: digital_realty_ewr10,
+    pricing: QuoteOnly { rfq: "Digital Realty EWR10: quote a single cabinet against the ask sheet; expect an interconnection-weighted answer and possibly a reseller referral." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 6,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "365-weehawken",
+    facility: three_sixty_five_weehawken,
+    pricing: QuoteOnly { rfq: "365 Weehawken: confirm the street address and remaining capacity of the legacy Atlantic Metro site, then quote a half cabinet." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 6,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "365-carlstadt",
+    facility: three_sixty_five_carlstadt,
+    pricing: QuoteOnly { rfq: "365 Carlstadt NJ3: quote a half and full cabinet against the ask sheet; ask about the InterServer-style host-tenancy precedent." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 10,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "summit-secaucus",
+    facility: summit_secaucus,
+    pricing: QuoteOnly { rfq: "Summit Secaucus: quote a small reversible footprint (2U to one cabinet) against the ask sheet, and establish who the contracting operator at 1 Enterprise Avenue N is - the building also stands behind Evocative EWR1's selling surface." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 7,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "evocative-ewr1",
+    facility: evocative_ewr1,
+    pricing: QuoteOnly { rfq: "Evocative EWR1: quote a 2U single-server placement with BMC isolation against the ask sheet - the page claims single-server retail grain - and confirm the operator-of-record at 1 Enterprise Avenue N shared with Summit's surface." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 7,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "coresite-ny2",
+    facility: coresite_ny2,
+    pricing: QuoteOnly { rfq: "CoreSite NY2: quote a single cabinet against the ask sheet; this quote also grounds or kills the unreceipted below-Equinix claim the planning notes carried." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 8,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "halsey165-building",
+    facility: halsey_165_newark,
+    pricing: QuoteOnly { rfq: "165 Halsey building colocation: quote a cabinet against the ask sheet; zero-MRC cross-connects and published remote-hands rates are already modeled, so the quote only needs space and power." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 7,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "hivelocity-jfk1",
+    facility: hivelocity_jfk1,
+    pricing: QuoteOnly { rfq: "Hivelocity JFK1: quote colocation in the 165 Halsey suite; a smaller-commitment retail route into the same meet-me rooms." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 7,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "colocation-america-njdc1",
+    facility: colocation_america_njdc1,
+    pricing: QuoteOnly { rfq: "Colocation America NJDC1: quote per-U (1U-4U), quarter and half cabinet at 100 Delawanna; the finest published granularity in the Clifton building and a per-U gateway candidate." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 12,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "qts-piscataway",
+    facility: qts_piscataway,
+    pricing: QuoteOnly { rfq: "QTS Piscataway: quote a single cabinet; expect enterprise minimums - the quote mostly establishes whether small retail is served at all." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 28,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "iron-mountain-nje1",
+    facility: iron_mountain_nje1,
+    pricing: QuoteOnly { rfq: "Iron Mountain NJE-1: confirm street address, then quote a single cabinet; compliance-weighted operator, likely priced above the corridor." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 25,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "365-bridgewater",
+    facility: three_sixty_five_bridgewater,
+    pricing: QuoteOnly { rfq: "365 Bridgewater NJ1: quote a half and full cabinet; the suburban-cost end of the New Jersey census." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 35,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "netrality-philadelphia",
+    facility: netrality_401_n_broad,
+    pricing: QuoteOnly { rfq: "Netrality 401 North Broad: quote a single cabinet; the Pennsylvania anchor - only worth pursuing if the Philadelphia expansion argument survives the distance axis." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 95,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "365-phl1500",
+    facility: three_sixty_five_philadelphia,
+    pricing: QuoteOnly { rfq: "365 PHL-1500: quote a half cabinet; retail-granular Philadelphia alternative to the carrier hotel." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 95,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "tierpoint-philadelphia",
+    facility: tierpoint_philadelphia,
+    pricing: QuoteOnly { rfq: "TierPoint Navy Yard: quote a single cabinet; spec sheet published, pricing not." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 100,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+  ColoOfferCandidate {
+    id: "tierpoint-allentown",
+    facility: tierpoint_allentown,
+    pricing: QuoteOnly { rfq: "TierPoint Allentown TekPark: quote a single cabinet; the Lehigh Valley cost point, two-plus hours from the operator." },
+    distance: DistanceUnmeasured {
+      planning_estimate_miles: 80,
+      obligation: "road distance to this facility has no measurement: the figure is a coarse planning estimate with no retained route, receipt or rounding protocol, so no interval can be derived from it and the distance axis carries no reading for this candidate",
+    }
+  },
+]
+
+// ---------------------------------------------------------------------------------------------
+// BUSINESS REFUSALS - channels the selection deliberately does not carry as candidates. A
+// refusal is a typed row with its authority named, never a silent omission, so the census
+// denominator stays auditable.
+// ---------------------------------------------------------------------------------------------
+
+type RefusedChannel {
+  label: NonEmptyStr
+  cause: NonEmptyStr
+  authority: NonEmptyStr
+}
+
+data refused_channels: List<RefusedChannel> = [
+  RefusedChannel {
+    label: "Equinix Secaucus campus (NY2/NY4/NY5/NY6)",
+    cause: "Operator ruling in the compute-infrastructure strategy provider shortlist: skip Equinix - the premium interconnection campus prices far above this deployment's needs. The campus stays modeled in extdeps.colo.equinix as the market's price ceiling.",
+    authority: "docs/strategy/2026-08-09-compute-infrastructure-strategy.md Appendix B, restated 2026-08-18",
+  },
+  RefusedChannel {
+    label: "RackNerd New York metro colocation",
+    cause: "Published retail tiers are 120-volt only (1A/10A/20A at 120 V). The power appendix rule is never take 120-volt circuits in colocation; the 208-volt custom route would need a quote and the facility behind the reseller is unnamed on the page read 2026-08-18.",
+    authority: "docs/strategy/2026-08-09-compute-infrastructure-strategy.md Appendix A rule; racknerd.com/colocation read 2026-08-18",
+  },
+  RefusedChannel {
+    label: "ExaCloud Systems 899-dollar full-cabinet offer",
+    cause: "The 899-dollar full-cab and 499-dollar half-cab figures trace to a WebHostingTalk thread whose identifier dates it to roughly 2013; no current page confirms the offer, and a thirteen-year-old promotional price imported as a live anchor is exactly the stale-snippet trap the InterServer rows document.",
+    authority: "webhostingtalk thread 1313185 (fetch refused 2026-08-18); refused as stale-unverifiable",
+  },
+  RefusedChannel {
+    label: "Broker and agency surfaces (515 Engine, newjerseycolocation.com, QuoteColo, LowCostColocation)",
+    cause: "Quote-aggregation channels, not facility operators: none owns a building, so none is an upstream authority to model. They remain usable as RFQ distribution channels; any quote they return is a quote FROM a modeled operator and lands on that operator's row.",
+    authority: "extdeps external-upstream-decomposition rule, applied 2026-08-18",
+  },
+]
+
+// The refusal above points at a modeled subject, not a name: the campus rows stay cited in
+// extdeps.colo.equinix, and this typed edge is what keeps the refusal auditable against the
+// exact facility population it declines.
+data equinix_refusal_subject: ColoFacilityRow = equinix_ny4
+
+// ---------------------------------------------------------------------------------------------
+// THE PARETO INSTANTIATION.
+// ---------------------------------------------------------------------------------------------
+
+// AXIS IDENTITY IS STRUCTURAL. std.pareto moved SelectionAxis/AxisReading onto DeclarationRef:
+// a display string is a second naming scheme for what the namespace already names, and two
+// readings joining by spelling rather than identity is the silent mis-join the spine refuses.
+data axis_monthly_cost_id: DeclarationRef = decl_ref(module_path: "strategy.colo_market", decl_name: "axis_monthly_cost_id")
+data axis_power_watts_id: DeclarationRef = decl_ref(module_path: "strategy.colo_market", decl_name: "axis_power_watts_id")
+data axis_transit_megabits_id: DeclarationRef = decl_ref(module_path: "strategy.colo_market", decl_name: "axis_transit_megabits_id")
+data axis_rack_units_id: DeclarationRef = decl_ref(module_path: "strategy.colo_market", decl_name: "axis_rack_units_id")
+data axis_ipv4_usable_id: DeclarationRef = decl_ref(module_path: "strategy.colo_market", decl_name: "axis_ipv4_usable_id")
+data axis_distance_miles_id: DeclarationRef = decl_ref(module_path: "strategy.colo_market", decl_name: "axis_distance_miles_id")
+
+data axis_monthly_cost: SelectionAxis = SelectionAxis { identity: axis_monthly_cost_id, goal: LowerIsBetter }
+data axis_power_watts: SelectionAxis = SelectionAxis { identity: axis_power_watts_id, goal: HigherIsBetter }
+data axis_transit_megabits: SelectionAxis = SelectionAxis { identity: axis_transit_megabits_id, goal: HigherIsBetter }
+data axis_rack_units: SelectionAxis = SelectionAxis { identity: axis_rack_units_id, goal: HigherIsBetter }
+data axis_ipv4_usable: SelectionAxis = SelectionAxis { identity: axis_ipv4_usable_id, goal: HigherIsBetter }
+data axis_distance_miles: SelectionAxis = SelectionAxis { identity: axis_distance_miles_id, goal: LowerIsBetter }
+
+data colo_axes: List<SelectionAxis> = [
+  axis_monthly_cost,
+  axis_power_watts,
+  axis_transit_megabits,
+  axis_rack_units,
+  axis_ipv4_usable,
+]
+
+data colo_sensitivities: List<NonEmptyStr> = [
+  "drive distance: NOT A FUNDED AXIS, because no facility has a measured road distance. Every row carries a coarse planning estimate and nothing else - no retained route, no receipt, no rounding protocol - so there is no interval to fund the axis with, and a point reading would let a guess decide. Distance genuinely matters (it prices every emergency the operator drives to, alongside the remote-hands rate below), which is exactly why it is named here rather than approximated: an axis with no evidence is unfunded and said so, not funded with a number that looks like evidence.",
+  "power alarm basis: whether an allocation is policed on average, on peak, or on the eighty-percent continuous rule is unread for every offer, and it decides how many nodes a wattage actually carries",
+  "metered pass-through and overage: what a kilowatt-hour or an excess terabyte costs beyond the allocation is unread everywhere",
+  "setup, cross-connect and IP fees: only 165 Halsey publishes cross-connect economics; every other offer's non-recurring stack is unread",
+  "contract term and exit friction: month-to-month is published only for InterServer; everyone else's minimum term is unread",
+  "BMC and out-of-band policy: whether a private OOB VLAN with a customer WireGuard gateway is permitted is unread everywhere, and the ask sheet leads with it",
+  "remote-hands rate: published only for 165 Halsey; unread elsewhere and it prices every emergency the operator cannot drive to",
+]
+
+
+data no_missing: List<AxisGap> = []
+
+// A GAP NAMES THE AXIS WHOSE ABSENCE IT DECLARES, AND THAT IS A NARROWER CLAIM THAN IT SOUNDS.
+//
+// std.pareto still refuses a candidate carrying ANY gap -- compare_pair returns
+// PairEvidenceIncomplete and entry_standing returns NotComputable. Naming the axis does NOT buy a
+// partial standing over the axes that are funded, and nothing here should be read as saying it
+// does.
+//
+// What it buys is that a declared absence can no longer excuse an UNRELATED one. Before
+// gunbc#10150 a gap was a bare sentence, so an unread voltage and an unread port were
+// indistinguishable, and a gap about power silently covered a missing transit reading. Now the
+// reading and the gap must name the same axis or std.pareto reports a located contradiction, so an
+// unfunded absence is accounted for individually instead of being absorbed by whichever obligation
+// happened to be declared.
+fn one_missing(axis: DeclarationRef, text: NonEmptyStr) -> List<AxisGap> {
+  [AxisGap { axis: axis, cause: text }]
+}
+
+fn gap_on_each(axes: List<DeclarationRef>, text: NonEmptyStr) -> List<AxisGap> {
+  fold(axes, init: [], f: fn(acc, ax) { concat(acc, [AxisGap { axis: ax, cause: text }]) })
+}
+
+// A QUOTE-ONLY LISTING IS SHORT ON EVERY AXIS BUT ONE, AND NOW IT ENUMERATES THEM. Nothing here is
+// readable from the listing, because an RFQ has not been answered.
+//
+// Distance is omitted for a different reason, and the earlier text got it wrong by saying distance
+// is readable from the listing alone: these rows carry DistanceUnmeasured, distance_readings emits
+// no reading for that arm, and the distance axis is not presently FUNDED by this selection because
+// no facility carries measured road-distance evidence. A gap must name a funded axis, so an
+// unfunded axis cannot take one -- std.pareto refuses that roster outright.
+//
+// The name says GAP AXES, not "unfunded axes": every ref below is a FUNDED axis of this selection.
+// That is the requirement, not an accident -- std.pareto refuses a gap naming an axis the selection
+// does not fund, so a gap roster is necessarily a subset of the funded roster.
+//
+// It is written out as "every axis except distance" rather than derived by subtraction so that a
+// new axis has to be a considered addition here. Silently inheriting a gap it was never assessed
+// for is how an absence gets excused by accident.
+data quote_only_gap_axes: List<DeclarationRef> = [
+  axis_monthly_cost_id, axis_power_watts_id, axis_transit_megabits_id, axis_rack_units_id, axis_ipv4_usable_id,
+]
+
+// Power as an axis reading. A breakered feed is derated to eighty percent continuous per the
+// power appendix; an allocation is taken as stated; unread power is a missing input, never a
+// guessed figure.
+type PowerReading
+  = PowerReadWatts { watts: Int }
+  | PowerReadingMissing { obligation: NonEmptyStr }
+
+fn power_reading(p: PowerAllocation) -> PowerReading {
+  match p {
+    AllocatedWatts { allocation } => PowerReadWatts { watts: watt_count(w: allocation) },
+    FeedAmps { amps, volts } => PowerReadWatts { watts: ampere_count(a: amps) * volt_count(v: volts) * 800 / 1000 },
+    FeedAmpsVoltsUnstated { amps, voltage_obligation } => PowerReadingMissing { obligation: voltage_obligation },
+    PowerUnread { obligation } => PowerReadingMissing { obligation: obligation },
+  }
+}
+
+type TransitReading
+  = TransitReadMegabits { megabits: Int }
+  | TransitReadingMissing { obligation: NonEmptyStr }
+
+fn transit_reading(t: TransitAllocation) -> TransitReading {
+  match t {
+    UnmeteredPort { port_speed } => TransitReadMegabits { megabits: bandwidth_count(b: port_speed) / 1000000 },
+    MeteredTransfer { port_speed, included_transfer_per_month } => TransitReadingMissing {
+      obligation: "metered transfer is not comparable on the unmetered-port axis without an overage rate; carried as missing rather than converted by a guessed utilization",
+    },
+    TransitUnread { obligation } => TransitReadingMissing { obligation: obligation },
+  }
+}
+
+type Ipv4Reading
+  = Ipv4ReadCount { usable: Int }
+  | Ipv4ReadingMissing { obligation: NonEmptyStr }
+
+fn ipv4_reading(a: Ipv4Allocation) -> Ipv4Reading {
+  match a {
+    Ipv4Usable { usable_addresses, block_note } => Ipv4ReadCount { usable: usable_addresses },
+    Ipv4Unread { obligation } => Ipv4ReadingMissing { obligation: obligation },
+  }
+}
+
+data no_readings: List<AxisReading> = []
+
+// The distance axis is emitted ONLY from a measured route, exactly as power, transit and IPv4 are
+// emitted only when they were read.
+//
+// THE OBLIGATION IS NOT ROUTED TO missing_inputs, AND THAT IS DELIBERATE. missing_inputs makes the
+// SUBJECT incomparable, which is right when one candidate lacks something its peers have. Distance
+// is unmeasured for EVERY candidate, so routing it there would make every colo entry NotComputable
+// and the selection would stop answering on the cost, space and power evidence it does hold. That
+// trades a fail-open for a fail-shut and loses real information either way. An axis no candidate can
+// evidence is not a per-candidate gap - it is an UNFUNDED axis, so it leaves colo_axes and is named
+// in colo_sensitivities beside the other things nobody has read. The moment one facility carries a
+// DistanceMeasured route, the axis can be funded and any candidate still unmeasured becomes a real
+// missing_inputs case at that point.
+fn distance_readings(c: ColoOfferCandidate) -> List<AxisReading> {
+  match c.distance {
+    DistanceMeasured { interval_miles, receipt } =>
+      [AxisReading { axis: axis_distance_miles_id, interval_micro: interval_miles }],
+    DistanceUnmeasured { planning_estimate_miles, obligation } => no_readings,
+  }
+}
+
+fn plan_readings(c: ColoOfferCandidate, plan: RetailPlanRow) -> List<AxisReading> {
+  let base = concat([
+    AxisReading { axis: axis_monthly_cost_id, interval_micro: degenerate_interval(point: money_per_month_micros(q: plan.monthly)) },
+    AxisReading { axis: axis_rack_units_id, interval_micro: degenerate_interval(point: rack_unit_count(u: plan.rack_units)) },
+  ], distance_readings(c: c))
+  let with_power = match power_reading(p: plan.power) {
+    PowerReadWatts { watts } => concat(base, [AxisReading { axis: axis_power_watts_id, interval_micro: degenerate_interval(point: watts) }]),
+    PowerReadingMissing { obligation } => base,
+  }
+  let with_transit = match transit_reading(t: plan.transit) {
+    TransitReadMegabits { megabits } => concat(with_power, [AxisReading { axis: axis_transit_megabits_id, interval_micro: degenerate_interval(point: megabits) }]),
+    TransitReadingMissing { obligation } => with_power,
+  }
+  match ipv4_reading(a: plan.ipv4) {
+    Ipv4ReadCount { usable } => concat(with_transit, [AxisReading { axis: axis_ipv4_usable_id, interval_micro: degenerate_interval(point: usable) }]),
+    Ipv4ReadingMissing { obligation } => with_transit,
+  }
+}
+
+fn plan_missing(plan: RetailPlanRow) -> List<AxisGap> {
+  let power_gap = match power_reading(p: plan.power) {
+    PowerReadWatts { watts } => no_missing,
+    PowerReadingMissing { obligation } => one_missing(axis: axis_power_watts_id, text: obligation),
+  }
+  let transit_gap = match transit_reading(t: plan.transit) {
+    TransitReadMegabits { megabits } => no_missing,
+    TransitReadingMissing { obligation } => one_missing(axis: axis_transit_megabits_id, text: obligation),
+  }
+  let ipv4_gap = match ipv4_reading(a: plan.ipv4) {
+    Ipv4ReadCount { usable } => no_missing,
+    Ipv4ReadingMissing { obligation } => one_missing(axis: axis_ipv4_usable_id, text: obligation),
+  }
+  concat(power_gap, concat(transit_gap, ipv4_gap))
+}
+
+fn colo_entry(c: ColoOfferCandidate) -> ParetoEntry {
+  match c.pricing {
+    PublishedPlan { plan } => ParetoEntry {
+      identity: decl_ref(module_path: "strategy.colo_market", decl_name: c.id),
+      display_label: c.id,
+      readings: plan_readings(c: c, plan: plan),
+      missing_inputs: plan_missing(plan: plan),
+    },
+    QuoteOnly { rfq } => ParetoEntry {
+      identity: decl_ref(module_path: "strategy.colo_market", decl_name: c.id),
+      display_label: c.id,
+      readings: distance_readings(c: c),
+      missing_inputs: gap_on_each(axes: quote_only_gap_axes, text: rfq),
+    },
+  }
+}
+
+data no_colo_entries: List<ParetoEntry> = []
+
+fn colo_entries() -> List<ParetoEntry> {
+  fold(colo_candidates, init: no_colo_entries, f: fn(acc, c) { concat(acc, [colo_entry(c: c)]) })
+}
+
+fn colo_standing(c: ColoOfferCandidate) -> ParetoStanding {
+  entry_standing(subject: colo_entry(c: c), field: colo_entries(), axes: colo_axes, sensitivities: colo_sensitivities)
+}
+
+fn colo_standing_label(c: ColoOfferCandidate) -> NonEmptyStr {
+  pareto_label(s: colo_standing(c: c))
+}
+
+// The derived shopping list: every quote-only candidate's RFQ, in census order. This is what
+// makes the quotes the model's own advice about where to spend effort - obtaining any one of
+// them moves a candidate from not-computable onto the comparable field.
+fn open_rfqs() -> List<NonEmptyStr> {
+  fold(colo_candidates, init: no_missing, f: fn(acc, c) {
+    match c.pricing {
+      PublishedPlan { plan } => acc,
+      QuoteOnly { rfq } => concat(acc, [rfq]),
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// FLEET FIT. Two reference loads: the full move (srv1-4 plus the inbound pilot, five dense
+// nodes) and the leaner deployment the operator's ideation thread surfaced 2026-08-18 - two
+// existing 2U hosts in per-U or quarter-rack space with the remaining hosts retained as
+// overflow, RAM completion and measured power gating sellable capacity.
+// ---------------------------------------------------------------------------------------------
+
+type ReferenceLoad {
+  label: NonEmptyStr
+  node_count: Int
+  rack_units_needed: Int
+  gating_obligations: List<NonEmptyStr>
+}
+
+data full_fleet_load: ReferenceLoad = ReferenceLoad {
+  label: "full move: srv1-4 plus pilot (five 2U nodes)",
+  node_count: 5,
+  rack_units_needed: 12,
+  gating_obligations: [
+    "measured wall power per host replaces the 650-watt planning figure before any admission is quoted as fact",
+    "top-of-rack switch and gateway add roughly one to two hundred watts and two rack units, included in the twelve-unit ask",
+  ],
+}
+
+data lean_two_host_load: ReferenceLoad = ReferenceLoad {
+  label: "lean deployment: two existing 2U hosts, overflow retained at the lab",
+  node_count: 2,
+  rack_units_needed: 5,
+  gating_obligations: [
+    "RAM completion gates sellable capacity: the cheap-DIMM population purchase has to land before the hosts earn their keep in paid colocation",
+    "measured wall power per host replaces the 650-watt planning figure; the quarter-rack admission below is peak-tight and stands or falls on that measurement",
+    "the retained overflow hosts keep the lab as the burst tier, which the spill model must carry as a distinct placement rather than pretending one site",
+  ],
+}
+
+type FleetAdmission
+  = FleetAdmitted { nodes_at_average: Int, headroom_note: NonEmptyStr }
+  | FleetPowerRefused { shortfall_watts: Int, remedy: NonEmptyStr }
+
+fn admission_against(plan_watts: Int, load: ReferenceLoad) -> FleetAdmission {
+  let average_draw = load.node_count * node_watts()
+  if average_draw <= plan_watts {
+    FleetAdmitted {
+      nodes_at_average: plan_watts / node_watts(),
+      headroom_note: "admitted on the average-draw planning figure; peak draw and the provider's alarm basis are the two unread facts that can still refuse this",
+    }
+  } else {
+    FleetPowerRefused {
+      shortfall_watts: average_draw - plan_watts,
+      remedy: "quote a larger feed - the ask sheet's thirty-amp 208-volt target yields roughly 4,992 usable watts at the eighty-percent rule",
+    }
+  }
+}
+
+fn quarter_rack_admits_lean_load() -> FleetAdmission {
+  admission_against(plan_watts: 1500, load: lean_two_host_load)
+}
+
+fn half_rack_admits_full_fleet() -> FleetAdmission {
+  admission_against(plan_watts: 2500, load: full_fleet_load)
+}
+
+data full_fleet_ask_note: NonEmptyStr = "The published retail tiers under-power the full five-node move: 2,500 allocated watts carries three nodes at the 650-watt planning figure, not five. The full move is therefore a quote-only object - a full cabinet with a single metered thirty-amp 208-volt feed (about 4,992 usable watts under the eighty-percent rule) - which is exactly what the RFQ ask sheet requests. The lean two-host deployment inverts this: it fits the published quarter-rack tier today at 705 dollars a month, published price, no quote needed, which is why it is the reference load that makes the selection actionable before any RFQ returns."
+
+// THE ASK SHEET, instantiated from the strategy appendix so every RFQ asks the same
+// questions and the answers land on comparable rows.
+data rfq_ask_sheet: List<NonEmptyStr> = [
+  "single metered feed, thirty or sixty amps at 208 volts, and whether the quoted allocation is policed on average draw, peak draw, or the eighty-percent continuous rule",
+  "metered rate: all-in per kilowatt-hour or PUE-multiplied, and the overage terms",
+  "per-outlet metered PDU availability - host-grain power observation is a product requirement, not a nicety",
+  "a /29 of provider space plus a private BMC/out-of-band VLAN, never internet-routed, with a customer WireGuard gateway permitted",
+  "remote-hands rate and window",
+  "month-to-month or one-year term, and the setup non-recurring charge",
+  "cross-connect fees monthly and install, and carrier list at the meet-me room",
+]

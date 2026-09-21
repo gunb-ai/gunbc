@@ -1,0 +1,444 @@
+module test.claim.compliance_posture_revision_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_eq }
+import std.content_hash {
+  ContentHash, ContentHashComparison, ContentHashEqual, ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable, compare_content_hash,
+  as_content_hash_structural, content_hash_atom,
+}
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.provider_route {
+  ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
+  DownstreamProviderPopulation, NoDownstreamProviders,
+  PermittedJurisdictionPopulation, PermittedJurisdictionsEnumerated, PermittedJurisdictionsUnread,
+}
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied,
+  ProviderUseRefusal,
+  ProviderRouteUnclassified, ProviderRouteFactsIncomplete, DownstreamProviderUnassessed,
+  PostureJurisdictionsUnread, TransferOrLocationUnresolved, ProviderAccessPathUnsupported,
+  PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
+  RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
+  DispositionStanding, DispositionCleared, admit_provider_use,
+}
+import extdeps.regulation.united_states { united_states }
+import strategy.compliance_posture_revision {
+  JurisdictionClearance, RouteAwaitingRead, DemandDirectedPosture,
+  m2_jurisdiction_clearances, m2_routes_awaiting_read, m2_demand_directed_posture,
+  m2_compliance_posture_revision, posture_revision, permitted_population,
+  m2_launch_intent, posture_revision_hash, m2_posture_ruling,
+}
+import gunbc.operator_fan_declaration { OperatorStatement }
+
+// THE POSTURE REVISION, EXECUTED THROUGH THE DECISION THAT READS IT. Every conjunct below hands
+// strategy.compliance_posture_revision m2_compliance_posture_revision - the production value, not a
+// copy - to product.fabric.provider_admission admit_provider_use as `active`, and moves exactly one
+// thing between the refusing and admitting halves of each pair. The route facts are fixtures,
+// which DESIGN section 4b admits precisely here: no customer route row exists in the accepted
+// corpus yet, so the located-outside-the-set state is representable only as source handed to the
+// decision by a fixture, and declining to enroll it there would be specification-without-execution.
+// The green therefore establishes what the POSTURE does to a route, and nothing about any real
+// route's facts - those land with the census rows.
+//
+// THREE REDS THE BRIEF REQUIRES, AND WHAT EACH ONE DISCRIMINATES.
+//   1. A route whose durable storage sits in a jurisdiction NOT in the enumerated set refuses as
+//      TransferOrLocationUnresolved naming that jurisdiction; the same route with the same paths
+//      inside the set admits. Only the located jurisdiction moves.
+//   2. The same on the ACCESS side: a support desk outside the set refuses as
+//      ProviderAccessPathUnsupported naming the operator and the jurisdiction; inside, admits.
+//   3. A posture whose population is UNREAD refuses as PostureJurisdictionsUnread on a route every
+//      other check admits - it does not admit everything. That posture is built by the module's own
+//      derivation over ZERO clearances, so the row also holds that the derivation's empty case is
+//      the unread arm and not an empty enumeration or a wildcard.
+// And the sentence the module exists to hold, executed: the refused-outside route, once its
+// jurisdiction has a CLEARANCE ROW, admits under the revision that clearance produces - served
+// after read, never refused by rule. The two revisions differ, so a permit under one is stale under
+// the other.
+
+// THE SUBJECTS THIS WITNESS CITES, declared so every citation resolves, and written out with both
+// arguments literal at each call site so the declaration-index gate can read them.
+data witness_provider: NonEmptyStr = "witness-provider"
+data witness_service: NonEmptyStr = "witness-service"
+data witness_region: NonEmptyStr = "witness-region"
+data witness_operator: NonEmptyStr = "witness-operator"
+data witness_evidence: NonEmptyStr = "witness-evidence"
+data witness_no_spill: NonEmptyStr = "witness-no-spill"
+data witness_no_downstream: NonEmptyStr = "witness-no-downstream"
+data witness_contract_terms: NonEmptyStr = "witness-contract-terms"
+data witness_customer_profile: NonEmptyStr = "witness-customer-profile"
+data witness_data_handling_profile: NonEmptyStr = "witness-data-handling-profile"
+data witness_agreement: NonEmptyStr = "witness-agreement"
+data witness_prohibited_use_cleared: NonEmptyStr = "witness-prohibited-use-cleared"
+data witness_sanctions_cleared: NonEmptyStr = "witness-sanctions-cleared"
+data witness_export_cleared: NonEmptyStr = "witness-export-cleared"
+data witness_decision_receipt: NonEmptyStr = "witness-decision-receipt"
+data witness_route_facts_read: NonEmptyStr = "witness-route-facts-read"
+data witness_cleared_by: NonEmptyStr = "witness-cleared-by"
+
+// A JURISDICTION NO READ HAS CLEARED. It is a declaration in this witness and nowhere else, which is
+// the point: it is not in any clearance row, so the production posture does not permit it, and a
+// route located there is the non-US customer's route before anyone reads it.
+data jurisdiction_unread_elsewhere: NonEmptyStr = "a-jurisdiction-no-read-has-cleared"
+
+// Reached by import, not by re-spelling the path: the same edge the posture module uses.
+fn us() -> DeclarationRef {
+  united_states.declaration
+}
+
+fn elsewhere() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "jurisdiction_unread_elsewhere")
+}
+
+fn hash_of(seed: String) -> ContentHash {
+  as_content_hash_structural(structural: content_hash_atom(value: seed))
+}
+
+fn route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_provider"),
+    service: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_service"),
+    region: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_region"),
+  }
+}
+
+fn located(where_it_is: DeclarationRef) -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_operator"),
+    jurisdiction: where_it_is,
+    evidence: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_evidence"),
+  }
+}
+
+// Every material path and every access path at `home`, except the one the caller moves. Spill is
+// ABSENT with evidence rather than unread: an unread path refuses on its own facts, which is the
+// admission witness's subject and would mask the jurisdiction question this one asks.
+fn closure(home: DeclarationRef, storage: DeclarationRef, support: DeclarationRef) -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: located(where_it_is: home),
+    durable_storage: located(where_it_is: storage),
+    backups: located(where_it_is: home),
+    logs: located(where_it_is: home),
+    telemetry: located(where_it_is: home),
+    control_plane: located(where_it_is: home),
+    support_access: located(where_it_is: support),
+    administrative_access: located(where_it_is: home),
+    spill: ProviderPathAbsent {
+      evidence: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_no_spill"),
+    },
+  }
+}
+
+fn facts(paths: ProviderDataPathClosure) -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: route(),
+    contract_terms: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_contract_terms"),
+    data_paths: paths,
+    downstream: NoDownstreamProviders {
+      evidence: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_no_downstream"),
+    },
+    observed_at: "2026-09-12T00:00:00Z",
+    facts_revision: hash_of(seed: "witness-facts-r1"),
+  }
+}
+
+fn cleared(evidence: DeclarationRef) -> DispositionStanding {
+  DispositionCleared { evidence: evidence }
+}
+
+fn scope() -> ProviderUseScope<NonEmptyStr> {
+  ProviderUseScope {
+    demand: FabricIdentity { principal: "witness-tenant", key: "demand-1" as DemandKey },
+    work: FabricIdentity { principal: "witness-tenant", key: "work-1" as WorkKey },
+    customer_profile: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_customer_profile"),
+    data_handling_profile: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_data_handling_profile"),
+    agreement: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_agreement"),
+    prohibited_use_disposition: cleared(evidence: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_prohibited_use_cleared")),
+    sanctions_disposition: cleared(evidence: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_sanctions_cleared")),
+    export_disposition: cleared(evidence: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_export_cleared")),
+  }
+}
+
+// THE ROSTER SANCTIONS THE ROUTE UNDER THE POSTURE IT IS ASKED ABOUT, so the only thing that can
+// refuse is the posture's population against the closure's jurisdictions. A roster written under a
+// different revision would refuse as PostureRevisionStale, which is a true refusal about the wrong
+// subject for this witness.
+fn roster(under: CompliancePostureRevision) -> List<RouteScopeSanction> {
+  [
+    RouteScopeSanction {
+      route: route(),
+      posture: under,
+      customer_profile: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_customer_profile"),
+      data_handling_profile: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_data_handling_profile"),
+      requires_agreement: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_agreement"),
+    },
+  ]
+}
+
+fn decide(paths: ProviderDataPathClosure, active: CompliancePostureRevision) -> ProviderUseAdmission<NonEmptyStr> {
+  admit_provider_use(
+    roster: roster(under: active),
+    facts: facts(paths: paths),
+    active: active,
+    scope: scope(),
+    offer: FabricIdentity { principal: "witness-tenant", key: "offer-1" as OfferKey },
+    decision_receipt: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_decision_receipt"),
+  )
+}
+
+// The refusal surface read once and exhaustively, so a new arm on the decision forces this match to
+// say what it means here rather than falling into a catch-all.
+fn refusal_tag(c: ProviderUseRefusal) -> String {
+  match c {
+    ProviderRouteUnclassified { route } => "route-unclassified",
+    ProviderRouteFactsIncomplete { route, obligation } => "facts-incomplete",
+    DownstreamProviderUnassessed { obligation } => "downstream-unassessed",
+    PostureJurisdictionsUnread { obligation } => "posture-jurisdictions-unread",
+    TransferOrLocationUnresolved { route, jurisdiction } => "transfer-or-location-unresolved",
+    ProviderAccessPathUnsupported { route, operator, jurisdiction } => "provider-access-path-unsupported",
+    PostureRevisionStale { evaluated, active } => "posture-stale",
+    CustomerScopeUnsupported { cause } => "customer-unsupported",
+    DataHandlingUnsupported { cause } => "data-handling-unsupported",
+    RequiredAgreementAuthorityAbsent { accepted } => "agreement-absent",
+    ProhibitedUseNotCleared { obligation } => "prohibited-use-not-cleared",
+    SanctionsNotCleared { obligation } => "sanctions-not-cleared",
+    ExportNotCleared { obligation } => "export-not-cleared",
+  }
+}
+
+fn refusal_located(c: ProviderUseRefusal) -> List<DeclarationRef> {
+  match c {
+    ProviderRouteUnclassified { route } => [],
+    ProviderRouteFactsIncomplete { route, obligation } => [obligation],
+    DownstreamProviderUnassessed { obligation } => [obligation],
+    PostureJurisdictionsUnread { obligation } => [obligation],
+    TransferOrLocationUnresolved { route, jurisdiction } => [jurisdiction],
+    ProviderAccessPathUnsupported { route, operator, jurisdiction } => [operator, jurisdiction],
+    PostureRevisionStale { evaluated, active } => [],
+    CustomerScopeUnsupported { cause } => [cause],
+    DataHandlingUnsupported { cause } => [cause],
+    RequiredAgreementAuthorityAbsent { accepted } => accepted,
+    ProhibitedUseNotCleared { obligation } => [obligation],
+    SanctionsNotCleared { obligation } => [obligation],
+    ExportNotCleared { obligation } => [obligation],
+  }
+}
+
+fn admitted(a: ProviderUseAdmission<NonEmptyStr>) -> Bool {
+  match a {
+    ProviderUseAdmitted { permit } => true,
+    ProviderUseDenied { decision, cause } => false,
+  }
+}
+
+// EVERY RED ASSERTS THE TYPED CAUSE AND THE LOCATED REFERENCE. A refusal for the wrong reason is a
+// fabricated diagnosis, and a witness that only sees "not admitted" cannot tell one from the wall.
+fn denied_with(a: ProviderUseAdmission<NonEmptyStr>, tag: String, located: DeclarationRef) -> Bool {
+  match a {
+    ProviderUseAdmitted { permit } => false,
+    ProviderUseDenied { decision, cause } =>
+      refusal_tag(c: cause) == tag
+        && count(filter(refusal_located(c: cause), r => declaration_ref_eq(a: r, b: located))) == 1,
+  }
+}
+
+fn hashes_equal(a: ContentHash, b: ContentHash) -> Bool {
+  match compare_content_hash(left: a, right: b) {
+    ContentHashEqual => true,
+    ContentHashDifferent => false,
+    ContentHashCrossFamilyIncomparable => false,
+  }
+}
+
+fn active() -> CompliancePostureRevision { m2_compliance_posture_revision }
+
+// ── 1. THE ENUMERATED SET IS THE UNITED STATES, AND ONLY WHAT WAS READ ─────────────────────────
+
+// The production posture's population is the enumerated arm, its first member is the United
+// States declaration, and it carries nothing beyond the clearance roster: one jurisdiction per
+// clearance row, no more. A wildcard, a second unread-grounded entry, or an authored list that
+// drifted from the roster all red here.
+fn population_is_the_clearance_roster() -> Bool {
+  match active().permitted_jurisdictions {
+    PermittedJurisdictionsEnumerated { first, further } =>
+      declaration_ref_eq(a: first, b: us())
+        && count(further) + 1 == count(m2_jurisdiction_clearances),
+    PermittedJurisdictionsUnread { obligation } => false,
+  }
+}
+
+// A route is cleared or awaiting, never both: the two rosters are disjoint on route_facts. And the
+// R2 durable origin is on the AWAITING side - its read refused (gunbc#11213) - so nothing in the
+// clearance roster grounds a jurisdiction on it. The active revision is the carrier's own, not a
+// second construction.
+fn cleared_and_awaiting_are_disjoint() -> Bool {
+  let p = m2_demand_directed_posture
+  count(filter(p.awaiting_read, a =>
+    count(filter(p.clearances, c => declaration_ref_eq(a: c.route_facts_read, b: a.route_facts))) > 0
+  )) == 0
+    && count(filter(p.awaiting_read, a => declaration_ref_eq(
+         a: a.route_facts,
+         b: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_durable_origin_route_facts"),
+       ))) == 1
+    && count(p.clearances) == count(m2_jurisdiction_clearances)
+    && hashes_equal(a: p.revision.revision, b: active().revision)
+    && declaration_ref_eq(
+         a: p.expansion_trigger,
+         b: decl_field_ref(module_path: "strategy.m2_demand_directed_recut", decl_name: "design_partner_scope", field_name: "expansion_trigger"),
+       )
+}
+
+// ── 2. THE REQUIRED REDS, THROUGH THE REAL DECISION ─────────────────────────────────────────────
+
+// POSITIVE CONTROL: a route located entirely in the United States admits under the production
+// posture. Without this every refusal below is satisfied by a decision that refuses everything.
+fn a_us_route_admits() -> Bool {
+  admitted(a: decide(
+    paths: closure(home: us(), storage: us(), support: us()),
+    active: active(),
+  ))
+}
+
+// RED 1: durable storage outside the enumerated set refuses, naming the jurisdiction. This is the
+// non-US customer's route BEFORE it is read.
+fn storage_outside_the_set_refuses() -> Bool {
+  denied_with(
+    a: decide(
+      paths: closure(home: us(), storage: elsewhere(), support: us()),
+      active: active(),
+    ),
+    tag: "transfer-or-location-unresolved",
+    located: elsewhere(),
+  )
+}
+
+// RED 2: the provider's support desk outside the set refuses on the ACCESS arm, naming the
+// operator - no region choice fixes this, so the refusal sends the caller to that counterparty.
+fn support_access_outside_the_set_refuses() -> Bool {
+  denied_with(
+    a: decide(
+      paths: closure(home: us(), storage: us(), support: elsewhere()),
+      active: active(),
+    ),
+    tag: "provider-access-path-unsupported",
+    located: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_operator"),
+  )
+}
+
+// RED 3: a posture whose population is UNREAD refuses rather than admitting everything - on a route
+// every other check admits. The posture is the module's own derivation over zero clearances, so the
+// red holds two things at once: the decision refuses an unread population, and the derivation's
+// empty case IS the unread arm.
+fn an_unread_posture_refuses_rather_than_admitting_everything() -> Bool {
+  let unread = posture_revision(clearances: [])
+  denied_with(
+    a: decide(
+      paths: closure(home: us(), storage: us(), support: us()),
+      active: unread,
+    ),
+    tag: "posture-jurisdictions-unread",
+    located: decl_ref(module_path: "strategy.year_end_plan", decl_name: "item_provider_route_census"),
+  )
+    && (match permitted_population(clearances: []) {
+      PermittedJurisdictionsUnread { obligation } => true,
+      PermittedJurisdictionsEnumerated { first, further } => false,
+    })
+}
+
+// ── 3. NEVER REFUSED BY RULE: SERVED AFTER THE ROUTE IS READ ───────────────────────────────────
+
+// The clearance that a read of the elsewhere route would produce. Its route_facts_read and
+// cleared_by are witness declarations because no such read exists yet - which is exactly why the
+// production roster does not carry it.
+fn clearance_after_read() -> JurisdictionClearance {
+  JurisdictionClearance {
+    jurisdiction: elsewhere(),
+    route_facts_read: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_route_facts_read"),
+    cleared_by: decl_ref(module_path: "test.claim.compliance_posture_revision_witness", decl_name: "witness_cleared_by"),
+  }
+}
+
+// The route red 1 refused admits, unchanged, under the revision that adding its clearance derives.
+// Nothing about the route moved; a row was added to the roster. That is expansion by reading, and
+// it is what makes the refusal above a posture rather than a policy.
+fn the_refused_route_admits_once_its_jurisdiction_is_read() -> Bool {
+  let expanded = posture_revision(clearances: concat(m2_jurisdiction_clearances, [clearance_after_read()]))
+  admitted(a: decide(
+    paths: closure(home: us(), storage: elsewhere(), support: elsewhere()),
+    active: expanded,
+  ))
+}
+
+// THE RULING'S GROUNDING IS ASSERTED AT ITS NEW CARRIER, BECAUSE THE OLD ASSERTION WAS DELETED WITH THE
+// FIELD IT READ (quick-owl-739, 2026-09-13). population_is_the_clearance_roster above used to end with
+// declaration_ref_eq(a: basis, b: m2_posture_ruling), and gunbc#11194 landed the enumerated arm without a
+// basis field, so that clause went out with it. Deleting a wall while reporting the change as a field
+// rename is how a claim quietly stops being checked, so the claim is re-made rather than dropped: the
+// ruling grounds the population THROUGH THE REVISION HASH, and a_ruling_change_changes_the_revision below
+// executes exactly that. It is the mirror of the clearance conjunct -- one input varied, the revision
+// required to move -- and between them the two cover both of posture_revision_hash's inputs.
+fn ruling_with_a_different_quotation() -> OperatorStatement {
+  OperatorStatement {
+    declarant: m2_posture_ruling.declarant,
+    declared_at: m2_posture_ruling.declared_at,
+    prompt: m2_posture_ruling.prompt,
+    quotation: "a fixture quotation that is not the operator's, existing only so the revision has something to differ from",
+  }
+}
+
+fn a_ruling_change_changes_the_revision() -> Bool {
+  !hashes_equal(
+    a: posture_revision_hash(clearances: m2_jurisdiction_clearances, ruling: ruling_with_a_different_quotation()),
+    b: active().revision,
+  )
+    && hashes_equal(
+      a: posture_revision_hash(clearances: m2_jurisdiction_clearances, ruling: m2_posture_ruling),
+      b: active().revision,
+    )
+}
+
+// Adding a clearance changes the revision, so every permit minted against the old one goes stale
+// by PostureRevisionStale rather than by anyone remembering to bump a string.
+fn a_clearance_changes_the_revision() -> Bool {
+  let expanded = posture_revision(clearances: concat(m2_jurisdiction_clearances, [clearance_after_read()]))
+  !hashes_equal(a: expanded.revision, b: active().revision)
+    && hashes_equal(a: posture_revision(clearances: m2_jurisdiction_clearances).revision, b: active().revision)
+}
+
+// ── 4. THE LAUNCH-INTENT ROW ────────────────────────────────────────────────────────────────────
+
+// The row's active posture IS the production revision, read off it rather than copied; its
+// provenance is the ruling and its plan item is the plan's row. The terminal intent is NOT asserted:
+// TerminalSupportIntent has one constructor, so a runtime check on it could not fail and would only
+// inflate what this green establishes (review 64844).
+fn launch_intent_carries_the_active_revision() -> Bool {
+  hashes_equal(a: m2_launch_intent.active_posture, b: active().revision)
+    && declaration_ref_eq(a: m2_launch_intent.provenance, b: decl_ref(module_path: "strategy.compliance_posture_revision", decl_name: "m2_posture_ruling"))
+    && declaration_ref_eq(a: m2_launch_intent.plan_item, b: decl_ref(module_path: "strategy.year_end_plan", decl_name: "item_m2_launch_intent"))
+}
+
+fn failed(name: String, ok: Bool) -> String {
+  if ok { "" } else { join([name, " "], "") }
+}
+
+fn compliance_posture_revision_witness_main() -> ProcessExit {
+  let f = join([
+    failed(name: "population_is_the_clearance_roster", ok: population_is_the_clearance_roster()),
+    failed(name: "cleared_and_awaiting_are_disjoint", ok: cleared_and_awaiting_are_disjoint()),
+    failed(name: "a_us_route_admits", ok: a_us_route_admits()),
+    failed(name: "storage_outside_the_set_refuses", ok: storage_outside_the_set_refuses()),
+    failed(name: "support_access_outside_the_set_refuses", ok: support_access_outside_the_set_refuses()),
+    failed(name: "an_unread_posture_refuses_rather_than_admitting_everything", ok: an_unread_posture_refuses_rather_than_admitting_everything()),
+    failed(name: "the_refused_route_admits_once_its_jurisdiction_is_read", ok: the_refused_route_admits_once_its_jurisdiction_is_read()),
+    failed(name: "a_clearance_changes_the_revision", ok: a_clearance_changes_the_revision()),
+    failed(name: "a_ruling_change_changes_the_revision", ok: a_ruling_change_changes_the_revision()),
+    failed(name: "launch_intent_carries_the_active_revision", ok: launch_intent_carries_the_active_revision()),
+  ], "")
+  if f == "" {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: join(["compliance posture revision witness FAILED: ", f], "") }
+  }
+}

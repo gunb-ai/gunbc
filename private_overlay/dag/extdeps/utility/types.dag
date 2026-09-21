@@ -1,0 +1,20 @@
+module extdeps.utility.types
+
+import std.types { NonEmptyStr, Bool }
+
+// Agnostic shapes for electric distribution utilities. Concrete utilities live one
+// file each in extdeps/utility/ per the external-upstream-decomposition rule; this
+// hub enumerates no products.
+
+type UtilityGovernance
+  = InvestorOwned { holding_company: NonEmptyStr }
+  | MunicipalElectric { municipality: NonEmptyStr }
+  | Cooperative { note: NonEmptyStr }
+
+type ElectricUtility {
+  name: NonEmptyStr
+  governance: UtilityGovernance
+  regulator: NonEmptyStr
+  retail_supply_choice: Bool
+  new_service_channel: NonEmptyStr
+}

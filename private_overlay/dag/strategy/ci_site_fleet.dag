@@ -1,0 +1,229 @@
+module strategy.ci_site_fleet
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat }
+
+// MANY SMALL ROOMS, NOT ONE BIG ONE.
+//
+// The single-site model asked how far rent and transit amortize as nodes are added. That question
+// has a ceiling and the ceiling is electrical, not economic: a small retail space runs out of
+// amperage long before it runs out of floor. Past that point another node means another room, and
+// another room means paying rent, transit and access again from zero.
+//
+// So site-density alpha is not a curve that keeps improving. It saturates at the per-site ceiling,
+// and beyond it the fleet scales by SITE COUNT with a fixed cost per site that never amortizes.
+//
+// That is a worse cost story than one large facility and a better product story, which is the
+// trade this module exists to make visible.
+
+type ElectricalService
+  = ServiceMetered { usable_watts: Nat, receipt: NonEmptyStr }
+  | ServiceAssumed { amps: Nat, volts: Nat, usable_permille: Int, note: NonEmptyStr }
+  | ServiceUnread { obligation: NonEmptyStr }
+
+fn service_usable_watts(s: ElectricalService) -> Nat {
+  match s {
+    ServiceMetered { usable_watts, receipt } => usable_watts,
+    ServiceAssumed { amps, volts, usable_permille, note } => amps * volts * usable_permille / 1000,
+    ServiceUnread { obligation } => 0,
+  }
+}
+
+fn service_label(s: ElectricalService) -> NonEmptyStr {
+  match s {
+    ServiceMetered { usable_watts, receipt } => "metered",
+    ServiceAssumed { amps, volts, usable_permille, note } => "assumed",
+    ServiceUnread { obligation } => "unread",
+  }
+}
+
+fn service_is_measured(s: ElectricalService) -> Bool {
+  match s {
+    ServiceMetered { usable_watts, receipt } => true,
+    ServiceAssumed { amps, volts, usable_permille, note } => false,
+    ServiceUnread { obligation } => false,
+  }
+}
+
+// A 100-amp single-phase service at 240 volts is 24 kVA nameplate. Continuous load is derated to
+// eighty percent by code, and the room's lighting, HVAC controls and outlets are on the same panel,
+// so the figure below is what is left for compute after that.
+data typical_retail_service: ElectricalService = ServiceAssumed {
+  amps: 100, volts: 240, usable_permille: 750,
+  note: "100 A single-phase at 240 V, derated to seventy-five percent for continuous load and the room's own circuits. This is a guess about a building nobody has surveyed, and it is the single number that sets how many nodes a site can hold.",
+}
+
+data upgraded_retail_service: ElectricalService = ServiceAssumed {
+  amps: 200, volts: 240, usable_permille: 750,
+  note: "A 200 A service, either found or paid for. A panel upgrade is a capital cost with a utility lead time and neither is priced here.",
+}
+
+type SiteArchetype {
+  label: NonEmptyStr
+  rent_micro_per_month: Int
+  transit_micro_per_month: Int
+  service: ElectricalService
+  region_label: NonEmptyStr
+}
+
+// Cooling is charged as a multiplier on IT draw, so the electrical ceiling has to account for the
+// cooling load sharing the same panel.
+data cooling_multiplier_permille: Int = 1250
+
+fn all_in_watts_per_node(node_watts: Nat) -> Nat {
+  node_watts * cooling_multiplier_permille / 1000
+}
+
+data nat_zero: Nat = 0
+
+fn node_ceiling_for_site(a: SiteArchetype, node_watts: Nat) -> Nat {
+  let per_node = all_in_watts_per_node(node_watts: node_watts)
+  if per_node == 0 { nat_zero } else { service_usable_watts(s: a.service) / per_node }
+}
+
+data first_site: SiteArchetype = SiteArchetype {
+  label: "Retail space, expensive metro",
+  rent_micro_per_month: 2000000000,
+  transit_micro_per_month: 2000000000,
+  service: typical_retail_service,
+  region_label: "US East",
+}
+
+data upgraded_site: SiteArchetype = SiteArchetype {
+  label: "Retail space, 200 A service",
+  rent_micro_per_month: 2000000000,
+  transit_micro_per_month: 2000000000,
+  service: upgraded_retail_service,
+  region_label: "US East",
+}
+
+// A second and third room in different regions. Rent outside the first metro is assumed lower and
+// transit is assumed the same, because a dedicated circuit is priced by the carrier and the address,
+// not by the rent.
+data secondary_site: SiteArchetype = SiteArchetype {
+  label: "Retail space, secondary metro",
+  rent_micro_per_month: 1200000000,
+  transit_micro_per_month: 2000000000,
+  service: typical_retail_service,
+  region_label: "US Central",
+}
+
+data site_archetypes: List<SiteArchetype> = [first_site, upgraded_site, secondary_site]
+
+// ---------------------------------------------------------------------------------------------
+// TOPOLOGY. A fleet is a site count times a per-site node count, and the per-site count is capped
+// by the panel rather than chosen.
+// ---------------------------------------------------------------------------------------------
+
+type FleetTopology {
+  label: NonEmptyStr
+  site_count: Int
+  archetype: SiteArchetype
+  nodes_per_site: Int
+}
+
+fn topology_nodes(t: FleetTopology) -> Int { t.site_count * t.nodes_per_site }
+
+fn topology_fits_service(t: FleetTopology, node_watts: Nat) -> Bool {
+  t.nodes_per_site <= node_ceiling_for_site(a: t.archetype, node_watts: node_watts)
+}
+
+fn topology_fixed_micro_per_month(t: FleetTopology) -> Int {
+  t.site_count * (t.archetype.rent_micro_per_month + t.archetype.transit_micro_per_month)
+}
+
+fn topology_fixed_per_node_micro(t: FleetTopology) -> Int {
+  let nodes = topology_nodes(t: t)
+  if nodes <= 0 { 0 } else { topology_fixed_micro_per_month(t: t) / nodes }
+}
+
+// THE SATURATION RESULT, derived rather than asserted: filling a room drives the fixed cost per
+// node down, and opening a second room puts it straight back up. There is no configuration in which
+// rent and transit keep getting cheaper per node.
+fn fixed_per_node_at(sites: Int, nodes_per_site: Int, a: SiteArchetype) -> Int {
+  topology_fixed_per_node_micro(t: FleetTopology {
+    label: "derived", site_count: sites, archetype: a, nodes_per_site: nodes_per_site,
+  })
+}
+
+data saturation_note: NonEmptyStr = "Fixed cost per node falls only while a room is filling. A half-empty second room costs exactly as much in rent and transit as a full one, so the fleet's cost per node is a sawtooth: it improves to the panel's limit, jumps when a room opens, and improves again. The economics reward filling a site before opening the next one, and the product rewards the opposite, which is the tension this whole topology is a bet on."
+
+// ---------------------------------------------------------------------------------------------
+// WHAT THE DISTRIBUTION BUYS. This is the half that is not a cost.
+// ---------------------------------------------------------------------------------------------
+
+type PlacementClaim
+  = PlacementDerived { note: NonEmptyStr }
+  | PlacementAsserted { obligation: NonEmptyStr }
+
+type PlacementAdvantage {
+  name: NonEmptyStr
+  mechanism: NonEmptyStr
+  claim: PlacementClaim
+}
+
+data jurisdiction_advantage: PlacementAdvantage = PlacementAdvantage {
+  name: "Jurisdiction",
+  mechanism: "Compute physically in the United States, contracted under US law, with no cross-border transfer to explain to a customer's counsel. The cheapest capacity in the market is in the EU and cannot offer this at any price.",
+  claim: PlacementAsserted {
+    obligation: "No customer has said this matters to them. It is a plausible reason a buyer pays more and it is currently an assumption about demand, not a finding.",
+  },
+}
+
+data latency_advantage: PlacementAdvantage = PlacementAdvantage {
+  name: "Proximity",
+  mechanism: "Round trip to a US developer from a US metro rather than from central Europe. CI is not latency-sensitive during a build, but checkout, cache fill and artifact push all cross the wire.",
+  claim: PlacementAsserted {
+    obligation: "Measure the actual wall-clock difference on a real repository against an EU runner. Transatlantic latency is real and its share of a five-minute build may be negligible; this claim is worth exactly what that measurement says.",
+  },
+}
+
+data diversity_advantage: PlacementAdvantage = PlacementAdvantage {
+  name: "Blast radius",
+  mechanism: "A fleet in several small rooms in different regions has no single failure that takes it all out - no shared utility, no shared carrier, no shared roof. One large facility has all three.",
+  claim: PlacementDerived {
+    note: "Failure-domain size is derived from the topology: the largest correlated loss is one site's node count, which falls as the fleet spreads rather than concentrates.",
+  },
+}
+
+data regional_placement_advantage: PlacementAdvantage = PlacementAdvantage {
+  name: "Regional placement",
+  mechanism: "Customers who want their jobs near their people, their data or their other infrastructure can be given a region rather than a queue. A single-site provider sells one location and calls it the product.",
+  claim: PlacementAsserted {
+    obligation: "This becomes real when the scheduler can honour a region request and the billing can price it. Neither exists.",
+  },
+}
+
+data placement_advantages: List<PlacementAdvantage> = [
+  jurisdiction_advantage,
+  latency_advantage,
+  diversity_advantage,
+  regional_placement_advantage,
+]
+
+fn placement_is_derived(p: PlacementAdvantage) -> Bool {
+  match p.claim {
+    PlacementDerived { note } => true,
+    PlacementAsserted { obligation } => false,
+  }
+}
+
+// Correlated loss: the most capacity a single utility, carrier or roof can take out at once.
+fn largest_correlated_loss(t: FleetTopology) -> Int { t.nodes_per_site }
+
+fn correlated_loss_permille(t: FleetTopology) -> Int {
+  let nodes = topology_nodes(t: t)
+  if nodes <= 0 { 1000 } else { t.nodes_per_site * 1000 / nodes }
+}
+
+data placement_thesis: NonEmptyStr = "Matching a low-cost EU provider's price from an expensive US metro is a stronger result than matching it from cheap land, because the US-located unit can serve demand the EU unit cannot serve at any price. That only holds if such demand exists and pays for it - which is an assumption about customers, and the only one of these four advantages that the model can derive on its own is blast radius."
+
+data unpriced_site_expansion: List<NonEmptyStr> = [
+  "electrical service survey per site, and the panel upgrade where the service is short",
+  "cooling capacity per site: a small room dissipating this heat needs real equipment, unpriced",
+  "carrier serviceability per address, which varies street by street and gates the whole site",
+  "build-out: racking, cabling, access control, fire and insurance per room",
+  "lease terms and the personal guarantee a small tenant is usually asked for",
+  "travel time between sites, which is the operating cost this topology creates",
+  "spares held per site, or the delay of shipping one to a room nobody is standing in",
+]

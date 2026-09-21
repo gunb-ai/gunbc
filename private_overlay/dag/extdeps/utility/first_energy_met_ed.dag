@@ -1,0 +1,17 @@
+module extdeps.utility.first_energy_met_ed
+
+import std.types { NonEmptyStr }
+import extdeps.utility.types { ElectricUtility, UtilityGovernance, InvestorOwned }
+
+// Metropolitan Edison - FirstEnergy's eastern-PA distribution subsidiary; serves the
+// Lehigh Valley including Easton PA. Same holding company as JCP&L, so a two-state
+// site search along the Delaware may face one corporate new-business process wearing
+// two regulatory regimes.
+
+data met_ed: ElectricUtility = ElectricUtility {
+  name: "Metropolitan Edison (Met-Ed)",
+  governance: InvestorOwned { holding_company: "FirstEnergy Corp" },
+  regulator: "Pennsylvania Public Utility Commission",
+  retail_supply_choice: true,
+  new_service_channel: "FirstEnergy commercial new-service line, Met-Ed territory",
+}

@@ -1,0 +1,509 @@
+module strategy.asset_inventory
+
+import std.types { NonEmptyStr, Bool, Int }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import strategy.calendar_date { CalendarDate }
+import strategy.ci_node_build {
+  SupplyDepth, DepthObserved, DepthAvailableUncounted, DepthScarce,
+  DomesticRoute, ImportRoute, RouteUnread,
+  altra_q80_lot, asrock_board_facts,
+}
+import strategy.asset_lifecycle { hold_q80_lot, hold_asrock_boards, q80_original_deploy_target, q80_ruled_deploy_target }
+import std.measure { money_amount_micro_count }
+import finance.owner_funded_company_asset {
+  ProcessorPackageMarking, EngineeringSampleMarked, ProductionMarkingObserved, PackageMarkingUnread,
+  CompanyAssetBasisStanding,
+  altra_q80_es_lot_acquisition, altra_q80_es_lot_standing,
+}
+
+// INVENTORY AUTHORITY FOR THE PURCHASED Q80 LOT.
+//
+// The source modules legitimately own different facts: the market/purchase observation, the
+// holding intent, and evidence that the member funded a company acquisition. This module gives
+// their common lot one identity and joins only immutable acquisition facts. Condition, accounting
+// posting, support, target qualification and disposition can then progress without invalidating
+// the fact that the acquisition sources refer to the same lot.
+//
+// There is deliberately no generated sixty-two-row roster here. The count is established; the
+// physical identities are not. Stable inventory ids and per-unit state transitions belong in the
+// intake census once tags, package markings and manufacturer serials have actually been observed.
+
+type InventorySourceSet {
+  purchase: DeclarationRef
+  holding: DeclarationRef
+  owner_funded_acquisition: DeclarationRef
+  engineering_sample_lot_standing: DeclarationRef
+}
+
+data q80_inventory_sources: InventorySourceSet = InventorySourceSet {
+  purchase: decl_ref(module_path: "strategy.ci_node_build", decl_name: "altra_q80_lot"),
+  holding: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_q80_lot"),
+  owner_funded_acquisition: decl_ref(module_path: "finance.owner_funded_company_asset", decl_name: "altra_q80_es_lot_acquisition"),
+  engineering_sample_lot_standing: decl_ref(module_path: "finance.owner_funded_company_asset", decl_name: "altra_q80_es_lot_standing"),
+}
+
+type InventoryAcquisitionEvidence {
+  lot: DeclarationRef
+  sources: InventorySourceSet
+  asset_id: NonEmptyStr
+  sku: NonEmptyStr
+  acquired_on: NonEmptyStr
+  units: Nat
+  paid_consideration_micro: Nat
+  planning_pre_tax_unit_micro: Int
+  planning_rounding_delta_micro: Int
+  reported_marking: ProcessorPackageMarking
+}
+
+data q80_inventory_lot_ref: DeclarationRef = decl_ref(module_path: "strategy.asset_inventory", decl_name: "q80_inventory_lot")
+
+// 70.375023 x 62 x 1.08875 = 4,750.489990. The floor-micro planning proxy is ten
+// microdollars below the exact all-in payment evidence; it does not replace that evidence.
+data q80_acquisition_evidence: InventoryAcquisitionEvidence = InventoryAcquisitionEvidence {
+  lot: q80_inventory_lot_ref,
+  sources: q80_inventory_sources,
+  asset_id: "altra-q80-30",
+  sku: "Ampere Altra Q80-30",
+  acquired_on: "2026-08-18",
+  units: 62,
+  paid_consideration_micro: 4750490000,
+  planning_pre_tax_unit_micro: 70375023,
+  planning_rounding_delta_micro: 10,
+  reported_marking: EngineeringSampleMarked,
+}
+
+type PurchaseCountStanding
+  = PurchaseCountObserved { units: Nat }
+  | PurchaseCountUnread { cause: NonEmptyStr }
+
+fn purchase_count_standing(depth: SupplyDepth) -> PurchaseCountStanding {
+  match depth {
+    DepthObserved { units, note } => PurchaseCountObserved { units: units }
+    DepthAvailableUncounted { note } => PurchaseCountUnread { cause: "the purchase source carries no closed owned-unit count" }
+    DepthScarce { obligation } => PurchaseCountUnread { cause: obligation }
+  }
+}
+
+fn marking_is_engineering_sample(m: ProcessorPackageMarking) -> Bool {
+  match m {
+    EngineeringSampleMarked => true
+    ProductionMarkingObserved => false
+    PackageMarkingUnread => false
+  }
+}
+
+type InventorySourceJoinStanding
+  = InventorySourcesJoined { lot: DeclarationRef, units: Nat, paid_consideration_micro: Nat }
+  | InventorySourcesRefused { cause: NonEmptyStr }
+
+// Parameterized so the witness can make count-preserving source substitutions and numeric drift
+// reach the production join rather than testing a duplicate predicate.
+fn join_q80_acquisition(e: InventoryAcquisitionEvidence) -> InventorySourceJoinStanding {
+  match purchase_count_standing(depth: altra_q80_lot.depth) {
+    PurchaseCountUnread { cause } => InventorySourcesRefused { cause: cause }
+    PurchaseCountObserved { units } => {
+      let sources_exact =
+        declaration_ref_eq(a: e.lot, b: decl_ref(module_path: "strategy.asset_inventory", decl_name: "q80_inventory_lot"))
+        && declaration_ref_eq(a: q80_inventory_lot_ref, b: decl_ref(module_path: "strategy.asset_inventory", decl_name: "q80_inventory_lot"))
+        && declaration_ref_eq(a: e.sources.purchase, b: decl_ref(module_path: "strategy.ci_node_build", decl_name: "altra_q80_lot"))
+        && declaration_ref_eq(a: q80_inventory_sources.purchase, b: decl_ref(module_path: "strategy.ci_node_build", decl_name: "altra_q80_lot"))
+        && declaration_ref_eq(a: e.sources.holding, b: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_q80_lot"))
+        && declaration_ref_eq(a: q80_inventory_sources.holding, b: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_q80_lot"))
+        && declaration_ref_eq(a: e.sources.owner_funded_acquisition, b: decl_ref(module_path: "finance.owner_funded_company_asset", decl_name: "altra_q80_es_lot_acquisition"))
+        && declaration_ref_eq(a: q80_inventory_sources.owner_funded_acquisition, b: decl_ref(module_path: "finance.owner_funded_company_asset", decl_name: "altra_q80_es_lot_acquisition"))
+        && declaration_ref_eq(a: e.sources.engineering_sample_lot_standing, b: decl_ref(module_path: "finance.owner_funded_company_asset", decl_name: "altra_q80_es_lot_standing"))
+        && declaration_ref_eq(a: q80_inventory_sources.engineering_sample_lot_standing, b: decl_ref(module_path: "finance.owner_funded_company_asset", decl_name: "altra_q80_es_lot_standing"))
+      let identity_exact = e.asset_id == "altra-q80-30"
+        && e.sku == "Ampere Altra Q80-30"
+        && e.acquired_on == "2026-08-18"
+        && altra_q80_lot.sku == e.sku
+        && altra_q80_lot.observed_on == e.acquired_on
+        && altra_q80_es_lot_acquisition.asset_id == e.asset_id
+        && altra_q80_es_lot_acquisition.acquired_on == e.acquired_on
+        && hold_q80_lot.asset_id == e.asset_id
+      let count_exact = e.units == 62
+        && units == e.units
+        && altra_q80_es_lot_acquisition.units == e.units
+        && hold_q80_lot.units == e.units
+      let consideration_exact = e.paid_consideration_micro == 4750490000
+        && money_amount_micro_count(m: altra_q80_es_lot_acquisition.paid_consideration) == e.paid_consideration_micro
+        && e.planning_pre_tax_unit_micro == 70375023
+        && altra_q80_lot.unit_price_micro == e.planning_pre_tax_unit_micro
+        && e.planning_rounding_delta_micro == 10
+      let marking_exact = marking_is_engineering_sample(m: e.reported_marking)
+        && marking_is_engineering_sample(m: altra_q80_es_lot_acquisition.marking)
+      if sources_exact && identity_exact && count_exact && consideration_exact && marking_exact {
+        InventorySourcesJoined {
+          lot: e.lot,
+          units: e.units,
+          paid_consideration_micro: e.paid_consideration_micro,
+        }
+      } else {
+        InventorySourcesRefused {
+          cause: "the purchase, holding, member-funded evidence and inventory lot do not identify the same 62-unit ES-marked Q80-30 acquisition on 2026-08-18 at exactly 4,750.49 all-in",
+        }
+      }
+    }
+  }
+}
+
+fn q80_source_join_standing() -> InventorySourceJoinStanding {
+  join_q80_acquisition(e: q80_acquisition_evidence)
+}
+
+// These standings are orthogonal and all remain open. None has a Ready/Qualified constructor that
+// a consumer can author without the future physical census and evidence-admission path.
+type ProcessorRosterStanding = RosterUncensused {
+  lot: DeclarationRef
+  expected_units: Nat
+  obligation: NonEmptyStr
+}
+
+type UnitMarkingStanding = UnitMarkingCensusPending {
+  lot_report: ProcessorPackageMarking
+  source: DeclarationRef
+  obligation: NonEmptyStr
+}
+
+type UnitConditionStanding = UnitConditionUnread {
+  source: DeclarationRef
+  obligation: NonEmptyStr
+}
+
+type VendorSupportStanding = VendorSupportUnread {
+  obligation: NonEmptyStr
+}
+
+type TargetQualificationStanding = TargetQualificationUnstarted {
+  obligation: NonEmptyStr
+}
+
+type AcquisitionDocumentsStanding = AcquisitionDocumentsUnread {
+  obligation: NonEmptyStr
+}
+
+type CustodyStanding = CustodyUnread {
+  obligation: NonEmptyStr
+}
+
+type TitleStanding = TitleEvidenceUnread {
+  obligation: NonEmptyStr
+}
+
+type InventoryLot {
+  self_ref: DeclarationRef
+  acquisition: InventoryAcquisitionEvidence
+  roster: ProcessorRosterStanding
+  unit_markings: UnitMarkingStanding
+  unit_condition: UnitConditionStanding
+  vendor_support: VendorSupportStanding
+  target_qualification: TargetQualificationStanding
+  company_basis: CompanyAssetBasisStanding
+  acquisition_documents: AcquisitionDocumentsStanding
+  custody: CustodyStanding
+  title: TitleStanding
+}
+
+data q80_inventory_lot: InventoryLot = InventoryLot {
+  self_ref: q80_inventory_lot_ref,
+  acquisition: q80_acquisition_evidence,
+  roster: RosterUncensused {
+    lot: q80_inventory_lot_ref,
+    expected_units: 62,
+    obligation: "Census all physical packages: affix inventory tags and record manufacturer serial, package marking, location and custody evidence. The purchase count alone cannot create unit identities.",
+  },
+  unit_markings: UnitMarkingCensusPending {
+    lot_report: EngineeringSampleMarked,
+    source: q80_inventory_sources.owner_funded_acquisition,
+    obligation: "The ledger reports ES marking for the lot. Photograph or transcribe the marking on each package during census.",
+  },
+  unit_condition: UnitConditionUnread {
+    source: q80_inventory_sources.purchase,
+    obligation: "Condition was not recorded with the purchase. Establish it only per processor and exact target configuration from power-on and burn-in receipts.",
+  },
+  vendor_support: VendorSupportUnread {
+    obligation: "The ES marking proves neither vendor-support eligibility nor ineligibility. Record a vendor statement if one is obtained.",
+  },
+  target_qualification: TargetQualificationUnstarted {
+    obligation: "The ASRock board family is ruled, but a receipt must still bind one physical processor to one censused board, firmware revision and socket position. One passing sample cannot qualify the other sixty-one or another configuration.",
+  },
+  company_basis: altra_q80_es_lot_acquisition.company_basis,
+  acquisition_documents: AcquisitionDocumentsUnread {
+    obligation: "Record exact seller, order and receipt identities; the source rows currently carry narrative payment evidence only.",
+  },
+  custody: CustodyUnread {
+    obligation: "Record the lot's current location, custodian and custody receipt.",
+  },
+  title: TitleEvidenceUnread {
+    obligation: "Bind documentary ownership/title evidence without treating the member payment record as the missing company ledger entry.",
+  },
+}
+
+// The original MP72 target is historical. On 2026-09-11 the operator ruled the ASRock
+// ALTRAD8UD-1L2T family as the target for conditional deployment. That family-level ruling does
+// not choose the boards' eventual fleet-node versus machine-tile role and does not qualify or
+// assign a single physical processor or board.
+type Q80TargetIntentStanding = TargetFamilyRuled {
+  original_target: DeclarationRef
+  selected_target: DeclarationRef
+  selected_target_source: DeclarationRef
+  target_board_holding: DeclarationRef
+  ruled_on: NonEmptyStr
+  unresolved_role: NonEmptyStr
+  qualification_obligation: NonEmptyStr
+}
+
+data q80_target_intent: Q80TargetIntentStanding = TargetFamilyRuled {
+  original_target: q80_original_deploy_target,
+  selected_target: q80_ruled_deploy_target,
+  selected_target_source: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "q80_ruled_deploy_target"),
+  target_board_holding: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"),
+  ruled_on: "2026-09-11",
+  unresolved_role: "The four ASRock boards are not yet allocated between loose fleet nodes and machine-tile prototypes.",
+  qualification_obligation: "Census the processor and board identities, establish board condition and firmware, qualify each processor-board-firmware-socket configuration, then record exact assignments. A count of four boards is not four placeable processors or nodes.",
+}
+
+// Bind the executed four-board receipt to both the holding and the live board-facts row.
+// This is acquisition evidence only; it does not satisfy roster, condition, firmware,
+// qualification, assignment or deployment.
+type BoardDeliveryStanding
+  = BoardDeliveryRecorded { carrier: NonEmptyStr, tracking_reference: NonEmptyStr }
+  | BoardDeliveryUnread { obligation: NonEmptyStr }
+
+type TargetBoardAcquisitionEvidence {
+  holding: DeclarationRef
+  board_facts: DeclarationRef
+  asset_id: NonEmptyStr
+  sku: NonEmptyStr
+  seller: NonEmptyStr
+  order_id: NonEmptyStr
+  ordered_on: NonEmptyStr
+  units: Nat
+  paid_consideration_micro: Nat
+  delivery: BoardDeliveryStanding
+}
+
+data q80_target_board_acquisition: TargetBoardAcquisitionEvidence = TargetBoardAcquisitionEvidence {
+  holding: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"),
+  board_facts: decl_ref(module_path: "strategy.ci_node_build", decl_name: "asrock_board_facts"),
+  asset_id: "asrock-altrad8ud-1l2t",
+  sku: "ASRock ALTRAD8UD-1L2T",
+  seller: "Newegg",
+  order_id: "418026724",
+  ordered_on: "2026-09-01",
+  units: 4,
+  paid_consideration_micro: 3784500000,
+  delivery: BoardDeliveryRecorded {
+    carrier: "UPS",
+    tracking_reference: "1ZE569860313808243",
+  },
+}
+
+fn board_delivery_is_recorded(d: BoardDeliveryStanding) -> Bool {
+  match d {
+    BoardDeliveryRecorded { carrier, tracking_reference } =>
+      carrier == "UPS" && tracking_reference == "1ZE569860313808243"
+    BoardDeliveryUnread { obligation } => false
+  }
+}
+
+fn live_asrock_route_is_domestic() -> Bool {
+  match asrock_board_facts.route {
+    DomesticRoute { note } => true
+    ImportRoute { note } => false
+    RouteUnread { obligation } => false
+  }
+}
+
+fn live_asrock_depth_is_four_purchase_units() -> Bool {
+  match asrock_board_facts.depth {
+    DepthObserved { units, note } => units == 4
+    DepthAvailableUncounted { note } => false
+    DepthScarce { obligation } => false
+  }
+}
+
+type TargetBoardAcquisitionJoinStanding
+  = TargetBoardAcquisitionJoined { holding: DeclarationRef, board_facts: DeclarationRef, units: Nat, paid_consideration_micro: Nat }
+  | TargetBoardAcquisitionRefused { cause: NonEmptyStr }
+
+fn join_q80_target_board_acquisition(e: TargetBoardAcquisitionEvidence) -> TargetBoardAcquisitionJoinStanding {
+  let sources_exact =
+    declaration_ref_eq(a: e.holding, b: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"))
+      && declaration_ref_eq(a: e.board_facts, b: decl_ref(module_path: "strategy.ci_node_build", decl_name: "asrock_board_facts"))
+  let receipt_exact =
+    e.asset_id == "asrock-altrad8ud-1l2t"
+      && e.sku == "ASRock ALTRAD8UD-1L2T"
+      && e.seller == "Newegg"
+      && e.order_id == "418026724"
+      && e.ordered_on == "2026-09-01"
+      && e.units == 4
+      && e.paid_consideration_micro == 3784500000
+      && board_delivery_is_recorded(d: e.delivery)
+  let live_rows_exact =
+    hold_asrock_boards.asset_id == e.asset_id
+      && hold_asrock_boards.units == e.units
+      && asrock_board_facts.label == e.sku
+      && asrock_board_facts.observed_on == e.ordered_on
+      && asrock_board_facts.board_price_micro == 946125000
+      && live_asrock_route_is_domestic()
+      && live_asrock_depth_is_four_purchase_units()
+  if sources_exact && receipt_exact && live_rows_exact {
+    TargetBoardAcquisitionJoined {
+      holding: e.holding,
+      board_facts: e.board_facts,
+      units: e.units,
+      paid_consideration_micro: e.paid_consideration_micro,
+    }
+  } else {
+    TargetBoardAcquisitionRefused {
+      cause: "the holding, board-facts row and receipt do not identify the same four-board Newegg order 418026724 from 2026-09-01 at exactly 3,784.50 all-in with recorded delivery and a domestic route",
+    }
+  }
+}
+
+fn q80_target_board_acquisition_standing() -> TargetBoardAcquisitionJoinStanding {
+  join_q80_target_board_acquisition(e: q80_target_board_acquisition)
+}
+
+type Q80TargetBoardRosterStanding = TargetBoardRosterUncensused {
+  holding: DeclarationRef
+  expected_units: Nat
+  obligation: NonEmptyStr
+}
+
+data q80_target_board_roster: Q80TargetBoardRosterStanding = TargetBoardRosterUncensused {
+  holding: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"),
+  expected_units: 4,
+  obligation: "Record stable identities, received condition and firmware for all four delivered boards. Purchase and delivery count do not establish qualification or deployment.",
+}
+
+type Q80ProcessorBoardAssignmentStanding = ProcessorBoardAssignmentsAbsent {
+  processor_lot: DeclarationRef
+  target_board_holding: DeclarationRef
+  obligation: NonEmptyStr
+}
+
+data q80_processor_board_assignments: Q80ProcessorBoardAssignmentStanding = ProcessorBoardAssignmentsAbsent {
+  processor_lot: q80_inventory_lot_ref,
+  target_board_holding: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"),
+  obligation: "No processor-board assignment exists before both rosters, exact configuration qualification and an identity-bound allocation receipt.",
+}
+
+// THE RETURN ARM IS CLOSED BY OPERATOR RULING, AND IT IS CLOSED STRUCTURALLY BECAUSE PROSE GETS
+// RE-ASKED. This carrier previously held ReturnEligibilityUnread with the open obligation
+// "Determine whether any return right exists and its exact terms" -- which is an INVITATION: a
+// reader with a reason to wonder answers the question, and the lot's disposition is live again
+// without anyone editing a declaration. That is exactly what happened: the return window was
+// surfaced to the operator as a deadline nobody had raised, and the answer was already keep.
+//
+// So the Unread arm is GONE rather than answered. There is no constructor for an open return
+// question, no obligation to discharge, and no field into which a return right could be recorded.
+// PROPOSING A RETURN NOW REQUIRES DELETING OR EDITING A DECLARATION THAT NAMES THE OPERATOR AND
+// THE DATE, which is the difference between writing a decision down and making it stick.
+//
+// WHAT THIS DOES NOT DECIDE, and the boundary carries equal force because a firm keep-decision
+// beside an unqualified lot is where the next wrong inference comes from: KEEPING THEM IS NOT A
+// CLAIM THAT THEY WORK. The stated rationale is an economic expectation -- board supply is a
+// market reading this repository has not established at Q80 grain, profitability is a forecast --
+// and neither is a POST, a channel enumeration, a core count or a burn-in outcome. Hold-then-
+// deploy-only-after-exact-qualification stands unchanged, which is why this row CITES the
+// qualification obligation rather than restating or discharging it: a reader who wants the
+// condition of the lot is sent to the row that owns it and finds it exactly as open as before.
+//
+// THAT CITATION IS THE source FIELD AND THERE IS ONLY ONE OF IT. This row briefly carried a second
+// field, qualification_obligation, holding the identical expression -- two names for one fact, which
+// the type could not tell apart, so nothing stopped them being edited apart or read as two
+// independent citations. The cost landed in the witness, where a conjunct asserting the second
+// against the same value was VACUOUSLY IMPLIED by the conjunct above it while its comment advertised
+// that it tested the citation. A check that cannot fail is not coverage, and one advertised as
+// coverage is worse than none. The provenance reference and the qualification citation are the same
+// declaration -- altra_q80_es_lot_standing owns both -- so it is carried once.
+//
+// BOTH DATES HERE ARE CalendarDate, NOT STRINGS. strategy.calendar_date is this repository's one
+// temporal authority and refuses an impossible date; a free-string date re-mints the concept and
+// admits "not a date at all" (DESIGN section 3). That matters here more than as general hygiene,
+// because the paragraph below insists a field named for a date must CARRY a date -- and typing it
+// NonEmptyStr admits "soon" as readily as a date, while a witness pinning the literal by string
+// equality pins THAT TEXT rather than date-ness. The claim and the type disagreed.
+//
+// superseded_check_by IS THE DATE AND NOTHING ELSE. It held a four-clause narrative with the date
+// embedded, which meant no consumer could read it without parsing prose -- so the justification
+// given for deleting return_eligibility_check_by, that the retired date is now recorded once by the
+// row that retired it, was FALSE AS WRITTEN: the fact had not been relocated, it had been dissolved
+// into a sentence. A field named for a date must carry a date. What it means is here, where the
+// rest of this block's prose already lives: 2026-09-24 was the return-eligibility check; with the
+// return arm closed it drives nothing, there is no window to race, and the qualification work it
+// used to deadline is re-anchored on the deployment intent that needs qualified parts.
+type ReturnEligibilityStanding = ReturnDeclinedByOperatorRuling {
+  ruled_on: CalendarDate
+  operator_assertion: NonEmptyStr
+  source: DeclarationRef
+  superseded_check_by: CalendarDate
+}
+
+data q80_return_eligibility: ReturnEligibilityStanding = ReturnDeclinedByOperatorRuling {
+  ruled_on: CalendarDate { year: 2026, month: 9, day: 12 },
+  operator_assertion: "Operator ruling, quoted: we are NOT returning the Q80 - there is supply of boards, they will be profitable. Carried as the operator's assertion rather than as a derived fact.",
+  source: q80_inventory_sources.engineering_sample_lot_standing,
+  superseded_check_by: CalendarDate { year: 2026, month: 9, day: 24 },
+}
+
+// The September 15 disposition review was discharged early by the operator on September 11.
+// The ruling is hold and conditional deployment; liquidation is closed. Return eligibility is no
+// longer a separate expiring fact: it is CLOSED at q80_return_eligibility by operator ruling and this
+// ruling consumes that standing, so the fact lives in exactly one place. No per-unit allocation is
+// created by the lot-level ruling.
+type Q80DispositionRuling = HoldAndConditionalDeployRuled {
+  self_ref: DeclarationRef
+  original_review_by: NonEmptyStr
+  ruled_on: NonEmptyStr
+  next_review_by: NonEmptyStr
+  return_standing: DeclarationRef
+  target: DeclarationRef
+  target_board_holding: DeclarationRef
+  obligation: NonEmptyStr
+}
+
+data q80_disposition_ruling: Q80DispositionRuling = HoldAndConditionalDeployRuled {
+  self_ref: decl_ref(module_path: "strategy.asset_inventory", decl_name: "q80_disposition_ruling"),
+  original_review_by: "2026-09-15",
+  ruled_on: "2026-09-11",
+  next_review_by: "2026-10-15",
+  return_standing: decl_ref(module_path: "strategy.asset_inventory", decl_name: "q80_return_eligibility"),
+  target: q80_ruled_deploy_target,
+  target_board_holding: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"),
+  obligation: "Hold the purchased lot and deploy only named, censused processors after exact ASRock board, firmware and socket qualification plus an identity-bound assignment. Liquidation is refused. The ruling authorizes no processor or node count; return eligibility is CLOSED by the operator ruling of 2026-09-12 carried at q80_return_eligibility, which this ruling consumes rather than restating -- there is no separate unread return question for a reader to answer.",
+}
+
+// Purchase records carry 62 processor packages and four board packages. With both rosters
+// uncensused, condition and qualification open, and no exact assignments, they derive zero systems
+// and zero RAM demand. The Collins 320-DIMM derivation remains independent.
+type Q80DeploymentStanding = DeploymentBlocked {
+  obligation: NonEmptyStr
+}
+
+type Q80DeploymentProjection {
+  source_lot: DeclarationRef
+  target_board_holding: DeclarationRef
+  purchase_record_processor_units: Nat
+  purchase_record_target_board_units: Nat
+  admitted_processor_board_assignments: Nat
+  derived_systems: Int
+  derived_ram_modules: Int
+  standing: Q80DeploymentStanding
+}
+
+data q80_deployment_projection: Q80DeploymentProjection = Q80DeploymentProjection {
+  source_lot: q80_inventory_lot_ref,
+  target_board_holding: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"),
+  purchase_record_processor_units: 62,
+  purchase_record_target_board_units: 4,
+  admitted_processor_board_assignments: 0,
+  derived_systems: 0,
+  derived_ram_modules: 0,
+  standing: DeploymentBlocked {
+    obligation: "Census both physical rosters; establish per-unit marking and condition plus board firmware; qualify exact processor-board-firmware-socket configurations; then admit identity-bound assignments. Neither purchase count is a placeable-unit count.",
+  },
+}

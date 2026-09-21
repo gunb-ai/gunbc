@@ -1,0 +1,918 @@
+module test.claim.owner_action_witness
+
+import extdeps.ocp.mt_jade.memory_mixing {
+  MixedDimmSupportResolved, MixedDimmSupportUnmodelled, MtJadeMixedDimmSupportQuery, MtJadeMixedDimmSupportCell, DifferentChannel, Mixing1rAnd2r, MixingUndetermined, MixingSupported,
+}
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, decl_ref }
+import strategy.vendor_correspondence { VendorEnquiry }
+import strategy.receipt_evidence {
+  ActionReceipt, ReceiptEvidence, MergedPullRequest, ExternalFilingReceipt, PaymentSettled,
+  ExternalRequestSent, ObservedFact, CorpusDeclaration,
+}
+import strategy.strategy_model { StrategicDecision, DecisionState, Open, Selected, SupersededBy, RefusedDecision, DecisionReceipt }
+import strategy.gunbc_strategy { decision_ebay_retention_permitted, ebay_retention_risk_limitations, RetentionRiskLimitations }
+import strategy.owner_action {
+  OwnerStep, OwnerWork, OwnerQueueState, StepProgress, StepDischarged, StepOpen,
+  OperatorActionWork, DelegatedActionWork, OperatorDecisionWork, ExternalWaitWork,
+  DecisionAlternative, WaitWindow, UpstreamPublishedWindow, OperatorFollowUp,
+  StartRequirement, AfterStep, AfterPlanItem, AfterCalendarDate,
+  owner_queue_as_of, step_state_as_of, unmet_requirements_as_of, requirement_satisfied_as_of,
+  DoNow, StartExternalClock, Waiting, DelegateNow, Blocked, NeedsDecomposition,
+  owner_steps, owner_action_subject_items, owner_queue, owner_queue_size, states_for_item,
+  state_step_id, steps_with_id,
+  m2_success_opens_llc_court_exposure,
+  live_owner_queue_shows_llc_exposure_while_filing_open,
+  m2_done_shows_llc_exposure_live,
+  filing_done_hides_llc_exposure_from_owner_queue,
+  owner_queue_size_excludes_exposures,
+  subject_items_resolve, steps_target_subject_items, operator_exclusive_coverage,
+  in_progress_items_carry_receipt_and_residue, external_lead_dispatch_and_wait_separated,
+  waits_never_ready, ready_steps_have_no_unmet_requirement, decisions_offer_alternatives,
+  discharged_receipts_match_promise, discharged_operator_steps_cite_site,
+  open_operator_steps_state_the_gap, no_open_item_needs_decomposition,
+  dispatched_waits_carry_a_reference, refused_steps_satisfy_nothing,
+  ExternalWaitOutcome, AwaitedAnswerOutstanding, AwaitedAnswerReceived, AwaitedAnswerRefused,
+  external_wait_outcome, external_wait_outcomes, wait_outcome_agrees_with_step_state,
+  awaited_answer_is_outstanding, awaited_answer_was_received, awaited_answer_was_refused,
+  ExternalWait, WaitFallback, DeclaredFallback, NoFallbackDeclared,
+  ExternalRequestReference, RequestNotYetSent, ReferencedRequest, SentWithoutReference,
+  StepExternallyRefused, step_is_open, step_is_externally_refused,
+  done_item_requires_discharged_steps, item_resolves,
+  state_is_ready, state_is_waiting, state_is_blocked, state_needs_decomposition,
+  state_starts_external_clock,
+  RelationshipStanding, RestrictedCollateralCapability, ampere_collateral_subject, CapabilityEvidence, CapabilityUnestablished, CapabilityObserved,
+  RelationshipRequirement, RestrictedCollateral, NamedAccountContact, DesignEngagement, FirmwareImages,
+  VendorRelationship, RelationshipConsumer, vendor_relationships, relationship_consumers,
+  consumer_is_served, covered_relationships_state_how_coverage_fails, relationships_name_routes_and_drivers,
+  relationships_are_not_steps, exclusions_hold, every_consumer_names_a_declared_relationship,
+  relationship_ampere, excluded_consumers, ampere_restricted_collateral_source,
+  ocp_rank_cell_read, ocp_rank_cell_was_read, ocp_rank_question_answered,
+  RelationshipOutreach, RelationshipOutreachUnsent, RelationshipOutreachSent, UnsentOutreach, ampere_relationship_outreach,
+  PreparedAsk, AskCarried, AskCarriedByLaterEnquiry, AskUnsent, receipt_ampere_firmware_asks_sent, outreach_asks_coherent, outreach_arm_label,
+  FleetCensusRoster, FleetRosterClosed, FleetRosterUnreconciled, UnitCensusIdentity,
+  CensusReadingLimit, SoftwareJoinNoPhysicalRead, DescribesPriorPopulation,
+  HeldPartIdentityStanding, HeldPartsFromPresentCensus, HeldPartsNotPresentState, HeldPartsUncensused,
+  held_part_identity_standing, held_part_identity_text, current_held_part_identity_standing,
+  ampere_relationship_preparation,
+  fleet_census_identities_complete, ram_purchase_standing, RamHeldCensusIdentityGap, RamHeldQualificationGap,
+  relationship_preparation_report, assess_relationship_preparation, ram_fleet_roster, ram_unit_censuses,
+  step_is_wait, step_is_discharged, step_is_human_intervention,
+  step_state, item_queue_states, requirement_satisfied, unmet_requirements,
+  open_operator_intervention,
+}
+
+// WHAT THIS WITNESS IS. Every claim below is a FOLD OVER THE LIVE ROSTER, and every one of them is
+// accompanied by a mutated roster that must make it FALSE. A coverage claim that only ever sees the
+// corpus that satisfies it is a decoration; the reds here are what make the greens mean something.
+//
+// The mutations are deletions and fixtures rather than edits, because deletion is the census: drop
+// the step that covers an outcome and the coverage derivation must refuse.
+
+fn without_step(step_id: NonEmptyStr) -> List<OwnerStep> {
+  filter(owner_steps, s => s.step_id != step_id)
+}
+
+// Deleting every OPEN step of a covered outcome is the sharper census: what breaks is exactly what
+// was load-bearing, and an outcome left with only discharged receipts must render as undecomposed.
+fn without_open_steps_for(item_id: NonEmptyStr) -> List<OwnerStep> {
+  filter(owner_steps, s => !(s.plan_item == item_id && !step_is_discharged(step: s)))
+}
+
+// A discharged step promising one receipt and carrying another.
+fn fixture_receipt_mismatch() -> OwnerStep {
+  OwnerStep {
+    step_id: "fixture-receipt-mismatch",
+    plan_item: "hw-first-host",
+    work: DelegatedActionWork { instruction: "fixture" },
+    start_requirements: [],
+    produces_receipt: "promised-receipt",
+    progress: StepDischarged {
+      receipt: ActionReceipt {
+        receipt_id: "some-other-receipt",
+        evidence: ObservedFact {
+          subject: "fixture",
+          observation: "fixture",
+          observed_at: "2026-09-10",
+        },
+      },
+    },
+  }
+}
+
+// A discharged operator step whose intervention still says no discharge site is modeled.
+fn fixture_discharged_without_site() -> OwnerStep {
+  OwnerStep {
+    step_id: "fixture-discharged-without-site",
+    plan_item: "hw-first-host",
+    work: OperatorActionWork {
+      intervention: open_operator_intervention(
+        identity: "fixture-discharged-without-site",
+        subject: "fixture",
+        instruction: "fixture",
+      ),
+    },
+    start_requirements: [],
+    produces_receipt: "fixture-receipt",
+    progress: StepDischarged {
+      receipt: ActionReceipt {
+        receipt_id: "fixture-receipt",
+        evidence: ObservedFact {
+          subject: "fixture",
+          observation: "fixture",
+          observed_at: "2026-09-10",
+        },
+      },
+    },
+  }
+}
+
+// A decision offering one alternative, which is not a decision.
+fn fixture_single_alternative_decision() -> OwnerStep {
+  OwnerStep {
+    step_id: "fixture-single-alternative",
+    plan_item: "hw-first-host",
+    work: OperatorDecisionWork {
+      intervention: open_operator_intervention(
+        identity: "fixture-single-alternative",
+        subject: "fixture",
+        instruction: "fixture",
+      ),
+      alternatives: [
+        DecisionAlternative {
+          label: "the only arm",
+          evidence: decl_ref(module_path: "strategy.owner_action", decl_name: "owner_steps"),
+        },
+      ],
+    },
+    start_requirements: [],
+    produces_receipt: "fixture-decision",
+    progress: StepOpen,
+  }
+}
+
+fn fixture_off_subject_step() -> OwnerStep {
+  OwnerStep {
+    step_id: "fixture-off-subject",
+    plan_item: "not-a-plan-item",
+    work: DelegatedActionWork { instruction: "fixture" },
+    start_requirements: [],
+    produces_receipt: "fixture-off-subject",
+    progress: StepOpen,
+  }
+}
+
+
+// A wait whose dispatch is discharged while its reference still says nothing was sent.
+fn fixture_dispatched_wait_without_reference() -> List<OwnerStep> {
+  concat(
+    filter(owner_steps, s => s.step_id == "llc-package-mailed"),
+    [OwnerStep {
+      step_id: "fixture-sent-wait-no-reference",
+      plan_item: "llc-publication-filing",
+      work: ExternalWaitWork {
+        wait: ExternalWait {
+          partial_answers: [],
+          awaited_event: "fixture",
+          blocks: ["llc-publication-filing"],
+          window: OperatorFollowUp { next_check: "2026-09-26", basis: "fixture" },
+          fallback: NoFallbackDeclared { reason: "fixture" },
+          reference: RequestNotYetSent,
+        },
+      },
+      start_requirements: [AfterStep { step_id: "llc-package-mailed" }],
+      produces_receipt: "fixture-wait",
+      progress: StepOpen,
+    }],
+  )
+}
+
+// A refused external answer, and a step that would start only if the refusal counted as a discharge.
+fn fixture_refused_wait_roster() -> List<OwnerStep> {
+  [
+    OwnerStep {
+      step_id: "fixture-refused-wait",
+      plan_item: "counsel-market-census",
+      work: ExternalWaitWork {
+        wait: ExternalWait {
+          partial_answers: [],
+          awaited_event: "an approval that came back NO",
+          blocks: ["counsel-market-census"],
+          window: OperatorFollowUp { next_check: "2026-09-26", basis: "fixture" },
+          fallback: DeclaredFallback { on_or_after: "2026-09-26", alternatives: ["fixture arm"] },
+          reference: ReferencedRequest {
+            authority: "fixture counterparty",
+            identifier: "fixture-request-id",
+            sent_at: "2026-09-10",
+          },
+        },
+      },
+      start_requirements: [],
+      produces_receipt: "fixture-refused",
+      progress: StepExternallyRefused {
+        receipt: ActionReceipt {
+          receipt_id: "fixture-refused",
+          evidence: ExternalFilingReceipt {
+            authority: "fixture counterparty",
+            identifier: "rejection",
+            received_at: "2026-09-11",
+          },
+        },
+        cause: "the counterparty declined",
+      },
+    },
+    OwnerStep {
+      step_id: "fixture-depends-on-refusal",
+      plan_item: "counsel-market-census",
+      work: DelegatedActionWork { instruction: "fixture" },
+      start_requirements: [AfterStep { step_id: "fixture-refused-wait" }],
+      produces_receipt: "fixture-dependent",
+      progress: StepOpen,
+    },
+  ]
+}
+
+// THE DEPENDENT MUST EXIST BEFORE IT CAN BE BLOCKED. `first()` answers an Optional, so an empty
+// filter has no step to judge; reading Absent as `false` keeps a vanished fixture row a failure of
+// this claim rather than a silently skipped assertion.
+fn dependent_step_is_blocked(roster: List<OwnerStep>) -> Bool {
+  match filter(roster, s => s.step_id == "fixture-depends-on-refusal").first() {
+    Present { value: s } => state_is_blocked(state: step_state(step: s, steps: roster))
+    Absent => false
+  }
+}
+
+// A REFUSAL IS NOT A DISCHARGE AND NOT A PENDING WAIT. The refused step must satisfy nothing, its
+// dependent must stay Blocked rather than becoming ready, and an outcome left with nothing but a
+// refusal must render NeedsDecomposition rather than an empty, contented queue.
+fn refusal_behaves_as_a_dead_end() -> Bool {
+  let roster = fixture_refused_wait_roster()
+  refused_steps_satisfy_nothing(steps: roster)
+    && count(filter(roster, s => step_is_open(step: s))) == 1
+    && count(filter(roster, s => step_is_externally_refused(step: s))) == 1
+    && dependent_step_is_blocked(roster: roster)
+    && count(filter(
+      item_queue_states(item_id: "counsel-market-census", steps: filter(roster, s => step_is_externally_refused(step: s))),
+      q => state_needs_decomposition(state: q))) == 1
+}
+
+fn fixture_wait_carrier() -> ExternalWait {
+  ExternalWait {
+    partial_answers: [],
+    awaited_event: "fixture approval",
+    blocks: ["counsel-market-census"],
+    window: OperatorFollowUp { next_check: "2026-09-26", basis: "fixture" },
+    fallback: NoFallbackDeclared { reason: "fixture" },
+    reference: ReferencedRequest {
+      authority: "fixture counterparty",
+      identifier: "fixture-request-id",
+      sent_at: "2026-09-10",
+    },
+  }
+}
+
+fn fixture_answer_receipt() -> ActionReceipt {
+  ActionReceipt {
+    receipt_id: "fixture-answer",
+    evidence: ExternalFilingReceipt {
+      authority: "fixture counterparty",
+      identifier: "answer",
+      received_at: "2026-09-11",
+    },
+  }
+}
+
+// THE JOIN SURFACE, EXERCISED ON ALL THREE ARMS. A consumer holding a wait and its progress gets
+// the outcome as a value without importing OwnerStep and without matching StepProgress itself, so
+// this asserts the mapping is total and faithful rather than that the function exists.
+fn wait_outcome_accessor_is_total() -> Bool {
+  let w = fixture_wait_carrier()
+  let r = fixture_answer_receipt()
+  awaited_answer_is_outstanding(outcome: external_wait_outcome(wait: w, progress: StepOpen))
+    && awaited_answer_was_received(outcome: external_wait_outcome(
+      wait: w, progress: StepDischarged { receipt: r }))
+    && awaited_answer_was_refused(outcome: external_wait_outcome(
+      wait: w, progress: StepExternallyRefused { receipt: r, cause: "declined" }))
+    && !awaited_answer_was_received(outcome: external_wait_outcome(
+      wait: w, progress: StepExternallyRefused { receipt: r, cause: "declined" }))
+    && !awaited_answer_is_outstanding(outcome: external_wait_outcome(
+      wait: w, progress: StepDischarged { receipt: r }))
+}
+
+// Over the live roster the accessor answers for exactly the waits and for nothing else, and each
+// answer agrees with its step: outstanding for an open wait, received for a discharged one, refused
+// for a refused one. (An earlier form required every live wait to be outstanding, which held only
+// until the first wait was answered -- the eBay developer-account wait, discharged 2026-09-11.)
+fn wait_outcomes_cover_exactly_the_waits() -> Bool {
+  let waits = filter(owner_steps, s => step_is_wait(step: s))
+  count(external_wait_outcomes(steps: owner_steps)) == count(waits)
+    && count(filter(external_wait_outcomes(steps: owner_steps), o => awaited_answer_is_outstanding(outcome: o)))
+      == count(filter(waits, s => step_is_open(step: s)))
+    && count(filter(external_wait_outcomes(steps: owner_steps), o => awaited_answer_was_received(outcome: o)))
+      == count(filter(waits, s => step_is_discharged(step: s)))
+    && count(filter(external_wait_outcomes(steps: owner_steps), o => awaited_answer_was_refused(outcome: o)))
+      == count(filter(waits, s => step_is_externally_refused(step: s)))
+}
+
+// The refusal fixture reaches the accessor too: a refused wait reads refused, not outstanding.
+fn refused_wait_reads_refused() -> Bool {
+  let refused = filter(fixture_refused_wait_roster(), s => step_is_externally_refused(step: s))
+  count(filter(external_wait_outcomes(steps: refused), o => awaited_answer_was_refused(outcome: o))) == 1
+    && count(filter(external_wait_outcomes(steps: refused), o => awaited_answer_is_outstanding(outcome: o))) == 0
+}
+
+// THE GATE STANDS, RE-POINTED. The dispatch depends on the filing arm being DECLARED -- which it is,
+// by the operator ruling, so that half is discharged -- and on the calendar, which it is not. The
+// claim that earns the row is the second one: a thing ruled non-urgent and due at tax time must not
+// render ready today, or the queue re-manufactures the urgency the ruling removed.
+fn cpa_dispatch_is_gated_on_arm_and_calendar() -> Bool {
+  let dispatch = filter(owner_steps, s => s.step_id == "cpa-engagement-dispatch")
+  fold(dispatch, init: false, f: fn(acc, d) {
+    acc || fold(d.start_requirements, init: false, f: fn(inner, r) {
+      inner || requirement_names_step(requirement: r, step_id: "cpa-filing-arm-declared")
+    })
+  })
+    && count(filter(owner_steps, s =>
+      s.step_id == "cpa-filing-arm-declared" && step_is_discharged(step: s))) == 1
+    && count(filter(dispatch, d => state_is_ready(state: step_state(step: d, steps: owner_steps)))) == 0
+    && count(filter(dispatch, d => state_is_blocked(state: step_state(step: d, steps: owner_steps)))) == 1
+}
+
+// AND THE CALENDAR IS WHAT HOLDS IT, NOT A DEAD ROW. Read the same corpus at a date inside the 2027
+// filing season and the dispatch is offerable; read it at the end of this year and it is not. A gate
+// that never opens would be a refusal wearing a date.
+fn cpa_dispatch_opens_at_tax_time() -> Bool {
+  let dispatch = filter(owner_steps, s => s.step_id == "cpa-engagement-dispatch")
+  count(filter(dispatch, d =>
+    state_is_ready(state: step_state_as_of(step: d, steps: owner_steps, as_of: "2027-02-01")))) == 1
+    && count(filter(dispatch, d =>
+      state_is_ready(state: step_state_as_of(step: d, steps: owner_steps, as_of: "2026-12-31")))) == 0
+    && count(filter(dispatch, d =>
+      count(unmet_requirements_as_of(step: d, steps: owner_steps, as_of: "2027-02-01")) == 0)) == 1
+}
+
+// NO ROW MAY IMPLY AN ENGAGEMENT THAT DOES NOT EXIST. The operator read "no SECOND CPA has been
+// identified" and asked who the first was; there is none, and no accountant is named anywhere in
+// this repository. The lane now names the declared arm instead, and this asserts the retired step id
+// is gone rather than trusting that a rewording removed it.
+fn no_row_presupposes_an_accountant() -> Bool {
+  count(filter(owner_steps, s => s.step_id == "cpa-second-option-identified")) == 0
+    && count(filter(owner_steps, s => s.plan_item == "cpa-commencement-determination")) == 3
+}
+
+// THE COHORT OUTCOME NOW REACHES ITS OWN EXIT. The plan row asks for qualification, org-owner
+// availability and COMMITTED usage and dates; a decomposition ending at "responses arrived" left
+// the last third undecomposed while looking complete.
+fn cohort_reaches_its_committed_dates() -> Bool {
+  let item_steps = filter(owner_steps, s => s.plan_item == "cohort-qualified")
+  count(filter(item_steps, s => step_is_wait(step: s))) == 2
+    && count(filter(item_steps, s => s.step_id == "cohort-qualification-assessment")) == 1
+    && count(filter(item_steps, s => s.step_id == "cohort-commitment-requests")) == 1
+    && count(filter(item_steps, s => s.step_id == "cohort-commitment-wait")) == 1
+}
+
+// Controlled capability matrix through the actual consumer decision. All 16 combinations cover
+// single-axis improvement and regression; the oracle is the independent input bit for that axis.
+fn fixture_capability(observed: Bool) -> CapabilityEvidence {
+  if observed {
+    CapabilityObserved { receipt: ActionReceipt { receipt_id: "fixture", evidence: ObservedFact {
+      subject: "controlled capability fixture", observation: "exact capability observed", observed_at: "2026-01-01",
+    } } }
+  } else { CapabilityUnestablished { gap: "fixture absence" } }
+}
+
+fn fixture_relationship(subject: DeclarationRef, docs: Bool, contact: Bool, design: Bool, firmware: Bool) -> VendorRelationship {
+  VendorRelationship {
+    identity: "controlled-relationship",
+    subject: subject,
+    standing: RelationshipStanding {
+      restricted_collateral: RestrictedCollateralCapability { subject: ampere_collateral_subject, evidence: fixture_capability(observed: docs) },
+      named_contact: fixture_capability(observed: contact),
+      design_engagement: fixture_capability(observed: design),
+      firmware_images: fixture_capability(observed: firmware),
+    },
+    raising_routes: relationship_ampere.raising_routes,
+    absence_cost_drivers: relationship_ampere.absence_cost_drivers,
+    ruling: relationship_ampere.ruling,
+    horizon: relationship_ampere.horizon,
+    current_coverage: relationship_ampere.current_coverage,
+  }
+}
+
+fn fixture_consumer(needs: RelationshipRequirement) -> RelationshipConsumer {
+  RelationshipConsumer { consumer: "fixture exact requirement", relationship: relationship_ampere.subject, needs: needs }
+}
+
+fn consumers_use_independent_dimensions() -> Bool {
+  fold([false, true], init: true, f: fn(a, docs) {
+    a && fold([false, true], init: true, f: fn(b, contact) {
+      b && fold([false, true], init: true, f: fn(c, design) {
+        c && fold([false, true], init: true, f: fn(d, firmware) {
+          let rows = [fixture_relationship(subject: relationship_ampere.subject, docs: docs, contact: contact, design: design, firmware: firmware)]
+          d && consumer_is_served(consumer: fixture_consumer(needs: RestrictedCollateral { subject: ampere_collateral_subject }), relationships: rows) == docs
+            && consumer_is_served(consumer: fixture_consumer(needs: NamedAccountContact), relationships: rows) == contact
+            && consumer_is_served(consumer: fixture_consumer(needs: DesignEngagement), relationships: rows) == design
+            && consumer_is_served(consumer: fixture_consumer(needs: FirmwareImages), relationships: rows) == firmware
+            && ram_invariant_for(relationships: rows)
+        })
+      })
+    })
+  })
+}
+
+fn ram_invariant_for(relationships: List<VendorRelationship>) -> Bool {
+  let citation = decl_ref(module_path: "fixture.census", decl_name: "read_a")
+  let open = assess_relationship_preparation(relationships: relationships, roster: FleetRosterUnreconciled { gap: "fixture unresolved roster" }, readings: [])
+  let closed = assess_relationship_preparation(relationships: relationships, roster: FleetRosterClosed { units: ["fixture-a"], evidence: citation }, readings: [UnitCensusIdentity { unit: "fixture-a", census: citation, limits: [] }])
+  match open.ram {
+    RamHeldCensusIdentityGap => true,
+    RamHeldQualificationGap => false,
+  } && match closed.ram {
+    RamHeldCensusIdentityGap => false,
+    RamHeldQualificationGap => true,
+  }
+}
+
+// Identity separation does not assert anything about today's Ampere access. A different subject
+// with ALL capabilities cannot serve this subject; duplicate identity also fails closed.
+fn the_two_authorities_are_separate() -> Bool {
+  let ours = fixture_relationship(subject: relationship_ampere.subject, docs: true, contact: true, design: true, firmware: true)
+  let other = fixture_relationship(subject: decl_ref(module_path: "fixture.vendor", decl_name: "other"), docs: true, contact: true, design: true, firmware: true)
+  let c = fixture_consumer(needs: RestrictedCollateral { subject: ampere_collateral_subject })
+  consumer_is_served(consumer: c, relationships: [ours, other])
+    && !consumer_is_served(consumer: c, relationships: [other])
+    && !consumer_is_served(consumer: c, relationships: [ours, ours])
+    && !consumer_is_served(consumer: c, relationships: [])
+    && !consumer_is_served(consumer: fixture_consumer(needs: RestrictedCollateral { subject: decl_ref(module_path: "fixture", decl_name: "different_package") }), relationships: [ours])
+}
+
+fn source_read_is_not_an_answer() -> Bool {
+  let outcome = MixedDimmSupportResolved { cell: MtJadeMixedDimmSupportCell {
+    placement: DifferentChannel, axis: Mixing1rAnd2r, support: MixingUndetermined,
+  } }
+  let answered = MixedDimmSupportResolved { cell: MtJadeMixedDimmSupportCell {
+    placement: DifferentChannel, axis: Mixing1rAnd2r, support: MixingSupported,
+  } }
+  let unread = MixedDimmSupportUnmodelled { query: MtJadeMixedDimmSupportQuery {
+    placement: DifferentChannel, axis: Mixing1rAnd2r,
+  } }
+  ocp_rank_cell_was_read(outcome: outcome) && !ocp_rank_question_answered(outcome: outcome)
+    && ocp_rank_cell_was_read(outcome: answered) && ocp_rank_question_answered(outcome: answered)
+    && !ocp_rank_cell_was_read(outcome: unread) && !ocp_rank_question_answered(outcome: unread)
+}
+
+fn census_identity_controls() -> Bool {
+  let citation = decl_ref(module_path: "strategy.ci_node_build", decl_name: "altra_q80_lot")
+  let roster = FleetRosterClosed { units: ["fixture-a", "fixture-b"], evidence: citation }
+  let a = UnitCensusIdentity { unit: "fixture-a", census: citation, limits: [] }
+  let b = UnitCensusIdentity { unit: "fixture-b", census: citation, limits: [] }
+  let other = UnitCensusIdentity { unit: "fixture-c", census: citation, limits: [] }
+  fleet_census_identities_complete(roster: roster, readings: [b, a])
+    && !fleet_census_identities_complete(roster: roster, readings: [a])
+    && !fleet_census_identities_complete(roster: roster, readings: [a, a])
+    && !fleet_census_identities_complete(roster: roster, readings: [a, other])
+    && !fleet_census_identities_complete(roster: roster, readings: [a, b, other])
+    && !fleet_census_identities_complete(roster: FleetRosterClosed { units: ["fixture-a", "fixture-a"], evidence: citation }, readings: [a])
+    && !fleet_census_identities_complete(roster: FleetRosterClosed { units: [], evidence: citation }, readings: [])
+    && match ram_purchase_standing(roster: roster, readings: [a, b]) {
+      RamHeldCensusIdentityGap => false,
+      RamHeldQualificationGap => true,
+    }
+}
+
+fn standings_are_not_queue_work() -> Bool {
+  relationships_are_not_steps(relationships: vendor_relationships, steps: owner_steps)
+
+}
+
+// THE SENT OUTREACH CARRIED AT LEAST ONE PREPARED ASK. The one red the type still admits: a sent
+// text that carried none of them must read incoherent, or the claim is a decoration. (A carried
+// ask naming some other request is not a red here because it is not writable: AskCarried has no
+// payload, so carried means carried by this arm's one enquiry, by construction.)
+fn fixture_sent_outreach(asks: List<PreparedAsk>) -> RelationshipOutreach {
+  RelationshipOutreachSent {
+    enquiry: VendorEnquiry { sent_on: "2026-01-01", channel: "fixture", request_id: "fixture ticket #1", asked: "fixture" },
+    preparation: [],
+    transcription: ActionReceipt {
+      receipt_id: "fixture-transcription",
+      evidence: ObservedFact { subject: "fixture", observation: "fixture", observed_at: "2026-01-01" },
+    },
+    asks: asks,
+  }
+}
+
+fn fixture_unsent_outreach(asks: List<PreparedAsk>) -> RelationshipOutreach {
+  RelationshipOutreachUnsent {
+    unsent: UnsentOutreach {
+      intervention: open_operator_intervention(
+        identity: "fixture-unsent",
+        subject: "fixture seller",
+        instruction: "fixture draft",
+      ),
+      preparation: [],
+      support_context: "fixture",
+      asks: asks,
+    },
+  }
+}
+
+// THE THIRD STANDING BEHAVES LIKE THE FIRST FOR THIS QUESTION AND THE PAIR BELOW SAYS SO. Coherence
+// asks whether any prepared ask has left the drafting table, and an ask carried by a LATER enquiry has
+// -- so a sent outreach carrying only that one is coherent, and an UNSENT outreach carrying it is not,
+// for the same reason AskCarried makes an unsent outreach incoherent. Without the negative half the arm
+// could have been folded as unsent and this control would still pass.
+//
+// THIS NOTE SAT INSIDE THE FUNCTION BODY AND THE COMPILER REFUSED IT: source annotations are modeled at
+// module-item grain only. Moved rather than deleted -- the claim is about the two conjuncts it names.
+fn outreach_asks_are_coherent() -> Bool {
+  outreach_asks_coherent(o: ampere_relationship_outreach)
+    && outreach_arm_label(o: ampere_relationship_outreach) == "Answered"
+    && outreach_asks_coherent(o: fixture_sent_outreach(asks: [
+      PreparedAsk { ask_id: "a", ask: "a", standing: AskCarried },
+      PreparedAsk { ask_id: "b", ask: "b", standing: AskUnsent { reason: "fixture" } },
+    ]))
+    && !outreach_asks_coherent(o: fixture_sent_outreach(asks: [
+      PreparedAsk { ask_id: "b", ask: "b", standing: AskUnsent { reason: "fixture" } },
+    ]))
+    && outreach_arm_label(o: fixture_unsent_outreach(asks: [
+      PreparedAsk { ask_id: "a", ask: "a", standing: AskUnsent { reason: "fixture" } },
+    ])) == "Unsent"
+    && outreach_asks_coherent(o: fixture_unsent_outreach(asks: [
+      PreparedAsk { ask_id: "a", ask: "a", standing: AskUnsent { reason: "fixture" } },
+    ]))
+    && !outreach_asks_coherent(o: fixture_unsent_outreach(asks: []))
+    && !outreach_asks_coherent(o: fixture_unsent_outreach(asks: [
+      PreparedAsk { ask_id: "a", ask: "a", standing: AskCarried },
+    ]))
+    && outreach_asks_coherent(o: fixture_sent_outreach(asks: [
+      PreparedAsk { ask_id: "c", ask: "c", standing: AskCarriedByLaterEnquiry { carried_by: receipt_ampere_firmware_asks_sent } },
+    ]))
+    && !outreach_asks_coherent(o: fixture_unsent_outreach(asks: [
+      PreparedAsk { ask_id: "c", ask: "c", standing: AskCarriedByLaterEnquiry { carried_by: receipt_ampere_firmware_asks_sent } },
+    ]))
+}
+
+fn relationship_hygiene() -> Bool {
+  covered_relationships_state_how_coverage_fails(relationships: vendor_relationships)
+    && relationships_name_routes_and_drivers(relationships: vendor_relationships)
+    && every_consumer_names_a_declared_relationship()
+    && exclusions_hold()
+    && census_identity_controls()
+}
+
+fn count_states(item_id: NonEmptyStr, wanted: fn(OwnerQueueState) -> Bool) -> Int {
+  count(filter(states_for_item(item_id: item_id, steps: owner_steps), s => wanted(s)))
+}
+
+// THE FIVE SHAPES THAT HAVE TO LAND DISTINCT. If two of them collapse into the same shape the
+// migration did not happen, so each is asserted positively AND against the shape it is not.
+fn llc_is_a_wait_not_operator_work() -> Bool {
+  count_states(item_id: "llc-publication-filing", wanted: s => state_is_waiting(state: s)) == 1
+    && count_states(item_id: "llc-publication-filing", wanted: s => state_is_ready(state: s)) == 0
+}
+
+fn counsel_is_dispatch_plus_wait_not_one_task() -> Bool {
+  let item_steps = filter(owner_steps, s => s.plan_item == "counsel-market-census")
+  count(filter(item_steps, s => step_is_wait(step: s))) > 0
+    && count(filter(item_steps, s => !step_is_wait(step: s))) > 1
+    && count_states(item_id: "counsel-market-census", wanted: s => state_is_ready(state: s)) == 1
+    && count_states(item_id: "counsel-market-census", wanted: s => state_is_blocked(state: s)) > 2
+}
+
+// THE RESIDUE IS NAMED BY IDENTITY, NOT COUNTED. An earlier form asserted "more than two ready
+// steps", a literal measured from the tree that went red the moment hw1-jslot-census discharged
+// (gunbc#10965) without saying which residue it was checking. Each step of the item is joined to
+// its state: a discharged step is not residue, every open step is ready, and nothing waits.
+// A CENSUS'S LIMITS ARE READ, NOT ITS PRESENCE. A reading whose limits say it describes a prior
+// population is consumed as NOT present state; a reading with no limits stands for present held
+// parts; a software-join limit alone is a caveat on present state, not a refusal. The live unit-1
+// reading carries the prior-population limit, so its standing is not-present-state, and the
+// relationship report carries that consequence in words.
+fn census_limits_are_consumed() -> Bool {
+  let citation = decl_ref(module_path: "fixture.census", decl_name: "read_a")
+  let prior = UnitCensusIdentity { unit: "fixture-a", census: citation, limits: [DescribesPriorPopulation { detail: "fixture: original population" }] }
+  let clean = UnitCensusIdentity { unit: "fixture-b", census: citation, limits: [] }
+  let joined = UnitCensusIdentity { unit: "fixture-c", census: citation, limits: [SoftwareJoinNoPhysicalRead { detail: "fixture: SMBIOS join" }] }
+  (match held_part_identity_standing(reading: prior) { HeldPartsNotPresentState { unit: _, census: _, why: w } => w as String == "fixture: original population"  _ => false })
+    && (match held_part_identity_standing(reading: clean) { HeldPartsFromPresentCensus { unit: _, census: _, join_caveat: Absent } => true  _ => false })
+    && (match held_part_identity_standing(reading: joined) { HeldPartsFromPresentCensus { unit: _, census: _, join_caveat: Present { value: d } } => d as String == "fixture: SMBIOS join"  _ => false })
+    && (match current_held_part_identity_standing() { HeldPartsNotPresentState { unit: u, census: _, why: w } => u as String == "mt-collins-1" && string_contains(s: w as String, pattern: "ORIGINAL 16-module population")  _ => false })
+    && count(ram_unit_censuses) == 1
+    && string_contains(s: ampere_relationship_preparation(), pattern: "does NOT stand for its present held parts")
+    && !string_contains(s: held_part_identity_text(standing: held_part_identity_standing(reading: prior)), pattern: "are identified by")
+}
+
+fn hw_first_host_renders_named_residue() -> Bool {
+  let open_steps = filter(owner_steps, s => s.plan_item == "hw-first-host" && !step_is_discharged(step: s))
+  count(open_steps) > 0
+    && fold(open_steps, init: true, f: fn(acc, s) { acc && state_is_ready(state: step_state(step: s, steps: owner_steps)) })
+    && count_states(item_id: "hw-first-host", wanted: s => state_is_ready(state: s)) == count(open_steps)
+    && count_states(item_id: "hw-first-host", wanted: s => state_is_waiting(state: s)) == 0
+}
+
+fn lot_decision_has_a_clock_and_a_wait() -> Bool {
+  count_states(item_id: "lot-decision", wanted: s => state_starts_external_clock(state: s)) == 1
+    && count_states(item_id: "lot-decision", wanted: s => state_is_waiting(state: s)) == 1
+}
+
+// THE FACT A NOTE GOT WRONG, CARRIED AS A RECEIPT. gunbc#10925 merged 2026-09-10T13:48:36Z while
+// storage-provider-accounts' note called it unmerged. This asserts the typed receipt exists with
+// that repo and number -- a sentence cannot satisfy it.
+fn merged_pr_receipt(step: OwnerStep, repo: NonEmptyStr, number: Int) -> Bool {
+  match step.progress {
+    StepDischarged { receipt: r } =>
+      match r.evidence {
+        MergedPullRequest { repo: pr_repo, number: n, merged_at: _, merge_commit_sha: _ } => pr_repo == repo && n == number,
+        ExternalFilingReceipt { authority: _, identifier: _, received_at: _ } => false,
+        PaymentSettled { instrument: _, amount_usd: _, settled_at: _ } => false,
+        ExternalRequestSent { recipient: _, sent_at: _ } => false,
+        ObservedFact { subject: _, observation: _, observed_at: _ } => false,
+        CorpusDeclaration { declaration: _ } => false,
+      },
+    StepExternallyRefused { receipt: _, cause: _ } => false,
+    StepOpen => false,
+  }
+}
+
+fn storage_merge_is_a_receipt_not_a_sentence() -> Bool {
+  count(filter(owner_steps, s =>
+    s.plan_item == "storage-provider-accounts"
+      && merged_pr_receipt(step: s, repo: "gunb-ai/gunbc", number: 10925))) == 1
+}
+
+fn owner_action_flag(b: Bool) -> NonEmptyStr {
+  if b { "pass" } else { "FAIL" }
+}
+
+// THE DISCRIMINATING REDS. Each conjunct is an ASSERTION THAT A MUTATED CORPUS REFUSES, so the
+// green above cannot be satisfied by a derivation that returns true unconditionally.
+fn coverage_reds_are_real() -> Bool {
+  !no_open_item_needs_decomposition(steps: without_step(step_id: "llc-dos-receipt-wait"))
+    && !operator_exclusive_coverage(steps: without_step(step_id: "llc-dos-receipt-wait"))
+    && !external_lead_dispatch_and_wait_separated(steps: without_step(step_id: "counsel-responses-wait"))
+    && !in_progress_items_carry_receipt_and_residue(steps: without_open_steps_for(item_id: "hw-first-host"))
+    && !operator_exclusive_coverage(steps: without_open_steps_for(item_id: "hw-first-host"))
+}
+
+fn wait_reference_red_is_real() -> Bool {
+  !dispatched_waits_carry_a_reference(steps: fixture_dispatched_wait_without_reference())
+}
+
+fn step_reds_are_real() -> Bool {
+  !steps_target_subject_items(steps: [fixture_off_subject_step()])
+    && !decisions_offer_alternatives(steps: [fixture_single_alternative_decision()])
+    && !discharged_receipts_match_promise(steps: [fixture_receipt_mismatch()])
+    && !discharged_operator_steps_cite_site(steps: [fixture_discharged_without_site()])
+    && !item_resolves(item_id: "not-a-plan-item")
+}
+
+// A DONE PARENT WITH AN OPEN CHILD REFUSES. No subject item is Done today, so the live reading is
+// true for an uninteresting reason and the fixture is where the claim earns its rung.
+fn done_coherence_red_is_real() -> Bool {
+  !done_item_requires_discharged_steps(
+    item_done: true,
+    item_steps: filter(owner_steps, s => !step_is_discharged(step: s)),
+  )
+    && done_item_requires_discharged_steps(
+      item_done: true,
+      item_steps: filter(owner_steps, s => step_is_discharged(step: s)),
+    )
+}
+
+fn hw_residue_red_is_real() -> Bool {
+  !in_progress_items_carry_receipt_and_residue(steps: filter(owner_steps, s => step_is_discharged(step: s)))
+}
+
+fn owner_action_witness_report() -> NonEmptyStr {
+  "owner_action witness: data_map_input_queued="
+    + owner_action_flag(b: the_data_map_operator_input_is_actionable_in_the_queue())
+    + " input_step_removal_refuses="
+    + owner_action_flag(b: removing_the_step_refuses_rather_than_dropping_the_item())
+    + " subject_resolves="
+    + owner_action_flag(b: subject_items_resolve())
+    + " steps_on_subject="
+    + owner_action_flag(b: steps_target_subject_items(steps: owner_steps))
+    + " operator_exclusive_covered="
+    + owner_action_flag(b: operator_exclusive_coverage(steps: owner_steps))
+    + " in_progress_receipt_and_residue="
+    + owner_action_flag(b: in_progress_items_carry_receipt_and_residue(steps: owner_steps))
+    + " external_lead_split="
+    + owner_action_flag(b: external_lead_dispatch_and_wait_separated(steps: owner_steps))
+    + " waits_never_ready="
+    + owner_action_flag(b: waits_never_ready(steps: owner_steps))
+    + " ready_has_no_unmet="
+    + owner_action_flag(b: ready_steps_have_no_unmet_requirement(steps: owner_steps))
+    + " decisions_have_alternatives="
+    + owner_action_flag(b: decisions_offer_alternatives(steps: owner_steps))
+    + " receipts_match_promise="
+    + owner_action_flag(b: discharged_receipts_match_promise(steps: owner_steps))
+    + " discharged_cites_site="
+    + owner_action_flag(b: discharged_operator_steps_cite_site(steps: owner_steps))
+    + " open_states_the_gap="
+    + owner_action_flag(b: open_operator_steps_state_the_gap(steps: owner_steps))
+    + " all_decomposed="
+    + owner_action_flag(b: no_open_item_needs_decomposition(steps: owner_steps))
+    + " llc_is_a_wait="
+    + owner_action_flag(b: llc_is_a_wait_not_operator_work())
+    + " counsel_is_split="
+    + owner_action_flag(b: counsel_is_dispatch_plus_wait_not_one_task())
+    + " hw_residue_named="
+    + owner_action_flag(b: hw_first_host_renders_named_residue())
+    + " census_limits_consumed="
+    + owner_action_flag(b: census_limits_are_consumed())
+    + " lot_clock_and_wait="
+    + owner_action_flag(b: lot_decision_has_a_clock_and_a_wait())
+    + " storage_merge_receipt="
+    + owner_action_flag(b: storage_merge_is_a_receipt_not_a_sentence())
+    + " dispatched_waits_referenced="
+    + owner_action_flag(b: dispatched_waits_carry_a_reference(steps: owner_steps))
+    + " refused_satisfy_nothing="
+    + owner_action_flag(b: refused_steps_satisfy_nothing(steps: owner_steps))
+    + " refusal_is_a_dead_end="
+    + owner_action_flag(b: refusal_behaves_as_a_dead_end())
+    + " wait_reference_red="
+    + owner_action_flag(b: wait_reference_red_is_real())
+    + " wait_outcome_total="
+    + owner_action_flag(b: wait_outcome_accessor_is_total())
+    + " wait_outcomes_cover_waits="
+    + owner_action_flag(b: wait_outcomes_cover_exactly_the_waits())
+    + " refused_wait_reads_refused="
+    + owner_action_flag(b: refused_wait_reads_refused())
+    + " outcome_agrees_with_queue="
+    + owner_action_flag(b: wait_outcome_agrees_with_step_state(steps: owner_steps))
+    + " cpa_gated_on_arm_and_calendar="
+    + owner_action_flag(b: cpa_dispatch_is_gated_on_arm_and_calendar())
+    + " cpa_opens_at_tax_time="
+    + owner_action_flag(b: cpa_dispatch_opens_at_tax_time())
+    + " no_presupposed_accountant="
+    + owner_action_flag(b: no_row_presupposes_an_accountant())
+    + " cohort_reaches_commitments="
+    + owner_action_flag(b: cohort_reaches_its_committed_dates())
+    + " independent_capabilities="
+    + owner_action_flag(b: consumers_use_independent_dimensions())
+    + " authorities_separate="
+    + owner_action_flag(b: the_two_authorities_are_separate())
+    + " source_read_not_answer="
+    + owner_action_flag(b: source_read_is_not_an_answer())
+    + " standings_not_queue_work="
+    + owner_action_flag(b: standings_are_not_queue_work())
+    + " planning=" + relationship_preparation_report(relationships: vendor_relationships, roster: ram_fleet_roster, readings: ram_unit_censuses, outreach: ampere_relationship_outreach)
+    + " relationship_hygiene="
+    + owner_action_flag(b: relationship_hygiene())
+    + " outreach_asks_coherent="
+    + owner_action_flag(b: outreach_asks_are_coherent())
+    + " coverage_reds="
+    + owner_action_flag(b: coverage_reds_are_real())
+    + " step_reds="
+    + owner_action_flag(b: step_reds_are_real())
+    + " done_coherence_red="
+    + owner_action_flag(b: done_coherence_red_is_real())
+    + " hw_residue_red="
+    + owner_action_flag(b: hw_residue_red_is_real())
+    + " queue_nonempty="
+    + owner_action_flag(b: owner_queue_size(steps: owner_steps) > 0)
+    + " live_queue_llc_exposure="
+    + owner_action_flag(b: live_owner_queue_shows_llc_exposure_while_filing_open())
+    + " m2_done_llc_exposure_live="
+    + owner_action_flag(b: m2_done_shows_llc_exposure_live())
+    + " filing_done_hides_llc_exposure="
+    + owner_action_flag(b: filing_done_hides_llc_exposure_from_owner_queue())
+    + " queue_size_excludes_exposures="
+    + owner_action_flag(b: owner_queue_size_excludes_exposures())
+}
+
+// THE OPERATOR ACT IS IN THE QUEUE. Before this the data map's operator input lived only in the
+// last sentence of rank 12's status note in strategy.year_end_plan, so the surface whose entire job
+// is "what does the operator have to do" did not know it existed. This asserts the fold surfaces it
+// exactly once, and ready rather than Blocked -- nothing is stopping the operator from ANSWERING.
+// The act is supplying inputs, not ratifying: ratification is gated on counsel and is not work
+// anyone can be told to do today.
+fn the_data_map_operator_input_is_actionable_in_the_queue() -> Bool {
+  count(filter(
+    owner_queue(steps: owner_steps),
+    s => count(filter(state_step_id(state: s), id => id == "m2-data-map-operator-inputs")) == 1
+      && state_is_ready(state: s),
+  )) == 1
+}
+
+// AND DELETING THE STEP REFUSES RATHER THAN GOING QUIET, which is the failure this enrolment has to
+// survive: an item enrolled as a subject whose only step is later removed must not slide back out of
+// the operator's view the way it was out of it before. Over a roster with the step filtered away the
+// item renders NeedsDecomposition -- the queue says the outcome has no executable child instead of
+// dropping it. The red is authorable by deleting the step, which is exactly the edit to guard.
+fn removing_the_step_refuses_rather_than_dropping_the_item() -> Bool {
+  count(filter(
+    item_queue_states(
+      item_id: "m2-data-map",
+      steps: filter(owner_steps, s => s.step_id != "m2-data-map-operator-inputs"),
+    ),
+    st => state_needs_decomposition(state: st),
+  )) == 1
+}
+
+// THE PERMISSION STEP'S DISCHARGE IS A CITATION UNTIL THIS JOIN READS IT. decl_ref only names a
+// declaration; this claim resolves the one the receipt names to the decision it is, and requires
+// that decision to be the operator's selected risk acceptance with every typed limitation present.
+// Change the decision, re-point the receipt, or drop a limitation and this goes red.
+fn receipt_cites_the_retention_decision(receipt: ActionReceipt) -> Bool {
+  match receipt.evidence {
+    CorpusDeclaration { declaration } =>
+      declaration.module_path == "strategy.gunbc_strategy"
+        && declaration.decl_name == "decision_ebay_retention_permitted",
+    MergedPullRequest { repo: _, number: _, merged_at: _, merge_commit_sha: _ } => false,
+    ExternalFilingReceipt { authority: _, identifier: _, received_at: _ } => false,
+    PaymentSettled { instrument: _, amount_usd: _, settled_at: _ } => false,
+    ExternalRequestSent { recipient: _, sent_at: _ } => false,
+    ObservedFact { subject: _, observation: _, observed_at: _ } => false,
+  }
+}
+
+fn step_discharged_by_the_retention_decision(step: OwnerStep) -> Bool {
+  match step.progress {
+    StepDischarged { receipt: r } => receipt_cites_the_retention_decision(receipt: r),
+    StepExternallyRefused { receipt: _, cause: _ } => false,
+    StepOpen => false,
+  }
+}
+
+fn state_is_the_operator_risk_acceptance(state: DecisionState) -> Bool {
+  match state {
+    Selected { choice_id: c, receipt: r } =>
+      c == "operator-accepts-residual-retention-risk" && r.authority == "operator",
+    Open => false,
+    SupersededBy { question_id: _ } => false,
+    RefusedDecision { reason: _ } => false,
+  }
+}
+
+fn decision_is_the_operator_risk_acceptance(d: StrategicDecision) -> Bool {
+  d.question_id == "ebay-retention-permitted" && state_is_the_operator_risk_acceptance(state: d.state)
+}
+
+fn the_retention_discharge_joins_the_selected_risk_decision() -> Bool {
+  let retention = steps_with_id(steps: owner_steps, step_id: "ebay-retention-permitted")
+  let applicability = steps_with_id(steps: owner_steps, step_id: "ebay-exemption-applicability")
+  length(retention) == 1
+    && all(retention, s => step_discharged_by_the_retention_decision(step: s))
+    && length(applicability) == 1
+    && all(applicability, s => step_is_open(step: s))
+    && decision_is_the_operator_risk_acceptance(d: decision_ebay_retention_permitted)
+}
+
+fn owner_action_witness_main() -> ProcessExit {
+  if the_retention_discharge_joins_the_selected_risk_decision()
+    && the_data_map_operator_input_is_actionable_in_the_queue()
+    && removing_the_step_refuses_rather_than_dropping_the_item()
+    && subject_items_resolve()
+    && steps_target_subject_items(steps: owner_steps)
+    && operator_exclusive_coverage(steps: owner_steps)
+    && in_progress_items_carry_receipt_and_residue(steps: owner_steps)
+    && external_lead_dispatch_and_wait_separated(steps: owner_steps)
+    && waits_never_ready(steps: owner_steps)
+    && ready_steps_have_no_unmet_requirement(steps: owner_steps)
+    && decisions_offer_alternatives(steps: owner_steps)
+    && discharged_receipts_match_promise(steps: owner_steps)
+    && discharged_operator_steps_cite_site(steps: owner_steps)
+    && open_operator_steps_state_the_gap(steps: owner_steps)
+    && no_open_item_needs_decomposition(steps: owner_steps)
+    && llc_is_a_wait_not_operator_work()
+    && counsel_is_dispatch_plus_wait_not_one_task()
+    && hw_first_host_renders_named_residue()
+    && census_limits_are_consumed()
+    && lot_decision_has_a_clock_and_a_wait()
+    && storage_merge_is_a_receipt_not_a_sentence()
+    && dispatched_waits_carry_a_reference(steps: owner_steps)
+    && refused_steps_satisfy_nothing(steps: owner_steps)
+    && refusal_behaves_as_a_dead_end()
+    && wait_reference_red_is_real()
+    && wait_outcome_accessor_is_total()
+    && wait_outcomes_cover_exactly_the_waits()
+    && refused_wait_reads_refused()
+    && wait_outcome_agrees_with_step_state(steps: owner_steps)
+    && cpa_dispatch_is_gated_on_arm_and_calendar()
+    && cpa_dispatch_opens_at_tax_time()
+    && no_row_presupposes_an_accountant()
+    && cohort_reaches_its_committed_dates()
+    && consumers_use_independent_dimensions()
+    && the_two_authorities_are_separate()
+    && source_read_is_not_an_answer()
+    && standings_are_not_queue_work()
+    && relationship_hygiene()
+    && outreach_asks_are_coherent()
+    && coverage_reds_are_real()
+    && step_reds_are_real()
+    && done_coherence_red_is_real()
+    && hw_residue_red_is_real()
+    && owner_queue_size(steps: owner_steps) > 0
+    && live_owner_queue_shows_llc_exposure_while_filing_open()
+    && m2_done_shows_llc_exposure_live()
+    && filing_done_hides_llc_exposure_from_owner_queue()
+    && owner_queue_size_excludes_exposures()
+    && m2_success_opens_llc_court_exposure()
+  {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: owner_action_witness_report() }
+  }
+}

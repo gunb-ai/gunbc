@@ -1,0 +1,1658 @@
+module strategy.private_witness_workflow
+
+import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.os.types { KernelFamily, Linux }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+// The read-outcome COPRODUCT only. This module never calls Filesystem.Read -- the impure read
+// lives in the witness -- but the fold that classifies a read must name its arms, and naming them
+// here is what lets the classification be tested with a synthetic outcome instead of a real
+// filesystem failure.
+import extdeps.filesystem.filesystem_io {
+  FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused,
+}
+// Exact + Listed and NOT Step { start: 0, step: 4 }, which is what "every four hours" would
+// ordinarily be spelled. extdeps.cron.schedule_model names that constructor Step, and this module
+// already imports Step from extdeps.github.actions as a workflow step; .dag has no import aliasing,
+// so the two cannot coexist under one name. Listed renders 0,4,8,12,16,20 -- the same instants as
+// */4, by enumeration rather than by stride. If aliasing lands, Step is the better spelling.
+import extdeps.cron.schedule_model {
+  CronSchedule, CronField, Wildcard, Exact, Listed,
+}
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep,
+  WorkflowTrigger, Push, PullRequest, WorkflowDispatch, Schedule,
+  PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
+  WorkflowPermissions, PermRead,
+  RunnerSpec, HostedRunner, UbuntuLatest, SelfHosted, self_hosted_labels,
+}
+import gunbc.action_use_admission { checkout_action, setup_rust_action }
+
+// THE ACTUATOR THIS REPOSITORY DID NOT HAVE.
+//
+// The .dag graph here is declared canonical, and until this workflow existed nothing executed it.
+// Measured 2026-08-26: seven of the eight claim witnesses did not resolve against public main and
+// had not for at least six days. Nothing went red, because nothing ran. A canonical graph with no
+// consumer is documentary, and the cost is paid by whoever next assumes a private claim still holds.
+//
+// EMITTED, NOT HAND-AUTHORED. .github/workflows/witnesses.yml is a projection of this module, the
+// same construction public gunbc uses (gunbc.witness_floor_workflow -> gunbc.generated_artifact_emit).
+// A hand-written YAML beside a modelled actuator is manual application committed as source.
+
+// WHY THE PUBLIC ROOT TRACKS main RATHER THAN A PINNED SHA. Pinning would make each run
+// reproducible and would hide the exact defect this exists to catch: a deliberate public authority
+// change silently invalidating a private claim. Tracking main makes that loud on the day it lands.
+// The resolved SHA is printed by the run so a red is diagnosable and quotable -- a receipt names the
+// commit it was measured at, never the branch.
+data public_root_ref: NonEmptyStr = "main"
+
+data public_checkout_path: NonEmptyStr = "public"
+
+// A REFUSAL PROBE IS EVIDENCE, NOT DEBT, WHICH IS WHY IT IS NOT A KnownRed.
+//
+// Both dispositions run an entry and require a NONZERO exit, so the machinery is nearly the same
+// and the difference is entirely in what a green means. A KnownRed that starts passing is GOOD
+// news arriving through a stale row: the repository was repaired and the quarantine must retire.
+// A RefusalProbe that starts passing is the WALL BEING GONE -- the invalid program it describes
+// has become constructible -- and nothing about it should ever be retired as fixed.
+//
+// Filing the second under the first would put one name on two materially different contracts,
+// which is the 3 meaning fork, and it would make the roster unreadable in the direction that
+// matters: an operator scanning declared reds is reading a DEBT LIST, and a wall's evidence
+// sitting in it is both a false debt and a wall nobody can find.
+type WitnessDisposition
+  = Enforced
+  | KnownRed { reason: NonEmptyStr, expected_causes: List<NonEmptyStr>, restoration_trigger: NonEmptyStr }
+  | RefusalProbe { guards: NonEmptyStr, expected_causes: List<NonEmptyStr>, dissolution: NonEmptyStr }
+
+type PrivateWitness {
+  entry: NonEmptyStr
+  function: NonEmptyStr
+  disposition: WitnessDisposition
+}
+
+// THE CONSTRUCTOR CONFINEMENT ON THE SELECTION CARRIERS, EXECUTED. Verified by running it:
+// the probe exits 1 and names both walls. Without this row the confinement is a declaration
+// nothing tests, which is exactly the state 4b calls specification-without-execution.
+data probe_selection_assessment_construction: PrivateWitness = PrivateWitness {
+  entry: "dag/test/probe/selection_assessment_construction_probe.dag",
+  function: "probe_main",
+  disposition: RefusalProbe {
+    guards: "sole_constructor confinement on SelectionAssessment and ProcedureRegistration: a selection assessment may not be forged by a module outside the one that seals it, and neither may the procedure registration it would have to carry",
+    expected_causes: [
+      "sole_constructor type 'SelectionAssessment' cannot be constructed outside its defining module",
+      "sole_constructor type 'ProcedureRegistration' cannot be constructed outside its defining module",
+    ],
+    dissolution: "this row retires ONLY if the confinement is deliberately removed, and then the wall goes with it. It is not retired by a repair, because there is nothing here to repair -- a green means the invalid program became constructible.",
+  },
+}
+
+data witness_makeshift: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/makeshift_datacenter_witness_test.dag",
+  function: "makeshift_witness_main",
+  disposition: Enforced,
+}
+
+data witness_colo: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/colo_market_witness_test.dag",
+  function: "colo_witness_main",
+  disposition: Enforced,
+}
+
+data witness_home_hosting: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/home_hosting_witness_test.dag",
+  function: "home_witness_main",
+  disposition: Enforced,
+}
+
+data witness_machine_tile: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/machine_tile_witness_roster_test.dag",
+  function: "machine_tile_witness_main",
+  disposition: Enforced,
+}
+
+data witness_tab_group: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/tab_group_witness_test.dag",
+  function: "tab_group_witness_main",
+  disposition: Enforced,
+}
+
+data witness_ci_storage_tiering: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/ci_storage_tiering_witness_test.dag",
+  function: "storage_tiering_witness_main",
+  disposition: Enforced,
+}
+
+data witness_buyers_pipeline: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/buyers_pipeline_witness_test.dag",
+  function: "buyers_pipeline_witness_main",
+  disposition: Enforced,
+}
+
+data witness_buyer_review_placement: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/buyer_review_placement_witness_test.dag",
+  function: "buyer_review_placement_witness_main",
+  disposition: Enforced,
+}
+
+data witness_buyer_review_sheet: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/buyer_review_sheet_witness_test.dag",
+  function: "buyer_review_sheet_witness_main",
+  disposition: Enforced,
+}
+
+data witness_buyer_review_converge: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/buyer_review_converge_witness_test.dag",
+  function: "buyer_review_converge_witness_main",
+  disposition: Enforced,
+}
+
+data witness_cloud_overflow_role: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/cloud_overflow_role_witness_test.dag",
+  function: "cloud_overflow_role_witness_main",
+  disposition: Enforced,
+}
+
+data probe_seller_identity_unwritable: PrivateWitness = PrivateWitness {
+  entry: "dag/test/probe/seller_identity_unwritable_probe.dag",
+  function: "probe_main",
+  disposition: RefusalProbe {
+    guards: "no eBay user identity is writable into the buyer pipeline's listing types: OperatorListingEntry and ListingEvidence carry no seller field, which is what keeps the Marketplace Account Deletion exemption statement true. The wall's edge is known and chosen: the sheet's own columns never derive identity, and the residue is free text a human typed (title, stated aspects, notes). Also given up, deliberately: the sheet cannot show that two rows share a seller, so combined shipping across listings is judged on the listing page -- a hashed seller key would still be pseudonymous personal data",
+    expected_causes: [
+      "field 'seller' not found in type 'OperatorListingEntry'",
+      "field 'seller' not found in type 'ListingEvidence'",
+    ],
+    dissolution: "this row retires ONLY if a seller identity field is deliberately re-added, and then the exemption statement to eBay is false and must be withdrawn with it; it is never retired as fixed",
+  },
+}
+
+data probe_buyer_review_execution_forged: PrivateWitness = PrivateWitness {
+  entry: "dag/test/probe/buyer_review_execution_forged_probe.dag",
+  function: "probe_main",
+  disposition: RefusalProbe {
+    guards: "two walls on the buyer-sheet hold. BuyerReviewExecution (the identity a run acquires under) is minted only by buyer_review_execution_observe, which reads the boot time, its own cgroup and the unit invocation itself. BuyerReviewRecoveryWarrant (the only authority recover_admitted accepts to release a stale hold) is minted only by buyer_review_recovery_admission, which reads the slot, the current boot and the recorded unit's invocation itself. The warrant's mint, recovery_admission_on_the_executor_host, is admit_callers-sealed to the host-gated buyer_review_recovery_admission, so no warrant is minted without the live srv1 check. What this does NOT cover: the pure recovery_verdict_of still accepts supplied reads, by design, and carries no release authority; and that the gated entry calls the gate before the mint is read in source, not executed by a hermetic claim",
+    expected_causes: [
+      "sole_constructor type 'BuyerReviewExecution' cannot be constructed outside its defining module",
+      "sole_constructor type 'BuyerReviewRecoveryWarrant' cannot be constructed outside its defining module",
+      "constructor call admission refused: 'strategy.buyer_review_placement.recovery_admission_on_the_executor_host' refuses call from 'test.probe.buyer_review_execution_forged_probe.ungated_recovery'",
+    ],
+    dissolution: "this row retires ONLY if the confinement is deliberately removed, and the wall goes with it; it is never retired as fixed",
+  },
+}
+
+data witness_year_end_plan: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/year_end_plan_witness_test.dag",
+  function: "year_end_plan_witness_main",
+  disposition: Enforced,
+}
+
+data witness_january_launch: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/january_launch_witness_test.dag",
+  function: "january_launch_witness_main",
+  disposition: Enforced,
+}
+
+// THE OPERATOR WORK SYSTEM BENEATH THE PLAN. Enforced from its first commit: its whole content is
+// coverage over the plan's own roster, and a coverage derivation nothing executes is the
+// specification-without-execution failure it exists to correct.
+// THE AUDIT BUTTON'S OWN WITNESS. strategy.audit_packet resolves every roster citation against the
+// live corpus, so this row is what makes that claim executable: a public authority change that
+// deletes a cited carrier reds this witness on the day it lands, which is precisely the failure a
+// packet handed to an auditor must never absorb silently.
+data witness_audit_packet: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/audit_packet_witness_test.dag",
+  function: "audit_packet_witness_main",
+  disposition: Enforced,
+}
+
+data witness_owner_action: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/owner_action_witness_test.dag",
+  function: "owner_action_witness_main",
+  disposition: Enforced,
+}
+
+data witness_plan_tracker_page: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/plan_tracker_page_witness_test.dag",
+  function: "plan_tracker_witness_main",
+  disposition: Enforced,
+}
+
+data witness_procurement_order: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/procurement_order_witness_test.dag",
+  function: "procurement_witness_main",
+  disposition: Enforced,
+}
+
+data witness_fleet_decisions: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/fleet_decisions_witness_test.dag",
+  function: "fleet_decisions_witness_main",
+  disposition: Enforced,
+}
+
+data witness_asset_lifecycle: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/asset_lifecycle_witness_test.dag",
+  function: "asset_lifecycle_witness_main",
+  disposition: Enforced,
+}
+
+data witness_asset_inventory: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/asset_inventory_witness_test.dag",
+  function: "asset_inventory_witness_main",
+  disposition: Enforced,
+}
+
+data witness_pricing_decomposition: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/pricing_decomposition_witness_test.dag",
+  function: "pricing_decomposition_witness_main",
+  disposition: Enforced,
+}
+
+data witness_rack_power: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/rack_power_claims_test.dag",
+  function: "rack_power_witness_main",
+  disposition: Enforced,
+}
+
+data witness_workflow_stage_gate: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/workflow_stage_gate_witness_test.dag",
+  function: "workflow_stage_gate_witness_main",
+  disposition: Enforced,
+}
+
+// THE PROCEDURE WITNESSES ARE ENROLLED, NOT JUST WRITTEN. Moving a control to the boundary where
+// its RED is reachable is not finished until that boundary executes in required CI -- otherwise the
+// arm is local evidence and the roster still cannot see it. These two carry the pareto projection's
+// five arms and the panel's four, including the panel refusal the workflow structurally cannot
+// reach.
+data witness_pareto_comparison_procedure: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/pareto_comparison_procedure_witness_test.dag",
+  function: "pareto_comparison_procedure_witness_main",
+  disposition: Enforced,
+}
+
+data witness_panel_ruling_procedure: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/panel_ruling_procedure_witness_test.dag",
+  function: "panel_ruling_procedure_witness_main",
+  disposition: Enforced,
+}
+
+data witness_site_power_survey: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/site_power_survey_witness_test.dag",
+  function: "site_power_survey_witness_main",
+  disposition: Enforced,
+}
+
+data witness_ci_vintage_frontier: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/ci_vintage_frontier_witness_test.dag",
+  function: "vintage_witness_main",
+  disposition: Enforced,
+}
+
+data witness_ci_acquisition: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/ci_acquisition_witness_test.dag",
+  function: "acquisition_witness_main",
+  disposition: Enforced,
+}
+
+// THE VERDICT CONFINEMENT ON THE CENSUS CARRIERS, EXECUTED. The census derives six verdicts from
+// authored evidence, and until CensusVerdict was sealed a later author could simply write the
+// verdict and never call the derivation -- five forbidden promotions DETECTED rather than made
+// unwritable. The probe forges all six from outside and the compiler refuses each one.
+//
+// ONE EXPECTED CAUSE, SIX TIMES, AND THAT IS THE POINT: one carrier confines every verdict, so the
+// diagnostic names CensusVerdict rather than six sealed wrappers that would have been the same
+// concept re-invented six times.
+data probe_workload_census_verdict_construction: PrivateWitness = PrivateWitness {
+  entry: "dag/test/probe/workload_census_verdict_construction_probe.dag",
+  function: "probe_main",
+  disposition: RefusalProbe {
+    guards: "sole_constructor confinement on strategy.workload_benchmark_suite CensusVerdict: an architecture reading, a baseline admission, a cache condition, a trial authorization, a replay derivation and a gap reading may only be obtained by running the derivation that produces them, never authored by a consuming module",
+    expected_causes: [
+      "sole_constructor type 'CensusVerdict' cannot be constructed outside its defining module",
+    ],
+    dissolution: "this row retires ONLY if the confinement is deliberately removed, and the wall goes with it. A green here means a foreign module can mint a census verdict again, which is the exact state the public-workload-census item exists to prevent -- there is nothing to repair, so it is never retired as fixed.",
+  },
+}
+
+data witness_workload_benchmark_suite: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/workload_benchmark_suite_witness_test.dag",
+  function: "workload_census_witness_main",
+  disposition: Enforced,
+}
+
+// THE TWO KNOWN REDS ARE DECLARED, NOT OMITTED. A roster that silently drops what it cannot pass
+// reports full coverage over a subset, which is worse than reporting the gap. Both are run, and the
+// run FAILS if either one PASSES -- a stale quarantine is a defect in the roster, exactly as it is
+// in the public floor.
+data witness_ci_build_frontier: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/ci_build_frontier_witness_test.dag",
+  function: "build_frontier_witness_main",
+  disposition: Enforced,
+}
+
+data witness_ci_economics: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/ci_economics_witness_test.dag",
+  function: "ci_economics_pricing_main",
+  disposition: Enforced,
+}
+
+data witness_ci_economics_frontier: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/ci_economics_frontier_witness_test.dag",
+  function: "economics_frontier_quarantine_main",
+  disposition: KnownRed {
+    expected_causes: [
+      "error: witness_frontier_drops_only_dominated_candidates=FAIL",
+      "error: witness_system_lots_enter_frontier_honestly=FAIL",
+      "error: witness_cheapest_and_densest_are_both_worse_per_unit=FAIL",
+      "error: witness_memory_price_curve_has_a_cliff=FAIL",
+    ],
+    reason: "The pricing/spill/page join is Enforced as witness_ci_economics. The node-build Pareto controls still print the four FAIL lines below (run 34763198395). Each roster body is its own line; only FAIL lines carry error:, so a new red body is UNDECLARED FAILURE and a repaired body is CAUSE DRIFT. Arming the old single entry as Enforced by shrinking it to the pricing bodies would have discharged a restoration trigger while executing less than the roster it named.",
+    restoration_trigger: "economics_frontier_main returns ExitSuccess against public main because the complete ci_economics_witness_roster is green, then this row becomes Enforced and its RosterOutcome joins test.claim.private_roster_witness.",
+  },
+}
+
+data witness_strategy: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/strategy_witness_test.dag",
+  function: "strategy_witness_main",
+  disposition: KnownRed {
+    expected_causes: [
+      "error: witness_every_active_roadmap_lane_has_strategic_reason=FAIL",
+      "error: witness_capability_evidence_consistent_with_public_authority=FAIL",
+    ],
+    reason: "TWO CAUSES, BOTH WITNESS VERDICTS, NOT RESOLVE FAILURES, AND FOR DIFFERENT KINDS OF REASON. The module resolves: std.currency was RENAMED to extdeps.currency.currency in public #9641 (2026-08-28), not deleted, and both importers now bind the successor, which retires the previous resolve causes in the same change that eliminates them. strategy_witness_main now evaluates every test fn in the module and prints one line per body, so this row is cause-locked at witness grain: a second red body is an UNDECLARED FAILURE, and this body going green is CAUSE DRIFT. Measured on public 01a6abe9bb3 and again on 2b992baa25b: this body returns false on two conjuncts -- nine owners of active PUBLIC roadmap nodes carry neither a lane binding nor an acknowledgement in strategy.gunbc_strategy, and one binding names an owner the public roadmap no longer has. Those bindings are operator strategy content and are not edited here. THIS WITNESS READS A LIVE PUBLIC POPULATION: gunbc.roadmap_authority active_roadmap_nodes_projection over public main, so it re-reds whenever a public roadmap owner is added, renamed or removed, independent of any private change. That cross-repo coupling is a class of its own; its home is the dashboard lane adhoc-17431978-5ae, and this row is one instance of it rather than its resolution. SECOND CAUSE, AN ABSENT PUBLIC AUTHORITY: witness_capability_evidence_consistent_with_public_authority refuses by construction while test.claim.strategy_witness public_accepted_roadmap_set is AcceptedSetUnavailable -- public gunbc#11310 deleted accepted_roadmap_node_ids_projection at the root, so the join of observed capability evidence against the public accepted roadmap node set cannot run, and the arm fails closed rather than reporting a green for a join it did not perform. Nothing here is fixable in private content; the always-checkable half runs green as witness_observed_capability_ids_are_declared.",
+    restoration_trigger: "Each cause retires by its own trigger and the row becomes Enforced only when both have fired. FIRST CAUSE: the operator's lane bindings and acknowledgements in strategy.gunbc_strategy cover the live public roadmap owner set -- every owner active_roadmap_nodes_projection projects is bound or acknowledged, and every bound owner exists there -- so witness_every_active_roadmap_lane_has_strategic_reason returns true; then this row becomes Enforced in the same change. Because that owner set is live, the restoration is durable only once the cross-repo coupling home (adhoc-17431978-5ae) gives this private consumer a pinned or change-notified view of it. SECOND CAUSE: a public authority again projects the accepted roadmap node id set and resolves in this closure, public_accepted_roadmap_set takes its AcceptedSetProjected arm, and witness_capability_evidence_consistent_with_public_authority returns true on the join it names.",
+  },
+}
+
+data witness_sellable_unit: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/ci_sellable_unit_witness_test.dag",
+  function: "sellable_unit_witness_main",
+  disposition: Enforced,
+}
+
+data witness_mobo_x_architecture: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/mobo_x_architecture_witness_test.dag",
+  function: "mobo_x_architecture_witness_main",
+  disposition: Enforced,
+}
+
+data witness_mobo_x_memory_census: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/mobo_x_memory_census_witness_test.dag",
+  function: "mobo_x_memory_census_witness_main",
+  disposition: Enforced,
+}
+
+// DELIBERATELY NOT A MEMBER OF private_witnesses. Enrolling it there would put its run step inside
+// witnesses.yml, making the verifier discoverable only through the artifact it verifies -- see the
+// reasoning on projection_drift_workflow below. It is a PrivateWitness because it is one in every
+// other respect: same composed root, same enforced disposition, same ExitSuccess contract. Only its
+// discovery path differs, and that difference is the whole point.
+data projection_drift_witness: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/projection_drift_witness_test.dag",
+  function: "projection_drift_witness_main",
+  disposition: Enforced,
+}
+
+// The finance carriers under dag/finance had no witness at all, so nothing loaded them: the
+// roster is the only thing that reaches a private module, and absence from it is silence
+// rather than failure. Enforced, because the refusals it guards — an unbalanced ledger, a
+// deduction unlocked without a determination, a year close admitted over open items — are
+// the whole point of those modules.
+data witness_fleet_qualification: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/fleet_qualification_witness_test.dag",
+  function: "fleet_qualification_witness_main",
+  disposition: Enforced,
+}
+
+data witness_cost_floor: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/cost_floor_witness_test.dag",
+  function: "cost_floor_witness_main",
+  disposition: Enforced,
+}
+
+data witness_node_rental: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/node_rental_witness_test.dag",
+  function: "node_rental_witness_main",
+  disposition: Enforced,
+}
+
+data witness_b2b_capacity_track: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/b2b_capacity_track_witness_test.dag",
+  function: "b2b_capacity_track_witness_main",
+  disposition: Enforced,
+}
+
+data witness_wholesale_supply_packet: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/wholesale_supply_packet_witness_test.dag",
+  function: "wholesale_supply_packet_witness_main",
+  disposition: Enforced,
+}
+
+// THE WHOLESALE BATCH FLOOR: one join over cost_floor, node_rental, wholesale_buyer, the fleet
+// and the colo census, so the first-twenty-nodes analysis is executed rather than re-derived in
+// chat (operator direction 2026-09-14). Enforced from its first landing: every conjunct is an
+// arithmetic or standing claim over declared data, and the module carries no KnownRed cause.
+data witness_wholesale_batch_floor: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/wholesale_batch_floor_witness_test.dag",
+  function: "wholesale_batch_floor_witness_main",
+  disposition: Enforced,
+}
+
+// THE WHOLESALE JOURNEYS: four end-to-end buyer journeys (colo/apartment x raw/managed) with every
+// step owned or UNOWNED with its closer; enforced from first landing because its claims are counts
+// over declared rows and identity joins into year_end_plan.
+data witness_wholesale_journeys: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/wholesale_journeys_witness_test.dag",
+  function: "wholesale_journeys_witness_main",
+  disposition: Enforced,
+}
+
+// THE DEMAND-UTILIZATION LAYER: the parameter grid between installed and sold capacity, iterated
+// rather than assumed (operator direction 2026-09-16). Enforced from first landing: every conjunct
+// is arithmetic over the declared grid, and the pins are the grid's own outputs.
+data witness_demand_utilization: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/demand_utilization_witness_test.dag",
+  function: "demand_utilization_witness_main",
+  disposition: Enforced,
+}
+
+// THE SERVED WORKLOAD FRONTIER: which workload classes we serve, decided before any customer
+// exists. Enforced from first landing, for the reason this module exists to enforce -- review 67353
+// caught the first cut of the frontier landing with its witness UNROSTERED, so it ran locally,
+// passed, and would never have run in CI, and strategy.served_workload_frontier would not even have
+// been typechecked (the section 4c compile step's entry is the roster, so an unrostered module is
+// outside its closure entirely). A carrier whose only executions are on the author's machine is the
+// specification-without-execution state this workflow was built to end, recreated one commit after
+// authoring the carrier that warns about it.
+data witness_served_workload_frontier: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/served_workload_frontier_witness_test.dag",
+  function: "served_workload_frontier_witness_main",
+  disposition: Enforced,
+}
+
+// RETENTION AS A DECIDED QUANTITY. Enforced from first landing.
+data witness_retention_decision: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/retention_decision_witness_test.dag",
+  function: "retention_decision_witness_main",
+  disposition: Enforced,
+}
+
+data witness_m2_demand_directed_recut: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/m2_demand_directed_recut_witness_test.dag",
+  function: "m2_recut_witness_main",
+  disposition: Enforced,
+}
+
+data witness_mt_collins_power: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/mt_collins_power_witness_test.dag",
+  function: "mt_collins_power_witness_main",
+  disposition: Enforced,
+}
+
+data witness_mt_jade_class: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/mt_jade_class_witness_test.dag",
+  function: "mt_jade_class_witness_main",
+  disposition: Enforced,
+}
+
+data witness_finance: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/finance_witness_test.dag",
+  function: "finance_witness_main",
+  disposition: Enforced,
+}
+
+// THE DATA MAP AND ITS PROVIDER-ROUTE CONSUMER, ENROLLED TOGETHER BECAUSE THEY ARE ONE CLAIM: the
+// map's rows are all proposals, and the executing evidence is that the admission gate discriminates
+// on them -- a withheld category refuses, the same scope with a carried category admits, and the
+// ratified roster, which is empty until the operator's pass, refuses the route outright.
+data witness_data_map: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/data_map_witness_test.dag",
+  function: "data_map_witness_main",
+  disposition: Enforced,
+}
+
+// THE POSTURE REVISION, EXECUTED THROUGH THE ADMISSION THAT READS IT - AND KNOWN RED UNTIL THE
+// ADMISSION IT READS IS ON PUBLIC MAIN. strategy.compliance_posture_revision consumes the
+// permitted-jurisdiction population and the two restored jurisdiction refusal arms that gunbc#11194
+// adds to product.fabric.provider_route and provider_admission; against public main today those
+// names do not resolve. The first cut enrolled this Enforced, which review 64844 correctly rejected:
+// the roster runs every enforced witness in ONE process, so one unresolved import stops all of them
+// running and reporting - a regression of the actuator dressed as honesty about a dependency. This
+// carrier is the one the roster already has for exactly that case: it runs alone, it must FAIL, and
+// every cause below is grepped for in its own output so the red is this red and not another one.
+// ENFORCED, AND THE PATH HERE IS WORTH KEEPING BECAUSE THE OBVIOUS ROUTE WAS WRONG TWICE.
+//
+// This row was KnownRed on six "name not found" causes waiting for gunbc#11194, and its own annotation
+// predicted that the day #11194 landed the row would go STALE and retire in one edit. #11194 landed at
+// 4f3df2aa0bf and neither half of that prediction held.
+//
+// FIRST, IT DRIFTED RATHER THAN GOING STALE. All six names existed, so none of the declared causes could
+// fire -- but the entry still did not resolve: the private consumer and this witness both built and matched
+// PermittedJurisdictionsEnumerated with a `basis` field, and the arm that LANDED carries first and further
+// only. Flipping to Enforced on the strength of "the trigger is satisfied" would have declared a wall
+// restored while the entry reded for a reason nobody had written down, which is the inverse of the defect
+// the roster's stale-quarantine rule exists to catch. Measuring rather than reasoning is what separated
+// those two states, and it is the only thing that could have.
+//
+// SECOND, THE FIX TOOK A DELETED ASSERTION WITH IT. population_is_the_clearance_roster ended with
+// declaration_ref_eq(a: basis, b: m2_posture_ruling), so dropping the field dropped a check. The ruling
+// grounds the population through posture_revision_hash -- it is an INPUT to the revision, which is
+// structurally stronger than a citation because the two then cannot disagree -- so the claim was re-made at
+// that carrier as a_ruling_change_changes_the_revision rather than deleted. Ruling by snappy-pike-154 on
+// escalation, whose own #11194 reasoning (that basis duplicated the enclosing authority) held at the two
+// public sites and NOT at the private one.
+//
+// MEASURED before this row was flipped, in that order: resolves and passes, rc=0; and the new conjunct has
+// its own red -- giving the varied ruling the SAME quotation makes it fail, naming itself in the output.
+data witness_compliance_posture_revision: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/compliance_posture_revision_witness_test.dag",
+  function: "compliance_posture_revision_witness_main",
+  disposition: Enforced,
+}
+
+data private_witnesses: List<PrivateWitness> = [
+  witness_data_map,
+  witness_finance,
+  witness_cost_floor,
+  witness_node_rental,
+  witness_b2b_capacity_track,
+  witness_wholesale_supply_packet,
+  witness_wholesale_batch_floor,
+  witness_wholesale_journeys,
+  witness_demand_utilization,
+  witness_served_workload_frontier,
+  witness_retention_decision,
+  witness_m2_demand_directed_recut,
+  witness_mt_collins_power,
+  witness_mt_jade_class,
+  witness_fleet_qualification,
+  probe_selection_assessment_construction,
+  probe_workload_census_verdict_construction,
+  witness_ci_build_frontier,
+  witness_sellable_unit,
+  witness_mobo_x_architecture,
+  witness_mobo_x_memory_census,
+  witness_makeshift,
+  witness_colo,
+  witness_home_hosting,
+  witness_machine_tile,
+  witness_tab_group,
+  witness_ci_storage_tiering,
+  witness_buyers_pipeline,
+  witness_buyer_review_sheet,
+  witness_buyer_review_placement,
+  witness_buyer_review_converge,
+  witness_cloud_overflow_role,
+  probe_seller_identity_unwritable,
+  probe_buyer_review_execution_forged,
+  witness_year_end_plan,
+  witness_january_launch,
+  witness_owner_action,
+  witness_audit_packet,
+  witness_plan_tracker_page,
+  witness_procurement_order,
+  witness_fleet_decisions,
+  witness_asset_lifecycle,
+  witness_asset_inventory,
+  witness_pricing_decomposition,
+  witness_rack_power,
+  witness_workflow_stage_gate,
+  witness_pareto_comparison_procedure,
+  witness_panel_ruling_procedure,
+  witness_site_power_survey,
+  witness_ci_vintage_frontier,
+  witness_ci_acquisition,
+  witness_workload_benchmark_suite,
+  witness_ci_economics,
+  witness_ci_economics_frontier,
+  witness_compliance_posture_revision,
+  witness_strategy,
+]
+
+fn witness_is_enforced(w: PrivateWitness) -> Bool {
+  match w.disposition {
+    Enforced => true,
+    KnownRed { reason, restoration_trigger } => false,
+    RefusalProbe { guards, expected_causes, dissolution } => false,
+  }
+}
+
+fn enforced_witnesses() -> List<PrivateWitness> {
+  filter(private_witnesses, w => witness_is_enforced(w: w))
+}
+
+// THE THREE DISPOSITIONS PARTITION, AND THIS FILTER IS WHY THAT HAD TO BE SAID OUT LOUD. It read
+// "not enforced", which was a faithful complement while there were exactly two arms and became a
+// silent mis-classification the moment a third arrived: a refusal probe is not enforced, so it
+// would have been counted as a declared red -- reported in the quarantine census, read by an
+// operator as debt, and its row proposed for retirement. The arm is matched, not complemented.
+fn known_red_witnesses() -> List<PrivateWitness> {
+  filter(private_witnesses, w => witness_is_known_red(w: w))
+}
+
+fn witness_is_known_red(w: PrivateWitness) -> Bool {
+  match w.disposition {
+    Enforced => false,
+    KnownRed { reason, expected_causes, restoration_trigger } => true,
+    RefusalProbe { guards, expected_causes, dissolution } => false,
+  }
+}
+
+// PATHS ARE RELATIVE TO THE PUBLIC CHECKOUT, because gunbc refuses to run anywhere else. Measured
+// on the first real CI run (gunbc-private run 32942165573): the binary panics with
+// "process_workspace_root: cannot locate workspace — git rev-parse did not name a Cargo.toml+dag/
+// tree" when its cwd is this repository, which has dag/ but no Cargo.toml. It resolves its
+// workspace from the CWD, not from --source-root. So the step runs inside the public checkout.
+//
+// THE PRIVATE TREE IS COPIED UNDER THAT CHECKOUT, NOT REACHED WITH ../. Measured 2026-09-10 on
+// public SHA 0d6b6653e0f (the same revision CI recorded on failing run 34451871767):
+//   gunbc run --source-root dag --source-root src/v2 --source-root <overlay> --entry <year_end_plan>
+// admits every module-scope annotation when <overlay> is a directory UNDER the process workspace
+// (including a sibling spelled ../ann_priv_ci, and a two-file extra root _ann_probe). The same
+// bytes under an absolute extra root /tmp/ann_priv panic at repo_relative_path_normalized.
+// CI's spelling --source-root ../dag from inside public/ is that out-of-workspace extra root:
+// process_workspace_root is the public git tree, and ../dag is the private overlay. Against that
+// invocation the v1 binder reports UnattachedAtScopeEnd for every content-carrying // line and
+// drops every bare `//` (annotation_attach_resolve: empty text with no following subject is a
+// no-op). That is the 175/12 split on year_end_plan.dag, not a corpus migration. Copying the
+// overlay to private_overlay/dag makes the extra root workspace-relative, which is the invocation
+// that attaches a leading // to the next module item.
+// THE DESTINATION IS OUTSIDE THE REPOSITORY ROOT, AND THAT IS THE WALL (2026-09-11).
+//
+// This used to be "private_overlay" - a path INSIDE the public checkout - and that is the shape
+// that leaked. A session worktree is persistent and the dashboard's archive-time auto-push commits
+// its state INCLUDING UNTRACKED FILES, so a private copy sitting anywhere under the repo root is
+// one archive away from public. On 2026-09-11 that happened: 85,967 lines of private tree, finance
+// included, pushed to public gunbc with a pull request opened automatically.
+//
+// A NAME CHECK WOULD NOT HAVE STOPPED IT, which is why this is a path fact rather than a lint.
+// private_overlay, base_overlay, wb62_overlay, dag2 - the set of names a lane might choose is open,
+// so a checker over names is a heuristic over an open world. What is closed is the QUESTION OF
+// WHETHER THE COPY IS UNDER THE REPO ROOT AT ALL. The compose root is therefore a DETACHED
+// WORKTREE outside the workspace: the copy never exists where an auto-push can reach it, and the
+// recipe a lane copies from this file is the safe one rather than the hazardous one.
+//
+// gunbc REQUIRES a git checkout as its workspace root - a plain directory is refused with
+// workspace_root is not inside a git checkout - so the compose root cannot simply be a temp
+// directory. A detached worktree satisfies the compiler and sits outside the repo at once, which is
+// why it is the construction available today rather than a compromise.
+//
+// THE NEXT RUNG IS UNCHANGED and is still the real dissolution: when gunbc admits an extra
+// --source-root outside process_workspace_root with annotations attaching on the same terms, the
+// copy and the worktree both disappear and --source-root ../dag returns. Until then this is the
+// strongest available form.
+data compose_root_env_default: NonEmptyStr = "$\{RUNNER_TEMP:-/tmp}/gunbc-private-compose"
+
+data private_overlay_dir: NonEmptyStr = "$COMPOSE/private_overlay"
+
+// DISSOLUTION NAMES THE CAPABILITY, NOT THE ARTIFACT. The copy is admitted while private CI
+// cannot wait on a public compiler change. It is deleted when gunbc admits an extra
+// --source-root whose directory is outside process_workspace_root with module-scope
+// annotations attaching on the same terms as an in-workspace extra root — sufficient to
+// restore `--source-root ../dag` without UnattachedAtScopeEnd on a file that attaches under
+// a workspace-relative copy of the same bytes. "When the copy is no longer needed" is not
+// the trigger: that is satisfied by anything. Authority for the class:
+// gunbc.recurring_failure_mode.extra_source_root_outside_workspace_refuses_annotations_as_unattached.
+data overlay_copy_dissolution: NonEmptyStr = "gunbc admits an extra --source-root outside process_workspace_root with module-scope annotations attaching as they do for an in-workspace extra root; then delete the private_overlay copy and restore --source-root ../dag"
+
+// THE LOCAL METHOD, AND WHY IT IS A RECIPE FACT RATHER THAN A DISCIPLINE ONE.
+//
+// The copy above is what CI does, and CI does it inside a throwaway checkout. A SESSION doing the
+// same thing inside its own worktree leaks the private repository: the dashboard's archive-time
+// auto-push commits a worktree's state INCLUDING UNTRACKED FILES and pushes it. That happened on
+// 2026-09-11 - a private tree of 85,967 lines, finance included, reached public gunbc and
+// auto-opened a pull request before anyone noticed. The lane that did it was following THIS FILE'S
+// recipe faithfully, which is why the method belongs here rather than in a warning somebody has to
+// remember: every lane that runs these witnesses locally the documented way reproduces the hazard.
+//
+// "Clone gunbc-private outside the worktree" is necessary and NOT sufficient. gunbc refuses a
+// workspace root that is not inside a git checkout, so the composed root has to be SOME public
+// checkout - the question is only which one.
+//
+// THE METHOD: git worktree add --detach /tmp/claude-1000/SESSION-compose HEAD, put
+// private_overlay/dag inside THAT, and run gunbc from there. It is a real git checkout, which the
+// compiler requires, and it is not the registered session worktree, so archive-time auto-push has
+// no reason to touch it.
+//
+// TWO DEAD ENDS, RECORDED SO NOBODY SPENDS THE TIME AGAIN. A plain directory copy under /tmp is
+// refused: workspace_root is not inside a git checkout, run from the workspace. And cp -al into
+// /tmp fails with Invalid cross-device link, so the copy cannot be made cheap with hardlinks.
+//
+// RECEIPT: year_end_plan_witness_main returns ExitSuccess when run from such a composed worktree,
+// which is the evidence that this method actually executes the roster rather than merely avoiding
+// the hazard. Re-derive it by running the entry from the composed root.
+data overlay_local_method: NonEmptyStr = "Do NOT create private_overlay inside the session worktree - archive-time auto-push commits untracked files and leaks the private repo. Use: git worktree add --detach /tmp/claude-1000/SESSION-compose HEAD, put private_overlay/dag inside that, run gunbc there. A plain /tmp directory is refused because gunbc needs a git checkout, and cp -al across /tmp fails as a cross-device link."
+
+// THE ROOT SET IS ONE FACT AND IS DECLARED ONCE. The argv below is DERIVED from it, and
+// strategy.audit_packet's lens resolves citations against this same list rather than a second
+// literal of it. That fork existed for one revision and review 65028 was right about what it would
+// cost: add a fourth root to the runner and a lens carrying its own copy keeps resolving against a
+// three-root corpus, so "resolved against the live corpus at render time" silently becomes a claim
+// about a different corpus, with the witness green because it reads the same stale list. A stated
+// dissolution trigger does not authorize minting the fork.
+data source_roots: List<String> = ["dag", "src/v2", "private_overlay/dag"]
+
+fn source_root_flag(root: String) -> String {
+  join(["--source-root ", root], "")
+}
+
+data source_roots_argv: NonEmptyStr = join(map(source_roots, r => source_root_flag(root: r)), " ") as NonEmptyStr
+
+data private_entry_prefix: NonEmptyStr = "private_overlay/"
+
+// The private git tree as seen from the public checkout CWD -- used to READ committed
+// projections, not to ingest .dag (that is private_entry_prefix after the overlay copy).
+// THE COMMITTED FILES STILL HAVE TO BE READ, and the working directory is no longer the public
+// checkout, so "../" no longer names the private repository. The compose root carries a symlink to
+// it instead: one line in the recipe resolves the absolute path at setup time, and the model keeps
+// a relative prefix it can state without knowing where the runner put anything.
+data private_repo_prefix: NonEmptyStr = "private_repo/"
+
+// ONE PROCESS FOR EVERY ENFORCED WITNESS, BECAUSE THE COST WAS NEVER THE WITNESSES.
+//
+// This roster used to emit one `gunbc run` per enforced witness. Measured on run 34462653642, the
+// 33 completed invocations cost 82-107s each, mean 96s, spread under ten percent -- and witnesses
+// doing wildly different amounts of work cost the same. A cost that does not vary with the work is
+// not the work: it is the composed world, resolved and typechecked from scratch once per process,
+// and the step unsets both cache roots so nothing carries between them. Fifty-one of the fifty-three
+// minutes were one world acquired once per roster row, which is DESIGN section 2 redundancy at the
+// coarsest possible grain. THE ROSTER SIZE IS NOT PART OF THE CLAIM and is deliberately not written
+// here as a number: it was 33 rows when this was measured and 34 the same day, because #49 enrolled
+// node_rental_witness. What is fixed is the shape -- one process per row before, five after, however
+// many rows the roster carries.
+//
+// So the enforced half now runs as ONE entry -- test.claim.private_roster_witness -- which calls
+// every enforced witness's main and folds their ProcessExits. The witnesses are untouched; what
+// changed is how many worlds we pay for.
+//
+// WHY NOT claim_executor --required-floor, which is the public floor's own answer to this. Read
+// before assuming: `run_required_floor(source_roots, commit, style)` discovers over the FULL
+// inventory of every source root with no scope parameter -- `apply_discovery_scope_dirs_filter`
+// exists but is reachable only from the discovery-corpus path, not from the required-floor one. So
+// `--required-floor` over dag + src/v2 + private_overlay/dag does not run the private roster in one
+// process; it runs the entire PUBLIC floor as well. Measured on public run 34502250692: 2,696
+// modules resolved, 3,590 claims planned and executed, ~26 minutes inside the process. That would
+// take this job from 53 minutes to ~35 AND re-run 3,590 public claims per private PR -- a larger
+// redundancy than the one being deleted, and it would import public's reds into private's signal.
+
+// THE AGGREGATE IS THE RUNNER, NOT A ROW OF THE ROSTER. It is deliberately absent from
+// private_witnesses: the roster is the authority for WHAT must run and with what disposition, and
+// the aggregate is one way of running the Enforced part of it. Putting it in the list would make it
+// a witness that has to cover itself.
+//
+// THE TWO LISTS CANNOT SILENTLY DIVERGE. test.claim.private_roster_witness names each entry beside
+// the main it calls, and its own first conjunct asserts set equality between those entries and the
+// Enforced rows of THIS module, in both directions. Dropping a witness from the aggregate reds the
+// aggregate; adding an Enforced row here without wiring it there reds it too. That check is the
+// reason the roster stays consumed rather than becoming a list nothing reads (DESIGN section 3c).
+data roster_aggregate: PrivateWitness = PrivateWitness {
+  entry: "dag/test/claim/private_roster_witness_test.dag",
+  function: "private_roster_main",
+  disposition: Enforced,
+}
+
+// RESOLVE ATTRIBUTION SURVIVES ONE PROCESS. MEASURED, BECAUSE IT WAS THE ONE REAL OBJECTION.
+//
+// One process for the whole enforced roster trades away something if a witness module fails to
+// RESOLVE: a module that will not resolve cannot be called, so one broken import fails this entry
+// as a whole. That matters here specifically, because the public root tracks main rather than a
+// pinned SHA so that a public authority change invalidating a private claim goes loud -- and that
+// invalidation arrives as a resolve failure, not as an assertion failure. Collapsing thirty
+// verdicts into one opaque red exactly where this instrument earns its keep would be a worse
+// instrument, not a faster one.
+//
+// So it was measured rather than argued, by breaking a witness deliberately and reading what came
+// back. Both shapes the real known-reds exhibit were tried. A missing MODULE:
+//
+//   error: resolve failed for <the aggregate entry>
+//     cause: .../colo_market_witness_test.dag:2:1: error: unresolved import: module
+//     'std.no_such_module_for_this_experiment' not found (imported by 'test.claim.colo_market_witness')
+//
+// and a missing NAME in a module that does resolve:
+//
+//   .../tab_group_witness_test.dag:3:29: error: name 'no_such_name_in_tab_group' not found in
+//   module 'strategy.tab_group' (imported by 'test.claim.tab_group_witness')
+//
+// The diagnostic names the failing FILE, the LINE and COLUMN, and the MODULE THAT IMPORTED IT. Run
+// alone, the same break prints the identical cause line; the only difference is which entry the
+// envelope names. Attribution is preserved, so nothing needs to be added to recover it.
+//
+// AND THAT IS WHY THERE IS NO PER-WITNESS FALLBACK HERE. An earlier cut of this change followed a
+// failing aggregate with a re-run of every witness, one process each, to attribute the failure. It
+// would have been the absorbing fallback DESIGN section 5 names: cannot compute the failing witness
+// -> run them all. The premise was false. The compiler already computes it, so the fallback would
+// have spent forty-six minutes on every red re-deriving a fact that was already printed, and its
+// existence would have implied a deficit in the diagnostic that measurement does not support.
+
+fn roster_aggregate_run_line() -> String {
+  join([
+    "if out=$(run_one \"", private_entry_prefix, roster_aggregate.entry, "\" \"", roster_aggregate.function, "\" 2>&1); then\n",
+    "  echo \"$out\"\n",
+    "  echo \"PASS  every enforced private witness, in ONE process — ", roster_aggregate.entry, "\"\n",
+    "else\n",
+    "  echo \"$out\"\n",
+    "  echo \"::error::FAIL the enforced private witness roster. Every failing witness is named in the output above: an assertion failure by its entry and its own reason, a resolve failure by file, line and importing module.\"\n",
+    "  fail=1\n",
+    "fi\n",
+  ], "")
+}
+
+// STILL ONE EXPLICIT LINE PER ENTRY BELOW, no loop and no heredoc, and both exclusions are
+// load-bearing rather than stylistic. This reasoning arrived with the per-witness enforced block
+// that the roster aggregate replaced; it is carried here rather than deleted with that function,
+// because the four non-enforced entries are still unrolled and it still governs them. A heredoc
+// terminator cannot be used at all: this script is carried in a YAML block scalar, so every line is
+// indented, and an indented EOF does not terminate a plain heredoc. And `... | while read` runs the
+// loop body in a SUBSHELL, so a fail=1 set inside it is discarded when the pipe closes -- the run
+// would report success over a failing witness, which is the fail-open arm this actuator exists to
+// prevent. Unrolling costs nothing because the roster is derived from private_witnesses rather than
+// hand-authored here.
+
+// A KNOWN-RED IS PINNED TO ITS NAMED CAUSE, NOT TO "ANY NONZERO EXIT". Accepting every failure is
+// the absorbing arm DESIGN section 5 forbids: it cannot tell the declared cause from a NEW one, so a
+// quarantined witness silently becomes a place defects go to hide. This repository has now been bitten
+// by exactly that three times in one PR - a module left un-migrated against a deleted std.pareto API,
+// then stale imports of symbols removed in that migration, then a source-annotation violation - and
+// each time the roster reported "known-red held" over a failure that had nothing to do with the
+// missing extdep the row declares.
+//
+// So the run now REQUIRES the declared cause to appear in the output. A red for the stated reason
+// holds; a red for a different reason stops the line and names the drift.
+// THE DECLARED SET IS THE COMPLETE DESCRIPTION OF THE FAILURE, IN BOTH DIRECTIONS. The first
+// version grepped for a single string, and its first real CI run proved that insufficient. The
+// second required every declared cause to be PRESENT - and review found that still insufficient,
+// correctly: presence alone never rejects an ADDITIONAL undeclared failure, so a fifth defect rides
+// in behind the four as long as the four persist. That is the absorbing quarantine this mechanism
+// exists to end, merely narrowed. I had claimed in the previous commit that a fifth failure would
+// stop the line; it would not have, and I had not tested it.
+//
+// So the check runs both ways. Every declared cause must appear, and every diagnostic line the run
+// emits must match some declared cause. Set equality, not containment. The resolve envelope is
+// declared alongside the causes for the same reason - it is part of what the witness emits, and a
+// set that silently exempts one line is not a complete description.
+//
+// Consequences, both intended: a NEW failure stops the line because it matches no declared cause,
+// and FIXING one stops it because its declared cause stops appearing. Either way the roster has
+// stopped describing the repository, which is the whole and only claim a quarantine makes.
+fn expected_cause_check(entry: NonEmptyStr, function: NonEmptyStr, cause: NonEmptyStr) -> String {
+  join([
+    "  if printf '%s\\n' \"$out\" | grep -qF -- \"", cause, "\"; then :; else\n",
+    "    echo \"::error::CAUSE DRIFT ", entry, " ", function, " — quarantined for a NAMED SET of causes and one of them did not occur. Expected to find: ", cause, "\"\n",
+    "    fail=1\n",
+    "    drift=1\n",
+    "  fi\n",
+  ], "")
+}
+
+fn undeclared_filter_step(cause: NonEmptyStr) -> String {
+  join([" | grep -vF -- \"", cause, "\""], "")
+}
+
+fn known_red_run_line(w: PrivateWitness) -> String {
+  match w.disposition {
+    Enforced => "",
+    RefusalProbe { guards, expected_causes, dissolution } => "",
+    KnownRed { reason, expected_causes, restoration_trigger } => join([
+      "if out=$(run_one \"", private_entry_prefix, w.entry, "\" \"", w.function, "\" 2>&1); then\n",
+      "  echo \"$out\"\n",
+      "  echo \"::error::STALE QUARANTINE ", w.entry, " ", w.function, " — a declared known-red witness PASSED. Retire its KnownRed row in strategy.private_witness_workflow rather than leaving the roster describing a repository that no longer exists.\"\n",
+      "  fail=1\n",
+      "else\n",
+      "  echo \"$out\"\n",
+      "  drift=0\n",
+      fold(expected_causes, init: "", f: fn(acc, c) { join([acc, expected_cause_check(entry: w.entry, function: w.function, cause: c)], "") }),
+      "  undeclared=$(printf '%s\\n' \"$out\" | grep -F -- 'error:'",
+      fold(expected_causes, init: "", f: fn(acc, c) { join([acc, undeclared_filter_step(cause: c)], "") }),
+      " || true)\n",
+      "  if [ -n \"$undeclared\" ]; then\n",
+      "    echo \"::error::UNDECLARED FAILURE ", w.entry, " ", w.function, " — this witness emitted a diagnostic its KnownRed row does not declare. A quarantine that only requires its OWN causes to be present still hides every new defect that arrives beside them. Declare it or fix it:\"\n",
+      "    printf '%s\\n' \"$undeclared\"\n",
+      "    fail=1\n",
+      "    drift=1\n",
+      "  fi\n",
+      "  if [ \"$drift\" = \"0\" ]; then\n",
+      "    echo \"known-red held  ", w.entry, " ", w.function, " — failed for exactly its declared causes\"\n",
+      "  fi\n",
+      "fi\n",
+    ], ""),
+  }
+}
+
+fn enforced_block() -> String {
+  roster_aggregate_run_line()
+}
+
+fn refusal_probe_witnesses() -> List<PrivateWitness> {
+  filter(private_witnesses, w => witness_is_refusal_probe(w: w))
+}
+
+fn witness_is_refusal_probe(w: PrivateWitness) -> Bool {
+  match w.disposition {
+    Enforced => false,
+    KnownRed { reason, restoration_trigger } => false,
+    RefusalProbe { guards, expected_causes, dissolution } => true,
+  }
+}
+
+fn refusal_probe_block() -> String {
+  fold(refusal_probe_witnesses(), init: "", f: fn(acc, w) { join([acc, refusal_probe_run_line(w: w)], "") })
+}
+
+fn refusal_probe_run_line(w: PrivateWitness) -> String {
+  match w.disposition {
+    Enforced => "",
+    KnownRed { reason, expected_causes, restoration_trigger } => "",
+    RefusalProbe { guards, expected_causes, dissolution } => join([
+      "if out=$(run_one \"", private_entry_prefix, w.entry, "\" \"", w.function, "\" 2>&1); then\n",
+      "  echo \"$out\"\n",
+      "  echo \"::error::WALL GONE ", w.entry, " — this program MUST NOT COMPILE and it compiled. What it guards: ", guards, "\"\n",
+      "  fail=1\n",
+      "else\n",
+      "  probe_drift=0\n",
+      fold(expected_causes, init: "", f: fn(acc, c) { join([acc, probe_cause_check(entry: w.entry, cause: c)], "") }),
+      "  if [ \"$probe_drift\" = \"0\" ]; then\n",
+      "    echo \"refusal probe held  ", w.entry, " — refused for exactly the walls it names\"\n",
+      "  fi\n",
+      "fi\n",
+    ], ""),
+  }
+}
+
+// A PROBE THAT REFUSES FOR THE WRONG REASON IS NOT EVIDENCE. Any nonzero exit would satisfy a bare
+// expecting-red check -- a typo in an import refuses too -- so the diagnostic is compared, and a
+// missing declared cause fails the run rather than passing quietly on the exit code alone.
+fn probe_cause_check(entry: NonEmptyStr, cause: NonEmptyStr) -> String {
+  join([
+    "  if ! printf '%s\\n' \"$out\" | grep -qF -- \"", cause, "\"; then\n",
+    "    echo \"::error::PROBE DRIFT ", entry, " — refused, but NOT for its declared cause: ", cause, ". A probe that refuses for a different reason is measuring a different wall.\"\n",
+    "    fail=1\n",
+    "    probe_drift=1\n",
+    "  fi\n",
+  ], "")
+}
+
+// WHY THE FOUR NON-ENFORCED ENTRIES KEEP ONE PROCESS EACH, and what would end that.
+//
+// The two known-reds and the two refusal probes are NOT in the aggregate, and the reason is a
+// capability gap in the public floor rather than an oversight here. On these four entries this
+// repository's mechanism is STRICTLY STRONGER than the public one:
+//
+//   1. A KnownRed here declares its CAUSES, and the run requires set equality in both directions --
+//      every declared cause present, every emitted diagnostic declared. The public roster,
+//      v2.workflow.floor_expected_red, is a List<String> of IDENTITIES with no cause field at all.
+//      It detects a stale quarantine and nothing else: no cause drift, and no new defect arriving
+//      beside the declared ones. Enrolling these two there would delete the check.
+//   2. A RefusalProbe here is a whole program that MUST NOT COMPILE, checked for its own refusal
+//      text. The floor has no must-not-compile row type; its discovery enrolls `test fn` decls,
+//      which is a shape a non-compiling program cannot take.
+//   3. Both known-reds fail at RESOLVE, not at assertion. The floor's expected-red vocabulary is
+//      about claim outcomes -- a claim that ran and disagreed -- and floor_expected_red's own header
+//      records its worst historical error as 101 rows enrolled as failing that had in fact never
+//      reached their subject. Enrolling two resolve failures there would reproduce that defect
+//      knowingly.
+//
+// So this is not private lagging public. Matching public here would be a regression, and a faster
+// CI that weakened a quarantine or a wall is worse than the fifty-three minutes it saved.
+//
+// THE TRIGGER NAMES CAPABILITIES, NOT ARTIFACTS, because a trigger naming a PR or "floor work" is
+// satisfied while the capability stays dead. All three must hold before these four can join a
+// shared process, and the third is the one an earlier draft of this reasoning missed: without
+// discovery scoping the floor cannot host a private roster at ANY strength, so the first two could
+// land and the bridge would still be load-bearing.
+data shared_process_dissolution: NonEmptyStr = "the four non-enforced entries join a shared process when the public floor gains ALL THREE of: (i) an expected-red row type carrying declared causes, with cause-drift and undeclared-failure detection at the grain this module's KnownRed rows have today; (ii) a must-not-compile row type carrying per-probe expected refusal text; and (iii) discovery scoping on the required-floor path, so a run can be bounded to one source root instead of every module under all of them. Until all three hold, each of these entries keeps its own process and its own checks."
+
+// WHAT DOES NOT MIGRATE, EVER, and it is worth saying because (i) above will read like an
+// invitation. The declared causes name private modules and private import failures. Even once the
+// public floor can carry causes, these rows stay in this repository: moving them would publish
+// private module identities into the public corpus, which is the one thing the placement-based
+// privacy model of this repo exists to prevent. What (i) unlocks is a private roster expressed in a
+// public VOCABULARY, never private rows stored in public SOURCE.
+
+fn known_red_block() -> String {
+  fold(known_red_witnesses(), init: "", f: fn(acc, w) { join([acc, known_red_run_line(w: w)], "") })
+}
+
+// THE LINE STOPS ON A FAILURE AND ON A STALE QUARANTINE. Every enforced witness must exit zero;
+// every declared red must exit nonzero. A red that has started passing is not good news the run may
+// swallow -- it means the roster is describing a repository that no longer exists, so it fails here
+// and the row is retired deliberately.
+fn witness_run_script() -> String {
+  join([
+    "set -u\n",
+    "cd ", public_checkout_path, "\n",
+    "GUNBC=\"$PWD/target/release/gunbc\"\n",
+    "PRIVATE_ROOT=\"$(cd .. && pwd)\"\n",
+    "COMPOSE=\"", compose_root_env_default, "\"\n",
+    "rm -rf \"$COMPOSE\"\n",
+    "git worktree prune\n",
+    "git worktree add --detach \"$COMPOSE\" HEAD\n",
+    "mkdir -p ", private_overlay_dir, "\n",
+    "cp -a \"$PRIVATE_ROOT/dag\" ", private_overlay_dir, "/dag\n",
+    "ln -sfn \"$PRIVATE_ROOT\" \"$COMPOSE/private_repo\"\n",
+    "cd \"$COMPOSE\"\n",
+    "echo \"private_overlay is a generated ingest copy of the private checkout, composed into a detached worktree OUTSIDE the repository root so no auto-push can reach it; do not edit it. Edit the private checkout. Dissolves when: ", overlay_copy_dissolution, "\"\n",
+    "echo \"LOCAL RUNS: ", overlay_local_method, "\"\n",
+    "echo \"the four non-enforced entries run one process each. Dissolves when: ", shared_process_dissolution, "\"\n",
+    "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR || true\n",
+    "unset GUNBC_NATIVE_CACHE_ROOT || true\n",
+    "fail=0\n",
+    "run_one() {\n",
+    "  \"$GUNBC\" run ", source_roots_argv, " --entry \"$1\" --function \"$2\"\n",
+    "}\n",
+    enforced_block(),
+    known_red_block(),
+    refusal_probe_block(),
+    "exit $fail\n",
+  ], "")
+}
+
+fn public_revision_receipt_script() -> String {
+  join([
+    "cd ", public_checkout_path, "\n",
+    "echo \"public gunbc resolved to $(git rev-parse HEAD)\"\n",
+    "echo \"tracking ref: ", public_root_ref, "\"\n",
+  ], "")
+}
+
+fn checkout_private_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout private" },
+    id: none,
+    uses: checkout_action,
+    with: none,
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn checkout_public_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout public gunbc" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [
+        kv(key: "repository", value: yaml_string(s: "gunb-ai/gunbc")),
+        kv(key: "ref", value: yaml_string(s: public_root_ref)),
+        kv(key: "path", value: yaml_string(s: public_checkout_path)),
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn setup_rust_step() -> Step {
+  UsesStep {
+    name: Present { value: "Install Rust toolchain" },
+    id: none,
+    uses: setup_rust_action,
+    with: Present { value: [kv(key: "cache", value: yaml_bool(b: false))] },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn record_public_revision_step() -> Step {
+  RunStep {
+    name: Present { value: "Record the public revision the claims were checked against" },
+    id: none,
+    run: public_revision_receipt_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn build_gunbc_step() -> Step {
+  RunStep {
+    name: Present { value: "Build gunbc from the public seed" },
+    id: none,
+    run: "cargo build --release --manifest-path public/Cargo.toml -p v1-compiler --bin gunbc\n",
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// Public main (2026-08-30) made gunbc run REFUSE when no cgroup memory limit binds
+// the process and GUNBC_MEMORY_BUDGET_BYTES is unset (gunbc.host_budget_source):
+// GitHub-hosted runners bind no memory.high/memory.max, so every roster invocation
+// panicked before resolving. This declares the slot bound the refusal asks for -
+// 6 GiB, inside the hosted runner's 7 GiB - scoped to the one step that runs gunbc.
+fn run_witnesses_step() -> Step {
+  RunStep {
+    name: Present { value: "Run the private witness roster over the composed root" },
+    id: none,
+    run: witness_run_script(),
+    shell: none,
+    env: Present { value: [kv(key: "GUNBC_MEMORY_BUDGET_BYTES", value: yaml_int(n: 6442450944))] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE SECTION 4c WALL THIS REPOSITORY DID NOT HAVE.
+//
+// gunbc run executes a witness without the source-annotation attachment check; gunbc compile is
+// the only instrument that performs it, and until this step nothing here invoked it. Measured
+// 2026-09-12 on private main: nineteen blocking "source annotation sits inside a declaration body"
+// refusals in one file, which arrived through six review rounds with both lanes green. Two claims,
+// kept apart. CI green was correct and uninformative about this class: no executed invocation here
+// performed the check, because every recorded one was gunbc run. That does NOT vindicate the reviews:
+// a reader could have caught these by eye, or by invoking gunbc compile, and none did. What the
+// evidence establishes is that nothing DID run the check, not that nothing COULD.
+//
+// A STEP, NOT A JOB. The job roster is closed to growth because a job is a standing claim on a
+// paid runner on every push and pull request. This step runs on the runner the witnesses job
+// already claims, over the binary it already built and the composed root the roster step already
+// assembled -- it therefore runs after the roster, on !cancelled() so a red roster does not hide a
+// section 4c red, and refuses rather than greens when that composed root is absent.
+//
+// THE SUBJECT IS THE ENFORCED ROSTER'S CLOSURE, NOT THE WHOLE PRIVATE ROOT, and the narrowing is
+// forced rather than chosen. A whole-root compile is refused at arm time by
+// gunbc.whole_corpus_compile_admission, whose declared demand was measured on a dag-primary public
+// compile and is above the budget this job declares; that refusal fires on the private-primary
+// root too, which is far smaller than the subject the demand was measured on. Lying to the
+// admission with a larger declared budget would be the fail-open DESIGN section 5 forbids. So the
+// step compiles --entry over roster_aggregate, with the roster's own source_roots_argv, which is
+// admitted and reaches every module an enforced witness imports.
+//
+// WHAT THAT LEAVES UNCHECKED, stated rather than implied: private modules no enforced witness
+// imports -- the known-red witnesses and their unique imports, the must-not-compile probes, the
+// projection drift witness, and modules nothing imports at all. A section 4c violation there still
+// passes this step. The restoration trigger names the capability and is carried as the typed row
+// annotation_closure_narrowing_dissolution, which the step echoes on every run.
+//
+// THE BUDGET IS NOT THE ONLY BARRIER, and the trigger says so. Because the step passes only on exit
+// 0, widening to the whole root would pull the known-red witnesses and must-not-compile probes into
+// the gated compile, and their expected refusals would make it exit 1 however cheap it became. So the
+// trigger names both halves -- affordable admission AND separating the expected-refusal population
+// from the gated compile -- and an affordable admission alone must not be read as sufficient. An
+// earlier wording named affordability alone, and that was never sufficient for the guarantee: under
+// the earlier gate a whole-root compile could be afforded AND the step could pass before annotation
+// checking ran, so affordability never established a working section 4c check over every private
+// module. The exit-0 pass condition did not create that gap, it exposed it: the trigger had been
+// consistent with a defective gate, which is why nothing contradicted it.
+// THE PASS CONDITION IS A COMPILE THAT EXITS 0 AND CARRIES NO SECTION 4c LINE. Unrelated blocking
+// errors are NOT tolerated: any of them makes the compile exit 1, which fails this step. The family
+// prefix decides only the WORDING of that failure -- a located section 4c FAIL when a line starting
+// "source annotation " is present, otherwise a refusal as not established. That prefix is shared by
+// the trailing, body and unattached forms. Exit 0 is a precondition the subject can meet: the
+// known-red witnesses and must-not-compile probes, whose refusals are expected, sit outside the
+// enforced roster closure this step compiles.
+//
+// A LOG THAT WAS NEVER WRITTEN IS NOT CLEAN. Exit 0 is a clean compile; exit 1 must carry the
+// renderer's terminal error-count line; any other exit (137 is an OOM kill) refuses before the grep,
+// so an empty match over an unwritten log can never read as zero violations.
+// A REFUSING COMPILE WITH NO SECTION 4c LINE IS NOT CLEAN EITHER. Exit 1 can come from a phase that
+// halts before annotation attachment runs, so the absence of a match there is not evidence. Only exit
+// 0 passes; exit 1 fails when it carries section 4c lines and otherwise refuses as not established.
+// The enforced roster closure compiles with zero blocking errors, so this costs no false red today.
+//
+// THE READER GETS THE SAME TREATMENT AS THE COMPILER. grep's no-match status 1 is the only
+// status that means zero violations; any other status is a read failure and refuses. No sort sits
+// in that path, because a pipeline absorbed with || true once let a failing sorter print PASS over a
+// log carrying a located refusal. The compiler exit and the reader status are both captured inside an
+// if, and only the display grep of the error-count line ends in || true, because the runner's default
+// shell is bash -eo pipefail, which would otherwise end the step before these checks classify it.
+data annotation_refusal_prefix: NonEmptyStr = "source annotation "
+
+// THE SHELL IS CARRIED AS A STRING, the medium every run script in this module already uses, and it
+// is transport rather than authority: the step's decisions are declared here, but their realization is
+// hand-written bash. Its dissolution is a typed row, echoed by the step, beside the closure narrowing's.
+data annotation_step_shell_medium_dissolution: NonEmptyStr = "gunbc emits orchestration to a shell target from a modeled step, so the section 4c step's exit-status and reader classification become typed arms instead of hand-written bash carried as string fragments"
+
+data annotation_closure_narrowing_dissolution: NonEmptyStr = "a section 4c check over every private module can both be afforded and pass: gunbc compile admits the private primary population within the witnesses job's declared budget, priced on the subject actually compiled rather than on the public corpus's demand, AND the expected-refusal population (known-red witnesses, must-not-compile probes) is separable from the compile this step gates on, so their expected refusals do not defeat the exit-0 pass condition. Affordable admission alone is not sufficient: it does not establish that the expanded population can exit 0. Only when both hold, drop --entry and compile every private module"
+
+fn annotation_compile_script() -> String {
+  join([
+    "set -u\n",
+    "GUNBC=\"$PWD/", public_checkout_path, "/target/release/gunbc\"\n",
+    "COMPOSE=\"", compose_root_env_default, "\"\n",
+    "OUT=\"$\{RUNNER_TEMP:-/tmp}/gunbc-private-annotation-compile\"\n",
+    "if [ ! -d ", private_overlay_dir, "/dag ]; then\n",
+    "  echo \"::error::REFUSE section 4c check observed nothing: the composed root $COMPOSE is absent, so the roster step did not reach composition.\"\n",
+    "  exit 1\n",
+    "fi\n",
+    "cd \"$COMPOSE\"\n",
+    "echo \"section 4c subject is the enforced roster closure, not every private module. Dissolves when: ", annotation_closure_narrowing_dissolution, "\"\n",
+    "echo \"this step is hand-written shell carried as a string. Dissolves when: ", annotation_step_shell_medium_dissolution, "\"\n",
+    "rm -rf \"$OUT\" \"$OUT.log\"\n",
+    "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR || true\n",
+    "unset GUNBC_NATIVE_CACHE_ROOT || true\n",
+    "if \"$GUNBC\" compile ", source_roots_argv, " --entry ", private_entry_prefix, roster_aggregate.entry, " --output-dir \"$OUT\" --target dag > \"$OUT.log\" 2>&1; then code=0; else code=$?; fi\n",
+    "echo \"gunbc compile exited $code\"\n",
+    "if [ \"$code\" != \"0\" ] && [ \"$code\" != \"1\" ]; then\n",
+    "  tail -n 40 \"$OUT.log\"\n",
+    "  echo \"::error::REFUSE section 4c check observed nothing: gunbc compile exited $code, which is neither a clean compile nor a rendered refusal.\"\n",
+    "  exit 1\n",
+    "fi\n",
+    "if [ \"$code\" = \"1\" ] && ! grep -qE 'error\\(s\\)' \"$OUT.log\"; then\n",
+    "  tail -n 40 \"$OUT.log\"\n",
+    "  echo \"::error::REFUSE section 4c check observed nothing: gunbc compile exited 1 without its terminal error-count line.\"\n",
+    "  exit 1\n",
+    "fi\n",
+    "grep -E 'error\\(s\\)' \"$OUT.log\" | tail -n 1 || true\n",
+    "if grep -F -- \"", annotation_refusal_prefix, "\" \"$OUT.log\" > \"$OUT.annotations\"; then\n",
+    "  cat \"$OUT.annotations\"\n",
+    "  echo \"::error::FAIL section 4c: source annotations outside module-item grain, each located above. Move each above the module-scope declaration it describes.\"\n",
+    "  exit 1\n",
+    "else\n",
+    "  reader=$?\n",
+    "  if [ \"$reader\" != \"1\" ]; then\n",
+    "    echo \"::error::REFUSE section 4c check observed nothing: the diagnostic reader exited $reader, which is a read failure and not the no-match status 1.\"\n",
+    "    exit 1\n",
+    "  fi\n",
+    "fi\n",
+    "if [ \"$code\" != \"0\" ]; then\n",
+    "  tail -n 40 \"$OUT.log\"\n",
+    "  echo \"::error::REFUSE section 4c check not established: gunbc compile refused on diagnostics outside the section 4c family, so it may have stopped before annotation attachment ran. Fix those diagnostics; only a compile that exits 0 can pass this step.\"\n",
+    "  exit 1\n",
+    "fi\n",
+    "echo \"PASS  section 4c: no source-annotation refusal over the closure of ", roster_aggregate.entry, "\"\n",
+  ], "")
+}
+
+fn annotation_compile_step() -> Step {
+  RunStep {
+    name: Present { value: "Check source annotations (DESIGN section 4c) over the composed root" },
+    id: none,
+    run: annotation_compile_script(),
+    shell: none,
+    env: Present { value: [kv(key: "GUNBC_MEMORY_BUDGET_BYTES", value: yaml_int(n: 6442450944))] },
+    working_directory: none,
+    if_condition: Present { value: "!cancelled()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// SELF-HOSTED (operator 2026-08-30): the gunb-ai hosted-minutes pool is exhausted and
+// the business IS self-hosted CI minutes - the private roster dogfoods the same
+// [self-hosted, linux, arm64] fleet the public floor already runs on.
+// Constructed from the extdeps label vocabulary (gunbc#9743), not string literals:
+// the three default labels every self-hosted runner carries, derived from the typed
+// kernel and architecture; custom labels join through the third argument when the
+// fleet starts assigning them.
+fn witnesses_job() -> Job {
+  Job {
+    id: "witnesses",
+    name: none,
+    runner: SelfHosted { labels: self_hosted_labels(kernel: Linux, arch: Aarch64, custom: []) },
+    steps: [
+      checkout_private_step(),
+      checkout_public_step(),
+      record_public_revision_step(),
+      setup_rust_step(),
+      build_gunbc_step(),
+      run_witnesses_step(),
+      annotation_compile_step(),
+    ],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: 90,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+// THE FOUR-HOURLY TIMER IS AN OPERATOR-APPROVED INTERIM (A SCAFFOLD), NOT THE INSTRUMENT WE WANT.
+//
+// APPROVAL: operator ruling 2026-09-14. DESIGN section 5 requires scaffold approval to be external
+// to the diff, because an author who can write a scaffold can equally write a row claiming it was
+// approved; this row records the ruling, it does not constitute it.
+//
+// WHAT IT BUYS. This repository composes against PUBLIC main resolved at run time (public_root_ref
+// above), and until now the only triggers were push, pull_request and manual dispatch -- all three
+// driven by PRIVATE activity. Nothing re-resolved the composition when PUBLIC main moved. So between
+// a public merge and the next private push, private main did not go red: it went SILENT, holding a
+// green that predated the cause. Receipt: private main last ran 2026-09-14T06:52:02Z green; public
+// gunbc#11310 merged at 07:02:38Z deleting AcceptedRoadmapNodeIdsProjection and three siblings from
+// gunbc.roadmap_authority; private main did not run again for hours, reporting green the whole time
+// over a composition that no longer existed. A stale green is silent wrongness (DESIGN section 5);
+// a red that names no cause is merely expensive. This timer converts the first into the second.
+//
+// WHAT IT DOES NOT BUY, STATED PLAINLY BECAUSE IT IS THE COST: A SCHEDULED RED NAMES NO CAUSE. It
+// fires on the clock, not on the public merge, so it cannot say which public change invalidated the
+// composition, it lands on no author, and it arrives up to four hours after the fact. It is an
+// approximation of the trigger this actually wants, and it is chosen only because that trigger does
+// not exist yet.
+//
+// DISSOLUTION TRIGGER -- THE CAPABILITY, NOT AN ARTIFACT (DESIGN section 4b(3)): repository_dispatch
+// modelled END TO END in extdeps.github.actions WorkflowTrigger -- the constructor, its arm in
+// workflow_trigger_is_merge_group, and its arm in the serializer match in
+// extdeps.languages.yaml.gha_workflow -- AND public merge to main firing it at gunbc-private. That
+// whole capability is what makes a red name its cause. NOT satisfied by the constructor existing,
+// by this row being revisited, or by the timer being tuned. When it lands, DELETE this row and the
+// Schedule trigger together; the timer is not kept as a belt-and-braces second path, because a
+// second trigger for one question is the parallel authority DESIGN section 3 forbids.
+//
+// WHY 4 HOURS AND NOT HOURLY. The interval IS the worst-case silent window. Below the run's own
+// duration (about 22 minutes, measured) a shorter interval buys nothing because runs queue on one
+// runner; and private pushes already close the window for free whenever they happen, so the timer
+// only has to cover the gaps, which are overnight-shaped. Hourly costs four times as much for a
+// window push traffic mostly closes anyway. Renders as "0 0,4,8,12,16,20 * * *".
+data witnesses_interim_schedule: CronSchedule = CronSchedule {
+  minute: Exact { value: 0 },
+  hour: Listed { values: [0, 4, 8, 12, 16, 20] },
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard,
+}
+
+// THE SELF-HOSTED POOL, AND THE CANCELLATION RISK THAT CHOICE CARRIES.
+//
+// THE HEADING THIS BLOCK USED TO CARRY WAS WRONG AND IS CORRECTED HERE. It read "A GITHUB-HOSTED
+// RUNNER, DELIBERATELY, AND NOT THE FLEET'S SELF-HOSTED POOL" while witnesses_job directly below
+// declared, and still declares, SelfHosted { labels: self_hosted_labels(kernel: Linux,
+// arch: Aarch64) } -- and while the annotation forty lines above says the roster "dogfoods the same
+// [self-hosted, linux, arm64] fleet the public floor already runs on". The emitted YAML agrees with
+// the declaration: runs-on: [self-hosted, linux, arm64]. So the heading asserted the opposite of the
+// row it sat on. The contradiction PREDATES e0bfda2 (2026-08-30, runner labels constructed from the
+// extdeps vocabulary): before that commit the field already read SelfHosted, so that refactor did
+// not reverse a decision, and this was a stale claim rather than a silent flip.
+//
+// THE MEASUREMENT UNDERNEATH IT IS EVIDENCE AND IS KEPT. Measured 2026-08-26: the self-hosted pool
+// cancelled 39 percent of 200 runs inside three and a half hours and destroyed 943 minutes of wall
+// clock in long cancellations. It was cited FOR the proposition that adding this repository's load
+// to that pool would make the private signal as unreliable as the thing it is supposed to check.
+// That argument is still the right argument; only the claim about which runner this job uses was
+// false. This job runs on the pool that measurement is about.
+//
+// RE-MEASURED 2026-09-14, because the schedule below adds load to exactly that pool and the
+// 2026-08-26 reading predicted what that would cost. Two readings, carried rather than averaged:
+//   - THIS workflow: 200 runs, 2026-09-13T03:20Z to 2026-09-14T15:34Z -- 152 success, 45 failure,
+//     3 still running, ZERO cancelled.
+//   - The PUBLIC floor on the SAME pool: 300 runs over the preceding 10 hours -- 12.7 percent
+//     cancelled.
+// So the pool has NOT become clean and the 2026-08-26 measurement is NOT retired. Cancellation is
+// concentrated in the public floor's long, high-churn jobs and was not observed for this job at all.
+// The honest limit: the two populations differ in arrival rate, and a 36-hour window is not the
+// three-and-a-half-hour burst the original measured. This establishes nothing about a burst.
+//
+// WHAT IT DOES ESTABLISH is the only thing the schedule needs. This workflow already runs about 133
+// times a day on push and pull_request. A four-hourly timer adds six: a 4.5 percent increase in this
+// job's load on the pool. The 2026-08-26 argument was about ADDING THIS REPOSITORY'S LOAD to the
+// pool; that load is already there, and the timer is a rounding error on it.
+data private_witness_workflow: Workflow = Workflow {
+  name: "witnesses",
+  run_name: none,
+  on: [
+    WorkflowDispatch { inputs: [] },
+    Push { branches: ["main"], paths: [] },
+    PullRequest {
+      branches: ["main"],
+      types: [Opened, Synchronize, Reopened, ReadyForReview]
+    },
+    Schedule { cron: witnesses_interim_schedule },
+  ],
+  concurrency: none,
+  jobs: [witnesses_job()],
+  env: none,
+  permissions: Present { value: WorkflowPermissions {
+    contents: Present { value: PermRead },
+    pull_requests: none,
+    issues: none,
+    actions: none,
+    id_token: none
+  } }
+}
+
+fn expected_witnesses_yml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: private_witness_workflow))
+}
+
+// THE VERIFIER MUST NOT BE DISCOVERED BY THE ARTIFACT IT VERIFIES, and the first shape of this
+// repair was exactly that mistake. Enrolling the drift witness in private_witnesses puts its run
+// step inside witnesses.yml -- so the precise failure the witness exists to catch, a committed
+// witnesses.yml left at bytes that omit the new step, deletes the verifier along with the step.
+// GitHub executes the stale YAML, the old roster passes, and the job greens over the drift. That is
+// the inert-lens defect one level up: the check is present in the authority and absent from what
+// actually runs.
+//
+// So the drift check is emitted to its OWN workflow file, whose existence GitHub discovers
+// independently of anything expected_witnesses_yml() produces. Removing the drift step from
+// witnesses.yml no longer removes the check, because the check was never in witnesses.yml.
+//
+// WHAT THIS DOES NOT CLOSE, stated rather than implied: this workflow verifies itself as well as
+// witnesses.yml, but a committed projection-drift.yml that dropped its own run step would not be
+// caught by anything here -- nothing outside the pair is watching the pair. That residue is why the
+// rung is mechanically preventable and not structural: safety still depends on this file executing.
+// Closing it needs a required status check bound by name outside the repository's own YAML, which
+// is a branch-protection fact this repository cannot declare.
+fn projection_drift_run_script() -> String {
+  join([
+    "set -u\n",
+    "cd ", public_checkout_path, "\n",
+    "GUNBC=\"$PWD/target/release/gunbc\"\n",
+    "PRIVATE_ROOT=\"$(cd .. && pwd)\"\n",
+    "COMPOSE=\"", compose_root_env_default, "\"\n",
+    "rm -rf \"$COMPOSE\"\n",
+    "git worktree prune\n",
+    "git worktree add --detach \"$COMPOSE\" HEAD\n",
+    "mkdir -p ", private_overlay_dir, "\n",
+    "cp -a \"$PRIVATE_ROOT/dag\" ", private_overlay_dir, "/dag\n",
+    "ln -sfn \"$PRIVATE_ROOT\" \"$COMPOSE/private_repo\"\n",
+    "cd \"$COMPOSE\"\n",
+    "echo \"private_overlay is a generated ingest copy of the private checkout, composed into a detached worktree OUTSIDE the repository root so no auto-push can reach it; do not edit it. Edit the private checkout. Dissolves when: ", overlay_copy_dissolution, "\"\n",
+    "echo \"LOCAL RUNS: ", overlay_local_method, "\"\n",
+    "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR || true\n",
+    "unset GUNBC_NATIVE_CACHE_ROOT || true\n",
+    "\"$GUNBC\" run ", source_roots_argv,
+    " --entry \"", private_entry_prefix, projection_drift_witness.entry,
+    "\" --function \"", projection_drift_witness.function, "\"\n",
+  ], "")
+}
+
+fn run_projection_drift_step() -> Step {
+  RunStep {
+    name: Present { value: "Check every committed projection against its authority" },
+    id: none,
+    run: projection_drift_run_script(),
+    shell: none,
+    env: Present { value: [kv(key: "GUNBC_MEMORY_BUDGET_BYTES", value: yaml_int(n: 6442450944))] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn projection_drift_job() -> Job {
+  Job {
+    id: "projection-drift",
+    name: none,
+    runner: SelfHosted { labels: self_hosted_labels(kernel: Linux, arch: Aarch64, custom: []) },
+    steps: [
+      checkout_private_step(),
+      checkout_public_step(),
+      record_public_revision_step(),
+      setup_rust_step(),
+      build_gunbc_step(),
+      run_projection_drift_step(),
+    ],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: 60,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+data projection_drift_workflow: Workflow = Workflow {
+  name: "projection-drift",
+  run_name: none,
+  on: [
+    WorkflowDispatch { inputs: [] },
+    Push { branches: ["main"], paths: [] },
+    PullRequest {
+      branches: ["main"],
+      types: [Opened, Synchronize, Reopened, ReadyForReview]
+    },
+  ],
+  concurrency: none,
+  jobs: [projection_drift_job()],
+  env: none,
+  permissions: Present { value: WorkflowPermissions {
+    contents: Present { value: PermRead },
+    pull_requests: none,
+    issues: none,
+    actions: none,
+    id_token: none
+  } }
+}
+
+fn expected_projection_drift_yml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: projection_drift_workflow))
+}
+
+// THE PROJECTION HAD NO CONSUMER, WHICH IS THE INERT-LENS TIER RATHER THAN COVERAGE. This module
+// declares itself the authority for the workflow files below, and the expected_* functions compute
+// the bytes that authority implies -- but until this row nothing called them. A committed file and
+// its declared producer could disagree indefinitely and every witness would still pass, because no
+// witness asked. Machinery that exists while nothing gates on it is worse than absent: the
+// annotation at the top of this module claims the YAML is emitted, and that claim was checked by a
+// human reading the diff, which is exactly the manual step a projection exists to remove.
+//
+// THE DESTINATIONS ARE NOW MODELLED TOO. The paths lived only inside that annotation, so the one
+// fact tying each producer to the file it produces was unreachable from the graph -- a projection
+// that cannot say where it lands cannot be compared against what landed.
+data witnesses_yml_path: NonEmptyStr = ".github/workflows/witnesses.yml"
+
+data projection_drift_yml_path: NonEmptyStr = ".github/workflows/projection-drift.yml"
+
+// The two files above are emitted by THIS module, so this is their authority. It is a row and
+// not a literal at each use because the drift refusal, the enrolled rows and the controls all
+// cite it, and three spellings of one module name is the fork this repository keeps paying for.
+data private_witness_workflow_authority: NonEmptyStr = "strategy.private_witness_workflow"
+
+// THE EXPECTATION CROSSES AS DATA -- A PATH AND ITS BYTES -- NOT AS A GENERATOR. Each row carries
+// what the authority says the file should contain, already computed, so the observer folds over
+// rows rather than dispatching to a producer. No function value is carried, which is the shape
+// public #9808 established when it dissolved fn-valued transforms into declared rows, and it is the
+// shape a shared public/private drift observer would need if one is ever built.
+type ProjectedArtifact {
+  path: NonEmptyStr
+  expected: String
+  authority: NonEmptyStr
+}
+
+fn projected_artifacts() -> List<ProjectedArtifact> {
+  [
+    ProjectedArtifact {
+      path: witnesses_yml_path,
+      expected: expected_witnesses_yml(),
+      authority: private_witness_workflow_authority,
+    },
+    ProjectedArtifact {
+      path: projection_drift_yml_path,
+      expected: expected_projection_drift_yml(),
+      authority: private_witness_workflow_authority,
+    },
+  ]
+}
+
+// The comparison takes BOTH sides as parameters rather than reading the disk or calling the
+// producer itself. That keeps it a pure decision the witness can put a discriminating RED through
+// without perturbing the working tree: drift is authorable as an argument here, where a
+// disk-reading predicate would make the refusal expressible only by corrupting a committed file.
+type ProjectionAgreement
+  = ProjectionAgrees
+  | ProjectionDrifted { detail: String }
+
+// THE REFUSAL NAMES THE PRODUCER YOU HAVE TO RE-RUN, and it reads that name off the row rather
+// than from a literal here. The literal said strategy.private_witness_workflow for every artifact,
+// which was true while this module emitted both enrolled files and became false the moment the
+// node-rental page, the two buyer CSVs and the plan tracker were enrolled -- four of six rows named
+// a module that does not produce them, so the diagnostic sent a fixer to regenerate the wrong
+// thing. A drift refusal whose remedy sentence is wrong costs more than no sentence.
+fn projection_agreement(
+  path: NonEmptyStr,
+  authority: NonEmptyStr,
+  committed: String,
+  expected: String,
+) -> ProjectionAgreement {
+  if committed == expected {
+    ProjectionAgrees
+  } else {
+    ProjectionDrifted {
+      detail: join([
+        "committed ", path,
+        " disagrees with its authority ", authority,
+      ], "")
+    }
+  }
+}
+
+// A READ REFUSAL IS NOT DRIFT AND KEEPS ITS OWN ARM. An unreadable file and a file whose bytes
+// disagree have opposite remedies -- repair the composition versus regenerate the projection -- and
+// the filesystem substrate already hands us that distinction as FilesystemReadSucceeded |
+// FilesystemReadRefused. Collapsing both into "drifted" would erase it at the very next fold, which
+// is the state-space conflation the substrate spent a type preventing. The fold takes the read
+// OUTCOME as a parameter, so a synthetic refusal fixture can assert the refusing arm exactly,
+// rather than the arm being reachable only through a real filesystem failure.
+type ProjectedArtifactObservation
+  = ProjectedArtifactObserved { path: NonEmptyStr, agreement: ProjectionAgreement }
+  | ProjectedArtifactReadRefused { path: NonEmptyStr, cause: String }
+
+fn projected_artifact_observation(
+  path: NonEmptyStr,
+  authority: NonEmptyStr,
+  read: FilesystemReadOutcome,
+  expected: String,
+) -> ProjectedArtifactObservation {
+  match read {
+    FilesystemReadSucceeded { content } =>
+      ProjectedArtifactObserved {
+        path: path,
+        agreement: projection_agreement(
+          path: path, authority: authority, committed: content, expected: expected),
+      }
+    FilesystemReadRefused { error } =>
+      ProjectedArtifactReadRefused { path: path, cause: error }
+  }
+}
+
+fn projected_artifact_observation_ok(o: ProjectedArtifactObservation) -> Bool {
+  match o {
+    ProjectedArtifactObserved { path, agreement } => match agreement {
+      ProjectionAgrees => true
+      ProjectionDrifted { detail } => false
+    }
+    ProjectedArtifactReadRefused { path, cause } => false
+  }
+}
+
+fn projected_artifact_observation_detail(o: ProjectedArtifactObservation) -> String {
+  match o {
+    ProjectedArtifactObserved { path, agreement } => match agreement {
+      ProjectionAgrees => join(["", path, " agrees with its authority"], "")
+      ProjectionDrifted { detail } => detail
+    }
+    ProjectedArtifactReadRefused { path, cause } =>
+      join(["could not read committed ", path, ": ", cause], "")
+  }
+}

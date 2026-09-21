@@ -1,0 +1,170 @@
+module test.claim.demand_utilization_witness
+
+import std.types { Bool, Int }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.demand_utilization {
+  scenario_table, scenario_count, mix_count, best_mix_for, us_only, evaluate, balanced_mix,
+  breakeven_low_permille, breakeven_high_permille, ubicloud_two_vcpu_minute_micro,
+  shape_gentle, shape_moderate, shape_sharp, agentic_flat_share_bet, bet_percent, bet_is_hypothesis,
+  every_mix_sums_to_hundred, flatten_preserves_mean, utilization_never_exceeds_full,
+  balanced_beats_us_only, flat_share_raises_utilization, grid_is_unmeasured,
+  margin_claim_is_admissible,
+  price_points, price_ubicloud_list, price_under_list, price_margin_safe_low, price_grid_minimum,
+  implication, grid_floor_ceiling_micro, two_vcpu_slots, no_price_is_adopted, price_clears_every_grid_point,
+  price_hetzner_cax11_cap, full_utilization_floor_low_micro, full_utilization_floor_high_micro, price_over_full_floor_high_permille,
+  packing_axis, packing_is_unmeasured, packing_implication,
+}
+
+// THE GRID IS A GRID: three shapes by three flat shares by fifteen mixes, every mix sums to 100,
+// flattening preserves volume, and no scenario reports more than full utilization.
+fn grid_is_well_formed() -> Bool {
+  mix_count() == 15
+    && scenario_count() == 135
+    && every_mix_sums_to_hundred()
+    && flatten_preserves_mean(shape: shape_gentle, flat_percent: 30)
+    && flatten_preserves_mean(shape: shape_sharp, flat_percent: 60)
+    && utilization_never_exceeds_full(rows: scenario_table())
+    && grid_is_unmeasured()
+}
+
+// THE OPERATOR'S TWO CLAIMS, EXECUTED ON EVERY ROW (review repair, P2: all nine shape/flat rows,
+// not four). A global mix smooths demand: the balanced three-region mix beats US-only on every
+// shape at every flat share. Agentic flattening raises utilization: monotone in the flat share on
+// every shape. Neither is asserted from a picked curve.
+fn global_mix_and_flattening_smooth_demand() -> Bool {
+  balanced_beats_us_only(shape: shape_gentle, flat_percent: 0)
+    && balanced_beats_us_only(shape: shape_gentle, flat_percent: 30)
+    && balanced_beats_us_only(shape: shape_gentle, flat_percent: 60)
+    && balanced_beats_us_only(shape: shape_moderate, flat_percent: 0)
+    && balanced_beats_us_only(shape: shape_moderate, flat_percent: 30)
+    && balanced_beats_us_only(shape: shape_moderate, flat_percent: 60)
+    && balanced_beats_us_only(shape: shape_sharp, flat_percent: 0)
+    && balanced_beats_us_only(shape: shape_sharp, flat_percent: 30)
+    && balanced_beats_us_only(shape: shape_sharp, flat_percent: 60)
+    && flat_share_raises_utilization(shape: shape_gentle)
+    && flat_share_raises_utilization(shape: shape_moderate)
+    && flat_share_raises_utilization(shape: shape_sharp)
+}
+
+// THE BEST MIX IS NOT THE BALANCED ONE. On the moderate and sharp shapes the argmax over the grid is
+// US and APAC at 50/50 -- thirteen hours apart, so one region's window sits in the other's trough --
+// and Europe adds nothing at the grid's 25-point step. Pinned so a shape change that moves the
+// answer is a visible diff.
+fn best_mix_is_us_apac_on_moderate_and_sharp() -> Bool {
+  let m = best_mix_for(shape: shape_moderate, flat_percent: 0)
+  let s = best_mix_for(shape: shape_sharp, flat_percent: 0)
+  m.mix.us_percent == 50 && m.mix.eu_percent == 0 && m.mix.apac_percent == 50
+    && s.mix.us_percent == 50 && s.mix.eu_percent == 0 && s.mix.apac_percent == 50
+    && m.utilization_permille == 711
+    && s.utilization_permille == 560
+    && us_only(shape: shape_moderate, flat_percent: 0).utilization_permille == 426
+    && us_only(shape: shape_sharp, flat_percent: 0).utilization_permille == 315
+}
+
+// THE FLOOR, NOT THE COST (review repair, P1). Ubicloud arm standard-2 lists at 1250 micro-dollars
+// per minute. At the 2026-09-14 site floor spread over FULL utilization a 2-vCPU sold minute carries
+// 62-99 micro of floor, so the lowest utilization at which list covers the floor is 50-80 per mille
+// (ceiling division, review repair P2: the 49 and 79 that truncation returned still lose). List
+// exceeds the floor at every grid point; the worst row (sharp, US-only, high band) carries 317 micro
+// and list is 3.9x above it. None of this is a margin: the floor carries cost_floor's unquoted rows
+// at zero, and the module's own standing refuses the margin claim while they are unpriced.
+fn list_exceeds_the_floor_at_every_grid_point_and_no_margin_is_claimed() -> Bool {
+  ubicloud_two_vcpu_minute_micro() == 1250
+    && full_utilization_floor_low_micro() == 62
+    && full_utilization_floor_high_micro() == 99
+    && breakeven_low_permille() == 50
+    && breakeven_high_permille() == 80
+    && all(scenario_table(), r => r.list_over_floor_permille > 1000)
+    && us_only(shape: shape_sharp, flat_percent: 0).list_over_floor_permille == 3943
+    && us_only(shape: shape_sharp, flat_percent: 0).floor_per_two_vcpu_minute_high_micro == 317
+    && best_mix_for(shape: shape_moderate, flat_percent: 0).list_over_floor_permille == 8928
+    && !margin_claim_is_admissible()
+}
+
+// THE BET IS A HYPOTHESIS ROW, NOT A LOAD-BEARING NUMBER: its percent is on the grid's own axis and
+// the conclusion above holds at flat share 0.
+fn bet_is_a_row_not_a_premise() -> Bool {
+  bet_is_hypothesis(s: agentic_flat_share_bet)
+    && bet_percent(s: agentic_flat_share_bet) == 30
+    && us_only(shape: shape_sharp, flat_percent: 0).list_over_floor_permille > 1000
+}
+
+// THE PRICE POINTS AND THEIR IMPLICATIONS, DERIVED. Five points, none adopted. The grid's floor
+// ceiling is 317 micro, so every candidate down to 320 sits above the floor at every scenario. At
+// 1,000 micro -- the operator's no-marketing candidate -- the floor is covered from 6.3-10.0
+// percent utilization, revenue at ten percent utilization is $5.6k/month, and at the best moderate
+// mix (71 percent) $39.9k/month, $34.3k of it above the high-band site floor -- headroom for the
+// unpriced rows, not margin. At the grid minimum the worst point keeps 3 micro: a floor, not a price.
+fn price_points_imply_what_they_imply() -> Bool {
+  let list = implication(p: price_ubicloud_list)
+  let under = implication(p: price_under_list)
+  let low = implication(p: price_margin_safe_low)
+  let min = implication(p: price_grid_minimum)
+  count(price_points()) == 5
+    && no_price_is_adopted()
+    && two_vcpu_slots() == 1280
+    && grid_floor_ceiling_micro() == 317
+    && all(filter(price_points(), p => p.micro_per_two_vcpu_minute >= 320), p => price_clears_every_grid_point(p: p))
+    && list.breakeven_low_permille == 50 && list.breakeven_high_permille == 80
+    && under.breakeven_low_permille == 63 && under.breakeven_high_permille == 100
+    && under.revenue_at_ten_percent_micro == 5606400000
+    && under.revenue_at_best_moderate_micro == 39861504000
+    && under.contribution_over_site_floor_low_at_best_moderate_micro == 34261504000
+    && under.headroom_over_floor_at_worst_grid_point_micro == 683
+    && low.breakeven_high_permille == 200
+    && low.headroom_over_floor_at_worst_grid_point_micro == 183
+    && min.headroom_over_floor_at_worst_grid_point_micro == 3
+    && min.breakeven_high_permille == 313
+}
+
+// HETZNER CAX11 AT THE MONTHLY CAP IS 159 MICRO PER 2-vCPU-MINUTE -- eight times under Ubicloud's
+// list and the number a buyer will quote back. At FULL utilization the site floor is 62-99 micro,
+// so a reserved dedicated-core unit sits 1.6-2.6x under a shared CAX11 pair on the floor. Per
+// minute used it does not: 159 sits below the grid's 317 ceiling, and covering the floor at
+// Hetzner's price needs 39.3-62.9 percent utilization. The goods differ (shared vs dedicated, and
+// CAX is not orderable), which the reference's standing records; the arithmetic is pinned so the
+// comparison is never made from a remembered figure.
+fn hetzner_cax11_bounds_the_reserved_price() -> Bool {
+  price_hetzner_cax11_cap.micro_per_two_vcpu_minute == 159
+    && price_over_full_floor_high_permille(p: price_hetzner_cax11_cap) == 1606
+    && !price_clears_every_grid_point(p: price_hetzner_cax11_cap)
+    && implication(p: price_hetzner_cax11_cap).breakeven_low_permille == 393
+    && implication(p: price_hetzner_cax11_cap).breakeven_high_permille == 629
+    && implication(p: price_hetzner_cax11_cap).headroom_over_floor_at_worst_grid_point_micro == -158
+    && price_over_full_floor_high_permille(p: price_under_list) == 10101
+}
+
+// PACKING: at one vCPU per core the floor sits 1.6x under CAX11 at full utilization; at two, 3.2x;
+// at three, 4.8x -- and the per-minute-used utilization that covers the floor at Hetzner's price
+// falls from 62.3 to 30.9 to 20.8 percent. The axis is unmeasured and applies to a shared-vCPU
+// class only; guaranteed units stay at one.
+fn packing_scales_the_hetzner_gap() -> Bool {
+  let one = packing_implication(vcpus_per_core: 1)
+  let two = packing_implication(vcpus_per_core: 2)
+  let three = packing_implication(vcpus_per_core: 3)
+  packing_is_unmeasured()
+    && count(packing_axis.vcpus_per_core) == 3
+    && one.full_floor_high_micro == 99 && one.hetzner_over_floor_high_permille == 1606 && one.hetzner_breakeven_high_permille == 623
+    && two.full_floor_high_micro == 49 && two.hetzner_over_floor_high_permille == 3244 && two.hetzner_breakeven_high_permille == 309
+    && three.full_floor_high_micro == 33 && three.hetzner_over_floor_high_permille == 4818 && three.hetzner_breakeven_high_permille == 208
+    && three.full_floor_low_micro == 20
+}
+
+fn demand_utilization_witness_all() -> Bool {
+  grid_is_well_formed()
+    && global_mix_and_flattening_smooth_demand()
+    && best_mix_is_us_apac_on_moderate_and_sharp()
+    && list_exceeds_the_floor_at_every_grid_point_and_no_margin_is_claimed()
+    && bet_is_a_row_not_a_premise()
+    && price_points_imply_what_they_imply()
+    && hetzner_cax11_bounds_the_reserved_price()
+    && packing_scales_the_hetzner_gap()
+}
+
+fn demand_utilization_witness_main() -> ProcessExit {
+  if demand_utilization_witness_all() {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "demand_utilization_witness_all returned false" }
+  }
+}

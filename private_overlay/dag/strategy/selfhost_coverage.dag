@@ -1,0 +1,379 @@
+module strategy.selfhost_coverage
+
+import std.types { Bool, String, List, NonEmptyStr }
+import strategy.strategy_model {
+  DecisionReceipt,
+  DecompositionCoverage, PartialCoverage, CompleteCoverage,
+}
+
+// PER-CONTRACT, NOT THE GENERIC KERNEL. This module answers ONE named contract's coverage question
+// -- contract-v2-self-host-fixed-point -- so it lives beside the strategy instantiation rather than
+// inside strategy.strategy_model. Teaching the generic kernel about one named contract would fork
+// the coverage authority: ProgramDecomposition carries no per-contract denominator field, and
+// inventing one would put every other contract's shape under this contract's question.
+//
+// WHY THIS MODULE EXISTS AT ALL. A typed unestablished denominator that nothing derives FROM is
+// honest data, not a wall -- it could be deleted from production without changing any answer. The
+// completeness derivation reads ProgramDecomposition.coverage, so the only way the denominator can
+// gate completeness is for THAT FIELD to be derived from it. That is what this module computes.
+//
+// WHAT THIS MODULE DOES NOT DO. It does not discharge obligations. Decomposition coverage and
+// obligation discharge are DISTINCT LAYERS -- strategy_contract_completion already walks the
+// children for discharge -- so asking here whether every module obligation is done would answer the
+// next layer's question inside this one. The question here is narrower and is the one the kernel's
+// discipline note actually poses: what makes THIS population the right denominator for THIS
+// decomposition.
+
+// THE OPERATOR AUTHORITY, NAMED ONCE. The corpus already treats this exact string as the
+// discriminator for an operator decision -- the decision witness tests receipt.authority against it.
+// It is declared here because this module is the thing that must REFUSE on it.
+//
+// AND THIS CHANGE IS WHAT MAKES THE LITERAL LOAD-BEARING, which is the honest reason the trigger
+// below exists. Before operator_coverage_authorization the string was a CONVENTION: several rows
+// wrote authority: "operator" and a witness compared against it, but nothing refused on the
+// comparison. This module turns it into a WALL. The moment a convention becomes a wall is exactly
+// the moment it should have been modelled, and it was not -- so the residue is declared with its
+// dissolution condition rather than acknowledged and left open.
+//
+// TRIGGER: strategy.strategy_model DecisionReceipt.authority becomes a declared coproduct
+// (DecisionAuthority = Operator | Worker | ...). Stated at the strength it actually entails, because
+// a trigger is a claim about a FUTURE state and gets the same discipline as a claim about the
+// present one:
+//   WHAT BECOMES UNREPRESENTABLE is an ARBITRARY-STRING authority -- a misspelling, a blank, an
+//   invented value. NOT a non-operator receipt: with a coproduct FIELD, DecisionReceipt { authority:
+//   Worker } is still a perfectly representable receipt, and this module already REFUSES it. The
+//   climb is over malformed authorities, which is smaller than "non-operator receipts cannot reach
+//   here" and is the part that is actually entailed.
+//   operator_authority DISSOLVES. There is no string left to compare against.
+//   THE MINT BELOW DOES NOT DISSOLVE. Something must still separate Operator from Worker; with a
+//   closed set that becomes an exhaustive typed MATCH instead of a string comparison -- better
+//   typed, still present, still refusing. It could only dissolve if an operator-gated position
+//   could structurally demand the Operator arm rather than receive a whole DecisionReceipt, and
+//   WHETHER THAT SHAPE IS RIGHT IS AN OPEN DESIGN QUESTION NOBODY HAS SETTLED. This annotation does
+//   not promise it.
+//
+// AND NOTHING IN THIS REPOSITORY WILL ENCOUNTER THIS RESIDUE, WHICH IS WHY THE TRIGGER ALONE IS NOT
+// ENOUGH. I looked rather than assuming. The criterion that asks the right question EXISTS -- public
+// gunbc.design_argument DECLARES s3.single-authority, "Does the change give one concept a second name
+// or a second home, or cite a position where a symbol exists?", and gunbc.roadmap.roadmap_review_criteria
+// DERIVES one reviewer per row from it -- but those reviewers are spawned by the PUBLIC roadmap
+// review belt and do not run on this repository. This repository's standing
+// mechanisms are exactly two, the witness roster and the projection-drift gate, and NEITHER reads for
+// a literal standing where a modeled value exists. So no review criterion, census or gate here will
+// bring the ~10 mint sites up again.
+//
+// That is stated as a GAP rather than papered over with a plausible-sounding mechanism: naming a
+// reviewer that does not run on this repo, or a lane nobody has dispatched, would MANUFACTURE
+// TRACKING -- the same defect as a fictitious owner, one layer down, and the defect this file has
+// been corrected for repeatedly. Closing it needs a dispatched lane, not another annotation.
+//
+// OWNER: explicitly NOT this module. DecisionReceipt is generic-kernel and serves every contract,
+// and the literal is already minted at roughly ten sites across the strategy graph. A per-contract
+// module narrowing a kernel type that every contract shares is the fork this file's header refuses,
+// which is why the trigger is NAMED here and BUILT elsewhere.
+data operator_authority: String = "operator"
+
+// AN AUTHORIZED RULE MUST BE AN OPERATOR'S, STRUCTURALLY. The previous shape carried a bare
+// DecisionReceipt on the authorized arm and never tested its authority, so
+// DecisionReceipt { authority: "worker" } and DecisionReceipt { authority: "operator" } were
+// INDISTINGUISHABLE to a wall whose entire claim was operator gating. sole_constructor on the
+// verdict stopped a caller minting the ANSWER; it did nothing about the INPUTS to this module's
+// public producer.
+//
+// So the authorization is its own sole_constructor carrier, obtainable ONLY from the refusing mint
+// below. A non-operator receipt cannot produce one, therefore cannot inhabit CoverageRuleAuthorized,
+// therefore cannot reach CompleteCoverage THROUGH THIS DERIVATION.
+//
+// THAT IS THE WHOLE CLAIM, AND THE STRONGER ONE IS FALSE. This does not make a hand-authored
+// CompleteCoverage impossible anywhere: strategy_model's DecompositionCoverage still carries
+// CompleteCoverage as a public arm, so any module may author one into any ProgramDecomposition row
+// with any receipt, and test.claim.strategy_witness does exactly that for its synthetic subjects.
+// What holds is narrower and is what this module is for: THIS decomposition obtains its coverage
+// through the sealed derivation, and this derivation's authorized-rule input cannot be obtained from
+// a non-operator receipt. Stating the corpus-wide version would be rung inflation -- it would be
+// cited later as coverage that does not exist.
+type OperatorCoverageAuthorization sole_constructor {
+  receipt: DecisionReceipt,
+}
+
+type OperatorAuthorizationOutcome
+  = CoverageAuthorizationAccepted { authorization: OperatorCoverageAuthorization }
+  | CoverageAuthorizationRefused { cause: String }
+
+fn operator_coverage_authorization(receipt: DecisionReceipt) -> OperatorAuthorizationOutcome {
+  if receipt.authority == operator_authority {
+    CoverageAuthorizationAccepted { authorization: OperatorCoverageAuthorization { receipt: receipt } }
+  } else {
+    CoverageAuthorizationRefused {
+      cause: join(["a coverage-rule authorization must carry the operator authority; this receipt carries: ", receipt.authority], ""),
+    }
+  }
+}
+
+fn operator_authorization_receipt(a: OperatorCoverageAuthorization) -> DecisionReceipt {
+  a.receipt
+}
+
+// THE DENOMINATOR, AND WHAT TIES IT TO THIS DECOMPOSITION. Its authority -- the public per-module
+// self-host frontier -- was deleted at the root by gunb-ai/gunbc#8344 with no successor, and public
+// gunbc.plans.wave2_prep_design records that no roster row maps to a survivor and that inventing one
+// would fabricate an authority.
+//
+// UNESTABLISHED, NOT EMPTY. An empty list was available and is refused: over `all` an empty
+// population is vacuously complete, so a missing authority would have rendered as FULL module
+// coverage. Only ModuleCoverageDerived carries a denominator, so a coverage rule cannot read one
+// out of the absence.
+//
+// covered_by IS THE RELATION, AND IT IS THE FIELD THE FIRST DRAFT LACKED. A population carrying only
+// ids answers "here are some ids", never "these are the right ids for this decomposition": an
+// earlier positive control passed with a population of ["obl-syn-module"] against a decomposition
+// whose sole child was "syn-obl", entirely unrelated, and still reached completeness. covered_by
+// names the CHILD OBLIGATION of this decomposition that the population is the denominator FOR, and
+// the rule refuses when that child is not declared in the decomposition it is answering for.
+type SelfHostModuleCoverage
+  = ModuleCoverageDerived { covered_by: NonEmptyStr, obligation_ids: List<NonEmptyStr> }
+  | ModuleCoverageUnestablished { missing_authority: NonEmptyStr, restoration_trigger: NonEmptyStr }
+
+// THE OTHER PREREQUISITES STAY INDEPENDENT, which is why they are their own rows rather than
+// sentences inside one open_note. Collapsing them into the denominator would mean restoring the
+// public frontier authority silently discharged the bootstrap/host-kernel membership question and
+// the retirement-contract boundary as well -- three distinct facts answered by one, which is the
+// fork this file is shaped to avoid.
+type SelfHostCoveragePrerequisite
+  = PrerequisiteOpen { subject: NonEmptyStr, open_note: NonEmptyStr }
+  | PrerequisiteSettled { subject: NonEmptyStr, receipt: DecisionReceipt }
+
+// COMPLETENESS IS NOT A WORKER'S VERDICT AND NOT A DERIVATION'S EITHER. strategy.strategy_model
+// contribution_kind_discipline_note rules that the operator authorizes the coverage RULE and
+// completeness is then DERIVED from a declared population. So this module REQUIRES the authorization
+// as an input and can never substitute for it.
+type SelfHostCoverageRule
+  = CoverageRuleUnauthorized { missing_authorization: NonEmptyStr }
+  | CoverageRuleAuthorized { authorization: OperatorCoverageAuthorization }
+
+// THE SEALED VERDICT. sole_constructor, so the only way to obtain a SelfHostDecompositionCoverage is
+// to run the derivation below -- no other module can mint one. This is the same confinement
+// strategy.workload_benchmark_suite CensusVerdict carries, for the same reason: a verdict a consumer
+// can author is a verdict the derivation does not own.
+//
+// WHAT THE SEAL DOES NOT DO, stated because the distinction is exactly where this module's first
+// draft overclaimed: it confines THIS type, not DecompositionCoverage. A future editor can still
+// replace the call in the decomposition row with a hand-authored PartialCoverage or CompleteCoverage.
+// That edit is visible in the row and reds the witness, which is mechanical prevention, not
+// structural impossibility.
+type SelfHostDecompositionCoverage sole_constructor {
+  coverage: DecompositionCoverage,
+}
+
+fn selfhost_coverage_value(c: SelfHostDecompositionCoverage) -> DecompositionCoverage {
+  c.coverage
+}
+
+// THE POPULATION MUST BE READ, NOT MERELY MATCHED. An earlier draft bound obligation_ids on the
+// Derived arm and never consulted it, so ModuleCoverageDerived { obligation_ids: [] } reached
+// CompleteCoverage -- an EMPTY population yielding FULL coverage, the exact defect the Unestablished
+// arm exists to prevent, one layer inside the repair. The shape has a name: ARM-SIGNIFICANT BUT
+// CONTENT-INERT. Matching the arm is not reading the fact.
+//
+// THREE DISTINCT REFUSALS, because they have three different remedies and a reader of the open_note
+// has to learn which one to go get. Emptiness is not non-coverage, and neither is a denominator that
+// counts one module twice -- a duplicated member inflates any ratio taken over it, which is what a
+// denominator is for.
+type SelfHostPopulationStanding
+  = PopulationEmpty
+  | PopulationNotCovered { covered_by: NonEmptyStr }
+  | PopulationDuplicated { obligation_id: NonEmptyStr }
+  | PopulationCovered
+
+// NO STRING SENTINELS, AND NO BLANK IDS AT THE POSITIONS THAT ENFORCE. An earlier draft folded to
+// "" for "no duplicate found" and read that back as the gate, so a population containing a
+// duplicated EMPTY id folded to "" and was read as clean -- an absence the derivation absorbed
+// instead of refusing. The "none" case is a CONSTRUCTOR now, so it cannot be confused with a value
+// of the thing sought.
+//
+// TWO POSITIONS, MEASURED, AND THEY DIFFER IN KIND. Read this as a statement about these two
+// positions and nothing wider; it was narrowed three times because each wider sentence was false.
+//
+//   LITERAL INTO A REFINED FIELD -- the predicate IS evaluated. A blank literal is refused
+//   ("type mismatch: expected 'Product(NonEmptyStr)', got 'Primitive(String)'") and the SAME
+//   construction with "x" compiles. Blankness is the only difference between those two runs, which
+//   is what establishes that non_empty ran rather than a bare nominal String/NonEmptyStr mismatch.
+//   So a blank obligation id or prerequisite field is genuinely unwritable HERE.
+//
+//   LIST TYPE ARGUMENT THROUGH A FUNCTION BOUNDARY -- the contents are never consulted. A
+//   List<String> is accepted where List<NonEmptyStr> is declared, and NOT ONLY FOR BLANKS: every
+//   green run of this module does it, since gunbc_strategy's selfhost_child_obligation_ids is a
+//   List<String> of non-blank ids feeding decomposition_child_ids. The blank is not special; the
+//   whole list crosses. selfhost_child_obligation_ids CANNOT be retyped away, because the same row
+//   feeds ProgramDecomposition.child_obligation_ids, which is List<String> in the generic kernel.
+//
+// SO A BLANK CHILD ID IS STILL WRITABLE THROUGH THAT PARAMETER, AND NO DOWNSTREAM DEFECT FROM ONE IS
+// DEMONSTRATED HERE: a blank child id simply fails to match in id_declared. This states the gap and
+// deliberately does NOT add a guard -- inventing a refusal for a harm nobody has shown is the
+// invented-requirement move this module already refused once over cardinality.
+//
+// NOT CLAIMED, because not measured: anything about other predicates, other positions, or whether
+// the same list-argument behaviour holds for PathSegment and its '..', '/', CR, LF, NUL refusals.
+// Do not read this as "refinements are not enforced" -- one position enforces and one does not.
+
+type DuplicateScan
+  = NoDuplicate
+  | DuplicateFound { obligation_id: NonEmptyStr }
+
+fn id_occurs_once(id: NonEmptyStr, ids: List<NonEmptyStr>) -> Bool {
+  fold(ids, init: 0, f: fn(acc, other) { if other == id { acc + 1 } else { acc } }) == 1
+}
+
+fn first_duplicated_id(ids: List<NonEmptyStr>) -> DuplicateScan {
+  fold(ids, init: NoDuplicate, f: fn(acc, id) {
+    match acc {
+      DuplicateFound { obligation_id } => acc
+      NoDuplicate => if id_occurs_once(id: id, ids: ids) { NoDuplicate } else { DuplicateFound { obligation_id: id } }
+    }
+  })
+}
+
+fn id_declared(id: NonEmptyStr, ids: List<NonEmptyStr>) -> Bool {
+  fold(ids, init: false, f: fn(acc, other) { acc || other == id })
+}
+
+fn selfhost_population_standing(
+  covered_by: NonEmptyStr,
+  obligation_ids: List<NonEmptyStr>,
+  decomposition_child_ids: List<NonEmptyStr>,
+) -> SelfHostPopulationStanding {
+  if count(obligation_ids) == 0 {
+    PopulationEmpty
+  } else {
+    if !id_declared(id: covered_by, ids: decomposition_child_ids) {
+      PopulationNotCovered { covered_by: covered_by }
+    } else {
+      match first_duplicated_id(ids: obligation_ids) {
+        NoDuplicate => PopulationCovered
+        DuplicateFound { obligation_id } => PopulationDuplicated { obligation_id: obligation_id }
+      }
+    }
+  }
+}
+
+// THE SAME DISCIPLINE, AND THIS IS THE INSTANCE REVIEW CAUGHT. The fold used to return "" for "none
+// open" and the rule read `if open == ""` as the gate to CompleteCoverage, so a
+// PrerequisiteOpen { subject: "", open_note: "" } folded to "" and passed the wall as though nothing
+// were open. An OPEN prerequisite silently completing is exactly what this row exists to stop.
+type SelfHostPrerequisiteStanding
+  = PrerequisiteAllSettled
+  | PrerequisiteStillOpen { subject: NonEmptyStr, open_note: NonEmptyStr }
+
+fn selfhost_first_open_prerequisite(ps: List<SelfHostCoveragePrerequisite>) -> SelfHostPrerequisiteStanding {
+  fold(ps, init: PrerequisiteAllSettled, f: fn(acc, p) {
+    match acc {
+      PrerequisiteStillOpen { subject, open_note } => acc
+      PrerequisiteAllSettled =>
+        match p {
+          PrerequisiteOpen { subject, open_note } => PrerequisiteStillOpen { subject: subject, open_note: open_note }
+          PrerequisiteSettled { subject, receipt } => acc
+        }
+    }
+  })
+}
+
+// THE RULE, ORDERED SO EVERY REFUSAL NAMES ITSELF. Each blocker produces a PartialCoverage whose
+// open_note says which fact is missing. The ordering is presentation only: any one blocker refuses
+// on its own, and CompleteCoverage is reachable THROUGH THIS DERIVATION only when ALL FOUR hold -- a present population,
+// declared as covered by a child of THIS decomposition and carrying no duplicate member, every other
+// prerequisite settled, and an OPERATOR-authorized coverage rule.
+fn selfhost_decomposition_coverage_for(
+  modules: SelfHostModuleCoverage,
+  prerequisites: List<SelfHostCoveragePrerequisite>,
+  rule: SelfHostCoverageRule,
+  decomposition_child_ids: List<NonEmptyStr>,
+) -> SelfHostDecompositionCoverage {
+  match modules {
+    ModuleCoverageUnestablished { missing_authority, restoration_trigger } =>
+      SelfHostDecompositionCoverage {
+        coverage: PartialCoverage {
+          open_note: join([
+            "module population UNESTABLISHED, so completeness is not derivable: ",
+            missing_authority,
+            " -- restored when: ",
+            restoration_trigger,
+          ], ""),
+        },
+      }
+    ModuleCoverageDerived { covered_by, obligation_ids } =>
+      match selfhost_population_standing(
+        covered_by: covered_by,
+        obligation_ids: obligation_ids,
+        decomposition_child_ids: decomposition_child_ids) {
+        PopulationEmpty =>
+          SelfHostDecompositionCoverage {
+            coverage: PartialCoverage {
+              open_note: "module population PRESENT BUT EMPTY: a denominator of zero modules cannot establish coverage, it only makes every quantifier over it vacuously true",
+            },
+          }
+        PopulationNotCovered { covered_by } =>
+          SelfHostDecompositionCoverage {
+            coverage: PartialCoverage {
+              open_note: join([
+                "module population is NOT TIED TO THIS DECOMPOSITION: it claims to be the denominator for '",
+                covered_by,
+                "', which is not a declared child obligation of this decomposition, so nothing establishes that these are the right modules for it",
+              ], ""),
+            },
+          }
+        PopulationDuplicated { obligation_id } =>
+          SelfHostDecompositionCoverage {
+            coverage: PartialCoverage {
+              open_note: join(["module population counts one module more than once, so it is not a denominator: ", obligation_id], ""),
+            },
+          }
+        PopulationCovered =>
+          match selfhost_first_open_prerequisite(ps: prerequisites) {
+            PrerequisiteStillOpen { subject, open_note } =>
+              SelfHostDecompositionCoverage {
+                coverage: PartialCoverage {
+                  open_note: join(["prerequisite still OPEN -- ", subject, ": ", open_note], ""),
+                },
+              }
+            PrerequisiteAllSettled =>
+              match rule {
+                CoverageRuleUnauthorized { missing_authorization } =>
+                  SelfHostDecompositionCoverage {
+                    coverage: PartialCoverage {
+                      open_note: join(["coverage rule NOT AUTHORIZED: ", missing_authorization], ""),
+                    },
+                  }
+                CoverageRuleAuthorized { authorization } =>
+                  SelfHostDecompositionCoverage {
+                    coverage: CompleteCoverage { receipt: operator_authorization_receipt(a: authorization) },
+                  }
+              }
+          }
+      }
+  }
+}
+
+data selfhost_module_coverage: SelfHostModuleCoverage = ModuleCoverageUnestablished {
+  missing_authority: "a public per-module self-host frontier authority: one row per compiler module carrying its module path and self-host disposition, from which the self-host module obligation denominator derives",
+  restoration_trigger: "such an authority exists on gunb-ai/gunbc main and resolves in this closure; the coverage rule then derives ModuleCoverageDerived over its rows, covered_by the child obligation that carries the remaining modules",
+}
+
+data selfhost_coverage_prerequisites: List<SelfHostCoveragePrerequisite> = [
+  PrerequisiteOpen {
+    subject: "bootstrap/host-kernel membership in the self-host module population",
+    open_note: "whether the bootstrap and host-kernel modules are members of the denominator is open; a population whose membership is undecided cannot establish completeness over itself",
+  },
+  PrerequisiteOpen {
+    subject: "old-generator deletion boundary",
+    open_note: "old-generator deletion belongs to a downstream retirement contract, never this one; until that boundary is drawn, this contract's child set is not known to be the whole of it",
+  },
+]
+
+// THE BOUND DERIVATION LIVES AT THE INSTANTIATION SITE, not here: the decomposition's declared child
+// obligations are strategy.gunbc_strategy's fact, and importing them back would be a cycle. This
+// module owns the RULE; gunbc_strategy owns the FACTS and calls the rule with its own. That split is
+// why this row is the RULE'S STANDING and not the bound verdict.
+data selfhost_coverage_rule: SelfHostCoverageRule = CoverageRuleUnauthorized {
+  missing_authorization: "an operator DecisionReceipt authorizing the coverage RULE for contract-v2-self-host-fixed-point, per strategy.strategy_model contribution_kind_discipline_note -- the operator authorizes the rule, the derivation then establishes completeness from the declared population",
+}
+

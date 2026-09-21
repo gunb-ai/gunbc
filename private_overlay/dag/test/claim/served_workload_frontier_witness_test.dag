@@ -1,0 +1,226 @@
+module test.claim.served_workload_frontier_witness
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import strategy.calendar_date { CalendarDate }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.served_workload_frontier {
+  CandidateClass, WorkloadContract, ContractProperty, PropertyHolds, PropertyFails, PropertyUnread,
+  AdmissionStanding, InsideFrontier, AdmissibleOnCondition, OutsideFrontier, NotYetAssessed,
+  ExclusionKind, IntrinsicallyIncompatible,
+  ArchitectureFit, ArchitectureUnresolved, RunsOnOurSupply,
+  DogfoodStanding, WeConsumeThisToday, WeDoNotConsumeThis,
+  ReplayStanding, NoSpecimenYet, SpecimenNamed,
+  candidate_classes, candidate_remote_build_execution, candidate_customer_database,
+  candidate_agent_workspace,
+  contract_holds, contract_has_a_failure, qualifies_for_frontier, must_be_excluded,
+  is_inside_frontier, is_outside_frontier, is_unsettled, architecture_is_resolved,
+  architecture_runs_on_our_supply, RequiresOtherArchitecture,
+  ServiceShape, CompletedWorkUnit, RecoverableWorkspace, ShapeObligation, CompletionReadable,
+  ShapeObligationUnread, AttachmentFencedAndRecoverable, shape_obligation_holds,
+  obligation_matches_shape,
+  we_consume_it, specimen_is_replayed, property_holds,
+  inside_count, outside_count, dogfood_count, candidate_count, unsettled_count,
+}
+
+// THE CLAIM THAT MAKES THE ROSTER MORE THAN A LIST: a class's AUTHORED standing may never claim
+// more than the DERIVED rule allows. The failure this prevents is the one that costs real money --
+// somebody writes InsideFrontier on a class whose architecture question is open, and the business
+// buys supply for demand that cannot run on it. The red is authorable: promote the RBE row to
+// InsideFrontier while its architecture stays unresolved and this goes red.
+fn admission_standing_is_earned() -> Bool {
+  all(candidate_classes, c => !is_inside_frontier(c: c) || qualifies_for_frontier(c: c))
+}
+
+// AND THE OTHER DIRECTION, WHICH IS THE ONE A HOPEFUL AUTHOR BREAKS: a class with a FAILING
+// contract property may not be admitted or left pending. A failure is a refusal, not a gap.
+fn a_failing_property_forces_exclusion() -> Bool {
+  all(candidate_classes, c => !must_be_excluded(c: c) || is_outside_frontier(c: c))
+}
+
+// UNREAD IS NOT PASSING. contract_holds must refuse a property nobody established, or the whole
+// scheme degrades into "we did not look, so it is fine". The RBE row carries exactly one
+// PropertyUnread -- its resource envelope -- so its contract must NOT hold, and that is asserted
+// against the live row rather than a fixture.
+fn an_unread_property_does_not_satisfy_the_contract() -> Bool {
+  !contract_holds(c: candidate_remote_build_execution.contract)
+    && !contract_has_a_failure(c: candidate_remote_build_execution.contract)
+    && !property_holds(p: candidate_remote_build_execution.contract.resource_use_is_bounded)
+}
+
+// THE DOGFOOD FACT DOES NOT ADMIT THE CLASS, and this is the claim that encodes the operator's
+// actual question. We consume remote build execution today; its architecture question is open; it
+// is therefore NOT inside the frontier. If consuming something were sufficient to admit it, the
+// arm64/amd64 gap would be invisible exactly where it matters.
+fn consuming_it_is_not_admitting_it() -> Bool {
+  we_consume_it(d: candidate_remote_build_execution.dogfood)
+    && !architecture_is_resolved(a: candidate_remote_build_execution.architecture)
+    && !specimen_is_replayed(r: candidate_remote_build_execution.replay)
+    && !is_inside_frontier(c: candidate_remote_build_execution)
+    && is_unsettled(c: candidate_remote_build_execution)
+}
+
+// THE FRONTIER REFUSES SOMETHING. A frontier where every candidate is admissible is decoration,
+// and the excluded row must be excluded STRUCTURALLY rather than for want of evidence -- the
+// database row fails three contract properties, so no replay or survey could rescue it.
+fn the_frontier_excludes_on_structure() -> Bool {
+  is_outside_frontier(c: candidate_customer_database)
+    && must_be_excluded(c: candidate_customer_database)
+    && architecture_is_resolved(a: candidate_customer_database.architecture)
+}
+
+// THE POPULATIONS PARTITION. Every class is inside, outside or unsettled, exactly once -- so a
+// class cannot be silently dropped from the accounting by acquiring a standing nobody counts.
+fn the_roster_partitions() -> Bool {
+  inside_count() + outside_count() + unsettled_count() == candidate_count()
+    && candidate_count() > 1
+    && outside_count() > 0
+    && dogfood_count() > 0
+}
+
+
+// THE COUNTEREXAMPLE FROM REVIEW 67356, BUILT AS A FIXTURE SO THE RED IS AUTHORABLE. A class whose
+// architecture question is ANSWERED and answered NO -- it needs hardware we do not hold -- had been
+// passing the architecture leg of admission, because the fold consumed answered-ness rather than
+// the answer. This is the expensive failure in the module's own words: the business buys supply for
+// demand that cannot run on it. The fixture is the RBE row with every other condition satisfied and
+// the architecture answered negatively, which is the exact shape the review described.
+data probe_answered_but_incompatible: CandidateClass = CandidateClass {
+  key: "probe-answered-but-incompatible",
+  interface: "fixture",
+  shape: CompletedWorkUnit,
+  atomic_unit: "fixture",
+  contract: WorkloadContract {
+    attempts_are_disposable: PropertyHolds { how_established: "fixture" },
+    workers_hold_no_authoritative_state: PropertyHolds { how_established: "fixture" },
+    machine_identity_is_irrelevant: PropertyHolds { how_established: "fixture" },
+    resource_use_is_bounded: PropertyHolds { how_established: "fixture" },
+  },
+  obligation: CompletionReadable { how_established: "fixture" },
+  architecture: RequiresOtherArchitecture {
+    needs: "linux/amd64",
+    options: "buy amd64 supply, or run separate architecture pools",
+  },
+  incumbent: "fixture",
+  dogfood: WeConsumeThisToday { evidence: "fixture" },
+  replay: SpecimenNamed { specimen: "fixture", replayed: true },
+  standing: InsideFrontier { on: CalendarDate { year: 2026, month: 9, day: 17 } },
+  kill_condition: "fixture",
+}
+
+// EVERY OTHER CONDITION HOLDS AND IT STILL MUST NOT QUALIFY. If this ever returns true, a class
+// recorded as unable to run on our hardware is admissible, and the roster claim below would admit
+// it authored as InsideFrontier without complaint.
+fn a_negative_architecture_answer_refuses_admission() -> Bool {
+  contract_holds(c: probe_answered_but_incompatible.contract)
+    && specimen_is_replayed(r: probe_answered_but_incompatible.replay)
+    && architecture_is_resolved(a: probe_answered_but_incompatible.architecture)
+    && !architecture_runs_on_our_supply(a: probe_answered_but_incompatible.architecture)
+    && !qualifies_for_frontier(c: probe_answered_but_incompatible)
+}
+
+
+// THE OPERATOR RULING IS A CONSTRAINT ON ADMISSION, NOT A COMMENT BESIDE IT (review 67379).
+// strategy.ci_product_surface served_workload_segment_ruling excludes life-support needs by name --
+// latency-critical serving with a five-nines expectation is its example -- and this asserts the
+// frontier cannot admit that shape. The fixture is the ruling's excluded case expressed in the
+// frontier's own vocabulary: a latency-critical serving class whose attempts are NOT disposable
+// because a lost worker is a customer-visible outage rather than a re-execution.
+//
+// THE RED IS AUTHORABLE AND IS THE FORK ITSELF: flip attempts_are_disposable to PropertyHolds and
+// the class becomes admissible here while the ruling still excludes it, which is precisely the two
+// independently-editable answers to "do we serve this" that the review warned about. This claim is
+// what makes that divergence fail rather than pass.
+data probe_ruling_excluded_life_support: CandidateClass = CandidateClass {
+  key: "probe-latency-critical-serving",
+  interface: "a request/response endpoint with a five-nines expectation",
+  shape: CompletedWorkUnit,
+  atomic_unit: "one request, with no admissible retry window",
+  contract: WorkloadContract {
+    attempts_are_disposable: PropertyFails {
+      why: "A lost worker is a customer-visible outage rather than a re-execution: the ruling's life-support exclusion in the frontier's own vocabulary.",
+    },
+    workers_hold_no_authoritative_state: PropertyHolds { how_established: "fixture" },
+    machine_identity_is_irrelevant: PropertyHolds { how_established: "fixture" },
+    resource_use_is_bounded: PropertyHolds { how_established: "fixture" },
+  },
+  obligation: CompletionReadable { how_established: "fixture" },
+  architecture: RunsOnOurSupply { evidence: "fixture: architecture is not the reason this is excluded" },
+  incumbent: "fixture",
+  dogfood: WeDoNotConsumeThis { note: "fixture" },
+  replay: SpecimenNamed { specimen: "fixture", replayed: true },
+  standing: OutsideFrontier {
+    kind: IntrinsicallyIncompatible {
+      conflicting_requirement: "The ruling excludes life-support needs by name.",
+    },
+  },
+  kill_condition: "fixture",
+}
+
+fn the_ruling_bounds_what_the_frontier_may_admit() -> Bool {
+  must_be_excluded(c: probe_ruling_excluded_life_support)
+    && !qualifies_for_frontier(c: probe_ruling_excluded_life_support)
+    && is_outside_frontier(c: probe_ruling_excluded_life_support)
+}
+
+
+// THE MIDDLE CASE IS ACTUALLY IN THE MIDDLE, which is the whole reason the row was added. A
+// frontier that can only express "disposable with no state" and "state IS the product" cannot
+// describe the business the operator wants, so this asserts the agent-workspace row sits between
+// them rather than collapsing into either: it is NOT excluded like the database row, and it is NOT
+// admitted, because two properties are still unread.
+//
+// AND THE DOGFOOD CLAIM IS HELD APART FROM ADMISSION HERE TOO. We host our own agent sessions
+// today, and this class still does not qualify -- same discipline as the RBE row, for a different
+// reason: there the architecture is unresolved, here the durable-state split is unbuilt. If either
+// row ever qualifies on consumption alone, both of these claims red.
+fn the_workspace_class_is_neither_admitted_nor_excluded() -> Bool {
+  we_consume_it(d: candidate_agent_workspace.dogfood)
+    && architecture_runs_on_our_supply(a: candidate_agent_workspace.architecture)
+    && !contract_holds(c: candidate_agent_workspace.contract)
+    && !contract_has_a_failure(c: candidate_agent_workspace.contract)
+    && !qualifies_for_frontier(c: candidate_agent_workspace)
+    && !is_outside_frontier(c: candidate_agent_workspace)
+    && is_unsettled(c: candidate_agent_workspace)
+}
+
+
+// THE SHAPE OBLIGATION IS PART OF ADMISSION, NOT COMMENTARY BESIDE IT. The workspace row's
+// obligation is unread because fencing is unbuilt, so the class cannot qualify even though its
+// shared contract properties would otherwise be on their way. The discriminating red: declare the
+// obligation satisfied while fencing does not exist, and the class becomes admissible -- which is
+// the state where two executors may attach one workspace volume and corrupt a repository.
+fn an_unread_shape_obligation_refuses_admission() -> Bool {
+  !shape_obligation_holds(o: candidate_agent_workspace.obligation)
+    && !qualifies_for_frontier(c: candidate_agent_workspace)
+    && obligation_matches_shape(sh: candidate_agent_workspace.shape, o: candidate_agent_workspace.obligation)
+}
+
+// AND A COMPLETION PROOF MAY NOT STAND IN FOR A WORKSPACE PROOF. The two shapes owe different
+// things, so an obligation of the wrong kind refuses rather than passing: this is what stops the
+// next author from satisfying a workspace class with an ActionResult.
+fn a_completion_proof_does_not_satisfy_a_workspace() -> Bool {
+  !obligation_matches_shape(sh: RecoverableWorkspace, o: CompletionReadable { how_established: "probe" })
+    && !obligation_matches_shape(sh: CompletedWorkUnit, o: AttachmentFencedAndRecoverable { fencing: "probe", reconstruction: "probe" })
+}
+
+fn served_workload_frontier_witness_all() -> Bool {
+  admission_standing_is_earned()
+    && a_negative_architecture_answer_refuses_admission()
+    && the_ruling_bounds_what_the_frontier_may_admit()
+    && the_workspace_class_is_neither_admitted_nor_excluded()
+    && an_unread_shape_obligation_refuses_admission()
+    && a_completion_proof_does_not_satisfy_a_workspace()
+    && a_failing_property_forces_exclusion()
+    && an_unread_property_does_not_satisfy_the_contract()
+    && consuming_it_is_not_admitting_it()
+    && the_frontier_excludes_on_structure()
+    && the_roster_partitions()
+}
+
+fn served_workload_frontier_witness_main() -> ProcessExit {
+  if served_workload_frontier_witness_all() {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "served_workload_frontier_witness_all returned false" }
+  }
+}

@@ -1,0 +1,139 @@
+module strategy.mt_jade_held_specimen
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { Hertz, Watt, hertz, hertz_count, watt, watt_count }
+import extdeps.uri { Uri, uri_https }
+
+// PHOTOGRAPHIC RECEIPTS FOR ONE HELD UNIT, 2026-09-17. These are observing-layer facts about
+// the eBay 336592998931 specimen. They are not amendments to extdeps.ocp.mt_jade or the
+// Wiwynn SV328R datasheet. Product briefs that say 3.0 GHz / 3.3 GHz / 2000 W PSUs / empty
+// NIC slots do not overwrite what the photographs show.
+
+data specimen_marketplace_listing_id: NonEmptyStr = "336592998931"
+
+// OPERATOR-HELD DRIVE COPIES OF THIS UNIT AND ITS LISTING PAGES. Locators omit the sharing query
+// string, matching other Drive citations in the corpus. The unit photographs ground rear-port,
+// interior, and front standing. The listing promotion sheet and specs page are marketplace
+// documents: they do not overwrite OCP/Wiwynn authority or this unit's photographed PSUs/clock.
+
+type HeldSpecimenDriveRole
+  = UnitRearPhotograph
+  | UnitInteriorOpenPhotograph
+  | UnitFrontPhotograph
+  | MarketplacePromotionMaterials
+  | MarketplaceSpecsPage
+
+type HeldSpecimenDriveFile {
+  role: HeldSpecimenDriveRole
+  uri: Uri
+}
+
+data photograph_rear: HeldSpecimenDriveFile = HeldSpecimenDriveFile {
+  role: UnitRearPhotograph,
+  uri: uri_https(locator: "drive.google.com/file/d/1WpJROETS-Wq8Bv0thAH8bMv5_C58VPoG/view"),
+}
+
+data photograph_interior_open: HeldSpecimenDriveFile = HeldSpecimenDriveFile {
+  role: UnitInteriorOpenPhotograph,
+  uri: uri_https(locator: "drive.google.com/file/d/1L0_j-kqlWiqT0W7diMxs0sK-GOjsp9iu/view"),
+}
+
+data photograph_front: HeldSpecimenDriveFile = HeldSpecimenDriveFile {
+  role: UnitFrontPhotograph,
+  uri: uri_https(locator: "drive.google.com/file/d/1GMJ5yK72v9hslHjATua2y6TrLh6UcIVy/view"),
+}
+
+data listing_promotion_materials: HeldSpecimenDriveFile = HeldSpecimenDriveFile {
+  role: MarketplacePromotionMaterials,
+  uri: uri_https(locator: "drive.google.com/file/d/1_OEIzxfVvtrWdasN_cXXzV57YlMYc9cp/view"),
+}
+
+data listing_specs_page: HeldSpecimenDriveFile = HeldSpecimenDriveFile {
+  role: MarketplaceSpecsPage,
+  uri: uri_https(locator: "drive.google.com/file/d/1F74ZLFBh57tKU_Dm-ineXOpUqGSTo3T0/view"),
+}
+
+fn drive_file_id_eq(file: HeldSpecimenDriveFile, file_id: NonEmptyStr) -> Bool {
+  string_contains(s: file.uri.locator as String, pattern: file_id as String)
+}
+
+fn unit_photographs_are_linked() -> Bool {
+  drive_file_id_eq(file: photograph_rear, file_id: "1WpJROETS-Wq8Bv0thAH8bMv5_C58VPoG")
+    && drive_file_id_eq(file: photograph_interior_open, file_id: "1L0_j-kqlWiqT0W7diMxs0sK-GOjsp9iu")
+    && drive_file_id_eq(file: photograph_front, file_id: "1GMJ5yK72v9hslHjATua2y6TrLh6UcIVy")
+}
+
+type PhotoStanding
+  = Photographed { note: NonEmptyStr }
+  | NotVisibleInOpenChassisPhoto { discriminator: NonEmptyStr }
+
+data two_processor_heatsinks: PhotoStanding = Photographed {
+  note: "Open-chassis photo shows two installed processor heatsinks.",
+}
+
+data six_hot_swap_fans: PhotoStanding = Photographed {
+  note: "Six front-to-back hot-swap fan modules are installed.",
+}
+
+data twenty_four_front_carriers: PhotoStanding = Photographed {
+  note: "Twenty-four front 2.5-inch carriers and six cabled backplane connections are visible.",
+}
+
+data airflow_guide: PhotoStanding = NotVisibleInOpenChassisPhoto {
+  discriminator: "Mt. Jade heatsinks are designed against a close-fitting airflow duct. Reinstall the duct and the top cover before sustained CPU or memory load. Do not treat an open-chassis photo as proof the duct is absent from the shipment — locate it.",
+}
+
+data installed_psu_face_label: Watt = watt(count: 1200)
+
+data installed_psu_efficiency_percent_label: Int = 94
+
+data bios_reported_cpu_clock: Hertz = hertz(count: 2800000000)
+
+data bios_scp_version_label: NonEmptyStr = "1.08"
+
+data bios_scp_build_label: NonEmptyStr = "20211002"
+
+data bios_is_ami_aptio: Bool = true
+
+data product_brief_is_not_the_assembly_manifest: Bool = true
+
+fn listing_documents_are_linked_and_are_not_the_assembly_manifest() -> Bool {
+  drive_file_id_eq(file: listing_promotion_materials, file_id: "1_OEIzxfVvtrWdasN_cXXzV57YlMYc9cp")
+    && drive_file_id_eq(file: listing_specs_page, file_id: "1F74ZLFBh57tKU_Dm-ineXOpUqGSTo3T0")
+    && product_brief_is_not_the_assembly_manifest
+}
+
+data do_not_order_nic: Bool = true
+
+data rear_lower_bmc_panel_label: NonEmptyStr = "rear lower I/O row between VGA and serial"
+
+data rear_upper_host_left_panel_label: NonEmptyStr = "rear upper expansion-module left"
+
+data rear_upper_host_right_panel_label: NonEmptyStr = "rear upper expansion-module right"
+
+fn first_power_port_plan_is_bmc_only() -> Bool {
+  (rear_lower_bmc_panel_label as String) != (rear_upper_host_left_panel_label as String)
+    && (rear_upper_host_left_panel_label as String) != (rear_upper_host_right_panel_label as String)
+}
+
+fn installed_psu_label_is_not_the_2000w_brief() -> Bool {
+  watt_count(installed_psu_face_label) == 1200
+    && installed_psu_efficiency_percent_label == 94
+    && product_brief_is_not_the_assembly_manifest
+}
+
+fn bios_clock_is_not_the_3ghz_marketing_row() -> Bool {
+  hertz_count(bios_reported_cpu_clock) == 2800000000 && bios_is_ami_aptio
+}
+
+fn nic_purchase_is_refused_until_upper_adapter_census() -> Bool {
+  do_not_order_nic
+}
+
+fn airflow_guide_blocks_sustained_load() -> Bool {
+  match airflow_guide {
+    NotVisibleInOpenChassisPhoto { discriminator: _ } => true
+    Photographed { note: _ } => false
+  }
+}

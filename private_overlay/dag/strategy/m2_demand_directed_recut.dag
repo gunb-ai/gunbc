@@ -1,0 +1,290 @@
+module strategy.m2_demand_directed_recut
+
+import std.types { NonEmptyStr, String, List, Int, Bool }
+import std.decl_ref { DeclarationRef, decl_ref }
+import strategy.b2b_capacity_track {
+  OfferConfiguration, offer_eval_reserved_node, offer_wholesale_through_reseller,
+}
+import strategy.year_end_plan {
+  PlanItem, year_end_plan_items, roster_with_elapsed, roster_schedule_standing,
+  ScheduleStanding, ScheduleFits, ScheduleCannotFit, ScheduleRefusedRollupUnresolved,
+  standing_fits, standing_is_refusal, schedule_standing_at_day,
+}
+
+// DEMAND-DIRECTED ADMISSION SCOPE, AND WHAT IT DOES TO M2's CRITICAL PATH (operator direction
+// 2026-09-10: restructure it to be targeted to wherever our first customers are - or make it
+// conditional, i.e. find a first customer, then expand the scope in that direction first).
+//
+// WHAT THIS IS NOT. It is not a claim that the M2 compliance program is bloat. The 2026-08-29
+// analyst ruling already recut M2 once and deliberately landed m2-admission-spine as THE SMALLEST
+// EXECUTING REFUSAL, BEFORE the full regime model and in parallel with it; this recut starts from
+// that baseline rather than re-deriving it, and nothing here reverses it. The chain is well shaped
+// for the question it answers. The observation is narrower: the PROGRAM is scoped to a general
+// regime while M2's EXIT needs one customer, and m2-legal-review-ready already demands named
+// customer facts two steps from the end. That mismatch is the whole lever.
+//
+// THE LINE THIS MODULE MAY NOT CROSS. Narrowing SCOPE is legitimate; dropping the EXECUTING
+// REFUSAL is not. A recut that keeps the paperwork and loses the permit producer has kept the
+// costume and removed the wall, which is DESIGN section 5's degradation disguised as fail-closed.
+// So the scope law below is written so that a NARROWER scope refuses MORE, never less, and the
+// witness carries that as an executed property rather than as this sentence.
+
+// ---------------------------------------------------------------------------------------------
+// 1. SCOPE AS A FUNCTION OF ADMITTED DEMAND
+// ---------------------------------------------------------------------------------------------
+// The move is the one m2-launch-intent already made for geography: a constant becomes a
+// parameter. There, supported geography stopped being a hardcoded US-only profile and became a
+// derivation over the admitted route population. Here, the admitted route population itself stops
+// being all-providers-times-services-times-regions and becomes a function of the demand actually
+// admitted - with expansion triggered by a customer appearing in a direction, never by a survey.
+type RouteSeed {
+  provider: NonEmptyStr
+  service: NonEmptyStr
+  region: NonEmptyStr
+}
+
+// WHY THE SEED SET IS THE WHOLE SCOPE AND NOT A PRIORITY ORDER. A priority order still admits
+// everything eventually and gives the census no boundary; a seed set is a closed population whose
+// complement is refusable today.
+type AdmittedScope {
+  seeds: List<RouteSeed>
+  expansion_trigger: NonEmptyStr
+}
+
+fn seed_matches(a: RouteSeed, b: RouteSeed) -> Bool {
+  a.provider == b.provider && a.service == b.service && a.region == b.region
+}
+
+fn scope_contains(scope: AdmittedScope, r: RouteSeed) -> Bool {
+  fold(scope.seeds, init: false, f: fn(acc, s) { acc || seed_matches(a: s, b: r) })
+}
+
+// THE DECISION IS TOTAL AND ITS DEFAULT ARM IS THE REFUSAL. There is no unknown-route arm that
+// proceeds, and no confidence threshold selecting between them: a route is in the admitted
+// population or it is refused, located, with the scope it was tested against named.
+type RouteDecision
+  = RoutePermittedWithinScope { route: RouteSeed }
+  | RouteRefusedOutsideAdmittedScope { route: RouteSeed, expansion_trigger: NonEmptyStr }
+
+fn decide_route(scope: AdmittedScope, r: RouteSeed) -> RouteDecision {
+  if scope_contains(scope: scope, r: r) {
+    RoutePermittedWithinScope { route: r }
+  } else {
+    RouteRefusedOutsideAdmittedScope { route: r, expansion_trigger: scope.expansion_trigger }
+  }
+}
+
+fn route_is_permitted(d: RouteDecision) -> Bool {
+  match d {
+    RoutePermittedWithinScope { route } => true,
+    RouteRefusedOutsideAdmittedScope { route, expansion_trigger } => false,
+  }
+}
+
+// THE FIRST CUSTOMER DECIDES THE SEEDS, WHICH IS THE ENTIRE POINT. Two candidate first customers
+// seed different scopes, and the B2B question therefore composes with this one rather than sitting
+// beside it: a reseller and a design partner expand the admitted population in different
+// directions, so which one arrives first changes what is censused first.
+data seed_own_site: RouteSeed = RouteSeed {
+  provider: "gunb.ai",
+  service: "execution on owned capacity",
+  region: "US-NY",
+}
+
+data seed_durable_origin: RouteSeed = RouteSeed {
+  provider: "Cloudflare",
+  service: "R2 durable origin",
+  region: "US",
+}
+
+data seed_reseller_region: RouteSeed = RouteSeed {
+  provider: "gunb.ai",
+  service: "wholesale dedicated capacity",
+  region: "US-NY",
+}
+
+// The narrowest scope that can serve a first design partner on our own metal against our own
+// durable origin: two rows, both of which we already own or already chose.
+data design_partner_scope: AdmittedScope = AdmittedScope {
+  seeds: [seed_own_site, seed_durable_origin],
+  expansion_trigger: "A named customer whose workload requires a route outside these seeds. Expansion is then a census of THAT route, not of the provider space - and until it completes, the route refuses rather than being served on an unadmitted path.",
+}
+
+// The same law with a reseller as the first counterparty. Same size, different membership, which
+// is why the scope is a parameter rather than a shorter constant.
+data reseller_scope: AdmittedScope = AdmittedScope {
+  seeds: [seed_reseller_region, seed_durable_origin],
+  expansion_trigger: "The reseller naming a region or service outside the contracted one. A wholesale counterparty expands by CONTRACT rather than by workload, so the trigger is an amendment rather than a job.",
+}
+
+// The general-regime scope the current program implies: everything the fleet might ever touch.
+// Modelled so the narrowing is a comparison between two populations rather than an assertion.
+data general_regime_scope: AdmittedScope = AdmittedScope {
+  seeds: [seed_own_site, seed_durable_origin, seed_reseller_region],
+  expansion_trigger: "None declared - the general regime admits by survey rather than by demand, which is what makes provider-route-census a fourteen-day item before any customer exists.",
+}
+
+fn scope_size(s: AdmittedScope) -> Int { count(s.seeds) }
+
+// THE PROPERTY THAT KEEPS THE NARROWING HONEST. Anything the narrow scope permits, the wide scope
+// permits too - so narrowing can only ever move routes into the refusal arm. If this ever fails, a
+// narrowed scope has started ADMITTING something the general one did not, which is the exact
+// failure the operator's line forbids.
+fn narrow_permits_implies_wide_permits(narrow: AdmittedScope, wide: AdmittedScope, probe: List<RouteSeed>) -> Bool {
+  fold(probe, init: true, f: fn(acc, r) {
+    acc && (route_is_permitted(d: decide_route(scope: narrow, r: r)) == false
+            || route_is_permitted(d: decide_route(scope: wide, r: r)))
+  })
+}
+
+data probe_unadmitted_eu_route: RouteSeed = RouteSeed {
+  provider: "Hetzner",
+  service: "spill execution",
+  region: "EU-hel1",
+}
+
+data probe_routes: List<RouteSeed> = [
+  seed_own_site,
+  seed_durable_origin,
+  seed_reseller_region,
+  probe_unadmitted_eu_route,
+]
+
+fn refused_route_count(scope: AdmittedScope) -> Int {
+  count(filter(probe_routes, r => route_is_permitted(d: decide_route(scope: scope, r: r)) == false))
+}
+
+// ---------------------------------------------------------------------------------------------
+// 2. THE PROPOSALS, AND WHY THIS MODULE NO LONGER CARRIES A SCHEDULE
+// ---------------------------------------------------------------------------------------------
+// THIS MODULE USED TO DECLARE ITS OWN THIRTEEN-ITEM ROSTER WITH ITS OWN DURATIONS AND ITS OWN
+// LONGEST-PATH FOLD. That was a second schedule standing beside the plan's, which is the section 3
+// fork exactly: two structures answering one question, and the day they disagreed the answer would
+// have depended on which file someone opened. The edge classifications it carried have LANDED IN
+// THE PLAN, on the rows they describe, where the plan's own rollup reads them.
+//
+// WHAT SURVIVES HERE IS WHAT THE PLAN CANNOT SAY: the demand-directed scope law above, and the
+// PROPOSALS below - changes to plan rows that are not this lane's to make. A proposal is computed
+// by taking the plan's OWN roster, altering the one figure it proposes to alter, and running THE
+// PLAN'S OWN SCHEDULE FOLD over the result. There is one schedule; a counterfactual is that
+// schedule asked a different question, not a rival to it.
+type PlanChangeProposal {
+  item_id: NonEmptyStr
+  proposed_elapsed_days: Int
+  basis: NonEmptyStr
+  decision_owner: NonEmptyStr
+}
+
+// THE SEEDED CENSUS. The scope law above is what makes this arguable at all: censusing the exact
+// route one named customer needs is a smaller job than surveying the provider space, and the
+// closure questions per route are unchanged. Five days is an estimate and is marked as one.
+data proposal_seeded_census: PlanChangeProposal = PlanChangeProposal {
+  item_id: "provider-route-census",
+  proposed_elapsed_days: 5,
+  basis: "Census the exact route population one named customer requires - our own site and the durable origin - rather than one row per provider times service times region. The FULL data-path closure per route is unchanged and so is the LOCATED / ABSENT / UNREAD discipline; only the population shrinks. Nobody has censused our own route either, so this is a smaller job rather than a finished one.",
+  decision_owner: "operator - it changes what an item promises, not merely how it is scheduled",
+}
+
+// THE QUEUE SPLIT, EXPRESSED AS A DURATION RATHER THAN AS A NEW ITEM. The plan's own row says
+// min_calendar_days is QUEUE LATENCY, NOT EFFORT, and the active/elapsed split now records that.
+// What this proposal asks is narrower than adding an item: that the QUEUE be opened before the
+// packet is frozen, so the fourteen days run beside the technical work instead of behind it.
+// Adding the item itself is the operator's, which is why this is a proposal and not an edit.
+data proposal_counsel_queue: PlanChangeProposal = PlanChangeProposal {
+  item_id: "m2-legal-issue-spot",
+  proposed_elapsed_days: 3,
+  basis: "Booking the reviewer is not sending them unstable facts. Split the queue from the return: the slot is booked early against nothing, and what remains on the chain is the three-day turnaround on a frozen packet. THE GATE IT MUST NOT BREAK is m2-legal-review-ready, which exists to stop paying senior hours against facts still moving - this proposal moves the QUEUE and leaves that wall standing. Retiring it properly means a separate booked-slot item, which is a plan edit rather than a duration.",
+  decision_owner: "operator - it implies a new item, and an item is a commitment",
+}
+
+data recut_proposals: List<PlanChangeProposal> = [proposal_seeded_census, proposal_counsel_queue]
+
+fn proposal_count() -> Int { count(recut_proposals) }
+
+// The plan's roster with every proposal applied. One fold, one authority, one arithmetic.
+fn proposed_roster() -> List<PlanItem> {
+  fold(recut_proposals, init: year_end_plan_items, f: fn(acc, p) {
+    roster_with_elapsed(items: acc, id: p.item_id, days: p.proposed_elapsed_days)
+  })
+}
+
+fn proposed_standing_at_day(today_day: Int) -> ScheduleStanding {
+  roster_schedule_standing(items: proposed_roster(), today_day: today_day)
+}
+
+fn actual_standing_at_day(today_day: Int) -> ScheduleStanding {
+  schedule_standing_at_day(today_day: today_day)
+}
+
+// ---------------------------------------------------------------------------------------------
+// 3. WHAT THE PROPOSALS BUY, AND WHAT THEY DO NOT
+// ---------------------------------------------------------------------------------------------
+// THE HONEST ANSWER AND IT IS NOT A RESCUE. Applying both proposals to the plan's own roster and
+// running the plan's own rollup leaves the M2 chain still unable to fit: the edges were the larger
+// half of the problem and they are already reclassified, and what remains is work that has to
+// happen in a window that has already partly passed. A proposal set that made the schedule fit
+// would be the thing to distrust here - the durations it alters are estimates, and an estimate
+// that exactly closes a gap is usually an estimate chosen to close it.
+type ProposalEffect
+  = ProposalsDoNotCloseTheGap { note: NonEmptyStr }
+  | ProposalsCloseTheGap { note: NonEmptyStr }
+  | ProposalEffectRefused { note: NonEmptyStr }
+
+fn proposal_effect_at_day(today_day: Int) -> ProposalEffect {
+  if standing_is_refusal(st: proposed_standing_at_day(today_day: today_day)) {
+    ProposalEffectRefused {
+      note: "The counterfactual roster did not schedule. That is a defect in the proposal set rather than a finding about the plan.",
+    }
+  } else if standing_fits(st: proposed_standing_at_day(today_day: today_day)) {
+    ProposalsCloseTheGap {
+      note: "Both proposals applied, the chain fits. Read the durations they alter before believing it: they are estimates, and this arm reached with numbers chosen to reach it would be worth nothing.",
+    }
+  } else {
+    ProposalsDoNotCloseTheGap {
+      note: "Both proposals applied, the chain still does not fit. The edge reclassifications were the larger half and they have already landed; what remains is real work in a window that has partly passed. The remaining levers are outside this module: fewer obligations, a later anchor, or a first customer whose contract does not trigger the conditional branch.",
+    }
+  }
+}
+
+fn proposals_close_the_gap(e: ProposalEffect) -> Bool {
+  match e {
+    ProposalsDoNotCloseTheGap { note } => false,
+    ProposalsCloseTheGap { note } => true,
+    ProposalEffectRefused { note } => false,
+  }
+}
+
+fn proposal_effect_is_refusal(e: ProposalEffect) -> Bool {
+  match e {
+    ProposalsDoNotCloseTheGap { note } => false,
+    ProposalsCloseTheGap { note } => false,
+    ProposalEffectRefused { note } => true,
+  }
+}
+
+// WHICH FIRST CUSTOMER YOU FIND STILL CHANGES THE ANSWER, and this is where the offer model joins
+// the schedule: the conditional branch in the plan - the contract deviation review - is declared
+// ConditionalRequires precisely because a design partner on a pinned standard form does not
+// trigger it and a negotiating reseller does.
+type FirstCustomerShape {
+  offer: OfferConfiguration
+  triggers_the_conditional_branch: Bool
+  why: NonEmptyStr
+}
+
+data design_partner_shape: FirstCustomerShape = FirstCustomerShape {
+  offer: offer_eval_reserved_node,
+  triggers_the_conditional_branch: false,
+  why: "A paid non-production evaluation of one node on our own paper. If the buyer negotiates, this row is the wrong one to read.",
+}
+
+data reseller_shape: FirstCustomerShape = FirstCustomerShape {
+  offer: offer_wholesale_through_reseller,
+  triggers_the_conditional_branch: true,
+  why: "A reseller putting their own customers on our metal negotiates the agreement by definition, so phase two is not conditional in practice - it is the path.",
+}
+
+fn conditional_branch_is_shape_dependent() -> Bool {
+  design_partner_shape.triggers_the_conditional_branch == false
+    && reseller_shape.triggers_the_conditional_branch
+}

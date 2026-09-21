@@ -1,0 +1,387 @@
+module test.claim.private_roster_witness
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import strategy.private_witness_workflow {
+  PrivateWitness, enforced_witnesses, roster_aggregate, expected_witnesses_yml,
+  private_entry_prefix,
+}
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused,
+  filesystem_read_outcome,
+}
+
+import test.claim.compliance_posture_revision_witness { compliance_posture_revision_witness_main }
+import test.claim.makeshift_datacenter_witness { makeshift_witness_main }
+import test.claim.colo_market_witness { colo_witness_main }
+import test.claim.home_hosting_witness { home_witness_main }
+import test.claim.machine_tile_witness_roster { machine_tile_witness_main }
+import test.claim.tab_group_witness { tab_group_witness_main }
+import test.claim.ci_storage_tiering_witness { storage_tiering_witness_main }
+import test.claim.buyers_pipeline_witness { buyers_pipeline_witness_main }
+import test.claim.buyer_review_sheet_witness { buyer_review_sheet_witness_main }
+import test.claim.buyer_review_placement_witness { buyer_review_placement_witness_main }
+import test.claim.buyer_review_converge_witness { buyer_review_converge_witness_main }
+import test.claim.cloud_overflow_role_witness { cloud_overflow_role_witness_main }
+import test.claim.year_end_plan_witness { year_end_plan_witness_main }
+import test.claim.january_launch_witness { january_launch_witness_main }
+import test.claim.plan_tracker_page_witness { plan_tracker_witness_main }
+import test.claim.procurement_order_witness { procurement_witness_main }
+import test.claim.fleet_decisions_witness { fleet_decisions_witness_main }
+import test.claim.asset_lifecycle_witness { asset_lifecycle_witness_main }
+import test.claim.asset_inventory_witness { asset_inventory_witness_main }
+import test.claim.pricing_decomposition_witness { pricing_decomposition_witness_main }
+import test.claim.rack_power_claims { rack_power_witness_main }
+import test.claim.workflow_stage_gate_witness { workflow_stage_gate_witness_main }
+import test.claim.pareto_comparison_procedure_witness { pareto_comparison_procedure_witness_main }
+import test.claim.panel_ruling_procedure_witness { panel_ruling_procedure_witness_main }
+import test.claim.site_power_survey_witness { site_power_survey_witness_main }
+import test.claim.ci_vintage_frontier_witness { vintage_witness_main }
+import test.claim.ci_acquisition_witness { acquisition_witness_main }
+import test.claim.workload_benchmark_suite_witness { workload_census_witness_main }
+import test.claim.ci_build_frontier_witness { build_frontier_witness_main }
+import test.claim.ci_economics_witness { ci_economics_pricing_main }
+import test.claim.ci_sellable_unit_witness { sellable_unit_witness_main }
+import test.claim.mobo_x_architecture_witness { mobo_x_architecture_witness_main }
+import test.claim.mobo_x_memory_census_witness { mobo_x_memory_census_witness_main }
+import test.claim.fleet_qualification_witness { fleet_qualification_witness_main }
+import test.claim.cost_floor_witness { cost_floor_witness_main }
+import test.claim.mt_collins_power_witness { mt_collins_power_witness_main }
+import test.claim.mt_jade_class_witness { mt_jade_class_witness_main }
+import test.claim.finance_witness { finance_witness_main }
+import test.claim.node_rental_witness { node_rental_witness_main }
+import test.claim.b2b_capacity_track_witness { b2b_capacity_track_witness_main }
+import test.claim.wholesale_supply_packet_witness { wholesale_supply_packet_witness_main }
+import test.claim.m2_demand_directed_recut_witness { m2_recut_witness_main }
+import test.claim.owner_action_witness { owner_action_witness_main }
+import test.claim.audit_packet_witness { audit_packet_witness_main }
+import test.claim.data_map_witness { data_map_witness_main }
+import test.claim.wholesale_batch_floor_witness { wholesale_batch_floor_witness_main }
+import test.claim.wholesale_journeys_witness { wholesale_journeys_witness_main }
+import test.claim.demand_utilization_witness { demand_utilization_witness_main }
+import test.claim.served_workload_frontier_witness { served_workload_frontier_witness_main }
+import test.claim.retention_decision_witness { retention_decision_witness_main }
+
+// EVERY ENFORCED PRIVATE WITNESS, IN ONE PROCESS.
+//
+// This module exists because of a measurement, not a preference. The roster's CI step ran one
+// `gunbc run` per witness: 33 completed invocations on run 34462653642, 82-107s each, mean 96s,
+// spread under ten percent. Witnesses doing very different amounts of work cost the same, so what
+// was being paid for was not witness work but the composed world -- resolved and typechecked from
+// scratch, once per process, with both cache roots unset so nothing carried. Calling every
+// witness's main from one entry pays that once. Nothing about the witnesses changes; they are
+// imported and called exactly as CI called them.
+//
+// ONE WITNESS IS DELIBERATELY ABSENT, and it is the one a reader will look for. test.claim.
+// projection_drift_witness is a declared PrivateWitness row but is NOT a member of
+// private_witnesses, because it is emitted to its own workflow file: a verifier discovered by the
+// artifact it verifies can be deleted by the same drift it exists to catch. It is therefore not
+// Enforced by this roster's reckoning and does not belong here. The coverage conjunct below is what
+// caught my first cut including it -- I had read the declared rows rather than the roster's own
+// membership list, and the substrate disagreed with me correctly.
+//
+// THE COVERAGE CONJUNCT IS FIRST AND IS NOT DECORATION. This module and
+// strategy.private_witness_workflow both name the enforced set -- unavoidably, because .dag has no
+// reflection and a call has to be written to happen. Two lists of one fact is the fork DESIGN
+// section 3 forbids, so they are checked against each other in both directions before any verdict
+// is read: an Enforced row with no RosterOutcome here, or a RosterOutcome here that is not Enforced
+// there, reds the run. A witness silently dropped from this list is exactly the failure that would
+// otherwise be invisible -- the roster would still pass, over one fewer witness.
+//
+// WHAT ONE PROCESS COSTS, MEASURED RATHER THAN ASSUMED. Assertion failures keep their names: each
+// witness's ProcessExit is folded and the exit reason lists every failing entry with its own reason.
+// A RESOLVE failure cannot be folded at all -- a module that does not resolve cannot be called, so
+// one broken import fails this entry as a whole. That was the objection to this shape, and it was
+// tested by breaking a witness deliberately rather than reasoned about: the resolve diagnostic names
+// the failing file, line, column and the module that imported it, identically to running that
+// witness alone. Both diagnostics are quoted verbatim in the annotation above roster_aggregate_run_line in
+// strategy.private_witness_workflow, which is where the measurement is re-derivable from.
+type RosterOutcome {
+  entry: NonEmptyStr
+  exit: ProcessExit
+}
+
+fn roster_outcomes() -> List<RosterOutcome> {
+  [
+    RosterOutcome { entry: "dag/test/claim/compliance_posture_revision_witness_test.dag", exit: compliance_posture_revision_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/makeshift_datacenter_witness_test.dag", exit: makeshift_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/colo_market_witness_test.dag", exit: colo_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/home_hosting_witness_test.dag", exit: home_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/machine_tile_witness_roster_test.dag", exit: machine_tile_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/tab_group_witness_test.dag", exit: tab_group_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/ci_storage_tiering_witness_test.dag", exit: storage_tiering_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/buyers_pipeline_witness_test.dag", exit: buyers_pipeline_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/buyer_review_sheet_witness_test.dag", exit: buyer_review_sheet_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/buyer_review_placement_witness_test.dag", exit: buyer_review_placement_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/buyer_review_converge_witness_test.dag", exit: buyer_review_converge_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/cloud_overflow_role_witness_test.dag", exit: cloud_overflow_role_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/year_end_plan_witness_test.dag", exit: year_end_plan_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/january_launch_witness_test.dag", exit: january_launch_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/plan_tracker_page_witness_test.dag", exit: plan_tracker_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/procurement_order_witness_test.dag", exit: procurement_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/fleet_decisions_witness_test.dag", exit: fleet_decisions_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/asset_lifecycle_witness_test.dag", exit: asset_lifecycle_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/asset_inventory_witness_test.dag", exit: asset_inventory_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/pricing_decomposition_witness_test.dag", exit: pricing_decomposition_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/rack_power_claims_test.dag", exit: rack_power_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/workflow_stage_gate_witness_test.dag", exit: workflow_stage_gate_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/pareto_comparison_procedure_witness_test.dag", exit: pareto_comparison_procedure_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/panel_ruling_procedure_witness_test.dag", exit: panel_ruling_procedure_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/site_power_survey_witness_test.dag", exit: site_power_survey_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/ci_vintage_frontier_witness_test.dag", exit: vintage_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/ci_acquisition_witness_test.dag", exit: acquisition_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/workload_benchmark_suite_witness_test.dag", exit: workload_census_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/ci_build_frontier_witness_test.dag", exit: build_frontier_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/ci_economics_witness_test.dag", exit: ci_economics_pricing_main() },
+    RosterOutcome { entry: "dag/test/claim/ci_sellable_unit_witness_test.dag", exit: sellable_unit_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/mobo_x_architecture_witness_test.dag", exit: mobo_x_architecture_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/mobo_x_memory_census_witness_test.dag", exit: mobo_x_memory_census_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/fleet_qualification_witness_test.dag", exit: fleet_qualification_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/cost_floor_witness_test.dag", exit: cost_floor_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/mt_collins_power_witness_test.dag", exit: mt_collins_power_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/mt_jade_class_witness_test.dag", exit: mt_jade_class_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/finance_witness_test.dag", exit: finance_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/node_rental_witness_test.dag", exit: node_rental_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/b2b_capacity_track_witness_test.dag", exit: b2b_capacity_track_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/wholesale_supply_packet_witness_test.dag", exit: wholesale_supply_packet_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/m2_demand_directed_recut_witness_test.dag", exit: m2_recut_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/owner_action_witness_test.dag", exit: owner_action_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/audit_packet_witness_test.dag", exit: audit_packet_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/data_map_witness_test.dag", exit: data_map_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/wholesale_batch_floor_witness_test.dag", exit: wholesale_batch_floor_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/wholesale_journeys_witness_test.dag", exit: wholesale_journeys_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/demand_utilization_witness_test.dag", exit: demand_utilization_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/served_workload_frontier_witness_test.dag", exit: served_workload_frontier_witness_main() },
+    RosterOutcome { entry: "dag/test/claim/retention_decision_witness_test.dag", exit: retention_decision_witness_main() },
+  ]
+}
+
+fn covered_entries(outcomes: List<RosterOutcome>) -> List<NonEmptyStr> {
+  map(outcomes, o => o.entry)
+}
+
+fn enforced_entries() -> List<NonEmptyStr> {
+  map(enforced_witnesses(), w => w.entry)
+}
+
+fn list_holds(xs: List<NonEmptyStr>, wanted: NonEmptyStr) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { if acc { true } else { x == wanted } })
+}
+
+fn coverage_holds(covered: List<NonEmptyStr>, enforced: List<NonEmptyStr>) -> Bool {
+  all(enforced, e => list_holds(xs: covered, wanted: e))
+    && all(covered, c => list_holds(xs: enforced, wanted: c))
+}
+
+// THE DRIFT ARM NAMES THE ROWS, because "these two lists disagree" over thirty entries is a
+// diagnostic that sends its reader back to a diff to find out what it already knew.
+fn coverage_detail(covered: List<NonEmptyStr>, enforced: List<NonEmptyStr>) -> String {
+  join([
+    "\n  enforced rows: ", to_string(count(enforced)),
+    "\n  rows run here: ", to_string(count(covered)),
+    fold(enforced, init: "", f: fn(acc, e) {
+      if list_holds(xs: covered, wanted: e) { acc } else { join([acc, "\n  enforced but not run here: ", e], "") }
+    }),
+    fold(covered, init: "", f: fn(acc, c) {
+      if list_holds(xs: enforced, wanted: c) { acc } else { join([acc, "\n  run here but not Enforced: ", c], "") }
+    }),
+  ], "")
+}
+
+// ProcessExit failure construction is structured: every failure carries its code and reason.
+// The roster therefore preserves the producing witness's explanation without synthesizing a
+// downstream fallback. The entry name remains the stable attribution for the failed witness.
+// ONE LINE PER OUTCOME, ON A GREEN RUN TOO — the roll call.
+//
+// The first cut printed nothing when everything passed: `PASS every enforced private witness` is ONE
+// assertion about thirty subjects, where thirty lines are thirty countable facts, and DESIGN prefers
+// the per-identity receipt over the aggregate claim even when the aggregate is true. It also answers
+// a DIFFERENT question from the coverage conjunct above: that one asks whether every enrolled row is
+// PRESENT, this one asks whether each row REPORTED. Only the first had a visible answer on a green
+// run. Nobody reads thirty green lines; the day one is missing, someone will.
+//
+// PRINTING REQUIRES THE WIRE RESPONSE, which is why this entry returns CliWireResponse rather than
+// ProcessExit. `ExitSuccess` carries no bytes, so a passing run has no channel for a roll call at
+// all. gunbc.cli_wire exists for exactly this — an answer plus the exit it implies — and the host
+// binds it for every entry (cli_run classify_cli_wire), so nothing here is a private mechanism.
+fn outcome_line(o: RosterOutcome) -> String {
+  match o.exit {
+    ExitSuccess => join(["\n  PASS  ", o.entry], "")
+    ExitFailure { code, reason } => join(["\n  FAIL  ", o.entry, " — ", reason], "")
+  }
+}
+
+// Every ProcessExit failure has a reason at construction, so the roll call can project it directly.
+// The roster does not invent or replace the producing witness's diagnosis.
+fn roll_call(outcomes: List<RosterOutcome>) -> String {
+  fold(outcomes, init: "", f: fn(acc, o) { join([acc, outcome_line(o: o)], "") })
+}
+
+fn failure_report(outcomes: List<RosterOutcome>) -> String {
+  fold(outcomes, init: "", f: fn(acc, o) {
+    match o.exit {
+      ExitSuccess => acc
+      ExitFailure { code, reason } => join([acc, " ", o.entry], "")
+    }
+  })
+}
+
+// THE ROSTER IS EVALUATED ONCE AND CARRIED. An earlier cut called roster_outcomes() from each
+// consumer — coverage, the report, the verdict — and the run's own log showed the cost: the
+// projection-drift witness read its two committed files twenty-two times, because every consumer
+// re-ran every witness. Binding once is not a micro-optimization here; recomputation is exactly the
+// redundancy this module exists to delete, and paying it inside the fix would be the same defect one
+// level down.
+// THE ACQUISITION COUNT IS ITS OWN CLAIM AND GETS ITS OWN WALL.
+//
+// The coverage conjunct above asserts roster MEMBERSHIP — which rows run. It says nothing about how
+// many PROCESSES run them, and a reader could easily cite it as if it did (sharp-ibex-153 was about
+// to, which is why this exists). Three different claims, three mechanisms: membership by the identity
+// join above; the emitted shape by THIS check; the realised cost by the measured CI runs named in the
+// PR body. None of them covers another.
+//
+// WHAT IT ASSERTS, at identity grain rather than by counting anything: the emitted workflow invokes
+// the roster aggregate, and invokes NO Enforced row's entry directly. Those two together ARE "the
+// enforced half is one invocation", without a numeric literal that would need re-auditing whenever a
+// known-red or probe row is added — the entries of those rows legitimately appear in the YAML and are
+// not Enforced, so they are untouched by this.
+//
+// ITS RED IS AUTHORABLE, WHICH IS WHY IT IS A WALL AND NOT A DECORATION (DESIGN 4b). The prior state
+// of this very repository is the red: enforced_block() used to fold one run line per Enforced row, so
+// every enforced entry appeared in the emitted YAML and the second conjunct would fail. An author who
+// deliberately reverts to a per-row fold regenerates cleanly and projection_drift stays GREEN —
+// drift catches unintended divergence, not intended reversal — so without this check the 5.7x cost
+// property could die with every other gate passing.
+fn emitted_invokes_aggregate() -> Bool {
+  string_contains(s: expected_witnesses_yml(), pattern: roster_aggregate.entry as String)
+}
+
+fn emitted_invokes_no_enforced_entry_directly() -> Bool {
+  all(enforced_witnesses(), w => !string_contains(s: expected_witnesses_yml(), pattern: w.entry as String))
+}
+
+fn enforced_entries_present_in_emitted_yaml() -> String {
+  fold(enforced_witnesses(), init: "", f: fn(acc, w) {
+    if string_contains(s: expected_witnesses_yml(), pattern: w.entry as String) {
+      join([acc, "\n    ", w.entry], "")
+    } else { acc }
+  })
+}
+
+// THE ROW'S LABEL AND THE FUNCTION IT ACTUALLY CALLS ARE TWO FACTS, AND THE JOIN ABOVE ONLY CHECKS
+// THE FIRST.
+//
+// coverage_holds asserts membership over ENTRY PATHS — an identity for WHICH FILE is enrolled. It is
+// not an identity for WHAT RAN. Keeping `entry: ".../colo_market_witness_test.dag"` while writing
+// `exit: makeshift_witness_main()` satisfies every conjunct above: the path join is intact, the
+// witness passes, and the roll call prints `PASS .../colo_market_witness_test.dag` without colo ever
+// having run. All 33 mappings agree today, so this is a latent hole rather than a live lie — which
+// is precisely when it is cheap to close (sharp-ibex-153, independent review).
+//
+// WHY THIS CANNOT BE ASSERTED BY CALLING ANYTHING. The substrate has no reflection: std.decl_ref
+// DeclarationRef is a record of strings, a citation rather than a callable, so there is no value that
+// is both invocable and carries its own declaration identity. The binding between a name and the
+// function it denotes is therefore not observable from inside the program that calls it.
+//
+// SO IT IS ASSERTED OVER THE SOURCE, AND THE PATTERN IS DERIVED RATHER THAN HAND-COPIED. For every
+// Enforced row the authority declares, this builds the canonical pairing text from THAT ROW's own
+// entry and function and requires it to appear verbatim in this module's source. Swap the call and
+// keep the label and the text no longer appears, so the assertion reds. The pattern comes from
+// strategy.private_witness_workflow, never from a literal typed here, so it cannot drift into
+// agreeing with a wrong mapping.
+//
+// WHAT THIS RESTS ON, stated because it is load-bearing: names in this substrate resolve by GLOBAL
+// UNIQUENESS, so the identifier `colo_witness_main` denotes the one declaration of that name
+// regardless of imports. That is what makes matching the identifier TEXT a sound join to the callable
+// rather than a spelling-keyed guess. Its rung is mechanically preventable, not structural — a
+// reformat of these rows would red it, loudly, which is the honest failure direction for a text join.
+fn pairing_text(w: PrivateWitness) -> String {
+  join(["RosterOutcome { entry: \"", w.entry, "\", exit: ", w.function, "() }"], "")
+}
+
+// IT READS A PATH, NOT ITSELF, AND THE DIFFERENCE IS WORTH KNOWING. There is no "my own source" in
+// this substrate, so the path is composed from private_entry_prefix — the in-workspace overlay the
+// workflow ingests from — plus this module's location under it. In the production invocation those
+// coincide exactly: the aggregate CI executes lives at that path, so the bytes read are the bytes
+// running. They stop coinciding if a copy is executed from somewhere the prefix does not name, and
+// then this reads the pristine file and finds every pairing intact.
+// MEASURED, because I nearly shipped the check believing the stronger property: a substituted copy
+// run from a second directory under ONE shared prefix passed — it had read the unmodified tree. The
+// discriminating control had to give each arm its own overlay root so each read its own copy. A
+// read refusal is its own arm rather than a pass, so "could not look" never reads as "nothing wrong".
+fn aggregate_source_read() -> FilesystemReadOutcome {
+  let r = Filesystem.Read(path: join([private_entry_prefix, "dag/test/claim/private_roster_witness_test.dag"], ""))
+  filesystem_read_outcome(content: r.content, success: r.success, error: r.error)
+}
+
+fn rows_whose_call_does_not_match_their_label(src: String) -> String {
+  fold(enforced_witnesses(), init: "", f: fn(acc, w) {
+    if string_contains(s: src, pattern: pairing_text(w: w)) { acc } else {
+      join([acc, "\n    ", w.entry, " should call ", w.function, "() and this module does not pair them"], "")
+    }
+  })
+}
+
+fn private_roster_main() -> CliWireResponse {
+  let outcomes = roster_outcomes()
+  let covered = covered_entries(outcomes: outcomes)
+  let enforced = enforced_entries()
+  let failures = failure_report(outcomes: outcomes)
+  let name_callable = match aggregate_source_read() {
+    FilesystemReadSucceeded { content } => rows_whose_call_does_not_match_their_label(src: content)
+    FilesystemReadRefused { error } =>
+      join(["\n    could not read this module's own source to join labels to callables: ", error], "")
+  }
+  if name_callable != "" {
+    CliWirePrintable {
+      bytes: join([
+        "LABEL/CALLABLE DRIFT — a row names one witness and calls another, or its own source could not be read. The entry path identifies WHICH FILE is enrolled; it does not identify WHAT RAN, so a roll call that prints a row's name is only trustworthy if the row's function is joined to it.",
+        name_callable,
+        "\n",
+      ], ""),
+      exit: ExitFailure { code: 1, reason: "label/callable drift: a row's entry and its called function disagree" },
+    }
+  } else if !(emitted_invokes_aggregate() && emitted_invokes_no_enforced_entry_directly()) {
+    CliWirePrintable {
+      bytes: join([
+        "ACQUISITION SHAPE DRIFT — the emitted witnesses.yml no longer runs the enforced roster as ONE invocation. The enforced half is supposed to be a single process over the composed world; per-row invocations re-acquire that world once each, which is the 52.8-minute cost this roster was changed to delete.",
+        "\n  aggregate entry invoked: ", if emitted_invokes_aggregate() { "yes" } else { "NO — the aggregate is not in the emitted workflow at all" },
+        "\n  Enforced entries invoked directly (there must be none):",
+        if enforced_entries_present_in_emitted_yaml() == "" { " none" } else { enforced_entries_present_in_emitted_yaml() },
+        "\n",
+      ], ""),
+      exit: ExitFailure { code: 1, reason: "acquisition shape drift: the enforced roster is no longer one invocation" },
+    }
+  } else if !coverage_holds(covered: covered, enforced: enforced) {
+    CliWirePrintable {
+      bytes: join([
+        "ROSTER COVERAGE DRIFT — the entries this aggregate runs are not exactly the Enforced rows of strategy.private_witness_workflow. Add or remove a RosterOutcome row so the two agree; a witness silently dropped from this list would otherwise never run.",
+        coverage_detail(covered: covered, enforced: enforced),
+        "\n",
+      ], ""),
+      exit: ExitFailure { code: 1, reason: "roster coverage drift" },
+    }
+  } else if failures == "" {
+    CliWirePrintable {
+      bytes: join([
+        "every enforced private witness, in ONE process — one line per row:",
+        roll_call(outcomes: outcomes),
+        "\n",
+      ], ""),
+      exit: ExitSuccess,
+    }
+  } else {
+    CliWirePrintable {
+      bytes: join([
+        "enforced private witnesses in the shared roster process — one line per row:",
+        roll_call(outcomes: outcomes),
+        "\n",
+      ], ""),
+      exit: ExitFailure {
+        code: 1,
+        reason: join(["these enforced private witnesses failed:", failures], ""),
+      },
+    }
+  }
+}

@@ -1,0 +1,879 @@
+module strategy.machine_tile_projection
+
+import std.measure { millimeter_count }
+
+import std.nat { Nat }
+import std.types { NonEmptyStr }
+import std.spatial_knowledge { SpatialKnowledge, SpatialHypothesis }
+import strategy.machine_tile_design {
+  MachineTileScenario, TileGeometryKnowledge, tile_drawing_intent,
+  scenarios, scenario_a_face_air, scenario_b_rear_air, scenario_c_rear_liquid,
+  tile_overall_width_mm, tile_overall_height_mm, backboard_thickness_mm,
+  datum_offset, minimum_datum_web_mm, selected_hold_may_render_silhouette, hold_is_qualified_for_lift,
+  MachineTileGripObligation, SelectedHardwareThread, MountingFaceConfirmation, ExactShapeArtifact,
+  HoldMaterialStatement, ManufacturerSkuCode, LiftProofLoadReceipt,
+  machine_tile_grip_obligations, selected_hold,
+  PowerPlacement, TileFace, TileRearAttached, SharedRectifierStudy,
+  ScenarioCooling, DualAirTower, ColdPlateLiquid,
+}
+
+data machine_tile_projection_note: String = "The DURABLE boundary between physical intent and drawing, introduced 2026-08-11 on review direction. Its whole purpose is to survive the arrival of a real affine scene: today a producer emits FrontElevationProjection from datum-anchored offsets in strategy.machine_tile_design; after SPATIAL-2 and SPATIAL-3 land, a scene projector emits THE SAME type from resolved geometry, and neither the page nor the SVG renderer changes. That is why this is a climb rather than scaffolding, and it is the reason the alternative proposal - a quick local Point2/Rect2/Transform2 kernel - was withdrawn. Minting a second affine vocabulary beside SPATIAL-2 would have to be deleted; this does not."
+
+data spatial_2_seam_note: String = "THE SEAM, resolved against what gunbc#8091 actually ships rather than against a description of it. That PR provides Point3<F>, Vector3<F>, Point2<F>, Vector2<F> - all over MillimeterCoordinate = Measure<Length, Milli, Int> - plus Transform3<From,To>, QuarterTurns and Handedness. It does NOT provide a Point3-to-Point2 projection. The apparent contradiction (use SPATIAL-2 / it is a draft / do not substitute) came from conflating two different things. WORLD SPACE is where a part IS in three dimensions; SPATIAL-2 owns it, this module mints none of it and must never do so. VIEW SPACE is the flat list of rectangles a renderer consumes; DatumAnchoredExtent is exactly that and nothing more. The two never competed. The missing Point3-to-Point2 projection is a select-and-reorder of integer components needing no trigonometry, and it belongs downstream in SPATIAL-3 or here - NOT in a PR that is trying to land."
+
+data no_composition_rule_note: String = "THE RULE that keeps this from becoming a rival geometry kernel, stated so it can be enforced rather than remembered: DatumAnchoredExtent may never gain COMPOSITION. No extent-to-extent arithmetic, no transform between extents, no containment or intersection test between two extents. Those operations are precisely what make something a geometry kernel, and SPATIAL-2 owns them. Lowering operations are admitted because they read one extent and a canvas - extent_left_mm, extent_top_mm and extent_fits_canvas are all of that shape. An extent_contains(a, b) or extent_offset_from(a, b) would be the violation, and adding one is the signal that this module has outgrown its remit and the scene should have landed first."
+
+data dissolution_trigger_note: String = "DISSOLUTION TRIGGER. common_extents, side_section_for and rear_elevation_for are HAND-AUTHORED producers of view space - they know that a supply sits at 400 mm because a person decided it, not because a placed body was projected. That is the debt this module carries openly. When SPATIAL-2 lands and a scene exists, those three functions are replaced by one projector reading Point3<MachineTileFrame>, every consumer below them keeps working unchanged, and this note is deleted along with them. The cheap adoption available the MOMENT #8091 merges, needing no scene at all: change every offset here from bare Nat to MillimeterCoordinate, which satisfies the no-loose-coordinate rule immediately."
+
+data projection_claim_scope_note: String = "What a DatumAnchoredExtent claims, stated narrowly so it is not mistaken for affine space: in ONE named orthographic view, a rectangular extent begins a non-negative distance from two named straight datums. It carries no frame, no transform, no rotation and no cross-view identity. It cannot express the live edge, a rounded arris, a diagonal cleat face or a routed path - those are deliberately absent rather than approximated, and each waits for the real geometry kernel. Every extent also carries its epistemic standing, so a hypothesis cannot be projected as a measurement."
+
+type TileDatum
+  = TopCleatDatum
+  | BottomServiceDatum
+  | LeftSquareDatum
+  | RightLiveDatum
+
+data datum_choice_note: String = "RightLiveDatum exists as an arm and MUST NOT anchor a dimensioned extent - the right edge is the live edge, and the shape rule this design has held since Rev A is that nothing is measured from it. The arm is present only so a renderer can name that edge when drawing the tile outline; witness_no_extent_anchors_to_the_live_edge refuses any extent that anchors to it."
+
+type ProjectionRole
+  = MountedComponent
+  | StructuralSolid
+  | ElectronicsBody
+  | PowerBody
+  | CoolingBody
+  | RouteBody
+  | GripVoid
+  | RestContact
+  | ExclusionBand
+
+data projection_role_note: String = "Roles are SEMANTIC, never visual. No colour, stroke or fill appears in this module - the renderer derives appearance from role plus standing, so a change of palette never touches physical intent and a change of physical intent never edits a colour. This follows the repo atlas precedent: semantic address and role enter the renderer, and the renderer performs only the final geometric lowering."
+
+type DatumAnchoredExtent {
+  subject_id: String
+  horizontal_datum: TileDatum
+  horizontal_offset_mm: Nat
+  vertical_datum: TileDatum
+  vertical_offset_mm: Nat
+  width_mm: Nat
+  height_mm: Nat
+  role: ProjectionRole
+  standing: TileGeometryKnowledge
+  note: String
+}
+
+type ViewKind
+  = FrontElevationView
+  | SideSectionView
+  | RearElevationView
+  | GripPlanSectionView
+  | GripThicknessDetailView
+  | GripElevationView
+
+data view_kind_note: String = "Three exact axis views. They select and reorder integer components; none needs trigonometry or an approximate numeric policy. The side section is the one that carries depth honestly - it is where a rear-attached supply becomes visible as occupied volume rather than as a number in a table - and the rear elevation is the one that turns supply behind the board from a sentence into a design, because it is the only view in which the cage, aperture, intake and service access exist at all."
+
+type FrontElevationProjection {
+  id: String
+  scenario_id: String
+  view: ViewKind
+  canvas_width_mm: Nat
+  canvas_height_mm: Nat
+  extents: List<DatumAnchoredExtent>
+}
+
+fn view_label(v: ViewKind) -> String {
+  match v {
+    FrontElevationView => "front elevation",
+    SideSectionView => "side section",
+    RearElevationView => "rear elevation",
+    GripPlanSectionView => "grip plan section",
+    GripThicknessDetailView => "grip thickness detail",
+    GripElevationView => "grip elevation",
+  }
+}
+
+fn extent(
+  subject_id: String,
+  left_mm: Nat,
+  top_mm: Nat,
+  width_mm: Nat,
+  height_mm: Nat,
+  role: ProjectionRole,
+  note: String,
+) -> DatumAnchoredExtent {
+  DatumAnchoredExtent {
+    subject_id: subject_id,
+    horizontal_datum: LeftSquareDatum,
+    horizontal_offset_mm: left_mm,
+    vertical_datum: TopCleatDatum,
+    vertical_offset_mm: top_mm,
+    width_mm: width_mm,
+    height_mm: height_mm,
+    role: role,
+    standing: tile_drawing_intent(v: width_mm),
+    note: note,
+  }
+}
+
+fn extent_from_service_datum(
+  subject_id: String,
+  left_mm: Nat,
+  bottom_offset_mm: Nat,
+  width_mm: Nat,
+  height_mm: Nat,
+  role: ProjectionRole,
+  note: String,
+) -> DatumAnchoredExtent {
+  DatumAnchoredExtent {
+    subject_id: subject_id,
+    horizontal_datum: LeftSquareDatum,
+    horizontal_offset_mm: left_mm,
+    vertical_datum: BottomServiceDatum,
+    vertical_offset_mm: bottom_offset_mm,
+    width_mm: width_mm,
+    height_mm: height_mm,
+    role: role,
+    standing: tile_drawing_intent(v: width_mm),
+    note: note,
+  }
+}
+
+fn extent_from_right_margin(
+  subject_id: String,
+  right_offset_mm: Nat,
+  top_mm: Nat,
+  width_mm: Nat,
+  height_mm: Nat,
+  role: ProjectionRole,
+  note: String,
+) -> DatumAnchoredExtent {
+  DatumAnchoredExtent {
+    subject_id: subject_id,
+    horizontal_datum: LeftSquareDatum,
+    horizontal_offset_mm: tile_overall_width_mm - right_offset_mm - width_mm,
+    vertical_datum: TopCleatDatum,
+    vertical_offset_mm: top_mm,
+    width_mm: width_mm,
+    height_mm: height_mm,
+    role: role,
+    standing: tile_drawing_intent(v: width_mm),
+    note: note,
+  }
+}
+
+data board_width_mm: Nat = 244
+
+data board_height_mm: Nat = 267
+
+data psu_face_width_mm: Nat = 150
+
+data psu_face_height_mm: Nat = 140
+
+data saddle_width_mm: Nat = 30
+
+data grip_cut_height_mm: Nat = 110
+
+data foot_size_mm: Nat = 18
+
+data air_cooler_footprint_mm: Nat = 95
+
+data cold_plate_footprint_mm: Nat = 60
+
+data part_dimension_note: String = "These are the SAME numbers the datum chain and dimension_note already carried, now expressed once as parts rather than repeated inside a drawing. The cooler and cold-plate footprints are the only additions, and both are hypothesis-grade footprints for a front view - the NH-D9's real 130 mm height is a DEPTH and belongs to the side section, which this slice does not yet emit."
+
+fn cooling_footprint_mm(s: MachineTileScenario) -> Nat {
+  match s.cooling {
+    DualAirTower => air_cooler_footprint_mm,
+    ColdPlateLiquid => cold_plate_footprint_mm,
+  }
+}
+
+fn power_body_is_on_the_face(s: MachineTileScenario) -> Bool {
+  match s.power_placement {
+    TileFace => true,
+    TileRearAttached => false,
+    SharedRectifierStudy => false,
+  }
+}
+
+data power_visibility_note: String = "The single fact that makes the front elevation scenario-driven rather than decorative: in preset A the supply occupies 150 x 140 mm of the room-facing surface, and in B and C the SAME supply is behind the carrier and simply does not appear in a front view. One pose difference, one visible consequence - and the reason a viewer can see at a glance why B and C have a clean face and a deeper wall."
+
+fn common_extents() -> List<DatumAnchoredExtent> {
+  [
+    extent(subject_id: "tile-outline", left_mm: 0, top_mm: 0,
+      width_mm: tile_overall_width_mm, height_mm: tile_overall_height_mm,
+      role: StructuralSolid,
+      note: "The carrier. Its right edge is live and is drawn, never dimensioned."),
+    extent(subject_id: "cleat-zone", left_mm: 0, top_mm: 0,
+      width_mm: tile_overall_width_mm, height_mm: datum_offset(id: "d-cleat-zone"),
+      role: ExclusionBand,
+      note: "Nothing may be mounted in this band - the cleat load passes through it."),
+    extent(subject_id: "board", left_mm: datum_offset(id: "d-board-left"),
+      top_mm: datum_offset(id: "d-board-top"),
+      width_mm: board_width_mm, height_mm: board_height_mm,
+      role: ElectronicsBody,
+      note: "Baseboard envelope only. No socket, header or DIMM position is placed: no mechanical drawing exists, and a guessed coordinate is worse than an absent one."),
+    extent(subject_id: "service-saddle",
+      left_mm: datum_offset(id: "d-saddle") - saddle_width_mm / 2,
+      top_mm: datum_offset(id: "d-board-top"),
+      width_mm: saddle_width_mm, height_mm: board_height_mm,
+      role: RouteBody,
+      note: "The routed channel carrying every DC run, covered by a removable strip."),
+    extent_from_service_datum(subject_id: "foot-left", left_mm: 60,
+      bottom_offset_mm: 0, width_mm: foot_size_mm, height_mm: foot_size_mm,
+      role: RestContact,
+      note: "Rubber. The tile rests here, never on a grip."),
+    extent_from_service_datum(subject_id: "foot-mid", left_mm: 300,
+      bottom_offset_mm: 0, width_mm: foot_size_mm, height_mm: foot_size_mm,
+      role: RestContact, note: "Rubber."),
+    extent_from_service_datum(subject_id: "foot-right", left_mm: 540,
+      bottom_offset_mm: 0, width_mm: foot_size_mm, height_mm: foot_size_mm,
+      role: RestContact, note: "Rubber."),
+  ]
+}
+
+fn cooling_extent(s: MachineTileScenario) -> DatumAnchoredExtent {
+  extent(subject_id: "cooling",
+    left_mm: datum_offset(id: "d-board-left") + 40,
+    top_mm: datum_offset(id: "d-board-top") + 50,
+    width_mm: cooling_footprint_mm(s: s), height_mm: cooling_footprint_mm(s: s),
+    role: CoolingBody,
+    note: "Air tower or cold plate, by scenario. Front footprint only - the height that matters is a depth and belongs to the side section.")
+}
+
+fn power_extents(s: MachineTileScenario) -> List<DatumAnchoredExtent> {
+  if power_body_is_on_the_face(s: s) {
+    [
+      extent(subject_id: "power-supply", left_mm: 400,
+        top_mm: datum_offset(id: "d-board-top"),
+        width_mm: psu_face_width_mm, height_mm: psu_face_height_mm,
+        role: PowerBody,
+        note: "On the room-facing surface in preset A. In B and C the same supply is behind the carrier and absent from this view."),
+    ]
+  } else {
+    []
+  }
+}
+
+fn front_elevation_for(s: MachineTileScenario) -> FrontElevationProjection {
+  FrontElevationProjection {
+    id: join(["front-elevation-", s.id], ""),
+    scenario_id: s.id,
+    view: FrontElevationView,
+    canvas_width_mm: tile_overall_width_mm,
+    canvas_height_mm: tile_overall_height_mm,
+    extents: common_extents().concat([cooling_extent(s: s)]).concat(power_extents(s: s)),
+  }
+}
+
+fn front_elevations() -> List<FrontElevationProjection> {
+  map(scenarios, s => front_elevation_for(s: s))
+}
+
+fn extent_left_mm(e: DatumAnchoredExtent, canvas_width_mm: Nat) -> Nat {
+  match e.horizontal_datum {
+    LeftSquareDatum => e.horizontal_offset_mm,
+    RightLiveDatum => canvas_width_mm - e.horizontal_offset_mm - e.width_mm,
+    TopCleatDatum => e.horizontal_offset_mm,
+    BottomServiceDatum => e.horizontal_offset_mm,
+  }
+}
+
+fn extent_top_mm(e: DatumAnchoredExtent, canvas_height_mm: Nat) -> Nat {
+  match e.vertical_datum {
+    TopCleatDatum => e.vertical_offset_mm,
+    BottomServiceDatum => canvas_height_mm - e.vertical_offset_mm - e.height_mm,
+    LeftSquareDatum => e.vertical_offset_mm,
+    RightLiveDatum => e.vertical_offset_mm,
+  }
+}
+
+fn extent_anchors_to_live_edge(e: DatumAnchoredExtent) -> Bool {
+  match e.horizontal_datum {
+    RightLiveDatum => true,
+    LeftSquareDatum => false,
+    TopCleatDatum => false,
+    BottomServiceDatum => false,
+  }
+}
+
+fn extent_role_is_visible_body(e: DatumAnchoredExtent) -> Bool {
+  match e.role {
+    StructuralSolid => true,
+    ElectronicsBody => true,
+    PowerBody => true,
+    CoolingBody => true,
+    RouteBody => true,
+    MountedComponent => false,
+    GripVoid => false,
+    RestContact => true,
+    ExclusionBand => false,
+  }
+}
+
+fn extent_fits_canvas(e: DatumAnchoredExtent, w: Nat, h: Nat) -> Bool {
+  extent_left_mm(e: e, canvas_width_mm: w) + e.width_mm <= w
+    && extent_top_mm(e: e, canvas_height_mm: h) + e.height_mm <= h
+}
+
+fn projection_extent_count(p: FrontElevationProjection) -> Int {
+  count(p.extents)
+}
+
+
+type HazardClass
+  = MainsHazard
+  | HighCurrentDcHazard
+  | HotSurfaceHazard
+  | RotatingPartHazard
+  | ElectrostaticHazard
+
+data hazard_overlay_note: String = "The hazard map is an OVERLAY, not a second drawing. The handwritten page redrew the tile, board, PSU and components independently to annotate them, so a change of placement had to be made twice and could disagree. Here a hazard cites the subject_id of an extent that already exists in the front elevation, and the renderer looks up that extent's geometry - so a hazard cannot mark a position the elevation does not have, and moving a part moves its hazard."
+
+type HazardMark {
+  code: String
+  subject_id: String
+  hazard: HazardClass
+  headline: String
+  detail: String
+}
+
+data hazard_marks: List<HazardMark> = [
+  HazardMark {
+    code: "H1",
+    subject_id: "power-supply",
+    hazard: MainsHazard,
+    headline: "Mains - the only lethal voltage",
+    detail: "Inside the supply's sealed shell and its cord, nowhere else. The primary capacitor holds charge after unplugging, so the supply is never opened. In presets B and C this hazard moves behind the carrier with the supply - it does not disappear, and the overlay stops marking a position the front view no longer has.",
+  },
+  HazardMark {
+    code: "H2",
+    subject_id: "service-saddle",
+    hazard: HighCurrentDcHazard,
+    headline: "12 V short circuit - the real risk",
+    detail: "Cannot shock; can source tens of amps. A dropped screwdriver, ring or watch strap across it arcs, spatters molten metal and can ignite. This is the hazard the removed case used to handle, and the saddle cover is part of designing it back in.",
+  },
+  HazardMark {
+    code: "H3",
+    subject_id: "cooling",
+    hazard: HotSurfaceHazard,
+    headline: "Hot surfaces",
+    detail: "Heatsink base 60-70 C under load, regulators higher. Burns rather than injuries - but enough to make a hand snatch back into H2.",
+  },
+  HazardMark {
+    code: "H4",
+    subject_id: "cooling",
+    hazard: RotatingPartHazard,
+    headline: "Fan blades",
+    detail: "Minor, exposed, at hand height. Present in every preset: cold plates remove the tower fans but not the supply fan or the auxiliary board airflow.",
+  },
+  HazardMark {
+    code: "H5",
+    subject_id: "board",
+    hazard: ElectrostaticHazard,
+    headline: "Electrostatic discharge",
+    detail: "The whole board. Damage below the threshold a hand can feel, often latent - works now, fails in three months. NO HANDLING INTERFACE IS ADMITTED: the routed edge grips named here as the mitigation are a rejected alternative, and the selected climbing holds have no resolved placement. Until a grip placement and its qualification resolve, service needs a temporary fixture and direct board handling stays prohibited - this hazard currently has no mitigation, which is worse than the stale sentence implied.",
+  },
+]
+
+fn extent_by_subject(p: FrontElevationProjection, subject_id: String) -> List<DatumAnchoredExtent> {
+  filter(p.extents, e => e.subject_id == subject_id)
+}
+
+fn hazard_is_placeable(p: FrontElevationProjection, m: HazardMark) -> Bool {
+  count(extent_by_subject(p: p, subject_id: m.subject_id)) == 1
+}
+
+fn placeable_hazards(p: FrontElevationProjection) -> List<HazardMark> {
+  filter(hazard_marks, m => hazard_is_placeable(p: p, m: m))
+}
+
+fn unplaceable_hazards(p: FrontElevationProjection) -> List<HazardMark> {
+  filter(hazard_marks, m => !hazard_is_placeable(p: p, m: m))
+}
+
+data unplaceable_hazard_note: String = "A hazard whose subject is absent from a view is NOT dropped - it is listed as unplaced with its reason. Preset B and C move the supply behind the carrier, so H1 has no position in a front elevation; silently omitting it would let a reader conclude the mains hazard went away, which is exactly the false reassurance a hazard map must not give."
+
+
+data cooler_depth_mm: Nat = 130
+
+data cold_plate_depth_mm: Nat = 30
+
+data standoff_and_board_depth_mm: Nat = 8
+
+data psu_body_depth_mm: Nat = 86
+
+data rear_service_air_mm: Nat = 40
+
+data side_section_note: String = "The side section is drawn in z from the finished wall outward, one extent per physical layer, so total wall projection is a READING of the drawn stack rather than a stored number. Solids and clearances are separate extents on purpose: a supply body and the free air its intake needs are not the same object, and drawing them as one is how a design convinces itself a fan can breathe."
+
+fn side_layer(subject_id: String, z_from_wall_mm: Nat, depth_mm: Nat, top_mm: Nat, height_mm: Nat, role: ProjectionRole, note: String) -> DatumAnchoredExtent {
+  DatumAnchoredExtent {
+    subject_id: subject_id,
+    horizontal_datum: LeftSquareDatum,
+    horizontal_offset_mm: z_from_wall_mm,
+    vertical_datum: TopCleatDatum,
+    vertical_offset_mm: top_mm,
+    width_mm: depth_mm,
+    height_mm: height_mm,
+    role: role,
+    standing: tile_drawing_intent(v: depth_mm),
+    note: note,
+  }
+}
+
+fn side_section_for(s: MachineTileScenario) -> FrontElevationProjection {
+  let z_board = s.wall_to_backboard_face_mm + backboard_thickness_mm
+  let z_carrier = z_board + s.rear_service_depth_mm
+  let z_face = z_carrier + s.carrier_thickness_mm
+  let cool_depth = if scenario_cooling_is_liquid(s: s) { cold_plate_depth_mm } else { cooler_depth_mm }
+  FrontElevationProjection {
+    id: join(["side-section-", s.id], ""),
+    scenario_id: s.id,
+    view: SideSectionView,
+    canvas_width_mm: z_face + standoff_and_board_depth_mm + cool_depth,
+    canvas_height_mm: tile_overall_height_mm,
+    extents: [
+      side_layer(subject_id: "service-void", z_from_wall_mm: 0, depth_mm: s.wall_to_backboard_face_mm,
+        top_mm: 0, height_mm: tile_overall_height_mm, role: ExclusionBand,
+        note: "Battened void between the finished wall and the backboard. Cables rise here."),
+      side_layer(subject_id: "backboard", z_from_wall_mm: s.wall_to_backboard_face_mm,
+        depth_mm: backboard_thickness_mm, top_mm: 0, height_mm: tile_overall_height_mm,
+        role: StructuralSolid, note: "The field the cleats are cut into."),
+      side_layer(subject_id: "rear-service-volume", z_from_wall_mm: z_board,
+        depth_mm: s.rear_service_depth_mm, top_mm: 0, height_mm: tile_overall_height_mm,
+        role: ExclusionBand,
+        note: "Cleat band in preset A. In B and C it grows to clear the supply body plus its intake and service allowance - which is why B is the deepest assembly of the three."),
+      side_layer(subject_id: "carrier", z_from_wall_mm: z_carrier,
+        depth_mm: s.carrier_thickness_mm, top_mm: 0, height_mm: tile_overall_height_mm,
+        role: StructuralSolid, note: "18 mm birch ply."),
+      side_layer(subject_id: "board", z_from_wall_mm: z_face,
+        depth_mm: standoff_and_board_depth_mm,
+        top_mm: datum_offset(id: "d-board-top"), height_mm: board_height_mm,
+        role: ElectronicsBody, note: "Standoffs plus baseboard."),
+      side_layer(subject_id: "cooling", z_from_wall_mm: z_face + standoff_and_board_depth_mm,
+        depth_mm: cool_depth, top_mm: datum_offset(id: "d-board-top") + 50,
+        height_mm: cooling_footprint_mm(s: s), role: CoolingBody,
+        note: "Tower cooler at 130 mm, or cold plate at 30 mm. This is the depth cold plates actually remove."),
+    ].concat(side_power_extents(s: s, z_board: z_board)),
+  }
+}
+
+fn scenario_cooling_is_liquid(s: MachineTileScenario) -> Bool {
+  match s.cooling {
+    DualAirTower => false,
+    ColdPlateLiquid => true,
+  }
+}
+
+fn side_power_extents(s: MachineTileScenario, z_board: Nat) -> List<DatumAnchoredExtent> {
+  if power_body_is_on_the_face(s: s) {
+    [
+      side_layer(subject_id: "power-supply",
+        z_from_wall_mm: z_board + s.rear_service_depth_mm + s.carrier_thickness_mm,
+        depth_mm: psu_body_depth_mm, top_mm: datum_offset(id: "d-board-top"),
+        height_mm: psu_face_height_mm, role: PowerBody,
+        note: "Preset A: the supply stands proud of the room-facing surface."),
+    ]
+  } else {
+    [
+      side_layer(subject_id: "power-supply", z_from_wall_mm: z_board,
+        depth_mm: psu_body_depth_mm, top_mm: datum_offset(id: "d-board-top"),
+        height_mm: psu_face_height_mm, role: PowerBody,
+        note: "Presets B and C: the same supply, behind the carrier - occupying the rear service volume rather than the room."),
+      side_layer(subject_id: "psu-intake-clearance", z_from_wall_mm: z_board + psu_body_depth_mm,
+        depth_mm: rear_service_air_mm, top_mm: datum_offset(id: "d-board-top"),
+        height_mm: psu_face_height_mm, role: ExclusionBand,
+        note: "Free air the supply intake requires. Drawn separately from the supply body because a fan cannot breathe through a solid."),
+    ]
+  }
+}
+
+data rear_elevation_note: String = "The view that makes preset B a design rather than a sentence. Everything here exists ONLY behind the carrier, so it has no front-elevation counterpart: the supply cage, the cable aperture the ATX and EPS looms pass through, and the service access a hand needs to reach a thumbscrew. Preset A has none of it, and its rear elevation is correspondingly almost empty - which is itself the argument for A."
+
+fn rear_elevation_for(s: MachineTileScenario) -> FrontElevationProjection {
+  FrontElevationProjection {
+    id: join(["rear-elevation-", s.id], ""),
+    scenario_id: s.id,
+    view: RearElevationView,
+    canvas_width_mm: tile_overall_width_mm,
+    canvas_height_mm: tile_overall_height_mm,
+    extents: [
+      extent(subject_id: "carrier-rear", left_mm: 0, top_mm: 0,
+        width_mm: tile_overall_width_mm, height_mm: tile_overall_height_mm,
+        role: StructuralSolid, note: "Back face of the carrier."),
+      extent(subject_id: "cleat-tile-half", left_mm: 0, top_mm: 0,
+        width_mm: tile_overall_width_mm, height_mm: datum_offset(id: "d-cleat-bearing"),
+        role: RestContact,
+        note: "The tile half of the 45-degree rip, running the full width."),
+      extent_from_service_datum(subject_id: "bumper-left", left_mm: 120, bottom_offset_mm: 0,
+        width_mm: 60, height_mm: 25, role: RestContact,
+        note: "25 mm rubber, matching the cleat band so the tile hangs parallel."),
+      extent_from_service_datum(subject_id: "bumper-right", left_mm: 460, bottom_offset_mm: 0,
+        width_mm: 60, height_mm: 25, role: RestContact, note: "25 mm rubber."),
+    ].concat(rear_power_extents(s: s)),
+  }
+}
+
+fn rear_power_extents(s: MachineTileScenario) -> List<DatumAnchoredExtent> {
+  if power_body_is_on_the_face(s: s) {
+    []
+  } else {
+    [
+      extent(subject_id: "psu-cage", left_mm: 380, top_mm: datum_offset(id: "d-board-top"),
+        width_mm: psu_face_width_mm + 20, height_mm: psu_face_height_mm + 20,
+        role: PowerBody,
+        note: "Support cage holding the supply to the carrier, so the whole machine still leaves the wall as one object."),
+      extent(subject_id: "cable-aperture", left_mm: 330,
+        top_mm: datum_offset(id: "d-board-top") + 40,
+        width_mm: 45, height_mm: 60, role: RouteBody,
+        note: "ONE rounded, edge-protected aperture - not three connector-sized holes. A 24-pin plug is too large for a tidy grommet and the resulting edge geometry is awkward."),
+    ]
+  }
+}
+
+
+data grip_section_honesty_note: String = "An observation worth stating rather than papering over, because a review asked for a plan section AND a separate thickness section as if they were different cuts. For an EDGE grip they are the same cut at two scales. A bolted face hold is a feature ON the panel, so its plan and its through-thickness profile really are different sections. A routed incut is a VOID IN the edge, so one horizontal cut through the grip shows both the depth into the edge and the full 18 mm thickness at once - there is no second orientation hiding anything. That is not a shortcut; it is a consequence of moving the lift load into the edge, which is the change that gave the grip a datum in the first place. What the earlier drawing genuinely got wrong was different: it put a finger silhouette into a section that cannot represent a hand, and it drew no arris geometry at all. Both are fixed below."
+
+data grip_web_mm: Nat = 28
+
+data panel_thickness_mm: Nat = 18
+
+data roundover_radius_mm: Nat = 9
+
+data roundover_correction_note: String = "BLOCKING ERROR, caught by review and confirmed by inspection. This was R12 on BOTH faces of an 18 mm panel, and the thickness detail computed remaining material as panel_thickness_mm - roundover_radius_mm * 2, i.e. 18 - 24. Nat arithmetic cannot represent that, so it produced a number instead of a refusal - the exact failure shape this whole carrier exists to prevent, committed by me while writing the drawing that was supposed to make the grip honest. R9 is selected on a reason rather than on appearance: two R9 arrises on an 18 mm edge consume the thickness exactly, which is a FULL BULLNOSE - a continuous half-round cylinder, standard router-bit geometry, and the surface a hand actually wants. The non-overlap law then holds at equality rather than by luck. NOT claimed: that R9 is correct on load. The residual-thickness requirement must come from a proof-load test on a cut prototype, and none exists."
+
+data grip_detail_span_mm: Nat = 90
+
+fn grip_plan_section() -> FrontElevationProjection {
+  FrontElevationProjection {
+    id: "grip-plan-section",
+    scenario_id: selected_scenario_id,
+    view: GripPlanSectionView,
+    canvas_width_mm: grip_detail_span_mm,
+    canvas_height_mm: panel_thickness_mm,
+    extents: [
+      extent(subject_id: "material-removed", left_mm: 0, top_mm: 0,
+        width_mm: datum_offset(id: "d-grip-depth"), height_mm: panel_thickness_mm,
+        role: GripVoid,
+        note: "Material REMOVED to 32 mm from the left square datum. This is the void a hand enters."),
+      extent(subject_id: "structural-web", left_mm: datum_offset(id: "d-grip-depth"),
+        top_mm: 0, width_mm: grip_web_mm, height_mm: panel_thickness_mm,
+        role: StructuralSolid,
+        note: "28 mm of continuous ply between the cut face and the board keep-out. This is the number the minimum-web check defends, and it is what carries the lift."),
+      extent(subject_id: "board-keepout-boundary",
+        left_mm: datum_offset(id: "d-board-left"), top_mm: 0,
+        width_mm: grip_detail_span_mm - datum_offset(id: "d-board-left"),
+        height_mm: panel_thickness_mm, role: ExclusionBand,
+        note: "Board keep-out begins at 60 mm from the datum. No hand silhouette appears in this view: a section cannot represent a grip action, and the earlier drawing put one here."),
+    ],
+  }
+}
+
+fn grip_thickness_detail() -> FrontElevationProjection {
+  FrontElevationProjection {
+    id: "grip-thickness-detail",
+    scenario_id: selected_scenario_id,
+    view: GripThicknessDetailView,
+    canvas_width_mm: datum_offset(id: "d-grip-depth") + grip_web_mm,
+    canvas_height_mm: panel_thickness_mm,
+    extents: [
+      extent(subject_id: "front-face-roundover", left_mm: datum_offset(id: "d-grip-depth"),
+        top_mm: 0, width_mm: roundover_radius_mm, height_mm: roundover_radius_mm,
+        role: RestContact,
+        note: join(["R", to_string(roundover_radius_mm), " arris on the room-facing side. The hand meets a cylinder, not a corner. The radius is READ from roundover_radius_mm rather than written into this sentence: the previous text said R12, which is both stale and the exact impossible geometry the grip-profile refusal exists to catch."], "")),
+      extent(subject_id: "rear-face-roundover", left_mm: datum_offset(id: "d-grip-depth"),
+        top_mm: panel_thickness_mm - roundover_radius_mm,
+        width_mm: roundover_radius_mm, height_mm: roundover_radius_mm,
+        role: RestContact, note: join(["R", to_string(roundover_radius_mm), " arris on the wall-facing side. Both faces are relieved because a tile is lifted from either side."], "")),
+      extent(subject_id: "throat", left_mm: 0, top_mm: 0,
+        width_mm: datum_offset(id: "d-grip-depth"), height_mm: panel_thickness_mm,
+        role: GripVoid,
+        note: "The throat: 32 mm deep by the full 18 mm of panel. Four fingers to the second knuckle."),
+      extent(subject_id: "load-bearing-web", left_mm: datum_offset(id: "d-grip-depth"),
+        top_mm: 0, width_mm: grip_web_mm, height_mm: panel_thickness_mm,
+        role: StructuralSolid,
+        note: "CORRECTED: the earlier version subtracted both roundovers from this web, which was wrong twice - it underflowed, and it misread the geometry. A roundover relieves the ARRIS at the cut face; it does not thin the material behind it. The web carrying the lift is the full 18 mm through its whole 28 mm depth. What the roundovers consume is the flat at the very edge, which is the quantity grip_edge_flat_mm reports."),
+    ],
+  }
+}
+
+fn grip_elevation() -> FrontElevationProjection {
+  FrontElevationProjection {
+    id: "grip-elevation",
+    scenario_id: selected_scenario_id,
+    view: GripElevationView,
+    canvas_width_mm: 160,
+    canvas_height_mm: tile_overall_height_mm,
+    extents: [
+      extent(subject_id: "edge-band", left_mm: 0, top_mm: 0,
+        width_mm: 160, height_mm: tile_overall_height_mm,
+        role: StructuralSolid, note: "The tile edge band, full height."),
+      extent_from_service_datum(subject_id: "grip-opening", left_mm: 0,
+        bottom_offset_mm: datum_offset(id: "d-grip-height") - grip_cut_height_mm / 2,
+        width_mm: datum_offset(id: "d-grip-depth"), height_mm: grip_cut_height_mm,
+        role: GripVoid,
+        note: "110 mm opening, centred 180 mm above the SERVICE datum - set from the edge the tile is put down on, because that is what matters during a lift."),
+      extent_from_service_datum(subject_id: "foot", left_mm: 0, bottom_offset_mm: 0,
+        width_mm: foot_size_mm, height_mm: foot_size_mm, role: RestContact,
+        note: "Rubber foot, drawn separately from the grip. These are different parts doing different jobs - conflating them was the defect that started this."),
+    ],
+  }
+}
+
+fn grip_views() -> List<FrontElevationProjection> {
+  [grip_plan_section(), grip_thickness_detail(), grip_elevation()]
+}
+
+
+type GripProfileConstruction
+  = GripProfileReady { edge_flat_mm: Nat, note: String }
+  | GripProfileRefused { panel_thickness_mm: Nat, front_radius_mm: Nat, rear_radius_mm: Nat, note: String }
+
+data grip_non_overlap_law_note: String = "The law is only that the two arris cuts do not overlap: front radius + rear radius <= panel thickness. It proves the profile is CONSTRUCTIBLE, nothing more. It is deliberately not a strength claim - the residual material a hand-carried 8 kg tile actually needs comes from a proof-load test on a cut prototype, and this design has never cut one. A constructible grip and a safe grip are different claims and this function only makes the first."
+
+fn construct_grip_profile(panel_mm: Nat, front_mm: Nat, rear_mm: Nat) -> GripProfileConstruction {
+  if front_mm + rear_mm > panel_mm {
+    GripProfileRefused {
+      panel_thickness_mm: panel_mm,
+      front_radius_mm: front_mm,
+      rear_radius_mm: rear_mm,
+      note: "Arris cuts overlap: the two roundovers together exceed the panel thickness, so no profile exists. Choose a smaller radius or a locally thicker grip zone.",
+    }
+  } else {
+    GripProfileReady {
+      edge_flat_mm: panel_mm - front_mm - rear_mm,
+      note: "Constructible. A zero flat means a full bullnose - a continuous half-round, which is the best hand surface an 18 mm edge can carry.",
+    }
+  }
+}
+
+fn selected_grip_profile() -> GripProfileConstruction {
+  construct_grip_profile(panel_mm: panel_thickness_mm, front_mm: roundover_radius_mm, rear_mm: roundover_radius_mm)
+}
+
+fn grip_profile_is_constructible() -> Bool {
+  match selected_grip_profile() {
+    GripProfileReady { edge_flat_mm, note } => true,
+    GripProfileRefused { panel_thickness_mm, front_radius_mm, rear_radius_mm, note } => false,
+  }
+}
+
+fn grip_edge_flat_mm() -> Nat {
+  match selected_grip_profile() {
+    GripProfileReady { edge_flat_mm, note } => edge_flat_mm,
+    GripProfileRefused { panel_thickness_mm, front_radius_mm, rear_radius_mm, note } => 0,
+  }
+}
+
+
+type HazardMarkerPlacement {
+  code: String
+  centre_x_mm: Nat
+  centre_y_mm: Nat
+  headline: String
+}
+
+data hazard_marker_note: String = "CLOSES AN OVERCLAIM IN THIS MODULE'S OWN NOTES. hazard_overlay_note has said since it was written that the hazard map is an overlay rather than a second drawing, while the page rendered ordered LISTS beside the elevation. The claim was true of the data - marks cite subject_ids - and false of the output. A marker now derives its position from the centre of the extent it names, so it is drawn on the same geometry as everything else and literally cannot sit anywhere the part is not. Prose that ran ahead of implementation is the defect this whole carrier exists to catch, and it was in the carrier."
+
+fn hazard_marker_for(p: FrontElevationProjection, m: HazardMark) -> List<HazardMarkerPlacement> {
+  map(
+    extent_by_subject(p: p, subject_id: m.subject_id),
+    e => HazardMarkerPlacement {
+      code: m.code,
+      centre_x_mm: extent_left_mm(e: e, canvas_width_mm: p.canvas_width_mm) + e.width_mm / 2,
+      centre_y_mm: extent_top_mm(e: e, canvas_height_mm: p.canvas_height_mm) + e.height_mm / 2,
+      headline: m.headline,
+    },
+  )
+}
+
+fn hazard_markers(p: FrontElevationProjection) -> List<HazardMarkerPlacement> {
+  fold(placeable_hazards(p: p), init: [], f: fn(acc, m) { acc.concat(hazard_marker_for(p: p, m: m)) })
+}
+
+
+data hold_render_refusal_note: String = "The square GripVoid rectangles are NOT a rough version of a climbing hold - they are a different object, and a reader cannot tell a placeholder from a design once it is drawn to scale beside real parts. The selected hold's shape is HoldShapeUnknown, so hold_extents emits nothing and the page carries an obligation instead. This is the SpatialUnknown rule applied where it actually bites: unknown geometry produces no shape, not a convenient one. An estimated silhouette traced from calibrated product photographs would be admissible for recognisability; a rectangle is not, and neither would ground a drill point, T-nut position, bolt length, anti-spin location or panel keep-out."
+
+// Both branches were empty, which made the conditional a decoration: it read as though a silhouette
+// path existed and was merely inactive. It does not exist. When a shape artifact lands, emitting
+// its outline is real work in this function, and pretending the branch is already there would hide
+// that. The refusal is now unconditional and says why.
+// ORGANIC SHAPE, added because the page was showing the wrong object. The selected lift interface
+// is a climbing hold; the selected front elevations were drawing rectangular routed cutouts and
+// explaining in a tooltip that those were the REJECTED candidate. Annotating a wrong picture does
+// not make it a right one, and a reader should never have to open a tooltip to find out which
+// grip was chosen.
+//
+// The reasoning that produced that state was also wrong. "No exact CAD, therefore no silhouette"
+// collapses two different operations. SPATIAL-1 exists precisely to separate them: an ESTIMATED
+// region is a legitimate standing, and the evidence bar for "what will this machine look like" is
+// far lower than for "where does the drill go". Exact CAD is required for fabrication, collision
+// admission, bolt length and proof load. It is not required to draw a recognisable outline from a
+// vendor photograph, and refusing to draw one bought no honesty -- it just published a rectangle.
+type ProfilePoint {
+  x_mm: Nat
+  y_mm: Nat
+}
+
+type ProjectedClosedProfile {
+  subject_id: String
+  horizontal_datum: TileDatum
+  horizontal_offset_mm: Nat
+  vertical_datum: TileDatum
+  vertical_offset_mm: Nat
+  width_mm: Nat
+  height_mm: Nat
+  points: List<ProfilePoint>
+  role: ProjectionRole
+  standing: TileGeometryKnowledge
+  note: String
+}
+
+data hold_profile_estimate_standing: TileGeometryKnowledge = SpatialEstimated {
+  region: "an AUTHORED organic outline sized to the conservative clearance envelope. It is not a trace of this product's photograph and does not claim to match this SKU's actual profile; it claims the envelope, the absence of right angles, and the general character of a jug.",
+  method: "authored approximation scaled to the vendor envelope, front elevation. A calibrated photo silhouette trace is a SEPARATE and unperformed acquisition step - the first draft of this field said trace, which would have overstated it in exactly the way this carrier exists to prevent.",
+  evidence: "vendor envelope, relayed. No CAD artifact, no scan, and no calibrated trace of the product image.",
+}
+
+// Sixteen points, no right angles, scaled inside the 166 x 191 mm clearance envelope. This is a
+// RECOGNISABLE outline and explicitly not a measured one: it may answer what the machine looks
+// like and may never answer where a fastener goes. Deleting hold_profile_estimate_standing's
+// evidence would leave the silhouette unsupported, which is why the standing travels with the
+// profile rather than sitting in a comment.
+data estimated_hold_front_profile_points: List<ProfilePoint> = [
+  ProfilePoint { x_mm: 83, y_mm: 0 },
+  ProfilePoint { x_mm: 112, y_mm: 9 },
+  ProfilePoint { x_mm: 136, y_mm: 30 },
+  ProfilePoint { x_mm: 152, y_mm: 60 },
+  ProfilePoint { x_mm: 160, y_mm: 94 },
+  ProfilePoint { x_mm: 153, y_mm: 127 },
+  ProfilePoint { x_mm: 137, y_mm: 154 },
+  ProfilePoint { x_mm: 113, y_mm: 175 },
+  ProfilePoint { x_mm: 83, y_mm: 191 },
+  ProfilePoint { x_mm: 53, y_mm: 175 },
+  ProfilePoint { x_mm: 29, y_mm: 154 },
+  ProfilePoint { x_mm: 13, y_mm: 127 },
+  ProfilePoint { x_mm: 6, y_mm: 94 },
+  ProfilePoint { x_mm: 14, y_mm: 60 },
+  ProfilePoint { x_mm: 30, y_mm: 30 },
+  ProfilePoint { x_mm: 54, y_mm: 9 },
+]
+
+// PLACEMENT DERIVED, after an authored coordinate put most of each hold outside the canvas.
+//
+// The holds were authored at top_mm 470 with a 191 mm body, so they ended 661 mm down a 500 mm
+// tile and the figure clipped them flat at the bottom edge. That is what made them read as blobs:
+// roughly half of each body was simply not drawn, and nothing refused because no rule connected an
+// extent's extremity to the canvas it was drawn on.
+//
+// The centre now comes from the grip-height datum -- the same number the routed alternative uses --
+// so both realizations sit at one hand height and neither carries a hand-picked coordinate.
+fn hold_centre_from_top_mm() -> Nat {
+  tile_overall_height_mm - datum_offset(id: "d-grip-height")
+}
+
+fn hold_top_mm() -> Nat {
+  hold_centre_from_top_mm() - 191 / 2
+}
+
+data hold_placement_note: String = "Hold centre is the grip-height datum measured from the service edge, identical to the routed alternative, so a change of hand height moves both realizations together. The previous top_mm was authored and put 161 mm of a 191 mm body below the bottom of the tile."
+
+fn estimated_hold_profile(subject_id: String, left_mm: Nat, top_mm: Nat) -> ProjectedClosedProfile {
+  ProjectedClosedProfile {
+    subject_id: subject_id,
+    horizontal_datum: LeftSquareDatum,
+    horizontal_offset_mm: left_mm,
+    vertical_datum: TopCleatDatum,
+    vertical_offset_mm: top_mm,
+    width_mm: 166,
+    height_mm: 191,
+    points: estimated_hold_front_profile_points,
+    role: MountedComponent,
+    standing: hold_profile_estimate_standing,
+    note: "SELECTED lift interface, drawn as an ESTIMATED silhouette. The outline is AUTHORED to the vendor envelope rather than traced from the product image, so it answers what the machine looks like and does not claim this SKU exact profile. Recognisable, not measured: it may not be used for bolt length, rear keep-out, anti-spin location, collision admission or lift qualification.",
+  }
+}
+
+// Two holds, mirrored about the tile centreline so the tile lifts level. Present whenever a shape
+// estimate exists; if the estimate is withdrawn this list empties and the shape-acquisition
+// obligation is what remains.
+// PLACEMENT WITHDRAWN, on the same rule the shape already obeys.
+//
+// The page said LAYOUT UNRESOLVED in text while continuing to draw both holds at the very
+// coordinates it had just declared invalid. Measured on the emitted front elevation, the left hold
+// overlapped the board by 92 x 113 px and the cooler by 56 x 40 px, and the right hold overlapped
+// the power supply by 82 x 37 px. A reader saw parts stacked on each other with nothing marking
+// them, under a paragraph explaining that the layout was not admitted. The words and the picture
+// disagreed, and the picture is what a reader believes.
+//
+// This module already refuses to draw an unknown SHAPE. The identical rule applies to an
+// unresolved PLACEMENT: a position this carrier has withdrawn is not a rough position, it is a
+// wrong one, and drawing a part at coordinates known to be invalid is the same error as drawing a
+// rectangle in place of a sculpted jug. Unknown geometry produces no geometry.
+//
+// This is NOT a collision computation and deliberately not one. No intersection test is performed
+// here; DatumAnchoredExtent stays non-composing and SPATIAL-3A remains the authority that will
+// eventually DERIVE the refusal and render exact conflict regions. All that happens here is that a
+// withdrawn placement stops being drawn.
+//
+// The cost is real and worth stating: the page no longer shows what the machine looks like with
+// its holds on. That is the honest trade -- it showed a picture that was wrong, and now it shows
+// less and says why. The holds return the moment a resolved scene supplies a placement.
+// Unconditionally empty. An earlier version wrote this as
+// `if scene_placement_is_resolved() { [] } else { [] }` and the note beside it argued the
+// conditional was worth keeping so the branch would be ready. Both arms return the same value, so
+// it decides nothing -- it is unearned control flow that READS as a latent implementation while
+// being an empty list with extra steps. That is the same defect as a note describing a mechanism
+// that does not exist, and I defended it in writing rather than noticing it. The branch belongs in
+// the commit that gives the two arms different behaviour.
+fn hold_profiles() -> List<ProjectedClosedProfile> {
+  []
+}
+
+data hold_placement_withdrawal_note: String = "Both hold profiles are withdrawn from every view. Their placement was authored, and the authored coordinates put the left hold through the board and cooler and the right hold through the power supply. An unresolved placement draws nothing, exactly as an unknown shape draws nothing. When SPATIAL-3A resolves a scene, the placement comes from it and the holds are drawn from that resolution rather than from a chosen number - and the conditional above becomes a real branch instead of two empty arms, which is why it is written as one rather than as a bare empty list."
+
+data routed_grip_exclusion_note: String = "The routed plywood edge grip is a REJECTED alternative and its three detail figures have been removed from this document's reading path. They were rendered inline, at full size, immediately after the selected views, so the largest and most detailed grip drawings on the page were of the option the design did not choose - a reader scrolling normally saw squares and reasonably concluded the design used them. A rejected candidate must not out-illustrate the selection merely because it has better evidence. It returns only behind an explicit comparison control, and it never shares a scene with the selected holds: a mounted object and a void routed out of the panel are different physical facts and cannot both be the grip."
+
+fn hold_extents() -> List<DatumAnchoredExtent> {
+  []
+}
+
+data hold_silhouette_unimplemented_note: String = "hold_extents returns nothing unconditionally. No silhouette path is implemented, because none can be until a content-addressed shape artifact exists to drive it - and a conditional with two empty branches would falsely suggest otherwise. An ENVELOPE box remains admissible in a clearance view when labelled as one; it may never stand in for the visible hold body."
+
+// Obligation text is now DERIVED from the design carrier's machine_tile_grip_obligations rather
+// than authored here. It was two hand-written strings, which is a second place for the same facts
+// to live: closing the shape obligation upstream would have left this page still announcing it,
+// and the page is the artifact people actually read. One authority, rendered.
+fn grip_obligation_label(o: MachineTileGripObligation) -> String {
+  match o {
+    SelectedHardwareThread => "HARDWARE THREAD UNREAD - the selected bolt option is not grounded; 3/8-16 is the market convention and a convention is not a reading",
+    MountingFaceConfirmation => "MOUNTING FACE UNCONFIRMED - a contoured or relieved back changes seating and the bolt's effective grip length",
+    ExactShapeArtifact => "SHAPE UNKNOWN - no vendor STEP/STL and no calibrated scan; no silhouette is drawn",
+    HoldMaterialStatement => "MATERIAL UNREAD - soft polyurethane lets the bolt pull through and polyester cracks when tightened against a non-flat face; both are tightening failures a re-fitted part accumulates",
+    ManufacturerSkuCode => "SKU UNREAD - a page title is not an order code, so this part cannot yet be re-ordered or matched to a receipt",
+    LiftProofLoadReceipt => "PRIMARY LIFT USE - QUALIFICATION PENDING: no proof-load or repeated-lift fixture has been built for the exact hold, bolt, T-nut, panel stock and orientation",
+  }
+}
+
+fn hold_obligations() -> List<String> {
+  map(machine_tile_grip_obligations(), o => grip_obligation_label(o: o))
+}
+
+// The identity card. A page that only shows refusals tells a reader what is missing and never what
+// was selected, which reads as indecision rather than as a grounded part awaiting receipts. The
+// hold IS chosen; what it lacks are documents.
+fn hold_identity_card() -> List<String> {
+  [
+    join(["SELECTED PART: ", selected_hold.naming.canonical_page_title], ""),
+    join(["NOMINAL ENVELOPE (clearance only): ", to_string(millimeter_count(m: selected_hold.clearance_envelope.width_mm)), " x ", to_string(millimeter_count(m: selected_hold.clearance_envelope.height_mm)), " x ", to_string(millimeter_count(m: selected_hold.clearance_envelope.projection_mm)), " mm, rounded UP from fractional inches - reserve with it, never dimension from it"], ""),
+    "EVIDENCE: relayed page reading, not a first-party fetch. Source readings are preserved as exact fractional inches.",
+  ]
+}
+
+fn hold_use_obligations() -> List<String> {
+  if hold_is_qualified_for_lift() {
+    []
+  } else {
+    ["LIFT ROLE REFUSED - requires a locatable mounting axis, admissible clearance, and a proof-load receipt against the exact assembly; a vendor's climbing-wall standing is evidence about a different load path"]
+  }
+}

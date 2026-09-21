@@ -1,0 +1,973 @@
+module strategy.b2b_capacity_track
+
+import std.types { NonEmptyStr, String, List, Int, Bool }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_display_key }
+import strategy.node_rental {
+  market_rows, hetzner_row, admissible_as_competitive_floor,
+  region_is_known, supply_is_purchasable, our_cost_per_slice_micro,
+}
+import strategy.cost_floor { floor_micro_per_unit_minute }
+import finance.gunbai_llc { gunbai_facts }
+
+// SELLING COMPUTE CAPACITY TO BUSINESSES, BESIDE THE CI-MINUTES PRODUCT AND NOT INSTEAD OF IT
+// (operator direction 2026-09-10: it is kind of a parallel/complementary path, i.e. trying to
+// find more customers, b2b vs b2c).
+//
+// THIS MODULE IS NOT AN ARGUMENT THAT THE B2B TRACK IS CORRECT. Two tracks is a decision over a
+// candidate field (DESIGN section 3d, selection precedes convergence), and the field is not
+// decided here: strategy.node_rental reports zero of its retail rows admissible as a purchasable
+// competitive floor, so the price side of the comparison currently has no ground under it. What
+// this module does is make the candidate products DISTINCT, make the join with the existing plan
+// EXPLICIT, and make the standing of every claim about American READABLE. A track whose products
+// are collapsed into one positioning phrase cannot be ranked at all.
+//
+// AMERICAN HETZNER IS A POSITIONING PHRASE, NOT A CONTRACT. Three candidate products wear it and
+// they have different buyers, different price shapes, different service obligations and different
+// legal surfaces; the first job is to stop them sharing a name.
+// ---------------------------------------------------------------------------------------------
+// 1. THE OFFER SPACE: FOUR ORTHOGONAL AXES, AND OFFERS AS POINTS IN IT
+// ---------------------------------------------------------------------------------------------
+// THE AXIS CORRECTION, AND IT IS A SECTION-3 REPAIR RATHER THAN A PRESENTATION CHOICE. The first
+// shape of this module named bare metal, reservation and CI-reseller as three competing PRODUCTS.
+// They are not on one axis at all: bare metal is a RESOURCE BOUNDARY, a reservation is a
+// COMMERCIAL MODEL, and a CI company is one possible SALES CHANNEL - and a fourth axis, whether
+// the workload is production, turned out to be the one that actually decides feasibility. Three
+// orthogonal facts wearing one enum is a meaning fork: it makes combinations unwritable that are
+// perfectly real, and it invites an argument true of one axis to be read as true of a product.
+// An offer is therefore a POINT in that space, and the rows below are points rather than a
+// taxonomy.
+
+// WHERE OUR MANAGEMENT STOPS AND THE CUSTOMER'S BEGINS. The whole per-job cell construction of
+// the CI product exists because many tenants share a machine within a day; a boundary at the
+// machine is a different and much cheaper obligation.
+type ResourceBoundary
+  = WholeNodeCustomerManaged { note: NonEmptyStr }
+  | PerJobCellWeManage { note: NonEmptyStr }
+
+fn boundary_is_whole_node(b: ResourceBoundary) -> Bool {
+  match b {
+    WholeNodeCustomerManaged { note } => true,
+    PerJobCellWeManage { note } => false,
+  }
+}
+
+// HOW THE MONEY ARRIVES. A month of a machine and a minute of a job are not two prices for one
+// good: the first carries no utilisation guess at all and the second is almost entirely one.
+type CommercialModel
+  = PerMinuteMetered { note: NonEmptyStr }
+  | MonthToMonthRental { note: NonEmptyStr }
+  | FixedTermTakeOrPay { term_months: Int, note: NonEmptyStr }
+
+fn commercial_carries_utilization_guess(c: CommercialModel) -> Bool {
+  match c {
+    PerMinuteMetered { note } => true,
+    MonthToMonthRental { note } => false,
+    FixedTermTakeOrPay { term_months, note } => false,
+  }
+}
+
+// WHO WE SELL THROUGH. A reseller is a channel, not a different good - and the channel is where
+// the obligations grow, because their downstream customers' security, data-processing and remedy
+// obligations flow back to us.
+type SalesChannel
+  = SelfServeDeveloper { note: NonEmptyStr }
+  | DirectToBusiness { note: NonEmptyStr }
+  | ThroughCiReseller { note: NonEmptyStr }
+
+fn channel_inherits_downstream_obligations(c: SalesChannel) -> Bool {
+  match c {
+    SelfServeDeveloper { note } => false,
+    DirectToBusiness { note } => false,
+    ThroughCiReseller { note } => true,
+  }
+}
+
+// THE AXIS THAT DECIDES FEASIBILITY AND WAS MISSING ENTIRELY. A paid non-production evaluation and
+// a production workload differ in acceptance testing, maintenance windows, SLA, insurance and
+// contractual remedy - which is most of what makes the first sale slow.
+type UseStanding
+  = NonProductionEvaluation { note: NonEmptyStr }
+  | ProductionWorkload { note: NonEmptyStr }
+
+fn use_is_production(u: UseStanding) -> Bool {
+  match u {
+    NonProductionEvaluation { note } => false,
+    ProductionWorkload { note } => true,
+  }
+}
+
+// WHAT QUALITY IS PROMISED, ordered by what the fleet must be able to PROVE. A promise this
+// corpus cannot evidence is not a stronger product, it is an unpriced liability.
+type QualityPromise
+  = BestEffortNoRemedy { note: NonEmptyStr }
+  | UptimeCreditRemedy { note: NonEmptyStr }
+  | NegotiatedSlaWithRemedies { note: NonEmptyStr }
+
+fn b2b_promise_needs_uptime_history(q: QualityPromise) -> Bool {
+  match q {
+    BestEffortNoRemedy { note } => false,
+    UptimeCreditRemedy { note } => true,
+    NegotiatedSlaWithRemedies { note } => true,
+  }
+}
+
+// CAN THE FLEET SERVE IT AT S0. S0 is four machines held with one through intake, so this is a
+// capacity fact and a contention fact at once: a machine sold whole is a machine the CI canary is
+// not running on.
+type S0Servability
+  = ServableAtS0 { machines_consumed: Int, basis: NonEmptyStr }
+  | ServableAtS0OnlyByDisplacingCi { machines_consumed: Int, displaced: NonEmptyStr }
+  | NotServableAtS0 { blocker: NonEmptyStr }
+
+fn b2b_servable_at_s0(s: S0Servability) -> Bool {
+  match s {
+    ServableAtS0 { machines_consumed, basis } => true,
+    ServableAtS0OnlyByDisplacingCi { machines_consumed, displaced } => true,
+    NotServableAtS0 { blocker } => false,
+  }
+}
+
+fn b2b_displaces_ci(s: S0Servability) -> Bool {
+  match s {
+    ServableAtS0 { machines_consumed, basis } => false,
+    ServableAtS0OnlyByDisplacingCi { machines_consumed, displaced } => true,
+    NotServableAtS0 { blocker } => false,
+  }
+}
+
+type OfferConfiguration {
+  id: NonEmptyStr
+  boundary: ResourceBoundary
+  commercial: CommercialModel
+  channel: SalesChannel
+  use: UseStanding
+  promise: QualityPromise
+  servability: S0Servability
+  compliance_note: NonEmptyStr
+  why_this_point: NonEmptyStr
+}
+
+// THE B2C PATH, CARRIED HERE AS A POINT RATHER THAN AS AN OTHER. Naming it in the same space is
+// what makes the comparison a comparison instead of two vocabularies.
+data offer_ci_minutes_b2c: OfferConfiguration = OfferConfiguration {
+  id: "ci-minutes-b2c",
+  boundary: PerJobCellWeManage {
+    note: "One cell per job, many tenants per machine, teardown proved per job. Every construction the M2 tenant-boundary work is building.",
+  },
+  commercial: PerMinuteMetered {
+    note: "The floor is divided by a utilisation nobody has measured. See the exposure rows below.",
+  },
+  channel: SelfServeDeveloper {
+    note: "Install the App, change one line of runs-on. The narrowness of that surface is the product.",
+  },
+  use: ProductionWorkload { note: "A customer's CI is production by the time they depend on it." },
+  promise: BestEffortNoRemedy { note: "Founding credits, assisted onboarding, no SLA yet." },
+  servability: ServableAtS0 {
+    machines_consumed: 1,
+    basis: "The M1 canary is exactly this offer on one host.",
+  },
+  compliance_note: "The full multi-tenant surface, plus a route population because jobs may spill onto third-party providers.",
+  why_this_point: "The existing plan. Present so the B2B points are read as neighbours in one space.",
+}
+
+// THE NARROW POINT THAT AN INDEPENDENT REVIEW LANDS ON AS THE ONLY PLAUSIBLY-NOVEMBER ONE, and it
+// is narrow on all four axes at once rather than on the one the phrase American Hetzner suggests.
+data offer_eval_reserved_node: OfferConfiguration = OfferConfiguration {
+  id: "eval-reserved-node-us-metro",
+  boundary: WholeNodeCustomerManaged {
+    note: "One node, customer-administered above the hardware and network boundary. We hand over a machine and an attachment; they run what they like on it.",
+  },
+  commercial: FixedTermTakeOrPay {
+    term_months: 1,
+    note: "Paid, fixed term, take-or-pay - so the month is sold or it is not and no utilisation assumption enters the price.",
+  },
+  channel: DirectToBusiness { note: "One counterparty, one invoice, one named contact." },
+  use: NonProductionEvaluation {
+    note: "THIS IS THE AXIS THAT MAKES IT FEASIBLE. A non-production evaluation does not need acceptance testing, maintenance windows, an SLA with remedies, or insurance - which is most of what makes a first production sale slow. It is also the axis a pitch is most likely to blur, and blurring it converts an evaluation into a production commitment nobody priced.",
+  },
+  promise: BestEffortNoRemedy {
+    note: "Honest for an evaluation and dishonest for anything else. Two of the other points here promise availability this fleet cannot evidence.",
+  },
+  servability: ServableAtS0OnlyByDisplacingCi {
+    machines_consumed: 1,
+    displaced: "Four machines held, one through intake. Selling that one removes the machine the M1 canary runs on, so at S0 this point and the CI vertical compete for the same unit.",
+  },
+  compliance_note: "One route - our own site - plus the durable origin. FOUR CONDITIONS MUST HOLD TOGETHER or it is not feasible either: the route census collapses to one exact-route dossier, preparation runs in parallel rather than serially, the buyer accepts our paper rather than negotiating, and THE CURRENT PHYSICAL SITE IS ADMISSIBLE - an unselected colo would dominate the path and no site here carries a site-admission receipt.",
+  why_this_point: "Narrow on boundary, term, channel and use simultaneously. Every axis widened is a different and slower offer.",
+}
+
+data offer_production_reserved_capacity: OfferConfiguration = OfferConfiguration {
+  id: "production-reserved-capacity",
+  boundary: WholeNodeCustomerManaged { note: "Same boundary as the evaluation point." },
+  commercial: FixedTermTakeOrPay {
+    term_months: 12,
+    note: "Bulk and predictable, which is the argument the plan item wholesale-supply-channel makes for fixing the utilisation denominator.",
+  },
+  channel: DirectToBusiness { note: "Still one counterparty." },
+  use: ProductionWorkload {
+    note: "And this single axis change is what makes it SAME OR LONGER than the CI path rather than shorter: acceptance testing, maintenance windows, an SLA, insurance and redlines all arrive with production.",
+  },
+  promise: UptimeCreditRemedy { note: "A production reservation is a promise about availability, and availability is sayable only over a measured window." },
+  servability: NotServableAtS0 {
+    blocker: "Headroom for a production customer cannot be held on four machines with one qualified, and fleet-capacity-floor has not run.",
+  },
+  compliance_note: "One route, but a full production contract surface.",
+  why_this_point: "It is one axis away from the feasible point and materially slower. That distance is the finding.",
+}
+
+data offer_wholesale_through_reseller: OfferConfiguration = OfferConfiguration {
+  id: "wholesale-through-ci-reseller",
+  boundary: WholeNodeCustomerManaged { note: "They isolate their own customers on top; our boundary is the machine we hand them." },
+  commercial: FixedTermTakeOrPay { term_months: 12, note: "A supply contract. Every term quote in strategy.wholesale_buyer is Unquoted." },
+  channel: ThroughCiReseller {
+    note: "The channel is the cost. Their downstream customers' security review, data-processing terms and remedy obligations flow back to us, so this point carries MORE obligation than selling direct, not less.",
+  },
+  use: ProductionWorkload { note: "A reseller wraps it and sells it; there is no evaluation posture available." },
+  promise: NegotiatedSlaWithRemedies { note: "Reliability evidence this fleet cannot produce: no failover exercise, no site-admission receipt." },
+  servability: NotServableAtS0 {
+    blocker: "A reseller buys volume. Four machines is not a supply contract.",
+  },
+  compliance_note: "The customer-facing admission surface shrinks to one counterparty while the CONTRACT surface grows - a negotiated master agreement, a security questionnaire and an SLA with remedies replace a pinned standard form nobody negotiates.",
+  why_this_point: "The point the phrase American Hetzner most often means, and the longest of the four.",
+}
+
+data b2b_offers: List<OfferConfiguration> = [
+  offer_ci_minutes_b2c,
+  offer_eval_reserved_node,
+  offer_production_reserved_capacity,
+  offer_wholesale_through_reseller,
+]
+
+fn b2b_offer_count() -> Int { count(b2b_offers) }
+
+fn b2b_offers_servable_at_s0() -> List<OfferConfiguration> {
+  filter(b2b_offers, o => b2b_servable_at_s0(s: o.servability))
+}
+
+fn b2b_s0_servable_count() -> Int { count(b2b_offers_servable_at_s0()) }
+
+fn b2b_offers_needing_uptime_history() -> List<OfferConfiguration> {
+  filter(b2b_offers, o => b2b_promise_needs_uptime_history(q: o.promise))
+}
+
+fn b2b_uptime_history_owed_count() -> Int { count(b2b_offers_needing_uptime_history()) }
+
+// The axes are independent, and this is the executed statement of it: the same resource boundary
+// appears under three different commercial-and-channel combinations, so a claim proved about one
+// of them is not a claim about the boundary.
+fn whole_node_offer_count() -> Int {
+  count(filter(b2b_offers, o => boundary_is_whole_node(b: o.boundary)))
+}
+
+fn non_production_offer_count() -> Int {
+  count(filter(b2b_offers, o => use_is_production(u: o.use) == false))
+}
+
+fn reseller_channel_offer_count() -> Int {
+  count(filter(b2b_offers, o => channel_inherits_downstream_obligations(c: o.channel)))
+}
+
+fn utilization_guessing_offer_count() -> Int {
+  count(filter(b2b_offers, o => commercial_carries_utilization_guess(c: o.commercial)))
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// 2. THE ONE STRUCTURAL ECONOMIC DIFFERENCE, DERIVED RATHER THAN ASSERTED
+// ---------------------------------------------------------------------------------------------
+//
+// The CI floor is divided by a utilisation constant. The machine-month floor is not divided by
+// anything. That is not a preference between two prices, it is a difference in how much of each
+// price is a guess - and it is the strongest thing the B2B track has going for it that does not
+// depend on an unobserved market fact.
+type UtilizationExposure
+  = FloorDividedByUtilization { reference_permille: Int, micro_per_unit_minute: Int, note: NonEmptyStr }
+  | FloorCarriesNoUtilizationTerm { micro_per_slice_month: Int, note: NonEmptyStr }
+
+data ci_half_utilization_permille: Int = 500
+
+fn ci_floor_at_half_utilization_micro() -> Int {
+  floor_micro_per_unit_minute(utilization_permille: ci_half_utilization_permille)
+}
+
+fn ci_floor_at_full_utilization_micro() -> Int {
+  floor_micro_per_unit_minute(utilization_permille: 1000)
+}
+
+fn b2b_cost_per_slice_month_micro() -> Int { our_cost_per_slice_micro() }
+
+data ci_track_exposure: UtilizationExposure = FloorDividedByUtilization {
+  reference_permille: ci_half_utilization_permille,
+  micro_per_unit_minute: ci_floor_at_half_utilization_micro(),
+  note: "THE POINT IS THE DIVISOR, NOT ITS VALUE. strategy.cost_floor floor_micro_per_unit_minute takes utilisation as a PARAMETER, so the CI floor is a function of an assumption about how busy the fleet is. This row evaluates it at a declared halfway endpoint rather than at the plan's planning utilisation, because that constant lives in strategy.ci_runner_economics. The sensitivity below makes the argument without forking a second planning-utilisation authority.",
+}
+
+data b2b_track_exposure: UtilizationExposure = FloorCarriesNoUtilizationTerm {
+  micro_per_slice_month: b2b_cost_per_slice_month_micro(),
+  note: "strategy.node_rental our_cost_per_slice_micro is a machine-month cost with no utilisation term in it at all. An unsold node still costs the full amount, which is a risk and not an escape - the risk simply sits in whether the month sells rather than inside the price.",
+}
+
+// How much of the CI floor is the utilisation assumption. A ratio rather than a difference,
+// because the two floors are denominated in different units and subtracting them would be the
+// typed-refusal-comparing-the-wrong-quantities defect.
+fn ci_utilization_multiple_permille() -> Int {
+  let full = ci_floor_at_full_utilization_micro()
+  if full <= 0 { 0 } else { ci_floor_at_half_utilization_micro() * 1000 / full }
+}
+
+// The two rows are read through these rather than restated by their consumers, so a row that
+// stopped carrying its divisor or its amount reds rather than being quietly bypassed.
+fn b2b_exposure_divisor_permille(e: UtilizationExposure) -> Int {
+  match e {
+    FloorDividedByUtilization { reference_permille, micro_per_unit_minute, note } => reference_permille,
+    FloorCarriesNoUtilizationTerm { micro_per_slice_month, note } => 0,
+  }
+}
+
+fn b2b_exposure_amount_micro(e: UtilizationExposure) -> Int {
+  match e {
+    FloorDividedByUtilization { reference_permille, micro_per_unit_minute, note } => micro_per_unit_minute,
+    FloorCarriesNoUtilizationTerm { micro_per_slice_month, note } => micro_per_slice_month,
+  }
+}
+
+// THE CLAIM, AND IT IS ABOUT THE ROWS RATHER THAN ABOUT TWO FUNCTION CALLS: the CI track carries a
+// divisor and the B2B track carries none, and both rows carry a real amount.
+fn b2b_utilization_exposure_differs() -> Bool {
+  b2b_exposure_divisor_permille(e: ci_track_exposure) > 0
+    && b2b_exposure_divisor_permille(e: b2b_track_exposure) == 0
+    && b2b_exposure_amount_micro(e: ci_track_exposure) > 0
+    && b2b_exposure_amount_micro(e: b2b_track_exposure) > 0
+    && ci_utilization_multiple_permille() > 1000
+}
+
+// ---------------------------------------------------------------------------------------------
+// 3. THE JOIN: FOR EACH EXISTING PLAN ITEM, WHAT DOES THE B2B TRACK NEED
+// ---------------------------------------------------------------------------------------------
+//
+// THE ITEMS ARE CITED, NOT IMPORTED. strategy.year_end_plan is the authority for every declared
+// rank, duration and dependency, and this module deliberately does not copy one of those numbers
+// in: a transcribed duration is unreachable from the thing that owns it and rots without anyone
+// touching either end (DESIGN section 6, name the instrument). The join therefore answers WHICH
+// items and WHAT KIND of need, and refuses to answer HOW MANY DAYS - see chain_disposition below,
+// whose day arm is a declared frontier that closes when the plan module can be imported.
+type TrackNeed
+  = SharedWithB2c { note: NonEmptyStr }
+  | B2bDoesNotNeed { why: NonEmptyStr }
+  | B2bNeedsDifferent { instead: NonEmptyStr, note: NonEmptyStr }
+  | B2bNeedsMore { what: NonEmptyStr, note: NonEmptyStr }
+
+fn b2b_need_is_dropped(n: TrackNeed) -> Bool {
+  match n {
+    SharedWithB2c { note } => false,
+    B2bDoesNotNeed { why } => true,
+    B2bNeedsDifferent { instead, note } => false,
+    B2bNeedsMore { what, note } => false,
+  }
+}
+
+fn b2b_need_is_replaced(n: TrackNeed) -> Bool {
+  match n {
+    SharedWithB2c { note } => false,
+    B2bDoesNotNeed { why } => false,
+    B2bNeedsDifferent { instead, note } => true,
+    B2bNeedsMore { what, note } => false,
+  }
+}
+
+fn b2b_need_adds_obligation(n: TrackNeed) -> Bool {
+  match n {
+    SharedWithB2c { note } => false,
+    B2bDoesNotNeed { why } => false,
+    B2bNeedsDifferent { instead, note } => false,
+    B2bNeedsMore { what, note } => true,
+  }
+}
+
+// Whether the row sits on the declared chain from m2-launch-intent to first-external-customer.
+// That chain is the open escalation, so its membership is a field rather than a comment.
+type ChainMembership
+  = OnDeclaredM2Chain { hop: Int }
+  | BesideTheChain { note: NonEmptyStr }
+
+fn b2b_row_is_on_chain(m: ChainMembership) -> Bool {
+  match m {
+    OnDeclaredM2Chain { hop } => true,
+    BesideTheChain { note } => false,
+  }
+}
+
+type TrackJoinRow {
+  item_id: NonEmptyStr
+  item_ref: DeclarationRef
+  membership: ChainMembership
+  need: TrackNeed
+  product_scope: NonEmptyStr
+}
+
+fn b2b_plan_item_ref(decl: String) -> DeclarationRef {
+  decl_ref(module_path: "strategy.year_end_plan", decl_name: decl)
+}
+
+data join_m2_launch_intent: TrackJoinRow = TrackJoinRow {
+  item_id: "m2-launch-intent",
+  item_ref: b2b_plan_item_ref(decl: "item_m2_launch_intent"),
+  membership: OnDeclaredM2Chain { hop: 1 },
+  need: SharedWithB2c {
+    note: "One posture revision governs both tracks or there are two compliance authorities, which is the fork section 3 forbids. Worth stating loudly because American Hetzner sounds like a geographic restriction and this item deliberately REPLACED the US-only launch profile with maximal lawful global support: the B2B track may not quietly reinstate a constant the plan already turned into a parameter.",
+  },
+  product_scope: "all three products",
+}
+
+data join_provider_route_census: TrackJoinRow = TrackJoinRow {
+  item_id: "provider-route-census",
+  item_ref: b2b_plan_item_ref(decl: "item_provider_route_census"),
+  membership: OnDeclaredM2Chain { hop: 2 },
+  need: B2bNeedsDifferent {
+    instead: "one route - our own site - censused to the same data-path closure",
+    note: "The census is one row per provider times service times region because the CI product DISPATCHES onto third-party routes. A customer renting our machines has one route and we are it. The closure questions do not vanish - execution, storage, backups, logs, telemetry, control plane, support access, administrative access and spill still need answering for our own site - but the population is one row we already own rather than a supplier survey. Note the honest cost: nobody has censused our own route either, so this is a smaller job and not a finished one.",
+  },
+  product_scope: "bare-metal-monthly and wholesale-runner-capacity; reserved-capacity-term inherits the full census",
+}
+
+data join_m2_admission_spine: TrackJoinRow = TrackJoinRow {
+  item_id: "m2-admission-spine",
+  item_ref: b2b_plan_item_ref(decl: "item_m2_admission_spine"),
+  membership: OnDeclaredM2Chain { hop: 3 },
+  need: B2bNeedsDifferent {
+    instead: "a contract-time admission decision instead of a per-job one",
+    note: "Three of its four discriminating reds are about JOBS - a declared-ePHI job, an unresolved classification, a job with no admission receipt. A single-tenant machine rental admits a CUSTOMER once, at signature, not a job stream continuously. The fourth red survives unchanged and is the one most likely to be waived for a first B2B deal: a zero-dollar net invoice does not alter admission.",
+  },
+  product_scope: "bare-metal-monthly and wholesale-runner-capacity",
+}
+
+// CORRECTED 2026-09-10 AFTER REVIEW, AND THE CORRECTION IS THE POINT. This row previously read
+// B2bDoesNotNeed, on the reasoning that a whole-machine rental performs no route SELECTION. That
+// conflated selection with AUTHORIZATION, and it was the exact edge deletion this work's own edge
+// doctrine forbids: a route population of size one does not make the join vacuous, it makes it a
+// join over one element, and one route still needs a sealed permit before a customer runs on it.
+// The reviewer is right, and the tell was available in this very module - the recut kept
+// spine -> admission and admission -> bindings as complete-before-start while this row said the
+// successor of both was unnecessary. A gate is not removed because its input got small.
+data join_provider_route_admission: TrackJoinRow = TrackJoinRow {
+  item_id: "provider-route-admission",
+  item_ref: b2b_plan_item_ref(decl: "item_provider_route_admission"),
+  membership: OnDeclaredM2Chain { hop: 4 },
+  need: B2bNeedsDifferent {
+    instead: "the same sealed permit over a one-element route population",
+    note: "WHAT STAYS, WHOLE: the join itself - active posture revision x demand and work and customer and data scope x route and its data-path closure -> a SEALED PERMIT naming every revision it was constructed from. Every constructible refusal stays too: route unclassified, route facts incomplete, posture revision stale, customer scope unsupported, data handling unsupported, required agreement authority absent, transfer or location unresolved, downstream provider unassessed, access path unsupported. A single-tenant machine is precisely where an unpermitted workload would never meet a dispatch path that could stop it, so the permit is doing MORE work here, not less. WHAT IS TRIVIALLY SATISFIED, named as the reviewer asked rather than used to justify removal: exactly one required red, the COMPARATIVE one - the cheapest unadmitted route never wins - has no subject when the candidate field has one element, because there is no cheaper alternative to lose to. That is a red whose SUBJECT is absent, not a red that has been waived, and it returns the moment a second route is admitted. Every other required red keeps its subject, including the one most likely to be waved through: an unclassified route must still refuse rather than default, and the customer having bought the machine by name is not a classification.",
+  },
+  product_scope: "all three whole-node points; the CI point needs the full multi-route join",
+}
+
+data join_m2_control_bindings: TrackJoinRow = TrackJoinRow {
+  item_id: "m2-control-bindings",
+  item_ref: b2b_plan_item_ref(decl: "item_m2_control_bindings"),
+  membership: OnDeclaredM2Chain { hop: 5 },
+  need: B2bNeedsDifferent {
+    instead: "the exclusion half without the permit-producer half",
+    note: "Its two halves separate cleanly. A permit that survives selection, grant issuance and the effect boundary is meaningless with no selection to survive. But an exclusion stays unwritable without all three of a customer clause, an executing refusal, and a defined response when reality contradicts the clause - and that requirement binds harder here, because a single-tenant machine is exactly where a customer can put a workload the contract prohibits and nothing in the dispatch path will ever see it.",
+  },
+  product_scope: "all three products",
+}
+
+data join_m2_customer_projections: TrackJoinRow = TrackJoinRow {
+  item_id: "m2-customer-projections",
+  item_ref: b2b_plan_item_ref(decl: "item_m2_customer_projections"),
+  membership: OnDeclaredM2Chain { hop: 6 },
+  need: B2bNeedsDifferent {
+    instead: "the same projection over a one-row route population",
+    note: "The projection is derived from the admitted route population so that a schedule cannot promise a boundary no permit can produce. With one route the derivation is trivial and the disclosure is short - our site, our machines, our administrators. The deviation list against the pinned standard survives whole, and for the reseller product it grows.",
+  },
+  product_scope: "all three products",
+}
+
+data join_m2_legal_review_ready: TrackJoinRow = TrackJoinRow {
+  item_id: "m2-legal-review-ready",
+  item_ref: b2b_plan_item_ref(decl: "item_m2_legal_review_ready"),
+  membership: OnDeclaredM2Chain { hop: 7 },
+  need: SharedWithB2c {
+    note: "The gate that makes paid review conditional does not care which track pays for the hours. Its inputs shrink with the route population and grow with the contract, which is the same trade the whole join keeps finding.",
+  },
+  product_scope: "all three products",
+}
+
+data join_m2_legal_issue_spot: TrackJoinRow = TrackJoinRow {
+  item_id: "m2-legal-issue-spot",
+  item_ref: b2b_plan_item_ref(decl: "item_m2_legal_issue_spot"),
+  membership: OnDeclaredM2Chain { hop: 8 },
+  need: SharedWithB2c {
+    note: "Three senior hours reading our facts. Its declared duration is QUEUE LATENCY rather than effort, which matters for the schedule question: an item whose clock is somebody else's calendar does not shorten because our product got simpler.",
+  },
+  product_scope: "all three products",
+}
+
+data join_m2_contract_deviation_review: TrackJoinRow = TrackJoinRow {
+  item_id: "m2-contract-deviation-review",
+  item_ref: b2b_plan_item_ref(decl: "item_m2_contract_deviation_review"),
+  membership: OnDeclaredM2Chain { hop: 9 },
+  need: B2bNeedsMore {
+    what: "a negotiated agreement rather than a redline of a standard form",
+    note: "Phase two takes the pinned standard plus our deviation list and is capped at three senior hours because nobody is negotiating back. A business buyer negotiates, and a reseller putting their own customers on our metal negotiates hard: SLA remedies, liability caps, insurance, security review, exit and data return. That is a different shape of legal work from reviewing a form, and the cap is the first thing it breaks.",
+  },
+  product_scope: "wholesale-runner-capacity most; bare-metal-monthly if the buyer is sophisticated",
+}
+
+data join_m2_compliance_admission: TrackJoinRow = TrackJoinRow {
+  item_id: "m2-compliance-admission",
+  item_ref: b2b_plan_item_ref(decl: "item_m2_compliance_admission"),
+  membership: OnDeclaredM2Chain { hop: 10 },
+  need: B2bNeedsDifferent {
+    instead: "freeze the same revisions over a smaller rehearsal",
+    note: "Freezing the exact revisions the launch runs against is track-independent and stays. Of the rehearsal arms, the cheapest-but-unadmitted route losing to a dearer admitted one has no subject without route selection; the ePHI refusal, the sanctions match, the deletion to its typed terminal state and the offboarding all survive.",
+  },
+  product_scope: "all three products",
+}
+
+data join_first_external_customer: TrackJoinRow = TrackJoinRow {
+  item_id: "first-external-customer",
+  item_ref: b2b_plan_item_ref(decl: "item_first_external"),
+  membership: OnDeclaredM2Chain { hop: 11 },
+  need: B2bNeedsDifferent {
+    instead: "a first B2B counterparty, which is a different terminal fact",
+    note: "The declared terminal is a design partner running a real workload under the paperwork, credit, support and tenant-boundary controls, with a hand-done and TIMED migration. A business renting a machine has no migration to time and no workload of ours to run. If the B2B track is to have a terminal at all it needs its own, and inventing it is phase two rather than a sentence here.",
+  },
+  product_scope: "all three products",
+}
+
+// Rows beside the declared chain that the chain question keeps colliding with.
+data join_tenant_boundary_minimum: TrackJoinRow = TrackJoinRow {
+  item_id: "tenant-boundary-minimum",
+  item_ref: b2b_plan_item_ref(decl: "item_tenant_boundary_minimum"),
+  membership: BesideTheChain { note: "A declared dependency of first-external-customer, not of the eleven-hop compliance chain." },
+  need: B2bNeedsDifferent {
+    instead: "a machine boundary instead of a cell boundary",
+    note: "This is where the B2B track is genuinely CHEAPER rather than merely different: handing over a whole machine removes per-job cell teardown proof, cross-tenant cache authorization and shared-silicon variance from the promise. It does not remove the network boundary, and it adds one the CI product does not have - a customer with root on our hardware inside our site, which is a physical and administrative exposure the cell model never creates.",
+  },
+  product_scope: "bare-metal-monthly and wholesale-runner-capacity",
+}
+
+data join_fleet_capacity_floor: TrackJoinRow = TrackJoinRow {
+  item_id: "fleet-capacity-floor",
+  item_ref: b2b_plan_item_ref(decl: "item_fleet_capacity_floor"),
+  membership: BesideTheChain { note: "Already a declared dependency of wholesale-supply-channel." },
+  need: SharedWithB2c {
+    note: "Both tracks sell the same machines, so the capacity floor is measured once. This is the clearest instance of the operator's premise that work done for one track is not spent twice.",
+  },
+  product_scope: "all three products",
+}
+
+data join_hw_4_population: TrackJoinRow = TrackJoinRow {
+  item_id: "hw-4-population",
+  item_ref: b2b_plan_item_ref(decl: "item_hw_4_population"),
+  membership: BesideTheChain { note: "Hardware, not compliance." },
+  need: B2bNeedsMore {
+    what: "machines that are not the canary",
+    note: "The two tracks are complementary in demand and RIVAL in inventory at S0. Selling a machine whole removes it from the CI fleet, and there is one qualified machine. Intake is therefore on the B2B critical path in a way it is not on the CI one.",
+  },
+  product_scope: "all three products",
+}
+
+data join_billing_receipts: TrackJoinRow = TrackJoinRow {
+  item_id: "billing-receipts",
+  item_ref: b2b_plan_item_ref(decl: "item_billing_receipts"),
+  membership: BesideTheChain { note: "A declared dependency of first-external-customer." },
+  need: B2bNeedsDifferent {
+    instead: "an invoice for a month, not metered minutes",
+    note: "Metering vCPU-minutes is the CI product's billing primitive and the B2B product does not have one. An invoice for a fixed monthly amount is a materially smaller construction - and it is also the reason the B2B track can take money before per-job metering works.",
+  },
+  product_scope: "bare-metal-monthly and wholesale-runner-capacity",
+}
+
+data join_support_abuse: TrackJoinRow = TrackJoinRow {
+  item_id: "support-abuse",
+  item_ref: b2b_plan_item_ref(decl: "item_support_abuse"),
+  membership: BesideTheChain { note: "A declared dependency of first-external-customer." },
+  need: B2bNeedsDifferent {
+    instead: "one named counterparty instead of a tenant population",
+    note: "strategy.cost_floor carries support, abuse response and payment processing among its unquoted per-end-user components. One contract with one invoice does not carry them per user, which is the third argument recorded in wholesale-supply-channel. It does not carry them at zero either: a business buyer expects a named human, and that human is the operator.",
+  },
+  product_scope: "all three products",
+}
+
+data track_join_rows: List<TrackJoinRow> = [
+  join_m2_launch_intent,
+  join_provider_route_census,
+  join_m2_admission_spine,
+  join_provider_route_admission,
+  join_m2_control_bindings,
+  join_m2_customer_projections,
+  join_m2_legal_review_ready,
+  join_m2_legal_issue_spot,
+  join_m2_contract_deviation_review,
+  join_m2_compliance_admission,
+  join_first_external_customer,
+  join_tenant_boundary_minimum,
+  join_fleet_capacity_floor,
+  join_hw_4_population,
+  join_billing_receipts,
+  join_support_abuse,
+]
+
+fn b2b_join_row_count() -> Int { count(track_join_rows) }
+
+fn b2b_chain_rows() -> List<TrackJoinRow> {
+  filter(track_join_rows, r => b2b_row_is_on_chain(m: r.membership))
+}
+
+fn b2b_chain_row_count() -> Int { count(b2b_chain_rows()) }
+
+fn b2b_chain_dropped_count() -> Int {
+  count(filter(b2b_chain_rows(), r => b2b_need_is_dropped(n: r.need)))
+}
+
+fn b2b_chain_replaced_count() -> Int {
+  count(filter(b2b_chain_rows(), r => b2b_need_is_replaced(n: r.need)))
+}
+
+fn b2b_chain_added_count() -> Int {
+  count(filter(b2b_chain_rows(), r => b2b_need_adds_obligation(n: r.need)))
+}
+
+fn b2b_chain_shared_count() -> Int {
+  b2b_chain_row_count() -
+    b2b_chain_dropped_count() -
+    b2b_chain_replaced_count() -
+    b2b_chain_added_count()
+}
+
+fn b2b_join_display_key(r: TrackJoinRow) -> String {
+  declaration_ref_display_key(ref: r.item_ref)
+}
+
+// ---------------------------------------------------------------------------------------------
+// 4. DOES A B2B FIRST CUSTOMER SHORTEN THE DECLARED CHAIN. THE ANSWER IS NO.
+// ---------------------------------------------------------------------------------------------
+//
+// THE COUNT IS DERIVABLE HERE AND THE CALENDAR IS NOT. Every declared duration lives in
+// strategy.year_end_plan; copying eleven numbers in to sum them would be a transcription that
+// rots, and inventing durations for the replacement items would be exactly the fabricated
+// plausible output that makes a favourable answer look decided. So the shape of the answer is:
+// the DISPOSITION is decided now, the DAYS are a declared frontier with a named trigger.
+type ChainDisposition
+  = ExistingChainNotShortenedByBuyerType {
+      chain_rows: Int
+      dropped: Int
+      replaced: Int
+      shared: Int
+      added: Int
+      reason: NonEmptyStr
+    }
+  | B2bShortensCriticalPath { days_saved: Int, basis: NonEmptyStr }
+  | B2bLengthensCriticalPath { days_added: Int, basis: NonEmptyStr }
+
+// THE ANSWER, AND IT IS A NO. The question this module was opened with was whether a B2B first
+// customer shortens the declared eleven-hop chain to first-external-customer. It does not, and the
+// reason is one the join rows above make visible only once they are counted: M2 ALREADY assumes a
+// trusted, non-public, ASSISTED DESIGN PARTNER. Changing the buyer from a developer to a business
+// therefore removes very little, because the consumer-scale machinery it would remove was never
+// what the milestone was buying. Even aggressively deleting the generalized gates leaves more days
+// than remain. The counts below are the shape of that finding rather than an argument for it: one
+// item drops, most are rewritten smaller, and one gets HARDER.
+//
+// WHAT DOES SHORTEN IS A DIFFERENT CHAIN, NOT A SHORTER VERSION OF THIS ONE - see
+// parallel_chain_standing below and strategy.m2_demand_directed_recut for the arithmetic.
+fn b2b_chain_disposition() -> ChainDisposition {
+  ExistingChainNotShortenedByBuyerType {
+    chain_rows: b2b_chain_row_count(),
+    dropped: b2b_chain_dropped_count(),
+    replaced: b2b_chain_replaced_count(),
+    shared: b2b_chain_shared_count(),
+    added: b2b_chain_added_count(),
+    reason: "The compliance middle narrows and the contract middle widens, and neither movement is large enough to matter against the remaining calendar. The two ExternalLead legal members get harder rather than easier for a business buyer, and their clocks are queue latency rather than effort, so they do not respond to a simpler product at all. No day total is minted here: every declared duration lives in strategy.year_end_plan and this module may not transcribe them - the recut module computes a longest path over ITS OWN declared rows instead.",
+  }
+}
+
+fn b2b_disposition_shortens(d: ChainDisposition) -> Bool {
+  match d {
+    ExistingChainNotShortenedByBuyerType { chain_rows, dropped, replaced, shared, added, reason } => false,
+    B2bShortensCriticalPath { days_saved, basis } => true,
+    B2bLengthensCriticalPath { days_added, basis } => false,
+  }
+}
+
+// THE USEFUL RESIDUE OF A NEGATIVE ANSWER. A narrower OFFER - narrow on all four axes at once -
+// can carry its own shorter chain beside the CI one. The conditions are conjunctive and stated so
+// that dropping any of them is visible rather than optimistic.
+type ParallelChainStanding
+  = ParallelChainConditionallyFeasible {
+      offer: OfferConfiguration
+      conditions: List<NonEmptyStr>
+      soundness_wall: NonEmptyStr
+    }
+  | ParallelChainNotAvailable { cause: NonEmptyStr }
+
+data parallel_chain_standing: ParallelChainStanding = ParallelChainConditionallyFeasible {
+  offer: offer_eval_reserved_node,
+  conditions: [
+    "The route census collapses to ONE EXACT-ROUTE DOSSIER rather than a provider survey.",
+    "Preparation runs in parallel with the technical work rather than serially behind it.",
+    "The buyer accepts our paper rather than negotiating it.",
+    "The CURRENT PHYSICAL SITE is admissible - an unselected colo would dominate the path, and no site in this corpus carries a site-admission receipt.",
+  ],
+  soundness_wall: "A SEPARATE EXIT, NEVER A SUBSTITUTED ONE. A bare-metal capacity evaluation must not imply that the CI controls passed - different evidence, different obligations - so the honest structure is a compute-first-external milestone BESIDE the CI one, with any either-satisfies gate being an explicit operator decision rather than a modelling convenience. Collapsing them would let the cheaper proof discharge the dearer one, which is the externalized-degradation shape: the same milestone name covering a materially different delivery.",
+}
+
+fn parallel_chain_condition_count(s: ParallelChainStanding) -> Int {
+  match s {
+    ParallelChainConditionallyFeasible { offer, conditions, soundness_wall } => count(conditions),
+    ParallelChainNotAvailable { cause } => 0,
+  }
+}
+
+fn parallel_chain_is_conditional(s: ParallelChainStanding) -> Bool {
+  match s {
+    ParallelChainConditionallyFeasible { offer, conditions, soundness_wall } => true,
+    ParallelChainNotAvailable { cause } => false,
+  }
+}
+
+// The part of the answer that does NOT need the plan join, because it is a fact about the fleet
+// rather than about the schedule. It is also the part most likely to be misread as good news.
+type S0BindingConstraint {
+  constraint: NonEmptyStr
+  consequence: NonEmptyStr
+}
+
+data s0_inventory_rivalry: S0BindingConstraint = S0BindingConstraint {
+  constraint: "Four machines held, one through intake, and a machine sold whole is a machine the CI vertical is not running on.",
+  consequence: "At S0 the two tracks are complementary in DEMAND and rival in INVENTORY. The first B2B sale does not merely add a customer, it removes the canary host - so any claim that the B2B track shortens the path must be read against the M1 vertical it would displace. This is the one respect in which the parallel-path framing is not free.",
+}
+
+data b2b_reliability_gap: S0BindingConstraint = S0BindingConstraint {
+  constraint: "No failover exercise and no site-admission receipt exist in this corpus, and an uptime credit or an SLA is sayable only over a measured window.",
+  consequence: "Two of the three candidate products promise something the fleet cannot yet evidence. A measured window is calendar-bound and cannot be compressed by simplifying the product, so for those two the reliability pole is longer than the compliance pole it replaces.",
+}
+
+data s0_binding_constraints: List<S0BindingConstraint> = [s0_inventory_rivalry, b2b_reliability_gap]
+
+fn b2b_binding_constraint_count() -> Int { count(s0_binding_constraints) }
+
+// ---------------------------------------------------------------------------------------------
+// 5. WHAT AMERICAN MEANS, ONE ROW PER CANDIDATE CONTENT
+// ---------------------------------------------------------------------------------------------
+//
+// American Hetzner has to survive being asked what it delivers. Some of it is grounded in this
+// corpus today, some of it is unobserved, and some of it is positioning - and a slogan that
+// silently carries all three is how an unmeasured claim reaches a customer.
+type ClaimStanding
+  = GroundedInCorpus { authority: DeclarationRef, note: NonEmptyStr }
+  | UnobservedAndNeeded { observation: NonEmptyStr }
+  | PositioningOnly { why: NonEmptyStr }
+
+fn b2b_claim_is_grounded(s: ClaimStanding) -> Bool {
+  match s {
+    GroundedInCorpus { authority, note } => true,
+    UnobservedAndNeeded { observation } => false,
+    PositioningOnly { why } => false,
+  }
+}
+
+fn b2b_claim_is_unobserved(s: ClaimStanding) -> Bool {
+  match s {
+    GroundedInCorpus { authority, note } => false,
+    UnobservedAndNeeded { observation } => true,
+    PositioningOnly { why } => false,
+  }
+}
+
+// THE SUPPLY EVIDENCE THIS TRACK WAITS ON, AND IT MAY NOT BE ONE VENDOR IN ONE REGION.
+// CORRECTED 2026-09-10 AFTER REVIEW. This module previously named the observation as the operator's
+// HETZNER capacity enquiry in a US region. That was wrong twice over. It gated a track on a single
+// vendor's catalogue in a single region - and the OPERATOR HAS RULED that a matching processor SKU
+// does not imply a supply relationship: Hetzner is one possible supplier among others, and other
+// Ampere-era suppliers are looked for if needed. A question asked of one vendor's US catalogue is
+// also not an open evidence item in the way this row needs, because a vendor that does not offer
+// the line there answers it without telling us anything about whether the capacity is buyable.
+//
+// THE REQUIREMENT IS THEREFORE SUPPLIER-SHAPED, NOT VENDOR-SHAPED, and the scope is a typed arm so
+// that re-gating on one vendor is a visible edit rather than a sentence someone changes. What
+// closes it is an ORDER OUTCOME, not a listing: a dated attempt that was PAID or REFUSED, with the
+// supplier and the region recorded as facts of the receipt rather than as its subject.
+type SupplierScope
+  = AnyQualifiedSupplier { note: NonEmptyStr }
+  | NamedSupplierOnly { supplier: NonEmptyStr, why_this_one: NonEmptyStr }
+
+fn supplier_scope_is_open(s: SupplierScope) -> Bool {
+  match s {
+    AnyQualifiedSupplier { note } => true,
+    NamedSupplierOnly { supplier, why_this_one } => false,
+  }
+}
+
+type OrderOutcomeStanding
+  = OrderAttemptedAndPaid { dated_receipt: NonEmptyStr }
+  | OrderAttemptedAndRefused { dated_receipt: NonEmptyStr }
+  | NoOrderAttempted { obligation: NonEmptyStr }
+
+fn order_outcome_is_dated(o: OrderOutcomeStanding) -> Bool {
+  match o {
+    OrderAttemptedAndPaid { dated_receipt } => true,
+    OrderAttemptedAndRefused { dated_receipt } => true,
+    NoOrderAttempted { obligation } => false,
+  }
+}
+
+type SupplyEvidenceRequirement {
+  scope: SupplierScope
+  standing: OrderOutcomeStanding
+  closes_when: NonEmptyStr
+}
+
+data ampere_supply_requirement: SupplyEvidenceRequirement = SupplyEvidenceRequirement {
+  scope: AnyQualifiedSupplier {
+    note: "Any supplier that can deliver Ampere-era dedicated capacity. A processor-model coincidence with a vendor we already price is EVIDENCE ABOUT A CATALOGUE and never evidence of a supply relationship - the operator's ruling, and the reason this arm exists as a construction rather than as a caution in prose. A named-supplier arm is available for the day a term sheet actually binds one, and taking it is then a deliberate edit.",
+  },
+  standing: NoOrderAttempted {
+    obligation: "No dated order outcome from any supplier exists in this corpus. Listings, advertised rates and console readings are not order outcomes: the first says what is published, the second what is charged, and only an ATTEMPT says what is deliverable.",
+  },
+  closes_when: "A dated, paid-or-refused Ampere order from AT LEAST ONE supplier, with the supplier named and the region recorded on the receipt. Region is a recorded fact of the outcome, not a precondition of the question - a refused order in one region and a paid one in another are both evidence, and demanding a specific region up front is what turned this into a single-vendor question the first time.",
+}
+
+fn supply_requirement_is_vendor_agnostic() -> Bool {
+  supplier_scope_is_open(s: ampere_supply_requirement.scope)
+}
+
+fn supply_evidence_is_open() -> Bool {
+  order_outcome_is_dated(o: ampere_supply_requirement.standing) == false
+}
+
+type AmericanContent {
+  key: NonEmptyStr
+  standing: ClaimStanding
+}
+
+data american_us_entity: AmericanContent = AmericanContent {
+  key: "a US entity signs the contract",
+  standing: GroundedInCorpus {
+    authority: decl_ref(module_path: "finance.gunbai_llc", decl_name: "gunbai_facts"),
+    note: "A New York LLC with an EIN, a registered agent and New York governing law. This is the single most solidly grounded content of the word, and it is also the one a buyer asks about first when the alternative is a German vendor.",
+  },
+}
+
+data american_usd_billing: AmericanContent = AmericanContent {
+  key: "billed in dollars, with no exchange-rate exposure",
+  standing: GroundedInCorpus {
+    authority: decl_ref(module_path: "strategy.node_rental", decl_name: "our_currency"),
+    note: "Our costs and our prices are both in dollars. strategy.node_rental records what happens to a comparison that crosses currency: the FX-converted competitor figure was a number no buyer is ever quoted, and it was withdrawn.",
+  },
+}
+
+data american_physical_location: AmericanContent = AmericanContent {
+  key: "the machines are physically in the United States",
+  standing: GroundedInCorpus {
+    authority: decl_field_ref(module_path: "finance.gunbai_llc", decl_name: "gunbai_facts", field_name: "principal_office"),
+    note: "Every site this fleet occupies or surveys is in the United States - the operating address on the entity record, the held Mt. Collins unit, and the Bayonne candidate in strategy.site_survey_91_e21st. That is a fact about where the metal is, which is what a data-residency question asks first - but a location is not a residency GUARANTEE until the route closure covering storage, logs, telemetry, backups and support access is censused for our own site, and no site here carries a site-admission receipt.",
+  },
+}
+
+data american_data_residency: AmericanContent = AmericanContent {
+  key: "customer data stays in the United States",
+  standing: UnobservedAndNeeded {
+    observation: "The full data-path closure for OUR OWN route - execution, durable storage, backups, logs, telemetry, control plane, support access, administrative access and spill. The object-storage half already crosses a provider boundary: storage-provider-accounts requires American regions at both candidate providers, and a bucket in an American region is not the same fact as an American-contained data path. Until that census exists this is a claim about geography, not about data.",
+  },
+}
+
+data american_latency: AmericanContent = AmericanContent {
+  key: "lower latency to US customers",
+  standing: UnobservedAndNeeded {
+    observation: "A measurement. Nothing in this corpus times anything from a US client to our site or to a European vendor. For CI in particular the claim is weak on its face - a job that runs for minutes is not latency-bound - so it is worth measuring only if a customer names it.",
+  },
+}
+
+data american_support_hours: AmericanContent = AmericanContent {
+  key: "US business-hours support from a person you can reach",
+  standing: PositioningOnly {
+    why: "There is one operator and no support model. Every workstream converges on that person, which the plan itself records. Saying it before support-abuse exists would be selling an obligation we have not built.",
+  },
+}
+
+data american_supply_availability: AmericanContent = AmericanContent {
+  key: "dedicated Ampere capacity that can actually be bought, in the United States",
+  standing: UnobservedAndNeeded {
+    observation: "The sharpest candidate differentiator and the least established, and what it waits on is ampere_supply_requirement - a dated paid-or-refused order from ANY qualified supplier, region recorded. NOT a quantity answer from one vendor in one region: that framing stood here until 2026-09-10 and was wrong, because a vendor which does not offer the line in a region answers it without saying anything about whether the capacity is buyable, and because a matching processor SKU is evidence about a catalogue rather than a supply relationship. strategy.node_rental separately carries the Hetzner arm row as a dated NOT-ORDERABLE series against one signed-in account, which is a fact about that row's admissibility as a floor and not this track's supply answer. The US half stays unestablished in either direction until an order outcome carries a US region on its receipt.",
+  },
+}
+
+data american_contents: List<AmericanContent> = [
+  american_us_entity,
+  american_usd_billing,
+  american_physical_location,
+  american_data_residency,
+  american_latency,
+  american_support_hours,
+  american_supply_availability,
+]
+
+fn b2b_american_content_count() -> Int { count(american_contents) }
+
+fn b2b_american_grounded_count() -> Int {
+  count(filter(american_contents, c => b2b_claim_is_grounded(s: c.standing)))
+}
+
+fn b2b_american_unobserved_count() -> Int {
+  count(filter(american_contents, c => b2b_claim_is_unobserved(s: c.standing)))
+}
+
+// ---------------------------------------------------------------------------------------------
+// 6. THE STANDING OF THE TWO-TRACK DECISION ITSELF
+// ---------------------------------------------------------------------------------------------
+//
+// DESIGN section 3d: a Pareto front of two is not a winner, and a decision with an unresolved
+// funded axis is SelectionNeedsEvidence rather than a preference. The evidence gap here is not
+// incidental - it is the same gap on both sides.
+type TrackDecisionStanding
+  = TwoTracksNeedsEvidence {
+      unresolved_axis: NonEmptyStr
+      discriminating_observation: NonEmptyStr
+      note: NonEmptyStr
+    }
+  | TwoTracksAdmitted { note: NonEmptyStr }
+  | B2bTrackRefused { cause: NonEmptyStr }
+
+// Is there any retail row this corpus may cite as a purchasable competitive floor. The B2B price
+// argument is a comparison against exactly that, so with none the price axis is unfunded.
+fn b2b_has_admissible_floor_row() -> Bool {
+  count(filter(market_rows, r => admissible_as_competitive_floor(r: r))) > 0
+}
+
+// WHY PURCHASABLE AND NOT MERELY KNOWN, since the difference is the whole point upstream now
+// makes: a supply standing can be perfectly well OBSERVED and still not be a floor, because what
+// was observed is that the line could not be ordered. Testing observedness here would have read a
+// dated not-orderable series as evidence that the rate is buyable.
+fn b2b_hetzner_row_is_not_a_floor() -> Bool {
+  admissible_as_competitive_floor(r: hetzner_row) == false
+    && (region_is_known(r: hetzner_row.region) == false
+        || supply_is_purchasable(s: hetzner_row.supply) == false)
+}
+
+fn b2b_track_decision_standing() -> TrackDecisionStanding {
+  if b2b_has_admissible_floor_row() == false {
+    TwoTracksNeedsEvidence {
+      unresolved_axis: "price against a purchasable market floor",
+      discriminating_observation: "Whether dedicated Ampere-era capacity comparable to our slice can actually be BOUGHT - at what price, in what quantity, from ANY qualified supplier, with the region recorded rather than demanded up front. That is ampere_supply_requirement, and it is deliberately not a question about one vendor: gating it on one vendor's catalogue in one region is how an unanswerable question gets mistaken for an open one. It is the same observation both tracks need, which is itself an argument for running them together: if the capacity is freely purchasable the wholesale argument weakens and the CI product must win on service; if it is genuinely scarce the same fact both retires an advertised rate as a floor and supplies the reason a reseller wants a supplier at all.",
+      note: "NOT a finding that the market has no floor. Zero admissible rows is a statement about this corpus, and reading the census as a market claim is the misreading strategy.node_rental evidence_census_note exists to prevent. The two tracks are non-dominated on what is currently known: the B2B track has the smaller construction and the weaker differentiation, the CI track has the stronger product argument and the longer admission chain. Selecting between them now would be a preference wearing a decision's clothes.",
+    }
+  } else {
+    TwoTracksAdmitted {
+      note: "An admissible floor exists, so the price axis is funded and the comparison can be made. Reaching this arm with a fabricated floor row is the failure it is written to make visible.",
+    }
+  }
+}
+
+fn b2b_decision_needs_evidence(s: TrackDecisionStanding) -> Bool {
+  match s {
+    TwoTracksNeedsEvidence { unresolved_axis, discriminating_observation, note } => true,
+    TwoTracksAdmitted { note } => false,
+    B2bTrackRefused { cause } => false,
+  }
+}
+
+fn b2b_entity_is_us() -> Bool {
+  gunbai_facts.formation_state == "New York"
+}

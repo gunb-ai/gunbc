@@ -1,0 +1,222 @@
+module strategy.ci_product_surface
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat }
+import strategy.ci_alpha {
+  SkuPricingBasis, MeteredExecutionOnly, StructuralWorkElimination,
+  first_runner_sku_pricing_basis,
+}
+
+// WHAT THE CUSTOMER SEES, AND WHAT THEY MUST NEVER BE ASKED.
+//
+// The product is "run this, now, at a competitive price". It is not a menu of shapes. A customer
+// who has to know what a vCPU is, whether a hypervisor supports nested virtualization, or which
+// architecture their build prefers, is doing our routing work for us and paying us for the
+// privilege.
+//
+// That is a product decision and it is also an economic one. Every attribute we keep off the price
+// list is an attribute we are free to optimize: if the customer does not pick the shape, we can
+// place the job wherever it runs cheapest that month, and the difference is ours. A shape menu
+// converts that margin into a customer expectation and freezes it.
+//
+// So this module states the partition explicitly. Attributes are either CUSTOMER-VISIBLE or
+// INTERNAL, never both, and a witness holds the boundary.
+
+type SurfaceSide
+  = CustomerVisible { why: NonEmptyStr }
+  | InternalRouting { why: NonEmptyStr }
+
+fn is_customer_visible(s: SurfaceSide) -> Bool {
+  match s {
+    CustomerVisible { why } => true,
+    InternalRouting { why } => false,
+  }
+}
+
+fn side_label(s: SurfaceSide) -> NonEmptyStr {
+  match s {
+    CustomerVisible { why } => "customer sees",
+    InternalRouting { why } => "internal",
+  }
+}
+
+type SurfaceAttribute {
+  name: NonEmptyStr
+  side: SurfaceSide
+  note: NonEmptyStr
+}
+
+// ---------------------------------------------------------------------------------------------
+// The customer surface. Four things, and the list is deliberately hard to grow.
+// ---------------------------------------------------------------------------------------------
+
+data attr_price: SurfaceAttribute = SurfaceAttribute {
+  name: "Price per job-minute",
+  side: CustomerVisible { why: "The one number a buyer compares. It is quoted for a whole job-minute, not for an internal unit, so nobody has to multiply anything to find out what a build costs." },
+  note: "Quoted against the runner a competitor sells, because that is the comparison a buyer actually makes.",
+}
+
+data attr_region: SurfaceAttribute = SurfaceAttribute {
+  name: "Where it runs",
+  side: CustomerVisible { why: "Jurisdiction and residency are contractual facts a buyer's counsel may need, and they cannot be inferred on the customer's behalf." },
+  note: "A coarse choice - a country or a continent - never a datacenter or a provider name.",
+}
+
+data attr_isolation_promise: SurfaceAttribute = SurfaceAttribute {
+  name: "Isolation promise",
+  side: CustomerVisible { why: "What we guarantee about other tenants' code touching theirs. This is a promise, not an implementation: it says what holds, not what enforces it." },
+  note: "Stated as a guarantee the platform keeps. How it is kept is ours to change without renegotiating.",
+}
+
+// The receipt's customer-facing description is DERIVED from the SKU pricing basis rather than
+// authored beside it. ci_alpha.first_runner_sku_pricing_basis is the single authority for what the
+// first SKU is sold on; restating it here would be a second authority that can drift, and it did -
+// this row survived the MeteredExecutionOnly ruling saying reuse was the product for five days.
+// Under a later StructuralWorkElimination ruling this surface changes with the authority, in one
+// place, and the witness below holds the join.
+fn receipt_customer_why(b: SkuPricingBasis) -> NonEmptyStr {
+  match b {
+    MeteredExecutionOnly { basis, refused_claim } => "What ran, what it produced, and what it cost. Reuse, where it is actually observed, appears as a field on the receipt; it is not what is being sold, and the invoice does not depend on it.",
+    StructuralWorkElimination { basis, evidence } => "What ran, what it produced, what it cost, and what was reused rather than recomputed. The last of those is the product.",
+  }
+}
+
+fn receipt_internal_note(b: SkuPricingBasis) -> NonEmptyStr {
+  match b {
+    MeteredExecutionOnly { basis, refused_claim } => "The receipt substantiates metered execution: the buyer can check what they were billed for against what ran. It is not the place where a work-elimination claim is made to a customer, because this SKU makes no such claim.",
+    StructuralWorkElimination { basis, evidence } => "The receipt is where work-elimination becomes visible to the buyer instead of being an invisible margin.",
+  }
+}
+
+data receipt_why: NonEmptyStr = receipt_customer_why(b: first_runner_sku_pricing_basis)
+
+data receipt_note: NonEmptyStr = receipt_internal_note(b: first_runner_sku_pricing_basis)
+
+data attr_receipt: SurfaceAttribute = SurfaceAttribute {
+  name: "Receipt",
+  side: CustomerVisible { why: receipt_why },
+  note: receipt_note,
+}
+
+// ---------------------------------------------------------------------------------------------
+// The internal surface. Everything that decides where a job lands, and none of it is a question we
+// ask the customer.
+// ---------------------------------------------------------------------------------------------
+
+data attr_architecture: SurfaceAttribute = SurfaceAttribute {
+  name: "CPU architecture",
+  side: InternalRouting { why: "Detected from the workload, not asked. A build that must be x86 says so in its own configuration; making every customer answer an architecture question to serve the minority that cares is backwards." },
+  note: "Wrong-architecture placement is a hard refusal in routing. The customer never sees the question, only the outcome.",
+}
+
+data attr_entitlement: SurfaceAttribute = SurfaceAttribute {
+  name: "vCPU, thread or physical core",
+  side: InternalRouting { why: "A distinction between providers, not a distinction a buyer can act on. It changes what a minute costs us and how fast a build finishes; the first is our problem and the second shows up as wall time." },
+  note: "This is the single most tempting thing to put on a price list and the least useful thing a customer could read.",
+}
+
+data attr_virtualization: SurfaceAttribute = SurfaceAttribute {
+  name: "Isolation mechanism",
+  side: InternalRouting { why: "Whether a route can host a clean microVM is a constraint on us. A customer buys the promise; nested virtualization availability is how we keep it, or why a route is refused." },
+  note: "A route that cannot meet the promise is not offered at a discount. It is not offered.",
+}
+
+data attr_billing_quantum: SurfaceAttribute = SurfaceAttribute {
+  name: "Provider billing quantum",
+  side: InternalRouting { why: "A provider that rounds a five-minute job up to an hour has changed our cost, not the customer's price. Passing that through would make our supply contracts the customer's problem." },
+  note: "Hour-rounded capacity is only economic when packed, so it is a pool decision rather than a per-job one.",
+}
+
+data attr_pool_occupancy: SurfaceAttribute = SurfaceAttribute {
+  name: "Pool occupancy",
+  side: InternalRouting { why: "How full our rented capacity is determines what a sold minute costs us. It is the central number in the business and it is none of the customer's business." },
+  note: "The customer pays the same whether we placed their job well or badly. That is the whole bet.",
+}
+
+data attr_shape: SurfaceAttribute = SurfaceAttribute {
+  name: "Cores and memory",
+  side: InternalRouting { why: "Inferred from the workload with a declared ceiling, not chosen from a dropdown. A customer who genuinely needs to pin a size gets an escape hatch; nobody has to use it to buy the product." },
+  note: "Keeping shape internal is what lets a build be placed on whatever is cheapest this month.",
+}
+
+data surface_attributes: List<SurfaceAttribute> = [
+  attr_price,
+  attr_region,
+  attr_isolation_promise,
+  attr_receipt,
+  attr_architecture,
+  attr_entitlement,
+  attr_virtualization,
+  attr_billing_quantum,
+  attr_pool_occupancy,
+  attr_shape,
+]
+
+fn customer_surface() -> List<SurfaceAttribute> {
+  filter(surface_attributes, a => is_customer_visible(s: a.side))
+}
+
+fn internal_surface() -> List<SurfaceAttribute> {
+  filter(surface_attributes, a => is_customer_visible(s: a.side) == false)
+}
+
+// The discipline this module exists to enforce. If the customer-visible list grows, the product has
+// become a configuration exercise and the routing freedom that pays for it has been given away.
+data customer_surface_ceiling: Int = 4
+
+fn customer_surface_within_ceiling() -> Bool {
+  count(customer_surface()) <= customer_surface_ceiling
+}
+
+data surface_discipline_note: NonEmptyStr = "Four customer-visible attributes, and the count is a limit rather than a description. Every attribute added to the price list is a routing decision handed to someone who cannot make it well and a margin lever surrendered permanently. When a new capability arrives the default is to place it behind the existing four, not beside them."
+
+// ---------------------------------------------------------------------------------------------
+// EXECUTION MODEL. Serverless, stateless, ephemeral - which is a customer promise and a supply
+// constraint at the same time.
+// ---------------------------------------------------------------------------------------------
+
+type ExecutionModel
+  = EphemeralPerJob { note: NonEmptyStr }
+  | WarmPooled { note: NonEmptyStr, obligation: NonEmptyStr }
+  | LongLivedTenantHost { note: NonEmptyStr, obligation: NonEmptyStr }
+
+data selected_execution_model: ExecutionModel = EphemeralPerJob {
+  note: "One clean environment per job, created on arrival and destroyed on completion, with no state surviving it. Durable state lives upstream in content-addressed storage, so a node holds nothing that cannot be rebuilt and a customer inherits nothing from the job before theirs.",
+}
+
+data execution_model_note: NonEmptyStr = "Ephemeral per job is the simplest thing to promise and the strictest thing to supply. It rules out selling a customer a machine, which is what makes the interface one line; it also means capacity must be created and destroyed at job cadence, which is a hard filter on which providers can serve it at all."
+
+// A provider whose smallest billable increment is longer than a typical job cannot serve
+// ephemeral-per-job economically, no matter how low its hourly rate is. This is a supply
+// requirement derived from the product promise rather than a preference.
+type BillingQuantumFit
+  = QuantumFits { note: NonEmptyStr }
+  | QuantumTooCoarse { minimum_billed_minutes: Int, obligation: NonEmptyStr }
+
+fn quantum_fit(minimum_billed_minutes: Int, typical_job_minutes: Int) -> BillingQuantumFit {
+  if minimum_billed_minutes <= typical_job_minutes {
+    QuantumFits { note: "The smallest billable increment is no longer than a typical job, so a job can be given its own capacity and pay for what it used." }
+  } else {
+    QuantumTooCoarse {
+      minimum_billed_minutes: minimum_billed_minutes,
+      obligation: "This route bills a longer minimum than a typical job runs. It can only be economic as a packed warm pool, where several jobs share one billed increment, and a warm pool is a different cost model with an occupancy risk the ephemeral model does not carry.",
+    }
+  }
+}
+
+data typical_job_minutes: Int = 6
+
+data typical_job_note: NonEmptyStr = "Six minutes is a planning figure for a typical CI job and nothing has measured it. It is load-bearing: it decides which providers can serve the ephemeral model at all, so the first week of real jobs should replace it."
+
+// ---------------------------------------------------------------------------------------------
+// WHAT SIMPLICITY COSTS US, stated so it is a choice rather than an oversight.
+// ---------------------------------------------------------------------------------------------
+
+data simplicity_cost_note: NonEmptyStr = "A single flat price for an inferred shape means we carry the variance. A memory-hungry build lands on a larger machine at our expense and the customer pays the same per minute, so a workload mix skewed toward heavy jobs eats the spread rather than raising the invoice. The mitigations are an admission ceiling per job and a fair-use boundary, both internal; the alternative - asking the customer to size their build - is the complexity this product is refusing."
+
+data simplicity_alpha_note: NonEmptyStr = "The upside is symmetrical and PROSPECTIVE. Because the customer buys a job rather than a machine, any minute we do not execute would be margin rather than a discount, and a shape menu would have converted that into a discount the customer expects. What is NOT claimed: that affected-set selection, cache reuse or incremental execution are reducing our cost today. Measurement on 2026-08-20 established that on gunbc none of them is both exercised and instrumented - selection was deleted at the root, the floor carries no per-claim duration, and the scope authority has no caller - so the mechanism is unmeasured on our own workload and unreachable on a customer's opaque job. This row states the shape of an upside the product preserves, never an upside it is realizing."
+
+data no_shape_menu_note: NonEmptyStr = "There is no shape menu, no instance-type list and no architecture toggle. A customer who must pin a size gets an escape hatch in configuration; nobody needs it to buy the product, and it is deliberately not on the price list."
+
+data served_workload_segment_ruling: NonEmptyStr = "OPERATOR RULING 2026-08-30 (v2, reworded per the analyst's final ruling): ALIGN THE CLIENTS WITH THE FLEET'S INTENTIONS. The included class is BOUNDED COMMODITY COMPUTE WITH RETRY-SAFE OR IDEMPOTENT EXECUTION SEMANTICS - CI builds, tests, workflows, batch work whose software carries its own retries. Not 'lightweight': a huge Rust/C++/monorepo build is compute-heavy, memory-heavy, expensive, highly parallel - and exactly the revenue - while still bounded and retry-safe; what the class excludes is UNBOUNDEDNESS and life-support needs (latency-critical serving, bare-metal-tuned HPC, five-nines SLA), never size or cost. What these customers buy is not unreliable compute: low queue delay, fast feedback, isolation, cache locality, predictable billing, graceful recovery when a disposable worker dies - the market comparable proves retryable CI is not confined to customers without money. ADMISSION IS PER JOB, NOT PER CUSTOMER: one customer's workflow can hold retry-safe build jobs beside a signing job or a stateful step; each job is admitted, spilled, or declined on its own semantics. Consequences that bind elsewhere: cohort qualification screens workload shape, ToS exclusions carry the segment boundary, failure-billing semantics assume retryable jobs, and the buyers-pipeline hardware bar is priced for replaceability, never uptime heroics. Excluded jobs route to the spill/cloud path or are declined - never absorbed as an exception."
+

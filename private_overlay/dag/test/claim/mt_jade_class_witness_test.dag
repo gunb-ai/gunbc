@@ -1,0 +1,123 @@
+module test.claim.mt_jade_class_witness
+
+import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.mt_jade_class {
+  CordUnobserved,
+  DepthUnobserved,
+  NeedDramAtOneDpc,
+  NeedMainsCordMatchingObservedInlet,
+  NeedRailsFor2uDepthClass,
+  ReusesPublicFold,
+  UnitSpecificMustBeAuthored,
+  DoesNotTransferUntilObserved,
+  arrival_gate_count,
+  chassis_depth_for_rails,
+  class_label,
+  class_purchase_needs,
+  collins_bringup_transfers,
+  first_power_on_blocked_until_mains_cord_matches_site,
+  jade_class_secret_ref_shape_is_fleet,
+  planned_fill_is_half_the_slots,
+  purchase_need_count,
+  reuses_public_fold_count,
+  same_channel_1r_2r_is_not_supported,
+  different_channel_1r_2r_is_undetermined,
+  shipped_mains_cord,
+  specimen_is_not_the_class,
+  transfer_row_count,
+}
+import strategy.mt_jade_held_specimen {
+  airflow_guide_blocks_sustained_load,
+  bios_clock_is_not_the_3ghz_marketing_row,
+  first_power_port_plan_is_bmc_only,
+  installed_psu_label_is_not_the_2000w_brief,
+  listing_documents_are_linked_and_are_not_the_assembly_manifest,
+  nic_purchase_is_refused_until_upper_adapter_census,
+  specimen_marketplace_listing_id,
+  unit_photographs_are_linked,
+}
+
+fn class_is_not_the_ebay_serial() -> Bool {
+  specimen_is_not_the_class
+    && (specimen_marketplace_listing_id as String) == "336592998931"
+    && (class_label as String) == "wiwynn-mt-jade-2u-dual-altra"
+}
+
+fn first_power_on_is_blocked() -> Bool {
+  first_power_on_blocked_until_mains_cord_matches_site
+    && match shipped_mains_cord {
+      CordUnobserved { operator_hypothesis: _, discriminator_owed: _ } => true
+    }
+    && match chassis_depth_for_rails {
+      DepthUnobserved { operator_hypothesis: _, discriminator_owed: _ } => true
+    }
+}
+
+fn buy_list_covers_dram_cord_rails_not_nic() -> Bool {
+  purchase_need_count() == 3
+    && fold(class_purchase_needs, init: true, f: fn(acc, n) {
+      acc && match n {
+        NeedDramAtOneDpc { planned_modules, slots_on_board } =>
+          planned_modules == 16 && slots_on_board == 32
+        NeedMainsCordMatchingObservedInlet { reason: _ } => true
+        NeedRailsFor2uDepthClass { reason: _ } => true
+      }
+    })
+}
+
+fn memory_cells_are_the_ocp_table() -> Bool {
+  same_channel_1r_2r_is_not_supported()
+    && different_channel_1r_2r_is_undetermined()
+    && planned_fill_is_half_the_slots()
+}
+
+fn transfer_census_is_measured() -> Bool {
+  transfer_row_count() == 19
+    && reuses_public_fold_count() == 13
+    && arrival_gate_count() == 12
+    && jade_class_secret_ref_shape_is_fleet()
+    && fold(collins_bringup_transfers, init: false, f: fn(acc, t) {
+      acc || match t {
+        DoesNotTransferUntilObserved { symbol, reason: _ } =>
+          string_contains(s: symbol as String, pattern: "megarac_media_attach")
+        ReusesPublicFold { symbol: _ } => false
+        UnitSpecificMustBeAuthored { symbol_pattern: _, reason: _ } => false
+      }
+    })
+    && fold(collins_bringup_transfers, init: false, f: fn(acc, t) {
+      acc || match t {
+        DoesNotTransferUntilObserved { symbol, reason: _ } =>
+          string_contains(s: symbol as String, pattern: "bmc_first_contact")
+        ReusesPublicFold { symbol: _ } => false
+        UnitSpecificMustBeAuthored { symbol_pattern: _, reason: _ } => false
+      }
+    })
+}
+
+fn photograph_standing_refuses_nic_and_brief_as_manifest() -> Bool {
+  nic_purchase_is_refused_until_upper_adapter_census()
+    && first_power_port_plan_is_bmc_only()
+    && installed_psu_label_is_not_the_2000w_brief()
+    && bios_clock_is_not_the_3ghz_marketing_row()
+    && airflow_guide_blocks_sustained_load()
+    && unit_photographs_are_linked()
+    && listing_documents_are_linked_and_are_not_the_assembly_manifest()
+}
+
+fn mt_jade_class_witness_all() -> Bool {
+  class_is_not_the_ebay_serial()
+    && first_power_on_is_blocked()
+    && buy_list_covers_dram_cord_rails_not_nic()
+    && memory_cells_are_the_ocp_table()
+    && transfer_census_is_measured()
+    && photograph_standing_refuses_nic_and_brief_as_manifest()
+}
+
+fn mt_jade_class_witness_main() -> ProcessExit {
+  if mt_jade_class_witness_all() {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "mt_jade_class_witness_all returned false" }
+  }
+}

@@ -1,0 +1,501 @@
+module strategy.served_workload_frontier
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import strategy.calendar_date { CalendarDate }
+
+// THE SERVED WORKLOAD FRONTIER: which CLASSES of work this business serves, decided before any
+// customer exists. Operator direction 2026-09-17 - "we basically need to invest in scouting for
+// use cases before year end" and "my goal is to align our own use cases with the market".
+//
+// THE OPERATOR RULING IS THE AUTHORITY FOR THE CLASS, AND THIS MODULE DERIVES FROM IT RATHER THAN
+// RESTATING IT (review 67379, which caught that I had not read it). IT IS CITED BY SYMBOL AND NOT
+// ALIASED: the first repair bound it to a local name, class_authority_ruling, with no consumer --
+// a second name for one concept, which is the §3 violation the repair was fixing, committed inside
+// the fix. A prose ruling cannot be executed against, so an alias buys nothing an honest citation
+// does not; what IS executed is the constraint below, and DESIGN's own standing rule is to name the
+// module and symbol rather than manufacture a local handle for them. strategy.ci_product_surface
+// served_workload_segment_ruling carries the operator words of 2026-08-30: the included class is
+// BOUNDED COMMODITY COMPUTE WITH RETRY-SAFE OR IDEMPOTENT EXECUTION SEMANTICS, what it excludes is
+// unboundedness and life-support needs -- latency-critical serving, bare-metal-tuned HPC, five-nines
+// SLA -- never size or cost, and admission is PER JOB rather than per customer. That ruling already
+// binds cohort qualification, the ToS exclusions, failure-billing semantics and the buyers-pipeline
+// hardware bar.
+//
+// THE TWO ARE DIFFERENT SUBJECTS AND THE BOUNDARY IS THE POINT. The ruling governs RUNTIME
+// ADMISSION: given a job, is it served, spilled or declined, decided per job at execution. This
+// module governs MARKET SELECTION: given no customers at all, which workload CLASSES is it worth
+// building a product for. A class is not a job and the two cannot be merged without losing the
+// ruling's own grain -- one customer's workflow can hold admitted build jobs beside a declined
+// stateful step, which a per-class model cannot express.
+//
+// WHAT THIS MODULE THEREFORE MAY NOT DO, and the witness enforces it: admit a class whose shape the
+// ruling excludes. The five contract properties are the ruling's semantics made CHECKABLE, not a
+// second definition of them -- attempts_are_disposable and resource_use_is_bounded are its
+// retry-safety and boundedness, and a class failing either cannot qualify. If the ruling is ever
+// reworded the properties follow it; the ruling does not follow the properties.
+//
+// WHY THIS IS NOT ONE OF THE TWO NEAREST MODULES, because both were read first and neither can
+// hold it. strategy.workload_benchmark_suite is the PUBLIC WORKLOAD CENSUS and its subject is a
+// JOB: every row names a workflow path, a job key, a matrix selector and an architecture read
+// from a label SUFFIX. A remote-execution workload has none of those - it is not a workflow job
+// at all - so representing one there would mean bending the census's own discriminators, which is
+// the tell that this is a different concept rather than a missing row. And year_end_plan's
+// customer-workload-profile profiles REAL JOBS FROM REAL PROSPECTS: it depends on cohort-qualified
+// and first-external-customer, so it cannot run before customers exist, which is exactly when the
+// question "what should we sell" has to be answered. One module is too late and the other is the
+// wrong subject.
+//
+// THE GOVERNING PROPERTY IS NOT "STATELESS/SERVERLESS", and the correction is load-bearing rather
+// than pedantic. A nominally serverless function can make a non-idempotent external call halfway
+// through and be unsafe to retry, so "stateless" would admit it. The property that actually makes
+// ordinary machine failure cheap is DISPOSABLE ATTEMPTS OVER RECONSTRUCTIBLE WORK. The company
+// also plainly HAS durable state - queues, billing, metadata, artifacts - so the honest claim is
+// not that every service is stateless but that CUSTOMER EXECUTION is disposable and durable state
+// lives only in explicit, separately modeled authorities, never accidentally inside a worker.
+//
+// WHAT IS SOLD IS COMPLETION OF A WORK UNIT, NOT CONTINUITY OF A MACHINE. That sentence is the
+// whole frontier: a node is inventory, not customer identity.
+
+// THE CONTRACT, AS FIVE INDEPENDENTLY FALSIFIABLE PROPERTIES. Each is a separate field rather than
+// one qualified Boolean because a single `true` would force the reader to guess which question it
+// answered, and because the arms differ in what would settle them: two are read from a protocol
+// specification, one from an implementation, one from a measurement and one from our own
+// operating experience.
+//
+// THE SIXTH AND SEVENTH PROPERTIES OF THE SOURCE DISCUSSION - operations scale sublinearly, and
+// economics improve through pooling - are DELIBERATELY NOT FIELDS HERE. Neither can be honestly
+// answered before a specimen has been replayed and served, so authoring them at scouting time
+// would be a bet typed as a reading (DESIGN section 4d). They are outputs of the replay and live
+// with the economics, which this module does not carry.
+type ContractProperty
+  = PropertyHolds { how_established: NonEmptyStr }
+  | PropertyFails { why: NonEmptyStr }
+  | PropertyUnread { what_would_settle_it: NonEmptyStr }
+
+// TWO SERVICE SHAPES, ONE INVARIANT (side-chat review, 2026-09-18). The first cut of this module
+// made ONE promise universal -- we sell completion of a bounded work unit, not continuity of a
+// machine -- which is exactly right for remote build execution and WRONG for a persistent agent
+// workspace. That product sells continuity of a LOGICAL WORKSPACE while refusing continuity of any
+// particular machine, so under a completion-only model it either fails outright or is forced to
+// name a fictional atomic job to pass the type. I did the second: the agent row's atomic unit was
+// "the agent turn", a grain chosen because completion exists there rather than because the customer
+// buys it. That is fitting the model to the check.
+//
+// WHAT THE TWO SHAPES SHARE IS THE REAL INVARIANT, and it is narrower than "stateless":
+// EXECUTOR PLACEMENT IS NON-AUTHORITATIVE. No authoritative state belongs to a particular executor.
+// RBE satisfies it per action; a workspace satisfies it by placing its durable home outside the
+// microVM. Everything else differs by shape, so the proofs differ by shape too.
+type ServiceShape
+  = CompletedWorkUnit
+  | RecoverableWorkspace
+
+
+// THE SHAPE-SPECIFIC OBLIGATION, WHICH IS WHAT completion_is_machine_readable USED TO ASSUME FOR
+// EVERYONE. A completed-work-unit class owes machine-readable COMPLETION. A recoverable-workspace
+// class owes something genuinely different and harder: machine-readable ATTACHMENT AND FENCING --
+// one active writer, enforced before the workspace is attached elsewhere -- plus reconstruction and
+// recovery state. Fencing has no analogue on the RBE side, and omitting it is not a modelling nicety:
+// two executors attached to one workspace volume corrupt a customer's repository, which is the one
+// failure this product may never have.
+type ShapeObligation
+  = CompletionReadable { how_established: NonEmptyStr }
+  | AttachmentFencedAndRecoverable { fencing: NonEmptyStr, reconstruction: NonEmptyStr }
+  | ShapeObligationUnread { what_would_settle_it: NonEmptyStr }
+
+fn shape_obligation_holds(o: ShapeObligation) -> Bool {
+  match o {
+    CompletionReadable { how_established } => true,
+    AttachmentFencedAndRecoverable { fencing, reconstruction } => true,
+    ShapeObligationUnread { what_would_settle_it } => false,
+  }
+}
+
+fn obligation_matches_shape(sh: ServiceShape, o: ShapeObligation) -> Bool {
+  match sh {
+    CompletedWorkUnit => match o {
+      CompletionReadable { how_established } => true,
+      AttachmentFencedAndRecoverable { fencing, reconstruction } => false,
+      ShapeObligationUnread { what_would_settle_it } => true,
+    },
+    RecoverableWorkspace => match o {
+      CompletionReadable { how_established } => false,
+      AttachmentFencedAndRecoverable { fencing, reconstruction } => true,
+      ShapeObligationUnread { what_would_settle_it } => true,
+    },
+  }
+}
+
+type WorkloadContract {
+  attempts_are_disposable: ContractProperty
+  workers_hold_no_authoritative_state: ContractProperty
+  machine_identity_is_irrelevant: ContractProperty
+  resource_use_is_bounded: ContractProperty
+}
+
+// AN EXCLUSION MUST NAME ITS KIND, BECAUSE THE DISPOSITIONS DIFFER. A prototype-shaped workload
+// becomes admissible once it defines atomic output commit; a legacy-shaped one might be wrapped
+// into independently retryable jobs; an intrinsically stateful database is not awaiting evidence
+// at all. Collapsing these into "not a fit" would lose the only thing that tells you whether to
+// revisit a candidate, and when.
+type ExclusionKind
+  = PrototypeSemantics { missing: NonEmptyStr }
+  | LegacyShaped { depends_on_machine_identity: NonEmptyStr }
+  | OperationallyUnscalable { per_customer_labor: NonEmptyStr }
+  | IntrinsicallyIncompatible { conflicting_requirement: NonEmptyStr }
+
+type AdmissionStanding
+  = InsideFrontier { on: CalendarDate }
+  | AdmissibleOnCondition { unmet: List<NonEmptyStr> }
+  | OutsideFrontier { kind: ExclusionKind }
+  | NotYetAssessed { obligation: NonEmptyStr }
+
+// ARCHITECTURE IS AN ADMISSION QUESTION, NOT A DETAIL, and it has an explicit unresolved arm
+// because the first candidate's answer is genuinely unknown. Demand that cannot run on the supply
+// we hold is not demand for US, and "remote execution" as a label hides exactly that gap.
+type ArchitectureFit
+  = RunsOnOurSupply { evidence: NonEmptyStr }
+  | RequiresOtherArchitecture { needs: NonEmptyStr, options: NonEmptyStr }
+  | ArchitectureUnresolved { question: NonEmptyStr, how_to_settle: NonEmptyStr }
+
+// WHETHER WE ARE OUR OWN CUSTOMER IS A FACT ABOUT US, so it carries its own evidence rather than
+// riding on the candidate's market description. It is also the cheapest demand evidence that
+// exists: nobody has to be surveyed to establish that we already pay for something.
+type DogfoodStanding
+  = WeConsumeThisToday { evidence: NonEmptyStr }
+  | WeDoNotConsumeThis { note: NonEmptyStr }
+  | DogfoodUnread { obligation: NonEmptyStr }
+
+// A SPECIMEN IS WHAT SEPARATES A CANDIDATE FROM AN OPINION. Until one real workload can be
+// executed and measured, every economic statement about the class is a projection.
+type ReplayStanding
+  = SpecimenNamed { specimen: NonEmptyStr, replayed: Bool }
+  | NoSpecimenYet { obligation: NonEmptyStr }
+
+type CandidateClass {
+  key: NonEmptyStr
+  interface: NonEmptyStr
+  shape: ServiceShape
+  atomic_unit: NonEmptyStr
+  contract: WorkloadContract
+  obligation: ShapeObligation
+  architecture: ArchitectureFit
+  incumbent: NonEmptyStr
+  dogfood: DogfoodStanding
+  replay: ReplayStanding
+  standing: AdmissionStanding
+  kill_condition: NonEmptyStr
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CANDIDATES.
+// ---------------------------------------------------------------------------------------------
+
+// REMOTE BUILD EXECUTION IS THE REFERENCE CLASS, and it earns that twice over: its protocol has
+// the cleanest boundaries of anything in the field - content-addressed inputs, named actions,
+// disposable executors, explicit outputs, caching in the protocol itself - AND WE ARE ALREADY A
+// CUSTOMER OF IT. Every cargo build in this project's sessions dispatches to a remote executor by
+// default. So for this one class the demand question needs no survey: we pay for it today.
+//
+// AND IT IS THE CLASS THAT TESTS THE WHOLE THESIS RATHER THAN DECORATING IT. Our own remote-build
+// demand is linux/amd64 - the runners are amd64 and the session containers are arm64, and a
+// binary built on one does not execute on the other - while the fleet being bought is Ampere
+// arm64. Until that is resolved, "we are our own customer" is NOT established for this supply,
+// and the standing below says so rather than reading the dogfood fact as admission.
+data candidate_remote_build_execution: CandidateClass = CandidateClass {
+  key: "remote-build-execution",
+  interface: "A remote execution API in the Bazel REAPI family: content-addressed store plus an execution service. A candidate need not literally implement REAPI, but it should have boundaries of the same strength.",
+  shape: CompletedWorkUnit,
+  atomic_unit: "One action: a command line, an environment, and a declared input tree, addressed by digest.",
+  contract: WorkloadContract {
+    attempts_are_disposable: PropertyHolds {
+      how_established: "The protocol reconstructs an action from its digest, so a lost executor costs a re-execution rather than a recovery. Read from the protocol, not from any implementation.",
+    },
+    workers_hold_no_authoritative_state: PropertyHolds {
+      how_established: "Inputs come from the content-addressed store and outputs are published back to it; a worker's local cache is an optimization whose loss changes only speed.",
+    },
+    machine_identity_is_irrelevant: PropertyHolds {
+      how_established: "Actions name platform PROPERTIES rather than a host, and the protocol admits any executor satisfying them.",
+    },
+    resource_use_is_bounded: PropertyUnread {
+      what_would_settle_it: "REAPI carries a timeout and platform properties but no universal memory or output-size envelope; what real actions actually demand is a measurement on a replayed specimen, not a protocol reading.",
+    },
+  },
+  obligation: CompletionReadable {
+    how_established: "An ActionResult carries exit code, output digests and timing, so completion and failure are values rather than something an operator infers from a machine.",
+  },
+  architecture: ArchitectureUnresolved {
+    question: "Does our OWN remote-build demand run on the hardware we are buying? Today it is linux/amd64; the fleet is Ampere arm64.",
+    how_to_settle: "Build this repository's own workspace for arm64 on one Ampere host and compare against the amd64 dispatch on the same sources: whether it builds at all, and at what cost. That is one host and one afternoon, and it either grounds the dogfood claim or kills it. If it fails, the named options are native arm64 demand, cross-architecture execution as a service, separate architecture pools, buying some amd64 supply, or dropping the class - and choosing one is a decision, not a discovery.",
+  },
+  incumbent: "BuildBuddy, EngFlow, Bazel Remote Cache deployments, and the RBE offering inside larger CI products. Published terms are per-CPU-hour or per-seat depending on vendor; no rate is transcribed here (DESIGN section 6: name the instrument, never transcribe its output).",
+  dogfood: WeConsumeThisToday {
+    evidence: "This project's own builds dispatch to a remote executor by default: the ctrl-build wrapper sends cargo invocations to BuildBuddy runners, and a session must opt OUT to build locally. That is observed operating fact, not a survey answer.",
+  },
+  replay: NoSpecimenYet {
+    obligation: "Name one real action set we can execute and measure. Our own workspace is the obvious first specimen and is available today; a third-party specimen is what would make the class evidence about the MARKET rather than about us.",
+  },
+  standing: AdmissibleOnCondition {
+    unmet: [
+      "the architecture question above, which is the gate: demand that cannot run on our supply is not demand for us",
+      "one replayed specimen, so the resource envelope is measured rather than read",
+      "one buyer who is not us, because a dogfood market of one does not occupy a fleet",
+    ],
+  },
+  kill_condition: "Our own workspace does not build on arm64 at acceptable cost AND no native arm64 remote-build demand is found - at which point the class is demand for somebody else's hardware and pursuing it would mean buying supply to match a market rather than the reverse.",
+}
+
+// THE EXCLUSION THAT MAKES THE FRONTIER MEAN SOMETHING. A frontier that refuses nothing is
+// decoration, so the first excluded class is carried beside the first admitted one rather than
+// left implicit - and it is excluded on an INTRINSIC ground, which is the kind that never becomes
+// admissible by waiting for evidence.
+data candidate_customer_database: CandidateClass = CandidateClass {
+  key: "customer-database-hosting",
+  interface: "A database endpoint with durable storage attached to the serving host.",
+  shape: RecoverableWorkspace,
+  atomic_unit: "None that is disposable: the unit of value is a continuously available stateful service.",
+  contract: WorkloadContract {
+    attempts_are_disposable: PropertyFails {
+      why: "Losing the executor loses authoritative state, which is a customer recovery exercise rather than a re-execution.",
+    },
+    workers_hold_no_authoritative_state: PropertyFails {
+      why: "The authoritative state IS what the worker holds; that is the product.",
+    },
+    machine_identity_is_irrelevant: PropertyFails {
+      why: "The customer's data and its availability follow one host, so the host is customer identity rather than inventory.",
+    },
+    resource_use_is_bounded: PropertyUnread {
+      what_would_settle_it: "Not worth settling: the three failures above are already disqualifying.",
+    },
+  },
+  obligation: ShapeObligationUnread {
+    what_would_settle_it: "Not worth settling: the shared contract already fails on three properties. The shape is recorded as RecoverableWorkspace because a database is the DEGENERATE case of one -- it wants workspace continuity and cannot put its authoritative state outside the executor, which is precisely why it is excluded.",
+  },
+  architecture: RunsOnOurSupply {
+    evidence: "Irrelevant to the verdict: arm64 databases exist and run well. The exclusion is structural, not architectural, and saying so prevents a later reader from reading this row as an architecture problem that arm64 support would fix.",
+  },
+  incumbent: "Managed database providers at every scale.",
+  dogfood: WeDoNotConsumeThis { note: "We run no customer-facing database product." },
+  replay: NoSpecimenYet { obligation: "None. A specimen would not change a structural exclusion." },
+  standing: OutsideFrontier {
+    kind: IntrinsicallyIncompatible {
+      conflicting_requirement: "Durable state availability is the product itself, so it cannot be moved off the executor without removing what the customer is buying. This is not a workload awaiting modernization - it belongs to a different service class, and admitting it would make machine continuity our promise.",
+    },
+  },
+  kill_condition: "Not applicable: this row exists to be refused, and it retires only if the business decides to sell a durable-state product, which is a different company decision rather than new evidence about this class.",
+}
+
+
+// THE PERSISTENT AGENT WORKSPACE, AND THE NAME IS THE MODEL. What a customer buys is a WORKSPACE
+// IDENTITY -- their repositories, unfinished edits, agent session history and configuration -- and
+// the microVM is only its CURRENT EXECUTION REALIZATION. Naming it "a small persistent VM" would
+// make the machine the product and put this beside the database row; naming the workspace as the
+// durable thing puts it inside the frontier, because the EXECUTOR stays disposable and the durable
+// state is explicit, narrow and movable between executors.
+//
+// THIS IS THE MIDDLE CASE THE FRONTIER COULD NOT PREVIOUSLY EXPRESS. Remote build execution is
+// disposable with no durable state at all; database hosting is durable state AS the product; this
+// is disposable execution over a narrow declared durable authority. Without it the frontier reads
+// as admitting only pure batch work, which is not the operator's business.
+//
+// IT IS NOT GREENFIELD AND THE EXISTING AUTHORITIES OWN THE REALIZATION. gunbc.session_residency,
+// gunbc.session_admission_policy, gunbc.session_reservation_policy and gunbc.session_lease already
+// model how our own agent sessions are hosted -- per-host reservations, eviction ceilings,
+// concurrency, process leases -- on srv1 through srv4 today. This row does not restate any of that.
+// It answers the SELECTION question those modules do not: is this class worth selling. The
+// re-homing of that fleet onto owned hardware is the specimen, and it is a plan item rather than a
+// property of this row.
+//
+// THE SERVICE PROMISE IS NARROWER THAN "IT KEEPS RUNNING", AND SAYING SO IS THE PRODUCT. A host
+// failure MAY interrupt the active turn; it must NOT destroy the durable workspace or the resumable
+// session history. Promising transparent continuation of an in-flight model turn would be a
+// different and much more expensive product, and one this fleet cannot honestly sell.
+data candidate_agent_workspace: CandidateClass = CandidateClass {
+  key: "persistent-agent-workspace",
+  interface: "A workspace identity reachable over SSH or a browser, realized on a replaceable executor: an immutable digest-addressed root image, a durable per-workspace volume, a tenant-scoped secret path, and disposable scratch.",
+  shape: RecoverableWorkspace,
+  atomic_unit: "The WORKSPACE, not a job. Nothing here completes: the customer keeps a seat. The earlier cut named the agent TURN as the atomic unit, which passed the completion type by choosing a grain where completion happens to exist rather than one the customer buys -- fitting the model to the check.",
+  contract: WorkloadContract {
+    attempts_are_disposable: PropertyHolds {
+      how_established: "The executor is replaceable by construction: a replacement boots the same digest-addressed root and mounts the same workspace volume. What an interruption costs is the in-flight turn, which the service promise explicitly does not preserve.",
+    },
+    workers_hold_no_authoritative_state: PropertyUnread {
+      what_would_settle_it: "THE FOUR-DOMAIN SPLIT HAS NOT BEEN BUILT, and until it is this property is a design intention rather than a reading. What settles it is a replacement executor reconstructing a live workspace from the durable volume and the secret path alone. AND THE PREMISE THAT MADE IT LOOK FREE IS FALSE, measured 2026-09-17: agent session state is LOCAL -- 150 JSONL transcript files totalling 674 MB under the agent home on this very machine -- so a provider-side remote transcript is not the backup. The durable volume must carry the session history, not merely the repositories.",
+    },
+    machine_identity_is_irrelevant: PropertyHolds {
+      how_established: "A customer reaches a stable endpoint, not a named host; the placement authorities (gunbc.session_residency) already treat which host serves a session as a scheduling fact rather than a customer-visible one.",
+    },
+    resource_use_is_bounded: PropertyUnread {
+      what_would_settle_it: "Measured 2026-09-17 on a live long-running session with hours of history: the agent process at 446 MB RSS, every process in the container at 491 MB, and the cgroup at 594 MB including page cache -- a tenth of the 6 GiB a product sketch had assumed. BUT THAT MEASUREMENT WAS TAKEN UNCONSTRAINED and with builds dispatched off-box, so it records what this workload HAPPENS to use rather than what it would survive being limited to. The bound is settled by a declared per-workspace envelope that holds when a tenant tries to build locally, not by observing a well-behaved one.",
+    },
+  },
+  obligation: ShapeObligationUnread {
+    what_would_settle_it: "FENCING IS THE UNBUILT PART AND IT IS A CORRECTNESS REQUIREMENT, not a nicety: two executors attached to one workspace volume corrupt the customer's repository, and a host that appears dead is not necessarily dead. What settles this obligation is one active writer ENFORCED before the workspace attaches elsewhere, plus reconstruction on a SECOND admitted host that reads nothing from the first -- reconstruction that quietly depends on the old host being reachable proves nothing about host loss.",
+  },
+  architecture: RunsOnOurSupply {
+    evidence: "The agent CLIs run on arm64 Linux: this corpus's own sessions execute in arm64 containers today. THIS IS THE GATE REMOTE BUILD EXECUTION CANNOT CURRENTLY PASS, and it is why this class can be pursued on the supply already bought while the RBE architecture question stays open.",
+  },
+  incumbent: "A purchased Mac mini or an ordinary general-purpose VPS. The substitute is a capital purchase rather than a subscription, which sets a hard price test the operator named: beating it over three years means beating roughly a third of the purchase price per year.",
+  dogfood: WeConsumeThisToday {
+    evidence: "We host our own agent sessions today on srv1 through srv4, with placement, reservation and admission already modeled in gunbc.session_residency and gunbc.session_admission_policy. We are not approximating this customer; we ARE one.",
+  },
+  replay: NoSpecimenYet {
+    obligation: "Serve the operator's own session dashboard workspaces from owned hardware, staged rather than cut over, with interruptions counted and the workspace surviving each one. That is the plan item agent-workspace-dogfood, and it is what turns this row's dogfood standing into a replayed specimen.",
+  },
+  standing: AdmissibleOnCondition {
+    unmet: [
+      "the four-domain split built and a replacement executor reconstructing a live workspace from the durable volume alone",
+      "a per-workspace resource envelope that holds when a tenant builds locally, rather than a measurement of a well-behaved session",
+      "the specimen: our own workspaces served from our own hardware, with interruptions counted",
+      "one buyer who is not us",
+    ],
+  },
+  kill_condition: "The durable volume cannot be served at an operation latency the interactive workload tolerates -- measured 2026-09-17, one git status over this repository is about 6,900 metadata operations, 0.07s locally, and a network filesystem at 1 ms per operation would make that single command take about 7 seconds. If the working tree must be remote and no local-cache arrangement fixes it, the product is a slow computer and the class is dead. Note this kills only the REMOTE-WORKING-TREE realization, not the class: the durable volume may back a local working tree instead.",
+}
+
+data candidate_classes: List<CandidateClass> = [
+  candidate_remote_build_execution,
+  candidate_agent_workspace,
+  candidate_customer_database,
+]
+
+// ---------------------------------------------------------------------------------------------
+// THE FOLDS.
+// ---------------------------------------------------------------------------------------------
+
+fn property_holds(p: ContractProperty) -> Bool {
+  match p {
+    PropertyHolds { how_established } => true,
+    PropertyFails { why } => false,
+    PropertyUnread { what_would_settle_it } => false,
+  }
+}
+
+fn property_fails(p: ContractProperty) -> Bool {
+  match p {
+    PropertyHolds { how_established } => false,
+    PropertyFails { why } => true,
+    PropertyUnread { what_would_settle_it } => false,
+  }
+}
+
+// UNREAD IS NOT PASSING. The contract holds only when every property was READ AND HELD; a
+// property nobody has established is an absence, and reading absence as satisfaction is the
+// promotion this type exists to refuse.
+fn contract_holds(c: WorkloadContract) -> Bool {
+  property_holds(p: c.attempts_are_disposable)
+    && property_holds(p: c.workers_hold_no_authoritative_state)
+    && property_holds(p: c.machine_identity_is_irrelevant)
+    && property_holds(p: c.resource_use_is_bounded)
+}
+
+fn contract_has_a_failure(c: WorkloadContract) -> Bool {
+  property_fails(p: c.attempts_are_disposable)
+    || property_fails(p: c.workers_hold_no_authoritative_state)
+    || property_fails(p: c.machine_identity_is_irrelevant)
+    || property_fails(p: c.resource_use_is_bounded)
+}
+
+fn is_inside_frontier(c: CandidateClass) -> Bool {
+  match c.standing {
+    InsideFrontier { on } => true,
+    AdmissibleOnCondition { unmet } => false,
+    OutsideFrontier { kind } => false,
+    NotYetAssessed { obligation } => false,
+  }
+}
+
+fn is_outside_frontier(c: CandidateClass) -> Bool {
+  match c.standing {
+    InsideFrontier { on } => false,
+    AdmissibleOnCondition { unmet } => false,
+    OutsideFrontier { kind } => true,
+    NotYetAssessed { obligation } => false,
+  }
+}
+
+// TWO DIFFERENT QUESTIONS, AND CONFLATING THEM ADMITS THE THING THIS MODULE EXISTS TO REFUSE
+// (review 67356). "Has the architecture question been answered" and "is the answer yes" are not the
+// same fact: RequiresOtherArchitecture is a POSITIVE FINDING that the class needs hardware we do
+// not hold, which is an answer, so architecture_is_resolved is right to return true for it. The
+// defect was that the ADMISSION fold consumed the answered-ness and not the answer, so a class
+// recorded as not running on our supply passed the architecture leg. The module's own sentences say
+// the opposite in two places -- demand that cannot run on the supply we hold is not demand for us --
+// and the witness advertised preventing exactly the expensive failure it did not prevent.
+//
+// architecture_is_resolved keeps its honest meaning and its reporting use: it answers whether the
+// question is still open. Admission consumes architecture_runs_on_our_supply instead.
+fn architecture_is_resolved(a: ArchitectureFit) -> Bool {
+  match a {
+    RunsOnOurSupply { evidence } => true,
+    RequiresOtherArchitecture { needs, options } => true,
+    ArchitectureUnresolved { question, how_to_settle } => false,
+  }
+}
+
+// The admission leg. Only a positive reading admits; a positive finding of INCOMPATIBILITY refuses
+// exactly as loudly as an unread one, and for a better reason -- we know rather than merely not
+// knowing. A class here is not dead: RequiresOtherArchitecture carries the options that would make
+// it live (separate pools, buying that supply, cross-architecture execution as its own service),
+// and taking one of those is a decision recorded elsewhere, not a silent pass here.
+fn architecture_runs_on_our_supply(a: ArchitectureFit) -> Bool {
+  match a {
+    RunsOnOurSupply { evidence } => true,
+    RequiresOtherArchitecture { needs, options } => false,
+    ArchitectureUnresolved { question, how_to_settle } => false,
+  }
+}
+
+fn we_consume_it(d: DogfoodStanding) -> Bool {
+  match d {
+    WeConsumeThisToday { evidence } => true,
+    WeDoNotConsumeThis { note } => false,
+    DogfoodUnread { obligation } => false,
+  }
+}
+
+fn specimen_is_replayed(r: ReplayStanding) -> Bool {
+  match r {
+    SpecimenNamed { specimen, replayed } => replayed,
+    NoSpecimenYet { obligation } => false,
+  }
+}
+
+// THE ADMISSION RULE IS THE FOLD BELOW, AND THIS COMMENT NO LONGER RESTATES IT. Twice now a prose
+// summary of qualifies_for_frontier went stale the moment the fold changed -- once when admission
+// moved from architecture_is_resolved to architecture_runs_on_our_supply (review 67374), and again
+// when the shape obligation joined it (review 67475) -- and the second time the stale sentence was
+// sitting directly above a paragraph explaining that stale restatements teach the defect back in.
+// A four-line fold is readable; a prose copy of it is a second authority that goes wrong on every
+// edit, so the copy is gone rather than corrected a third time.
+//
+// WHAT THIS COMMENT KEEPS IS WHAT THE FOLD CANNOT SAY. Admission is DERIVED, never authored: the
+// standing field may claim no more than the fold allows, which admission_standing_is_earned
+// asserts. A negative architecture finding refuses exactly as loudly as an unread one, because
+// knowing a class cannot run on our supply is not weaker evidence than not knowing. And a shape
+// obligation of the wrong KIND refuses rather than passing, so a completion proof cannot satisfy a
+// workspace class.
+fn qualifies_for_frontier(c: CandidateClass) -> Bool {
+  contract_holds(c: c.contract)
+    && obligation_matches_shape(sh: c.shape, o: c.obligation)
+    && shape_obligation_holds(o: c.obligation)
+    && architecture_runs_on_our_supply(a: c.architecture)
+    && specimen_is_replayed(r: c.replay)
+}
+
+// A CONTRACT FAILURE IS A REFUSAL, NOT A GAP. If any property FAILS the class is outside the
+// frontier, and no amount of other evidence admits it.
+fn must_be_excluded(c: CandidateClass) -> Bool { contract_has_a_failure(c: c.contract) }
+
+fn inside_count() -> Int { count(filter(candidate_classes, c => is_inside_frontier(c: c))) }
+fn outside_count() -> Int { count(filter(candidate_classes, c => is_outside_frontier(c: c))) }
+fn dogfood_count() -> Int { count(filter(candidate_classes, c => we_consume_it(d: c.dogfood))) }
+fn candidate_count() -> Int { count(candidate_classes) }
+
+// THE SCOUTING OBLIGATION, DERIVED FROM THE ROSTER RATHER THAN LISTED BESIDE IT: every class that
+// is not yet settled names what is missing, and the count of those is what "invest in scouting"
+// is measured against.
+fn is_unsettled(c: CandidateClass) -> Bool {
+  !is_inside_frontier(c: c) && !is_outside_frontier(c: c)
+}
+
+fn unsettled_count() -> Int { count(filter(candidate_classes, c => is_unsettled(c: c))) }

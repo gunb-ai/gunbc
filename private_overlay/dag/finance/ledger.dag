@@ -1,0 +1,179 @@
+module finance.ledger
+
+import std.types { NonEmptyStr, List, Bool }
+import std.nat { Nat }
+import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count }
+
+// ONE DOUBLE-ENTRY AUTHORITY, generic over the account set of whichever book inhabits it.
+//
+// finance.personal_ledger and finance.gunbai_ledger are two BOOKS: each declares its chart as a
+// closed account type and posts LedgerTransaction<ThatChart>. The posting, the transaction, the
+// balance law, and the chart-of-accounts *concept* live here once. A second Posting type, a
+// second balance fold, or a copied account enum would fork the authority this module exists to
+// hold (DESIGN section 3). There is no std ledger concept; std.measure MoneyAmountMicro is the
+// money authority, so an amount here is that type, never a bare Nat.
+//
+// Why double entry and not a signed amount: MoneyAmountMicro is Measure<Currency, Micro, Nat>
+// — non-negative BY CONSTRUCTION. Direction is a typed arm; a transaction that does not balance
+// has no accepted form. That is DESIGN section 4b for the class "the books silently disagree with
+// themselves". Double entry is the accepted intersubjective framework (section 3).
+
+type PostingDirection
+  = Debit
+  | Credit
+
+type Posting<Account> {
+  account: Account
+  direction: PostingDirection
+  amount: MoneyAmountMicro
+  memo: NonEmptyStr
+}
+
+type LedgerTransaction<Account> {
+  id: NonEmptyStr
+  date_iso: NonEmptyStr
+  postings: List<Posting<Account>>
+  provenance: NonEmptyStr
+}
+
+data ledger_nat_zero: Nat = 0
+
+fn posting_debit_micro<Account>(p: Posting<Account>) -> Nat {
+  match p.direction {
+    Debit => money_amount_micro_count(p.amount),
+    Credit => ledger_nat_zero,
+  }
+}
+
+fn posting_credit_micro<Account>(p: Posting<Account>) -> Nat {
+  match p.direction {
+    Debit => ledger_nat_zero,
+    Credit => money_amount_micro_count(p.amount),
+  }
+}
+
+fn transaction_debit_total<Account>(t: LedgerTransaction<Account>) -> Nat {
+  fold(t.postings, init: ledger_nat_zero, f: (acc, p) => acc + posting_debit_micro(p))
+}
+
+fn transaction_credit_total<Account>(t: LedgerTransaction<Account>) -> Nat {
+  fold(t.postings, init: ledger_nat_zero, f: (acc, p) => acc + posting_credit_micro(p))
+}
+
+// The refusal is TYPED AND LOCATED, never a boolean. An unbalanced transaction reports which
+// transaction and by how much, because "the books are wrong" is not an actionable diagnostic
+// and DESIGN section 5 forbids the fabricated-plausible-output arm that would let it pass as
+// merely-warned.
+type BalanceVerdict
+  = Balanced
+  | Unbalanced { transaction_id: NonEmptyStr, debit: MoneyAmountMicro, credit: MoneyAmountMicro }
+
+fn transaction_balance<Account>(t: LedgerTransaction<Account>) -> BalanceVerdict {
+  let debits = transaction_debit_total(t)
+  let credits = transaction_credit_total(t)
+  if debits == credits {
+    Balanced
+  } else {
+    Unbalanced {
+      transaction_id: t.id,
+      debit: money_amount_micro(count: debits),
+      credit: money_amount_micro(count: credits),
+    }
+  }
+}
+
+// Keep the first Unbalanced verdict. Later Balanced rows must not erase it.
+fn ledger_first_imbalance<Account>(ts: List<LedgerTransaction<Account>>) -> BalanceVerdict {
+  fold(ts, init: Balanced, f: (acc, t) =>
+    match acc {
+      Unbalanced { transaction_id, debit, credit } =>
+        Unbalanced { transaction_id: transaction_id, debit: debit, credit: credit }
+      Balanced => transaction_balance(t)
+    }
+  )
+}
+
+fn posting_debit_micro_if_account<Account>(p: Posting<Account>, account: Account) -> Nat {
+  if p.account == account {
+    posting_debit_micro(p)
+  } else {
+    ledger_nat_zero
+  }
+}
+
+fn posting_credit_micro_if_account<Account>(p: Posting<Account>, account: Account) -> Nat {
+  if p.account == account {
+    posting_credit_micro(p)
+  } else {
+    ledger_nat_zero
+  }
+}
+
+fn transaction_account_debit_micro<Account>(t: LedgerTransaction<Account>, account: Account) -> Nat {
+  fold(t.postings, init: ledger_nat_zero, f: (acc, p) => acc + posting_debit_micro_if_account(p, account))
+}
+
+fn transaction_account_credit_micro<Account>(t: LedgerTransaction<Account>, account: Account) -> Nat {
+  fold(t.postings, init: ledger_nat_zero, f: (acc, p) => acc + posting_credit_micro_if_account(p, account))
+}
+
+fn ledger_account_debit_micro<Account>(ts: List<LedgerTransaction<Account>>, account: Account) -> Nat {
+  fold(ts, init: ledger_nat_zero, f: (acc, t) => acc + transaction_account_debit_micro(t, account))
+}
+
+fn ledger_account_credit_micro<Account>(ts: List<LedgerTransaction<Account>>, account: Account) -> Nat {
+  fold(ts, init: ledger_nat_zero, f: (acc, t) => acc + transaction_account_credit_micro(t, account))
+}
+
+// Summation of posting counts is Nat (the ring). The EXIT is MoneyAmountMicro. A side that
+// runs against its normal is ContraBalance — never a silent zero (that would make an
+// intercompany join of two clamped zeros look like agreement). Unbalanced books are
+// BooksUnbalanced — a lone credit is not a normal liability (DESIGN section 5).
+type AccountNormalBalance
+  = BalanceOnNormalSide { amount: MoneyAmountMicro }
+  | ContraBalance { debit: MoneyAmountMicro, credit: MoneyAmountMicro }
+  | BooksUnbalanced { transaction_id: NonEmptyStr, debit: MoneyAmountMicro, credit: MoneyAmountMicro }
+
+fn account_normal_from_counts(debits: Nat, credits: Nat, normal: PostingDirection) -> AccountNormalBalance {
+  match normal {
+    Debit =>
+      if debits >= credits {
+        BalanceOnNormalSide { amount: money_amount_micro(count: debits - credits) }
+      } else {
+        ContraBalance {
+          debit: money_amount_micro(count: debits),
+          credit: money_amount_micro(count: credits),
+        }
+      }
+    Credit =>
+      if credits >= debits {
+        BalanceOnNormalSide { amount: money_amount_micro(count: credits - debits) }
+      } else {
+        ContraBalance {
+          debit: money_amount_micro(count: debits),
+          credit: money_amount_micro(count: credits),
+        }
+      }
+  }
+}
+
+fn ledger_normal_balance<Account>(
+  ts: List<LedgerTransaction<Account>>,
+  account: Account,
+  normal: PostingDirection
+) -> AccountNormalBalance {
+  match ledger_first_imbalance(ts) {
+    Unbalanced { transaction_id, debit, credit } =>
+      BooksUnbalanced { transaction_id: transaction_id, debit: debit, credit: credit }
+    Balanced =>
+      account_normal_from_counts(
+        ledger_account_debit_micro(ts, account),
+        ledger_account_credit_micro(ts, account),
+        normal
+      )
+  }
+}
+
+fn money_eq(a: MoneyAmountMicro, b: MoneyAmountMicro) -> Bool {
+  money_amount_micro_count(a) == money_amount_micro_count(b)
+}

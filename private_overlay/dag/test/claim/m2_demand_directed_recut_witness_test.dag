@@ -1,0 +1,110 @@
+module test.claim.m2_demand_directed_recut_witness
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.m2_demand_directed_recut {
+  RouteSeed, AdmittedScope,
+  design_partner_scope, reseller_scope, general_regime_scope,
+  seed_own_site, seed_durable_origin, seed_reseller_region, probe_unadmitted_eu_route,
+  probe_routes, decide_route, route_is_permitted, scope_contains, scope_size,
+  refused_route_count, narrow_permits_implies_wide_permits,
+  recut_proposals, proposal_count, proposed_standing_at_day, actual_standing_at_day,
+  proposal_effect_at_day, proposals_close_the_gap, proposal_effect_is_refusal,
+  conditional_branch_is_shape_dependent, design_partner_shape, reseller_shape,
+}
+import strategy.year_end_plan { standing_fits, standing_is_refusal }
+
+// THE SCOPE LAW REFUSES BY DEFAULT. An unseeded route is not served on an unadmitted path and is
+// not silently widened into scope; it lands in the refusal arm carrying its expansion trigger.
+fn an_unadmitted_route_refuses() -> Bool {
+  route_is_permitted(d: decide_route(scope: design_partner_scope, r: probe_unadmitted_eu_route)) == false
+    && route_is_permitted(d: decide_route(scope: reseller_scope, r: probe_unadmitted_eu_route)) == false
+    && route_is_permitted(d: decide_route(scope: general_regime_scope, r: probe_unadmitted_eu_route)) == false
+}
+
+// THE POSITIVE CONTROL, without which the wall above could be a permanently-refusing predicate
+// wearing a wall's name.
+fn a_seeded_route_is_permitted() -> Bool {
+  route_is_permitted(d: decide_route(scope: design_partner_scope, r: seed_own_site))
+    && route_is_permitted(d: decide_route(scope: design_partner_scope, r: seed_durable_origin))
+    && scope_contains(scope: reseller_scope, r: seed_reseller_region)
+}
+
+// NARROWING MOVES ROUTES INTO REFUSAL AND NEVER OUT OF IT. This is the operator's line expressed
+// as an executed property: a narrower scope must refuse MORE, not less. The seeded scopes refuse
+// strictly more of the probe field than the general regime does.
+fn narrowing_never_admits_more() -> Bool {
+  narrow_permits_implies_wide_permits(narrow: design_partner_scope, wide: general_regime_scope, probe: probe_routes)
+    && narrow_permits_implies_wide_permits(narrow: reseller_scope, wide: general_regime_scope, probe: probe_routes)
+    && refused_route_count(scope: design_partner_scope) > refused_route_count(scope: general_regime_scope)
+    && scope_size(s: design_partner_scope) < scope_size(s: general_regime_scope)
+}
+
+// THE FIRST CUSTOMER DECIDES THE SEEDS. Two scopes of equal size with different membership is the
+// whole content of demand-directed scope; equal size with identical membership would mean the
+// customer changed nothing.
+fn the_first_customer_decides_the_seeds() -> Bool {
+  scope_size(s: design_partner_scope) == scope_size(s: reseller_scope)
+    && scope_contains(scope: design_partner_scope, r: seed_own_site)
+    && scope_contains(scope: reseller_scope, r: seed_own_site) == false
+    && scope_contains(scope: reseller_scope, r: seed_reseller_region)
+    && scope_contains(scope: design_partner_scope, r: seed_reseller_region) == false
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE PROPOSALS ARE SCHEDULED BY THE PLAN'S OWN FOLD, NOT BY A SECOND ONE
+// ---------------------------------------------------------------------------------------------
+// This module used to carry its own roster, durations and longest-path arithmetic. It does not
+// any more: a proposal is the PLAN'S roster with one figure altered, run through the PLAN'S
+// schedule. These conjuncts are what stop that regressing into two schedules again - if the
+// counterfactual ever stopped resolving, or stopped being computed from the live roster, they red.
+fn proposals_are_counterfactuals_over_the_live_roster() -> Bool {
+  proposal_count() == 2
+    && count(recut_proposals) == 2
+    && standing_is_refusal(st: proposed_standing_at_day(today_day: 12)) == false
+    && standing_is_refusal(st: actual_standing_at_day(today_day: 12)) == false
+    && proposal_effect_is_refusal(e: proposal_effect_at_day(today_day: 12)) == false
+}
+
+// THE MEASURED ANSWER, AND IT IS A NO. Both proposals applied to the plan's own rows still leave
+// the chain unable to start today. Asserted rather than narrated because the tempting version of
+// this module is the one where the proposals rescue the schedule - and an estimate that exactly
+// closes a gap is usually an estimate chosen to close it.
+fn the_proposals_do_not_rescue_the_schedule() -> Bool {
+  standing_fits(st: actual_standing_at_day(today_day: 12)) == false
+    && standing_fits(st: proposed_standing_at_day(today_day: 12)) == false
+    && proposals_close_the_gap(e: proposal_effect_at_day(today_day: 12)) == false
+}
+
+// THE POSITIVE CONTROL FOR THE COUNTERFACTUAL: far enough back, everything fits, and the
+// proposals report that. Without it, the no above could be a predicate that never says yes.
+fn the_counterfactual_can_report_a_fit() -> Bool {
+  standing_fits(st: proposed_standing_at_day(today_day: 0 - 60))
+    && proposals_close_the_gap(e: proposal_effect_at_day(today_day: 0 - 60))
+}
+
+// The conditional branch is shape-dependent, which is where the offer model meets the schedule.
+fn the_conditional_branch_depends_on_the_customer() -> Bool {
+  conditional_branch_is_shape_dependent()
+    && design_partner_shape.triggers_the_conditional_branch == false
+    && reseller_shape.triggers_the_conditional_branch
+}
+
+fn m2_recut_witness_all() -> Bool {
+  an_unadmitted_route_refuses()
+    && a_seeded_route_is_permitted()
+    && narrowing_never_admits_more()
+    && the_first_customer_decides_the_seeds()
+    && proposals_are_counterfactuals_over_the_live_roster()
+    && the_proposals_do_not_rescue_the_schedule()
+    && the_counterfactual_can_report_a_fit()
+    && the_conditional_branch_depends_on_the_customer()
+}
+
+fn m2_recut_witness_main() -> ProcessExit {
+  if m2_recut_witness_all() {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "m2_recut_witness_all returned false" }
+  }
+}

@@ -1,0 +1,195 @@
+module test.claim.b2b_capacity_track_witness
+
+import std.types { Bool, Int, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.b2b_capacity_track {
+  b2b_offers, b2b_offer_count, b2b_s0_servable_count, b2b_uptime_history_owed_count,
+  offer_ci_minutes_b2c, offer_eval_reserved_node, offer_production_reserved_capacity,
+  offer_wholesale_through_reseller,
+  b2b_servable_at_s0, b2b_displaces_ci, b2b_promise_needs_uptime_history,
+  boundary_is_whole_node, use_is_production, channel_inherits_downstream_obligations,
+  commercial_carries_utilization_guess,
+  whole_node_offer_count, non_production_offer_count, reseller_channel_offer_count,
+  utilization_guessing_offer_count,
+  parallel_chain_standing, parallel_chain_condition_count, parallel_chain_is_conditional,
+  ci_floor_at_half_utilization_micro, ci_floor_at_full_utilization_micro,
+  ci_utilization_multiple_permille, b2b_cost_per_slice_month_micro,
+  b2b_utilization_exposure_differs, ci_track_exposure, b2b_track_exposure,
+  b2b_exposure_divisor_permille, b2b_exposure_amount_micro,
+  track_join_rows, b2b_join_row_count, b2b_chain_row_count,
+  b2b_chain_dropped_count, b2b_chain_replaced_count, b2b_chain_added_count,
+  b2b_chain_shared_count, b2b_chain_disposition, b2b_disposition_shortens,
+  join_provider_route_admission, join_fleet_capacity_floor, join_m2_contract_deviation_review,
+  b2b_need_is_dropped, b2b_need_is_replaced, b2b_need_adds_obligation,
+  b2b_join_display_key,
+  american_contents, b2b_american_content_count, b2b_american_grounded_count,
+  b2b_american_unobserved_count, american_supply_availability, b2b_claim_is_grounded,
+  b2b_claim_is_unobserved,
+  ampere_supply_requirement, supply_requirement_is_vendor_agnostic, supply_evidence_is_open,
+  supplier_scope_is_open, order_outcome_is_dated,
+  b2b_track_decision_standing, b2b_decision_needs_evidence, b2b_has_admissible_floor_row,
+  b2b_hetzner_row_is_not_a_floor, b2b_binding_constraint_count,
+  b2b_entity_is_us,
+}
+
+// THE AXES ARE ORTHOGONAL AND THE OFFERS ARE POINTS. The first shape of this module collapsed
+// resource boundary, commercial model and sales channel into one enum of competing products;
+// these assertions are what make the separation load-bearing rather than cosmetic - the same
+// whole-node boundary appears under three different commercial-and-channel combinations, so a
+// claim proved about one point is not a claim about the boundary.
+fn axes_are_independent_not_a_product_enum() -> Bool {
+  b2b_offer_count() == 4
+    && count(b2b_offers) == 4
+    && whole_node_offer_count() == 3
+    && non_production_offer_count() == 1
+    && reseller_channel_offer_count() == 1
+    && utilization_guessing_offer_count() == 1
+    && boundary_is_whole_node(b: offer_eval_reserved_node.boundary)
+    && boundary_is_whole_node(b: offer_production_reserved_capacity.boundary)
+    && boundary_is_whole_node(b: offer_ci_minutes_b2c.boundary) == false
+}
+
+// THE AXIS THAT DECIDES FEASIBILITY. The evaluation point differs from the production reservation
+// on USE alone - same boundary, same commercial model, same channel - so the slowness that arrives
+// with production is attributable to that axis rather than to the product.
+fn evaluation_and_production_differ_on_one_axis() -> Bool {
+  use_is_production(u: offer_eval_reserved_node.use) == false
+    && use_is_production(u: offer_production_reserved_capacity.use)
+    && boundary_is_whole_node(b: offer_eval_reserved_node.boundary)
+       == boundary_is_whole_node(b: offer_production_reserved_capacity.boundary)
+    && channel_inherits_downstream_obligations(c: offer_eval_reserved_node.channel)
+       == channel_inherits_downstream_obligations(c: offer_production_reserved_capacity.channel)
+    && channel_inherits_downstream_obligations(c: offer_wholesale_through_reseller.channel)
+}
+
+// S0 SERVES EXACTLY TWO POINTS AND ONE OF THEM DISPLACES THE OTHER.
+fn s0_standing_is_honest() -> Bool {
+  b2b_s0_servable_count() == 2
+    && b2b_servable_at_s0(s: offer_eval_reserved_node.servability)
+    && b2b_displaces_ci(s: offer_eval_reserved_node.servability)
+    && b2b_displaces_ci(s: offer_ci_minutes_b2c.servability) == false
+    && b2b_servable_at_s0(s: offer_production_reserved_capacity.servability) == false
+    && b2b_servable_at_s0(s: offer_wholesale_through_reseller.servability) == false
+}
+
+// The two points that promise availability are exactly the two the fleet cannot evidence.
+fn uptime_promises_are_counted_not_assumed() -> Bool {
+  b2b_uptime_history_owed_count() == 2
+    && b2b_promise_needs_uptime_history(q: offer_eval_reserved_node.promise) == false
+    && b2b_promise_needs_uptime_history(q: offer_production_reserved_capacity.promise)
+    && b2b_promise_needs_uptime_history(q: offer_wholesale_through_reseller.promise)
+}
+
+// THE DERIVED ECONOMIC CLAIM, RED IF THE DIVISOR STOPS MATTERING. The CI floor at the planning
+// utilisation must be strictly above the same floor at full utilisation, and the machine-month
+// cost must be a real number - otherwise the no-utilisation-term argument is empty.
+fn utilization_exposure_is_derived() -> Bool {
+  ci_floor_at_full_utilization_micro() > 0
+    && ci_floor_at_half_utilization_micro() > ci_floor_at_full_utilization_micro()
+    && ci_utilization_multiple_permille() > 1000
+    && b2b_cost_per_slice_month_micro() > 0
+    && b2b_utilization_exposure_differs()
+    && b2b_exposure_divisor_permille(e: ci_track_exposure) > 0
+    && b2b_exposure_divisor_permille(e: b2b_track_exposure) == 0
+    && b2b_exposure_amount_micro(e: b2b_track_exposure) == b2b_cost_per_slice_month_micro()
+}
+
+// The join partitions: every row is exactly one of shared, dropped, replaced, more.
+fn join_partitions_the_chain() -> Bool {
+  b2b_join_row_count() == 16
+    && count(track_join_rows) == 16
+    && b2b_chain_row_count() == 11
+    && b2b_chain_dropped_count() + b2b_chain_replaced_count()
+       + b2b_chain_added_count() + b2b_chain_shared_count() == b2b_chain_row_count()
+    && b2b_chain_dropped_count() == 0
+    && b2b_chain_added_count() == 1
+    && b2b_need_is_dropped(n: join_provider_route_admission.need) == false
+    && b2b_need_is_replaced(n: join_provider_route_admission.need)
+    && b2b_need_adds_obligation(n: join_m2_contract_deviation_review.need)
+    && b2b_need_is_dropped(n: join_fleet_capacity_floor.need) == false
+    && b2b_need_is_replaced(n: join_fleet_capacity_floor.need) == false
+}
+
+// THE SCHEDULE ANSWER MAY NOT MINT A DAY COUNT FROM THIS MODULE. The day arms exist so the
+// answer can be given once the plan is importable; reaching one before then would be a
+// fabricated schedule finding, and this is the discriminating red for that.
+// THE ANSWER IS A NO AND THE MODULE MAY NOT MINT A SHORTENING. This is the discriminating red for
+// the correction: if the disposition ever reports that changing the buyer shortened the declared
+// chain, it must have come from evidence this module does not hold.
+fn buyer_type_does_not_shorten_the_existing_chain() -> Bool {
+  b2b_disposition_shortens(d: b2b_chain_disposition()) == false
+    && b2b_binding_constraint_count() == 2
+    && parallel_chain_is_conditional(s: parallel_chain_standing)
+    && parallel_chain_condition_count(s: parallel_chain_standing) == 4
+}
+
+// AMERICAN IS THREE THINGS AT ONCE AND THE COUNTS SAY WHICH IS WHICH.
+fn american_is_partly_grounded_and_partly_unobserved() -> Bool {
+  b2b_american_content_count() == 7
+    && count(american_contents) == 7
+    && b2b_american_grounded_count() == 3
+    && b2b_american_unobserved_count() == 3
+    && b2b_claim_is_unobserved(s: american_supply_availability.standing)
+    && b2b_claim_is_grounded(s: american_supply_availability.standing) == false
+    && b2b_entity_is_us()
+}
+
+// THE DECISION STAYS UNDECIDED WHILE THE PRICE AXIS IS UNFUNDED, and it is computed from the
+// rental census rather than declared - so an admissible floor row appearing anywhere in
+// strategy.node_rental flips this arm rather than leaving a stale claim standing.
+fn two_tracks_is_a_decision_not_a_conclusion() -> Bool {
+  b2b_has_admissible_floor_row() == false
+    && b2b_hetzner_row_is_not_a_floor()
+    && b2b_decision_needs_evidence(s: b2b_track_decision_standing())
+}
+
+// Every cited plan item renders a key, so a citation that loses its module or declaration name
+// is visible rather than silently empty.
+fn every_cited_item_renders_a_key() -> Bool {
+  count(filter(track_join_rows, r => b2b_join_display_key(r: r) == "")) == 0
+}
+
+// NO CHAIN ITEM IS DROPPED, AND THE ADMISSION JOIN IS THE ONE THIS MUST HOLD FOR. An earlier
+// version of this module classified provider-route-admission as unnecessary because a whole-node
+// rental performs no route SELECTION. Authorization is not selection: a one-element route
+// population still needs its sealed permit, and a gate is not removed because its input got small.
+// If the dropped count ever rises above zero again, a gate has been deleted rather than narrowed.
+fn no_chain_gate_is_dropped() -> Bool {
+  b2b_chain_dropped_count() == 0
+    && b2b_need_is_replaced(n: join_provider_route_admission.need)
+    && b2b_need_is_dropped(n: join_provider_route_admission.need) == false
+}
+
+// THE SUPPLY QUESTION MAY NOT BE RE-GATED ON ONE VENDOR. The scope is a typed arm rather than a
+// sentence, so narrowing it back to a named supplier is an edit this red catches. The evidence is
+// also asserted to be OPEN - if it ever reads closed, an order outcome must exist to close it, and
+// a listing or a console reading is not one.
+fn the_supply_question_is_supplier_shaped() -> Bool {
+  supply_requirement_is_vendor_agnostic()
+    && supplier_scope_is_open(s: ampere_supply_requirement.scope)
+    && supply_evidence_is_open()
+    && order_outcome_is_dated(o: ampere_supply_requirement.standing) == false
+}
+
+fn b2b_capacity_track_witness_all() -> Bool {
+  axes_are_independent_not_a_product_enum()
+    && evaluation_and_production_differ_on_one_axis()
+    && s0_standing_is_honest()
+    && uptime_promises_are_counted_not_assumed()
+    && utilization_exposure_is_derived()
+    && join_partitions_the_chain()
+    && buyer_type_does_not_shorten_the_existing_chain()
+    && american_is_partly_grounded_and_partly_unobserved()
+    && no_chain_gate_is_dropped()
+    && the_supply_question_is_supplier_shaped()
+    && two_tracks_is_a_decision_not_a_conclusion()
+    && every_cited_item_renders_a_key()
+}
+
+fn b2b_capacity_track_witness_main() -> ProcessExit {
+  if b2b_capacity_track_witness_all() {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "b2b_capacity_track_witness_all returned false" }
+  }
+}

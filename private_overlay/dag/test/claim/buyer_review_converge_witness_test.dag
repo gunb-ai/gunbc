@@ -1,0 +1,137 @@
+module test.claim.buyer_review_converge_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import extdeps.google.sheets { ValueRange }
+import gunbc.ensure { EnsureMayApply }
+import gunbc.review_sheet_projection { A1Cell, A1Column }
+import gunbc.review_sheet_sheets {
+  SheetA1Range,
+  A1EndClosed,
+  TabBoundWritePlan,
+  review_sheet_get_values_request,
+}
+import gunbc.review_sheet_projection { AppendListingRow, AppendCellRun }
+import strategy.buyer_review_sheet { ReviewSheet }
+import strategy.buyer_review_converge { buyer_review_converge }
+import test.claim.buyer_review_sheet_witness { fixture_sheet, projection_headers, row_keys, cell }
+
+// THE SUBJECT IS THE JOIN, NOT EITHER SIDE OF IT. strategy.buyer_review_projection has its own
+// witnesses and gunbc.review_sheet_sheets has its own; re-running either here would assert nothing
+// new and pay for all of it again. What is unwitnessed until this file is that the two compose:
+// that the roster-derived projection reaches review_sheet_ensure, and that ensure's refusals still
+// fire THROUGH the composition rather than being absorbed by it.
+//
+// THE OBSERVATION IS SUPPLIED, NOT READ. header_only_observation is a whole-tab GetValues reading
+// with the header row and no data rows -- the first-convergence case, where every listing appends.
+// Supplying it is what makes this a claim about ONE interface. Its pairing obligation is the live
+// transport caller, which does not exist yet: this file is therefore NOT evidence that the
+// production route runs, and live_sheets_transport_frontier stands.
+//
+// WHY THE BOUNDED ARM ASSERTS ITS REASON. An earlier form of this witness matched Refuse and
+// nothing else. A mutation that made the join refuse for an unrelated cause left it green, so it
+// was satisfied by a harness accident rather than by the wall it names. The pattern below is the
+// discriminator: it fails if the refusal arrives for any other reason.
+data probe_tab: NonEmptyStr = "Buyer"
+
+fn whole_tab() -> SheetA1Range {
+  review_sheet_get_values_request(tab: probe_tab)
+}
+
+fn bounded() -> SheetA1Range {
+  SheetA1Range {
+    tab: probe_tab,
+    origin: A1Cell { column: A1Column { letter: "A" as NonEmptyStr }, row: 1 },
+    end: A1EndClosed { cell: A1Cell { column: A1Column { letter: "D" as NonEmptyStr }, row: 9 } },
+  }
+}
+
+fn header_only_observation(sheet: ReviewSheet) -> ValueRange {
+  ValueRange {
+    range: concat(probe_tab as String, "!A1:Z1000"),
+    majorDimension: "ROWS",
+    values: [projection_headers(sheet: sheet)],
+  }
+}
+
+fn converge(requested: SheetA1Range) -> UpsertDecision<TabBoundWritePlan> {
+  buyer_review_converge(
+    policy: EnsureMayApply,
+    sheet: fixture_sheet(),
+    requested: requested,
+    range: header_only_observation(sheet: fixture_sheet()),
+    erasures: [],
+  )
+}
+
+fn decision_tag(d: UpsertDecision<TabBoundWritePlan>) -> String {
+  match d {
+    Noop => "noop"
+    Apply { plan: _ } => "apply"
+    Refuse { reason: r } => concat("refuse: ", r as String)
+  }
+}
+
+fn bounded_request_refuses_through_the_join_for_the_append_reason_holds() -> Bool {
+  match converge(requested: bounded()) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "append would write past unobserved rows")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+fn first_roster_listing() -> String {
+  match row_keys(sheet: fixture_sheet()) |> first {
+    Present { value: v } => v
+    Absent => "NO-ROSTER-ROW"
+  }
+}
+
+data fingerprint_column: NonEmptyStr = "delivered_unit"
+
+fn fingerprint_value() -> String {
+  cell(sheet: fixture_sheet(), listing: first_roster_listing(), column: fingerprint_column)
+}
+
+fn append_identities(appends: List<AppendListingRow>) -> String {
+  join(map(appends, a => a.listing_id as String), ",")
+}
+
+fn append_cell_values(appends: List<AppendListingRow>) -> String {
+  join(map(appends, a => join(map(a.runs, r => join(r.cells, "|")), "|")), "|")
+}
+
+fn whole_tab_request_appends_every_roster_row_under_its_own_identity_holds() -> Bool {
+  match converge(requested: whole_tab()) {
+    Apply { plan: bound } =>
+      (bound.tab as String) == (probe_tab as String)
+        && (bound.plan.patches |> count) == 0
+        && (bound.plan.appends |> count) == (fixture_sheet().rows |> count)
+        && append_identities(appends: bound.plan.appends) == join(row_keys(sheet: fixture_sheet()), ",")
+        && fingerprint_value() != ""
+        && string_contains(s: append_cell_values(appends: bound.plan.appends), pattern: fingerprint_value())
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+fn buyer_review_converge_witness_main() -> ProcessExit {
+  if bounded_request_refuses_through_the_join_for_the_append_reason_holds() {
+    if whole_tab_request_appends_every_roster_row_under_its_own_identity_holds() {
+      ExitSuccess
+    } else {
+      exit_failure(reason: concat("whole-tab did not append the roster faithfully: ", decision_tag(d: converge(requested: whole_tab()))))
+    }
+  } else {
+    exit_failure(reason: concat("bounded request did not refuse for the append reason: ", decision_tag(d: converge(requested: bounded()))))
+  }
+}
+
+// CLAIM ENROLMENT. Each claim body above is an ordinary fn, so this module's entry point calls the
+// fn rather than the claim and no declaration references test code (v1.compiler.compile
+// test_reference_debt_dissolution). The `test fn` wrappers below are the enrolment markers the
+// witness runner enters; each keeps its claim name unchanged.
+test fn bounded_request_refuses_through_the_join_for_the_append_reason() -> Bool { bounded_request_refuses_through_the_join_for_the_append_reason_holds() }
+test fn whole_tab_request_appends_every_roster_row_under_its_own_identity() -> Bool { whole_tab_request_appends_every_roster_row_under_its_own_identity_holds() }

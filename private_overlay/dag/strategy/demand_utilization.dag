@@ -1,0 +1,581 @@
+module strategy.demand_utilization
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat }
+import std.measure { money_per_minute_micros, money_amount_micro_count }
+import strategy.calendar_date { CalendarDate }
+import strategy.wholesale_batch_floor {
+  floor_per_core_month_low_micro, floor_per_core_month_high_micro, floor_observed_as_of,
+  billable_nodes, cores_per_billable_node, site_month_low_micro, site_month_high_micro, unquoted_row_count,
+}
+import extdeps.pricing.ubicloud { ubicloud_arm_standard_2_price }
+import extdeps.cloud.hetzner { cax11_listed }
+
+// THE LAYER BETWEEN INSTALLED CAPACITY AND SOLD CAPACITY. Supply is continuous: every core exists
+// for every hour of the week whether or not a customer is running on it. Demand is not: a CI
+// customer's minutes follow that customer's working day. wholesale_batch_floor prices the fleet at
+// installed minutes, which is exact for a reserved-unit buyer (who pays for the hours whether used
+// or not) and WRONG for anything sold per minute used, where the operator's cost per sold minute is
+// the installed cost divided by the fraction of installed minutes that were sold.
+//
+// THIS MODULE CARRIES NO DEMAND CURVE AS A FACT. It carries a PARAMETER GRID -- every diurnal shape,
+// every region offset, every flat share -- and iterates it, so the question "what mix of regions
+// should we sell to, and what utilization can we then expect" is answered by enumeration over
+// declared ranges rather than by a curve someone picked. Every point in the grid is a hypothesis
+// with the same standing; the grid's basis says why the ranges are the ranges. The one bet the
+// operator has named -- that agent-initiated CI flattens the working-day curve -- is one axis of
+// the grid (flat_share_percents), so its effect is a comparison of rows, never a number that has
+// quietly moved a conclusion.
+//
+// UNITS. Demand is measured in a dimensionless weekly curve on 168 UTC hours, scaled so a trough
+// hour is 100. Sold utilization is mean/peak of the mixed curve: if the operator sells exactly
+// enough customers that the peak hour fills the fleet, the mean hour fills mean/peak of it. That
+// ratio is independent of how many customers there are, which is why it is the number to target.
+// Money is Int micro-dollars, as everywhere else in strategy.
+
+// ── Parameter space ──────────────────────────────────────────────────────────────────────────
+
+// A region is a UTC offset and nothing else that is a fact. Its working window, peak-to-trough
+// ratio and weekend factor are grid axes, not attributes.
+type Region = Region {
+  label: NonEmptyStr,
+  utc_offset_hours: Int,
+}
+
+// One point of the diurnal shape space. window_start_local/window_hours bound the working day in
+// local hours; peak_to_trough is the in-window demand over the out-of-window demand; weekend_percent
+// scales Saturday and Sunday relative to a weekday.
+type DiurnalShape = DiurnalShape {
+  label: NonEmptyStr,
+  window_start_local: Int,
+  window_hours: Int,
+  peak_to_trough: Int,
+  weekend_percent: Int,
+}
+
+// A mix is a weight in percent on each region, summing to 100.
+type RegionMix = RegionMix {
+  us_percent: Int,
+  eu_percent: Int,
+  apac_percent: Int,
+}
+
+type GridStanding =
+  | GridUnmeasured { basis: NonEmptyStr }
+  | GridCalibrated { measured_from: NonEmptyStr, observed_on: CalendarDate }
+
+type DemandParameterGrid = DemandParameterGrid {
+  regions: List<Region>,
+  shapes: List<DiurnalShape>,
+  flat_share_percents: List<Int>,
+  mix_step_percent: Int,
+  standing: GridStanding,
+}
+
+data region_us: Region = Region { label: "us-east", utc_offset_hours: -5 }
+data region_eu: Region = Region { label: "eu-central", utc_offset_hours: 1 }
+data region_apac: Region = Region { label: "apac-east", utc_offset_hours: 8 }
+
+// Three shapes spanning gentle to sharp. These bound the space; they are not a claim that any
+// customer looks like any of them. A calibrated grid replaces them with measured curves.
+data shape_gentle: DiurnalShape = DiurnalShape { label: "gentle", window_start_local: 7, window_hours: 12, peak_to_trough: 3, weekend_percent: 50 }
+data shape_moderate: DiurnalShape = DiurnalShape { label: "moderate", window_start_local: 8, window_hours: 10, peak_to_trough: 5, weekend_percent: 30 }
+data shape_sharp: DiurnalShape = DiurnalShape { label: "sharp", window_start_local: 9, window_hours: 8, peak_to_trough: 8, weekend_percent: 15 }
+
+data parameter_grid: DemandParameterGrid = DemandParameterGrid {
+  regions: [region_us, region_eu, region_apac],
+  shapes: [shape_gentle, shape_moderate, shape_sharp],
+  flat_share_percents: [0, 30, 60],
+  mix_step_percent: 25,
+  standing: GridUnmeasured { basis: "No CI traffic has been observed on the fleet. Offsets are the three business-hour clusters a CI vendor lists (US East, Central Europe, East Asia). Shapes bound the working-day peak between 3x and 8x the trough, from published CI-load anecdotes rather than a measurement. Flat shares 0/30/60 bracket the operator's agentic-CI bet without asserting its size. Calibration replaces this whole record with curves read from the fleet's own scheduler." },
+}
+
+// THE OPERATOR'S NAMED BET, as a point on the flat-share axis with a date. Its standing is a
+// hypothesis: nothing in this module treats it as more likely than the 0 row.
+type FlatShareStanding =
+  | FlatShareHypothesis { percent: Int, by: CalendarDate, basis: NonEmptyStr }
+  | FlatShareObserved { percent: Int, observed_on: CalendarDate, measured_from: NonEmptyStr }
+
+data agentic_flat_share_bet: FlatShareStanding = FlatShareHypothesis {
+  percent: 30,
+  by: CalendarDate { year: 2027, month: 6, day: 30 },
+  basis: "Operator bet 2026-09-16: agent-initiated CI runs at all hours and so carries no working-day shape; a growing share of minutes therefore arrives flat. The 30 is a placeholder magnitude on the grid's own axis, not a forecast.",
+}
+
+fn bet_percent(s: FlatShareStanding) -> Int {
+  match s {
+    FlatShareHypothesis { percent, by, basis } => percent,
+    FlatShareObserved { percent, observed_on, measured_from } => percent,
+  }
+}
+
+fn bet_is_hypothesis(s: FlatShareStanding) -> Bool {
+  match s {
+    FlatShareHypothesis { percent, by, basis } => true,
+    FlatShareObserved { percent, observed_on, measured_from } => false,
+  }
+}
+
+// ── Curves ───────────────────────────────────────────────────────────────────────────────────
+
+fn hours_per_week() -> Int { 168 }
+fn trough_level() -> Int { 100 }
+
+fn int_range(lo: Int, hi: Int) -> List<Int> { int_range_acc(lo: lo, hi: hi, acc: []) }
+fn int_range_acc(lo: Int, hi: Int, acc: List<Int>) -> List<Int> {
+  if lo > hi { acc } else { int_range_acc(lo: lo + 1, hi: hi, acc: concat(acc, [lo])) }
+}
+
+fn week_hours() -> List<Int> { int_range(lo: 0, hi: hours_per_week() - 1) }
+
+fn local_hour(utc_hour: Int, offset: Int) -> Int { (((utc_hour + offset) % 24) + 24) % 24 }
+
+// Weekday index of a UTC hour, 0 = Monday. The offset shifts the day boundary with the clock.
+fn local_day(utc_hour: Int, offset: Int) -> Int { ((utc_hour + offset + 168) / 24) % 7 }
+
+fn in_window(local: Int, shape: DiurnalShape) -> Bool {
+  local >= shape.window_start_local && local < shape.window_start_local + shape.window_hours
+}
+
+// The shaped demand of one region at one UTC hour, trough = 100.
+fn shaped_level(utc_hour: Int, region: Region, shape: DiurnalShape) -> Int {
+  let local = local_hour(utc_hour: utc_hour, offset: region.utc_offset_hours)
+  let day = local_day(utc_hour: utc_hour, offset: region.utc_offset_hours)
+  let weekday_level = if in_window(local: local, shape: shape) { trough_level() * shape.peak_to_trough } else { trough_level() }
+  if day >= 5 { weekday_level * shape.weekend_percent / 100 } else { weekday_level }
+}
+
+fn sum_ints(xs: List<Int>) -> Int { fold(xs, init: 0, f: fn(acc, x) { acc + x }) }
+fn max_ints(xs: List<Int>) -> Int { fold(xs, init: 0, f: fn(acc, x) { if x > acc { x } else { acc } }) }
+
+fn shaped_curve(region: Region, shape: DiurnalShape) -> List<Int> {
+  map(week_hours(), h => shaped_level(utc_hour: h, region: region, shape: shape))
+}
+
+fn curve_mean(curve: List<Int>) -> Int { sum_ints(xs: curve) / hours_per_week() }
+
+fn shaped_mean(region: Region, shape: DiurnalShape) -> Int { curve_mean(curve: shaped_curve(region: region, shape: shape)) }
+
+// Blend a flat component in at flat_percent of the curve's own mean, so the weekly mean is
+// preserved and only the shape changes. This is what "agent-initiated minutes arrive flat" means
+// arithmetically: the same volume, spread evenly.
+fn flattened_level(utc_hour: Int, region: Region, shape: DiurnalShape, flat_percent: Int, mean: Int) -> Int {
+  (shaped_level(utc_hour: utc_hour, region: region, shape: shape) * (100 - flat_percent) + mean * flat_percent) / 100
+}
+
+fn flatten(curve: List<Int>, flat_percent: Int) -> List<Int> {
+  let mean = curve_mean(curve: curve)
+  map(curve, v => (v * (100 - flat_percent) + mean * flat_percent) / 100)
+}
+
+fn region_curve(region: Region, shape: DiurnalShape, flat_percent: Int) -> List<Int> {
+  flatten(curve: shaped_curve(region: region, shape: shape), flat_percent: flat_percent)
+}
+
+// The mixed curve: weights are percents, so levels are scaled by 100 relative to a single region.
+// Computed hour by hour from the three region means so the cost is linear in the week.
+fn mixed_curve(mix: RegionMix, shape: DiurnalShape, flat_percent: Int) -> List<Int> {
+  let m_us = shaped_mean(region: region_us, shape: shape)
+  let m_eu = shaped_mean(region: region_eu, shape: shape)
+  let m_apac = shaped_mean(region: region_apac, shape: shape)
+  map(week_hours(), h =>
+    flattened_level(utc_hour: h, region: region_us, shape: shape, flat_percent: flat_percent, mean: m_us) * mix.us_percent
+      + flattened_level(utc_hour: h, region: region_eu, shape: shape, flat_percent: flat_percent, mean: m_eu) * mix.eu_percent
+      + flattened_level(utc_hour: h, region: region_apac, shape: shape, flat_percent: flat_percent, mean: m_apac) * mix.apac_percent)
+}
+
+// ── Scenario evaluation ──────────────────────────────────────────────────────────────────────
+
+// utilization_permille is mean/peak of the mixed curve: the utilization reached when the peak hour
+// fills the fleet. floor_per_two_vcpu_minute_{low,high}_micro is the site floor spread over one
+// 2-vCPU sold minute at that utilization, low and high band -- a lower bound on cost, not a cost.
+// list_over_floor_permille is Ubicloud arm standard-2 list over the high-band floor: 1000 = parity,
+// >1000 = list exceeds the floor. Not a margin.
+type ScenarioResult = ScenarioResult {
+  mix: RegionMix,
+  shape: NonEmptyStr,
+  flat_percent: Int,
+  utilization_permille: Int,
+  peak_hour_utc: Int,
+  floor_per_two_vcpu_minute_low_micro: Int,
+  floor_per_two_vcpu_minute_high_micro: Int,
+  list_over_floor_permille: Int,
+}
+
+fn utilization_permille(curve: List<Int>) -> Int {
+  let peak = max_ints(xs: curve)
+  if peak == 0 { 0 } else { curve_mean(curve: curve) * 1000 / peak }
+}
+
+fn peak_hour(curve: List<Int>) -> Int {
+  let peak = max_ints(xs: curve)
+  fold(curve, init: PeakAcc { index: 0, found: -1 }, f: fn(acc, v) {
+    if acc.found < 0 && v == peak { PeakAcc { index: acc.index + 1, found: acc.index } } else { PeakAcc { index: acc.index + 1, found: acc.found } }
+  }).found
+}
+
+type PeakAcc = PeakAcc { index: Int, found: Int }
+
+fn minutes_per_month() -> Int { 730 * 60 }
+fn nat_as_int(n: Nat) -> Int { n }
+
+fn ubicloud_two_vcpu_minute_micro() -> Int { nat_as_int(n: money_per_minute_micros(q: ubicloud_arm_standard_2_price.per_minute)) }
+
+// Floor per sold 2-vCPU-minute = (two cores' monthly floor) / (minutes per month × utilization).
+// THIS IS A LOWER BOUND, NOT A COST: wholesale_batch_floor says so of its inputs, and nothing here
+// adds the rows it excludes. See viability_standing below.
+fn floor_per_two_vcpu_minute_micro(core_month_micro: Int, utilization_permille: Int) -> Int {
+  if utilization_permille == 0 { 0 } else { core_month_micro * 2 * 1000 / (minutes_per_month() * utilization_permille) }
+}
+
+fn evaluate(mix: RegionMix, shape: DiurnalShape, flat_percent: Int) -> ScenarioResult {
+  let curve = mixed_curve(mix: mix, shape: shape, flat_percent: flat_percent)
+  let util = utilization_permille(curve: curve)
+  let low = floor_per_two_vcpu_minute_micro(core_month_micro: floor_per_core_month_low_micro(as_of: floor_observed_as_of), utilization_permille: util)
+  let high = floor_per_two_vcpu_minute_micro(core_month_micro: floor_per_core_month_high_micro(as_of: floor_observed_as_of), utilization_permille: util)
+  ScenarioResult {
+    mix: mix,
+    shape: shape.label,
+    flat_percent: flat_percent,
+    utilization_permille: util,
+    peak_hour_utc: peak_hour(curve: curve),
+    floor_per_two_vcpu_minute_low_micro: low,
+    floor_per_two_vcpu_minute_high_micro: high,
+    list_over_floor_permille: if high == 0 { 0 } else { ubicloud_two_vcpu_minute_micro() * 1000 / high },
+  }
+}
+
+// Every mix on the grid whose weights sum to 100.
+fn mixes() -> List<RegionMix> {
+  let step = parameter_grid.mix_step_percent
+  let levels = map(int_range(lo: 0, hi: 100 / step), k => k * step)
+  fold(levels, init: [], f: fn(acc, us) {
+    concat(acc, fold(levels, init: [], f: fn(inner, eu) {
+      if us + eu <= 100 { concat(inner, [RegionMix { us_percent: us, eu_percent: eu, apac_percent: 100 - us - eu }]) } else { inner }
+    }))
+  })
+}
+
+fn mix_count() -> Int { count(mixes()) }
+
+fn scenario_table() -> List<ScenarioResult> {
+  fold(parameter_grid.shapes, init: [], f: fn(acc, shape) {
+    concat(acc, fold(parameter_grid.flat_share_percents, init: [], f: fn(acc2, flat) {
+      concat(acc2, map(mixes(), m => evaluate(mix: m, shape: shape, flat_percent: flat)))
+    }))
+  })
+}
+
+fn scenario_count() -> Int { count(scenario_table()) }
+
+fn better(a: ScenarioResult, b: ScenarioResult) -> ScenarioResult {
+  if b.utilization_permille > a.utilization_permille { b } else { a }
+}
+
+fn best_mix_for(shape: DiurnalShape, flat_percent: Int) -> ScenarioResult {
+  let rows = map(mixes(), m => evaluate(mix: m, shape: shape, flat_percent: flat_percent))
+  fold(rows, init: evaluate(mix: RegionMix { us_percent: 100, eu_percent: 0, apac_percent: 0 }, shape: shape, flat_percent: flat_percent), f: fn(acc, r) { better(a: acc, b: r) })
+}
+
+fn single_region(mix_us: Int, mix_eu: Int, mix_apac: Int, shape: DiurnalShape, flat_percent: Int) -> ScenarioResult {
+  evaluate(mix: RegionMix { us_percent: mix_us, eu_percent: mix_eu, apac_percent: mix_apac }, shape: shape, flat_percent: flat_percent)
+}
+
+fn us_only(shape: DiurnalShape, flat_percent: Int) -> ScenarioResult { single_region(mix_us: 100, mix_eu: 0, mix_apac: 0, shape: shape, flat_percent: flat_percent) }
+
+// ── Breakeven ────────────────────────────────────────────────────────────────────────────────
+
+// The lowest utilization, per mille, at which the site floor per sold minute is at or under
+// Ubicloud's list (ceiling division, so the returned point itself satisfies the condition). Below
+// it per-minute sales cannot even cover the site floor; above it they cover the floor and nothing
+// else that is unpriced. Low band and high band.
+fn ceil_div(a: Int, b: Int) -> Int { (a + b - 1) / b }
+
+fn breakeven_utilization_permille(core_month_micro: Int) -> Int {
+  ceil_div(a: core_month_micro * 2 * 1000, b: minutes_per_month() * ubicloud_two_vcpu_minute_micro())
+}
+
+fn breakeven_low_permille() -> Int { breakeven_utilization_permille(core_month_micro: floor_per_core_month_low_micro(as_of: floor_observed_as_of)) }
+fn breakeven_high_permille() -> Int { breakeven_utilization_permille(core_month_micro: floor_per_core_month_high_micro(as_of: floor_observed_as_of)) }
+
+// ── Standing claims the witness holds ────────────────────────────────────────────────────────
+
+fn grid_is_unmeasured() -> Bool {
+  match parameter_grid.standing {
+    GridUnmeasured { basis } => true,
+    GridCalibrated { measured_from, observed_on } => false,
+  }
+}
+
+fn mix_sums_to_hundred(m: RegionMix) -> Bool { m.us_percent + m.eu_percent + m.apac_percent == 100 }
+
+fn every_mix_sums_to_hundred() -> Bool { all(mixes(), m => mix_sums_to_hundred(m: m)) }
+
+fn flatten_preserves_mean(shape: DiurnalShape, flat_percent: Int) -> Bool {
+  let base = shaped_curve(region: region_us, shape: shape)
+  let flat = flatten(curve: base, flat_percent: flat_percent)
+  let a = curve_mean(curve: base)
+  let b = curve_mean(curve: flat)
+  a - b <= 1 && b - a <= 1
+}
+
+fn utilization_never_exceeds_full(rows: List<ScenarioResult>) -> Bool { all(rows, r => r.utilization_permille <= 1000 && r.utilization_permille > 0) }
+
+// Three regions eight hours apart, equal weight, beat any single region on every shape and flat
+// share: the arithmetic behind "a global mix smooths demand", executed rather than asserted.
+fn balanced_mix() -> RegionMix { RegionMix { us_percent: 34, eu_percent: 33, apac_percent: 33 } }
+
+fn balanced_beats_us_only(shape: DiurnalShape, flat_percent: Int) -> Bool {
+  evaluate(mix: balanced_mix(), shape: shape, flat_percent: flat_percent).utilization_permille
+    > us_only(shape: shape, flat_percent: flat_percent).utilization_permille
+}
+
+// Flattening raises utilization monotonically on the grid's own axis.
+fn flat_share_raises_utilization(shape: DiurnalShape) -> Bool {
+  us_only(shape: shape, flat_percent: 0).utilization_permille
+    <= us_only(shape: shape, flat_percent: 30).utilization_permille
+    && us_only(shape: shape, flat_percent: 30).utilization_permille
+    <= us_only(shape: shape, flat_percent: 60).utilization_permille
+}
+
+// ── What the floor is not ────────────────────────────────────────────────────────────────────
+//
+// EVERY FIGURE ABOVE DIVIDES THE SITE FLOOR, AND THE SITE FLOOR IS A LOWER BOUND (review repair, P1).
+// wholesale_batch_floor carries cost_floor's unquoted rows -- support, abuse, payments, storage,
+// spares, insurance, control plane, network hardware -- at zero, and excludes capex amortisation
+// and operator time by ruling. A per-minute product pays all of them. So "list exceeds the floor
+// at every grid point" is what this module can say; "the product is viable" or "the margin is X" is
+// not decidable here until those rows are priced, and the standing below refuses the claim rather
+// than letting a comparison of a price to a lower bound read as profit.
+
+type ViabilityStanding =
+  | ViabilityUndecidable { unpriced_rows: Int, basis: NonEmptyStr }
+  | ViabilityDecidable { priced_on: CalendarDate }
+
+fn viability_standing() -> ViabilityStanding {
+  let n = unquoted_row_count()
+  if n == 0 {
+    ViabilityDecidable { priced_on: floor_observed_as_of }
+  } else {
+    ViabilityUndecidable { unpriced_rows: n, basis: "cost_floor unquoted_components are carried at zero in the site floor; capex amortisation and operator time are excluded by ruling. A price above the floor is headroom to pay those rows, not margin." }
+  }
+}
+
+fn margin_claim_is_admissible() -> Bool {
+  match viability_standing() {
+    ViabilityUndecidable { unpriced_rows, basis } => false,
+    ViabilityDecidable { priced_on } => true,
+  }
+}
+
+// ── Price points ─────────────────────────────────────────────────────────────────────────────
+//
+// CANDIDATE PRICES, PINNED SO THEIR IMPLICATIONS ARE DERIVED RATHER THAN ARGUED. A price point is
+// a micro-dollar figure per 2-vCPU sold minute (Ubicloud's unit) with a standing. None is adopted
+// here: adopting a price is a fleet_decisions ruling, and this module only says what each candidate
+// implies against the grid. What the implications EXCLUDE, because the site floor excludes it: the
+// control plane a per-minute product needs (runner integration, VM isolation, image cache,
+// metering), support, payment fees and hardware replacement. Those are zero for a reserved-unit
+// sale and real for a per-minute one; a margin that looks comfortable here is what has to carry them.
+
+type PriceStanding =
+  | PriceCandidate { basis: NonEmptyStr }
+  | PriceReference { source: NonEmptyStr }
+  | PriceAdopted { decided_on: CalendarDate, decision: NonEmptyStr }
+
+type PricePoint = PricePoint {
+  label: NonEmptyStr,
+  micro_per_two_vcpu_minute: Int,
+  standing: PriceStanding,
+}
+
+data price_ubicloud_list: PricePoint = PricePoint {
+  label: "ubicloud-arm-standard-2-list",
+  micro_per_two_vcpu_minute: 1250,
+  standing: PriceReference { source: "extdeps.pricing.ubicloud ubicloud_arm_standard_2_price, read 2026-08-22" },
+}
+
+data price_under_list: PricePoint = PricePoint {
+  label: "under-list-1000",
+  micro_per_two_vcpu_minute: 1000,
+  standing: PriceCandidate { basis: "Operator 2026-09-16: a price twenty percent under Ubicloud's list, chosen to sell without marketing spend. Whether a twenty-percent gap moves a buyer is not a claim this module makes." },
+}
+
+data price_margin_safe_low: PricePoint = PricePoint {
+  label: "margin-safe-500",
+  micro_per_two_vcpu_minute: 500,
+  standing: PriceCandidate { basis: "The lowest round figure that sits above the site floor at every grid point with headroom to carry the unpriced rows." },
+}
+
+data price_grid_minimum: PricePoint = PricePoint {
+  label: "grid-clearing-minimum",
+  micro_per_two_vcpu_minute: 320,
+  standing: PriceCandidate { basis: "Just above the worst grid point's high-band floor (sharp shape, US-only, no flattening). Above the floor everywhere and carries nothing else; the floor of the price space, not a price." },
+}
+
+// HETZNER CAX11 AS THE SECOND REFERENCE: two SHARED Arm vCPU and 4 GB at the listed monthly cap,
+// expressed per minute of the month so it sits in Ubicloud's unit. It is not the same good -- a
+// shared vCPU on an oversubscribed host against a dedicated physical core -- and it is not
+// purchasable (gunbc.procurement.hetzner_supply_observation: CAX not orderable in Helsinki or
+// Nuremberg, 2026-09-06). It is the cheapest published Arm price a buyer will quote back, so the
+// module derives where the operator sits against it rather than leaving that to chat.
+fn hetzner_cax11_cap_per_minute_micro() -> Int {
+  nat_as_int(n: money_amount_micro_count(m: cax11_listed.monthly.amount)) / minutes_per_month()
+}
+
+data price_hetzner_cax11_cap: PricePoint = PricePoint {
+  label: "hetzner-cax11-monthly-cap-per-minute",
+  micro_per_two_vcpu_minute: hetzner_cax11_cap_per_minute_micro(),
+  standing: PriceReference { source: "extdeps.cloud.hetzner cax11_listed monthly cap (USD), divided over 730 hours; shared vCPU, not orderable 2026-09-06" },
+}
+
+fn price_points() -> List<PricePoint> { [price_ubicloud_list, price_hetzner_cax11_cap, price_under_list, price_margin_safe_low, price_grid_minimum] }
+
+fn price_is_adopted(p: PricePoint) -> Bool {
+  match p.standing {
+    PriceCandidate { basis } => false,
+    PriceReference { source } => false,
+    PriceAdopted { decided_on, decision } => true,
+  }
+}
+
+fn no_price_is_adopted() -> Bool { !any(price_points(), p => price_is_adopted(p: p)) }
+
+// Sellable 2-vCPU slots on the billable fleet: two cores per slot, every core on every billable node.
+fn two_vcpu_slots() -> Int { billable_nodes() * nat_as_int(n: cores_per_billable_node()) / 2 }
+
+// The highest cost per sold minute anywhere on the grid: the price below which some scenario loses.
+fn grid_floor_ceiling_micro() -> Int { max_ints(xs: map(scenario_table(), r => r.floor_per_two_vcpu_minute_high_micro)) }
+
+fn price_clears_every_grid_point(p: PricePoint) -> Bool { p.micro_per_two_vcpu_minute > grid_floor_ceiling_micro() }
+
+// The operator's cost per sold minute at FULL utilization, low and high floor: the reserved-unit
+// comparison, where the buyer pays for every hour whether used or not, exactly as a Hetzner VM does.
+fn full_utilization_floor_low_micro() -> Int { floor_per_two_vcpu_minute_micro(core_month_micro: floor_per_core_month_low_micro(as_of: floor_observed_as_of), utilization_permille: 1000) }
+fn full_utilization_floor_high_micro() -> Int { floor_per_two_vcpu_minute_micro(core_month_micro: floor_per_core_month_high_micro(as_of: floor_observed_as_of), utilization_permille: 1000) }
+
+// Price over the operator's full-utilization cost, per mille: what a reserved unit sold at this
+// price returns on its floor. >1000 means the price clears the floor at 100 percent utilization.
+fn price_over_full_floor_high_permille(p: PricePoint) -> Int { p.micro_per_two_vcpu_minute * 1000 / full_utilization_floor_high_micro() }
+
+// Utilization at which cost per sold minute equals the price, per mille, at the low and high floor.
+fn price_breakeven_low_permille(p: PricePoint) -> Int {
+  ceil_div(a: floor_per_core_month_low_micro(as_of: floor_observed_as_of) * 2 * 1000, b: minutes_per_month() * p.micro_per_two_vcpu_minute)
+}
+fn price_breakeven_high_permille(p: PricePoint) -> Int {
+  ceil_div(a: floor_per_core_month_high_micro(as_of: floor_observed_as_of) * 2 * 1000, b: minutes_per_month() * p.micro_per_two_vcpu_minute)
+}
+
+// Monthly revenue at a scenario's utilization: every slot, every minute, at mean/peak of the fleet.
+fn monthly_revenue_micro(p: PricePoint, r: ScenarioResult) -> Int {
+  two_vcpu_slots() * minutes_per_month() / 1000 * r.utilization_permille * p.micro_per_two_vcpu_minute
+}
+
+// Contribution after the site floor, low and high, at that scenario.
+fn contribution_over_site_floor_low_micro(p: PricePoint, r: ScenarioResult) -> Int { monthly_revenue_micro(p: p, r: r) - site_month_high_micro(as_of: floor_observed_as_of) }
+fn contribution_over_site_floor_high_micro(p: PricePoint, r: ScenarioResult) -> Int { monthly_revenue_micro(p: p, r: r) - site_month_low_micro(as_of: floor_observed_as_of) }
+
+// Margin per sold minute at that scenario, against the high floor.
+fn headroom_over_floor_per_minute_micro(p: PricePoint, r: ScenarioResult) -> Int { p.micro_per_two_vcpu_minute - r.floor_per_two_vcpu_minute_high_micro }
+
+// Revenue at a given utilization, for the flat table the operator reads.
+fn monthly_revenue_at_permille(p: PricePoint, utilization_permille: Int) -> Int {
+  two_vcpu_slots() * minutes_per_month() / 1000 * utilization_permille * p.micro_per_two_vcpu_minute
+}
+
+type PriceImplication = PriceImplication {
+  price: NonEmptyStr,
+  micro_per_two_vcpu_minute: Int,
+  clears_grid: Bool,
+  breakeven_low_permille: Int,
+  breakeven_high_permille: Int,
+  revenue_at_ten_percent_micro: Int,
+  revenue_at_best_moderate_micro: Int,
+  contribution_over_site_floor_low_at_best_moderate_micro: Int,
+  headroom_over_floor_at_worst_grid_point_micro: Int,
+}
+
+fn worst_grid_point() -> ScenarioResult { us_only(shape: shape_sharp, flat_percent: 0) }
+
+fn implication(p: PricePoint) -> PriceImplication {
+  let best = best_mix_for(shape: shape_moderate, flat_percent: 0)
+  PriceImplication {
+    price: p.label,
+    micro_per_two_vcpu_minute: p.micro_per_two_vcpu_minute,
+    clears_grid: price_clears_every_grid_point(p: p),
+    breakeven_low_permille: price_breakeven_low_permille(p: p),
+    breakeven_high_permille: price_breakeven_high_permille(p: p),
+    revenue_at_ten_percent_micro: monthly_revenue_at_permille(p: p, utilization_permille: 100),
+    revenue_at_best_moderate_micro: monthly_revenue_micro(p: p, r: best),
+    contribution_over_site_floor_low_at_best_moderate_micro: contribution_over_site_floor_low_micro(p: p, r: best),
+    headroom_over_floor_at_worst_grid_point_micro: headroom_over_floor_per_minute_micro(p: p, r: worst_grid_point()),
+  }
+}
+
+fn price_implications() -> List<PriceImplication> { map(price_points(), p => implication(p: p)) }
+
+// ── vCPU packing ─────────────────────────────────────────────────────────────────────────────
+//
+// THE SHARED-vCPU AXIS (operator 2026-09-16): Hetzner's CAX pair is two SHARED vCPU, several to a
+// physical core, which is how its cap gets to 159 micro. The fleet's sellable unit is a dedicated
+// core and fleet_decisions allocation-model rules that GUARANTEED units are never oversubscribed;
+// that ruling is about the reserved floor. A shared-vCPU SKU is a different good on the same
+// silicon -- the same idle time the burst and scavenger classes already reuse, sold as vCPU rather
+// than as spare -- and it is modelled here as a packing ratio on the cost side, not as a change to
+// the unit. The ratios are a grid axis with no measured point: the ratio a Q80-30 sustains for CI
+// work is whatever the pilot measures, and the operator's reading that CAX itself packs 2-3 vCPU
+// per core on the same silicon is a hypothesis recorded in the axis's basis.
+
+type PackingStanding =
+  | PackingUnmeasured { basis: NonEmptyStr }
+  | PackingMeasured { vcpus_per_core: Int, observed_on: CalendarDate, measured_from: NonEmptyStr }
+
+type PackingAxis = PackingAxis {
+  vcpus_per_core: List<Int>,
+  standing: PackingStanding,
+}
+
+data packing_axis: PackingAxis = PackingAxis {
+  vcpus_per_core: [1, 2, 3],
+  standing: PackingUnmeasured { basis: "1 is the dedicated unit as sold. 2 and 3 bracket the operator's reading (2026-09-16) that Hetzner CAX packs two to three vCPU per Altra core; no fleet measurement exists, and the ratio a Q80-30 sustains under CI load without violating a burst envelope is the pilot's to measure. Applies to a shared-vCPU class only; guaranteed units stay at 1." },
+}
+
+fn packing_is_unmeasured() -> Bool {
+  match packing_axis.standing {
+    PackingUnmeasured { basis } => true,
+    PackingMeasured { vcpus_per_core, observed_on, measured_from } => false,
+  }
+}
+
+// Full-utilization cost per SHARED 2-vCPU-minute at a packing ratio: the dedicated cost divided by
+// how many vCPU a core carries.
+fn packed_full_floor_low_micro(vcpus_per_core: Int) -> Int { full_utilization_floor_low_micro() / vcpus_per_core }
+fn packed_full_floor_high_micro(vcpus_per_core: Int) -> Int { full_utilization_floor_high_micro() / vcpus_per_core }
+
+// Hetzner CAX11 over the packed cost, per mille: how far under the cheapest published Arm pair the
+// operator sits at each ratio, at full utilization.
+fn hetzner_over_packed_floor_high_permille(vcpus_per_core: Int) -> Int {
+  price_hetzner_cax11_cap.micro_per_two_vcpu_minute * 1000 / packed_full_floor_high_micro(vcpus_per_core: vcpus_per_core)
+}
+
+// hetzner_breakeven_high_permille is the per-minute-used utilization that covers the high-band
+// floor at Hetzner's price, at this packing.
+type PackingImplication = PackingImplication {
+  vcpus_per_core: Int,
+  full_floor_low_micro: Int,
+  full_floor_high_micro: Int,
+  hetzner_over_floor_high_permille: Int,
+  hetzner_breakeven_high_permille: Int,
+}
+
+fn packing_implication(vcpus_per_core: Int) -> PackingImplication {
+  PackingImplication {
+    vcpus_per_core: vcpus_per_core,
+    full_floor_low_micro: packed_full_floor_low_micro(vcpus_per_core: vcpus_per_core),
+    full_floor_high_micro: packed_full_floor_high_micro(vcpus_per_core: vcpus_per_core),
+    hetzner_over_floor_high_permille: hetzner_over_packed_floor_high_permille(vcpus_per_core: vcpus_per_core),
+    hetzner_breakeven_high_permille: ceil_div(a: packed_full_floor_high_micro(vcpus_per_core: vcpus_per_core) * 1000, b: price_hetzner_cax11_cap.micro_per_two_vcpu_minute),
+  }
+}
+
+fn packing_implications() -> List<PackingImplication> { map(packing_axis.vcpus_per_core, r => packing_implication(vcpus_per_core: r)) }

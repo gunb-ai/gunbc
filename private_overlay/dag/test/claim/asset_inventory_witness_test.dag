@@ -1,0 +1,364 @@
+module test.claim.asset_inventory_witness
+
+import std.types { Bool, NonEmptyStr, Int }
+import std.nat { Nat }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import finance.owner_funded_company_asset { EngineeringSampleMarked, EntityBasisUnposted, EntityBasisPosted, altra_q80_es_lot_acquisition, altra_q80_es_lot_standing }
+import strategy.fleet_convergence { gap_for }
+import strategy.asset_lifecycle {
+  DeployIntent, SpareFloorIntent, SampleQualificationIntent, ResaleIntent,
+  RuledHoldDeployIntent, NoLivingIntent,
+  hold_q80_lot, hold_asrock_boards, q80_original_deploy_target, q80_ruled_deploy_target,
+}
+import strategy.calendar_date { CalendarDate, calendar_date_is_valid, calendar_date_same }
+import strategy.asset_inventory {
+  InventorySourceSet, InventoryAcquisitionEvidence,
+  q80_inventory_sources, q80_inventory_lot_ref, q80_acquisition_evidence,
+  InventorySourceJoinStanding, InventorySourcesJoined, InventorySourcesRefused,
+  join_q80_acquisition, q80_source_join_standing, marking_is_engineering_sample,
+  ProcessorRosterStanding, RosterUncensused,
+  UnitMarkingStanding, UnitMarkingCensusPending,
+  UnitConditionStanding, UnitConditionUnread,
+  VendorSupportStanding, VendorSupportUnread,
+  TargetQualificationStanding, TargetQualificationUnstarted,
+  AcquisitionDocumentsStanding, AcquisitionDocumentsUnread,
+  CustodyStanding, CustodyUnread,
+  TitleStanding, TitleEvidenceUnread,
+  q80_inventory_lot,
+  Q80TargetIntentStanding, TargetFamilyRuled, q80_target_intent,
+  BoardDeliveryStanding, BoardDeliveryRecorded, BoardDeliveryUnread,
+  TargetBoardAcquisitionEvidence, q80_target_board_acquisition,
+  TargetBoardAcquisitionJoinStanding, TargetBoardAcquisitionJoined, TargetBoardAcquisitionRefused,
+  join_q80_target_board_acquisition, q80_target_board_acquisition_standing,
+  Q80TargetBoardRosterStanding, TargetBoardRosterUncensused, q80_target_board_roster,
+  Q80ProcessorBoardAssignmentStanding, ProcessorBoardAssignmentsAbsent, q80_processor_board_assignments,
+  ReturnEligibilityStanding, ReturnDeclinedByOperatorRuling, q80_return_eligibility,
+  Q80DispositionRuling, HoldAndConditionalDeployRuled, q80_disposition_ruling,
+  Q80DeploymentStanding, DeploymentBlocked, q80_deployment_projection,
+}
+
+fn joined(s: InventorySourceJoinStanding) -> Bool {
+  match s {
+    InventorySourcesJoined { lot, units, paid_consideration_micro } =>
+      declaration_ref_eq(a: lot, b: q80_inventory_lot_ref)
+        && units == 62
+        && paid_consideration_micro == 4750490000
+    InventorySourcesRefused { cause } => false
+  }
+}
+
+fn refused(s: InventorySourceJoinStanding) -> Bool {
+  match s {
+    InventorySourcesJoined { lot, units, paid_consideration_micro } => false
+    InventorySourcesRefused { cause } => true
+  }
+}
+
+fn evidence_fixture(
+  sources: InventorySourceSet,
+  acquired_on: NonEmptyStr,
+  units: Nat,
+  paid_consideration_micro: Nat,
+) -> InventoryAcquisitionEvidence {
+  InventoryAcquisitionEvidence {
+    lot: q80_inventory_lot_ref,
+    sources: sources,
+    asset_id: "altra-q80-30",
+    sku: "Ampere Altra Q80-30",
+    acquired_on: acquired_on,
+    units: units,
+    paid_consideration_micro: paid_consideration_micro,
+    planning_pre_tax_unit_micro: 70375023,
+    planning_rounding_delta_micro: 10,
+    reported_marking: EngineeringSampleMarked,
+  }
+}
+
+// Each mutation reaches the production join. In particular, a count-preserving foreign source
+// cannot be accepted merely because all numeric fields still agree.
+fn immutable_source_join_discriminates_drift() -> Bool {
+  let foreign_sources = InventorySourceSet {
+    purchase: decl_ref(module_path: "test.claim.asset_inventory_witness", decl_name: "foreign_purchase"),
+    holding: q80_inventory_sources.holding,
+    owner_funded_acquisition: q80_inventory_sources.owner_funded_acquisition,
+    engineering_sample_lot_standing: q80_inventory_sources.engineering_sample_lot_standing,
+  }
+  joined(s: q80_source_join_standing())
+    && refused(s: join_q80_acquisition(e: evidence_fixture(
+      sources: foreign_sources,
+      acquired_on: "2026-08-18",
+      units: 62,
+      paid_consideration_micro: 4750490000,
+    )))
+    && refused(s: join_q80_acquisition(e: evidence_fixture(
+      sources: q80_inventory_sources,
+      acquired_on: "2026-08-19",
+      units: 62,
+      paid_consideration_micro: 4750490000,
+    )))
+    && refused(s: join_q80_acquisition(e: evidence_fixture(
+      sources: q80_inventory_sources,
+      acquired_on: "2026-08-18",
+      units: 61,
+      paid_consideration_micro: 4750490000,
+    )))
+    && refused(s: join_q80_acquisition(e: evidence_fixture(
+      sources: q80_inventory_sources,
+      acquired_on: "2026-08-18",
+      units: 62,
+      paid_consideration_micro: 4750489999,
+    )))
+}
+
+fn live_lot_remains_uncensused() -> Bool {
+  let roster_open = match q80_inventory_lot.roster {
+    RosterUncensused { lot, expected_units, obligation } =>
+      declaration_ref_eq(a: lot, b: q80_inventory_lot_ref) && expected_units == 62
+  }
+  let markings_open = match q80_inventory_lot.unit_markings {
+    UnitMarkingCensusPending { lot_report, source, obligation } =>
+      marking_is_engineering_sample(m: lot_report)
+        && declaration_ref_eq(a: source, b: q80_inventory_sources.owner_funded_acquisition)
+  }
+  let condition_open = match q80_inventory_lot.unit_condition {
+    UnitConditionUnread { source, obligation } =>
+      declaration_ref_eq(a: source, b: q80_inventory_sources.purchase)
+  }
+  let support_open = match q80_inventory_lot.vendor_support {
+    VendorSupportUnread { obligation } => true
+  }
+  let qualification_open = match q80_inventory_lot.target_qualification {
+    TargetQualificationUnstarted { obligation } => true
+  }
+  let documents_open = match q80_inventory_lot.acquisition_documents {
+    AcquisitionDocumentsUnread { obligation } => true
+  }
+  let custody_open = match q80_inventory_lot.custody {
+    CustodyUnread { obligation } => true
+  }
+  let title_open = match q80_inventory_lot.title {
+    TitleEvidenceUnread { obligation } => true
+  }
+  roster_open && markings_open && condition_open && support_open
+    && qualification_open && documents_open && custody_open && title_open
+}
+
+fn company_basis_is_not_invented() -> Bool {
+  q80_acquisition_evidence.paid_consideration_micro == 4750490000
+    && q80_acquisition_evidence.planning_pre_tax_unit_micro == 70375023
+    && q80_acquisition_evidence.planning_rounding_delta_micro == 10
+    && match q80_inventory_lot.company_basis {
+      EntityBasisUnposted { entity_ledger_gap, obligation } =>
+        declaration_ref_eq(a: entity_ledger_gap, b: decl_ref(module_path: "finance.gunbai_ledger", decl_name: "q80_es_lot_entity_basis_unposted"))
+      EntityBasisPosted { entity_entry } => false
+    }
+}
+
+fn board_acquisition_joined(s: TargetBoardAcquisitionJoinStanding) -> Bool {
+  match s {
+    TargetBoardAcquisitionJoined { holding, board_facts, units, paid_consideration_micro } =>
+      declaration_ref_eq(a: holding, b: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"))
+        && declaration_ref_eq(a: board_facts, b: decl_ref(module_path: "strategy.ci_node_build", decl_name: "asrock_board_facts"))
+        && units == 4
+        && paid_consideration_micro == 3784500000
+    TargetBoardAcquisitionRefused { cause } => false
+  }
+}
+
+fn board_acquisition_refused(s: TargetBoardAcquisitionJoinStanding) -> Bool {
+  match s {
+    TargetBoardAcquisitionJoined { holding, board_facts, units, paid_consideration_micro } => false
+    TargetBoardAcquisitionRefused { cause } => true
+  }
+}
+
+fn board_acquisition_fixture(
+  holding: DeclarationRef,
+  board_facts: DeclarationRef,
+  order_id: NonEmptyStr,
+  units: Nat,
+  paid_consideration_micro: Nat,
+  delivery: BoardDeliveryStanding,
+) -> TargetBoardAcquisitionEvidence {
+  TargetBoardAcquisitionEvidence {
+    holding: holding,
+    board_facts: board_facts,
+    asset_id: "asrock-altrad8ud-1l2t",
+    sku: "ASRock ALTRAD8UD-1L2T",
+    seller: "Newegg",
+    order_id: order_id,
+    ordered_on: "2026-09-01",
+    units: units,
+    paid_consideration_micro: paid_consideration_micro,
+    delivery: delivery,
+  }
+}
+
+fn board_acquisition_join_discriminates_drift() -> Bool {
+  let holding = decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards")
+  let board_facts = decl_ref(module_path: "strategy.ci_node_build", decl_name: "asrock_board_facts")
+  let delivered = BoardDeliveryRecorded { carrier: "UPS", tracking_reference: "1ZE569860313808243" }
+  board_acquisition_joined(s: q80_target_board_acquisition_standing())
+    && board_acquisition_refused(s: join_q80_target_board_acquisition(e: board_acquisition_fixture(
+      holding: decl_ref(module_path: "test.claim.asset_inventory_witness", decl_name: "foreign_board_holding"),
+      board_facts: board_facts,
+      order_id: "418026724",
+      units: 4,
+      paid_consideration_micro: 3784500000,
+      delivery: delivered,
+    )))
+    && board_acquisition_refused(s: join_q80_target_board_acquisition(e: board_acquisition_fixture(
+      holding: holding,
+      board_facts: board_facts,
+      order_id: "418026725",
+      units: 4,
+      paid_consideration_micro: 3784500000,
+      delivery: delivered,
+    )))
+    && board_acquisition_refused(s: join_q80_target_board_acquisition(e: board_acquisition_fixture(
+      holding: holding,
+      board_facts: board_facts,
+      order_id: "418026724",
+      units: 3,
+      paid_consideration_micro: 3784500000,
+      delivery: delivered,
+    )))
+    && board_acquisition_refused(s: join_q80_target_board_acquisition(e: board_acquisition_fixture(
+      holding: holding,
+      board_facts: board_facts,
+      order_id: "418026724",
+      units: 4,
+      paid_consideration_micro: 3784499999,
+      delivery: delivered,
+    )))
+    && board_acquisition_refused(s: join_q80_target_board_acquisition(e: board_acquisition_fixture(
+      holding: holding,
+      board_facts: board_facts,
+      order_id: "418026724",
+      units: 4,
+      paid_consideration_micro: 3784500000,
+      delivery: BoardDeliveryUnread { obligation: "delivery missing" },
+    )))
+}
+
+// ON THE return_closed CONJUNCT BELOW.
+// THE RETURN ARM IS CLOSED AND THIS IS WHAT MAKES THAT EXECUTABLE RATHER THAN WRITTEN DOWN. The
+// conjunct no longer reads a check_by date, because there is no longer a window to check: it
+// asserts the ruling's identity AND ITS CONTENT: the date, the quoted decision, the fact that the
+// rationale is carried as the operator's assertion rather than as a derived claim, the retired
+// check date, and that the row still cites the lot standing that owns the qualification
+// obligation. The content conjuncts are here because an earlier version of this comment said it
+// asserted "who ruled" while the arm only checked the date -- operator_assertion was bound and
+// never read, so a rewrite of the quoted ruling would have passed silently. The content is pinned by
+// EXACT EQUALITY rather than a substring predicate: the repository carries two string_contains
+// signatures and this witness needs neither, and an operator's quoted ruling is exactly the text
+// that should not be editable without a check noticing. That is a comment
+// advertising coverage the check does not have, which is the defect named two sentences below and
+// was committed in the act of naming it. Each conjunct here can fail: change the quote, the date,
+// or the cited standing and this reds. THE TWO DATES ARE CHECKED AS DATES, not as text: they are
+// CalendarDate values from strategy.calendar_date, this repository's one temporal authority, so
+// the conjuncts assert calendar identity AND validity rather than pinning a spelling. The
+// impossible-date negative is carried beside them for the same reason finance_witness_test does:
+// a validity predicate that is never shown refusing anything establishes nothing. Restoring an open
+// return question means deleting this match arm, which is the property the operator asked for.
+fn operator_ruling_preserves_all_open_gates() -> Bool {
+  let target_ruled = match q80_target_intent {
+    TargetFamilyRuled {
+      original_target,
+      selected_target,
+      selected_target_source,
+      target_board_holding,
+      ruled_on,
+      unresolved_role,
+      qualification_obligation,
+    } =>
+      declaration_ref_eq(a: original_target, b: q80_original_deploy_target)
+        && declaration_ref_eq(a: selected_target, b: q80_ruled_deploy_target)
+        && declaration_ref_eq(a: selected_target, b: decl_ref(module_path: "strategy.ci_node_build", decl_name: "asrock_board_facts"))
+        && declaration_ref_eq(a: selected_target, b: altra_q80_es_lot_standing.qualification_target)
+        && declaration_ref_eq(a: selected_target_source, b: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "q80_ruled_deploy_target"))
+        && declaration_ref_eq(a: target_board_holding, b: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"))
+        && ruled_on == "2026-09-11"
+  }
+  let board_roster_open = match q80_target_board_roster {
+    TargetBoardRosterUncensused { holding, expected_units, obligation } =>
+      declaration_ref_eq(a: holding, b: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"))
+        && expected_units == 4
+        && hold_asrock_boards.units == 4
+  }
+  let assignments_absent = match q80_processor_board_assignments {
+    ProcessorBoardAssignmentsAbsent { processor_lot, target_board_holding, obligation } =>
+      declaration_ref_eq(a: processor_lot, b: q80_inventory_lot_ref)
+        && declaration_ref_eq(a: target_board_holding, b: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"))
+  }
+  let return_closed = match q80_return_eligibility {
+    ReturnDeclinedByOperatorRuling { ruled_on, operator_assertion, source, superseded_check_by } =>
+      calendar_date_same(a: ruled_on, b: CalendarDate { year: 2026, month: 9, day: 12 })
+        && calendar_date_is_valid(d: ruled_on)
+        && operator_assertion == "Operator ruling, quoted: we are NOT returning the Q80 - there is supply of boards, they will be profitable. Carried as the operator's assertion rather than as a derived fact."
+        && calendar_date_same(a: superseded_check_by, b: CalendarDate { year: 2026, month: 9, day: 24 })
+        && calendar_date_is_valid(d: superseded_check_by)
+        && !calendar_date_is_valid(d: CalendarDate { year: 2026, month: 2, day: 31 })
+        && declaration_ref_eq(a: source, b: q80_inventory_sources.engineering_sample_lot_standing)
+  }
+  let disposition_ruled = match q80_disposition_ruling {
+    HoldAndConditionalDeployRuled {
+      self_ref,
+      original_review_by,
+      ruled_on,
+      next_review_by,
+      return_standing,
+      target,
+      target_board_holding,
+      obligation,
+    } =>
+      declaration_ref_eq(a: self_ref, b: decl_ref(module_path: "strategy.asset_inventory", decl_name: "q80_disposition_ruling"))
+        && original_review_by == "2026-09-15"
+        && ruled_on == "2026-09-11"
+        && next_review_by == "2026-10-15"
+        && declaration_ref_eq(a: return_standing, b: decl_ref(module_path: "strategy.asset_inventory", decl_name: "q80_return_eligibility"))
+        && declaration_ref_eq(a: target, b: q80_ruled_deploy_target)
+        && declaration_ref_eq(a: target_board_holding, b: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"))
+  }
+  let lifecycle_bound = match hold_q80_lot.intent {
+    RuledHoldDeployIntent { ruling, review_by } =>
+      declaration_ref_eq(a: ruling, b: decl_ref(module_path: "strategy.asset_inventory", decl_name: "q80_disposition_ruling"))
+        && review_by == "2026-10-15"
+    DeployIntent { target, review_by } => false
+    SpareFloorIntent { floor_units, review_by } => false
+    SampleQualificationIntent { note, review_by } => false
+    ResaleIntent { channel_note, review_by } => false
+    NoLivingIntent => false
+  }
+  target_ruled && board_roster_open && assignments_absent && return_closed
+    && disposition_ruled && lifecycle_bound
+}
+
+fn purchase_counts_do_not_become_placement() -> Bool {
+  let blocked = match q80_deployment_projection.standing {
+    DeploymentBlocked { obligation } => true
+  }
+  declaration_ref_eq(a: q80_deployment_projection.source_lot, b: q80_inventory_lot_ref)
+    && declaration_ref_eq(a: q80_deployment_projection.target_board_holding, b: decl_ref(module_path: "strategy.asset_lifecycle", decl_name: "hold_asrock_boards"))
+    && q80_deployment_projection.purchase_record_processor_units == 62
+    && q80_deployment_projection.purchase_record_target_board_units == 4
+    && q80_deployment_projection.admitted_processor_board_assignments == 0
+    && q80_deployment_projection.derived_systems == 0
+    && q80_deployment_projection.derived_ram_modules == 0
+    && gap_for(component_id: "ddr4-32g-rdimm") == 320
+    && blocked
+}
+
+fn asset_inventory_witness_all() -> Bool {
+  immutable_source_join_discriminates_drift()
+    && live_lot_remains_uncensused()
+    && company_basis_is_not_invented()
+    && board_acquisition_join_discriminates_drift()
+    && operator_ruling_preserves_all_open_gates()
+    && purchase_counts_do_not_become_placement()
+}
+
+fn asset_inventory_witness_main() -> ProcessExit {
+  if asset_inventory_witness_all() { ExitSuccess } else { exit_failure(reason: "asset-inventory witness invariants returned false") }
+}

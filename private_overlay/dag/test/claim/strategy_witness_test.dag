@@ -1,0 +1,1592 @@
+module test.claim.strategy_witness
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.nat { Nat }
+import std.types { NonEmptyStr }
+import strategy.licensing_fee_model { enterprise_fee_usd }
+import strategy.strategy_model {
+  Vision, StrategicOutcome, Capability, ExperienceTarget, Hypothesis, Constraint, Experiment,
+  Realizes, RoadmapBinding, MarketSegment, VisibilityAudience,
+  DecisionAlternative, DecisionReceipt, DecisionState, Open, Selected, SupersededBy, RefusedDecision,
+  StrategicDecision,
+  AuthorizationVerdict, Authorized, AuthorizationRefused,
+  AuthorizationRefusalCause, DecisionNotFound, DecisionNotSelected, DecisionSuperseded,
+  ProductClaim, ClaimStatus, ClaimSupported, ClaimUnsupported,
+  id_in_list, claim_status, authorize_work,
+  JourneyStage, JourneyTransitionRule,
+  StopCause, ProblemNotMaterial, TrustBoundaryRejected, InstallationCostTooHigh, ImprovementNotObserved, EconomicCaseAbsent, TimingMismatch, OtherLocatedCause,
+  TransitionReceipt, StepReceipt, StopReceipt,
+  JourneyRefusalCause, ReceiptAfterStop, ReceiptFromNoncurrentStage, TransitionNotDeclaredOrKindMismatch,
+  StageProgress, ProgressAt, ProgressStopped, ProgressRefused,
+  derive_stage,
+  ExperimentContinuation, ExperimentMayContinue, ExperimentMustStop,
+  experiment_continuation,
+}
+import gunbc.econ.acquisition {
+  AcquisitionScenario, AcquisitionStageStep, ConversionRate,
+  AcquisitionScenarioInput, AcquisitionScenarioDeclared, AcquisitionScenarioUnknown,
+  AcquisitionRefusalCause, ScenarioUnknown, ZeroEntryUnitCost, EmptyFunnel,
+  ZeroConversionNumerator, ZeroConversionCohort, ConversionRateExceedsUnity,
+  AcquisitionForecastResult, AcquisitionForecastDerived, AcquisitionForecastRefused,
+  derive_acquisition_cost_forecast, acquisition_forecast_cost_floor_micros,
+}
+import std.measure { MoneyOnce, money_amount_micro }
+import extdeps.currency.currency { Usd }
+import strategy.strategy_model {
+  StrategicReason, DeliversCapability, ServesOutcome, TestsHypothesis, RequiredByDecision, ServesVision,
+  RoadmapLaneBinding, UnboundLaneAcknowledged,
+  CapabilityEvidence, RoadmapAccepted, CapabilityDirectlyObserved, ObservedCapability,
+}
+import strategy.strategy_model {
+  EngagementKind, WedgeDesignPartner, TechnicalValidator, Engagement,
+}
+import strategy.gunbc_strategy {
+  visions, outcomes, capabilities, experience_targets, hypotheses, experiments, constraints,
+  realizes_rows, roadmap_bindings, market_segments, visibility_audiences,
+  decisions, product_claims, observed_capabilities, observed_capability_id_list,
+  design_partner_stages, design_partner_rules,
+  baseline_acquisition_scenario,
+  lane_bindings, unbound_lanes_acknowledged,
+  engagements, eng000_journey_receipts,
+}
+import gunbc.roadmap_authority {
+  declared_roadmap_nodes, nid,
+  RoadmapNodeId,
+  ActiveRoadmapNodesProjection, ActiveRoadmapNodesProjected, ActiveRoadmapNodesProjectionRefused,
+  active_roadmap_nodes_projection,
+}
+import strategy.strategy_model {
+  EvidenceAnchor, EraClose, EraClosed, EraOpen, VentureEra, TimelineEvent,
+  SubstrateKind, RustCompiler, DagCompiler,
+  HostSubstrate, SelfNativeRust, RustSeedInterpreter, HostedByGeneration,
+  GenerationFate, GenerationRetired, GenerationDeleted, GenerationAlive,
+  CompilerGeneration, SuccessionEdge,
+  ProjectionHorizon, HorizonNow, HorizonNext, HorizonLater, ProjectedStep,
+  era_is_open, generation_is_alive,
+}
+import strategy.strategy_model {
+  CadenceWindow, DailyWindow, WeeklyWindow, MonthlyWindow, QuarterlyWindow, YearlyWindow,
+  TangentReading,
+}
+import strategy.gunbc_strategy {
+  venture_eras, timeline_events, compiler_generations, succession_edges, projected_steps,
+  tangent_readings,
+}
+import strategy.strategy_model {
+  StrategicContract, ObligationAcceptanceKind, ByExecutionReceipt, ByObservationReceipt, ByOperatorJudgment,
+  StrategicObligation, DecompositionCoverage, PartialCoverage, CompleteCoverage, ProgramDecomposition,
+  ContributionKind, DischargesObligation, PreservesAcceptedState, BoundedExploration, MeasurementForDecision, ClosesPrerequisite,
+  WorkContribution, ContractAmendment,
+  ObservedOutcome, ObservedLanded, ObservedInFlight, ObservedWithdrawn, ObservationReceipt,
+  strategy_criteria_digest, strategy_contract_digest, strategy_contribution_status,
+  strategy_obligation_bound_fresh, strategy_obligation_discharge_observed,
+  ObligationPrerequisite, strategy_blocker_count, strategy_blockers_discharged,
+  MeasurementReadiness, MeasurementAbsent, MeasurementPresent, strategy_measurement_readiness,
+  ContributionStatus, ContributionStale, ContributionUnobserved, ContributionObserved,
+  strategy_contract_completion, ContractCompletion, ContractComplete, ContractCompletionRefused,
+  ContractCompletionRefusalCause, DecompositionMissing, DecompositionNotSingular, DecompositionStale, DecompositionPartial, ObligationUnbound, ObligationUndischarged,
+  strategy_program_view,
+}
+import strategy.gunbc_strategy {
+  program_contracts, contract_amendments, program_obligations, program_decompositions,
+  work_contributions, work_observations,
+  obligation_prerequisites, corrected_census_subject,
+}
+import strategy.selfhost_coverage {
+  SelfHostModuleCoverage, ModuleCoverageDerived, ModuleCoverageUnestablished,
+  SelfHostCoveragePrerequisite, PrerequisiteOpen, PrerequisiteSettled,
+  SelfHostCoverageRule, CoverageRuleUnauthorized, CoverageRuleAuthorized,
+  OperatorCoverageAuthorization, OperatorAuthorizationOutcome,
+  CoverageAuthorizationAccepted, CoverageAuthorizationRefused, operator_coverage_authorization,
+  selfhost_decomposition_coverage_for, selfhost_coverage_value,
+}
+
+fn capability_id_known(id: String) -> Bool {
+  fold(capabilities, init: false, f: fn(acc, c) { acc || c.id == id })
+}
+
+fn hypothesis_id_known(id: String) -> Bool {
+  fold(hypotheses, init: false, f: fn(acc, h) { acc || h.id == id })
+}
+
+fn outcome_id_known(id: String) -> Bool {
+  fold(outcomes, init: false, f: fn(acc, o) { acc || o.id == id })
+}
+
+fn segment_id_known(id: String) -> Bool {
+  fold(market_segments, init: false, f: fn(acc, s) { acc || s.id == id })
+}
+
+fn capability_count_with_id(id: String) -> Nat {
+  fold(capabilities, init: 0, f: fn(acc, c) { if c.id == id { acc + 1 } else { acc } })
+}
+
+fn decision_count_with_question(id: String) -> Nat {
+  fold(decisions, init: 0, f: fn(acc, d) { if d.question_id == id { acc + 1 } else { acc } })
+}
+
+// NON-EMPTINESS, NOT A COUNT. Every conjunct below is an `all` over these carriers, and `all` over an
+// empty list is vacuously true, so the guard is what makes the uniqueness and resolution joins say
+// anything. The former literals (1, 6, 8) were the current size of operator-authored lists with no
+// authority fixing them; adding a capability would have redded a witness whose claim is uniqueness
+// and resolution, and the tempting repair would have been to bump the number (DESIGN section 5).
+fn witness_graph_ids_unique_and_relations_resolve_holds() -> Bool {
+  count(visions) > 0
+    && count(capabilities) > 0
+    && count(decisions) > 0
+    && all(capabilities, c => capability_count_with_id(id: c.id) == 1)
+    && all(decisions, d => decision_count_with_question(id: d.question_id) == 1)
+    && all(experience_targets, t => capability_id_known(id: t.exposes_capability_id))
+    && all(experiments, e => hypothesis_id_known(id: e.tests_hypothesis_id))
+    && all(realizes_rows, r => capability_id_known(id: r.capability_id) && outcome_id_known(id: r.outcome_id))
+    && all(roadmap_bindings, b => capability_id_known(id: b.delivers_capability_id))
+    && all(product_claims, c => segment_id_known(id: c.segment_id) && all(c.requires_capability_ids, r => capability_id_known(id: r)))
+}
+
+// THE FOUR IS GROUNDED, SO IT STAYS -- AS A JOIN AGAINST THE RULING, NOT A BARE NUMBER. The operator's
+// strategy-kernel directive (docs/strategy/2026-08-01-strategy-kernel-directive.md, section "The wipe
+// interaction should be an ExperienceTarget") names exactly four invariants for
+// wipe-to-reveal-protected-code. That record is prose and cannot be read from this closure, so the
+// join is written against its four names: the target carries every one of them and nothing else.
+// The target-count literal (1) had no such ground; the witness now selects the ruled target by id.
+data wipe_target_ruled_invariants: List<String> = [
+  "PlaintextAbsentBeforeAuthorization",
+  "GestureDoesNotConferAuthority",
+  "UndisclosedFacetsRemainAbsent",
+  "RevealProducesInspectableReceipt",
+]
+
+fn witness_wipe_target_carries_four_invariants_holds() -> Bool {
+  fold(experience_targets, init: false, f: fn(acc, t) { acc || t.id == "wipe-to-reveal-protected-code" })
+    && all(experience_targets, t =>
+         if t.id == "wipe-to-reveal-protected-code" {
+           all(wipe_target_ruled_invariants, i => id_in_list(id: i, ids: t.invariants))
+             && all(t.invariants, i => id_in_list(id: i, ids: wipe_target_ruled_invariants))
+             && count(t.invariants) == count(wipe_target_ruled_invariants)
+         } else {
+           true
+         })
+}
+
+fn decision_selected_as(d: StrategicDecision, expected_choice: String) -> Bool {
+  match d.state {
+    Selected { choice_id, receipt } => choice_id == expected_choice && receipt.authority == "operator"
+    Open => false
+    SupersededBy { question_id } => false
+    RefusedDecision { reason } => false
+  }
+}
+
+fn decision_is_open(d: StrategicDecision) -> Bool {
+  match d.state {
+    Open => true
+    Selected { choice_id, receipt } => false
+    SupersededBy { question_id } => false
+    RefusedDecision { reason } => false
+  }
+}
+
+fn witness_decision_states_match_operator_rulings_holds() -> Bool {
+  all(decisions, d =>
+    if d.question_id == "first-world" { decision_selected_as(d: d, expected_choice: "gunbc-dogfood") }
+    else {
+      if d.question_id == "roadmap-visibility" { decision_selected_as(d: d, expected_choice: "keep-public-for-now") }
+      else {
+        if d.question_id == "dashboard-host-surface" { decision_selected_as(d: d, expected_choice: "gunbc-served-dashboard-lane") }
+        else {
+          if d.question_id == "actor-model-scope" { decision_selected_as(d: d, expected_choice: "thin-projection") }
+          else {
+            if d.question_id == "ebay-retention-permitted" { decision_selected_as(d: d, expected_choice: "operator-accepts-residual-retention-risk") }
+            else { decision_is_open(d: d) }
+          }
+        }
+      }
+    })
+}
+
+fn witness_work_authorization_verdicts_holds() -> Bool {
+  let superseded = StrategicDecision {
+    question_id: "old-question",
+    question: "superseded synthetic",
+    alternatives: [],
+    criteria: [],
+    state: SupersededBy { question_id: "first-world" },
+  }
+  let with_synthetic = concat(decisions, [superseded])
+  (match authorize_work(question_id: "first-world", decisions: decisions) {
+    Authorized => true
+    AuthorizationRefused { cause } => false
+  })
+    && (match authorize_work(question_id: "licensing-model", decisions: decisions) {
+      Authorized => false
+      AuthorizationRefused { cause } =>
+        match cause {
+          DecisionNotSelected => true
+          DecisionNotFound => false
+          DecisionSuperseded => false
+        }
+    })
+    && (match authorize_work(question_id: "old-question", decisions: with_synthetic) {
+      Authorized => false
+      AuthorizationRefused { cause } =>
+        match cause {
+          DecisionSuperseded => true
+          DecisionNotFound => false
+          DecisionNotSelected => false
+        }
+    })
+    && (match authorize_work(question_id: "never-declared", decisions: decisions) {
+      Authorized => false
+      AuthorizationRefused { cause } =>
+        match cause {
+          DecisionNotFound => true
+          DecisionNotSelected => false
+          DecisionSuperseded => false
+        }
+    })
+}
+
+fn witness_claims_unsupported_today_and_flip_with_evidence_holds() -> Bool {
+  let full = ["audience-scoped-node-disclosure", "sealed-execution"]
+  all(product_claims, c =>
+    match claim_status(claim: c, observed_capability_ids: observed_capability_id_list()) {
+      ClaimSupported => false
+      ClaimUnsupported { missing_capability_ids } => count(missing_capability_ids) == count(c.requires_capability_ids)
+    })
+    && all(product_claims, c =>
+      match claim_status(claim: c, observed_capability_ids: full) {
+        ClaimSupported => true
+        ClaimUnsupported { missing_capability_ids } => false
+      })
+}
+
+fn witness_journey_stage_is_derived_from_receipts_holds() -> Bool {
+  let no_receipts = derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: [])
+  let three = derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: [
+    StepReceipt { from_id: "identified", to_id: "qualified", receipt_kind: "QualifiedPartnerReceipt", evidence: "synthetic" },
+    StepReceipt { from_id: "qualified", to_id: "problem-confirmed", receipt_kind: "ProblemInterviewReceipt", evidence: "synthetic" },
+    StepReceipt { from_id: "problem-confirmed", to_id: "shadow-connected", receipt_kind: "ShadowInstallationReceipt", evidence: "synthetic" },
+  ])
+  (match no_receipts {
+    ProgressAt { stage_id } => stage_id == "identified"
+    ProgressStopped { cause } => false
+    ProgressRefused { cause } => false
+  })
+    && (match three {
+      ProgressAt { stage_id } => stage_id == "shadow-connected"
+      ProgressStopped { cause } => false
+      ProgressRefused { cause } => false
+    })
+}
+
+fn witness_journey_refusals_are_typed_holds() -> Bool {
+  let skip = derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: [
+    StepReceipt { from_id: "qualified", to_id: "problem-confirmed", receipt_kind: "ProblemInterviewReceipt", evidence: "synthetic" },
+  ])
+  let wrong_kind = derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: [
+    StepReceipt { from_id: "identified", to_id: "qualified", receipt_kind: "SomeOtherReceipt", evidence: "synthetic" },
+  ])
+  let stopped = derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: [
+    StopReceipt { cause: TrustBoundaryRejected, evidence: "synthetic" },
+  ])
+  let after_stop = derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: [
+    StopReceipt { cause: TrustBoundaryRejected, evidence: "synthetic" },
+    StepReceipt { from_id: "identified", to_id: "qualified", receipt_kind: "QualifiedPartnerReceipt", evidence: "synthetic" },
+  ])
+  (match skip {
+    ProgressRefused { cause } =>
+      match cause {
+        ReceiptFromNoncurrentStage => true
+        ReceiptAfterStop => false
+        TransitionNotDeclaredOrKindMismatch => false
+      }
+    ProgressAt { stage_id } => false
+    ProgressStopped { cause } => false
+  })
+    && (match wrong_kind {
+      ProgressRefused { cause } =>
+        match cause {
+          TransitionNotDeclaredOrKindMismatch => true
+          ReceiptAfterStop => false
+          ReceiptFromNoncurrentStage => false
+        }
+      ProgressAt { stage_id } => false
+      ProgressStopped { cause } => false
+    })
+    && (match stopped {
+      ProgressStopped { cause } =>
+        match cause {
+          TrustBoundaryRejected => true
+          ProblemNotMaterial => false
+          InstallationCostTooHigh => false
+          ImprovementNotObserved => false
+          EconomicCaseAbsent => false
+          TimingMismatch => false
+          OtherLocatedCause { note } => false
+        }
+      ProgressAt { stage_id } => false
+      ProgressRefused { cause } => false
+    })
+    && (match after_stop {
+      ProgressRefused { cause } =>
+        match cause {
+          ReceiptAfterStop => true
+          ReceiptFromNoncurrentStage => false
+          TransitionNotDeclaredOrKindMismatch => false
+        }
+      ProgressAt { stage_id } => false
+      ProgressStopped { cause } => false
+    })
+}
+
+fn witness_forecast_derives_and_refuses_holds() -> Bool {
+  let ok = derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: baseline_acquisition_scenario })
+  let broken_rate = AcquisitionScenario {
+    entry_stage_label: "click",
+    entry_unit_cost: MoneyOnce { amount: money_amount_micro(count: 3000000), currency: Usd },
+    steps: [
+      AcquisitionStageStep { stage_label: "signup", assumed_rate: ConversionRate { num: 0, denom: 20 } },
+      AcquisitionStageStep { stage_label: "activated", assumed_rate: ConversionRate { num: 2, denom: 5 } },
+    ],
+  }
+  let free_click = AcquisitionScenario {
+    entry_stage_label: "click",
+    entry_unit_cost: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
+    steps: [
+      AcquisitionStageStep { stage_label: "signup", assumed_rate: ConversionRate { num: 1, denom: 20 } },
+      AcquisitionStageStep { stage_label: "activated", assumed_rate: ConversionRate { num: 2, denom: 5 } },
+    ],
+  }
+  (match ok {
+    AcquisitionForecastDerived { forecast } =>
+      (match acquisition_forecast_cost_floor_micros(forecast: forecast) {
+        Present { value } => value == 150000000
+        Absent => false
+      })
+        && forecast.outcome_stage_label == "activated"
+    AcquisitionForecastRefused { cause } => false
+  })
+    && (match derive_acquisition_cost_forecast(input: AcquisitionScenarioUnknown) {
+      AcquisitionForecastDerived { forecast } => false
+      AcquisitionForecastRefused { cause } =>
+        match cause {
+          ScenarioUnknown => true
+          ZeroEntryUnitCost => false
+          EmptyFunnel => false
+          ZeroConversionNumerator { stage_label } => false
+          ZeroConversionCohort { stage_label } => false
+          ConversionRateExceedsUnity { stage_label } => false
+        }
+    })
+    && (match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: broken_rate }) {
+      AcquisitionForecastDerived { forecast } => false
+      AcquisitionForecastRefused { cause } =>
+        match cause {
+          ZeroConversionNumerator { stage_label } => stage_label == "signup"
+          ScenarioUnknown => false
+          ZeroEntryUnitCost => false
+          EmptyFunnel => false
+          ZeroConversionCohort { stage_label } => false
+          ConversionRateExceedsUnity { stage_label } => false
+        }
+    })
+    && (match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: free_click }) {
+      AcquisitionForecastDerived { forecast } => false
+      AcquisitionForecastRefused { cause } =>
+        match cause {
+          ZeroEntryUnitCost => true
+          ScenarioUnknown => false
+          EmptyFunnel => false
+          ZeroConversionNumerator { stage_label } => false
+          ZeroConversionCohort { stage_label } => false
+          ConversionRateExceedsUnity { stage_label } => false
+        }
+    })
+}
+
+fn witness_experiment_stop_condition_cannot_be_silently_continued_holds() -> Bool {
+  (match experiment_continuation(stop_receipts: []) {
+    ExperimentMayContinue => true
+    ExperimentMustStop { cause } => false
+  })
+    && (match experiment_continuation(stop_receipts: [StopReceipt { cause: EconomicCaseAbsent, evidence: "synthetic budget cap" }]) {
+      ExperimentMustStop { cause } =>
+        match cause {
+          EconomicCaseAbsent => true
+          ProblemNotMaterial => false
+          TrustBoundaryRejected => false
+          InstallationCostTooHigh => false
+          ImprovementNotObserved => false
+          TimingMismatch => false
+          OtherLocatedCause { note } => false
+        }
+      ExperimentMayContinue => false
+    })
+}
+
+fn vision_id_known(id: String) -> Bool {
+  fold(visions, init: false, f: fn(acc, v) { acc || v.id == id })
+}
+
+fn reason_resolves(r: StrategicReason) -> Bool {
+  match r {
+    DeliversCapability { capability_id } => capability_id_known(id: capability_id)
+    ServesOutcome { outcome_id } => outcome_id_known(id: outcome_id)
+    TestsHypothesis { hypothesis_id } => hypothesis_id_known(id: hypothesis_id)
+    RequiredByDecision { question_id } => decision_count_with_question(id: question_id) == 1
+    ServesVision { vision_id } => vision_id_known(id: vision_id)
+  }
+}
+
+fn lane_bound(owner: String) -> Bool {
+  fold(lane_bindings, init: false, f: fn(acc, b) { acc || b.lane_owner == owner })
+}
+
+fn lane_acknowledged(owner: String) -> Bool {
+  fold(unbound_lanes_acknowledged, init: false, f: fn(acc, a) { acc || a.lane_owner == owner })
+}
+
+fn declared_owner_exists(owner: String) -> Bool {
+  fold(declared_roadmap_nodes(), init: false, f: fn(acc, n) { acc || n.owner == owner })
+}
+
+fn witness_every_active_roadmap_lane_has_strategic_reason_holds() -> Bool {
+  match active_roadmap_nodes_projection() {
+    ActiveRoadmapNodesProjectionRefused { detail } => false
+    ActiveRoadmapNodesProjected { nodes } =>
+  count(nodes) > 0
+    && all(nodes, n => lane_bound(owner: n.owner) || lane_acknowledged(owner: n.owner))
+    && all(lane_bindings, b => reason_resolves(r: b.reason))
+    && all(lane_bindings, b => declared_owner_exists(owner: b.lane_owner))
+    && all(unbound_lanes_acknowledged, a => !(a.trigger == ""))
+  }
+}
+
+fn witness_node_grain_bindings_target_real_roadmap_nodes_holds() -> Bool {
+  all(roadmap_bindings, b =>
+    fold(declared_roadmap_nodes(), init: false, f: fn(acc, n) { acc || n.node == nid(s: b.roadmap_node_id) }))
+}
+
+// THE PROJECTION CAN REFUSE, AND A REFUSAL IS NOT AN EMPTY LIST. gunbc.roadmap.roadmap_authority
+// returns ActiveRoadmapNodesProjection -- a coproduct whose other arm carries a refusal detail --
+// where it previously returned a bare list. (Its accepted-ids counterpart was deleted outright by
+// gunb-ai/gunbc#11310; see public_accepted_roadmap_set below.) Collapsing the refused arm to []
+// would be the absorbing fallback DESIGN section 5 names: every `all` over it becomes vacuously true, and
+// a negated `fold` over it flips to true as well, so the SAME collapse fails closed in one polarity and
+// OPEN in the other. That is why the projections are matched at the test level and the already-projected
+// lists are passed down, rather than a helper deciding what a refusal means on its own.
+fn accepted_in_authority(accepted: List<RoadmapNodeId>, node_id: String) -> Bool {
+  fold(accepted, init: false, f: fn(acc, a) { acc || a == nid(s: node_id) })
+}
+
+fn capability_evidence_valid(accepted: List<RoadmapNodeId>, o: ObservedCapability) -> Bool {
+  capability_id_known(id: o.capability_id)
+    && match o.evidence {
+      RoadmapAccepted { roadmap_node_id } => accepted_in_authority(accepted: accepted, node_id: roadmap_node_id)
+      CapabilityDirectlyObserved { receipt } => !(receipt == "")
+    }
+}
+
+// THE PUBLIC ACCEPTED SET IS GONE, AND AN EMPTY ONE IS NOT A SUBSTITUTE. gunb-ai/gunbc#11310 deleted
+// accepted_roadmap_node_ids_projection and its three coproduct names at the root; the only surviving
+// mentions in the public tree are annotations explaining the deletion. The reasoning there is sound
+// -- the fold's RED was not authorable under the hermetic witness route, so deleting beat decorating
+// -- and it leaves this private consumer with no authority to join against.
+//
+// SUBSTITUTING [] IS THE TRAP THE ANNOTATION ABOVE ALREADY NAMES, now for the carrier rather than
+// its refusal arm: over the negated `fold` an empty accepted set makes every active node trivially
+// not-accepted, and over capability_evidence_valid it makes every RoadmapAccepted capability INVALID.
+// One collapse, failing open in one polarity and closed in the other. So the absence is typed.
+type PublicAcceptedRoadmapSet
+  = AcceptedSetProjected { ids: List<RoadmapNodeId> }
+  | AcceptedSetUnavailable { missing_authority: NonEmptyStr, restoration_trigger: NonEmptyStr }
+
+data public_accepted_roadmap_set: PublicAcceptedRoadmapSet = AcceptedSetUnavailable {
+  missing_authority: "a public projection of the ACCEPTED roadmap node id set: gunbc.roadmap_authority accepted_roadmap_node_ids_projection and its AcceptedRoadmapNodeIdsProjection coproduct, deleted at the root by gunb-ai/gunbc#11310 with no successor",
+  restoration_trigger: "a public authority again projects the accepted roadmap node id set and resolves in this closure; this witness then takes the AcceptedSetProjected arm and the capability-evidence join executes again unchanged",
+}
+
+// THE PROJECTED ARM IS RETAINED AND DOES NOT EXECUTE TODAY, deliberately. It is the whole wall --
+// every observed capability's RoadmapAccepted evidence naming a genuinely accepted node, active
+// nodes disjoint from accepted, and a never-declared node refused. Deleting it while the authority
+// is missing would erase the check rather than suspend it, and nothing would remain to restore when
+// the trigger fires. It is a declared frontier, not a live claim, and the standing above says so.
+//
+// THE UNAVAILABLE ARM ASSERTS NOTHING -- it returns false, so this fn cannot be read as a green
+// wall while the authority is gone, which is why it is not enrolled. The always-checkable half did
+// NOT vanish with it: the capability population and its ids are this repository's OWN facts and need
+// no public authority, so that half now lives in witness_observed_capability_ids_are_declared, which
+// IS enrolled in strategy_witness_main. Only the ACCEPTANCE half is suspended here, and the standing
+// above must name what would restore it.
+//
+// IT NO LONGER CHECKS THAT THE STANDING'S PROSE IS NON-BLANK, AND THAT IS A CLIMB RATHER THAN A LOSS.
+// The arm used to assert missing_authority != "" && restoration_trigger != "" -- two fields of a data
+// row declared a few lines above, in this same file, whose only RED was reachable by editing that
+// adjacent declaration. That is validation standing where construction was available. Both fields are
+// NonEmptyStr now, and this is the LITERAL-into-a-refined-field position that strategy.selfhost_coverage
+// records as MEASURED ENFORCING: a blank literal there is refused and the same construction with a
+// non-blank literal compiles. So the blank is unwritable and the check had nothing left to catch.
+//
+// WHY > 0 AND NOT == 1. The guard exists to close the vacuous-`all` trap: an EMPTY
+// observed_capabilities would make every `all` below it trivially true, so the population must be
+// non-empty for those assertions to mean anything. That is what the guard is FOR, and non-emptiness
+// is the whole of it. `== 1` additionally pinned a live production population to a numeric literal
+// with nothing grounding the number -- no fixture, no external authority, no policy budget, no debt
+// contract -- so adding a second observed capability would have reddened this witness for no reason
+// and been silently bumped, which is DESIGN 5's change-detector: automate the literal's update and
+// the assertion collapses to measure() == measure().
+//
+// witness_instantiation_counts_and_honest_emptiness below was a whole witness of exactly this shape
+// over live populations; it was repaired literal by literal when it was wired into
+// strategy_witness_main, and its annotation records each disposition.
+
+// A SUSPENDED WALL DOES NOT REPORT PASS. The Unavailable arm used to return true from a capability-id
+// check that says NOTHING about the public accepted set -- so a witness NAMED for consistency with a
+// public authority reported GREEN while testing no such thing. That is not the decoration this file
+// argues against a few lines up; it is worse. capability_id_known's RED really is authorable, so the
+// check was not inert -- what was unauthorable was a RED FOR THE THING THE NAME CLAIMS. A decoration
+// wastes a line; a misnamed green ANSWERS THE WRONG QUESTION CORRECTLY, and the name is exactly what
+// someone greps to ask whether the public-authority join is still covered.
+//
+// AND IT WAS INTRODUCED HERE. PublicAcceptedRoadmapSet and both its arms are new in this change, so
+// this is not inherited debt to hand on.
+//
+// So the arm now REFUSES. While the authority is missing this witness CANNOT establish its claim and
+// therefore does not assert it: the wall is suspended by FAILING CLOSED, not by passing vacuously.
+// It IS wired into strategy_witness_main, and its red is a declared cause on the KnownRed row in
+// strategy.private_witness_workflow, retired by the restoration trigger above rather than by any
+// edit to this arm. The
+// always-checkable half moved to witness_observed_capability_ids_are_declared, which is named for
+// what it actually tests.
+fn witness_capability_evidence_consistent_with_public_authority_holds() -> Bool {
+  match public_accepted_roadmap_set {
+    AcceptedSetProjected { ids: accepted } =>
+      match active_roadmap_nodes_projection() {
+        ActiveRoadmapNodesProjectionRefused { detail } => false
+        ActiveRoadmapNodesProjected { nodes } =>
+  count(observed_capabilities) > 0
+    && all(observed_capabilities, o => capability_evidence_valid(accepted: accepted, o: o))
+    && all(nodes, n =>
+         !fold(accepted, init: false, f: fn(acc, a) { acc || a == n.node }))
+    && !capability_evidence_valid(accepted: accepted, o: ObservedCapability {
+         capability_id: "source-integration-landing-dashboard",
+         evidence: RoadmapAccepted { roadmap_node_id: "never-declared-node" },
+       })
+      }
+    AcceptedSetUnavailable { missing_authority, restoration_trigger } => false
+  }
+}
+
+fn engagement_count_with_id(id: String) -> Nat {
+  fold(engagements, init: 0, f: fn(acc, e) { if e.id == id { acc + 1 } else { acc } })
+}
+
+// count(engagements) > 0 guards the uniqueness `all` against vacuity. The former literals -- 3
+// engagements, 2 of them TechnicalValidator -- counted operator-authored rows with no authority fixing
+// either number, so the validator count is LEFT OUT rather than weakened: nothing this witness names
+// (first partner is self, stage derives from real receipts) depends on how many validators exist,
+// and no closed population exists to join against.
+fn witness_first_partner_is_self_and_stage_derives_from_real_receipts_holds() -> Bool {
+  count(engagements) > 0
+    && all(engagements, e => engagement_count_with_id(id: e.id) == 1)
+    && (match derive_stage(rules: design_partner_rules, initial_stage_id: "identified", receipts: eng000_journey_receipts) {
+      ProgressAt { stage_id } => stage_id == "problem-confirmed"
+      ProgressStopped { cause } => false
+      ProgressRefused { cause } => false
+    })
+}
+
+fn venture_era_count_with_id(id: String) -> Nat {
+  fold(venture_eras, init: 0, f: fn(acc, e) { if e.id == id { acc + 1 } else { acc } })
+}
+
+fn venture_event_count_with_id(id: String) -> Nat {
+  fold(timeline_events, init: 0, f: fn(acc, e) { if e.id == id { acc + 1 } else { acc } })
+}
+
+fn venture_event_era_resolves(e: TimelineEvent) -> Bool {
+  venture_era_count_with_id(id: e.era_id) == 1
+}
+
+fn venture_evidence_cited(a: EvidenceAnchor) -> Bool {
+  !(a.repo == "") && !(a.reference == "")
+}
+
+// NON-EMPTINESS, NOT A COUNT: every conjunct is an `all` over these lists. 6 eras and 10 events were
+// the lists' current sizes; a new dated event is exactly what this carrier exists to accept.
+fn witness_timeline_eras_and_events_resolve_with_evidence_holds() -> Bool {
+  count(venture_eras) > 0
+    && count(timeline_events) > 0
+    && all(venture_eras, e => venture_era_count_with_id(id: e.id) == 1)
+    && all(timeline_events, e => venture_event_count_with_id(id: e.id) == 1)
+    && all(timeline_events, e => venture_event_era_resolves(e: e))
+    && all(venture_eras, e => !(e.started_on == "") && venture_evidence_cited(a: e.start_evidence))
+    && all(venture_eras, e =>
+         match e.close {
+           EraOpen => true
+           EraClosed { on, evidence } => !(on == "") && venture_evidence_cited(a: evidence)
+         })
+    && all(timeline_events, e => !(e.occurred_on == "") && venture_evidence_cited(a: e.evidence))
+    && !venture_event_era_resolves(e: TimelineEvent {
+         id: "synthetic",
+         era_id: "never-declared-era",
+         occurred_on: "2026-01-01",
+         statement: "negative control",
+         evidence: EvidenceAnchor { repo: "x", reference: "y", note: "" },
+       })
+}
+
+fn lineage_generation_count_with_ordinal(ordinal: Nat) -> Nat {
+  fold(compiler_generations, init: 0, f: fn(acc, g) { if g.ordinal == ordinal { acc + 1 } else { acc } })
+}
+
+fn lineage_substrate_is_rust(ordinal: Nat) -> Bool {
+  fold(compiler_generations, init: false, f: fn(acc, g) {
+    acc || (g.ordinal == ordinal && match g.substrate { RustCompiler => true  DagCompiler => false })
+  })
+}
+
+fn lineage_substrate_is_dag(ordinal: Nat) -> Bool {
+  fold(compiler_generations, init: false, f: fn(acc, g) {
+    acc || (g.ordinal == ordinal && match g.substrate { DagCompiler => true  RustCompiler => false })
+  })
+}
+
+fn lineage_edge_is_rust_to_dag(e: SuccessionEdge) -> Bool {
+  lineage_substrate_is_rust(ordinal: e.from_ordinal) && lineage_substrate_is_dag(ordinal: e.to_ordinal)
+}
+
+fn lineage_outgoing_succession_count(ordinal: Nat) -> Nat {
+  fold(succession_edges, init: 0, f: fn(acc, e) { if e.from_ordinal == ordinal { acc + 1 } else { acc } })
+}
+
+fn lineage_host_resolves(g: CompilerGeneration) -> Bool {
+  match g.host {
+    SelfNativeRust => true
+    RustSeedInterpreter => true
+    HostedByGeneration { ordinal } => lineage_substrate_is_dag(ordinal: ordinal)
+  }
+}
+
+fn lineage_alive_current_names() -> List<String> {
+  fold(compiler_generations, init: [], f: fn(acc, g) {
+    match g.fate {
+      GenerationAlive { current_name, role } => concat(acc, [current_name])
+      GenerationRetired { on, evidence } => acc
+      GenerationDeleted { on, evidence, migrated_role } => acc
+    }
+  })
+}
+
+// The generation and edge counts (4, 2) become non-emptiness guards for the `all`s. What the name
+// claims survives as structure rather than as a number: every edge is rust-to-dag, every retired
+// generation has exactly one successor, every alive one has none. The alive set stays an IDENTITY
+// JOIN -- exactly {v1, v2}, stated as mutual membership rather than as a count of 2.
+fn witness_lineage_two_rust_to_dag_successions_holds() -> Bool {
+  count(compiler_generations) > 0
+    && count(succession_edges) > 0
+    && all(compiler_generations, g => lineage_generation_count_with_ordinal(ordinal: g.ordinal) == 1)
+    && all(compiler_generations, g => !(g.born_on == "") && venture_evidence_cited(a: g.born_evidence))
+    && all(compiler_generations, g => lineage_host_resolves(g: g))
+    && all(succession_edges, e => lineage_edge_is_rust_to_dag(e: e) && venture_evidence_cited(a: e.evidence))
+    && all(compiler_generations, g =>
+         if generation_is_alive(g: g) {
+           lineage_outgoing_succession_count(ordinal: g.ordinal) == 0
+         } else {
+           lineage_outgoing_succession_count(ordinal: g.ordinal) == 1
+         })
+    && id_in_list(id: "v1", ids: lineage_alive_current_names())
+    && id_in_list(id: "v2", ids: lineage_alive_current_names())
+    && all(lineage_alive_current_names(), n => id_in_list(id: n, ids: ["v1", "v2"]))
+    && !lineage_edge_is_rust_to_dag(e: SuccessionEdge {
+         from_ordinal: 2,
+         to_ordinal: 3,
+         evidence: EvidenceAnchor { repo: "x", reference: "negative control: dag-to-rust succession never happened", note: "" },
+       })
+}
+
+// The open-era count (3) and alive-generation count (2) are LEFT OUT. Neither had an authority, and
+// neither is the claim: "derived, never stored" is carried by the two named eras below, whose
+// openness is read through era_is_open rather than a stored field. The alive set is already an
+// identity join in witness_lineage_two_rust_to_dag_successions; a second copy as a count adds only a
+// change detector.
+fn witness_present_state_is_derived_never_stored_holds() -> Bool {
+  all(venture_eras, e => if e.id == "era-substrate" { era_is_open(e: e) } else { true })
+    && all(venture_eras, e => if e.id == "era-platform-push" { !era_is_open(e: e) } else { true })
+}
+
+fn projection_horizon_count_now() -> Nat {
+  fold(projected_steps, init: 0, f: fn(acc, s) {
+    match s.horizon { HorizonNow => acc + 1  HorizonNext => acc  HorizonLater => acc }
+  })
+}
+
+fn projection_horizon_count_later() -> Nat {
+  fold(projected_steps, init: 0, f: fn(acc, s) {
+    match s.horizon { HorizonLater => acc + 1  HorizonNow => acc  HorizonNext => acc }
+  })
+}
+
+// NON-EMPTINESS, NOT COUNTS. 6 steps, 2 now, 2 later were current sizes; the guard is that the
+// `all`s are not vacuous and that the projection has both a present and a later horizon.
+fn witness_projection_grounded_in_strategy_without_fabricated_dates_holds() -> Bool {
+  count(projected_steps) > 0
+    && all(projected_steps, s => reason_resolves(r: s.advances))
+    && all(projected_steps, s => !(s.begins_when == ""))
+    && projection_horizon_count_now() > 0
+    && projection_horizon_count_later() > 0
+    && !reason_resolves(r: DeliversCapability { capability_id: "never-declared-capability" })
+}
+
+fn cadence_reading_count_in_window(w: CadenceWindow, want_daily: Bool, want_weekly: Bool, want_monthly: Bool, want_quarterly: Bool, want_yearly: Bool) -> Bool {
+  match w {
+    DailyWindow => want_daily
+    WeeklyWindow => want_weekly
+    MonthlyWindow => want_monthly
+    QuarterlyWindow => want_quarterly
+    YearlyWindow => want_yearly
+  }
+}
+
+fn cadence_window_reading_count(want_daily: Bool, want_weekly: Bool, want_monthly: Bool, want_quarterly: Bool, want_yearly: Bool) -> Nat {
+  fold(tangent_readings, init: 0, f: fn(acc, r) {
+    if cadence_reading_count_in_window(w: r.window, want_daily: want_daily, want_weekly: want_weekly, want_monthly: want_monthly, want_quarterly: want_quarterly, want_yearly: want_yearly) { acc + 1 } else { acc }
+  })
+}
+
+// COVERAGE IS AN IDENTITY JOIN OVER A CLOSED UNIVERSE: CadenceWindow is a five-variant coproduct, and
+// each variant is checked to carry a reading. The former total (== 5) and per-window (== 1) literals
+// asserted uniqueness no authority states -- a second daily reading is not a defect this witness
+// names -- so each becomes >= 1, which is what "cover all windows" means.
+fn witness_cadence_tangent_readings_cover_all_windows_and_align_holds() -> Bool {
+  count(tangent_readings) > 0
+    && cadence_window_reading_count(want_daily: true, want_weekly: false, want_monthly: false, want_quarterly: false, want_yearly: false) > 0
+    && cadence_window_reading_count(want_daily: false, want_weekly: true, want_monthly: false, want_quarterly: false, want_yearly: false) > 0
+    && cadence_window_reading_count(want_daily: false, want_weekly: false, want_monthly: true, want_quarterly: false, want_yearly: false) > 0
+    && cadence_window_reading_count(want_daily: false, want_weekly: false, want_monthly: false, want_quarterly: true, want_yearly: false) > 0
+    && cadence_window_reading_count(want_daily: false, want_weekly: false, want_monthly: false, want_quarterly: false, want_yearly: true) > 0
+    && all(tangent_readings, r => !(r.read_on == "") && !(r.direction == ""))
+    && all(tangent_readings, r => !(r.magnitude_evidence.repo == "") && !(r.magnitude_evidence.reference == ""))
+    && all(tangent_readings, r => reason_resolves(r: r.projects_onto))
+    && !reason_resolves(r: DeliversCapability { capability_id: "orphan-movement-control" })
+}
+
+// EIGHT LITERALS, THREE DISPOSITIONS. Every one was the current length of a production list, which a
+// merge-blocking test may not compare to (DESIGN section 5).
+// - observed_capabilities, constraints, visibility_audiences, market_segments, experiments,
+//   hypotheses: > 0. No authority fixes these sizes, and the honest-emptiness guard is non-emptiness:
+//   each is consumed by an `all` elsewhere in this file that is vacuous over [].
+// - design_partner_stages and design_partner_rules: an IDENTITY JOIN instead of 7 and 6. The journey
+//   is a linear chain (strategy-kernel directive: "Design-partner journey states ... Transitions
+//   require receipts"), so the population is closed by its own structure: stage ids and orders are
+//   unique, every rule's endpoints are declared stages, and every stage except the initial one has
+//   exactly one incoming rule. That derives rules = stages - 1 without writing either number.
+fn journey_stage_known(id: String) -> Bool {
+  fold(design_partner_stages, init: false, f: fn(acc, s) { acc || s.id == id })
+}
+
+fn journey_incoming_rule_count(stage_id: String) -> Nat {
+  fold(design_partner_rules, init: 0, f: fn(acc, r) { if r.to_id == stage_id { acc + 1 } else { acc } })
+}
+
+fn journey_stage_count_with_id(id: String) -> Nat {
+  fold(design_partner_stages, init: 0, f: fn(acc, s) { if s.id == id { acc + 1 } else { acc } })
+}
+
+fn journey_stage_count_with_order(order: Nat) -> Nat {
+  fold(design_partner_stages, init: 0, f: fn(acc, s) { if s.order == order { acc + 1 } else { acc } })
+}
+
+fn witness_instantiation_counts_and_honest_emptiness_holds() -> Bool {
+  count(observed_capabilities) > 0
+    && count(constraints) > 0
+    && count(visibility_audiences) > 0
+    && count(market_segments) > 0
+    && count(experiments) > 0
+    && count(hypotheses) > 0
+    && count(design_partner_stages) > 0
+    && all(design_partner_stages, s => journey_stage_count_with_id(id: s.id) == 1 && journey_stage_count_with_order(order: s.order) == 1)
+    && all(design_partner_rules, r => journey_stage_known(id: r.from_id) && journey_stage_known(id: r.to_id))
+    && all(design_partner_stages, s =>
+         if s.order == 0 { journey_incoming_rule_count(stage_id: s.id) == 0 } else { journey_incoming_rule_count(stage_id: s.id) == 1 })
+    && count(design_partner_rules) + 1 == count(design_partner_stages)
+}
+
+fn program_obligation_count_with_id(id: String) -> Nat {
+  fold(program_obligations, init: 0, f: fn(acc, o) { if o.id == id { acc + 1 } else { acc } })
+}
+
+fn program_obligation_known(id: String) -> Bool {
+  program_obligation_count_with_id(id: id) == 1
+}
+
+fn program_first_contract() -> StrategicContract {
+  fold(program_contracts, init: StrategicContract {
+    id: "",
+    statement: "",
+    acceptance_criteria: [],
+    constraint_ids: [],
+    adoption: DecisionReceipt { authority: "", decided_on: "", rationale: "" },
+  }, f: fn(acc, c) { if acc.id == "" { c } else { acc } })
+}
+
+fn program_first_amendment() -> ContractAmendment {
+  fold(contract_amendments, init: ContractAmendment {
+    id: "",
+    subject_contract: "",
+    previous_criteria: [],
+    summary: "",
+    receipt: DecisionReceipt { authority: "", decided_on: "", rationale: "" },
+    evidence: "",
+  }, f: fn(acc, a) { if acc.id == "" { a } else { acc } })
+}
+
+fn program_contract_known(id: String) -> Bool {
+  fold(program_contracts, init: false, f: fn(acc, c) { acc || c.id == id })
+}
+
+fn program_obligation_count_for_contract(contract_id: String) -> Nat {
+  fold(program_obligations, init: 0, f: fn(acc, o) { if o.parent_contract == contract_id { acc + 1 } else { acc } })
+}
+
+fn program_contract_by_id(id: String) -> StrategicContract {
+  fold(program_contracts, init: StrategicContract {
+    id: "",
+    statement: "",
+    acceptance_criteria: [],
+    constraint_ids: [],
+    adoption: DecisionReceipt { authority: "", decided_on: "", rationale: "" },
+  }, f: fn(acc, c) { if c.id == id { c } else { acc } })
+}
+
+fn program_contract_for_obligation(obligation_id: String) -> StrategicContract {
+  let parent = fold(program_obligations, init: "", f: fn(acc, o) { if o.id == obligation_id { o.parent_contract } else { acc } })
+  program_contract_by_id(id: parent)
+}
+
+// Seven population literals become non-emptiness guards for the `all`s below. The four per-contract
+// obligation counts (7, 6, 11, 1) were each a copy of a fact another record already carries: a
+// decomposition row's child_obligation_ids IS the contract's declared obligation set. So each is
+// replaced by an IDENTITY JOIN against that record -- the contract's obligations and its
+// decomposition's children are the same set -- and the one contract with no decomposition
+// (production cutover, whose DecompositionMissing is witnessed elsewhere) keeps only non-emptiness.
+fn program_decomposition_children_equal_obligations(d: ProgramDecomposition) -> Bool {
+  all(d.child_obligation_ids, oid =>
+       fold(program_obligations, init: false, f: fn(acc, o) { acc || (o.id == oid && o.parent_contract == d.parent_contract) }))
+    && all(program_obligations, o =>
+         if o.parent_contract == d.parent_contract { id_in_list(id: o.id, ids: d.child_obligation_ids) } else { true })
+}
+
+fn witness_program_contract_graph_resolves_holds() -> Bool {
+  count(program_contracts) > 0
+    && count(program_obligations) > 0
+    && count(program_decompositions) > 0
+    && count(work_contributions) > 0
+    && count(work_observations) > 0
+    && count(contract_amendments) > 0
+    && count(obligation_prerequisites) > 0
+    && all(program_decompositions, d => program_decomposition_children_equal_obligations(d: d))
+    && program_obligation_count_for_contract(contract_id: "contract-v2-production-cutover") > 0
+    && all(obligation_prerequisites, p => program_obligation_known(id: p.blocker_obligation) && program_obligation_known(id: p.blocked_obligation))
+    && all(program_obligations, o => program_contract_known(id: o.parent_contract))
+    && all(program_obligations, o => program_obligation_count_with_id(id: o.id) == 1)
+    && all(program_decompositions, d => program_contract_known(id: d.parent_contract) && all(d.child_obligation_ids, oid => program_obligation_known(id: oid)))
+    && all(work_contributions, b => program_obligation_known(id: b.obligation_id) && !(b.work_ref == "") && !(b.maximum_conclusion == ""))
+    && all(work_observations, o => !(o.observed_on == "") && !(o.subject_revision == "") && venture_evidence_cited(a: o.evidence))
+    && all(program_decompositions, d => match d.coverage { PartialCoverage { open_note } => !(open_note == "")  CompleteCoverage { receipt } => true })
+    && all(contract_amendments, a => program_contract_known(id: a.subject_contract) && count(a.previous_criteria) > 0 && !(a.evidence == ""))
+    && !program_obligation_known(id: "obl-never-declared")
+    && !program_contract_known(id: "contract-never-declared")
+}
+
+fn program_binding_count(work_ref: String, obligation_id: String) -> Nat {
+  fold(work_contributions, init: 0, f: fn(acc, b) {
+    if b.work_ref == work_ref && b.obligation_id == obligation_id { acc + 1 } else { acc }
+  })
+}
+
+fn witness_binding_discharges_exact_obligation_never_neighbor_holds() -> Bool {
+  program_binding_count(work_ref: "gunb-ai/gunbc#7599", obligation_id: "obl-native-witness-execution") == 1
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7599", obligation_id: "obl-cross-invocation-reuse") == 0
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7534", obligation_id: "obl-cross-invocation-reuse") == 1
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7534", obligation_id: "obl-pre-index-lookup") == 0
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7522", obligation_id: "obl-native-witness-execution") == 0
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7628", obligation_id: "obl-no-duplicate-stage-work") == 1
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7628", obligation_id: "obl-cross-invocation-reuse") == 0
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7264", obligation_id: "obl-translate-instantiation-wrap-decision") == 1
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7264", obligation_id: "obl-remaining-stages-self-emit") == 0
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7627", obligation_id: "obl-frontier-classifier-totality") == 1
+    && program_binding_count(work_ref: "gunb-ai/gunbc#7627", obligation_id: "obl-first-module-behavioral-replacement") == 0
+}
+
+fn witness_contract_amendment_invalidates_stale_bindings_holds() -> Bool {
+  let contract = program_first_contract()
+  let current = strategy_contract_digest(c: contract)
+  let am = program_first_amendment()
+  let stale_specimen = WorkContribution {
+    id: "wc-stale-control",
+    work_ref: "gunb-ai/gunbc#7599",
+    obligation_id: "obl-native-witness-execution",
+    kind: DischargesObligation,
+    maximum_conclusion: "negative control: bound against the pre-amendment five-minute criteria",
+    parent_criteria_digest: strategy_criteria_digest(criteria: am.previous_criteria),
+  }
+  all(work_contributions, b =>
+      match strategy_contribution_status(b: b, contract: program_contract_for_obligation(obligation_id: b.obligation_id), observations: work_observations) {
+        ContributionStale { bound_digest, current_digest } => false
+        ContributionUnobserved => false
+        ContributionObserved { outcome, observed_on } => !(observed_on == "")
+      })
+    && (match strategy_contribution_status(b: stale_specimen, contract: contract, observations: work_observations) {
+      ContributionStale { bound_digest, current_digest } => current_digest == current && !(bound_digest == current)
+      ContributionUnobserved => false
+      ContributionObserved { outcome, observed_on } => false
+    })
+    && !(strategy_criteria_digest(criteria: am.previous_criteria) == current)
+}
+
+fn witness_contract_completion_refuses_below_complete_holds() -> Bool {
+  let contract = program_first_contract()
+  let real = strategy_contract_completion(contract: contract, decompositions: program_decompositions, bindings: work_contributions, observations: work_observations)
+  let syn_receipt = DecisionReceipt { authority: "operator", decided_on: "2026-08-02", rationale: "synthetic positive control" }
+  let syn_contract = StrategicContract { id: "syn-contract", statement: "synthetic", acceptance_criteria: ["only clause"], constraint_ids: [], adoption: syn_receipt }
+  let syn_digest = strategy_contract_digest(c: syn_contract)
+  let syn_dec = ProgramDecomposition { id: "syn-dec", parent_contract: "syn-contract", parent_criteria_digest: syn_digest, child_obligation_ids: ["syn-obl"], composition_rule: "single child", coverage: CompleteCoverage { receipt: syn_receipt } }
+  let syn_binding = WorkContribution { id: "syn-wc", work_ref: "syn#1", obligation_id: "syn-obl", kind: DischargesObligation, maximum_conclusion: "synthetic", parent_criteria_digest: syn_digest }
+  let syn_landed = ObservationReceipt { id: "syn-ob", subject: "syn#1", observed_on: "2026-08-02", subject_revision: "syn", outcome: ObservedLanded, result: "synthetic landed", evidence: EvidenceAnchor { repo: "x", reference: "y", note: "" } }
+  let syn_open = ObservationReceipt { id: "syn-ob2", subject: "syn#1", observed_on: "2026-08-02", subject_revision: "syn", outcome: ObservedInFlight, result: "synthetic open", evidence: EvidenceAnchor { repo: "x", reference: "y", note: "" } }
+  let stale_dec = ProgramDecomposition { id: "syn-dec-stale", parent_contract: "syn-contract", parent_criteria_digest: "criteria|outdated clause", child_obligation_ids: ["syn-obl"], composition_rule: "single child", coverage: CompleteCoverage { receipt: syn_receipt } }
+  (match real {
+    ContractComplete => false
+    ContractCompletionRefused { cause } =>
+      match cause {
+        DecompositionPartial => true
+        DecompositionMissing => false
+        DecompositionNotSingular => false
+        DecompositionStale => false
+        ObligationUnbound { obligation_id } => false
+        ObligationUndischarged { obligation_id } => false
+      }
+  })
+    && (match strategy_contract_completion(contract: syn_contract, decompositions: [syn_dec], bindings: [syn_binding], observations: [syn_landed]) {
+      ContractComplete => true
+      ContractCompletionRefused { cause } => false
+    })
+    && (match strategy_contract_completion(contract: syn_contract, decompositions: [], bindings: [syn_binding], observations: [syn_landed]) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          DecompositionMissing => true
+          DecompositionNotSingular => false
+          DecompositionStale => false
+          DecompositionPartial => false
+          ObligationUnbound { obligation_id } => false
+          ObligationUndischarged { obligation_id } => false
+        }
+    })
+    && (match strategy_contract_completion(contract: syn_contract, decompositions: [stale_dec], bindings: [syn_binding], observations: [syn_landed]) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          DecompositionStale => true
+          DecompositionMissing => false
+          DecompositionNotSingular => false
+          DecompositionPartial => false
+          ObligationUnbound { obligation_id } => false
+          ObligationUndischarged { obligation_id } => false
+        }
+    })
+    && (match strategy_contract_completion(contract: syn_contract, decompositions: [syn_dec], bindings: [], observations: [syn_landed]) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          ObligationUnbound { obligation_id } => obligation_id == "syn-obl"
+          DecompositionMissing => false
+          DecompositionNotSingular => false
+          DecompositionStale => false
+          DecompositionPartial => false
+          ObligationUndischarged { obligation_id } => false
+        }
+    })
+    && (match strategy_contract_completion(contract: syn_contract, decompositions: [syn_dec], bindings: [syn_binding], observations: [syn_open]) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          ObligationUndischarged { obligation_id } => obligation_id == "syn-obl"
+          DecompositionMissing => false
+          DecompositionNotSingular => false
+          DecompositionStale => false
+          DecompositionPartial => false
+          ObligationUnbound { obligation_id } => false
+        }
+    })
+}
+
+fn witness_program_view_is_derived_projection_holds() -> Bool {
+  let contract = program_first_contract()
+  let view = strategy_program_view(contract: contract, obligations: program_obligations, bindings: work_contributions)
+  let planted = concat(work_contributions, [WorkContribution {
+    id: "wc-syn-preindex",
+    work_ref: "syn#2",
+    obligation_id: "obl-pre-index-lookup",
+    kind: DischargesObligation,
+    maximum_conclusion: "synthetic plant proving the view is derived",
+    parent_criteria_digest: strategy_contract_digest(c: contract),
+  }])
+  let view2 = strategy_program_view(contract: contract, obligations: program_obligations, bindings: planted)
+  count(view) == program_obligation_count_for_contract(contract_id: contract.id)
+    && id_in_list(id: "obl-exact-affected-closure OPEN", ids: view)
+    && id_in_list(id: "obl-semantic-input-identity OPEN", ids: view)
+    && id_in_list(id: "obl-pre-index-lookup OPEN", ids: view)
+    && id_in_list(id: "obl-counted-fallback OPEN", ids: view)
+    && id_in_list(id: "obl-native-witness-execution BOUND", ids: view)
+    && id_in_list(id: "obl-cross-invocation-reuse BOUND", ids: view)
+    && id_in_list(id: "obl-no-duplicate-stage-work BOUND", ids: view)
+    && id_in_list(id: "obl-pre-index-lookup BOUND", ids: view2)
+    && !id_in_list(id: "obl-pre-index-lookup OPEN", ids: view2)
+}
+
+fn program_selfhost_contract() -> StrategicContract {
+  program_contract_by_id(id: "contract-v2-self-host-fixed-point")
+}
+
+fn witness_child_discharge_unblocks_without_advancing_holds() -> Bool {
+  let sh = program_selfhost_contract()
+  let d = strategy_contract_digest(c: sh)
+  let view = strategy_program_view(contract: sh, obligations: program_obligations, bindings: work_contributions)
+  let synthetic_missing_blocker = concat(obligation_prerequisites, [ObligationPrerequisite { blocker_obligation: "obl-direct-rust-output-door", blocked_obligation: "obl-remaining-stages-self-emit" }])
+  strategy_obligation_bound_fresh(obligation_id: "obl-translate-instantiation-wrap-decision", current_digest: d, bindings: work_contributions)
+    && strategy_obligation_discharge_observed(obligation_id: "obl-translate-instantiation-wrap-decision", current_digest: d, bindings: work_contributions, observations: work_observations)
+    && !strategy_obligation_bound_fresh(obligation_id: "obl-remaining-stages-self-emit", current_digest: d, bindings: work_contributions)
+    && !strategy_obligation_discharge_observed(obligation_id: "obl-remaining-stages-self-emit", current_digest: d, bindings: work_contributions, observations: work_observations)
+    && strategy_blocker_count(obligation_id: "obl-remaining-stages-self-emit", prerequisites: obligation_prerequisites) > 0
+    && strategy_blockers_discharged(obligation_id: "obl-remaining-stages-self-emit", current_digest: d, prerequisites: obligation_prerequisites, bindings: work_contributions, observations: work_observations)
+    && !strategy_blockers_discharged(obligation_id: "obl-remaining-stages-self-emit", current_digest: d, prerequisites: synthetic_missing_blocker, bindings: work_contributions, observations: work_observations)
+    && count(view) == program_obligation_count_for_contract(contract_id: sh.id)
+    && id_in_list(id: "obl-translate-instantiation-wrap-decision BOUND", ids: view)
+    && id_in_list(id: "obl-frontier-classifier-totality BOUND", ids: view)
+    && id_in_list(id: "obl-direct-rust-output-door OPEN", ids: view)
+    && id_in_list(id: "obl-first-module-behavioral-replacement OPEN", ids: view)
+    && id_in_list(id: "obl-emitter-bootstrap-generations OPEN", ids: view)
+    && id_in_list(id: "obl-remaining-stages-self-emit OPEN", ids: view)
+    && (match strategy_contract_completion(contract: sh, decompositions: program_decompositions, bindings: work_contributions, observations: work_observations) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          DecompositionPartial => true
+          DecompositionMissing => false
+          DecompositionNotSingular => false
+          DecompositionStale => false
+          ObligationUnbound { obligation_id } => false
+          ObligationUndischarged { obligation_id } => false
+        }
+    })
+    && (match strategy_contract_completion(contract: program_contract_by_id(id: "contract-v2-production-cutover"), decompositions: program_decompositions, bindings: work_contributions, observations: work_observations) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          DecompositionMissing => true
+          DecompositionNotSingular => false
+          DecompositionStale => false
+          DecompositionPartial => false
+          ObligationUnbound { obligation_id } => false
+          ObligationUndischarged { obligation_id } => false
+        }
+    })
+}
+
+fn program_binding_measures_decision(binding_id: String, question_id: String) -> Bool {
+  fold(work_contributions, init: false, f: fn(acc, b) {
+    acc
+      || (b.id == binding_id
+            && match b.kind {
+              MeasurementForDecision { decision_question_id } => decision_question_id == question_id
+              DischargesObligation => false
+              PreservesAcceptedState => false
+              BoundedExploration { bound } => false
+              ClosesPrerequisite => false
+            })
+  })
+}
+
+fn witness_measurement_readiness_derived_not_assumed_holds() -> Bool {
+  let sh = program_selfhost_contract()
+  let d = strategy_contract_digest(c: sh)
+  let planted_census = concat(work_observations, [ObservationReceipt {
+    id: "ob-syn-census",
+    subject: corrected_census_subject,
+    observed_on: "2026-08-02",
+    subject_revision: "syn",
+    outcome: ObservedLanded,
+    result: "synthetic control: a landed census observation flips readiness",
+    evidence: EvidenceAnchor { repo: "x", reference: "y", note: "" },
+  }])
+  (match strategy_measurement_readiness(subject: corrected_census_subject, observations: work_observations) {
+    MeasurementAbsent { missing } => missing == corrected_census_subject
+    MeasurementPresent { observation_id } => false
+  })
+    && (match strategy_measurement_readiness(subject: corrected_census_subject, observations: planted_census) {
+      MeasurementPresent { observation_id } => observation_id == "ob-syn-census"
+      MeasurementAbsent { missing } => false
+    })
+    && !program_binding_measures_decision(binding_id: "wc-7627-lane-e-census", question_id: "first-module-selection")
+    && !strategy_obligation_discharge_observed(obligation_id: "obl-first-module-behavioral-replacement", current_digest: d, bindings: work_contributions, observations: work_observations)
+    && (match authorize_work(question_id: "first-module-selection", decisions: decisions) {
+      Authorized => false
+      AuthorizationRefused { cause } =>
+        match cause {
+          DecisionNotFound => true
+          DecisionNotSelected => false
+          DecisionSuperseded => false
+        }
+    })
+}
+
+fn program_binding_count_for_work(work_ref: String) -> Nat {
+  fold(work_contributions, init: 0, f: fn(acc, b) { if b.work_ref == work_ref { acc + 1 } else { acc } })
+}
+
+// The per-work-ref counts are kept: each names one exact receipt and asserts its binding grain (0 for
+// the unrelated controls 7605 and 7664, 1 for the named binders), which is identity, not population
+// size. The self-host binding TOTAL (== 2) is LEFT OUT: it counted the current binder population, no
+// authority fixes it, and the witness's claim -- unrelated work carries no self-host binding -- is
+// carried by the named zero controls rather than by the size of the related set.
+fn witness_unrelated_work_carries_no_selfhost_binding_holds() -> Bool {
+  program_binding_count_for_work(work_ref: "gunb-ai/gunbc#7605") == 0
+    && program_binding_count_for_work(work_ref: "gunb-ai/gunbc#7264") == 1
+    && program_binding_count_for_work(work_ref: "gunb-ai/gunbc#7627") == 1
+    && program_binding_count_for_work(work_ref: "gunb-ai/gunbc#7599") == 1
+    && program_binding_count_for_work(work_ref: "gunb-ai/gunbc#7664") == 0
+}
+
+// THE SYNTHETIC SUBJECT. Every field except coverage is DISCHARGED -- singular decomposition, fresh
+// digest, bound child, landed observation -- so coverage is the only free variable in every case
+// below and nothing else can move the answer.
+fn syn_coverage_receipt() -> DecisionReceipt {
+  DecisionReceipt { authority: "operator", decided_on: "2026-08-02", rationale: "synthetic coverage-rule authorization" }
+}
+
+fn syn_coverage_contract() -> StrategicContract {
+  StrategicContract { id: "syn-sh", statement: "synthetic self-host", acceptance_criteria: ["only clause"], constraint_ids: [], adoption: syn_coverage_receipt() }
+}
+
+fn syn_coverage_decomposition(c: DecompositionCoverage) -> ProgramDecomposition {
+  ProgramDecomposition {
+    id: "syn-dec",
+    parent_contract: "syn-sh",
+    parent_criteria_digest: strategy_contract_digest(c: syn_coverage_contract()),
+    child_obligation_ids: ["syn-obl"],
+    composition_rule: "single child",
+    coverage: c,
+  }
+}
+
+fn syn_coverage_binding() -> WorkContribution {
+  WorkContribution { id: "syn-wc", work_ref: "syn#1", obligation_id: "syn-obl", kind: DischargesObligation, maximum_conclusion: "synthetic", parent_criteria_digest: strategy_contract_digest(c: syn_coverage_contract()) }
+}
+
+fn syn_coverage_landed() -> ObservationReceipt {
+  ObservationReceipt { id: "syn-ob", subject: "syn#1", observed_on: "2026-08-02", subject_revision: "syn", outcome: ObservedLanded, result: "synthetic landed", evidence: EvidenceAnchor { repo: "x", reference: "y", note: "" } }
+}
+
+fn syn_coverage_completion(c: DecompositionCoverage) -> ContractCompletion {
+  strategy_contract_completion(
+    contract: syn_coverage_contract(),
+    decompositions: [syn_coverage_decomposition(c: c)],
+    bindings: [syn_coverage_binding()],
+    observations: [syn_coverage_landed()])
+}
+
+fn syn_coverage_completes(c: DecompositionCoverage) -> Bool {
+  match syn_coverage_completion(c: c) {
+    ContractComplete => true
+    ContractCompletionRefused { cause } => false
+  }
+}
+
+fn completion_refuses_partial(r: ContractCompletion) -> Bool {
+  match r {
+    ContractComplete => false
+    ContractCompletionRefused { cause } =>
+      match cause {
+        DecompositionPartial => true
+        DecompositionMissing => false
+        DecompositionNotSingular => false
+        DecompositionStale => false
+        ObligationUnbound { obligation_id } => false
+        ObligationUndischarged { obligation_id } => false
+      }
+  }
+}
+
+fn syn_coverage_refuses_partial(c: DecompositionCoverage) -> Bool {
+  completion_refuses_partial(r: syn_coverage_completion(c: c))
+}
+
+// THE SYNTHETIC DECOMPOSITION'S SOLE CHILD IS "syn-obl", so a population claiming covered_by
+// "syn-obl" is GENUINELY TIED to it and one claiming anything else is not. An earlier draft passed a
+// population of ["obl-syn-module"] against this same child and still completed, which is exactly the
+// inertness these cases now exclude.
+fn syn_child_ids() -> List<String> {
+  ["syn-obl"]
+}
+
+fn selfhost_coverage_case(
+  modules: SelfHostModuleCoverage,
+  prerequisites: List<SelfHostCoveragePrerequisite>,
+  rule: SelfHostCoverageRule,
+) -> DecompositionCoverage {
+  selfhost_coverage_value(c: selfhost_decomposition_coverage_for(
+    modules: modules,
+    prerequisites: prerequisites,
+    rule: rule,
+    decomposition_child_ids: syn_child_ids()))
+}
+
+fn syn_settled_prerequisites() -> List<SelfHostCoveragePrerequisite> {
+  [PrerequisiteSettled { subject: "synthetic prerequisite", receipt: syn_coverage_receipt() }]
+}
+
+// THE TWO BLANK CASES ARE GONE BECAUSE THEIR STATE IS NOW UNWRITABLE. They used to be enrolled here
+// -- a PrerequisiteOpen with blank fields, and a population of two blank ids -- because the string
+// sentinel made both reachable. The fields are NonEmptyStr now, so neither can be constructed, and
+// DESIGN 4b is explicit that a check whose RED is not authorable is not a weak wall but a decoration
+// that gets cited later as coverage. The class climbed from tested-for to unrepresentable, so the
+// tests for it are deleted rather than kept green by construction. The NON-blank duplicate case
+// below stays: that RED is still authorable and still discriminating.
+
+fn syn_one_open_prerequisite() -> List<SelfHostCoveragePrerequisite> {
+  [
+    PrerequisiteSettled { subject: "synthetic prerequisite", receipt: syn_coverage_receipt() },
+    PrerequisiteOpen { subject: "synthetic open question", open_note: "deliberately open" },
+  ]
+}
+
+// NO DENOMINATOR AT ALL -- the arm this whole repair exists to keep out of completeness.
+fn syn_unestablished_population() -> SelfHostModuleCoverage {
+  ModuleCoverageUnestablished { missing_authority: "deliberately absent", restoration_trigger: "deliberately absent" }
+}
+
+// COVERED, BY RELATION -- covered_by names the decomposition's actual child.
+fn syn_derived_population() -> SelfHostModuleCoverage {
+  ModuleCoverageDerived { covered_by: "syn-obl", obligation_ids: ["obl-module-a", "obl-module-b"] }
+}
+
+// PRESENT BUT EMPTY -- the arm says Derived and the content says nothing.
+fn syn_empty_population() -> SelfHostModuleCoverage {
+  ModuleCoverageDerived { covered_by: "syn-obl", obligation_ids: [] }
+}
+
+// PRESENT, NON-EMPTY, AND UNRELATED -- it claims to be the denominator for an obligation this
+// decomposition does not carry. This is the case whose absence made the old positive control prove
+// the defect it was written to exclude.
+fn syn_uncovered_population() -> SelfHostModuleCoverage {
+  ModuleCoverageDerived { covered_by: "obl-not-a-child-of-this-decomposition", obligation_ids: ["obl-module-a"] }
+}
+
+// A DENOMINATOR THAT COUNTS ONE MODULE TWICE is not a denominator: any ratio over it is inflated.
+fn syn_duplicated_population() -> SelfHostModuleCoverage {
+  ModuleCoverageDerived { covered_by: "syn-obl", obligation_ids: ["obl-module-a", "obl-module-a"] }
+}
+
+fn syn_operator_receipt() -> DecisionReceipt {
+  DecisionReceipt { authority: "operator", decided_on: "2026-08-02", rationale: "synthetic operator authorization" }
+}
+
+fn syn_worker_receipt() -> DecisionReceipt {
+  DecisionReceipt { authority: "worker", decided_on: "2026-08-02", rationale: "synthetic NON-operator authorization" }
+}
+
+// THE ONLY ROUTE TO AN AUTHORIZED RULE IN THIS TREE. operator_coverage_authorization REFUSES a
+// non-operator receipt, and OperatorCoverageAuthorization is sole_constructor, so a refused receipt
+// cannot reach CoverageRuleAuthorized by any route AVAILABLE HERE -- including from this module,
+// which is why these synthetic rules are built through the mint rather than authored.
+//
+// THAT IS A PROPERTY OF THIS TREE'S ROUTES, NOT A STANDING PROPERTY OF THE TYPE. sole_constructor
+// confines construction to the DEFINING module; it does not stop strategy.selfhost_coverage from
+// later adding a second, unchecked mint beside the refusing one. What holds today is narrower and
+// is checkable: the only constructor site for OperatorCoverageAuthorization is the checked branch of
+// operator_coverage_authorization. A future edit that adds another one is a new route and would need
+// its own reading -- claiming otherwise here would be the same inflation the coverage module's
+// annotations were just narrowed for.
+fn syn_rule_from(receipt: DecisionReceipt) -> SelfHostCoverageRule {
+  match operator_coverage_authorization(receipt: receipt) {
+    CoverageAuthorizationAccepted { authorization } => CoverageRuleAuthorized { authorization: authorization }
+    CoverageAuthorizationRefused { cause } => CoverageRuleUnauthorized { missing_authorization: cause }
+  }
+}
+
+// THE WALL, NOT THE DATA. An earlier draft asserted that today's denominator HAPPENS to be
+// Unestablished. That tests the value; it does not test that anything gates on it.
+//
+// SO THE SUBJECT HERE IS THE COMPLETENESS DERIVATION, over a synthetic contract whose every OTHER
+// input is discharged -- singular decomposition, fresh digest, bound child, landed observation -- so
+// coverage is the only free variable and nothing else can move the answer.
+//
+// A -- THE DECISIVE RED: otherwise-completable inputs + an UNESTABLISHED population still refuse.
+// B -- POSITIVE CONTROL, and it is what makes every RED mean anything: the IDENTICAL inputs with a
+//      population that is present, non-empty, distinct, and COVERED BY THIS DECOMPOSITION'S OWN
+//      CHILD do reach ContractComplete under an OPERATOR receipt.
+// C -- the other prerequisites stay independent.
+// D -- the operator authorization stays independent.
+// E -- the real dec-v2-selfhost row refuses for the real reason.
+// F -- PRESENT BUT EMPTY still refuses: an empty denominator makes every quantifier over it
+//      vacuously true.
+// G -- PRESENT BUT UNRELATED still refuses: a population claiming to cover an obligation this
+//      decomposition does not carry establishes nothing about these being the right modules.
+// H -- A DUPLICATED MEMBER still refuses: the ids are read for content, not counted for size.
+// I -- AND THE OPERATOR GATE IS REAL: the discriminating pair. Identical population and settled
+//      prerequisites; an OPERATOR receipt completes, a NON-OPERATOR receipt refuses. Before this,
+//      authority "worker" and authority "operator" were indistinguishable to a wall whose whole
+//      claim was operator gating.
+fn witness_unestablished_modules_refuse_completeness_holds() -> Bool {
+  syn_coverage_refuses_partial(c: selfhost_coverage_case(modules: syn_unestablished_population(), prerequisites: syn_settled_prerequisites(), rule: syn_rule_from(receipt: syn_operator_receipt())))
+    && syn_coverage_completes(c: selfhost_coverage_case(modules: syn_derived_population(), prerequisites: syn_settled_prerequisites(), rule: syn_rule_from(receipt: syn_operator_receipt())))
+    && syn_coverage_refuses_partial(c: selfhost_coverage_case(modules: syn_derived_population(), prerequisites: syn_one_open_prerequisite(), rule: syn_rule_from(receipt: syn_operator_receipt())))
+    && syn_coverage_refuses_partial(c: selfhost_coverage_case(modules: syn_derived_population(), prerequisites: syn_settled_prerequisites(), rule: CoverageRuleUnauthorized { missing_authorization: "deliberately unauthorized" }))
+    && completion_refuses_partial(r: strategy_contract_completion(contract: program_selfhost_contract(), decompositions: program_decompositions, bindings: work_contributions, observations: work_observations))
+    && syn_coverage_refuses_partial(c: selfhost_coverage_case(modules: syn_empty_population(), prerequisites: syn_settled_prerequisites(), rule: syn_rule_from(receipt: syn_operator_receipt())))
+    && syn_coverage_refuses_partial(c: selfhost_coverage_case(modules: syn_uncovered_population(), prerequisites: syn_settled_prerequisites(), rule: syn_rule_from(receipt: syn_operator_receipt())))
+    && syn_coverage_refuses_partial(c: selfhost_coverage_case(modules: syn_duplicated_population(), prerequisites: syn_settled_prerequisites(), rule: syn_rule_from(receipt: syn_operator_receipt())))
+    && syn_coverage_refuses_partial(c: selfhost_coverage_case(modules: syn_derived_population(), prerequisites: syn_settled_prerequisites(), rule: syn_rule_from(receipt: syn_worker_receipt())))
+    && (match operator_coverage_authorization(receipt: syn_worker_receipt()) {
+      CoverageAuthorizationAccepted { authorization } => false
+      CoverageAuthorizationRefused { cause } => cause != ""
+    })
+}
+
+// THE HALF THAT NEEDS NO PUBLIC AUTHORITY, UNDER ITS OWN NAME. Every observed capability names a
+// declared capability. That is this repository's own fact, checkable whether or not the public
+// accepted set exists, and its RED is authorable: an ObservedCapability carrying an undeclared id
+// fails it. It used to ride inside the acceptance witness, where passing it read as evidence about
+// the public authority. Same assertion, honest name.
+fn witness_observed_capability_ids_are_declared_holds() -> Bool {
+  count(observed_capabilities) > 0
+    && all(observed_capabilities, o => capability_id_known(id: o.capability_id))
+}
+
+fn program_language_contract() -> StrategicContract {
+  program_contract_by_id(id: "contract-language-medium-support")
+}
+
+fn witness_language_support_contract_open_and_gated_holds() -> Bool {
+  let lc = program_language_contract()
+  let d = strategy_contract_digest(c: lc)
+  let view = strategy_program_view(contract: lc, obligations: program_obligations, bindings: work_contributions)
+  count(view) == program_obligation_count_for_contract(contract_id: lc.id)
+    && id_in_list(id: "obl-lang-support-registry OPEN", ids: view)
+    && id_in_list(id: "obl-lang-no-new-debt-gate OPEN", ids: view)
+    && id_in_list(id: "obl-ts-product-browser-profile OPEN", ids: view)
+    && id_in_list(id: "obl-spice-simulation-profile OPEN", ids: view)
+    && !id_in_list(id: "obl-ts-product-browser-profile BOUND", ids: view)
+    && strategy_blocker_count(obligation_id: "obl-ts-product-browser-profile", prerequisites: obligation_prerequisites) > 0
+    && !strategy_blockers_discharged(obligation_id: "obl-ts-product-browser-profile", current_digest: d, prerequisites: obligation_prerequisites, bindings: work_contributions, observations: work_observations)
+    && strategy_blocker_count(obligation_id: "obl-lang-status-projection", prerequisites: obligation_prerequisites) > 0
+    && (match strategy_contract_completion(contract: lc, decompositions: program_decompositions, bindings: work_contributions, observations: work_observations) {
+      ContractComplete => false
+      ContractCompletionRefused { cause } =>
+        match cause {
+          DecompositionPartial => true
+          DecompositionMissing => false
+          DecompositionNotSingular => false
+          DecompositionStale => false
+          ObligationUnbound { obligation_id } => false
+          ObligationUndischarged { obligation_id } => false
+        }
+    })
+    && (match authorize_work(question_id: "lang-ecmascript-authority", decisions: decisions) {
+      Authorized => false
+      AuthorizationRefused { cause } =>
+        match cause {
+          DecisionNotSelected => true
+          DecisionNotFound => false
+          DecisionSuperseded => false
+        }
+    })
+    && (match authorize_work(question_id: "lang-cpp-profile", decisions: decisions) {
+      Authorized => false
+      AuthorizationRefused { cause } =>
+        match cause {
+          DecisionNotSelected => true
+          DecisionNotFound => false
+          DecisionSuperseded => false
+        }
+    })
+}
+
+fn witness_licensing_fee_curve_and_anti_engineering_holds() -> Bool {
+  enterprise_fee_usd(group_revenue_usd40k: 0) == 0
+    && enterprise_fee_usd(group_revenue_usd40k: 2475) == 0
+    && enterprise_fee_usd(group_revenue_usd40k: 2500) == 0
+    && enterprise_fee_usd(group_revenue_usd40k: 5000) == 10000
+    && enterprise_fee_usd(group_revenue_usd40k: 12500) == 40000
+    && enterprise_fee_usd(group_revenue_usd40k: 25000) == 90000
+    && enterprise_fee_usd(group_revenue_usd40k: 125000) == 290000
+    && enterprise_fee_usd(group_revenue_usd40k: 250000) == 540000
+    && enterprise_fee_usd(group_revenue_usd40k: 500000) == 790000
+    && enterprise_fee_usd(group_revenue_usd40k: 710000) == 1000000
+    && enterprise_fee_usd(group_revenue_usd40k: 25000000) == 1000000
+    && (enterprise_fee_usd(group_revenue_usd40k: 2501) - enterprise_fee_usd(group_revenue_usd40k: 2500)) == 4
+    && (enterprise_fee_usd(group_revenue_usd40k: 25001) - enterprise_fee_usd(group_revenue_usd40k: 25000)) == 2
+    && (enterprise_fee_usd(group_revenue_usd40k: 250001) - enterprise_fee_usd(group_revenue_usd40k: 250000)) == 1
+    && (enterprise_fee_usd(group_revenue_usd40k: 710001) - enterprise_fee_usd(group_revenue_usd40k: 710000)) == 0
+    && enterprise_fee_usd(group_revenue_usd40k: 24750) == 89000
+    && (enterprise_fee_usd(group_revenue_usd40k: 30000) - enterprise_fee_usd(group_revenue_usd40k: 27500)) == 5000
+}
+
+// EVERY CLAIM BODY IN THIS FILE IS INVOKED FROM HERE, EACH ON ITS OWN LINE. Each claim is an
+// ordinary `_holds` fn with a one-line `test fn` enrolment wrapper, so this entry point calls the
+// body and never references test code; a body this entry point
+// never calls is a declaration nothing executes: until this change all but three of these were
+// exactly that, behind a resolve failure that stopped the whole module. Each body prints `name=pass`
+// or `error: name=FAIL`, so the cause-locked KnownRed row in strategy.private_witness_workflow can
+// name the exact witness that is red, a newly red body surfaces as an UNDECLARED FAILURE, and a
+// repaired one as CAUSE DRIFT -- the same grain ci_economics_frontier uses. The name strings in the
+// report are the second list of these names that .dag's lack of reflection forces.
+fn strategy_body_line(name: NonEmptyStr, b: Bool) -> NonEmptyStr {
+  if b {
+    join([name, "=pass"], "")
+  } else {
+    join(["error: ", name, "=FAIL"], "")
+  }
+}
+
+// Each body is evaluated ONCE: the report and the verdict read the same thirty-one results, so they
+// cannot disagree about what ran, and no witness is paid for twice.
+fn strategy_witness_main() -> ProcessExit {
+  let r0 = witness_graph_ids_unique_and_relations_resolve_holds()
+  let r1 = witness_wipe_target_carries_four_invariants_holds()
+  let r2 = witness_decision_states_match_operator_rulings_holds()
+  let r3 = witness_work_authorization_verdicts_holds()
+  let r4 = witness_claims_unsupported_today_and_flip_with_evidence_holds()
+  let r5 = witness_journey_stage_is_derived_from_receipts_holds()
+  let r6 = witness_journey_refusals_are_typed_holds()
+  let r7 = witness_forecast_derives_and_refuses_holds()
+  let r8 = witness_experiment_stop_condition_cannot_be_silently_continued_holds()
+  let r9 = witness_every_active_roadmap_lane_has_strategic_reason_holds()
+  let r10 = witness_node_grain_bindings_target_real_roadmap_nodes_holds()
+  let r11 = witness_capability_evidence_consistent_with_public_authority_holds()
+  let r12 = witness_first_partner_is_self_and_stage_derives_from_real_receipts_holds()
+  let r13 = witness_timeline_eras_and_events_resolve_with_evidence_holds()
+  let r14 = witness_lineage_two_rust_to_dag_successions_holds()
+  let r15 = witness_present_state_is_derived_never_stored_holds()
+  let r16 = witness_projection_grounded_in_strategy_without_fabricated_dates_holds()
+  let r17 = witness_cadence_tangent_readings_cover_all_windows_and_align_holds()
+  let r18 = witness_instantiation_counts_and_honest_emptiness_holds()
+  let r19 = witness_program_contract_graph_resolves_holds()
+  let r20 = witness_binding_discharges_exact_obligation_never_neighbor_holds()
+  let r21 = witness_contract_amendment_invalidates_stale_bindings_holds()
+  let r22 = witness_contract_completion_refuses_below_complete_holds()
+  let r23 = witness_program_view_is_derived_projection_holds()
+  let r24 = witness_child_discharge_unblocks_without_advancing_holds()
+  let r25 = witness_measurement_readiness_derived_not_assumed_holds()
+  let r26 = witness_unrelated_work_carries_no_selfhost_binding_holds()
+  let r27 = witness_unestablished_modules_refuse_completeness_holds()
+  let r28 = witness_observed_capability_ids_are_declared_holds()
+  let r29 = witness_language_support_contract_open_and_gated_holds()
+  let r30 = witness_licensing_fee_curve_and_anti_engineering_holds()
+  let report = join([
+    strategy_body_line(name: "witness_graph_ids_unique_and_relations_resolve", b: r0),
+    "\n",
+    strategy_body_line(name: "witness_wipe_target_carries_four_invariants", b: r1),
+    "\n",
+    strategy_body_line(name: "witness_decision_states_match_operator_rulings", b: r2),
+    "\n",
+    strategy_body_line(name: "witness_work_authorization_verdicts", b: r3),
+    "\n",
+    strategy_body_line(name: "witness_claims_unsupported_today_and_flip_with_evidence", b: r4),
+    "\n",
+    strategy_body_line(name: "witness_journey_stage_is_derived_from_receipts", b: r5),
+    "\n",
+    strategy_body_line(name: "witness_journey_refusals_are_typed", b: r6),
+    "\n",
+    strategy_body_line(name: "witness_forecast_derives_and_refuses", b: r7),
+    "\n",
+    strategy_body_line(name: "witness_experiment_stop_condition_cannot_be_silently_continued", b: r8),
+    "\n",
+    strategy_body_line(name: "witness_every_active_roadmap_lane_has_strategic_reason", b: r9),
+    "\n",
+    strategy_body_line(name: "witness_node_grain_bindings_target_real_roadmap_nodes", b: r10),
+    "\n",
+    strategy_body_line(name: "witness_capability_evidence_consistent_with_public_authority", b: r11),
+    "\n",
+    strategy_body_line(name: "witness_first_partner_is_self_and_stage_derives_from_real_receipts", b: r12),
+    "\n",
+    strategy_body_line(name: "witness_timeline_eras_and_events_resolve_with_evidence", b: r13),
+    "\n",
+    strategy_body_line(name: "witness_lineage_two_rust_to_dag_successions", b: r14),
+    "\n",
+    strategy_body_line(name: "witness_present_state_is_derived_never_stored", b: r15),
+    "\n",
+    strategy_body_line(name: "witness_projection_grounded_in_strategy_without_fabricated_dates", b: r16),
+    "\n",
+    strategy_body_line(name: "witness_cadence_tangent_readings_cover_all_windows_and_align", b: r17),
+    "\n",
+    strategy_body_line(name: "witness_instantiation_counts_and_honest_emptiness", b: r18),
+    "\n",
+    strategy_body_line(name: "witness_program_contract_graph_resolves", b: r19),
+    "\n",
+    strategy_body_line(name: "witness_binding_discharges_exact_obligation_never_neighbor", b: r20),
+    "\n",
+    strategy_body_line(name: "witness_contract_amendment_invalidates_stale_bindings", b: r21),
+    "\n",
+    strategy_body_line(name: "witness_contract_completion_refuses_below_complete", b: r22),
+    "\n",
+    strategy_body_line(name: "witness_program_view_is_derived_projection", b: r23),
+    "\n",
+    strategy_body_line(name: "witness_child_discharge_unblocks_without_advancing", b: r24),
+    "\n",
+    strategy_body_line(name: "witness_measurement_readiness_derived_not_assumed", b: r25),
+    "\n",
+    strategy_body_line(name: "witness_unrelated_work_carries_no_selfhost_binding", b: r26),
+    "\n",
+    strategy_body_line(name: "witness_unestablished_modules_refuse_completeness", b: r27),
+    "\n",
+    strategy_body_line(name: "witness_observed_capability_ids_are_declared", b: r28),
+    "\n",
+    strategy_body_line(name: "witness_language_support_contract_open_and_gated", b: r29),
+    "\n",
+    strategy_body_line(name: "witness_licensing_fee_curve_and_anti_engineering", b: r30),
+  ], "")
+  if r0 && r1 && r2 && r3 && r4 && r5 && r6 && r7 && r8 && r9 && r10 && r11 && r12 && r13 && r14 && r15 && r16 && r17 && r18 && r19 && r20 && r21 && r22 && r23 && r24 && r25 && r26 && r27 && r28 && r29 && r30 {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: report }
+  }
+}
+
+// CLAIM ENROLMENT. Each claim body above is an ordinary fn, so this module's entry point calls the
+// fn rather than the claim and no declaration references test code (v1.compiler.compile
+// test_reference_debt_dissolution). The `test fn` wrappers below are the enrolment markers the
+// witness runner enters; each keeps its claim name unchanged.
+test fn witness_graph_ids_unique_and_relations_resolve() -> Bool { witness_graph_ids_unique_and_relations_resolve_holds() }
+test fn witness_wipe_target_carries_four_invariants() -> Bool { witness_wipe_target_carries_four_invariants_holds() }
+test fn witness_decision_states_match_operator_rulings() -> Bool { witness_decision_states_match_operator_rulings_holds() }
+test fn witness_work_authorization_verdicts() -> Bool { witness_work_authorization_verdicts_holds() }
+test fn witness_claims_unsupported_today_and_flip_with_evidence() -> Bool { witness_claims_unsupported_today_and_flip_with_evidence_holds() }
+test fn witness_journey_stage_is_derived_from_receipts() -> Bool { witness_journey_stage_is_derived_from_receipts_holds() }
+test fn witness_journey_refusals_are_typed() -> Bool { witness_journey_refusals_are_typed_holds() }
+test fn witness_forecast_derives_and_refuses() -> Bool { witness_forecast_derives_and_refuses_holds() }
+test fn witness_experiment_stop_condition_cannot_be_silently_continued() -> Bool { witness_experiment_stop_condition_cannot_be_silently_continued_holds() }
+test fn witness_every_active_roadmap_lane_has_strategic_reason() -> Bool { witness_every_active_roadmap_lane_has_strategic_reason_holds() }
+test fn witness_node_grain_bindings_target_real_roadmap_nodes() -> Bool { witness_node_grain_bindings_target_real_roadmap_nodes_holds() }
+test fn witness_capability_evidence_consistent_with_public_authority() -> Bool { witness_capability_evidence_consistent_with_public_authority_holds() }
+test fn witness_first_partner_is_self_and_stage_derives_from_real_receipts() -> Bool { witness_first_partner_is_self_and_stage_derives_from_real_receipts_holds() }
+test fn witness_timeline_eras_and_events_resolve_with_evidence() -> Bool { witness_timeline_eras_and_events_resolve_with_evidence_holds() }
+test fn witness_lineage_two_rust_to_dag_successions() -> Bool { witness_lineage_two_rust_to_dag_successions_holds() }
+test fn witness_present_state_is_derived_never_stored() -> Bool { witness_present_state_is_derived_never_stored_holds() }
+test fn witness_projection_grounded_in_strategy_without_fabricated_dates() -> Bool { witness_projection_grounded_in_strategy_without_fabricated_dates_holds() }
+test fn witness_cadence_tangent_readings_cover_all_windows_and_align() -> Bool { witness_cadence_tangent_readings_cover_all_windows_and_align_holds() }
+test fn witness_instantiation_counts_and_honest_emptiness() -> Bool { witness_instantiation_counts_and_honest_emptiness_holds() }
+test fn witness_program_contract_graph_resolves() -> Bool { witness_program_contract_graph_resolves_holds() }
+test fn witness_binding_discharges_exact_obligation_never_neighbor() -> Bool { witness_binding_discharges_exact_obligation_never_neighbor_holds() }
+test fn witness_contract_amendment_invalidates_stale_bindings() -> Bool { witness_contract_amendment_invalidates_stale_bindings_holds() }
+test fn witness_contract_completion_refuses_below_complete() -> Bool { witness_contract_completion_refuses_below_complete_holds() }
+test fn witness_program_view_is_derived_projection() -> Bool { witness_program_view_is_derived_projection_holds() }
+test fn witness_child_discharge_unblocks_without_advancing() -> Bool { witness_child_discharge_unblocks_without_advancing_holds() }
+test fn witness_measurement_readiness_derived_not_assumed() -> Bool { witness_measurement_readiness_derived_not_assumed_holds() }
+test fn witness_unrelated_work_carries_no_selfhost_binding() -> Bool { witness_unrelated_work_carries_no_selfhost_binding_holds() }
+test fn witness_unestablished_modules_refuse_completeness() -> Bool { witness_unestablished_modules_refuse_completeness_holds() }
+test fn witness_observed_capability_ids_are_declared() -> Bool { witness_observed_capability_ids_are_declared_holds() }
+test fn witness_language_support_contract_open_and_gated() -> Bool { witness_language_support_contract_open_and_gated_holds() }
+test fn witness_licensing_fee_curve_and_anti_engineering() -> Bool { witness_licensing_fee_curve_and_anti_engineering_holds() }

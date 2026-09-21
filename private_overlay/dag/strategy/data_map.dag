@@ -1,0 +1,1671 @@
+module strategy.data_map
+
+import std.types { List, Bool, String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_display_key }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.nat { Nat }
+import std.measure { Measure, Time, One }
+import extdeps.common_paper.cloud_service_agreement { common_paper_csa_v2_1_ref }
+import product.data_class {
+  DataHandlingRow, DataHandlingMap, data_handling_map,
+  SinkKind, SupportExport,
+}
+import product.data_category {
+  personal_identity_ref, source_and_build_input_ref, build_output_ref, execution_receipt_ref,
+  ci_secret_ref, job_log_ref, metering_telemetry_ref, support_communication_ref,
+  abuse_and_sanctions_record_ref,
+}
+import gunbc.operator_fan_declaration { OperatorStatement }
+import strategy.compliance_posture_revision { m2_compliance_posture_revision }
+
+// THE DATA MAP THIS BUSINESS DID NOT HAVE, AUTHORED AS A PROPOSAL.
+//
+// A census of every .dag file in both repositories found no data map anywhere: no rows for data
+// categories, subjects, processing purposes, residency, retention or lawful basis. The consequence
+// was not documentary. product.fabric.provider_admission decides whether we may send THIS work to
+// THIS route under an active posture, and one term of that decision is a data_handling_profile - an
+// open DeclarationRef, whose every populator in either repository was a test fixture, a probe
+// placeholder, or gunbc.spark.first_party_serving saying it processes nothing of anyone else. So the
+// gate ran over a term nothing in the business had authored, and a privacy notice or a security
+// schedule had nothing to be projected FROM.
+//
+// WHY EVERY ROW HERE IS A PROPOSAL AND NOT A FACT. UPDATED 2026-09-14: the operator has now answered
+// every open retention row, and the rows are STILL proposals -- which is the distinction this paragraph
+// exists to hold. He settled the SHAPE of six answers and the figure of one (support communications, a
+// 12-month ceiling); the remaining figures belong to counsel, to a fabric eviction policy, and to a
+// backoff schedule nobody has enumerated. A row whose policy is chosen and whose number is open still
+// carries an open question, so category_settlement_is_coherent would refuse a ratified standing over it
+// -- correctly. Ratification is not "the operator has spoken", it is "this row has nothing left open",
+// and conflating the two would let a settled-looking map answer a customer question it cannot answer.
+// The original reasoning, which still governs every row not yet closed: the operator had given no
+// retention period, no category correction, and counsel spend was zero. The alternative to proposing was waiting, which
+// leaves the gate reading nothing for however long that takes; the other alternative was writing the
+// numbers ourselves, which is a fabricated legal finding arriving through the one gate built to stop
+// them. DESIGN 4d rules the third way: an inference is typed as a bet rather than deleted or
+// promoted. Every row below therefore carries a ProposalStanding, every unsettled period is
+// PeriodUndetermined naming what would settle it, and every lawful basis is a
+// CounselStanding -- which since operator_legal_conclusion_ruling is THREE states and not two: a
+// conclusion we hold at a placement whose error we can correct, a question left to counsel where the
+// error lands on a third party or a regulator, or counsel's answer on record. TEN OF THE THIRTEEN BASIS CLAIMS across the nine categories are
+// ConcludedInHouse today, and the count is stated at the grain the rows are actually authored at: a
+// category may carry more than one basis, so counting CATEGORIES understates the population this type
+// governs. The witness prints the live figure as in_house_conclusions, which is the check on this
+// sentence rather than my arithmetic. The previous wording said every basis was a CounselReviewRequired claim
+// rather than a conclusion, which was this map's founding sentence and is now false about its own rows. The operator ratifies in one pass; the
+// standing flips then and only then, and a consumer that must not read a proposal as settled matches
+// the standing rather than reading a string (DESIGN 4c).
+//
+// WHAT THIS MODULE IS NOT. It is not a compliance verdict, and it does not establish that a category
+// is in or out of scope, that a period is adequate, or that a basis is available. It establishes that
+// the population is enumerated, that each row says where the data lives and for how long, and that
+// every unsettled term is visible AS unsettled. strategy.compliance_posture remains the regime
+// register; this is the subject that register is about.
+
+// THE STANDING IS ONE TYPE AND ONE AUTHORITY FOR "HAS THE OPERATOR AGREED TO THIS YET".
+//
+// IT IS NAMED ProposalStanding AND NOT RatificationStanding, WHICH IS A CORRECTION (review 65022).
+// finance.gunbai_llc already owns RatificationStanding in this repository, as
+// RatificationExecuted with a signing date | RatificationOwed with the steps still required. That is a
+// materially different contract -- whether a specific equipment-ownership INSTRUMENT was signed --
+// and holding the name constant across the two would be the meaning fork DESIGN 3 names: one name,
+// two sets of obligations. The name here describes the axis this type actually carries, which is
+// whether a row's CONTENT is our proposal or the operator's settled answer.
+//
+// WHY NOT ONE SHARED AUTHORITY BOTH MODULES CONSUME, since the review offered that too, and the
+// departure is stated rather than left implicit (DESIGN 3b). The two are the same SHAPE -- done
+// versus not-done over a ratification -- and different subjects: one is an act with a date and a
+// list of outstanding steps, the other is the standing of authored content with the decision that
+// would settle it. Unifying them means a subject-parametric standing in a shared home, which is a
+// design move over a finance authority this change does not own and whose payloads would both have
+// to be re-expressed through it. That is a real candidate and not this change's scope; naming the
+// concepts apart is the move that removes the fork without asserting a unification nobody asked for.
+// If a third ratification subject appears, that is the trigger to build the shared home rather than
+// a third name.
+//
+// It is deliberately not a Bool and deliberately not a field of prose. A Bool discards the two things
+// the proposal arm has to carry - what would settle it, and therefore what the ratification pass is
+// FOR - and prose cannot be matched, so a consumer projecting a customer-facing statement could not
+// tell a settled row from a bet without reading English. Both arms carry a reference rather than a
+// narrative: the proposal names its settling decision as text, and the ratified arm names the record
+// that ratified it AS A DeclarationRef, so a ratified row is re-derivable from something outside this
+// file.
+//
+// THE TWO ARMS ARE NOT SYMMETRIC, CORRECTED (review 65282). This sentence previously said both arms
+// carry a reference; only the ratified arm does. ProposedAwaitingRatification.settled_by is a
+// NonEmptyStr, because what would settle a proposal is usually a DECISION NOBODY HAS TAKEN YET and so
+// has no declaration to point at -- a DeclarationRef there would have nothing to resolve to, which is
+// the dangling citation the witness refuses. The asymmetry is the point: the ratified arm can be held
+// to a resolvable record precisely because the record exists by then.
+//
+// There is deliberately no RetentionRatifiedPeriod arm on RetentionProposal below. Ratified-ness is
+// this type's fact; carrying it twice would be two names for one meaning (DESIGN 3).
+type ProposalStanding
+  = ProposedAwaitingRatification { settled_by: NonEmptyStr }
+  | RatifiedByOperator { ratified_on: NonEmptyStr, record: DeclarationRef }
+
+// ONE ELIMINATION OF THIS COPRODUCT, AND IT WAS TWO (review 65280).
+//
+// standing_is_ratified and standing_open_question each matched ProposalStanding, which is the §3
+// duplication the review names: one fact, two places deciding it. This match is now the only one, and
+// both callers read a field of what it returns. The zero-or-one shape is kept for the settling decision
+// for the reason product.fabric.provider_admission's disposition_obligation is shaped that way -- a Bool
+// alone would force the agenda builder to walk the value a second time to recover the decision, and it is
+// that second walk which needs a seed, which is where a fabricated one gets to live.
+//
+// I DID NOT TAKE THE SUGGESTED FORM, AND THE REASON IS A FAIL-OPEN (DESIGN 3b: the departure is stated).
+// The review proposed deleting the Bool and having callers read `count(standing_open_question(...)) == 0`.
+// That makes RATIFIED-NESS AND QUESTION-EMPTINESS THE SAME FACT, and they are not: they agree today only
+// because this coproduct has exactly two arms and the proposed one happens to carry the only question.
+// Two consequences, both bad in the direction that matters. A third arm carrying no question -- a
+// withdrawn ratification is the obvious one -- would be silently reported as RATIFIED, which is the
+// fail-open answer, whereas a match REFUSES TO COMPILE until the arm is handled. And
+// category_settlement_is_coherent asserts "a ratified row carries no open question": defining ratified as
+// carrying no open question moves that check toward the tautology this repository has a ledger row for
+// (gunbc.recurring_failure_mode executed_conjunct_discriminates_nothing), and would eventually make the
+// fixture behind it an impossible population rather than a refused one.
+//
+// AND IT HAS NOW HAPPENED, SO THE ARGUMENT ABOVE IS A RECEIPT AND NOT A HYPOTHETICAL. The paragraph above
+// reasons from an invented third arm; hours after it was written, gunbc#11194 landed three real arms on a
+// DIFFERENT coproduct this module's witness matches -- ProviderUseRefusal, from ten arms to thirteen -- and
+// three matches went stale at once, at compile time, verbatim:
+//   non-exhaustive match: missing variant(s) PostureJurisdictionsUnread, TransferOrLocationUnresolved,
+//   ProviderAccessPathUnsupported
+// The match spoke. A count over arm kinds would have absorbed all three and stayed green, and the type it
+// absorbed them into is the one deciding whether customer data may reach a third party. That is the same
+// mechanism this section declines to dissolve, measured on a real arm rather than an invented one.
+//
+// AND THE COMPILE-TIME RED IS NOT MERELY EARLIER THAN A TEST -- IT IS THE ONLY THING THAT WOULD SPEAK.
+// The argument above stands on its own, but it is stronger as a measured consequence than as a modeling
+// preference. Type growth is INVISIBLE TO THE REQUIRED LANES: discovery ENUMERATES rather than resolves,
+// deciding membership by scanning file lines for a declaration prefix (cli_run.rs bare_reference_closure
+// scans dep.content.lines() for "test fn " / "test data "), so a module that is enumerated and never
+// handed to the resolver cannot report a consumer that has gone stale. Established by execution by
+// sleek-dove-119 2026-09-13, which measured the not-executed identity population; CITED HERE RATHER THAN
+// RE-DERIVED -- I checked the scanning shape at that call site and did not re-measure the population.
+//
+// The consequence for this decision: had the Bool been dissolved into count(...) == 0, then on the day a
+// third arm lands, the match check would be gone because we deleted it, and the floor may never resolve
+// this module at all. NOTHING IN THE CHAIN WOULD TELL ANYONE. The match is the one link that speaks, and
+// it speaks at compile time, which is the rung above a test that has to be reached to run.
+//
+// So the single elimination returns BOTH facts and keeps them independent. One match, exhaustive, red at
+// compile time when an arm is added; two thin accessors that decide nothing.
+type StandingFacts {
+  ratified: Bool
+  open_questions: List<NonEmptyStr>
+}
+
+fn standing_facts(s: ProposalStanding) -> StandingFacts {
+  match s {
+    ProposedAwaitingRatification { settled_by } =>
+      StandingFacts { ratified: false, open_questions: [settled_by] }
+    RatifiedByOperator { ratified_on, record } =>
+      StandingFacts { ratified: true, open_questions: [] }
+  }
+}
+
+fn standing_is_ratified(s: ProposalStanding) -> Bool {
+  standing_facts(s: s).ratified
+}
+
+fn standing_open_question(s: ProposalStanding) -> List<NonEmptyStr> {
+  standing_facts(s: s).open_questions
+}
+
+// COUNSEL AND THE OPERATOR ARE TWO RATIFIERS, SO THEY ARE TWO TYPES.
+//
+// Collapsing them would make "the operator agreed we retain this for N days" and "counsel confirmed
+// this basis is available" one value, and they are neither the same question nor the same signer.
+//
+// WHAT THIS TYPE GOT WRONG, AND THE CORRECTION IS THE OPERATOR'S (operator_legal_conclusion_ruling,
+// 2026-09-18). It had two arms, so the only thing a row could say about a lawful basis was "counsel
+// must review this" or "counsel has answered". The annotation defended that by asserting a lawful
+// basis is the one term the operator cannot settle alone -- an EPISTEMIC claim, that we are not
+// entitled to reach a legal conclusion. That is false about this business and the corpus contradicts
+// it on its own pages: the M2 posture ruling, the PCI no-card-data requirement, the contractor-versus-
+// intern classification and the scope exclusion are all legal conclusions reached in house and written
+// down. A two-arm type made every one of those unrepresentable HERE while they were being made
+// everywhere else, and the cost was not theoretical: with every basis carrying CounselReviewRequired
+// and category_settlement_is_coherent demanding zero open questions, the map could not ratify a single
+// row until counsel was funded. A modelling error was holding the M2 customer path.
+//
+// WHAT THE QUESTION ACTUALLY IS: RISK, AND WHERE THE CONCLUSION IS PLACED. Operator, 2026-09-18: "we
+// continuously come to legal conclusions - the question is about risk and placement". So a standing now
+// carries WHO HOLDS THE CONCLUSION and WHERE BEING WRONG LANDS, and counsel is required where the
+// placement is one we decline to hold -- not because a conclusion is forbidden to us.
+//
+// ConcludedInHouse IS NOT A WEAKER CounselOpinionOnRecord. It is a different fact: we reached this,
+// we know what would falsify it, and we accept where the error lands. It carries `falsified_by` for
+// that reason -- an in-house conclusion with nothing that would overturn it is an assertion wearing a
+// type, which is the defect this module exists to refuse.
+type RiskPlacement
+  = CorrectableByUsAlone { correction: NonEmptyStr }
+  | ReachesACustomerCommitment { commitment: NonEmptyStr }
+  | ReachesAThirdPartysRights { rights_holder: NonEmptyStr }
+  | ReachesASupervisoryAuthority { exposure: NonEmptyStr }
+
+type CounselStanding
+  = ConcludedInHouse {
+      conclusion: NonEmptyStr,
+      ruling: DeclarationRef,
+      placement: RiskPlacement,
+      falsified_by: NonEmptyStr,
+    }
+  | CounselReviewRequired { question: NonEmptyStr, placement: RiskPlacement }
+  | CounselOpinionOnRecord { opinion: DeclarationRef }
+
+// THE RULING THAT RESHAPED THIS TYPE, AS SAID. Carried in the corpus's one typed carrier for what an
+// operator said, the same way strategy.compliance_posture_revision carries the M2 posture ruling.
+data operator_legal_conclusion_ruling: OperatorStatement = OperatorStatement {
+  declarant: "repository operator",
+  declared_at: 1789689600000,
+  prompt: "whether the counsel gate on this map encodes a prohibition on reaching legal conclusions - put to the operator while explaining why every data-map row was blocked on counsel funding",
+  quotation: "I reject the legal conclusion being refused thing - we continuously come to legal conclusions - the question is about risk and placement",
+}
+
+data operator_legal_conclusion_ruling_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.data_map",
+  decl_name: "operator_legal_conclusion_ruling",
+)
+
+// PLACEMENT IS WHAT DECIDES, AND IT DECIDES ONE WAY. A conclusion whose error we can correct ourselves,
+// or which reaches only a commitment we made to a customer we can go and amend, is one we hold. A
+// conclusion whose error lands on a THIRD PARTY'S RIGHTS or in front of a SUPERVISORY AUTHORITY is not
+// ours to hold, because the correction is not within our gift and the cost is not ours to bear. That is
+// the rule this fold states, so the per-row calls below are legible as applications of one policy rather
+// than nine separate opinions.
+fn placement_is_ours_to_hold(p: RiskPlacement) -> Bool {
+  match p {
+    CorrectableByUsAlone { correction } => true
+    ReachesACustomerCommitment { commitment } => true
+    ReachesAThirdPartysRights { rights_holder } => false
+    ReachesASupervisoryAuthority { exposure } => false
+  }
+}
+
+
+// WHERE THE DATA ACTUALLY SITS, AS A CLOSED SET OF PLACES RATHER THAN A SENTENCE.
+//
+// Each arm is a different failure domain, a different deletion mechanism and a different thing to
+// tell a customer, which is exactly why the register cannot carry this as prose. OutsideOurCustody is
+// the arm that says a category never reaches us at all, and it carries the basis for that claim: the
+// only current inhabitant is card data.
+//
+// WHAT THE CARD-DATA BASIS DOES AND DOES NOT ESTABLISH, CORRECTED (review 65282). This sentence
+// previously said our payment posture KEEPS card data in the provider's hosted checkout, which asserts
+// an operating fact. The cited row establishes no such thing. strategy.compliance_posture regime_pci is
+// a DesignConstraintNow whose carrier READS AS A REQUIREMENT -- hosted checkout or isolated provider
+// elements, the provider AOC, no PAN in logs, analytics, support or webhooks -- so the citation grounds
+// a PROPOSED REQUIREMENT that card data stay outside our custody, and it grounds nothing about a
+// payment path in operation. Whether the requirement is met is an observation about a deployed checkout
+// that no row here makes, and the basis reference is what lets a reader go and check rather than take
+// this file's word for it. ProcessMemoryNeverDurable is a stronger claim
+// than a short retention period and is stated as its own arm so that "we never write it down" and
+// "we write it down and delete it soon" can never be read as each other.
+type StorageLocus
+  = JobMicroVmTransient
+  | ContentAddressedByHash
+  | StoredOnDurableOrigin
+  | ProcessMemoryNeverDurable
+  | OperatorSupportSurface
+  | OutsideOurCustody { basis: DeclarationRef }
+
+// FOR HOW LONG. Three arms answer structurally and need no number. PeriodUndetermined exists because a
+// number is what is still missing on a row, and inventing one would be the defect this module is
+// written to avoid: it is not a gap in the model, it is the model's honest answer, and it names the
+// decision that would close it. AFTER 2026-09-14 THAT DECISION IS USUALLY NOT THE OPERATOR'S -- his
+// pass answered the shapes, and what each remaining row names is whoever actually closes ITS figure:
+// counsel, a fabric eviction policy, a backoff schedule, or - for build artifacts, once the 2026-09-14
+// split gave that half its own row - a product decision about how long a customer's output stays
+// fetchable.
+//
+// AND PeriodSettled EXISTS SO THE OPERATOR'S ANSWER HAS SOMEWHERE TO LAND (review 65188; the arm was
+// named RetentionPeriodSettled when that review landed and is now reached through RetentionForPeriod).
+// Without it the model FORBADE THE TRANSITION THIS WHOLE MODULE IS BUILT TO ENABLE: pick a period for
+// job logs or billing records and the only applicable arm was still Undetermined, which carries an open
+// question, so category_settlement_is_coherent refuses the ratification. That is DESIGN 4d's
+// over-generalized prohibition -- a mechanism forbidding more than the evidence supports -- and it is
+// the same class as the state-pinning conjuncts swept out of the witness earlier, this time in the
+// TYPE rather than in a check.
+//
+// MY OWN ACCEPTANCE CONTROL HID IT, AND THAT IS THE PART WORTH RECORDING. The full-ratification
+// mutation simulated settlement by rewriting the undetermined() helper to return RetainedForJobLifetime
+// -- an existing POLICY arm -- so it exercised a transition no operator would actually make and stayed
+// green for the wrong reason. A real settlement had nowhere to go.
+//
+// WHAT CONSTRUCTS THIS ARM, CORRECTED (review 65223). This sentence previously said "the control now
+// constructs this arm", and no committed artifact did - the only thing constructing it was a throwaway
+// MUTATION, and a mutation is not an artifact. A claim outliving its body, inside the change that fixes
+// that class twice elsewhere. What is committed now: test.claim.data_map_witness's ratified fixture
+// carries a settled period, and a_ratified_row_with_a_settled_period_is_coherent asserts what the arm
+// is for. The mutation that first exercised it is named as a mutation in the PR body, not as a control.
+//
+// ADDING THE ARM DECIDES NO PERIOD. It is a constructor; the number arrives with the operator, and no
+// row in this map uses it today. What it removes is the impossibility of recording one.
+//
+// WHY A PERIOD SLOT IS SAFE HERE AND WAS DELIBERATELY REFUSED ON THE PUBLIC MARKER. Recorded because
+// the two now look superficially alike and the obvious future cleanup is to unify them, which would
+// answer a DESIGN 3 meaning question in exactly the wrong direction.
+//
+// The public data-category markers agreed between snappy-pike-154 and loyal-seal-538 keep retention as a
+// BARE DeclarationRef, and a RetentionClass carrying a duration bound was refused there on the grounds
+// that a duration slot on a public marker invites an unratified commitment - a number sitting in a type
+// that reads as a promise nobody approved. THAT SHAPE IS AGREED AND NOT YET LANDED: there is no
+// product.data_category on public main as this is written, so it is named here as a decision rather than
+// cited as a declaration, for the same reason the CSA was AgreementAuthorityPending until gunbc#11186.
+//
+// Three things make the slot safe here and none of them holds there. This is a PROPOSAL type in the
+// private data map, not a public marker other lanes build on. Ratification lives on a SEPARATE axis --
+// ProposalStanding -- so carrying a period cannot ratify anything, and a proposed row with a period
+// reads as "we propose this period", which is what it is. And the arm is CONSTRUCTOR-ONLY with no row
+// using it: the number arrives with the operator, and the type does not decide it.
+//
+// So: do not unify this arm with the public marker's retention field. The hazard the public side refused
+// is real, and it is refused there BECAUSE the three conditions above are absent there, not because a
+// duration is inherently unsafe to model.
+//
+// THE CARRIER IS THE CANONICAL ONE, NOT A FRESH INT: std.measure Measure<Time, One, Nat>, which is
+// seconds, the unit extdeps.clock names for that shape. There is no Day or Month arm in
+// std.measure.Scale, and adding one would be a public edit to a closed coproduct that every exhaustive
+// match over Scale in the corpus would have to absorb -- out of scope here and not worth a unit's
+// convenience. A period authored as seconds is unit-typed and cannot be confused with a count.
+// HOW LONG, OR WHAT WOULD SETTLE IT, IS ONE FACT AND IT IS NOW ONE TYPE.
+//
+// RetentionPeriodSettled and RetentionPeriodUndetermined used to be two arms of RetentionProposal
+// directly, which was correct while a period was the only thing a row could carry. The operator's
+// 2026-09-14 pass made it wrong: four of his answers carry a period SOMEWHERE INSIDE A POLICY -- a
+// default that a customer may opt out of, a floor set by an external obligation, one period per tier
+// of a backoff -- and each of those would have needed its own settled/undetermined pair. Five pairs
+// spelling one question is the DESIGN 3 fork, so the question is factored out and every arm that
+// carries a period consumes it -- INCLUDING THE BARE ONE.
+//
+// THE BARE ONE IS NOT AN EXCEPTION, AND THE FIRST REVISION OF THIS CHANGE MADE IT ONE (review 66283).
+// It factored out four of the five and left RetentionPeriodSettled/RetentionPeriodUndetermined standing
+// beside PeriodSettled/PeriodUndetermined with byte-identical payloads and byte-identical fold arms --
+// two sources for one fact, free to drift, inside the change whose stated purpose was removing exactly
+// that. Net concepts had grown by re-invention, which is DESIGN 2's test for whether an edit actually
+// reduced redundancy or only moved it. RetentionForPeriod is the completion: the bare case is now "a
+// period standing with no policy around it", which is what it always was.
+// BOTH ARMS NAME THEIR OWN GROUND, WHICH IS THE SYMMETRY THE FIRST REVISION LACKED. PeriodUndetermined
+// names the decision that WOULD settle it; PeriodSettled names what DID. Without the second, a settled
+// period is a bare number whose justification has to live somewhere a reader of the row cannot reach -
+// which is what happened here, and the constant that justified the map's only settled figure ended up
+// consumed by nothing at all.
+type RetentionPeriodStanding
+  = PeriodSettled { period: Measure<Time, One, Nat>, basis: NonEmptyStr }
+  | PeriodUndetermined { settled_by: NonEmptyStr }
+
+fn period_open_question(p: RetentionPeriodStanding) -> List<NonEmptyStr> {
+  match p {
+    PeriodSettled { period, basis } => []
+    PeriodUndetermined { settled_by } => [settled_by]
+  }
+}
+
+// ONE TIER OF A NON-MONOLITHIC SCHEDULE. The trace names WHAT is kept for this long, because a tiered
+// answer whose tiers are not distinguishable is a single period wearing a list.
+type RetentionTier {
+  trace: NonEmptyStr
+  period: RetentionPeriodStanding
+}
+
+// THE SCHEDULE HAS THE SAME TWO STATES AS A PERIOD, AND THE FIRST REVISION GAVE IT ONLY ONE
+// (reviews 66297 and 66307, and the same finding in a source hold). RetentionTiered carried a bare
+// schedule_settled_by that retention_open_question emitted UNCONDITIONALLY, so a fully enumerated
+// backoff whose every tier was settled still reported an open question -- and because ratification
+// requires zero open questions, every tiered category was STRUCTURALLY INCAPABLE of ever reaching a
+// coherent RatifiedByOperator state.
+//
+// I ARGUED FOR THAT SHAPE DELIBERATELY, AND THE ARGUMENT WAS WRONG IN A WAY WORTH KEEPING. The claim
+// was that a backoff with one tier enumerated is a schedule someone STARTED rather than a decided one,
+// so the question should stay open. That is true of a PARTIAL schedule and false of a complete one, and
+// the first revision had no way to tell them apart -- so it treated every schedule as partial forever.
+// That is DESIGN 4d's over-generalized prohibition, in the same change whose own prose says an arm that
+// "asks unconditionally ... would refuse ratification forever and be the same over-prohibition", and in
+// the same FILE that already records this class for bare periods: without PeriodSettled the model
+// forbade the transition it was built to enable. Third instance, same type, same direction.
+//
+// The distinction the argument was reaching for survives, and it is now representable: a partial
+// schedule keeps asking, a complete one does not, and which it is becomes a constructor rather than an
+// assumption baked into the fold.
+type RetentionTierScheduleStanding
+  = TierScheduleSettled { tiers: List<RetentionTier> }
+  | TierScheduleUndetermined { partial_tiers: List<RetentionTier>, settled_by: NonEmptyStr }
+
+fn tier_period_questions(tiers: List<RetentionTier>) -> List<NonEmptyStr> {
+  flat_map(tiers, t => period_open_question(p: t.period))
+}
+
+// A SETTLED SCHEDULE STILL REPORTS ITS TIERS' OWN OPEN PERIODS. Completeness of the schedule and
+// settledness of each tier's figure are two facts, and collapsing them would let a schedule declared
+// complete carry a tier whose period nobody chose.
+fn schedule_open_question(sc: RetentionTierScheduleStanding) -> List<NonEmptyStr> {
+  match sc {
+    TierScheduleSettled { tiers } => tier_period_questions(tiers: tiers)
+    TierScheduleUndetermined { partial_tiers, settled_by } =>
+      concat([settled_by], tier_period_questions(tiers: partial_tiers))
+  }
+}
+
+// THE OPERATOR'S ANSWERS DID NOT FIT, AND THE TYPE WAS THE THING THAT WAS WRONG.
+//
+// This coproduct carried five arms, of which exactly one could hold a decision about how long: a bare
+// fixed period. On 2026-09-14 the operator answered all seven open rows, and SIX of the answers were
+// not fixed periods. They were shapes:
+//
+//   job logs               -- an aggressive default, unless a customer opts in to longer
+//   support communications -- a ceiling, no indefinite cruft
+//   abuse and sanctions    -- "a lot of this is probably like an exponential backoff ... we can keep
+//                             traces for different periods, the answer doesn't need to be monolithic"
+//   metering, identity     -- as long as a bill must be re-derivable and tax records must be kept
+//   build inputs in cache  -- not his question at all; a fabric and materialization eviction concern
+//
+// Flattening any of those into a single number would have recorded something the operator did not say,
+// through the one gate built to stop exactly that. So the three policy arms below exist, and they are
+// the SECOND time this type has been too narrow in the direction DESIGN 4d names: the settled-period arm
+// was itself added because the model forbade the transition it existed to enable. The class is the same
+// and the lesson is now recorded twice -- a mechanism that forbids more than the evidence supports costs
+// the decision it refused to carry, and the cost looks like rigor.
+//
+// WHAT THESE ARMS DO NOT DO. None of them decides a number. RetentionDefaultWithOptIn still carries a
+// standing rather than a period, because "aggressive" is a direction and not a duration; the tiers of a
+// backoff are a list the operator has not enumerated; and an obligation-bounded period is settled by the
+// obligation's own authority, which is counsel's and not this file's. What they remove is the
+// impossibility of recording the POLICY while its number stays honestly open -- which is what a row
+// reading Undetermined was concealing: it said nobody had decided, when in fact the shape was decided
+// and only the figure was not.
+type RetentionProposal
+  = RetainedForJobLifetime
+  | NeverWrittenDurably
+  | NotRetainedByUs { basis: DeclarationRef }
+  | RetentionForPeriod { period: RetentionPeriodStanding }
+  | RetentionDefaultWithOptIn { default_period: RetentionPeriodStanding, opt_in: NonEmptyStr }
+  | RetentionBoundedByObligation { obligation: NonEmptyStr, period: RetentionPeriodStanding }
+  | RetentionTiered { schedule: RetentionTierScheduleStanding }
+
+// AN UNENUMERATED SCHEDULE IS AN OPEN QUESTION AND NOT A POLICY. A tiered answer with no tiers has
+// decided the SHAPE and none of the schedule, so it must report a question rather than read as settled,
+// and a PARTIALLY enumerated one must keep asking -- a fold that went quiet when the first tier landed
+// would go silent exactly when the remaining tiers still needed deciding. Which of those a schedule is
+// now lives in TierScheduleSettled versus TierScheduleUndetermined rather than in this fold, so a
+// completed backoff can reach zero questions and a ratification over it is reachable.
+fn retention_open_question(r: RetentionProposal) -> List<NonEmptyStr> {
+  match r {
+    RetainedForJobLifetime => []
+    NeverWrittenDurably => []
+    NotRetainedByUs { basis } => []
+    RetentionForPeriod { period } => period_open_question(p: period)
+    RetentionDefaultWithOptIn { default_period, opt_in } => period_open_question(p: default_period)
+    RetentionBoundedByObligation { obligation, period } => period_open_question(p: period)
+    RetentionTiered { schedule } => schedule_open_question(sc: schedule)
+  }
+}
+
+// WHERE x FOR HOW LONG IS ONE PAIR, NOT TWO PARALLEL LISTS. A category living in two places usually
+// lives there for two different lengths of time - build inputs are gone with the microVM but persist
+// in the content-addressed store - and a row with a list of loci beside a single period would have to
+// pick one of them to be true.
+type ResidencyRow {
+  locus: StorageLocus
+  retention: RetentionProposal
+}
+
+// WHOSE DATA. CommitAuthorIncidental is separated from the two account classes because we never
+// solicit it: it arrives inside a repository we were handed, which changes both the lawful-basis
+// question and what a deletion request can even mean.
+type DataSubjectClass
+  = CustomerOrgUser
+  | CustomerOrgAdmin
+  | CommitAuthorIncidental
+
+// WHAT FOR. Five purposes, closed, so a sixth use of a category cannot be added without saying so
+// here. They are the purposes the business actually has, not a taxonomy borrowed from a regime.
+type ProcessingPurpose
+  = ExecuteCustomerWork
+  | MeterAndBill
+  | Support
+  | SecurityAndAbuse
+  | LegalObligation
+
+// THE AGREEMENT WE WOULD BE PERFORMING IS NOT YET AN AUTHORITY IN EITHER REPOSITORY, AND SAYING SO
+// IS CHEAPER THAN PRETENDING OTHERWISE.
+//
+// The pinned contract standard is Common Paper CSA v2.1, landing publicly as
+// extdeps.common_paper.cloud_service_agreement in gunbc#11186. That declaration does not exist on
+// public main as this is written, so a DeclarationRef to it would be a citation naming nothing - the
+// second naming scheme DESIGN 3 forbids, and the exact defect the corpus citation gate catches. The
+// pending arm carries the same three facts a citation would, plus the change that would make it a
+// citation, so the bet is legible and its dissolution is mechanical: when gunbc#11186 lands, this row
+// becomes AgreementAuthorityLanded and the pending arm loses its only inhabitant.
+type AgreementAuthority
+  = AgreementAuthorityLanded { authority: DeclarationRef }
+  | AgreementAuthorityPending { module_path: NonEmptyStr, decl_name: NonEmptyStr, landing: NonEmptyStr }
+
+// WHY WE MAY PROCESS IT. The arms are the three bases this business would actually assert, and each
+// carries the thing that would have to be true for it - the agreement being performed, the interest
+// being pursued, the obligation being discharged. None of them is asserted: the claim below pairs a
+// basis with a CounselStanding. Not every row carries CounselReviewRequired any more, and the change is
+// the operator's (operator_legal_conclusion_ruling): the rows whose error we can correct ourselves or
+// with a customer we can reach are ConcludedInHouse, and counsel is required where the error lands on a
+// third party's rights or in front of a supervisory authority.
+
+// THE DECLARED FRONTIERS OF THIS MODULE, TYPED (DESIGN 3c). Carried-and-never-matched is a frontier only
+// when the consumer and the retiring capability are in fields a program can read.
+data data_map_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "strategy.data_map", decl_name: "DataSubjectClass"),
+    reason: "constructed by the rows and never matched or projected; read today only as a presence count by category_is_complete, so no fold consumes the arm.",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a customer-facing projection -- the privacy notice or the security schedule -- MATCHES ON the subject class rather than counting its presence. If such a projection instead reads it as prose, the field is the wrong carrier and is narrowed to what that consumer actually reads; either outcome retires this row, and a witness asserting the type exists does not."
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "strategy.data_map", decl_name: "ProcessingPurpose"),
+    reason: "same shape as DataSubjectClass: constructed and never matched. The obvious consumer, a controller-versus-processor split, is a LEGAL classification that is counsel's call and explicitly not this lane's, so minting one here would be the fabricated legal finding this map exists to refuse.",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a customer-facing projection matches on processing purpose, or when counsel's own register lands the controller/processor split as a cited declaration this map can cite rather than assert."
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "strategy.data_map", decl_name: "data_handling_map_rows"),
+    reason: "the mint is INVOKED -- the witness calls it and asserts the minted map's authority is the declaration this module's mint IS, spelled independently in the witness, and that it resolves live. It deliberately does NOT assert the minted population: a comparison against the ratified-filtered rows is 0 == 0 while nothing is ratified, so it stayed green under the very edit it was written to catch and was removed rather than kept as cited coverage (predicate_vacuously_true_on_an_empty_domain). That half becomes authorable at the ratification pass and not before -- but its PRODUCTION consumer, product.data_class admit_data_effect, cannot be called from this repository at all, and that is established by execution rather than argued: the fold takes a Classified and a Sink, both sole_constructor in product.data_class, and `gunbc run` refuses with `sole_constructor type 'Classified' cannot be constructed outside its defining module`. The mints that would produce a Classified for any category this map covers do not exist; product.data_class carries them as its own declared frontiers. So this frontier is owned by that tree's seal working correctly, not by an omission here, and minting a Classified locally to reach the fold would be the workaround DESIGN 5 names -- routing around a seal because it refused.",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a classify_<category> mint exists in product.data_class for a category this map covers, admit_callers-sealed to a PRODUCTION ingest boundary, so a Classified exists to hand the fold -- product.data_class's own rows state the trigger and state that a witness minting the value does NOT satisfy it. AND the operator's ratification pass has landed, because a map with no ratified rows makes every fold run refuse CategoryUnmapped, so a green admitting run is not authorable before it. Both are required: the first makes the route callable, the second makes it admit. A witness asserting the mint exists does not retire this row -- that is the state review 65758 found."
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "strategy.data_map", decl_name: "RetentionProposal"),
+    reason: "THE POLICY ARMS ARE MATCHED AND THEIR PAYLOADS ARE NOT. retention_open_question distinguishes RetentionDefaultWithOptIn, RetentionBoundedByObligation and RetentionTiered, and reads only the period standing inside each; the fields that say WHAT THE POLICY IS -- RetentionDefaultWithOptIn.opt_in and RetentionBoundedByObligation.obligation -- are read by nothing. A mutation to either leaves every control on this module green. They are carried rather than dropped because each holds a distinction a customer-facing projection turns on: an aggressive default a customer may opt OUT of versus a retain-by-default store with a deletion request path behave oppositely when nobody acts, and an obligation-bounded period is a different promise from a chosen one even when the two happen to be the same number. THE GRAIN OF THIS ROW IS THE TYPE AND NOT THE FIELD, deliberately: both subjects are payload fields of COPRODUCT ARMS rather than of a declaration, every field-grain citation in this corpus names a data declaration's own field, and v2.std.decl_ref_resolution refuses a NamedField naming a field the declaration does not carry (DeclarationRefFieldAbsent). A citation that cannot resolve is not a finer-grained citation, it is a dangling one.",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a customer-facing projection or a retention enforcement path READS one of these payloads -- states the opt-in rule to a customer, decides an actual deletion against it, or follows the named obligation to the authority that sets it. It splits into two rows the moment either half lands, because the two payloads have different triggers: the opt-in needs a consumer, and the obligation additionally needs the counsel finding of counsel_retention_period_review to exist as a cited declaration so the field can become a reference rather than a description. A presence check retires neither: both are NonEmptyStr and non-empty by construction."
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_field_ref(module_path: "strategy.data_map", decl_name: "RetentionTier", field_name: "trace"),
+    reason: "the trace names WHAT a tier keeps, and no fold reads it. It exists so a tiered answer whose tiers cannot be told apart is not a single period wearing a list -- but that is today a property of the author's discipline rather than of anything executable, and while the abuse and sanctions schedule stays unenumerated no row constructs a tier at all. Cited at field grain because RetentionTier is a declaration with its own fields, unlike the two arm payloads above.",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a retention enforcement path or a customer-facing projection MATCHES on the trace to decide which material a tier's period applies to. The abuse and sanctions schedule being enumerated is a PRECONDITION and not the trigger: tiers existing is not tiers being read."
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_field_ref(module_path: "strategy.data_map", decl_name: "ScopeExclusion", field_name: "claim"),
+    reason: "the exclusion's load-bearing sentence -- that we process no end-user personal data -- is carried as NonEmptyStr and read by no fold; `policy` and `falsified_by` on the same type are unread for the same reason and retire with this row. THIS IS THE SUBJECT REVIEW 65489 NAMED, and it was the one still missing when the other four landed: the class was swept and the named site was not.",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a customer-facing projection -- the privacy notice or the security schedule -- READS an exclusion row's claim, policy or falsified_by to state the exclusion to a customer. A presence check cannot retire it: these fields are NonEmptyStr and non-empty by construction, so an assertion over them could not fail. If such a projection reads them as prose rather than matching, the fields are the wrong carrier and are narrowed to what it consumes; either outcome retires this row."
+    )
+  ),
+]
+
+type LawfulBasis
+  = ContractPerformance { agreement: AgreementAuthority }
+  | LegitimateInterest { interest: NonEmptyStr }
+  | LegalObligationBasis { obligation: NonEmptyStr }
+
+// THE AGREEMENT ARMS, PROJECTED SO SOMETHING CAN READ THEM. Until this landed, AgreementAuthority was
+// CARRIED and never MATCHED: nothing in either module asked whether the agreement behind a lawful basis
+// was a resolved citation or a typed promise, so the distinction existed for a reader and not for the
+// program.
+//
+// THIS IS NOT A STANDARD THE MODULE MEETS THROUGHOUT, AND SAYING SO IS THE POINT (review 65169).
+// DataSubjectClass and ProcessingPurpose are still carried and never matched: the rows construct them
+// and nothing projects or matches an arm, so today they are read only as presence counts by
+// category_is_complete. They are a DECLARED FRONTIER rather than a closed gap.
+//
+// WHY NO CONSUMER IS INVENTED HERE, RESTATED (operator_legal_conclusion_ruling, 2026-09-18). The obvious
+// consumer is the controller-versus-processor split, and the previous version of this paragraph refused
+// to build one on the grounds that a legal classification is counsel's call and not this lane's. That
+// reason was wrong and the operator has said so: we reach legal conclusions continuously, and the rows
+// below now CARRY the split as in-house conclusions with their risk placement stated. What is still
+// missing is a FOLD that derives the role from the purposes -- and the reason not to mint one is now the
+// ordinary one rather than a prohibition: a derivation would have to be right about every purpose
+// combination in advance, while the rows are right about themselves one at a time. It becomes worth
+// building when a customer-facing projection needs the role per category, which is the same trigger the
+// row below carries.
+//
+// Both are ENROLLED as typed rows in data_map_frontier_rows below, carrying that consumer and trigger in
+// fields. DESIGN 3c admits a declared frontier only in that form; this sentence would otherwise be
+// indistinguishable from a dangling declaration with an excuse attached. Two zero-or-one projections, one per arm, and both have a consumer in the witness -- the
+// landed reference is required to name a declaration that EXISTS in the module it cites, read from that
+// module's own source, and the pending landings are reported as the open obligations they are.
+fn agreement_landed_ref(a: AgreementAuthority) -> List<DeclarationRef> {
+  match a {
+    AgreementAuthorityLanded { authority } => [authority]
+    AgreementAuthorityPending { module_path, decl_name, landing } => []
+  }
+}
+
+fn agreement_pending_landing(a: AgreementAuthority) -> List<NonEmptyStr> {
+  match a {
+    AgreementAuthorityLanded { authority } => []
+    AgreementAuthorityPending { module_path, decl_name, landing } => [landing]
+  }
+}
+
+fn basis_agreement(b: LawfulBasis) -> List<AgreementAuthority> {
+  match b {
+    ContractPerformance { agreement } => [agreement]
+    LegitimateInterest { interest } => []
+    LegalObligationBasis { obligation } => []
+  }
+}
+
+type LawfulBasisClaim {
+  basis: LawfulBasis
+  standing: CounselStanding
+}
+
+// AN IN-HOUSE CONCLUSION IS NOT AN OPEN QUESTION, WHICH IS THE WHOLE UNBLOCKING. A row asking nothing
+// is a row that can be ratified; a row carrying a conclusion we have accepted the risk of is asking
+// nothing. It is still REPORTED -- in_house_conclusions below is what a reader or an auditor reads to
+// see what we decided ourselves and where we put the risk -- because "no open question" must never be
+// read as "nobody decided anything".
+fn claim_open_question(c: LawfulBasisClaim) -> List<NonEmptyStr> {
+  match c.standing {
+    ConcludedInHouse { conclusion, ruling, placement, falsified_by } => []
+    CounselReviewRequired { question, placement } => [question]
+    CounselOpinionOnRecord { opinion } => []
+  }
+}
+
+fn claim_in_house_conclusion(c: LawfulBasisClaim) -> List<NonEmptyStr> {
+  match c.standing {
+    ConcludedInHouse { conclusion, ruling, placement, falsified_by } => [conclusion]
+    CounselReviewRequired { question, placement } => []
+    CounselOpinionOnRecord { opinion } => []
+  }
+}
+
+fn in_house_conclusions() -> List<NonEmptyStr> {
+  flat_map(data_categories, c => flat_map(c.lawful_bases, b => claim_in_house_conclusion(c: b)))
+}
+
+// THE CUSTODY CLAIM, PROJECTED SO IT CAN BE CHECKED RATHER THAN DESCRIBED. "Card data never reaches
+// us" is the strongest positive claim in this map, and it is carried by a PAIR -- an OutsideOurCustody
+// locus whose retention is NotRetainedByUs -- because either half alone would be a different and
+// weaker statement: a locus with a period admits a durable copy, and a NotRetainedByUs sitting on a
+// locus we do hold would be a contradiction.
+//
+// Both projections are zero-or-one lists over an exhaustive match, so the basis travels with the arm
+// and nothing needs a seed. The basis is what makes the claim auditable: it must be the posture row
+// the claim rests on, not merely some reference.
+fn locus_outside_custody_basis(l: StorageLocus) -> List<DeclarationRef> {
+  match l {
+    JobMicroVmTransient => []
+    ContentAddressedByHash => []
+    StoredOnDurableOrigin => []
+    ProcessMemoryNeverDurable => []
+    OperatorSupportSurface => []
+    OutsideOurCustody { basis } => [basis]
+  }
+}
+
+fn retention_not_retained_basis(r: RetentionProposal) -> List<DeclarationRef> {
+  match r {
+    RetainedForJobLifetime => []
+    NeverWrittenDurably => []
+    NotRetainedByUs { basis } => [basis]
+    RetentionForPeriod { period } => []
+    RetentionDefaultWithOptIn { default_period, opt_in } => []
+    RetentionBoundedByObligation { obligation, period } => []
+    RetentionTiered { schedule } => []
+  }
+}
+
+// ONE CATEGORY, ONE ROW. `decl` is the row's own declaration name, which is how a consumer builds a
+// DeclarationRef to the row it is holding without a second table mapping ids to names: the profile
+// reference a route sanction cites is DERIVED from the row (category_profile_ref below), never
+// hand-copied beside it.
+// ONE NAME PER ROW, AND IT IS THE DECLARATION BINDER.
+//
+// This carried BOTH `id` (a kebab business id) and `decl` (the name of the `data` binder the row sits
+// inside), which is two naming schemes for one row -- the fork DESIGN 3 forbids -- and review 64945
+// named the consequence: `decl` was a silent hand-copy with nothing behind it, while being the
+// load-bearing term of a fail-closed admission gate. Rename the binder, or copy a row and forget to
+// update the field, and category_profile_ref yields a DeclarationRef naming NOTHING, while every
+// consumer still agrees with every other because they all derive from the same field. The gate would
+// admit a route on a data_handling_profile that cites nothing, which is the exact defect this module
+// exists to end, one indirection down.
+//
+// So `id` is gone and the surviving name is the binder, which is also the more useful one to report: an
+// operator reading an open question now sees the declaration to go and edit. The binder is verified
+// against the resolver's own declaration index by the witness, which answers from the corpus census
+// rather than from a path this module would have to guess.
+// TWO IDENTITIES, AND THE ROW CARRIES BOTH BECAUSE THEY ANSWER DIFFERENT QUESTIONS. `decl` names THIS
+// ROW -- the private description, the thing an operator ratifies and a route sanction cites, derived as a
+// reference by category_profile_ref below. `marker` names the HANDLING CLASS the row describes: a
+// declaration in public product.data_category, which is the C of product.data_class Classified<C, T> and
+// the identity its admission fold compares.
+//
+// THEY WERE CONFLATED AND THE CONFLATION FAILED CLOSED, WHICH IS WHY IT SURVIVED. handling_rows_for_category
+// passed category_profile_ref(c) as DataHandlingRow.category -- a strategy.data_map reference handed to a
+// fold that compares it against a sink's product.data_category marker. Those never match, so the FIRST
+// ratified category would have made every row it emits resolve CategoryUnmapped. With zero ratified rows
+// the map emits nothing, so there was no row to fail on and nothing was red: ratification would have
+// appeared not to work, and been misdiagnosed. A defect that is invisible until the moment it matters is
+// worse than a loud one, and the wall below is the reason it cannot come back.
+//
+// WHY NOT ONE FIELD. Deriving the marker from `decl` would need a name table mapping private row names to
+// public marker names -- a second authority that can disagree with this one, which is the fork this
+// module's own `decl` annotation refuses one indirection up. Deriving `decl` from the marker would make
+// the private rows unable to outnumber the public markers, and they may: a marker is a handling class, a
+// row is a description of what we do under it. The two are one-to-one TODAY and that is an invariant this
+// module asserts (every_category_owns_its_own_marker), not a fact its types assume.
+type DataCategory {
+  decl: NonEmptyStr
+  marker: DeclarationRef
+  scope_note: NonEmptyStr
+  residency: List<ResidencyRow>
+  subjects: List<DataSubjectClass>
+  purposes: List<ProcessingPurpose>
+  lawful_bases: List<LawfulBasisClaim>
+  standing: ProposalStanding
+}
+
+// NARROWED 2026-09-14. This used to name the retention period AND the in-scope question, and the
+// period half is no longer his: the 2026-09-14 pass answered it, and what each row now names is the
+// decision that actually closes ITS number -- a fabric eviction policy, counsel, a backoff schedule.
+// Leaving the period in this string would have kept seven rows queued against an operator who had
+// already answered, which is the roster defect cool-crane-190 found from the other direction (the act
+// was not in the owner queue at all) inverted: an act still in the queue after it was performed.
+data operator_ratification_pass: NonEmptyStr = "the operator's ratification pass over strategy.data_map: per category, whether the category is in scope at all, and confirmation of the row's content as written"
+
+// THE SETTLING DECISIONS THE 2026-09-14 PASS CREATED. Each names the decision that would close a
+// number the operator's answer deliberately left open, and each names a DIFFERENT decider -- which is
+// the whole reason they are separate constants rather than one. A row still reading
+// operator_ratification_pass after this pass would be claiming he has not answered it, and he has.
+data cache_eviction_policy_decision: NonEmptyStr = "the fabric and materialization eviction policy for the content-addressed store. Operator, 2026-09-14: 'i think this is a fabric/materialization concern - it's a good question we need to resolve - it probably has to do with velocity/acceleration type logic, but we shouldn't overthink it at first'. This row previously named the operator's ratification pass as its settling decision and that was WRONG rather than merely unanswered: how long a shared cache entry survives is a property of the eviction policy that governs the store, not a commitment the operator makes per data category, so it was queued against someone who was never the right decider."
+
+data log_default_period_decision: NonEmptyStr = "the specific default expiry for job logs. Operator, 2026-09-14: the policy is a default expiry that is AGGRESSIVE, with opt-in for longer, on the reasoning that 'this data is generally not super valuable and is often stored in multiple places'. Aggressive is a direction and not a duration, so the shape is settled and the figure is not."
+
+// THE BASIS FOR THE MAP'S ONLY SETTLED FIGURE, AND IT IS CARRIED ON THE ROW RATHER THAN BESIDE IT
+// (review 66297). This constant was declared and consumed by nothing while the period it justifies sat
+// as a bare Measure on the row -- so the number and its provenance were two independently editable
+// sources, and changing one left the other reading the old value with nothing red. It deliberately no
+// longer states the figure in prose: the row is the figure's one home, and this says only what the
+// operator decided and how his words were read.
+data ticket_retention_note: NonEmptyStr = "Operator, 2026-09-14: 'i would have a policy, we can make it <1year for now, i don't want the expectation of indefinitely handling cruft'. Recorded as a twelve-month ceiling with no opt-out, which is this session's reading of '<1year' put to the operator and confirmed."
+
+data tax_and_billing_obligation: NonEmptyStr = "the period for which a bill must remain re-derivable and tax and accounting records must be kept, in the jurisdictions we sell from and into. Operator, 2026-09-14, agreed as the bound; the figure is settled by counsel_retention_period_review and is not this file's to assert."
+
+// A DURATION QUESTION MUST NAME AN AUTHORITY WHOSE PROPOSITION CAN ANSWER IT (source hold, finding 3).
+// The first revision routed metering and account-identity durations to counsel_scope_review, which asks
+// for review of LAWFUL BASIS and CONTROLLER-VERSUS-PROCESSOR ROLE. That review cannot decide a statutory
+// record-keeping period, so the agenda was sending a duration to a description that does not answer it,
+// and a later lawful-basis opinion could arrive looking like the named settlement event for a figure it
+// never decided. Counsel may own both; they are still two questions, and a settled_by naming the wrong
+// one is the same class as a citation that resolves to the wrong symbol.
+data counsel_retention_period_review: NonEmptyStr = "counsel review of the RETENTION PERIOD required by tax, accounting and sanctions record-keeping obligations, and of how long a bill must remain re-derivable, in the jurisdictions we sell from and into. Distinct from counsel_scope_review, which decides lawful basis and controller-versus-processor role and decides no duration at all."
+
+data abuse_backoff_schedule_decision: NonEmptyStr = "the tier schedule for abuse and sanctions records. Operator, 2026-09-14: 'a lot of this stuff is probably like an exponential backoff tbh, like we can keep traces for different periods, the answer doesn't need to be monolithic'. The SHAPE is settled as non-monolithic and tiered; which traces, and for how long each, is not enumerated and this row reports that rather than collapsing the backoff into one period."
+
+// PERFORMED 2026-09-14, so this constant now names the ARTIFACT half's own open figure rather than the
+// split. The split decision itself is discharged: category_build_artifacts and category_execution_receipts
+// exist, and a settling decision naming an act that has been performed is the stale-queue defect this
+// module corrected for the operator's ratification pass.
+data artifact_retention_decision: NonEmptyStr = "how long a customer's build artifacts and populated caches stay fetchable from durable origin. This is the operator's, and it is a PRODUCT decision rather than a compliance one: no bill depends on it and no record-keeping obligation reaches it. It had no home while artifacts and receipts shared a row, because any period chosen for one was wrong for the other - which is what the 2026-09-14 split dissolved."
+
+// NARROWED 2026-09-19 TO WHAT IS STILL ASKED (review 68495). This named the whole controller-versus-
+// processor split and the lawful basis of every category -- and the same change that added
+// ConcludedInHouse settled ten of the thirteen basis claims in house under operator_legal_conclusion_ruling. A question
+// that still asked counsel to decide work this module declares decided would put the map in the state
+// its own paragraph above describes for periods: a later opinion arriving looking like the named
+// settlement event for rows that no longer wait on it, which is the same class as a citation resolving
+// to the wrong symbol.
+//
+// WHAT LEFT THIS QUESTION AND WHY IT IS NOT MERELY DELETED FROM THE TEXT: the processor reading of the
+// customer-material categories, the controller reading of account identity, and the contract-performance
+// basis under the pinned CSA are now in-house conclusions, each carrying its own falsified_by. They are
+// not unasked -- they are answered, by us, at a placement we hold. If counsel later contradicts one, the
+// falsifier on that row is what routes it back here.
+data counsel_scope_review: NonEmptyStr = "counsel review of the two lawful-basis questions whose placement is NOT ours to hold: (1) whether our own risk-based screening and abuse program stands as a legitimate interest against the rights of the person screened, blocked or rejected -- a decision made ABOUT someone and acted on WITHOUT their agreement, so being wrong costs them access and a record no amendment of ours returns; and (2) whether the legal-obligation bases we assert are the ones the statutes actually impose -- tax and accounting record retention, and sanctions screening records, in the jurisdictions we sell from and into. Judged against the pinned Common Paper CSA v2.1 and the regimes in strategy.compliance_posture. It deliberately does NOT ask for the controller-versus-processor split or the contract-performance bases: those are in-house conclusions under operator_legal_conclusion_ruling, and asking counsel to decide them again would make a later opinion read as the settlement event for rows that are not waiting on it."
+
+fn undetermined(settled_by: NonEmptyStr) -> RetentionProposal {
+  RetentionForPeriod { period: PeriodUndetermined { settled_by: settled_by } }
+}
+
+fn proposed() -> ProposalStanding {
+  ProposedAwaitingRatification { settled_by: operator_ratification_pass }
+}
+
+// THE PENDING ARM'S DISSOLUTION FIRED, AND THE GUESSED NAME WAS WRONG -- WHICH IS THE ARGUMENT FOR
+// HAVING TYPED IT AS PENDING.
+//
+// gunbc#11186 landed extdeps.common_paper.cloud_service_agreement on public main, so this citation is
+// now openable and the pending arm stops being the honest choice. The reference is the UPSTREAM's OWN
+// common_paper_csa_v2_1_ref rather than a decl_ref minted here: one citation of one fact, not a second
+// spelling of it that can drift (DESIGN 3).
+//
+// WORTH RECORDING BECAUSE IT IS EVIDENCE AND NOT COLOUR: the pending arm predicted
+// decl_name "cloud_service_agreement_v2_1". The declaration that landed is common_paper_csa_v2_1. Had
+// this been written as a DeclarationRef on the strength of that prediction, it would have named
+// NOTHING while looking exactly like a resolved citation -- the defect the arm existed to avoid, and
+// the reason a not-yet-landed authority gets a typed bet rather than a confident reference. The names
+// here were read off the file on public main at b2f9a0c5bbe, against its `module` line and its `data`
+// line, rather than from memory or from a message quoting them.
+//
+// THE ARM STAYS. What was stale is this INSTANCE of it, not the carrier: the next authority that is
+// modelled before it lands needs the same shape, and deleting it would force the next author to
+// choose between waiting and fabricating.
+// THE STANDING IS NOW AN ARGUMENT, BECAUSE IT IS A PER-ROW RISK JUDGEMENT AND NOT A PROPERTY OF THE
+// BASIS KIND. These three constructors used to hard-code CounselReviewRequired, which is how every row
+// in the map came to carry it: not because anyone judged thirteen basis claims and reached the same
+// answer thirteen times, but because the constructor left no other answer sayable. A default that cannot be overridden
+// is a decision disguised as a shape.
+fn in_house(conclusion: NonEmptyStr, placement: RiskPlacement, falsified_by: NonEmptyStr) -> CounselStanding {
+  ConcludedInHouse {
+    conclusion: conclusion,
+    ruling: operator_legal_conclusion_ruling_ref,
+    placement: placement,
+    falsified_by: falsified_by,
+  }
+}
+
+fn counsel_required(question: NonEmptyStr, placement: RiskPlacement) -> CounselStanding {
+  CounselReviewRequired { question: question, placement: placement }
+}
+
+fn contract_basis(standing: CounselStanding) -> LawfulBasisClaim {
+  LawfulBasisClaim {
+    basis: ContractPerformance {
+      agreement: AgreementAuthorityLanded { authority: common_paper_csa_v2_1_ref },
+    },
+    standing: standing,
+  }
+}
+
+fn security_interest_basis(interest: NonEmptyStr, standing: CounselStanding) -> LawfulBasisClaim {
+  LawfulBasisClaim {
+    basis: LegitimateInterest { interest: interest },
+    standing: standing,
+  }
+}
+
+fn legal_obligation_basis(obligation: NonEmptyStr, standing: CounselStanding) -> LawfulBasisClaim {
+  LawfulBasisClaim {
+    basis: LegalObligationBasis { obligation: obligation },
+    standing: standing,
+  }
+}
+
+// THE PROCESSOR-SIDE CONCLUSION, WRITTEN ONCE AND CITED BY THE ROWS THAT SHARE IT. Source, artifacts,
+// receipts, secrets and logs are the customer's material, handled to deliver the thing they bought under
+// a contract standard we did not write ourselves (Common Paper CSA v2.1, pinned as a versioned extdep).
+// Being wrong about this does not reach a stranger: it reaches the customer we contracted with, and the
+// correction is an amended agreement with a counterparty who is in the room.
+fn processor_contract_conclusion() -> CounselStanding {
+  in_house(
+    conclusion: "we are a PROCESSOR of the customer material a job reads, produces and records, and the lawful basis is performance of the pinned Common Paper CSA v2.1. Reached in house, not by counsel.",
+    placement: ReachesACustomerCommitment {
+      commitment: "the CSA and whatever privacy notice we project from these rows. If the role or basis is wrong, what is wrong is a term of a contract with a counterparty we can reach, and the correction is an amendment and a notice to a named customer rather than a remedy owed to someone we have never dealt with.",
+    },
+    falsified_by: "counsel finding, a customer's own counsel objecting on their DPA, or a supervisory authority reading one of these categories as controller-side. Any of the three overturns this and moves the row to counsel_scope_review.",
+  )
+}
+
+fn pci_no_card_data_basis() -> DeclarationRef {
+  decl_ref(module_path: "strategy.compliance_posture", decl_name: "regime_pci")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CATEGORIES. Eight rows, each with its own residency pairs and its own standing.
+// ---------------------------------------------------------------------------------------------
+
+data category_source_and_build_inputs: DataCategory = DataCategory {
+  decl: "category_source_and_build_inputs",
+  marker: source_and_build_input_ref(),
+  scope_note: "The repository contents, checked-out working tree, dependency downloads and anything else the job reads in order to run. It is the customer's material and we are a processor of it. It reaches a job microVM for the life of that job, and reaches the content-addressed store keyed by content hash, where it is shared across tenants by construction - which is why deletion here is a typed state rather than a promise about bytes (strategy.compliance_posture regime_gdpr).",
+  residency: [
+    ResidencyRow { locus: JobMicroVmTransient, retention: RetainedForJobLifetime },
+    ResidencyRow { locus: ContentAddressedByHash, retention: undetermined(settled_by: cache_eviction_policy_decision) },
+  ],
+  subjects: [CustomerOrgUser, CustomerOrgAdmin, CommitAuthorIncidental],
+  purposes: [ExecuteCustomerWork],
+  lawful_bases: [contract_basis(standing: processor_contract_conclusion())],
+  standing: proposed(),
+}
+
+// THE SPLIT THE OPERATOR RULED FOR, PERFORMED. One row carried artifacts and receipts together and was
+// read by two purposes with opposing retention pressures - receipts are the SOC 2 evidence base AND the
+// metering input, artifacts are neither. Operator, 2026-09-14: "i think they are outputs at different
+// layers in our model, the build doesn't need to know about the receipt at all". So the conflict is
+// dissolved by separating the subjects rather than by compromising between them, and each half now names
+// its own decider instead of one row naming a choice nobody could make without first splitting it.
+//
+// WHAT THE SPLIT IS NOT. It does not decide either period. Artifacts get a decision that is genuinely the
+// operator's and had no home while the row was joined; receipts inherit the bound metering already
+// carries, because they are the input metering is derived FROM - which is a reading of his agreement
+// about metering applied one layer down, stated here so a reader can reject it rather than find it
+// asserted.
+data category_build_artifacts: DataCategory = DataCategory {
+  decl: "category_build_artifacts",
+  marker: build_output_ref(),
+  scope_note: "What a job PRODUCED as work product: build artifacts and the caches it populated. This is the customer's material and we are a processor of it. It is not the record of the run - that is category_execution_receipts, separated on the operator's 2026-09-14 ruling that the two are outputs at different layers. Retention here is a product decision about how long a customer's build output stays fetchable, and it is bounded by nothing external: no bill depends on it and no record-keeping obligation reaches it, which is exactly why it could not share a period with receipts.",
+  residency: [
+    ResidencyRow { locus: StoredOnDurableOrigin, retention: undetermined(settled_by: artifact_retention_decision) },
+  ],
+  subjects: [CustomerOrgUser, CustomerOrgAdmin],
+  purposes: [ExecuteCustomerWork],
+  lawful_bases: [contract_basis(standing: processor_contract_conclusion())],
+  standing: proposed(),
+}
+
+data category_execution_receipts: DataCategory = DataCategory {
+  decl: "category_execution_receipts",
+  marker: execution_receipt_ref(),
+  scope_note: "The RECORD of a run: what ran, on what, for how long. It is the evidence base a SOC 2 row depends on and the input metering is derived from, and it is not the work product - that is category_build_artifacts. Its retention is therefore bounded below by the same obligation metering carries, because a bill that must remain re-derivable cannot outlive the receipts it is re-derived from. ONE MODELLING QUESTION IS OPEN AND NAMED RATHER THAN ANSWERED: reading a receipt as AUDIT EVIDENCE is arguably a sixth processing purpose, and ProcessingPurpose is a closed set whose own note says a sixth use cannot be added without saying so. This row does not add one - it records that the use exists and that widening a closed purpose set is a decision, not a consequence of this split.",
+  residency: [
+    ResidencyRow {
+      locus: StoredOnDurableOrigin,
+      retention: RetentionBoundedByObligation {
+        obligation: tax_and_billing_obligation,
+        period: PeriodUndetermined { settled_by: counsel_retention_period_review },
+      },
+    },
+  ],
+  subjects: [CustomerOrgUser, CustomerOrgAdmin],
+  purposes: [ExecuteCustomerWork, MeterAndBill],
+  lawful_bases: [contract_basis(standing: processor_contract_conclusion())],
+  standing: proposed(),
+}
+
+// THE ONE CATEGORY WITH NO PERIOD TO RATIFY, BECAUSE THE PROPOSAL IS A POLICY RATHER THAN A NUMBER.
+// NeverWrittenDurably is its own arm rather than a very short period because a period, however short,
+// admits a durable copy existing. So there is no number for the operator to choose here -- but the ROW
+// IS STILL PROPOSED, and what is proposed is a REQUIREMENT ON THE IMPLEMENTATION, not a report of how
+// the implementation behaves.
+//
+// THIS ANNOTATION USED TO ASSERT THE OPERATION, and that was the defect this whole module exists to
+// prevent, arriving in the module itself: it stated the no-durable-copy handling in the present
+// indicative, as something already done, while the standing beside it said proposed. The withdrawn
+// sentence is described rather than reproduced, because a superseded claim quoted inside the sentence
+// announcing its withdrawal is still a claim a reader can grep out of a live authority. Nothing in this map establishes that
+// no durable copy is written; the map is where the requirement is stated, and demonstrating it is owed
+// elsewhere. WHAT WOULD ESTABLISH IT: an executed check on the log, receipt and artifact paths showing a
+// secret-shaped value cannot reach them -- which is a different artifact from a data map, and is not
+// cited here because it does not exist yet.
+data category_ci_secrets: DataCategory = DataCategory {
+  decl: "category_ci_secrets",
+  marker: ci_secret_ref(),
+  scope_note: "Customer-supplied credentials a job needs in order to do its work - registry tokens, deploy keys, signing material. PROPOSED HANDLING, not observed handling: held in process memory for the life of the job and written to no durable store, no log and no receipt. That is a requirement on the implementation and this row does not establish that the implementation meets it - a secret reaching a log would be a defect in the log path, which is exactly why the requirement is stated here and its verification is owed to an executed check elsewhere.",
+  residency: [
+    ResidencyRow { locus: ProcessMemoryNeverDurable, retention: NeverWrittenDurably },
+  ],
+  subjects: [CustomerOrgAdmin],
+  purposes: [ExecuteCustomerWork],
+  lawful_bases: [contract_basis(standing: processor_contract_conclusion())],
+  standing: proposed(),
+}
+
+data category_job_logs: DataCategory = DataCategory {
+  decl: "category_job_logs",
+  marker: job_log_ref(),
+  scope_note: "Everything a job wrote to its output streams, which is customer material we did not choose the shape of: it routinely contains paths, hostnames, commit messages and author identities, and can contain anything else the job printed. Durable so a customer can read what happened after the runner is gone.",
+  residency: [
+    ResidencyRow {
+      locus: StoredOnDurableOrigin,
+      retention: RetentionDefaultWithOptIn {
+        default_period: PeriodUndetermined { settled_by: log_default_period_decision },
+        opt_in: "A customer may opt in to a longer period than the default. The opt-in is the exception and the aggressive default is the rule, which is the opposite of a retain-by-default store with a deletion request path - stated because the two read alike in a privacy notice and behave oppositely when nobody acts.",
+      },
+    },
+  ],
+  subjects: [CustomerOrgUser, CustomerOrgAdmin, CommitAuthorIncidental],
+  purposes: [ExecuteCustomerWork, Support, SecurityAndAbuse],
+  lawful_bases: [
+    contract_basis(standing: processor_contract_conclusion()),
+    security_interest_basis(
+      interest: "retaining job output long enough to investigate abuse, cryptomining and platform attacks, and to answer a support question about a job that has finished",
+      standing: in_house(
+        conclusion: "keeping job output long enough to investigate abuse and answer support is a legitimate interest of ours, and it is not outweighed by the interests of the customer who asked us to run the job. Reached in house.",
+        placement: ReachesACustomerCommitment { commitment: "the retention we state to the customer. A log is the one category that routinely contains material we did not choose the shape of -- paths, commit messages, author identities -- so the interest balance is the part most worth re-reading when counsel is funded, and the aggressive default expiry is what keeps the exposure bounded in the meantime." },
+        falsified_by: "a supervisory authority or counsel reading incidental commit-author identity in a log as end-user personal data rather than customer material, which would make this a third-party rights question and not ours to hold.",
+      ),
+    ),
+  ],
+  standing: proposed(),
+}
+
+data category_metering_telemetry: DataCategory = DataCategory {
+  decl: "category_metering_telemetry",
+  marker: metering_telemetry_ref(),
+  scope_note: "Per-job resource measurements - wall time, CPU, memory, egress - joined to an organisation and a job. It is the billing input, so its retention is bounded below by however long a bill must be re-derivable and by tax record-keeping, both of which are the operator's and counsel's to settle rather than ours.",
+  residency: [
+    ResidencyRow {
+      locus: StoredOnDurableOrigin,
+      retention: RetentionBoundedByObligation {
+        obligation: tax_and_billing_obligation,
+        period: PeriodUndetermined { settled_by: counsel_retention_period_review },
+      },
+    },
+  ],
+  subjects: [CustomerOrgUser, CustomerOrgAdmin],
+  purposes: [MeterAndBill, ExecuteCustomerWork],
+  lawful_bases: [contract_basis(standing: in_house(
+    conclusion: "the measurements are OURS -- we generate them to bill, they are not material the customer handed us -- so we hold them as a controller on the basis of performing the agreement we bill under. Reached in house, and deliberately NOT the processor conclusion the material categories carry: a row that is the input to our own invoice is not a row we handle on someone else's instruction.",
+    placement: ReachesACustomerCommitment { commitment: "the bill, and the retention we state for the records it is re-derived from. The period itself is a separate question and still counsel's -- see counsel_retention_period_review on the residency row -- because how long a bill must remain re-derivable is a statutory number and not a basis." },
+    falsified_by: "counsel finding, or a customer's DPA asserting that per-job measurements joined to their organisation are their material and not ours.",
+  ))],
+  standing: proposed(),
+}
+
+// CARD DATA IS THE ONE CATEGORY MODELLED BY ITS ABSENCE, and the absence is a residency arm rather
+// than a missing row. Leaving it out entirely would make the map silent about payments; giving it a
+// retention period would claim custody this map cannot establish.
+//
+// AND THE ABSENCE IS PROPOSED, NOT DEMONSTRATED, which the earlier wording lost. NotRetainedByUs
+// carries strategy.compliance_posture regime_pci as its basis, and that row NAMES REQUIRED CONTROLS --
+// hosted checkout or isolated provider elements, the provider AOC, no PAN in logs, analytics, support
+// or webhooks, payment-event redaction, annual SAQ validation. Naming a control is not operating it,
+// and the row says so itself: the no-card-data invariant is NECESSARY AND NOT SUFFICIENT, because a
+// browser script can observe what a backend never stores. So citing it supports a REQUIREMENT that no
+// PAN reaches us; it does not establish that none does, and this arm must not be read as a receipt.
+data category_account_and_billing_identity: DataCategory = DataCategory {
+  decl: "category_account_and_billing_identity",
+  marker: personal_identity_ref(),
+  scope_note: "Who the customer is: organisation, users and admins, email addresses, authentication identity, billing address and tax status, invoices and payment events. We are a controller for this, not a processor. PROPOSED: no card number reaches us, because payment pages and elements are required to originate from the PCI-compliant provider so the PAN stays theirs. That is the requirement this row records, NOT an established fact - the posture row it cites names those controls rather than demonstrating their operation - so the card entry is an absence with a basis awaiting ratification, not a period and not a receipt.",
+  residency: [
+    ResidencyRow {
+      locus: StoredOnDurableOrigin,
+      retention: RetentionBoundedByObligation {
+        obligation: tax_and_billing_obligation,
+        period: PeriodUndetermined { settled_by: counsel_retention_period_review },
+      },
+    },
+    ResidencyRow {
+      locus: OutsideOurCustody { basis: pci_no_card_data_basis() },
+      retention: NotRetainedByUs { basis: pci_no_card_data_basis() },
+    },
+  ],
+  subjects: [CustomerOrgUser, CustomerOrgAdmin],
+  purposes: [MeterAndBill, Support, LegalObligation],
+  lawful_bases: [
+    contract_basis(standing: in_house(
+      conclusion: "we are a CONTROLLER of account, billing and support identity -- we decided to collect it, for our own purposes -- and the basis for holding it is performance of the agreement the customer signed. Reached in house; the controller reading is the one the whole map is written on.",
+      placement: ReachesACustomerCommitment { commitment: "the privacy notice we project from these rows to the account holder, who is our counterparty." },
+      falsified_by: "counsel finding, or a supervisory authority reading the account holder's identity as something we hold on another controller's instruction.",
+    )),
+    legal_obligation_basis(
+      obligation: "tax and accounting record retention, and sanctions screening records, in the jurisdictions we sell from and into",
+      standing: counsel_required(
+        question: counsel_scope_review,
+        placement: ReachesASupervisoryAuthority { exposure: "a legal-obligation basis IS a claim about what a statute requires of us, so being wrong is being wrong in front of the authority that wrote it, and the error is not one we can correct by amending anything of ours. This is the placement the rule refuses to let us hold, and it is why counsel is still required here after the rest of the map stopped waiting on it." },
+      ),
+    ),
+  ],
+  standing: proposed(),
+}
+
+data category_support_communications: DataCategory = DataCategory {
+  decl: "category_support_communications",
+  marker: support_communication_ref(),
+  scope_note: "What a customer told us and what we told them: tickets, email threads, and whatever they pasted into one - which in a CI product is routinely a log excerpt or a snippet of their source, so this category can contain any other category by inclusion. An operator reading a ticket is a data-access path and is treated as one by the export-controls row of strategy.compliance_posture.",
+  residency: [
+    ResidencyRow {
+      locus: OperatorSupportSurface,
+      retention: RetentionForPeriod {
+        period: PeriodSettled { period: Measure { count: 31536000 }, basis: ticket_retention_note },
+      },
+    },
+  ],
+  subjects: [CustomerOrgUser, CustomerOrgAdmin],
+  purposes: [Support, SecurityAndAbuse],
+  lawful_bases: [
+    contract_basis(standing: processor_contract_conclusion()),
+    security_interest_basis(
+      interest: "keeping a record of what was reported and what we did about it, so an incident or an abuse decision can be re-derived later",
+      standing: in_house(
+        conclusion: "keeping the record of a support exchange for a bounded period is a legitimate interest, and the period is settled rather than open. Reached in house.",
+        placement: CorrectableByUsAlone { correction: "a ticket store we control, a settled twelve-month ceiling, and deletion we can perform ourselves. Nothing outside our custody depends on this being right." },
+        falsified_by: "a ticket being read as containing another category by inclusion -- which the scope note already says happens routinely -- in a way that makes the enclosed category's own standing govern instead of this one.",
+      ),
+    ),
+  ],
+  standing: proposed(),
+}
+
+data category_abuse_and_sanctions_records: DataCategory = DataCategory {
+  decl: "category_abuse_and_sanctions_records",
+  marker: abuse_and_sanctions_record_ref(),
+  scope_note: "The output of our own risk-based programs: screening results against restricted-party lists with their rescreening history, billing and IP-geolocation signals used as inputs, abuse investigations, and blocked-versus-rejected disposition records. strategy.compliance_posture regime_sanctions_abuse is explicit that a payment processor's KYC is an input and not the authority, so these records are ours to keep and ours to justify keeping.",
+  residency: [
+    ResidencyRow {
+      locus: StoredOnDurableOrigin,
+      retention: RetentionTiered {
+        schedule: TierScheduleUndetermined { partial_tiers: [], settled_by: abuse_backoff_schedule_decision },
+      },
+    },
+  ],
+  subjects: [CustomerOrgUser, CustomerOrgAdmin],
+  purposes: [SecurityAndAbuse, LegalObligation],
+  lawful_bases: [
+    security_interest_basis(
+      interest: "screening, rescreening on list changes, and abuse investigation, as the provider's own risk-based program rather than a processor's",
+      standing: counsel_required(
+        question: counsel_scope_review,
+        placement: ReachesAThirdPartysRights { rights_holder: "the person or organisation screened, blocked or rejected. A screening decision is made ABOUT someone and acted on WITHOUT their agreement, so being wrong here costs them access and a record, and no amendment of ours gives it back. The correction is not within our gift, which is the test." },
+      ),
+    ),
+    legal_obligation_basis(
+      obligation: "sanctions compliance: retaining blocked-versus-rejected dispositions and the evidence behind them for the period the program requires",
+      standing: counsel_required(
+        question: counsel_scope_review,
+        placement: ReachesASupervisoryAuthority { exposure: "sanctions enforcement. Getting blocked-versus-rejected wrong, or failing to retain the evidence behind a disposition, is answered to the authority running the program and not to a customer." },
+      ),
+    ),
+  ],
+  standing: proposed(),
+}
+
+data data_categories: List<DataCategory> = [
+  category_source_and_build_inputs,
+  category_build_artifacts,
+  category_execution_receipts,
+  category_ci_secrets,
+  category_job_logs,
+  category_metering_telemetry,
+  category_account_and_billing_identity,
+  category_support_communications,
+  category_abuse_and_sanctions_records,
+]
+
+// THE NEGATIVE ROW, WHICH IS A CLAIM AND THEREFORE CARRIES A STANDING LIKE ANY OTHER.
+//
+// "We hold no end-user personal data" is the single most load-bearing sentence a privacy notice for
+// this product would contain, and it is not a fact about the world: it is a product policy, in exactly
+// the sense strategy.compliance_posture had to correct the HIPAA row into - a ToS exclusion is not a
+// legal impossibility, and nobody can guarantee a customer never commits a user table into a
+// repository. So the row states the policy, states what would falsify it, and is proposed rather than
+// asserted. Modelling it as an absence - simply having no such category - would have made the
+// strongest claim in the map the only one with no standing attached.
+// THE SURVIVING NAME IS THE BINDER HERE TOO, CORRECTED (review 65354). This carried `id`, a kebab
+// business nickname, which is exactly the shape deleted from DataCategory earlier in this PR and for the
+// same reason: two naming schemes for one row, and the one a reader can act on is the declaration. The
+// correction was applied to categories and NOT to this type, which is the partial-fix shape -- a class
+// repaired at the site that was pointed at rather than over its population.
+//
+// It matters most here of anywhere in the map. This row carries the single most load-bearing claim in it
+// -- that we process no end-user personal data -- and its open question goes on the same ratification
+// agenda, so an operator reading that agenda was being pointed at a string that is not a declaration and
+// cannot be opened. It is now the binder, and the distinctness and citation walls below cover it.
+type ScopeExclusion {
+  decl: NonEmptyStr
+  claim: NonEmptyStr
+  policy: NonEmptyStr
+  falsified_by: NonEmptyStr
+  standing: ProposalStanding
+}
+
+data exclusion_end_user_personal_data: ScopeExclusion = ScopeExclusion {
+  decl: "exclusion_end_user_personal_data",
+  claim: "We process no personal data of our customers' end users. The subjects in this map are our customers' own org users and admins, plus commit authors who appear incidentally inside material we were handed.",
+  policy: "The product is a CI service. It is not offered as a place to run workloads over end-user personal data, and no arm of the product solicits, imports or indexes an end-user population.",
+  falsified_by: "any product surface that ingests a customer's end-user records, or a discovered instance of a customer processing end-user personal data through jobs with our knowledge - either makes this an inclusion row with its own residency, retention and basis rather than an exclusion",
+  standing: proposed(),
+}
+
+data scope_exclusions: List<ScopeExclusion> = [exclusion_end_user_personal_data]
+
+// ---------------------------------------------------------------------------------------------
+// PROJECTIONS. What a consumer may read out of the map, and which arm it is allowed to read.
+// ---------------------------------------------------------------------------------------------
+
+// THE SOURCE-TEXT PATTERN BLOCK THAT STOOD HERE IS DELETED, NOT REWRITTEN (review 65282).
+//
+// It described a guard deriving the text a row's declaration must contain and requiring it to appear in
+// the module's source, and called that derivation "the single authority for the format". Its subject
+// declaration is gone: the question moved to v2.std.decl_index and then to v2.std.decl_ref_resolution,
+// so nothing in this module reads source text or owns a format. The block had also outlived its body
+// far enough to sit above an UNRELATED function, which is the stranded-header defect review 64945
+// raised here once already -- a reader would have taken it for a description of agreement_ref_key.
+//
+// Deleted rather than marked as history because a §4c annotation exists to explain why a construction
+// has the shape it has, and this construction does not exist. The history that was worth keeping is the
+// fail-open it left behind, and that is recorded where it still bites: on the distinctness conjunct in
+// test.claim.data_map_witness, beside the fold that closes it.
+
+
+// THERE IS NO PATH DERIVATION HERE ANY MORE, AND THAT IS A CORRECTION OF A WRONG ASSUMPTION RATHER
+// THAN A REFINEMENT.
+//
+// This carried module_source_path: join(["dag/", replace(module_path, ".", "/"), ".dag"]). It read
+// cleanly for the citations the map holds today, which is exactly why it survived review and my own
+// mutation controls. It is wrong for a LARGE FRACTION of the public corpus, because the namespace does
+// not mirror the directory.
+//
+// THE FRACTION IS NAMED AS RE-DERIVABLE RATHER THAN TRANSCRIBED (review 65282). This said "1704 of the
+// 4214 modules, measured", and the denominator alone was already stale by the time it was read again --
+// `git ls-tree -r --name-only origin/main -- dag | grep -c '\.dag$'` answers 4222 as this is written,
+// eight more than the sentence claimed, which is the whole argument against copying a number in beside
+// a corpus that grows every day. The durable evidence is not the count but the counterexamples, which
+// are stable and checkable one at a time:
+// product.fabric.provider_route lives at
+// dag/gunbc/product/fabric/provider_route.dag; extdeps.docker lives at dag/extdeps/docker/docker.dag;
+// extdeps.shell.mock_corpus lives at dag/extdeps/shell_mock_corpus.dag. So no prefix rule fixes it --
+// there is no rule to encode, and encoding one would put a layout assumption in a witness that the
+// compiler would then disagree with, where the witness is the one that lies.
+//
+// The consequence was the bad failure direction: a citation into product.* would have been reported as
+// naming NO DECLARATION when the declaration exists, so the wall built to stop fabricated citations
+// would have fabricated a defect -- and trained its next reader to disbelieve it. Found by
+// snappy-pike-154 while agreeing a cross-lane shape whose citations would have hit it on day one.
+//
+// The question is now asked of the authority that OWNS it: v2.std.decl_index, which is where the
+// resolver gets the same answer. No path, no layout assumption, and it sees fn and type declarations
+// too, which the old file grep for `data <name>:` could not.
+//
+// DEDUPED, because the cost is per lookup and the map cites one agreement seven times -- once per
+// category carrying a contract basis. One distinct citation is one keyed read.
+fn agreement_ref_key(ref: DeclarationRef) -> String {
+  declaration_ref_display_key(ref: ref)
+}
+
+fn distinct_agreement_refs() -> List<DeclarationRef> {
+  fold(cited_agreement_refs(), init: [], f: fn(acc, ref) {
+    if count(filter(acc, seen => agreement_ref_key(ref: seen) == agreement_ref_key(ref: ref))) > 0 {
+      acc
+    } else {
+      concat(acc, [ref])
+    }
+  })
+}
+
+// THE BASIS CITATIONS ARE A POPULATION TOO, AND THEY WERE THE LAST ONE OUTSIDE THE GUARD (review
+// 65169). The custody arms carry a DeclarationRef into strategy.compliance_posture, and the card-data
+// conjunct only compared both halves of the residency pair against the SAME hand-spelled value -- so two
+// hand-copies agreed with each other and the check stayed green whether or not regime_pci existed. That
+// is the map's strongest positive claim resting on a citation the change's own index guard never asked
+// about, which is the precise class this PR exists to close: this module says two hundred lines up that a
+// reference naming nothing "would have named NOTHING while looking exactly like a resolved citation",
+// and that is what these two were free to become.
+fn residency_basis_refs(c: DataCategory) -> List<DeclarationRef> {
+  flat_map(c.residency, r =>
+    concat(
+      locus_outside_custody_basis(l: r.locus),
+      retention_not_retained_basis(r: r.retention),
+    ))
+}
+
+fn cited_basis_refs() -> List<DeclarationRef> {
+  flat_map(data_categories, c => residency_basis_refs(c: c))
+}
+
+// THE RULING EVERY IN-HOUSE CONCLUSION RESTS ON, PROJECTED SO THE CITATION WALL REACHES IT (review
+// 68506). ConcludedInHouse carries a DeclarationRef naming the operator statement that authorises us to
+// hold a legal conclusion at all, and in_house stamps it on every in-house claim, so that one reference
+// anchors TEN of the thirteen basis claims -- while the witness's
+// resolution fold covered map rows, exclusions, sanctioned profiles and residency bases, and not this.
+// A renamed declaration or a wrong module_path would have resolved to nothing with nothing red, which
+// is the exact fail-open compliance_posture_revision records review 64881 catching in refused_by.
+//
+// The same standard this module states for `placement`: a field carried and never matched is a frontier
+// it enrols rather than tolerates. `placement` got its wall; `ruling` had neither, and now has the one
+// that fits it -- resolution rather than a policy fold, because what can go wrong with a citation is
+// that it names nothing.
+fn claim_ruling_ref(c: LawfulBasisClaim) -> List<DeclarationRef> {
+  match c.standing {
+    ConcludedInHouse { conclusion, ruling, placement, falsified_by } => [ruling]
+    CounselReviewRequired { question, placement } => []
+    CounselOpinionOnRecord { opinion } => [opinion]
+  }
+}
+
+fn cited_ruling_refs() -> List<DeclarationRef> {
+  flat_map(data_categories, c => flat_map(c.lawful_bases, b => claim_ruling_ref(c: b)))
+}
+
+fn cited_agreements() -> List<AgreementAuthority> {
+  flat_map(data_categories, c => flat_map(c.lawful_bases, b => basis_agreement(b: b.basis)))
+}
+
+fn cited_agreement_refs() -> List<DeclarationRef> {
+  flat_map(cited_agreements(), a => agreement_landed_ref(a: a))
+}
+
+fn unlanded_agreement_landings() -> List<NonEmptyStr> {
+  flat_map(cited_agreements(), a => agreement_pending_landing(a: a))
+}
+
+data data_map_module_path: NonEmptyStr = "strategy.data_map"
+
+
+// THE PROFILE REFERENCE, DERIVED FROM THE ROW. This is the join that makes the map a consumed
+// authority rather than a document: product.fabric.provider_admission's data_handling_profile is an
+// open DeclarationRef, and this function is what a private route sanction cites into it. Deriving it
+// from `decl` rather than writing the pair out beside each sanction is the difference between one
+// authority and a second table that can disagree with this one.
+//
+// This header sat stranded above a different declaration for one commit, describing a function two
+// declarations away -- a claim separated from its body, which is the defect 0fba336 fixed in the
+// sibling module. Noted by review 64945 and moved back onto its subject.
+fn category_profile_ref(c: DataCategory) -> DeclarationRef {
+  decl_ref(module_path: data_map_module_path as String, decl_name: c.decl as String)
+}
+
+// AND THE SAME REFERENCE FOR AN EXCLUSION ROW, so that the name on the ratification agenda is one the
+// citation wall has to resolve rather than one a reader has to trust (review 65354). Without this the
+// binder rename would fix the string and leave it unchecked, which is half a repair.
+fn exclusion_profile_ref(e: ScopeExclusion) -> DeclarationRef {
+  decl_ref(module_path: data_map_module_path as String, decl_name: e.decl as String)
+}
+
+fn exclusion_refs() -> List<DeclarationRef> {
+  map(scope_exclusions, e => exclusion_profile_ref(e: e))
+}
+
+// WHAT MAY BE PROJECTED TO A CUSTOMER, AND IT IS EMPTY TODAY BY CONSTRUCTION RATHER THAN BY
+// OVERSIGHT. A privacy notice or a security schedule is a statement we are held to, so it may only be
+// projected from ratified rows. Every row is proposed as this lands, so this list is empty today --
+// the honest state of a map nobody has ratified yet, and the thing that changes in one pass.
+//
+// THE WITNESS DOES NOT ASSERT THE EMPTINESS, CORRECTED (review 65282). This sentence previously said it
+// did. That assertion existed and was DELIBERATELY REMOVED as one of the four state-pinning tripwires
+// (review 64875): `count(ratified_categories()) == 0` made the single ratification pass this module
+// exists to enable turn the enforced roster red, which is a tripwire across the only exit rather than a
+// wall. What the witness asserts instead is the property holding on BOTH sides of the pass -- a ratified
+// row carries no open question -- and it REPORTS the count, because an operator reads that count as a
+// live fact and reporting a fact is not pinning it.
+fn ratified_categories() -> List<DataCategory> {
+  filter(data_categories, c => standing_is_ratified(s: c.standing))
+}
+
+fn proposed_categories() -> List<DataCategory> {
+  filter(data_categories, c => !standing_is_ratified(s: c.standing))
+}
+
+// THE AGENDA FOR THE RATIFICATION PASS, which is the other half of the same match: what the operator
+// is being asked. One entry per open question, so a pass is finished when this is empty rather than
+// when someone says it is.
+type OpenQuestion {
+  subject: NonEmptyStr
+  question: NonEmptyStr
+}
+
+fn category_open_questions(c: DataCategory) -> List<OpenQuestion> {
+  concat(
+    map(standing_open_question(s: c.standing), q => OpenQuestion { subject: c.decl, question: q }),
+    concat(
+      map(
+        flat_map(c.residency, r => retention_open_question(r: r.retention)),
+        q => OpenQuestion { subject: c.decl, question: q },
+      ),
+      map(
+        flat_map(c.lawful_bases, b => claim_open_question(c: b)),
+        q => OpenQuestion { subject: c.decl, question: q },
+      ),
+    ),
+  )
+}
+
+fn ratification_agenda() -> List<OpenQuestion> {
+  concat(
+    flat_map(data_categories, c => category_open_questions(c: c)),
+    flat_map(scope_exclusions, e =>
+      map(standing_open_question(s: e.standing), q => OpenQuestion { subject: e.decl, question: q })),
+  )
+}
+
+// WHO DECIDES A QUESTION IS ONE FACT, AND THIS QUEUE USED TO ANSWER IT FROM A DIFFERENT SOURCE THAN THE
+// ROWS DID (review 66342). It folded only over lawful_bases, so it WAS counsel's queue exactly while
+// counsel's only questions were lawful-basis ones. This change broke that coincidence: two rows now route
+// their open DURATION to counsel_retention_period_review, a counsel question that is not a lawful basis
+// and so could never appear here -- while the witness report printed this count labelled "for counsel".
+// The operator would have been told N questions are counsel's while N+2 were. That is the defect this
+// change names one row over, running the other way: an act that IS counsel's and is not in counsel's
+// queue.
+//
+// THE QUEUE NOW DERIVES FROM THE ROSTER RATHER THAN FROM A SHAPE. counsel_owned_questions is the single
+// authority for "counsel decides this", and both the agenda membership test below and any future counsel
+// question join it by identity instead of by which field the question happened to hang from. Widening
+// rather than relabelling was the choice because the alternative -- saying in the report that the count
+// covers lawful basis only -- leaves the operator reading a number that is true and answers a question
+// nobody asked.
+data counsel_owned_questions: List<NonEmptyStr> = [counsel_scope_review, counsel_retention_period_review]
+
+fn question_is_counsel_owned(q: NonEmptyStr) -> Bool {
+  count(filter(counsel_owned_questions, owned => owned == q)) > 0
+}
+
+fn counsel_review_queue() -> List<OpenQuestion> {
+  filter(ratification_agenda(), q => question_is_counsel_owned(q: q.question))
+}
+
+// EVERY ROW OWNS ITS OWN decl, AND NOTHING CHECKED THAT UNTIL NOW (review 65047).
+//
+// THE FAIL-OPEN IT CLOSES, WHICH SAT BEHIND AN ANNOTATION OF MINE CLAIMING IT WAS ALREADY COVERED.
+// Copy a category row, leave the `decl` field pointing at the ORIGINAL's binder, and add no proposal of
+// its own. Then: proposal_for_category matches on the profile reference, which is built from `decl`, so
+// the copy finds the OTHER row's proposal and every_category_has_a_carriage_position counts exactly one;
+// and the source-binder guard passes too, because a declaration of that name genuinely exists -- the
+// original's. Both walls green. And since use_scope_for_category also derives the profile from `decl`,
+// the new, unsanctioned category is ADMITTED by admit_provider_use on the covered row's sanction. A
+// fail-open in the exact join this change exists to close.
+//
+// Duplication only redded when the copy ALSO got its own proposal, which is the opposite of the
+// forgetful case. My annotation said distinctness "already has a home"; it did not, in the direction
+// that matters, and a wrong claim of coverage is worse than no claim because the next reader stops
+// looking.
+//
+// WHAT THIS DOES NOT CLOSE, stated rather than implied: two rows whose decl fields are SWAPPED are
+// distinct and both exist, so both this conjunct and the source guard pass while each row's profile
+// names the other's declaration. Closing that needs a declaration to know its own binder name -- the
+// reflection the substrate deliberately does not have (std.decl_ref says so where it explains why a
+// DeclarationRef is a record of strings). TRIGGER: a compiler-provided self-reference for a
+// declaration, at which point `decl` stops being an authored field and this conjunct dissolves with it.
+// THE UNIVERSE IS EVERY RATIFIABLE ROW, WHICH IT WAS NOT (review 65354). This folded over
+// data_categories alone, so an exclusion row could duplicate a category's decl -- or another exclusion's
+// -- and nothing said so. A guard whose universe is narrower than the population its claim covers is the
+// same defect as a stale description: the sentence "every row owns its own decl" was true only of the
+// rows the fold happened to reach.
+fn row_decls() -> List<NonEmptyStr> {
+  concat(map(data_categories, c => c.decl), map(scope_exclusions, e => e.decl))
+}
+
+fn distinct_row_decls() -> List<NonEmptyStr> {
+  fold(row_decls(), init: [], f: fn(acc, d) {
+    if count(filter(acc, seen => seen == d)) > 0 { acc } else { concat(acc, [d]) }
+  })
+}
+
+fn every_row_owns_its_own_decl() -> Bool {
+  count(distinct_row_decls()) == count(row_decls())
+}
+
+// AND THE WALL THAT KEEPS THE POLICY HONEST: nothing may be held in house whose placement the rule
+// above says is not ours to hold. Without this, `in_house` is a constructor anyone can point at any
+// row, and the placement field becomes decoration -- carried, never matched, exactly the frontier
+// shape this module enrolls elsewhere rather than tolerates.
+fn in_house_claims_are_within_our_placement(claims: List<LawfulBasisClaim>) -> Bool {
+  all(claims, c => match c.standing {
+    ConcludedInHouse { conclusion, ruling, placement, falsified_by } =>
+      placement_is_ours_to_hold(p: placement)
+    CounselReviewRequired { question, placement } => true
+    CounselOpinionOnRecord { opinion } => true
+  })
+}
+
+fn every_in_house_conclusion_is_ours_to_hold() -> Bool {
+  all(data_categories, c => in_house_claims_are_within_our_placement(claims: c.lawful_bases))
+}
+
+// AND ONE MARKER PER ROW, WHICH IS THE WALL THAT KEEPS A SPLIT SPLIT. product.data_class
+// admit_data_effect resolves a category by filtering the map for every row whose reference matches and
+// then judging the UNION of them, so two description rows sharing one marker do not conflict -- they
+// silently merge. category_build_artifacts and category_execution_receipts were separated on the
+// operator's 2026-09-14 ruling precisely because their retention and purposes differ; pointing both at
+// BuildOutput would have re-admitted an artifact under the obligation-bounded retention and the
+// MeterAndBill purpose that only the receipt carries, one layer below where anyone was looking. So the
+// split is not finished by this module alone: it required the ExecutionReceipt marker in the public tree,
+// and this conjunct is what says so in a form a run can fail on.
+//
+// THE UNIVERSE IS data_categories AND NOT THE EXCLUSIONS, deliberately: a scope exclusion has no marker
+// because a category with no marker has no Classified constructor and no sink, which is the type-level
+// form of the exclusion itself (product.data_category says this from the other side).
+fn row_marker_keys() -> List<NonEmptyStr> {
+  map(data_categories, c => declaration_ref_display_key(ref: c.marker))
+}
+
+fn distinct_row_marker_keys() -> List<NonEmptyStr> {
+  fold(row_marker_keys(), init: [], f: fn(acc, k) {
+    if count(filter(acc, seen => seen == k)) > 0 { acc } else { concat(acc, [k]) }
+  })
+}
+
+fn every_category_owns_its_own_marker() -> Bool {
+  count(distinct_row_marker_keys()) == count(row_marker_keys())
+}
+
+// EVERY CATEGORY ANSWERS ALL FOUR QUESTIONS. A row missing its residency, its purposes, its subjects
+// or its basis is a category we have named without saying anything about it, which is worse than an
+// absent row because it counts as coverage.
+fn category_is_complete(c: DataCategory) -> Bool {
+  count(c.residency) > 0
+    && count(c.purposes) > 0
+    && count(c.subjects) > 0
+    && count(c.lawful_bases) > 0
+}
+
+fn population_is_complete(categories: List<DataCategory>) -> Bool {
+  all(categories, c => category_is_complete(c: c))
+}
+
+fn map_is_complete() -> Bool {
+  population_is_complete(categories: data_categories)
+}
+
+// WHAT RATIFICATION MUST MEAN, STATED SO THAT RATIFYING IS LEGAL AND FAKING IT IS NOT.
+//
+// THIS REPLACES A WALL THAT FORBADE THE WRONG THING, and the correction is worth recording because
+// the first shape was actively harmful rather than merely weak. no_unfunded_counsel_conclusion
+// asserted `all(bases => !counsel_is_settled(...))` and was a merge-blocking conjunct of the enforced
+// witness. Read as an invariant it says: no lawful basis may EVER be settled. So the moment counsel
+// issued a real opinion - the intended next action, the thing CounselOpinionOnRecord exists for - the
+// private roster went red, and the only way forward was to delete the conjunct. It therefore MANDATED
+// the "later author wanting a green deletes the check" move its own annotation claimed to prevent, and
+// it declared an arm of this module's coproduct that nothing could ever construct. Review 64875 caught
+// it. DESIGN 4d's second arm is exactly this failure: a mechanism that forbids more than the evidence
+// supports costs the thing you never did, and it looks like rigor.
+//
+// THE PROPERTY THAT WAS MEANT, and it survives both transitions: a RATIFIED row carries NO open
+// question. Ratification is not a flag, it is the claim that the questions got answered - so a row
+// whose standing says RatifiedByOperator while a retention period is still Undetermined, or while a
+// lawful basis still says CounselReviewRequired, is the cheap fake green this is aimed at, and it is
+// now the red. Counsel opining is legal; the operator ratifying is legal; ratifying a row whose
+// periods or bases are still open is not, and the ORDER that implies - counsel and periods first, the
+// standing last - is the honest one.
+//
+// ITS RED IS AUTHORABLE, AND IS EXERCISED RATHER THAN ASSUMED. Today no row is ratified, so this fold
+// is green over an empty population, which on its own would be an instrument that cannot fail. The
+// witness therefore hands this predicate a synthetic ratified-with-an-open-question row and requires
+// it to return false, so the check has a subject even while the real population is empty.
+//
+// WHAT IT CANNOT DO, stated rather than implied: whether a cited ratification record or counsel
+// opinion actually exists and says what the row claims is outside the modeled guarantee, exactly as
+// the honesty of a clearance stays with whoever issued it. That stays a boundary obligation on the
+// author of the row, and no fold here can discharge it.
+fn category_settlement_is_coherent(c: DataCategory) -> Bool {
+  if standing_is_ratified(s: c.standing) {
+    count(category_open_questions(c: c)) == 0
+  } else {
+    true
+  }
+}
+
+fn map_settlement_is_coherent() -> Bool {
+  all(data_categories, c => category_settlement_is_coherent(c: c))
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SEALED DATA-HANDLING MAP. What the fabric's permit fold is allowed to read out of this map.
+// ---------------------------------------------------------------------------------------------
+
+// PRODUCT.DATA_CLASS LANDED A CARRIER THIS MAP IS THE ONLY AUTHORISED AUTHOR OF (gunbc#11236), and the
+// minting function below is named data_handling_map_rows because product.data_class admit_callers-seals
+// data_handling_map to exactly that name and to its own witness fixture. The name is load-bearing: rename
+// it and the mint refuses with ConstructorCallAdmissionRefused rather than compiling.
+//
+// A ROW IS AN AUTHORISATION, NOT A DESCRIPTION, AND THAT DISTINCTION DECIDES EVERYTHING BELOW. The fold
+// reads a row and MINTS A PERMIT to perform a data effect. This module's category rows are PROPOSALS, and the reason is the
+// STANDING they carry and not the state of their bases -- which is worth stating precisely, because this
+// paragraph used to argue it from "every basis carries CounselReviewRequired" and ten of the thirteen
+// basis claims no longer do.
+// The derivation filters on ProposalStanding; a row whose lawful basis we concluded ourselves is still
+// ProposedAwaitingRatification, so the empty map is unchanged and its justification no longer rests on a
+// premise this module deleted. Every retention still either names what would settle it or carries a
+// policy whose figure does. ONE ROW NOW CARRIES A SETTLED PERIOD -- support communications, twelve months
+// -- and that changes nothing here: a settled figure on a proposed row is still a proposal, because the
+// standing and the retention are different axes and it is the STANDING this derivation filters on. Deriving an authorisation from a proposal would make the proposal operative with no
+// ratification pass, which is the defect this module exists to refuse -- a row that reads as settled fact
+// before that pass. So the derivation FILTERS ON RATIFIED STANDING, exactly as ratified_route_sanctions
+// does, and today nothing is ratified, so the map has NO ROWS.
+//
+// AN EMPTY MAP IS THE FAIL-CLOSED DEFAULT AND NOT UNFINISHED WORK. product.data_class says the same of its
+// own empty public map. A run under this map admits no data effect and the fabric canary refuses
+// CategoryUnmapped; only the operator's ratification pass changes that, and no code here can.
+//
+// FOUR FACTS A ROW WOULD NEED ARE ESTABLISHED AS UNREAD, which is why the derivation below is narrow rather
+// than eight rows of plausible labels. Each is recorded where it is already refused, so that two carriers
+// agree instead of quietly disagreeing:
+//   RECIPIENTS. product.data_class defines them as this lane's transfer counterparties. gunbc#11213 landed
+//     the R2 durable origin as a REFUSAL -- ProviderRouteRegionUnobserved, nine paths ProviderPathUnread,
+//     ProviderPathAbsent taken zero times. We have established that we have NOT read where that origin's
+//     data goes. extdeps.vendor.cloudflare is landed and citable, and naming it a recipient would assert a
+//     transfer we have explicitly established we have not read -- in a carrier that mints a permit.
+//   A ROUTE FOR ANY DURABLE SINK. SinkKind DurableOrigin carries a ProviderRoute, and no ProviderRoute
+//     declaration exists in this repository: the only construction is route_sanctions_for's PARAMETER,
+//     which provider_data_handling_sanction_frontier_rows already carries as a declared frontier.
+//   MOST OF THE LOCUS-TO-SINK CORRESPONDENCE. StorageLocus says where data LIVES; SinkKind is the
+//     DESTINATION of an effect, and treating one as the other is an inference wearing the shape of a
+//     mapping. CORRECTED AFTER review 65710, which caught the earlier wording claiming this module mints
+//     no such correspondence AT ALL while the code minted one invisibly: sinks_for_locus DOES map the one
+//     pair we can establish -- the operator support surface is a support-export destination, which is
+//     near-tautological -- and maps every other locus to NO sink with the reason stated. What the module
+//     does not mint is a correspondence for any locus whose destination is unestablished.
+//   THE ADMITTED PURPOSES AND OPERATIONS. A row's purposes are the purposes it ADMITS for a sink -- purpose
+//     limitation, an authorisation -- and not a transcription of the purposes this map DESCRIBES. Which
+//     purposes are admitted for a category is the operator's grant and counsel's question, so they stay
+//     empty. An empty list admits nothing and there is no wildcard arm, so the carrier refuses; that is the
+//     carrier working rather than a gap for the next author to fill.
+//
+// SO WHAT THE DERIVATION ACTUALLY IS: the standing filter, plus citations at FIELD GRAIN into the category
+// row that already carries each fact. retention and lawful_basis cite decl_field_ref into the row rather
+// than minting per-category retention and basis declarations, because the category row is already the one
+// authority for both and a second declaration carrying the same fact is the fork DESIGN 3 forbids.
+fn data_handling_authority() -> DeclarationRef {
+  decl_ref(module_path: data_map_module_path as String, decl_name: "data_handling_map_rows")
+}
+
+// ONE TOTAL FUNCTION DECIDES BOTH WHETHER AND WHICH, AND THAT IS THE WHOLE OF review 65710'S FINDING. The
+// first shape split the fact in two: a Bool said whether a locus HAD a sink, and a literal one line away
+// said WHICH sink every passing locus got. Flipping the Bool's StoredOnDurableOrigin arm to true -- the
+// obvious edit the day a ProviderRoute lands -- would then have emitted a SUPPORT-EXPORT row for a durable
+// residency: an authorisation to export, minted by an edit that looked like it only unblocked a sink. One
+// fact stored twice, where the second copy is invisible from the first.
+//
+// Now the arm names its own sink or names none, so a future arm cannot inherit another's destination by
+// accident, and the zero arms are ANSWERS rather than omissions: a locus with no sink contributes no row,
+// which the fold reports as CategoryUnmapped. StoredOnDurableOrigin is empty for a stated reason and not
+// for lack of attention -- SinkKind's durable arm requires a ProviderRoute and none is declared here.
+fn sinks_for_locus(l: StorageLocus) -> List<SinkKind> {
+  match l {
+    OperatorSupportSurface => [SupportExport]
+    StoredOnDurableOrigin => []
+    JobMicroVmTransient => []
+    ContentAddressedByHash => []
+    ProcessMemoryNeverDurable => []
+    OutsideOurCustody { basis } => []
+  }
+}
+
+// THE ROW'S `category` IS THE PUBLIC MARKER, AND NOTHING ELSE MAY GO IN THAT FIELD. product.data_class
+// admit_data_effect compares it against the marker reference carried by the Sink, so a reference into
+// THIS module there resolves nothing and refuses CategoryUnmapped on every row the map emits. The other
+// two references on the row are not the same kind of thing and are correct as they stand: `retention` and
+// `lawful_basis` are open decl_field_refs into this lane's own rows, which is what the public type's own
+// annotation says they are -- an authority the fold carries onto the permit without judging.
+fn handling_rows_for_category(c: DataCategory) -> List<DataHandlingRow> {
+  flat_map(
+    c.residency,
+    r => map(
+      sinks_for_locus(l: r.locus),
+      s => DataHandlingRow {
+        category: c.marker,
+        sink: s,
+        purposes: [],
+        recipients: [],
+        operations: [],
+        retention: decl_field_ref(
+          module_path: data_map_module_path as String,
+          decl_name: c.decl as String,
+          field_name: "residency",
+        ),
+        lawful_basis: decl_field_ref(
+          module_path: data_map_module_path as String,
+          decl_name: c.decl as String,
+          field_name: "lawful_bases",
+        ),
+        posture: m2_compliance_posture_revision,
+      },
+    ),
+  )
+}
+
+// PARAMETRIC AND DELIBERATELY NON-MINTING, which is the whole reason it may take an argument. The mint
+// below takes NO parameters, and that is a seal decision rather than a style one: product.data_class's own
+// fixture mint fx_map IS parametric, and it is safe only because it carries its own admit_callers list
+// naming six exact callers. A parametric mint here with no such list would let any importer pass a
+// fabricated ratified category and receive an admitting map -- bypassing the seal through this module's
+// front door. This function mints nothing, so a caller handing it fixtures gets rows and no authority.
+fn data_handling_rows_for(categories: List<DataCategory>) -> List<DataHandlingRow> {
+  flat_map(
+    filter(categories, c => standing_is_ratified(s: c.standing)),
+    c => handling_rows_for_category(c: c),
+  )
+}
+
+fn data_handling_map_rows() -> DataHandlingMap {
+  data_handling_map(
+    authority: data_handling_authority(),
+    rows: data_handling_rows_for(categories: data_categories),
+  )
+}

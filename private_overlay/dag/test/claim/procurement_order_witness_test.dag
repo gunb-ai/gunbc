@@ -1,0 +1,97 @@
+module test.claim.procurement_order_witness
+
+import std.types { Bool, Int }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.procurement_order {
+  order_lines, order_standing, OrderQuoted, OrderEstimatedOnly,
+  orderable_now, blocked_lines, unquoted_lines, orderable_low_micro, orderable_high_micro,
+  quantity_count, quantity_is_settled, price_is_quoted, line_extended_low_micro,
+  order_by_day, needed_by_day, dimms_at_1dpc, dimms_at_2dpc, fleet_nodes,
+  unconditional_lines, lines_awaiting_a_decision, line_decisions_all_settled,
+}
+import strategy.year_end_plan { find_item, year_end_plan_items }
+
+// EVERY LINE MUST POINT AT A REAL PLAN ITEM. needed_for is what gives a line its date, so a
+// typo there does not fail loudly - it silently yields a needed_by_day of zero and the line
+// reports as maximally urgent, which is the most believable wrong answer this module can give.
+// Checked by identity against the plan rather than by counting lines.
+fn every_line_resolves_its_plan_item() -> Bool {
+  all(order_lines, l => count(find_item(id: l.needed_for)) == 1)
+}
+
+// The order must REFUSE to present itself as quoted while any line is an estimate or blocked.
+// This is the module's whole safety claim: a band summed from market estimates reads as a
+// budget once written down, and the standing is what stops that.
+fn order_refuses_to_be_quoted() -> Bool {
+  match order_standing() {
+    OrderQuoted { low_micro, high_micro } => false,
+    OrderEstimatedOnly { low_micro, high_micro, causes } => true,
+  }
+}
+
+// A blocked line contributes NOTHING to the band, so the band understates the true order.
+// If a blocked line ever contributed, the band would look complete while resting on a quantity
+// nobody derived - the fabricated-plausible-output arm, in money.
+// THE BAND UNDERSTATES THE ORDER, AND THAT MUST BE OBSERVABLE. An unsettled line is excluded
+// from the band whether its quantity is blocked (count zero) or gross-of-inventory (count
+// nonzero but not yet nettable against stock nobody has counted). The property worth asserting
+// is the second case: there EXISTS an excluded line carrying real quantity, so the band is
+// provably smaller than the true order rather than merely claimed to be. An earlier version of
+// this check asserted every unsettled line contributes zero, which was false of the DRAM line
+// and was a defect in the check rather than in the model.
+fn band_understates_the_order() -> Bool {
+  count(filter(order_lines, l => !quantity_is_settled(q: l.quantity) && quantity_count(q: l.quantity) > 0)) > 0
+    && count(blocked_lines()) > 0
+    && count(orderable_now()) > 0
+    && all(orderable_now(), l => quantity_is_settled(q: l.quantity))
+}
+
+// Quantities DERIVE from the fleet, they are not typed in. Changing fleet_nodes must change
+// both DIMM populations, and the 2DPC population must be exactly twice the 1DPC one because
+// the board carries 32 slots against 16 channels.
+fn dimm_populations_derive() -> Bool {
+  dimms_at_1dpc() == fleet_nodes * 16
+    && dimms_at_2dpc() == fleet_nodes * 32
+    && dimms_at_2dpc() == dimms_at_1dpc() * 2
+}
+
+// Order-by precedes needed-by by exactly the lead time. A line with a lead time that did not
+// move its order date would be a lead time nothing consumed.
+fn lead_time_moves_the_order_date() -> Bool {
+  all(order_lines, l => order_by_day(l: l) == needed_by_day(l: l) - l.lead_time_days)
+    && any(order_lines, l => l.lead_time_days > 0)
+}
+
+// The band is ordered and non-degenerate: a low above a high would invert silently.
+fn band_is_ordered() -> Bool {
+  orderable_low_micro() <= orderable_high_micro() && orderable_low_micro() > 0
+}
+
+// A DERIVED QUANTITY MUST NOT BECOME "BUY TODAY". unconditional_lines previously filtered on
+// quantity settlement alone, which made every derivable count orderable - including the 10
+// gigabit cards, whose COUNT follows from the infrastructure pair and whose PURCHASE waits on
+// that pair being decided. The check asserts the two populations are disjoint, that something
+// really is awaiting a decision, and that every unconditional line's decisions are all settled.
+// Flipping any cited decision back to Deferred must withdraw its lines automatically.
+fn unconditional_means_no_open_decision() -> Bool {
+  count(lines_awaiting_a_decision()) > 0
+    && count(unconditional_lines()) > 0
+    && all(unconditional_lines(), l => line_decisions_all_settled(l: l))
+    && all(lines_awaiting_a_decision(), l => !line_decisions_all_settled(l: l))
+    && count(unconditional_lines()) + count(lines_awaiting_a_decision())
+      == count(orderable_now())
+}
+
+fn procurement_witness_all() -> Bool {
+  every_line_resolves_its_plan_item()
+    && order_refuses_to_be_quoted()
+    && band_understates_the_order()
+    && dimm_populations_derive()
+    && lead_time_moves_the_order_date()
+    && band_is_ordered()
+    && unconditional_means_no_open_decision()
+}
+
+fn procurement_witness_main() -> ProcessExit {
+  if procurement_witness_all() { ExitSuccess } else { ExitFailure { code: 1, reason: "procurement_witness_all returned false" } }
+}

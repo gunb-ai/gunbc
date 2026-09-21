@@ -1,0 +1,112 @@
+module finance.owner_funded_company_asset
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.measure { MoneyAmountMicro, money_amount_micro }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// COMPANY ASSET FACTS THAT THE MEMBER HAPPENED TO FUND, WHICH IS NOT THE SAME AS PERSONAL
+// FINANCIAL INFORMATION.
+//
+// These declarations lived in finance.personal_ledger and moved here when the personal book moved
+// to gunbc-personal. They did not go with it, and the reason is worth stating because it decided
+// the cut: the marking on a processor package is a HARDWARE fact, whether the entity has posted
+// its basis is a COMPANY ACCOUNTING fact, and the consideration paid is the COMPANY'S EQUIPMENT
+// COST BASIS - it is what the company's asset is carried at, not a fact about the operator's
+// finances. strategy.asset_inventory reads every one of those fields, and it is a business module
+// that any collaborator must be able to build.
+//
+// THE TEST APPLIED, since "personal" is easy to over-read: would a person joining this project
+// need this to understand the COMPANY, and does it disclose anything about the operator's own
+// money beyond what the company already owes him? The package marking and basis standing disclose
+// nothing personal at all. The consideration is the company's basis, which the entity book must
+// carry regardless of who paid it. What DID move is the operator's ledger, his estimated taxes and
+// his card statements - facts about him rather than about the company.
+//
+// The funding RELATIONSHIP - that the member is owed for this - is the member claim, and it
+// reconciles in gunbc-personal finance.member_claim, which can see both books. This module states
+// only the company's side.
+
+// Engineering-sample processors: a dated, expiring option, and a suspected fork in the
+// price observation that the build frontier reads.
+// ---------------------------------------------------------------------------------------------
+//
+// Sixty-two Ampere Altra Q80-30 marked ES were acquired 2026-08-18 for 4,750.49. The
+// per-unit paid consideration is derived below rather than rounded into a second authority;
+// the company's basis entry remains unposted on finance.gunbai_ledger
+// (q80_es_lot_entity_basis_unposted).
+// strategy.ci_node_build's processor_market_note cites "95 for the 80-core (the
+// 2026-08-18 re-quote, with sixty-two units of observed depth)" — the same date and the same
+// count, so the depth behind that observation IS this lot.
+//
+// If these are engineering samples and the note is read as production Q80-30, then one row
+// carries two products: a production price and an ES depth. That is a section 3 meaning
+// fork sitting inside the frontier that selects the build shape, and its consequence is not
+// a wrong ledger entry but a wrong machine.
+//
+// The ES marking establishes neither support standing nor operability. A power-on result is
+// evidence for exactly one processor on exactly the configuration named by its receipt; it
+// cannot qualify the other sixty-one processors or a different target platform.
+
+type ProcessorPackageMarking
+  = EngineeringSampleMarked
+  | ProductionMarkingObserved
+  | PackageMarkingUnread
+
+type CompanyAssetBasisStanding
+  = EntityBasisUnposted { entity_ledger_gap: DeclarationRef, obligation: NonEmptyStr }
+  | EntityBasisPosted { entity_entry: DeclarationRef }
+
+// THE COMPANY'S EQUIPMENT COST BASIS TAKES THE MONEY CARRIER, not a bare micro scalar. It
+// carried through the move from finance.personal_ledger unexamined, and a new module is a NEW
+// AUTHORITY: re-stating the micro-scalar convention here re-mints it outside std.measure, where
+// finance.ledger already says the authority lives. This value will be compared against
+// MoneyAmountMicro postings on finance.gunbai_ledger when the entity posts its basis - which the
+// obligation below requires - so a bare Nat here is a unit mismatch waiting at that comparison.
+// (review 65745)
+type OwnerFundedCompanyAssetEvidence {
+  asset_id: NonEmptyStr
+  acquired_on: NonEmptyStr
+  units: Nat
+  paid_consideration: MoneyAmountMicro
+  marking: ProcessorPackageMarking
+  company_basis: CompanyAssetBasisStanding
+  evidence: NonEmptyStr
+}
+
+data altra_q80_es_lot_acquisition: OwnerFundedCompanyAssetEvidence = OwnerFundedCompanyAssetEvidence {
+  asset_id: "altra-q80-30",
+  acquired_on: "2026-08-18",
+  units: 62,
+  paid_consideration: money_amount_micro(count: 4750490000),
+  marking: EngineeringSampleMarked,
+  company_basis: EntityBasisUnposted {
+    entity_ledger_gap: decl_ref(module_path: "finance.gunbai_ledger", decl_name: "q80_es_lot_entity_basis_unposted"),
+    obligation: "Post the company's equipment basis for this lot on finance.gunbai_ledger. The entity book now exists; this personal-book evidence establishes what the member paid for the company and is not itself the company's basis entry.",
+  },
+  evidence: "Purchase evidence recorded in the personal ledger: sixty-two Q80-30 packages marked ES, paid 4,750.49 after the Mercury spend-limit refusal.",
+}
+
+
+// Lot-grain finance evidence must not have a one-receipt Qualified arm. Qualification belongs to
+// one physically identified processor on one exact board/firmware/socket configuration.
+//
+// THE RETURN DEADLINE FIELD IS GONE RATHER THAN ANSWERED, for the same reason the return arm itself
+// is: a required return_eligibility_check_by is a PRESENT-TENSE DEADLINE FOR A QUESTION THAT IS
+// CLOSED, and it read as live while two other rows said the window drives nothing. It had no
+// consumer -- only its own declaration and value -- so it was a constructor for an invalid state
+// kept alive by nothing. The retired date is now recorded ONCE, at
+// strategy.asset_inventory q80_return_eligibility, by the row that retired it.
+type EngineeringSampleLotStanding {
+  qualification_target: DeclarationRef
+  obligation: NonEmptyStr
+}
+
+data altra_q80_es_lot_standing: EngineeringSampleLotStanding = EngineeringSampleLotStanding {
+  qualification_target: decl_ref(module_path: "strategy.ci_node_build", decl_name: "asrock_board_facts"),
+  obligation: "Bind each tested package to its inventory identity and target configuration, then record POST, channel enumeration, expected core count and burn-in outcome. A result for one processor on one board qualifies only that processor-configuration pair. RE-ANCHORED 2026-09-12: this work was previously deadlined on the return window, and the operator has closed the return arm (strategy.asset_inventory q80_return_eligibility), so there is no expiring right to race. IT IS NOT DISCHARGED BY THAT RULING -- keeping the lot is not a claim that any processor works. What drives it now is a deployment intent needing qualified parts: nothing may be assigned to a board before this is recorded at exact processor-and-configuration grain.",
+}
+
+// The row records the asymmetric, expiring cost of leaving operability unread. It carries no
+// expected pass rate and cannot transfer one processor's result across the rest of the lot.
+data altra_q80_es_expectation_note: NonEmptyStr = "No operability rate is established for this lot, and none is implied by the operator keeping it. The return question is closed at strategy.asset_inventory q80_return_eligibility, which is also where the retired check date is recorded; it is not restated here, because a date transcribed beside its own authority is the second copy that drifts."

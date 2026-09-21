@@ -1,0 +1,161 @@
+module strategy.ci_site_cost
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat }
+
+// WHAT THE SITE COSTS PER MONTH, and how that lands on one node.
+//
+// Rent, transit, electricity and cooling are FIXED against the site and VARIABLE against nothing.
+// Their cost per sellable unit therefore falls as admitted node count rises, and that fall is the
+// site-density alpha. Burying it inside a single "opex" number hides the strongest lever the
+// operator actually controls.
+//
+// Every figure here is a standing, not a constant. Two of them - transit and electricity - are
+// unresolved in ways that dominate the answer, so this module renders sensitivity rather than
+// picking one number and quoting it as a cost.
+
+type CostObservationStanding
+  = CostQuoted { usd_micro_per_month: Int, receipt: NonEmptyStr }
+  | CostEstimated { usd_micro_per_month: Int, note: NonEmptyStr }
+  | CostUnquoted { obligation: NonEmptyStr }
+
+fn standing_micro(s: CostObservationStanding) -> Int {
+  match s {
+    CostQuoted { usd_micro_per_month, receipt } => usd_micro_per_month,
+    CostEstimated { usd_micro_per_month, note } => usd_micro_per_month,
+    CostUnquoted { obligation } => 0,
+  }
+}
+
+fn standing_is_resolved(s: CostObservationStanding) -> Bool {
+  match s {
+    CostQuoted { usd_micro_per_month, receipt } => true,
+    CostEstimated { usd_micro_per_month, note } => false,
+    CostUnquoted { obligation } => false,
+  }
+}
+
+fn standing_label(s: CostObservationStanding) -> NonEmptyStr {
+  match s {
+    CostQuoted { usd_micro_per_month, receipt } => "quoted",
+    CostEstimated { usd_micro_per_month, note } => "estimated",
+    CostUnquoted { obligation } => "unquoted",
+  }
+}
+
+// Rent. A planning baseline with a band, not a number waiting on a document. The lease expense
+// disclosure replaces it; until then the band says how wrong it can be.
+data rent_and_common_area: CostObservationStanding = CostEstimated {
+  usd_micro_per_month: 2000000000,
+  note: "Planning baseline of 2,000 dollars a month, inside a sensitivity band of 1,800 to 2,400. The listing base is 1,800 and the all-in figure waits on the landlord's expense disclosure; the baseline economics do not wait with it.",
+}
+
+data rent_low_micro_per_month: Int = 1800000000
+data rent_high_micro_per_month: Int = 2400000000
+
+// ELECTRICITY cannot honestly be one eternal cents-per-kWh constant. Commercial pricing depends on
+// actual kWh, actual kW demand, rate class and quarterly reconciliation charges, and the current
+// reconciliation period runs June through August 2026. The tariff below is a planning rate.
+data electricity_usd_micro_per_kwh: Int = 200000
+
+data electricity_tariff_note: NonEmptyStr = "Twenty cents per kWh is a planning rate, not a tariff reading. Commercial electricity is billed on actual kWh, actual kW demand, rate class and quarterly reconciliation charges, and demand charges in particular do not scale with a monthly average. A real bill against a real load replaces this, and the demand component may change the shape of the answer rather than just its size."
+
+// Cooling is not a separate meter here; it is a multiplier on IT draw. That is a crude model and it
+// is stated as one: a real facility measures PUE rather than assuming it.
+data cooling_multiplier_permille: Int = 1250
+
+data cooling_note: NonEmptyStr = "Cooling is modelled as a 1.25x multiplier on IT draw. That is an assumed power-usage effectiveness, not a measurement, and it carries no cooling capital cost at all - no CRAC, no ducting, no condenser. A site that has to buy cooling capacity to admit more nodes has a step cost this model does not contain."
+
+// TRANSIT. The single largest unresolved line. A 10 Gbps dedicated symmetric circuit with an SLA is
+// quotable but not published, and local availability varies by address. Rendering one number here
+// would be the least defensible figure on the page, so the model carries a ladder.
+data dia_sensitivity_micro_per_month: List<Int> = [1000000000, 2000000000, 3000000000]
+
+data selected_dia: CostObservationStanding = CostUnquoted {
+  obligation: "Obtain a written 10 Gbps dedicated internet access quote for the specific address, including installation, contract term and SLA. Carriers publish dedicated symmetric connectivity with SLAs through 100 Gbps but price it by quote and by serviceability at the address. Until this is a number, every margin figure is a range.",
+}
+
+data dia_planning_micro_per_month: Int = 2000000000
+
+data dia_note: NonEmptyStr = "The transit ladder is the model's own advice about where to spend effort. Moving the circuit from $3,000 to $1,000 a month changes margin by more than any plausible saving on the motherboard, so the first real carrier quote is worth more than another round of hardware shopping."
+
+// The costs that exist and have no reading at all. They are listed rather than omitted, because a
+// margin computed without them is not a margin and the page has to be able to say so.
+type UnpricedCostLine {
+  label: NonEmptyStr
+  obligation: NonEmptyStr
+}
+
+data unpriced_site_lines: List<UnpricedCostLine> = [
+  UnpricedCostLine { label: "insurance", obligation: "Liability and equipment cover for a room full of other people's compute has not been quoted." },
+  UnpricedCostLine { label: "cooling capital", obligation: "The cooling multiplier prices electricity, not equipment. No CRAC, ducting or condenser cost is carried." },
+  UnpricedCostLine { label: "switching and routing", obligation: "Top-of-rack switching, optics and the router in front of the transit circuit are unpriced and unamortized." },
+  UnpricedCostLine { label: "physical security and access", obligation: "Locks, cameras, access control and the labour of granting access are unpriced." },
+  UnpricedCostLine { label: "repairs and spares", obligation: "A spares float and the failure rate that sizes it are unmodelled, and used hardware is where this line matters most." },
+  UnpricedCostLine { label: "storage and cache", obligation: "Object storage, cache fill and image distribution are per-job costs that no route in the spill model carries." },
+  UnpricedCostLine { label: "payment processing and chargebacks", obligation: "Per-transaction fees and dispute handling are unpriced." },
+  UnpricedCostLine { label: "support and abuse response", obligation: "Human time answering customers and evicting miners is the cost that scales with success, and it is unpriced." },
+  UnpricedCostLine { label: "software control plane", obligation: "The scheduler, API, billing pipeline and their hosting are unpriced." },
+  UnpricedCostLine { label: "operator time", obligation: "No salary or opportunity cost is carried anywhere in this model." },
+]
+
+// ---------------------------------------------------------------------------------------------
+// ALLOCATION. Each fixed line is allocated exactly once, across admitted nodes.
+// ---------------------------------------------------------------------------------------------
+
+data hours_per_month: Int = 730
+
+fn node_electricity_micro_per_month(node_watts: Nat) -> Int {
+  node_watts * hours_per_month * electricity_usd_micro_per_kwh * cooling_multiplier_permille / 1000000
+}
+
+type SiteAllocation {
+  admitted_nodes: Int
+  rent_per_node_micro: Int
+  dia_per_node_micro: Int
+  electricity_per_node_micro: Int
+}
+
+fn allocate_site(admitted_nodes: Int, dia_micro: Int, node_watts: Nat) -> SiteAllocation {
+  SiteAllocation {
+    admitted_nodes: admitted_nodes,
+    rent_per_node_micro: standing_micro(s: rent_and_common_area) / admitted_nodes,
+    dia_per_node_micro: dia_micro / admitted_nodes,
+    electricity_per_node_micro: node_electricity_micro_per_month(node_watts: node_watts),
+  }
+}
+
+fn site_cost_per_node_micro(a: SiteAllocation) -> Int {
+  a.rent_per_node_micro + a.dia_per_node_micro + a.electricity_per_node_micro
+}
+
+data admitted_node_count: Int = 6
+
+data density_note: NonEmptyStr = "Rent and transit are allocated across admitted nodes, so their share per node falls as the room fills. That is the site-density alpha, and it is the reason node count is a pricing decision and not just a capacity one. The room's real node ceiling is set by power, cooling and floor area, none of which this module reads."
+
+// A site total is only reportable when every line that belongs in it has a reading. It does not, so
+// this refuses and names what is missing rather than reporting a subtotal as a total.
+type SiteCostStanding
+  = SiteCostComplete { per_node_micro: Int, receipt: NonEmptyStr }
+  | SiteCostPartial { per_node_micro: Int, unresolved: List<NonEmptyStr>, unpriced: List<UnpricedCostLine> }
+
+fn unresolved_site_lines() -> List<NonEmptyStr> {
+  let rent_unresolved = if standing_is_resolved(s: rent_and_common_area) { [] } else {
+    ["rent all-in: landlord expense disclosure unread; a 2,000 dollar planning baseline is in use inside an 1,800 to 2,400 band"]
+  }
+  let dia_unresolved = if standing_is_resolved(s: selected_dia) { [] } else {
+    ["transit: no carrier quote; a planning figure stands in and the page renders a ladder instead"]
+  }
+  concat(rent_unresolved, concat(dia_unresolved, [
+    "electricity: planning rate, no bill and no demand-charge model",
+    "cooling: assumed multiplier, no measured power-usage effectiveness and no cooling capital",
+  ]))
+}
+
+fn site_cost_standing(dia_micro: Int, node_watts: Nat) -> SiteCostStanding {
+  SiteCostPartial {
+    per_node_micro: site_cost_per_node_micro(a: allocate_site(admitted_nodes: admitted_node_count, dia_micro: dia_micro, node_watts: node_watts)),
+    unresolved: unresolved_site_lines(),
+    unpriced: unpriced_site_lines,
+  }
+}

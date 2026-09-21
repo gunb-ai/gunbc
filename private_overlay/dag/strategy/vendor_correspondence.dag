@@ -1,0 +1,211 @@
+module strategy.vendor_correspondence
+
+import std.types { NonEmptyStr, List }
+import std.measure { ByteSize, byte_size }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.uri { Uri, uri_https }
+
+// Shared request/reply carrier introduced by private #64. Missing request metadata is not a sent receipt.
+type VendorEnquiry {
+  sent_on: NonEmptyStr
+  channel: NonEmptyStr
+  request_id: NonEmptyStr
+  asked: NonEmptyStr
+}
+
+// A REPLY THAT HANDED SOMETHING OVER NAMES WHAT IT HANDED OVER, AS AN EDGE (review 68114). `delivered`
+// was prose: the artifact declarations were reachable only by their names spelled inside `stated`, which
+// is a citation a reader resolves and a program cannot. An empty list is the honest and common case --
+// most replies deliver an answer and no bytes -- so the field does not assume delivery, it records it.
+type VendorReply {
+  replied_on: NonEmptyStr
+  replied_by: NonEmptyStr
+  delivered: List<DeliveredArtifact>
+  stated: NonEmptyStr
+  settles: NonEmptyStr
+  leaves_open: NonEmptyStr
+  next_recommendation: NonEmptyStr
+}
+
+// WHAT A VENDOR ACTUALLY HANDED OVER, AS ARTIFACTS WITH IDENTITIES RATHER THAN A SENTENCE SAYING
+// FILES ARRIVED. A reply that delivers bytes is not settled by recording that it happened: the thing
+// a later operation depends on is WHICH bytes, and the only durable answer to that is a digest.
+//
+// THE IDENTITY IS std.content_hash Sha256Digest AND THE ROUTE IS extdeps.uri Uri (review 68109). Both
+// were free NonEmptyStr, which is the defect this type's own byte_count note names one field up: a
+// digest spelled as a string is a second spelling of a carrier the corpus owns, and Sha256DigestHex's
+// `where lower_hex_64` refuses at the type what a NonEmptyStr would have accepted silently.
+//
+// WHY NOT std.citation CitationTarget, which the review offered as the pin shape this repository owns.
+// CIT-0 models CITING AN EXTERNAL AUTHORITY'S REPRESENTATION: Pin over CitedRepresentationIdentity
+// grounded on an ExternalSubjectRef, with a selector, a dated retrieval observation and a verification
+// receipt joining the two. These are not authority we cite and re-read at a locator; they are binaries a
+// vendor handed us once, which we hold and may flash. Adopting the composite would put an
+// ExternalSubjectRef and a selector on a firmware image to reach the two components that actually apply
+// -- and those two components ARE adopted here, at their own grain: the digest carrier CIT-0 itself uses
+// (std.content_hash Sha256Digest) and the locator carrier its access_route uses (extdeps.uri Uri). If a
+// later lane needs the retrieval-observation half -- a dated fetch receipt reconciled against the
+// expected pin -- that is when CitationTarget earns its selector, and the digest field here is already
+// the thing it would pin against.
+//
+// THE FETCH ROUTE AND THE IDENTITY ARE TWO FIELDS BECAUSE THEY FAIL DIFFERENTLY. `fetch_route` is
+// where the bytes can be got today -- here the operator's own Google Drive, which he controls, so
+// revocation is his act and not a third party's. `sha256` is what they ARE. A Drive file id is stable
+// across a REPLACEMENT of the file it names, so a route alone cannot tell a later reader whether the
+// bytes it fetched are the bytes this row was written about. Any operation that flashes one of these
+// must verify the digest after fetching; the route is a convenience and the digest is the authority.
+//
+// THE SIZE IS std.measure ByteSize AND NOT A BARE COUNT (review 68093). A byte quantity is a measured
+// thing on the Memory axis, and this corpus already has the carrier -- strategy.mt_collins_power and
+// strategy.ci_compute_offer_catalog both consume byte_size next door. A Nat field here would have been a
+// second spelling of a concept that already has one, which is the re-invention DESIGN section 2 tests
+// for and the single-authority rule in section 3.
+//
+// `manifest_check` RECORDS AN EXECUTED VERIFICATION, NOT AN INTENTION. Both firmware bundles ship a
+// vendor checksum manifest and the BIOS release note restates its own digests; those were checked
+// against the extracted images rather than taken on trust, and the field says so at the grain it was
+// done. A row whose manifest_check says the images were verified is making a claim someone re-ran.
+// WHAT A VENDOR MANIFEST ESTABLISHED, AS ARMS RATHER THAN AN UPPERCASE PROSE PREFIX (review 68109).
+// This was one NonEmptyStr taking three closed states -- verified, verified-in-part, no manifest at all
+// -- encoded as capitalised sentence openings, and the BIOS row was the proof the shape was wrong: one
+// string carried VERIFIED for three artifacts and UNVERIFIED for two more, so no reader and no fold
+// could get a verdict out of it without parsing English. An undeclared sum is still a sum; declaring it
+// is what makes the partial case a case rather than a caveat.
+//
+// THE ARM IS THE VERDICT AND THE STRING IS THE METHOD (review 68161). An earlier revision of these rows
+// re-opened each payload with "VERIFIED …", which is the verdict restated as editable prose beside the
+// tag that already carries it -- the second authority this type was introduced to delete, and one a
+// later edit could leave reading VERIFIED under PartlyCovered with no fold able to notice.
+//
+// AND THE PER-MEMBER DIGESTS ARE NOT COPIED INTO THESE STRINGS. They are MD5, which is what both vendor
+// manifests publish, and std.content_hash carries Sha256Digest, Sha1Digest, Sha512Digest and
+// Fnv1a64Structural with no MD5 family at all. So the two honest options were a free-string copy --
+// which this file's own content_hash annotation refuses one type up -- or none. None is correct here:
+// the manifest inside each artifact publishes them, this row's content_hash identifies the artifact
+// that contains it, and a reader who wants the member digests reads them from the bytes rather than
+// from a transcription that can drift from its source. If a later lane needs them AS VALUES, the
+// carrier they belong in is std.content_hash and the change that adds Md5Digest there is the one that
+// earns them a field.
+type ManifestVerification
+  = VerifiedAgainstVendorManifest { manifest: NonEmptyStr, verified: NonEmptyStr }
+  | PartlyCoveredByVendorManifest { manifest: NonEmptyStr, verified: NonEmptyStr, uncovered: NonEmptyStr }
+  | NoVendorManifest { consequence: NonEmptyStr }
+
+// WHAT AN AUTOMATED FETCH WOULD TRIP OVER, TYPED FOR THE SAME REASON. These were sentences inside the
+// verification string, which put a fact about PACKAGING inside a field about DIGESTS. They are separate
+// observations with separate consequences: one breaks an unpack step, the other only looks like a
+// mismatch until the digests are compared.
+type PackagingHazard
+  = ExtensionMisdescribesCompression { named: NonEmptyStr, actual: NonEmptyStr }
+  | ManifestNameDiffersFromArchive { manifest_name: NonEmptyStr, archive_name: NonEmptyStr, reconciled_by: NonEmptyStr }
+
+type DeliveredArtifact {
+  filename: NonEmptyStr
+  content_hash: Sha256Digest
+  byte_count: ByteSize
+  fetch_route: Uri
+  carries: NonEmptyStr
+  manifest_check: ManifestVerification
+  packaging: List<PackagingHazard>
+}
+
+// THE MT. COLLINS FIRMWARE AND PLATFORM DELIVERY, AMPERE SUPPORT TICKET #7426.
+//
+// WHAT IS NOT IN THIS REPOSITORY, DELIBERATELY: the bytes. Two of these are firmware images totalling
+// about 100 MB, and whether we may redistribute third-party board firmware is one of the asks still
+// OPEN on the same ticket. Committing the images would answer that question by performing it. The
+// digests are facts ABOUT the images and redistribute nothing, which is why they are what this row
+// carries.
+//
+// THE IMAGES ARE DATED 2023-12 AND THE PLATFORM GUIDE 2026-07-20. That gap is not a defect in the
+// delivery and it is not this row's to resolve: whether a two-year-old BIOS and BMC pair is the
+// current serviceable level is exactly what mt-collins-firmware-serviceability still asks, and a
+// delivery is not an entitlement to future updates.
+data delivery_mt_collins_bios_scp: DeliveredArtifact = DeliveredArtifact {
+  filename: "mt.collins-fw-aptv-bin-r2.10c-0ACOD014-20231219.tar.xz",
+  content_hash: Sha256Digest { hex: "b97dd751393622f3a02211635729efe27c319a9ee67eeb5b61df495753063a67" as Sha256DigestHex },
+  byte_count: byte_size(count: 14210296),
+  fetch_route: uri_https(locator: "drive.google.com/uc?export=download&id=1pf5_q_UPHrm49PPxFILbznx8E6qSL9JP"),
+  carries: "AptioV BIOS 2.10c build 0ACOD014 as signed .cap, .hpm and .spi, with CapsuleApp.efi; Altra SCP signed 2.10 (20230126) as .hpm and .slim; and docs - Altra Family SCP User Manual v0.61, a CHANGELOG, and the Mt.Collins BIOS 0ACOD014 release note.",
+  manifest_check: PartlyCoveredByVendorManifest {
+    manifest: "altra_firmware_sdk/bin/aptiov/checksum.txt, corroborated by the Mt.Collins BIOS 0ACOD014 release note, which restates the same three digests",
+    verified: "Method: the three BIOS images were extracted and hashed on 2026-09-19 and compared against the manifest and the release note, which publish the same digests. The comparison agreed on all three. The digest VALUES are not restated here -- they are published by the manifest inside the artifact this row names, and a free-string copy beside a field whose whole point is that a digest is not a string would be that copy competing with its source.",
+    uncovered: "The two SCP images -- altra_scp_signed_2.10.20230126.hpm and .slim -- have no entry in that manifest, so nothing corroborates them beyond this delivery's own content_hash over the bundle that contains them. This arm exists so that is a stated case rather than a caveat inside a sentence about what was verified.",
+  },
+  packaging: [],
+}
+
+data delivery_mt_collins_bmc_management: DeliveredArtifact = DeliveredArtifact {
+  filename: "mt-collins-srp-mgmt-mgr-bin-r1.12-0.45_3.20231227.tar.xz",
+  content_hash: Sha256Digest { hex: "9ec221f8c316f1bd26acec97721c7c5ec27e10f439a8979a6b022cfbed850d54" as Sha256DigestHex },
+  byte_count: byte_size(count: 91293174),
+  fetch_route: uri_https(locator: "drive.google.com/uc?export=download&id=13BZkAnVedo2st9ixel4HTSDeCMiSLcQQ"),
+  carries: "MegaRAC BMC 0.45.3 as .hpm and .ima; CPLD/VRD material; and the documentation half that is worth as much as the images - Foxconn BMC User Guide, Foxconn Redfish User Guide, and a System FW Upgrade Guide.",
+  manifest_check: VerifiedAgainstVendorManifest {
+    manifest: "amp_megarac_sdk/bin/checksum.txt",
+    verified: "Method: the BMC .hpm and .ima were extracted and hashed on 2026-09-19 and compared against the manifest. The comparison agreed on both. The digest values are published by that manifest and are deliberately not copied here.",
+  },
+  packaging: [
+    ExtensionMisdescribesCompression {
+      named: "mt-collins-srp-mgmt-mgr-bin-r1.12-0.45_3.20231227.tar.xz, whose extension claims xz",
+      actual: "bzip2. An unpack step that trusts the extension fails on this file, which is why this is a typed hazard and not a remark.",
+    },
+    ManifestNameDiffersFromArchive {
+      manifest_name: "collins_bmc_0_45_3.ima and collins_bmc_0_45_3.hpm, as named in checksum.txt",
+      archive_name: "MtCollinsBmc0_45_3.ima and MtCollinsBmc0_45_3.hpm, as carried in the archive",
+      reconciled_by: "the digests, which agree -- so this is a rename between packaging and manifest and NOT a different image. Recorded because the names alone read as a mismatch.",
+    },
+  ],
+}
+
+data delivery_mt_collins_platform_guide: DeliveredArtifact = DeliveredArtifact {
+  filename: "Mt._Collins_DVT_PVT_MP_GSG_v1.05_20260720.pdf",
+  content_hash: Sha256Digest { hex: "1c41b4f088fa9c8b760d21d57ae93b0d1a68ee67a740d4eb7ac893753fc580b3" as Sha256DigestHex },
+  byte_count: byte_size(count: 9409569),
+  fetch_route: uri_https(locator: "drive.google.com/uc?export=download&id=1r-w8dzprdZLIsEfudD-2lGGEQDB7h96U"),
+  carries: "Mt. Collins DVT/PVT/MP Getting Started Guide v1.05, dated 2026-07-20, 16 pages. The only artifact of the three that is CURRENT rather than two years old.",
+  manifest_check: NoVendorManifest {
+    consequence: "Its sha256 within this delivery is the whole of its identity and nothing corroborates it. Stated as its own arm because the two bundles beside it ARE corroborated, and three digests in one row would otherwise read as equally grounded.",
+  },
+  packaging: [],
+}
+
+data mt_collins_firmware_delivery: VendorReply = VendorReply {
+  replied_on: "2026-09-18",
+  replied_by: "Ampere Support Portal ticket #7426, Bobby, with Abhi named by the operator as the second person who helped",
+  delivered: [
+    delivery_mt_collins_bios_scp,
+    delivery_mt_collins_bmc_management,
+    delivery_mt_collins_platform_guide,
+  ],
+  stated: "Three files delivered through a temporary upload; WHICH three is the delivered field above rather than this sentence. The operator downloaded all three, acknowledged on the ticket so the temporary upload could be removed, and re-hosted them on his own Drive, which is the fetch_route each artifact carries.",
+  settles: "FIRMWARE IMAGE ACCESS AND PLATFORM DOCUMENTATION, for these versions and this delivery only. The step_boot_minimum_reset_receipt route is unblocked on its ARTIFACT input: a BMC image, a BIOS pair and a System FW Upgrade Guide now exist with verified digests, where the plan previously recorded FirmwareImagesUnavailable as the standing fallback.",
+  leaves_open: "EVERYTHING THE TICKET ASKED THAT WAS NOT AN IMAGE, and the delivery must not be read as answering any of it: the authoritative source OR ODM route for future firmware (a one-time hand-over is not an entitlement, and Foxconn remains the likely distributor for board firmware); the channel-membership and rank-organization constraints behind OCP Mt. Jade section 7.4 Table 3; and a route to NDA evaluation or a referral to the correct ODM or distributor. No named commercial or account contact was established. Nor does it settle whether these 2023-12 images are the current serviceable level.",
+  next_recommendation: "Do NOT send a second message asking for the remainder. The operator sent a clean acknowledgement and the remaining asks are already on the ticket; re-asking converts a thank-you into a request and spends the goodwill this delivery just established. The 2026-09-22 follow-up on step_firmware_asks_wait is the right next contact, quoting the ticket.",
+}
+
+// THE FS REPLY ON THE CRS812 100G BREAKOUT, 2026-09-21. It hands over no bytes and, more to the
+// point, it ANSWERS NONE OF THE THREE OUTCOMES the wait was holding open -- a configuration error,
+// a recode of the QSFP-DD switch end, or a replacement cable. It asks for one more test. That is
+// why this row exists as a reply rather than as a discharge: the shape refused one file up, where a
+// partial answer closing a row that held other questions leaves those questions belonging to nobody.
+//
+// WHAT IS ACTUALLY NEW IN IT, stated exactly because the screenshot invites the opposite reading.
+// The switch side of FS's screenshot -- auto-negotiation=no, speed=100G-baseCR2 on the odd
+// sub-ports -- IS THE CONFIGURATION ALREADY EXECUTED on 2026-09-18 and already reported to FS with
+// captures from both ends. The single new variable is FEC: fec-mode=auto on the switch instead of
+// fec91, with the ConnectX-7 returned to Auto for both speed and FEC. That cell is untested, and it
+// is untested for a reason worth carrying rather than discovering twice: every configuration tried
+// so far was SYMMETRIC (autoneg on both ends, or forced on both ends), and this one is not -- a
+// forced, autoneg-off switch port facing an autoneg-on host is the combination under which the host
+// previously read "Autoneg, No partner detected". So it is a real cell of the matrix and it is also
+// the cell least likely to train, and both halves of that go back to FS with the result.
+data fs_fabric_100g_retest_request: VendorReply = VendorReply {
+  replied_on: "2026-09-21",
+  replied_by: "FS.COM technical support, Nia Liu (Solution Sales Specialist), email thread on order #FS260902769849",
+  delivered: [],
+  stated: "FS's technical review holds that under normal operating conditions the link should establish at 100G rather than 50G. They ask for one further test: force the CRS812 port speed per their screenshot (auto-negotiation=no, speed=100G-baseCR2 on the odd breakout sub-ports), set the switch FEC mode to Auto, return all available FEC-related configuration and status from both ends, and set the ConnectX-7 to Auto for BOTH speed and FEC. They separately ask whether we have any other equipment with a 400G QSFP-DD port available for a cross-test.",
+  settles: "NOTHING THE WAIT WAS HOLDING. FS names no configuration error in what we sent, orders no recode of the Generic-coded QSFP-DD switch end, and offers no replacement cable. The one thing it settles is WHOSE MOVE IT IS: the thread is no longer waiting on FS, it is waiting on us to run their test and answer their inventory question.",
+  leaves_open: "THE CAUSE, ENTIRELY -- and the position is unchanged from the 2026-09-18 packet: no bilateral 100G link has trained under any tried configuration, the host sits in Polling with no carrier while the switch reads link-ok/100Gbps on its own side only, and RouterOS reports eeprom-checksum bad for the QSFP-DD end at the HEALTHY 50G state too, so that flag explains nothing. Also open: whether the asymmetric cell FS asks for (switch forced and autoneg off, host autoneg on) can train at all, which is a question about FS's own procedure and not only about this cable.",
+  next_recommendation: "Run FS's test once on the srv5 leg only, under the 2026-09-18 procedure -- both credentials preloaded, restore to 50G armed on exit, both ends read at +10s and +30s -- and reply with the FEC configuration and status they asked for, the answer to the QDD cross-test question, and the asymmetry note above. Do NOT expand the test to the other seven legs and do NOT treat a further configuration round as a substitute for the substitution control: the experiment that isolates cable and coding from switch, NIC and signal integrity is still a known-good dual-compatibility cable in the same ports, or the same cable against a known-good 100GBASE-CR2 endpoint pair.",
+}

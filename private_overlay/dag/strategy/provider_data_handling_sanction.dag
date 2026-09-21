@@ -1,0 +1,366 @@
+module strategy.provider_data_handling_sanction
+
+import std.types { List, Bool, NonEmptyStr }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
+import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision }
+import product.fabric.provider_admission { RouteScopeSanction, ProviderUseScope, DispositionStanding }
+import strategy.data_map {
+  DataCategory, standing_is_ratified, category_profile_ref, data_categories,
+  category_source_and_build_inputs, category_build_artifacts, category_execution_receipts, category_ci_secrets,
+  category_job_logs, category_metering_telemetry, category_account_and_billing_identity,
+  category_support_communications, category_abuse_and_sanctions_records,
+}
+
+// WHICH DATA CATEGORIES WE PROPOSE MAY LEAVE OUR CUSTODY FOR A THIRD-PARTY PROVIDER ROUTE.
+//
+// This is the consumer of strategy.data_map, and it exists in the same change as the map because a
+// map nothing reads is the dangling declaration DESIGN 3c refuses. product.fabric.provider_admission
+// decides route x use, and one term of the use is a data_handling_profile: an open DeclarationRef
+// whose only populators in either repository were fixtures. This module makes that term resolve to a
+// row of OUR data map, so that the sanction roster the gate filters on is a statement about our
+// actual categories rather than about a placeholder.
+//
+// THE ROSTER IS OURS, NOT THE SUPPLIER'S, and that is the shape product.fabric.provider_admission
+// already fixes: a provider does not declare what it is sanctioned to carry, and a supplier module
+// importing this one would be that inversion. It lives in the private repository because it describes
+// our processing, and because the categories themselves do.
+//
+// EVERY ROW HERE IS A PROPOSAL, FOR THE SAME REASON EVERY ROW IN THE MAP IS. Whether a category may
+// be sent to a third party at all is the operator's decision and counsel's, not ours: it is the
+// question a subprocessor list and an Art. 28 DPA answer. So a sanction proposal carries the map
+// row's OWN standing rather than a second one -- there is exactly one place that says whether a
+// category is settled, and it is the category (DESIGN 3) -- and the two rosters below are the two
+// arms of that match, kept apart on purpose:
+//
+//   proposed_route_sanctions  -- what we PROPOSE the gate should admit. Non-empty today.
+//   ratified_route_sanctions  -- what the operator has actually agreed. EMPTY today, by
+//                                construction, because no map row is ratified yet.
+//
+// A caller choosing the second is refused, and the CAUSE IS COARSER THAN THIS SENTENCE USED TO CLAIM
+// (review 65282). It said "a refusal for every category". An empty roster does not reach the categories
+// at all: product.fabric.provider_admission puts unclassified_refusals FIRST in its refusal concat, so
+// the gate denies once with ProviderRouteUnclassified naming the ROUTE, before any data-handling term is
+// consulted. Executed by test.claim.data_map_witness's empty_roster_refuses_the_route. The remedy the
+// reader needs differs accordingly -- sanction the route, not the category -- which is why the wrong
+// cause in a description is worse than no description. Fail-closed either way, but for a stated reason.
+//
+// Nothing here makes a proposal read as settled: the only way
+// to move a category into the ratified roster is to ratify the map row, and the standing is a
+// constructor, so it cannot be done by editing prose.
+//
+// WHAT THE WITNESS ACTUALLY EXECUTES, corrected (review 64969). This sentence used to say the
+// every-category refusal was "asserted by execution in the witness", and that stopped being true when
+// the empty-roster check was rewired to build its own empty roster rather than borrow the fact that
+// nothing is ratified yet -- the rewire was right, the sentence was not updated with it, and a claim
+// outliving its body is the same defect this change fixes elsewhere. What executes today is:
+// ratified_sanctions_from is handed a mixed pair of proposals -- one ratified, one not -- and must emit
+// exactly the ratified one, which gives the standing filter a real subject without asserting anything
+// about how many rows are ratified today. The roster's size is REPORTED.
+fn ratified_sanctions_from(
+  proposals: List<CategorySanctionProposal>,
+  route: ProviderRoute,
+  posture: CompliancePostureRevision,
+  customer_profile: DeclarationRef,
+  requires_agreement: DeclarationRef,
+) -> List<RouteScopeSanction> {
+  route_sanctions_for(
+    categories: map(filter(proposals, p => standing_is_ratified(s: p.category.standing)), p => p.category),
+    route: route, posture: posture,
+    customer_profile: customer_profile, requires_agreement: requires_agreement,
+  )
+}
+
+// WHY A CATEGORY IS OR IS NOT PROPOSED FOR A THIRD-PARTY ROUTE, as a closed coproduct rather than a
+// Bool plus a comment. The two arms carry different obligations: an admitted category needs the
+// contract and subprocessor story, a withheld one needs the mechanism that keeps it here.
+//
+// AND THAT DIFFERENCE IS BY CONSTRUCTION, WHICH IS THE PART THAT IS NOT PROSE (narrowed after review
+// 65330 showed the stronger reading of this sentence is unsupported). No fold reads these payloads today,
+// so the claim here is deliberately the weaker one: a Bool plus a comment permits `carried: false` with no
+// mechanism named anywhere, and this type does NOT -- a withheld row cannot be constructed without
+// kept_here_by. That is the whole of what the coproduct buys today, and it is a real wall rather than a
+// convention, because it is the constructor and not a check that refuses. MEASURED rather than asserted,
+// since this paragraph replaces one that asserted a mechanism nobody had run: dropping the field from one
+// row refuses with
+//   error: missing required field 'kept_here_by' in literal of type 'ProposedWithheldFromProviderRoutes'
+// so the obligation is discharged at construction and no fold has to remember to check it.
+//
+// It does NOT buy an executing consumer of the payloads. What reads them and when is stated at
+// carriage_is_proposed_carried below, with the trigger, rather than assumed here.
+
+// THE DECLARED FRONTIERS OF THIS MODULE, TYPED (DESIGN 3c). Each row names a subject with no executing
+// consumer today, the consumer that will read it, and the capability that retires the row. 3c admits a
+// frontier ONLY in this form: prose deferring a consumer to "later" is indistinguishable from dangling,
+// which is why review refused the comment-only version of exactly these two obligations.
+data provider_data_handling_sanction_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "strategy.provider_data_handling_sanction", decl_name: "RouteCarriageProposal"),
+    reason: "the because and kept_here_by payloads have no executing consumer; the sole eliminator, carriage_is_proposed_carried, discards both. Their reader today is the ratification pass, which is a human one and therefore not an executing consumer.",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the customer-projection consumer lands a fold over carried proposals SUFFICIENT FOR rendering a withheld category's retention mechanism into a customer-facing statement -- the privacy notice or the security schedule. A witness that the payloads exist, or a fold that counts them, does not fire this."
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "strategy.provider_data_handling_sanction", decl_name: "route_sanctions_for"),
+    reason: "the route is a PARAMETER rather than a declaration, because the routes this roster will be bound to do not exist yet as declarations.",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the private provider-route census lands route declarations SUFFICIENT FOR a sanction row to name its route without a caller supplying one -- at which point the binding is one data row per route calling this function and nothing about the roster changes."
+    )
+  ),
+]
+
+type RouteCarriageProposal
+  = ProposedCarriedOnProviderRoute { because: NonEmptyStr }
+  | ProposedWithheldFromProviderRoutes { because: NonEmptyStr, kept_here_by: NonEmptyStr }
+
+type CategorySanctionProposal {
+  category: DataCategory
+  carriage: RouteCarriageProposal
+}
+
+// THIS PREDICATE IS KEPT, AND THE REASON IS STATED RATHER THAN LEFT IMPLICIT (review 65280, DESIGN 3b).
+//
+// The review asked for it to be deleted as a Bool-over-coproduct, alongside the ProposalStanding pair.
+// I split the two, because the §3 argument that carries the standing case does not carry here: standing
+// had TWO exhaustive matches deciding one fact, which is the duplication, and this type has exactly ONE
+// (this function -- the only other appearances of its arms are constructions in the rows below). There is
+// no second authority to remove, so deleting the named eliminator and matching inline at the filter site
+// would trade one named elimination for an anonymous one, reducing no net concepts and losing the name
+// the call site reads by.
+//
+// THE SENTENCE THAT STOOD HERE WAS FALSE, AND IT WAS FALSE IN THE ACT OF DEFENDING A DECLINE (review
+// 65330). It said the arms carry `because` and `kept_here_by` "which are consumed as obligations, not
+// collapsed". Nothing consumes them. They appear in the declaration above, in the row constructions
+// below, and in the eliminator underneath this block, which DISCARDS BOTH. So the claim was an instance
+// of the class this PR exists to fix, written to defend a decline against a review -- and it is the worst
+// location for it, because a reviewer checking my reasoning is exactly who it would have misled.
+//
+// I ALSO DID NOT NEED IT. The §3 argument above stands alone and is the whole reason: this type has ONE
+// elimination, so there is no second authority to remove. The payload claim was an unnecessary flourish
+// that made the defence depend on something untrue, which is worse than a shorter defence.
+//
+// WHAT THE PAYLOADS ACTUALLY ARE, classified honestly (DESIGN 3c). They are the SUBSTANCE OF THE PROPOSAL
+// -- the justification an operator reads when deciding whether to ratify a carriage position -- so their
+// consumer today is the ratification pass, which is a human one and therefore NOT an executing consumer.
+// For execution they are a DECLARED FRONTIER, not consumed-now, and the frontier is named rather than
+// implied: the customer-facing projection this map exists to make possible (the privacy notice and the
+// security schedule) is what reads a withheld row's mechanism, and that work is stopped on the map's
+// absence rather than on these fields.
+// The obligation is ENROLLED rather than described: provider_data_handling_sanction_frontier_rows below
+// carries this subject with its consumer and trigger in typed fields. A comment saying "consumed later"
+// is dangling under DESIGN 3c; only a FrontierRow is a declared frontier.
+//
+// What WOULD make this the standing case: a second elimination of RouteCarriageProposal appearing
+// anywhere. Then these two collapse into one match returning both facts, exactly as standing_facts does.
+fn carriage_is_proposed_carried(c: RouteCarriageProposal) -> Bool {
+  match c {
+    ProposedCarriedOnProviderRoute { because } => true
+    ProposedWithheldFromProviderRoutes { because, kept_here_by } => false
+  }
+}
+
+// A provider route runs the job, so the material the job reads and writes is exactly what a provider
+// route must be able to carry; everything that is about the CUSTOMER rather than about the WORK has
+// no reason to be there at all. That is the proposal, and the operator's pass is where it becomes a
+// decision.
+data sanction_source_and_build_inputs: CategorySanctionProposal = CategorySanctionProposal {
+  category: category_source_and_build_inputs,
+  carriage: ProposedCarriedOnProviderRoute {
+    because: "a provider route executes the job, and a job cannot run without reading the customer's source and dependencies; withholding this category would mean not using third-party capacity at all",
+  },
+}
+
+// TWO ROWS SINCE THE 2026-09-14 SPLIT, AND THEIR REASONS ARE NOT THE SAME SENTENCE. The joined row said
+// "artifacts and receipts are produced ON the route", which was true of both and therefore explained
+// neither: it is the same claim doing duty for a work product and for the record of the run. Split with
+// the categories they sanction, because a carriage proposal whose reason cannot distinguish its subject
+// from another subject is a reason that would survive being attached to the wrong one.
+data sanction_build_artifacts: CategorySanctionProposal = CategorySanctionProposal {
+  category: category_build_artifacts,
+  carriage: ProposedCarriedOnProviderRoute {
+    because: "the artifact is PRODUCED on the route that ran the work - it exists there before it reaches our durable origin at all, so withholding it from provider routes would mean the job could not produce output on one",
+  },
+}
+
+data sanction_execution_receipts: CategorySanctionProposal = CategorySanctionProposal {
+  category: category_execution_receipts,
+  carriage: ProposedCarriedOnProviderRoute {
+    because: "the receipt RECORDS the route's own execution - what ran, on what, for how long - so the route is where the facts originate and there is nowhere else they could be observed from; a receipt assembled without the executing route would be a claim about a run nobody watched",
+  },
+}
+
+// THE ONE WITHHOLDING THAT IS STRUCTURAL RATHER THAN MERELY PROPOSED IS STILL PROPOSED HERE, and the
+// distinction matters: the map's claim that secrets are never written durably is about OUR storage,
+// and says nothing about whether a secret may be handed to a provider's runner in order for the job
+// to use it. That second question is open, and it is not ours.
+data sanction_ci_secrets: CategorySanctionProposal = CategorySanctionProposal {
+  category: category_ci_secrets,
+  carriage: ProposedWithheldFromProviderRoutes {
+    because: "a customer credential handed to a third-party runner is a credential outside our isolation model, and the blast radius of a provider compromise becomes the customer's production systems rather than a job",
+    kept_here_by: "the open question this row records: whether secret material may reach a provider route at all, or only ever a first-party runner. Until the operator settles it, a use scope presenting this category refuses on the data-handling term - as DataHandlingUnsupported WHERE THE ROUTE IS SANCTIONED AT ALL, and the qualifier is not pedantry: an empty or route-omitting roster refuses EARLIER as ProviderRouteUnclassified, which is a different remedy (sanction the route) reached before this category is ever consulted. Corrected from an unconditional promise (review 65282); the two arms are told apart by test.claim.data_map_witness's withheld_category_refuses_as_data_handling_unsupported and empty_roster_refuses_the_route",
+  },
+}
+
+data sanction_job_logs: CategorySanctionProposal = CategorySanctionProposal {
+  category: category_job_logs,
+  carriage: ProposedCarriedOnProviderRoute {
+    because: "a job's output stream is produced on the route that ran it; the route cannot avoid seeing what the job printed",
+  },
+}
+
+data sanction_metering_telemetry: CategorySanctionProposal = CategorySanctionProposal {
+  category: category_metering_telemetry,
+  carriage: ProposedCarriedOnProviderRoute {
+    because: "resource measurements are observed where the work ran, and the provider's own billing surface already carries them",
+  },
+}
+
+data sanction_account_and_billing_identity: CategorySanctionProposal = CategorySanctionProposal {
+  category: category_account_and_billing_identity,
+  carriage: ProposedWithheldFromProviderRoutes {
+    because: "a provider route needs to run work, not to know who is paying for it; sending account and billing identity there would widen a controller-role population for no execution benefit",
+    kept_here_by: "work placed on a provider route is identified by a fabric identity, not by a customer identity, so the route never needs the account row",
+  },
+}
+
+data sanction_support_communications: CategorySanctionProposal = CategorySanctionProposal {
+  category: category_support_communications,
+  carriage: ProposedWithheldFromProviderRoutes {
+    because: "support threads are between us and the customer and have no role in executing work",
+    kept_here_by: "the support surface is ours; no execution path reads it",
+  },
+}
+
+data sanction_abuse_and_sanctions_records: CategorySanctionProposal = CategorySanctionProposal {
+  category: category_abuse_and_sanctions_records,
+  carriage: ProposedWithheldFromProviderRoutes {
+    because: "our screening and abuse records are the output of our own risk-based program, and a provider is neither the authority for it nor a recipient of it",
+    kept_here_by: "screening runs against the account, before and independently of where any work is placed",
+  },
+}
+
+data category_sanction_proposals: List<CategorySanctionProposal> = [
+  sanction_source_and_build_inputs,
+  sanction_build_artifacts,
+  sanction_execution_receipts,
+  sanction_ci_secrets,
+  sanction_job_logs,
+  sanction_metering_telemetry,
+  sanction_account_and_billing_identity,
+  sanction_support_communications,
+  sanction_abuse_and_sanctions_records,
+]
+
+// EVERY MAP CATEGORY HAS A CARRIAGE POSITION. A category the map declares and this module never
+// mentions would be silently unsanctioned -- refused by the gate for the same reason as a deliberate
+// withholding, with nothing recording which of the two it was. That is the ProviderPathAbsent versus
+// ProviderPathUnread distinction product.fabric.provider_route already draws, and it is why this
+// conjunct exists rather than a count.
+fn proposal_for_category(c: DataCategory) -> List<CategorySanctionProposal> {
+  filter(category_sanction_proposals, p =>
+    declaration_ref_eq(a: category_profile_ref(c: p.category), b: category_profile_ref(c: c)))
+}
+
+fn every_category_has_a_carriage_position() -> Bool {
+  all(data_categories, c => count(proposal_for_category(c: c)) == 1)
+}
+
+fn carried_proposals() -> List<CategorySanctionProposal> {
+  filter(category_sanction_proposals, p => carriage_is_proposed_carried(c: p.carriage))
+}
+
+// A sanction row per covered category, on the route and posture the caller names. The route is a
+// PARAMETER rather than a declaration here, and that is a stated frontier rather than an oversight:
+// the private provider-route census is a separate item of the same lane, so the routes this roster
+// will be bound to do not exist yet as declarations. When they land, the binding is one data row per
+// route calling this function; nothing about the roster changes.
+// Enrolled as a typed row in provider_data_handling_sanction_frontier_rows below, with its consumer and
+// trigger in fields rather than in this sentence.
+//
+// THE BUILDER IS PARAMETRIC IN THE CATEGORIES IT COVERS, so that "what we propose" and "what has been
+// ratified" are two CALLS over one row shape rather than two hand-maintained lists that can disagree,
+// and so that a caller testing the gate's behaviour can build a roster covering exactly the categories
+// it means to talk about instead of depending on whichever split the proposals happen to carry today.
+// That last part is not a convenience: a behavioural probe whose subject is the CURRENT carriage split
+// stops testing the gate the day the split changes.
+fn route_sanctions_for(
+  categories: List<DataCategory>,
+  route: ProviderRoute,
+  posture: CompliancePostureRevision,
+  customer_profile: DeclarationRef,
+  requires_agreement: DeclarationRef,
+) -> List<RouteScopeSanction> {
+  map(categories, c => RouteScopeSanction {
+    route: route,
+    posture: posture,
+    customer_profile: customer_profile,
+    data_handling_profile: category_profile_ref(c: c),
+    requires_agreement: requires_agreement,
+  })
+}
+
+fn proposed_route_sanctions(
+  route: ProviderRoute,
+  posture: CompliancePostureRevision,
+  customer_profile: DeclarationRef,
+  requires_agreement: DeclarationRef,
+) -> List<RouteScopeSanction> {
+  route_sanctions_for(
+    categories: map(carried_proposals(), p => p.category),
+    route: route, posture: posture,
+    customer_profile: customer_profile, requires_agreement: requires_agreement,
+  )
+}
+
+// WHAT HAS ACTUALLY BEEN AGREED. This is the arm that matches the map row's standing, and it is the
+// reason the standing is a constructor and not a sentence: a consumer deciding whether it may send
+// customer data to a third party tells a ratified row from our proposal BY MATCHING. Empty today, so a
+// caller using this roster is refused ON THE ROUTE as ProviderRouteUnclassified, not once per category
+// -- corrected with its sibling above (review 65282), and executed by empty_roster_refuses_the_route.
+// That is the honest posture of a gate over an unratified map, and the thing the operator's single pass
+// changes.
+fn ratified_route_sanctions(
+  route: ProviderRoute,
+  posture: CompliancePostureRevision,
+  customer_profile: DeclarationRef,
+  requires_agreement: DeclarationRef,
+) -> List<RouteScopeSanction> {
+  ratified_sanctions_from(
+    proposals: carried_proposals(),
+    route: route, posture: posture,
+    customer_profile: customer_profile, requires_agreement: requires_agreement,
+  )
+}
+
+// THE USE SIDE OF THE SAME JOIN. A scope is built FOR a data category, so the profile it presents is
+// derived from the map row exactly as the sanction's is -- one authority for the reference on both
+// sides of the comparison the gate performs, which is what makes a mismatch mean "this category is
+// not sanctioned here" rather than "somebody typed a different string".
+//
+// The dispositions arrive as parameters and are never constructed here. A module that manufactured a
+// DispositionCleared would be writing a clearance nobody issued, which is the fabricated legal
+// finding the gate exists to refuse, arriving through the gate itself.
+fn use_scope_for_category<P>(
+  demand: FabricIdentity<P, DemandKey>,
+  work: FabricIdentity<P, WorkKey>,
+  category: DataCategory,
+  customer_profile: DeclarationRef,
+  agreement: DeclarationRef,
+  prohibited_use: DispositionStanding,
+  sanctions: DispositionStanding,
+  export: DispositionStanding,
+) -> ProviderUseScope<P> {
+  ProviderUseScope {
+    demand: demand,
+    work: work,
+    customer_profile: customer_profile,
+    data_handling_profile: category_profile_ref(c: category),
+    agreement: agreement,
+    prohibited_use_disposition: prohibited_use,
+    sanctions_disposition: sanctions,
+    export_disposition: export,
+  }
+}

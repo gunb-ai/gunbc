@@ -1,0 +1,938 @@
+module strategy.wholesale_supply_packet
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key, declaration_ref_eq }
+import std.decimal { fixed_point_wire }
+import std.measure { money_amount_micro_count }
+import std.process { ExitSuccess }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.ci_runner.types {
+  RunnerCatalogAvailability, runner_shape_rows, shape_is_architecture, DedicatedPhysicalCore,
+  ArmCapacityChannel, SellerOwnMetalStated, ResoldNamedCloud, CustomerAccountNamedCloud,
+  CloudOperatorIsTheSeller, SoftwareOnCustomerHosts, CapacityChannelUnread,
+}
+import extdeps.ci_runner.blacksmith { blacksmith_provider_identity, blacksmith_runner_catalog, blacksmith_arm_capacity }
+import extdeps.ci_runner.circleci { circleci_provider_identity, circleci_runner_catalog }
+import extdeps.ci_runner.depot { depot_provider_identity, depot_runner_catalog, depot_arm_capacity }
+import extdeps.ci_runner.github_actions { github_actions_provider_identity, github_actions_runner_catalog, github_actions_arm_capacity }
+import extdeps.ci_runner.warpbuild { warpbuild_provider_identity, warpbuild_runner_catalog }
+import extdeps.cloud.hetzner { cax41_listed }
+import extdeps.cloud.ubicloud { ubicloud_provider_identity, ubicloud_runner_catalog_shapes, ubicloud_shape_entitlement }
+import extdeps.pricing.ubicloud { ubicloud_arm_standard_16_price }
+import extdeps.pricing.github_actions { github_actions_linux_arm_2core_price }
+import strategy.node_rental {
+  hetzner_cax_support_request_id, enquiry_is_answered, hetzner_wholesale_quantity_enquiry,
+  EnquiryRequestId, PrincipalHasNoEnquiry,
+}
+import strategy.b2b_capacity_track { offer_wholesale_through_reseller }
+import strategy.wholesale_buyer {
+  ubicloud_inquiry, blacksmith_inquiry, WholesaleInquiry, ResellerFacingPrice,
+  EndCustomerMinuteRate, EndCustomerRateUnquoted, WholesaleTermQuoted, WholesaleTermUnquoted,
+  facing_is_wholesale_term,
+}
+import strategy.owner_action {
+  ActionReceipt, CorpusDeclaration, PreparedAsk, AskUnsent,
+  RelationshipOutreachUnsent,
+  UnsentOutreach,
+  open_operator_intervention, outreach_asks_coherent, ask_is_unsent, outreach_arm_label,
+}
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import strategy.audit_packet { audit_decl_facts, audit_module_facts }
+import v2.std.decl_ref_resolution {
+  DeclarationRefResolution, DeclarationRefResolved, DeclarationRefModuleAbsent,
+  DeclarationRefDeclarationAbsent, DeclarationRefFieldAbsent, DeclarationRefAmbiguous,
+  resolve_declaration_ref, declaration_ref_resolution_arm_key,
+}
+
+// Per-seller operator drafts. strategy.wholesale_buyer owns the Ubicloud and Blacksmith
+// commercial facts (end-customer rate vs term quote). This module consumes those two inquiries
+// and adds the four CI-runner sellers that module does not yet carry. Nothing here sends mail.
+
+type SiliconStanding
+  = SiliconEntitlementCited { entitlement_authority: DeclarationRef }
+  | SiliconUnstated { catalog: DeclarationRef }
+
+type HostStanding
+  = HostCited { channel: ArmCapacityChannel, authority: DeclarationRef }
+  | HostStandingUnstated { catalog: DeclarationRef }
+
+type ListPriceStanding
+  = ListPriceCited { price_authority: DeclarationRef }
+  | ListPriceUnstated { catalog: DeclarationRef }
+
+type OurCostFloorStanding
+  = CostFloorConcurrencyUnstated {
+      floor: DeclarationRef
+      catalog: DeclarationRef
+      why: NonEmptyStr
+    }
+
+type OperatorSendReadObligation {
+  event: NonEmptyStr
+  must_read: List<DeclarationRef>
+}
+
+type MustReadCitationUnresolved {
+  packet: DeclarationRef
+  reference: DeclarationRef
+  arm: String
+}
+
+type WholesaleSellerPacket {
+  seller_id: NonEmptyStr
+  identity: DeclarationRef
+  arm_shape_catalog: DeclarationRef
+  list_price: ListPriceStanding
+  silicon: SiliconStanding
+  host: HostStanding
+  our_cost: OurCostFloorStanding
+  wholesale_argument: DeclarationRef
+  hetzner_row: DeclarationRef
+  hetzner_listed: DeclarationRef
+  hetzner_cax_reply: DeclarationRef
+  outreach: PacketOutreach
+  send_read_obligation: OperatorSendReadObligation
+}
+
+data wholesale_argument_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.year_end_plan",
+  decl_name: "item_wholesale_supply_channel",
+)
+
+data hetzner_row_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.node_rental",
+  decl_name: "hetzner_row",
+)
+
+data hetzner_listed_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.cloud.hetzner",
+  decl_name: "cax41_listed",
+)
+
+data hetzner_cax_reply_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.node_rental",
+  decl_name: "hetzner_wholesale_quantity_enquiry",
+)
+
+data offer_wholesale_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.b2b_capacity_track",
+  decl_name: "offer_wholesale_through_reseller",
+)
+
+data cost_floor_fn_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.cost_floor",
+  decl_name: "floor_micro_per_unit_minute",
+)
+
+data cost_floor_concurrency_why: NonEmptyStr = "floor_micro_per_unit_minute takes utilization_permille, not a runner shape's advertised vCPU count"
+
+fn packet_cost_for_catalog(catalog: DeclarationRef) -> OurCostFloorStanding {
+  CostFloorConcurrencyUnstated {
+    floor: cost_floor_fn_ref,
+    catalog: catalog,
+    why: cost_floor_concurrency_why,
+  }
+}
+
+fn corpus_receipt(id: NonEmptyStr, module_path: String, decl_name: String) -> ActionReceipt {
+  ActionReceipt {
+    receipt_id: id,
+    evidence: CorpusDeclaration {
+      declaration: decl_ref(module_path: module_path, decl_name: decl_name),
+    },
+  }
+}
+
+data ask_price_volume_reliability: PreparedAsk = PreparedAsk {
+  ask_id: "price-volume-reliability-requirement",
+  ask: "a stated price, volume and reliability requirement for dedicated Ampere capacity underneath their ARM CI product, or the conversation stops short of a requirement",
+  standing: AskUnsent { reason: "the operator has not sent this enquiry; sending is theirs" },
+}
+
+data ask_explicit_no: PreparedAsk = PreparedAsk {
+  ask_id: "explicit-no",
+  ask: "an explicit no, if they will not consider dedicated Ampere supply under their product",
+  standing: AskUnsent { reason: "the operator has not sent this enquiry; sending is theirs" },
+}
+
+data wholesale_prepared_asks: List<PreparedAsk> = [ask_price_volume_reliability, ask_explicit_no]
+
+type WholesaleDraft
+  = DraftReady { text: NonEmptyStr }
+  | DraftRefused { why: NonEmptyStr }
+
+type PacketOutreach
+  = PreparedUnsent { unsent: UnsentOutreach }
+  | DraftBlocked { why: NonEmptyStr }
+
+fn packet_outreach_is_prepared(o: PacketOutreach) -> Bool {
+  match o {
+    PreparedUnsent { unsent: _ } => true
+    DraftBlocked { why } => false
+  }
+}
+
+fn wholesale_draft(seller_label: NonEmptyStr) -> WholesaleDraft {
+  match hetzner_cax_support_request_id() {
+    EnquiryRequestId { request_id: _ } =>
+      DraftReady {
+        text: join([
+          "Hello,\n\n",
+          "I operate Gunbai LLC (gunb.ai). We run dedicated Ampere capacity and are asking whether ",
+          seller_label as String,
+          " would consider taking that capacity underneath your ARM CI product — a supply conversation, not a request that you buy minutes from us as an end customer.\n\n",
+          "The opening is supply, not a quoted price. Publicly listed cloud ARM that would otherwise stand as a retail floor is presently not purchasable on the account we hold.\n\n",
+          "Two questions, and either answer closes the item:\n\n",
+          "1. If you would consider dedicated Ampere supply under your product, what price, volume, and reliability requirement would that conversation have to meet?\n",
+          "2. If you would not, an explicit no is the useful answer.\n\n",
+          "Thank you,\nBrian Searls\nFounder, Gunbai LLC\nbriansrls@gunb.ai",
+        ], ""),
+      }
+    PrincipalHasNoEnquiry =>
+      DraftRefused { why: "Hetzner CAX enquiry principal has no request id" }
+  }
+}
+
+fn send_obligation_for(packet_decl: DeclarationRef, extra: List<DeclarationRef>) -> OperatorSendReadObligation {
+  OperatorSendReadObligation {
+    event: "the operator personally sends this draft; sessions do not send",
+    must_read: concat([
+      packet_decl,
+      wholesale_argument_ref,
+      offer_wholesale_ref,
+      hetzner_row_ref,
+      hetzner_cax_reply_ref,
+    ], extra),
+  }
+}
+
+fn unsent_outreach(
+  identity: NonEmptyStr,
+  seller_label: NonEmptyStr,
+  catalog_module: String,
+  catalog_decl: String,
+  extra_prep: List<ActionReceipt>,
+  support_context: NonEmptyStr,
+) -> PacketOutreach {
+  match wholesale_draft(seller_label: seller_label) {
+    DraftReady { text } =>
+      PreparedUnsent {
+        unsent: UnsentOutreach {
+          intervention: open_operator_intervention(
+            identity: identity,
+            subject: seller_label,
+            instruction: text,
+          ),
+          preparation: concat([
+            corpus_receipt(id: join([identity as String, "-plan"], ""), module_path: "strategy.year_end_plan", decl_name: "item_wholesale_supply_channel"),
+            corpus_receipt(id: join([identity as String, "-hetzner"], ""), module_path: "strategy.node_rental", decl_name: "hetzner_row"),
+            corpus_receipt(id: join([identity as String, "-catalog"], ""), module_path: catalog_module, decl_name: catalog_decl),
+          ], extra_prep),
+          support_context: support_context,
+          asks: wholesale_prepared_asks,
+        },
+      }
+    DraftRefused { why } => DraftBlocked { why: why }
+  }
+}
+
+fn arm_shape_labels(availability: RunnerCatalogAvailability) -> List<NonEmptyStr> {
+  map(
+    filter(runner_shape_rows(availability: availability), r => shape_is_architecture(row: r, architecture: Aarch64)),
+    r => r.label,
+  )
+}
+
+fn host_standing_from_channel(
+  channel: ArmCapacityChannel,
+  catalog: DeclarationRef,
+  channel_ref: DeclarationRef,
+) -> HostStanding {
+  match channel {
+    CapacityChannelUnread => HostStandingUnstated { catalog: catalog }
+    SellerOwnMetalStated => HostCited { channel: channel, authority: channel_ref }
+    ResoldNamedCloud { vendor_words: _ } => HostCited { channel: channel, authority: channel_ref }
+    CustomerAccountNamedCloud { vendor_words: _ } => HostCited { channel: channel, authority: channel_ref }
+    CloudOperatorIsTheSeller { vendor_words: _ } => HostCited { channel: channel, authority: channel_ref }
+    SoftwareOnCustomerHosts => HostCited { channel: channel, authority: channel_ref }
+  }
+}
+
+fn packet(
+  seller_id: NonEmptyStr,
+  identity: DeclarationRef,
+  catalog: DeclarationRef,
+  list_price: ListPriceStanding,
+  silicon: SiliconStanding,
+  host: HostStanding,
+  outreach: PacketOutreach,
+  packet_decl: DeclarationRef,
+  extra_must_read: List<DeclarationRef>,
+) -> WholesaleSellerPacket {
+  WholesaleSellerPacket {
+    seller_id: seller_id,
+    identity: identity,
+    arm_shape_catalog: catalog,
+    list_price: list_price,
+    silicon: silicon,
+    host: host,
+    our_cost: packet_cost_for_catalog(catalog: catalog),
+    wholesale_argument: wholesale_argument_ref,
+    hetzner_row: hetzner_row_ref,
+    hetzner_listed: hetzner_listed_ref,
+    hetzner_cax_reply: hetzner_cax_reply_ref,
+    outreach: outreach,
+    send_read_obligation: send_obligation_for(packet_decl: packet_decl, extra: extra_must_read),
+  }
+}
+
+data blacksmith_catalog_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.blacksmith",
+  decl_name: "blacksmith_runner_catalog",
+)
+data circleci_catalog_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.circleci",
+  decl_name: "circleci_runner_catalog",
+)
+data depot_catalog_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.depot",
+  decl_name: "depot_runner_catalog",
+)
+data github_actions_catalog_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.github_actions",
+  decl_name: "github_actions_runner_catalog",
+)
+data warpbuild_catalog_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.warpbuild",
+  decl_name: "warpbuild_runner_catalog",
+)
+data ubicloud_catalog_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.cloud.ubicloud",
+  decl_name: "ubicloud_runner_catalog_shapes",
+)
+data blacksmith_arm_capacity_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.blacksmith",
+  decl_name: "blacksmith_arm_capacity",
+)
+data depot_arm_capacity_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.depot",
+  decl_name: "depot_arm_capacity",
+)
+data github_actions_arm_capacity_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.github_actions",
+  decl_name: "github_actions_arm_capacity",
+)
+data github_actions_price_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.pricing.github_actions",
+  decl_name: "github_actions_linux_arm_2core_price",
+)
+data ubicloud_entitlement_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.cloud.ubicloud",
+  decl_name: "ubicloud_shape_entitlement",
+)
+
+data operator_unsent_context: NonEmptyStr = "Unsent wholesale-supply enquiry. The operator sends personally, before 2026-09-17 if they choose. No session may send."
+
+data blacksmith_operator_packet_context: NonEmptyStr = "Unsent operator packet. strategy.wholesale_buyer blacksmith_inquiry forbids contact from the census lane; this draft is not that lane. Sessions do not send. what_they_would_pay_us stays WholesaleTermUnquoted until a dated receipt lands."
+
+data ubicloud_inquiry_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.wholesale_buyer",
+  decl_name: "ubicloud_inquiry",
+)
+data blacksmith_inquiry_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.wholesale_buyer",
+  decl_name: "blacksmith_inquiry",
+)
+
+data packet_blacksmith_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.wholesale_supply_packet",
+  decl_name: "packet_blacksmith",
+)
+data packet_circleci_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.wholesale_supply_packet",
+  decl_name: "packet_circleci",
+)
+data packet_depot_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.wholesale_supply_packet",
+  decl_name: "packet_depot",
+)
+data packet_github_actions_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.wholesale_supply_packet",
+  decl_name: "packet_github_actions",
+)
+data packet_warpbuild_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.wholesale_supply_packet",
+  decl_name: "packet_warpbuild",
+)
+data packet_ubicloud_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.wholesale_supply_packet",
+  decl_name: "packet_ubicloud",
+)
+
+fn list_price_from_inquiry(i: WholesaleInquiry, catalog: DeclarationRef) -> ListPriceStanding {
+  match i.end_customer_price {
+    EndCustomerMinuteRate { micro_per_minute, currency, product, citation, price_authority, not_wholesale_reason } =>
+      ListPriceCited { price_authority: price_authority }
+    EndCustomerRateUnquoted { obligation } => ListPriceUnstated { catalog: catalog }
+    WholesaleTermQuoted { micro_per_month, term_months, currency, source } =>
+      ListPriceUnstated { catalog: catalog }
+    WholesaleTermUnquoted { obligation } => ListPriceUnstated { catalog: catalog }
+  }
+}
+
+fn packet_unsent_while_term_unquoted(o: PacketOutreach, i: WholesaleInquiry) -> Bool {
+  !facing_is_wholesale_term(p: i.what_they_would_pay_us)
+    && packet_outreach_is_prepared(o: o)
+}
+
+data packet_blacksmith: WholesaleSellerPacket = packet(
+  seller_id: "blacksmith",
+  identity: blacksmith_provider_identity,
+  catalog: blacksmith_catalog_ref,
+  list_price: list_price_from_inquiry(
+    i: blacksmith_inquiry,
+    catalog: blacksmith_catalog_ref,
+  ),
+  silicon: SiliconUnstated { catalog: blacksmith_catalog_ref },
+  host: host_standing_from_channel(
+    channel: blacksmith_arm_capacity,
+    catalog: blacksmith_catalog_ref,
+    channel_ref: blacksmith_arm_capacity_ref,
+  ),
+  outreach: unsent_outreach(
+    identity: "wholesale-blacksmith",
+    seller_label: "Blacksmith",
+    catalog_module: "extdeps.ci_runner.blacksmith",
+    catalog_decl: "blacksmith_runner_catalog",
+    extra_prep: [
+      corpus_receipt(id: "wholesale-blacksmith-inquiry", module_path: "strategy.wholesale_buyer", decl_name: "blacksmith_inquiry"),
+    ],
+    support_context: blacksmith_operator_packet_context,
+  ),
+  packet_decl: packet_blacksmith_ref,
+  extra_must_read: [blacksmith_inquiry_ref, blacksmith_arm_capacity_ref],
+)
+
+data packet_circleci: WholesaleSellerPacket = packet(
+  seller_id: "circleci",
+  identity: circleci_provider_identity,
+  catalog: circleci_catalog_ref,
+  list_price: ListPriceUnstated { catalog: circleci_catalog_ref },
+  silicon: SiliconUnstated { catalog: circleci_catalog_ref },
+  host: HostStandingUnstated { catalog: circleci_catalog_ref },
+  outreach: unsent_outreach(
+    identity: "wholesale-circleci",
+    seller_label: "CircleCI",
+    catalog_module: "extdeps.ci_runner.circleci",
+    catalog_decl: "circleci_runner_catalog",
+    extra_prep: [],
+    support_context: operator_unsent_context,
+  ),
+  packet_decl: packet_circleci_ref,
+  extra_must_read: [],
+)
+
+data packet_depot: WholesaleSellerPacket = packet(
+  seller_id: "depot",
+  identity: depot_provider_identity,
+  catalog: depot_catalog_ref,
+  list_price: ListPriceUnstated { catalog: depot_catalog_ref },
+  silicon: SiliconUnstated { catalog: depot_catalog_ref },
+  host: host_standing_from_channel(
+    channel: depot_arm_capacity,
+    catalog: depot_catalog_ref,
+    channel_ref: depot_arm_capacity_ref,
+  ),
+  outreach: unsent_outreach(
+    identity: "wholesale-depot",
+    seller_label: "Depot",
+    catalog_module: "extdeps.ci_runner.depot",
+    catalog_decl: "depot_runner_catalog",
+    extra_prep: [],
+    support_context: operator_unsent_context,
+  ),
+  packet_decl: packet_depot_ref,
+  extra_must_read: [depot_arm_capacity_ref],
+)
+
+data packet_github_actions: WholesaleSellerPacket = packet(
+  seller_id: "github_actions",
+  identity: github_actions_provider_identity,
+  catalog: github_actions_catalog_ref,
+  list_price: ListPriceCited { price_authority: github_actions_price_ref },
+  silicon: SiliconUnstated { catalog: github_actions_catalog_ref },
+  host: host_standing_from_channel(
+    channel: github_actions_arm_capacity,
+    catalog: github_actions_catalog_ref,
+    channel_ref: github_actions_arm_capacity_ref,
+  ),
+  outreach: unsent_outreach(
+    identity: "wholesale-github-actions",
+    seller_label: "GitHub Actions",
+    catalog_module: "extdeps.ci_runner.github_actions",
+    catalog_decl: "github_actions_runner_catalog",
+    extra_prep: [],
+    support_context: operator_unsent_context,
+  ),
+  packet_decl: packet_github_actions_ref,
+  extra_must_read: [github_actions_arm_capacity_ref],
+)
+
+data packet_warpbuild: WholesaleSellerPacket = packet(
+  seller_id: "warpbuild",
+  identity: warpbuild_provider_identity,
+  catalog: warpbuild_catalog_ref,
+  list_price: ListPriceUnstated { catalog: warpbuild_catalog_ref },
+  silicon: SiliconUnstated { catalog: warpbuild_catalog_ref },
+  host: HostStandingUnstated { catalog: warpbuild_catalog_ref },
+  outreach: unsent_outreach(
+    identity: "wholesale-warpbuild",
+    seller_label: "WarpBuild",
+    catalog_module: "extdeps.ci_runner.warpbuild",
+    catalog_decl: "warpbuild_runner_catalog",
+    extra_prep: [],
+    support_context: operator_unsent_context,
+  ),
+  packet_decl: packet_warpbuild_ref,
+  extra_must_read: [],
+)
+
+data packet_ubicloud: WholesaleSellerPacket = packet(
+  seller_id: "ubicloud",
+  identity: ubicloud_provider_identity,
+  catalog: ubicloud_catalog_ref,
+  list_price: list_price_from_inquiry(
+    i: ubicloud_inquiry,
+    catalog: ubicloud_catalog_ref,
+  ),
+  silicon: SiliconEntitlementCited { entitlement_authority: ubicloud_entitlement_ref },
+  host: HostStandingUnstated { catalog: ubicloud_catalog_ref },
+  outreach: unsent_outreach(
+    identity: "wholesale-ubicloud",
+    seller_label: "Ubicloud",
+    catalog_module: "extdeps.cloud.ubicloud",
+    catalog_decl: "ubicloud_runner_catalog_shapes",
+    extra_prep: [
+      corpus_receipt(id: "wholesale-ubicloud-inquiry", module_path: "strategy.wholesale_buyer", decl_name: "ubicloud_inquiry"),
+    ],
+    support_context: operator_unsent_context,
+  ),
+  packet_decl: packet_ubicloud_ref,
+  extra_must_read: [ubicloud_inquiry_ref],
+)
+
+data wholesale_seller_packets: List<WholesaleSellerPacket> = [
+  packet_blacksmith,
+  packet_circleci,
+  packet_depot,
+  packet_github_actions,
+  packet_warpbuild,
+  packet_ubicloud,
+]
+
+fn packet_count() -> Int { count(wholesale_seller_packets) }
+
+fn list_price_label(s: ListPriceStanding) -> String {
+  match s {
+    ListPriceCited { price_authority } => join(["cited:", declaration_ref_display_key(ref: price_authority)], "")
+    ListPriceUnstated { catalog } => join(["unstated:", declaration_ref_display_key(ref: catalog)], "")
+  }
+}
+
+fn silicon_label(s: SiliconStanding) -> String {
+  match s {
+    SiliconEntitlementCited { entitlement_authority } =>
+      join(["cited:", declaration_ref_display_key(ref: entitlement_authority)], "")
+    SiliconUnstated { catalog } => join(["unstated:", declaration_ref_display_key(ref: catalog)], "")
+  }
+}
+
+fn channel_constructor_label(c: ArmCapacityChannel) -> String {
+  match c {
+    SellerOwnMetalStated => "SellerOwnMetalStated"
+    ResoldNamedCloud { vendor_words: _ } => "ResoldNamedCloud"
+    CustomerAccountNamedCloud { vendor_words: _ } => "CustomerAccountNamedCloud"
+    CloudOperatorIsTheSeller { vendor_words: _ } => "CloudOperatorIsTheSeller"
+    SoftwareOnCustomerHosts => "SoftwareOnCustomerHosts"
+    CapacityChannelUnread => "CapacityChannelUnread"
+  }
+}
+
+fn host_label(s: HostStanding) -> String {
+  match s {
+    HostCited { channel, authority } =>
+      join(["cited:", channel_constructor_label(c: channel), ":", declaration_ref_display_key(ref: authority)], "")
+    HostStandingUnstated { catalog } => join(["unstated:", declaration_ref_display_key(ref: catalog)], "")
+  }
+}
+
+fn cost_label(s: OurCostFloorStanding) -> String {
+  match s {
+    CostFloorConcurrencyUnstated { floor, catalog, why: _ } =>
+      join([
+        "concurrency-unstated:",
+        declaration_ref_display_key(ref: floor),
+        ";",
+        declaration_ref_display_key(ref: catalog),
+      ], "")
+  }
+}
+
+fn packet_outreach_label(o: PacketOutreach) -> String {
+  match o {
+    PreparedUnsent { unsent } =>
+      outreach_arm_label(o: RelationshipOutreachUnsent { unsent: unsent })
+    DraftBlocked { why } => "DraftBlocked"
+  }
+}
+
+fn packet_csv_row(p: WholesaleSellerPacket) -> String {
+  join([
+    p.seller_id as String,
+    declaration_ref_display_key(ref: p.identity),
+    declaration_ref_display_key(ref: p.arm_shape_catalog),
+    list_price_label(s: p.list_price),
+    silicon_label(s: p.silicon),
+    host_label(s: p.host),
+    cost_label(s: p.our_cost),
+    declaration_ref_display_key(ref: p.wholesale_argument),
+    declaration_ref_display_key(ref: p.hetzner_row),
+    declaration_ref_display_key(ref: p.hetzner_listed),
+    declaration_ref_display_key(ref: p.hetzner_cax_reply),
+    packet_outreach_label(o: p.outreach),
+    p.send_read_obligation.event as String,
+    must_read_label(refs: p.send_read_obligation.must_read),
+  ], "|")
+}
+
+fn must_read_label(refs: List<DeclarationRef>) -> String {
+  join(map(refs, r => declaration_ref_display_key(ref: r)), ";")
+}
+
+data wholesale_packet_csv_path: NonEmptyStr = "docs/strategy/wholesale-supply-packet-generated.csv"
+data wholesale_packet_csv_authority: NonEmptyStr = "strategy.wholesale_supply_packet"
+
+data wholesale_packet_csv_header: String = "seller_id|identity|arm_shape_catalog|list_price|silicon|host|our_cost|wholesale_argument|hetzner_row|hetzner_listed|hetzner_cax_reply|outreach_arm|send_obligation_event|send_obligation_must_read"
+
+fn expected_wholesale_packet_csv() -> String {
+  join(concat(
+    [wholesale_packet_csv_header],
+    map(wholesale_seller_packets, p => packet_csv_row(p: p)),
+  ), "\n") + "\n"
+}
+
+fn wholesale_packet_emit_cli() -> CliWireResponse {
+  CliWirePrintable { bytes: expected_wholesale_packet_csv(), exit: ExitSuccess }
+}
+
+fn packet_outreach_ok(p: WholesaleSellerPacket) -> Bool {
+  match p.outreach {
+    PreparedUnsent { unsent } =>
+      outreach_asks_coherent(o: RelationshipOutreachUnsent { unsent: unsent }) && count(unsent.asks) == 2
+    DraftBlocked { why } => false
+  }
+}
+
+fn cited_price_and_silicon_resolve() -> Bool {
+  money_amount_micro_count(m: ubicloud_arm_standard_16_price.per_minute.amount) > 0
+    && money_amount_micro_count(m: github_actions_linux_arm_2core_price.per_minute.amount) > 0
+    && ubicloud_shape_entitlement(architecture: Aarch64) == DedicatedPhysicalCore
+    && enquiry_is_answered(p: hetzner_wholesale_quantity_enquiry.principal)
+    && match hetzner_cax_support_request_id() {
+      EnquiryRequestId { request_id: _ } => true
+      PrincipalHasNoEnquiry => false
+    }
+}
+
+fn packet_cost_cites_floor(p: WholesaleSellerPacket) -> Bool {
+  match p.our_cost {
+    CostFloorConcurrencyUnstated { floor, catalog, why } =>
+      declaration_ref_eq(a: floor, b: cost_floor_fn_ref)
+        && declaration_ref_resolves(r: floor)
+        && declaration_ref_eq(a: catalog, b: p.arm_shape_catalog)
+        && why == cost_floor_concurrency_why
+  }
+}
+
+fn packet_citations_resolve(p: WholesaleSellerPacket, packet_decl: DeclarationRef) -> Bool {
+  all(packet_projected_citation_refs(p: p), r =>
+    count(must_read_ref_refusals(packet: packet_decl, r: r)) == 0
+  )
+}
+
+fn list_price_citation_refs(s: ListPriceStanding) -> List<DeclarationRef> {
+  match s {
+    ListPriceCited { price_authority } => [price_authority]
+    ListPriceUnstated { catalog } => [catalog]
+  }
+}
+
+fn silicon_citation_refs(s: SiliconStanding) -> List<DeclarationRef> {
+  match s {
+    SiliconEntitlementCited { entitlement_authority } => [entitlement_authority]
+    SiliconUnstated { catalog } => [catalog]
+  }
+}
+
+fn host_citation_refs(s: HostStanding) -> List<DeclarationRef> {
+  match s {
+    HostCited { channel: _, authority } => [authority]
+    HostStandingUnstated { catalog } => [catalog]
+  }
+}
+
+fn cost_citation_refs(s: OurCostFloorStanding) -> List<DeclarationRef> {
+  match s {
+    CostFloorConcurrencyUnstated { floor, catalog, why: _ } => [floor, catalog]
+  }
+}
+
+fn packet_projected_citation_refs(p: WholesaleSellerPacket) -> List<DeclarationRef> {
+  concat(
+    concat(
+      concat(
+        concat(
+          [
+            p.identity,
+            p.arm_shape_catalog,
+            p.wholesale_argument,
+            p.hetzner_row,
+            p.hetzner_listed,
+            p.hetzner_cax_reply,
+          ],
+          list_price_citation_refs(s: p.list_price),
+        ),
+        silicon_citation_refs(s: p.silicon),
+      ),
+      host_citation_refs(s: p.host),
+    ),
+    cost_citation_refs(s: p.our_cost),
+  )
+}
+
+fn packet_joins_wholesale_buyer() -> Bool {
+  packet_unsent_while_term_unquoted(o: packet_ubicloud.outreach, i: ubicloud_inquiry)
+    && packet_unsent_while_term_unquoted(o: packet_blacksmith.outreach, i: blacksmith_inquiry)
+    && match ubicloud_inquiry.end_customer_price {
+      EndCustomerMinuteRate { micro_per_minute: _, currency: _, product: _, citation: _, price_authority, not_wholesale_reason: _ } =>
+        match packet_ubicloud.list_price {
+          ListPriceCited { price_authority: packet_auth } =>
+            declaration_ref_eq(a: price_authority, b: packet_auth)
+              && facing_is_wholesale_term(p: ubicloud_inquiry.end_customer_price) == false
+          ListPriceUnstated { catalog } => false
+        }
+      EndCustomerRateUnquoted { obligation } => false
+      WholesaleTermQuoted { micro_per_month, term_months, currency, source } => false
+      WholesaleTermUnquoted { obligation } => false
+    }
+    && match packet_blacksmith.list_price {
+      ListPriceUnstated { catalog } =>
+        facing_is_wholesale_term(p: blacksmith_inquiry.end_customer_price) == false
+      ListPriceCited { price_authority } => false
+    }
+}
+
+fn draft_text_omits_node_unit_inventory_count(text: String) -> Bool {
+  !string_contains(s: text, pattern: " node")
+    && !string_contains(s: text, pattern: "unit")
+    && !string_contains(s: text, pattern: "inventory")
+}
+
+fn packet_draft_omits_fleet_claims(p: WholesaleSellerPacket) -> Bool {
+  match p.outreach {
+    PreparedUnsent { unsent } =>
+      draft_text_omits_node_unit_inventory_count(text: unsent.intervention.instruction as String)
+    DraftBlocked { why } => false
+  }
+}
+
+fn packet_draft_omits_transcribed_listed_price_text(text: String) -> Bool {
+  !string_contains(s: text, pattern: cax41_listed_monthly_usd_wire())
+}
+
+fn packet_draft_omits_transcribed_listed_price(p: WholesaleSellerPacket) -> Bool {
+  match p.outreach {
+    PreparedUnsent { unsent } =>
+      packet_draft_omits_transcribed_listed_price_text(text: unsent.intervention.instruction as String)
+    DraftBlocked { why } => false
+  }
+}
+
+fn host_cited_authority(h: HostStanding, authority: DeclarationRef) -> Bool {
+  match h {
+    HostCited { channel: _, authority: a } => declaration_ref_eq(a: a, b: authority)
+    HostStandingUnstated { catalog: _ } => false
+  }
+}
+
+fn host_is_unstated_catalog(h: HostStanding, catalog: DeclarationRef) -> Bool {
+  match h {
+    HostStandingUnstated { catalog: c } => declaration_ref_eq(a: c, b: catalog)
+    HostCited { channel: _, authority: _ } => false
+  }
+}
+
+fn packet_holds_host() -> Bool {
+  host_cited_authority(h: packet_blacksmith.host, authority: blacksmith_arm_capacity_ref)
+    && host_cited_authority(h: packet_depot.host, authority: depot_arm_capacity_ref)
+    && host_cited_authority(
+      h: packet_github_actions.host,
+      authority: github_actions_arm_capacity_ref,
+    )
+    && host_is_unstated_catalog(h: packet_circleci.host, catalog: circleci_catalog_ref)
+    && host_is_unstated_catalog(h: packet_warpbuild.host, catalog: warpbuild_catalog_ref)
+    && host_is_unstated_catalog(h: packet_ubicloud.host, catalog: ubicloud_catalog_ref)
+    && host_is_unstated_catalog(
+      h: host_standing_from_channel(
+        channel: CapacityChannelUnread,
+        catalog: circleci_catalog_ref,
+        channel_ref: circleci_catalog_ref,
+      ),
+      catalog: circleci_catalog_ref,
+    )
+}
+
+fn packet_catalog_has_arm(availability: RunnerCatalogAvailability) -> Bool {
+  count(arm_shape_labels(availability: availability)) > 0
+}
+
+fn packet_holds_catalogs() -> Bool {
+  packet_catalog_has_arm(availability: blacksmith_runner_catalog)
+    && packet_catalog_has_arm(availability: circleci_runner_catalog)
+    && packet_catalog_has_arm(availability: depot_runner_catalog)
+    && packet_catalog_has_arm(availability: github_actions_runner_catalog)
+    && packet_catalog_has_arm(availability: warpbuild_runner_catalog)
+    && packet_catalog_has_arm(availability: ubicloud_runner_catalog_shapes)
+}
+
+fn packet_holds_outreach() -> Bool { all(wholesale_seller_packets, p => packet_outreach_ok(p: p)) }
+fn packet_holds_cost() -> Bool { all(wholesale_seller_packets, p => packet_cost_cites_floor(p: p)) }
+fn packet_holds_citations() -> Bool {
+  packet_citations_resolve(p: packet_blacksmith, packet_decl: packet_blacksmith_ref)
+    && packet_citations_resolve(p: packet_circleci, packet_decl: packet_circleci_ref)
+    && packet_citations_resolve(p: packet_depot, packet_decl: packet_depot_ref)
+    && packet_citations_resolve(p: packet_github_actions, packet_decl: packet_github_actions_ref)
+    && packet_citations_resolve(p: packet_warpbuild, packet_decl: packet_warpbuild_ref)
+    && packet_citations_resolve(p: packet_ubicloud, packet_decl: packet_ubicloud_ref)
+}
+fn packet_holds_cited_authorities() -> Bool { cited_price_and_silicon_resolve() }
+fn packet_holds_inquiries() -> Bool { packet_joins_wholesale_buyer() }
+fn packet_holds_draft() -> Bool {
+  all(wholesale_seller_packets, p => packet_draft_omits_fleet_claims(p: p))
+    && all(wholesale_seller_packets, p => packet_draft_omits_transcribed_listed_price(p: p))
+}
+fn packet_holds_asks() -> Bool { all(wholesale_prepared_asks, a => ask_is_unsent(a: a)) }
+fn packet_holds_count() -> Bool { packet_count() == 6 && offer_wholesale_through_reseller.id == "wholesale-through-ci-reseller" }
+
+fn must_read_ref_refusals(packet: DeclarationRef, r: DeclarationRef) -> List<MustReadCitationUnresolved> {
+  let resolution = resolve_declaration_ref(ref: r, facts: audit_decl_facts, modules: audit_module_facts)
+  match resolution {
+    DeclarationRefResolved { declaration_identity: _ } => []
+    DeclarationRefModuleAbsent { reference: _ } =>
+      [MustReadCitationUnresolved {
+        packet: packet,
+        reference: r,
+        arm: declaration_ref_resolution_arm_key(resolution: resolution),
+      }]
+    DeclarationRefDeclarationAbsent { reference: _ } =>
+      [MustReadCitationUnresolved {
+        packet: packet,
+        reference: r,
+        arm: declaration_ref_resolution_arm_key(resolution: resolution),
+      }]
+    DeclarationRefFieldAbsent { reference: _ } =>
+      [MustReadCitationUnresolved {
+        packet: packet,
+        reference: r,
+        arm: declaration_ref_resolution_arm_key(resolution: resolution),
+      }]
+    DeclarationRefAmbiguous { reference: _, candidates: _ } =>
+      [MustReadCitationUnresolved {
+        packet: packet,
+        reference: r,
+        arm: declaration_ref_resolution_arm_key(resolution: resolution),
+      }]
+  }
+}
+
+fn send_read_obligation_refusals(
+  packet: DeclarationRef,
+  o: OperatorSendReadObligation,
+) -> List<MustReadCitationUnresolved> {
+  fold(o.must_read, init: [], f: fn(acc, r) {
+    concat(acc, must_read_ref_refusals(packet: packet, r: r))
+  })
+}
+
+fn send_read_obligation_holds(packet: DeclarationRef, o: OperatorSendReadObligation) -> Bool {
+  count(send_read_obligation_refusals(packet: packet, o: o)) == 0
+}
+
+fn declaration_ref_resolves(r: DeclarationRef) -> Bool {
+  match resolve_declaration_ref(ref: r, facts: audit_decl_facts, modules: audit_module_facts) {
+    DeclarationRefResolved { declaration_identity: _ } => true
+    DeclarationRefModuleAbsent { reference: _ } => false
+    DeclarationRefDeclarationAbsent { reference: _ } => false
+    DeclarationRefFieldAbsent { reference: _ } => false
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+  }
+}
+
+data fixture_no_such_send_read_ref: DeclarationRef = decl_ref(
+  module_path: "strategy.wholesale_supply_packet",
+  decl_name: "no_such_send_read_declaration",
+)
+
+data fixture_dangling_send_read: OperatorSendReadObligation = OperatorSendReadObligation {
+  event: "fixture: a must_read ref that names no declaration must refuse",
+  must_read: [fixture_no_such_send_read_ref],
+}
+
+fn dangling_send_read_refuses() -> Bool {
+  count(send_read_obligation_refusals(
+    packet: packet_blacksmith_ref,
+    o: fixture_dangling_send_read,
+  )) > 0
+}
+
+fn packet_holds_send_read() -> Bool {
+  send_read_obligation_holds(packet: packet_blacksmith_ref, o: packet_blacksmith.send_read_obligation)
+    && send_read_obligation_holds(packet: packet_circleci_ref, o: packet_circleci.send_read_obligation)
+    && send_read_obligation_holds(packet: packet_depot_ref, o: packet_depot.send_read_obligation)
+    && send_read_obligation_holds(packet: packet_github_actions_ref, o: packet_github_actions.send_read_obligation)
+    && send_read_obligation_holds(packet: packet_warpbuild_ref, o: packet_warpbuild.send_read_obligation)
+    && send_read_obligation_holds(packet: packet_ubicloud_ref, o: packet_ubicloud.send_read_obligation)
+}
+
+fn every_packet_holds() -> Bool {
+  packet_holds_count()
+    && packet_holds_catalogs()
+    && packet_holds_outreach()
+    && packet_holds_cost()
+    && packet_holds_citations()
+    && packet_holds_cited_authorities()
+    && packet_holds_inquiries()
+    && packet_holds_draft()
+    && packet_holds_asks()
+    && packet_holds_host()
+    && packet_holds_send_read()
+}
+
+fn cax41_listed_monthly_usd_wire() -> String {
+  fixed_point_wire(
+    value: money_amount_micro_count(m: cax41_listed.monthly.amount) / 10000,
+    decimals: 2,
+  )
+}
+
+fn csv_omits_hetzner_console_cap() -> Bool {
+  string_contains(
+    s: expected_wholesale_packet_csv(),
+    pattern: declaration_ref_display_key(ref: hetzner_listed_ref),
+  )
+    && !string_contains(s: expected_wholesale_packet_csv(), pattern: cax41_listed_monthly_usd_wire())
+}
+
+fn wholesale_packet_invariants() -> Bool {
+  every_packet_holds() && csv_omits_hetzner_console_cap()
+}

@@ -1,0 +1,76 @@
+module strategy.operator_site_identification
+
+import std.types { NonEmptyStr, Bool }
+import strategy.calendar_date { CalendarDate }
+import product.placement_supply { SiteIdentity }
+import gunbc.fleet_physical_inventory { operator_site }
+import finance.gunbai_llc { EntityLegalName, gunbai_legal_name }
+
+// WHICH PLACE THE FLEET'S operator-lab IS, JOINED TO THE ENTITY THAT ALREADY CARRIES ITS ADDRESS.
+//
+// The public fleet inventory keys the operator's premises as gunbc.fleet_physical_inventory
+// operator_site ("operator-lab") and binds hosts to it (gunbc.fleet_site_locale
+// fleet.fleet_site_locale fleet_host_site_assignments); the address of that place is already
+// modeled, once, as finance.gunbai_llc gunbai_facts principal_office. This module is the join and
+// nothing else: it says the site keyed operator-lab IS that entity's principal office.
+//
+// THE ADDRESS IS NOT HERE AND MUST NOT BE. A second spelling of it would be the nickname DESIGN
+// section 3 forbids in its literal form, and it would drift the day the operator moves. A consumer
+// that needs the address reads finance.gunbai_llc, and this row is what entitles it to.
+// Symmetrically, nothing about the address or this identification goes near the public repository:
+// the public side keeps referring to the site id alone, which is what makes placement private by
+// placement rather than by redaction.
+//
+// THIS IS AN ASSERTION, NOT AN OBSERVATION, AND THE DIFFERENCE IS STRUCTURAL RATHER THAN PROSE. The
+// operator said he BELIEVES operator-lab is his apartment and does not know it -- nothing in either
+// repository observes the identity of that place, and no host reports its street address. So the
+// basis is the operator's own statement with its date and his words, and what makes the
+// identification checkable is this row: it is the thing a later observation would agree or
+// disagree with. ObservedAtSite exists for that later observation and carries no row today.
+// THE DATE IS A CalendarDate, NOT A STRING. strategy.calendar_date is this repository's one
+// temporal authority and refuses an impossible date; a free-string date here would re-mint the
+// concept and admit "not a date at all" (DESIGN section 3, and the authority's own note on two
+// independently authored fields for one fact).
+type SiteIdentificationBasis
+  = OperatorAsserted {
+      asserted_by: NonEmptyStr,
+      asserted_on: CalendarDate,
+      operator_words: NonEmptyStr,
+      what_would_check_it: NonEmptyStr,
+    }
+  | ObservedAtSite {
+      observed_by: NonEmptyStr,
+      observed_on: CalendarDate,
+      how: NonEmptyStr,
+    }
+
+type SitePrincipalOfficeIdentification {
+  site: SiteIdentity
+  entity: EntityLegalName
+  basis: SiteIdentificationBasis
+}
+
+data operator_lab_is_the_principal_office: SitePrincipalOfficeIdentification = SitePrincipalOfficeIdentification {
+  site: operator_site,
+  entity: gunbai_legal_name,
+  basis: OperatorAsserted {
+    asserted_by: "Brian Searls",
+    asserted_on: CalendarDate { year: 2026, month: 9, day: 11 },
+    operator_words: "i believe operator lab IS my nyc apartment, but i honestly don't know - it should have an address tagged if it is (in gunbc-private preferably); this is also the registered address of Gunbai LLC, if it's not already in the private repo somewhere, it should be",
+    what_would_check_it: "Nothing observes it. No host reports a street address and no filing names the site id, so the site id and the principal office are one place because this row says so; an observation at the site, or a filing that names it, would be what agrees or disagrees with this row.",
+  },
+}
+
+fn identification_basis_date(b: SiteIdentificationBasis) -> CalendarDate {
+  match b {
+    OperatorAsserted { asserted_by: _, asserted_on: d, operator_words: _, what_would_check_it: _ } => d
+    ObservedAtSite { observed_by: _, observed_on: d, how: _ } => d
+  }
+}
+
+fn identification_is_observed(b: SiteIdentificationBasis) -> Bool {
+  match b {
+    OperatorAsserted { asserted_by: _, asserted_on: _, operator_words: _, what_would_check_it: _ } => false
+    ObservedAtSite { observed_by: _, observed_on: _, how: _ } => true
+  }
+}

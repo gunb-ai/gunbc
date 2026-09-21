@@ -1,0 +1,241 @@
+module test.claim.january_launch_witness
+
+import strategy.january_launch {
+  LaunchAdmission,
+  LaunchAdmitted,
+  LaunchRefused,
+  LaunchRefusal,
+  LaunchAnchorNotDeclared,
+  LaunchFormNotChosen,
+  LaunchPrerequisiteNotDone,
+  LaunchGradeRecutOwed,
+  LaunchS1GateNotAdmitted,
+  LaunchForm,
+  PublicSelfServe,
+  PrivateWithNamedPartners,
+  LaunchFormDecision,
+  LaunchFormChosen,
+  LaunchFormUndecided,
+  LaunchAnchor,
+  LaunchAnchorDeclared,
+  LaunchAnchorUndeclared,
+  NamedPartnerRoster,
+  named_partner_count,
+  january_launch_admission,
+  launch_admission_under,
+  launch_form_decide_by_day,
+  january_launch_standing,
+  grade_recuts_owed,
+  grade_required_for,
+  ExitGrade,
+  ProductionGrade,
+  DemoPromiseGrade,
+  public_self_serve_production_grade_items,
+  january_launch_prerequisites,
+}
+import strategy.year_end_plan {
+  PlanItem,
+  year_end_plan_items,
+  S1GateOutcome,
+  S1Admitted,
+  S1Refused,
+}
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+// THE STANDING ANSWER IS A REFUSAL, AND IT NAMES THE FIRST MISSING FACT. Before this module the
+// question "are we launching in January" had no derived answer at all; the plan graph ended at the
+// year-end gate. With 2027-01-07 now declared, the first missing fact is no longer the date -- it
+// is the FORM, and the refusal moves accordingly. That the refusal MOVED when a fact landed is the
+// check working: a standing answer that reported the same cause before and after the date was
+// chosen would be reporting the module's existence rather than the plan's state.
+fn the_launch_refuses_today_and_names_the_unchosen_form_holds() -> Bool {
+  match january_launch_standing {
+    LaunchRefused { cause: c } =>
+      match c {
+        LaunchFormNotChosen => true
+        LaunchAnchorNotDeclared => false
+        LaunchPrerequisiteNotDone { item: _ } => false
+        LaunchGradeRecutOwed { item: _ } => false
+        LaunchS1GateNotAdmitted => false
+      }
+    LaunchAdmitted { form: _ } => false
+  }
+}
+
+// THE DATE-MISSING ARM STAYS EXERCISABLE. It is unreachable from production now that the anchor is
+// declared, so without this fixture it would be a permanently green decoration -- and the next
+// milestone to land before its own anchor would find the wall untested.
+fn an_undeclared_anchor_refuses_before_the_form_is_even_read_holds() -> Bool {
+  match launch_admission_under(
+    anchor: LaunchAnchorUndeclared {},
+    decision: LaunchFormChosen {
+      form: PrivateWithNamedPartners {
+        roster: NamedPartnerRoster { first: "partner-one", rest: [] },
+      },
+    },
+    s1: S1Refused { unmet: ["commercial-demand-standing"] },
+  ) {
+    LaunchRefused { cause: c } =>
+      match c {
+        LaunchAnchorNotDeclared => true
+        LaunchFormNotChosen => false
+        LaunchPrerequisiteNotDone { item: _ } => false
+        LaunchGradeRecutOwed { item: _ } => false
+        LaunchS1GateNotAdmitted => false
+      }
+    LaunchAdmitted { form: _ } => false
+  }
+}
+
+// THE FORM'S DEADLINE IS DERIVED FROM THE DATE, not asserted beside it: the largest public-arm
+// recut duration back from 2027-01-07. Choosing the arm after this day makes the public arm
+// arithmetically unreachable, which is the calendar deciding the disjunction.
+fn the_form_deadline_derives_from_the_anchor_holds() -> Bool {
+  launch_form_decide_by_day() < 131 && launch_form_decide_by_day() > 100
+}
+
+// AN UNDECIDED FORM REFUSES RATHER THAN DEFAULTING TO THE CHEAPER ARM. This is the whole point of
+// the module: the failure mode is not choosing badly, it is never choosing and discovering in
+// January that the private arm was selected by the calendar.
+fn an_undecided_form_refuses_rather_than_defaulting_holds() -> Bool {
+  match january_launch_admission(decision: LaunchFormUndecided {}) {
+    LaunchRefused { cause: _ } => true
+    LaunchAdmitted { form: _ } => false
+  }
+}
+
+// A PRIVATE LAUNCH WITH NOBODY NAMED HAS NO CONSTRUCTOR. The roster carries a first and a rest, so
+// the empty case cannot be written -- there is no refusal to test because there is no state to
+// refuse. This asserts the positive half: a named roster counts what it names, which is the fact
+// the operator will be asked to supply.
+fn a_named_partner_roster_counts_what_it_names_holds() -> Bool {
+  named_partner_count(roster: NamedPartnerRoster { first: "partner-one", rest: [] }) == 1
+    && named_partner_count(
+      roster: NamedPartnerRoster { first: "partner-one", rest: ["partner-two", "partner-three"] }
+    ) == 3
+}
+
+// THE TWO ARMS DEMAND DIFFERENT GRADES OF THE SAME ITEMS, and this discriminates them. If both
+// arms returned the same grade the disjunction would be decorative and choosing late would cost
+// nothing -- which is exactly the belief this module exists to refute.
+fn the_public_arm_demands_a_higher_grade_than_the_private_one_holds() -> Bool {
+  let private_form = PrivateWithNamedPartners {
+    roster: NamedPartnerRoster { first: "partner-one", rest: [] },
+  }
+  let public_grade = match grade_required_for(
+    form: PublicSelfServe {},
+    item_id: "tenant-boundary-minimum",
+  ) {
+    ProductionGrade => true
+    DemoPromiseGrade => false
+  }
+  let private_grade = match grade_required_for(
+    form: private_form,
+    item_id: "tenant-boundary-minimum",
+  ) {
+    ProductionGrade => false
+    DemoPromiseGrade => true
+  }
+  public_grade && private_grade
+}
+
+// AND THE PUBLIC ARM OWES RECUTS TODAY WHILE THE PRIVATE ARM OWES NONE. This is the cost of the
+// choice, stated as a number rather than as a worry.
+fn the_public_arm_owes_recuts_the_private_arm_does_not_holds() -> Bool {
+  let private_form = PrivateWithNamedPartners {
+    roster: NamedPartnerRoster { first: "partner-one", rest: [] },
+  }
+  count(grade_recuts_owed(form: PublicSelfServe {})) == 4
+    && count(grade_recuts_owed(form: private_form)) == 0
+    && count(public_self_serve_production_grade_items) == 4
+}
+
+// The launch inherits the plan's terminal rather than restating it: every prerequisite it names
+// must be an item the year-end plan actually carries, or the launch is gated on nothing.
+fn every_launch_prerequisite_is_a_real_plan_item_holds() -> Bool {
+  count(january_launch_prerequisites) == 8
+    && fold(january_launch_prerequisites, init: true, f: fn(acc, id) {
+      acc && count(filter(year_end_plan_items, i => i.id == id)) == 1
+    })
+}
+
+// A COMPLETED REFUSAL IS NOT PERMISSION. The S1 gate can finish Done with S1Refused, and that is a
+// correct outcome for it; the launch must still refuse, and must name the gate's answer as the
+// cause rather than any missing item. The private arm is used because it owes no recuts, so the
+// first refusal reachable is the S1 one.
+fn a_refused_s1_gate_refuses_the_launch_holds() -> Bool {
+  match launch_admission_under(
+    anchor: january_launch_anchor_fixture(),
+    decision: LaunchFormChosen {
+      form: PrivateWithNamedPartners {
+        roster: NamedPartnerRoster { first: "partner-one", rest: [] },
+      },
+    },
+    s1: S1Refused { unmet: ["commercial-demand-standing"] },
+  ) {
+    LaunchRefused { cause: c } =>
+      match c {
+        LaunchS1GateNotAdmitted => true
+        LaunchAnchorNotDeclared => false
+        LaunchFormNotChosen => false
+        LaunchPrerequisiteNotDone { item: _ } => false
+        LaunchGradeRecutOwed { item: _ } => false
+      }
+    LaunchAdmitted { form: _ } => false
+  }
+}
+
+// THE CONTROL: the same arm with an admitted gate gets PAST the S1 check -- whatever refuses it
+// next is some other cause. Without this the test above would also pass if the S1 check refused
+// unconditionally.
+fn an_admitted_s1_gate_clears_the_s1_check_holds() -> Bool {
+  match launch_admission_under(
+    anchor: january_launch_anchor_fixture(),
+    decision: LaunchFormChosen {
+      form: PrivateWithNamedPartners {
+        roster: NamedPartnerRoster { first: "partner-one", rest: [] },
+      },
+    },
+    s1: S1Admitted { evidence: [] },
+  ) {
+    LaunchRefused { cause: c } =>
+      match c {
+        LaunchS1GateNotAdmitted => false
+        LaunchAnchorNotDeclared => false
+        LaunchFormNotChosen => false
+        LaunchPrerequisiteNotDone { item: _ } => true
+        LaunchGradeRecutOwed { item: _ } => true
+      }
+    LaunchAdmitted { form: _ } => true
+  }
+}
+
+fn january_launch_anchor_fixture() -> LaunchAnchor {
+  LaunchAnchorDeclared { iso_date: "2027-01-07", epoch_day: 20825 }
+}
+
+// ENROLMENT. Before this entry existed no roster reached this module, so none of the claims above
+// executed in CI. private_roster_witness calls this, the same way it calls year_end_plan's.
+fn january_launch_witness_main() -> ProcessExit {
+  if the_launch_refuses_today_and_names_the_unchosen_form_holds() && an_undeclared_anchor_refuses_before_the_form_is_even_read_holds() && the_form_deadline_derives_from_the_anchor_holds() && an_undecided_form_refuses_rather_than_defaulting_holds() && a_named_partner_roster_counts_what_it_names_holds() && the_public_arm_demands_a_higher_grade_than_the_private_one_holds() && the_public_arm_owes_recuts_the_private_arm_does_not_holds() && every_launch_prerequisite_is_a_real_plan_item_holds() && a_refused_s1_gate_refuses_the_launch_holds() && an_admitted_s1_gate_clears_the_s1_check_holds() {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "a january_launch claim returned false" }
+  }
+}
+
+// CLAIM ENROLMENT. Each claim body above is an ordinary fn, so this module's entry point calls the
+// fn rather than the claim and no declaration references test code (v1.compiler.compile
+// test_reference_debt_dissolution). The `test fn` wrappers below are the enrolment markers the
+// witness runner enters; each keeps its claim name unchanged.
+test fn the_launch_refuses_today_and_names_the_unchosen_form() -> Bool { the_launch_refuses_today_and_names_the_unchosen_form_holds() }
+test fn an_undeclared_anchor_refuses_before_the_form_is_even_read() -> Bool { an_undeclared_anchor_refuses_before_the_form_is_even_read_holds() }
+test fn the_form_deadline_derives_from_the_anchor() -> Bool { the_form_deadline_derives_from_the_anchor_holds() }
+test fn an_undecided_form_refuses_rather_than_defaulting() -> Bool { an_undecided_form_refuses_rather_than_defaulting_holds() }
+test fn a_named_partner_roster_counts_what_it_names() -> Bool { a_named_partner_roster_counts_what_it_names_holds() }
+test fn the_public_arm_demands_a_higher_grade_than_the_private_one() -> Bool { the_public_arm_demands_a_higher_grade_than_the_private_one_holds() }
+test fn the_public_arm_owes_recuts_the_private_arm_does_not() -> Bool { the_public_arm_owes_recuts_the_private_arm_does_not_holds() }
+test fn every_launch_prerequisite_is_a_real_plan_item() -> Bool { every_launch_prerequisite_is_a_real_plan_item_holds() }
+test fn a_refused_s1_gate_refuses_the_launch() -> Bool { a_refused_s1_gate_refuses_the_launch_holds() }
+test fn an_admitted_s1_gate_clears_the_s1_check() -> Bool { an_admitted_s1_gate_clears_the_s1_check_holds() }

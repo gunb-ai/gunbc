@@ -1,0 +1,678 @@
+module test.claim.buyer_review_sheet_witness
+
+import std.types { Bool, Int, String, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.currency.currency { Usd, Eur }
+import extdeps.ebay.inventory { UsedExcellent, ForPartsOrNotWorking }
+import extdeps.ebay.browse { browse_render_filters, BrowseFilterRendered, BrowseItem, BrowseConvertedAmount, BrowseShippingOption, BrowseTypedNameValue, BrowseSeller, BrowseProduct }
+import extdeps.memory.types { MonolithicDie, DualDiePackage }
+import extdeps.ampere.mt_collins_product_brief.memory_population { mt_collins_socket0_channel_pairs }
+import std.decl_ref { decl_ref }
+import strategy.buyers_pipeline { DemandRow, DemandQuantityEstablished, demand_ddr4_rdimm }
+import strategy.buyer_review_sheet {
+  OperatorListingEntry, StatedAspect, ListingEvidence, ReviewSheet, ReviewRow, PurchaseIntent, JudgedAttribute, DemandSearch,
+  IntentRefusedQuantityUnestablished, RemainingEstablished, RemainingUnestablished, remaining_wanted,
+  DimmCapacity, DimmBufferingKey, DimmRankCount, DimmPackageType, PackageType, RankCountValue,
+  LotUniformityStatement, SinglePartNumberStated, MixedLotStated, LotUniformityUnstated,
+  RequireValue, RequireSocketFillUniformity, RequirementMet, RequirementViolated, RequirementUnknown,
+  requirement_verdict, lot_uniformity_verdict, socket_fill_population, socket_populations_agree,
+  held_part_number_read_obligation, wanted_line, render_review_notes_csv, dimm_value_text, reading_value,
+  AttributeReading, DimmAttributeValue,
+  AttributeCorroborated, AttributeImpliedByPartNumber, AttributeContradicted, AttributeStatedOnly,
+  AttributeStatedAmbiguously, AttributeAbsent,
+  ApiSourceReady, ApiSourceAwaitingAnswer, ApiSourceAwaitingOperator, ApiSourceRefused, ApiSourceGateNotRostered,
+  current_api_source_standing, SellerFeedbackRead, SellerFeedbackUnavailable,
+  BrowseEvidenceRead, BrowseEvidenceRefused,
+  ScanSchedule, ScheduleAdmitted, ScheduleRefusedOverQuota, ScheduleRefusedMalformed, ScheduleRefusedBeyondResultWindow,
+  IntentAdmitted, IntentRefusedOverWanted, IntentRefusedNoUnits, IntentRefusedUnknownListing,
+  IntentRefusedListingExcluded, IntentRefusedDuplicateListing, IntentRefusedOverSocketFill, IntentRefusedNotAdmitted, IntentRefusedNotWholeSocketFills,
+  AttributeAlternativesUnresolved, search_filters,
+  api_source_standing, evidence_from_operator_entry, evidence_from_browse_item, read_attribute,
+  attribute_cell, review_sheet, render_review_sheet_csv, csv_field, schedule_admission,
+  review_scan_schedule, demand_searches, ddr4_rdimm_search, review_sheet_columns,
+  cell_by_key, listing_identity_header, CellFound, ColumnUnjoined, SheetCsvOk, SheetCsvUnjoined,
+  intend_purchase, intents_replay_admitted
+}
+import strategy.buyer_review_projection { review_sheet_projection_of, ReviewSheetProjectionOk, ReviewSheetProjectionUnjoined, ReviewSheetProjectionIdentityUnjoined }
+import strategy.receipt_evidence { ActionReceipt, ObservedFact }
+import strategy.owner_action {
+  OwnerStep, StepProgress, ExternalWait, ExternalWaitWork, OperatorActionWork, StepOpen, StepDischarged, StepExternallyRefused,
+  OperatorFollowUp, NoFallbackDeclared, SentWithoutReference,
+  open_operator_intervention, owner_steps,
+  RamHeldCensusIdentityGap, current_ram_purchase_standing, step_hw1_jslot_census
+}
+import strategy.buyer_listing_entries {
+  ddr4_rdimm_operator_entries, purchase_intents, expected_ddr4_rdimm_sheet_csv, expected_ddr4_rdimm_notes_csv
+}
+import gunbc.review_sheet_projection {
+  ObservedSheet,
+  ReviewSheetNeedsWrite,
+  ReviewSheetConverged,
+  ReviewSheetConflict,
+  ReviewSheetUnreadable,
+  classify_review_sheet,
+  write_plan_preserves_operator_columns,
+}
+
+// FIXTURES. Each operator entry is shaped to reach exactly one arm; prices are micro-dollars. A
+// stated part number is the lot statement (one part number for every unit); no part number is an
+// unstated lot. Verified depth is zero unless a fixture says otherwise.
+fn entry_with_depth(key: NonEmptyStr, title: String, price: Int, shipping: Int?, lot: Int, aspects: List<StatedAspect>, uniformity: LotUniformityStatement, verified: Int, permille: Int, count: Int) -> OperatorListingEntry {
+  OperatorListingEntry {
+    listing_key: key,
+    url: join(["https://www.ebay.com/itm/", key as String], ""),
+    title: title,
+    entered_at: "2026-09-11",
+    item_price_micro: price,
+    shipping_micro: shipping,
+    lot_size: lot,
+    available_estimate: Present { value: 40 },
+    quantity_verified: verified,
+    condition: Present { value: UsedExcellent },
+    seller_feedback_permille: Present { value: permille },
+    seller_feedback_count: Present { value: count },
+    stated_aspects: aspects,
+    lot_uniformity: uniformity,
+    photo_count: 3,
+  }
+}
+
+fn lot_statement(mpn: String?) -> LotUniformityStatement {
+  match mpn { Present { value: p } => SinglePartNumberStated { part_number: p as NonEmptyStr }  Absent => LotUniformityUnstated }
+}
+
+fn entry(key: NonEmptyStr, title: String, price: Int, shipping: Int?, lot: Int, aspects: List<StatedAspect>, mpn: String?, permille: Int, count: Int) -> OperatorListingEntry {
+  entry_with_depth(key: key, title: title, price: price, shipping: shipping, lot: lot, aspects: aspects, uniformity: lot_statement(mpn: mpn), verified: 0, permille: permille, count: count)
+}
+
+fn full_aspects() -> List<StatedAspect> {
+  [
+    StatedAspect { name: "Capacity per Module", value: "32 GB" },
+    StatedAspect { name: "Type", value: "DDR4 SDRAM" },
+    StatedAspect { name: "Features", value: "ECC, Registered" },
+    StatedAspect { name: "Bus Speed", value: "PC4-21300 (DDR4-2666)" },
+    StatedAspect { name: "Rank", value: "2Rx4" },
+  ]
+}
+
+// Stated fully, part number not catalogued: every attribute stated only.
+fn e_stated() -> OperatorListingEntry { entry(key: "100000000001", title: "Samsung 32GB 2Rx4 PC4-2666V-R ECC REG", price: 60000000, shipping: Present { value: 0 }, lot: 1, aspects: full_aspects(), mpn: Present { value: "M393A4K40CB2-CTD" }, permille: 995, count: 800) }
+
+// Cheaper per module (a 4-lot), stated only in the title.
+fn e_lot() -> OperatorListingEntry { entry(key: "100000000002", title: "Lot of 4 32GB DDR4 ECC RDIMM PC4-2400T 2Rx4", price: 200000000, shipping: Present { value: 8000000 }, lot: 4, aspects: [], mpn: none, permille: 990, count: 120) }
+
+// No capacity anywhere: capacity must render ABSENT, and the listing ranks with an UNKNOWN fit.
+fn e_silent() -> OperatorListingEntry { entry(key: "100000000003", title: "Server memory DDR4 ECC RDIMM PC4-2666", price: 70000000, shipping: Present { value: 5000000 }, lot: 1, aspects: [StatedAspect { name: "Brand", value: "Micron" }], mpn: none, permille: 990, count: 120) }
+
+// An LRDIMM sold as an RDIMM: the part number is load-reduced, so buffering fails.
+fn e_lrdimm_as_rdimm() -> OperatorListingEntry { entry(key: "100000000004", title: "32GB DDR4 ECC RDIMM", price: 40000000, shipping: Present { value: 0 }, lot: 1, aspects: [StatedAspect { name: "Features", value: "Registered" }], mpn: Present { value: "M386A4G40DM0-CPB" }, permille: 995, count: 800) }
+
+// A catalogued 16 GiB part: corroborated, and it fails the 32 GiB requirement.
+fn e_corroborated_16g() -> OperatorListingEntry { entry(key: "100000000005", title: "SK hynix 16GB 2Rx8 PC4-2666V", price: 20000000, shipping: Present { value: 0 }, lot: 1, aspects: [StatedAspect { name: "Capacity per Module", value: "16GB" }], mpn: Present { value: "HMA82GR7AFR8N-VK" }, permille: 995, count: 800) }
+
+fn e_over_ceiling() -> OperatorListingEntry { entry(key: "100000000006", title: "32GB DDR4 ECC RDIMM 2Rx4 PC4-3200", price: 125000000, shipping: Present { value: 0 }, lot: 1, aspects: [], mpn: none, permille: 995, count: 800) }
+
+fn e_no_shipping() -> OperatorListingEntry { entry(key: "100000000007", title: "32GB DDR4 ECC RDIMM 2Rx4 PC4-3200", price: 50000000, shipping: none, lot: 1, aspects: [], mpn: none, permille: 995, count: 800) }
+
+fn e_untrusted() -> OperatorListingEntry { entry(key: "100000000008", title: "32GB DDR4 ECC RDIMM 2Rx4 PC4-3200 \"tested\"", price: 45000000, shipping: Present { value: 0 }, lot: 1, aspects: [], mpn: none, permille: 900, count: 12) }
+
+fn e_ambiguous() -> OperatorListingEntry { entry(key: "100000000009", title: "256GB (8x32GB) DDR4 ECC RDIMM 2Rx4 PC4-2666 kit", price: 440000000, shipping: Present { value: 0 }, lot: 8, aspects: [], mpn: none, permille: 995, count: 800) }
+
+fn e_no_condition() -> OperatorListingEntry {
+  let base = entry(key: "100000000010", title: "32GB DDR4 ECC RDIMM 2Rx4 PC4-2666", price: 45000000, shipping: Present { value: 0 }, lot: 1, aspects: [], mpn: none, permille: 995, count: 800)
+  OperatorListingEntry {
+    listing_key: base.listing_key, url: base.url, title: base.title, entered_at: base.entered_at,
+    item_price_micro: base.item_price_micro, shipping_micro: base.shipping_micro, lot_size: base.lot_size,
+    available_estimate: base.available_estimate, quantity_verified: base.quantity_verified, condition: none,
+    seller_feedback_permille: base.seller_feedback_permille, seller_feedback_count: base.seller_feedback_count,
+    stated_aspects: base.stated_aspects, lot_uniformity: base.lot_uniformity, photo_count: base.photo_count,
+  }
+}
+
+fn e_no_feedback() -> OperatorListingEntry {
+  let base = entry(key: "100000000011", title: "32GB DDR4 ECC RDIMM 2Rx4 PC4-2666", price: 45000000, shipping: Present { value: 0 }, lot: 1, aspects: [], mpn: none, permille: 995, count: 800)
+  OperatorListingEntry {
+    listing_key: base.listing_key, url: base.url, title: base.title, entered_at: base.entered_at,
+    item_price_micro: base.item_price_micro, shipping_micro: base.shipping_micro, lot_size: base.lot_size,
+    available_estimate: base.available_estimate, quantity_verified: base.quantity_verified, condition: base.condition,
+    seller_feedback_permille: none, seller_feedback_count: none,
+    stated_aspects: base.stated_aspects, lot_uniformity: base.lot_uniformity, photo_count: base.photo_count,
+  }
+}
+
+// Two verified, uniform lots: 19 units (two socket fills plus a withheld remainder of 3) at $65 a
+// module, and 5 units (below one fill) at $66, so both rank and both bound purchase intent.
+fn e_uniform_19() -> OperatorListingEntry { entry_with_depth(key: "100000000012", title: "Samsung 32GB 2Rx4 PC4-2666V-R ECC REG", price: 65000000, shipping: Present { value: 0 }, lot: 1, aspects: full_aspects(), uniformity: SinglePartNumberStated { part_number: "M393A4K40CB2-CTD" }, verified: 19, permille: 995, count: 800) }
+fn e_uniform_5() -> OperatorListingEntry { entry_with_depth(key: "100000000013", title: "Samsung 32GB 2Rx4 PC4-2666V-R ECC REG", price: 66000000, shipping: Present { value: 0 }, lot: 1, aspects: full_aspects(), uniformity: SinglePartNumberStated { part_number: "M393A4K40CB2-CTD" }, verified: 5, permille: 995, count: 800) }
+
+fn fixture_entries() -> List<OperatorListingEntry> {
+  [e_no_feedback(), e_no_condition(), e_stated(), e_lot(), e_silent(), e_lrdimm_as_rdimm(), e_corroborated_16g(), e_over_ceiling(), e_no_shipping(), e_untrusted(), e_ambiguous(), e_uniform_19(), e_uniform_5()]
+}
+
+// THE LIVE SEARCH'S QUANTITY IS UNESTABLISHED (the RAM standing is a gap), so the admitting arms of
+// selection and intent are exercised against a FIXTURE search whose demand row a fixture
+// declaration establishes at the candidate figure; the live search is used where the refusal is
+// the claim. The row differs from the live one in that field only.
+fn established_ddr4_row() -> DemandRow {
+  let d = demand_ddr4_rdimm
+  DemandRow {
+    id: d.id, spec: d.spec, reference_unit_micro: d.reference_unit_micro, viability_ceiling_micro: d.viability_ceiling_micro,
+    viability_source: d.viability_source,
+    wanted: DemandQuantityEstablished { units: 320, authority: decl_ref(module_path: "test.claim.buyer_review_sheet_witness", decl_name: "established_ddr4_row") },
+    qualification_note: d.qualification_note, refusal_conditions: d.refusal_conditions,
+  }
+}
+
+fn established_search() -> DemandSearch {
+  DemandSearch { demand: established_ddr4_row(), query: ddr4_rdimm_search.query, currency: ddr4_rdimm_search.currency, requirements: ddr4_rdimm_search.requirements }
+}
+
+fn fixture_sheet() -> ReviewSheet {
+  review_sheet(s: ddr4_rdimm_search, evidence: map(fixture_entries(), e => evidence_from_operator_entry(e: e)), api_source: current_api_source_standing())
+}
+
+fn established_fixture_sheet() -> ReviewSheet {
+  review_sheet(s: established_search(), evidence: map(fixture_entries(), e => evidence_from_operator_entry(e: e)), api_source: current_api_source_standing())
+}
+
+fn row_keys(sheet: ReviewSheet) -> List<String> {
+  map(sheet.rows, r => r.listing_key as String)
+}
+
+fn excluded_keys(sheet: ReviewSheet) -> List<String> {
+  map(sheet.excluded, x => x.listing_key as String)
+}
+
+fn excluded_cause(sheet: ReviewSheet, key: String) -> String {
+  fold(sheet.excluded, init: "", f: fn(acc, x) { if (x.listing_key as String == key) { x.cause } else { acc } })
+}
+
+fn cell(sheet: ReviewSheet, listing: String, column: NonEmptyStr) -> String {
+  fold(sheet.rows, init: "", f: fn(acc, r) {
+    if (r.listing_key as String == listing) {
+      match cell_by_key(cells: r.cells, key: column) {
+        CellFound { value: v } => v
+        ColumnUnjoined { key: _ } => acc
+      }
+    } else { acc }
+  })
+}
+
+fn cells_join_columns_by_key() -> Bool {
+  let sheet = fixture_sheet()
+  all(sheet.rows, r => (length(r.cells) == length(review_sheet_columns))
+    && all(review_sheet_columns, col => length(filter(r.cells, c => (c.key as String) == (col.key as String))) == 1))
+    && match listing_identity_header(columns: sheet.columns) {
+      CellFound { value: h } => h == "Listing"
+      ColumnUnjoined { key: _ } => false
+    }
+    && match listing_identity_header(columns: []) {
+      ColumnUnjoined { key: k } => (k as String) == "listing_key"
+      CellFound { value: _ } => false
+    }
+    && match cell_by_key(cells: [], key: "rank") {
+      ColumnUnjoined { key: k } => (k as String) == "rank"
+      CellFound { value: _ } => false
+    }
+    && match render_review_sheet_csv(sheet: ReviewSheet {
+      demand_id: sheet.demand_id,
+      api_source: sheet.api_source,
+      open_read_obligations: sheet.open_read_obligations,
+      columns: sheet.columns,
+      rows: [ReviewRow { listing_key: "unjoined-fixture" as NonEmptyStr, cells: [] }],
+      excluded: sheet.excluded,
+      unmapped_aspect_names: sheet.unmapped_aspect_names,
+    }) {
+      SheetCsvUnjoined { listing_key: lk, key: k } => (lk as String) == "unjoined-fixture" && (k as String) == "listing_key"
+      SheetCsvOk { bytes: _ } => false
+    }
+}
+
+fn evidence(e: OperatorListingEntry) -> ListingEvidence { evidence_from_operator_entry(e: e) }
+
+// 1. THE THREE VALUES. A stated-only, a corroborated, an implied, a contradicted, an ambiguous and
+// an absent reading each land in their own arm.
+fn three_values_hold() -> Bool {
+  (match read_attribute(k: DimmCapacity, e: evidence(e: e_stated())) { AttributeStatedOnly { value: _, stated_as: _, why_uncorroborated: w } => string_contains(s: w, pattern: "not in the corpus DRAM catalog")  _ => false })
+    && (match read_attribute(k: DimmCapacity, e: evidence(e: e_corroborated_16g())) { AttributeCorroborated { value: _, stated_as: _, part_number: p } => p as String == "HMA82GR7AFR8N-VK"  _ => false })
+    && (match read_attribute(k: DimmRankCount, e: evidence(e: e_corroborated_16g())) { AttributeCorroborated { value: _, stated_as: _, part_number: _ } => true  _ => false })
+    && (match read_attribute(k: DimmBufferingKey, e: evidence(e: e_lrdimm_as_rdimm())) { AttributeContradicted { stated: _, stated_as: _, catalogued: _, part_number: _ } => true  _ => false })
+    && (match read_attribute(k: DimmRankCount, e: evidence(e: e_lrdimm_as_rdimm())) { AttributeImpliedByPartNumber { value: _, part_number: _ } => true  _ => false })
+    && (match read_attribute(k: DimmCapacity, e: evidence(e: e_silent())) { AttributeAbsent { names_tried: _, listing_aspect_names: have } => contains(have, "Brand")  _ => false })
+    && (match read_attribute(k: DimmCapacity, e: evidence(e: e_ambiguous())) { AttributeStatedAmbiguously { stated_as: _ } => true  _ => false })
+}
+
+// 2. AN UNSTATED ATTRIBUTE IS NEVER A BLANK CELL. Every derived cell of every ranked row is
+// non-empty, and the silent listing's capacity cell says ABSENT in words.
+fn no_blank_derived_cell() -> Bool {
+  let sheet = fixture_sheet()
+  all(sheet.rows, r => all(filter(r.cells, c => match filter(review_sheet_columns, col => (col.key as String) == (c.key as String)).first() {
+      Present { value: col } => match col.region { OperatorColumn => false  _ => true }
+      Absent => false
+    }), c => c.value != ""))
+    && starts_with(s: cell(sheet: sheet, listing: "100000000003", column: "capacity"), prefix: "ABSENT")
+    && string_contains(s: cell(sheet: sheet, listing: "100000000003", column: "fit"), pattern: "UNKNOWN")
+}
+
+// 3. REFUSE BEFORE RANKING. Each disqualified listing is excluded with its own cause and none of
+// them is ranked.
+fn refusals_exclude_before_ranking() -> Bool {
+  let sheet = fixture_sheet()
+  let keys = row_keys(sheet: sheet)
+  !contains(keys, "100000000004") && string_contains(s: excluded_cause(sheet: sheet, key: "100000000004"), pattern: "load-reduced")
+    && !contains(keys, "100000000005") && string_contains(s: excluded_cause(sheet: sheet, key: "100000000005"), pattern: "needs 32 GiB")
+    && !contains(keys, "100000000006") && string_contains(s: excluded_cause(sheet: sheet, key: "100000000006"), pattern: "over the viability ceiling")
+    && !contains(keys, "100000000007") && string_contains(s: excluded_cause(sheet: sheet, key: "100000000007"), pattern: "no shipping quote")
+    && !contains(keys, "100000000008") && string_contains(s: excluded_cause(sheet: sheet, key: "100000000008"), pattern: "trust floor")
+    && !contains(keys, "100000000010") && string_contains(s: excluded_cause(sheet: sheet, key: "100000000010"), pattern: "condition not stated")
+    && !contains(keys, "100000000011") && string_contains(s: excluded_cause(sheet: sheet, key: "100000000011"), pattern: "feedback unavailable")
+    && !string_contains(s: excluded_cause(sheet: sheet, key: "100000000011"), pattern: "trust floor")
+}
+
+// 4. RANKED BY HEADROOM. The 4-lot at $52 a module outranks the single at $60, then the $65 and
+// $66 verified lots, then the $75 silent listing; the ambiguous kit ($55 a module) ranks second.
+fn ranked_by_spread() -> Bool {
+  row_keys(sheet: fixture_sheet()) == ["100000000002", "100000000009", "100000000001", "100000000012", "100000000013", "100000000003"]
+}
+
+// 5. THE PROPOSAL CELL CARRIES THE EXISTING DEPTH DISCIPLINE: marketplace estimates are claims.
+fn depth_stays_unverified() -> Bool {
+  string_contains(s: cell(sheet: fixture_sheet(), listing: "100000000001", column: "proposal"), pattern: "no verified depth")
+}
+
+// 6. OPERATOR COLUMNS ARE NEVER WRITTEN BY THE PROJECTION.
+fn operator_columns_blank() -> Bool {
+  let sheet = fixture_sheet()
+  all(sheet.rows, r => all(filter(review_sheet_columns, c => match c.region { OperatorColumn => true  _ => false }), col => match cell_by_key(cells: r.cells, key: col.key) {
+    CellFound { value: v } => v == ""
+    ColumnUnjoined { key: _ } => false
+  }))
+    && cells_join_columns_by_key()
+}
+
+fn receipt(id: NonEmptyStr) -> ActionReceipt {
+  ActionReceipt { receipt_id: id, evidence: ObservedFact { subject: "fixture", observation: "fixture", observed_at: "2026-09-12" } }
+}
+
+fn wait_step(id: NonEmptyStr, progress: StepProgress) -> OwnerStep {
+  OwnerStep {
+    step_id: id,
+    plan_item: "buyer-agent-pipeline",
+    work: ExternalWaitWork { wait: ExternalWait {
+      partial_answers: [],
+      awaited_event: "fixture answer",
+      blocks: [],
+      window: OperatorFollowUp { next_check: "2026-09-20", basis: "fixture" },
+      fallback: NoFallbackDeclared { reason: "fixture" },
+      reference: SentWithoutReference { authority: "eBay", sent_at: "2026-09-11", note: "fixture" },
+    } },
+    start_requirements: [],
+    produces_receipt: "fixture",
+    progress: progress,
+  }
+}
+
+fn action_step(id: NonEmptyStr, progress: StepProgress) -> OwnerStep {
+  OwnerStep {
+    step_id: id,
+    plan_item: "buyer-agent-pipeline",
+    work: OperatorActionWork { intervention: open_operator_intervention(identity: id, subject: "fixture", instruction: "fixture") },
+    start_requirements: [],
+    produces_receipt: "fixture",
+    progress: progress,
+  }
+}
+
+fn account(p: StepProgress) -> OwnerStep { wait_step(id: "ebay-developer-account-wait", progress: p) }
+fn dispatch(p: StepProgress) -> OwnerStep { action_step(id: "ebay-browse-production-access", progress: p) }
+fn decision(p: StepProgress) -> OwnerStep { wait_step(id: "ebay-buy-api-application-decision-wait", progress: p) }
+fn received() -> StepProgress { StepDischarged { receipt: receipt(id: "r") } }
+fn refused() -> StepProgress { StepExternallyRefused { receipt: receipt(id: "r"), cause: "not a partner business model" } }
+
+// 7. ACCESS IS DERIVED FROM THE OWNER ROSTER, gate by gate and in order. The live roster has the
+// developer account approved and production access observed, so it reads ready; an access step
+// discharged with no application sent needs no decision wait, but a rostered one must be answered; a refusal at either wait is a refusal, never a pass; a
+// refused decision stays a refusal.
+fn access_standing_arms() -> Bool {
+  (match current_api_source_standing() { ApiSourceReady => true  _ => false })
+    && (match api_source_standing(steps: [account(p: StepOpen), dispatch(p: received()), decision(p: received())]) { ApiSourceAwaitingAnswer { step_id: id, awaited_event: _, next_check: _ } => id as String == "ebay-developer-account-wait"  _ => false })
+    && (match api_source_standing(steps: [account(p: refused())]) { ApiSourceRefused { step_id: id, cause: _ } => id as String == "ebay-developer-account-wait"  _ => false })
+    && (match api_source_standing(steps: [account(p: received()), dispatch(p: StepOpen)]) { ApiSourceAwaitingOperator { step_id: id } => id as String == "ebay-browse-production-access"  _ => false })
+    && (match api_source_standing(steps: [account(p: received()), dispatch(p: received())]) { ApiSourceReady => true  _ => false })
+    && (match api_source_standing(steps: [account(p: received()), dispatch(p: received()), decision(p: StepOpen)]) { ApiSourceAwaitingAnswer { step_id: id, awaited_event: _, next_check: _ } => id as String == "ebay-buy-api-application-decision-wait"  _ => false })
+    && (match api_source_standing(steps: [account(p: received()), dispatch(p: received()), decision(p: refused())]) { ApiSourceRefused { step_id: id, cause: c } => id as String == "ebay-buy-api-application-decision-wait" && string_contains(s: c as String, pattern: "partner")  _ => false })
+    && (match api_source_standing(steps: [account(p: received()), dispatch(p: received()), decision(p: received())]) { ApiSourceReady => true  _ => false })
+    && (match api_source_standing(steps: []) { ApiSourceGateNotRostered { step_id: _ } => true  _ => false })
+}
+
+// 8. THE BROWSE FOLD: an item decodes to evidence with its cheapest US shipping; a EUR price and a
+// missing price refuse rather than entering the sheet.
+fn amount(v: String) -> BrowseConvertedAmount { BrowseConvertedAmount { value: v, currency: Usd, convertedFromValue: none, convertedFromCurrency: none } }
+
+fn browse_item(key: NonEmptyStr, price: BrowseConvertedAmount?) -> BrowseItem {
+  browse_item_with_parts(key: key, price: price, title: "Samsung 32GB 2Rx4 PC4-2666V-R", mpn: Present { value: "M393A4K40CB2-CTD" }, product_mpns: [])
+}
+
+fn browse_item_with_parts(key: NonEmptyStr, price: BrowseConvertedAmount?, title: String, mpn: String?, product_mpns: List<String>) -> BrowseItem {
+  BrowseItem {
+    itemId: key, legacyItemId: none, title: Present { value: title }, subtitle: none,
+    itemWebUrl: Present { value: "https://www.ebay.com/itm/1" }, price: price, condition: none,
+    conditionId: Present { value: "3000" }, conditionDescription: none, buyingOptions: none, brand: none,
+    mpn: mpn, gtin: none,
+    product: if length(product_mpns) == 0 { none } else { Present { value: BrowseProduct { title: none, brand: none, mpns: Present { value: product_mpns }, gtins: none } } },
+    localizedAspects: Present { value: [BrowseTypedNameValue { name: "Capacity per Module", value: "32 GB", type: none }] },
+    image: none, additionalImages: none, lotSize: none, quantityLimitPerBuyer: none, estimatedAvailabilities: none,
+    shippingOptions: Present { value: [
+      BrowseShippingOption { shippingCost: Present { value: amount(v: "9.99") }, shippingCostType: none, additionalShippingCostPerUnit: none, quantityUsedForEstimate: none, minEstimatedDeliveryDate: none, maxEstimatedDeliveryDate: none, guaranteedDelivery: none },
+      BrowseShippingOption { shippingCost: Present { value: amount(v: "4.50") }, shippingCostType: none, additionalShippingCostPerUnit: none, quantityUsedForEstimate: none, minEstimatedDeliveryDate: none, maxEstimatedDeliveryDate: none, guaranteedDelivery: none },
+    ] },
+    returnTerms: none,
+    seller: Present { value: BrowseSeller { username: Present { value: "s" }, feedbackPercentage: Present { value: "99.6" }, feedbackScore: Present { value: 1200 }, sellerAccountType: none } },
+    itemLocation: none, itemEndDate: none,
+  }
+}
+
+fn browse_fold_holds() -> Bool {
+  (match evidence_from_browse_item(item: browse_item(key: "v1|1|0", price: Present { value: amount(v: "54.99") }), read_at: "2026-09-11", currency: Usd) {
+    BrowseEvidenceRead { evidence: e } => e.item_price_micro == 54990000 && e.shipping_micro == Present { value: 4500000 } && (match e.seller_feedback { SellerFeedbackRead { permille: p, count: n } => p == 996 && n == 1200  _ => false }) && e.part_numbers == ["M393A4K40CB2-CTD"]
+    BrowseEvidenceRefused { listing_key: _, cause: _ } => false
+  })
+    && (match evidence_from_browse_item(item: browse_item(key: "v1|2|0", price: Present { value: BrowseConvertedAmount { value: "54.99", currency: Eur, convertedFromValue: none, convertedFromCurrency: none } }), read_at: "2026-09-11", currency: Usd) {
+      BrowseEvidenceRefused { listing_key: _, cause: c } => string_contains(s: c, pattern: "currency")
+      BrowseEvidenceRead { evidence: _ } => false
+    })
+    && (match evidence_from_browse_item(item: browse_item(key: "v1|3|0", price: none), read_at: "2026-09-11", currency: Usd) {
+      BrowseEvidenceRefused { listing_key: _, cause: c } => string_contains(s: c, pattern: "no price")
+      BrowseEvidenceRead { evidence: _ } => false
+    })
+}
+
+// 8b. CORROBORATION IS BOUND TO THE IDENTIFIED PART, THROUGH THE BROWSE PATH. A listing whose mpn
+// is the dual-die ADS part and whose product-level mpns list the monolithic ASF sibling reads
+// DUAL-DIE from the ADS row -- the sibling's row is never picked; a listing with no mpn and two
+// product-level numbers identifies neither, and the package cell says so as an unresolved reading
+// rather than choosing one.
+fn browse_evidence(item: BrowseItem) -> ListingEvidence? {
+  match evidence_from_browse_item(item: item, read_at: "2026-09-12", currency: Usd) { BrowseEvidenceRead { evidence: e } => Present { value: e }  BrowseEvidenceRefused { listing_key: _, cause: _ } => none }
+}
+
+fn corroboration_binds_to_identified_part() -> Bool {
+  let ads_with_asf_sibling = browse_item_with_parts(key: "v1|4|0", price: Present { value: amount(v: "20.00") }, title: "Micron 16GB 2Rx4 PC4-2133P ECC REG VLP", mpn: Present { value: "MTA36ADS2G72PZ-2G1A1" }, product_mpns: ["MTA36ASF2G72PZ-2G1A2"])
+  let unidentified_pair = browse_item_with_parts(key: "v1|5|0", price: Present { value: amount(v: "20.00") }, title: "Micron 16GB 2Rx4 PC4-2133P ECC REG", mpn: none, product_mpns: ["MTA36ASF2G72PZ-2G1A2", "MTA36ADS2G72PZ-2G1A1"])
+  (match browse_evidence(item: ads_with_asf_sibling) {
+    Absent => false
+    Present { value: e } => length(e.part_numbers) == 2
+      && (match e.lot_uniformity { SinglePartNumberStated { part_number: p } => p as String == "MTA36ADS2G72PZ-2G1A1"  _ => false })
+      && (match read_attribute(k: DimmPackageType, e: e) { AttributeImpliedByPartNumber { value: v, part_number: p } => p as String == "MTA36ADS2G72PZ-2G1A1" && dimm_value_text(v: v) == dimm_value_text(v: PackageType { stacking: DualDiePackage })  _ => false })
+  })
+    && (match browse_evidence(item: unidentified_pair) {
+      Absent => false
+      Present { value: e } => (match e.lot_uniformity { LotUniformityUnstated => true  _ => false })
+        && (match read_attribute(k: DimmPackageType, e: e) { AttributeAlternativesUnresolved { part_numbers: ps } => length(ps) == 2  _ => false })
+        && (match read_attribute(k: DimmCapacity, e: e) { AttributeStatedOnly { value: _, stated_as: _, why_uncorroborated: w } => string_contains(s: w, pattern: "identifies none")  _ => false })
+        && starts_with(s: attribute_cell(r: read_attribute(k: DimmPackageType, e: e)), prefix: "UNRESOLVED")
+    })
+}
+
+// 9. THE SCHEDULE IS DERIVED AGAINST THE PUBLISHED QUOTA: the declared one is admitted, an hourly
+// scan of 250 candidates (two search pages plus 250 item reads, 24 times) is refused over quota, and an interval that does not divide the day is refused.
+fn schedule_holds() -> Bool {
+  (match schedule_admission(schedule: review_scan_schedule, searches: demand_searches) { ScheduleAdmitted { calls_per_day: c, daily_ceiling: m } => c == 804 && m == 5000  _ => false })
+    && (match schedule_admission(schedule: ScanSchedule { interval_hours: 1, candidates_per_demand: 250 }, searches: demand_searches) { ScheduleRefusedOverQuota { calls_per_day: c, daily_ceiling: _ } => c == 6048  _ => false })
+    && (match schedule_admission(schedule: ScanSchedule { interval_hours: 5, candidates_per_demand: 200 }, searches: demand_searches) { ScheduleRefusedMalformed { why: _ } => true  _ => false })
+    && (match schedule_admission(schedule: ScanSchedule { interval_hours: 24, candidates_per_demand: 10001 }, searches: demand_searches) { ScheduleRefusedBeyondResultWindow { candidates: c } => c == 10001  _ => false })
+}
+
+// 10. CSV QUOTING: a quote inside a field is doubled and the field stays one field.
+fn csv_quotes() -> Bool {
+  csv_field(s: "a \"tested\" b") == "\"a \"\"tested\"\" b\""
+}
+
+// 11. THE UNMAPPED-NAME CENSUS: an item specific the name table does not know is reported.
+fn unmapped_reported() -> Bool {
+  contains(fixture_sheet().unmapped_aspect_names, "brand")
+}
+
+// 12. PURCHASE INTENT: admitted within ceiling and remaining want, refused over either, and the
+// committed roster replays admitted.
+fn fixture_evidence() -> List<ListingEvidence> {
+  map(fixture_entries(), e => evidence_from_operator_entry(e: e))
+}
+
+fn stored_intent(key: NonEmptyStr, units: Int, price: Int, obligation: NonEmptyStr) -> PurchaseIntent {
+  PurchaseIntent { demand_id: demand_ddr4_rdimm.id, listing_key: key, units: units, delivered_unit_micro: price, accepted_on_judgement: [], intake_obligation: obligation, decided_on: "2026-09-11" }
+}
+
+// 12. PURCHASE INTENT IS BOUND TO ONE REVIEWED LISTING AND TO ITS LOT PROPOSAL. Admission derives
+// the price and obligation from the review and the admissible quantity from the socket-fill
+// arithmetic; replay requires the committed row to equal what admission derives. The reds: an
+// invented key, an excluded listing, a duplicate, a substituted price, a substituted obligation,
+// an intent over the fill-admitted quantity (19 on a lot that admits 16 and withholds 3), an intent
+// on a lot refused for a socket fill (5 units), an intent on an unverified or unstated lot -- and
+// each of the quantity reds again through replay.
+fn intent_walls() -> Bool {
+  let ev = fixture_evidence()
+  let q = demand_ddr4_rdimm.qualification_note
+  let live_refusal = intend_purchase(s: ddr4_rdimm_search, evidence: ev, prior: [], listing_key: "100000000012", units: 16, accepted_on_judgement: [], decided_on: "2026-09-11")
+  let admitted = intend_purchase(s: established_search(), evidence: ev, prior: [], listing_key: "100000000012", units: 16, accepted_on_judgement: [JudgedAttribute { key: DimmRankCount, judgement: "ranks read from the module label in photo 2" }], decided_on: "2026-09-11")
+  (match live_refusal { IntentRefusedQuantityUnestablished { listing_key: _, blocked_on: b } => string_contains(s: b as String, pattern: "HELD: census identities")  _ => false })
+    && !intents_replay_admitted(s: ddr4_rdimm_search, evidence: ev, intents: [stored_intent(key: "100000000012", units: 16, price: 65000000, obligation: q)])
+    && (match remaining_wanted(demand: demand_ddr4_rdimm, intents: []) { RemainingUnestablished { committed: c, blocked_on: _ } => c == 0  _ => false })
+    && (match remaining_wanted(demand: established_ddr4_row(), intents: [stored_intent(key: "100000000012", units: 16, price: 65000000, obligation: q)]) { RemainingEstablished { wanted: w, committed: c, remaining: r } => w == 320 && c == 16 && r == 304  _ => false })
+    &&  (match admitted { IntentAdmitted { intent: i } => i.delivered_unit_micro == 65000000 && i.intake_obligation == q && length(i.accepted_on_judgement) == 1  _ => false })
+    && (match intend_purchase(s: established_search(), evidence: ev, prior: [], listing_key: "100000000012", units: 19, accepted_on_judgement: [], decided_on: "2026-09-11") { IntentRefusedOverSocketFill { listing_key: _, units: u, fill_admitted: a, withheld: w, read_obligation: o } => u == 19 && a == 16 && w == 3 && string_contains(s: o as String, pattern: step_hw1_jslot_census.step_id as String)  _ => false })
+    && (match intend_purchase(s: established_search(), evidence: ev, prior: [], listing_key: "100000000012", units: 17, accepted_on_judgement: [], decided_on: "2026-09-11") { IntentRefusedOverSocketFill { listing_key: _, units: _, fill_admitted: a, withheld: _, read_obligation: _ } => a == 16  _ => false })
+    && (match intend_purchase(s: established_search(), evidence: ev, prior: [], listing_key: "100000000012", units: 8, accepted_on_judgement: [], decided_on: "2026-09-11") { IntentAdmitted { intent: i } => i.units == 8  _ => false })
+    && (match intend_purchase(s: established_search(), evidence: ev, prior: [], listing_key: "100000000012", units: 5, accepted_on_judgement: [], decided_on: "2026-09-11") { IntentRefusedNotWholeSocketFills { listing_key: _, units: u, socket_population: n, remainder: r, read_obligation: o } => u == 5 && n == socket_fill_population() && r == 5 % socket_fill_population() && string_contains(s: o as String, pattern: step_hw1_jslot_census.step_id as String)  _ => false })
+    && (match intend_purchase(s: established_search(), evidence: ev, prior: [], listing_key: "100000000012", units: 9, accepted_on_judgement: [], decided_on: "2026-09-11") { IntentRefusedNotWholeSocketFills { listing_key: _, units: u, socket_population: _, remainder: r, read_obligation: _ } => u == 9 && r == 9 % socket_fill_population()  _ => false })
+    && intents_replay_admitted(s: established_search(), evidence: ev, intents: [stored_intent(key: "100000000012", units: 8, price: 65000000, obligation: q)])
+    && !intents_replay_admitted(s: established_search(), evidence: ev, intents: [stored_intent(key: "100000000012", units: 5, price: 65000000, obligation: q)])
+    && !intents_replay_admitted(s: established_search(), evidence: ev, intents: [stored_intent(key: "100000000012", units: 9, price: 65000000, obligation: q)])
+    && (match intend_purchase(s: established_search(), evidence: ev, prior: [], listing_key: "100000000013", units: 5, accepted_on_judgement: [], decided_on: "2026-09-11") { IntentRefusedNotAdmitted { listing_key: _, cause: c } => starts_with(s: c, prefix: "refused for a socket fill")  _ => false })
+    && (match intend_purchase(s: established_search(), evidence: ev, prior: [], listing_key: "100000000002", units: 4, accepted_on_judgement: [], decided_on: "2026-09-11") { IntentRefusedNotAdmitted { listing_key: _, cause: c } => string_contains(s: c, pattern: "no verified depth")  _ => false })
+    && (match intend_purchase(s: established_search(), evidence: ev, prior: [], listing_key: "999999999999", units: 1, accepted_on_judgement: [], decided_on: "2026-09-11") { IntentRefusedUnknownListing { listing_key: _ } => true  _ => false })
+    && (match intend_purchase(s: established_search(), evidence: ev, prior: [], listing_key: "100000000006", units: 1, accepted_on_judgement: [], decided_on: "2026-09-11") { IntentRefusedListingExcluded { listing_key: _, cause: c } => string_contains(s: c, pattern: "ceiling")  _ => false })
+    && (match intend_purchase(s: established_search(), evidence: ev, prior: [stored_intent(key: "100000000012", units: 8, price: 65000000, obligation: q)], listing_key: "100000000012", units: 8, accepted_on_judgement: [], decided_on: "2026-09-11") { IntentRefusedDuplicateListing { listing_key: _ } => true  _ => false })
+    && (match intend_purchase(s: established_search(), evidence: ev, prior: [], listing_key: "100000000012", units: 321, accepted_on_judgement: [], decided_on: "2026-09-11") { IntentRefusedOverWanted { listing_key: _, units: _, remaining: r } => r == 320  _ => false })
+    && (match intend_purchase(s: established_search(), evidence: ev, prior: [], listing_key: "100000000012", units: 0, accepted_on_judgement: [], decided_on: "2026-09-11") { IntentRefusedNoUnits { listing_key: _ } => true  _ => false })
+    && intents_replay_admitted(s: established_search(), evidence: ev, intents: [stored_intent(key: "100000000012", units: 16, price: 65000000, obligation: q)])
+    && !intents_replay_admitted(s: established_search(), evidence: ev, intents: [stored_intent(key: "100000000012", units: 19, price: 65000000, obligation: q)])
+    && !intents_replay_admitted(s: established_search(), evidence: ev, intents: [stored_intent(key: "100000000013", units: 5, price: 66000000, obligation: q)])
+    && !intents_replay_admitted(s: established_search(), evidence: ev, intents: [stored_intent(key: "100000000002", units: 16, price: 52000000, obligation: q)])
+    && !intents_replay_admitted(s: established_search(), evidence: ev, intents: [stored_intent(key: "999999999999", units: 1, price: 65000000, obligation: q)])
+    && !intents_replay_admitted(s: established_search(), evidence: ev, intents: [stored_intent(key: "100000000012", units: 8, price: 65000000, obligation: q), stored_intent(key: "100000000012", units: 8, price: 65000000, obligation: q)])
+    && !intents_replay_admitted(s: established_search(), evidence: ev, intents: [stored_intent(key: "100000000012", units: 16, price: 40000000, obligation: q)])
+    && !intents_replay_admitted(s: established_search(), evidence: ev, intents: [stored_intent(key: "100000000012", units: 16, price: 65000000, obligation: "a different obligation")])
+    && intents_replay_admitted(s: ddr4_rdimm_search, evidence: map(ddr4_rdimm_operator_entries, e => evidence_from_operator_entry(e: e)), intents: purchase_intents)
+}
+
+// 14. THE PACKAGE-TYPE AXIS. The two Micron siblings differ on nothing the sheet read before this
+// axis existed; each reads its die_stacking from its catalog row, and a value requirement on the
+// axis separates them. A "2DRx4" label with no part number is a RANK statement (2 ranks) and says
+// nothing about the package -- byte 6 is never derived from a brand-agnostic rank label; an
+// explicit "dual-die" spelling does read, stated only.
+fn e_dual_die() -> OperatorListingEntry { entry(key: "200000000001", title: "Micron 16GB 2Rx4 PC4-2133P ECC REG VLP", price: 20000000, shipping: Present { value: 0 }, lot: 1, aspects: [], mpn: Present { value: "MTA36ADS2G72PZ-2G1A1" }, permille: 995, count: 800) }
+fn e_monolithic() -> OperatorListingEntry { entry(key: "200000000002", title: "Micron 16GB 2Rx4 PC4-2133P ECC REG", price: 20000000, shipping: Present { value: 0 }, lot: 1, aspects: [], mpn: Present { value: "MTA36ASF2G72PZ-2G1A2" }, permille: 995, count: 800) }
+fn e_labelled_dual_die() -> OperatorListingEntry { entry(key: "200000000003", title: "Micron 32GB 2DRx4 PC4-2666V ECC RDIMM", price: 50000000, shipping: Present { value: 0 }, lot: 1, aspects: [], mpn: none, permille: 995, count: 800) }
+fn e_spelled_dual_die() -> OperatorListingEntry { entry(key: "200000000004", title: "32GB 2Rx4 PC4-2666V ECC RDIMM dual-die", price: 50000000, shipping: Present { value: 0 }, lot: 1, aspects: [], mpn: none, permille: 995, count: 800) }
+
+fn is_stacking(r: AttributeReading, want: DimmAttributeValue) -> Bool {
+  match reading_value(r: r) { Present { value: v } => dimm_value_text(v: v) == dimm_value_text(v: want)  Absent => false }
+}
+
+fn package_type_axis_holds() -> Bool {
+  let dual = read_attribute(k: DimmPackageType, e: evidence(e: e_dual_die()))
+  let mono = read_attribute(k: DimmPackageType, e: evidence(e: e_monolithic()))
+  let want_mono = RequireValue { key: DimmPackageType, value: PackageType { stacking: MonolithicDie } }
+  (match dual { AttributeImpliedByPartNumber { value: _, part_number: p } => p as String == "MTA36ADS2G72PZ-2G1A1"  _ => false })
+    && is_stacking(r: dual, want: PackageType { stacking: DualDiePackage })
+    && (match mono { AttributeImpliedByPartNumber { value: _, part_number: p } => p as String == "MTA36ASF2G72PZ-2G1A2"  _ => false })
+    && is_stacking(r: mono, want: PackageType { stacking: MonolithicDie })
+    && (match requirement_verdict(q: want_mono, r: mono, e: evidence(e: e_monolithic())) { RequirementMet => true  _ => false })
+    && (match requirement_verdict(q: want_mono, r: dual, e: evidence(e: e_dual_die())) { RequirementViolated { why: w } => string_contains(s: w, pattern: "dual-die")  _ => false })
+    && (match read_attribute(k: DimmPackageType, e: evidence(e: e_labelled_dual_die())) { AttributeAbsent { names_tried: _, listing_aspect_names: _ } => true  _ => false })
+    && (match read_attribute(k: DimmPackageType, e: evidence(e: e_spelled_dual_die())) { AttributeStatedOnly { value: v, stated_as: _, why_uncorroborated: _ } => dimm_value_text(v: v) == dimm_value_text(v: PackageType { stacking: DualDiePackage })  _ => false })
+    && (match read_attribute(k: DimmRankCount, e: evidence(e: e_labelled_dual_die())) { AttributeStatedOnly { value: v, stated_as: _, why_uncorroborated: _ } => dimm_value_text(v: v) == dimm_value_text(v: RankCountValue { ranks: 2 })  _ => false })
+    && (match read_attribute(k: DimmPackageType, e: evidence(e: e_stated())) { AttributeAbsent { names_tried: _, listing_aspect_names: _ } => true  _ => false })
+    && string_contains(s: cell(sheet: fixture_sheet(), listing: "100000000001", column: "package_type"), pattern: "ABSENT")
+}
+
+// 15. TYPED LOT UNIFORMITY. The search requires uniformity on the package-type axis, not a value.
+// A mixed-lot statement is a violation that excludes before ranking; an unstated lot is Unknown and
+// never "meets"; a single stated part number meets the axis. The socket population is read from the
+// product brief's per-socket rows and both sockets agree.
+fn uniform_part(key: NonEmptyStr, verified: Int) -> OperatorListingEntry {
+  entry_with_depth(key: key, title: "Samsung 32GB 2Rx4 PC4-2666V-R ECC REG", price: 60000000, shipping: Present { value: 0 }, lot: 1, aspects: full_aspects(), uniformity: SinglePartNumberStated { part_number: "M393A4K40CB2-CTD" }, verified: verified, permille: 995, count: 800)
+}
+fn e_mixed() -> OperatorListingEntry {
+  entry_with_depth(key: "300000000001", title: "Mixed lot of 8 32GB DDR4 ECC RDIMM 2Rx4 PC4-2666", price: 400000000, shipping: Present { value: 0 }, lot: 8, aspects: [], uniformity: MixedLotStated { stated_as: "title: Mixed lot of 8 32GB DDR4 ECC RDIMM 2Rx4 PC4-2666" }, verified: 8, permille: 995, count: 800)
+}
+fn e_unstated_deep() -> OperatorListingEntry {
+  entry_with_depth(key: "300000000002", title: "32GB DDR4 ECC RDIMM 2Rx4 PC4-2666", price: 55000000, shipping: Present { value: 0 }, lot: 1, aspects: [], uniformity: LotUniformityUnstated, verified: 16, permille: 995, count: 800)
+}
+fn e_uniform_short() -> OperatorListingEntry { uniform_part(key: "300000000003", verified: 5) }
+fn e_uniform_two_fills() -> OperatorListingEntry { uniform_part(key: "300000000004", verified: 19) }
+
+fn uniformity_sheet() -> ReviewSheet {
+  review_sheet(s: established_search(), evidence: map([e_mixed(), e_unstated_deep(), e_uniform_short(), e_uniform_two_fills()], e => evidence_from_operator_entry(e: e)), api_source: current_api_source_standing())
+}
+
+fn requirement_is_uniformity() -> Bool {
+  fold(ddr4_rdimm_search.requirements, init: false, f: fn(acc, q) {
+    acc || (match q { RequireSocketFillUniformity { key: DimmPackageType, socket_population: n, held_match_read_obligation: _ } => n == socket_fill_population()  _ => false })
+  })
+}
+
+fn lot_uniformity_holds() -> Bool {
+  let sheet = uniformity_sheet()
+  let n = socket_fill_population()
+  requirement_is_uniformity()
+    && socket_populations_agree() && n == length(mt_collins_socket0_channel_pairs)
+    && (match lot_uniformity_verdict(u: MixedLotStated { stated_as: "x" }) { RequirementViolated { why: _ } => true  _ => false })
+    && (match lot_uniformity_verdict(u: LotUniformityUnstated) { RequirementUnknown { why: _ } => true  _ => false })
+    && (match lot_uniformity_verdict(u: SinglePartNumberStated { part_number: "M393A4K40CB2-CTD" }) { RequirementMet => true  _ => false })
+    && !contains(row_keys(sheet: sheet), "300000000001") && string_contains(s: excluded_cause(sheet: sheet, key: "300000000001"), pattern: "mixed lot stated")
+    && contains(row_keys(sheet: sheet), "300000000002")
+    && string_contains(s: cell(sheet: sheet, listing: "300000000002", column: "fit"), pattern: "UNKNOWN")
+    && !string_contains(s: cell(sheet: sheet, listing: "300000000002", column: "fit"), pattern: "meets every")
+    && string_contains(s: cell(sheet: sheet, listing: "300000000002", column: "lot_uniformity"), pattern: "UNSTATED")
+    && string_contains(s: cell(sheet: sheet, listing: "300000000002", column: "proposal"), pattern: "not admissible: lot uniformity unstated")
+    && !string_contains(s: cell(sheet: sheet, listing: "300000000003", column: "fit"), pattern: "lot uniformity unstated")
+    && !string_contains(s: cell(sheet: sheet, listing: "300000000003", column: "fit"), pattern: "mixed lot")
+    && string_contains(s: cell(sheet: sheet, listing: "300000000003", column: "lot_uniformity"), pattern: "one part number stated for every unit: M393A4K40CB2-CTD")
+}
+
+// 16. SOCKET FILLS. Five verified units of one part number is fewer than one socket population, so
+// the lot is REFUSED for the socket fill and the remainder question names the open census step;
+// nineteen verified units admit two whole fills (sixteen units) and carry three as a remainder the
+// sheet cannot adjudicate. Neither cell claims the remainder is admissible.
+fn socket_fill_holds() -> Bool {
+  let sheet = uniformity_sheet()
+  let n = socket_fill_population()
+  let short = cell(sheet: sheet, listing: "300000000003", column: "proposal")
+  let two = cell(sheet: sheet, listing: "300000000004", column: "proposal")
+  starts_with(s: short, prefix: "refused for a socket fill: 5 verified units")
+    && string_contains(s: short, pattern: join(["socket population of ", to_string(n)], ""))
+    && string_contains(s: short, pattern: step_hw1_jslot_census.step_id as String)
+    && !starts_with(s: short, prefix: "admissible")
+    && starts_with(s: two, prefix: join(["admissible for ", to_string(19 / n), " socket fill(s) = ", to_string((19 / n) * n), " units"], ""))
+    && string_contains(s: two, pattern: join([to_string(19 % n), " further verified units are a below-socket remainder, CANNOT ADJUDICATE"], ""))
+    && string_contains(s: held_part_number_read_obligation() as String, pattern: step_hw1_jslot_census.step_id as String)
+    && fold(sheet.open_read_obligations, init: false, f: fn(acc, o) { acc || starts_with(s: o, prefix: "socket fill remainder: ") })
+    && starts_with(s: cell(sheet: fixture_sheet(), listing: "100000000012", column: "proposal"), prefix: "not proposable: the demand quantity is not established")
+    && starts_with(s: cell(sheet: established_fixture_sheet(), listing: "100000000012", column: "proposal"), prefix: "admissible for 2 socket fill(s) = 16 units")
+}
+
+// 17. THE WANTED LINE READS THE QUANTITY'S STANDING. The live row is unestablished while the RAM
+// standing is a gap, so the line carries the standing and no quantity; an established fixture row
+// prints the number with its authority and the remainder; the live notes projection carries no
+// "wanted 320" and no remainder.
+fn wanted_line_reads_standing() -> Bool {
+  let live = wanted_line(demand: demand_ddr4_rdimm, intents: [])
+  let established = wanted_line(demand: established_ddr4_row(), intents: [])
+  let notes = render_review_notes_csv(sheet: fixture_sheet(), standing: [live])
+  string_contains(s: live, pattern: "NOT ESTABLISHED")
+    && string_contains(s: live, pattern: "HELD: census identities")
+    && !string_contains(s: live, pattern: "320")
+    && !string_contains(s: live, pattern: ", remaining ")
+    && string_contains(s: live, pattern: "committed by purchase intent 0")
+    && starts_with(s: established, prefix: "wanted 320 (established by test.claim.buyer_review_sheet_witness established_ddr4_row)")
+    && string_contains(s: established, pattern: ", remaining 320")
+    && string_contains(s: notes, pattern: "\"standing\",\"wanted: NOT ESTABLISHED")
+    && (match current_ram_purchase_standing() { RamHeldCensusIdentityGap => true  _ => false })
+    && !string_contains(s: expected_ddr4_rdimm_notes_csv(), pattern: "wanted 320")
+    && !string_contains(s: expected_ddr4_rdimm_notes_csv(), pattern: ", remaining ")
+}
+
+// 13. THE RENDERED SEARCH FILTER CARRIES NO TOTAL-PRICE CAP: the viability ceiling is per module, so
+// a listing-price cap would never retrieve a cheap multi-module lot.
+fn search_filter_has_no_price_cap() -> Bool {
+  match browse_render_filters(filters: search_filters(s: ddr4_rdimm_search)) {
+    BrowseFilterRendered { param: p } => !string_contains(s: p, pattern: "price") && starts_with(s: p, prefix: "deliveryCountry:US,conditionIds:")
+    _ => false
+  }
+}
+
+fn projection_headers(sheet: ReviewSheet) -> List<String> {
+  match listing_identity_header(columns: sheet.columns) {
+    ColumnUnjoined { key: _ } => []
+    CellFound { value: h } => concat([h], map(filter(sheet.columns, c => (c.key as String) != "listing_key"), c => c.header as String))
+  }
+}
+
+// THE SEAM WITH THE SHEETS LANE: the public classifier appends ranked rows and never touches
+// operator columns. A blank derived cell in the projection is the defect this item exists to
+// prevent, and an operator-column write is the fork we refuse.
+fn projection_seam_holds() -> Bool {
+  let sheet = fixture_sheet()
+  match review_sheet_projection_of(sheet: sheet) {
+    ReviewSheetProjectionUnjoined { listing_id: _, key: _ } => false
+    ReviewSheetProjectionIdentityUnjoined { key: _ } => false
+    ReviewSheetProjectionOk { projection: projection } =>
+      let observed = ObservedSheet { headers: projection_headers(sheet: sheet), rows: [] }
+      (count(projection.rows) == count(sheet.rows))
+        && (projection.schema.identity_column as String) == match listing_identity_header(columns: sheet.columns) {
+          CellFound { value: h } => h
+          ColumnUnjoined { key: _ } => ""
+        }
+        && all(projection.rows, r => all(r.derived, c => c.value != ""))
+        && match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
+          ReviewSheetNeedsWrite { plan: plan } =>
+            write_plan_preserves_operator_columns(schema: projection.schema, plan: plan)
+              && (count(plan.appends) == count(sheet.rows))
+          ReviewSheetConverged => false
+          ReviewSheetConflict { conflict: _ } => false
+          ReviewSheetUnreadable { reason: _ } => false
+        }
+  }
+}
+
+fn failed(name: String, ok: Bool) -> String {
+  if ok { "" } else { join([name, " "], "") }
+}
+
+fn buyer_review_sheet_witness_main() -> ProcessExit {
+  let f = join([
+    failed(name: "three_values_hold", ok: three_values_hold()),
+    failed(name: "no_blank_derived_cell", ok: no_blank_derived_cell()),
+    failed(name: "refusals_exclude_before_ranking", ok: refusals_exclude_before_ranking()),
+    failed(name: "ranked_by_spread", ok: ranked_by_spread()),
+    failed(name: "depth_stays_unverified", ok: depth_stays_unverified()),
+    failed(name: "operator_columns_blank", ok: operator_columns_blank()),
+    failed(name: "cells_join_columns_by_key", ok: cells_join_columns_by_key()),
+    failed(name: "access_standing_arms", ok: access_standing_arms()),
+    failed(name: "browse_fold", ok: browse_fold_holds()),
+    failed(name: "corroboration_binds_to_identified_part", ok: corroboration_binds_to_identified_part()),
+    failed(name: "schedule", ok: schedule_holds()),
+    failed(name: "csv_quotes", ok: csv_quotes()),
+    failed(name: "unmapped_reported", ok: unmapped_reported()),
+    failed(name: "intent_walls", ok: intent_walls()),
+    failed(name: "search_filter_has_no_price_cap", ok: search_filter_has_no_price_cap()),
+    failed(name: "package_type_axis", ok: package_type_axis_holds()),
+    failed(name: "lot_uniformity", ok: lot_uniformity_holds()),
+    failed(name: "socket_fill", ok: socket_fill_holds()),
+    failed(name: "wanted_line_reads_standing", ok: wanted_line_reads_standing()),
+    failed(name: "projection_seam", ok: projection_seam_holds()),
+  ], "")
+  if f == "" { ExitSuccess } else { exit_failure(reason: join(["buyer review sheet witness FAILED: ", f], "")) }
+}

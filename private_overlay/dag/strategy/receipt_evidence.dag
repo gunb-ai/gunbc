@@ -1,0 +1,93 @@
+module strategy.receipt_evidence
+
+import std.types { Int, String, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+
+// WHAT DISCHARGED A STEP, AS A TYPED FACT RATHER THAN A SENTENCE. A receipt says which concrete
+// thing happened -- a pull request merged, a filing received, a payment settled -- so a reader and a
+// fold see the same answer. DESIGN section 4c: a ruling, citation, status, count or dissolution
+// condition belongs in a typed carrier, and every arm below is one of those five.
+//
+// THIS MODULE EXISTS BECAUSE ACYCLICITY FORCED IT, not because a path looked tidier. These
+// declarations lived in strategy.owner_action, which IMPORTS strategy.year_end_plan (PlanItem,
+// find_item, item_is_done). The plan is about to consume receipts too, and a plan -> owner_action
+// import would close a cycle. The import graph's only structural law is acyclicity (DESIGN section
+// 3), so the shared declarations move to a module both can import and owner_action imports them
+// back by name. Its six importers are untouched.
+//
+// STD DOES NOT ALREADY CARRY THIS, checked rather than assumed. std.claim_evidence is the one std
+// module with a dense receipt/evidence family, and it models a different concept: how strongly
+// evidence supports a claim, over Claim, EvidenceLink, EvidenceProvenance, EvidenceFreshness and
+// EvidenceFidelity, all generic in several parameters. Recording "pull request N merged at T" there
+// would mean instantiating five type parameters for a fact carrying no epistemic uncertainty. The
+// two are adjacent and the relationship is CONSUMPTION, not identity: a receipt may later be
+// evidence that std.claim_evidence assesses, and that direction stays open.
+// NO FREE-FORM NOTE IS THE SOLE AUTHORITY FOR A PR, A FILING, A PAYMENT OR AN EXTERNAL REQUEST.
+// Each of those is an arm here with the fields that make it checkable, so "the PR merged" is a
+// repo, a number and a merge timestamp rather than a sentence that can go stale in place.
+// PaymentSettled currently carries amount_usd as NonEmptyStr. THIS MODULE HAS NOT ESTABLISHED which
+// existing shared typed money carrier, if any, is the correct replacement; minting a second money
+// representation here is refused as the re-invention the decomposition test forbids.
+//
+// THAT IS AN UNSETTLED QUESTION, NOT AN ABSENT CAPABILITY, and the distinction is 4b(2)'s: an
+// earlier wording of this note said no shared typed money representation was REACHABLE, which is
+// false. std.measure MoneyOnce (MoneyRate<Once>, carrying a CurrencyCode) is reachable in the
+// composed root and strategy.gunbc_strategy already imports it. Whether it is the RIGHT carrier for
+// a settled payment is exactly what nobody here has established. Calling an available capability
+// absent files this row as further from its ceiling than it is -- "can climb after one grounding"
+// where the truth may be "can climb now but unbuilt".
+//
+// ITS NEXT-RUNG TRIGGER IS ITS OWN, NOT ANOTHER SUBJECT'S, AND IT IS TWO THINGS, BOTH REQUIRED:
+//   (1) SOMEONE ESTABLISHES WHICH shared typed carrier is correct for a SETTLED PAYMENT. This module
+//       has not, and REACHABILITY IS NOT THAT DECISION -- MoneyOnce is reachable TODAY, per the
+//       paragraph above, so a trigger phrased on reachability would already be satisfied and would
+//       retire this row while amount_usd is still a string. That is the too-early end of the same
+//       axis as the std.currency trigger below, and an earlier wording of THIS trigger was open to
+//       exactly that reading.
+//   (2) PaymentSettled's amount field CARRIES that established carrier instead of NonEmptyStr.
+// Only when both hold does amount_usd stop being a string and this note retire.
+//
+// AN EARLIER WORDING NAMED "std.currency resolving in this closure", which
+// CANNOT HAPPEN -- std.currency was RENAMED, not deleted (public extdeps/currency/currency.dag:
+// "Formerly std.currency; consolidated here 2026-08-28"), so that trigger had no path to true and
+// quarantined this field permanently while presenting as tracked.
+//
+// AND IT IS NOT DISCHARGED BY THE STRATEGY WITNESS REPOINT EITHER. That repoint fixes an IMPORT in
+// two other modules; this is a MODELLING question about what PaymentSettled carries. Borrowing
+// another subject's trigger is how a note outlives the condition it named.
+type ReceiptEvidence
+  = MergedPullRequest { repo: NonEmptyStr, number: Int, merged_at: NonEmptyStr, merge_commit_sha: NonEmptyStr }
+  | ExternalFilingReceipt { authority: NonEmptyStr, identifier: NonEmptyStr, received_at: NonEmptyStr }
+  | PaymentSettled { instrument: NonEmptyStr, amount_usd: NonEmptyStr, settled_at: NonEmptyStr }
+  | ExternalRequestSent { recipient: NonEmptyStr, sent_at: NonEmptyStr }
+  | ObservedFact { subject: NonEmptyStr, observation: NonEmptyStr, observed_at: NonEmptyStr }
+  | CorpusDeclaration { declaration: DeclarationRef }
+
+// MergedPullRequest CARRIES THE SHA BECAUSE A NUMBER DOES NOT IDENTIFY A TREE. Squash rewrites the
+// commit, so "PR 11188 merged" names an intent while merge_commit_sha names what actually landed;
+// a reader checking whether a claim is still true needs the second.
+type ActionReceipt {
+  receipt_id: NonEmptyStr
+  evidence: ReceiptEvidence
+}
+
+// THE TEXT PROJECTION LIVES WITH THE TYPE, not with each surface that renders one. A second
+// renderer authored beside a page would be a second authority for what a receipt SAYS, and the
+// two would drift the moment an arm is added -- the closed coproduct makes that a compile error
+// here and an invisible omission there.
+fn receipt_evidence_line(e: ReceiptEvidence) -> String {
+  match e {
+    MergedPullRequest { repo, number, merged_at, merge_commit_sha } =>
+      join([repo, "#", to_string(number), " merged ", merged_at, " as ", merge_commit_sha], "")
+    ExternalFilingReceipt { authority, identifier, received_at } =>
+      join([authority, " filing ", identifier, " received ", received_at], "")
+    PaymentSettled { instrument, amount_usd, settled_at } =>
+      join(["USD ", amount_usd, " settled on ", instrument, " ", settled_at], "")
+    ExternalRequestSent { recipient, sent_at } =>
+      join(["request sent to ", recipient, " ", sent_at], "")
+    ObservedFact { subject, observation, observed_at } =>
+      join([subject, ": ", observation, " (observed ", observed_at, ")"], "")
+    CorpusDeclaration { declaration } =>
+      join([declaration.module_path, " ", declaration.decl_name], "")
+  }
+}

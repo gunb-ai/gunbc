@@ -1,0 +1,116 @@
+module finance.gunbai_ledger
+
+import std.types { NonEmptyStr, List }
+import std.measure { money_amount_micro }
+import finance.ledger {
+  PostingDirection, Debit, Credit,
+  Posting, LedgerTransaction,
+  ledger_first_imbalance, BalanceVerdict,
+  ledger_normal_balance, AccountNormalBalance,
+}
+
+// GUNBAI LLC's book — the same double-entry authority as the member's book, a different chart.
+//
+// The chart is THIS module's data. The posting machinery is finance.ledger. Reusing
+// finance.personal_ledger LedgerAccount here would fork one account authority across two books.
+
+type EntityAccount
+  = MercuryOperatingChecking
+  | MercuryCreditCardPayable
+  | DueToMember
+  | MemberCapital
+  | MemberLoanPayable
+  | EntityEquipment
+
+type EntityPosting = Posting<EntityAccount>
+type EntityTransaction = LedgerTransaction<EntityAccount>
+
+fn entity_account_normal_side(a: EntityAccount) -> PostingDirection {
+  match a {
+    MercuryOperatingChecking => Debit,
+    MercuryCreditCardPayable => Credit,
+    DueToMember => Credit,
+    MemberCapital => Credit,
+    MemberLoanPayable => Credit,
+    EntityEquipment => Debit,
+  }
+}
+
+// THE MT. COLLINS LOT ON THE ENTITY BOOK.
+//
+// Equipment GUNBAI acquired (ratified 2026-09-12), the company's own Mercury card, and the
+// unreimbursed obligation to the member. The 20,000.00 credit to DueToMember is the OBLIGATION
+// standing, not a CPA-approved DueToMemberAdvance. Classification-dependent postings (capital vs
+// loan vs personal expenditure vs confirmed advance) are absent while
+// finance.gunbai_llc mt_collins_owner_funded_classification is AwaitingCpaApproval.
+data mt_collins_lot_entity: EntityTransaction = LedgerTransaction {
+  id: "mt-collins-lot-entity-2026-09",
+  date_iso: "2026-09-08",
+  postings: [
+    Posting { account: EntityEquipment, direction: Debit, amount: money_amount_micro(count: 39078060000), memo: "Twenty Foxconn Mt. Collins, dual Altra Q80-30, goods plus shipping and tax; GUNBAI asset per ratification" },
+    Posting { account: MercuryCreditCardPayable, direction: Credit, amount: money_amount_micro(count: 19078060000), memo: "Mercury card, the company's own funding of the same invoice" },
+    Posting { account: DueToMember, direction: Credit, amount: money_amount_micro(count: 20000000000), memo: "Unreimbursed obligation to the member for the personal-card leg; not a CPA classification" },
+  ],
+  provenance: "Vendor order summary 2026-09-10 (20 items 35,000.00, shipping 1,650.00, tax 2,428.06, total 39,078.06) and the 2026-09-08 split settlement. The 20,000.00 personal leg is also finance.personal_ledger mt_collins_owner_funded_leg (DueFromGunbai). Classification of that leg awaits a CPA-attributed approval receipt.",
+}
+
+data march_member_capital: EntityTransaction = LedgerTransaction {
+  id: "gunbai-member-capital-2026-03-02",
+  date_iso: "2026-03-02",
+  postings: [
+    Posting { account: MercuryOperatingChecking, direction: Debit, amount: money_amount_micro(count: 30000000000), memo: "Member capital received into Mercury operating checking" },
+    Posting { account: MemberCapital, direction: Credit, amount: money_amount_micro(count: 30000000000), memo: "Same event as finance.personal_ledger march_wire; Mercury is this book's cash, not the member's" },
+  ],
+  provenance: "finance.personal_ledger march_wire and march_wire_classification. The personal book records the member's equity claim; this book records the cash and the capital.",
+}
+
+data august_member_capital: EntityTransaction = LedgerTransaction {
+  id: "gunbai-member-capital-2026-08-05",
+  date_iso: "2026-08-05",
+  postings: [
+    Posting { account: MercuryOperatingChecking, direction: Debit, amount: money_amount_micro(count: 70000000000), memo: "Member capital received into Mercury operating checking" },
+    Posting { account: MemberCapital, direction: Credit, amount: money_amount_micro(count: 70000000000), memo: "Same event as finance.personal_ledger august_wire" },
+  ],
+  provenance: "finance.personal_ledger august_wire and august_wire_classification.",
+}
+
+data gunbai_ledger_2026: List<EntityTransaction> = [
+  march_member_capital,
+  august_member_capital,
+  mt_collins_lot_entity,
+]
+
+fn gunbai_ledger_balance() -> BalanceVerdict {
+  ledger_first_imbalance(gunbai_ledger_2026)
+}
+
+fn due_to_member_balance() -> AccountNormalBalance {
+  ledger_normal_balance(gunbai_ledger_2026, DueToMember, entity_account_normal_side(DueToMember))
+}
+
+// The Mt. Collins 20k is this transaction's Due-to-Member credit, not the account
+// total. Spark (and any later owner-funded leg) must not be read as this obligation.
+fn mt_collins_due_to_member_recorded() -> AccountNormalBalance {
+  ledger_normal_balance([mt_collins_lot_entity], DueToMember, entity_account_normal_side(DueToMember))
+}
+
+// Settlement is a named later posting, not a zero account total. Live: none.
+type ObligationReimbursementStanding
+  = ReimbursementNotOnBooks
+  | ReimbursementPosted { transaction_id: NonEmptyStr, settled_iso: NonEmptyStr }
+
+data mt_collins_reimbursement: ObligationReimbursementStanding = ReimbursementNotOnBooks
+
+// Remaining lots that belong on this book but are not yet posted. The posted
+// arm is SparkCompanyBookStanding / EntityBasisPosted, not a second coproduct here.
+// This type names the unposted gap a DeclarationRef can point at.
+type EntityLotPostingStanding
+  = LotUnpostedOnEntityBook { obligation: NonEmptyStr }
+
+data spark_microcenter_lot_unposted: EntityLotPostingStanding = LotUnpostedOnEntityBook {
+  obligation: "The Micro Center 29,697.37 Spark lot is still finance.personal_ledger spark_purchase. Recut it to EntityEquipment against DueToMember here, and DueFromGunbai on the member book, so the member claim still agrees - that join is gunbc-personal finance.member_claim now, since it reads both books. mt_collins_due_to_member reads mt_collins_lot_entity, not the DueToMember account total.",
+}
+
+data q80_es_lot_entity_basis_unposted: EntityLotPostingStanding = LotUnpostedOnEntityBook {
+  obligation: "The 2026-08-18 sixty-two Q80-30 ES lot (4,750.49) has no equipment posting on gunbai_ledger_2026 yet.",
+}

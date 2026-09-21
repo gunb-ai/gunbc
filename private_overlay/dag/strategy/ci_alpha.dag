@@ -1,0 +1,233 @@
+module strategy.ci_alpha
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.nat { Nat }
+import strategy.ci_node_build {
+  NodeBuildCandidate, node_build_candidates, selected_build,
+  stranded_cores, unused_standard_memory_gib, known_capex_micro,
+  known_capex_per_unit_micro, sellable_units, standard_units, total_cores, total_memory_gib,
+}
+import strategy.ci_runner_economics { retail_per_unit_minute_micro }
+
+// WHERE THE ADVANTAGE ACTUALLY COMES FROM.
+//
+// A price under the market is a spread, not an explanation. If the only thing behind the number is
+// "we bought cheaper hardware", the advantage lasts exactly as long as nobody else does. This module
+// names the separate sources, says which of them are measurable today, and refuses to add them up -
+// because two of the seven are not costs at all and summing them would double-count.
+
+type AlphaEvidence
+  = AlphaDerived { note: NonEmptyStr }
+  | AlphaAsserted { obligation: NonEmptyStr }
+
+fn alpha_is_derived(e: AlphaEvidence) -> Bool {
+  match e {
+    AlphaDerived { note } => true,
+    AlphaAsserted { obligation } => false,
+  }
+}
+
+fn alpha_evidence_label(e: AlphaEvidence) -> NonEmptyStr {
+  match e {
+    AlphaDerived { note } => "derived",
+    AlphaAsserted { obligation } => "claimed",
+  }
+}
+
+type AlphaSource {
+  name: NonEmptyStr
+  mechanism: NonEmptyStr
+  evidence: AlphaEvidence
+  durability: NonEmptyStr
+}
+
+data acquisition_alpha: AlphaSource = AlphaSource {
+  name: "Acquisition",
+  mechanism: "Used and liquidated board, processors and memory against replacement-cost hardware. It lowers the fixed cost of carrying capacity that is not yet sold, which is exactly the cost that hurts before demand is proven.",
+  evidence: AlphaDerived { note: "The build model carries the operator's purchase prices and derives capex from them, so the size of this advantage moves when the prices do." },
+  durability: "Weakest of the seven. It is a purchasing advantage, not a structural one, and it disappears the moment someone else shops the same market.",
+}
+
+data packing_alpha: AlphaSource = AlphaSource {
+  name: "Packing",
+  mechanism: "Physical non-SMT cores, plus enough memory to expose those cores as sellable units. Memory that runs out before cores strands cores that cannot earn, so cheap RAM can cost more per sellable unit than expensive RAM.",
+  evidence: AlphaDerived { note: "Sellable units and stranded cores are both derived from the DIMM population, and the build comparison shows the cheapest memory producing the worst unit." },
+  durability: "Structural while the unit definition holds. It is arithmetic about the shape being sold, not a deal.",
+}
+
+data work_elimination_alpha: AlphaSource = AlphaSource {
+  name: "Work elimination",
+  mechanism: "Affected-set selection, content-addressed materialization, cache reuse, incremental execution, and recomputation only where it is cheaper than retention. The customer buys a CI outcome; we execute fewer unit-minutes than a rerun-the-world system charges for.",
+  evidence: AlphaAsserted { obligation: "NOT MEASURABLE TODAY, and the reason is now specific rather than a missing experiment. Measured 2026-08-20 on gunbc: affected-set selection was deleted at the root in the floor cut and the replacement fold runs the whole 9776-witness roster every time by directive, so the admitted arm is UNEXERCISED. The required-floor path captures no per-claim duration, so it is UNPRODUCED. And the surviving selection authority has no caller and no counting surface, so it is UNREACHABLE. NEITHER arm is expressible in unit-minutes, not just the admitted one. Closing this requires instrumenting the floor with per-claim duration AND shared phase costs, an identity-grain selection receipt, and a PAIRED EXECUTION harness - summing full-run durations of selected rows is not the counterfactual, because shared preparation and cross-claim memoization mean an omitted claim may have paid work the selected run would owe." },
+  durability: "Strongest of the seven if it holds, because it is the only one a competitor cannot buy. It is also the only one with no measurement behind it, and as of 2026-08-20 the only one our own product does not exercise. The other six are purchasable by anyone; this one is ours and is currently neither running nor priceable.",
+}
+
+data operational_alpha: AlphaSource = AlphaSource {
+  name: "Operational",
+  mechanism: "Network boot, reconstructible nodes, upstream durable authority, centralized repair points, typed drain and replacement. Fewer human hours per machine means one operator holds more machines.",
+  evidence: AlphaAsserted { obligation: "No labour figure exists anywhere in this model - no salary, no hours per incident, no failure rate. This alpha cannot be sized until the cost it reduces is carried at all." },
+  durability: "Structural, and it compounds with node count.",
+}
+
+data product_alpha: AlphaSource = AlphaSource {
+  name: "Product premium",
+  mechanism: "The gap between a raw VM and a CI service: integration, job isolation, logs, cache, billing, support, security posture, abuse handling, receipts. It is why a hosted runner costs several times a spot instance.",
+  evidence: AlphaDerived { note: "The market table separates raw infrastructure from CI products, so the premium between the two classes is visible rather than being read as our margin." },
+  durability: "Real and expensive. It is a cost to build before it is an advantage, and most of that cost is unpriced in this model.",
+}
+
+data spill_routing_alpha: AlphaSource = AlphaSource {
+  name: "Spill routing",
+  mechanism: "The best admitted route for this job rather than one default cloud for every job. A queue-tolerant Arm job takes the cheapest Arm route; a job needing durable dedicated capacity takes a costlier one; an x86 job goes somewhere else entirely.",
+  evidence: AlphaDerived { note: "Each job shape selects its own cheapest admissible route from the offer table, and the spread between the shapes is the size of this advantage." },
+  durability: "Durable but bounded. It shrinks as competitors do the same thing, and it depends on keeping route readings current.",
+}
+
+data site_density_alpha: AlphaSource = AlphaSource {
+  name: "Site density",
+  mechanism: "Rent, transit, access and cooling are fixed against the site. Their cost per sellable unit falls as admitted node count rises, so the marginal node is dramatically cheaper than the first.",
+  evidence: AlphaDerived { note: "Site cost is allocated across admitted nodes, so the per-node figure moves when the node count does." },
+  durability: "Structural until a step cost is hit. Power, cooling capacity and floor area all have thresholds this model does not read.",
+}
+
+data alpha_sources: List<AlphaSource> = [
+  acquisition_alpha,
+  packing_alpha,
+  work_elimination_alpha,
+  operational_alpha,
+  product_alpha,
+  spill_routing_alpha,
+  site_density_alpha,
+]
+
+fn derived_alpha_count() -> Int {
+  count(filter(alpha_sources, a => alpha_is_derived(e: a.evidence)))
+}
+
+fn asserted_alpha_count() -> Int {
+  count(filter(alpha_sources, a => alpha_is_derived(e: a.evidence) == false))
+}
+
+data alpha_summation_refusal: NonEmptyStr = "These do not add up to a number, and the model refuses to add them. Acquisition and packing both act on capex; site density and spill routing act on different cost bases; product premium is a price effect, not a cost effect; and work elimination changes the quantity sold rather than the cost of a unit. Summing them would count the same dollar more than once and would give the least evidenced source the same standing as the arithmetic ones."
+
+// ---------------------------------------------------------------------------------------------
+// THREE SEPARATE READINGS. These answer different questions and share no arithmetic. Collapsing
+// them is the classic move that lets a customer's saving be reported as an operator's profit.
+// ---------------------------------------------------------------------------------------------
+
+// What the customer keeps by not buying from a competitor. This is THEIR money, not ours.
+type CustomerAlpha {
+  competitor: NonEmptyStr
+  competitor_micro: Int
+  our_price_micro: Int
+  saving_micro: Int
+  saving_permille: Int
+}
+
+fn customer_alpha(competitor: NonEmptyStr, competitor_micro: Int, our_price_micro: Int) -> CustomerAlpha {
+  CustomerAlpha {
+    competitor: competitor,
+    competitor_micro: competitor_micro,
+    our_price_micro: our_price_micro,
+    saving_micro: if competitor_micro > our_price_micro { competitor_micro - our_price_micro } else { 0 },
+    saving_permille: if competitor_micro > our_price_micro {
+      (competitor_micro - our_price_micro) * 1000 / competitor_micro
+    } else { 0 },
+  }
+}
+
+// What the operator keeps after the costs the model actually carries. This is OURS, and it is
+// smaller than it looks because most business costs are still unpriced.
+type OperatorContribution {
+  revenue_micro: Int
+  modelled_variable_micro: Int
+  allocated_fixed_micro: Int
+  contribution_micro: Int
+}
+
+// How much work the software did not have to do. This is neither money nor margin; it is a quantity
+// of compute, and turning it into money requires a price and a baseline that nobody has measured.
+type SoftwareExecutionAlpha
+  = WorkAvoidedMeasured { baseline_unit_minutes: Int, admitted_unit_minutes: Int, receipt: NonEmptyStr }
+  | WorkAvoidedUnmeasured { obligation: NonEmptyStr }
+
+data selected_software_execution_alpha: SoftwareExecutionAlpha = WorkAvoidedUnmeasured {
+  obligation: "SUPERSEDED AS AN INSTRUCTION. This asked for a run through both paths; measurement on 2026-08-20 established that neither path can report unit-minutes on gunbc today - the floor carries no per-claim duration and the selection authority has no caller. The experiment cannot be performed as written, and performing something adjacent to it produces a number about a different subject. See work_elimination_alpha for what must be built first.",
+}
+
+fn work_avoided_permille(a: SoftwareExecutionAlpha) -> Int {
+  match a {
+    WorkAvoidedMeasured { baseline_unit_minutes, admitted_unit_minutes, receipt } =>
+      if baseline_unit_minutes > 0 {
+        (baseline_unit_minutes - admitted_unit_minutes) * 1000 / baseline_unit_minutes
+      } else { 0 },
+    WorkAvoidedUnmeasured { obligation } => 0 - 1,
+  }
+}
+
+data three_readings_note: NonEmptyStr = "Customer saving, operator contribution and work avoided are three different quantities in three different units, and no arithmetic connects them here. A customer saving forty percent against a competitor says nothing about whether we make money at that price, and executing half as many unit-minutes as a rerun-the-world system is a quantity of compute rather than either one."
+
+// ---------------------------------------------------------------------------------------------
+// PACKING ALPHA, sized. This is the one source with a clean derivation available today, and it is
+// the one that changes a build decision, so it is computed rather than described.
+// ---------------------------------------------------------------------------------------------
+
+type PackingReading {
+  label: NonEmptyStr
+  cores: Nat
+  memory_gib: Nat
+  standard_units: Nat
+  sellable_units: Nat
+  stranded_cores: Nat
+  unused_memory_gib: Nat
+  capex_micro: Int
+  capex_per_unit_micro: Int
+}
+
+fn packing_reading(b: NodeBuildCandidate) -> PackingReading {
+  PackingReading {
+    label: b.label,
+    cores: total_cores(c: b),
+    memory_gib: total_memory_gib(c: b),
+    standard_units: standard_units(c: b),
+    sellable_units: sellable_units(c: b),
+    stranded_cores: stranded_cores(c: b),
+    unused_memory_gib: unused_standard_memory_gib(c: b),
+    capex_micro: known_capex_micro(c: b),
+    capex_per_unit_micro: known_capex_per_unit_micro(c: b),
+  }
+}
+
+data packing_conclusion_note: NonEmptyStr = "The cheapest build is not the cheapest sellable unit, and the most expensive one is not either. Capex per unit moves against the memory price at the bottom of the range - the smallest modules leave most of the cores with no memory behind them - and it moves against the density premium at the top, where high-density modules cost roughly twice per gibibyte. Stranded cores and unused memory are the two ways a build pays for something it cannot sell, and a balanced candidate has neither."
+
+// ---------------------------------------------------------------------------------------------
+// TWO WORK-ELIMINATION QUESTIONS, AND ONLY ONE OF THEM IS OURS TO SELL YET. Separated because
+// collapsing them is how a mechanism proven on our own workload gets advertised as a customer
+// guarantee it has not earned.
+// ---------------------------------------------------------------------------------------------
+
+type WorkEliminationReach
+  = InternalWorkload { question: NonEmptyStr, answerable_by: NonEmptyStr }
+  | ExternalWorkload { question: NonEmptyStr, blocked_by: NonEmptyStr, unblocking_contracts: NonEmptyStr }
+
+data internal_work_elimination: WorkEliminationReach = InternalWorkload {
+  question: "Can gunbc select and execute fewer witnesses for a change than its full roster, while preserving the relevant verdicts?",
+  answerable_by: "The instrumentation named in work_elimination_alpha: per-claim duration and shared phase costs on the required-floor path, an identity-grain selection receipt, and a paired-execution harness. Answerable in principle today; nothing about it is undecidable.",
+}
+
+data saleable_work_elimination: WorkEliminationReach = ExternalWorkload {
+  question: "Can the product execute less work than the customer's existing CI provider would bill them for?",
+  blocked_by: "The customer's job is opaque at the execution boundary. A GitHub-native runner accepts an existing Actions job and runs a stock runner; a one-line runs-on substitution does not expose that job's tests, compilation units, dependencies, effects, or safe omission rules to the fabric. Nothing about proving the mechanism on our own modelled workload transfers to an arbitrary customer workflow.",
+  unblocking_contracts: "A DAG-native CI plan whose work units and dependencies are declared; sound whole-job receipt reuse where inputs, effects, runtime closure and outputs are declared; a language-aware integration that derives affected units; or customer-authored work partitions carrying explicit correctness obligations. Any one of these reaches the external product boundary and makes the question askable.",
+}
+
+type SkuPricingBasis
+  = MeteredExecutionOnly { basis: NonEmptyStr, refused_claim: NonEmptyStr }
+  | StructuralWorkElimination { basis: NonEmptyStr, evidence: NonEmptyStr }
+
+data first_runner_sku_pricing_basis: SkuPricingBasis = MeteredExecutionOnly {
+  basis: "Metered execution economics and operational reliability. The first SKU is sold on what a minute costs and whether the platform keeps its promises, both of which we can substantiate.",
+  refused_claim: "It is NOT advertised or priced as structurally eliminating customer work. That claim is unearned twice over: the mechanism is currently unmeasurable even on our own workload, and even a green internal measurement would be a fact about a modelled workload rather than about an arbitrary customer job. Pricing against it would sell a guarantee whose evidence is a different subject.",
+}
+
+data alpha_reach_note: NonEmptyStr = "The internal measurement is worth taking as soon as it can be taken. It is the first specimen proving the prospective moat, and it is what a later external contract would be built on. It is not a market-wide alpha and must not be quoted as one."

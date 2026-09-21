@@ -1,0 +1,38 @@
+module test.probe.selection_assessment_construction_probe
+
+// THIS MODULE MUST NOT RESOLVE. It is the executing evidence that the constructor confinement on
+// the selection carriers is real, and it is the only form that evidence can take: the state it
+// describes has no representation inside an ACCEPTED program, so the probe has to be source the
+// compiler REFUSES rather than a value a witness inspects. DESIGN 4b: a compiler is precisely a
+// thing whose regression probes are invalid programs, and where the refusal is authorable,
+// declining to enrol it is specification-without-execution.
+//
+// It is NOT a known red. A known red is a DEBT -- a witness that ought to pass and does not, whose
+// row retires when the repository is repaired. This is EVIDENCE, and it retires only if the wall it
+// guards is deliberately removed. Filing it under the quarantine roster would put one name on two
+// materially different contracts.
+
+import std.types { NonEmptyStr, List, Int }
+import std.decl_ref { DeclarationRef, decl_ref }
+import strategy.workflow_stage_gate {
+  SelectionAssessment, ProcedureRegistration, PanelConfigured, ProcedureSupportsSelection,
+}
+
+data probe_ref: DeclarationRef = decl_ref(module_path: "test.probe", decl_name: "subject")
+
+// Both refusals are asserted, because they are two walls and not one: the assessment may not be
+// forged, and neither may the registration it would have to carry.
+fn forged_assessment() -> SelectionAssessment {
+  SelectionAssessment {
+    self_ref: probe_ref,
+    gate: probe_ref,
+    procedure: ProcedureRegistration { identity: probe_ref, configuration: PanelConfigured { quorum: 1 } },
+    selected: probe_ref,
+    compared_population: [probe_ref],
+    outcome: ProcedureSupportsSelection,
+  }
+}
+
+fn probe_main() -> DeclarationRef {
+  forged_assessment().selected
+}

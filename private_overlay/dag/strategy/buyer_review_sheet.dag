@@ -1,0 +1,1734 @@
+module strategy.buyer_review_sheet
+
+import std.types { Int, Bool, String, NonEmptyStr, List }
+import std.decimal { ExactDecimal, fixed_point_wire }
+import std.algebra { trim }
+import std.measure { byte_size_count }
+import strategy.owner_action {
+  OwnerStep, ExternalWaitWork, owner_steps, steps_with_id, step_is_discharged, step_is_externally_refused,
+  external_wait_outcome, AwaitedAnswerOutstanding, AwaitedAnswerReceived, AwaitedAnswerRefused, wait_next_check,
+  ram_purchase_standing_text, current_ram_purchase_standing, step_hw1_jslot_census,
+  HeldPartIdentityStanding, HeldPartsFromPresentCensus, HeldPartsNotPresentState, HeldPartsUncensused,
+  current_held_part_identity_standing, held_part_identity_text
+}
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
+import extdeps.currency.currency { CurrencyCode, Usd, currency_code_eq }
+import extdeps.dns.domain_name { fold_dns_case_string }
+import extdeps.languages.json.number { read_json_number_lexeme, JsonNumberExact, JsonNumberOutsideExactFragment }
+import extdeps.memory.types {
+  DimmBuffering, Unbuffered, Registered, LoadReduced, DramModuleCatalogRow, dram_generation_number,
+  DramDieStacking, MonolithicDie, DualDiePackage, ThreeDimensionalStacked
+}
+import extdeps.memory.samsung { m386a4g40dm0_cpb_catalog, m393a8g40d40_crb0q_catalog }
+import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_catalog }
+import extdeps.memory.micron { mta36ads2g72pz_2g1a1_catalog, mta36asf2g72pz_2g1a2_catalog }
+import extdeps.ampere.mt_collins_product_brief.memory_population { mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs }
+import extdeps.ebay.inventory {
+  ConditionEnum, condition_wire_label,
+  New, NewOther, NewWithDefects, CertifiedRefurbished, ExcellentRefurbished, VeryGoodRefurbished,
+  GoodRefurbished, SellerRefurbished, LikeNew, PreOwnedExcellent, UsedExcellent, PreOwnedFair,
+  UsedVeryGood, UsedGood, UsedAcceptable
+}
+import extdeps.ebay.browse {
+  BrowseItem, BrowseConvertedAmount, BrowseShippingOption, BrowseSeller,
+  BrowseSearchFilter, BrowseConditionAnyOf, BrowseDeliveryCountry,
+  browse_api_contract_version, browse_condition_from_id,
+  browse_search_limit_max, browse_search_page_admission, BrowseSearchPageAdmitted
+}
+import extdeps.ebay.rate_limits { ebay_buy_browse_rate_limit }
+import product.capacity.quota { quota_root_pool }
+import extdeps.ocp.mt_jade.memory_mixing {
+  mt_jade_mixed_dimm_support, mt_jade_mixed_dimm_support_printed_label, SameChannel, Mixing1rAnd2r,
+  MixedDimmSupportResolved, MixedDimmSupportUnmodelled, MixedDimmSupportAmbiguous
+}
+import strategy.buyers_pipeline {
+  DemandRow, ListingObservation, ConditionClass, ListedWorking, ListedForParts, demand_ddr4_rdimm,
+  DemandQuantityEstablished, DemandQuantityUnestablished, demand_quantity_text
+}
+import strategy.fleet_convergence {
+  SelectionOutcome, SelectionAdmitted, SelectionRefusedIncompatible, SelectionRefusedSellerTrust,
+  SelectionRefusedByProposal, SelectionRefusedQuantityUnestablished, select_listing
+}
+
+// THE REVIEW SHEET THE OPERATOR BUYS FROM (plan item buyer-agent-pipeline). One row per listing,
+// keyed by the marketplace's listing identity, ranked by the spread between the delivered unit
+// price and the demand row's viability ceiling. Every compatibility attribute is read three ways --
+// corroborated by a catalogued part number, stated only, or absent and said to be absent -- and a
+// blank cell is never one of them. The sheet is a projection of these rows: CSV, a generated page
+// and the Google Sheets realization (its own lane) all bind to the same columns.
+//
+// TWO SOURCES FEED ONE EVIDENCE SHAPE, and the operator's is the floor rather than the fallback:
+// a listing the operator transcribes enters exactly where a Browse read does, so the sheet works
+// on day one with no eBay credential. The API is the scheduled enhancement, gated below.
+
+// ---------------------------------------------------------------------------------------------
+// ACCESS, DERIVED FROM THE OWNER QUEUE. The eBay gates are rows in strategy.owner_action's roster:
+// the developer-account wait, the production-access step (discharged by an observed 200 from a
+// production Browse search), and -- only if that had been refused and an application sent -- the
+// application's decision wait. This module holds no gate state; it reads each
+// wait's answer through external_wait_outcome, the one mapping from a step's progress to an
+// awaited answer, and each action through the roster's own discharge predicates. The gates are
+// read in the only order they can open, so evidence about one never advances another.
+//
+// The scheduled read is not built. Its trigger is ApiSourceReady AND observed Browse response
+// bodies: approval makes observation possible, and only observed bodies can witness the fold.
+// ---------------------------------------------------------------------------------------------
+
+data developer_account_wait_step: NonEmptyStr = "ebay-developer-account-wait"
+
+data buy_api_dispatch_step: NonEmptyStr = "ebay-browse-production-access"
+
+data buy_api_decision_wait_step: NonEmptyStr = "ebay-buy-api-application-decision-wait"
+
+type ApiSourceStanding
+  = ApiSourceReady
+  | ApiSourceAwaitingAnswer { step_id: NonEmptyStr, awaited_event: NonEmptyStr, next_check: NonEmptyStr }
+  | ApiSourceAwaitingOperator { step_id: NonEmptyStr }
+  | ApiSourceRefused { step_id: NonEmptyStr, cause: NonEmptyStr }
+  | ApiSourceGateNotRostered { step_id: NonEmptyStr }
+
+type GateReading
+  = GateOpen
+  | GateHolds { standing: ApiSourceStanding }
+
+fn wait_gate(steps: List<OwnerStep>, step_id: NonEmptyStr) -> GateReading {
+  match steps_with_id(steps: steps, step_id: step_id).first() {
+    Absent => GateHolds { standing: ApiSourceGateNotRostered { step_id: step_id } }
+    Present { value: step } => match step.work {
+      ExternalWaitWork { wait: w } => match external_wait_outcome(wait: w, progress: step.progress) {
+        AwaitedAnswerOutstanding => GateHolds { standing: ApiSourceAwaitingAnswer { step_id: step_id, awaited_event: w.awaited_event, next_check: wait_next_check(window: w.window) } }
+        AwaitedAnswerRefused { receipt: _, cause: c } => GateHolds { standing: ApiSourceRefused { step_id: step_id, cause: c } }
+        AwaitedAnswerReceived { receipt: _ } => GateOpen
+      }
+      _ => GateHolds { standing: ApiSourceGateNotRostered { step_id: step_id } }
+    }
+  }
+}
+
+fn action_gate(steps: List<OwnerStep>, step_id: NonEmptyStr) -> GateReading {
+  match steps_with_id(steps: steps, step_id: step_id).first() {
+    Absent => GateHolds { standing: ApiSourceGateNotRostered { step_id: step_id } }
+    Present { value: step } => if step_is_discharged(step: step) { GateOpen }
+      else if step_is_externally_refused(step: step) { GateHolds { standing: ApiSourceRefused { step_id: step_id, cause: "the operator step was refused" } } }
+      else { GateHolds { standing: ApiSourceAwaitingOperator { step_id: step_id } } }
+  }
+}
+
+fn api_source_standing(steps: List<OwnerStep>) -> ApiSourceStanding {
+  match wait_gate(steps: steps, step_id: developer_account_wait_step) {
+    GateHolds { standing: s } => s
+    GateOpen => match action_gate(steps: steps, step_id: buy_api_dispatch_step) {
+      GateHolds { standing: s } => s
+      GateOpen => match steps_with_id(steps: steps, step_id: buy_api_decision_wait_step).first() {
+        Absent => ApiSourceReady
+        Present { value: _ } => match wait_gate(steps: steps, step_id: buy_api_decision_wait_step) {
+          GateHolds { standing: s } => s
+          GateOpen => ApiSourceReady
+        }
+      }
+    }
+  }
+}
+
+fn api_source_standing_text(s: ApiSourceStanding) -> String {
+  match s {
+    ApiSourceReady => "eBay Browse: production access observed (owner step ebay-browse-production-access). This standing reads the ACCESS steps only. Retention applicability is tracked at owner step ebay-exemption-applicability, permission to persist at ebay-retention-permitted, and the scheduled read at ebay-browse-scheduled-scan"
+    ApiSourceAwaitingAnswer { step_id: id, awaited_event: e, next_check: n } => join(["eBay Browse: awaiting ", e as String, " (owner step ", id as String, ", next check ", n as String, "); operator-entered listings remain the source"], "")
+    ApiSourceAwaitingOperator { step_id: id } => join(["eBay Browse: blocked on operator step ", id as String, "; operator-entered listings remain the source"], "")
+    ApiSourceRefused { step_id: id, cause: c } => join(["eBay Browse: REFUSED at owner step ", id as String, ": ", c as String, "; operator-entered listings remain the only source"], "")
+    ApiSourceGateNotRostered { step_id: id } => join(["eBay Browse: gate ", id as String, " is not in the owner roster, so access cannot be derived"], "")
+  }
+}
+
+fn current_api_source_standing() -> ApiSourceStanding {
+  api_source_standing(steps: owner_steps)
+}
+
+// ---------------------------------------------------------------------------------------------
+// ONE EVIDENCE SHAPE, TWO SOURCES.
+// ---------------------------------------------------------------------------------------------
+
+type ObservationSource
+  = BrowseApiRead { contract_version: NonEmptyStr, read_at: NonEmptyStr }
+  | OperatorEntered { entered_at: NonEmptyStr }
+
+type StatedAspect {
+  name: String
+  value: String
+}
+
+// NO eBAY USER IDENTITY FIELD IS WRITABLE HERE, AND THE FILED DECLARATION RESTS PARTLY ON THAT. The
+// exemption filed with eBay on 2026-09-11 states that the data model has no field that can hold eBay
+// user personal data. These missing fields are necessary for that assertion and do not establish it:
+// free text (title, url, stated aspects), from the API as well as from an operator, is not policed.
+// Adding a dedicated identity field contradicts the assertion and requires reassessing the filing. The app is exempt from eBay's
+// Marketplace Account Deletion notifications only because it persists no eBay user data, so neither this type nor the operator
+// entry below has a field for a seller's identity: the Browse fold reads the seller's feedback
+// figures (account reputation, not identity) and nothing else from BrowseSeller. The refusal probe
+// dag/test/probe/seller_identity_unwritable_probe.dag keeps the missing field missing. What this does
+// NOT cover, stated so nobody reads the probe as more: title, URL and stated aspects are free text,
+// copied from the Browse API as well as typed by an operator, and nothing polices what they contain.
+// A SELLER'S FEEDBACK IS READ OR IT IS UNAVAILABLE, and unavailable is never zero. Reading a missing
+// percentage as 0 permille would fabricate a measured poor reputation; the listing is refused with
+// the reason instead.
+type SellerFeedbackReading
+  = SellerFeedbackRead { permille: Int, count: Int }
+  | SellerFeedbackUnavailable { why: String }
+
+// WHAT THE LISTING SAYS ABOUT THE LOT'S UNIFORMITY, as a reading with three arms and no blank.
+// The buying rule this feeds (RequireSocketFillUniformity below) is that every module that will
+// share a socket is one part number; the listing either states one part number for every unit it
+// ships, states that the lot is mixed, or says nothing either way. "Says nothing" is Unknown
+// downstream and is never read as uniform. A single part number here is the seller's statement
+// about the LOT; the part number's catalog row, if any, is what corroborates the attribute cells.
+type LotUniformityStatement
+  = SinglePartNumberStated { part_number: NonEmptyStr }
+  | MixedLotStated { stated_as: String }
+  | LotUniformityUnstated
+
+type ListingEvidence {
+  listing_key: NonEmptyStr
+  url: String
+  title: String
+  source: ObservationSource
+  item_price_micro: Int
+  shipping_micro: Int?
+  lot_size: Int
+  available_estimate: Int?
+  quantity_verified: Int
+  condition: ConditionEnum?
+  seller_feedback: SellerFeedbackReading
+  stated_aspects: List<StatedAspect>
+  part_numbers: List<String>
+  lot_uniformity: LotUniformityStatement
+  photo_count: Int
+}
+
+// What the operator transcribes from a listing page. The price and shipping are what the page
+// shows at the operator's own delivery address; lot_size is the number of modules one purchase
+// delivers. quantity_verified is the depth the operator has VERIFIED with the seller (a
+// purchase-quantity probe, a seller's answer) -- the scout contract's own verification act -- and
+// is zero when nothing was verified; the marketplace estimate never enters it. lot_uniformity is
+// the operator's transcription of what the page states about the lot, and it is the one place
+// the entry names a part number: a single stated part number is both the lot statement and the
+// part number the catalog is asked about.
+type OperatorListingEntry {
+  listing_key: NonEmptyStr
+  url: String
+  title: String
+  entered_at: NonEmptyStr
+  item_price_micro: Int
+  shipping_micro: Int?
+  lot_size: Int
+  available_estimate: Int?
+  quantity_verified: Int
+  condition: ConditionEnum?
+  seller_feedback_permille: Int?
+  seller_feedback_count: Int?
+  stated_aspects: List<StatedAspect>
+  lot_uniformity: LotUniformityStatement
+  photo_count: Int
+}
+
+fn evidence_from_operator_entry(e: OperatorListingEntry) -> ListingEvidence {
+  ListingEvidence {
+    listing_key: e.listing_key,
+    url: e.url,
+    title: e.title,
+    source: OperatorEntered { entered_at: e.entered_at },
+    item_price_micro: e.item_price_micro,
+    shipping_micro: e.shipping_micro,
+    lot_size: e.lot_size,
+    available_estimate: e.available_estimate,
+    quantity_verified: e.quantity_verified,
+    condition: e.condition,
+    seller_feedback: match e.seller_feedback_permille {
+      Absent => SellerFeedbackUnavailable { why: "the operator entry records no feedback percentage" }
+      Present { value: p } => match e.seller_feedback_count {
+        Absent => SellerFeedbackUnavailable { why: "the operator entry records no feedback count" }
+        Present { value: n } => SellerFeedbackRead { permille: p, count: n }
+      }
+    },
+    stated_aspects: e.stated_aspects,
+    part_numbers: match e.lot_uniformity { SinglePartNumberStated { part_number: p } => [p as String]  _ => [] },
+    lot_uniformity: e.lot_uniformity,
+    photo_count: e.photo_count,
+  }
+}
+
+// THE BROWSE FOLD REFUSES RATHER THAN GUESSING. A listing without a price, priced in a currency
+// the demand row is not priced in, or with a price string outside the exact decimal fragment is a
+// typed refusal the run reports; it never enters the sheet with a fabricated number. Missing
+// shipping is NOT a refusal here: it survives as an absent shipping figure, and the delivered-price
+// step below renders it as unformable rather than as free.
+type BrowseEvidenceReading
+  = BrowseEvidenceRead { evidence: ListingEvidence }
+  | BrowseEvidenceRefused { listing_key: NonEmptyStr, cause: NonEmptyStr }
+
+type MicroReading
+  = MicroRead { micro: Int }
+  | MicroRefused { cause: NonEmptyStr }
+
+fn exact_decimal_to_micro(d: ExactDecimal) -> MicroReading {
+  if d.units < 0 {
+    MicroRefused { cause: "negative amount" }
+  } else if d.fraction_digits > 6 {
+    MicroRefused { cause: "more than six fraction digits" }
+  } else {
+    MicroRead { micro: d.units * browse_pow10(n: 6 - d.fraction_digits) }
+  }
+}
+
+fn browse_pow10(n: Int) -> Int {
+  if n <= 0 { 1 } else { 10 * browse_pow10(n: n - 1) }
+}
+
+// A Browse amount is a decimal STRING; its exact reading is the RFC 8259 number fragment
+// (extdeps.languages.json.number), which reads "54.99" without binary floating point.
+fn amount_micro(a: BrowseConvertedAmount, currency: CurrencyCode) -> MicroReading {
+  if !currency_code_eq(a: a.currency, b: currency) {
+    MicroRefused { cause: "amount is not in the demand row's currency" }
+  } else {
+    match read_json_number_lexeme(lexeme: a.value) {
+      JsonNumberExact { value: d } => exact_decimal_to_micro(d: d)
+      JsonNumberOutsideExactFragment { lexeme: _, refusal: _ } => MicroRefused { cause: "amount is not an exact decimal" }
+    }
+  }
+}
+
+// The cheapest shipping option the upstream quoted for our contextual location. Options quoted
+// without a cost, or in another currency, are skipped; if none carries a cost the result is absent.
+fn cheapest_shipping_micro(options: List<BrowseShippingOption>, currency: CurrencyCode) -> Int? {
+  fold(options, init: none, f: fn(acc, o) {
+    match o.shippingCost {
+      Absent => acc
+      Present { value: cost } => match amount_micro(a: cost, currency: currency) {
+        MicroRefused { cause: _ } => acc
+        MicroRead { micro: m } => match acc {
+          Absent => Present { value: m }
+          Present { value: best } => if (m < best) { Present { value: m } } else { acc }
+        }
+      }
+    }
+  })
+}
+
+fn feedback_permille(raw: String?) -> Int? {
+  match raw {
+    Absent => none
+    Present { value: s } => match read_json_number_lexeme(lexeme: s) {
+      JsonNumberExact { value: d } => match exact_decimal_to_micro(d: d) {
+        MicroRead { micro: m } => Present { value: m / 100000 }
+        MicroRefused { cause: _ } => none
+      }
+      JsonNumberOutsideExactFragment { lexeme: _, refusal: _ } => none
+    }
+  }
+}
+
+fn browse_seller_feedback(seller: BrowseSeller?) -> SellerFeedbackReading {
+  match seller {
+    Absent => SellerFeedbackUnavailable { why: "the listing carries no seller feedback" }
+    Present { value: s } => match feedback_permille(raw: s.feedbackPercentage) {
+      Absent => SellerFeedbackUnavailable { why: "the seller feedback percentage is absent or not an exact decimal" }
+      Present { value: p } => match s.feedbackScore {
+        Absent => SellerFeedbackUnavailable { why: "the seller feedback score is absent" }
+        Present { value: n } => SellerFeedbackRead { permille: p, count: n }
+      }
+    }
+  }
+}
+
+fn browse_part_numbers(item: BrowseItem) -> List<String> {
+  let from_item = match item.mpn { Present { value: m } => [m]  Absent => [] }
+  let from_product = match item.product {
+    Absent => []
+    Present { value: p } => match p.mpns { Present { value: ms } => ms  Absent => [] }
+  }
+  concat(from_item, from_product)
+}
+
+fn browse_stated_aspects(item: BrowseItem) -> List<StatedAspect> {
+  match item.localizedAspects {
+    Absent => []
+    Present { value: xs } => map(xs, a => StatedAspect { name: a.name, value: a.value })
+  }
+}
+
+// THE LOT STATEMENT A BROWSE ITEM CARRIES. A title or aspect value that calls the lot mixed or
+// assorted is a statement that it is; otherwise the listing-level MPN, when the item carries one,
+// is the seller's one part number for what the listing ships. Product-level MPNs (product.mpns)
+// are NOT read here: a catalog product can list several equivalent numbers, and reading that as
+// either "one part number" or "mixed" would fabricate a statement the seller never made. They
+// remain in part_numbers for the catalog lookup. Depth is never verified by a Browse read: the
+// estimate is a claim, so quantity_verified is zero here.
+data mixed_lot_tokens: List<String> = ["mixed", "assorted", "various", "mix"]
+
+fn mixed_lot_statement(title: String, aspects: List<StatedAspect>) -> String? {
+  let from_title = fold(text_tokens(s: title), init: none, f: fn(acc, t) {
+    match acc { Present { value: _ } => acc  Absent => if contains(mixed_lot_tokens, t) { Present { value: join(["title: ", title], "") } } else { none } }
+  })
+  fold(aspects, init: from_title, f: fn(acc, a) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => fold(text_tokens(s: a.value), init: none, f: fn(inner, t) {
+        match inner { Present { value: _ } => inner  Absent => if contains(mixed_lot_tokens, t) { Present { value: join([a.name, ": ", a.value], "") } } else { none } }
+      })
+    }
+  })
+}
+
+fn browse_lot_uniformity(item: BrowseItem) -> LotUniformityStatement {
+  let title = match item.title { Present { value: t } => t  Absent => "" }
+  match mixed_lot_statement(title: title, aspects: browse_stated_aspects(item: item)) {
+    Present { value: stated } => MixedLotStated { stated_as: stated }
+    Absent => match item.mpn {
+      Present { value: m } => if trim(s: m) == "" { LotUniformityUnstated } else { SinglePartNumberStated { part_number: trim(s: m) as NonEmptyStr } }
+      Absent => LotUniformityUnstated
+    }
+  }
+}
+
+fn browse_photo_count(item: BrowseItem) -> Int {
+  let primary = match item.image { Present { value: _ } => 1  Absent => 0 }
+  let more = match item.additionalImages { Present { value: xs } => length(xs)  Absent => 0 }
+  primary + more
+}
+
+fn browse_available_estimate(item: BrowseItem) -> Int? {
+  match item.estimatedAvailabilities {
+    Absent => none
+    Present { value: xs } => match xs.first() {
+      Absent => none
+      Present { value: a } => a.estimatedAvailableQuantity
+    }
+  }
+}
+
+fn browse_condition(item: BrowseItem) -> ConditionEnum? {
+  match item.conditionId {
+    Absent => none
+    Present { value: id } => browse_condition_from_id(raw: id)
+  }
+}
+
+fn evidence_from_browse_item(item: BrowseItem, read_at: NonEmptyStr, currency: CurrencyCode) -> BrowseEvidenceReading {
+  match item.price {
+    Absent => BrowseEvidenceRefused { listing_key: item.itemId, cause: "listing carries no price" }
+    Present { value: price } => match amount_micro(a: price, currency: currency) {
+      MicroRefused { cause: c } => BrowseEvidenceRefused { listing_key: item.itemId, cause: c }
+      MicroRead { micro: item_micro } => BrowseEvidenceRead {
+        evidence: ListingEvidence {
+          listing_key: item.itemId,
+          url: match item.itemWebUrl { Present { value: u } => u  Absent => "" },
+          title: match item.title { Present { value: t } => t  Absent => "" },
+          source: BrowseApiRead { contract_version: browse_api_contract_version, read_at: read_at },
+          item_price_micro: item_micro,
+          shipping_micro: match item.shippingOptions {
+            Absent => none
+            Present { value: os } => cheapest_shipping_micro(options: os, currency: currency)
+          },
+          lot_size: match item.lotSize { Present { value: n } => if n > 0 { n } else { 1 }  Absent => 1 },
+          available_estimate: browse_available_estimate(item: item),
+          quantity_verified: 0,
+          condition: browse_condition(item: item),
+          seller_feedback: browse_seller_feedback(seller: item.seller),
+          stated_aspects: browse_stated_aspects(item: item),
+          part_numbers: browse_part_numbers(item: item),
+          lot_uniformity: browse_lot_uniformity(item: item),
+          photo_count: browse_photo_count(item: item),
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// DIMM ATTRIBUTES: what the listing states, what its part number says, and whether they agree.
+// ---------------------------------------------------------------------------------------------
+
+// THE PACKAGE-TYPE AXIS IS THE ONE THE PLATFORM FIRMWARE WAS OBSERVED TO REFUSE ON. Mt. Collins
+// unit 1 refused a DIMM mixture within a socket citing SPD byte 6 -- JESD21-C Annex L "SDRAM
+// Package Type": monolithic, multi-load stack (a dual-die package) or single-load stack (3DS) --
+// and no other field (public docs/probes/mtcollins1_dram_training_root_cause_2026-09-12.md;
+// extdeps.memory.micron reads byte 6 = 0x91 for the dual-die MTA36ADS2G72PZ and 0x00 for its
+// monolithic ASF sibling). The value is extdeps.memory.types DramDieStacking, the same axis the
+// catalog row carries as die_stacking; the sheet does not re-coin it. Before this key existed a
+// dual-die 32 GiB RDIMM listing read "meets" on every adjudicable axis.
+type DimmAttributeKey
+  = DimmCapacity
+  | DimmGeneration
+  | DimmBufferingKey
+  | DimmEcc
+  | DimmDataRate
+  | DimmRankCount
+  | DimmPackageType
+
+type DimmAttributeValue
+  = CapacityGib { gib: Int }
+  | DdrGeneration { generation: Int }
+  | ModuleBuffering { buffering: DimmBuffering }
+  | EccPresence { ecc: Bool }
+  | DataRateMts { mts: Int }
+  | RankCountValue { ranks: Int }
+  | PackageType { stacking: DramDieStacking }
+
+fn dimm_attribute_label(k: DimmAttributeKey) -> String {
+  match k {
+    DimmCapacity => "capacity"
+    DimmGeneration => "generation"
+    DimmBufferingKey => "buffering"
+    DimmEcc => "ecc"
+    DimmDataRate => "data rate"
+    DimmRankCount => "ranks"
+    DimmPackageType => "package type"
+  }
+}
+
+fn die_stacking_label(s: DramDieStacking) -> String {
+  match s {
+    MonolithicDie => "monolithic (SPD byte 6 = 0x00)"
+    DualDiePackage => "dual-die package (multi-load stack)"
+    ThreeDimensionalStacked => "3DS (single-load stack)"
+  }
+}
+
+fn buffering_label(b: DimmBuffering) -> String {
+  match b {
+    Unbuffered => "unbuffered"
+    Registered => "registered"
+    LoadReduced => "load-reduced"
+  }
+}
+
+fn dimm_value_text(v: DimmAttributeValue) -> String {
+  match v {
+    CapacityGib { gib: g } => join([to_string(g), " GiB"], "")
+    DdrGeneration { generation: g } => join(["DDR", to_string(g)], "")
+    ModuleBuffering { buffering: b } => buffering_label(b: b)
+    EccPresence { ecc: e } => if e { "ECC" } else { "non-ECC" }
+    DataRateMts { mts: m } => join([to_string(m), " MT/s"], "")
+    RankCountValue { ranks: r } => join([to_string(r), "R"], "")
+    PackageType { stacking: st } => die_stacking_label(s: st)
+  }
+}
+
+fn dimm_value_eq(a: DimmAttributeValue, b: DimmAttributeValue) -> Bool {
+  dimm_value_text(v: a) == dimm_value_text(v: b)
+}
+
+// THE UPSTREAM ASPECT NAMES ARE TRANSCRIBED, NOT READ. eBay's item specifics for server memory are
+// category-scoped and published by the Taxonomy API, which this repository has not been able to
+// read (developer.ebay.com answers 403). A wrong name here would turn a stated attribute into a
+// confident "absent", so every absent reading carries the listing's own aspect names beside it,
+// and the run reports every aspect name it could not map.
+type DimmAspectNames {
+  key: DimmAttributeKey
+  names: List<String>
+}
+
+data dimm_aspect_name_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "eBay Taxonomy API getItemAspectsForCategory for the EBAY_US server memory leaf category; until read, names are matched case-insensitively and the listing title is read as a second statement",
+}
+
+data dimm_aspect_names: List<DimmAspectNames> = [
+  DimmAspectNames { key: DimmCapacity, names: ["capacity per module", "capacity", "total capacity"] },
+  DimmAspectNames { key: DimmGeneration, names: ["type", "memory type"] },
+  DimmAspectNames { key: DimmBufferingKey, names: ["features", "form factor", "type"] },
+  DimmAspectNames { key: DimmEcc, names: ["error correction", "features"] },
+  DimmAspectNames { key: DimmDataRate, names: ["bus speed", "speed"] },
+  DimmAspectNames { key: DimmRankCount, names: ["rank", "number of ranks", "configuration"] },
+  DimmAspectNames { key: DimmPackageType, names: ["package type", "die type", "features", "configuration"] },
+]
+
+fn aspect_names_for(k: DimmAttributeKey) -> List<String> {
+  fold(dimm_aspect_names, init: [], f: fn(acc, row) {
+    if dimm_attribute_label(k: row.key) == dimm_attribute_label(k: k) { row.names } else { acc }
+  })
+}
+
+fn all_mapped_aspect_names() -> List<String> {
+  fold(dimm_aspect_names, init: [], f: fn(acc, row) { concat(acc, row.names) })
+}
+
+// PC4 module bandwidth labels (JEDEC naming: PC4-<MB/s>) for the DDR4 grades a listing uses.
+type Pc4Grade {
+  bandwidth: Int
+  mts: Int
+}
+
+data pc4_grades: List<Pc4Grade> = [
+  Pc4Grade { bandwidth: 17000, mts: 2133 },
+  Pc4Grade { bandwidth: 19200, mts: 2400 },
+  Pc4Grade { bandwidth: 21300, mts: 2666 },
+  Pc4Grade { bandwidth: 23400, mts: 2933 },
+  Pc4Grade { bandwidth: 25600, mts: 3200 },
+]
+
+fn text_tokens(s: String) -> List<String> {
+  let spaced = replace(s: replace(s: replace(s: replace(s: replace(s: fold_dns_case_string(s: s), from: ",", to: " "), from: "(", to: " "), from: ")", to: " "), from: "/", to: " "), from: ";", to: " ")
+  filter(split(s: spaced, delimiter: " "), fn(t) { t != "" })
+}
+
+fn leading_int(s: String) -> Int? {
+  let digits = fold(chars(s), init: "", f: fn(acc, c) {
+    if acc == "stop" { acc } else {
+      if c >= 48 && c <= 57 { concat(acc, from_code_point(c)) } else if acc == "" { "stop" } else { join([acc, "|"], "") }
+    }
+  })
+  let head = match split(s: digits, delimiter: "|").first() { Present { value: h } => h  Absent => "" }
+  if head == "" || head == "stop" { none } else { parse_int(s: head) }
+}
+
+// Each reader looks at ONE lower-cased token and answers only for a spelling it recognises.
+fn read_capacity_token(t: String) -> DimmAttributeValue? {
+  if ends_with(s: t, suffix: "gb") {
+    match leading_int(s: t) { Present { value: n } => Present { value: CapacityGib { gib: n } }  Absent => none }
+  } else if ends_with(s: t, suffix: "tb") {
+    match leading_int(s: t) { Present { value: n } => Present { value: CapacityGib { gib: n * 1024 } }  Absent => none }
+  } else { none }
+}
+
+fn read_generation_token(t: String) -> DimmAttributeValue? {
+  if starts_with(s: t, prefix: "ddr5") || starts_with(s: t, prefix: "pc5") { Present { value: DdrGeneration { generation: 5 } } }
+  else if starts_with(s: t, prefix: "ddr4") || starts_with(s: t, prefix: "pc4") { Present { value: DdrGeneration { generation: 4 } } }
+  else if starts_with(s: t, prefix: "ddr3") || starts_with(s: t, prefix: "pc3") { Present { value: DdrGeneration { generation: 3 } } }
+  else { none }
+}
+
+fn read_buffering_token(t: String) -> DimmAttributeValue? {
+  if t == "lrdimm" || t == "load-reduced" || ends_with(s: t, suffix: "-l") { Present { value: ModuleBuffering { buffering: LoadReduced } } }
+  else if t == "rdimm" || t == "registered" || t == "reg" || ends_with(s: t, suffix: "-r") { Present { value: ModuleBuffering { buffering: Registered } } }
+  else if t == "udimm" || t == "unbuffered" || ends_with(s: t, suffix: "-u") || ends_with(s: t, suffix: "-e") { Present { value: ModuleBuffering { buffering: Unbuffered } } }
+  else { none }
+}
+
+fn read_ecc_token(t: String) -> DimmAttributeValue? {
+  if t == "non-ecc" || t == "nonecc" { Present { value: EccPresence { ecc: false } } }
+  else if t == "ecc" { Present { value: EccPresence { ecc: true } } }
+  else { none }
+}
+
+fn pc4_mts(bandwidth: Int) -> Int? {
+  fold(pc4_grades, init: none, f: fn(acc, g) { if (g.bandwidth == bandwidth) { Present { value: g.mts } } else { acc } })
+}
+
+fn read_data_rate_token(t: String) -> DimmAttributeValue? {
+  let n = if starts_with(s: t, prefix: "pc4-") { leading_int(s: substring(s: t, start: 4, end: string_length(s: t))) }
+    else if starts_with(s: t, prefix: "ddr4-") { leading_int(s: substring(s: t, start: 5, end: string_length(s: t))) }
+    else if ends_with(s: t, suffix: "mhz") || ends_with(s: t, suffix: "mt") { leading_int(s: t) }
+    else { none }
+  match n {
+    Absent => none
+    Present { value: v } => if v >= 10000 {
+      match pc4_mts(bandwidth: v) { Present { value: m } => Present { value: DataRateMts { mts: m } }  Absent => none }
+    } else if v >= 1600 && v <= 6400 { Present { value: DataRateMts { mts: v } } } else { none }
+  }
+}
+
+// A "<n>DRx<w>" LABEL READS AS n RANKS AND NOTHING MORE. "DR" is in general use as a rank
+// spelling (dual rank), so the token is a rank statement from any brand. That Micron's own
+// "2DRx4" label also denotes a dual-die package is an attestation scoped to Micron parts
+// (extdeps.memory.micron, module option DS), and the package-type reader does not derive an SPD
+// byte-6 claim from a brand-agnostic token: a Micron part's package type is read from its catalog
+// row through the identified part number, which is where that attestation executes.
+fn stacked_label_ranks(t: String) -> Int? {
+  if string_length(s: t) >= 5 && substring(s: t, start: 1, end: 4) == "drx" { leading_int(s: t) } else { none }
+}
+
+fn read_rank_token(t: String) -> DimmAttributeValue? {
+  if t == "single" || starts_with(s: t, prefix: "1rx") || t == "1r" { Present { value: RankCountValue { ranks: 1 } } }
+  else if t == "dual" || starts_with(s: t, prefix: "2rx") || t == "2r" { Present { value: RankCountValue { ranks: 2 } } }
+  else if t == "quad" || starts_with(s: t, prefix: "4rx") || t == "4r" { Present { value: RankCountValue { ranks: 4 } } }
+  else if t == "octal" || starts_with(s: t, prefix: "8rx") || t == "8r" { Present { value: RankCountValue { ranks: 8 } } }
+  else { match stacked_label_ranks(t: t) { Present { value: n } => Present { value: RankCountValue { ranks: n } }  Absent => none } }
+}
+
+// Package type is read only from a spelling that NAMES the package: "3DS" is JEDEC's single-load
+// stack, "dual-die"/"DDP" the multi-load stack, "monolithic" byte 6 = 0x00. A bare "2Rx4" or
+// "2DRx4" is a rank label and reads silent here; a catalogued part's package type comes from its
+// row.
+fn read_package_type_token(t: String) -> DimmAttributeValue? {
+  if t == "3ds" || starts_with(s: t, prefix: "3ds-") { Present { value: PackageType { stacking: ThreeDimensionalStacked } } }
+  else if t == "dual-die" || t == "ddp" || t == "dual-die-package" { Present { value: PackageType { stacking: DualDiePackage } } }
+  else if t == "monolithic" { Present { value: PackageType { stacking: MonolithicDie } } }
+  else { none }
+}
+
+fn read_token(k: DimmAttributeKey, t: String) -> DimmAttributeValue? {
+  match k {
+    DimmCapacity => read_capacity_token(t: t)
+    DimmGeneration => read_generation_token(t: t)
+    DimmBufferingKey => read_buffering_token(t: t)
+    DimmEcc => read_ecc_token(t: t)
+    DimmDataRate => read_data_rate_token(t: t)
+    DimmRankCount => read_rank_token(t: t)
+    DimmPackageType => read_package_type_token(t: t)
+  }
+}
+
+// ONE STATEMENT READS TO ONE VALUE OR TO NONE. Two different values in the same statement (a title
+// saying "256GB (8x32GB)") is not a reading; it is ambiguity, and it stays visible as such.
+type StatementReading
+  = StatementSilent
+  | StatementReads { value: DimmAttributeValue, stated_as: String }
+  | StatementAmbiguous { stated_as: String }
+
+fn read_statement(k: DimmAttributeKey, text: String, stated_as: String) -> StatementReading {
+  fold(text_tokens(s: text), init: StatementSilent, f: fn(acc, t) {
+    match read_token(k: k, t: t) {
+      Absent => acc
+      Present { value: v } => match acc {
+        StatementSilent => StatementReads { value: v, stated_as: stated_as }
+        StatementReads { value: seen, stated_as: _ } => if dimm_value_eq(a: seen, b: v) { acc } else { StatementAmbiguous { stated_as: stated_as } }
+        StatementAmbiguous { stated_as: _ } => acc
+      }
+    }
+  })
+}
+
+fn aspect_statement(k: DimmAttributeKey, aspects: List<StatedAspect>) -> StatementReading {
+  let names = aspect_names_for(k: k)
+  fold(aspects, init: StatementSilent, f: fn(acc, a) {
+    if contains(names, fold_dns_case_string(s: a.name)) {
+      match acc {
+        StatementSilent => read_statement(k: k, text: a.value, stated_as: join([a.name, ": ", a.value], ""))
+        _ => acc
+      }
+    } else { acc }
+  })
+}
+
+// Item specifics are read first; the title is the seller's second statement of the same facts.
+fn listing_statement(k: DimmAttributeKey, e: ListingEvidence) -> StatementReading {
+  match aspect_statement(k: k, aspects: e.stated_aspects) {
+    StatementSilent => read_statement(k: k, text: e.title, stated_as: join(["title: ", e.title], ""))
+    r => r
+  }
+}
+
+// THE PART-NUMBER AUTHORITY IS THE CORPUS'S DRAM CATALOG, not a decoder invented here. A part
+// number the catalog does not carry corroborates nothing, and the reading says so by name.
+data catalogued_dram_modules: List<DramModuleCatalogRow> = [
+  m386a4g40dm0_cpb_catalog, m393a8g40d40_crb0q_catalog, hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_catalog,
+  mta36ads2g72pz_2g1a1_catalog, mta36asf2g72pz_2g1a2_catalog,
+]
+
+fn catalog_row_for_part(part_number: String) -> DramModuleCatalogRow? {
+  let wanted = fold_dns_case_string(s: trim(s: part_number))
+  fold(catalogued_dram_modules, init: none, f: fn(acc, row) {
+    if fold_dns_case_string(s: row.part_number as String) == wanted { Present { value: row } } else { acc }
+  })
+}
+
+// CORROBORATION IS BOUND TO THE PART THE LOT STATEMENT IDENTIFIES, never to any number the
+// listing happens to carry. A Browse item carries the listing-level mpn AND product-level mpns,
+// and a catalog product can list a sibling under the second (mpn MTA36ADS2G72PZ-2G1A1 with product
+// mpns [MTA36ASF2G72PZ-2G1A2]); an earlier fold matched ANY of them and would have read the
+// declared dual-die lot as monolithic from the sibling's row -- the one wrong answer the
+// package-type axis exists to prevent. So the catalog is asked about exactly one part number, the
+// identified one; numbers the listing carries without identifying the lot are kept as explicit
+// unresolved alternatives, and no row is picked among them.
+type CatalogIdentification
+  = CatalogIdentified { row: DramModuleCatalogRow }
+  | CatalogPartNotCatalogued { part_number: NonEmptyStr }
+  | CatalogAlternativesUnresolved { part_numbers: List<String> }
+  | CatalogNoIdentifiedPart
+
+fn catalog_identification(e: ListingEvidence) -> CatalogIdentification {
+  match e.lot_uniformity {
+    SinglePartNumberStated { part_number: p } => match catalog_row_for_part(part_number: p as String) {
+      Present { value: row } => CatalogIdentified { row: row }
+      Absent => CatalogPartNotCatalogued { part_number: p }
+    }
+    _ => if length(e.part_numbers) == 0 { CatalogNoIdentifiedPart } else { CatalogAlternativesUnresolved { part_numbers: e.part_numbers } }
+  }
+}
+
+fn catalog_value(k: DimmAttributeKey, row: DramModuleCatalogRow) -> DimmAttributeValue {
+  match k {
+    DimmCapacity => CapacityGib { gib: byte_size_count(b: row.capacity_bytes) / 1073741824 }
+    DimmGeneration => DdrGeneration { generation: dram_generation_number(gen: row.generation) }
+    DimmBufferingKey => ModuleBuffering { buffering: row.buffering }
+    DimmEcc => EccPresence { ecc: row.ecc }
+    DimmDataRate => DataRateMts { mts: row.data_rate_mts }
+    DimmRankCount => RankCountValue { ranks: row.rank_count }
+    DimmPackageType => PackageType { stacking: row.die_stacking }
+  }
+}
+
+type AttributeReading
+  = AttributeCorroborated { value: DimmAttributeValue, stated_as: String, part_number: NonEmptyStr }
+  | AttributeImpliedByPartNumber { value: DimmAttributeValue, part_number: NonEmptyStr }
+  | AttributeContradicted { stated: DimmAttributeValue, stated_as: String, catalogued: DimmAttributeValue, part_number: NonEmptyStr }
+  | AttributeStatedOnly { value: DimmAttributeValue, stated_as: String, why_uncorroborated: String }
+  | AttributeStatedAmbiguously { stated_as: String }
+  | AttributeAbsent { names_tried: List<String>, listing_aspect_names: List<String> }
+  | AttributeAlternativesUnresolved { part_numbers: List<String> }
+
+// Only the uncorroborated identifications have a reason; an identified row never reaches here, and
+// the arm says so rather than returning a sentence that would read as a corroboration claim.
+fn uncorroborated_reason(id: CatalogIdentification) -> String {
+  match id {
+    CatalogIdentified { row: _ } => "no reason: the part is identified and catalogued, so the reading is corroborated, not stated only"
+    CatalogPartNotCatalogued { part_number: p } => join(["part number ", p as String, " is not in the corpus DRAM catalog"], "")
+    CatalogAlternativesUnresolved { part_numbers: ps } => join(["listing carries part numbers ", join(ps, ", "), " and identifies none of them as the lot's, so none is read"], "")
+    CatalogNoIdentifiedPart => "listing states no part number"
+  }
+}
+
+fn read_attribute(k: DimmAttributeKey, e: ListingEvidence) -> AttributeReading {
+  let stated = listing_statement(k: k, e: e)
+  let id = catalog_identification(e: e)
+  match id {
+    CatalogIdentified { row: row } => match stated {
+      StatementReads { value: v, stated_as: s } => if dimm_value_eq(a: v, b: catalog_value(k: k, row: row)) {
+        AttributeCorroborated { value: v, stated_as: s, part_number: row.part_number }
+      } else {
+        AttributeContradicted { stated: v, stated_as: s, catalogued: catalog_value(k: k, row: row), part_number: row.part_number }
+      }
+      StatementAmbiguous { stated_as: s } => AttributeStatedAmbiguously { stated_as: s }
+      StatementSilent => AttributeImpliedByPartNumber { value: catalog_value(k: k, row: row), part_number: row.part_number }
+    }
+    CatalogAlternativesUnresolved { part_numbers: ps } => match stated {
+      StatementReads { value: v, stated_as: s } => AttributeStatedOnly { value: v, stated_as: s, why_uncorroborated: uncorroborated_reason(id: id) }
+      StatementAmbiguous { stated_as: s } => AttributeStatedAmbiguously { stated_as: s }
+      StatementSilent => AttributeAlternativesUnresolved { part_numbers: ps }
+    }
+    _ => match stated {
+      StatementReads { value: v, stated_as: s } => AttributeStatedOnly { value: v, stated_as: s, why_uncorroborated: uncorroborated_reason(id: id) }
+      StatementAmbiguous { stated_as: s } => AttributeStatedAmbiguously { stated_as: s }
+      StatementSilent => AttributeAbsent { names_tried: aspect_names_for(k: k), listing_aspect_names: map(e.stated_aspects, a => a.name) }
+    }
+  }
+}
+
+// THE THREE VALUES, RENDERED. Contradiction and ambiguity are not a fourth and fifth value the
+// operator must learn: both are "stated, and the statement cannot be taken", which is why they
+// render in the stated-only register with the conflict spelled out.
+fn attribute_cell(r: AttributeReading) -> String {
+  match r {
+    AttributeCorroborated { value: v, stated_as: _, part_number: p } => join([dimm_value_text(v: v), " [corroborated: part number ", p as String, "]"], "")
+    AttributeImpliedByPartNumber { value: v, part_number: p } => join([dimm_value_text(v: v), " [corroborated: part number ", p as String, "; not stated in the listing]"], "")
+    AttributeContradicted { stated: s, stated_as: sa, catalogued: c, part_number: p } => join(["CONFLICT: listing states ", dimm_value_text(v: s), " (", sa, ") but part number ", p as String, " is ", dimm_value_text(v: c)], "")
+    AttributeStatedOnly { value: v, stated_as: sa, why_uncorroborated: why } => join([dimm_value_text(v: v), " [stated only: ", sa, "; ", why, "]"], "")
+    AttributeStatedAmbiguously { stated_as: sa } => join(["UNREADABLE: the statement names more than one value (", sa, ")"], "")
+    AttributeAbsent { names_tried: tried, listing_aspect_names: have } => join(["ABSENT: the listing does not state this (looked for ", join(tried, ", "), " and the title; listing states ", if length(have) == 0 { "no item specifics" } else { join(have, ", ") }, ")"], "")
+    AttributeAlternativesUnresolved { part_numbers: ps } => join(["UNRESOLVED: the listing does not state this and carries part numbers ", join(ps, ", "), " without identifying the lot's; none is read"], "")
+  }
+}
+
+// A CONTRADICTION IS JUDGED ON THE PART NUMBER. The catalog row is the corpus's authority for what
+// that part is; the seller's text is a claim about it. So a listing calling a load-reduced part an
+// RDIMM fails the buffering requirement -- the demand row's own refusal condition, "LRDIMMs sold as
+// RDIMMs" -- while its cell still shows the conflict rather than silently picking a side.
+fn reading_value(r: AttributeReading) -> DimmAttributeValue? {
+  match r {
+    AttributeCorroborated { value: v, stated_as: _, part_number: _ } => Present { value: v }
+    AttributeImpliedByPartNumber { value: v, part_number: _ } => Present { value: v }
+    AttributeStatedOnly { value: v, stated_as: _, why_uncorroborated: _ } => Present { value: v }
+    AttributeContradicted { stated: _, stated_as: _, catalogued: c, part_number: _ } => Present { value: c }
+    AttributeStatedAmbiguously { stated_as: _ } => none
+    AttributeAbsent { names_tried: _, listing_aspect_names: _ } => none
+    AttributeAlternativesUnresolved { part_numbers: _ } => none
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// REQUIREMENTS AND VERDICTS. A violated hard requirement excludes the listing before ranking; an
+// unknown one ranks, flagged; one this repository cannot adjudicate says why and never admits by
+// default.
+// ---------------------------------------------------------------------------------------------
+
+// THE PACKAGE-TYPE REQUIREMENT IS NOT A VALUE, IT IS LOT UNIFORMITY. Whether the fleet buys
+// monolithic or dual-die modules is undecided (sixteen identical ADS modules training is an open,
+// untested prediction), so no RequireValue is written on this axis. What IS decided is the
+// PURCHASING rule the observed rejection supports: every module that will share a socket must be
+// one part number. It is a conservative purchasing constraint derived from one directly observed
+// firmware rejection; it is not a universal firmware law and it is not evidence that any uniform
+// population trains. In the rejection that was observed the mixture also differed in speed and
+// rank; the firmware cited byte 6 and nothing else.
+//
+// One socket at one DIMM per channel is the channel count of extdeps.ampere.mt_collins_product_brief
+// memory_population's per-socket pair rows; socket_fill_population reads it from those rows.
+type DimmRequirement
+  = RequireValue { key: DimmAttributeKey, value: DimmAttributeValue }
+  | RequireDataRateAtLeast { mts: Int }
+  | RequireSocketFillUniformity { key: DimmAttributeKey, socket_population: Int, held_match_read_obligation: NonEmptyStr }
+  | CannotAdjudicate { key: DimmAttributeKey, read_obligation: NonEmptyStr }
+
+type RequirementVerdict
+  = RequirementMet
+  | RequirementViolated { why: String }
+  | RequirementUnknown { why: String }
+  | RequirementCannotAdjudicate { read_obligation: NonEmptyStr }
+
+fn requirement_key(q: DimmRequirement) -> DimmAttributeKey {
+  match q {
+    RequireValue { key: k, value: _ } => k
+    RequireDataRateAtLeast { mts: _ } => DimmDataRate
+    RequireSocketFillUniformity { key: k, socket_population: _, held_match_read_obligation: _ } => k
+    CannotAdjudicate { key: k, read_obligation: _ } => k
+  }
+}
+
+// The uniformity verdict reads the lot statement, not the attribute cell: a lot is uniform because
+// the seller states one part number for every unit, whatever that part's package type turns out to
+// be. A mixed statement violates; no statement is Unknown, and Unknown never reads "meets".
+fn lot_uniformity_verdict(u: LotUniformityStatement) -> RequirementVerdict {
+  match u {
+    SinglePartNumberStated { part_number: _ } => RequirementMet
+    MixedLotStated { stated_as: sa } => RequirementViolated { why: join(["mixed lot stated (", sa, "): every module that will share a socket must be one part number"], "") }
+    LotUniformityUnstated => RequirementUnknown { why: "lot uniformity unstated: the listing neither states one part number for every unit nor calls the lot mixed" }
+  }
+}
+
+fn requirement_verdict(q: DimmRequirement, r: AttributeReading, e: ListingEvidence) -> RequirementVerdict {
+  match q {
+    CannotAdjudicate { key: _, read_obligation: o } => RequirementCannotAdjudicate { read_obligation: o }
+    RequireSocketFillUniformity { key: _, socket_population: _, held_match_read_obligation: _ } => lot_uniformity_verdict(u: e.lot_uniformity)
+    RequireValue { key: _, value: want } => match reading_value(r: r) {
+      Absent => RequirementUnknown { why: attribute_cell(r: r) }
+      Present { value: v } => if dimm_value_eq(a: v, b: want) { RequirementMet } else {
+        RequirementViolated { why: join(["needs ", dimm_value_text(v: want), ", listing is ", dimm_value_text(v: v)], "") }
+      }
+    }
+    RequireDataRateAtLeast { mts: floor } => match reading_value(r: r) {
+      Absent => RequirementUnknown { why: attribute_cell(r: r) }
+      Present { value: v } => match v {
+        DataRateMts { mts: m } => if (m >= floor) { RequirementMet } else {
+          RequirementViolated { why: join(["needs at least ", to_string(floor), " MT/s, listing is ", to_string(m), " MT/s"], "") }
+        }
+        _ => RequirementUnknown { why: "data rate reading is not a rate" }
+      }
+    }
+  }
+}
+
+fn verdict_cell(v: RequirementVerdict) -> String {
+  match v {
+    RequirementMet => "meets"
+    RequirementViolated { why: w } => join(["FAILS: ", w], "")
+    RequirementUnknown { why: _ } => "UNKNOWN"
+    RequirementCannotAdjudicate { read_obligation: o } => join(["CANNOT ADJUDICATE: ", o as String], "")
+  }
+}
+
+// THE RANK COLUMN WAITS ON A POPULATION, NOT ON A RULE. The rule is read live from OCP Mt. Jade
+// rev 1.0 Table 3 (extdeps.ocp.mt_jade.memory_mixing): its same-channel 1R+2R cell. What cannot be
+// adjudicated for one listing is where the module would sit: fit depends on the channel it joins,
+// and the held population is only partly censused -- unit 1 reads 10 x 1R + 6 x 2R, and the remaining
+// units' rosters are not yet identity-reconciled.
+fn rank_fit_read_obligation() -> NonEmptyStr {
+  let cell = match mt_jade_mixed_dimm_support(placement: SameChannel, axis: Mixing1rAnd2r) {
+    MixedDimmSupportResolved { cell: c } => mt_jade_mixed_dimm_support_printed_label(support: c.support) as String
+    MixedDimmSupportUnmodelled { query: _ } => "unmodelled"
+    MixedDimmSupportAmbiguous { query: _ } => "ambiguous"
+  }
+  join(["rank fit is a population question: OCP Mt. Jade Table 3 same-channel 1R+2R mixing reads '", cell, "'; unit 1 is censused 10 x 1R + 6 x 2R and the remaining units' rosters are not identity-reconciled, so where a module would sit is undecided"], "") as NonEmptyStr
+}
+
+// Module qualification is Ampere's Customer Connect AVL. Access was refused for lack of an NDA, and
+// the operator has ruled Ampere access off the RAM and year-end critical paths; manual review stands
+// in for it and is not owed an AVL read.
+data qualified_module_read_obligation: NonEmptyStr = "whether this module is on Ampere's AVL is unread: Customer Connect access was refused for lack of an NDA, and the operator ruled Ampere access off the RAM critical path; manual review stands in for it"
+
+// THE SOCKET POPULATION AT ONE DIMM PER CHANNEL, read from the product brief's per-socket channel
+// rows rather than restated as a number. Socket 0's rows are read; the witness holds socket 1's row
+// count equal to it, so the figure is not one socket's accident.
+fn socket_fill_population() -> Int {
+  length(mt_collins_socket0_channel_pairs)
+}
+
+fn socket_populations_agree() -> Bool {
+  length(mt_collins_socket0_channel_pairs) == length(mt_collins_socket1_channel_pairs)
+}
+
+// A REMAINDER BELOW ONE SOCKET FILL IS ADMISSIBLE ONLY AGAINST A PART NUMBER ALREADY HELD, and
+// whether one is held cannot be adjudicated today: the held population is not identity-reconciled
+// (strategy.owner_action ram_purchase_standing), and the owner step that would census unit 1's
+// slots is open. Carried as a read obligation naming that step, exactly as the rank column carries
+// its population question.
+// The held-part half of the obligation is DERIVED from the census reading's limits through
+// owner_action held_part_identity_standing: a census that describes a prior population is printed
+// as not standing for present state, never as the held parts.
+fn held_part_number_read_obligation() -> NonEmptyStr {
+  let standing = ram_purchase_standing_text(s: current_ram_purchase_standing())
+  let held = held_part_identity_text(standing: current_held_part_identity_standing())
+  join(["a remainder below one socket fill (", to_string(socket_fill_population()), " modules at one DIMM per channel) is admissible only against a part number already held, and the held population's part numbers are not identity-reconciled across the fleet: RAM standing reads '", standing, "'; owner step ", step_hw1_jslot_census.step_id as String, " is ", jslot_census_step_state(), "; ", held, "; the fleet roster it would join is unreconciled"], "") as NonEmptyStr
+}
+
+type DemandSearch {
+  demand: DemandRow
+  query: NonEmptyStr
+  currency: CurrencyCode
+  requirements: List<DimmRequirement>
+}
+
+data ddr4_rdimm_search: DemandSearch = DemandSearch {
+  demand: demand_ddr4_rdimm,
+  query: "32GB DDR4 ECC RDIMM",
+  currency: Usd,
+  requirements: [
+    RequireValue { key: DimmCapacity, value: CapacityGib { gib: 32 } },
+    RequireValue { key: DimmGeneration, value: DdrGeneration { generation: 4 } },
+    RequireValue { key: DimmBufferingKey, value: ModuleBuffering { buffering: Registered } },
+    RequireValue { key: DimmEcc, value: EccPresence { ecc: true } },
+    RequireDataRateAtLeast { mts: 2400 },
+    CannotAdjudicate { key: DimmRankCount, read_obligation: rank_fit_read_obligation() },
+    RequireSocketFillUniformity { key: DimmPackageType, socket_population: socket_fill_population(), held_match_read_obligation: held_part_number_read_obligation() },
+  ],
+}
+
+data demand_searches: List<DemandSearch> = [ddr4_rdimm_search]
+
+// The search the API run sends: delivered to the US and never for parts. It carries NO price cap:
+// the Browse price filter bounds the whole listing, and the viability ceiling is per module, so a
+// cap at the ceiling would never retrieve a multi-module lot that is cheap per module. Price is
+// judged after the lot is divided, in review_listing; the schedule's candidate count bounds the
+// item reads instead.
+fn search_filters(s: DemandSearch) -> List<BrowseSearchFilter> {
+  [
+    BrowseDeliveryCountry { country: "US" },
+    BrowseConditionAnyOf { conditions: working_conditions },
+  ]
+}
+
+// ---------------------------------------------------------------------------------------------
+// PRICE: delivered unit price and its spread to the ceiling.
+// ---------------------------------------------------------------------------------------------
+
+type DeliveredPrice
+  = DeliveredUnit { unit_micro: Int }
+  | DeliveredUnformable { why: String }
+
+fn delivered_price(e: ListingEvidence) -> DeliveredPrice {
+  match e.shipping_micro {
+    Absent => DeliveredUnformable { why: "no shipping quote to our location" }
+    Present { value: ship } => if e.lot_size <= 0 {
+      DeliveredUnformable { why: "lot size is not positive" }
+    } else {
+      DeliveredUnit { unit_micro: (e.item_price_micro + ship) / e.lot_size }
+    }
+  }
+}
+
+fn money_cell(micro: Int) -> String {
+  join(["$", fixed_point_wire(value: micro / 10000, decimals: 2)], "")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ROW, THE SHEET, AND ITS COLUMNS.
+// ---------------------------------------------------------------------------------------------
+
+type ReviewedListing {
+  evidence: ListingEvidence
+  price: DeliveredPrice
+  readings: List<AttributeReading>
+  verdicts: List<RequirementVerdict>
+}
+
+type ExcludedListing {
+  listing_key: NonEmptyStr
+  title: String
+  cause: String
+}
+
+// THE LOT PROPOSAL: what select_listing admitted, counted in socket fills. Admitted units come
+// from strategy.fleet_convergence select_listing, which already reads only verified depth and clamps
+// to the demand and the sample cap; this fold divides them into whole socket fills and a remainder.
+// Fewer verified units than one socket fill is REFUSED for the socket fill, not admitted: the
+// remainder would have to join modules already held, and that match is the read obligation above.
+// A mixed or unstated lot never reaches the fill arithmetic. A selection that admitted nothing, or
+// a search that carries no socket-fill requirement, is rendered as select_listing said it.
+type LotProposal
+  = LotAdmittedForSocketFills { fills: Int, units: Int, remainder: Int, remainder_read_obligation: NonEmptyStr }
+  | LotRefusedBelowOneSocketFill { verified_units: Int, socket_population: Int, held_match_read_obligation: NonEmptyStr }
+  | LotRefusedMixed { stated_as: String }
+  | LotUniformityUnknown
+  | LotSelectionAsIs { selection: SelectionOutcome }
+
+fn socket_fill_requirement(s: DemandSearch) -> DimmRequirement? {
+  fold(s.requirements, init: none, f: fn(acc, q) {
+    match q { RequireSocketFillUniformity { key: _, socket_population: _, held_match_read_obligation: _ } => Present { value: q }  _ => acc }
+  })
+}
+
+fn lot_proposal(s: DemandSearch, e: ListingEvidence, selection: SelectionOutcome) -> LotProposal {
+  match selection {
+    SelectionAdmitted { component_id: _, source: _, units: u, unit_price_micro: _ } => match socket_fill_requirement(s: s) {
+      Absent => LotSelectionAsIs { selection: selection }
+      Present { value: q } => match q {
+        RequireSocketFillUniformity { key: _, socket_population: n, held_match_read_obligation: held } => match e.lot_uniformity {
+          MixedLotStated { stated_as: sa } => LotRefusedMixed { stated_as: sa }
+          LotUniformityUnstated => LotUniformityUnknown
+          SinglePartNumberStated { part_number: _ } => if u < n {
+            LotRefusedBelowOneSocketFill { verified_units: u, socket_population: n, held_match_read_obligation: held }
+          } else {
+            LotAdmittedForSocketFills { fills: u / n, units: (u / n) * n, remainder: u % n, remainder_read_obligation: held }
+          }
+        }
+        _ => LotSelectionAsIs { selection: selection }
+      }
+    }
+    _ => LotSelectionAsIs { selection: selection }
+  }
+}
+
+type ListingDisposition
+  = ListingRanked { listing: ReviewedListing, spread_micro: Int, proposal: LotProposal }
+  | ListingExcluded { excluded: ExcludedListing }
+
+data dimm_attribute_order: List<DimmAttributeKey> = [DimmCapacity, DimmGeneration, DimmBufferingKey, DimmEcc, DimmDataRate, DimmRankCount, DimmPackageType]
+
+fn requirement_for(s: DemandSearch, k: DimmAttributeKey) -> DimmRequirement? {
+  fold(s.requirements, init: none, f: fn(acc, q) {
+    if dimm_attribute_label(k: requirement_key(q: q)) == dimm_attribute_label(k: k) { Present { value: q } } else { acc }
+  })
+}
+
+fn verdict_for(s: DemandSearch, k: DimmAttributeKey, r: AttributeReading, e: ListingEvidence) -> RequirementVerdict {
+  match requirement_for(s: s, k: k) {
+    Absent => RequirementMet
+    Present { value: q } => requirement_verdict(q: q, r: r, e: e)
+  }
+}
+
+fn first_violation(vs: List<RequirementVerdict>) -> String? {
+  fold(vs, init: none, f: fn(acc, v) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => match v { RequirementViolated { why: w } => Present { value: w }  _ => acc }
+    }
+  })
+}
+
+data working_conditions: List<ConditionEnum> = [
+  New, NewOther, NewWithDefects, CertifiedRefurbished, ExcellentRefurbished, VeryGoodRefurbished,
+  GoodRefurbished, SellerRefurbished, LikeNew, PreOwnedExcellent, UsedExcellent, PreOwnedFair,
+  UsedVeryGood, UsedGood, UsedAcceptable,
+]
+
+fn listed_for_parts(e: ListingEvidence) -> Bool {
+  match e.condition {
+    Present { value: c } => condition_wire_label(c: c) == "FOR_PARTS_OR_NOT_WORKING"
+    Absent => false
+  }
+}
+
+// THE SHEET FEEDS THE EXISTING AUTHORITY, it does not stand beside it. Each ranked listing becomes
+// the ListingObservation strategy.buyers_pipeline already defines and goes through
+// strategy.fleet_convergence select_listing, so the seller-trust floor and the depth discipline
+// apply here exactly as they do to any proposal. Quantity is filed as CLAIMED from the
+// marketplace's estimate and verified as zero: the estimate is not a verification, so the proposal
+// cell tells the operator to verify depth before buying rather than admitting a hopeful quantity.
+// Only a STATED condition can be classed. An absent condition -- unstated, or a Browse condition ID
+// the table does not map -- never reaches this function: review_listing excludes it first, so an
+// unknown condition cannot be selected as working.
+fn condition_class(c: ConditionEnum) -> ConditionClass {
+  if (condition_wire_label(c: c) == "FOR_PARTS_OR_NOT_WORKING") { ListedForParts } else { ListedWorking }
+}
+
+fn source_observed_at(s: ObservationSource) -> NonEmptyStr {
+  match s {
+    BrowseApiRead { contract_version: _, read_at: at } => at
+    OperatorEntered { entered_at: at } => at
+  }
+}
+
+fn listing_observation(demand: DemandRow, e: ListingEvidence, condition: ConditionEnum, permille: Int, count: Int, unit_micro: Int) -> ListingObservation {
+  ListingObservation {
+    demand_id: demand.id,
+    source: e.listing_key,
+    unit_price_delivered_micro: unit_micro,
+    quantity_claimed: match e.available_estimate { Present { value: n } => n * e.lot_size  Absent => 0 },
+    quantity_verified: e.quantity_verified,
+    seller_feedback_permille: permille,
+    seller_feedback_count: count,
+    condition: condition_class(c: condition),
+    observed_at: source_observed_at(s: e.source),
+  }
+}
+
+fn selection_cell(o: SelectionOutcome) -> String {
+  match o {
+    SelectionAdmitted { component_id: _, source: _, units: u, unit_price_micro: _ } => join(["admissible for ", to_string(u), " units"], "")
+    SelectionRefusedByProposal { component_id: _, note: n } => join(["not yet proposable: ", n, "; verify quantity with the seller before buying"], "")
+    SelectionRefusedIncompatible { component_id: _, cause: c } => join(["refused: ", c], "")
+    SelectionRefusedSellerTrust { component_id: _, feedback_permille: p, feedback_count: n } => join(["refused: seller feedback ", to_string(p), " permille of ", to_string(n)], "")
+    SelectionRefusedQuantityUnestablished { component_id: _, candidate_units: _, blocked_on: b } => join(["not proposable: the demand quantity is not established, so no purchase quantity is proposed against the derivation candidate; blocked on: ", b as String], "")
+  }
+}
+
+fn proposal_cell(p: LotProposal) -> String {
+  match p {
+    LotAdmittedForSocketFills { fills: f, units: u, remainder: r, remainder_read_obligation: o } =>
+      join(["admissible for ", to_string(f), " socket fill(s) = ", to_string(u), " units", if r == 0 { "" } else { join(["; ", to_string(r), " further verified units are a below-socket remainder, CANNOT ADJUDICATE: ", o as String], "") }], "")
+    LotRefusedBelowOneSocketFill { verified_units: u, socket_population: n, held_match_read_obligation: o } =>
+      join(["refused for a socket fill: ", to_string(u), " verified units is below one socket population of ", to_string(n), "; CANNOT ADJUDICATE as a remainder: ", o as String], "")
+    LotRefusedMixed { stated_as: sa } => join(["refused: mixed lot stated (", sa, ")"], "")
+    LotUniformityUnknown => "not admissible: lot uniformity unstated; ask the seller whether every unit is one part number"
+    LotSelectionAsIs { selection: o } => selection_cell(o: o)
+  }
+}
+
+fn review_listing(s: DemandSearch, e: ListingEvidence) -> ListingDisposition {
+  let readings = map(dimm_attribute_order, k => read_attribute(k: k, e: e))
+  let verdicts = map(dimm_attribute_order, k => verdict_for(s: s, k: k, r: read_attribute(k: k, e: e), e: e))
+  let reviewed = ReviewedListing { evidence: e, price: delivered_price(e: e), readings: readings, verdicts: verdicts }
+  match e.condition {
+    Absent => ListingExcluded { excluded: ExcludedListing { listing_key: e.listing_key, title: e.title, cause: "condition not stated, or stated as an ID the condition table does not map; an unknown condition is not selectable as working" } }
+    Present { value: condition } => if listed_for_parts(e: e) {
+    ListingExcluded { excluded: ExcludedListing { listing_key: e.listing_key, title: e.title, cause: "listed for parts or not working" } }
+  } else {
+    match first_violation(vs: verdicts) {
+      Present { value: why } => ListingExcluded { excluded: ExcludedListing { listing_key: e.listing_key, title: e.title, cause: why } }
+      Absent => match reviewed.price {
+        DeliveredUnformable { why: w } => ListingExcluded { excluded: ExcludedListing { listing_key: e.listing_key, title: e.title, cause: join(["delivered price unformable: ", w], "") } }
+        DeliveredUnit { unit_micro: u } => if u > s.demand.viability_ceiling_micro {
+          ListingExcluded { excluded: ExcludedListing { listing_key: e.listing_key, title: e.title, cause: join(["delivered ", money_cell(micro: u), " is over the viability ceiling ", money_cell(micro: s.demand.viability_ceiling_micro)], "") } }
+        } else {
+          match e.seller_feedback {
+            SellerFeedbackUnavailable { why: w } => ListingExcluded { excluded: ExcludedListing { listing_key: e.listing_key, title: e.title, cause: join(["seller feedback unavailable, so trust cannot be assessed: ", w], "") } }
+            SellerFeedbackRead { permille: fp, count: fc } =>
+          match select_listing(demand: s.demand, o: listing_observation(demand: s.demand, e: e, condition: condition, permille: fp, count: fc, unit_micro: u)) {
+            SelectionRefusedSellerTrust { component_id: _, feedback_permille: p, feedback_count: n } =>
+              ListingExcluded { excluded: ExcludedListing { listing_key: e.listing_key, title: e.title, cause: join(["seller below the trust floor: ", to_string(p), " permille of ", to_string(n), " ratings"], "") } }
+            SelectionRefusedIncompatible { component_id: _, cause: c } =>
+              ListingExcluded { excluded: ExcludedListing { listing_key: e.listing_key, title: e.title, cause: c } }
+            outcome => ListingRanked { listing: reviewed, spread_micro: s.demand.viability_ceiling_micro - u, proposal: lot_proposal(s: s, e: e, selection: outcome) }
+          }
+          }
+        }
+      }
+    }
+  }
+  }
+}
+
+// WHERE A COLUMN'S VALUE COMES FROM IS PART OF THE COLUMN. A realization converges only the
+// derived columns and never writes an operator column; the rows are keyed by listing_key, never by
+// position, so a re-sort cannot move an operator's judgement onto another listing.
+type SheetColumnRegion
+  = DerivedFromResponse { field: NonEmptyStr }
+  | DerivedComputed { from: NonEmptyStr }
+  | OperatorColumn
+
+type SheetColumn {
+  key: NonEmptyStr
+  header: NonEmptyStr
+  region: SheetColumnRegion
+}
+
+data review_sheet_columns: List<SheetColumn> = [
+  SheetColumn { key: "listing_key", header: "Listing", region: DerivedFromResponse { field: "itemId" } },
+  SheetColumn { key: "rank", header: "Rank", region: DerivedComputed { from: "spread order" } },
+  SheetColumn { key: "spread", header: "Headroom to ceiling", region: DerivedComputed { from: "viability_ceiling_micro minus delivered unit" } },
+  SheetColumn { key: "delivered_unit", header: "Delivered / module", region: DerivedComputed { from: "(price.value + cheapest shippingOptions.shippingCost.value) / lotSize" } },
+  SheetColumn { key: "price", header: "Item price", region: DerivedFromResponse { field: "price.value" } },
+  SheetColumn { key: "shipping", header: "Shipping", region: DerivedFromResponse { field: "shippingOptions.shippingCost.value" } },
+  SheetColumn { key: "lot_size", header: "Modules per purchase", region: DerivedFromResponse { field: "lotSize" } },
+  SheetColumn { key: "available", header: "Available (marketplace estimate, unverified)", region: DerivedFromResponse { field: "estimatedAvailabilities.estimatedAvailableQuantity" } },
+  SheetColumn { key: "capacity", header: "Capacity", region: DerivedComputed { from: "localizedAspects, title, mpn against the DRAM catalog" } },
+  SheetColumn { key: "generation", header: "Generation", region: DerivedComputed { from: "localizedAspects, title, mpn against the DRAM catalog" } },
+  SheetColumn { key: "buffering", header: "Buffering", region: DerivedComputed { from: "localizedAspects, title, mpn against the DRAM catalog" } },
+  SheetColumn { key: "ecc", header: "ECC", region: DerivedComputed { from: "localizedAspects, title, mpn against the DRAM catalog" } },
+  SheetColumn { key: "data_rate", header: "Data rate", region: DerivedComputed { from: "localizedAspects, title, mpn against the DRAM catalog" } },
+  SheetColumn { key: "ranks", header: "Ranks", region: DerivedComputed { from: "localizedAspects, title, mpn against the DRAM catalog" } },
+  SheetColumn { key: "package_type", header: "Package type (SPD byte 6)", region: DerivedComputed { from: "localizedAspects, title, mpn against the DRAM catalog die_stacking" } },
+  SheetColumn { key: "lot_uniformity", header: "Lot uniformity", region: DerivedComputed { from: "mpn, title and localizedAspects mixed-lot statement" } },
+  SheetColumn { key: "fit", header: "Fit", region: DerivedComputed { from: "requirement verdicts" } },
+  SheetColumn { key: "proposal", header: "Proposal", region: DerivedComputed { from: "strategy.fleet_convergence select_listing, counted in socket fills" } },
+  SheetColumn { key: "condition", header: "Condition", region: DerivedFromResponse { field: "conditionId" } },
+  SheetColumn { key: "feedback", header: "Feedback", region: DerivedFromResponse { field: "seller.feedbackPercentage, seller.feedbackScore" } },
+  SheetColumn { key: "photos", header: "Photos", region: DerivedFromResponse { field: "image, additionalImages" } },
+  SheetColumn { key: "source", header: "Source", region: DerivedComputed { from: "observation provenance" } },
+  SheetColumn { key: "title", header: "Title", region: DerivedFromResponse { field: "title" } },
+  SheetColumn { key: "url", header: "URL", region: DerivedFromResponse { field: "itemWebUrl" } },
+  SheetColumn { key: "decision", header: "Decision", region: OperatorColumn },
+  SheetColumn { key: "units", header: "Units to buy", region: OperatorColumn },
+  SheetColumn { key: "accepted_on_judgement", header: "Accepted on judgement", region: OperatorColumn },
+  SheetColumn { key: "note", header: "Note", region: OperatorColumn },
+]
+
+fn fit_cell(vs: List<RequirementVerdict>) -> String {
+  let open = filter(vs, fn(v) { match v { RequirementMet => false  _ => true } })
+  if length(open) == 0 { "meets every requirement" } else { join(map(open, v => verdict_cell(v: v)), " | ") }
+}
+
+fn source_cell(s: ObservationSource) -> String {
+  match s {
+    BrowseApiRead { contract_version: v, read_at: at } => join(["eBay Browse ", v as String, " read ", at as String], "")
+    OperatorEntered { entered_at: at } => join(["operator-entered ", at as String], "")
+  }
+}
+
+fn optional_int_cell(n: Int?, absent: String) -> String {
+  match n { Present { value: v } => to_string(v)  Absent => absent }
+}
+
+fn reading_at(xs: List<AttributeReading>, i: Int) -> String {
+  match xs.skip(n: i).first() { Present { value: r } => attribute_cell(r: r)  Absent => "" }
+}
+
+fn lot_uniformity_cell(u: LotUniformityStatement) -> String {
+  match u {
+    SinglePartNumberStated { part_number: p } => join(["one part number stated for every unit: ", p as String], "")
+    MixedLotStated { stated_as: sa } => join(["MIXED LOT stated (", sa, ")"], "")
+    LotUniformityUnstated => "UNSTATED: the listing neither states one part number for every unit nor calls the lot mixed"
+  }
+}
+
+type ReviewCell {
+  key: NonEmptyStr
+  value: String
+}
+
+type ReviewRow {
+  listing_key: NonEmptyStr
+  cells: List<ReviewCell>
+}
+
+type CellLookup
+  = CellFound { value: String }
+  | ColumnUnjoined { key: NonEmptyStr }
+
+type OrderedRowCells
+  = OrderedCells { values: List<String> }
+  | RowColumnUnjoined { key: NonEmptyStr }
+
+type ReviewSheetCsv
+  = SheetCsvOk { bytes: String }
+  | SheetCsvUnjoined { listing_key: NonEmptyStr, key: NonEmptyStr }
+
+fn review_cell(key: NonEmptyStr, value: String) -> ReviewCell {
+  ReviewCell { key: key, value: value }
+}
+
+fn cell_by_key(cells: List<ReviewCell>, key: NonEmptyStr) -> CellLookup {
+  match filter(cells, c => (c.key as String) == (key as String)).first() {
+    Present { value: c } => CellFound { value: c.value }
+    Absent => ColumnUnjoined { key: key }
+  }
+}
+
+fn listing_identity_header(columns: List<SheetColumn>) -> CellLookup {
+  match filter(columns, c => (c.key as String) == "listing_key").first() {
+    Present { value: c } => CellFound { value: c.header as String }
+    Absent => ColumnUnjoined { key: "listing_key" }
+  }
+}
+
+fn ordered_cell_values(row: ReviewRow, columns: List<SheetColumn>) -> OrderedRowCells {
+  fold(columns, init: OrderedCells { values: [] }, f: fn(acc, c) {
+    match acc {
+      RowColumnUnjoined { key: k } => RowColumnUnjoined { key: k }
+      OrderedCells { values: vs } => match cell_by_key(cells: row.cells, key: c.key) {
+        CellFound { value: v } => OrderedCells { values: concat(vs, [v]) }
+        ColumnUnjoined { key: k } => RowColumnUnjoined { key: k }
+      }
+    }
+  })
+}
+
+fn review_row(rank: Int, spread_micro: Int, l: ReviewedListing, proposal: LotProposal) -> ReviewRow {
+  let e = l.evidence
+  ReviewRow {
+    listing_key: e.listing_key,
+    cells: [
+      review_cell(key: "listing_key", value: e.listing_key as String),
+      review_cell(key: "rank", value: to_string(rank)),
+      review_cell(key: "spread", value: money_cell(micro: spread_micro)),
+      review_cell(key: "delivered_unit", value: match l.price { DeliveredUnit { unit_micro: u } => money_cell(micro: u)  DeliveredUnformable { why: w } => w }),
+      review_cell(key: "price", value: money_cell(micro: e.item_price_micro)),
+      review_cell(key: "shipping", value: match e.shipping_micro { Present { value: s } => money_cell(micro: s)  Absent => "no quote to our location" }),
+      review_cell(key: "lot_size", value: to_string(e.lot_size)),
+      review_cell(key: "available", value: optional_int_cell(n: e.available_estimate, absent: "not stated")),
+      review_cell(key: "capacity", value: reading_at(xs: l.readings, i: 0)),
+      review_cell(key: "generation", value: reading_at(xs: l.readings, i: 1)),
+      review_cell(key: "buffering", value: reading_at(xs: l.readings, i: 2)),
+      review_cell(key: "ecc", value: reading_at(xs: l.readings, i: 3)),
+      review_cell(key: "data_rate", value: reading_at(xs: l.readings, i: 4)),
+      review_cell(key: "ranks", value: reading_at(xs: l.readings, i: 5)),
+      review_cell(key: "package_type", value: reading_at(xs: l.readings, i: 6)),
+      review_cell(key: "lot_uniformity", value: lot_uniformity_cell(u: e.lot_uniformity)),
+      review_cell(key: "fit", value: fit_cell(vs: l.verdicts)),
+      review_cell(key: "proposal", value: proposal_cell(p: proposal)),
+      review_cell(key: "condition", value: match e.condition { Present { value: c } => condition_wire_label(c: c)  Absent => "not stated" }),
+      review_cell(key: "feedback", value: match e.seller_feedback {
+        SellerFeedbackRead { permille: p, count: n } => join([fixed_point_wire(value: p, decimals: 1), "% of ", to_string(n)], "")
+        SellerFeedbackUnavailable { why: w } => join(["UNAVAILABLE: ", w], "")
+      }),
+      review_cell(key: "photos", value: to_string(e.photo_count)),
+      review_cell(key: "source", value: source_cell(s: e.source)),
+      review_cell(key: "title", value: e.title),
+      review_cell(key: "url", value: e.url),
+      review_cell(key: "decision", value: ""),
+      review_cell(key: "units", value: ""),
+      review_cell(key: "accepted_on_judgement", value: ""),
+      review_cell(key: "note", value: ""),
+    ],
+  }
+}
+
+type ReviewSheet {
+  demand_id: NonEmptyStr
+  api_source: String
+  open_read_obligations: List<String>
+  columns: List<SheetColumn>
+  rows: List<ReviewRow>
+  excluded: List<ExcludedListing>
+  unmapped_aspect_names: List<String>
+}
+
+fn disposition_spread(d: ListingDisposition) -> Int {
+  match d { ListingRanked { listing: _, spread_micro: s, proposal: _ } => s  ListingExcluded { excluded: _ } => 0 }
+}
+
+fn unmapped_names(evidence: List<ListingEvidence>) -> List<String> {
+  let mapped = all_mapped_aspect_names()
+  fold(evidence, init: [], f: fn(acc, e) {
+    fold(e.stated_aspects, init: acc, f: fn(inner, a) {
+      let n = fold_dns_case_string(s: a.name)
+      if contains(mapped, n) || contains(inner, n) { inner } else { concat(inner, [n]) }
+    })
+  })
+}
+
+// What the sheet cannot yet adjudicate, carried on the sheet itself rather than in a note beside it.
+fn sheet_read_obligations() -> List<String> {
+  concat(
+    match cited_figure_read_obligation(standing: dimm_aspect_name_standing) { Present { value: o } => [join(["aspect names: ", o as String], "")]  Absent => [] },
+    [
+      join(["rank: ", rank_fit_read_obligation() as String], ""),
+      join(["socket fill remainder: ", held_part_number_read_obligation() as String], ""),
+      join(["qualification: ", qualified_module_read_obligation as String], ""),
+    ]
+  )
+}
+
+fn review_sheet(s: DemandSearch, evidence: List<ListingEvidence>, api_source: ApiSourceStanding) -> ReviewSheet {
+  let dispositions = map(evidence, e => review_listing(s: s, e: e))
+  let ranked = sort_by(filter(dispositions, fn(d) { match d { ListingRanked { listing: _, spread_micro: _, proposal: _ } => true  _ => false } }), fn(d) { 0 - disposition_spread(d: d) })
+  let rows = fold(ranked, init: [], f: fn(acc, d) {
+    match d {
+      ListingRanked { listing: l, spread_micro: sp, proposal: p } => concat(acc, [review_row(rank: length(acc) + 1, spread_micro: sp, l: l, proposal: p)])
+      ListingExcluded { excluded: _ } => acc
+    }
+  })
+  ReviewSheet {
+    demand_id: s.demand.id,
+    api_source: api_source_standing_text(s: api_source),
+    open_read_obligations: sheet_read_obligations(),
+    columns: review_sheet_columns,
+    rows: rows,
+    excluded: fold(dispositions, init: [], f: fn(acc, d) {
+      match d { ListingExcluded { excluded: x } => concat(acc, [x])  ListingRanked { listing: _, spread_micro: _, proposal: _ } => acc }
+    }),
+    unmapped_aspect_names: unmapped_names(evidence: evidence),
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// CSV, the realization every spreadsheet opens (RFC 4180 quoting: every field quoted, quotes doubled).
+// ---------------------------------------------------------------------------------------------
+
+fn csv_field(s: String) -> String {
+  join(["\"", replace(s: s, from: "\"", to: "\"\""), "\""], "")
+}
+
+fn csv_line(fields: List<String>) -> String {
+  join(map(fields, f => csv_field(s: f)), ",")
+}
+
+fn render_review_sheet_csv(sheet: ReviewSheet) -> ReviewSheetCsv {
+  let header = csv_line(fields: map(sheet.columns, c => c.header as String))
+  fold(sheet.rows, init: SheetCsvOk { bytes: header }, f: fn(acc, r) {
+    match acc {
+      SheetCsvUnjoined { listing_key: lk, key: k } => SheetCsvUnjoined { listing_key: lk, key: k }
+      SheetCsvOk { bytes: so_far } => match ordered_cell_values(row: r, columns: sheet.columns) {
+        OrderedCells { values: vs } => SheetCsvOk { bytes: join([so_far, "\r\n", csv_line(fields: vs)], "") }
+        RowColumnUnjoined { key: k } => SheetCsvUnjoined { listing_key: r.listing_key, key: k }
+      }
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SCHEDULE, DERIVED AGAINST THE PUBLISHED QUOTA. Every candidate costs one getItem (search
+// pages carry no item specifics), so a run's cost is its search pages plus its candidates.
+// A re-run refreshes derived columns in place; a listing that disappears while carrying an
+// operator judgement is kept and marked gone, never deleted.
+// ---------------------------------------------------------------------------------------------
+
+type ScanSchedule {
+  interval_hours: Int
+  candidates_per_demand: Int
+}
+
+data review_scan_schedule: ScanSchedule = ScanSchedule { interval_hours: 6, candidates_per_demand: 200 }
+
+type ScheduleAdmission
+  = ScheduleAdmitted { calls_per_day: Int, daily_ceiling: Int }
+  | ScheduleRefusedOverQuota { calls_per_day: Int, daily_ceiling: Int }
+  | ScheduleRefusedMalformed { why: NonEmptyStr }
+  | ScheduleRefusedBeyondResultWindow { candidates: Int }
+
+fn search_pages(candidates: Int) -> Int {
+  (candidates + browse_search_limit_max - 1) / browse_search_limit_max
+}
+
+fn calls_per_run(schedule: ScanSchedule, searches: List<DemandSearch>) -> Int {
+  length(searches) * (search_pages(candidates: schedule.candidates_per_demand) + schedule.candidates_per_demand)
+}
+
+fn schedule_admission(schedule: ScanSchedule, searches: List<DemandSearch>) -> ScheduleAdmission {
+  let ceiling = quota_root_pool(limit: ebay_buy_browse_rate_limit).ledger.appropriation.ceiling.count
+  let last_page = browse_search_page_admission(limit: browse_search_limit_max, offset: (search_pages(candidates: schedule.candidates_per_demand) - 1) * browse_search_limit_max)
+  if schedule.candidates_per_demand < 1 {
+    ScheduleRefusedMalformed { why: "a scan reads at least one candidate" }
+  } else if !(match last_page { BrowseSearchPageAdmitted { limit: _, offset: _ } => true  _ => false }) {
+    ScheduleRefusedBeyondResultWindow { candidates: schedule.candidates_per_demand }
+  } else if schedule.interval_hours <= 0 || 24 % schedule.interval_hours != 0 {
+    ScheduleRefusedMalformed { why: "interval must divide the day the quota lapses on" }
+  } else {
+    let per_day = calls_per_run(schedule: schedule, searches: searches) * (24 / schedule.interval_hours)
+    if (per_day > ceiling) { ScheduleRefusedOverQuota { calls_per_day: per_day, daily_ceiling: ceiling } }
+    else { ScheduleAdmitted { calls_per_day: per_day, daily_ceiling: ceiling } }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// PURCHASE INTENT: what the operator decided, committed as a row. The scout never buys; this row is
+// the operator's decision made readable later, and it is admitted by the same walls a proposal
+// meets. Attributes accepted on JUDGEMENT are named as such -- a photograph the operator read, a
+// seller's answer to a question -- so a later reader can tell evidence from decision.
+// ---------------------------------------------------------------------------------------------
+
+type JudgedAttribute {
+  key: DimmAttributeKey
+  judgement: NonEmptyStr
+}
+
+type PurchaseIntent {
+  demand_id: NonEmptyStr
+  listing_key: NonEmptyStr
+  units: Int
+  delivered_unit_micro: Int
+  accepted_on_judgement: List<JudgedAttribute>
+  intake_obligation: NonEmptyStr
+  decided_on: NonEmptyStr
+}
+
+type PurchaseIntentAdmission
+  = IntentAdmitted { intent: PurchaseIntent }
+  | IntentRefusedNoUnits { listing_key: NonEmptyStr }
+  | IntentRefusedUnknownListing { listing_key: NonEmptyStr }
+  | IntentRefusedAmbiguousListing { listing_key: NonEmptyStr, copies: Int }
+  | IntentRefusedListingExcluded { listing_key: NonEmptyStr, cause: String }
+  | IntentRefusedDuplicateListing { listing_key: NonEmptyStr }
+  | IntentRefusedOverWanted { listing_key: NonEmptyStr, units: Int, remaining: Int }
+  | IntentRefusedOverSocketFill { listing_key: NonEmptyStr, units: Int, fill_admitted: Int, withheld: Int, read_obligation: NonEmptyStr }
+  | IntentRefusedNotAdmitted { listing_key: NonEmptyStr, cause: String }
+  | IntentRefusedNotWholeSocketFills { listing_key: NonEmptyStr, units: Int, socket_population: Int, remainder: Int, read_obligation: NonEmptyStr }
+  | IntentRefusedQuantityUnestablished { listing_key: NonEmptyStr, blocked_on: NonEmptyStr }
+
+// WHAT REMAINS OF THE WANTED QUANTITY, AS A TYPED READING. Against an established quantity it is
+// the units minus what purchase intents already commit; against an unestablished one there is no
+// remainder to compute -- the candidate is not demand -- and the reading carries what it is
+// blocked on. An earlier form returned an Int and let intend_purchase wall on it as though the
+// candidate were a fact.
+type RemainingWanted
+  = RemainingEstablished { wanted: Int, committed: Int, remaining: Int }
+  | RemainingUnestablished { committed: Int, blocked_on: NonEmptyStr }
+
+fn remaining_wanted(demand: DemandRow, intents: List<PurchaseIntent>) -> RemainingWanted {
+  let committed = intended_units(intents: intents, demand_id: demand.id)
+  match demand.wanted {
+    DemandQuantityEstablished { units: w, authority: _ } => RemainingEstablished { wanted: w, committed: committed, remaining: w - committed }
+    DemandQuantityUnestablished { candidate_units: _, candidate_derivation: _, blocked_on: b } => RemainingUnestablished { committed: committed, blocked_on: b }
+  }
+}
+
+// WHAT THE PROPOSAL ADMITS, as a quantity the intent may not exceed. Whole socket fills admit their
+// units; a below-socket remainder is WITHHELD and named with its read obligation; a lot refused for
+// a socket fill, a mixed or unstated lot, or a selection that admitted nothing admits zero.
+type FillAdmittedQuantity
+  = FillAdmits { units: Int, withheld: Int, read_obligation: NonEmptyStr }
+  | FillAdmitsNothing { cause: String }
+
+fn fill_admitted_quantity(p: LotProposal) -> FillAdmittedQuantity {
+  match p {
+    LotAdmittedForSocketFills { fills: _, units: u, remainder: r, remainder_read_obligation: o } => FillAdmits { units: u, withheld: r, read_obligation: o }
+    LotSelectionAsIs { selection: o } => match o {
+      SelectionAdmitted { component_id: _, source: _, units: u, unit_price_micro: _ } => FillAdmits { units: u, withheld: 0, read_obligation: "the search carries no socket-fill requirement" }
+      _ => FillAdmitsNothing { cause: proposal_cell(p: p) }
+    }
+    _ => FillAdmitsNothing { cause: proposal_cell(p: p) }
+  }
+}
+
+// THE REQUESTED QUANTITY MUST ITSELF BE WHOLE SOCKET FILLS while the held-part match is
+// unresolved: the rule is one part number per socket, so an intent for 5 or 9 of a lot that admits
+// 16 would buy a below-socket remainder the sheet cannot place, even though it is under the
+// ceiling. An earlier form checked only that ceiling. The wall applies exactly when the search
+// carries the socket-fill requirement (whose held-match obligation is what makes the remainder
+// unplaceable).
+fn intent_socket_population(s: DemandSearch) -> Int? {
+  match socket_fill_requirement(s: s) {
+    Absent => none
+    Present { value: q } => match q { RequireSocketFillUniformity { key: _, socket_population: n, held_match_read_obligation: _ } => Present { value: n }  _ => none }
+  }
+}
+
+type IntentFillCheck
+  = IntentFillsWhole
+  | IntentFillsBroken { socket_population: Int, remainder: Int }
+
+fn intent_fill_check(s: DemandSearch, units: Int) -> IntentFillCheck {
+  match intent_socket_population(s: s) {
+    Absent => IntentFillsWhole
+    Present { value: n } => if units % n == 0 { IntentFillsWhole } else { IntentFillsBroken { socket_population: n, remainder: units % n } }
+  }
+}
+
+// AN INTENT IS ADMITTED AGAINST ONE REVIEWED LISTING, NOT AGAINST NUMBERS AN AUTHOR TYPES. The
+// listing must be exactly one of the evidence rows the sheet reviews, and it must be ranked; its
+// delivered unit price and the intake obligation come from that review and the demand row, never
+// from the caller. So an invented listing key, a listing the sheet excluded, a second intent on the
+// same listing, or a substituted price cannot be admitted. THE UNITS ARE BOUND BY THE LOT PROPOSAL
+// the review produced: an intent may not exceed what the socket-fill arithmetic admitted, and a
+// withheld remainder is named with its read obligation rather than silently folded in. An earlier
+// form bounded units by the demand row alone and admitted 5 units of a lot the proposal had just
+// refused for a socket fill.
+fn intend_purchase(
+  s: DemandSearch,
+  evidence: List<ListingEvidence>,
+  prior: List<PurchaseIntent>,
+  listing_key: NonEmptyStr,
+  units: Int,
+  accepted_on_judgement: List<JudgedAttribute>,
+  decided_on: NonEmptyStr,
+) -> PurchaseIntentAdmission {
+  let matching = filter(evidence, fn(e) { e.listing_key == listing_key })
+  if (units <= 0) {
+    IntentRefusedNoUnits { listing_key: listing_key }
+  } else if (length(matching) == 0) {
+    IntentRefusedUnknownListing { listing_key: listing_key }
+  } else if (length(matching) > 1) {
+    IntentRefusedAmbiguousListing { listing_key: listing_key, copies: length(matching) }
+  } else if (length(filter(prior, fn(i) { i.listing_key == listing_key })) > 0) {
+    IntentRefusedDuplicateListing { listing_key: listing_key }
+  } else {
+    match remaining_wanted(demand: s.demand, intents: prior) {
+      RemainingUnestablished { committed: _, blocked_on: b } => IntentRefusedQuantityUnestablished { listing_key: listing_key, blocked_on: b }
+      RemainingEstablished { wanted: _, committed: _, remaining: remaining } => if (units > remaining) {
+        IntentRefusedOverWanted { listing_key: listing_key, units: units, remaining: remaining }
+      } else {
+    match matching.first() {
+      Absent => IntentRefusedUnknownListing { listing_key: listing_key }
+      Present { value: e } => match review_listing(s: s, e: e) {
+        ListingExcluded { excluded: x } => IntentRefusedListingExcluded { listing_key: listing_key, cause: x.cause }
+        ListingRanked { listing: l, spread_micro: _, proposal: p } => match l.price {
+          DeliveredUnformable { why: w } => IntentRefusedListingExcluded { listing_key: listing_key, cause: w }
+          DeliveredUnit { unit_micro: u } => match fill_admitted_quantity(p: p) {
+            FillAdmitsNothing { cause: c } => IntentRefusedNotAdmitted { listing_key: listing_key, cause: c }
+            FillAdmits { units: admitted, withheld: w, read_obligation: o } => if units > admitted {
+              IntentRefusedOverSocketFill { listing_key: listing_key, units: units, fill_admitted: admitted, withheld: w, read_obligation: o }
+            } else { match intent_fill_check(s: s, units: units) {
+              IntentFillsBroken { socket_population: n, remainder: r } =>
+                IntentRefusedNotWholeSocketFills { listing_key: listing_key, units: units, socket_population: n, remainder: r, read_obligation: o }
+              IntentFillsWhole =>
+              IntentAdmitted {
+                intent: PurchaseIntent {
+                  demand_id: s.demand.id,
+                  listing_key: listing_key,
+                  units: units,
+                  delivered_unit_micro: u,
+                  accepted_on_judgement: accepted_on_judgement,
+                  intake_obligation: s.demand.qualification_note,
+                  decided_on: decided_on,
+                }
+              }
+            } }
+          }
+        }
+      }
+    }
+      }
+    }
+  }
+}
+
+fn intended_units(intents: List<PurchaseIntent>, demand_id: NonEmptyStr) -> Int {
+  fold(intents, init: 0, f: fn(acc, i) { if (i.demand_id == demand_id) { acc + i.units } else { acc } })
+}
+
+// A COMMITTED INTENT MUST BE EXACTLY WHAT ADMISSION DERIVES when replayed in order against the rows
+// before it: the same demand, listing, units, delivered unit price and intake obligation. A
+// hand-edited price, a key the sheet never reviewed, a duplicate, or an obligation that is not the
+// one admission derives reds here.
+type IntentReplay {
+  prior: List<PurchaseIntent>
+  ok: Bool
+}
+
+fn intent_matches_admission(stored: PurchaseIntent, a: PurchaseIntentAdmission) -> Bool {
+  match a {
+    IntentAdmitted { intent: d } =>
+      d.demand_id == stored.demand_id && d.listing_key == stored.listing_key && d.units == stored.units
+        && d.delivered_unit_micro == stored.delivered_unit_micro && d.intake_obligation == stored.intake_obligation
+    _ => false
+  }
+}
+
+fn intents_replay_admitted(s: DemandSearch, evidence: List<ListingEvidence>, intents: List<PurchaseIntent>) -> Bool {
+  let replay = fold(intents, init: IntentReplay { prior: [], ok: true }, f: fn(acc, i) {
+    if (i.demand_id != s.demand.id) { IntentReplay { prior: concat(acc.prior, [i]), ok: false } } else {
+      IntentReplay {
+        prior: concat(acc.prior, [i]),
+        ok: acc.ok && intent_matches_admission(stored: i, a: intend_purchase(s: s, evidence: evidence, prior: acc.prior, listing_key: i.listing_key, units: i.units, accepted_on_judgement: i.accepted_on_judgement, decided_on: i.decided_on)),
+      }
+    }
+  })
+  replay.ok
+}
+
+// THE WANTED LINE READS THE QUANTITY'S STANDING, NOT A NUMBER. strategy.buyers_pipeline
+// demand_ddr4_rdimm.wanted is unestablished while strategy.owner_action ram_purchase_standing is a
+// gap -- no fleet RAM quantity is established, and purchase counts establish neither deployable
+// nodes nor RAM demand (operator ruling). Printing "wanted 320, remaining 320" beside that standing
+// gave one name two meanings (DESIGN 3). So the line renders the typed remaining reading: under an
+// established quantity the number with its authority and the remainder; under an unestablished one
+// the standing it is blocked on and no quantity. What is always printed is the units committed by
+// purchase intent, a fact of the intents rather than of the demand.
+fn jslot_census_step_state() -> String {
+  if step_is_discharged(step: step_hw1_jslot_census) { "discharged" } else { "open" }
+}
+
+fn wanted_line(demand: DemandRow, intents: List<PurchaseIntent>) -> String {
+  match remaining_wanted(demand: demand, intents: intents) {
+    RemainingEstablished { wanted: _, committed: c, remaining: r } => join([demand_quantity_text(q: demand.wanted), ", committed by purchase intent ", to_string(c), ", remaining ", to_string(r)], "")
+    RemainingUnestablished { committed: c, blocked_on: _ } => join([demand_quantity_text(q: demand.wanted), "; committed by purchase intent ", to_string(c)], "")
+  }
+}
+
+// THE NOTES BESIDE THE ROWS: what the sheet cannot rank, and why. One (kind, detail) pair per line,
+// so a spreadsheet shows them as plainly as the rows.
+fn render_review_notes_csv(sheet: ReviewSheet, standing: List<String>) -> String {
+  let header = csv_line(fields: ["Kind", "Detail"])
+  let standing_lines = map(standing, d => csv_line(fields: ["standing", d]))
+  let obligation_lines = map(sheet.open_read_obligations, o => csv_line(fields: ["cannot adjudicate", o]))
+  let excluded_lines = map(sheet.excluded, x => csv_line(fields: ["excluded", join([x.listing_key as String, ": ", x.cause, " -- ", x.title], "")]))
+  let unmapped_lines = map(sheet.unmapped_aspect_names, n => csv_line(fields: ["unmapped item specific", n]))
+  join(concat(concat(concat(concat([header], standing_lines), obligation_lines), excluded_lines), unmapped_lines), "\r\n")
+}
+
+fn schedule_admission_text(a: ScheduleAdmission) -> String {
+  match a {
+    ScheduleAdmitted { calls_per_day: c, daily_ceiling: m } => join(["scan schedule admitted: ", to_string(c), " Browse calls a day against the published ", to_string(m)], "")
+    ScheduleRefusedOverQuota { calls_per_day: c, daily_ceiling: m } => join(["scan schedule REFUSED: ", to_string(c), " Browse calls a day exceeds the published ", to_string(m)], "")
+    ScheduleRefusedMalformed { why: w } => join(["scan schedule REFUSED: ", w as String], "")
+    ScheduleRefusedBeyondResultWindow { candidates: c } => join(["scan schedule REFUSED: ", to_string(c), " candidates reach past the search result window"], "")
+  }
+}

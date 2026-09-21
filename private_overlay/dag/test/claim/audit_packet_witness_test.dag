@@ -1,0 +1,531 @@
+module test.claim.audit_packet_witness
+
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import strategy.compliance_posture {
+  ComplianceRegime, CompliancePosture, ExcludedByProductPolicy, DesignConstraintNow,
+  DeferredUntil, NotApplicable, compliance_regimes,
+}
+import strategy.audit_packet {
+  AuditRegime, AuditControl, ControlOverlap,
+  EvidenceCarrier, ReceiptCarrier, DeclaredCarrier, RegisterProseCarrier, ObligationCarrier,
+  PolicyExclusionCarrier,
+  EvidenceKind, ControlRecordAsk, ChangeRecordAsk, ExecutedRefusalAsk,
+  AuditPacket, PacketRendered, PacketRefused,
+  packet, packet_refusal_count, packet_standing_keys,
+  PacketRendering, PacketBytes, PacketRenderRejected, render_packet,
+  packet_refusal_lines, standing_key,
+}
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import strategy.audit_regimes {
+  audit_regimes, roster_soc2, roster_hipaa, regime_rosters,
+  RegimeBinding, RegimeBound, RegimeRosterMissing,
+  regime_bindings, bind_regime, bound_regimes, regimes_without_rosters, button_for_binding,
+  audit_button, button_for_regime, button_response, ButtonReading, read_button,
+  unresolved_overlaps, misattached_overlaps,
+}
+
+// WHAT MAKES THIS WITNESS MEAN ANYTHING. The lens's whole claim is that a packet is DERIVED from
+// the tree: a citation that no longer resolves must refuse the packet rather than print a stale
+// row. A witness that only ever sees the rosters as authored cannot tell a working resolver from a
+// resolver that answers "fine" to everything - so every green below is paired with a mutated
+// roster that must make it red, and the mutations are the four the lens claims to catch.
+//
+// THE POSITIVE CONTROL IS A REAL CARRIER, not a synthetic one: the sanctions roster cites
+// product.fabric.provider_admission's DispositionStanding and DispositionProgram, which exist on
+// public main today and read Typed. If the resolver silently failed, that row would refuse, so the
+// green half is discriminating in its own right.
+
+fn as_exit(ok: Bool, reason: String) -> ProcessExit {
+  if ok { ExitSuccess } else { ExitFailure { code: 1, reason: reason } }
+}
+
+// The derived regimes, looked up by the register's own id - the witness reads what the button
+// reads, rather than a roster row directly, so a break in the derivation is visible here.
+fn regime_by_id(regime_id: String) -> List<AuditRegime> {
+  filter(audit_regimes, r => r.regime_id as String == regime_id)
+}
+
+fn packet_keys_for(regime_id: String) -> List<String> {
+  fold(regime_by_id(regime_id: regime_id), init: [], f: fn(acc, r) {
+    concat(acc, packet_standing_keys(p: packet(regime: r)))
+  })
+}
+
+fn contains_key(keys: List<String>, wanted: String) -> Bool {
+  fold(keys, init: false, f: fn(acc, k) { if acc { true } else { k == wanted } })
+}
+
+fn any_line_contains(lines: List<String>, needle: String) -> Bool {
+  fold(lines, init: false, f: fn(acc, l) {
+    if acc { true } else { string_contains(s: l, pattern: needle) }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// GREEN: every regime in the roster renders, which means every citation in every roster row
+// resolved against the live corpus.
+// ---------------------------------------------------------------------------
+
+fn all_regimes_render() -> Bool {
+  all(audit_regimes, r => packet_refusal_count(p: packet(regime: r)) == 0)
+}
+
+fn unrendered_detail() -> String {
+  fold(audit_regimes, init: "", f: fn(acc, r) {
+    let p = packet(regime: r)
+    if packet_refusal_count(p: p) > 0 {
+      join([acc, "\n  packet refused: ", r.regime_id as String,
+            fold(packet_refusal_lines(p: p), init: "", f: fn(a, l) { join([a, "\n    ", l], "") })], "")
+    } else { acc }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// GREEN: the roster covers the register, both directions. Twelve register rows, twelve rosters,
+// joined on the regime id the register itself declares - not on a count, and not on a list copied
+// from the register into this file.
+// ---------------------------------------------------------------------------
+
+// COVERAGE IS NOW A DERIVATION, SO THIS CHECKS THE REFUSAL RATHER THAN AN EQUALITY. audit_regimes
+// is built by walking the REGISTER and binding each row to its control roster, so a regime the
+// register carries and the rosters do not cannot silently vanish from the population - it lands in
+// regimes_without_rosters. What the witness asserts is that the refusal set is empty and that the
+// derived population is the register's own size; the old two-list equality is gone with the second
+// list (review 65088).
+fn every_register_row_binds() -> Bool {
+  count(regimes_without_rosters(bindings: regime_bindings)) == 0
+    && count(audit_regimes) == count(compliance_regimes)
+}
+
+fn coverage_detail() -> String {
+  fold(regimes_without_rosters(bindings: regime_bindings), init: "", f: fn(acc, id) {
+    join([acc, "\n  register row with no control roster: ", id as String], "")
+  })
+}
+
+// THE MISSING-ROSTER REFUSAL, EXERCISED. Dropping a roster from regime_rosters is the mutation this
+// pins, and it is authored here rather than by deleting a live row: binding a synthetic register
+// regime whose id no roster carries must produce RegimeRosterMissing, which is what keeps the
+// derivation fail-closed instead of quietly answering for eleven regimes.
+data fixture_unrostered_regime: ComplianceRegime = ComplianceRegime {
+  id: "fixture-regime-with-no-roster",
+  scope_note: "Fixture: a register row this module carries no control roster for. Never a claim about any framework.",
+  posture: DeferredUntil { trigger: "Fixture only." },
+}
+
+fn unrostered_register_row_refuses() -> Bool {
+  match bind_regime(r: fixture_unrostered_regime) {
+    RegimeRosterMissing { regime_id: id } => id as String == "fixture-regime-with-no-roster"
+    RegimeBound { regime: _ } => false
+  }
+}
+
+// THE TWO REFUSALS ARE DIFFERENT ANSWERS AND THE BUTTON MUST NOT CONFLATE THEM. An id the register
+// does not carry is "no such regime"; a register row this module has no roster for is a regime the
+// operator cannot audit, which is a defect HERE. Dispatching through the flattened regime list gave
+// both the first message, denying register membership that exists. Both arms are pressed through
+// the button, and each is asserted NOT to produce the other's text.
+fn missing_roster_button_names_the_gap() -> Bool {
+  let r = read_button(response: button_for_binding(binding: bind_regime(r: fixture_unrostered_regime)))
+  !r.exited_zero
+    && string_contains(s: r.bytes, pattern: "IS carried by the compliance register")
+    && string_contains(s: r.bytes, pattern: "fixture-regime-with-no-roster")
+    && !string_contains(s: r.bytes, pattern: "no regime '")
+    && string_contains(s: r.exit_reason, pattern: "has no control roster")
+}
+
+fn unknown_regime_button_does_not_claim_a_missing_roster() -> Bool {
+  let r = read_button(response: audit_button(regime_id: "not-a-regime"))
+  !r.exited_zero
+    && string_contains(s: r.bytes, pattern: "REFUSED: no regime")
+    && !string_contains(s: r.bytes, pattern: "IS carried by the compliance register")
+    && string_contains(s: r.exit_reason, pattern: "no such regime")
+}
+
+// THE EXCLUSION IS DERIVED FROM THE POSTURE, and this is the check that says so without naming
+// HIPAA: every register row postured ExcludedByProductPolicy must render every control as an
+// exclusion, and every row NOT so postured must render none. Re-posturing the register flips both
+// halves, which is the property the hardcoded wrapper could not have.
+fn posture_is_excluded(p: CompliancePosture) -> Bool {
+  match p {
+    ExcludedByProductPolicy { policy: _ } => true
+    DesignConstraintNow { carrier: _ } => false
+    DeferredUntil { trigger: _ } => false
+    NotApplicable { reason: _ } => false
+  }
+}
+
+fn exclusion_follows_posture() -> Bool {
+  all(compliance_regimes, r => {
+    let keys = packet_keys_for(regime_id: r.id as String)
+    if posture_is_excluded(p: r.posture) {
+      count(keys) > 0 && all(keys, k => string_contains(s: k, pattern: "ExcludedByPolicy -> "))
+    } else {
+      all(keys, k => !string_contains(s: k, pattern: "ExcludedByPolicy"))
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// GREEN: the excluded regime never answers "not applicable". Every HIPAA row reads
+// ExcludedByPolicy with an enforcement standing inside it, and the overlap map is non-empty.
+// ---------------------------------------------------------------------------
+
+fn hipaa_maps_overlaps() -> Bool {
+  count(roster_hipaa.overlaps) > 0
+}
+
+// EVERY OVERLAP RESOLVES, IN BOTH DIRECTIONS. The count above says a map exists; this says the map
+// points at rows that exist - the regime it names is in the roster, the control it names is in that
+// regime, and the control it hangs off is in the regime carrying it. Counting overlaps without
+// reading them is what let a row point at a control answering a different question (review 65003).
+fn all_overlaps_resolve() -> Bool {
+  all(audit_regimes, r => count(unresolved_overlaps(r: r)) == 0 && count(misattached_overlaps(r: r)) == 0)
+}
+
+fn overlap_detail() -> String {
+  fold(audit_regimes, init: "", f: fn(acc, r) {
+    join([
+      acc,
+      fold(unresolved_overlaps(r: r), init: "", f: fn(a, o) {
+        join([a, "\n  ", r.regime_id as String, " ", o.control_id as String,
+              " points at ", o.other_regime_id as String, " ", o.other_control_id as String,
+              " which does not exist"], "")
+      }),
+      fold(misattached_overlaps(r: r), init: "", f: fn(a, o) {
+        join([a, "\n  ", r.regime_id as String, " carries an overlap for ", o.control_id as String,
+              " which is not one of its controls"], "")
+      }),
+    ], "")
+  })
+}
+
+// ---------------------------------------------------------------------------
+// GREEN: the positive control - real Typed carriers, and a real Absent row. Both arms inhabited
+// from the live rosters, so neither is a variant nothing ever constructs.
+// ---------------------------------------------------------------------------
+
+fn sanctions_reads_typed() -> Bool {
+  contains_key(keys: packet_keys_for(regime_id: "sanctions-and-abuse"), wanted: "Typed")
+}
+
+fn soc2_carries_absent_and_typed() -> Bool {
+  let keys = packet_keys_for(regime_id: "soc2-type2")
+  contains_key(keys: keys, wanted: "Absent") && contains_key(keys: keys, wanted: "Typed")
+}
+
+// ---------------------------------------------------------------------------
+// GREEN: the rendered packet says what it is. A packet that omitted the evidence-inventory footer
+// would be an evidence list an auditor could read as a compliance opinion.
+// ---------------------------------------------------------------------------
+
+// THE BUTTON ITSELF, BOTH FACTS IT PRODUCES. A CLI invocation makes two independent claims - the
+// bytes a reader sees and the status a script branches on - so both are asserted here. Checking
+// only the bytes is what let an untested second entry exist.
+fn button_renders_hipaa_and_exits_zero() -> Bool {
+  let r = read_button(response: audit_button(regime_id: "hipaa"))
+  r.exited_zero
+    && string_contains(s: r.bytes, pattern: "EVIDENCE INVENTORY, NOT A COMPLIANCE OPINION")
+    && string_contains(s: r.bytes, pattern: "hipaa-workload-prohibition")
+    && string_contains(s: r.bytes, pattern: "UNCITED - read obligation")
+    && !string_contains(s: r.bytes, pattern: "REFUSED:")
+}
+
+fn unknown_regime_refuses() -> Bool {
+  let r = read_button(response: audit_button(regime_id: "not-a-regime"))
+  !r.exited_zero
+    && string_contains(s: r.bytes, pattern: "REFUSED: no regime")
+    && string_contains(s: r.exit_reason, pattern: "no such regime")
+}
+
+// THE FAIL-CLOSED MAPPING, MUTATED. A refusing roster cannot be reached through a regime id -- every
+// id in the register resolves today -- so the fixture that refuses is pressed through the same
+// button the operator presses. A button_exit returning ExitSuccess unconditionally reds here.
+fn button_on_a_refusing_roster_exits_nonzero() -> Bool {
+  let r = read_button(response: button_for_regime(regime: red_module_absent))
+  !r.exited_zero
+    && string_contains(s: r.bytes, pattern: "REFUSED: audit packet fixture-regime")
+    && string_contains(s: r.bytes, pattern: "red-module-absent")
+    && string_contains(s: r.exit_reason, pattern: "roster row(s) cite a declaration")
+}
+
+// ---------------------------------------------------------------------------
+// THE MUTATIONS. Each fixture regime is the real vocabulary with ONE row changed, and each must
+// refuse for its own named reason. A mutation that refuses for the wrong reason is not evidence
+// that the lens caught what it claims to catch.
+// ---------------------------------------------------------------------------
+
+fn fixture_regime(controls: List<AuditControl>) -> AuditRegime {
+  AuditRegime {
+    regime_id: "fixture-regime",
+    register_row: decl_ref(module_path: "strategy.compliance_posture", decl_name: "regime_hipaa"),
+    posture_summary: "Fixture regime: posture text is not read from the register here, because the fixture exists to exercise refusal arms rather than to describe any regime.",
+    authority: TranscribedUncited { read_obligation: "Fixture regime: exercises the lens's refusal arms, never a claim about any framework." },
+    controls: controls,
+    overlaps: [],
+  }
+}
+
+fn fixture_control(id: String, carrier: EvidenceCarrier) -> AuditControl {
+  AuditControl {
+    id: id,
+    question: "Fixture question - exercises a refusal arm of the lens.",
+    question_standing: TranscribedUncited { read_obligation: "Fixture: no framework text is claimed." },
+    evidence_kind: ControlRecordAsk,
+    carrier: carrier,
+  }
+}
+
+// RED 1: a roster row citing a declaration that does not exist in a module that does.
+data red_declaration_absent: AuditRegime = fixture_regime(controls: [
+  fixture_control(
+    id: "red-declaration-absent",
+    carrier: DeclaredCarrier {
+      declaration: decl_ref(
+        module_path: "product.fabric.provider_admission",
+        decl_name: "NoSuchCarrier_AUDIT_RED",
+      ),
+    },
+  ),
+])
+
+// RED 2: a roster row citing a module that does not exist at all.
+data red_module_absent: AuditRegime = fixture_regime(controls: [
+  fixture_control(
+    id: "red-module-absent",
+    carrier: DeclaredCarrier {
+      declaration: decl_ref(
+        module_path: "strategy.no_such_module_AUDIT_RED",
+        decl_name: "anything",
+      ),
+    },
+  ),
+])
+
+// RED 3: an Executed arm citing something that is not a recorded value. The producer resolves and
+// so does the citation - what fails is that a `type` declaration cannot be a receipt, which is the
+// distinction a resolution-only check would miss.
+data red_receipt_is_not_a_value: AuditRegime = fixture_regime(controls: [
+  fixture_control(
+    id: "red-receipt-not-a-value",
+    carrier: ReceiptCarrier {
+      producer: decl_ref(module_path: "gunbc.merge_admission", decl_name: "merge_admission_enforcement_policy"),
+      receipts: [decl_ref(module_path: "product.fabric.provider_admission", decl_name: "DispositionStanding")],
+    },
+  ),
+])
+
+// RED 4: an exclusion whose POLICY resolves but whose ENFORCEMENT citation does not. This is the
+// arm that makes the excluded regime honest: an exclusion carried by nothing must not render as an
+// exclusion, and the recursion through the enforcement carrier is what catches it.
+data red_exclusion_enforcement_absent: AuditRegime = fixture_regime(controls: [
+  fixture_control(
+    id: "red-exclusion-enforcement-absent",
+    carrier: PolicyExclusionCarrier {
+      policy: decl_ref(module_path: "strategy.compliance_posture", decl_name: "regime_hipaa"),
+      enforcement: DeclaredCarrier {
+        declaration: decl_ref(
+          module_path: "product.fabric.provider_admission",
+          decl_name: "NoSuchEnforcement_AUDIT_RED",
+        ),
+      },
+    },
+  ),
+])
+
+// ORDINARY DATA IS NOT A RECEIPT, AND THIS IS THE ROW THAT USED TO SAY IT WAS. It cited
+// gunbc.merge_admission current_gate_roster_hash - a content hash over the commit-gate roster,
+// which is CONFIGURATION - and the witness called the resulting standing Executed. The operator's
+// merge review refused that, correctly: resolving to a data declaration says nothing about whether
+// a run produced it. The same fixture is kept and its expected verdict inverted, which is the
+// honest form of the repair - the row that manufactured the claim is now the row that refuses it.
+data red_ordinary_data_as_receipt: AuditRegime = fixture_regime(controls: [
+  fixture_control(
+    id: "red-ordinary-data-as-receipt",
+    carrier: ReceiptCarrier {
+      producer: decl_ref(module_path: "gunbc.merge_admission", decl_name: "merge_admission_enforcement_policy"),
+      receipts: [decl_ref(module_path: "gunbc.merge_admission", decl_name: "current_gate_roster_hash")],
+    },
+  ),
+])
+
+// AN EMPTY RECEIPT LIST IS NOT EVIDENCE THAT ANYTHING RAN. It passed for one revision because
+// nothing required the list to be nonempty: every citation in it resolved, vacuously.
+data red_receipt_list_is_empty: AuditRegime = fixture_regime(controls: [
+  fixture_control(
+    id: "red-empty-receipt-list",
+    carrier: ReceiptCarrier {
+      producer: decl_ref(module_path: "gunbc.merge_admission", decl_name: "merge_admission_enforcement_policy"),
+      receipts: [],
+    },
+  ),
+])
+
+// THE HEADER CITATION, MUTATED. The packet prints the register row above every control; renaming it
+// used to leave a successful packet displaying a declaration that does not exist.
+data red_register_row_absent: AuditRegime = AuditRegime {
+  regime_id: "fixture-regime",
+  register_row: decl_ref(module_path: "strategy.compliance_posture", decl_name: "regime_soc2_MUTANT"),
+  posture_summary: "Fixture regime: exercises the header-citation refusal.",
+  authority: TranscribedUncited { read_obligation: "Fixture regime: exercises the header-citation refusal, never a claim about any framework." },
+  controls: [
+    fixture_control(
+      id: "fixture-control-that-resolves",
+      carrier: DeclaredCarrier {
+        declaration: decl_ref(module_path: "product.fabric.provider_admission", decl_name: "DispositionStanding"),
+      },
+    ),
+  ],
+  overlaps: [],
+}
+
+fn refuses_with(regime: AuditRegime, needle: String) -> Bool {
+  let p = packet(regime: regime)
+  packet_refusal_count(p: p) == 1
+    && any_line_contains(lines: packet_refusal_lines(p: p), needle: needle)
+}
+
+// A carrier can be wrong in more than one way at once - a receipt citation that names a type is
+// both "not a recorded value" and "execution unestablished" - so this asks whether the named reason
+// is among the refusals rather than demanding it be the only one. refuses_with stays for the rows
+// that must produce exactly one.
+fn refusal_mentions(regime: AuditRegime, needle: String) -> Bool {
+  let p = packet(regime: regime)
+  packet_refusal_count(p: p) > 0
+    && any_line_contains(lines: packet_refusal_lines(p: p), needle: needle)
+}
+
+fn red_1_holds() -> Bool {
+  refuses_with(regime: red_declaration_absent, needle: "declaration-absent")
+}
+
+fn red_2_holds() -> Bool {
+  refuses_with(regime: red_module_absent, needle: "module-absent")
+}
+
+fn red_3_holds() -> Bool {
+  refusal_mentions(regime: red_receipt_is_not_a_value, needle: "not a recorded value")
+}
+
+fn red_4_holds() -> Bool {
+  refuses_with(regime: red_exclusion_enforcement_absent, needle: "declaration-absent")
+}
+
+// NO CONTROL ANYWHERE READS Executed, and that is now a checked property of the whole roster rather
+// than a sentence in the footer. It is the direct consequence of execution being unestablishable
+// here: the day a producer records its receipts as declarations, this check is what must be
+// retired deliberately rather than silently drifting.
+fn nothing_reads_executed() -> Bool {
+  all(audit_regimes, r => !contains_key(keys: packet_standing_keys(p: packet(regime: r)), wanted: "Executed"))
+}
+
+fn red_ordinary_data_holds() -> Bool {
+  refusal_mentions(regime: red_ordinary_data_as_receipt, needle: "cannot establish execution")
+}
+
+fn red_empty_receipts_holds() -> Bool {
+  refuses_with(regime: red_receipt_list_is_empty, needle: "cites no receipts at all")
+}
+
+fn red_register_row_holds() -> Bool {
+  refuses_with(regime: red_register_row_absent, needle: "cites register row")
+}
+
+// A REJECTED EMIT MUST NOT EXIT ZERO. The rejection arm is authored here rather than provoked from
+// a roster: extdeps.languages.html refuses a rejected URL or a raw-text hazard, and this renderer
+// emits only text, code and strong inlines, so no roster row reaches it as authored. What the
+// witness can and must pin is the MAPPING - that a document the emitter refused does not reach an
+// operator as a success - and that is what this exercises, on the same button the operator presses.
+fn rejected_emit_exits_nonzero() -> Bool {
+  let r = read_button(response: button_response(
+    regime_id: "fixture-regime",
+    p: packet(regime: red_module_absent),
+    rendering: PacketRenderRejected { reason: "fixture: the emitter refused these bytes" },
+  ))
+  !r.exited_zero
+    && string_contains(s: r.bytes, pattern: "REJECTED: the audit packet could not be emitted")
+    && string_contains(s: r.exit_reason, pattern: "could not be emitted")
+}
+
+// The control beside it: the same call over a rendered document is the ordinary path, so the arm
+// above is discriminating rather than a mapping that answers nonzero to everything.
+fn rendered_emit_exits_zero() -> Bool {
+  fold(regime_by_id(regime_id: "hipaa"), init: false, f: fn(acc, regime) {
+    let p = packet(regime: regime)
+    let r = read_button(response: button_response(
+      regime_id: "hipaa",
+      p: p,
+      rendering: render_packet(p: p),
+    ))
+    r.exited_zero && !string_contains(s: r.bytes, pattern: "REJECTED:")
+  })
+}
+
+fn audit_packet_witness_main() -> ProcessExit {
+  let checks = [
+    as_exit(ok: all_regimes_render(),
+      reason: join(["a regime packet refused - a roster row cites something the corpus does not carry:", unrendered_detail()], "")),
+    as_exit(ok: every_register_row_binds(),
+      reason: join(["every register row must bind to a control roster, and the derived population must be the register's:", coverage_detail()], "")),
+    as_exit(ok: unrostered_register_row_refuses(),
+      reason: "RED: a register row with no control roster must bind to RegimeRosterMissing, not vanish from the population"),
+    as_exit(ok: missing_roster_button_names_the_gap(),
+      reason: "RED: the button must name a missing control roster as exactly that, never as 'no such regime' - the register membership is real and denying it loses the only actionable diagnosis"),
+    as_exit(ok: unknown_regime_button_does_not_claim_a_missing_roster(),
+      reason: "RED: an id the register does not carry must refuse as unknown, never as a missing roster"),
+    as_exit(ok: exclusion_follows_posture(),
+      reason: "a regime excluded by product policy in the register must render every control as an exclusion, and a regime not so postured must render none - the wrap is the register's fact, not the roster's"),
+    as_exit(ok: hipaa_maps_overlaps(),
+      reason: "the excluded regime must map its controls onto the roster that answers them"),
+    as_exit(ok: all_overlaps_resolve(),
+      reason: join(["every overlap must name a control that exists, on a regime that exists, for a control the regime carries:", overlap_detail()], "")),
+    as_exit(ok: sanctions_reads_typed(),
+      reason: "positive control: the provider-admission disposition carriers must read Typed"),
+    as_exit(ok: soc2_carries_absent_and_typed(),
+      reason: "the SOC 2 roster must carry both real Typed rows and honest Absent rows"),
+    as_exit(ok: button_renders_hipaa_and_exits_zero(),
+      reason: "the button must print the control rows, the uncited-question provenance and the evidence-inventory footer, and exit zero"),
+    as_exit(ok: rejected_emit_exits_nonzero(),
+      reason: "a packet the emitter refused must exit NONZERO and say so - a blank page with a success status is the shape the button exists to prevent"),
+    as_exit(ok: rendered_emit_exits_zero(),
+      reason: "control: the same mapping over a rendered document must exit zero"),
+    as_exit(ok: button_on_a_refusing_roster_exits_nonzero(),
+      reason: "the button must EXIT NONZERO on a refusing roster while still printing the repair list - the fail-closed mapping itself"),
+    as_exit(ok: unknown_regime_refuses(),
+      reason: "an unknown regime id must refuse rather than render an empty packet"),
+    as_exit(ok: red_1_holds(),
+      reason: "RED 1: a row citing an absent declaration must refuse the packet with declaration-absent"),
+    as_exit(ok: red_2_holds(),
+      reason: "RED 2: a row citing an absent module must refuse the packet with module-absent"),
+    as_exit(ok: red_3_holds(),
+      reason: "RED 3: an Executed arm citing a non-value declaration must refuse as not a recorded value"),
+    as_exit(ok: red_4_holds(),
+      reason: "RED 4: an exclusion whose enforcement citation does not resolve must refuse the packet"),
+    as_exit(ok: red_ordinary_data_holds(),
+      reason: "RED: ordinary configuration data cited as a receipt must refuse - resolving to a data declaration is not evidence that anything ran"),
+    as_exit(ok: red_empty_receipts_holds(),
+      reason: "RED: an empty receipt list must refuse - vacuous resolution is not execution evidence"),
+    as_exit(ok: red_register_row_holds(),
+      reason: "RED: a regime whose register-row citation does not resolve must refuse the packet - the header is a citation too"),
+    as_exit(ok: nothing_reads_executed(),
+      reason: "no roster control may read Executed while execution is unestablishable in this tree"),
+  ]
+  fold(checks, init: ExitSuccess, f: fn(acc, e) {
+    match acc {
+      ExitSuccess =>
+        match e {
+          ExitSuccess => ExitSuccess
+          ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+        }
+      ExitFailure { code: ac, reason: ar } =>
+        match e {
+          ExitSuccess => ExitFailure { code: ac, reason: ar }
+          ExitFailure { code: _, reason: er } =>
+            ExitFailure { code: ac, reason: join([ar, "\n", er], "") }
+        }
+    }
+  })
+}

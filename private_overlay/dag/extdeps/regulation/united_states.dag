@@ -1,0 +1,37 @@
+module extdeps.regulation.united_states
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalSubjectRef }
+
+// THE UNITED STATES AS A JURISDICTION - the independently governed upstream whose one declaration
+// a route fact cites when a located path sits under US law (DESIGN "External upstream
+// decomposition": a jurisdiction is an upstream exactly as a municipality is, and
+// extdeps.regulation.nj_bayonne is the precedent for giving it its own module and its own
+// ExternalSubjectRef). This module holds the SUBJECT and nothing else: the federal instruments
+// that bind a hosted service are rows that land beside it when they are read, and
+// strategy.compliance_posture already carries the per-regime register that names which ones.
+//
+// WHY THIS DECLARATION EXISTS AT ALL, since product.fabric.provider_route says at length that
+// there is deliberately no central jurisdiction enum. It still says that. A jurisdiction is an
+// open DeclarationRef there, compared by declaration_ref_eq between what a posture PERMITS and
+// what a located path CITES, so the two sides have to name one declaration or the comparison
+// has nothing to hold. Until now nothing in either tree was that declaration for the United
+// States: gunbc.spark.first_party_serving cites its SITE ALLOCATION in the jurisdiction slot,
+// which names where the metal sits rather than which legal system it sits under, and
+// strategy.b2b_capacity_track grounds "physically in the United States" on the entity's
+// principal-office address. Neither is a jurisdiction, and a posture enumerating either would be
+// permitting a place or an address rather than a legal system. This is the one declaration both
+// sides cite. Adding Germany is a sibling module beside this one, never an edit here and never a
+// widening of any generic type.
+//
+// STANDING, at its real strength. This row establishes identity only - that "the United States"
+// names ONE subject for every citation of it. It establishes nothing about what US law requires
+// of a route, and a posture permitting it establishes only that some read route's closure was
+// cleared under it, which is that posture's claim to carry and not this module's.
+data united_states: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "extdeps.regulation.united_states",
+    decl_name: "united_states",
+    field: WholeDeclaration,
+  },
+}

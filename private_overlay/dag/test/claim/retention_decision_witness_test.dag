@@ -1,0 +1,66 @@
+module test.claim.retention_decision_witness
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import strategy.retention_decision {
+  StorageRole, DurableCustomerOutput, MaterializedCopy, CustomerInspectableLog, EvidentiaryRecord,
+  artifact_availability_promise, promise_is_published, miss_cost_shape,
+  retention_subject, objective_terms, term_is_grounded, grounded_term_count,
+  retention_selection, period_was_selected, selection_arm_name,
+  AbuseTier, SignalNoCase, ScreeningHistory, OpenInvestigation, ClosedInvestigation,
+  EnforcementDecision, AppealOrDispute, LegalHold, tier_suspends_expiry,
+}
+
+// NO PERIOD IS DERIVABLE BEFORE EVIDENCE. The red is the hurried edit: ground one term with a
+// number nobody read, and this refuses instead of quietly yielding a period.
+// THE KERNEL'S ANSWER, NOT A LOCAL BOOLEAN (review 67537). The previous claim asserted a
+// hand-computed grounded_term_count() > 0 and would have stayed green if select_realization
+// disagreed. This asserts what the kernel actually returns: no period is selected, and the arm is
+// SelectionNeedsEvidence rather than some other refusal wearing the same false.
+fn no_period_is_derivable_before_evidence() -> Bool {
+  !period_was_selected(pick: retention_selection())
+    && selection_arm_name(pick: retention_selection()) == "SelectionNeedsEvidence"
+    && grounded_term_count() == 0
+    && count(filter(objective_terms(), t => !term_is_grounded(t: t))) == count(objective_terms())
+}
+
+// NO PUBLISHED WINDOW, SO ECONOMICS DECIDES ARTIFACTS.
+fn no_published_window_means_economics_decides() -> Bool {
+  !promise_is_published(p: artifact_availability_promise)
+}
+
+// THE ROLES DO NOT SHARE ONE MISS COST, which is why the role is part of the key.
+fn the_roles_do_not_share_one_miss_cost() -> Bool {
+  miss_cost_shape(role: DurableCustomerOutput) != miss_cost_shape(role: MaterializedCopy)
+    && miss_cost_shape(role: CustomerInspectableLog) != miss_cost_shape(role: MaterializedCopy)
+    && miss_cost_shape(role: EvidentiaryRecord) != miss_cost_shape(role: DurableCustomerOutput)
+}
+
+// THE CONSTRAINTS ARE CARRIED, NOT TRADED.
+fn the_hard_constraints_are_present() -> Bool {
+  count(retention_subject.constraints) == 3 && count(retention_subject.parameters) == 1
+}
+
+// HOLD STATES STOP THE CLOCK AND NOTHING ELSE DOES, asserted per tier by identity, so letting an
+// open investigation expire, or freezing no-case signals forever, reds.
+fn only_hold_states_suspend_expiry() -> Bool {
+  tier_suspends_expiry(t: OpenInvestigation)
+    && tier_suspends_expiry(t: AppealOrDispute)
+    && tier_suspends_expiry(t: LegalHold)
+    && !tier_suspends_expiry(t: SignalNoCase)
+    && !tier_suspends_expiry(t: ScreeningHistory)
+    && !tier_suspends_expiry(t: ClosedInvestigation)
+    && !tier_suspends_expiry(t: EnforcementDecision)
+}
+
+fn retention_decision_witness_all() -> Bool {
+  no_period_is_derivable_before_evidence()
+    && no_published_window_means_economics_decides()
+    && the_roles_do_not_share_one_miss_cost()
+    && the_hard_constraints_are_present()
+    && only_hold_states_suspend_expiry()
+}
+
+fn retention_decision_witness_main() -> ProcessExit {
+  if retention_decision_witness_all() { ExitSuccess } else { ExitFailure { code: 1, reason: "retention_decision_witness_all returned false" } }
+}

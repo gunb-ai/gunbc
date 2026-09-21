@@ -1,0 +1,407 @@
+module strategy.mt_collins_power
+
+import std.types { Int, NonEmptyStr, Bool }
+import std.nat { Nat }
+import std.measure { Watt, watt, watt_count, milliwatt, byte_size, megatransfers_per_second }
+import extdeps.cpu.ampere { altra_q8030_catalog }
+import gunbc.memory_provisioning { mt_collins_per_socket_geometry }
+import product.node_power_envelope {
+  MemoryElectricalContext, NodeElectricalInputs, MemoryPopulationEvidence,
+  PopulationModuleUnread, altra_two_dpc_ceilings,
+  NodeDrawReading, NodeDrawDerived, NodeDrawRefused, node_draw,
+  EfficiencyRating, Platinum, Gold,
+}
+import strategy.ci_node_build { node_watts }
+import strategy.node_rental { nodes_per_site }
+import strategy.calendar_date { CalendarDate, calendar_date_is_valid, calendar_date_iso }
+
+// NODE POWER, DERIVED FROM THE BILL OF MATERIALS INSTEAD OF ASSERTED.
+//
+// ci_node_build carries NodePowerAssumed { watts: 650 } and its own note says the figure
+// "cannot separate a 128-core node from a 64-core one" and dissolves into a clamp-meter
+// reading. That number is load-bearing far beyond its evidence: it sizes every circuit in
+// rack_power_engineering, sets the fleet's 13.65 kW demand, decides how many nodes the
+// residence can power, and is the single largest priced line in strategy.cost_floor at
+// roughly 27 percent of it. One assumed integer is doing all of that work.
+//
+// gunbc.product.node_power_envelope already derives what 650 was standing in for: DC load from
+// processor TDP, memory population and board draw, then wall draw through PSU efficiency. It
+// was never wired to this fleet. So this module is a BINDING and not a new model - the
+// arithmetic belongs upstream and re-deriving it here would be the second authority the whole
+// repository is organised against.
+//
+// WHAT THE BINDING PRODUCES TODAY IS A REFUSAL, AND THAT IS THE POINT. The envelope refuses
+// when the memory population is unread, because a node whose memory draw cannot be derived does
+// not draw only its processor, and a CPU-plus-board figure is exactly what a power budget would
+// happily divide by. Our census IS read -- sixteen 16 GiB modules, one per channel -- but it is
+// a MIX of three parts with different rank and width, and the upstream population shape names
+// one module row, so the draw still cannot be derived and the honest output is a typed refusal
+// naming that obligation (see mt_collins_memory_evidence below). A refusal that names the missing read is worth more than 650,
+// because 650 is not a lower bound, an upper bound, or a measurement; it is a number with no
+// producer, and the fleet's entire electrical plan currently rests on it.
+
+data mt_collins_context: MemoryElectricalContext = MemoryElectricalContext {
+  geometry: mt_collins_per_socket_geometry,
+  max_data_rate: megatransfers_per_second(count: 3200),
+  two_dpc_ceilings: altra_two_dpc_ceilings,
+}
+
+// THE CENSUS AS IT NOW STANDS: the two-readings split is CLOSED, and the arm stays Unread for a
+// different reason than before. Public gunbc.machine_intake_mtcollins1_memory_census_observation
+// (gunbc#10965, dmidecode on the booted unit) and the firmware's pre-OS DRAM table
+// (gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation, gunbc#11189) agree:
+// sixteen 16 GiB modules, one per channel on all sixteen channels. So stick_capacity and
+// dimm_count are READ facts here. What PopulationModuleRead cannot yet carry is the MIX:
+// PopulationOption names ONE module row, and this population is three Hynix parts with different
+// rank and width (ten HMA82GR7AFR4N-VK 1R x4, five HMA82GR7AFR8N-VK 2R x8, one HMA82GR7CJR8N-VK),
+// and draw is a per-rank device count. Reading it as any one of the three would fabricate the
+// figure the envelope exists to refuse; the obligation names the shape that would carry it.
+data mt_collins_memory_evidence: MemoryPopulationEvidence = PopulationModuleUnread {
+  stick_capacity: byte_size(count: 17179869184),
+  dimm_count: 16,
+  read_obligation: "The population IS read -- sixteen 16 GiB modules, one per channel, by two independent producers (public gunbc#10965 census with part and serial per slot; gunbc#11189 firmware DRAM table) -- and it is MIXED: 10 x HMA82GR7AFR4N-VK (1R x4), 5 x HMA82GR7AFR8N-VK (2R x8), 1 x HMA82GR7CJR8N-VK. PopulationModuleRead takes a single DramModuleCatalogRow, so the draw cannot be stated without either a per-slot population shape in product.node_power_envelope (a list of (module row, count)) or a whole-population swap to one part, which strategy.mobo_x_memory_census's purchase question is deciding. Until one of those lands this arm stays Unread on the MIX, not on the count.",
+}
+
+// The two caller-declared figures the envelope deliberately refuses to default. Naming them as
+// fields is the upstream module's design: a reader must supply them, so neither can hide inside
+// the arithmetic as a constant nobody chose.
+data assumed_dram_power_per_chip_milliwatt: Int = 400
+data assumed_board_idle_draw_watts: Int = 60
+
+data mt_collins_electrical: NodeElectricalInputs = NodeElectricalInputs {
+  label: "mt-collins-1u-dual-q8030",
+  sockets: 2,
+  cpu: altra_q8030_catalog,
+  context: mt_collins_context,
+  memory: mt_collins_memory_evidence,
+  dram_power_per_chip: milliwatt(count: 400),
+  board_idle_draw: watt(count: 60),
+  psu_rated_output: watt(count: 800),
+  psu_efficiency: Platinum,
+}
+
+fn mt_collins_draw() -> NodeDrawReading {
+  node_draw(inputs: mt_collins_electrical)
+}
+
+// Minus one is not a wattage and cannot be mistaken for one, which is the same device the
+// upstream witness uses. A refusal must not return a number a budget could divide by.
+fn mt_collins_wall_watts_or_refusal() -> Int {
+  match mt_collins_draw() {
+    NodeDrawDerived { dc_load, wall_draw } => watt_count(w: wall_draw),
+    NodeDrawRefused { cause } => 0 - 1,
+  }
+}
+
+fn draw_is_derived() -> Bool {
+  match mt_collins_draw() {
+    NodeDrawDerived { dc_load, wall_draw } => true,
+    NodeDrawRefused { cause } => false,
+  }
+}
+
+// The assumption this binding exists to retire, kept beside the derivation so the gap is a
+// value rather than a claim in prose. While the derivation refuses, the difference is not
+// computable and the assumption stands alone - which is the state worth being able to see.
+fn assumed_wall_watts() -> Nat {
+  node_watts()
+}
+
+type PowerStanding
+  = PowerDerived { wall_watts: Int, assumed_watts: Int }
+  | PowerAssumedOnly { assumed_watts: Int, obligation: NonEmptyStr }
+
+fn power_standing() -> PowerStanding {
+  if draw_is_derived() {
+    PowerDerived { wall_watts: mt_collins_wall_watts_or_refusal(), assumed_watts: assumed_wall_watts() }
+  } else {
+    PowerAssumedOnly {
+      assumed_watts: assumed_wall_watts(),
+      obligation: "The derivation refuses because the memory population is unread, so the fleet's electrical plan still rests on an assumed 650 W with no producer behind it. Two reads close this: the host-side per-slot memory census, and a wattmeter observation at the wall. The second is not optional even once the first lands - the envelope derives a MODELLED wall figure from TDP and declared board and DRAM draws, and TDP is a thermal design rating rather than an observed draw, so the derivation replaces an unsourced number with a sourced ESTIMATE and only a measurement closes the class. Note the direction of the current error: two Q80-30 sockets carry 161 W of rated TDP each, so 322 W of processor against a 650 W whole-node assumption leaves 328 W for memory, board, fans and conversion loss - which looks high and means the fleet demand, the circuit sizing and the largest line of the cost floor are all more likely overstated than understated.",
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE WATTMETER OBSERVATION THE OBLIGATION ABOVE NAMES AS NOT OPTIONAL, 2026-09-10.
+//
+// The operator watched a power meter on the held Mt. Collins unit through a full boot and reported
+// three readings. There is NO ARTIFACT: no capture, no time series, no logged sample - a person
+// watched a display and reported what it said. That is a real instrument and a weak one, and the
+// rows below say which it is in the type rather than in a footnote, because an ad-hoc hardware
+// observation whose output is never a receipt is lost the moment the session that heard it ends.
+// This module is where it is written down; it is not written into
+// extdeps.ampere.mt_collins_product_brief, which models cited public collateral only.
+//
+// WHAT THESE READINGS ARE NOT, AND THIS IS THE LOAD-BEARING SENTENCE OF THE SECTION: they are BOOT
+// and IDLE, never LOAD. The 480 W peak is a BOOT TRANSIENT taken while the fans ran at 80-100 per
+// cent through POST and the processors were largely idle - a fan curve at full deflection against
+// two idle sockets. It is not a sustained-load maximum, it is not an upper bound on anything this
+// node will do under CI, and it MUST NOT size a circuit, a PDU, a rack or a colo order. One
+// hundred and sixty Altra cores with every DIMM populated under a real build can exceed it and
+// nothing observed here bounds that. The regime is therefore a FIELD on every reading and the
+// sizing question folds over it, so a consumer cannot reach a wattage without passing the regime.
+
+type PowerRegime
+  = BootTransientPeak
+  | BootSustainedHover
+  | PostBootIdle
+  | SustainedWorkloadLoad
+
+// The regime that sizes electrical infrastructure is the sustained one, and it is the only one with
+// no observation below. Naming it as an arm rather than omitting it is what makes the gap a hole in
+// the roster instead of a sentence in a brief.
+fn regime_sizes_infrastructure(r: PowerRegime) -> Bool {
+  match r {
+    BootTransientPeak => false,
+    BootSustainedHover => false,
+    PostBootIdle => false,
+    SustainedWorkloadLoad => true,
+  }
+}
+
+fn regime_label(r: PowerRegime) -> NonEmptyStr {
+  match r {
+    BootTransientPeak => "boot transient peak",
+    BootSustainedHover => "boot hover",
+    PostBootIdle => "post-boot idle",
+    SustainedWorkloadLoad => "sustained workload load",
+  }
+}
+
+// HOW THE NUMBER WAS PRODUCED, typed, because the difference between a watched display and a logged
+// capture is the difference between "about 380" and a distribution. A watched meter carries no
+// sample rate, no duration and no timestamped extremum; its peak is the largest value a human
+// happened to see, which is a LOWER bound on the true peak and not the peak itself.
+type MeterInstrument
+  = WatchedWholeChassisMeter {
+      reader: NonEmptyStr
+      chassis_scope: NonEmptyStr
+      what_watching_cannot_produce: NonEmptyStr
+    }
+  | BmcTelemetryReading { endpoint: NonEmptyStr, sensor: NonEmptyStr }
+
+fn instrument_is_captured(i: MeterInstrument) -> Bool {
+  match i {
+    WatchedWholeChassisMeter { reader, chassis_scope, what_watching_cannot_produce } => false,
+    BmcTelemetryReading { endpoint, sensor } => true,
+  }
+}
+
+type WallPowerObservation {
+  subject: NonEmptyStr
+  regime: PowerRegime
+  watts: Watt
+  observed_on: CalendarDate
+  observer: NonEmptyStr
+  instrument: MeterInstrument
+  scope: NonEmptyStr
+  does_not_establish: NonEmptyStr
+}
+
+data observed_on_2026_09_10: CalendarDate = CalendarDate { year: 2026, month: 9, day: 10 }
+
+data watched_meter_instrument: MeterInstrument = WatchedWholeChassisMeter {
+  reader: "the operator, watching the meter display in real time through the boot",
+  chassis_scope: "WHOLE CHASSIS at the wall, single supply. The held unit is a 1U chassis with ONE supply corded (strategy.mt_collins_held_unit observation_provenance_note records PSU2 AC lost, redundancy unarmed), so a single wall meter sees the entire node - processors, memory, fans, board and conversion loss together. It does not decompose into any of them.",
+  what_watching_cannot_produce: "no sample rate, no duration, no timestamped extremum and no distribution. The reported peak is the largest value a person happened to see on a display, which is a LOWER bound on the true transient peak rather than the peak itself, and the hover figure is an eyeball central tendency rather than a mean over samples.",
+}
+
+data observed_boot_peak: WallPowerObservation = WallPowerObservation {
+  subject: "mt-collins-1u-dual-q8030, unit 1, board serial 02030A800TEXFT02L",
+  regime: BootTransientPeak,
+  watts: watt(count: 480),
+  observed_on: observed_on_2026_09_10,
+  observer: "operator",
+  instrument: watched_meter_instrument,
+  scope: "The absolute maximum seen on the display at any moment of one boot, with the fans at 80-100 per cent for a few minutes while the processors were largely idle through POST.",
+  does_not_establish: "NOT A SUSTAINED-LOAD MAXIMUM AND NOT A SIZING FIGURE. It may not size a circuit, a PDU, a rack or a colo order. It is a fan-dominated transient against idle sockets; a real CI load on 160 cores with a full DIMM population can exceed it and nothing in this observation bounds that. It is also a single boot of a single unit, so it is not a population figure.",
+}
+
+data observed_boot_hover: WallPowerObservation = WallPowerObservation {
+  subject: "mt-collins-1u-dual-q8030, unit 1, board serial 02030A800TEXFT02L",
+  regime: BootSustainedHover,
+  watts: watt(count: 380),
+  observed_on: observed_on_2026_09_10,
+  observer: "operator",
+  instrument: watched_meter_instrument,
+  scope: "Where the display mostly sat during the boot, between the transient excursions - an eyeball central tendency over the same fans-high, CPUs-idle interval.",
+  does_not_establish: "Not a mean, not a median and not a load figure. Boot is a fan-dominated regime that ends; it says nothing about what the node draws once it is doing work, which is the only regime that sizes anything.",
+}
+
+data observed_post_boot_idle: WallPowerObservation = WallPowerObservation {
+  subject: "mt-collins-1u-dual-q8030, unit 1, board serial 02030A800TEXFT02L",
+  regime: PostBootIdle,
+  watts: watt(count: 185),
+  observed_on: observed_on_2026_09_10,
+  observer: "operator",
+  instrument: watched_meter_instrument,
+  scope: "After the boot completed and the fans settled, with the host powered and idle.",
+  does_not_establish: "An idle floor is not a budget. It bounds what the fleet burns doing nothing, which is the WRONG end of the range for sizing supply, and it is the end where a node spends the least of its life if the fleet is earning.",
+}
+
+// THE CORROBORATION, AND ITS SCOPE IS THE IDLE ARM ALONE. The 2026-08-31 BMC probe recorded
+// Total_Power 200 W with the host powered and the CPU rails at 62 W and 66 W - a reading taken by a
+// DIFFERENT INSTRUMENT (the board's own telemetry, over the REST API) on a DIFFERENT DAY, and it
+// agrees with the watched meter's 185 W to within fifteen watts. Two independent instruments
+// landing that close is real strengthening, and it strengthens EXACTLY ONE of the three readings:
+// there is no telemetry counterpart for the boot peak or the hover, because nobody was polling the
+// BMC through a boot. strategy.mt_collins_held_unit mt_collins_memory_census_capability carries the
+// telemetry reading in its own words; the row below is this module's typed join of it, not a second
+// authority for it.
+data telemetry_idle_corroboration: WallPowerObservation = WallPowerObservation {
+  subject: "mt-collins-1u-dual-q8030, unit 1, board serial 02030A800TEXFT02L",
+  regime: PostBootIdle,
+  watts: watt(count: 200),
+  observed_on: CalendarDate { year: 2026, month: 8, day: 31 },
+  observer: "container probe over the operator's LAN",
+  instrument: BmcTelemetryReading {
+    endpoint: "GET /api/sensors on the AMI MegaRAC BMC at the held unit's LAN address",
+    sensor: "Total_Power 200 W, host powered (chassis-status power_status 1), with CPU0_CPU_Pwr 62 W and CPU1_CPU_Pwr 66 W",
+  },
+  scope: "Host powered and idle. Board telemetry, not a wall meter: it reads what the board believes it is drawing and need not include everything the wall sees.",
+  does_not_establish: "Not a wall reading and not a load reading. It corroborates the idle arm and nothing else - no boot-regime telemetry was ever captured, so the peak and hover figures stand on one instrument each.",
+}
+
+type IdleCorroboration
+  = IdleCorroborated { meter_watts: Int, telemetry_watts: Int, spread_watts: Int, note: NonEmptyStr }
+  | IdleUncorroborated { obligation: NonEmptyStr }
+
+// The spread is derived from the two rows rather than stated, so an edit to either reading moves it.
+fn idle_spread_watts() -> Int {
+  watt_count(w: telemetry_idle_corroboration.watts) - watt_count(w: observed_post_boot_idle.watts)
+}
+
+data idle_agreement_tolerance_watts: Int = 25
+
+data idle_tolerance_basis: NonEmptyStr = "Twenty-five watts is roughly thirteen per cent of the idle figure, and it is a threshold for calling two readings CONSISTENT rather than a precision claim about either. It is chosen to be wider than the difference a wall meter and board telemetry should show on the same idle machine (the telemetry omits at least the conversion loss the wall sees, so telemetry reading BELOW the wall figure would be the expected direction) and narrower than the gap that would mean the two are describing different machine states. It is an authored judgement, and it is the one number here that no instrument produced."
+
+fn idle_corroboration() -> IdleCorroboration {
+  if idle_spread_watts() <= idle_agreement_tolerance_watts {
+    IdleCorroborated {
+      meter_watts: watt_count(w: observed_post_boot_idle.watts),
+      telemetry_watts: watt_count(w: telemetry_idle_corroboration.watts),
+      spread_watts: idle_spread_watts(),
+      note: "Two instruments, two days, one regime: a watched wall meter and the board's own Total_Power sensor agree on the idle draw within the tolerance. The idle claim is the strongest of the three and is the only one with a second instrument behind it.",
+    }
+  } else {
+    IdleUncorroborated {
+      obligation: "The wall meter and the BMC Total_Power reading no longer agree within the declared tolerance. Do not average them: they are different instruments with different scopes, and a disagreement locates a modelling or measurement error that a mean would hide.",
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SIZING QUESTION, WHICH STILL REFUSES, AND REFUSES FOR A DIFFERENT REASON THAN THE DERIVATION.
+//
+// The derivation above refuses because the memory census is unread. This refuses because no reading
+// in the roster was taken under load, and the sizing question is a question about load. Three
+// numbers arriving does not convert a boot observation into the figure that sizes a circuit, and
+// the minus-one device is reused deliberately: a sizing consumer must receive something it cannot
+// divide by.
+
+fn sizing_observation_exists() -> Bool {
+  regime_sizes_infrastructure(r: observed_boot_peak.regime)
+    || regime_sizes_infrastructure(r: observed_boot_hover.regime)
+    || regime_sizes_infrastructure(r: observed_post_boot_idle.regime)
+    || regime_sizes_infrastructure(r: telemetry_idle_corroboration.regime)
+}
+
+fn circuit_sizing_watts_or_refusal() -> Int {
+  if sizing_observation_exists() { 0 + watt_count(w: observed_boot_peak.watts) } else { 0 - 1 }
+}
+
+// THE EXPERIMENT THAT CLOSES IT, WITH A PRINCIPAL AND AN OCCASION. An obligation that names neither
+// is a parking space: nobody is holding it, so nothing makes it happen and it is rediscovered as a
+// surprise at the moment a circuit has to be ordered.
+type LoadDrawObligation {
+  experiment: NonEmptyStr
+  principal: NonEmptyStr
+  occasion: NonEmptyStr
+  decides: NonEmptyStr
+  refusal_until_taken: NonEmptyStr
+}
+
+data sustained_load_draw_obligation: LoadDrawObligation = LoadDrawObligation {
+  experiment: "SUSTAINED WALL DRAW UNDER A REAL WORKLOAD. Put the same meter on the same chassis and hold a representative CI load on it long enough for the fans to reach their steady state under thermal load - not a boot, not a synthetic all-core burn alone. Record the sustained figure and the peak reached under it, and record the workload that produced them, because a draw figure without its workload is a number whose scope nobody can read. A logged capture beats a watched display and is worth the setup: the BMC's own Total_Power sensor polls over the REST API that strategy.mt_collins_held_unit already documents, so a sampled series costs a loop rather than an instrument purchase.",
+  principal: "whoever runs the workload benchmark suite - strategy.workload_benchmark_suite, planned as strategy.year_end_plan item workload-benchmark-suite. The suite already has to hold real build, test-spawn and fetch-dominated load on this hardware; a meter reading taken during those runs is nearly free, and taken by anyone else it is a second experiment.",
+  occasion: "During the dogfood window, or during the operator's next boot session on the held unit, whichever comes first. Both are already scheduled; neither needs the fleet.",
+  decides: "How many nodes fit one circuit, and therefore what a site can hold. strategy.node_rental nodes_per_site assumes twenty nodes share one room's rent and transit, and rent and transit per node only work if the room is full - so the load figure sits on the path to the colo decision, not beside it. It also retires strategy.ci_node_build selected_node_power, which is the retirement strategy.year_end_plan s0-receipts names as measured wall power into ci_node_build.",
+  refusal_until_taken: "Until it is taken, circuit_sizing_watts_or_refusal returns minus one and the 650 W assumption stands unretired. Nothing in this module may be substituted for it - in particular the 480 W boot peak, which is the number most likely to be reached for by someone who needs a maximum and will find one here.",
+}
+
+// ---------------------------------------------------------------------------------------------
+// WHAT THE FLEET WOULD BURN DOING NOTHING, which is the one fleet-scale figure these readings
+// actually support. It is derived from the idle observation and node_rental's site assumption
+// rather than stated, so it moves when either does.
+fn fleet_idle_watts_at_full_site() -> Int {
+  watt_count(w: observed_post_boot_idle.watts) * nodes_per_site
+}
+
+data fleet_idle_scope_note: NonEmptyStr = "A FLOOR FOR A FULL SITE, NOT A DEMAND FIGURE. Twenty idle nodes is what the room draws with nothing running, and a room sized to it would brown out the first time the fleet earned money. The number a site is sized against is the same twenty nodes under load, and that number does not exist yet - see sustained_load_draw_obligation. This figure is worth deriving anyway because it is the lower end of the range the colo conversation needs, and because it is now a MEASURED lower end rather than an assumed one."
+
+// ---------------------------------------------------------------------------------------------
+// THE JOIN WITH THE DERIVATION, WHICH IS NOT A SUBSTITUTION. product.node_power_envelope already
+// models this seam and says why: a measurement and a BOM derivation are the same units with
+// different epistemic standing, neither overwrites the other, and a disagreement between them
+// locates a modelling error rather than authorising an edit until they agree. That authority
+// carries the comparison (envelope_divergence); this module does not restate it.
+//
+// TWO REASONS THE COMPARISON CANNOT RUN TODAY, and they are independent. First, the derivation
+// still refuses: the memory census is unread. Second - and this one survives the census landing -
+// the derivation is built on processor TDP, a rated thermal figure that stands in for a LOADED
+// node, while every measurement in the roster is boot or idle. Comparing a TDP-based envelope
+// against a 185 W idle reading would report DerivationReadsHigh and that report would be a category
+// error, not a finding. The comparison this seam is for is the derived envelope against the
+// SUSTAINED LOAD measurement, which is the obligation above.
+type MeasuredVersusDerived
+  = DerivationRefusedNotComparable { measured_idle_watts: Int, refusal_obligation: NonEmptyStr }
+  | RegimeMismatchNotComparable { derived_wall_watts: Int, measured_idle_watts: Int, mismatch: NonEmptyStr }
+
+fn measured_versus_derived() -> MeasuredVersusDerived {
+  if draw_is_derived() {
+    RegimeMismatchNotComparable {
+      derived_wall_watts: mt_collins_wall_watts_or_refusal(),
+      measured_idle_watts: watt_count(w: observed_post_boot_idle.watts),
+      mismatch: "The census landed and the envelope now derives a wall figure from TDP, which stands in for a loaded node. The only measurements in hand are boot and idle. Route the derived reading and a SUSTAINED LOAD measurement through product.node_power_envelope envelope_divergence when that measurement exists; do not compare the envelope against the idle reading, and do not adjust dram_power_per_chip or board_idle_draw to close a gap against an idle number.",
+    }
+  } else {
+    DerivationRefusedNotComparable {
+      measured_idle_watts: watt_count(w: observed_post_boot_idle.watts),
+      refusal_obligation: "The derivation still refuses on the unread memory census, so there is no derived figure to compare against. The measurement does not relieve that read: a wall meter sees the whole chassis and cannot say how many modules are installed or which channels they occupy, which is what mobo_x_memory_census needs and what the derivation refuses for.",
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// AND THE FINDING, STATED AS A STANDING RATHER THAN AS PROSE: THIS MEASUREMENT DOES NOT RETIRE THE
+// ASSUMPTION THIS BINDING EXISTS TO RETIRE. assumed_wall_watts is ci_node_build's 650 W, and 650 is
+// an AVERAGE DRAW PER NODE UNDER LOAD by its own note. Nothing observed on 2026-09-10 is a load
+// figure. The three readings are adjacent to it, they are informative about it, and they do not
+// replace it - installing 185 or 480 into selected_node_power would swap an unsourced load figure
+// for a sourced figure about a different regime, which is worse, because the second one looks
+// measured.
+//
+// WHAT THE READINGS DO SAY ABOUT 650, offered as a direction and not as a correction: the
+// derivation's own obligation already argued 650 looks overstated, on the grounds that two Q80-30
+// sockets carry 322 W of rated TDP against a 650 W whole-node figure. A 185 W idle floor and a
+// 380 W fans-at-full boot hover are consistent with that direction and do not settle it, because
+// the distance between an idle node and a node with 160 cores saturated is exactly the quantity
+// nobody has measured. The honest summary is that 650 remains unsourced and is now ALSO unretired
+// by three real numbers, which is a sharper statement of the gap than yesterday's, not a closure.
+type AssumptionRetirementStanding
+  = RetiredByMeasurement { measured_load_watts: Int, assumed_watts: Int }
+  | NotRetiredWrongRegime { assumed_watts: Int, assumption_regime: NonEmptyStr, observed_regimes: NonEmptyStr, reason: NonEmptyStr }
+
+fn assumed_wall_watts_retirement() -> AssumptionRetirementStanding {
+  if sizing_observation_exists() {
+    RetiredByMeasurement { measured_load_watts: circuit_sizing_watts_or_refusal(), assumed_watts: assumed_wall_watts() }
+  } else {
+    NotRetiredWrongRegime {
+      assumed_watts: assumed_wall_watts(),
+      assumption_regime: "one assumed AVERAGE DRAW PER NODE UNDER LOAD (strategy.ci_node_build selected_node_power), which sizes circuits, the fleet demand and the largest line of the cost floor",
+      observed_regimes: "boot transient peak, boot hover, post-boot idle - three readings, none of them under load",
+      reason: "A measurement retires an assumption only when it answers the same question. These answer a neighbouring one. Retiring 650 against them would move the fleet's electrical plan onto a boot observation, and the plan would then be wrong in a way that looks sourced.",
+    }
+  }
+}

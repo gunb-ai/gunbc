@@ -1,0 +1,78 @@
+module strategy.buyer_review_converge
+
+import std.types { String, List, NonEmptyStr }
+import std.upsert_decision { UpsertDecision, Refuse }
+import extdeps.google.sheets { ValueRange }
+import gunbc.ensure { EnsurePolicy }
+import gunbc.review_sheet_projection { DerivedPayloadErasure }
+import gunbc.review_sheet_sheets { SheetA1Range, TabBoundWritePlan, review_sheet_ensure }
+import strategy.buyer_review_sheet { ReviewSheet }
+import strategy.buyer_review_projection {
+  review_sheet_projection_of,
+  ReviewSheetProjectionOk,
+  ReviewSheetProjectionUnjoined,
+  ReviewSheetProjectionIdentityUnjoined,
+}
+
+// THE JOIN, AND NOTHING ELSE. strategy.buyer_review_projection owns the authoritative
+// ReviewSheetProjection -- schema derived from the roster's own column regions, rows keyed by
+// listing_key -- and gunbc.review_sheet_sheets review_sheet_ensure owns identity-keyed
+// classification, conflict refusal and the write plan. This module threads one into the other and
+// consumes the decision. It mints NO schema: importing gunbc.review_sheet_projection
+// buyer_review_sheet_schema here would be a second answer to the question review_sheet_schema_of
+// already answers, and its hardcoded "Listing" identity plus four literal operator columns are the
+// public pair's guesses at facts this roster states.
+//
+// WHAT THIS MODULE DELIBERATELY DOES NOT DO, AND WHOSE DECISION EACH ONE IS. The split is not
+// "everything belongs to ensure" -- this module composes two authorities and owns neither side.
+// review_sheet_projection_of owns what the sheet IS: the schema from the roster's column regions,
+// the identity column from listing_identity_header, and the rows keyed by listing_key. Ensure owns
+// RECONCILIATION AGAINST THE OBSERVATION: conflicts, operator-cell preservation, where appends
+// begin, and the write plan. Reimplementing either side here would create two spreadsheet
+// semantics -- the modeled one and the production one.
+//
+// THE OBSERVATION IS A PARAMETER, NOT A READ. range is the caller's whole-tab GetValues reading.
+// This module performs no effect and reaches no transport; binding a live read to range and the
+// returned plan to BatchUpdateValues is the separate live_sheets_transport_frontier, which this
+// module does not dissolve and must not be cited as dissolving.
+//
+// WHAT THE REFUSAL ARMS COST, STATED HONESTLY. review_sheet_projection_of returns two TYPED failure
+// facts, and this fold renders both into UpsertDecision Refuse, whose payload is prose and nothing
+// else. So this module is a FIFTH refusal owner above the four the public sheet lane is being
+// typed into, and it is currently the one that flattens earliest. That is the same construction-site
+// information loss the public refactor exists to remove, and it is admitted here rather than
+// described as typed: these are rendered reasons, not a typed refusal surface. The repair is a
+// typed private assessment nesting the public ReviewSheetEnsureAssessment once that lands; there is
+// no production caller yet, so nothing downstream has come to depend on the flattened form.
+fn buyer_review_converge(
+  policy: EnsurePolicy,
+  sheet: ReviewSheet,
+  requested: SheetA1Range,
+  range: ValueRange,
+  erasures: List<DerivedPayloadErasure>,
+) -> UpsertDecision<TabBoundWritePlan> {
+  match review_sheet_projection_of(sheet: sheet) {
+    ReviewSheetProjectionIdentityUnjoined { key: k } =>
+      Refuse {
+        reason: concat(
+          "buyer roster identity column unjoined; no listing identity to key the sheet on: ",
+          k as String,
+        ) as NonEmptyStr
+      }
+    ReviewSheetProjectionUnjoined { listing_id: lid, key: k } =>
+      Refuse {
+        reason: concat(
+          concat("buyer roster cell unjoined for listing ", lid as String),
+          concat("; derived column key: ", k as String),
+        ) as NonEmptyStr
+      }
+    ReviewSheetProjectionOk { projection: p } =>
+      review_sheet_ensure(
+        policy: policy,
+        requested: requested,
+        range: range,
+        projection: p,
+        erasures: erasures,
+      )
+  }
+}

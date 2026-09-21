@@ -1,0 +1,589 @@
+module strategy.ci_compute_offer_catalog
+
+import std.types { NonEmptyStr, List, Bool, Int }
+import std.nat { Nat }
+import std.measure {
+  MoneyPerMinute, money_per_minute_micros, money_amount_micro_count,
+  HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
+  ByteSize, byte_size, byte_size_count,
+}
+import extdeps.currency.currency { CurrencyCode, Eur, Usd }
+import extdeps.toolchain.types { Architecture, X86_64, Aarch64, X86, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32 }
+import extdeps.cloud.hetzner { cax41_catalog_usd, tariff_is_current }
+import extdeps.pricing.github_actions {
+  github_actions_linux_2core_price, github_actions_linux_arm_2core_price,
+}
+import extdeps.pricing.ubicloud {
+  ubicloud_premium_standard_2_price, ubicloud_arm_standard_2_price,
+}
+import extdeps.cloud.ubicloud {
+  ubicloud_standard_2_catalog, ubicloud_standard_2_arm_catalog,
+}
+import strategy.node_rental {
+  gcp_n2_standard_128_listed_hourly_usd_micro,
+  gcp_n2_standard_128_spot_hourly_usd_micro,
+  gcp_n2_two_vcpu_eight_gib_hourly_usd_micro,
+  oci_ampere_a1_flex_hourly_usd_micro,
+}
+
+// JOIN, NOT A VENDOR AUTHORITY. Public PR 8950 restored extdeps.ci_compute_pricing and was
+// refused: a generic hub restated per-vendor facts that already live in extdeps.ci_runner,
+// extdeps.pricing and extdeps.cloud. This module is the consumer join those three strategy
+// pricing modules need — spill admission, unit-minute normalization, and lookup cardinality —
+// over rows consumed from those public authorities where they exist. It is strategy, not
+// extdeps: which offers we treat as spill routes is our policy, and DESIGN §3's external
+// upstream decomposition forbids a hub that enumerates vendors as if they were one product.
+//
+// Cited vendor rates below are projected from the public rows. Operator-relayed rates that
+// still have no per-vendor public home remain TranscribedUncited; this item does not re-price
+// them. Public vendor pricing belongs on public main, one module per independently versioned
+// upstream, when those homes land — not in a restored ci_compute_pricing.
+
+type CpuArchitecture
+  = Amd64
+  | Arm64
+  | ArchitectureUnstated
+
+fn architecture_from_toolchain(a: Architecture) -> CpuArchitecture {
+  match a {
+    X86_64 => Amd64
+    Aarch64 => Arm64
+    X86 => ArchitectureUnstated
+    Arm => ArchitectureUnstated
+    Armv7 => ArchitectureUnstated
+    Mips => ArchitectureUnstated
+    Mipsel => ArchitectureUnstated
+    Mips64 => ArchitectureUnstated
+    Mips64el => ArchitectureUnstated
+    Riscv64 => ArchitectureUnstated
+    Wasm32 => ArchitectureUnstated
+  }
+}
+
+fn architecture_label(a: CpuArchitecture) -> NonEmptyStr {
+  match a {
+    Amd64 => "x86-64"
+    Arm64 => "Arm64"
+    ArchitectureUnstated => "unstated"
+  }
+}
+
+type CpuEntitlement
+  = PhysicalCore
+  | SmtHardwareThread
+  | ProviderVcpuUnspecified
+  | SharedBurstableVcpu
+
+fn entitlement_label(e: CpuEntitlement) -> NonEmptyStr {
+  match e {
+    PhysicalCore => "physical core"
+    SmtHardwareThread => "SMT thread"
+    ProviderVcpuUnspecified => "vCPU, unstated"
+    SharedBurstableVcpu => "shared burstable"
+  }
+}
+
+type ResourceDedication
+  = DedicatedResource { note: NonEmptyStr }
+  | SharedResource { note: NonEmptyStr }
+  | DedicationUnread { obligation: NonEmptyStr }
+
+fn dedication_label(d: ResourceDedication) -> NonEmptyStr {
+  match d {
+    DedicatedResource { note } => "dedicated"
+    SharedResource { note } => "shared"
+    DedicationUnread { obligation } => "unread"
+  }
+}
+
+type InterruptionStanding
+  = NonPreemptible { note: NonEmptyStr }
+  | Preemptible { note: NonEmptyStr }
+  | InterruptionUnread { obligation: NonEmptyStr }
+
+fn interruption_label(i: InterruptionStanding) -> NonEmptyStr {
+  match i {
+    NonPreemptible { note } => "durable"
+    Preemptible { note } => "preemptible"
+    InterruptionUnread { obligation } => "unread"
+  }
+}
+
+type PerformanceStanding
+  = PerformanceMeasured { benchmark_suite: NonEmptyStr, score: Int, receipt: NonEmptyStr }
+  | PerformanceUnmeasured { obligation: NonEmptyStr }
+
+data performance_unmeasured_default: PerformanceStanding = PerformanceUnmeasured {
+  obligation: "No benchmark has been run. A physical core, an SMT thread and a shared vCPU are not interchangeable units of work until a receipt says so.",
+}
+
+type MarketClass
+  = RawInfrastructure
+  | HostedCiProduct
+
+fn market_class_label(c: MarketClass) -> NonEmptyStr {
+  match c {
+    RawInfrastructure => "raw infrastructure"
+    HostedCiProduct => "hosted CI"
+  }
+}
+
+type SpillAdmission
+  = SpillAdmitted { note: NonEmptyStr }
+  | CompetitorNotSpill { note: NonEmptyStr }
+  | ExperimentalNotAdmitted { obligation: NonEmptyStr }
+
+fn spill_admission_label(s: SpillAdmission) -> NonEmptyStr {
+  match s {
+    SpillAdmitted { note } => "spill route"
+    CompetitorNotSpill { note } => "competitor"
+    ExperimentalNotAdmitted { obligation } => "experimental"
+  }
+}
+
+// 🟡 feature: VendorRate and UnitPriceUsd keep micro-Int after reading MoneyPerMinute /
+// money_amount_micro_count. The join's job this item is to execute existing figures, not to
+// migrate the spill algebra onto std.measure.
+// 🟡 dissolve-on: offer_unit_price / route_cost consume MoneyPerMinute (and a single ByteSize
+// binding unit) without a parallel Int rate type.
+
+type VendorRate
+  = RatePerHour { micro: Int, currency: CurrencyCode }
+  | RatePerMinute { micro: Int, currency: CurrencyCode }
+  | RateUnquoted { obligation: NonEmptyStr }
+
+fn usd_per_hour(micros: Int) -> VendorRate { RatePerHour { micro: micros, currency: Usd } }
+fn usd_per_minute(micros: Int) -> VendorRate { RatePerMinute { micro: micros, currency: Usd } }
+fn eur_per_hour(micros: Int) -> VendorRate { RatePerHour { micro: micros, currency: Eur } }
+
+type ComputeOfferIdentity {
+  provider: NonEmptyStr
+  sku: NonEmptyStr
+}
+
+fn offer_identity_equal(a: ComputeOfferIdentity, b: ComputeOfferIdentity) -> Bool {
+  a.provider == b.provider && a.sku == b.sku
+}
+
+type ComputeOfferObservation {
+  identity: ComputeOfferIdentity
+  product: NonEmptyStr
+  market_class: MarketClass
+  architecture: CpuArchitecture
+  entitlement: CpuEntitlement
+  dedication: ResourceDedication
+  interruption: InterruptionStanding
+  performance: PerformanceStanding
+  spill_admission: SpillAdmission
+  vcpus: HardwareThreadCount
+  memory_bytes: ByteSize
+  memory_quote: MemoryQuoteScale
+  rate: VendorRate
+}
+
+// Vendor catalogs quote memory on different scales (Hetzner binary GiB, Ubicloud decimal GB).
+// The quote scale is data, not a second divisor chosen per row at the binding site.
+type MemoryQuoteScale
+  = QuotedGibibyte
+  | QuotedGigabyte
+
+fn quoted_memory_units(bytes: ByteSize, scale: MemoryQuoteScale) -> Int {
+  match scale {
+    QuotedGibibyte => nat_count_as_int(n: byte_size_count(b: bytes) / 1073741824)
+    QuotedGigabyte => nat_count_as_int(n: byte_size_count(b: bytes) / 1000000000)
+  }
+}
+
+fn offer_vcpu_count(o: ComputeOfferObservation) -> Int {
+  nat_count_as_int(n: hardware_thread_count_value(t: o.vcpus))
+}
+
+fn offer_memory_units(o: ComputeOfferObservation) -> Int {
+  quoted_memory_units(bytes: o.memory_bytes, scale: o.memory_quote)
+}
+
+fn memory_quoted_as_gibibytes(n: Nat) -> ByteSize {
+  byte_size(n * 1073741824)
+}
+
+fn memory_quoted_as_gigabytes(n: Nat) -> ByteSize {
+  byte_size(n * 1000000000)
+}
+
+fn money_per_minute_as_int(q: MoneyPerMinute) -> Int {
+  money_per_minute_micros(q: q)
+}
+
+fn nat_count_as_int(n: Nat) -> Int { n }
+
+// Rate on the two GCP rows is the whole 2-vCPU / 8 GiB offer (n2-standard-128 hourly / 64),
+// matching Hetzner/OCI whole-shape hours. quoted_unit_price then divides by that shape's units.
+
+data gcp_n2_on_demand: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Google Cloud", sku: "n2-standard-128-on-demand" },
+  product: "N2 on-demand (n2-standard-128 derived)",
+  market_class: RawInfrastructure,
+  architecture: Amd64,
+  entitlement: SmtHardwareThread,
+  dedication: DedicatedResource { note: "N2 runs on Intel processors and each vCPU is one hardware thread." },
+  interruption: NonPreemptible { note: "Standard on-demand allocation." },
+  performance: performance_unmeasured_default,
+  spill_admission: SpillAdmitted { note: "Expensive x86 emergency route. Appropriate when a job requires x86 and cannot wait." },
+  vcpus: hardware_thread_count( 2),
+  memory_bytes: memory_quoted_as_gibibytes(n: 8),
+  memory_quote: QuotedGibibyte,
+  rate: usd_per_hour(micros: gcp_n2_two_vcpu_eight_gib_hourly_usd_micro(full_machine_hourly_micro: gcp_n2_standard_128_listed_hourly_usd_micro)),
+}
+
+data gcp_n2_spot: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Google Cloud", sku: "n2-standard-128-spot" },
+  product: "N2 Spot (n2-standard-128 derived)",
+  market_class: RawInfrastructure,
+  architecture: Amd64,
+  entitlement: SmtHardwareThread,
+  dedication: DedicatedResource { note: "Same hardware entitlement as on-demand while the instance lives." },
+  interruption: Preemptible { note: "Reclaimable at short notice." },
+  performance: performance_unmeasured_default,
+  spill_admission: SpillAdmitted { note: "Preemptible x86 route for queue-tolerant work." },
+  vcpus: hardware_thread_count( 2),
+  memory_bytes: memory_quoted_as_gibibytes(n: 8),
+  memory_quote: QuotedGibibyte,
+  rate: usd_per_hour(micros: gcp_n2_two_vcpu_eight_gib_hourly_usd_micro(full_machine_hourly_micro: gcp_n2_standard_128_spot_hourly_usd_micro)),
+}
+
+data hetzner_cax41: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Hetzner", sku: "cax41" },
+  product: "CAX41 shared Arm",
+  market_class: RawInfrastructure,
+  architecture: architecture_from_toolchain(a: cax41_catalog_usd.cpu_architecture),
+  entitlement: SharedBurstableVcpu,
+  dedication: SharedResource { note: "Shared vCPU family: baseline performance with temporary bursting. Hetzner recommends dedicated instances for continuous CPU-intensive workloads." },
+  interruption: NonPreemptible { note: "Ordinary cloud instance, not preemptible." },
+  performance: performance_unmeasured_default,
+  spill_admission: SpillAdmitted { note: "Best-effort Arm spill. Cheapest route in the table; shared-family entitlement bars it from a guaranteed-performance tier." },
+  vcpus: cax41_catalog_usd.vcpus,
+  memory_bytes: cax41_catalog_usd.memory_bytes,
+  memory_quote: QuotedGibibyte,
+  rate: usd_per_hour(micros: nat_count_as_int(n: money_amount_micro_count(m: cax41_catalog_usd.hourly))),
+}
+
+data oci_ampere_a1: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Oracle Cloud", sku: "ampere-a1-flex" },
+  product: "Ampere A1 flexible (1 OCPU + 4 GB)",
+  market_class: RawInfrastructure,
+  architecture: Arm64,
+  entitlement: PhysicalCore,
+  dedication: DedicatedResource { note: "One OCPU is one physical Ampere Altra core with no SMT." },
+  interruption: NonPreemptible { note: "On-demand flexible shape." },
+  performance: performance_unmeasured_default,
+  spill_admission: SpillAdmitted { note: "Architecture-matched on-demand spill. Dedicated physical cores make it the route a guaranteed tier can actually use." },
+  vcpus: hardware_thread_count( 1),
+  memory_bytes: memory_quoted_as_gigabytes(n: 4),
+  memory_quote: QuotedGigabyte,
+  rate: usd_per_hour(micros: oci_ampere_a1_flex_hourly_usd_micro(ocpus: 1, quoted_gb: 4)),
+}
+
+data scaleway_amp2: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Scaleway", sku: "amp2-labs" },
+  product: "AMP2 Arm (public Labs trial)",
+  market_class: RawInfrastructure,
+  architecture: Arm64,
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Trial programme; entitlement not read." },
+  interruption: InterruptionUnread { obligation: "Trial programme; reclaim policy not read." },
+  performance: performance_unmeasured_default,
+  spill_admission: ExperimentalNotAdmitted { obligation: "Public Labs trial. Obtain general-availability pricing, a shape listing and an availability commitment before this may carry any customer work." },
+  vcpus: hardware_thread_count( 1),
+  memory_bytes: memory_quoted_as_gigabytes(n: 4),
+  memory_quote: QuotedGigabyte,
+  rate: eur_per_hour(micros: 6420),
+}
+
+data ubicloud_premium_2: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Ubicloud", sku: "premium-2-x64" },
+  product: "premium-2 CI runner, x64",
+  market_class: HostedCiProduct,
+  architecture: architecture_from_toolchain(a: ubicloud_premium_standard_2_price.catalog.cpu_architecture),
+  entitlement: SmtHardwareThread,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "A competitor's retail runner is not somewhere we send overflow." },
+  vcpus: ubicloud_standard_2_catalog.vcpus,
+  memory_bytes: ubicloud_standard_2_catalog.memory_bytes,
+  memory_quote: QuotedGigabyte,
+  rate: usd_per_minute(micros: money_per_minute_as_int(q: ubicloud_premium_standard_2_price.per_minute)),
+}
+
+data ubicloud_standard_arm64: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Ubicloud", sku: "standard-runner-arm64" },
+  product: "standard CI runner, arm64",
+  market_class: HostedCiProduct,
+  architecture: architecture_from_toolchain(a: ubicloud_arm_standard_2_price.catalog.cpu_architecture),
+  entitlement: PhysicalCore,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "A competitor's retail runner is not somewhere we send overflow." },
+  vcpus: ubicloud_standard_2_arm_catalog.vcpus,
+  memory_bytes: ubicloud_standard_2_arm_catalog.memory_bytes,
+  memory_quote: QuotedGigabyte,
+  rate: usd_per_minute(micros: money_per_minute_as_int(q: ubicloud_arm_standard_2_price.per_minute)),
+}
+
+data github_hosted_linux_2core_x64: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "GitHub", sku: "actions_linux" },
+  product: "GitHub-hosted Linux 2-core runner, x64",
+  market_class: HostedCiProduct,
+  architecture: architecture_from_toolchain(a: github_actions_linux_2core_price.cpu_architecture),
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "The incumbent's own runner is not a spill route." },
+  vcpus: github_actions_linux_2core_price.vcpus,
+  memory_bytes: memory_quoted_as_gibibytes(n: 7),
+  memory_quote: QuotedGibibyte,
+  rate: usd_per_minute(micros: money_per_minute_as_int(q: github_actions_linux_2core_price.per_minute)),
+}
+
+data github_hosted_linux_2core_arm64: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "GitHub", sku: "actions_linux_arm" },
+  product: "GitHub-hosted Linux 2-core runner, arm64",
+  market_class: HostedCiProduct,
+  architecture: architecture_from_toolchain(a: github_actions_linux_arm_2core_price.cpu_architecture),
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "The incumbent's own runner is not a spill route." },
+  vcpus: github_actions_linux_arm_2core_price.vcpus,
+  memory_bytes: memory_quoted_as_gibibytes(n: 8),
+  memory_quote: QuotedGibibyte,
+  rate: usd_per_minute(micros: money_per_minute_as_int(q: github_actions_linux_arm_2core_price.per_minute)),
+}
+
+data blacksmith_x64: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Blacksmith", sku: "x64-runner" },
+  product: "x64 runner",
+  market_class: HostedCiProduct,
+  architecture: Amd64,
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "Competitor." },
+  vcpus: hardware_thread_count( 2),
+  memory_bytes: memory_quoted_as_gibibytes(n: 8),
+  memory_quote: QuotedGibibyte,
+  rate: RateUnquoted { obligation: "strategy.wholesale_buyer blacksmith_inquiry: EndCustomerRateUnquoted until extdeps.pricing.blacksmith exists. A catalog number here would be a second pricing authority." },
+}
+
+data blacksmith_arm: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Blacksmith", sku: "arm-runner" },
+  product: "ARM runner",
+  market_class: HostedCiProduct,
+  architecture: Arm64,
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "Competitor." },
+  vcpus: hardware_thread_count( 2),
+  memory_bytes: memory_quoted_as_gigabytes(n: 6),
+  memory_quote: QuotedGigabyte,
+  rate: RateUnquoted { obligation: "strategy.wholesale_buyer blacksmith_inquiry: EndCustomerRateUnquoted until extdeps.pricing.blacksmith exists. A catalog number here would be a second pricing authority." },
+}
+
+data depot_runner: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "Depot", sku: "standard-runner" },
+  product: "x64 or ARM runner",
+  market_class: HostedCiProduct,
+  architecture: ArchitectureUnstated,
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Runner entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted runner." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "Competitor." },
+  vcpus: hardware_thread_count( 2),
+  memory_bytes: memory_quoted_as_gibibytes(n: 8),
+  memory_quote: QuotedGibibyte,
+  rate: RateUnquoted { obligation: "No Depot price row exists in this tree. Do not invent one until extdeps.pricing.depot exists." },
+}
+
+data circleci_medium: ComputeOfferObservation = ComputeOfferObservation {
+  identity: ComputeOfferIdentity { provider: "CircleCI", sku: "docker-medium" },
+  product: "x64 2-CPU/4-GB class (credit model)",
+  market_class: HostedCiProduct,
+  architecture: Amd64,
+  entitlement: ProviderVcpuUnspecified,
+  dedication: DedicationUnread { obligation: "Class entitlement not read." },
+  interruption: NonPreemptible { note: "Hosted executor." },
+  performance: performance_unmeasured_default,
+  spill_admission: CompetitorNotSpill { note: "Competitor." },
+  vcpus: hardware_thread_count( 2),
+  memory_bytes: memory_quoted_as_gigabytes(n: 4),
+  memory_quote: QuotedGigabyte,
+  rate: RateUnquoted { obligation: "CircleCI's credit model is not a flat per-minute runner. circleci_caveat_note is the standing; a composed micro rate would invent a comparable figure." },
+}
+
+data ci_compute_offers: List<ComputeOfferObservation> = [
+  gcp_n2_on_demand,
+  gcp_n2_spot,
+  hetzner_cax41,
+  oci_ampere_a1,
+  scaleway_amp2,
+  ubicloud_premium_2,
+  ubicloud_standard_arm64,
+  github_hosted_linux_2core_x64,
+  github_hosted_linux_2core_arm64,
+  blacksmith_x64,
+  blacksmith_arm,
+  depot_runner,
+  circleci_medium,
+]
+
+data circleci_caveat_note: NonEmptyStr = "CircleCI is priced in credits plus per-platform-user and per-feature charges. This catalog carries no composed per-minute figure for that class: inventing one from a credit table would look comparable to a flat runner and is refused. The CircleCI row is unquoted until extdeps.pricing.circleci exists."
+
+data namespace_note: NonEmptyStr = "Namespace belongs in the competitor set and has no row here, because a competitor with no readable price is an unread price and not an absent one. Inventing a plausible figure for it would be the exact defect this tree exists to refuse."
+
+data price_provenance_note: NonEmptyStr = "Hetzner CAX41 USD, GitHub Actions 2-core rates, and Ubicloud premium/arm standard-2 rates are projected from the public vendor modules. GCP N2 listed and spot vCPU-hours and OCI A1 flex hours are projected from strategy.node_rental (same listed hourly figures that module already cites). Blacksmith, Depot and CircleCI are RateUnquoted until those vendors have their own public pricing modules. Scaleway AMP2 stays EUR with no FX reading."
+
+// 🟡 feature: Scaleway AMP2 remains an operator-relayed EUR hourly. Re-homing it as a public
+// per-vendor module is a pricing survey, which this item is not.
+// 🟡 dissolve-on: Scaleway has its own public extdeps module with cited version, and this row
+// projects from that home the way Hetzner/GitHub/Ubicloud already do.
+
+// Binding uses quoted_memory_units, not ByteSize/4GiB. Switching the divisor to 2^32 would
+// re-price Ubicloud (8e9 bytes is not 8 GiB) and is refused by this item.
+
+data ci_product_defaults_note: NonEmptyStr = "The hosted CI rows sell integration, isolation, cache, logs, billing, support and abuse handling on top of compute. Comparing their per-unit-minute rate with a raw VM rate is a fair way to bound our price and an unfair way to describe their margin."
+
+type BindingResource
+  = BoundByMemory { cpu_units_permille: Int, memory_units_permille: Int }
+  | BoundByCpu { cpu_units_permille: Int, memory_units_permille: Int }
+  | BoundEqually { units_permille: Int }
+
+fn offer_binding_resource(o: ComputeOfferObservation) -> BindingResource {
+  let cpu = offer_vcpu_count(o: o) * 1000
+  let mem = offer_memory_units(o: o) * 1000 / 4
+  if cpu < mem {
+    BoundByCpu { cpu_units_permille: cpu, memory_units_permille: mem }
+  } else {
+    if mem < cpu {
+      BoundByMemory { cpu_units_permille: cpu, memory_units_permille: mem }
+    } else {
+      BoundEqually { units_permille: cpu }
+    }
+  }
+}
+
+fn offer_unit_count_permille(o: ComputeOfferObservation) -> Int {
+  match offer_binding_resource(o: o) {
+    BoundByMemory { cpu_units_permille, memory_units_permille } => memory_units_permille
+    BoundByCpu { cpu_units_permille, memory_units_permille } => cpu_units_permille
+    BoundEqually { units_permille } => units_permille
+  }
+}
+
+type UnitPriceStanding
+  = UnitPriceUsd { micro: Int }
+  | UnitPriceForeign { micro: Int, currency: CurrencyCode, obligation: NonEmptyStr }
+  | UnitPriceUnquoted { obligation: NonEmptyStr }
+
+fn offer_unit_price(o: ComputeOfferObservation) -> UnitPriceStanding {
+  match o.rate {
+    RateUnquoted { obligation } => UnitPriceUnquoted { obligation: obligation }
+    RatePerHour { micro, currency } => quoted_unit_price(o: o, hourly_micro: micro, currency: currency)
+    RatePerMinute { micro, currency } => quoted_unit_price(o: o, hourly_micro: micro * 60, currency: currency)
+  }
+}
+
+fn quoted_unit_price(o: ComputeOfferObservation, hourly_micro: Int, currency: CurrencyCode) -> UnitPriceStanding {
+  let units = offer_unit_count_permille(o: o)
+  let micro = hourly_micro * 1000 / (60 * units)
+  match currency {
+    Usd => UnitPriceUsd { micro: micro }
+    Eur => UnitPriceForeign {
+      micro: micro,
+      currency: Eur,
+      obligation: "No exchange-rate reading is held. Converting at a rate nobody recorded would make a euro figure look like a dollar one; the row stays in its own currency until an FX observation with a timestamp exists.",
+    }
+  }
+}
+
+type ComputeOfferResolution
+  = ComputeOfferResolved { offer: ComputeOfferObservation }
+  | ComputeOfferMissing { identity: ComputeOfferIdentity }
+  | ComputeOfferAmbiguous { identity: ComputeOfferIdentity, match_count: Int }
+
+fn resolve_offer(id: ComputeOfferIdentity) -> ComputeOfferResolution {
+  fold(ci_compute_offers, init: ComputeOfferMissing { identity: id }, f: fn(acc, o) {
+    if offer_identity_equal(a: o.identity, b: id) {
+      match acc {
+        ComputeOfferMissing { identity } => ComputeOfferResolved { offer: o }
+        ComputeOfferResolved { offer } => ComputeOfferAmbiguous { identity: id, match_count: 2 }
+        ComputeOfferAmbiguous { identity, match_count } =>
+          ComputeOfferAmbiguous { identity: id, match_count: match_count + 1 }
+      }
+    } else { acc }
+  })
+}
+
+fn offer_identities_are_unique() -> Bool {
+  all(ci_compute_offers, o => match resolve_offer(id: o.identity) {
+    ComputeOfferResolved { offer } => true
+    ComputeOfferMissing { identity } => false
+    ComputeOfferAmbiguous { identity, match_count } => false
+  })
+}
+
+type RouteCostStanding
+  = RouteCostKnown { per_unit_minute_micro: Int, offer: ComputeOfferObservation }
+  | RouteCostRefused { identity: ComputeOfferIdentity, reason: NonEmptyStr }
+
+fn route_cost(id: ComputeOfferIdentity) -> RouteCostStanding {
+  match resolve_offer(id: id) {
+    ComputeOfferResolved { offer } =>
+      match offer_unit_price(o: offer) {
+        UnitPriceUsd { micro } => RouteCostKnown { per_unit_minute_micro: micro, offer: offer }
+        UnitPriceForeign { micro, currency, obligation } =>
+          RouteCostRefused { identity: id, reason: obligation }
+        UnitPriceUnquoted { obligation } =>
+          RouteCostRefused { identity: id, reason: obligation }
+      }
+    ComputeOfferMissing { identity } =>
+      RouteCostRefused {
+        identity: identity,
+        reason: "no offer carries this identity. A missing price is not a free price, so this refuses instead of returning zero.",
+      }
+    ComputeOfferAmbiguous { identity, match_count } =>
+      RouteCostRefused {
+        identity: identity,
+        reason: "more than one offer carries this identity. The catalog must not silently pick one of them.",
+      }
+  }
+}
+
+fn offer_is_spill_admitted(o: ComputeOfferObservation) -> Bool {
+  match o.spill_admission {
+    SpillAdmitted { note } => true
+    CompetitorNotSpill { note } => false
+    ExperimentalNotAdmitted { obligation } => false
+  }
+}
+
+fn admitted_spill_offers() -> List<ComputeOfferObservation> {
+  filter(ci_compute_offers, o => offer_is_spill_admitted(o: o))
+}
+
+fn competitor_offers() -> List<ComputeOfferObservation> {
+  filter(ci_compute_offers, o => match o.market_class {
+    HostedCiProduct => true
+    RawInfrastructure => false
+  })
+}
+
+fn hetzner_cax41_tariff_is_the_current_usd_row() -> Bool {
+  tariff_is_current(t: cax41_catalog_usd.tariff)
+}

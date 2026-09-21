@@ -1,0 +1,347 @@
+module strategy.cloud_overflow_role
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
+import std.interval { degenerate_interval }
+import std.pareto {
+  AxisGap,
+  AxisReading,
+  HigherIsBetter,
+  LowerIsBetter,
+  ParetoEntry,
+  SelectionAxis,
+}
+import std.decision {
+  CandidateFieldEstablished,
+  CandidateFieldUnestablished,
+  CausalModelUnestablished,
+  ChoiceDomain,
+  DecisionAssessment,
+  DecisionRegion,
+  DecisionSubject,
+  DecisionVariable,
+  NoFeasibleRealization,
+  ObjectiveMeasure,
+  ObjectiveTerm,
+  PhysicalModelEstablished,
+  RealizationSelectionRefused,
+  RealizationSelectionResult,
+  SelectedWithin,
+  SelectionNeedsEvidence,
+  SelectionNeedsPolicy,
+  SelectionReceipt,
+  UniqueSurvivorRequired,
+  SensitivityUnestablished,
+  declaration_refs_same_set,
+  select_realization,
+}
+import v2.std.optional { Absent }
+import extdeps.external_authority { CitedToAuthority }
+import std.measure { money_amount_micro_count }
+import extdeps.cloud.hetzner { extdeps_external_authority_anchor, cx23_listed }
+import strategy.node_rental {
+  admissible_as_competitive_floor,
+  gcp_row,
+  hetzner_row,
+  oci_row,
+}
+
+// WHAT RENTED CLOUD CAPACITY IS FOR, IF ANYTHING.
+//
+// Owned hardware is the cost advantage the product rests on. Every cloud hour is margin spent.
+// An unpriced overflow path quietly inverts the pitch, so this is realization selection under
+// std.decision, not a capability survey. The candidate field is closed: burst overflow, x86_64
+// targets the aarch64 fleet cannot serve natively, a control plane held outside the fleet failure
+// domain, or nothing. Answering none is admissible and is cheaper than the others.
+//
+// THIS MODULE DOES NOT CHOOSE. std.decision.select_realization owns choosing and std.pareto owns
+// dominance. DESIGN section 3d: a Pareto front of two is not a winner; Optimal is unwritable.
+
+data var_cloud_role: DecisionVariable = DecisionVariable {
+  identity: decl_ref(module_path: "strategy.cloud_overflow_role", decl_name: "var_cloud_role"),
+}
+
+data term_extra_cloud_spend: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "strategy.cloud_overflow_role", decl_name: "term_extra_cloud_spend"),
+  ground: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}
+
+data overflow_role_region: DecisionRegion = DecisionRegion {
+  identity: decl_ref(module_path: "strategy.cloud_overflow_role", decl_name: "overflow_role_region"),
+}
+
+data overflow_objective: ObjectiveMeasure = ObjectiveMeasure {
+  identity: decl_ref(module_path: "strategy.cloud_overflow_role", decl_name: "overflow_objective"),
+  goal: LowerIsBetter,
+  terms: [term_extra_cloud_spend],
+}
+
+data overflow_choice_domain: ChoiceDomain = ChoiceDomain {
+  identity: decl_ref(module_path: "strategy.cloud_overflow_role", decl_name: "overflow_choice_domain"),
+  variables: [var_cloud_role],
+}
+
+data overflow_role_subject: DecisionSubject = DecisionSubject {
+  identity: decl_ref(module_path: "strategy.cloud_overflow_role", decl_name: "overflow_role_subject"),
+  question: "what, if anything, is rented cloud capacity for: burst overflow, x86_64 targets the aarch64 fleet cannot serve natively, a control plane outside the fleet failure domain, or nothing" as NonEmptyStr,
+  parameters: [],
+  constraints: [],
+  objective: overflow_objective,
+  choice_domain: overflow_choice_domain,
+}
+
+data axis_extra_cloud_spend: DeclarationRef = decl_ref(
+  module_path: "strategy.cloud_overflow_role",
+  decl_name: "axis_extra_cloud_spend",
+)
+
+data axis_role_actuable: DeclarationRef = decl_ref(
+  module_path: "strategy.cloud_overflow_role",
+  decl_name: "axis_role_actuable",
+)
+
+data overflow_candidate_field: DeclarationRef = decl_ref(
+  module_path: "strategy.cloud_overflow_role",
+  decl_name: "overflow_candidate_field",
+)
+
+data overflow_constraint_authority: DeclarationRef = decl_ref(
+  module_path: "strategy.cloud_overflow_role",
+  decl_name: "overflow_constraint_authority",
+)
+
+data overflow_policy: DeclarationRef = decl_ref(
+  module_path: "strategy.cloud_overflow_role",
+  decl_name: "overflow_policy",
+)
+
+data overflow_evidence_snapshot: DeclarationRef = decl_ref(
+  module_path: "strategy.cloud_overflow_role",
+  decl_name: "overflow_evidence_snapshot",
+)
+
+data candidate_none: DeclarationRef = decl_ref(module_path: "strategy.cloud_overflow_role", decl_name: "candidate_none")
+data candidate_burst: DeclarationRef = decl_ref(module_path: "strategy.cloud_overflow_role", decl_name: "candidate_burst")
+data candidate_x86: DeclarationRef = decl_ref(module_path: "strategy.cloud_overflow_role", decl_name: "candidate_x86")
+data candidate_control_plane: DeclarationRef = decl_ref(module_path: "strategy.cloud_overflow_role", decl_name: "candidate_control_plane")
+
+data overflow_closed_roster: List<DeclarationRef> = [
+  candidate_none,
+  candidate_burst,
+  candidate_x86,
+  candidate_control_plane,
+]
+
+data overflow_causal_read_obligation: NonEmptyStr = "no fleet observation establishes that choosing a rented-cloud role varies extra cloud spend on this fleet. strategy.node_rental hetzner_row is a vendor tariff, not a FleetObservedCoupling on (term_extra_cloud_spend, var_cloud_role). Reopen when a measured fleet receipt names that cell."
+
+data overflow_funded_axes: List<DeclarationRef> = [axis_extra_cloud_spend, axis_role_actuable]
+
+fn overflow_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: overflow_role_subject,
+    sensitivities: [
+      SensitivityUnestablished {
+        term: term_extra_cloud_spend.identity,
+        variable: var_cloud_role.identity,
+        obligation: overflow_causal_read_obligation,
+      },
+    ],
+    constraints: [],
+    parameters: [],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [term_extra_cloud_spend.identity] },
+    causal_model: CausalModelUnestablished {
+      subject: overflow_role_subject.identity,
+      read_obligation: overflow_causal_read_obligation,
+    },
+  }
+}
+
+fn overflow_axes() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: axis_extra_cloud_spend, goal: LowerIsBetter },
+    SelectionAxis { identity: axis_role_actuable, goal: HigherIsBetter },
+  ]
+}
+
+fn spend_reading(micro: Int) -> AxisReading {
+  AxisReading {
+    axis: axis_extra_cloud_spend,
+    interval_micro: degenerate_interval(point: micro),
+  }
+}
+
+fn actuable_reading(micro: Int) -> AxisReading {
+  AxisReading {
+    axis: axis_role_actuable,
+    interval_micro: degenerate_interval(point: micro),
+  }
+}
+
+fn gap_burst_unpurchasable() -> AxisGap {
+  AxisGap {
+    axis: axis_extra_cloud_spend,
+    cause: join([
+      "burst overflow has no purchasable SKU at a known region: Hetzner CAX is not orderable to this account (admissible_as_competitive_floor=",
+      if admissible_as_competitive_floor(r: hetzner_row) { "true" } else { "false" },
+      "); listed rates without purchasable supply are not a cost reading",
+    ], "") as NonEmptyStr,
+  }
+}
+
+fn gap_x86_unread() -> AxisGap {
+  AxisGap {
+    axis: axis_extra_cloud_spend,
+    cause: join([
+      "x86_64 overflow is unread as a priced role: GCP N2 is not an admissible competitive floor (admissible=",
+      if admissible_as_competitive_floor(r: gcp_row) { "true" } else { "false" },
+      "); OCI Ampere is not an x86 route and is also not an admissible floor (admissible=",
+      if admissible_as_competitive_floor(r: oci_row) { "true" } else { "false" },
+      "). Per-ISA demand volume that would justify the spend is also unmeasured",
+    ], "") as NonEmptyStr,
+  }
+}
+
+fn gap_x86_supply_unread() -> AxisGap {
+  AxisGap {
+    axis: axis_role_actuable,
+    cause: "x86_64 overflow supply is unread: a published N2 rate at a known region is not a purchasable-supply observation" as NonEmptyStr,
+  }
+}
+
+fn gap_control_plane_unread() -> AxisGap {
+  AxisGap {
+    axis: axis_role_actuable,
+    cause: "control-plane CX23 listed monthly is extra-spend only; purchasable supply to this account is unread, and siting outside the fleet failure domain is unread. A spend reading on extra_cloud_spend does not discharge those obligations" as NonEmptyStr,
+  }
+}
+
+// LISTED EXTRA-SPEND, NOT A SITING RECEIPT. cx23_listed is the published Hetzner CX23 monthly
+// cap already in extdeps.cloud.hetzner. The spend reading stays; unread supply and siting are
+// AxisGaps on axis_role_actuable so unread_axis_gaps cannot drop them behind a priced spend axis.
+fn control_plane_listed_monthly_micro() -> Int {
+  money_amount_micro_count(m: cx23_listed.monthly.amount)
+}
+
+fn entry_none() -> ParetoEntry {
+  ParetoEntry {
+    identity: candidate_none,
+    display_label: "nothing: no rented cloud hours" as NonEmptyStr,
+    readings: [spend_reading(micro: 0), actuable_reading(micro: 1)],
+    missing_inputs: [],
+  }
+}
+
+fn entry_burst() -> ParetoEntry {
+  if admissible_as_competitive_floor(r: hetzner_row) {
+    ParetoEntry {
+      identity: candidate_burst,
+      display_label: "burst overflow above owned capacity" as NonEmptyStr,
+      readings: [spend_reading(micro: hetzner_row.micro_per_month), actuable_reading(micro: 1)],
+      missing_inputs: [],
+    }
+  } else {
+    ParetoEntry {
+      identity: candidate_burst,
+      display_label: "burst overflow above owned capacity" as NonEmptyStr,
+      readings: [actuable_reading(micro: 0)],
+      missing_inputs: [gap_burst_unpurchasable()],
+    }
+  }
+}
+
+fn entry_x86() -> ParetoEntry {
+  if admissible_as_competitive_floor(r: gcp_row) {
+    ParetoEntry {
+      identity: candidate_x86,
+      display_label: "x86_64 targets the aarch64 fleet cannot serve natively" as NonEmptyStr,
+      readings: [spend_reading(micro: gcp_row.micro_per_month), actuable_reading(micro: 1)],
+      missing_inputs: [],
+    }
+  } else {
+    ParetoEntry {
+      identity: candidate_x86,
+      display_label: "x86_64 targets the aarch64 fleet cannot serve natively" as NonEmptyStr,
+      readings: [],
+      missing_inputs: [gap_x86_unread(), gap_x86_supply_unread()],
+    }
+  }
+}
+
+fn entry_control_plane() -> ParetoEntry {
+  ParetoEntry {
+    identity: candidate_control_plane,
+    display_label: "control plane held outside the fleet failure domain" as NonEmptyStr,
+    readings: [spend_reading(micro: control_plane_listed_monthly_micro())],
+    missing_inputs: [gap_control_plane_unread()],
+  }
+}
+
+fn live_overflow_field() -> List<ParetoEntry> {
+  [entry_none(), entry_burst(), entry_x86(), entry_control_plane()]
+}
+
+fn select_cloud_overflow_role(field: List<ParetoEntry>) -> RealizationSelectionResult<ParetoEntry> {
+  select_realization(
+    assessment: overflow_assessment(),
+    candidate_field_identity: overflow_candidate_field,
+    field: field,
+    axes: overflow_axes(),
+    constraints: [],
+    constraint_authority: overflow_constraint_authority,
+    policy: UniqueSurvivorRequired { identity: overflow_policy },
+    evidence_snapshot: overflow_evidence_snapshot,
+  )
+}
+
+fn cloud_overflow_role_selection() -> RealizationSelectionResult<ParetoEntry> {
+  select_cloud_overflow_role(field: live_overflow_field())
+}
+
+fn receipt_authorizes_quota_increase(r: SelectionReceipt, candidate_identity: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: r.scope.decision_subject, b: overflow_role_subject.identity)
+    && declaration_ref_eq(a: r.selected_identity, b: candidate_identity)
+    && declaration_ref_eq(a: r.scope.candidate_field_identity, b: overflow_candidate_field)
+    && declaration_ref_eq(a: r.scope.evidence_snapshot, b: overflow_evidence_snapshot)
+    && declaration_ref_eq(a: r.scope.constraint_authority, b: overflow_constraint_authority)
+    && declaration_ref_eq(a: r.policy_authority, b: overflow_policy)
+    && declaration_refs_same_set(a: r.scope.funded_axes, b: overflow_funded_axes)
+    && match r.scope.candidate_field_standing {
+      CandidateFieldEstablished { identities: ids } =>
+        declaration_refs_same_set(a: ids, b: overflow_closed_roster)
+      _ => false
+    }
+}
+
+// THE QUOTA ITEM MAY NOT REQUEST AN INCREASE WHILE THE ROLE IS UNSETTLED. A SelectedWithin of
+// nothing, or NeedsEvidence, both refuse an increase: the first because there is nothing to size,
+// the second because sizing would invent a role. A SelectedWithin of a non-none candidate still
+// refuses unless the receipt is this subject's closed four-role field, both funded axes, this
+// assessment's evidence snapshot, and selected_identity is the candidate. A singleton field that
+// selects itself is not a comparison. A foreign subject's receipt, and a receipt that selected
+// a different identity than the candidate, both refuse.
+fn overflow_quota_increase_authorized(pick: RealizationSelectionResult<ParetoEntry>) -> Bool {
+  match pick {
+    SelectedWithin { candidate: c, receipt: r } =>
+      !declaration_ref_eq(a: c.identity, b: candidate_none)
+        && receipt_authorizes_quota_increase(r: r, candidate_identity: c.identity)
+    SelectionNeedsEvidence { needs: _ } => false
+    SelectionNeedsPolicy { survivors: _ } => false
+    CandidateFieldUnestablished { causes: _ } => false
+    NoFeasibleRealization { causes: _ } => false
+    RealizationSelectionRefused { defects: _ } => false
+  }
+}
+
+fn selection_arm_name(pick: RealizationSelectionResult<ParetoEntry>) -> String {
+  match pick {
+    SelectedWithin { candidate: c, receipt: _ } =>
+      join(["SelectedWithin:", declaration_ref_display_key(ref: c.identity)], "")
+    SelectionNeedsEvidence { needs: ns } => join(["SelectionNeedsEvidence:", to_string(count(ns))], "")
+    SelectionNeedsPolicy { survivors: sv } => join(["SelectionNeedsPolicy:", to_string(count(sv))], "")
+    CandidateFieldUnestablished { causes: _ } => "CandidateFieldUnestablished"
+    NoFeasibleRealization { causes: _ } => "NoFeasibleRealization"
+    RealizationSelectionRefused { defects: _ } => "RealizationSelectionRefused"
+  }
+}

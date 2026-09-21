@@ -1,0 +1,92 @@
+module strategy.calendar_date
+
+import std.types { Int, String, NonEmptyStr, Bool }
+
+// ONE TEMPORAL AUTHORITY. Review finding R1 was repaired the wrong way once already: the fix
+// added a tax_year field beside date_iso, which made the mismatch DETECTABLE but left it
+// WRITABLE - PlacedInService { date_iso: "2027-01-01", tax_year: 2026 } still constructs, and
+// the predicate reading the year still answers about 2026. Two independently authored fields
+// for one fact is the nicknaming defect, not a repair of it (DESIGN section 3), and a comment
+// claiming the mismatch is unwritable was simply false.
+//
+// The construction-level fix is that the year is not a second field: it is a PART of the date,
+// and the ISO string is DERIVED for display rather than authored beside it. There is then no
+// state in which the year and the date disagree, because there is only one of them.
+
+type CalendarDate {
+  year: Int
+  month: Int
+  day: Int
+}
+
+fn pad2(v: Int) -> String {
+  if v < 10 { join(["0", to_string(v)], "") } else { to_string(v) }
+}
+
+// The ISO rendering is a PROJECTION of the date, never an input to it.
+fn calendar_date_iso(d: CalendarDate) -> String {
+  join([to_string(d.year), "-", pad2(v: d.month), "-", pad2(v: d.day)], "")
+}
+
+fn iso(y: Int, m: Int, d: Int) -> String {
+  calendar_date_iso(d: CalendarDate { year: y, month: m, day: d })
+}
+
+// Gregorian leap rule, written with integer division rather than a modulus operator so it does
+// not depend on one being available: y is divisible by n exactly when (y / n) * n == y.
+fn divides(n: Int, y: Int) -> Bool {
+  (y / n) * n == y
+}
+
+fn is_leap_year(year: Int) -> Bool {
+  (divides(n: 4, y: year) && !divides(n: 100, y: year)) || divides(n: 400, y: year)
+}
+
+fn days_in_month(year: Int, month: Int) -> Int {
+  if month == 2 {
+    if is_leap_year(year: year) { 29 } else { 28 }
+  } else if month == 4 || month == 6 || month == 9 || month == 11 {
+    30
+  } else {
+    31
+  }
+}
+
+// A structured date makes the year/date DISAGREEMENT unwritable. It does not make an impossible
+// date unwritable - month 13 and 31 February still construct - so that residue is validated, and
+// consumers are expected to refuse rather than answer over an invalid date.
+fn calendar_date_is_valid(d: CalendarDate) -> Bool {
+  d.month >= 1 && d.month <= 12 && d.day >= 1 && d.day <= days_in_month(year: d.year, month: d.month)
+}
+
+// ORDERING LIVES HERE BECAUSE THE DATE LIVES HERE. strategy.node_rental needed to decide which of
+// a series of dated readings is the LATEST, and the tempting shape was a lexicographic compare on
+// the ISO projection beside that fold. That is two defects at once: it orders by a rendering rather
+// than by the value, and it puts a second date ordering in a module that does not own dates
+// (DESIGN §3). The order is a fact about CalendarDate, so it is authored once, here.
+//
+// IT IS A TOTAL ORDER ON AN Int TRIPLE, so there is nothing to parse and nothing that can fail.
+// Lexicographic string compare happens to agree for zero-padded ISO, which is exactly what makes
+// it a trap: it is correct by coincidence of formatting, and a single unpadded month would break
+// it silently.
+fn calendar_date_before(a: CalendarDate, b: CalendarDate) -> Bool {
+  if a.year != b.year {
+    a.year < b.year
+  } else if a.month != b.month {
+    a.month < b.month
+  } else {
+    a.day < b.day
+  }
+}
+
+fn calendar_date_same(a: CalendarDate, b: CalendarDate) -> Bool {
+  a.year == b.year && a.month == b.month && a.day == b.day
+}
+
+fn calendar_date_year(d: CalendarDate) -> Int {
+  d.year
+}
+
+fn calendar_date_in_year(d: CalendarDate, year: Int) -> Bool {
+  d.year == year
+}

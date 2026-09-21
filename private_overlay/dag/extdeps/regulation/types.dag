@@ -1,0 +1,822 @@
+module extdeps.regulation.types
+
+import std.types { NonEmptyStr, List, EpochMs }
+import std.logic { Bool }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
+import std.types { String }
+import std.citation { CitationTarget, CitationSelector, cited_representation_identity_eq }
+import extdeps.pin { PinSelection, ExactPin, TrackedChannel }
+import std.content_hash { ContentHash, ContentHashComparison, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash }
+
+// AGNOSTIC SHAPES FOR LAND-USE / CONSTRUCTION REGULATION. Concrete instruments live one
+// module per jurisdiction in extdeps/regulation/ (a municipality is an independently
+// governed upstream exactly like a vendor); this hub enumerates none.
+//
+// THE MONOTONE LAYER LADDER WAS DELETED AT THE ROOT (analyst ruling 2026-08-30, DU-0.3).
+// The prior revision declared "federal frames state, state enables municipal, and a lower
+// layer can be STRICTER but not looser" and derived diligence from that ordering. That is
+// not a safe general law of regulatory authority: authority is a function of SUBJECT and
+// SCOPE, not of altitude. Rules are delegated, implemented, incorporated by reference,
+// preempted, superseded, exempted, or simply inapplicable, and the vertical chain does not
+// even contain every decision-maker that can stop a project - utilities, fire officials,
+// construction code officials, insurers, landlords and contractual counterparties are
+// authorities that no federal-to-municipal ordering ranks at all.
+//
+// The replacement is a RELATION GRAPH between instruments (AuthorityRelation below), which
+// is strictly more expressive and refuses where the old ordering silently answered. Level
+// is retained only as a CLASSIFICATION for reporting - it carries no ordering, and nothing
+// in this module derives an outcome from it.
+
+type GovernmentLevel = Federal | StateLevel | County | Municipal | SpecialDistrict
+
+// An issuing authority is named SYMBOLICALLY (extdeps.external_authority
+// external_subject_symbolic_identity_note): the jurisdiction's own declaration, never a
+// re-spelled name. "Warren" is two different governments in New Jersey - Warren Township in
+// Somerset County and Warren County itself - and a name-keyed model silently joins them.
+type IssuingAuthority {
+  subject: DeclarationRef
+  level: GovernmentLevel
+}
+
+// ---------------------------------------------------------------------------------------------
+// LIFECYCLE. An instrument's force is a function of where it stands, and the stages are not
+// interchangeable: an introduced ordinance binds nobody, an adopted one may still be awaiting
+// the publication that starts its effective date, and a stayed one is adopted but unenforceable.
+// Collapsing these into a Bool is the state-space conflation this carrier exists to refuse.
+// ---------------------------------------------------------------------------------------------
+
+// EffectiveDate is deliberately its own coproduct rather than an EpochMs?. An optional would
+// make "we have not read the publication receipt" and "the instrument names no effective date"
+// the same value, and those obligate different work: the first is a retrieval task, the second
+// is a legal-reading task. NJ ordinances generally take effect after publication following
+// final passage, so an adopted ordinance routinely sits in EffectiveDatePendingEvidence for
+// weeks - a state the model must be able to hold without guessing a date.
+type EffectiveDate
+  = EffectiveAt { at: EpochMs }
+  | EffectiveDatePendingEvidence { obligation: NonEmptyStr }
+
+// THE CARRIER MUST NOT DEMAND A DATE IT DOES NOT HAVE. The first revision typed the executive
+// signature as a bare EpochMs, and the Phillipsburg row then filled it with the ADOPTION date
+// because no signing receipt had been read - with an adjacent comment admitting exactly that.
+// Prose admitting a fabrication does not stop it being fabricated evidence: the field read as a
+// signing date to every consumer, and only a human reading the neighbouring sentence would ever
+// know otherwise. A required field is a demand for data, so where the data may legitimately be
+// absent the ABSENCE must be one of the constructible values.
+type ExecutiveDisposition
+  = SignedOn { at: EpochMs }
+  | SignaturePresentDateUnread { obligation: NonEmptyStr }
+  | SignatureNotRequired { because: NonEmptyStr }
+
+// SUPERSESSION AND REPEAL ARE DIFFERENT TERMINATIONS AND NO LONGER SHARE A STANDING.
+// The previous carrier let both take the same SuccessorStanding, which made
+// `Superseded { successor_standing: NoSuccessor }` constructible - a contradiction, since
+// supersession IS the claim that another instrument replaced this one, and it routed straight to
+// ReliableClear. Repeal is where absence of a successor is coherent.
+//
+// THE CALLER-SUPPLIED RELIANCE IS ALSO GONE. The previous revision carried a successor identity
+// beside a PlanningReliance the caller computed, and admitted in a comment that the two were not
+// joined. An honest note does not stop a caller attaching an unrelated instrument's clear
+// standing to the named successor, so the field is removed rather than annotated: until the
+// instrument graph exists (DU-0 item 4), a modeled successor yields ForeclosedPendingEvidence.
+// A named successor we cannot resolve is evidence we must resolve it, never evidence of clearance.
+type SupersessionStanding
+  = SupersededBySuccessorUnread { obligation: NonEmptyStr }
+  | SupersededBySuccessor { successor: DeclarationRef }
+
+type RepealSuccession
+  = NoSuccessor { basis: NonEmptyStr }
+  | RepealSuccessorUnread { obligation: NonEmptyStr }
+  | RepealedIntoSuccessor { successor: DeclarationRef }
+
+type InstrumentLifecycle
+  = Introduced { introduced_at: EpochMs }
+  | Adopted { adopted_at: EpochMs, executive: ExecutiveDisposition, effective: EffectiveDate }
+  | Stayed { stayed_at: EpochMs, staying_authority: DeclarationRef, note: NonEmptyStr }
+  | Superseded { superseded_at: EpochMs, supersession: SupersessionStanding }
+  | Repealed { repealed_at: EpochMs, succession: RepealSuccession }
+
+// ONE QUESTION WAS TWO QUESTIONS, AND CONFLATING THEM LEFT A FAIL-OPEN IN THE ARM NOBODY
+// LOOKED AT (review of PR #24). The previous revision correctly refused to answer the binding
+// question with a Bool, then answered a DIFFERENT conflation with a three-state: it fused "does
+// this instrument have legal force right now" with "may we rely on this market area being
+// clear". Those come apart precisely where it matters:
+//
+//   - A SUPERSEDED prohibition has no current force, so the three-state answered DoesNotBind and
+//     the screen read the market area as clear - while the successor that actually governs sat
+//     unread. The arm's own text said the successor must be modeled first, and the function
+//     ignored it. This is the identical fail-open the three-state was introduced to close,
+//     surviving one arm over.
+//   - An INTRODUCED prohibition has no force today, but a commitment transaction closing during
+//     its adoption is exactly the failure the pending-measure scan exists to catch.
+//   - An instrument EFFECTIVE FROM A FUTURE DATE was reported as presently binding, because the
+//     question was asked with no as-of date at all.
+//
+// So legal force is asked AS OF a date, planning reliance is asked separately, and only the
+// second is safe to screen on. Neither can be derived from the other.
+
+// CeasedNoSuccessor USED TO CARRY THREE MEANINGS: a measure that never had force (introduced), a
+// measure that ceased BECAUSE a successor replaced it, and a repealed one. They oblige different
+// work - track the adoption, read the successor, or nothing - so they are three arms.
+type LegalForceStanding
+  = BindsAsOf
+  | NotYetEffective { effective_at: EpochMs }
+  | NeverInForce { because: NonEmptyStr }
+  | CeasedSuperseded
+  | CeasedRepealed
+  | ForceUndetermined { obligation: NonEmptyStr }
+
+// RELIANCE IS NOT THE DECISION SURFACE, AND SCREENING ON IT ALONE IS WRONG IN BOTH DIRECTIONS.
+// It answers only "can this instrument's standing be relied on", which an effective ByRight
+// permission fails in the adverse-sounding direction: it lands on ForeclosedByInstrument like a
+// prohibition does, because both are in force. The permissive reading appears only after joining
+// substantive force, so the surface a consumer screens on is RegulatoryEffect.
+type PlanningReliance
+  = ReliableClear
+  | ForeclosedByInstrument { because: NonEmptyStr }
+  | ForeclosedPendingEvidence { obligation: NonEmptyStr }
+
+fn legal_force(l: InstrumentLifecycle, as_of: EpochMs) -> LegalForceStanding {
+  match l {
+    Introduced { introduced_at } => NeverInForce { because: "introduced only - never enacted, so it has never had legal force; this says nothing about whether it will" },
+    Adopted { adopted_at, executive, effective } => match effective {
+      EffectiveAt { at } => if at <= as_of { BindsAsOf } else { NotYetEffective { effective_at: at } },
+      EffectiveDatePendingEvidence { obligation } => ForceUndetermined { obligation: obligation },
+    },
+    Stayed { stayed_at, staying_authority, note } => ForceUndetermined { obligation: "adopted but stayed - read the terms and current status of the stay" },
+    Superseded { superseded_at, supersession } => CeasedSuperseded,
+    Repealed { repealed_at, succession } => CeasedRepealed,
+  }
+}
+
+// The predecessor inherits its successor's answer verbatim - it cannot be clearer than the
+// instrument that replaced it.
+fn supersession_reliance(ss: SupersessionStanding) -> PlanningReliance {
+  match ss {
+    SupersededBySuccessorUnread { obligation } => ForeclosedPendingEvidence { obligation: obligation },
+    SupersededBySuccessor { successor } => ForeclosedPendingEvidence {
+      obligation: "a successor instrument is named but this substrate cannot yet resolve it - read the successor's own standing before relying on this market area (DU-0 item 4 supplies the instrument graph that makes this derivable)",
+    },
+  }
+}
+
+fn repeal_reliance(rs: RepealSuccession) -> PlanningReliance {
+  match rs {
+    NoSuccessor { basis } => ForeclosedPendingEvidence {
+      obligation: "the row asserts no successor exists, which is a NEGATIVE fact about a jurisdiction's whole instrument set - a prose basis cannot establish it any more than absence from an incomplete roster could. Clearance here waits on DU-0 item 4's instrument graph or a coverage authority that can close the successor search.",
+    },
+    RepealSuccessorUnread { obligation } => ForeclosedPendingEvidence { obligation: obligation },
+    RepealedIntoSuccessor { successor } => ForeclosedPendingEvidence {
+      obligation: "the repeal folded this instrument into a named successor which cannot yet be resolved here",
+    },
+  }
+}
+
+// WHETHER THIS INSTRUMENT'S STANDING CAN BE RELIED ON - one input to the screen, never the screen
+// itself. Every arm not positively known to be clear forecloses or defers: an instrument with no
+// current force still forecloses while anything about its succession, adoption or effective date
+// is unread. The header here used to call this the only question a market-area screen may ask,
+// which contradicts the type's own note a few lines below - an in-force ByRight permission and an
+// in-force prohibition land on the SAME arm, and only RegulatoryEffect separates them.
+fn planning_reliance(l: InstrumentLifecycle) -> PlanningReliance {
+  match l {
+    Introduced { introduced_at } => ForeclosedPendingEvidence { obligation: "an introduced instrument binds nobody today and may be adopted during a commitment transaction - track it to its outcome before relying on this market area. The lifecycle is force-agnostic: what an adopted version would DO is the substantive force, read separately." },
+    Adopted { adopted_at, executive, effective } => match effective {
+      EffectiveAt { at } => ForeclosedByInstrument { because: "adopted and effective" },
+      EffectiveDatePendingEvidence { obligation } => ForeclosedPendingEvidence { obligation: obligation },
+    },
+    Stayed { stayed_at, staying_authority, note } => ForeclosedPendingEvidence { obligation: "a stay can be lifted - read its terms and status" },
+    Superseded { superseded_at, supersession } => supersession_reliance(ss: supersession),
+    Repealed { repealed_at, succession } => repeal_reliance(rs: succession),
+  }
+}
+
+fn reliance_is_clear(r: PlanningReliance) -> Bool {
+  match r {
+    ReliableClear => true,
+    ForeclosedByInstrument { because } => false,
+    ForeclosedPendingEvidence { obligation } => false,
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// SPATIAL EXTENT - the zoning map (operator 2026-08-30: "each location may correspond to a
+// zoning/spatial map - they may be banned in certain zones, or totally").
+//
+// A prohibition is not a property of a TOWN, it is a property of a set of DISTRICTS within a
+// town, and the two cases carry different consequences: an every-district prohibition ends the
+// parcel search in that municipality, while a named-district prohibition leaves the remaining
+// districts open and turns the question into which parcels sit in which district. Modeling both
+// as "banned: true" would erase the second case entirely, which is the case a nationwide census
+// will meet most often.
+// ---------------------------------------------------------------------------------------------
+
+// A district is named against a jurisdiction AND a map revision. A bare district code is a
+// positional key into a map that is itself amended: "Industrial District" in one town is not the
+// one next door, and the same code before and after a rezoning is not the same territory.
+// map_revision WAS A NonEmptyStr, AND JERSEY CITY FILLED IT WITH PROSE BEGINNING "PENDING
+// EVIDENCE:". The field claims to hold a map revision, so an unknown revision could only be
+// expressed by manufacturing text into the known-revision slot - the identical required-field
+// failure that the ExecutiveDisposition and NoSuccessor repairs closed elsewhere, appearing a
+// third time. Unknown now has its own constructor instead of squatting in the known one.
+type ZoningMapRevision
+  = MapRevisionKnown { revision: NonEmptyStr }
+  | MapRevisionPending { obligation: NonEmptyStr }
+
+type ZoningDistrictRef {
+  jurisdiction: DeclarationRef
+  district_code: NonEmptyStr
+  map_revision: ZoningMapRevision
+}
+
+// NamedZoningDistricts is NONEMPTY BY CONSTRUCTION (the ExternalModelScope split-field
+// precedent). An empty district list would describe a prohibition that prohibits nothing while
+// still reading as a prohibition - unwritable is better than checked.
+type SpatialExtent
+  = EveryZoningDistrict
+  | NamedZoningDistricts { first_district: ZoningDistrictRef, further_districts: List<ZoningDistrictRef> }
+  | OverlayArea { overlay: DeclarationRef }
+  | ParcelSpecific { parcel: DeclarationRef }
+
+// A PURE SPATIAL FACT, AND ITS NAME NOW SAYS SO. This was called
+// extent_forecloses_municipality, which promised a DISPOSITION it cannot compute: it sees only
+// the extent, so a repealed prohibition, an every-district performance standard, and even an
+// every-district BY-RIGHT permission all "foreclosed" the municipality. Spatial coverage is one
+// input to foreclosure, never the answer - G1 must join force/reliance, governed subject,
+// admitted applicability and spatial intersection before any market area is foreclosed.
+//
+// A named-district instrument SUBTRACTS territory from the search rather than ending it, and on
+// a national census that is the common case.
+fn extent_covers_all_zoning_districts(e: SpatialExtent) -> Bool {
+  match e {
+    EveryZoningDistrict => true,
+    NamedZoningDistricts { first_district, further_districts } => false,
+    OverlayArea { overlay } => false,
+    ParcelSpecific { parcel } => false,
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// GOVERNED SUBJECT. What the instrument actually reaches, carried as the instrument's own
+// definition rather than our paraphrase of it. liberally_construed is a real and load-bearing
+// field: Bayonne O-26-74 closes its seven-paragraph definition by directing that it "shall be
+// liberally construed", which widens the definition beyond its enumerated terms and is exactly
+// the clause that decides whether a small compute room is reached.
+// ---------------------------------------------------------------------------------------------
+
+// COMPLETENESS IS STRUCTURAL, NOT A NOTE ON THE PROVENANCE ARM. The first revision stored an
+// EXCERPT of Bayonne's definition in a record whose shape promised the whole thing, and parked
+// the retrieval obligation on a different field. A consumer reading the definition saw a
+// complete-looking value. The same trap sat in the two neighbouring fields: absence of a liberal
+// construction clause from a PARTIAL source is not evidence of `false`, and an empty exclusions
+// list read as "this ordinance excludes nothing" when it meant "we have not read the exclusions".
+// Both are now reachable only through ExactDefinition, which an excerpt cannot construct.
+// The third arm exists because the Phillipsburg retrieval produced exactly this state and nothing
+// else could describe it honestly. The Town's ADOPTED O2026-08 is a four-page CCITT fax scan with
+// zero embedded fonts - a real, official, digestible instrument with no machine-readable text - so
+// the complete definition we hold is the one attached to the pre-adoption consistency review.
+// That text is not an excerpt, and it is not the adopted instrument's text either: adoption can
+// amend. Forcing it into ExactDefinition would assert the adopted wording; forcing it into
+// DefinitionExcerpt would misdescribe a complete definition as partial.
+type SubjectStanding
+  = ExactDefinition { definition_text: NonEmptyStr, liberally_construed: Bool, exclusions: List<NonEmptyStr> }
+  | DefinitionFromSupersededDraft { definition_text: NonEmptyStr, draft_source: CitationTarget<CitationSelector>, draft_stage: NonEmptyStr, obligation: NonEmptyStr }
+  | DefinitionExcerpt { excerpt: NonEmptyStr, missing_sections: NonEmptyStr, obligation: NonEmptyStr }
+  | SubjectUnread { obligation: NonEmptyStr }
+
+type GovernedSubject {
+  defined_term: NonEmptyStr
+  standing: SubjectStanding
+}
+
+fn subject_is_exact(g: GovernedSubject) -> Bool {
+  match g.standing {
+    ExactDefinition { definition_text, liberally_construed, exclusions } => true,
+    DefinitionFromSupersededDraft { definition_text, draft_source, draft_stage, obligation } => false,
+    DefinitionExcerpt { excerpt, missing_sections, obligation } => false,
+    SubjectUnread { obligation } => false,
+  }
+}
+
+// Which citation actually produced a provisional definition. Carrying the draft_source edge is
+// not enough on its own: without a consumer that JOINS it, the field can be swapped for the
+// adopted instrument's own citation - the exact substitution that would relabel provisional
+// wording as authoritative - with nothing going red. Only the superseded-draft arm can match:
+// an exact definition has no draft producer, and an unread one has no text at all.
+// NAMED FOR WHAT IT COMPARES: THE PINNED REPRESENTATION, NOT THE WHOLE TARGET. This joins the
+// cited-representation identity - source, access route, byte domain - plus version and expected
+// digest, and it REFUSES a tracked pin rather than comparing one by channel alone and silently
+// dropping its refresh window.
+//
+// IT DOES NOT COMPARE THE SELECTOR, and the name says pin rather than target for that reason. Two
+// targets selecting different material from one document compare equal here. This is a substrate
+// limit, not a choice: CitationTarget.selector is declared Selector?, but on a GENERIC record the
+// optionality is lost at instantiation - the compiler resolves t.selector to CitationSelector and
+// demands that type's own variants, so `Absent` cannot be matched and selector-freeness cannot be
+// observed at all. Measured on a minimal probe module against this exact compiler.
+//
+// NEXT-RUNG TRIGGER: optional field access surviving generic instantiation. With it, this becomes
+// a whole-target comparison that refuses a selector-bearing pin the way it refuses a tracked one.
+// Both citations joined today are selector-free, so nothing in this repository currently turns on
+// the gap - but a selector-bearing citation authored before that fix would be compared blind.
+fn pin_is_exact(sel: PinSelection) -> Bool {
+  match sel {
+    ExactPin => true,
+    TrackedChannel { channel, refresh_window_days } => false,
+  }
+}
+
+fn cited_representation_pin_is(
+  left: CitationTarget<CitationSelector>,
+  right: CitationTarget<CitationSelector>,
+) -> Bool {
+  pin_is_exact(sel: left.expected_pin.selection)
+    && pin_is_exact(sel: right.expected_pin.selection)
+    && cited_representation_identity_eq(left: left.expected_pin.subject, right: right.expected_pin.subject)
+    && (left.expected_pin.version as String) == (right.expected_pin.version as String)
+    && match compare_content_hash(left: left.expected_pin.expected_identity, right: right.expected_pin.expected_identity) {
+      ContentHashEqual => true,
+      ContentHashDifferent => false,
+      ContentHashCrossFamilyIncomparable => false,
+    }
+}
+
+fn subject_draft_source_is(g: GovernedSubject, expected: CitationTarget<CitationSelector>) -> Bool {
+  match g.standing {
+    DefinitionFromSupersededDraft { definition_text, draft_source, draft_stage, obligation } =>
+      cited_representation_pin_is(left: draft_source, right: expected),
+    ExactDefinition { definition_text, liberally_construed, exclusions } => false,
+    DefinitionExcerpt { excerpt, missing_sections, obligation } => false,
+    SubjectUnread { obligation } => false,
+  }
+}
+
+// How the instrument reaches a project in time. BAYONNE applies prospectively and expressly
+// disclaims creating vested rights, so "we already own the parcel" is not a defence and "our
+// application predates it" helps only if the approval became final and vested first. This comment
+// previously said "Bayonne and Phillipsburg both", while the Phillipsburg row itself correctly
+// carries TemporalApplicationUnread - a generic comment asserting what its own concrete row
+// denies, which is how a shared-clause assumption gets laundered into a fact.
+type TemporalApplication
+  = Prospective { vested_rights_preserved: Bool, note: NonEmptyStr }
+  | ExistingUseTreatmentFromGeneralLaw { obligation: NonEmptyStr }
+  | Retroactive { note: NonEmptyStr }
+  | TemporalApplicationUnread { obligation: NonEmptyStr }
+
+// Whether the temporal reach is READ, as opposed to inferred from a neighbouring municipality's
+// clause. Jersey City's ordinance is silent, so its row falls back to general law and this must
+// answer false - an unread temporal reach is not a prospective one.
+fn temporal_is_determined(t: TemporalApplication) -> Bool {
+  match t {
+    Prospective { vested_rights_preserved, note } => true,
+    Retroactive { note } => true,
+    ExistingUseTreatmentFromGeneralLaw { obligation } => false,
+    TemporalApplicationUnread { obligation } => false,
+  }
+}
+
+type InstrumentForce
+  = ProhibitionOfUse
+  | Moratorium { expires: EffectiveDate, note: NonEmptyStr }
+  | ConditionalUseRequired
+  | ByRight
+  | PerformanceStandard { note: NonEmptyStr }
+
+// ---------------------------------------------------------------------------------------------
+// PROVENANCE. Every instrument names the exact representation it was read from, through the
+// std.citation CIT-0 carrier - an expected pin over a digested representation, not a URL
+// spelling and not a prose "source:" string. A tertiary report (a news article, an advocacy
+// roster) is a legitimate provenance arm, but it is a DIFFERENT arm from the official text,
+// because a roster is not an authority: Phillipsburg's adopted ban is absent from the
+// most-cited statewide roster of NJ bans, so a town's absence from any roster is evidence of
+// nothing at all.
+// ---------------------------------------------------------------------------------------------
+
+type InstrumentProvenance
+  = OfficialText { citation: CitationTarget<CitationSelector> }
+  | OfficialAnnouncement { citation: CitationTarget<CitationSelector>, obligation: NonEmptyStr }
+  | TertiaryReport { citation: CitationTarget<CitationSelector>, obligation: NonEmptyStr }
+  | OperatorReported { reported: NonEmptyStr, obligation: NonEmptyStr }
+
+// Only the instrument's own official text can settle its terms. Everything else carries a
+// standing retrieval obligation, which is why the non-official arms are required to name one.
+fn provenance_is_official_text(p: InstrumentProvenance) -> Bool {
+  match p {
+    OfficialText { citation } => true,
+    OfficialAnnouncement { citation, obligation } => false,
+    TertiaryReport { citation, obligation } => false,
+    OperatorReported { reported, obligation } => false,
+  }
+}
+
+type RegulatoryInstrument {
+  self_ref: DeclarationRef
+  designation: NonEmptyStr
+  issuer: IssuingAuthority
+  lifecycle: InstrumentLifecycle
+  force: InstrumentForce
+  extent: SpatialExtent
+  subject: GovernedSubject
+  temporal: TemporalApplication
+  provenance: InstrumentProvenance
+  enforcer: DeclarationRef
+  applicability_basis: ApplicabilityBasis
+  note: NonEmptyStr
+}
+
+// ---------------------------------------------------------------------------------------------
+// RELATIONS BETWEEN INSTRUMENTS - the replacement for the deleted monotone ordering.
+// ---------------------------------------------------------------------------------------------
+
+type AuthorityRelation
+  = DelegatesAuthority
+  | Implements
+  | IncorporatesByReference
+  | TightensWithinDelegatedScope
+  | Preempts
+  | Conflicts
+  | Exempts
+  | Supersedes
+
+type InstrumentRelation {
+  subject_instrument: DeclarationRef
+  relation: AuthorityRelation
+  object_instrument: DeclarationRef
+  note: NonEmptyStr
+}
+
+// A relation must join two DISTINCT instruments. A self-relation is a projector defect that
+// would otherwise read as a satisfied dependency.
+fn relation_is_well_formed(r: InstrumentRelation) -> Bool {
+  !declaration_ref_eq(a: r.subject_instrument, b: r.object_instrument)
+}
+
+fn relations_well_formed(rs: List<InstrumentRelation>) -> Bool {
+  fold(rs, init: true, f: fn(acc, r) { acc && relation_is_well_formed(r: r) })
+}
+
+// ---------------------------------------------------------------------------------------------
+// APPLICABILITY - AND THE WALL THAT KEEPS US FROM DECIDING IT OURSELVES.
+//
+// Whether a given instrument reaches a given project on a given parcel is a determination of
+// the named decision authority (a zoning officer, a construction official, a board), not a
+// derivation this repository may perform. The modeling temptation is precisely the dangerous
+// one: Bayonne's definition turns on PRINCIPAL USE and reaches a "portion thereof" while being
+// liberally construed, so it is genuinely arguable whether a 21-node compute room inside an
+// office is reached - and an argument is not a determination. A model that answered it would be
+// fabricating the one fact that decides the site.
+//
+// So ApplicabilityUndetermined is not a placeholder for missing work: it is the CORRECT and
+// expected standing for every parcel until a determination receipt exists, and it is what the
+// consuming gate must refuse on.
+// ---------------------------------------------------------------------------------------------
+
+// A DETERMINATION IS ADMITTED BY ITS ISSUER AND ITS SUBJECT, NOT BY ITS ARM NAME. The previous
+// revision's witness required every instrument-bearing row to stay Undetermined forever. That
+// was two mistakes at once: it made a real future zoning determination turn the permanent
+// witness RED, so the wall punished the outcome it exists to wait for; and it was bypassable,
+// because relabelling the row to another diligence arm removed it from the fold entirely.
+//
+// The invariant is not "a determination may never exist". It is that a determination counts only
+// when it comes FROM the instrument's admitted decision authority and governs THAT instrument
+// and THAT use profile. Under this join a self-authored determination is refused for the same
+// structural reason a wrong-authority one is: our own module is not the enforcer.
+// THE DETERMINED ARMS ARE REMOVED, NOT REPAIRED, AND THAT IS THE POINT.
+//
+// The previous revision let an applicability determination CLEAR an instrument, evidenced by a
+// std.citation CitationTarget plus a free `document_producer` label. Two things were wrong and
+// only one was fixable here:
+//
+//   1. The producer was asserted BESIDE the citation rather than derived FROM it, so a receipt
+//      could name the zoning officer as producer while its citation pointed at a document the
+//      city published for another purpose. That is the label-versus-producer failure this whole
+//      lane exists to remove, reappearing inside the mechanism meant to enforce it.
+//   2. More fundamentally, CIT-0 defines CitationTarget as an EXPECTED PIN with no retrieval
+//      observation - its digest is caller-authored, and verification is the separate
+//      target/observation/reconciliation join. A citation target therefore cannot evidence that
+//      an authority ruled anything. It is a claim about bytes we expect to find, not a receipt.
+//
+// So the honest rung on this PR is PENDING, never clearance. No zoning authority has in fact
+// ruled on our use in any of these municipalities, so a substrate that can express "determined
+// not to apply" today would only ever hold a value nobody issued. The arms are deleted rather
+// than left constructible-but-refused, because an admission arm no producer can inhabit is a
+// decoration that will be cited as coverage.
+//
+// RESTORATION TRIGGER: DU-0 item 4's typed authority receipt - a verified decision document
+// whose producer is DERIVED from its citation source and whose retrieval reconciles - not merely
+// "someone adds a receipt type". Until then applicability is undetermined, and an undetermined
+// applicability never clears a live instrument.
+// APPLICABILITY IS DERIVED FROM THE INSTRUMENT, NOT AUTHORED BESIDE IT. The previous shape carried
+// a decision_authority on the finding and an admitted_authority on the query, and admission
+// compared those two to EACH OTHER - never to the instrument. Two wrong values that agreed were
+// admitted: a Phillipsburg finding could hold the imported Phillipsburg row while both the
+// standing and the query named Bayonne's office, or this repository, and come back pending rather
+// than refused. The question had the same shape - generated from the instrument today, but a free
+// field, so a Phillipsburg row could store Jersey City's question.
+//
+// Both are now derived. The office that can rule is the instrument's own enforcer, and the
+// question is derived from the instrument's designation and its governed term. Neither can be
+// pointed elsewhere, so the three states the review asked to see refused have no constructor.
+type ApplicabilityQuery {
+  instrument: DeclarationRef
+}
+
+// ---------------------------------------------------------------------------------------------
+// SUBSTANTIVE EFFECT. Clearance previously assumed EVERY applicable instrument is adverse: it
+// derived from lifecycle alone and never saw whether the instrument prohibits, permits by right,
+// requires a conditional-use approval, or imposes a performance standard. An applicable ByRight
+// instrument is FAVOURABLE; treating it as blocking is as wrong as treating a prohibition as
+// clear, and on a national census the permissive and conditional instruments are most of the
+// population.
+// ---------------------------------------------------------------------------------------------
+
+// AFFIRMATIVE PERMISSION AND ABSENCE OF CONSTRAINT ARE NOT THE SAME ANSWER. One EffectPermits arm
+// carried both, so an expired moratorium and a live by-right permission were indistinguishable -
+// and a Bool over that arm collapsed them completely. That distinction becomes load-bearing the
+// moment G1 combines instruments: an expired moratorium removes ITS OWN block and authorizes
+// nothing, so it must never counterbalance another instrument's prohibition.
+//
+// EffectNotYetInForce is likewise separate from EffectBlocks. A future-effective prohibition is
+// not a present block and a future-effective permission is not present authority; both oblige the
+// same work - track the instrument to its effective date - and neither is a fact about today.
+type RegulatoryEffect
+  = EffectPermitsByRight { because: NonEmptyStr }
+  | EffectNoConstraint { because: NonEmptyStr }
+  | EffectBlocks { because: NonEmptyStr }
+  | EffectNotYetInForce { effective_at: EpochMs, obligation: NonEmptyStr }
+  | EffectProposedNotInForce { obligation: NonEmptyStr }
+  | EffectRequiresApproval { obligation: NonEmptyStr }
+  | EffectRequiresCompliance { obligation: NonEmptyStr }
+  | EffectPendingEvidence { obligation: NonEmptyStr }
+
+fn moratorium_effect(expires: EffectiveDate, as_of: EpochMs) -> RegulatoryEffect {
+  match expires {
+    EffectiveAt { at } => if at <= as_of {
+      EffectNoConstraint { because: "the moratorium's own expiry has passed, so it no longer reaches this use - it removes its own block and authorizes nothing" }
+    } else {
+      EffectBlocks { because: "an in-force moratorium that has not yet reached its expiry" }
+    },
+    EffectiveDatePendingEvidence { obligation } => EffectPendingEvidence { obligation: obligation },
+  }
+}
+
+// THE EFFECT JOINS LEGAL FORCE, NOT RELIANCE ALONE. planning_reliance maps every adopted
+// instrument with a known effective date to ForeclosedByInstrument without asking whether that
+// date has arrived, so a future-effective prohibition read as an in-force block and a
+// future-effective permission read as present authority. legal_force already answered that
+// question correctly and nothing consumed it - a derived value that no decision reads is the same
+// inert surface as an unread field.
+fn in_force_effect(force: InstrumentForce, as_of: EpochMs) -> RegulatoryEffect {
+  match force {
+    ProhibitionOfUse => EffectBlocks { because: "an in-force prohibition of the use" },
+    Moratorium { expires, note } => moratorium_effect(expires: expires, as_of: as_of),
+    ByRight => EffectPermitsByRight { because: "the instrument permits the use by right" },
+    ConditionalUseRequired => EffectRequiresApproval {
+      obligation: "conditional-use approval from the municipality's board is required before this use is permitted here - a further authority transaction, neither a block nor a clearance",
+    },
+    PerformanceStandard { note } => EffectRequiresCompliance {
+      obligation: "the use is permitted subject to performance standards; compliance must be evaluated against the design before this instrument is cleared",
+    },
+  }
+}
+
+fn instrument_effect(
+  force: InstrumentForce,
+  legal_force: LegalForceStanding,
+  reliance: PlanningReliance,
+  as_of: EpochMs,
+) -> RegulatoryEffect {
+  match legal_force {
+    ForceUndetermined { obligation } => EffectPendingEvidence { obligation: obligation },
+    NotYetEffective { effective_at } => EffectNotYetInForce {
+      effective_at: effective_at,
+      obligation: "the instrument is adopted but its effective date has not arrived - it constrains and authorizes nothing today, and must be tracked to that date rather than read as a present answer in either direction",
+    },
+    NeverInForce { because } => match reliance {
+      ForeclosedPendingEvidence { obligation } => EffectProposedNotInForce { obligation: obligation },
+      ReliableClear => EffectNoConstraint { because: because },
+      ForeclosedByInstrument { because } => EffectPendingEvidence {
+        obligation: "the instrument was never in force yet its standing reads as foreclosing - read the lifecycle before relying on either reading",
+      },
+    },
+    CeasedSuperseded => reliance_only_effect(reliance: reliance),
+    CeasedRepealed => reliance_only_effect(reliance: reliance),
+    BindsAsOf => match reliance {
+      ForeclosedPendingEvidence { obligation } => EffectPendingEvidence { obligation: obligation },
+      ReliableClear => EffectNoConstraint { because: "the instrument has no force to apply" },
+      ForeclosedByInstrument { because } => in_force_effect(force: force, as_of: as_of),
+    },
+  }
+}
+
+// A ceased instrument is answered by its succession standing alone: whether it still reaches this
+// use depends on what replaced it, never on what it used to say.
+fn reliance_only_effect(reliance: PlanningReliance) -> RegulatoryEffect {
+  match reliance {
+    ForeclosedPendingEvidence { obligation } => EffectPendingEvidence { obligation: obligation },
+    ReliableClear => EffectNoConstraint { because: "the instrument ceased and its succession is settled" },
+    ForeclosedByInstrument { because } => EffectPendingEvidence {
+      obligation: "the instrument has ceased yet its standing still reads as foreclosing - read the succession before relying on either reading",
+    },
+  }
+}
+
+// effect_permits was a Bool over an arm that meant two things, so it answered "may we build"
+// with "nothing stops us here" - the collapse this vocabulary exists to prevent. Consumers match
+// the arm they actually need. The one question a Bool could honestly carry is whether the
+// instrument affirmatively authorizes the use, which only one arm does.
+fn effect_permits_by_right(e: RegulatoryEffect) -> Bool {
+  match e {
+    EffectPermitsByRight { because } => true,
+    EffectNoConstraint { because } => false,
+    EffectBlocks { because } => false,
+    EffectNotYetInForce { effective_at, obligation } => false,
+    EffectProposedNotInForce { obligation } => false,
+    EffectRequiresApproval { obligation } => false,
+    EffectRequiresCompliance { obligation } => false,
+    EffectPendingEvidence { obligation } => false,
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// PER-INSTRUMENT FINDINGS. One market area routinely carries several instruments at once - a
+// municipal prohibition, a district rule, a county overlay, a state requirement, an exemption,
+// a superseding measure - each with its own lifecycle, extent, subject, enforcer and
+// applicability. The consuming carrier previously gave a LIST of instruments a SINGLE
+// applicability determination, which cannot be true of more than one of them, and silently
+// attributed one instrument's answer to all of them.
+// ---------------------------------------------------------------------------------------------
+
+// legal_force, NOT force. RegulatoryInstrument.force already means the substantive InstrumentForce
+// coproduct, so a finding field called `force` holding a LegalForceStanding was one name carrying
+// two meanings in adjacent carriers - the nickname fork this project treats as a correctness bug.
+// The finding now carries BOTH, under names that say which is which.
+// A FINDING IS A QUESTION ASKED OF AN INSTRUMENT, NOT A SECOND COPY OF IT. The previous revision
+// carried an instrument identity beside independent copies of legal force, substantive force,
+// reliance and extent, and clearance trusted the copies. Nothing established that they came from
+// the instrument the finding names, so a row could name the Phillipsburg prohibition and carry
+// ByRight beside it and clear - the same two-values-with-no-edge defect that justified deleting
+// the applicability receipt. The row now carries the instrument itself, and every instrument fact
+// clearance reads is DERIVED from it, so the forgery has no constructor. The identity likewise
+// comes from the instrument's own self_ref, authored once in the instrument's own module, rather
+// than from a second field the finding could point elsewhere.
+type RegulatoryInstrumentFinding {
+  instrument: RegulatoryInstrument
+  remaining_obligations: List<NonEmptyStr>
+}
+
+fn finding_instrument_ref(f: RegulatoryInstrumentFinding) -> DeclarationRef {
+  f.instrument.self_ref
+}
+
+fn finding_legal_force(f: RegulatoryInstrumentFinding, as_of: EpochMs) -> LegalForceStanding {
+  legal_force(l: f.instrument.lifecycle, as_of: as_of)
+}
+
+fn finding_reliance(f: RegulatoryInstrumentFinding) -> PlanningReliance {
+  planning_reliance(l: f.instrument.lifecycle)
+}
+
+fn finding_extent(f: RegulatoryInstrumentFinding) -> SpatialExtent {
+  f.instrument.extent
+}
+
+// A finding clears only when the query is ABOUT THIS FINDING'S INSTRUMENT. The previous version
+// never compared them, so a query and receipt valid for instrument A could clear a finding whose
+// own instrument was B - the join silently answered about the wrong subject.
+// A FINDING CANNOT CLEAR TODAY, AND THE TYPE NOW SAYS SO. finding_clears returned a Bool whose
+// true arm was reachable: an effective by-right instrument under a PENDING applicability standing
+// answered "clear". But a by-right rule is favourable IF APPLICABLE, and applicability is exactly
+// what no authority has determined for our use here - so that true arm was affirmative permission
+// derived from an undetermined question, which is the reading the type's own restoration note
+// forbids. instrument_effect stays a pure effect-assuming-applicability kernel and remains
+// discriminating at that grain; what is removed is the step that promoted its answer to a
+// clearance without the determination.
+//
+// There is deliberately NO cleared arm. Nothing in this substrate can produce one, and an arm no
+// producer can inhabit is the decoration this PR twice deleted.
+//
+// RESTORATION TRIGGER: the same one the determined-applicability arms carry - DU-0 item 4's typed
+// authority receipt, whose producer derives from its citation source and whose retrieval
+// reconciles. A cleared arm lands with the first thing that can issue one, and not before.
+type FindingStanding
+  = FindingRefused { cause: NonEmptyStr }
+  | FindingPendingDetermination {
+      question: NonEmptyStr,
+      decision_authority: DeclarationRef,
+      effect: RegulatoryEffect,
+    }
+
+// The DECIDER, which is not the enforcer. Reading the enforcer here was a coincidence of the two
+// municipal rows present when it was written.
+fn finding_decision_authority(f: RegulatoryInstrumentFinding) -> DeclarationRef {
+  basis_decider(b: f.instrument.applicability_basis)
+}
+
+// The principal-use question, derived PER INSTRUMENT from that instrument's own designation and
+// its own defined term. It was once a single data row quoting one municipality's language, which
+// is a nickname for N distinct questions - and materially wrong for Phillipsburg, whose test is
+// "used primarily for" with no "portion thereof" and no liberal-construction direction.
+// WHICH QUESTION AN INSTRUMENT RAISES IS A FACT ABOUT THAT INSTRUMENT, NOT A LAW OF THE HUB.
+// Every finding used to derive its question through one principal-use zoning template, and take
+// its deciding office from the instrument's enforcer. That fits the two municipal principal-use
+// rows present today and is false as a general rule: this substrate already admits moratoria,
+// by-right permissions, conditional uses, performance standards, overlays and parcel-specific
+// instruments, and a performance standard does not raise a principal-use question. The office
+// that ENFORCES an instrument is also not universally the office that rules on whether it applies.
+//
+// So the inquiry is carried INSIDE the instrument row - not beside it on the finding or the query,
+// which is where the two-wrong-values-that-agree defect lived - and it names its own decider.
+//
+// AN UNREAD-BASIS ARM USED TO SIT HERE, AT THE WRONG STAGE. When the basis is unread the system
+// does not hold a determination question awaiting an authority - it holds DILIGENCE needed to
+// discover which inquiry the instrument raises, and possibly which office decides it. That arm
+// turned its own diligence obligation into the "question" and emitted an ordinary
+// FindingPendingDetermination, reporting a discovery obligation as a ruling obligation. It also
+// demanded a decider even where the decider is part of what is unread. No instrument used it.
+//
+// RESTORATION TRIGGER: a separate FindingPendingApplicabilityDiligence standing carrying the
+// discovery obligation, with a separately typed known-versus-unread decision authority - not this
+// arm re-added. It lands with the first instrument whose inquiry is genuinely unread.
+type ApplicabilityBasis
+  = PrincipalUseZoning { zoning_officer: DeclarationRef }
+  | PerformanceStandardCompliance { evaluating_authority: DeclarationRef }
+
+fn basis_decider(b: ApplicabilityBasis) -> DeclarationRef {
+  match b {
+    PrincipalUseZoning { zoning_officer } => zoning_officer,
+    PerformanceStandardCompliance { evaluating_authority } => evaluating_authority,
+  }
+}
+
+fn basis_question(b: ApplicabilityBasis, designation: NonEmptyStr, defined_term: NonEmptyStr) -> NonEmptyStr {
+  match b {
+    PrincipalUseZoning { zoning_officer } => principal_use_applicability_question(
+      instrument_designation: designation,
+      defined_term: defined_term,
+    ),
+    PerformanceStandardCompliance { evaluating_authority } => concat(
+      "Does the proposed installation meet ",
+      concat(designation as String, "'s performance standards for this use? This is a compliance evaluation against the design, not a principal-use determination, and it is answered by the evaluating authority rather than by reading the instrument."),
+    ) as NonEmptyStr,
+  }
+}
+
+fn principal_use_applicability_question(instrument_designation: NonEmptyStr, defined_term: NonEmptyStr) -> NonEmptyStr {
+  concat(
+    "Does ",
+    concat(
+      instrument_designation as String,
+      concat(
+        "'s defined term \"",
+        concat(
+          defined_term as String,
+          "\" reach a small-commercial computing installation that is not the principal use of the premises? Only the jurisdiction's own zoning officer can answer; this repository may not answer it by reading.",
+        ),
+      ),
+    ),
+  ) as NonEmptyStr
+}
+
+fn finding_applicability_question(f: RegulatoryInstrumentFinding) -> NonEmptyStr {
+  basis_question(
+    b: f.instrument.applicability_basis,
+    designation: f.instrument.designation,
+    defined_term: f.instrument.subject.defined_term,
+  )
+}
+
+fn finding_standing(
+  f: RegulatoryInstrumentFinding,
+  q: ApplicabilityQuery,
+  as_of: EpochMs,
+) -> FindingStanding {
+  if !declaration_ref_eq(a: finding_instrument_ref(f: f), b: q.instrument) {
+    FindingRefused { cause: "the finding answers for a different instrument than the query names" }
+  } else {
+    FindingPendingDetermination {
+      question: finding_applicability_question(f: f),
+      decision_authority: finding_decision_authority(f: f),
+      effect: instrument_effect(
+        force: f.instrument.force,
+        legal_force: finding_legal_force(f: f, as_of: as_of),
+        reliance: finding_reliance(f: f),
+        as_of: as_of,
+      ),
+    }
+  }
+}
+
+// There is deliberately no projection from a FindingStanding to a bare RegulatoryEffect. One
+// existed, and it turned FindingRefused into an EffectPendingEvidence built from caller-authored
+// prose - downgrading malformed input (a wrong instrument, a wrong office) into ordinary missing
+// evidence, which is the refusal-versus-pending conflation this PR removed everywhere else. A
+// consumer that wants the effect matches FindingPendingDetermination and reads it there; one that
+// cannot handle a refusal has no business projecting past it.
+fn finding_is_refused(x: FindingStanding) -> Bool {
+  match x {
+    FindingRefused { cause } => true,
+    FindingPendingDetermination { question, decision_authority, effect } => false,
+  }
+}
+
+

@@ -1,0 +1,429 @@
+module test.claim.finance_witness
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { Bool }
+import std.measure { money_amount_micro, money_amount_micro_count, MoneyAmountMicro }
+import finance.ledger {
+  PostingDirection, Debit, Credit, Posting, LedgerTransaction,
+  BalanceVerdict, Balanced, Unbalanced,
+  transaction_balance, ledger_first_imbalance, ledger_normal_balance,
+  AccountNormalBalance, BalanceOnNormalSide, ContraBalance, BooksUnbalanced, money_eq,
+}
+import strategy.calendar_date { CalendarDate, calendar_date_is_valid }
+import gunbc.fleet_physical_inventory { operator_site }
+import gunbc.fleet.fleet_site_locale { fleet_host_site_assignments }
+import product.placement_supply { SiteIdentity }
+import strategy.operator_site_identification {
+  SiteIdentificationBasis, OperatorAsserted, ObservedAtSite,
+  operator_lab_is_the_principal_office, identification_is_observed, identification_basis_date,
+}
+import finance.gunbai_llc {
+  placed_in_service_in_2026, placed_in_service_in_year, PlacedInService,
+  placed_in_service_date_is_valid,
+  TradeOrBusinessStanding, ActiveTradeOrBusiness, PreOperationalStartup, CommencementUndetermined,
+  PlacedInServiceStanding, PlacedInService, AcquiredNotYetInService,
+  DeductionVerdict, DeductionAvailable, DeductionRefused,
+  PublicationStanding, CertificateFiled,
+  equipment_deduction_verdict, publication_discharged,
+  UseTaxStanding, UseTaxFiled, ny_use_tax_microcenter_standing, use_tax_discharged, use_tax_question_open,
+  gunbai_facts,
+  gunbai_trade_or_business_standing, gunbai_publication_standing,
+  spark_placed_in_service, mt_collins_placed_in_service,
+  OwnerFundedClassificationStanding, AwaitingCpaApproval, ClassifiedByCpa,
+  OwnerFundedFundingForm, DueToMemberAdvance, MemberCapitalContribution, MemberLoanWithTerms,
+  MemberPersonalExpenditure,
+  CpaAttributedApproval,
+  mt_collins_owner_funded_classification, classification_is_undisposed,
+  classification_dependent_destination, owner_funded_posting_destination,
+  OwnerFundedPostingDestination, EntityChartAccount, NotOnEntityBooks,
+  mt_collins_due_to_member, OwnerFundedObligationStanding, ObligationRecordedUnreimbursed,
+  ObligationReimbursed, ObligationBooksContra, ObligationBooksUnbalanced,
+  obligation_from_recorded, obligation_is_open,
+  member_claim_join_of,
+  MemberClaimBalancesAgree, MemberClaimBalancesDisagree, MemberClaimUnreadable,
+}
+import finance.gunbai_ledger {
+  EntityAccount, DueToMember, MemberCapital, MemberLoanPayable, EntityEquipment,
+  MercuryCreditCardPayable, MercuryOperatingChecking,
+  EntityTransaction, gunbai_ledger_2026, gunbai_ledger_balance,
+  mt_collins_lot_entity, mt_collins_due_to_member_recorded,
+  entity_account_normal_side,
+  ReimbursementNotOnBooks, ReimbursementPosted,
+}
+import strategy.receipt_evidence { ActionReceipt, ReceiptEvidence, ObservedFact }
+
+// --- Double entry: the discriminating case is an UNBALANCED transaction. ---------------
+
+data witness_entity_balanced_txn: EntityTransaction = LedgerTransaction {
+  id: "witness-entity-balanced",
+  date_iso: "2026-01-01",
+  postings: [
+    Posting { account: EntityEquipment, direction: Debit, amount: money_amount_micro(count: 100), memo: "control: entity equipment" },
+    Posting { account: MercuryCreditCardPayable, direction: Credit, amount: money_amount_micro(count: 100), memo: "control: entity card" },
+  ],
+  provenance: "Synthetic fixture. Not a real transaction and never included in gunbai_ledger_2026.",
+}
+
+data witness_entity_unbalanced_txn: EntityTransaction = LedgerTransaction {
+  id: "witness-entity-unbalanced",
+  date_iso: "2026-01-01",
+  postings: [
+    Posting { account: EntityEquipment, direction: Debit, amount: money_amount_micro(count: 100), memo: "red: entity debit without matching credit" },
+    Posting { account: MercuryCreditCardPayable, direction: Credit, amount: money_amount_micro(count: 99), memo: "red: one micro short" },
+  ],
+  provenance: "Synthetic fixture whose ONLY purpose is to be refused on the entity book.",
+}
+
+fn verdict_is_balanced(v: BalanceVerdict) -> Bool {
+  match v {
+    Balanced => true
+    Unbalanced { transaction_id, debit, credit } => false
+  }
+}
+
+fn witness_entity_balance_accepts_the_balanced() -> Bool {
+  verdict_is_balanced(v: transaction_balance(witness_entity_balanced_txn))
+}
+
+fn witness_entity_balance_refuses_the_unbalanced() -> Bool {
+  match transaction_balance(witness_entity_unbalanced_txn) {
+    Balanced => false,
+    Unbalanced { transaction_id, debit, credit } => true,
+  }
+}
+
+fn witness_committed_entity_ledger_balances() -> Bool {
+  match gunbai_ledger_balance() {
+    Balanced => true
+    Unbalanced { transaction_id, debit, credit } => false
+  }
+}
+
+fn witness_ledger_first_imbalance_names_the_unbalanced_row() -> Bool {
+  match ledger_first_imbalance([witness_entity_unbalanced_txn]) {
+    Unbalanced { transaction_id, debit, credit } =>
+      (transaction_id as String) == "witness-entity-unbalanced"
+    Balanced => false
+  }
+}
+
+fn fixture_cpa_approval() -> CpaAttributedApproval {
+  CpaAttributedApproval {
+    approved_by: "fixture CPA, not a live approver",
+    engagement: "fixture CPA engagement, not a live approval",
+    approved_at: "2026-01-01",
+    receipt: ActionReceipt {
+      receipt_id: "fixture-cpa-approval",
+      evidence: ObservedFact { subject: "fixture", observation: "fixture approval artifact outside the corpus", observed_at: "2026-01-01" },
+    },
+  }
+}
+
+fn witness_disposed_arm_requires_receipt() -> Bool {
+  let classified = ClassifiedByCpa { form: DueToMemberAdvance, approval: fixture_cpa_approval() }
+  match classified {
+    AwaitingCpaApproval => false
+    ClassifiedByCpa { form, approval } =>
+      (approval.approved_by as String) != ""
+        && (approval.engagement as String) != ""
+        && (approval.receipt.receipt_id as String) == "fixture-cpa-approval"
+  }
+}
+
+fn witness_live_classification_is_undisposed_and_posts_nothing_dependent() -> Bool {
+  classification_is_undisposed(s: mt_collins_owner_funded_classification)
+    && count(classification_dependent_destination(s: mt_collins_owner_funded_classification)) == 0
+}
+
+fn destination_is_due_to_member(d: OwnerFundedPostingDestination) -> Bool {
+  match d {
+    EntityChartAccount { account } => (account as String) == (DueToMember as String)
+    NotOnEntityBooks { reason } => false
+  }
+}
+
+fn destination_is_not_on_entity_books(d: OwnerFundedPostingDestination) -> Bool {
+  match d {
+    EntityChartAccount { account } => false
+    NotOnEntityBooks { reason } => true
+  }
+}
+
+fn witness_classification_reads_entity_chart_for_posting_land() -> Bool {
+  destination_is_due_to_member(d: owner_funded_posting_destination(f: DueToMemberAdvance))
+    && destination_is_not_on_entity_books(d: owner_funded_posting_destination(f: MemberPersonalExpenditure))
+}
+
+fn witness_obligation_reads_entity_due_to_member() -> Bool {
+  match mt_collins_due_to_member() {
+    ObligationRecordedUnreimbursed { amount } =>
+      money_amount_micro_count(amount) == 20000000000
+        && match mt_collins_due_to_member_recorded() {
+          BalanceOnNormalSide { amount: b } => money_eq(a: amount, b: b)
+          ContraBalance { debit, credit } => false
+          BooksUnbalanced { transaction_id, debit, credit } => false
+        }
+    ObligationReimbursed { amount, settled_iso } => false
+    ObligationBooksContra { debit, credit } => false
+    ObligationBooksUnbalanced { transaction_id, debit, credit } => false
+  }
+}
+
+fn disagreeing_join_is_red() -> Bool {
+  match member_claim_join_of(
+    personal: BalanceOnNormalSide { amount: money_amount_micro(count: 20000000000) },
+    entity: BalanceOnNormalSide { amount: money_amount_micro(count: 19000000000) },
+  ) {
+    MemberClaimBalancesDisagree { member_due_from, entity_due_to } =>
+      money_amount_micro_count(member_due_from) == 20000000000
+        && money_amount_micro_count(entity_due_to) == 19000000000
+    MemberClaimBalancesAgree { amount } => false
+    MemberClaimUnreadable { personal, entity } => false
+  }
+}
+
+data witness_unbalanced_lone_due_to_member: EntityTransaction = LedgerTransaction {
+  id: "witness-unbalanced-due-to-member",
+  date_iso: "2026-01-01",
+  postings: [
+    Posting { account: DueToMember, direction: Credit, amount: money_amount_micro(count: 100), memo: "red: lone credit without a matching debit is not a Due-to-Member balance" },
+  ],
+  provenance: "Synthetic fixture. An unbalanced book must not mint BalanceOnNormalSide.",
+}
+
+fn witness_unbalanced_books_do_not_mint_a_normal_balance() -> Bool {
+  match ledger_normal_balance([witness_unbalanced_lone_due_to_member], DueToMember, entity_account_normal_side(DueToMember)) {
+    BooksUnbalanced { transaction_id, debit, credit } =>
+      (transaction_id as String) == "witness-unbalanced-due-to-member"
+        && money_amount_micro_count(debit) == 0
+        && money_amount_micro_count(credit) == 100
+    BalanceOnNormalSide { amount } => false
+    ContraBalance { debit, credit } => false
+  }
+}
+
+fn witness_zero_account_without_settlement_is_not_reimbursed() -> Bool {
+  let recorded = BalanceOnNormalSide { amount: money_amount_micro(count: 20000000000) }
+  match obligation_from_recorded(
+    recorded: recorded,
+    reimbursement: ReimbursementNotOnBooks
+  ) {
+    ObligationRecordedUnreimbursed { amount } =>
+      money_amount_micro_count(amount) == 20000000000
+        && obligation_is_open(o: ObligationRecordedUnreimbursed { amount: amount })
+    ObligationReimbursed { amount, settled_iso } => false
+    ObligationBooksContra { debit, credit } => false
+    ObligationBooksUnbalanced { transaction_id, debit, credit } => false
+  }
+}
+
+fn witness_named_settlement_is_reimbursed() -> Bool {
+  let recorded = BalanceOnNormalSide { amount: money_amount_micro(count: 20000000000) }
+  match obligation_from_recorded(
+    recorded: recorded,
+    reimbursement: ReimbursementPosted { transaction_id: "fixture-reimburse", settled_iso: "2026-12-01" }
+  ) {
+    ObligationReimbursed { amount, settled_iso } =>
+      money_amount_micro_count(amount) == 20000000000
+        && (settled_iso as String) == "2026-12-01"
+        && !obligation_is_open(o: ObligationReimbursed { amount: amount, settled_iso: settled_iso })
+    ObligationRecordedUnreimbursed { amount } => false
+    ObligationBooksContra { debit, credit } => false
+    ObligationBooksUnbalanced { transaction_id, debit, credit } => false
+  }
+}
+
+// --- The deduction conjunction. Both gates must be required, so the red cases are the
+// --- ones where exactly ONE gate passes. A verdict that admitted either alone would be
+// --- the failure this check exists to catch.
+
+fn witness_deduction_requires_both_gates() -> Bool {
+  let both = match equipment_deduction_verdict(
+    s: ActiveTradeOrBusiness { commencement_date_iso: "2026-01-01", basis: "fixture" },
+    p: PlacedInService { date: CalendarDate { year: 2026, month: 6, day: 1 } }
+  ) {
+    DeductionAvailable { note } => true,
+    DeductionRefused { cause } => false,
+  }
+  let only_trade = match equipment_deduction_verdict(
+    s: ActiveTradeOrBusiness { commencement_date_iso: "2026-01-01", basis: "fixture" },
+    p: AcquiredNotYetInService { obligation: "fixture" }
+  ) {
+    DeductionAvailable { note } => true,
+    DeductionRefused { cause } => false,
+  }
+  let only_service = match equipment_deduction_verdict(
+    s: CommencementUndetermined { obligation: "fixture" },
+    p: PlacedInService { date: CalendarDate { year: 2026, month: 6, day: 1 } }
+  ) {
+    DeductionAvailable { note } => true,
+    DeductionRefused { cause } => false,
+  }
+  both && !only_trade && !only_service
+}
+
+// The live rows must currently REFUSE. This is not a restatement of the previous check: it
+// asserts that the standings actually committed to this repository are the refusing ones,
+// so that flipping gunbai_trade_or_business_standing to ActiveTradeOrBusiness without a
+// determination reds here rather than silently unlocking a deduction.
+
+fn witness_live_deduction_refuses() -> Bool {
+  let spark = match equipment_deduction_verdict(s: gunbai_trade_or_business_standing, p: spark_placed_in_service) {
+    DeductionAvailable { note } => true,
+    DeductionRefused { cause } => false,
+  }
+  let collins = match equipment_deduction_verdict(s: gunbai_trade_or_business_standing, p: mt_collins_placed_in_service) {
+    DeductionAvailable { note } => true,
+    DeductionRefused { cause } => false,
+  }
+  !spark && !collins
+}
+
+// --- Publication: only a filed certificate discharges. ---------------------------------
+
+fn witness_only_filed_certificate_discharges() -> Bool {
+  publication_discharged(CertificateFiled { dos_receipt: "fixture" })
+    && !publication_discharged(gunbai_publication_standing)
+}
+
+// Local fixtures and readers so the two date checks below read the VERDICT a caller reads,
+// not just the predicate underneath it.
+
+fn active_business_fixture() -> TradeOrBusinessStanding {
+  ActiveTradeOrBusiness { commencement_date_iso: "2026-01-01", basis: "fixture" }
+}
+
+fn verdict_is_available(v: DeductionVerdict) -> Bool {
+  match v {
+    DeductionAvailable { note } => true,
+    DeductionRefused { cause } => false,
+  }
+}
+
+fn verdict_is_refused(v: DeductionVerdict) -> Bool {
+  !verdict_is_available(v: v)
+}
+
+// THE DISCRIMINATING RED FOR R1, AND WHERE IT MOVED. The original defect - a predicate that
+// matched the ARM rather than the date - is exercised below through the CONSUMER, because the
+// review's point was that testing the predicate over two consistent fixtures never reached the
+// verdict a caller actually reads.
+//
+// The second defect, an authored tax_year disagreeing with an authored date_iso, HAS NO TEST
+// HERE AND CANNOT HAVE ONE: PlacedInService { date_iso: "2027-01-01", tax_year: 2026 } does not
+// compile any more, because there is no tax_year field to disagree with anything. That is the
+// climb - the red for that class is now a compile refusal rather than a runtime assert, and a
+// test asserting over an input production cannot construct would be a decoration.
+//
+// What remains authorable is an IMPOSSIBLE date, so that is tested here, through the verdict.
+
+fn witness_next_year_placement_is_not_this_year() -> Bool {
+  let next_year = PlacedInService { date: CalendarDate { year: 2027, month: 1, day: 1 } }
+  let this_year = PlacedInService { date: CalendarDate { year: 2026, month: 12, day: 31 } }
+  !placed_in_service_in_2026(p: next_year)
+    && placed_in_service_in_2026(p: this_year)
+    && placed_in_service_in_year(p: next_year, year: 2027)
+    && verdict_is_refused(v: equipment_deduction_verdict(s: active_business_fixture(), p: next_year))
+    && verdict_is_available(v: equipment_deduction_verdict(s: active_business_fixture(), p: this_year))
+}
+
+// An impossible date must not produce a verdict either way.
+
+fn witness_impossible_date_refuses() -> Bool {
+  let feb31 = PlacedInService { date: CalendarDate { year: 2026, month: 2, day: 31 } }
+  let month13 = PlacedInService { date: CalendarDate { year: 2026, month: 13, day: 1 } }
+  verdict_is_refused(v: equipment_deduction_verdict(s: active_business_fixture(), p: feb31))
+    && verdict_is_refused(v: equipment_deduction_verdict(s: active_business_fixture(), p: month13))
+    && !placed_in_service_date_is_valid(p: feb31)
+    && placed_in_service_date_is_valid(p: this_year_fixture())
+}
+
+fn this_year_fixture() -> PlacedInServiceStanding {
+  PlacedInService { date: CalendarDate { year: 2026, month: 12, day: 31 } }
+}
+
+// THE SITE/PRINCIPAL-OFFICE JOIN. Two claims, and the second is only worth making because the
+// witness constructs the OTHER arm: a check that the one inhabited arm is not an observation passes
+// by having nothing to compare against, and would keep passing if the distinction were erased. The
+// fixture below is an ObservedAtSite value that exists nowhere else, so the same predicate separates
+// the two and its red is authorable.
+
+fn observed_fixture() -> SiteIdentificationBasis {
+  ObservedAtSite {
+    observed_by: "fixture, not a real observation",
+    observed_on: CalendarDate { year: 2026, month: 9, day: 11 },
+    how: "fixture arm constructed by this witness so the assertion/observation distinction is discriminating rather than vacuous",
+  }
+}
+
+// THE JOIN, CHECKED AGAINST THE TWO AUTHORITIES IT JOINS RATHER THAN AGAINST ITSELF. The first cut
+// of this claim compared the row's fields to the values its own constructor writes, which no state
+// of the world reds. What can red: the identified site must be one the PUBLIC fleet actually
+// assigns hosts to (gunbc.fleet_site_locale fleet_host_site_assignments) -- a site nothing is
+// placed at is not the operator's premises -- and the entity must be the finance authority's own
+// row rather than a legal name this module minted beside it.
+
+fn site_carries_fleet_hosts(site: SiteIdentity) -> Bool {
+  count(fleet_host_site_assignments |> filter(a => (a.site as String) == (site as String))) > 0
+}
+
+fn witness_the_identified_site_is_where_the_fleet_places_hosts() -> Bool {
+  site_carries_fleet_hosts(site: operator_lab_is_the_principal_office.site)
+    && !site_carries_fleet_hosts(site: "no-such-site" as SiteIdentity)
+}
+
+fn witness_the_identified_entity_is_the_finance_authority() -> Bool {
+  (operator_lab_is_the_principal_office.entity.as_filed as String) == (gunbai_facts.legal_name.as_filed as String)
+    && (operator_lab_is_the_principal_office.entity.authority as String) == (gunbai_facts.legal_name.authority as String)
+}
+
+// The date is the one temporal carrier, so an impossible date is refused rather than stored.
+
+fn witness_the_assertion_date_is_a_valid_calendar_date() -> Bool {
+  calendar_date_is_valid(d: identification_basis_date(b: operator_lab_is_the_principal_office.basis))
+    && !calendar_date_is_valid(d: CalendarDate { year: 2026, month: 2, day: 31 })
+}
+
+fn witness_the_identification_is_asserted_not_observed() -> Bool {
+  !identification_is_observed(b: operator_lab_is_the_principal_office.basis)
+    && identification_is_observed(b: observed_fixture())
+}
+
+
+// A DECLINED OBLIGATION IS CLOSED AS A QUESTION AND LIVE AS A LIABILITY, and these are asserted as
+// two answers so neither can stand in for the other. The red a hurried edit would produce is the
+// one this guards: treating the closure as a discharge.
+fn witness_declined_use_tax_is_closed_but_not_discharged() -> Bool {
+  !use_tax_discharged(t: ny_use_tax_microcenter_standing)
+    && !use_tax_question_open(t: ny_use_tax_microcenter_standing)
+    && use_tax_discharged(t: UseTaxFiled { receipt: "fixture" })
+}
+
+fn finance_witness_all() -> Bool {
+  witness_declined_use_tax_is_closed_but_not_discharged()
+    && witness_entity_balance_accepts_the_balanced()
+    && witness_entity_balance_refuses_the_unbalanced()
+    && witness_committed_entity_ledger_balances()
+    && witness_ledger_first_imbalance_names_the_unbalanced_row()
+    && witness_deduction_requires_both_gates()
+    && witness_live_deduction_refuses()
+    && witness_only_filed_certificate_discharges()
+    && witness_next_year_placement_is_not_this_year()
+    && witness_impossible_date_refuses()
+    && witness_the_identified_site_is_where_the_fleet_places_hosts()
+    && witness_the_identified_entity_is_the_finance_authority()
+    && witness_the_assertion_date_is_a_valid_calendar_date()
+    && witness_the_identification_is_asserted_not_observed()
+    && witness_disposed_arm_requires_receipt()
+    && witness_live_classification_is_undisposed_and_posts_nothing_dependent()
+    && witness_classification_reads_entity_chart_for_posting_land()
+    && witness_obligation_reads_entity_due_to_member()
+    && disagreeing_join_is_red()
+    && witness_unbalanced_books_do_not_mint_a_normal_balance()
+    && witness_zero_account_without_settlement_is_not_reimbursed()
+    && witness_named_settlement_is_reimbursed()
+}
+
+fn finance_witness_main() -> ProcessExit {
+  if finance_witness_all() { ExitSuccess } else { ExitFailure { code: 1, reason: "finance_witness_all returned false" } }
+}

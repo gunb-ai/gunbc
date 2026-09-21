@@ -1,0 +1,1420 @@
+module test.claim.data_map_witness
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
+import strategy.private_witness_workflow { private_entry_prefix }
+import v2.std.decl_ref_resolution {
+  resolve_declaration_ref_live, declaration_ref_resolution_is_resolved,
+  declaration_ref_resolution_arm_key,
+}
+import std.measure { Measure }
+import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.provider_route {
+  ProviderRoute, provider_route_eq, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
+  NoDownstreamProviders,
+  PermittedJurisdictionPopulation, PermittedJurisdictionsEnumerated,
+}
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
+  ProviderUseAdmitted, ProviderUseDenied,
+  ProviderUseRefusal,
+  ProviderRouteUnclassified, ProviderRouteFactsIncomplete, DownstreamProviderUnassessed,
+  PostureJurisdictionsUnread, TransferOrLocationUnresolved, ProviderAccessPathUnsupported,
+  PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
+  RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
+  DispositionStanding, DispositionCleared,
+  admit_provider_use,
+}
+import std.roster_frontier { FrontierRow, DeclSubject, PathSubject, frontier_rows_well_formed }
+import strategy.data_map {
+  DataCategory, ResidencyRow, data_categories, scope_exclusions, ScopeExclusion,
+  ProposalStanding, RatifiedByOperator, ProposedAwaitingRatification,
+  RetentionProposal, RetentionForPeriod,
+  RetentionPeriodStanding, PeriodSettled, PeriodUndetermined,
+  RetentionTier, RetentionDefaultWithOptIn, RetentionBoundedByObligation, RetentionTiered,
+  RetentionTierScheduleStanding, TierScheduleSettled, TierScheduleUndetermined,
+  retention_open_question,
+  StorageLocus, StoredOnDurableOrigin, OperatorSupportSurface,
+  data_handling_rows_for, data_handling_map_rows,
+  locus_outside_custody_basis, retention_not_retained_basis,
+  category_profile_ref,
+  ratified_categories, proposed_categories, ratification_agenda, counsel_review_queue,
+  OpenQuestion, category_open_questions, category_settlement_is_coherent, map_settlement_is_coherent,
+  distinct_agreement_refs, cited_agreement_refs, unlanded_agreement_landings,
+  LawfulBasisClaim, ContractPerformance, AgreementAuthorityLanded, CounselOpinionOnRecord,
+  RiskPlacement, CorrectableByUsAlone, ReachesASupervisoryAuthority, in_house,
+  in_house_claims_are_within_our_placement, every_in_house_conclusion_is_ours_to_hold,
+  in_house_conclusions,
+  ProcessMemoryNeverDurable, NeverWrittenDurably,
+  map_is_complete, population_is_complete, every_row_owns_its_own_decl, every_category_owns_its_own_marker,
+  pci_no_card_data_basis, cited_basis_refs, cited_ruling_refs,
+  exclusion_refs,
+  category_ci_secrets, category_source_and_build_inputs, category_account_and_billing_identity,
+  data_map_frontier_rows,
+}
+import product.data_category { ci_secret_ref, support_communication_ref }
+import strategy.provider_data_handling_sanction {
+  CategorySanctionProposal, ProposedCarriedOnProviderRoute, ratified_sanctions_from,
+  category_sanction_proposals, carried_proposals,
+  every_category_has_a_carriage_position,
+  route_sanctions_for, proposed_route_sanctions, ratified_route_sanctions,
+  use_scope_for_category,
+  provider_data_handling_sanction_frontier_rows,
+}
+
+// THE MAP'S REQUIRED RED, BY EXECUTION.
+//
+// The claim this witness exists to make is not that strategy.data_map typechecks. It is that
+// product.fabric.provider_admission's data_handling_profile term now RESOLVES to a row of that map and
+// discriminates: the same route, the same posture, the same customer profile and the same cleared
+// dispositions, with the ONLY difference being which data category the use scope presents, produce an
+// admission and a DataHandlingUnsupported refusal respectively, and the refusal carries the presented
+// category's profile reference as its cause. A pair is what makes it a discriminator; either half
+// alone proves nothing (DESIGN 5).
+//
+// THE INPUTS ARE BUILT HERE RATHER THAN IMPORTED FROM test.claim.fabric.provider_use_fixture, and that
+// is that fixture's own instruction: the discriminating reds for admission "must not" live there,
+// precisely so a change to a convenience fixture cannot quietly weaken them. What is reused is the
+// authority under test -- admit_provider_use itself -- which is the only thing that must not be
+// re-implemented here.
+
+data probe_provider: NonEmptyStr = "data-map-probe-provider"
+data probe_service: NonEmptyStr = "data-map-probe-service"
+data probe_region: NonEmptyStr = "data-map-probe-region"
+data probe_posture_authority: NonEmptyStr = "data-map-probe-posture-authority"
+data probe_customer_profile_decl: NonEmptyStr = "data-map-probe-customer-profile"
+data probe_other_customer_profile_decl: NonEmptyStr = "data-map-probe-other-customer-profile"
+data probe_agreement_decl: NonEmptyStr = "data-map-probe-agreement"
+data probe_operator: NonEmptyStr = "data-map-probe-operator"
+data probe_jurisdiction: NonEmptyStr = "data-map-probe-jurisdiction"
+data probe_evidence: NonEmptyStr = "data-map-probe-evidence"
+data probe_no_spill: NonEmptyStr = "data-map-probe-no-spill"
+data probe_no_downstream: NonEmptyStr = "data-map-probe-no-downstream"
+data probe_contract_terms: NonEmptyStr = "data-map-probe-contract-terms"
+data probe_decision_receipt: NonEmptyStr = "data-map-probe-decision-receipt"
+data probe_prohibited_use_cleared: NonEmptyStr = "data-map-probe-prohibited-use-cleared"
+data probe_sanctions_cleared: NonEmptyStr = "data-map-probe-sanctions-cleared"
+data probe_export_cleared: NonEmptyStr = "data-map-probe-export-cleared"
+
+fn probe_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_provider"),
+    service: decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_service"),
+    region: decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_region"),
+  }
+}
+
+fn probe_hash(seed: String) -> ContentHash {
+  as_content_hash_structural(structural: content_hash_atom(value: seed))
+}
+
+// THE POSTURE NOW CARRIES ITS PERMITTED JURISDICTIONS, and the arm this probe picks is a decision about
+// what the pair is allowed to prove (gunbc#11194 added both fields). PermittedJurisdictionsUnread would
+// make the gate refuse with PostureJurisdictionsUnread before it ever reached the data-handling term, so
+// the green half could not admit and the red half would refuse for the WRONG REASON -- a two-cause red,
+// which is the defect this witness spent the day removing. So the posture ENUMERATES exactly the
+// jurisdiction probe_located() places every path in: the jurisdiction question is settled and out of the
+// way, leaving data handling as the only term that can differ across the pair.
+//
+// first/further rather than a list, because the upstream type refuses an empty enumeration: a posture
+// permitting nothing is a stop-work order and not an ordinary posture, and this probe is neither.
+fn probe_posture() -> CompliancePostureRevision {
+  CompliancePostureRevision {
+    authority: decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_posture_authority"),
+    revision: probe_hash(seed: "data-map-probe-posture-r1"),
+    permitted_jurisdictions: PermittedJurisdictionsEnumerated {
+      first: decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_jurisdiction"),
+      further: [],
+    },
+    jurisdiction_drop_enrollments: [],
+  }
+}
+
+fn probe_customer_profile() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_customer_profile_decl")
+}
+
+fn probe_other_customer_profile() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_other_customer_profile_decl")
+}
+
+fn probe_agreement() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_agreement_decl")
+}
+
+fn probe_located() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_operator"),
+    jurisdiction: decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_jurisdiction"),
+    evidence: decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_evidence"),
+  }
+}
+
+// Every path located except spill, which is ABSENT with evidence rather than unread: an unread path
+// refuses with its own cause, and a refusal arriving for the wrong reason would make this pair prove
+// something other than what it claims.
+fn probe_closure() -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: probe_located(),
+    durable_storage: probe_located(),
+    backups: probe_located(),
+    logs: probe_located(),
+    telemetry: probe_located(),
+    control_plane: probe_located(),
+    support_access: probe_located(),
+    administrative_access: probe_located(),
+    spill: ProviderPathAbsent {
+      evidence: decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_no_spill"),
+    },
+  }
+}
+
+fn probe_facts() -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: probe_route(),
+    contract_terms: decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_contract_terms"),
+    data_paths: probe_closure(),
+    downstream: NoDownstreamProviders {
+      evidence: decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_no_downstream"),
+    },
+    observed_at: "2026-09-12T00:00:00Z",
+    facts_revision: probe_hash(seed: "data-map-probe-facts-r1"),
+  }
+}
+
+fn probe_offer() -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "data-map-probe-tenant", key: "data-map-probe-offer" as OfferKey }
+}
+
+fn probe_demand() -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: "data-map-probe-tenant", key: "data-map-probe-demand" as DemandKey }
+}
+
+fn probe_work() -> FabricIdentity<NonEmptyStr, WorkKey> {
+  FabricIdentity { principal: "data-map-probe-tenant", key: "data-map-probe-work" as WorkKey }
+}
+
+fn probe_cleared(decl: String) -> DispositionStanding {
+  DispositionCleared { evidence: decl_ref(module_path: "test.claim.data_map_witness", decl_name: decl) }
+}
+
+// The roster under test: OUR proposed carriage positions, on the probe route and posture.
+fn probe_proposed_roster() -> List<RouteScopeSanction> {
+  proposed_route_sanctions(
+    route: probe_route(),
+    posture: probe_posture(),
+    customer_profile: probe_customer_profile(),
+    requires_agreement: probe_agreement(),
+  )
+}
+
+fn probe_ratified_roster() -> List<RouteScopeSanction> {
+  ratified_route_sanctions(
+    route: probe_route(),
+    posture: probe_posture(),
+    customer_profile: probe_customer_profile(),
+    requires_agreement: probe_agreement(),
+  )
+}
+
+fn probe_scope(category: DataCategory) -> ProviderUseScope<NonEmptyStr> {
+  use_scope_for_category(
+    demand: probe_demand(),
+    work: probe_work(),
+    category: category,
+    customer_profile: probe_customer_profile(),
+    agreement: probe_agreement(),
+    prohibited_use: probe_cleared(decl: "probe_prohibited_use_cleared"),
+    sanctions: probe_cleared(decl: "probe_sanctions_cleared"),
+    export: probe_cleared(decl: "probe_export_cleared"),
+  )
+}
+
+fn probe_admission(
+  roster: List<RouteScopeSanction>,
+  scope: ProviderUseScope<NonEmptyStr>,
+) -> ProviderUseAdmission<NonEmptyStr> {
+  admit_provider_use(
+    roster: roster,
+    facts: probe_facts(),
+    active: probe_posture(),
+    scope: scope,
+    offer: probe_offer(),
+    decision_receipt: decl_ref(module_path: "test.claim.data_map_witness", decl_name: "probe_decision_receipt"),
+  )
+}
+
+fn admission_is_admitted(a: ProviderUseAdmission<NonEmptyStr>) -> Bool {
+  match a {
+    ProviderUseAdmitted { permit } => true
+    ProviderUseDenied { decision, cause } => false
+  }
+}
+
+// ONE ELIMINATION OF ProviderUseRefusal, WHICH WAS THREE (review 65280's principle, applied to my own
+// code before someone else has to). Three functions each matched all of this coproduct's arms to pick out
+// one payload, which is the same duplication the review named on ProposalStanding: one fact -- what this
+// refusal is and what it carries -- decided in three places. One match now, returning a record, and the
+// three callers read a field.
+//
+// AND THE COST OF NOT DOING IT WAS PAID TODAY, WHICH IS WHY THIS IS NOT A TIDY-UP. gunbc#11194 landed
+// three new arms on ProviderUseRefusal -- PostureJurisdictionsUnread, TransferOrLocationUnresolved,
+// ProviderAccessPathUnsupported -- and all THREE of these matches went non-exhaustive at once, in the same
+// compose. With one match the type growth is one edit and one decision instead of three chances to handle
+// the same arm inconsistently.
+//
+// NO WILDCARD ARM. A `_ =>` over a closed coproduct would silently absorb a new upstream arm, which is the
+// fail-open shape DESIGN 5 names: this probe would keep reporting a clean red while the gate had started
+// refusing for a different reason. Every arm is written out, so the NEXT arm fails to compile here and is
+// looked at -- which is exactly what just happened, and it is the whole argument for the match form over
+// arithmetic over arm counts. The refusal text, quoted because it is the receipt:
+//   non-exhaustive match: missing variant(s) PostureJurisdictionsUnread, TransferOrLocationUnresolved,
+//   ProviderAccessPathUnsupported
+//
+// THE THREE NEW ARMS PROJECT TO NOTHING HERE, AND THAT IS A DECISION RATHER THAN A DEFAULT. They are
+// jurisdiction and posture-read refusals: none of them is a data-handling cause, a customer-scope cause or
+// an unclassified route, so each contributes the empty projection on all three axes. They are written out
+// individually so that a later arm cannot join them by inheriting a catch-all.
+//
+// THE REFUSAL IS IDENTIFIED BY ITS ARM AND BY ITS PAYLOAD, not by its reason string. A refusal with the
+// right arm and somebody else's profile in it would be a located diagnostic pointing at the wrong remedy,
+// so the cause is compared against the profile the scope actually presented.
+type RefusalProjections {
+  data_handling: List<DeclarationRef>
+  customer_scope: List<DeclarationRef>
+  unclassified_route: List<ProviderRoute>
+}
+
+fn no_projection() -> RefusalProjections {
+  RefusalProjections { data_handling: [], customer_scope: [], unclassified_route: [] }
+}
+
+fn refusal_projections(c: ProviderUseRefusal) -> RefusalProjections {
+  match c {
+    ProviderRouteUnclassified { route } =>
+      RefusalProjections { data_handling: [], customer_scope: [], unclassified_route: [route] }
+    ProviderRouteFactsIncomplete { route, obligation } => no_projection()
+    DownstreamProviderUnassessed { obligation } => no_projection()
+    PostureJurisdictionsUnread { obligation } => no_projection()
+    TransferOrLocationUnresolved { route, jurisdiction } => no_projection()
+    ProviderAccessPathUnsupported { route, operator, jurisdiction } => no_projection()
+    PostureRevisionStale { evaluated, active } => no_projection()
+    CustomerScopeUnsupported { cause } =>
+      RefusalProjections { data_handling: [], customer_scope: [cause], unclassified_route: [] }
+    DataHandlingUnsupported { cause } =>
+      RefusalProjections { data_handling: [cause], customer_scope: [], unclassified_route: [] }
+    RequiredAgreementAuthorityAbsent { accepted } => no_projection()
+    ProhibitedUseNotCleared { obligation } => no_projection()
+    SanctionsNotCleared { obligation } => no_projection()
+    ExportNotCleared { obligation } => no_projection()
+  }
+}
+
+fn data_handling_cause(c: ProviderUseRefusal) -> List<DeclarationRef> {
+  refusal_projections(c: c).data_handling
+}
+
+fn route_unclassified_route(c: ProviderUseRefusal) -> List<ProviderRoute> {
+  refusal_projections(c: c).unclassified_route
+}
+
+fn customer_scope_cause(c: ProviderUseRefusal) -> List<DeclarationRef> {
+  refusal_projections(c: c).customer_scope
+}
+
+fn refusal_cause_is(
+  a: ProviderUseAdmission<NonEmptyStr>,
+  presented: DeclarationRef,
+  project: fn(ProviderUseRefusal) -> List<DeclarationRef>,
+) -> Bool {
+  match a {
+    ProviderUseAdmitted { permit } => false
+    ProviderUseDenied { decision, cause } =>
+      count(filter(project(cause), r => declaration_ref_eq(a: r, b: presented))) == 1
+  }
+}
+
+fn refused_as_data_handling_unsupported(
+  a: ProviderUseAdmission<NonEmptyStr>,
+  presented: DeclarationRef,
+) -> Bool {
+  refusal_cause_is(a: a, presented: presented, project: c => data_handling_cause(c: c))
+}
+
+// THE DISCRIMINATOR'S ROSTER IS BUILT HERE, COVERING EXACTLY ONE CATEGORY, and that is a correction
+// rather than a style choice. Both halves of the pair used to run against probe_proposed_roster() --
+// whatever the proposals happen to carry today -- with ci_secrets standing in for "not covered" only
+// because it is currently proposed WITHHELD. So the day the operator ratifies secrets as carriable,
+// this probe would have stopped testing the gate and started reporting the proposal list, silently.
+// A behavioural claim must not have today's policy as its subject.
+//
+// Covering exactly one category makes both arms independent of every proposal: the covered category is
+// covered because THIS roster names it, and the uncovered one is uncovered because this roster does
+// not. Both are still real strategy.data_map rows, so the join under test is the real one.
+fn probe_roster_covering(categories: List<DataCategory>) -> List<RouteScopeSanction> {
+  route_sanctions_for(
+    categories: categories,
+    route: probe_route(),
+    posture: probe_posture(),
+    customer_profile: probe_customer_profile(),
+    requires_agreement: probe_agreement(),
+  )
+}
+
+fn covered_category() -> DataCategory { category_source_and_build_inputs }
+fn uncovered_category() -> DataCategory { category_ci_secrets }
+
+
+// ONE SCOPE, TWO ROSTERS -- the pair varies the DIMENSION UNDER TEST and nothing else.
+//
+// Both arms used to present DIFFERENT CATEGORIES against one roster, so the thing that varied was the
+// category while the claim was about whether the ROSTER COVERS IT. Two real map rows differ in many
+// ways; only one of those ways is the subject. Now the scope is fixed and the roster varies: the same
+// presented category is covered by one roster and not by the other, so a difference in outcome can only
+// be coverage. Found by sweeping the class after the merge-authorization reviewer named a different
+// instance of it.
+fn subject_scope() -> ProviderUseScope<NonEmptyStr> { probe_scope(category: covered_category()) }
+
+fn roster_covering_the_subject() -> List<RouteScopeSanction> {
+  probe_roster_covering(categories: [covered_category()])
+}
+
+fn roster_not_covering_the_subject() -> List<RouteScopeSanction> {
+  probe_roster_covering(categories: [uncovered_category()])
+}
+
+// RED 1 -- THE DISCRIMINATOR. A category the roster does NOT cover refuses, and the refusal names that
+// category's own profile as the cause.
+fn withheld_category_refuses_as_data_handling_unsupported() -> Bool {
+  refused_as_data_handling_unsupported(
+    a: probe_admission(roster: roster_not_covering_the_subject(), scope: subject_scope()),
+    presented: category_profile_ref(c: covered_category()),
+  )
+}
+
+// GREEN -- THE SAME EVERYTHING ELSE. ONLY THE ROSTER DIFFERS, which is a correction of this very sentence
+// (review 65282's class, found by re-reading the pair against the request): it said "only the presented
+// category differs", which was true before the single-cause sweep and false after it -- the sweep is what
+// fixed the scope and varied the roster, and it left the sentence describing the shape it had replaced.
+// A stale description of a control is worse here than elsewhere, because the sentence's whole job is to
+// tell a reader WHAT THE RED IS ATTRIBUTABLE TO, and it named the wrong dimension.
+//
+// So: the scope, the route, the posture, the customer profile, the dispositions and the agreement are all
+// identical across the pair, and the refusal above can only be explained by coverage.
+fn carried_category_admits() -> Bool {
+  admission_is_admitted(a: probe_admission(roster: roster_covering_the_subject(), scope: subject_scope()))
+}
+
+// RED 2 -- AN EMPTY ROSTER REFUSES THE ROUTE. The name says exactly that and no longer claims a
+// ratification linkage (review 64931): when this was rewired away from ratified_route_sanctions the
+// check stopped being about ratification, but the old name and the report line still said it was, which
+// is a label asserting more than its body does. The roster is emptied HERE rather than borrowed from
+// the fact that nothing is ratified yet. Pointing this at ratified_route_sanctions() made "no row is
+// ratified today" a merge-blocking invariant, so the operator ratifying a carried category would have
+// redded it -- the same tripwire this witness had in three other places (review 64875, review 64895).
+// The behaviour under test is the gate's, and it is stated over an input this probe controls.
+//
+// The standing remains a MATCHED consumer: ratified_route_sanctions filters on
+// standing_is_ratified, and the count it returns is REPORTED below rather than asserted, so ratifying
+// a category moves a reported number instead of breaking a wall.
+//
+// THE ARM IS ProviderRouteUnclassified AND NOT DataHandlingUnsupported, AND THAT IS THE GATE BEING
+// RIGHT RATHER THAN THIS PROBE SETTLING FOR LESS. It was written expecting the data-handling arm and
+// executed red: product.fabric.provider_admission refuses an EMPTY roster on the route before it ever
+// compares a data class, because the two are different remedies -- nothing about this route is
+// sanctioned for anybody, which is a coarser and more accurate thing to tell the caller than "this
+// data class is not covered". The expectation was corrected to what the gate actually does, and the
+// assertion names the refused ROUTE so the arm cannot be satisfied by a refusal about something else.
+fn empty_roster_refuses_the_route() -> Bool {
+  match probe_admission(roster: probe_roster_covering(categories: []), scope: subject_scope()) {
+    ProviderUseAdmitted { permit } => false
+    ProviderUseDenied { decision, cause } =>
+      count(filter(route_unclassified_route(c: cause), r => provider_route_eq(a: r, b: probe_route()))) == 1
+  }
+}
+
+// A CONTROL FOR THE DISCRIMINATOR ITSELF. If the customer profile does not match either, the gate must
+// refuse with CustomerScopeUnsupported and NOT with DataHandlingUnsupported -- the two remedies are
+// different, and a data-handling refusal standing in for a customer-scope one would make RED 1
+// unreadable as evidence about data handling.
+//
+// ONE CONJUNCT CARRIES THE WHOLE CLAIM, AND THE SECOND ONE IS DELETED RATHER THAN REPAIRED. This had a
+// second half negating refused_as_data_handling_unsupported, which review 64945 showed could not fail:
+// it compared the data-handling cause against the CUSTOMER profile reference this probe presents, and
+// IN THIS PROBE those are two distinct declarations, so the comparison was false for this input.
+//
+// THAT REASON IS SCOPED TO THE FIXTURE AND NOT A PROPERTY OF THE TYPES, which is a narrowing of how I
+// first stated it (snappy-pike-154, correcting the same overclaim in the public receipt).
+// ProviderUseScope carries customer_profile and data_handling_profile as two ordinary DeclarationRef
+// fields, so a scope MAY assign one reference to both, and "a data profile reference can never equal a
+// customer profile reference" is not something the types establish. What generalises is the SECOND
+// reason, which the review did not name: on any input with a mismatched customer profile the gate
+// refuses on customer scope, so the data-handling projection is empty before any comparison happens.
+//
+// MY FIRST REPAIR WAS ALSO VACUOUS, AND THE MUTATION CAUGHT IT rather than my reasoning. I replaced it
+// with `the refusal carries no data-handling cause at all`, which is falsifiable in principle -- and
+// constant HERE, because product.fabric.provider_admission evaluates the customer profile BEFORE the
+// data class (scope_refusals returns CustomerScopeUnsupported whenever by_customer is empty), so no
+// scope with a mismatched customer profile can ever produce a data-handling refusal. A predicate that
+// could fail somewhere else is still decoration at a call site where it cannot.
+//
+// So the remaining conjunct is the claim, and it discriminates: customer_scope_cause returns [] for
+// every arm except CustomerScopeUnsupported, and a refusal carries exactly one arm, so a refusal on any
+// other arm -- the data class included -- makes this false.
+//
+// ITS RED IS NOW ENROLLED RATHER THAN DESCRIBED (review 65282). This said the red "is exercised by"
+// pointing the scope at the covered customer profile, in the present tense, and nothing committed did
+// that -- only a throwaway mutation could, and a mutation is not an artifact. That is the third time this
+// PR has had to fix a claim outliving its body, so the repair is the control and not the sentence:
+// the_customer_scope_cause_vanishes_on_the_covered_profile below changes THAT ONE FIELD and shows the
+// customer-scope projection go empty, which is what makes this conjunct's refusal attributable to the
+// customer profile alone. Same shape as the settlement control's positive control: removing the cause and
+// watching the effect disappear is a measurement of the fixture's behaviour, where differing-in-one-
+// dimension is only a claim about its construction.
+fn other_customer_scope(customer_profile: DeclarationRef) -> ProviderUseScope {
+  ProviderUseScope {
+    demand: probe_demand(),
+    work: probe_work(),
+    customer_profile: customer_profile,
+    data_handling_profile: category_profile_ref(c: category_source_and_build_inputs),
+    agreement: probe_agreement(),
+    prohibited_use_disposition: probe_cleared(decl: "probe_prohibited_use_cleared"),
+    sanctions_disposition: probe_cleared(decl: "probe_sanctions_cleared"),
+    export_disposition: probe_cleared(decl: "probe_export_cleared"),
+  }
+}
+
+fn other_customer_refuses_on_customer_scope_not_data_handling() -> Bool {
+  refusal_cause_is(
+    a: probe_admission(
+      roster: roster_covering_the_subject(),
+      scope: other_customer_scope(customer_profile: probe_other_customer_profile()),
+    ),
+    presented: probe_other_customer_profile(),
+    project: c => customer_scope_cause(c: c),
+  )
+}
+
+// THE POSITIVE CONTROL ON THE CONTROL ABOVE. One field differs -- the covered customer profile instead of
+// the other one -- and the customer-scope cause must GO AWAY. If it did not, the conjunct above would be
+// reporting a refusal that the customer profile was not causing, and its green would say nothing about
+// the customer-scope term at all.
+//
+// It asserts the ABSENCE of this cause and deliberately not the presence of another. What the gate does
+// with the covered profile is that roster's business; pinning an admission here would make this control
+// fail for reasons that have nothing to do with the customer profile, which is the two-cause defect one
+// level up.
+fn the_customer_scope_cause_vanishes_on_the_covered_profile() -> Bool {
+  match probe_admission(
+    roster: roster_covering_the_subject(),
+    scope: other_customer_scope(customer_profile: probe_customer_profile()),
+  ) {
+    ProviderUseAdmitted { permit } => true
+    ProviderUseDenied { decision, cause } => count(customer_scope_cause(c: cause)) == 0
+  }
+}
+
+// THE CITATION QUESTION IS ANSWERED BY THE AUTHORITY THAT OWNS IT, NOT BY A PREDICATE OF MINE.
+//
+// THIS IS THE SECOND FORK IN THE SAME PLACE, AND IT WAS BUILT INSIDE THE REPAIR OF THE FIRST. Round
+// one removed Filesystem.Read plus string_contains because it was a second answer to a question
+// v2.std.decl_index owns. The replacement -- ref_qualified_name, citation_is_indexed, a prefix-matched
+// coverage test -- was a second answer to a question v2.std.decl_ref_resolution owns, with WEAKER
+// SEMANTICS than the canonical one. Two counterexamples the merge-authorization reviewer constructed,
+// both of which my version ACCEPTED and the resolver REFUSES:
+//   an existing declaration cited with NamedField { field_name } naming a field that does not exist
+//     -> DeclarationRefFieldAbsent. Mine discarded ref.field entirely, so it could not see the field.
+//   two declarations sharing one qualified name -> DeclarationRefAmbiguous. Mine accepted any positive
+//     candidate count, so 2 > 0 passed.
+// And the coverage test treated a declaration under `foo.bar` as establishing coverage of module `foo`
+// by STRING PREFIX, which is not namespace containment.
+//
+// So: resolve_declaration_ref_live decides, and its five arms ARE the answer. The
+// uncovered-versus-dangling distinction the previous round added is not lost -- it is now the
+// authority's own module-absent versus declaration-absent, with field-absent and ambiguous arriving
+// free. Where the authority's module/declaration split differs from the coverage notion I had
+// hand-rolled, the authority governs; that is the point of consuming it.
+//
+// EVERY UNRESOLVED ARM FAILS THE CONJUNCT, and each is reported by its own arm key so the remedies stay
+// distinct: a declaration to add, a field to fix, an ambiguity to disambiguate, a pool or module to
+// widen. A citation the resolver cannot resolve is not a citation that resolved, whichever arm it took.
+fn citation_pool_roots() -> List<String> {
+  ["dag", join([private_entry_prefix, "dag"], "")]
+}
+
+fn private_pool_roots() -> List<String> {
+  [join([private_entry_prefix, "dag"], "")]
+}
+
+fn unresolved_citation_report(label: String, refs: List<DeclarationRef>, pool: List<String>) -> String {
+  fold(refs, init: "", f: fn(acc, ref) {
+    let resolution = resolve_declaration_ref_live(ref: ref, pool_roots: pool)
+    if declaration_ref_resolution_is_resolved(resolution: resolution) {
+      acc
+    } else {
+      join([acc, "\n    ", label, " ",
+            declaration_ref_resolution_arm_key(resolution: resolution), ": ",
+            declaration_ref_display_key(ref: ref)], "")
+    }
+  })
+}
+
+fn map_row_refs() -> List<DeclarationRef> {
+  map(data_categories, c => category_profile_ref(c: c))
+}
+
+fn sanctioned_profile_refs() -> List<DeclarationRef> {
+  map(probe_proposed_roster(), s => s.data_handling_profile)
+}
+
+fn distinct_refs(refs: List<DeclarationRef>) -> List<DeclarationRef> {
+  fold(refs, init: [], f: fn(acc, ref) {
+    if count(filter(acc, seen => declaration_ref_display_key(ref: seen) == declaration_ref_display_key(ref: ref))) > 0 {
+      acc
+    } else {
+      concat(acc, [ref])
+    }
+  })
+}
+
+fn map_and_profile_refs() -> List<DeclarationRef> {
+  distinct_refs(refs: concat(concat(concat(concat(map_row_refs(), exclusion_refs()), sanctioned_profile_refs()), cited_basis_refs()), cited_ruling_refs()))
+}
+
+fn citation_failures() -> String {
+  unresolved_citation_report(
+    label: "map row, sanctioned profile, residency basis or in-house ruling",
+    refs: map_and_profile_refs(),
+    pool: private_pool_roots(),
+  )
+}
+
+fn agreement_citation_failures() -> String {
+  unresolved_citation_report(
+    label: "agreement citation",
+    refs: distinct_agreement_refs(),
+    pool: citation_pool_roots(),
+  )
+}
+
+fn every_agreement_citation_resolves() -> Bool {
+  agreement_citation_failures() == ""
+}
+
+fn every_citation_names_a_real_declaration() -> Bool {
+  citation_failures() == ""
+}
+
+
+// DISTINCTNESS IS ITS OWN CONJUNCT, AND THE ANNOTATION THAT USED TO STAND HERE WAS WRONG (review
+// 65047). It said two rows sharing a `decl` were "caught by every_category_has_a_carriage_position",
+// which holds only when the copied row ALSO gets its own proposal. In the forgetful case -- copy a row,
+// leave `decl` alone, add no proposal -- the copy matches the ORIGINAL's proposal, so that join passes
+// and the unsanctioned category is ADMITTED on the covered row's sanction. A claim of coverage that is
+// false in the direction that matters is worse than no claim, because it tells the next reader to stop
+// looking. The conjunct now folds over the rows themselves.
+//
+// THE SECOND MECHANISM THIS SENTENCE NAMED IS HISTORY, NOT A CURRENT GUARD (review 65282). It also said
+// "the source-binder guard" passed in that case, described in the present tense. That guard -- the
+// Filesystem.Read plus string_contains matching of source text -- WAS DELETED, first for the
+// v2.std.decl_index index and then for v2.std.decl_ref_resolution, because matching source text was a
+// second answer to a question those authorities own. Nothing in this module reads source text today.
+// Kept as history because the fail-open it describes is what the fold below exists to close; a reader
+// must not take it for a wall that is still standing.
+
+// ---------------------------------------------------------------------------------------------
+// THE MAP'S OWN CLAIMS. Populated, complete, and NOTHING READING AS SETTLED.
+// ---------------------------------------------------------------------------------------------
+
+// THE POPULATION IS NON-EMPTY, NOT EXACTLY EIGHT. This asserted `count(data_categories) == 8 &&
+// count(scope_exclusions) == 1`, which is the same tripwire as the others and was caught by review
+// 64895 reading this module's OWN definition of the pass against it: operator_ratification_pass says
+// the operator decides, per category, "whether the category is in scope at all". So ruling a category
+// out of scope -- an outcome the pass explicitly includes -- would have redded the enforced roster, and
+// so would adding the ninth category the map's prose anticipates. (The pass ALSO named the retention
+// period when review 64895 landed; the 2026-09-14 operator answers moved that half onto the deciders
+// who actually close each figure, and the quotation above is narrowed to match the constant as it now
+// reads. The in-scope half is what this argument ever depended on.)
+// The eight is also not an oracle: it was counted from the rows I had just written.
+//
+// What survives is that the map enumerates something and that every row it does enumerate answers all
+// four questions (map_is_complete) and has a carriage position. The counts are REPORTED.
+// AND THE EXCLUSIONS HALF OF THIS CONJUNCT WAS THE SAME TRIPWIRE, TWO LINES ABOVE THE ANNOTATION THAT
+// DIAGNOSES IT (private merge review, vivid-bee-814 via royal-eagle-761, 2026-09-13). It required
+// count(scope_exclusions) > 0. The single exclusion row SPECIFIES ITS OWN TRANSITION OUT OF THAT
+// POPULATION: its falsified_by says the falsifier `makes this an inclusion row with its own residency,
+// retention and basis rather than an exclusion`. So the row the conjunct counted declares the state the
+// conjunct forbade, and the enforced witness would have redded on a transition the map itself authored.
+//
+// WHY THIS ONE IS THE WORST OF THE FOUR TRIPWIRES: I fixed the identical shape at
+// ratified_rows_are_fully_settled after review 64875, wrote `an invariant that forbids the intended next
+// state is not a wall, it is a tripwire across the only exit` in the annotation directly BELOW this
+// function, and left this line standing. The standard was present, applied once, and not applied to its
+// neighbour -- which is DESIGN 4d's `present and locally unapplied`, and is why the finding is recorded
+// at this length rather than quietly fixed.
+//
+// WHAT IS KEPT IS THE INCLUDED POPULATION, which is the half that is a wall: a map with no categories at
+// all says nothing about anything, and that is not a state any ratification pass produces. Zero
+// exclusions IS such a state. So the predicate is parametric over the population it judges, the live
+// call hands it the map, and the transition gets an executing control below instead of a sentence.
+fn included_population_is_nonempty(categories: List<DataCategory>) -> Bool {
+  count(categories) > 0
+}
+
+// THE SHARED PATH THE CONTROL MUST ALSO TRAVEL, which is the whole repair of review 65442's finding.
+// The predicate below judges the map's TWO populations together, and both the live call and the
+// transition control reach it. That is not ceremony: it is what makes the control falsifiable. While the
+// control called `included_population_is_nonempty` directly, re-pinning exclusions inside THIS function
+// left the control green, so the control could not go red and was decoration in DESIGN 4b's exact sense.
+// `exclusions` is deliberately unread by the body -- the whole point is that re-adding a
+// `count(exclusions) > 0` conjunct here must red the zero-exclusion control below and nothing else.
+fn map_population_is_nonempty(categories: List<DataCategory>, exclusions: List<ScopeExclusion>) -> Bool {
+  included_population_is_nonempty(categories: categories)
+}
+
+fn map_is_nonempty() -> Bool {
+  map_population_is_nonempty(categories: data_categories, exclusions: scope_exclusions)
+}
+
+// THE TRANSITION THE OLD CONJUNCT FORBADE, ENROLLED AS A POSITIVE CONTROL. The exclusion becomes an
+// included category carrying the residency, retention and basis its own falsified_by says it would gain,
+// the exclusion population empties, and the population checks this witness enforces still hold. If a
+// future edit re-pins exclusions, this conjunct reds and names itself.
+fn the_transitioned_exclusion_row() -> DataCategory {
+  synthetic_category(
+    decl: "exclusion_end_user_personal_data_transitioned_to_included",
+    note: "The scope exclusion AS AN INCLUDED CATEGORY, which is what its falsified_by specifies the falsifier produces. A fixture for the transition control only: not a claim that the falsifier has occurred, and not a member of data_categories.",
+    retention: RetentionForPeriod { period: PeriodUndetermined { settled_by: "nothing - a fixture row, and a real transition would carry the operator's own retention answer" } },
+    standing: ProposedAwaitingRatification { settled_by: "nothing - a fixture standing, so the transitioned population has a proposed row in it" },
+  )
+}
+
+fn the_map_after_the_transition() -> List<DataCategory> {
+  concat(data_categories, [the_transitioned_exclusion_row()])
+}
+
+// BOTH DIRECTIONS, because a predicate that cannot go red is decoration: the transitioned population
+// with ZERO exclusions passes, AND an empty included population still fails. The second half is the wall
+// that survives the repair, asserted rather than assumed.
+//
+// THE FIRST HALF DID NOT EXERCISE ZERO EXCLUSIONS UNTIL THIS REVISION, and the sentence above was
+// therefore true of the intent and false of the code (review 65442). The control appended an included row
+// while the LIVE exclusion list still held its one entry, and reached `included_population_is_nonempty`
+// directly -- a function that never reads exclusions at all. So restoring `&& count(scope_exclusions) > 0`
+// in the live predicate left this control GREEN: it asserted a transition it never performed. Both calls
+// now go through `map_population_is_nonempty` with the exclusion list EMPTY, so re-pinning exclusions reds
+// exactly this control and names itself, which is what the previous revision's comment already promised.
+fn a_transitioned_exclusion_is_a_legal_map() -> Bool {
+  map_population_is_nonempty(categories: the_map_after_the_transition(), exclusions: [])
+    && population_is_complete(categories: the_map_after_the_transition())
+    && !map_population_is_nonempty(categories: [], exclusions: scope_exclusions)
+}
+
+// THE HONESTY CLAIM, RESTATED SO THE OPERATOR'S PASS IS A LEGAL TRANSITION RATHER THAN A RED.
+//
+// This was `count(ratified_categories()) == 0`, pinning TODAY'S state as a merge-blocking invariant -
+// so the single ratification pass this whole module was written to enable would have turned the
+// enforced private roster red, with no frontier and no trigger beside it to say that was expected
+// (review 64875). An invariant that forbids the intended next state is not a wall, it is a tripwire
+// across the only exit.
+//
+// What is asserted instead is the property that HOLDS ON BOTH SIDES of the pass: a ratified row
+// carries no open question. Every population split stays VISIBLE - the report prints how many rows
+// are ratified and how many questions are open - because the count is the live fact an operator
+// reads, and pinning a fact is not the same as reporting it.
+fn ratified_rows_are_fully_settled() -> Bool { map_settlement_is_coherent() }
+
+
+fn a_ratified_row_with_an_open_question_is_refused() -> Bool {
+  count(category_open_questions(c: synthetic_ratified_row_with_an_open_question())) > 0
+    && !category_settlement_is_coherent(c: synthetic_ratified_row_with_an_open_question())
+}
+
+// THE AGENDA IS DERIVED FROM THE ROWS, WHICH IS A JOIN AND NOT A FLOOR.
+//
+// A LEADING SENTENCE IS DELETED HERE, NOT REWRITTEN (review 65282). It said the agenda "must be non-empty
+// for the same reason", which is the very floor the rest of this block explains was removed -- the
+// deleted assertion restated in prose, directly above a body that does not make it, and contradicted by
+// this block's own closing sentence. Prose asserting an invariant the code dropped is the worse half of
+// the class: the code is honest and the description re-adds the tripwire in the reader's head.
+//
+// This asserted `count(ratification_agenda()) > count(data_categories) && count(counsel_review_queue())
+// > 0`, and review 64895 named it precisely: the second half is no_unfunded_counsel_conclusion
+// REINTRODUCED AS ARITHMETIC. AT THAT TIME counsel_review_queue() folded only over lawful_bases and was
+// therefore empty exactly when every LawfulBasisClaim carried CounselOpinionOnRecord, so a
+// count-greater-than-zero over it asserted, once again, that no lawful basis may ever be settled -- the
+// invariant the previous commit deleted for making CounselOpinionOnRecord uninhabitable, restated in a
+// form I did not recognise as the same claim. The lesson is the class, not the site: a conjunct whose
+// subject is a COUNT of today's unsettled state is the defect, whatever arithmetic dresses it.
+//
+// THE BICONDITIONAL IS NO LONGER TRUE AND THE LESSON IS UNCHANGED (review 66349). The queue now filters
+// the agenda by counsel_owned_questions, so it also carries the two counsel_retention_period_review
+// DURATION questions, which are not lawful-basis claims at all -- the queue can be non-empty with every
+// claim on record. The sentence is kept in the past tense rather than deleted because it is the reasoning
+// that retired the old assertion, and a reader who meets that assertion in history needs to know why it
+// went; what would have been wrong is leaving it in the present tense, describing a fold that no longer
+// behaves that way. The defect it names does not depend on the biconditional: a conjunct over a count of
+// today's unsettled state is a tripwire whatever the queue is folded from.
+//
+// The property that was meant is a JOIN: every open question a category carries appears in the agenda,
+// so the agenda cannot silently drop a row. It holds while questions exist and stays true the moment
+// they are all answered, because then both sides are empty -- which is the finished pass, not a red.
+fn open_question_is_listed(q: OpenQuestion, listed: List<OpenQuestion>) -> Bool {
+  count(filter(listed, l => l.subject == q.subject && l.question == q.question)) > 0
+}
+
+fn every_open_question_reaches_the_agenda() -> Bool {
+  all(
+    flat_map(data_categories, c => category_open_questions(c: c)),
+    q => open_question_is_listed(q: q, listed: ratification_agenda()),
+  )
+}
+
+// THE THREE POLICY ARMS, EACH WITH ITS OWN DISCRIMINATOR. These were added on 2026-09-14 because the
+// operator's answers were policies rather than periods, and a policy arm that forgot to report its open
+// number would be strictly worse than the Undetermined it replaced: the row would READ as decided while
+// the figure nobody had chosen sat inside it. Each control below varies exactly one thing -- whether the
+// period inside the policy is settled -- so a red isolates to the arm's own question-reporting and to
+// nothing else.
+//
+// THE SETTLED HALF IS NOT DECORATION. Asserting only that an open period asks a question would pass for
+// an arm that asks unconditionally, which would then refuse ratification forever and be the
+// over-prohibition of DESIGN 4d in a new place. Both halves run.
+fn default_with_opt_in(period: RetentionPeriodStanding) -> RetentionProposal {
+  RetentionDefaultWithOptIn { default_period: period, opt_in: "fixture: an opt-in to a longer period" }
+}
+
+fn obligation_bound(period: RetentionPeriodStanding) -> RetentionProposal {
+  RetentionBoundedByObligation { obligation: "fixture: an external record-keeping obligation", period: period }
+}
+
+fn fixture_settled_standing() -> RetentionPeriodStanding {
+  PeriodSettled { period: Measure { count: 7776000 }, basis: "fixture: an arbitrary settled period, not a proposed retention for anything" }
+}
+
+fn fixture_open_standing() -> RetentionPeriodStanding {
+  PeriodUndetermined { settled_by: "fixture: the figure inside this policy has not been chosen" }
+}
+
+fn a_default_with_an_unchosen_period_still_asks() -> Bool {
+  count(retention_open_question(r: default_with_opt_in(period: fixture_open_standing()))) == 1
+    && count(retention_open_question(r: default_with_opt_in(period: fixture_settled_standing()))) == 0
+}
+
+fn an_obligation_bound_with_an_unchosen_period_still_asks() -> Bool {
+  count(retention_open_question(r: obligation_bound(period: fixture_open_standing()))) == 1
+    && count(retention_open_question(r: obligation_bound(period: fixture_settled_standing()))) == 0
+}
+
+// AN UNDETERMINED SCHEDULE ASKS FOR ITSELF WHETHER OR NOT A TIER EXISTS. A backoff with one tier
+// enumerated is not a decided backoff; it is a schedule someone started, and an arm that went quiet on
+// the first tier would report "settled" for a state that is partially enumerated. So within the
+// undetermined arm the schedule question is unconditional and each tier's own period question is
+// additional: two open tiers under an unenumerated schedule report three questions, not one.
+//
+// THE UNCONDITIONALITY IS SCOPED TO THIS ARM, AND THE PRECEDING SENTENCE ONCE CLAIMED IT WITHOUT THAT
+// SCOPE (review 66342). It read "the schedule question is unconditional", which described the first
+// revision, where RetentionTiered had no settled constructor at all and every tiered category was
+// therefore incapable of ratification. a_settled_tier_schedule_can_reach_zero_questions directly below
+// exists to prove that is no longer true, so the old sentence contradicted the control twenty lines
+// under it.
+fn a_tiered_schedule_asks_for_itself_and_for_each_open_tier() -> Bool {
+  let no_tiers = RetentionTiered {
+    schedule: TierScheduleUndetermined { partial_tiers: [], settled_by: "fixture: the tier schedule is not enumerated" },
+  }
+  let one_open_tier = RetentionTiered {
+    schedule: TierScheduleUndetermined {
+      partial_tiers: [RetentionTier { trace: "fixture: one trace", period: fixture_open_standing() }],
+      settled_by: "fixture: the tier schedule is not enumerated",
+    },
+  }
+  let one_settled_tier = RetentionTiered {
+    schedule: TierScheduleUndetermined {
+      partial_tiers: [RetentionTier { trace: "fixture: one trace", period: fixture_settled_standing() }],
+      settled_by: "fixture: the tier schedule is not enumerated",
+    },
+  }
+  count(retention_open_question(r: no_tiers)) == 1
+    && count(retention_open_question(r: one_open_tier)) == 2
+    && count(retention_open_question(r: one_settled_tier)) == 1
+}
+
+// THE ARM THAT PROVES A BACKOFF CAN ACTUALLY CLOSE, and the one the first revision could not have
+// written. While RetentionTiered carried a bare unconditional schedule question, a fully enumerated
+// schedule of settled tiers still reported one -- so every tiered category was structurally incapable
+// of reaching a coherent ratified state, which is the over-prohibition this module already recorded for
+// bare periods and then reintroduced for schedules. Asserting only that an unenumerated schedule ASKS
+// would pass for that broken shape; this is the half that discriminates.
+//
+// The second conjunct keeps completeness and settledness apart: a schedule declared complete whose tier
+// carries an unchosen figure still reports that tier's own question, so "the schedule is decided" can
+// never stand in for "every period in it is decided".
+fn a_settled_tier_schedule_can_reach_zero_questions() -> Bool {
+  let fully_settled = RetentionTiered {
+    schedule: TierScheduleSettled {
+      tiers: [
+        RetentionTier { trace: "fixture: recent traces", period: fixture_settled_standing() },
+        RetentionTier { trace: "fixture: aged traces", period: fixture_settled_standing() },
+      ],
+    },
+  }
+  let settled_schedule_open_tier = RetentionTiered {
+    schedule: TierScheduleSettled {
+      tiers: [
+        RetentionTier { trace: "fixture: recent traces", period: fixture_settled_standing() },
+        RetentionTier { trace: "fixture: aged traces", period: fixture_open_standing() },
+      ],
+    },
+  }
+  count(retention_open_question(r: fully_settled)) == 0
+    && count(retention_open_question(r: settled_schedule_open_tier)) == 1
+}
+
+fn every_category_answers_all_four_questions() -> Bool { map_is_complete() }
+
+// EVERY CATEGORY HAS A CARRIAGE POSITION, AND NOTHING IS ASSERTED ABOUT THE SPLIT. The two extra
+// conjuncts here -- carried < total, carried > 0 -- were the same tripwire the reviews named twice, in
+// a place neither review reached: ratifying every category as carriable, or none, reds them, and both
+// are outcomes the operator's pass may legitimately produce. The split is REPORTED instead. What
+// survives is the total function: a category the map declares and the sanction module never mentions
+// would otherwise be refused for the same reason as a deliberate withholding, with nothing recording
+// which of the two it was.
+fn carriage_positions_are_total() -> Bool {
+  every_category_has_a_carriage_position()
+}
+
+// THE CARD-DATA CLAIM, MATCHED ON THE ARMS THAT CARRY IT. The first cut of this check asserted only
+// that the account category RESOLVED, which review 64834 correctly called vacuous: replacing the
+// custody pair with a durable locus and a retention period would have left it green, so the check
+// named a claim it never touched -- coverage that would be cited and could not fail.
+//
+// It now requires the PAIR on ONE residency row -- an OutsideOurCustody locus whose retention is
+// NotRetainedByUs -- and requires both halves to cite the SAME basis, which must be the PCI posture
+// row the claim rests on. Turning the absence into a period, or into a custody claim with no basis, or
+// into a basis pointing somewhere else, each reds this.
+// THE WITNESS NO LONGER HAND-SPELLS THIS CITATION (review 65169). It declared its own
+// decl_ref("strategy.compliance_posture", "regime_pci") beside the map's, so the card-data conjunct
+// compared one hand-copy against another: they agreed with each other whether or not the declaration
+// existed. It consumes the map's own value now, and the value itself is in the checked population below,
+// so agreement between the two sides no longer substitutes for the citation being real.
+
+fn custody_absence_rows(c: DataCategory) -> List<ResidencyRow> {
+  filter(c.residency, r =>
+    count(filter(locus_outside_custody_basis(l: r.locus), b => declaration_ref_eq(a: b, b: pci_no_card_data_basis()))) == 1
+      && count(filter(retention_not_retained_basis(r: r.retention), b => declaration_ref_eq(a: b, b: pci_no_card_data_basis()))) == 1)
+}
+
+// The corpus-wide `== 1` that used to sit here is gone: it pinned "exactly one category in the whole
+// map carries a custody absence", so a second legitimately-outside-our-custody row would have redded
+// it. The claim worth checking is about THIS row, and it is per-row.
+fn card_data_is_an_absence_not_a_period() -> Bool {
+  count(custody_absence_rows(c: category_account_and_billing_identity)) == 1
+}
+
+// THE STANDING FILTER GETS AN EXECUTING SUBJECT, which review 64969 correctly reported it had lost.
+// When the empty-roster check stopped borrowing "nothing is ratified today", ratified_route_sanctions
+// and standing_is_ratified were left with no executing consumer at all -- the roster's size was only
+// reported. The honest claim is not about how many rows are ratified, which is exactly what must not be
+// pinned; it is that the filter admits a RATIFIED row and excludes a PROPOSED one.
+//
+// Handed a mixed pair, it must emit exactly the ratified row. BOTH HALVES ARE NOW SYNTHETIC, CORRECTED
+// (review 65282): this sentence said the proposed half was a real map row, which it was when the
+// annotation was written and has not been since the single-cause sweep below. Borrowing a real row made
+// the pair differ in standing AND residency AND counsel standing at once, so the filter's exclusion had
+// three candidate causes; both halves now come from one builder and differ in the standing alone.
+// Nothing here asserts that the operator ratified anything.
+// EVERY SYNTHETIC FIXTURE COMES FROM ONE BUILDER, SO A NEGATIVE DIFFERS FROM ITS POSITIVE IN EXACTLY
+// THE DIMENSION IT CLAIMS TO TEST.
+//
+// THE DEFECT THIS REPLACES UNDERMINED A RESULT I REPORTED AS VERIFIED. The settlement negative carried
+// BOTH an undetermined retention AND borrowed lawful bases with CounselReviewRequired, so its refusal
+// had TWO independent causes. I then ran a mutation that replaced the positive's settled period with an
+// undetermined one, observed RED, and reported "the original wall survives" -- attributing a
+// two-cause red to one cause. The mutation did not establish what I said it established.
+//
+// SWEEPING THE CLASS RATHER THAN THE SITE found two more: the standing-filter negative differed from its
+// positive in standing AND residency AND counsel standing, and the red/green admission pair varied the
+// CATEGORY PRESENTED when the dimension under test is whether the ROSTER COVERS IT.
+//
+// The question a control has to answer is not "does it go red" but DOES ITS RED HAVE EXACTLY ONE CAUSE.
+// A negative carrying two independent refusal reasons cannot isolate either, and it passes while
+// proving nothing about the one it names. So the builder below fixes every field except the one under
+// test, and each fixture names its single varied argument at the call site where a reader can see it.
+// THE PLACEMENT RULE, AS A PAIR DIFFERING IN THE PLACEMENT ALONE. every_in_house_conclusion_is_ours_to_hold
+// folds over the live rows, and a fold over a population that satisfies it cannot show that it would
+// refuse anything -- it is green today because the nine rows were authored to pass it, which is not
+// evidence the wall works. So the discriminator is two claims identical in basis, conclusion and
+// falsifier, differing ONLY in where being wrong lands: one correctable by us, one answering to a
+// supervisory authority. Exactly the first may be held in house.
+//
+// This is the wall that stops `in_house` becoming a way to make any question go away. The whole repair
+// turns on counsel being required where the risk is placed outside our reach, so a repair that let the
+// constructor be pointed anywhere would have replaced a modelling error with a louder one.
+fn placement_fixture(placement: RiskPlacement) -> LawfulBasisClaim {
+  LawfulBasisClaim {
+    basis: ContractPerformance { agreement: AgreementAuthorityLanded { authority: pci_no_card_data_basis() } },
+    standing: in_house(
+      conclusion: "a fixture conclusion, held for the placement control only. Not a claim about any category of data and not a member of data_categories.",
+      placement: placement,
+      falsified_by: "nothing - a fixture falsifier, so the pair differs in the placement alone",
+    ),
+  }
+}
+
+fn a_conclusion_may_be_held_only_where_the_risk_is_ours() -> Bool {
+  in_house_claims_are_within_our_placement(claims: [
+    placement_fixture(placement: CorrectableByUsAlone {
+      correction: "a fixture correction, entirely within our own custody",
+    }),
+  ])
+    && !in_house_claims_are_within_our_placement(claims: [
+      placement_fixture(placement: ReachesASupervisoryAuthority {
+        exposure: "a fixture exposure, answered to an authority rather than to us",
+      }),
+    ])
+}
+
+fn synthetic_counsel_on_record_basis() -> LawfulBasisClaim {
+  LawfulBasisClaim {
+    basis: ContractPerformance { agreement: AgreementAuthorityLanded { authority: pci_no_card_data_basis() } },
+    standing: CounselOpinionOnRecord { opinion: pci_no_card_data_basis() },
+  }
+}
+
+fn synthetic_ratified_standing() -> ProposalStanding {
+  RatifiedByOperator {
+    ratified_on: "never - a fixture standing, not a claim that the operator ratified anything",
+    record: pci_no_card_data_basis(),
+  }
+}
+
+fn synthetic_settled_period() -> RetentionProposal {
+  RetentionForPeriod {
+    period: PeriodSettled { period: Measure { count: 7776000 }, basis: "fixture: an arbitrary settled period, not a proposed retention for anything" },
+  }
+}
+
+// Counsel is ON RECORD in every fixture, deliberately: it is never the dimension under test here, so
+// leaving it unsettled would give each negative a second refusal cause and destroy the isolation.
+//
+// THE MARKER HERE IS A FIXTURE BINDING AND CARRIES NO CLAIM. These rows are never members of
+// data_categories and never reach product.data_class's fold, so the marker they present is only what
+// makes them constructible; ci_secret_ref is borrowed for the same reason the subjects and purposes below
+// are borrowed from category_ci_secrets -- the dimension under test is elsewhere. The marker-distinctness
+// invariant folds over the LIVE population, so these fixtures cannot make it pass or fail.
+//
+// ONE CONSEQUENCE WORTH NAMING RATHER THAN ABSORBING, found here and not repaired here. The transition
+// control turns the end-user-personal-data EXCLUSION into an included category, and product.data_category
+// says in so many words that the absence of an EndUserPersonalData marker IS the exclusion -- a category
+// with no marker has no Classified constructor, no sink and no permit. So a real transition is not the
+// one-field standing change this fixture models: it requires a public marker to exist first, and the
+// exclusion's own falsified_by does not say so. That is an obligation on the exclusion row, and it is
+// stated here because this is where the shape of the falsifier became checkable.
+fn synthetic_category(
+  decl: NonEmptyStr,
+  note: NonEmptyStr,
+  retention: RetentionProposal,
+  standing: ProposalStanding,
+) -> DataCategory {
+  DataCategory {
+    decl: decl,
+    marker: ci_secret_ref(),
+    scope_note: note,
+    residency: [ResidencyRow { locus: StoredOnDurableOrigin, retention: retention }],
+    subjects: category_ci_secrets.subjects,
+    purposes: category_ci_secrets.purposes,
+    lawful_bases: [synthetic_counsel_on_record_basis()],
+    standing: standing,
+  }
+}
+
+// THE POSITIVE: ratified, period settled, counsel on record. Coherent, and it constructs the
+// settled-period arm through RetentionForPeriod so that arm has a committed consumer.
+fn synthetic_ratified_settled_category() -> DataCategory {
+  synthetic_category(
+    decl: "synthetic_ratified_settled_category_for_the_settlement_and_filter_controls",
+    note: "A fixture: ratified, with a period the operator settled, counsel on record. Coherent by construction. Not a category of data and not a member of data_categories. The 7776000 seconds is arbitrary and is NOT a proposed retention for anything.",
+    retention: synthetic_settled_period(),
+    standing: synthetic_ratified_standing(),
+  )
+}
+
+// NEGATIVE ONE: differs from the positive in THE RETENTION ARM ALONE. Same standing, same counsel, same
+// everything else - so a refusal can only be the undetermined period.
+fn synthetic_ratified_row_with_an_open_question() -> DataCategory {
+  synthetic_category(
+    decl: "synthetic_ratified_row_with_an_open_question_for_the_settlement_control",
+    note: "A fixture differing from synthetic_ratified_settled_category in the RETENTION ARM ONLY: ratified, counsel on record, period UNDETERMINED. Its refusal therefore has exactly one cause. Not a category of data and not a member of data_categories.",
+    retention: RetentionForPeriod { period: PeriodUndetermined { settled_by: "nothing - this fixture exists to be refused, on the retention arm alone" } },
+    standing: synthetic_ratified_standing(),
+  )
+}
+
+// NEGATIVE TWO: differs from the positive in THE STANDING ALONE. Same settled period, same counsel - so
+// the filter excluding it can only be the proposed standing.
+fn synthetic_proposed_category() -> DataCategory {
+  synthetic_category(
+    decl: "synthetic_proposed_category_for_the_standing_filter_control",
+    note: "A fixture differing from synthetic_ratified_settled_category in THE STANDING ALONE: proposed, with the same settled period and counsel on record, so the filter can exclude it only on standing. Not a category of data and not a member of data_categories.",
+    retention: synthetic_settled_period(),
+    standing: ProposedAwaitingRatification { settled_by: "nothing - a fixture standing, so the filter control has a proposed row to exclude" },
+  )
+}
+
+fn carried_proposal_for(c: DataCategory) -> CategorySanctionProposal {
+  CategorySanctionProposal {
+    category: c,
+    carriage: ProposedCarriedOnProviderRoute {
+      because: "a fixture pairing for the standing-filter control; carriage is not the subject here",
+    },
+  }
+}
+
+
+// THE SETTLED-PERIOD ARM HAS A COMMITTED CONSUMER, WHICH IT DID NOT WHEN IT LANDED (review 65223).
+//
+// The annotation beside the arm said "the control now constructs this arm" and no committed artifact
+// did: the only thing constructing it was a THROWAWAY MUTATION, and a mutation is not an artifact.
+// So the claim outlived its body inside the same change that fixes that class twice elsewhere - which
+// is the review's point and it is exactly right.
+//
+// The fixture above now carries a settled period, and this asserts what the arm exists for: a ratified
+// row whose period the operator has SETTLED is settlement-coherent. Paired with the negative already
+// here - a ratified row with an open question is refused - that is the discriminating pair for the arm,
+// enrolled rather than mutated.
+fn a_ratified_row_with_a_settled_period_is_coherent() -> Bool {
+  category_settlement_is_coherent(c: synthetic_ratified_settled_category())
+    && count(category_open_questions(c: synthetic_ratified_settled_category())) == 0
+}
+
+fn standing_filter_emits_only_ratified_rows() -> Bool {
+  let emitted = ratified_sanctions_from(
+    proposals: [
+      carried_proposal_for(c: synthetic_ratified_settled_category()),
+      carried_proposal_for(c: synthetic_proposed_category()),
+    ],
+    route: probe_route(),
+    posture: probe_posture(),
+    customer_profile: probe_customer_profile(),
+    requires_agreement: probe_agreement(),
+  )
+  count(emitted) == 1
+    && all(emitted, s => declaration_ref_eq(
+      a: s.data_handling_profile,
+      b: category_profile_ref(c: synthetic_ratified_settled_category()),
+    ))
+}
+
+fn flag(b: Bool) -> String { if b { "ok" } else { "RED" } }
+
+// THE SEALED DATA-HANDLING DERIVATION, AND WHAT IS ASSERTED IS THE INVARIANT RATHER THAN TODAY'S COUNT.
+//
+// data_handling_map_rows derives rows for product.data_class's permit fold, and it emits a row only for a
+// RATIFIED category, because a row is an authorisation and this map's rows are proposals. Nothing is
+// ratified today, so the live map has no rows -- and asserting THAT would be the fourth tripwire of this
+// PR: a conjunct pinned to today's population forbids the ratification pass it exists to enable. The live
+// count is REPORTED, and what is ASSERTED is the property that holds on both sides of the pass.
+//
+// THE ASSERTION IS OVER A NON-EMPTY FIXTURE POPULATION ON PURPOSE. An invariant over the live rows would be
+// vacuously true while the map is empty -- predicate_vacuously_true_on_an_empty_domain, a ledger row in its
+// own right -- so the discriminator is a MIXED pair handed to the parametric derivation: one ratified
+// fixture and one proposed fixture differing in THE STANDING ALONE, where exactly the ratified one must
+// yield a row and the emitted row must name that category. Same shape as the standing filter above it.
+//
+// THE FIXTURE USES OperatorSupportSurface because it is the one locus with an established sink. A
+// StoredOnDurableOrigin fixture would yield no row for a reason that has nothing to do with standing -- no
+// ProviderRoute is declared anywhere -- and a control whose red has two candidate causes cannot isolate
+// either, which is the defect review 65442 caught in this witness once already.
+fn locus_fixture(locus: StorageLocus, standing: ProposalStanding) -> DataCategory {
+  DataCategory {
+    decl: "synthetic_single_residency_category_for_the_handling_derivation_control",
+    marker: support_communication_ref(),
+    scope_note: "A fixture with exactly one residency, so a pair of calls differing in the LOCUS alone isolates what the locus decides, and a pair differing in the STANDING alone isolates what the standing decides. Not a category of data and not a member of data_categories.",
+    residency: [ResidencyRow {
+      locus: locus,
+      retention: RetentionForPeriod { period: PeriodUndetermined { settled_by: "nothing - a fixture residency" } },
+    }],
+    subjects: category_ci_secrets.subjects,
+    purposes: category_ci_secrets.purposes,
+    lawful_bases: [synthetic_counsel_on_record_basis()],
+    standing: standing,
+  }
+}
+
+// THE STANDING CONTROL'S FIXTURE, which is the support surface because it is the one locus with an
+// established sink -- so the standing is the only thing left that can decide whether a row appears.
+fn support_surface_fixture(standing: ProposalStanding) -> DataCategory {
+  locus_fixture(locus: OperatorSupportSurface, standing: standing)
+}
+
+fn a_ratified_category_yields_a_row_and_a_proposed_one_does_not() -> Bool {
+  let mixed = data_handling_rows_for(categories: [
+    support_surface_fixture(standing: synthetic_ratified_standing()),
+    support_surface_fixture(standing: ProposedAwaitingRatification {
+      settled_by: "nothing - a fixture standing, so the derivation has a proposed row to exclude",
+    }),
+  ])
+  count(mixed) == 1
+    && all(mixed, r => declaration_ref_eq(a: r.category, b: support_communication_ref()))
+}
+
+// THE BINDING THIS ASSERTION USED TO GET BACKWARDS, ENROLLED AS ITS OWN CONTROL. It read
+// `r.category == category_profile_ref(...)`, which is the defect rather than the claim: a
+// strategy.data_map reference in a field product.data_class admit_data_effect compares against a
+// product.data_category MARKER. It was green because it asserted exactly what the code did, on both
+// sides of the same mistake -- the shape a witness has when it is written from the implementation
+// instead of from the claim.
+//
+// Two conjuncts, and the negative is the load-bearing one: the row carries the marker, AND it does NOT
+// carry the profile reference. Without the second half, a future edit could hand the fold BOTH
+// identities (or revert to the profile) and only the fold, in a tree this witness cannot run, would
+// notice -- and it would notice by refusing CategoryUnmapped on the first ratified category, which is
+// the invisible failure this whole repair is about.
+fn a_derived_row_carries_the_public_marker_and_not_the_private_profile() -> Bool {
+  let fixture = support_surface_fixture(standing: synthetic_ratified_standing())
+  let rows = data_handling_rows_for(categories: [fixture])
+  count(rows) == 1
+    && all(rows, r => declaration_ref_eq(a: r.category, b: support_communication_ref()))
+    && all(rows, r => !declaration_ref_eq(a: r.category, b: category_profile_ref(c: fixture)))
+}
+
+// AND THE DIMENSIONS A ROW ADMITS ARE EMPTY, WHICH IS ASSERTED RATHER THAN LEFT TO BE READ. An empty list
+// admits nothing and there is no wildcard arm, so a row this derivation emits authorises no purpose, no
+// recipient and no operation until the facts behind each are established. If a later edit populates one
+// from this map's DESCRIPTIVE rows -- the purposes a category is processed for are not the purposes a sink
+// is AUTHORISED for -- this conjunct reds and names itself.
+fn a_derived_row_admits_nothing_yet() -> Bool {
+  all(
+    data_handling_rows_for(categories: [support_surface_fixture(standing: synthetic_ratified_standing())]),
+    r => count(r.purposes) == 0 && count(r.recipients) == 0 && count(r.operations) == 0,
+  )
+}
+
+// A RATIFIED DURABLE RESIDENCY YIELDS NO ROW, AND THE PAIR THAT ESTABLISHES IT VARIES THE LOCUS ALONE.
+// This is review 65710's wall. sinks_for_locus answers WHICH sinks a locus has rather than WHETHER it has
+// any, so the durable arm names no sink and the map cannot carry a durable row at all. The shape it
+// replaced decided the question as a Bool and then constructed the single sink SupportExport, so unblocking
+// the durable arm there emitted a SUPPORT-EXPORT permit for durable-origin data -- a permit for the wrong
+// effect, not merely a premature one. Both calls below go through locus_fixture with the same ratified
+// standing and differ in the locus argument only: the support surface yields exactly one row and the
+// durable origin yields none, so a red here cannot be blamed on standing. It stays enrolled after the fix
+// as the regression control that the locus-to-sink correspondence is still not minted here (DESIGN 4b(4)).
+fn a_ratified_durable_residency_yields_no_row() -> Bool {
+  let durable = data_handling_rows_for(categories: [
+    locus_fixture(locus: StoredOnDurableOrigin, standing: synthetic_ratified_standing()),
+  ])
+  let support = data_handling_rows_for(categories: [
+    locus_fixture(locus: OperatorSupportSurface, standing: synthetic_ratified_standing()),
+  ])
+  count(durable) == 0 && count(support) == 1
+}
+
+// THE SEALED MINT IS INVOKED, WHICH REVIEW 65758 CORRECTLY FOUND MISSING. Until this assertion the mint
+// was defined, cited as a map authority, IMPORTED BY THIS WITNESS -- and never CALLED. An import is not a
+// call, so the one function product.data_class admit_callers-seals to this module's name was the one
+// function nothing ran, and the derivation was exercised only through the unsealed helper
+// data_handling_rows_for. A witness importing a symbol without calling it is the exact tell DESIGN 3c names.
+//
+// WHAT THIS ASSERTS, AND TWO CONJUNCTS IT DELIBERATELY NO LONGER ASSERTS BECAUSE MEASUREMENT KILLED THEM.
+// The first draft of this check compared the minted row count against the helper applied to data_categories,
+// and compared the minted authority against data_handling_authority(). A mutation arm removed both:
+//   THE COUNT WAS VACUOUS. Pointing the mint at a single proposed category instead of the filtered
+//     population left the conjunct GREEN, because that category yields no rows either -- the comparison was
+//     0 == 0 and stayed 0 == 0 under the very edit it existed to catch. That is
+//     predicate_vacuously_true_on_an_empty_domain, a row in this corpus's own ledger, and an empty map makes
+//     every population claim over the live rows unfalsifiable. NAMED TRIGGER: the operator's ratification
+//     pass. Once any category is ratified the live rows are non-empty, a mint taking the wrong population
+//     produces a DIFFERENT count, and the conjunct becomes authorable. Until then it is not weakened, it is
+//     ABSENT, because a conjunct that cannot fail is worse than none: it would be cited as coverage.
+//   THE EQUALITY WAS TAUTOLOGICAL. It read declaration_ref_eq(map.authority, data_handling_authority()) --
+//     the same function on both sides of the comparison, so no edit to that function could ever separate
+//     them. The remedy is an INDEPENDENT REFERENT: the witness now spells the expected module and
+//     declaration itself, so changing what the map claims as its authority disagrees with this file.
+//
+// WHAT SURVIVES IS THE PART THAT REDS ON MUTATION: the mint is CALLED -- which is the whole of review
+// 65758's finding, since it was previously imported and never invoked -- and the authority it carries must be
+// the name this witness independently expects AND must RESOLVE LIVE to a real declaration through the same
+// resolver every other citation here uses. Both fail together when the authority is repointed, and that is
+// one claim rather than two: the map's authority is this module's mint, and that mint exists.
+//
+// WHY THE FOLD ITSELF IS NOT THE CONSUMER HERE, ESTABLISHED BY EXECUTION RATHER THAN ARGUED. The stronger
+// consumer is product.data_class admit_data_effect, the permit fold this map exists to feed. It cannot be
+// called from this repository and the compiler says so:
+//   error: sole_constructor type 'Classified' cannot be constructed outside its defining module
+//   error: sole_constructor type 'Sink' cannot be constructed outside its defining module
+// The fold takes a Classified and a Sink, both sole_constructor in product.data_class, and the mints that
+// would produce a Classified for any category this map covers DO NOT EXIST -- that module carries them as
+// its own declared frontiers, whose trigger is an admit_callers-sealed classify_<category> mint with a
+// PRODUCTION BOUNDARY as its admitted caller, explicitly "NOT satisfied by a witness minting the value". So
+// the fold route is unreachable from here BY THAT TREE'S DESIGN, and data_map_frontier_rows carries it as a
+// declared frontier rather than this witness minting a Classified to route around a seal that is working.
+fn the_sealed_mint_carries_the_derivation_it_authorises() -> Bool {
+  let map = data_handling_map_rows()
+  let expected = decl_ref(module_path: "strategy.data_map", decl_name: "data_handling_map_rows")
+  declaration_ref_eq(a: map.authority, b: expected)
+    && declaration_ref_resolution_is_resolved(
+         resolution: resolve_declaration_ref_live(ref: map.authority, pool_roots: private_pool_roots()),
+       )
+}
+
+fn data_map_witness_report() -> String {
+  join([
+    "data map witness:",
+    "\n  categories=", to_string(count(data_categories)),
+    " exclusions=", to_string(count(scope_exclusions)),
+    " nonempty=", flag(b: map_is_nonempty()),
+    " transition_control=", flag(b: a_transitioned_exclusion_is_a_legal_map()),
+    "\n  complete=", flag(b: every_category_answers_all_four_questions()),
+    "\n  ratified=", to_string(count(ratified_categories())),
+    " proposed=", to_string(count(proposed_categories())),
+    "\n  settlement_coherent=", flag(b: ratified_rows_are_fully_settled()),
+    "\n  settlement_control_refuses=", flag(b: a_ratified_row_with_an_open_question_is_refused()),
+    "\n  settled_period_is_coherent=", flag(b: a_ratified_row_with_a_settled_period_is_coherent()),
+    "\n  policy_arms_report_their_open_number: default_with_opt_in=",
+    flag(b: a_default_with_an_unchosen_period_still_asks()),
+    " bounded_by_obligation=", flag(b: an_obligation_bound_with_an_unchosen_period_still_asks()),
+    " tiered=", flag(b: a_tiered_schedule_asks_for_itself_and_for_each_open_tier()),
+    " tiered_can_settle=", flag(b: a_settled_tier_schedule_can_reach_zero_questions()),
+    "\n  agenda_join=", flag(b: every_open_question_reaches_the_agenda()),
+    " (", to_string(count(ratification_agenda())), " open questions, ",
+    to_string(count(counsel_review_queue())), " for counsel, by question identity rather than by which field it hangs from)",
+    "\n  carriage_total=", flag(b: carriage_positions_are_total()),
+    " (carried=", to_string(count(carried_proposals())),
+    " of ", to_string(count(category_sanction_proposals)), ")",
+    "\n  rows_own_their_decls=", flag(b: every_row_owns_its_own_decl()),
+    "\n  in_house_conclusions=", to_string(count(in_house_conclusions())),
+    " within_our_placement=", flag(b: every_in_house_conclusion_is_ours_to_hold()),
+    " placement_control=", flag(b: a_conclusion_may_be_held_only_where_the_risk_is_ours()),
+    " rows_own_their_markers=", flag(b: every_category_owns_its_own_marker()),
+    " row_carries_the_marker=", flag(b: a_derived_row_carries_the_public_marker_and_not_the_private_profile()),
+    "\n  handling_rows_live=", to_string(count(data_handling_rows_for(categories: data_categories))),
+    " standing_control=", flag(b: a_ratified_category_yields_a_row_and_a_proposed_one_does_not()),
+    " admits_nothing_yet=", flag(b: a_derived_row_admits_nothing_yet()),
+    " durable_yields_no_row=", flag(b: a_ratified_durable_residency_yields_no_row()),
+    "\n  mint_carries_the_derivation=", flag(b: the_sealed_mint_carries_the_derivation_it_authorises()),
+    "\n  frontier_rows=", to_string(count(frontier_subject_refs())),
+    " well_formed=", flag(b: declared_frontiers_are_well_formed()),
+    " subjects_resolve=", flag(b: every_frontier_subject_resolves()),
+    frontier_subject_failures(),
+    "\n  citations_name_real_declarations=",
+    flag(b: every_citation_names_a_real_declaration()),
+    "\n  agreement_citations_resolve=", flag(b: every_agreement_citation_resolves()),
+    " (landed=", to_string(count(cited_agreement_refs())),
+    " awaiting_landing=", to_string(count(unlanded_agreement_landings())), ")",
+    agreement_citation_failures(),
+    citation_failures(),
+    "\n  standing_filter_control=", flag(b: standing_filter_emits_only_ratified_rows()),
+    "\n  proposed_roster=", to_string(count(probe_proposed_roster())),
+    " ratified_roster=", to_string(count(probe_ratified_roster())),
+    "\n  carried_admits=", flag(b: carried_category_admits()),
+    "\n  withheld_refuses=", flag(b: withheld_category_refuses_as_data_handling_unsupported()),
+    "\n  empty_roster_refuses=", flag(b: empty_roster_refuses_the_route()),
+    "\n  customer_scope_control=", flag(b: other_customer_refuses_on_customer_scope_not_data_handling()),
+    " (cause_vanishes_on_covered=", flag(b: the_customer_scope_cause_vanishes_on_the_covered_profile()), ")",
+    "\n  card_data_absence=", flag(b: card_data_is_an_absence_not_a_period()),
+  ], "")
+}
+
+
+// THE FRONTIER ROWS ARE CONSUMED HERE, WHICH IS WHAT MAKES THEM ROWS RATHER THAN COMMENTARY. A declared
+// frontier that nothing folds is the dangling declaration it was written to replace, one level up.
+//
+// WHAT THIS CONJUNCT CHECKS, NARROWED TO WHAT std.roster_frontier ACTUALLY DOES. It previously said every
+// row must carry "a resolvable dissolution", and frontier_rows_well_formed does not check resolvability of
+// anything: it checks that the reason is non-empty, that the subject's module_path and decl_name are
+// non-empty, and that a bound trigger's are too. Those are PRESENCE tests over strings. So this is the
+// weak half, worth having and not much -- it catches an empty reason or a half-written trigger.
+fn declared_frontiers_are_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: data_map_frontier_rows)
+    && frontier_rows_well_formed(rows: provider_data_handling_sanction_frontier_rows)
+    && count(data_map_frontier_rows) > 0
+    && count(provider_data_handling_sanction_frontier_rows) > 0
+}
+
+// AND THE HALF THAT REDS ON A REAL MISTAKE: EVERY FRONTIER SUBJECT MUST RESOLVE, THROUGH THE SAME RESOLVER
+// THE CITATION WALL USES (ruled into this PR by vivid-bee-814 and royal-eagle-761 independently).
+//
+// The reasoning is worth keeping beside the code: this PR was refused for a declared frontier that existed
+// only as PROSE, and a roster whose subjects are never resolved is that same defect one level up -- a
+// citation nothing checks. A frontier row names the declaration whose payload has no consumer; if that
+// declaration is renamed or deleted, the row describes a gap at a place that no longer exists and must be
+// retired rather than left pointing into nothing. The well-formedness fold above cannot see that, because
+// a stale name is a perfectly non-empty string.
+//
+// ONE AUTHORITY FOR "DOES THIS NAME A REAL DECLARATION". These refs go through resolve_declaration_ref_live
+// by way of unresolved_citation_report -- the same path every map citation takes -- because a second
+// resolver is the fork this witness already dissolved twice (file grep, then a hand-rolled index reader).
+//
+// SCOPED DELIBERATELY AND NOT WIDENED: this asks only whether frontier SUBJECTS resolve. It is not a general
+// citation census over the corpus, which royal-eagle-761 made a condition of taking it in this PR rather
+// than a preference -- a red-main repair earns the narrow check, not the sweep.
+//
+// A SUBJECT IS A DECLARATION OR A FIELD OF ONE, NEVER AN ARM, and that is measured rather than assumed: the
+// first version of the carriage row named ProposedWithheldFromProviderRoutes.kept_here_by and this conjunct
+// redded it as `declaration-absent`, because an arm of a coproduct is not a declaration the namespace
+// resolves. The row names the TYPE instead and the reason carries the arm. A field OF a top-level
+// declaration does resolve, which is why the ScopeExclusion subject is field-grain.
+fn frontier_subject_refs() -> List<DeclarationRef> {
+  flat_map(
+    concat(data_map_frontier_rows, provider_data_handling_sanction_frontier_rows),
+    row => match row.subject {
+      DeclSubject { ref } => [ref]
+      PathSubject { path } => []
+    },
+  )
+}
+
+fn frontier_subject_failures() -> String {
+  unresolved_citation_report(
+    label: "frontier row subject",
+    refs: frontier_subject_refs(),
+    pool: private_pool_roots(),
+  )
+}
+
+fn every_frontier_subject_resolves() -> Bool {
+  frontier_subject_failures() == "" && count(frontier_subject_refs()) > 0
+}
+
+fn data_map_witness_main() -> ProcessExit {
+  if map_is_nonempty()
+    && a_ratified_category_yields_a_row_and_a_proposed_one_does_not()
+    && a_derived_row_admits_nothing_yet()
+    && a_ratified_durable_residency_yields_no_row()
+    && the_sealed_mint_carries_the_derivation_it_authorises()
+    && a_transitioned_exclusion_is_a_legal_map()
+    && every_category_answers_all_four_questions()
+    && ratified_rows_are_fully_settled()
+    && a_ratified_row_with_an_open_question_is_refused()
+    && a_ratified_row_with_a_settled_period_is_coherent()
+    && a_default_with_an_unchosen_period_still_asks()
+    && an_obligation_bound_with_an_unchosen_period_still_asks()
+    && a_tiered_schedule_asks_for_itself_and_for_each_open_tier()
+    && a_settled_tier_schedule_can_reach_zero_questions()
+    && every_open_question_reaches_the_agenda()
+    && carriage_positions_are_total()
+    && card_data_is_an_absence_not_a_period()
+    && every_row_owns_its_own_decl()
+    && every_in_house_conclusion_is_ours_to_hold()
+    && a_conclusion_may_be_held_only_where_the_risk_is_ours()
+    && every_category_owns_its_own_marker()
+    && a_derived_row_carries_the_public_marker_and_not_the_private_profile()
+    && every_citation_names_a_real_declaration()
+    && every_agreement_citation_resolves()
+    && standing_filter_emits_only_ratified_rows()
+    && carried_category_admits()
+    && withheld_category_refuses_as_data_handling_unsupported()
+    && empty_roster_refuses_the_route()
+    && other_customer_refuses_on_customer_scope_not_data_handling()
+    && the_customer_scope_cause_vanishes_on_the_covered_profile()
+    && declared_frontiers_are_well_formed()
+    && every_frontier_subject_resolves()
+  {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: data_map_witness_report() }
+  }
+}
