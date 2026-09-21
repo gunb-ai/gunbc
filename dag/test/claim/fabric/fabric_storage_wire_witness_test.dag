@@ -134,6 +134,9 @@ test fn a_presented_login_crosses_the_wire_as_that_login_and_absent_as_absent() 
     FabricIdentityReadRefused { fault: _ } => true
     _ => false
   }
+  // RED MUTATION CONTROL (gunbc#11982). This block sits INSIDE a declaration body, which DESIGN
+  // section 4c does not admit, and it is the exact form main was repaired for in #11967. The
+  // required parse phase must refuse it and the required context must go RED.
   let absent_extra = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity absent extra") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
   let present_extra = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity present login extra") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
   let absent_continued = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity absent\nunexpected continuation") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
