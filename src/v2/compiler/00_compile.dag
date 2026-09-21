@@ -2169,8 +2169,42 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
 // main calls; a caller naming a narrower pattern gets a narrower population through the same
 // producer -- never a filter applied to the default universe after the fact, so a corpus refusal
 // outside the pattern still refuses (a narrower question does not make a broken corpus sound).
+// THE SOURCE FACTS ARE DERIVED ONCE AND CARRIED, BECAUSE THE LANE'S MAIN ALREADY HOLDS THEM.
+//
+// `native_lane_source_facts` is a fold over the WHOLE ingest that, per read, splits the file into
+// lines, scans for the module header, scans for imports, scans for the first malformed import, and
+// runs `discover_floor_rows_for_source`. It is corpus-wide BY DESIGN -- discovery is a corpus-wide
+// question and its refusals must hold outside any selection -- which is exactly what makes paying
+// for it twice expensive rather than merely untidy.
+//
+// MEASURED, on the first native run of a selected pattern (2026-09-21, seven identities of
+// `v2.test.parse.expression_bodied_fn_decl_parse` at `//v2/test/parse/...:all`): the lane's own
+// `[native-cost-partition]` receipt reports `universe_derivation` at 23.35 s of a 121.4 s wall,
+// over `corpus_reads` 6482 while `closure_reads` was 133. So this is the phase that does NOT
+// narrow with the pattern, and it was being entered twice per run.
+//
+// The rendered adjudicate main binds `source_facts` for the closure derivation --
+// `native_lane_closure_modules`, `native_lane_closure_ingest`, `native_lane_ingest_receipt` and
+// `native_lane_ingest_matches_closure` all consume it -- and then called the universe producer,
+// which opened by deriving the same fold again from the same ingest. Two identical folds over one
+// corpus, in one process, with a shared-state least common ancestor ONE LINE above: DESIGN
+// section 2's authored duplication, where the repetition is evidence about the demand graph rather
+// than a caching obligation, and the repair is to carry the first value rather than to make the
+// second request cheap.
+//
+// THE SPLIT IS WHERE THE VALUE ALREADY WAS. The body took `facts` after its first line, so
+// `native_lane_universe_of_facts` IS that body and this stays the ingest-taking entry for callers
+// that do not already hold the facts. The PATTERN is threaded rather than defaulted, so the entry
+// the main calls is the same one a caller naming a narrower pattern reaches -- when the argv
+// operand lands, that call site changes its pattern argument and nothing else.
 fn native_lane_universe_selected(ingest: SourceRootIngest, pattern: TargetPattern) -> Outcome<NativeLaneUniverse> {
-  let facts = native_lane_source_facts(ingest: ingest)
+  native_lane_universe_of_facts(facts: native_lane_source_facts(ingest: ingest), pattern: pattern)
+}
+
+fn native_lane_universe_of_facts(
+  facts: List<NativeLaneSourceFacts>,
+  pattern: TargetPattern
+) -> Outcome<NativeLaneUniverse> {
   match native_lane_malformed_import_row(facts: facts) {
     Present { value: f } =>
       native_lane_refused(

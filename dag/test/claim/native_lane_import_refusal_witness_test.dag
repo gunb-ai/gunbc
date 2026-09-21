@@ -1,6 +1,9 @@
 module test.claim.native_lane_import_refusal
 
-import v2.compiler.compile { native_lane_universe, native_lane_universe_selected }
+import v2.compiler.compile {
+  native_lane_source_facts, native_lane_universe, native_lane_universe_of_facts,
+  native_lane_universe_selected
+}
 import extdeps.bazel.target_pattern {
   TargetPatternParsed, TargetPatternRefused, parse_target_pattern
 }
@@ -15,7 +18,7 @@ import v2.std.integer { Int }
 import v2.std.algebra { contains, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
-import gunbc.witness_v2_native_route { native_route_identity_qualified }
+import gunbc.witness_v2_native_route { native_route_default_pattern, native_route_identity_qualified }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -340,4 +343,57 @@ test fn an_unlabelable_declaration_inside_the_universe_refuses_typed() -> Bool {
     Rejected { diagnostics: d } => d.head.reason == ^native_lane_identity_label_refused
     Accepted { value: _, diagnostics: _ } => false
   }
+}
+
+// ── the facts-taking entry carries every refusal ──────────────────────────────────────────────
+//
+// WHAT THESE ARMS ESTABLISH, AND THE ARM SHAPE THEY DELIBERATELY DO NOT USE. The lane's rendered
+// main binds `source_facts` for the closure derivation and then derived the universe from the
+// INGEST again, re-running the whole-corpus discovery fold it already held. The repair splits the
+// producer so the main hands in the facts it holds.
+//
+// THE OBVIOUS WITNESS FOR THAT IS A DECORATION, AND IT WAS WRITTEN AND DELETED HERE RATHER THAN
+// SHIPPED. Pairing the two entries over one fixture and asserting they agree reads like a strong
+// equivalence control. It is not one: after the split `native_lane_universe_selected(ingest, p)` IS
+// `native_lane_universe_of_facts(native_lane_source_facts(ingest), p)`, so the comparison is an
+// expression against itself -- permanently green by construction. A mutation dropping a refusal
+// from the shared body moves BOTH sides and the agreement still holds. DESIGN section 4b calls that
+// worse than absent, because it is cited as coverage. (Measured: bypassing the malformed-import
+// check failed four arms here and left the two accepted-path controls green.)
+//
+// So these arms assert the FACTS-TAKING ENTRY DIRECTLY, over facts derived by a separate call and
+// handed in -- coverage that did not exist before, since nothing invoked that body with externally
+// supplied facts. The three fixtures cover both refusal causes and the accepted path rather than
+// three files; an arm over the accepted path alone would stay green if the entry refused nothing.
+//
+// WHAT THEY CANNOT REACH, said so the set is not over-read: whether the RENDERED MAIN passes the
+// facts it already bound rather than re-deriving them. That is a property of emitted Rust, so no
+// `.dag` arm holds it; its evidence is a native build.
+
+fn carried_at_default(ingest: SourceRootIngest) -> Bool {
+  match native_lane_universe_of_facts(
+    facts: native_lane_source_facts(ingest: ingest),
+    pattern: native_route_default_pattern()
+  ) {
+    Rejected { diagnostics: d } => d.head.reason == ^native_lane_import_line_names_no_module
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn the_facts_taking_entry_admits_the_well_formed_source() -> Bool {
+  match native_lane_universe_of_facts(
+    facts: native_lane_source_facts(ingest: well_formed_import_ingest),
+    pattern: native_route_default_pattern()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn the_facts_taking_entry_keeps_the_malformed_import_refusal() -> Bool {
+  carried_at_default(ingest: malformed_import_ingest)
+}
+
+test fn the_facts_taking_entry_keeps_the_bare_import_refusal() -> Bool {
+  carried_at_default(ingest: bare_import_ingest)
 }
