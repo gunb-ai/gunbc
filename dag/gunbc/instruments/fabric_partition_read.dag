@@ -12,7 +12,7 @@ import product.capacity.pool_events { PoolEvent, pool_event_wire_text }
 import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageServed, FabricStorageLocalFiles }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.fabric_event_log {
-  PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition, event_log_refusal_wire,
+  PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition, event_log_refusal_wire, event_log_read_budget,
 }
 
 // READING A PARTITION WITHOUT WRITING TO IT, and that is the whole point of a second entry beside
@@ -47,7 +47,7 @@ fn head_word(head: HeadExpectation) -> String {
 // One line per event, oldest first: its id and its wire text. The text is the event's own
 // serialization, so a reader sees exactly the bytes the store holds rather than a rendering minted
 // here. Rendered by map-then-join rather than a fold over a copied accumulator: a readout is bounded
-// at partition_read_budget() events, and an accumulator re-copied per event is quadratic in bytes at
+// at event_log_read_budget() events, and an accumulator re-copied per event is quadratic in bytes at
 // that bound (DESIGN section 6 -- a copied accumulator is fixed regardless of the realized n).
 fn readout_lines(readout: PartitionReadout) -> String {
   join(map(readout.events, env => join([env.id as String, " ", pool_event_wire_text(event: env.event), "\n"], "")), "")
@@ -94,7 +94,6 @@ fn partition_read_exit(report: PartitionReadReport, receipt: NonEmptyStr) -> Pro
   }
 }
 
-fn partition_read_budget() -> Nat { 4096 }
 
 // THE SERVED READ: any host on the tailnet, against the placed store's endpoint. This is the entry
 // the live group A receipt runs, e.g.
@@ -111,7 +110,7 @@ fn fabric_partition_read_served(endpoint: NonEmptyStr, partition: NonEmptyStr, r
     report: partition_read_report(
       store: FabricStorageServed { endpoint: endpoint },
       partition: (partition as String) as PartitionId,
-      budget: partition_read_budget(),
+      budget: event_log_read_budget(),
     ),
     receipt: receipt,
   )
@@ -124,7 +123,7 @@ fn fabric_partition_read_local(root: NonEmptyStr, partition: NonEmptyStr, receip
     report: partition_read_report(
       store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: root) },
       partition: (partition as String) as PartitionId,
-      budget: partition_read_budget(),
+      budget: event_log_read_budget(),
     ),
     receipt: receipt,
   )

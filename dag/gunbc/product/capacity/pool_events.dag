@@ -3,11 +3,8 @@ module product.capacity.pool_events
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
 import std.measure { Measure }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber, JsonKeyValue, json_object, json_kv, json_string, json_int, serialize_json }
-import extdeps.languages.json.parse {
-  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
-  json_object_unique_member, JsonMemberFound,
-}
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int }
+import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_nonempty, member_nat }
 import product.capacity.pool {
   Pool, PoolOutcome, PoolAdvanced, PoolRefused, PoolRefusal, LedgerRefusal,
   PoolReading, PoolRead, PoolReadingRefused,
@@ -16,7 +13,7 @@ import product.capacity.pool {
 import extdeps.accounting.encumbrance { EncumbranceRefusal, ExceedsAppropriation }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
-  AppendDecision, AppendAdmitted, AppendStale,
+  AppendDecision, AppendAdmitted, AppendStale, EventDecode, EventDecoded, EventUndecodable,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, lease_grant, lease_fence_of }
 
@@ -75,51 +72,8 @@ fn pool_event_kind_members(e: PoolEvent) -> List<JsonKeyValue> {
   }
 }
 
-// THE WIRE IS THE EVENT'S CANONICAL TEXT AND NOTHING ELSE. The id is not inside it: the store's
-// content address of these bytes IS the id, so carrying it inside would make the bytes depend on
-// their own hash.
-fn pool_event_canonical_json(e: ChainEvent<PoolEvent>) -> JsonValue {
-  json_object(members: concat([
-    json_kv(key: "schema", value: json_string(s: pool_event_schema)),
-    json_kv(key: "partition", value: json_string(s: e.partition as String)),
-    json_kv(key: "parent", value: json_string(s: match e.parent { Present { value: p } => p as String  Absent => "" })),
-    json_kv(key: "recorded_at", value: json_int(n: e.recorded_at)),
-    json_kv(key: "actor", value: json_string(s: e.actor as String)),
-    json_kv(key: "kind", value: json_string(s: pool_event_kind_word(e: e.payload))),
-  ], pool_event_kind_members(e: e.payload)))
-}
-
 fn pool_event_wire_text(event: ChainEvent<PoolEvent>) -> String {
-  serialize_json(v: pool_event_canonical_json(e: event))
-}
-
-type PoolEventDecode
-  = PoolEventDecoded { event: ChainEvent<PoolEvent> }
-  | PoolEventUndecodable { reason: String }
-
-fn member_string(doc: JsonValue, key: String) -> String? {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
-    _ => none
-  }
-}
-
-fn member_nonempty(doc: JsonValue, key: String) -> NonEmptyStr? {
-  match member_string(doc: doc, key: key) {
-    Present { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } }
-    Absent => none
-  }
-}
-
-fn member_nat(doc: JsonValue, key: String) -> Nat? {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: JsonNumber { lexeme: lex } } =>
-      match parse_int(s: lex as String) {
-        Present { value: n } => if n < 0 { none } else { Present { value: n } }
-        Absent => none
-      }
-    _ => none
-  }
+  chain_event_wire_text(schema: pool_event_schema, e: event, kind: pool_event_kind_word(e: event.payload), members: pool_event_kind_members(e: event.payload))
 }
 
 fn pool_event_kind_decode(doc: JsonValue, word: String) -> PoolEvent? {
@@ -175,49 +129,10 @@ fn pool_event_kind_decode(doc: JsonValue, word: String) -> PoolEvent? {
   }
 }
 
-fn pool_event_decode(text: String) -> PoolEventDecode {
-  match parse_json_document(s: text) {
-    JsonDocumentUnreadable { gap } => PoolEventUndecodable { reason: join(["not JSON: ", json_document_gap_text(gap: gap)], "") }
-    JsonDocumentParsed { value: doc } =>
-      match member_string(doc: doc, key: "schema") {
-        Present { value: s } =>
-          if s != pool_event_schema {
-            PoolEventUndecodable { reason: join(["schema ", s, " is not ", pool_event_schema], "") }
-          } else {
-            match member_nonempty(doc: doc, key: "partition") {
-              Absent => PoolEventUndecodable { reason: "partition missing" }
-              Present { value: part } =>
-                match member_nat(doc: doc, key: "recorded_at") {
-                  Absent => PoolEventUndecodable { reason: "recorded_at missing or not a non-negative integer" }
-                  Present { value: at } =>
-                    match member_nonempty(doc: doc, key: "actor") {
-                      Absent => PoolEventUndecodable { reason: "actor missing" }
-                      Present { value: actor } =>
-                        match member_string(doc: doc, key: "kind") {
-                          Absent => PoolEventUndecodable { reason: "kind missing" }
-                          Present { value: kind } =>
-                            match pool_event_kind_decode(doc: doc, word: kind) {
-                              Absent => PoolEventUndecodable { reason: join(["kind ", kind, " did not decode"], "") }
-                              Present { value: payload } =>
-                                PoolEventDecoded { event: ChainEvent {
-                                  partition: (part as String) as PartitionId,
-                                  parent: match member_string(doc: doc, key: "parent") { Present { value: p } => if p == "" { none } else { Present { value: p as EventId } }  Absent => none },
-                                  recorded_at: at,
-                                  actor: actor,
-                                  payload: payload,
-                                } }
-                            }
-                        }
-                    }
-                }
-            }
-          }
-        Absent => PoolEventUndecodable { reason: "schema missing" }
-      }
-  }
+fn pool_event_decode(text: String) -> EventDecode<PoolEvent> {
+  chain_event_decode(text: text, schema: pool_event_schema, kind_decode: fn(doc, word) { pool_event_kind_decode(doc: doc, word: word) })
 }
 
-// APPLYING ONE EVENT IS THE POOL TRANSITION IT NAMES, at the instant the chain recorded it.
 fn pool_apply_event<Q, S>(pool: Pool<Q, S>, env: ChainEnvelope<PoolEvent>) -> PoolOutcome<Q, S> {
   let at = env.event.recorded_at
   match env.event.payload {
