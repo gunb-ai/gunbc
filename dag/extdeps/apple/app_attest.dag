@@ -743,7 +743,7 @@ fn assertion_refusal(parts: AssertionParts, e: AssertionExpectation) -> Assertio
       match assertion_signature_verifies(parts: parts, e: e) {
         Present { value: true } => none
         Present { value: false } => Present { value: AssertionSignatureInvalid }
-        Absent => Present { value: AssertionSignatureInvalid }
+        Absent => Present { value: AssertionUndecodable { cause: "the stored key or the assertion signature is not an admitted P-256 encoding" } }
       }
   }
 }
