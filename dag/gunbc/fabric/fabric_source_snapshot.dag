@@ -568,13 +568,32 @@ fn capture_source_snapshot(
 // component. Measured alongside the reproduction above. So the residual is substitution of a
 // DIRECTORY component the route already created, never of the file itself.
 //
+// WHAT STAYS OPEN, IN ONE SENTENCE SO IT CANNOT BE READ PAST: ANCESTRY SUBSTITUTION BY THE OWNING
+// UID. An actor holding the uid this process runs as can rename a directory component of the
+// destination between two of this route's operations and leave a symlink in its place, and the
+// remaining writes follow it. Nothing narrower is open -- not the file, which `O_CREAT|O_EXCL`
+// refuses to redirect; not any other principal, which the 0700 workspace excludes; and not the
+// snapshot's CONTENTS, which the store verifies. It is the destination's ancestry, and only for
+// that one principal.
+//
 // NEXT-RUNG TRIGGER, NAMING THE CAPABILITY RATHER THAN AN ARTIFACT: directory-anchored filesystem
-// operations reachable from `.dag` -- an opened directory handle plus `openat`/`mkdirat` with
-// `O_NOFOLLOW`, so a path is resolved once and every later operation is relative to the handle that
-// resolution produced. No primitive in this repository provides one today: `extdeps.shell` and
-// `extdeps.filesystem.filesystem_io` are path-addressed without exception, so this is a missing
-// host capability and not an unwritten check. When it lands, `ProviderWorkspace` carries the handle
-// instead of the path and the residual above closes for every principal.
+// primitives, openat-style, exist in the `.dag` filesystem surface -- an opened directory handle
+// plus `openat`/`mkdirat` with `O_NOFOLLOW`, so a path is resolved once and every later operation
+// is relative to the handle that resolution produced. No primitive in this repository provides one
+// today: `extdeps.shell` and `extdeps.filesystem.filesystem_io` are path-addressed without
+// exception, so this is a missing host capability and not an unwritten check. It is NOT retired by
+// a pre-flight `lstat`, by canonicalizing the destination, by re-checking it after the writes, or
+// by any single operation gaining `O_NOFOLLOW` while its siblings stay path-addressed: the
+// capability is the HANDLE that every operation in the sequence shares. When it lands,
+// `ProviderWorkspace` carries the handle instead of the path and this residual closes for every
+// principal.
+//
+// WHY THIS IS A FAILURE-MODE ROW AND NOT A DECLARED RUNG DROP, since a reader is entitled to ask.
+// A section 4b(3) drop records a rung that HELD and was lowered, with a restoration trigger. This
+// class never held higher here: the route is new, and its first honest reading is the one written
+// above. So it is rostered as `gunbc.recurring_failure_mode`
+// `a_pathname_reresolves_its_ancestry_between_calls` -- found at mitigatable, ceiling structurally
+// impossible, trigger as stated -- and nothing is owed to `docs/design-rung-drops.md`.
 type ProviderWorkspace sole_constructor {
   root: NonEmptyStr
 }
