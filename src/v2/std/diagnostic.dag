@@ -1,7 +1,7 @@
 module v2.std.diagnostic
 
 import v2.std.algebra { bag_eq, list_append, list_snoc_item, fold_list, freemonoid_empty }
-import std.algebra { Monoid, Semigroup }
+import std.algebra { FreeMonoid, Monoid, Semigroup }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.node { Node, Symbol }
 
@@ -13,11 +13,26 @@ type LocusAnchor<T> {
   at: T
 }
 
+// A DIAGNOSTIC IS LOCATED WHERE ITS SUBJECT LIVES, AND A DECLARATION LIVES IN THE NAMESPACE. The
+// first four arms locate in text, at a node, or at a port; none of them can name a declaration by
+// the identity the containment tree already gives it. The gap was papered over: a module the
+// resolver could not find was reported on a Textual whole-file locus with the module's dotted
+// name standing where a FILE belongs -- a qualified name wearing a filename's clothes, and a
+// consumer joining that locus to a real path would join on a name no file has. DESIGN section
+// 3's standing rule is the opposite: cite the SYMBOL, and add a position only where no symbol
+// exists to name. DeclarationLocus is that citation form. It carries the qualified path
+// structurally (the segments are the identity; the dotted string is display), so a consumer
+// that needs the module, the leaf, or a join against a symbol index reads segments rather than
+// re-parsing a rendering. It deliberately carries NO node: a declaration's node is its whole
+// body, and a locus that dragged the body along would make every persisted row that names a
+// competing binder the size of the binder. First consumer: v2.compiler.resolve names each
+// competing declaration of an ambiguous reference here, one diagnostic per binder.
 type Locus
   = Textual { file: Symbol, extent: Extent }
   | NodeLocus { anchor: LocusAnchor<Node> }
   | SourcePortLocus { anchor: LocusAnchor<Symbol>, file: Symbol, extent: Extent }
   | InvariantPortLocus { anchor: LocusAnchor<Symbol>, invariant: Symbol }
+  | DeclarationLocus { declaration: FreeMonoid<Symbol> }
 
 type NoCorrectionReason
   = UserInputBoundary
@@ -69,6 +84,10 @@ fn invariant_port_locus(port: Symbol, invariant: Symbol) -> Locus {
   InvariantPortLocus { anchor: LocusAnchor { at: port }, invariant: invariant }
 }
 
+fn declaration_locus(declaration: FreeMonoid<Symbol>) -> Locus {
+  DeclarationLocus { declaration: declaration }
+}
+
 // A generic operation may receive its locus before it knows which refusal will fire. The
 // operation owns that classification: textual evidence becomes a source-bearing port locus;
 // every source-independent seed, including a structural node, becomes the exact invariant that
@@ -84,6 +103,7 @@ fn port_refusal_locus(at: Locus, port: Symbol, invariant: Symbol) -> Locus {
     InvariantPortLocus { anchor: _, invariant: _ } =>
       invariant_port_locus(port: port, invariant: invariant)
     NodeLocus { anchor: _ } => invariant_port_locus(port: port, invariant: invariant)
+    DeclarationLocus { declaration: _ } => invariant_port_locus(port: port, invariant: invariant)
   }
 }
 
@@ -137,12 +157,14 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
       NodeLocus { anchor: _ } => false
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: _, invariant: _ } => false
+      DeclarationLocus { declaration: _ } => false
     }
     NodeLocus { anchor: na } => match b {
       Textual { file: _, extent: _ } => false
       NodeLocus { anchor: nb } => na.at == nb.at
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: _, invariant: _ } => false
+      DeclarationLocus { declaration: _ } => false
     }
     SourcePortLocus { anchor: pa, file: fa, extent: ea } => match b {
       Textual { file: _, extent: _ } => false
@@ -150,12 +172,21 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
       SourcePortLocus { anchor: pb, file: fb, extent: eb } =>
         (pa.at == pb.at) && (fa == fb) && extent_eq(a: ea, b: eb)
       InvariantPortLocus { anchor: _, invariant: _ } => false
+      DeclarationLocus { declaration: _ } => false
     }
     InvariantPortLocus { anchor: pa, invariant: ia } => match b {
       Textual { file: _, extent: _ } => false
       NodeLocus { anchor: _ } => false
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: pb, invariant: ib } => (pa.at == pb.at) && (ia == ib)
+      DeclarationLocus { declaration: _ } => false
+    }
+    DeclarationLocus { declaration: da } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { anchor: _ } => false
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: _, invariant: _ } => false
+      DeclarationLocus { declaration: db } => da == db
     }
   }
 }
@@ -220,6 +251,20 @@ fn rejected_with_pending(
     None => rejected
     Some { diagnostics: p } => non_empty_diagnostics_append(a: p, b: rejected)
   }
+}
+
+// THE FATAL DIAGNOSTIC IS THE LAST ONE, AND THIS IS THE ONE PLACE THAT SAYS SO. rejected_with_pending
+// PREPENDS the advisories that rode along in front of the refusal that fired, so the cause a
+// consumer should fold to is the tail, never the head -- the head is whatever advisory happened to
+// be pending first. Two consumers had each spelled this fold for themselves (the native CLI's fatal
+// pick and the native test route's fatal reason), which is the fork DESIGN section 3 forbids: the
+// ordering is created here, so the reading of it lives here.
+fn diagnostics_fatal(d: NonEmptyDiagnostics) -> Diagnostic {
+  fold_list(xs: d.tail, empty: d.head, cons: fn(_acc, diag) { diag })
+}
+
+fn diagnostics_fatal_reason(d: NonEmptyDiagnostics) -> Symbol {
+  diagnostics_fatal(d: d).reason
 }
 fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
   match a {

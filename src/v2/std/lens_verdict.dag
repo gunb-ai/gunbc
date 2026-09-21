@@ -1,12 +1,16 @@
 module v2.std.lens_verdict
 
+import std.occurrence_identity { OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import v2.std.algebra { fold_list }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic {
   ByteRange,
   CorrectionNotModeled,
+  DeclarationLocus,
   Diagnostic,
   Extent,
   NodeLocus,
+  NonEmptyDiagnostics,
   InvariantPortLocus,
   SourcePortLocus,
   Textual,
@@ -15,7 +19,8 @@ import v2.std.diagnostic {
   textual_whole_file_diagnostic,
 }
 import v2.std.integer { integer_int_to_decimal_string }
-import v2.std.node { Symbol }
+import v2.std.node { Node, Symbol }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
 
 // LensVerdict is the shared fail-closed lattice for lenses that have not yet specialized to a
@@ -64,6 +69,7 @@ fn lens_verdict_diagnostic_locus_module(d: Diagnostic) -> String {
     NodeLocus { anchor: _ } => ""
     SourcePortLocus { anchor: _, file: module_file, extent: _ } => symbol_lexeme(sym: module_file)
     InvariantPortLocus { anchor: _, invariant: _ } => ""
+    DeclarationLocus { declaration: _ } => ""
   }
 }
 
@@ -80,14 +86,53 @@ fn lens_verdict_extent_text(e: Extent) -> String {
   }
 }
 
+// A NODE LOCUS NAMES AN OCCURRENCE, AND THE OCCURRENCE IS WHAT THE READER GETS. The arm used to
+// render "<node locus, no file>", which is true and useless: the anchor node carries its
+// occurrence identity (std.occurrence_identity, the keying home DESIGN section 3b names for
+// occurrence identity within one source graph), so the position the failing stage established
+// was in hand and was rendered as its own absence. The ordinal is the parser's, scoped to the
+// source graph that minted it; resolving it to a byte range needs that graph's SpanIndex, which
+// the stages past parse do not carry -- so this renders the identity the diagnostic HAS rather
+// than fabricating a file it does not.
+fn lens_verdict_node_occurrence_text(node: Node) -> String {
+  match node.occurrence_id {
+    OccurrenceSynthetic => "<synthetic node occurrence>"
+    OccurrenceMinted { id: id } =>
+      concat("<node occurrence #", concat(integer_int_to_decimal_string(value: id.value), ">"))
+    OccurrenceProjected { id: id, caused_by: _ } =>
+      concat("<projected node occurrence #", concat(integer_int_to_decimal_string(value: id.value), ">"))
+  }
+}
+
 fn lens_verdict_diagnostic_locus_text(d: Diagnostic) -> String {
   match d.at {
     Textual { file: f, extent: e } =>
       concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
     SourcePortLocus { anchor: _, file: f, extent: e } =>
       concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
-    NodeLocus { anchor: _ } => "<node locus, no file>"
+    NodeLocus { anchor: a } => lens_verdict_node_occurrence_text(node: a.at)
     InvariantPortLocus { anchor: _, invariant: inv } =>
       concat("<invariant ", concat(symbol_lexeme(sym: inv), ">"))
+    DeclarationLocus { declaration: declaration } =>
+      concat("declaration ", qualified_name_to_dotted_string(qn: declaration))
   }
+}
+
+// ONE DIAGNOSTIC, LOCATED: "reason @ locus". The reason alone was what every boundary that
+// summarized a refusal kept, and the locus is what each of them dropped.
+fn lens_verdict_diagnostic_located_text(d: Diagnostic) -> String {
+  concat(symbol_lexeme(sym: d.reason), concat(" @ ", lens_verdict_diagnostic_locus_text(d: d)))
+}
+
+// THE WHOLE CHAIN, EACH LINK LOCATED, IN CARRIAGE ORDER. The last link is the cause that
+// refused (rejected_with_pending prepends advisories, so the fatal diagnostic is the tail);
+// the earlier links are what rode along -- advisories, and for an ambiguous reference the
+// lookup class and each competing declaration. Rendering only the fatal would drop exactly
+// the detail those links exist to carry.
+fn lens_verdict_diagnostics_located_chain_text(d: NonEmptyDiagnostics) -> String {
+  fold_list(
+    xs: d.tail,
+    empty: lens_verdict_diagnostic_located_text(d: d.head),
+    cons: fn(acc, diag) { concat(acc, concat(" -> ", lens_verdict_diagnostic_located_text(d: diag))) }
+  )
 }
