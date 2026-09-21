@@ -46,10 +46,11 @@ enum RetainedCommands {
         measured_root_demands: Option<String>,
     },
 
-    /// Run targets named by an absolute label or a bazel-style target PATTERN, and
-    /// report the standing each subject's own producer answers in. An exact label
-    /// routes to its bound producer; a set form selects and runs every matching
-    /// witness module. An unadmitted form or an unknown target refuses.
+    /// Run a target named by an absolute label or a bazel-style target PATTERN, and
+    /// report the standing its own producer answers in. An exact label routes to its
+    /// bound producer. A set form is admitted and refused with status 2: it runs only
+    /// through the native test route, never the interpreter. An unadmitted form or an
+    /// unknown target refuses.
     Test {
         /// Absolute label of one target, or a pattern denoting a set.
         #[arg(value_name = "TARGET_PATTERN")]

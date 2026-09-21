@@ -326,7 +326,7 @@ pub fn gunbc_cli_version_text(identity: Rc<CliVersionIdentity>) -> String {
 pub fn gunbc_cli_build_identity_seed_dissolve_trigger() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("🟡 dissolve-on: the GUNBC_BUILD_IDENTITY observation block in src/v1/stage0/build.rs — exactly one removable seed unit. DISSOLVES WHEN the v1-zero-hand-maintained-rust ROADMAP lane (gunbc.roadmap_authority roadmap_nodes) emits the build-time Git observation from gunbc.cli_dispatch_surface, at which point git_output and the identity block delete together rather than leaving a second producer. Checkable until deletion: GUNBC_BUILD_IDENTITY has exactly one cargo:rustc-env producer in src/v1/stage0/build.rs and gunbc_cli_version_text is its sole formatting authority.".to_string())
+            crate::std_dissolution::unbound_dissolution("🟡 dissolve-on: the GUNBC_BUILD_IDENTITY observation block in src/v1/stage0/build.rs — exactly one removable seed unit. DISSOLVES WHEN the v1-zero-hand-maintained-rust ROADMAP lane (gunbc.roadmap_authority roadmap_nodes) emits the build-time Git observation from gunbc.cli_dispatch_surface, at which point git_output and the identity block delete together rather than leaving a second producer. Checkable until deletion: GUNBC_BUILD_IDENTITY has exactly one cargo:rustc-env producer in src/v1/stage0/build.rs, gunbc_cli_version_text is its sole formatting authority, and the rerun watch set that keeps the identity fresh is read from the one projection src/v1/stage0/linked_partition_crates.generated.txt (Stage0LinkedPartitionCratesArtifact, rendered by gunbc.stage0_executable_assembly_emit from the partition authority) -- build.rs names no crate itself and refuses the build when that projection is unreadable, names a crate without a manifest, or is empty.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -816,7 +816,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }), Rc::new(CliSubcommandRow {
     verb: "test".to_string(),
     variant: "Test".to_string(),
-    doc: Rc::new(vec!["Run targets named by an absolute label or a bazel-style target PATTERN, and".to_string(), "report the standing each subject's own producer answers in. An exact label".to_string(), "routes to its bound producer; a set form (`//pkg:all`, `//pkg:*`,".to_string(), "`//pkg/...`) selects and runs every matching witness module. A form the".to_string(), "pattern grammar does not admit, or an unbound or unknown target, refuses".to_string(), "rather than reporting a pass.".to_string()]),
+    doc: Rc::new(vec!["Run a target named by an absolute label or a bazel-style target PATTERN, and".to_string(), "report the standing its own producer answers in. An exact label routes to".to_string(), "its bound producer. A set form (`//pkg:all`, `//pkg:*`, `//pkg/...`) is".to_string(), "admitted and refused with status 2: it runs only through the native test".to_string(), "route, never the interpreter. A form the pattern grammar does not admit, or".to_string(), "an unbound or unknown target, refuses rather than reporting a pass.".to_string()]),
     operands: Rc::new(vec![Rc::new(CliOperandRow {
     field: "target".to_string(),
     placeholder: "TARGET_PATTERN".to_string(),
