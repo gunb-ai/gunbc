@@ -277,6 +277,31 @@ fn shell_test_is_executable_argv(path: FilePath) -> List<String> {
 // is a fact about the PROCESS rather than about a path, and the two are joined by the consumer
 // deciding whether a path's owner is trusted; folding the process identity into a path observation
 // would make one operation answer two questions.
+// Canonicalization and identity, the two observations an ancestry walk cannot be sound without.
+//
+// Canonical resolves every symlink and `..` ONCE, so a consumer that then uses only the canonical
+// spelling never re-traverses an alias somebody else owns. DeviceInodeOf names a directory by what
+// the filesystem calls it rather than by a path, which is how the walk knows it has reached the
+// root: `/` is its own parent, so `/` and `/..` report one device and inode. Without that, a walk
+// can only count levels, and counting cannot tell "I have seen the whole ancestry" from "I ran out
+// of budget" -- two states that must not share an answer.
+service shell.Path {
+  operation Canonical {
+    input { path: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["realpath", "-e", "--", "{path}"] }
+    exit {
+      0 => Unit "the path exists and its canonical spelling is on stdout"
+      nonzero => String "realpath could not resolve the path"
+    }
+  }
+}
+
 service shell.Id {
   operation UserName {
     input {}
@@ -361,6 +386,16 @@ service shell.Mkdir {
 }
 
 service shell.Link {
+  operation Symbolic {
+    input { target: FilePath, link: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["ln", "-s", "--", "{target}", "{link}"] }
+    exit {
+      0 => Unit "Symlink created; fails if the link name exists, so it never replaces an entry"
+      nonzero => String "ln -s failed"
+    }
+  }
+
   operation Hard {
     input { source: FilePath, destination: FilePath }
     output { success: Bool from "exit_success" }
@@ -430,6 +465,21 @@ service shell.Stat {
     transport shell { argv: ["stat", "-c", "%a", "--", "{path}"] }
     exit {
       0 => Unit "the path exists and its octal mode is on stdout"
+      nonzero => String "stat could not read the path"
+    }
+  }
+
+  operation DeviceInodeOf {
+    input { path: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["stat", "-c", "%d:%i", "--", "{path}"] }
+    exit {
+      0 => Unit "the path exists and its device and inode are on stdout"
       nonzero => String "stat could not read the path"
     }
   }

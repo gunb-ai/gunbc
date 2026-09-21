@@ -564,11 +564,13 @@ fn capture_source_snapshot(
 // refuses, and the allocation does not happen.
 //
 // WHAT THAT CLOSES, AND WHAT IT DOES NOT, stated at its real strength because the neighbouring
-// claim would be inflation. Given an admitted parent, an actor that is NOT the owning uid cannot
-// substitute anything on this route: it cannot rename the workspace, because the parent is sticky
-// or closed to it, and it cannot write inside the workspace, which is mode 0700. That is the
-// untrusted-actor case, and it is closed by an admitted precondition plus construction rather than
-// by hope about the environment.
+// claim would be inflation. Given a base that was ADMITTED -- canonical, with every level up to the
+// root owned by this process or by root and none writable by others unless sticky -- an actor that
+// is NOT the owning uid cannot substitute anything on this route: it cannot rename any level of
+// that ancestry, and it cannot write inside the workspace, which is mode 0700. The conditional is
+// load-bearing and is not decoration: the claim is about an admitted base, and two earlier
+// revisions of this paragraph asserted it unconditionally while the admission underneath was still
+// admitting an over-deep ancestry and an aliased one.
 //
 // AN ACTOR RUNNING AS THE OWNING UID IS NOT CLOSED, AND NO PATHNAME-ADDRESSED DESIGN CLOSES IT.
 // Every operation available here -- `mkdir`, `mktemp`, `Filesystem.WriteCreateNew` -- takes a path
@@ -707,12 +709,18 @@ fn level_is_safe(observed: LevelObservation, trusted: TrustedOwners) -> Bool {
   }
 }
 
-// THE WALK IS BY REPEATED "/..", AND IT IS BOUNDED RATHER THAN TERMINATED ON THE ROOT. There is no
-// path decomposition in the substrate, so an ancestor is named by appending another "/.." and
-// letting the kernel resolve it. At the filesystem root "/.." resolves to "/" again, so the last
-// iterations re-examine the root harmlessly -- which is why a fixed bound is sound here rather than
-// a truncation: the walk covers the whole real ancestry as long as the bound exceeds its depth, and
-// a deeper base than the bound REFUSES rather than admitting an unexamined level.
+// THE WALK IS BY REPEATED "/..", AND IT TERMINATES ON THE ROOT -- THE BOUND IS ONLY A LOOP GUARD.
+// There is no path decomposition in the substrate, so an ancestor is named by appending another
+// "/.." and letting the kernel resolve it. What says the walk is FINISHED is `root_reached`, not
+// this number: `/` is its own parent, so a level whose device and inode equal those of its own ".."
+// is the root.
+//
+// THIS COMMENT PREVIOUSLY DESCRIBED A BOUND THAT WAS SOUND BECAUSE IT EXCEEDED REAL DEPTHS, AND
+// CLAIMED THAT EXCEEDING IT REFUSED. The second half was false -- the exhaustion arm answered
+// AncestrySafe -- so the sentence a reader checks asserted the wall while the arm underneath was
+// the hole. Found twice independently, by the side chat and by review 69677 on gunbc#11960. The
+// arm now refuses, and because refusal is only reachable when the root was NOT reached, flipping it
+// does not make every walk refuse.
 data provider_root_ancestry_bound: Int = 24
 
 type AncestryVerdict
@@ -731,22 +739,70 @@ fn ancestry_refusal_detail(observed: LevelObservation) -> String {
   }
 }
 
+// THE WALK MUST REACH THE ROOT, AND EXHAUSTING ITS BUDGET IS A REFUSAL.
+//
+// The first version answered AncestrySafe when its counter ran out, so an unsafe ancestor above the
+// bound was never looked at and the base was admitted anyway. The annotation beside it said a base
+// deeper than the bound "REFUSES rather than admitting an unexamined level" -- the prose claimed
+// the wall and the code was the hole, which is worse than having neither, because the sentence is
+// what a reader checks instead of the arm. Reproduced by the side chat.
+//
+// FLIPPING THE EXHAUSTED ARM ALONE WOULD MAKE EVERY WALK REFUSE, so the walk needs to know when it
+// is DONE rather than when it has counted enough. `/` is its own parent, so a level whose device
+// and inode equal those of its own `..` IS the root: that is the terminating observation, the
+// budget is only a guard against an unbounded loop, and the two now answer differently --
+// root-reached admits, budget-exhausted refuses.
+type RootReached
+  = AtRoot
+  | BelowRoot
+  | RootUndecidable { detail: String }
+
+fn root_reached(path: String) -> RootReached {
+  let here = shell.Stat.DeviceInodeOf(path: path as FilePath)
+  if !here.success {
+    RootUndecidable { detail: join(["device and inode unreadable for ", path], "") }
+  } else {
+    let above = shell.Stat.DeviceInodeOf(path: join([path, "/.."], "") as FilePath)
+    if !above.success {
+      RootUndecidable { detail: join(["device and inode unreadable above ", path], "") }
+    } else if trim(s: here.stdout) == trim(s: above.stdout) {
+      AtRoot
+    } else {
+      BelowRoot
+    }
+  }
+}
+
 // THE WALK CARRIES THE PATH DOWN RATHER THAN REBUILDING IT PER LEVEL. Appending "/.." to the
 // previous path is one concatenation per step; re-deriving the n-th ancestor from the candidate
 // each time is the quadratic accumulator DESIGN section 6 says to fix regardless of the realized n.
+//
+// IT WALKS A CANONICAL PATH, WHICH IS WHAT MAKES "/.." MEAN THE PARENT. On a path holding symlinks,
+// appending "/.." walks the RESOLVED target's ancestry and never inspects the aliases themselves --
+// so a component owned by another principal is neither seen nor protected, and that principal can
+// repoint it after admission. The caller canonicalizes once and passes the canonical spelling here,
+// and uses only that spelling afterwards.
 fn ancestry_walk(path: String, trusted: TrustedOwners, remaining: Int) -> AncestryVerdict {
   if remaining <= 0 {
-    AncestrySafe
+    AncestryRefused {
+      level: path,
+      detail: "the ancestry is deeper than the walk's bound, so a level above it was never examined",
+    }
   } else {
     let observed = observe_level(path: path)
-    if level_is_safe(observed: observed, trusted: trusted) {
-      ancestry_walk(
-        path: join([path, "/.."], ""),
-        trusted: trusted,
-        remaining: remaining - 1,
-      )
-    } else {
+    if !level_is_safe(observed: observed, trusted: trusted) {
       AncestryRefused { level: path, detail: ancestry_refusal_detail(observed: observed) }
+    } else {
+      match root_reached(path: path) {
+        RootUndecidable { detail: d } => AncestryRefused { level: path, detail: d }
+        AtRoot => AncestrySafe
+        BelowRoot =>
+          ancestry_walk(
+            path: join([path, "/.."], ""),
+            trusted: trusted,
+            remaining: remaining - 1,
+          )
+      }
     }
   }
 }
@@ -765,27 +821,47 @@ fn observe_trusted_owners() -> TrustedOwners? {
   }
 }
 
+// THE ADMITTED ROOT IS THE CANONICAL SPELLING, AND THE CALLER USES THAT AND NOTHING ELSE.
+//
+// Admitting the spelling a caller supplied and then allocating under it re-traverses every symlink
+// in it on every later operation, so a component owned by another principal stays live long after
+// the admission looked at its target. Canonicalizing once removes the aliases from the name
+// entirely; the walk then examines the real ancestry, and because the returned root carries no
+// symlink there is nothing left for another principal to repoint. This is why the return value is
+// the canonical path rather than a Bool -- a predicate would have left the caller holding the
+// spelling that was never the subject.
 fn admit_provider_root(candidate: String) -> ProviderRootAdmission {
   if candidate == "" {
     ProviderRootRefused { root: candidate, cause: "the candidate base is empty" }
-  } else if !shell.Test.IsDirectory(path: candidate as FilePath).is_directory {
-    ProviderRootRefused { root: candidate, cause: "the candidate base is not a directory" }
   } else {
-    match observe_trusted_owners() {
-      Absent =>
-        ProviderRootRefused {
-          root: candidate,
-          cause: "this process could not name its own principal, so no owner is trusted",
-        }
-      Present { value: trusted } =>
-        match ancestry_is_safe(candidate: candidate, trusted: trusted) {
-          AncestryRefused { level: l, detail: d } =>
+    let resolved = shell.Path.Canonical(path: candidate as FilePath)
+    if !resolved.success {
+      ProviderRootRefused {
+        root: candidate,
+        cause: join(["the candidate base does not resolve: ", resolved.stderr], ""),
+      }
+    } else {
+      let canonical = trim(s: resolved.stdout)
+      if !shell.Test.IsDirectory(path: canonical as FilePath).is_directory {
+        ProviderRootRefused { root: candidate, cause: "the candidate base is not a directory" }
+      } else {
+        match observe_trusted_owners() {
+          Absent =>
             ProviderRootRefused {
               root: candidate,
-              cause: join(["the ancestry is unprotected at ", l, ": ", d], ""),
+              cause: "this process could not name its own principal, so no owner is trusted",
             }
-          AncestrySafe => ProviderRootAdmitted { root: candidate as NonEmptyStr }
+          Present { value: trusted } =>
+            match ancestry_is_safe(candidate: canonical, trusted: trusted) {
+              AncestryRefused { level: l, detail: d } =>
+                ProviderRootRefused {
+                  root: candidate,
+                  cause: join(["the ancestry is unprotected at ", l, ": ", d], ""),
+                }
+              AncestrySafe => ProviderRootAdmitted { root: canonical as NonEmptyStr }
+            }
         }
+      }
     }
   }
 }

@@ -202,6 +202,8 @@ type SnapshotScenario
   | EscapingPathScenario
   | DuplicatePathScenario
   | UnsafeAllocationRootScenario
+  | DeepAncestryScenario
+  | AliasedBaseScenario
 
 fn snapshot_scenario_name(scenario: SnapshotScenario) -> String {
   match scenario {
@@ -212,6 +214,8 @@ fn snapshot_scenario_name(scenario: SnapshotScenario) -> String {
     EscapingPathScenario => "escaping-path"
     DuplicatePathScenario => "duplicate-path"
     UnsafeAllocationRootScenario => "unsafe-allocation-root"
+    DeepAncestryScenario => "deep-ancestry"
+    AliasedBaseScenario => "aliased-base"
   }
 }
 
@@ -224,6 +228,8 @@ fn snapshot_scenarios() -> List<SnapshotScenario> {
     EscapingPathScenario,
     DuplicatePathScenario,
     UnsafeAllocationRootScenario,
+    DeepAncestryScenario,
+    AliasedBaseScenario,
   ]
 }
 
@@ -911,6 +917,106 @@ fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> Snapshot
   }
 }
 
+// THE BUDGET CONTROL. A walk that answers "safe" when its counter runs out has not examined the
+// ancestry, it has stopped looking at it -- and the base it admits may sit under anything. The
+// fixture is a chain deeper than the walk's bound, so the walk cannot reach the root within budget;
+// it must REFUSE. Its partner assertion is the one that keeps the repair from being "refuse
+// everything": an ordinary shallow base, /tmp, must still be admitted, and the unsafe-allocation-
+// root scenario beside this one asserts exactly that.
+data deep_chain_segment: String = "/d/d/d/d/d/d/d/d/d/d"
+
+fn deep_chain_path(root: String) -> String {
+  join([
+    root,
+    deep_chain_segment,
+    deep_chain_segment,
+    deep_chain_segment,
+  ], "")
+}
+
+fn run_deep_ancestry_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
+  let deep = deep_chain_path(root: workspace.root)
+  if !shell.Mkdir.Parents(path: deep as FilePath).success {
+    SnapshotScenarioFailed {
+      scenario: "deep-ancestry",
+      step: "author-chain",
+      detail: "the deep chain could not be created",
+    }
+  } else {
+    match admit_provider_root(candidate: deep) {
+      ProviderRootAdmitted { root: _ } =>
+        SnapshotScenarioFailed {
+          scenario: "deep-ancestry",
+          step: "admit",
+          detail: "a base deeper than the walk's bound was admitted, so a level above it was never examined",
+        }
+      ProviderRootRefused { root: _, cause: why } =>
+        SnapshotScenarioPassed {
+          scenario: "deep-ancestry",
+          detail: join(["refused the over-deep ancestry: ", why], ""),
+        }
+    }
+  }
+}
+
+// THE ALIAS CONTROL, AND WHAT IT CAN AND CANNOT ESTABLISH ON ONE UID.
+//
+// Appending "/.." to a path holding a symlink walks the TARGET's ancestry and never inspects the
+// alias, so an intermediate component owned by another principal is neither seen nor protected and
+// can be repointed after admission. The repair is to canonicalize once and use only the canonical
+// spelling, and THAT is what this control asserts: a candidate reached through an alias must be
+// admitted under its resolved name, never under the spelling that was passed in. A harness on one
+// uid cannot create a component owned by another principal, so what is checked here is the property
+// that removes the exposure -- the alias does not survive admission -- rather than a staged attack
+// it has no privilege to mount.
+fn run_aliased_base_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
+  let real_base = join([workspace.root, "/real-base"], "")
+  let alias = join([workspace.root, "/alias"], "")
+  let through_alias = join([alias, "/inner"], "")
+  let inner = join([real_base, "/inner"], "")
+  if !shell.Mkdir.Parents(path: inner as FilePath).success {
+    SnapshotScenarioFailed {
+      scenario: "aliased-base",
+      step: "author-base",
+      detail: "the aliased base could not be created",
+    }
+  } else if !shell.Link.Symbolic(target: real_base as FilePath, link: alias as FilePath).success {
+    SnapshotScenarioFailed {
+      scenario: "aliased-base",
+      step: "author-base",
+      detail: "the alias could not be created",
+    }
+  } else {
+    match admit_provider_root(candidate: through_alias) {
+      ProviderRootRefused { root: _, cause: c } =>
+        SnapshotScenarioFailed {
+          scenario: "aliased-base",
+          step: "admit",
+          detail: join(["a base reached through an alias this process owns was refused: ", c], ""),
+        }
+      ProviderRootAdmitted { root: admitted } =>
+        if (admitted as String) == through_alias {
+          SnapshotScenarioFailed {
+            scenario: "aliased-base",
+            step: "admit",
+            detail: "the alias survived admission, so every later operation would re-traverse it",
+          }
+        } else if (admitted as String) != inner {
+          SnapshotScenarioFailed {
+            scenario: "aliased-base",
+            step: "admit",
+            detail: join(["the admitted root is neither the alias nor its target: ", admitted as String], ""),
+          }
+        } else {
+          SnapshotScenarioPassed {
+            scenario: "aliased-base",
+            detail: join(["admitted under its resolved name ", admitted as String], ""),
+          }
+        }
+    }
+  }
+}
+
 // A LEAK IS A FAILURE, AND DISCARDING THE RELEASE RESULT MADE IT INVISIBLE. `release_provider_
 // workspace` answers whether the provider workspace actually went away, and an earlier revision
 // bound it to `_released` and threw it away -- so a scenario that leaked a workspace, with the
@@ -966,6 +1072,8 @@ fn run_snapshot_scenario(scenario: SnapshotScenario, binary: ScmAcceptanceBinary
         EscapingPathScenario => run_escaping_path_scenario(workspace: workspace)
         DuplicatePathScenario => run_duplicate_path_scenario(workspace: workspace)
         UnsafeAllocationRootScenario => run_unsafe_allocation_root_scenario(workspace: workspace)
+        DeepAncestryScenario => run_deep_ancestry_scenario(workspace: workspace)
+        AliasedBaseScenario => run_aliased_base_scenario(workspace: workspace)
       }
       let released = release_provider_workspace(workspace: workspace.provider)
       let cleaned = shell.Remove.RecursiveForce(path: workspace.root as FilePath)
