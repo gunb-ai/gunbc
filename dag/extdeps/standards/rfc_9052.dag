@@ -89,6 +89,7 @@ type CoseKeyRefusal
   | CoseKeyCurveUnexpected { crv: Int }
   | CoseKeyAlgorithmUnexpected { alg: Int }
   | CoseKeyCoordinateMalformed { label: Int, declared: ByteSize, expected: ByteSize }
+  | CoseKeyCoordinateNotAByteString { label: Int }
   | CoseKeyLabelNotAnInteger { label: Int }
 
 // The one key shape read here: EC2 over P-256 with ES256, x and y each exactly 32 octets. The
@@ -129,7 +130,7 @@ fn cose_coordinate(key: CborValue, label: Int) -> CoseCoordinate {
         CborByteString { octets: o } =>
           if count(o) == byte_size_count(b: cose_p256_coordinate_size()) { CoseCoordinateRead { octets: o } }
           else { CoseCoordinateRefused { cause: CoseKeyCoordinateMalformed { label: label, declared: byte_size(count: count(o)), expected: cose_p256_coordinate_size() } } }
-        _ => CoseCoordinateRefused { cause: CoseKeyCoordinateMalformed { label: label, declared: byte_size(count: 0), expected: cose_p256_coordinate_size() } }
+        _ => CoseCoordinateRefused { cause: CoseKeyCoordinateNotAByteString { label: label } }
       }
     other => CoseCoordinateRefused { cause: CoseKeyLabelRefused { lookup: other } }
   }
