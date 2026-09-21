@@ -1,0 +1,46 @@
+module gunbc.bare_reference_channel_outcome_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that realizes the bare-reference-channel outcome
+// instrument (`gunbc test //gunbc/instruments:bare-reference-channel-outcome`). Same shape and
+// owner as gunbc.required_lane_resolution_census_seed_growth, whose reading of a seed-only
+// population is this change's precedent.
+//
+// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). The instrument asks the loader one
+// question no .dag fold can answer today: for a given source file, did the BARE half of the
+// closure edge index run, and which modules did it pull. Both facts live on
+// `v1_compiler.cli_run` `BothClosureEdgeIndex`, a seed-internal structure with no substrate
+// representation, and the two gates that decide them -- `source_declares_import_lines` and the
+// `pullable` predicate inside `visit_bare_reference_providers` -- are seed code. A .dag
+// re-derivation would be a second authority for what the loader pulls, drifting the first time a
+// gate changed in the seed and not in the copy (DESIGN section 3), which is the precise defect
+// `gunbc.recurring_failure_mode.bare_reference_channel_declines_a_pull_in_silence` records. So the
+// instrument asks the seed.
+//
+// WHAT IS NOT NETTED. The `TargetProducer` variant and its `instrument_registry` row in
+// target_invocation_host extend existing rosters rather than adding a route, exactly as the
+// sibling rows state. `bare_reference_channel_expectations` and its `BareChannelExpectation` /
+// `BareChannelEligibility` carriers are enrolled here although they MIRROR
+// `gunbc.instrument_targets` `bare_reference_channel_expectations`: the mirror is hand-authored
+// beside the carrier on the same seam gunbc.target_invocation_seed_growth already owns, so the two
+// can drift until the seam is emitted, and an unenrolled mirror would be exactly the silent
+// escape hatch DESIGN section 7 forbids.
+data bare_reference_channel_outcome_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "BareReferenceChannelEntryReading", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "bare_reference_channel_readings", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "BareChannelEligibility", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "BareChannelExpectation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "bare_reference_channel_source_roots", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "bare_reference_channel_expectations", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "bare_channel_eligibility_rendered", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "run_bare_reference_channel_outcome", field: WholeDeclaration }
+  ],
+  reason: "The instrument asks the seed one question it alone can answer: for each of the four hermetic entries under fixtures/bare_reference_channel, did the loader's bare half RUN for that file (`bare_scan_eligible`, gate one) and which modules did it PULL (`bare_out`, gate two). bare_reference_channel_readings builds one MultiEntryIndex over the fixture root, demands the closure edge index per named entry through the ordinary build_both_closure_edge_index boundary, and returns module paths rather than file paths; it refuses with a located cause on an entry the index does not carry rather than returning an empty set, because an empty set from a module that was never read is indistinguishable from a decline (DESIGN section 5). run_bare_reference_channel_outcome is the target_invocation_host runner behind the label, and it mirrors the classifier whose authority is gunbc.instrument_targets bare_reference_channel_holds. The enrolled instrument is that label, reached as gunbc test //gunbc/instruments:bare-reference-channel-outcome; its discriminating red is executed by perturbing either gate in the seed, which flips exactly the entry that isolates it.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these items when the loader carries its bare-channel decision as a substrate fact a .dag fold can read -- per file, the channel's eligibility and, per declined name, the declining arm and the declaring module. That is the same capability gunbc.recurring_failure_mode.bare_reference_channel_declines_a_pull_in_silence names as its next-rung trigger, and it is sufficient for BOTH: the instrument observes the decision directly instead of reading the edge index in host Rust, and the classifier that is mirrored here becomes the only one. A trigger naming only an eligibility carrier would be satisfied while the decline stayed unreadable and this mirror stayed alive.",
+  current_boundary: "Reachable only as .dag free-calls. The reading indexes the fixture source root it is given, demands edges for four named entries, writes nothing outside the instrument's own rendered message, and substitutes no value for a refused reading."
+}
