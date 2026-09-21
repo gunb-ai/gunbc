@@ -547,7 +547,7 @@ fn capture_source_snapshot(
 // a check and a construction: the attacker's precondition is WRITE ACCESS TO THE PARENT, and there
 // is now no parent a caller can choose.
 //
-// AND THE PARENT IS ADMITTED, BECAUSE DELETING THE PARAMETER DID NOT DELETE THE CHOICE. The first
+// AND THE LOCATION IS THE PROVIDER'S OWN, BECAUSE DELETING THE PARAMETER DID NOT DELETE THE CHOICE. The first
 // repair allocated with a bare `mktemp -d`, which honours TMPDIR -- so the parent was still
 // selectable, through the environment instead of through an argument, and under a shared writable
 // non-sticky TMPDIR a DIFFERENT uid can rename the workspace out from under the route. The side
@@ -564,13 +564,15 @@ fn capture_source_snapshot(
 // refuses, and the allocation does not happen.
 //
 // WHAT THAT CLOSES, AND WHAT IT DOES NOT, stated at its real strength because the neighbouring
-// claim would be inflation. Given a base that was ADMITTED -- canonical, with every level up to the
-// root owned by this process or by root and none writable by others unless sticky -- an actor that
-// is NOT the owning uid cannot substitute anything on this route: it cannot rename any level of
-// that ancestry, and it cannot write inside the workspace, which is mode 0700. The conditional is
-// load-bearing and is not decoration: the claim is about an admitted base, and two earlier
-// revisions of this paragraph asserted it unconditionally while the admission underneath was still
-// admitting an over-deep ancestry and an aliased one.
+// claim would be inflation. The base is the provider's own fixed location -- created by this
+// process, or verified as its own at owner-only mode and never adopted -- with a literal ancestry
+// each level of which is owned by this process or by root and is not writable by others unless it
+// is sticky. Under that, an actor which is NOT the owning uid cannot substitute anything on this
+// route: it cannot rename a level it does not own inside a sticky or closed directory, and it
+// cannot write inside a 0700 workspace. THE CONDITIONAL IS LOAD-BEARING AND IS NOT DECORATION.
+// Three earlier revisions of this paragraph asserted the same conclusion while the admission
+// underneath was still accepting a squatted base, an over-deep ancestry and an aliased one, so the
+// sentence was true of an admission that did not exist yet.
 //
 // AN ACTOR RUNNING AS THE OWNING UID IS NOT CLOSED, AND NO PATHNAME-ADDRESSED DESIGN CLOSES IT.
 // Every operation available here -- `mkdir`, `mktemp`, `Filesystem.WriteCreateNew` -- takes a path
@@ -633,44 +635,90 @@ type ProviderWorkspaceAllocation
   = ProviderWorkspaceAllocated { workspace: ProviderWorkspace }
   | ProviderWorkspaceRefused { detail: String }
 
+// WHY THIS STOPPED BEING A PATH-ADMISSION PROBLEM AND BECAME A LOCATION DECISION.
+//
+// Three admissions stood here in turn, each repairing the last and each defeated by the same shape.
+// A single-directory check missed the grandparent. A per-level walk up "/.." never inspected
+// symlinked components, so their owner could repoint them after admission. Canonicalizing first and
+// then walking left a WINDOW between the two -- the side chat redirected a write through it with
+// uid 33 against a uid 65534 provider -- and the walk's terminating observation, "a level whose
+// device and inode equal those of its own '..' is the root", is falsifiable outright: a bind mount
+// of D at D/repeat makes D/repeat and D/repeat/.. share a device and inode well below /.
+//
+// EACH REPAIR WAS A BETTER HEURISTIC OVER AN ARBITRARY PATH, AND THE FOURTH WOULD HAVE BEEN TOO.
+// The thing being defended was a caller-supplied prefix, and every property of it has to be
+// re-established at the moment of use because any of it can change; that is not a wall a check can
+// reach. DESIGN section 5's construction-over-validation says what to do instead: remove the state
+// rather than keep checking it. So the provider does not ADMIT a base, it OWNS one.
+//
+// THE BASE IS A FIXED LOCATION WITH A LITERAL ANCESTRY. $XDG_RUNTIME_DIR/gunbc when the runtime
+// directory exists -- /run/user/<uid>, root-provisioned and owner-only -- otherwise
+// /tmp/gunbc-provider-<user> under root-owned sticky /tmp. Neither discriminator applies any more:
+// there is no attacker-supplied prefix to swap, because every component is a literal this module
+// wrote; and the root needs no detection, because the ancestry is enumerated rather than walked.
+//
+// WHAT IS CHECKED IS STILL CHECKED, AND IT IS SHORT. Each named level must be owned by this process
+// or by root and must not be writable by others unless it is sticky -- the same level rule, over a
+// list this module authored instead of over a path a caller handed it. And the base must be its own
+// canonical spelling: if `realpath` disagrees with the literal, something in the chain is a symlink
+// and the location is not the one this module named, so it refuses rather than following it.
+type ProviderBaseLayout {
+  base: NonEmptyStr
+  ancestry: List<String>
+}
+
 type ProviderRootAdmission
   = ProviderRootAdmitted { root: NonEmptyStr }
   | ProviderRootRefused { root: String, cause: String }
 
-// WHY THE CANDIDATE ALONE IS NOT THE SUBJECT, AND WHY A PER-LEVEL RULE IS NOT EITHER.
-//
-// The first admission asked one question of one directory: is the candidate sticky, or owner-only?
-// Both halves were wrong in the same way, and the side chat reproduced both with two unprivileged
-// uids.
-//
-// A DIRECTORY'S MODE PROTECTS ITS CONTENTS, NOT ITS OWN ENTRY. A 0700 candidate under a 0777
-// non-sticky GRANDPARENT is renameable by any principal that can write the grandparent -- so the
-// workspace inside it is substituted whole while its own permissions never change. The subject is
-// therefore the ANCESTRY, every level from the base up to the root, and nothing less can answer.
-//
-// AND STICKY WITHOUT AN OWNER IS NOT A PROTECTION EITHER. Sticky says only that an entry may be
-// renamed by ITS OWNER (or root); a sticky directory owned by an untrusted principal is one that
-// principal may still rearrange. /tmp is safe because it is root-owned AND sticky, and the first
-// version of this rule kept the second half and dropped the first.
-//
-// SO EVERY LEVEL MUST BE OWNED BY A TRUSTED PRINCIPAL -- this process's own uid or root -- AND MUST
-// NOT BE WRITABLE BY OTHERS UNLESS IT IS STICKY. Both halves, at every level, or the allocation
-// refuses.
-type TrustedOwners { me: NonEmptyStr }
+// ADMITTING A CALLER-NAMED BASE IS A DECLARED FRONTIER, NOT A CAPABILITY THIS MODULE WITHHOLDS OUT
+// OF CAUTION. It is unreachable with path-addressed primitives for the reason four rounds of
+// repair demonstrated: every property of a supplied prefix must hold AT THE MOMENT OF USE, and each
+// observation is separated from that moment by a window. The capability that closes it is the one
+// this module's residual already names -- directory-anchored primitives, openat-style -- under
+// which a caller's base is resolved once to a handle and every later operation is relative to it,
+// so there is nothing left to re-resolve. NOT retired by a better path check, a canonicalization,
+// or a longer walk; those are the four attempts this row exists to stop repeating.
+data caller_named_allocation_base_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(
+    module_path: "gunbc.fabric_source_snapshot",
+    decl_name: "provider_base_layouts",
+  ),
+  reason: "the provider owns one fixed base because admitting an arbitrary caller-named one is unreachable with path-addressed primitives: the grandparent, the symlinked component, the realpath-to-walk window and the bind-mount root are four defeats of the same check-then-use shape",
+  dissolution: unbound_dissolution(
+    description: "directory-anchored filesystem primitives, openat-style, exist in the .dag filesystem surface, so a caller-named base is resolved ONCE to a handle and every later operation is relative to that handle rather than to a name. Not satisfied by a stricter path check, by canonicalizing before the walk, by a deeper walk, or by a better root observation -- those are the four attempts this frontier exists to stop repeating" as NonEmptyStr,
+  ),
+)
 
-data provider_root_trusted_root_owner: NonEmptyStr = "root" as NonEmptyStr
+data provider_base_leaf: NonEmptyStr = "gunbc" as NonEmptyStr
+data provider_base_tmp_prefix: NonEmptyStr = "/tmp/gunbc-provider-" as NonEmptyStr
+data provider_root_default: NonEmptyStr = "/tmp" as NonEmptyStr
 
-// THE MODES WITH NO GROUP OR OTHER WRITE BIT, COMPARED AS WHOLE STRINGS because the substrate has
-// no string indexing and a hand-rolled digit scan would be a parser standing where a comparison was
-// available. The roster covers what a protected ancestry is actually spelled with -- 0755 for `/`
-// and `/usr`, 0700 and 0750 for a private base, 0555 for a read-only mount -- and anything outside
-// it refuses. THE COST IS OVER-REFUSAL AND IT IS DELIBERATE (DESIGN section 4d): a refused
-// allocation is a diagnostic with an obvious remedy, an admitted unsafe ancestry is the defect this
-// exists to prevent, and widening is a matter of adding spellings rather than loosening the rule.
-data provider_root_unwritable_modes: List<String> = [
-  "700", "0700", "750", "0750", "755", "0755", "711", "0711",
-  "500", "0500", "550", "0550", "555", "0555", "444", "0444",
-]
+// THE ANCESTRY IS SPELLED OUT BESIDE THE BASE, so what gets checked is visible rather than derived
+// by string surgery at run time. /run/user/<uid> is owner-only and root-provisioned; /run and / are
+// root-owned; /tmp is root-owned and sticky. Each is a literal, and a level nobody can name is a
+// level nobody can substitute.
+fn provider_base_layouts(runtime_dir: String, user: String) -> List<ProviderBaseLayout> {
+  if runtime_dir == "" {
+    [
+      ProviderBaseLayout {
+        base: join([provider_base_tmp_prefix as String, user], "") as NonEmptyStr,
+        ancestry: [provider_root_default as String, "/"],
+      },
+    ]
+  } else {
+    [
+      ProviderBaseLayout {
+        base: join([runtime_dir, "/", provider_base_leaf as String], "") as NonEmptyStr,
+        ancestry: [runtime_dir, "/run/user", "/run", "/"],
+      },
+      ProviderBaseLayout {
+        base: join([provider_base_tmp_prefix as String, user], "") as NonEmptyStr,
+        ancestry: [provider_root_default as String, "/"],
+      },
+    ]
+  }
+}
 
 type LevelObservation
   = LevelObserved { owner: String, mode: String, sticky: Bool }
@@ -694,12 +742,24 @@ fn observe_level(path: String) -> LevelObservation {
   }
 }
 
+type TrustedOwners { me: NonEmptyStr }
+
+data provider_root_trusted_root_owner: NonEmptyStr = "root" as NonEmptyStr
+
+// THE MODES WITH NO GROUP OR OTHER WRITE BIT, COMPARED AS WHOLE STRINGS because the substrate has
+// no string indexing and a hand-rolled digit scan would be a parser standing where a comparison was
+// available. The roster covers what a protected ancestry is actually spelled with; anything outside
+// it refuses. The cost is over-refusal and it is deliberate (DESIGN section 4d), and widening is a
+// matter of adding spellings rather than loosening the rule.
+data provider_root_unwritable_modes: List<String> = [
+  "700", "0700", "750", "0750", "755", "0755", "711", "0711",
+  "500", "0500", "550", "0550", "555", "0555", "444", "0444",
+]
+
 // THE DECISION, SEPARATED FROM THE OBSERVATION SO IT CAN BE CLAIMED OVER INPUTS THIS HOST CANNOT
-// PRODUCE. A sticky directory owned by another uid is the second defect above, and creating one
-// requires a privilege the test harness does not have -- so the wet control cannot construct it
-// while this function can be asked about it directly. That is the section 3 pairing shape used
-// correctly: the real observer feeds this same function in the wet control, and the case the host
-// cannot build is claimed over supplied values.
+// PRODUCE. A sticky directory owned by another uid is a real defect and creating one requires a
+// privilege the harness does not have, so the wet control feeds this function real observations
+// while the witness feeds it that one.
 fn level_is_safe(observed: LevelObservation, trusted: TrustedOwners) -> Bool {
   match observed {
     LevelUnobservable { detail: _ } => false
@@ -707,108 +767,6 @@ fn level_is_safe(observed: LevelObservation, trusted: TrustedOwners) -> Bool {
       ((owner == (trusted.me as String)) || (owner == (provider_root_trusted_root_owner as String)))
         && (sticky || any(provider_root_unwritable_modes, m => m == mode))
   }
-}
-
-// THE WALK IS BY REPEATED "/..", AND IT TERMINATES ON THE ROOT -- THE BOUND IS ONLY A LOOP GUARD.
-// There is no path decomposition in the substrate, so an ancestor is named by appending another
-// "/.." and letting the kernel resolve it. What says the walk is FINISHED is `root_reached`, not
-// this number: `/` is its own parent, so a level whose device and inode equal those of its own ".."
-// is the root.
-//
-// THIS COMMENT PREVIOUSLY DESCRIBED A BOUND THAT WAS SOUND BECAUSE IT EXCEEDED REAL DEPTHS, AND
-// CLAIMED THAT EXCEEDING IT REFUSED. The second half was false -- the exhaustion arm answered
-// AncestrySafe -- so the sentence a reader checks asserted the wall while the arm underneath was
-// the hole. Found twice independently, by the side chat and by review 69677 on gunbc#11960. The
-// arm now refuses, and because refusal is only reachable when the root was NOT reached, flipping it
-// does not make every walk refuse.
-data provider_root_ancestry_bound: Int = 24
-
-type AncestryVerdict
-  = AncestrySafe
-  | AncestryRefused { level: String, detail: String }
-
-fn ancestry_refusal_detail(observed: LevelObservation) -> String {
-  match observed {
-    LevelUnobservable { detail: d } => d
-    LevelObserved { owner: o, mode: m, sticky: st } =>
-      join([
-        "owner=", o, " mode=", m, " sticky=", if st { "yes" } else { "no" },
-        " -- every level must be owned by this process or root, and must not be writable by",
-        " others unless it is sticky",
-      ], "")
-  }
-}
-
-// THE WALK MUST REACH THE ROOT, AND EXHAUSTING ITS BUDGET IS A REFUSAL.
-//
-// The first version answered AncestrySafe when its counter ran out, so an unsafe ancestor above the
-// bound was never looked at and the base was admitted anyway. The annotation beside it said a base
-// deeper than the bound "REFUSES rather than admitting an unexamined level" -- the prose claimed
-// the wall and the code was the hole, which is worse than having neither, because the sentence is
-// what a reader checks instead of the arm. Reproduced by the side chat.
-//
-// FLIPPING THE EXHAUSTED ARM ALONE WOULD MAKE EVERY WALK REFUSE, so the walk needs to know when it
-// is DONE rather than when it has counted enough. `/` is its own parent, so a level whose device
-// and inode equal those of its own `..` IS the root: that is the terminating observation, the
-// budget is only a guard against an unbounded loop, and the two now answer differently --
-// root-reached admits, budget-exhausted refuses.
-type RootReached
-  = AtRoot
-  | BelowRoot
-  | RootUndecidable { detail: String }
-
-fn root_reached(path: String) -> RootReached {
-  let here = shell.Stat.DeviceInodeOf(path: path as FilePath)
-  if !here.success {
-    RootUndecidable { detail: join(["device and inode unreadable for ", path], "") }
-  } else {
-    let above = shell.Stat.DeviceInodeOf(path: join([path, "/.."], "") as FilePath)
-    if !above.success {
-      RootUndecidable { detail: join(["device and inode unreadable above ", path], "") }
-    } else if trim(s: here.stdout) == trim(s: above.stdout) {
-      AtRoot
-    } else {
-      BelowRoot
-    }
-  }
-}
-
-// THE WALK CARRIES THE PATH DOWN RATHER THAN REBUILDING IT PER LEVEL. Appending "/.." to the
-// previous path is one concatenation per step; re-deriving the n-th ancestor from the candidate
-// each time is the quadratic accumulator DESIGN section 6 says to fix regardless of the realized n.
-//
-// IT WALKS A CANONICAL PATH, WHICH IS WHAT MAKES "/.." MEAN THE PARENT. On a path holding symlinks,
-// appending "/.." walks the RESOLVED target's ancestry and never inspects the aliases themselves --
-// so a component owned by another principal is neither seen nor protected, and that principal can
-// repoint it after admission. The caller canonicalizes once and passes the canonical spelling here,
-// and uses only that spelling afterwards.
-fn ancestry_walk(path: String, trusted: TrustedOwners, remaining: Int) -> AncestryVerdict {
-  if remaining <= 0 {
-    AncestryRefused {
-      level: path,
-      detail: "the ancestry is deeper than the walk's bound, so a level above it was never examined",
-    }
-  } else {
-    let observed = observe_level(path: path)
-    if !level_is_safe(observed: observed, trusted: trusted) {
-      AncestryRefused { level: path, detail: ancestry_refusal_detail(observed: observed) }
-    } else {
-      match root_reached(path: path) {
-        RootUndecidable { detail: d } => AncestryRefused { level: path, detail: d }
-        AtRoot => AncestrySafe
-        BelowRoot =>
-          ancestry_walk(
-            path: join([path, "/.."], ""),
-            trusted: trusted,
-            remaining: remaining - 1,
-          )
-      }
-    }
-  }
-}
-
-fn ancestry_is_safe(candidate: String, trusted: TrustedOwners) -> AncestryVerdict {
-  ancestry_walk(path: candidate, trusted: trusted, remaining: provider_root_ancestry_bound)
 }
 
 fn observe_trusted_owners() -> TrustedOwners? {
@@ -821,98 +779,175 @@ fn observe_trusted_owners() -> TrustedOwners? {
   }
 }
 
-// THE ADMITTED ROOT IS THE CANONICAL SPELLING, AND THE CALLER USES THAT AND NOTHING ELSE.
+type AncestryVerdict
+  = AncestrySafe
+  | AncestryRefused { level: String, detail: String }
+
+fn ancestry_refusal_detail(observed: LevelObservation) -> String {
+  match observed {
+    LevelUnobservable { detail: d } => d
+    LevelObserved { owner: o, mode: m, sticky: st } =>
+      join([
+        "owner=", o, " mode=", m, " sticky=", if st { "yes" } else { "no" },
+        " -- every named level must be owned by this process or root, and must not be writable by",
+        " others unless it is sticky",
+      ], "")
+  }
+}
+
+// THE ENUMERATED LEVELS, FOLDED. There is no walk and no bound: the list is the ancestry, so
+// running out of it is completion rather than exhaustion, and the two cannot be confused.
+fn ancestry_is_safe(levels: List<String>, trusted: TrustedOwners) -> AncestryVerdict {
+  fold(
+    levels,
+    init: AncestrySafe,
+    f: fn(acc, level) {
+      match acc {
+        AncestryRefused { level: l, detail: d } => AncestryRefused { level: l, detail: d }
+        AncestrySafe =>
+          let observed = observe_level(path: level)
+          if level_is_safe(observed: observed, trusted: trusted) {
+            AncestrySafe
+          } else {
+            AncestryRefused { level: level, detail: ancestry_refusal_detail(observed: observed) }
+          }
+      }
+    },
+  )
+}
+
+// A PREDICTABLE NAME IS A NAME SOMEBODY ELSE CAN GET TO FIRST, and the first writing of this
+// function handed them the win. It ran `mkdir -p` and then `chmod 0700`: `mkdir -p` succeeds when
+// the name already exists, so a directory another principal pre-created at
+// /tmp/gunbc-provider-<user> was ADOPTED, and the chmod then either failed or -- if the squatted
+// name was a symlink -- changed the mode of whatever it pointed at. Reusing a squatted path and
+// modifying a directory this process did not create are both wrong, and the second is wrong even
+// when the first is caught.
 //
-// Admitting the spelling a caller supplied and then allocating under it re-traverses every symlink
-// in it on every later operation, so a component owned by another principal stays live long after
-// the admission looked at its target. Canonicalizing once removes the aliases from the name
-// entirely; the walk then examines the real ancestry, and because the returned root carries no
-// symlink there is nothing left for another principal to repoint. This is why the return value is
-// the canonical path rather than a Bool -- a predicate would have left the caller holding the
-// spelling that was never the subject.
-fn admit_provider_root(candidate: String) -> ProviderRootAdmission {
-  if candidate == "" {
-    ProviderRootRefused { root: candidate, cause: "the candidate base is empty" }
+// SO CREATION AND ADOPTION ARE SEPARATED, AND ONLY WHAT THIS PROCESS CREATED IS EVER MODIFIED.
+// Plain `mkdir` fails if the name exists at all, including as a symlink, so its success is proof
+// this process created the directory -- and only on that branch is a mode set. An existing base is
+// VERIFIED as it stands and never chmodded: if it is not a directory this process owns at
+// owner-only mode, it refuses. A denial of service is the right outcome there (operator ruling,
+// 2026-09-21): the alternative is executing against a location somebody else controls.
+data provider_base_owner_only_modes: List<String> = ["700", "0700"]
+
+fn base_is_admissible(observed: LevelObservation, trusted: TrustedOwners) -> Bool {
+  match observed {
+    LevelUnobservable { detail: _ } => false
+    LevelObserved { owner: owner, mode: mode, sticky: _ } =>
+      (owner == (trusted.me as String))
+        && any(provider_base_owner_only_modes, m => m == mode)
+  }
+}
+
+// THE BASE ITSELF IS HELD TO A STRICTER RULE THAN ITS ANCESTRY, and the difference is what each
+// level is for. An ancestor only has to be un-substitutable by another principal, which sticky or
+// the absence of a write bit both deliver -- /tmp is root-owned, sticky and world-writable, and
+// that is exactly right for /tmp. The base HOLDS THE SNAPSHOT, so it must be owned by this process
+// and readable by nobody else: a 0755 base would satisfy the ancestry rule and publish every
+// materialized tree to every principal on the host.
+// THE CHMOD IS NESTED UNDER `created` AND NOT GUARDED BY `&&`, AND THAT IS NOT A STYLE CHOICE.
+// `&&` IN THIS SUBSTRATE DOES NOT SHORT-CIRCUIT: both operands evaluate, so an effect on the right
+// of a false left still happens. Written as `created && !chmod(base)`, this function chmodded a
+// directory it had NOT created -- the squatted one -- to 0700, and then admitted it as compliant,
+// which is precisely the adoption the separation exists to prevent. Measured with a probe
+// (`false && Filesystem.Write(...)` wrote the file), and caught by the squatted-base control
+// before it left this branch. An effect may sit under a CONTROL-FLOW form, never under a boolean.
+fn establish_provider_base(layout: ProviderBaseLayout, trusted: TrustedOwners) -> ProviderRootAdmission {
+  let base = layout.base as String
+  let created = shell.Mkdir.New(path: base as FilePath).success
+  if created {
+    if !shell.Chmod.OwnerOnlyDirectory(path: base as FilePath).success {
+      ProviderRootRefused { root: base, cause: "the provider base could not be made owner-only" }
+    } else {
+      verify_provider_base(layout: layout, trusted: trusted, created: created)
+    }
   } else {
-    let resolved = shell.Path.Canonical(path: candidate as FilePath)
+    verify_provider_base(layout: layout, trusted: trusted, created: created)
+  }
+}
+
+fn verify_provider_base(
+  layout: ProviderBaseLayout,
+  trusted: TrustedOwners,
+  created: Bool,
+) -> ProviderRootAdmission {
+  let base = layout.base as String
+  let resolved = shell.Path.Canonical(path: base as FilePath)
+  if true {
     if !resolved.success {
       ProviderRootRefused {
-        root: candidate,
-        cause: join(["the candidate base does not resolve: ", resolved.stderr], ""),
+        root: base,
+        cause: join(["the provider base does not resolve: ", resolved.stderr], ""),
+      }
+    } else if trim(s: resolved.stdout) != base {
+      ProviderRootRefused {
+        root: base,
+        cause: join([
+          "the provider base resolves to ", trim(s: resolved.stdout),
+          ", so a component of the location this module named is a link",
+        ], ""),
+      }
+    } else if !shell.Test.IsDirectory(path: base as FilePath).is_directory {
+      ProviderRootRefused { root: base, cause: "the provider base is not a directory" }
+    } else if !base_is_admissible(observed: observe_level(path: base), trusted: trusted) {
+      ProviderRootRefused {
+        root: base,
+        cause: join([
+          "the provider base is not owned by this process at owner-only mode",
+          if created { " even though this process created it" } else { ", and an existing base is never adopted or chmodded" },
+        ], ""),
       }
     } else {
-      let canonical = trim(s: resolved.stdout)
-      if !shell.Test.IsDirectory(path: canonical as FilePath).is_directory {
-        ProviderRootRefused { root: candidate, cause: "the candidate base is not a directory" }
-      } else {
-        match observe_trusted_owners() {
-          Absent =>
-            ProviderRootRefused {
-              root: candidate,
-              cause: "this process could not name its own principal, so no owner is trusted",
-            }
-          Present { value: trusted } =>
-            match ancestry_is_safe(candidate: canonical, trusted: trusted) {
-              AncestryRefused { level: l, detail: d } =>
-                ProviderRootRefused {
-                  root: candidate,
-                  cause: join(["the ancestry is unprotected at ", l, ": ", d], ""),
-                }
-              AncestrySafe => ProviderRootAdmitted { root: canonical as NonEmptyStr }
-            }
-        }
+      match ancestry_is_safe(levels: layout.ancestry, trusted: trusted) {
+        AncestryRefused { level: l, detail: d } =>
+          ProviderRootRefused {
+            root: base,
+            cause: join(["the ancestry is unprotected at ", l, ": ", d], ""),
+          }
+        AncestrySafe => ProviderRootAdmitted { root: layout.base }
       }
     }
   }
 }
 
-// THE BASE IS PROVIDER-SELECTED FROM A DECLARED ORDER, NOT TAKEN FROM TMPDIR. TMPDIR is an
-// arbitrary caller-controlled string, and admitting whatever it names was the environment-shaped
-// form of the free-form parameter this module already deleted once. The provider names its own
-// candidates instead -- the per-user runtime directory first, because it is the one a system
-// actually provisions for this purpose, then /tmp, which is root-owned and sticky -- and each is
-// put through the same admission. No candidate qualifying is a refusal, not a fallback.
-data provider_root_candidates_note: NonEmptyStr = "XDG_RUNTIME_DIR then /tmp" as NonEmptyStr
-
-fn provider_root_candidates() -> List<String> {
-  match shell.Env.Get(name: "XDG_RUNTIME_DIR" as NonEmptyStr).value {
-    Absent => [provider_root_default as String]
-    Present { value: v } =>
-      let named = trim(s: v)
-      if named == "" {
-        [provider_root_default as String]
-      } else {
-        [named, provider_root_default as String]
-      }
-  }
-}
-
-data provider_root_default: NonEmptyStr = "/tmp" as NonEmptyStr
-
 type ProviderRootSelection
   = ProviderRootSelected { root: NonEmptyStr }
   | ProviderRootNoneAdmissible { detail: String }
 
+fn runtime_dir_candidate() -> String {
+  match shell.Env.Get(name: "XDG_RUNTIME_DIR" as NonEmptyStr).value {
+    Absent => ""
+    Present { value: v } => trim(s: v)
+  }
+}
+
 fn select_provider_root() -> ProviderRootSelection {
-  match fold(
-    provider_root_candidates(),
-    init: ProviderRootNoneAdmissible { detail: "no candidate base was considered" },
-    f: fn(acc, candidate) {
-      match acc {
-        ProviderRootSelected { root: r } => ProviderRootSelected { root: r }
-        ProviderRootNoneAdmissible { detail: previous } =>
-          match admit_provider_root(candidate: candidate) {
-            ProviderRootAdmitted { root: r } => ProviderRootSelected { root: r }
-            ProviderRootRefused { root: r, cause: c } =>
-              ProviderRootNoneAdmissible {
-                detail: join([previous, "; ", r, ": ", c], ""),
+  match observe_trusted_owners() {
+    Absent =>
+      ProviderRootNoneAdmissible {
+        detail: "this process could not name its own principal, so no owner is trusted",
+      }
+    Present { value: trusted } =>
+      fold(
+        provider_base_layouts(
+          runtime_dir: runtime_dir_candidate(),
+          user: trusted.me as String,
+        ),
+        init: ProviderRootNoneAdmissible { detail: "no provider base was considered" },
+        f: fn(acc, layout) {
+          match acc {
+            ProviderRootSelected { root: r } => ProviderRootSelected { root: r }
+            ProviderRootNoneAdmissible { detail: previous } =>
+              match establish_provider_base(layout: layout, trusted: trusted) {
+                ProviderRootAdmitted { root: r } => ProviderRootSelected { root: r }
+                ProviderRootRefused { root: r, cause: c } =>
+                  ProviderRootNoneAdmissible { detail: join([previous, "; ", r, ": ", c], "") }
               }
           }
-      }
-    },
-  ) {
-    ProviderRootSelected { root: r } => ProviderRootSelected { root: r }
-    ProviderRootNoneAdmissible { detail: d } => ProviderRootNoneAdmissible { detail: d }
+        },
+      )
   }
 }
 
@@ -920,7 +955,7 @@ fn allocate_provider_workspace() -> ProviderWorkspaceAllocation {
   match select_provider_root() {
     ProviderRootNoneAdmissible { detail: d } =>
       ProviderWorkspaceRefused {
-        detail: join(["no admissible allocation base (", provider_root_candidates_note as String, "): ", d], ""),
+        detail: join(["no admissible provider base: ", d], ""),
       }
     ProviderRootSelected { root: admitted } =>
       allocate_under_admitted_root(root: admitted)

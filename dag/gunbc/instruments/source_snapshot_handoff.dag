@@ -98,7 +98,10 @@ import gunbc.fabric_source_snapshot {
   ProviderRootAdmission,
   ProviderRootAdmitted,
   ProviderRootRefused,
-  admit_provider_root,
+  ProviderBaseLayout,
+  TrustedOwners,
+  establish_provider_base,
+  observe_trusted_owners,
   provider_root_default,
   allocate_provider_workspace,
   release_provider_workspace,
@@ -202,8 +205,7 @@ type SnapshotScenario
   | EscapingPathScenario
   | DuplicatePathScenario
   | UnsafeAllocationRootScenario
-  | DeepAncestryScenario
-  | AliasedBaseScenario
+  | SquattedBaseScenario
 
 fn snapshot_scenario_name(scenario: SnapshotScenario) -> String {
   match scenario {
@@ -214,8 +216,7 @@ fn snapshot_scenario_name(scenario: SnapshotScenario) -> String {
     EscapingPathScenario => "escaping-path"
     DuplicatePathScenario => "duplicate-path"
     UnsafeAllocationRootScenario => "unsafe-allocation-root"
-    DeepAncestryScenario => "deep-ancestry"
-    AliasedBaseScenario => "aliased-base"
+    SquattedBaseScenario => "squatted-base"
   }
 }
 
@@ -228,8 +229,7 @@ fn snapshot_scenarios() -> List<SnapshotScenario> {
     EscapingPathScenario,
     DuplicatePathScenario,
     UnsafeAllocationRootScenario,
-    DeepAncestryScenario,
-    AliasedBaseScenario,
+    SquattedBaseScenario,
   ]
 }
 
@@ -863,157 +863,136 @@ fn run_duplicate_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenario
 // without a second uid -- which is the point, because a control that needed one could not run in
 // this harness and would not run anywhere.
 //
-// THE FIXTURE IS AN OWNER-ONLY DIRECTORY UNDER A WORLD-WRITABLE NON-STICKY GRANDPARENT, because
-// that is the case a per-directory rule gets wrong: the child's 0700 protects its CONTENTS while
-// any principal that can write the grandparent renames the child itself, workspace and all. An
-// earlier version of this control made the CANDIDATE world-writable, which the first rule caught
-// by accident and which says nothing about ancestry.
-//
-// AND THE ADMITTED HALF MATTERS AS MUCH AS THE REFUSED ONE: /tmp, root-owned and sticky, must be
-// ADMITTED. Without that assertion this control would pass for an admission that refuses
-// everything, which is a wall-shaped hole in the capability rather than a wall. The third case --
-// a sticky directory owned by an untrusted uid -- cannot be built here, because creating one needs
-// a privilege this harness does not have; it is claimed over supplied observations in
-// test.claim.fabric_source_snapshot_witness against the same level_is_safe this control executes.
-fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
-  let grandparent = join([workspace.root, "/open-grandparent"], "")
-  let child = join([grandparent, "/private-child"], "")
-  if !shell.Mkdir.Parents(path: child as FilePath).success {
-    SnapshotScenarioFailed {
-      scenario: "unsafe-allocation-root",
-      step: "author-parents",
-      detail: "the candidate ancestry could not be created",
-    }
-  } else if !shell.Chmod.OwnerOnlyDirectory(path: child as FilePath).success
-    || !shell.Chmod.WorldWritableDirectory(path: grandparent as FilePath).success {
-    SnapshotScenarioFailed {
-      scenario: "unsafe-allocation-root",
-      step: "author-parents",
-      detail: "the candidate ancestry could not be given its modes",
-    }
+// BOTH SETUP EFFECTS SIT UNDER CONTROL FLOW RATHER THAN UNDER A BOOLEAN. `&&` and `||` in this
+// substrate evaluate BOTH operands, so `mkdir(p) || chmod(p)` runs the chmod even when the mkdir
+// failed -- harmless in a fixture that wants both, and the exact shape that chmodded a squatted
+// directory into compliance in the module under test. The idiom is removed here too, so nothing in
+// this file relies on an evaluation order the substrate does not promise.
+fn author_open_directory(path: String) -> Bool {
+  if !shell.Mkdir.Parents(path: path as FilePath).success {
+    false
   } else {
-    match admit_provider_root(candidate: child) {
-      ProviderRootAdmitted { root: _ } =>
+    shell.Chmod.WorldWritableDirectory(path: path as FilePath).success
+  }
+}
+
+// THE UNSAFE-ANCESTRY CONTROL, NOW OVER AN ENUMERATED ANCESTRY RATHER THAN A WALK. The layout is
+// supplied here because production has exactly two literal layouts and neither can be made unsafe
+// on purpose -- which is the point of narrowing to them. What must still discriminate is the level
+// rule they are checked with, so the control hands it a layout whose named ancestor is
+// world-writable and non-sticky and requires a refusal.
+//
+// AND THE ADMITTED HALF MATTERS AS MUCH AS THE REFUSED ONE: the real provider base, under
+// root-owned sticky /tmp, must be ADMITTED. Without that assertion this control would pass for an
+// admission that refuses everything, which is a wall-shaped hole rather than a wall.
+fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
+  match observe_trusted_owners() {
+    Absent =>
+      SnapshotScenarioFailed {
+        scenario: "unsafe-allocation-root",
+        step: "identity",
+        detail: "this process could not name its own principal",
+      }
+    Present { value: trusted } =>
+      let open_ancestor = join([workspace.root, "/open-ancestor"], "")
+      let base = join([open_ancestor, "/base"], "")
+      if !author_open_directory(path: open_ancestor) {
         SnapshotScenarioFailed {
           scenario: "unsafe-allocation-root",
-          step: "admit",
-          detail: "an owner-only base under a world-writable non-sticky grandparent was admitted",
+          step: "author-ancestry",
+          detail: "the unsafe ancestry could not be created",
         }
-      ProviderRootRefused { root: _, cause: why } =>
-        match admit_provider_root(candidate: provider_root_default as String) {
-          ProviderRootRefused { root: _, cause: c } =>
+      } else {
+        match establish_provider_base(
+          layout: ProviderBaseLayout { base: base as NonEmptyStr, ancestry: [open_ancestor] },
+          trusted: trusted,
+        ) {
+          ProviderRootAdmitted { root: _ } =>
             SnapshotScenarioFailed {
               scenario: "unsafe-allocation-root",
               step: "admit",
-              detail: join(["the root-owned sticky base was refused: ", c], ""),
+              detail: "a base under a world-writable non-sticky ancestor was admitted",
             }
-          ProviderRootAdmitted { root: _ } =>
-            SnapshotScenarioPassed {
-              scenario: "unsafe-allocation-root",
-              detail: join(["refused the unprotected ancestry: ", why], ""),
+          ProviderRootRefused { root: _, cause: why } =>
+            match establish_provider_base(
+              layout: ProviderBaseLayout {
+                base: join(["/tmp/gunbc-provider-", trusted.me as String], "") as NonEmptyStr,
+                ancestry: [provider_root_default as String, "/"],
+              },
+              trusted: trusted,
+            ) {
+              ProviderRootRefused { root: _, cause: c } =>
+                SnapshotScenarioFailed {
+                  scenario: "unsafe-allocation-root",
+                  step: "admit",
+                  detail: join(["the real provider base was refused: ", c], ""),
+                }
+              ProviderRootAdmitted { root: _ } =>
+                SnapshotScenarioPassed {
+                  scenario: "unsafe-allocation-root",
+                  detail: join(["refused the unprotected ancestry: ", why], ""),
+                }
             }
         }
-    }
+      }
   }
 }
 
-// THE BUDGET CONTROL. A walk that answers "safe" when its counter runs out has not examined the
-// ancestry, it has stopped looking at it -- and the base it admits may sit under anything. The
-// fixture is a chain deeper than the walk's bound, so the walk cannot reach the root within budget;
-// it must REFUSE. Its partner assertion is the one that keeps the repair from being "refuse
-// everything": an ordinary shallow base, /tmp, must still be admitted, and the unsafe-allocation-
-// root scenario beside this one asserts exactly that.
-data deep_chain_segment: String = "/d/d/d/d/d/d/d/d/d/d"
-
-fn deep_chain_path(root: String) -> String {
-  join([
-    root,
-    deep_chain_segment,
-    deep_chain_segment,
-    deep_chain_segment,
-  ], "")
-}
-
-fn run_deep_ancestry_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
-  let deep = deep_chain_path(root: workspace.root)
-  if !shell.Mkdir.Parents(path: deep as FilePath).success {
-    SnapshotScenarioFailed {
-      scenario: "deep-ancestry",
-      step: "author-chain",
-      detail: "the deep chain could not be created",
-    }
-  } else {
-    match admit_provider_root(candidate: deep) {
-      ProviderRootAdmitted { root: _ } =>
-        SnapshotScenarioFailed {
-          scenario: "deep-ancestry",
-          step: "admit",
-          detail: "a base deeper than the walk's bound was admitted, so a level above it was never examined",
-        }
-      ProviderRootRefused { root: _, cause: why } =>
-        SnapshotScenarioPassed {
-          scenario: "deep-ancestry",
-          detail: join(["refused the over-deep ancestry: ", why], ""),
-        }
-    }
-  }
-}
-
-// THE ALIAS CONTROL, AND WHAT IT CAN AND CANNOT ESTABLISH ON ONE UID.
+// THE SQUAT CONTROL. /tmp/gunbc-provider-<user> is a PREDICTABLE name, so another principal can get
+// there first -- and the first writing of this admission handed them the win by running `mkdir -p`,
+// which succeeds on an existing name, and then chmodding what it found. This control pre-creates
+// the base and leaves it world-writable, which is what a squatted directory looks like from the
+// inside: the admission must REFUSE rather than adopt it, and must not have chmodded it into
+// compliance on the way.
 //
-// Appending "/.." to a path holding a symlink walks the TARGET's ancestry and never inspects the
-// alias, so an intermediate component owned by another principal is neither seen nor protected and
-// can be repointed after admission. The repair is to canonicalize once and use only the canonical
-// spelling, and THAT is what this control asserts: a candidate reached through an alias must be
-// admitted under its resolved name, never under the spelling that was passed in. A harness on one
-// uid cannot create a component owned by another principal, so what is checked here is the property
-// that removes the exposure -- the alias does not survive admission -- rather than a staged attack
-// it has no privilege to mount.
-fn run_aliased_base_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
-  let real_base = join([workspace.root, "/real-base"], "")
-  let alias = join([workspace.root, "/alias"], "")
-  let through_alias = join([alias, "/inner"], "")
-  let inner = join([real_base, "/inner"], "")
-  if !shell.Mkdir.Parents(path: inner as FilePath).success {
-    SnapshotScenarioFailed {
-      scenario: "aliased-base",
-      step: "author-base",
-      detail: "the aliased base could not be created",
-    }
-  } else if !shell.Link.Symbolic(target: real_base as FilePath, link: alias as FilePath).success {
-    SnapshotScenarioFailed {
-      scenario: "aliased-base",
-      step: "author-base",
-      detail: "the alias could not be created",
-    }
-  } else {
-    match admit_provider_root(candidate: through_alias) {
-      ProviderRootRefused { root: _, cause: c } =>
+// WHAT THIS HARNESS CANNOT STAGE, said plainly: a base owned by ANOTHER uid, because chown needs a
+// privilege it does not have. That case is claimed over supplied observations against the same
+// base_is_admissible this control executes, in test.claim.fabric_source_snapshot_witness.
+fn run_squatted_base_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
+  match observe_trusted_owners() {
+    Absent =>
+      SnapshotScenarioFailed {
+        scenario: "squatted-base",
+        step: "identity",
+        detail: "this process could not name its own principal",
+      }
+    Present { value: trusted } =>
+      let squatted = join([workspace.root, "/squatted-base"], "")
+      if !author_open_directory(path: squatted) {
         SnapshotScenarioFailed {
-          scenario: "aliased-base",
-          step: "admit",
-          detail: join(["a base reached through an alias this process owns was refused: ", c], ""),
+          scenario: "squatted-base",
+          step: "author-squat",
+          detail: "the squatted base could not be created",
         }
-      ProviderRootAdmitted { root: admitted } =>
-        if (admitted as String) == through_alias {
-          SnapshotScenarioFailed {
-            scenario: "aliased-base",
-            step: "admit",
-            detail: "the alias survived admission, so every later operation would re-traverse it",
-          }
-        } else if (admitted as String) != inner {
-          SnapshotScenarioFailed {
-            scenario: "aliased-base",
-            step: "admit",
-            detail: join(["the admitted root is neither the alias nor its target: ", admitted as String], ""),
-          }
-        } else {
-          SnapshotScenarioPassed {
-            scenario: "aliased-base",
-            detail: join(["admitted under its resolved name ", admitted as String], ""),
-          }
+      } else {
+        match establish_provider_base(
+          layout: ProviderBaseLayout {
+            base: squatted as NonEmptyStr,
+            ancestry: [workspace.root],
+          },
+          trusted: trusted,
+        ) {
+          ProviderRootAdmitted { root: _ } =>
+            SnapshotScenarioFailed {
+              scenario: "squatted-base",
+              step: "admit",
+              detail: "a pre-created world-writable base was adopted instead of refused",
+            }
+          ProviderRootRefused { root: _, cause: why } =>
+            if trim(s: shell.Stat.ModeOf(path: squatted as FilePath).stdout) != "777" {
+              SnapshotScenarioFailed {
+                scenario: "squatted-base",
+                step: "admit",
+                detail: "the refusal was correct but the base had been chmodded on the way to it",
+              }
+            } else {
+              SnapshotScenarioPassed {
+                scenario: "squatted-base",
+                detail: join(["refused and left untouched: ", why], ""),
+              }
+            }
         }
-    }
+      }
   }
 }
 
@@ -1072,8 +1051,7 @@ fn run_snapshot_scenario(scenario: SnapshotScenario, binary: ScmAcceptanceBinary
         EscapingPathScenario => run_escaping_path_scenario(workspace: workspace)
         DuplicatePathScenario => run_duplicate_path_scenario(workspace: workspace)
         UnsafeAllocationRootScenario => run_unsafe_allocation_root_scenario(workspace: workspace)
-        DeepAncestryScenario => run_deep_ancestry_scenario(workspace: workspace)
-        AliasedBaseScenario => run_aliased_base_scenario(workspace: workspace)
+        SquattedBaseScenario => run_squatted_base_scenario(workspace: workspace)
       }
       let released = release_provider_workspace(workspace: workspace.provider)
       let cleaned = shell.Remove.RecursiveForce(path: workspace.root as FilePath)

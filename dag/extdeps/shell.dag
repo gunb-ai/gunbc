@@ -373,7 +373,23 @@ service shell.Mktemp {
   }
 }
 
+// New IS PLAIN `mkdir`, AND ITS RATIONALE SITS HERE for the module-item-grain reason the Test
+// service records. It FAILS when the name already exists -- including when it exists as a symlink
+// -- which is the whole point: a caller that must know whether it CREATED a directory cannot learn
+// that from `mkdir -p`, which succeeds either way. Adopting an existing directory at a predictable
+// name is how a squatted path gets reused, so the distinction is a security boundary rather than a
+// convenience.
 service shell.Mkdir {
+  operation New {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mkdir", "--", "{path}"] }
+    exit {
+      0 => Unit "Directory created; fails if the name exists at all, which is the exclusivity this relies on"
+      nonzero => String "mkdir failed"
+    }
+  }
+
   operation Parents {
     input { path: FilePath }
     output { success: Bool from "exit_success" }
