@@ -2,6 +2,7 @@ module v2.workflow.emitted_closure_crate_partition
 
 import std.types { List, String, Bool, Int }
 import v2.std.algebra { any }
+import v2.workflow.compiler_closure_ingest_transport { closure_entry }
 import v2.lens.module_graph {
   ModuleDeclarationFact,
   ModuleDependencyEdge,
@@ -22,8 +23,9 @@ import v2.workflow.rust_crate_partition {
 }
 
 // THE MODULE DAG OF THE RETAINED EMITTED COMPILER CLOSURE, DERIVED -- NOT AUTHORED. The subject is
-// the closure the self-host route emits: v2.compiler.compile's (the entry
-// v2.workflow.compiler_closure_ingest_transport names as closure_entry). Its pool is BOTH roots:
+// the closure the self-host route emits: v2.compiler.compile's, whose entry is imported from its
+// home, v2.workflow.compiler_closure_ingest_transport closure_entry. The pool is BOTH roots, a
+// stated divergence from that module's single closure_source_root:
 // src/v2 imports std.* and extdeps.* from dag/, so a src/v2-only pool leaves those imports
 // undeclared and drops them from the DAG rather than refusing. Nodes are the declared modules the closure reaches and edges are the resolved
 // dependency facts among them, both read from v2.lens.module_graph -- the one edge-source seam
@@ -40,8 +42,6 @@ import v2.workflow.rust_crate_partition {
 // when the emitted-crate rendering does (demand_engine_program names the classification).
 
 data emitted_compiler_closure_pool_roots: List<String> = ["dag", "src/v2"]
-
-data emitted_compiler_closure_entry: String = "src/v2/compiler/00_compile.dag"
 
 fn emitted_closure_path_set(paths: List<String>) -> Map<String, Bool> {
   paths |> fold(init: empty_map(), f: fn(acc, path) { map_insert(acc, path, true) })
@@ -168,7 +168,7 @@ fn module_dag_from_dependency_facts(
 fn emitted_compiler_closure_module_dag() -> ModuleDagDerivation {
   let roots = emitted_compiler_closure_pool_roots
   module_dag_from_dependency_facts(
-    entry_path: emitted_compiler_closure_entry,
+    entry_path: closure_entry,
     edges: dependency_resolution_facts_live(pool_roots: roots, importer_roots: roots, exclude_substrings: []),
     declarations: module_declaration_facts_live(pool_roots: roots)
   )
