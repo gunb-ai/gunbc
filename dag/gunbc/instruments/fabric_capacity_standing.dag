@@ -142,14 +142,15 @@ type CapacityProbeRead
   = ProbeFields { fields: CapacityProbeFields }
   | ProbeUnreadable { detail: String }
 
-// A FIELD THAT IS NOT THERE IS ABSENT, NOT EMPTY. `first()` on a shorter list answers `none`, and
-// coercing that to "" would hand every consumer a reading it cannot distinguish from a field that
-// was present and blank -- the widen DESIGN section 5 refuses. Every caller already returns an
-// Optional and already length-guards, so propagating costs nothing and keeps absence answerable.
+// AN INDEX PAST THE END IS NOT A FIELD. `.first()` on the skipped remainder is honestly Optional,
+// and every caller here already carries an Absent arm (the roster slot, the split segment, the
+// fraction digits), so the absence is propagated to the arm that names what the missing field
+// MEANS rather than defaulted to "". Same shape as v2.workflow.floor_terminal_ledger_wire
+// ledger_wire_field_at and extdeps.bmc.ipmi_sdr sdr_field_at.
 fn field_at(lines: List<String>, n: Nat) -> String? {
   match lines.skip(n: n).first() {
     Absent => none
-    Present { value: v } => Present { value: trim(s: v) }
+    Present { value: s } => Present { value: trim(s: s) }
   }
 }
 
@@ -293,9 +294,9 @@ fn tokens_from_gpu_kv_cache_size_line(line: String) -> Int? {
   match after_startup_prefix(line: line, kind: GpuKvCacheSize) {
     Absent => none
     Present { value: after } =>
-      match split(s: after, delimiter: " ").first() {
+      match field_at(lines: split(s: after, delimiter: " "), n: 0) {
         Absent => none
-        Present { value: w } => parse_int(s: replace(s: trim(s: w), from: ",", to: ""))
+        Present { value: head } => parse_int(s: replace(s: head, from: ",", to: ""))
       }
   }
 }
@@ -334,29 +335,29 @@ fn hundredths_from_two_digit_x(lexeme: String) -> Int? {
         none
       } else {
         match field_at(lines: parts, n: 1) {
-        Absent => none
-        Present { value: frac } =>
-        if string_length(s: frac) != 2 {
-          none
-        } else {
-          match field_at(lines: parts, n: 0) {
-            Absent => none
-            Present { value: whole_lexeme } =>
-          match parse_int(s: whole_lexeme) {
-            Absent => none
-            Present { value: whole } =>
-              match parse_int(s: frac) {
+          Absent => none
+          Present { value: frac } =>
+            if string_length(s: frac) != 2 {
+              none
+            } else {
+              match field_at(lines: parts, n: 0) {
                 Absent => none
-                Present { value: fraction } =>
-                  if whole < 0 || fraction < 0 || fraction > 99 {
-                    none
-                  } else {
-                    Present { value: whole * 100 + fraction }
+                Present { value: whole_text } =>
+                  match parse_int(s: whole_text) {
+                    Absent => none
+                    Present { value: whole } =>
+                      match parse_int(s: frac) {
+                        Absent => none
+                        Present { value: fraction } =>
+                          if whole < 0 || fraction < 0 || fraction > 99 {
+                            none
+                          } else {
+                            Present { value: whole * 100 + fraction }
+                          }
+                      }
                   }
               }
-          }
-        }
-        }
+            }
         }
       }
     }

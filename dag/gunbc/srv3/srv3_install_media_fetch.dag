@@ -48,9 +48,12 @@ data install_media_fetch_effect_shape: EffectShape<KeySource> = CreateEffect {
   cause: CreateIfAbsent { key_source: InputField { field: "content_sha256" } },
 }
 
+// The two arms are named for the media, not spelled as Optional's Present/Absent: those bare names
+// in this module shadowed std.optional's for every match below, which is the nicknaming DESIGN 3
+// forbids and what kept the mirror lookup from matching its Optional honestly.
 type InstallMediaPresenceObservation
-  = Absent
-  | Present { observed_sha256: Sha256 }
+  = InstallMediaAbsent
+  | InstallMediaPresent { observed_sha256: Sha256 }
 
 type InstallMediaFetchVerdict
   = AlreadyPresent {
@@ -86,12 +89,12 @@ fn classify_install_media_fetch(
 ) -> InstallMediaFetchVerdict {
   let install_path = ubuntu_install_media_install_path(artifact: artifact)
   match observation {
-    Absent =>
+    InstallMediaAbsent =>
       FetchRequired {
         install_path: install_path,
         mirror_order: ubuntu_install_media_mirror_rows,
       }
-    Present { observed_sha256: observed } =>
+    InstallMediaPresent { observed_sha256: observed } =>
       if observed == artifact.content_sha256 {
         AlreadyPresent {
           install_path: install_path,
@@ -115,9 +118,13 @@ fn install_media_fetch_verdict_is_idempotent_skip(verdict: InstallMediaFetchVerd
   }
 }
 
-fn install_media_fetch_first_mirror_url(artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
-  let first = ubuntu_install_media_mirror_rows.first()
-  ubuntu_install_media_mirror_url(artifact: artifact, mirror: first)
+// The mirror order is a cited data row and may be empty; an empty order has no first URL and says
+// so, rather than a helper unwrapping an Optional the wall now refuses (gunbc#11720).
+fn install_media_fetch_first_mirror_url(artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr? {
+  match ubuntu_install_media_mirror_rows.first() {
+    Absent => none
+    Present { value: first } => Present { value: ubuntu_install_media_mirror_url(artifact: artifact, mirror: first) }
+  }
 }
 
 fn srv3_install_media_fetch() -> ProcessExit

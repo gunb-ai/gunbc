@@ -60,7 +60,7 @@ import gunbc.typed_remote_file_write {
   classify_typed_remote_file_comparison,
   converge_typed_remote_file,
 }
-import gunbc.runner_host_grants { executor_bootstrap_principal }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.ci_spec { site_pxe_edge_converge_receipt_path }
 import gunbc.runner_host_file_converge { elevated_argv }
 import std.content_hash { content_hash_equal }
