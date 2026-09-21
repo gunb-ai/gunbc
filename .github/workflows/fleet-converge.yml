@@ -13,7 +13,7 @@ on:
       mode:
         description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; app_key_version_verify reads the gunbai-ci App private key at the EXACT Secret Manager version named by app_key_version, mints an installation token with it, and refuses unless GitHub accepts it and the key's rotation deadline has not passed -- no add, disable or destroy; microvm_host_converge installs the cited Firecracker release on the selected host and reads the kvm grant back, refusing by name when the grant has not landed (the grant itself is applied by the full-host apply spine); guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, microvm_network_observe, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_native_serving_apply, spark_runtime_image_probe, dashboard_deploy, approval_broker_dark_install, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, site_pxe_edge_observe, site_pxe_edge_converge, runner_password_session_tool_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, mtcollins1_boot, mtcollins1_fan_observe, mtcollins1_census_image_publish, host_credential_custody_converge, app_key_version_verify, r2_bucket_ensure, r2_bucket_admin_mint]
+        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, microvm_network_observe, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_native_serving_apply, spark_runtime_image_probe, dashboard_deploy, approval_broker_dark_install, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, site_pxe_edge_observe, site_pxe_edge_converge, runner_password_session_tool_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, mtcollins1_boot, mtcollins1_fan_observe, mtcollins1_census_image_publish, host_credential_custody_converge, app_key_version_verify, r2_bucket_ensure, r2_bucket_admin_mint, fabric_writer_identity_observe]
         type: choice
       target:
         description: "Spark target host for the spark_* modes, naming the administrator credential the run materializes (any rostered Spark: srv5, srv6, srv7, srv8, srv9, srv10, srv11, srv12); apply reads the subject off the plan artifact"
@@ -563,6 +563,27 @@ jobs:
           if-no-files-found: error
           retention-days: 30
         if: github.event.inputs.mode == 'mtcollins1_fan_observe'
+        timeout-minutes: 10
+      - name: "Fabric writer identity: the login this host presents at the fabric DB's served door (reads only)"
+        id: fabric_writer_identity_observe
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fabric/fabric_writer_identity_observe.dag --function fabric_writer_identity_observe_wet
+          cat "$ROOT/target/fabric-writer-identity-receipt.txt"
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        if: github.event.inputs.mode == 'fabric_writer_identity_observe'
+        timeout-minutes: 5
+      - name: Upload fabric writer identity receipt
+        id: fabric_writer_identity_observe_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: fabric-writer-identity
+          path: target/fabric-writer-identity-receipt.txt
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+        if: always() && github.event.inputs.mode == 'fabric_writer_identity_observe'
         timeout-minutes: 10
       - name: "Mt. Collins census image: build the seeded live-server image in /srv/bmc and publish it create-only under its digest name"
         id: mtcollins1_census_image_publish

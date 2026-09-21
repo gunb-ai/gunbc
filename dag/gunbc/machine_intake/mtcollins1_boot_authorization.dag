@@ -22,6 +22,11 @@ import extdeps.bmc.ipmi_boot_selection {
 }
 import extdeps.toolchain.types { architecture_diagnostic_name }
 
+// THE GATE IS THE SHARED ONE. The operator's decision over this subject is read through
+// gunbc.auth.approval_gate, generic over the subject: ApprovalGate<MtCollins1BootSubject> and
+// approval_gate_from_poll, admitted live at the observed instant. Nothing about the gate is a fact
+// about Mt. Collins, so nothing about it is declared here.
+//
 type MtCollins1BootSubject {
   machine: NonEmptyStr
   bmc_host: NonEmptyStr
@@ -168,6 +173,11 @@ fn mtcollins1_boot_intent_hash(subject: MtCollins1BootSubject) -> ContentHash {
 
 data mtcollins1_boot_purpose: NonEmptyStr = "Attach the diskless Ubuntu live image already exported on srv2 to Mt. Collins unit 1 over BMC virtual media, set one-shot CD boot, and power-cycle the host. This interrupts anything the unit is currently running." as NonEmptyStr
 
+// THE GATE IS THE SHARED ONE. The operator's decision over this subject is read through
+// gunbc.auth.approval_gate, generic over the subject: ApprovalGate<MtCollins1BootSubject> and
+// approval_gate_from_poll, admitted live at the observed instant. Nothing about the gate is a fact
+// about Mt. Collins, so nothing about it is declared here.
+//
 fn mtcollins1_boot_authorization_request(
   escalation_id: NonEmptyStr,
   attempt: AttemptIdentity,
@@ -184,10 +194,3 @@ fn mtcollins1_boot_authorization_request(
     destructive: true,
   }
 }
-
-// THE GATE IS THE SHARED ONE. The operator's decision over this subject is read through
-// gunbc.auth.approval_gate, generic over the subject: ApprovalGate<MtCollins1BootSubject> and
-// approval_gate_from_poll, admitted live at the observed instant. Nothing about the gate is a fact
-// about Mt. Collins, so nothing about it is declared here.
-
-
