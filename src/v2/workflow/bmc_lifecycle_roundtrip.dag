@@ -7,7 +7,11 @@ import gunbc.bmc_onboarding {
   bmc_onboard_to_steady_state,
   bmc_decom_to_factory_state
 }
-import v2.compiler.target_carriers { decode_fidelity_from_target }
+// RED MUTATION CONTROL (gunbc#11982). `dependency_pool_mutation_control_absent_name` is declared
+// nowhere in this repository, so this module parses and does not RESOLVE. The dependency pool root
+// `src/v2` therefore fails to resolve, and the required floor must refuse with a named cause
+// rather than report a clean fold.
+import v2.compiler.target_carriers { decode_fidelity_from_target, dependency_pool_mutation_control_absent_name }
 import v2.extdeps.bmc.lifecycle_fidelity { bmc_lifecycle_inverse_target_model }
 import extdeps.communication.medium { Medium, DecodeFidelity }
 import v2.std.diagnostic {
