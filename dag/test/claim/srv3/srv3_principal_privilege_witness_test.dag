@@ -12,7 +12,7 @@ import extdeps.posix.identity {
   posix_group_id_from_text,
   posix_owner_spec_text,
 }
-import extdeps.tools.chown { chown_argv, chown_binary_path }
+import extdeps.tools.chown { chown_argv, chown_binary_path, ChownOwnerIds }
 import extdeps.tools.mkdir { mkdir_parents_argv }
 import extdeps.tools.chmod { chmod_add_executable_argv, chmod_binary_path, chmod_path_resolved_program }
 import extdeps.sudo.elevation { sudo_elevate, sudo_binary_path }
@@ -104,10 +104,10 @@ test fn owner_spec_renders_as_uid_colon_gid() -> Bool {
 
 test fn chown_argv_names_the_binary_then_the_owner_then_the_path() -> Bool {
   chown_argv(
-    owner: PosixOwnerSpec {
+    owner: ChownOwnerIds { spec: PosixOwnerSpec {
       user: PosixUserId { value: 1000 },
       group: PosixGroupId { value: 1000 },
-    },
+    } },
     path: "/opt/gunbc",
   ) == ["/usr/bin/chown", "1000:1000", "/opt/gunbc"]
 }

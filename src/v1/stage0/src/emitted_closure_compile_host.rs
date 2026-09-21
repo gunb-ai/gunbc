@@ -665,8 +665,53 @@ pub fn required_ci_emit_compile_probe_root() -> Result<PathBuf, String> {
     required_ci_probe_root_from_runner_temp(declared_runner_temp().as_deref())
 }
 
+/// THE LOCAL ROOT IS OWNER-SCOPED, BECAUSE THE HOST TEMP IS NOT THIS PROCESS'S TO NAME ALONE.
+///
+/// `lane_emit_compile_probe_root` below reasons that "locally no runner temp exists and the host
+/// temp is the local route's authority". That holds on a workstation and is FALSE on a machine
+/// that is ALSO a self-hosted runner host — which every fleet host is, and which the development
+/// box this was measured on is. There the runner's euid has already created
+/// `gunbc-emit-compile` under the same host temp at mode 755, and the local route's write refuses
+/// EACCES with the one remedy `required_ci_probe_root_from_runner_temp` already rejected as
+/// unreachable: someone deleting a directory by hand.
+///
+/// MEASURED 2026-09-21, not anticipated: a root owned by `ghrunner` dated Aug 27 refused
+/// `gunbc test //gunbc/instruments:self-host` for uid 1000 with `EmittedCrateNotWritten — …
+/// Permission denied`, which is the SAME receipt that note already cites for CI (run
+/// 34471447387). One defect, two environments; the CI half was repaired and the local half kept
+/// the fixed name.
+///
+/// So the euid goes IN THE PATH. That buys the local route the property `RUNNER_TEMP` buys CI —
+/// two tenants never name one path — without inventing a declaration the standalone mode does not
+/// have, and it is the narrowest change that closes the observed collision.
+///
+/// IT IS DELIBERATELY NOT A PRIVATE DIRECTORY PER RUN, for the reason `acquire_probe_root_lock`'s
+/// note gives against that arm: a private directory throws away the warm cargo target dir, which
+/// is what makes a rebuild cheap and a restore comparable.
+///
+/// WHAT THIS DOES NOT ESTABLISH, STATED BECAUSE AN EARLIER VERSION OF THIS NOTE CLAIMED IT. That
+/// version said "concurrency is already that lock's subject". IT IS NOT, ON THIS ROUTE.
+/// `acquire_probe_root_lock` is taken only by `run_required_emit_compile`; `run_self_host` and
+/// `run_v2_native_cli` reach `prepare_emitted_compiler` and take NO probe-root lock. So on the
+/// route this function serves:
+///
+///   - the CRATE-SOURCE directory is unprotected against a concurrent writer of the same euid;
+///   - the cargo TARGET directory is protected by cargo's own build lock, which is cargo's
+///     guarantee about its target dir and says nothing about arbitrary crate-source writes
+///     performed outside it;
+///   - the interleaving hazard that lock's note describes ("one's faulted tree is the other's
+///     baseline") needs the fault-inject/restore probe, which this route does not perform.
+///
+/// AND AN EUID IN A PREDICTABLE NAME IS NOT PROOF OF OWNERSHIP of a directory that already exists.
+/// `std::env::temp_dir` is documented as a location that may be shared and whose fixed names need
+/// secure-creation handling; scoping by euid removes the CROSS-TENANT collision that was measured,
+/// and is not hostile-tenant isolation. The remaining same-euid source-write and lifecycle
+/// obligation is undischarged here and stays visible to whoever runs concurrent builds on one host.
 pub fn local_emit_compile_probe_root() -> PathBuf {
-    std::env::temp_dir().join(PROBE_ROOT_DIR_NAME)
+    // SAFETY: `geteuid` reads the calling process's effective uid. It takes no arguments, touches
+    // no memory the caller owns, and is documented as always succeeding.
+    let euid = unsafe { libc::geteuid() };
+    std::env::temp_dir().join(format!("{PROBE_ROOT_DIR_NAME}-{euid}"))
 }
 
 fn lane_probe_root_from_runner_temp(runner_temp: Option<&std::ffi::OsStr>) -> PathBuf {
@@ -682,10 +727,12 @@ fn lane_probe_root_from_runner_temp(runner_temp: Option<&std::ffi::OsStr>) -> Pa
 /// executor declares a per-job temp: the self-hosted fleet's host-shared temp persists across
 /// jobs, runs and euids, and a stale or concurrent `gunbc-emit-compile` there is an EACCES at
 /// best and two runs writing one crate dir at worst (receipt: run 34471447387,
-/// `EmittedCrateNotWritten — … Permission denied`). Locally no runner temp exists and the host
-/// temp is the local route's authority. This is environment SELECTION, not a failure arm: both
-/// roots are declared, nothing is widened, and the required phase's own stricter policy
-/// (refuse without the declaration) is untouched beside it.
+/// `EmittedCrateNotWritten — … Permission denied`). Locally no runner temp exists and the
+/// OWNER-SCOPED host temp is the local route's authority — see `local_emit_compile_probe_root`,
+/// whose note records why the unscoped name this sentence used to describe was the same defect in
+/// its second environment rather than a safe fallback. This is environment SELECTION, not a
+/// failure arm: both roots are declared, nothing is widened, and the required phase's own stricter
+/// policy (refuse without the declaration) is untouched beside it.
 pub fn lane_emit_compile_probe_root() -> PathBuf {
     lane_probe_root_from_runner_temp(declared_runner_temp().as_deref())
 }

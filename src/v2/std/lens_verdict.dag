@@ -1,6 +1,6 @@
 module v2.std.lens_verdict
 
-import std.occurrence_identity { OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
 import v2.std.algebra { fold_list }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic {
@@ -19,10 +19,11 @@ import v2.std.diagnostic {
   textual_whole_file_diagnostic,
 }
 import v2.std.integer { integer_int_to_decimal_string }
+import extdeps.languages.json.emit { quote_json_string }
 import v2.std.node { Node, Symbol }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_textual_locus_optional }
-import std.occurrence_identity { OccurrenceId }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
 
@@ -97,13 +98,35 @@ fn lens_verdict_extent_text(e: Extent) -> String {
 // source graph that minted it; resolving it to a byte range needs that graph's SpanIndex, which
 // the stages past parse do not carry -- so this renders the identity the diagnostic HAS rather
 // than fabricating a file it does not.
+//
+// AN ATOM ANCHOR ALSO NAMES ITS SYMBOL. When the anchor is an atom -- a bare reference, the node a
+// resolver refusal is located at -- its identity is in the node the diagnostic already carries,
+// and the persisted row keeps it; rendering only the ordinal dropped the one word a reader needs
+// ("which symbol was ambiguous?") on the text surface while the JSON row still had it. Composite
+// anchors carry no single name and render as before. Whether a node is an atom, and which, is
+// `v2.std.grammar` `node_atom_identity_optional`'s question -- asked there, not re-destructured here.
+//
+// THE SPELLING IS QUOTED BY ONE LOSSLESS AUTHORITY, NOT PASTED (side-chat hold on gunbc#12004). A
+// symbol's lexeme is any string: pasted between delimiters, an embedded delimiter breaks the
+// quoting and a newline or ESC goes onto the operator's line raw. `extdeps.languages.json.emit`
+// `quote_json_string` is the repository's modeled RFC 8259 string quotation -- total, lossless and
+// unambiguous (backslash and quote escaped, every control character a visible escape) -- so the
+// atom renders as a JSON string literal and no second escaping rule is written here.
+fn lens_verdict_node_atom_suffix(node: Node) -> String {
+  match node_atom_identity_optional(node: node) {
+    Present { value: identity } => concat(" ", quote_json_string(s: symbol_lexeme(sym: identity)))
+    Absent => ""
+  }
+}
+
 fn lens_verdict_node_occurrence_text(node: Node) -> String {
+  let atom = lens_verdict_node_atom_suffix(node: node)
   match node.occurrence_id {
-    OccurrenceSynthetic => "<synthetic node occurrence>"
+    OccurrenceSynthetic => concat("<synthetic node occurrence", concat(atom, ">"))
     OccurrenceMinted { id: id } =>
-      concat("<node occurrence #", concat(integer_int_to_decimal_string(value: id.value), ">"))
+      concat("<node occurrence #", concat(integer_int_to_decimal_string(value: id.value), concat(atom, ">")))
     OccurrenceProjected { id: id, caused_by: _ } =>
-      concat("<projected node occurrence #", concat(integer_int_to_decimal_string(value: id.value), ">"))
+      concat("<projected node occurrence #", concat(integer_int_to_decimal_string(value: id.value), concat(atom, ">")))
   }
 }
 
@@ -139,11 +162,19 @@ fn lens_verdict_node_occurrence_id_optional(node: Node) -> Optional<OccurrenceId
   }
 }
 
-// ONE `match d.at` IN THIS MODULE, AND THE INDEX-FREE DOOR IS ITS PROJECTION. A caller without a
-// span index passes an empty one, every lookup finds nothing, and every arm renders exactly what it
-// rendered before -- so the two doors cannot disagree about a locus, because there is only one set
-// of arms to disagree with. Writing the second door as its own `match` is the section-3 fork this
-// module's own CLI consumer was already warned about.
+// ONE `match d.at` FOR THE LOCUS TEXT, AND THE INDEX-FREE DOOR IS ITS PROJECTION. A caller without
+// a span index passes an empty one, every lookup finds nothing, and every arm renders exactly what
+// it rendered before -- so the two doors cannot disagree about a locus, because there is only one
+// set of arms to disagree with. Writing the second door as its own `match` is the section-3 fork
+// this module's own CLI consumer was already warned about.
+//
+// SCOPED TO THE TEXT RENDERING, AND THE SCOPE IS THE CORRECTION. `lens_verdict_diagnostic_locus_module`
+// above carries its own `match d.at` and always has; an earlier revision of this paragraph said
+// "one `match d.at` in this module", which was false when it was written and was repeated back
+// approvingly in review 69666. The two are not a fork because they answer DIFFERENT questions -- that
+// one projects the module NAME (and is deliberately empty for a node or invariant anchor), this one
+// renders a reader-facing position -- but "they answer different questions" is the honest claim and
+// "there is only one" was not.
 fn lens_verdict_diagnostic_locus_text(d: Diagnostic) -> String {
   lens_verdict_diagnostic_locus_text_in_spans(d: d, index: span_index_empty())
 }
