@@ -396,13 +396,50 @@ fn parse_d0_intent_text(text: String) -> D0IntentParsed? {
   }
 }
 
+// THE FROZEN FILING IS THE INTENT AND THE EXECUTABLE THAT FILED IT. A stable consent proves
+// lifecycle identity; it does not prove implementation continuity -- a rerun under a later
+// revision would resume the lifecycle under semantics the operator never saw. So the execution
+// revision is frozen beside the intent, as the last line, and a rerun must execute it or refuse
+// (the door compares). A modeled recovery migration may later supersede that; "latest main is
+// compatible with every pending lifecycle" is not an implicit fallback.
+data d0_frozen_revision_key: String = "execution_revision="
+
+type D0FrozenFiling {
+  intent_text: String
+  execution_revision: NonEmptyStr
+}
+
+fn d0_frozen_filing_text(intent_text: String, execution_revision: NonEmptyStr) -> String {
+  join([intent_text, d0_frozen_revision_key, execution_revision as String, "\n"], "")
+}
+
+fn parse_d0_frozen_filing(text: String) -> D0FrozenFiling? {
+  let lines = intent_lines(text: text)
+  let n = length(lines)
+  if n < 2 { none } else {
+    let last = line_at(lines: lines, i: n - 2)
+    if line_at(lines: lines, i: n - 1) != "" { none }
+    else {
+      match intent_field(line: last, key: "execution_revision") {
+        Absent => none
+        Present { value: rev } =>
+          if rev == "" { none } else {
+            let intent = join(lines |> take(n: n - 2), "\n")
+            let intent_text = join([intent, "\n"], "")
+            if d0_frozen_filing_text(intent_text: intent_text, execution_revision: rev as NonEmptyStr) == text { Present { value: D0FrozenFiling { intent_text: intent_text, execution_revision: rev as NonEmptyStr } } } else { none }
+          }
+      }
+    }
+  }
+}
+
 type D0FilingFreeze
   = D0FilingFrozen
   | D0FilingAlreadyHeld { text: String }
   | D0FilingFreezeRefused { reason: NonEmptyStr }
 
-fn d0_freeze_filing(store: FabricStorageBinding, escalation_id: NonEmptyStr, intent_text: String) -> D0FilingFreeze {
-  match admit_cas_attempt_for_derived_payload(key: d0_filing_key(escalation_id: escalation_id), expected: ExpectSlotAbsent, proposed: intent_text as NonEmptyStr) {
+fn d0_freeze_filing(store: FabricStorageBinding, escalation_id: NonEmptyStr, intent_text: String, execution_revision: NonEmptyStr) -> D0FilingFreeze {
+  match admit_cas_attempt_for_derived_payload(key: d0_filing_key(escalation_id: escalation_id), expected: ExpectSlotAbsent, proposed: d0_frozen_filing_text(intent_text: intent_text, execution_revision: execution_revision) as NonEmptyStr) {
     DerivedPayloadKeyNotSlotAddressable { key: k } => D0FilingFreezeRefused { reason: join(["filing key is not slot-addressable: ", k as String], "") as NonEmptyStr }
     DerivedPayloadAdmitted { verified: v } =>
       match fabric_storage_compare_and_set(store: store, verified: v) {

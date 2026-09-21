@@ -16,8 +16,7 @@ import gunbc.action_use_admission {
 }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.fleet.org_actions_inspection { org_actions_validation_receipt_path }
-import gunbc.spark.pair_serving_d0_door { pair_serving_d0_group_env, pair_serving_d0_consent_env, pair_serving_d0_step_timeout_minutes }
-import gunbc.spark.fabric_switch_observed { fabric_group_wire, FabricGroupA, FabricGroupB }
+import gunbc.spark.pair_serving_d0_door { pair_serving_d0_consent_env, pair_serving_d0_step_timeout_minutes }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
@@ -102,6 +101,7 @@ import gunbc.ci_spec {
   gunbc_ci_approval_keyring_converge_invoke,
   gunbc_ci_mtcollins1_boot_invoke,
   gunbc_ci_pair_serving_d0_invoke,
+  gunbc_ci_pair_serving_d0_admit_invoke,
   gunbc_ci_org_runner_roster_observe_invoke,
   gunbc_ci_runner_guest_image_observe_invoke,
   gunbc_ci_runner_guest_image_converge_invoke,
@@ -1922,7 +1922,26 @@ fn fleet_converge_mtcollins1_boot_step() -> Step {
 // operator-supplied input reused on every rerun (see the door), so nothing here derives it.
 data fleet_converge_pair_serving_d0_step_if: String = fleet_converge_mode_step_if(mode: PairServingD0)
 
-data fleet_converge_pair_serving_d0_group_options: List<String> = [fabric_group_wire(g: FabricGroupA) as String, fabric_group_wire(g: FabricGroupB) as String]
+// THE ADMISSION RUNS BEFORE ANY CREDENTIAL: placed after the release bins are verified and before
+// the WIF token, the fleet key and the submission key, it refuses a dispatch to any host but srv1
+// (declared AND kernel) with no secret on that host.
+fn fleet_converge_pair_serving_d0_admit_step() -> Step {
+  RunStep {
+    name: Present { value: "Pair-serving D0 admission (credential-free): the executor is srv1, the consent and the expected revision are named" },
+    id: Present { value: "pair_serving_d0_admit" },
+    run: gunbc_ci_pair_serving_d0_admit_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      kv(key: pair_serving_d0_consent_env as String, value: yaml_string(s: "${{ github.event.inputs.d0_consent }}")),
+      kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_pair_serving_d0_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
 
 fn fleet_converge_pair_serving_d0_step() -> Step {
   RunStep {
@@ -1933,8 +1952,8 @@ fn fleet_converge_pair_serving_d0_step() -> Step {
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
-      kv(key: pair_serving_d0_group_env as String, value: yaml_string(s: "${{ github.event.inputs.d0_group }}")),
       kv(key: pair_serving_d0_consent_env as String, value: yaml_string(s: "${{ github.event.inputs.d0_consent }}")),
+      kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_pair_serving_d0_step_if },
@@ -2424,6 +2443,7 @@ fn fleet_converge_job() -> Job {
         [
           ci_release_bins_download_step(),
           ci_release_bins_unpack_verify_step(),
+          fleet_converge_pair_serving_d0_admit_step(),
           ci_fleet_wif_auth_step(),
           ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if }),
         ]
@@ -2650,15 +2670,8 @@ data fleet_converge_workflow: Workflow = Workflow {
           type: InputChoice { options: fleet_converge_reset_observer_options },
         },
         DispatchInput {
-          name: "d0_group",
-          description: Present { value: "pair_serving_d0 only: the fabric group whose pair-serving authority the transaction suspends for the keyed V4.1 successor" },
-          required: false,
-          default: none,
-          type: InputChoice { options: fleet_converge_pair_serving_d0_group_options },
-        },
-        DispatchInput {
           name: "d0_consent",
-          description: Present { value: "pair_serving_d0 only: the escalation id the consent is filed under. It names the transaction, and a rerun after a crash MUST name the same id to find its frozen filing and held claim -- a fresh id is a new consent" },
+          description: Present { value: "pair_serving_d0 only (Cut D, Group A on srv1; expected_revision is required and frozen with the filing): the escalation id the consent is filed under. It names the transaction, and a rerun after a crash MUST name the same id to find its frozen filing and held claim -- a fresh id is a new consent" },
           required: false,
           default: none,
           type: InputString,

@@ -3,7 +3,7 @@ module gunbc.spark.pair_serving_d0_door
 import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs }
 import std.measure { Second, second, second_count, Minute, minute }
 import v2.std.optional { Present, Absent }
-import std.process { ProcessExit, exit_failure }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization }
 import gunbc.auth.approval_gate {
@@ -13,11 +13,11 @@ import gunbc.auth.approval_gate {
 }
 import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, stored_request_from_authorization }
 import gunbc.fabric_storage_client { FabricStorageBinding }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name, read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.spark.fabric_switch_observed { FabricGroup, parse_fabric_group, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, parse_fabric_group, fabric_group_hosts, fabric_group_wire }
 import gunbc.spark.pair_serving_authority_log { current_pair_serving_authority }
 import gunbc.spark.pair_serving_d0 {
   D0Subject, d0_dispatch, d0_store_write_wall_standing,
@@ -79,8 +79,11 @@ fn d0_approval_window() -> Second {
   second(count: d0_poll_tick_budget * (second_count(s: d0_poll_cadence) as Int))
 }
 
-// The mode's step timeout: the approval window, the transaction's own bounded reads and the
-// prelude, rounded up to whole minutes.
+// The mode's step timeout, rounded up to whole minutes: the approval window (constructed: ticks x
+// cadence), plus two OPERATOR-SELECTED outer allowances -- the transaction's, over its bounded
+// fabric reads, host reads and log writes (not derived from those bounds), and the prelude's, which
+// must exceed the Secret Manager transport's own connect and total bounds (gunbc.ci_spec
+// gunbc_ci_pair_serving_d0_prelude: 10 s connect, 60 s total).
 data d0_transaction_allowance: Second = second(count: 900)
 data d0_prelude_allowance: Second = second(count: 120)
 
@@ -99,11 +102,11 @@ type D0RunKind
   | D0Rerun { request: AuthorizationRequest<D0Subject> }
   | D0RunRefused { reason: String }
 
-fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr) -> D0RunKind {
+fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr, execution_revision: NonEmptyStr) -> D0RunKind {
   match d0_read_filing(store: store, escalation_id: escalation_id) {
     D0FilingUnreadable { reason: r } => D0RunRefused { reason: join(["the filing under this escalation could not be read: ", r as String], "") }
     D0FilingAt { text: t } =>
-      match d0_filed_request(text: t, group: g, escalation_id: escalation_id, transaction: transaction) {
+      match d0_filed_request(text: t, group: g, escalation_id: escalation_id, transaction: transaction, execution_revision: execution_revision) {
         D0FiledRequestRefused { reason: r } => D0RunRefused { reason: r as String }
         D0FiledRequestFor { request: request, intent_text: _ } => D0Rerun { request: request }
       }
@@ -112,11 +115,11 @@ fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEm
         D0RequestUnestablished { obligations: o } => D0RunRefused { reason: join(["the consent has no subject to be asked over yet; still to be established: ", join(map(o, x => x as String), "; ")], "") }
         D0RequestRefused { defects: d } => D0RunRefused { reason: join(["the consent has no subject to be asked over: the candidate's source is refused and must be corrected, not read further: ", join(map(d, x => x as String), "; ")], "") }
         D0RequestFor { request: request } =>
-          match d0_freeze_filing(store: store, escalation_id: escalation_id, intent_text: d0_request_intent_text(request: request, group: g, transaction: transaction)) {
+          match d0_freeze_filing(store: store, escalation_id: escalation_id, intent_text: d0_request_intent_text(request: request, group: g, transaction: transaction), execution_revision: execution_revision) {
             D0FilingFreezeRefused { reason: r } => D0RunRefused { reason: r as String }
             D0FilingFrozen => D0FirstRun { request: request }
             D0FilingAlreadyHeld { text: t } =>
-              match d0_filed_request(text: t, group: g, escalation_id: escalation_id, transaction: transaction) {
+              match d0_filed_request(text: t, group: g, escalation_id: escalation_id, transaction: transaction, execution_revision: execution_revision) {
                 D0FiledRequestRefused { reason: r } => D0RunRefused { reason: r as String }
                 D0FiledRequestFor { request: filed, intent_text: _ } => D0Rerun { request: filed }
               }
@@ -209,7 +212,7 @@ fn d0_file_and_poll(request: AuthorizationRequest<D0Subject>, issued: Timestamp,
   }
 }
 
-fn pair_serving_d0_wet(group: String, transaction: String, authorization: String) -> ProcessExit
+fn pair_serving_d0_wet(group: String, transaction: String, authorization: String, execution_revision: String) -> ProcessExit
   uses net: Network
 {
   match parse_fabric_group(wire: group) {
@@ -219,6 +222,8 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
         refuse(reason: "a transaction must be named")
       } else if authorization == "" {
         refuse(reason: "an authorization (escalation id) must be named")
+      } else if execution_revision == "" {
+        refuse(reason: "the execution revision must be named; it is frozen with the filing and a rerun must execute it")
       } else {
       match d0_store_write_wall_standing() {
         Present { value: wall } => refuse(reason: wall)
@@ -232,7 +237,7 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
       match approval_instant_now() {
         Absent => refuse(reason: "clock unreadable; cannot mint an approval window")
         Present { value: issued } =>
-          match d0_gate(store: store, kind: d0_run_kind(store: store, g: g, escalation_id: authorization as NonEmptyStr, transaction: transaction as NonEmptyStr), transaction: transaction as NonEmptyStr, expires: approval_expires_at(issued: issued, window: d0_approval_window()), issued: issued) {
+          match d0_gate(store: store, kind: d0_run_kind(store: store, g: g, escalation_id: authorization as NonEmptyStr, transaction: transaction as NonEmptyStr, execution_revision: execution_revision as NonEmptyStr), transaction: transaction as NonEmptyStr, expires: approval_expires_at(issued: issued, window: d0_approval_window()), issued: issued) {
             D0DoorRefused { reason: r } => refuse(reason: r)
             D0DoorAdmitted { authorization: scoped } =>
               match approval_instant_now() {
@@ -255,29 +260,84 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
 
 // ── THE FLEET-CONVERGE MODE: pair_serving_d0 on the broker host ──────────────────────────────
 //
-// The door is dispatched as a fleet-converge mode with the group and the consent as inputs. THE
-// CONSENT NAMES THE TRANSACTION: one escalation id is one consent is one lifecycle, and a rerun
+// THE MODE IS CUT D, AND CUT D IS GROUP A. The lower door is generic over the fabric group; this
+// mode is not: it passes FabricGroupA and takes no group input, because the program's subject is
+// a bounded replacement on Group A and consuming Group B is a stated non-goal -- an exact approval
+// over a Group B subject would make an out-of-program subject exactly authorized, not repair it.
+//
+// THE CONSENT NAMES THE TRANSACTION: one escalation id is one consent is one lifecycle, and a rerun
 // after a crash names the SAME consent so it finds its frozen filing and its held claim -- which is
-// why the id is an operator-supplied input and never derived from the run id (a fresh run id per
-// invocation would make every rerun a first run). The broker is loopback on the host that serves
-// the dashboard, so the mode refuses any executor but srv1 before reading anything.
-data pair_serving_d0_group_env: NonEmptyStr = "GUNBC_D0_GROUP" as NonEmptyStr
+// why the id is an operator-supplied input and never derived from the run id. THE EXECUTION
+// REVISION is the workflow's expected_revision (the ref the job checked out), frozen with the first
+// filing; a rerun that executes another revision refuses before polling or mutating anything.
+//
+// THE EXECUTOR IS srv1, PROVED TWICE AND BEFORE ANY CREDENTIAL: the broker is loopback on the host
+// that serves the dashboard. The dispatch's host input (the runner label the job was scheduled on)
+// and the kernel's own hostname must both be srv1, and pair_serving_d0_admit_executor runs that
+// admission as a credential-free step BEFORE the job acquires its WIF token, loads the fleet ssh key
+// or materializes the submission MAC key -- so a dispatch to another host refuses with no secret on
+// that host. The door's own entry re-runs the same admission after the credentials, from the same
+// pure fold, so neither seam can drift from the other.
 data pair_serving_d0_consent_env: NonEmptyStr = "GUNBC_D0_CONSENT" as NonEmptyStr
+
+type D0ModeAdmission
+  = D0ModeAdmitted { group: FabricGroup, transaction: NonEmptyStr, authorization: NonEmptyStr, execution_revision: NonEmptyStr }
+  | D0ModeRefused { reason: String }
+
+fn pair_serving_d0_mode_admission(declared_host: String, kernel_host: String, consent: String, execution_revision: String) -> D0ModeAdmission {
+  if declared_host != (operator_host_srv1 as String) {
+    D0ModeRefused { reason: join(["the dispatch names host ", declared_host, ": POST/GET /approvals is loopback on the machine that serves the dashboard, which is ", operator_host_srv1 as String], "") }
+  } else if kernel_host != (operator_host_srv1 as String) {
+    D0ModeRefused { reason: join(["the dispatch names ", operator_host_srv1 as String, " but this job runs on ", kernel_host, "; the broker is loopback on ", operator_host_srv1 as String], "") }
+  } else if consent == "" {
+    D0ModeRefused { reason: join([pair_serving_d0_consent_env as String, " is unset; the mode names no consent (escalation id), and a run must name the same one on every rerun"], "") }
+  } else if execution_revision == "" {
+    D0ModeRefused { reason: "no expected_revision; the consent is frozen with the executable that files it and a rerun must execute the same one" }
+  } else {
+    D0ModeAdmitted { group: FabricGroupA, transaction: consent as NonEmptyStr, authorization: consent as NonEmptyStr, execution_revision: execution_revision as NonEmptyStr }
+  }
+}
+
+fn pair_serving_d0_declared_host() -> String {
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+}
+
+fn pair_serving_d0_execution_revision() -> String {
+  match read_expected_revision() {
+    ExpectedRevisionPresent { revision: r } => r
+    ExpectedRevisionAbsent { variable: _, detail: _ } => ""
+  }
+}
+
+fn pair_serving_d0_kernel_host() -> String
+  uses net: Network
+{
+  match observe_executor_reach() {
+    ExecutorReachKnown { short_hostname: h, path: _ } => h
+    ExecutorReachUnknown { cause: _ } => ""
+  }
+}
+
+// The credential-free admission step: refuses, or prints the admitted arguments, before the job
+// holds any secret.
+fn pair_serving_d0_admit_executor() -> ProcessExit
+  uses net: Network
+{
+  match pair_serving_d0_mode_admission(declared_host: pair_serving_d0_declared_host(), kernel_host: pair_serving_d0_kernel_host(), consent: actions_variable_trimmed(name: pair_serving_d0_consent_env), execution_revision: pair_serving_d0_execution_revision()) {
+    D0ModeRefused { reason: r } => refuse(reason: r)
+    D0ModeAdmitted { group: _, transaction: _, authorization: _, execution_revision: _ } => ExitSuccess
+  }
+}
 
 fn pair_serving_d0_ci_wet() -> ProcessExit
   uses net: Network
 {
-  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
-    ActionsVariableAbsent { variable: v, detail: d } => refuse(reason: join([v, " ", d, "; the broker is loopback on srv1 only"], ""))
-    ActionsVariablePresent { value: host } =>
-      if host != (operator_host_srv1 as String) {
-        refuse(reason: join(["refuses host ", host, ": POST/GET /approvals is loopback on the machine that serves the dashboard, which is ", operator_host_srv1 as String], ""))
-      } else {
-        let group = actions_variable_trimmed(name: pair_serving_d0_group_env)
-        let consent = actions_variable_trimmed(name: pair_serving_d0_consent_env)
-        if group == "" { refuse(reason: join([pair_serving_d0_group_env as String, " is unset; the mode names no fabric group"], "")) }
-        else if consent == "" { refuse(reason: join([pair_serving_d0_consent_env as String, " is unset; the mode names no consent (escalation id), and a run must name the same one on every rerun"], "")) }
-        else { pair_serving_d0_wet(group: group, transaction: consent, authorization: consent) }
-      }
+  match pair_serving_d0_mode_admission(declared_host: pair_serving_d0_declared_host(), kernel_host: pair_serving_d0_kernel_host(), consent: actions_variable_trimmed(name: pair_serving_d0_consent_env), execution_revision: pair_serving_d0_execution_revision()) {
+    D0ModeRefused { reason: r } => refuse(reason: r)
+    D0ModeAdmitted { group: g, transaction: tx, authorization: auth, execution_revision: rev } =>
+      pair_serving_d0_wet(group: fabric_group_wire(g: g) as String, transaction: tx as String, authorization: auth as String, execution_revision: rev as String)
   }
 }

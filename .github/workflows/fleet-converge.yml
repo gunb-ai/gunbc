@@ -25,13 +25,8 @@ on:
         required: false
         options: [srv1, srv2, srv3, srv4]
         type: choice
-      d0_group:
-        description: "pair_serving_d0 only: the fabric group whose pair-serving authority the transaction suspends for the keyed V4.1 successor"
-        required: false
-        options: [group-a, group-b]
-        type: choice
       d0_consent:
-        description: "pair_serving_d0 only: the escalation id the consent is filed under. It names the transaction, and a rerun after a crash MUST name the same id to find its frozen filing and held claim -- a fresh id is a new consent"
+        description: "pair_serving_d0 only (Cut D, Group A on srv1; expected_revision is required and frozen with the filing): the escalation id the consent is filed under. It names the transaction, and a rerun after a crash MUST name the same id to find its frozen filing and held claim -- a fresh id is a new consent"
         required: false
         type: string
       app_key_version:
@@ -203,6 +198,17 @@ jobs:
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        timeout-minutes: 5
+      - name: "Pair-serving D0 admission (credential-free): the executor is srv1, the consent and the expected revision are named"
+        id: pair_serving_d0_admit
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/pair_serving_d0_door.dag --function pair_serving_d0_admit_executor
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          GUNBC_D0_CONSENT: ${{ github.event.inputs.d0_consent }}
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+        if: github.event.inputs.mode == 'pair_serving_d0'
         timeout-minutes: 5
       - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
         id: wif_auth
@@ -600,7 +606,7 @@ jobs:
           SUB_FILE="$RUNNER_TEMP/approval-submission-mac-key"
           trap 'rm -f "$HDR_FILE" "$RESP_FILE" "$SUB_FILE"' EXIT
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          DEST_FILE="$SUB_FILE"; curl -sSf -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access"; python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          DEST_FILE="$SUB_FILE"; curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access"; python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
           chmod 600 "$SUB_FILE"
           export GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE="$SUB_FILE"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -608,8 +614,8 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
-          GUNBC_D0_GROUP: ${{ github.event.inputs.d0_group }}
           GUNBC_D0_CONSENT: ${{ github.event.inputs.d0_consent }}
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'pair_serving_d0'
         timeout-minutes: 47
       - name: "Mt. Collins census image: build the seeded live-server image in /srv/bmc and publish it create-only under its digest name"

@@ -921,6 +921,11 @@ data gunbc_ci_pair_serving_d0_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "pair_serving_d0_ci_wet",
 }
 
+data gunbc_ci_pair_serving_d0_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/pair_serving_d0_door.dag",
+  function: "pair_serving_d0_admit_executor",
+}
+
 data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
   function: "mtcollins1_boot_wet",
@@ -1180,7 +1185,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_publication_publish_target,
     gunbc_ci_approval_keyring_converge_target,
     gunbc_ci_mtcollins1_boot_target,
-    gunbc_ci_pair_serving_d0_target
+    gunbc_ci_pair_serving_d0_target,
+    gunbc_ci_pair_serving_d0_admit_target
   ]
 }
 
@@ -2582,10 +2588,22 @@ fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
     Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$SUB_FILE\"' EXIT") },
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_submission_mac_access_url(), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; curl -sSf --connect-timeout 10 --max-time 60 -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_submission_mac_access_url(), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
   ]
+}
+
+// The credential-free admission: no prelude, no secret, just the door's pure fold over the
+// dispatch host, the kernel hostname, the consent and the expected revision.
+fn gunbc_ci_pair_serving_d0_admit_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_pair_serving_d0_admit_target.entry,
+    function: gunbc_ci_pair_serving_d0_admit_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
 }
 
 data gunbc_ci_pair_serving_d0_shell_emit_scaffold: Disposition = Scaffold {
