@@ -168,6 +168,7 @@ import gunbc.github_app_acquisition {
   registration_standing,
   InstallationAdmissionDisposition,
   InstallationAdmissible,
+  census_app_installation_subject,
   LiveInstallationStanding,
   LiveInstallationNotAdmitted,
   InstallationNotEstablished,
@@ -503,6 +504,37 @@ fn walked(pages: List<PageObservation<GitHubAppInstallation>>) -> InstallationPo
 
 fn closed_population(installations: List<GitHubAppInstallation>) -> InstallationPopulation {
   walked(pages: [PageObservation { items: installations, continuation: ContinuationClosed }])
+}
+
+// THE ORDERING LAW HAS TO BE RED OVER THE PURE JUDGMENT, NOT ONLY AT THE MINT (review 69684). The
+// judgment used to bind InstallationAdmissible { installation: i } -- a strict subset of the
+// variant's declared fields, so `subject` became an implicit wildcard, which is the rostered class
+// gunbc.recurring_failure_mode a_pattern_binding_a_subset_of_fields_is_an_implicit_wildcard. The
+// consequence was not stylistic: census_app_acquisition_judgment returned AcquisitionFactsHold for
+// an admissible installation whose subject named a DIFFERENT app than the registration, and the
+// disagreement was caught afterwards at the mint site. So the ordering law lived in two functions
+// and the half that was witnessable was not the whole law. The judgment now carries it, and this is
+// the claim that could not have existed before: it goes red over the PURE fold, with no seal and no
+// live read anywhere in it.
+test fn w_an_installation_admitted_for_another_app_does_not_hold_the_facts() -> Bool {
+  let foreign = InstallationAdmissible {
+    installation: usable_installation(app_id: 7, installation_id: 991),
+    subject: census_app_installation_subject(app_id: GitHubAppId { value: 8 }),
+  }
+  match census_app_acquisition_judgment(
+    registration: census_registration,
+    installation: foreign,
+    custody: CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: ".gunbc/k.pem", destination: census_app_private_key_custody } },
+  ) {
+    AcquisitionFactsHold { app_id: _, slug: _, installation: _, key_custody: _ } => false
+    AcquisitionFactsMissing { missing: m } =>
+      match m {
+        InstallationReadingUnavailable { reason: r } =>
+          string_contains(s: r as String, pattern: "app id 8")
+            && string_contains(s: r as String, pattern: "registration names app id 7")
+        _ => false
+      }
+  }
 }
 
 fn admit(installations: List<GitHubAppInstallation>) -> InstallationAdmissionDisposition {

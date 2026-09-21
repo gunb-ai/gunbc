@@ -1780,12 +1780,23 @@ fn census_app_acquisition_judgment(
           AcquisitionFactsMissing { missing: InstallationReadingAmbiguous { reason: r } }
         InstallationUnreadable { reason: r } =>
           AcquisitionFactsMissing { missing: InstallationReadingUnavailable { reason: r } }
-        InstallationAdmissible { installation: i } =>
-          match custody {
-            CustodyNotEstablished { reason: r } =>
-              AcquisitionFactsMissing { missing: CustodyMissing { reason: r } }
-            CustodyAtHandoffOnly { custody: c } =>
-              AcquisitionFactsHold { app_id: id, slug: slug, installation: i, key_custody: c }
+        InstallationAdmissible { installation: i, subject: s } =>
+          if s.app_id.value != id.value {
+            AcquisitionFactsMissing {
+              missing: InstallationReadingUnavailable {
+                reason: join([
+                  "the admitted installation was admitted for app id ", to_string(s.app_id.value),
+                  " and the registration names app id ", to_string(id.value),
+                ], "") as NonEmptyStr
+              }
+            }
+          } else {
+            match custody {
+              CustodyNotEstablished { reason: r } =>
+                AcquisitionFactsMissing { missing: CustodyMissing { reason: r } }
+              CustodyAtHandoffOnly { custody: c } =>
+                AcquisitionFactsHold { app_id: id, slug: slug, installation: i, key_custody: c }
+            }
           }
       }
   }
@@ -1820,19 +1831,8 @@ fn census_app_acquisition_standing(
       ) {
         AcquisitionFactsMissing { missing: m } => AcquisitionIncomplete { missing: m }
         AcquisitionFactsHold { app_id: id, slug: slug, installation: _, key_custody: c } =>
-          if a.subject.app_id.value != id.value {
-            AcquisitionIncomplete {
-              missing: InstallationReadingUnavailable {
-                reason: join([
-                  "the admitted installation was admitted for app id ", to_string(a.subject.app_id.value),
-                  " and the registration names app id ", to_string(id.value),
-                ], "") as NonEmptyStr
-              }
-            }
-          } else {
-            CensusAppAcquired {
-              receipt: CensusAppAcquisitionReceipt { app_id: id, slug: slug, installation: a, key_custody: c }
-            }
+          CensusAppAcquired {
+            receipt: CensusAppAcquisitionReceipt { app_id: id, slug: slug, installation: a, key_custody: c }
           }
       }
   }
