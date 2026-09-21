@@ -56,13 +56,15 @@ import v2.workflow.floor_discovery_source_authority {
 import v2.std.live_tree { SubstrateInputsOnly }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
-  native_test_refused_located,
+  native_test_refused_located, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry,
   NativeTestStageEval,
   NativeTestFileRefusal
 }
 import v2.std.optional { Absent, Optional, Present, optional_present }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, invariant_port_locus }
+import v2.std.diagnostic {
+  Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
+}
 import v2.std.collection { List }
 import v2.std.algebra { fold_list, length }
 import v2.std.logic { Bool }
@@ -1574,13 +1576,28 @@ test fn the_refusal_tally_counts_each_refusal_once_at_fatal_grain() -> Bool {
 
 // ── the live pair, enrolled expecting-red (manager ruling 2026-09-21) ──
 
-fn refused_control(reason: Symbol, at_prepare: Bool) -> Optional<NativeTestVerdict> {
-  Present {
-    value: refused_verdict(
-      stage: if at_prepare { NativeTestStagePrepare } else { NativeTestStageContext },
-      reason: reason
-    )
+// A REAL REFUSAL CHAIN: the lookup class first (advisory), the fatal reason last -- the carriage
+// order v2.compiler.resolve's ambiguous_symbol_diagnostics emits. A single-diagnostic probe makes
+// head == fatal and cannot tell a head read from a fatal read (review 69726).
+fn chain_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(port: ^v2_native_route_test_supplied_verdict, invariant: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
+}
+
+fn refused_chain(class_reason: Symbol, fatal_reason: Symbol, at_prepare: Bool) -> Optional<NativeTestVerdict> {
+  Present {
+    value: NativeTestRefused {
+      stage: if at_prepare { NativeTestStagePrepare } else { NativeTestStageContext },
+      diagnostics: NonEmptyDiagnostics { head: chain_diagnostic(reason: class_reason), tail: [chain_diagnostic(reason: fatal_reason)] }
+    }
+  }
+}
+
+fn pinned_chain() -> Optional<NativeTestVerdict> {
+  refused_chain(class_reason: ^resolve_ambiguous_on_global_bare, fatal_reason: ^resolve_reason_ambiguous_symbol, at_prepare: true)
 }
 
 fn receipt_with_controls(false_control: Optional<NativeTestVerdict>, true_control: Optional<NativeTestVerdict>) -> NativeRouteReceipt {
@@ -1605,17 +1622,19 @@ fn receipt_with_controls(false_control: Optional<NativeTestVerdict>, true_contro
 }
 
 fn pinned() -> NativeRouteLivePairStanding {
-  LivePairExpectedRed { stage: NativeTestStagePrepare, reason: ^resolve_ambiguous_on_global_bare, trigger: "t" }
+  LivePairExpectedRed {
+    stage: NativeTestStagePrepare,
+    fatal_reason: ^resolve_reason_ambiguous_symbol,
+    class_reason: ^resolve_ambiguous_on_global_bare,
+    trigger: "t"
+  }
 }
 
 // Enrolled and holding: both controls refuse at the pinned stage with the pinned reason, and the
 // otherwise-green receipt is admitted. The production standing (the data row) is exercised by the
 // same receipt through `native_route_admission`, so a data row pinned to anything else reds here.
 test fn an_enrolled_live_pair_holds_only_at_its_pinned_refusal() -> Bool {
-  let r = receipt_with_controls(
-    false_control: refused_control(reason: ^resolve_ambiguous_on_global_bare, at_prepare: true),
-    true_control: refused_control(reason: ^resolve_ambiguous_on_global_bare, at_prepare: true)
-  )
+  let r = receipt_with_controls(false_control: pinned_chain(), true_control: pinned_chain())
   native_route_admitted(admission: native_route_admission_with(receipt: r, live_pair: pinned()))
   && native_route_admitted(admission: native_route_admission(receipt: r))
   && !native_route_admitted(admission: native_route_admission_with(receipt: r, live_pair: LivePairRequired))
@@ -1629,13 +1648,17 @@ test fn an_observed_live_pair_while_enrolled_demands_the_flip() -> Bool {
   )
 }
 
-// A moved wall: a different reason, or a different stage, is not the enrollment.
+// MOVED WALLS, one axis at a time, each refusing as not observed:
+// - the CLASS moved while the fatal stayed (global-bare -> lexical-chain, what package 12 does);
+// - the FATAL moved while the pinned class is still the pending HEAD advisory -- the case a head
+//   read accepts as still pinned (review 69726);
+// - the STAGE moved.
 test fn a_live_pair_refused_for_another_cause_is_not_the_enrollment() -> Bool {
   native_route_admission_refused_with(
     admission: native_route_admission_with(
       receipt: receipt_with_controls(
-        false_control: refused_control(reason: ^resolve_reason_unbound_symbol, at_prepare: true),
-        true_control: refused_control(reason: ^resolve_ambiguous_on_global_bare, at_prepare: true)
+        false_control: refused_chain(class_reason: ^resolve_ambiguous_on_lexical_chain, fatal_reason: ^resolve_reason_ambiguous_symbol, at_prepare: true),
+        true_control: pinned_chain()
       ),
       live_pair: pinned()
     ),
@@ -1644,8 +1667,18 @@ test fn a_live_pair_refused_for_another_cause_is_not_the_enrollment() -> Bool {
   && native_route_admission_refused_with(
     admission: native_route_admission_with(
       receipt: receipt_with_controls(
-        false_control: refused_control(reason: ^resolve_ambiguous_on_global_bare, at_prepare: true),
-        true_control: refused_control(reason: ^resolve_ambiguous_on_global_bare, at_prepare: false)
+        false_control: pinned_chain(),
+        true_control: refused_chain(class_reason: ^resolve_ambiguous_on_global_bare, fatal_reason: ^resolve_reason_unbound_symbol, at_prepare: true)
+      ),
+      live_pair: pinned()
+    ),
+    cause_name: "true_control_not_observed"
+  )
+  && native_route_admission_refused_with(
+    admission: native_route_admission_with(
+      receipt: receipt_with_controls(
+        false_control: pinned_chain(),
+        true_control: refused_chain(class_reason: ^resolve_ambiguous_on_global_bare, fatal_reason: ^resolve_reason_ambiguous_symbol, at_prepare: false)
       ),
       live_pair: pinned()
     ),

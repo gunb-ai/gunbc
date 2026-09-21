@@ -12,7 +12,7 @@ import extdeps.bazel.target_pattern { SubtreeTargets, TargetPattern }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
-  NativeTestFileRefusal, native_test_verdict_text
+  NativeTestFileRefusal, native_test_verdict_text, native_test_stage_text
 }
 import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.workflow.compile_door_cause_ownership {
@@ -911,7 +911,7 @@ data native_route_live_control_true_declaration: String = "native_lane_true_cont
 // any head until the native resolver admits that form. Leaving the clause required would make the
 // lane unadmittable for a reason no lane change can move; dropping it would lose the control.
 // Enrolling it keeps the evidence: the clause holds ONLY while both controls refuse at the pinned
-// stage with the pinned head reason. A DIFFERENT refusal is a moved wall and refuses as not
+// stage with the pinned FATAL reason and the pinned lookup CLASS in their chain. A DIFFERENT refusal is a moved wall and refuses as not
 // observed; an OBSERVED control refuses as `LivePairObservedWhileEnrolledRed`, which is the flip
 // signal -- the standing must then become `LivePairRequired`, and the pair is a required-green
 // control from that head on (DESIGN 4b(4): the probe flips to a permanent regression control, it
@@ -919,34 +919,40 @@ data native_route_live_control_true_declaration: String = "native_lane_true_cont
 // forms (v2 foundation package 12, the namespace candidate rule).
 type NativeRouteLivePairStanding
   = LivePairRequired
-  | LivePairExpectedRed { stage: NativeTestStage, reason: Symbol, trigger: String }
+  | LivePairExpectedRed { stage: NativeTestStage, fatal_reason: Symbol, class_reason: Symbol, trigger: String }
 
 data native_route_live_pair_standing: NativeRouteLivePairStanding = LivePairExpectedRed {
   stage: NativeTestStagePrepare,
-  reason: ^resolve_ambiguous_on_global_bare,
+  fatal_reason: ^resolve_reason_ambiguous_symbol,
+  class_reason: ^resolve_ambiguous_on_global_bare,
   trigger: "the native resolver admits the retained forms (v2 foundation package 12, the namespace candidate rule)"
 }
 
 fn native_route_stage_eq(a: NativeTestStage, b: NativeTestStage) -> Bool {
-  native_test_stage_name(stage: a) == native_test_stage_name(stage: b)
+  native_test_stage_text(stage: a) == native_test_stage_text(stage: b)
 }
 
-fn native_test_stage_name(stage: NativeTestStage) -> String {
-  match stage {
-    NativeTestStageContext => "context"
-    NativeTestStagePrepare => "prepare"
-    NativeTestStageEntry => "entry"
-    NativeTestStageEval => "eval"
-  }
-}
-
-// A control verdict matches the enrollment only as the pinned refusal: same stage, same head reason.
-fn native_route_control_is_pinned_red(control: Optional<NativeTestVerdict>, stage: NativeTestStage, reason: Symbol) -> Bool {
+// A CONTROL MATCHES THE ENROLLMENT ONLY AS THE PINNED REFUSAL, ON ALL THREE AXES: the stage, the
+// FATAL reason (`diagnostics_fatal_reason` -- the last diagnostic, never the head, which is
+// whatever advisory was pending first; review 69726), and the lookup CLASS carried somewhere in the
+// chain. The class is pinned separately because the fatal reason alone
+// (`resolve_reason_ambiguous_symbol`) is shared by every ambiguity class, and the class is exactly
+// what the resolver change this row waits on moves -- global-bare to lexical-chain would keep the
+// fatal and must still read as a moved wall.
+fn native_route_control_is_pinned_red(
+  control: Optional<NativeTestVerdict>,
+  stage: NativeTestStage,
+  fatal_reason: Symbol,
+  class_reason: Symbol
+) -> Bool {
   match control {
     Absent => false
     Present { value: v } =>
       match v {
-        NativeTestRefused { stage: s, diagnostics: d } => native_route_stage_eq(a: s, b: stage) && d.head.reason == reason
+        NativeTestRefused { stage: s, diagnostics: d } =>
+          native_route_stage_eq(a: s, b: stage)
+            && diagnostics_fatal_reason(d: d) == fatal_reason
+            && (d.head.reason == class_reason || any(xs: d.tail, predicate: fn(x) { x.reason == class_reason }))
         NativeTestPassed => false
         NativeTestReturnedFalse => false
         NativeTestReturnedOther => false
@@ -960,19 +966,19 @@ fn native_route_live_pair_checks(receipt: NativeRouteReceipt, live_pair: NativeR
       NativeRouteClauseCheck { holds: native_route_false_control_holds(receipt: receipt), cause: FalseControlNotObserved },
       NativeRouteClauseCheck { holds: native_route_true_control_holds(receipt: receipt), cause: TrueControlNotObserved }
     ]
-    LivePairExpectedRed { stage: stage, reason: reason, trigger: _ } => [
+    LivePairExpectedRed { stage: stage, fatal_reason: fatal_reason, class_reason: class_reason, trigger: _ } => [
       NativeRouteClauseCheck {
         holds: !(native_route_false_control_holds(receipt: receipt) || native_route_true_control_holds(receipt: receipt)),
         cause: LivePairObservedWhileEnrolledRed
       },
       NativeRouteClauseCheck {
         holds: native_route_false_control_holds(receipt: receipt)
-          || native_route_control_is_pinned_red(control: receipt.false_control, stage: stage, reason: reason),
+          || native_route_control_is_pinned_red(control: receipt.false_control, stage: stage, fatal_reason: fatal_reason, class_reason: class_reason),
         cause: FalseControlNotObserved
       },
       NativeRouteClauseCheck {
         holds: native_route_true_control_holds(receipt: receipt)
-          || native_route_control_is_pinned_red(control: receipt.true_control, stage: stage, reason: reason),
+          || native_route_control_is_pinned_red(control: receipt.true_control, stage: stage, fatal_reason: fatal_reason, class_reason: class_reason),
         cause: TrueControlNotObserved
       }
     ]
