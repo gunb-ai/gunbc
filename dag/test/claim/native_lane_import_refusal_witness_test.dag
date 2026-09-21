@@ -1,6 +1,9 @@
 module test.claim.native_lane_import_refusal
 
-import v2.compiler.compile { native_lane_universe }
+import v2.compiler.compile { native_lane_universe, native_lane_universe_selected }
+import extdeps.bazel.target_pattern {
+  TargetPatternParsed, TargetPatternRefused, parse_target_pattern
+}
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
@@ -84,8 +87,9 @@ data bare_import_read: DagSourceReadWitness = DagSourceReadWitness {
 }
 
 // THE POPULATION THE DERIVATION SELECTS, driven end to end rather than through the predicate in
-// isolation. `native_lane_universe_module_for_source` now asks `native_route_selection_admits` per
-// IDENTITY at the default selection instead of asking `native_route_universe_member` per module,
+// isolation. `native_lane_universe_module_for_source` spells each IDENTITY as a label and asks
+// `target_pattern_matches` at the default pattern instead of asking `native_route_universe_member`
+// per module,
 // and these two reads discriminate that: the only difference between them is the DECLARED
 // NAMESPACE, one inside the `v2.test.` selection and one outside. Same declarations, no imports.
 //
@@ -219,4 +223,74 @@ test fn the_combined_ingest_selects_by_namespace_not_by_character_prefix() -> Bo
     ingest: selection_combined_ingest,
     qualified: "v2.testing.selection_probe.probe_one"
   )
+}
+
+// ── an operator's pattern, through the same producer ──
+//
+// The arms above run the lane's default. These parse a pattern's TEXT -- the argument `gunbc test`
+// will hand over -- and run `native_lane_universe_selected`, the producer the default also runs,
+// over the same supplied sources. An unparseable pattern yields no universe, so every arm below
+// asserts a positive membership and cannot be held green by a parse refusal.
+fn selected_qualified_names(ingest: SourceRootIngest, text: String) -> List<String> {
+  match parse_target_pattern(text: text) {
+    TargetPatternRefused { cause: _ } => []
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(ingest: ingest, pattern: pattern) {
+        Rejected { diagnostics: _ } => []
+        Accepted { value: universe, diagnostics: _ } =>
+          fold_list(
+            xs: universe.identities,
+            empty: [],
+            cons: fn(acc, identity) {
+              list_snoc_item(xs: acc, item: native_route_identity_qualified(identity: identity))
+            }
+          )
+      }
+  }
+}
+
+fn selected_admits(ingest: SourceRootIngest, text: String, qualified: String) -> Bool {
+  contains(xs: selected_qualified_names(ingest: ingest, text: text), item: qualified, eq: fn(a, b) { a == b })
+}
+
+// A SINGLE TARGET SELECTS ONE DECLARATION of a module that holds two: the identity grain, driven
+// end to end. An admit-everything selection reds the second conjunct, admit-nothing the first.
+test fn a_single_target_pattern_selects_one_declaration_of_the_universe() -> Bool {
+  let text = "//v2/test/selection_probe:probe_one"
+  selected_admits(ingest: selection_combined_ingest, text: text, qualified: "v2.test.selection_probe.probe_one")
+  && !selected_admits(ingest: selection_combined_ingest, text: text, qualified: "v2.test.selection_probe.probe_two")
+  && (length(xs: selected_qualified_names(ingest: selection_combined_ingest, text: text)) == 1)
+}
+
+// A PATTERN CANNOT WIDEN THE UNIVERSE. `//v2/testing/...` names a module that discovers cleanly
+// but lies outside the floor's `v2.test.` population: the answer is an ACCEPTED EMPTY universe,
+// never that module. Admit-everything reds this arm; so would a selection that replaced the
+// universe instead of narrowing it.
+test fn a_pattern_outside_the_universe_selects_nothing() -> Bool {
+  let text = "//v2/testing/..."
+  selected_accepted(ingest: selection_combined_ingest, text: text)
+  && (length(xs: selected_qualified_names(ingest: selection_combined_ingest, text: text)) == 0)
+}
+
+// EXCLUDED IS NOT REFUSED, AND REFUSED IS NOT EXCLUDED. A pattern that selects nothing in a sound
+// corpus is an ACCEPTED empty universe; a corpus refusal outside the pattern still refuses the
+// derivation -- a narrower question does not make a broken corpus sound.
+fn selected_accepted(ingest: SourceRootIngest, text: String) -> Bool {
+  match parse_target_pattern(text: text) {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(ingest: ingest, pattern: pattern) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+test fn a_pattern_selecting_nothing_is_accepted_empty_not_refused() -> Bool {
+  selected_accepted(ingest: selection_combined_ingest, text: "//elsewhere/...")
+  && (length(xs: selected_qualified_names(ingest: selection_combined_ingest, text: "//elsewhere/...")) == 0)
+}
+
+test fn a_corpus_refusal_outside_the_pattern_still_refuses() -> Bool {
+  !selected_accepted(ingest: malformed_import_ingest, text: "//elsewhere/...")
 }

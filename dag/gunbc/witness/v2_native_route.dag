@@ -6,8 +6,9 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
-import extdeps.bazel.label { Label, PackageName, PackagePath, RootPackage, TargetName }
-import extdeps.bazel.target_pattern { PackageTargets, SingleTarget, SubtreeTargets, TargetPattern }
+import std.types { NonEmptyStr }
+import extdeps.bazel.label { LabelParse, PackagePath, parse_label }
+import extdeps.bazel.target_pattern { SubtreeTargets, TargetPattern }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
@@ -68,89 +69,53 @@ fn native_route_universe_member(module_qn: String) -> Bool {
   starts_with(s: module_qn, prefix: native_route_universe_prefix)
 }
 
-// A TARGET PATTERN IS THE SAME PREFIX, SPELLED THE WAY OPERATORS ALREADY SPELL SETS.
+// A TARGET PATTERN SELECTS THE UNIVERSE, AND THE MATCHING IS `extdeps.bazel.target_pattern`'S.
 //
 // The universe above is a namespace prefix chosen once and compiled in. An operator asking for a
-// subset -- `gunbc test //v2/test/parse/...` -- is asking the SAME question with a different
-// prefix, so this is a generalisation of `native_route_universe_member`, not a second selection
-// mechanism beside it. `native_route_default_selection` is exactly the compiled-in prefix
-// expressed as a pattern, and `default_selection_admits_exactly_the_prefix_universe` is the law
-// that keeps the two from drifting: if a later edit changes one, the witness fails rather than the
-// route quietly selecting a different population than the prefix it reports.
+// subset -- `gunbc test //v2/test/parse/...` -- is asking the same question with a different
+// pattern, and the cited authority already answers it: `target_pattern_matches` owns subtree
+// containment, package equality and single-target equality. This module owns exactly one fact
+// beside it, the correspondence below, and does not restate the matching.
 //
-// THE MAPPING FROM PACKAGE TO NAMESPACE IS A GUNBC FACT, NOT A BAZEL ONE, which is why it lives
-// here rather than in `extdeps.bazel.target_pattern`. The cited authority spells packages as PATH
-// SEGMENTS; this corpus's targets are DECLARED MODULE NAMESPACES (the `module` line, never the
-// file path -- see gunbc.namespace_cut_stage for why those are different facts). Joining the
-// segments with `.` is the whole of the correspondence, and stating it once here means a pattern
-// and a module header can never be spelled apart.
+// THE MAPPING FROM IDENTITY TO LABEL IS A GUNBC FACT, NOT A BAZEL ONE, which is why it lives here.
+// The cited authority spells packages as PATH SEGMENTS; this corpus's targets are DECLARED MODULE
+// NAMESPACES (the `module` line, never the file path -- see gunbc.namespace_cut_stage for why
+// those are different facts) holding declarations. A module's namespace segments ARE the package
+// segments and the declaration IS the target name, so the label is spelled and handed to the
+// upstream's own `parse_label`: its segment and target-name refusals apply to an identity exactly
+// as they apply to an operator's label, and no second parser decides what a well-formed package
+// is. A refused identity label is a typed refusal of the universe, never a silent exclusion.
+fn native_route_identity_label_text(module_qn: String, declaration: String) -> String {
+  let package = fold_list(
+    xs: split(s: module_qn, delimiter: "."),
+    empty: "",
+    cons: fn(acc, segment) {
+      if acc == "" { concat("", segment) } else { concat(concat(acc, "/"), segment) }
+    }
+  )
+  concat(concat(concat("//", package), ":"), declaration)
+}
+
+fn native_route_identity_label(module_qn: String, declaration: String) -> LabelParse {
+  parse_label(text: native_route_identity_label_text(module_qn: module_qn, declaration: declaration))
+}
+
+// THE DEFAULT PATTERN IS `//v2/test/...`, AND IT NARROWS NOTHING. The universe stays the floor's
+// prefix; a pattern only selects within it (v2.compiler.compile `native_lane_identity_admitted`).
+// The two differ on exactly one module name -- `v2.test` itself, which the subtree form includes
+// and the gate prefix does not -- and no such module exists; the conjunction makes that difference
+// unobservable rather than a second population. `the_default_pattern_admits_every_universe_member`
+// is the law: were the default ever narrower than the universe, the lane would silently drop
+// members at its default.
 //
-// WHY A SUBTREE PREFIX ENDS IN A SEPARATOR. `//v2/test/...` must select `v2.test.parse.x` and must
-// NOT select a module named `v2.testing.y`. Appending the separator makes the boundary the
-// namespace edge rather than a character position, which is the same reason
-// `native_route_universe_prefix` is written `"v2.test."` and not `"v2.test"`. The root package
-// selects everything, so its prefix is empty and the separator would be wrong.
-type NativeRouteSelection
-  = SelectSubtree { namespace_prefix: String }
-  | SelectModule { module_qn: String }
-  | SelectDeclaration { module_qn: String, declaration: String }
-
-fn native_route_package_namespace(package: PackageName) -> String {
-  match package {
-    RootPackage => ""
-    PackagePath { segments: segments } =>
-      fold_list(
-        xs: segments,
-        empty: "",
-        cons: fn(acc, segment) {
-          if acc == "" { concat("", segment) } else { concat(concat(acc, "."), segment) }
-        }
-      )
-  }
-}
-
-fn native_route_subtree_prefix(namespace: String) -> String {
-  if namespace == "" { "" } else { concat(namespace, ".") }
-}
-
-fn native_route_selection_of_pattern(pattern: TargetPattern) -> NativeRouteSelection {
-  match pattern {
-    SubtreeTargets { package: package } =>
-      SelectSubtree {
-        namespace_prefix: native_route_subtree_prefix(
-          namespace: native_route_package_namespace(package: package)
-        )
-      }
-    PackageTargets { package: package } =>
-      SelectModule { module_qn: native_route_package_namespace(package: package) }
-    SingleTarget { label: label } =>
-      SelectDeclaration {
-        module_qn: native_route_package_namespace(package: label.package),
-        declaration: label.target.name
-      }
-  }
-}
-
-// ADMISSION IS PER IDENTITY, NOT PER MODULE, because the single-target form names a DECLARATION.
-// The two set forms ignore the declaration entirely -- they select whole modules -- and saying so
-// by matching on the selection rather than by passing an optional declaration keeps the three arms
-// total and keeps an absent declaration from meaning two different things.
-fn native_route_selection_admits(
-  selection: NativeRouteSelection,
-  module_qn: String,
-  declaration: String
-) -> Bool {
-  match selection {
-    SelectSubtree { namespace_prefix: prefix } =>
-      starts_with(s: module_qn, prefix: prefix)
-    SelectModule { module_qn: selected } => module_qn == selected
-    SelectDeclaration { module_qn: selected, declaration: selected_declaration } =>
-      (module_qn == selected) && (declaration == selected_declaration)
-  }
-}
-
-fn native_route_default_selection() -> NativeRouteSelection {
-  SelectSubtree { namespace_prefix: native_route_universe_prefix }
+// CONSUMERS AND FRONTIER. `v2.compiler.compile` `native_lane_universe_selected` consumes the
+// pattern at execution; `native_lane_universe` (the required-v2-native lane's rendered main)
+// consumes it at this default. An OPERATOR-SUPPLIED pattern reaches that same producer when
+// `gunbc test <pattern>` enters the native implementation (v2 foundation package 9); that verb is
+// the trigger for a non-default caller, and until it lands the only non-default callers are the
+// witnesses over the real producer in gunbc.native_lane_import_refusal_witness_test.
+fn native_route_default_pattern() -> TargetPattern {
+  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr] } }
 }
 
 // ONE TEST IDENTITY, STRUCTURED. The module qualified name and the declaration name are separate
