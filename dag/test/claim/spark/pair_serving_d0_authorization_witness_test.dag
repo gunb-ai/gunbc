@@ -134,16 +134,17 @@ test fn a_frozen_filing_with_no_claim_files_polls_or_decides_live_by_the_read() 
 // THE MODE'S ADMISSION IS PURE AND CARRIES THE LOWER DOOR'S EXACT ARGUMENTS: srv1 declared and
 // srv1 running, a consent and a revision admit Group A with transaction = authorization = the
 // consent and the revision as given; there is no way to name Group B; another declared host, a
-// kernel host that is not srv1 under a declared srv1, a blank consent, and a blank revision each
-// refuse.
+// kernel host that is not srv1 under a declared srv1, a blank consent, a blank revision, and a
+// revision that is not the checked-out tree's HEAD each refuse.
 test fn the_mode_admits_only_srv1_group_a_and_a_named_consent_and_revision() -> Bool {
   let rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: rev) {
+  (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) {
     D0ModeAdmitted { group: g, transaction: tx, authorization: a, execution_revision: r } => (fabric_group_wire(g: g) as String) == "group-a" && (tx as String) == "d0-esc-1" && (a as String) == "d0-esc-1" && (r as String) == rev
     D0ModeRefused { reason: _ } => false
   })
-    && (match pair_serving_d0_mode_admission(declared_host: "srv2", kernel_host: "srv2", consent: "d0-esc-1", execution_revision: rev) { D0ModeRefused { reason: r } => r.contains("srv2")  _ => false })
-    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv2", consent: "d0-esc-1", execution_revision: rev) { D0ModeRefused { reason: r } => r.contains("runs on srv2")  _ => false })
-    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "", execution_revision: rev) { D0ModeRefused { reason: r } => r.contains("GUNBC_D0_CONSENT")  _ => false })
-    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: "") { D0ModeRefused { reason: r } => r.contains("expected_revision")  _ => false })
+    && (match pair_serving_d0_mode_admission(declared_host: "srv2", kernel_host: "srv2", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("srv2")  _ => false })
+    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv2", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("runs on srv2")  _ => false })
+    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("GUNBC_D0_CONSENT")  _ => false })
+    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: "", checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("expected_revision")  _ => false })
+    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") { D0ModeRefused { reason: r } => r.contains("not the tree this job runs from")  _ => false })
 }

@@ -15,6 +15,9 @@ import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, stor
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name, read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent }
 import gunbc.fleet_intent_network { operator_host_srv1 }
+import extdeps.git
+import extdeps.git.inspect
+import gunbc.output_policy { ExpectSuccess }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, parse_fabric_group, fabric_group_hosts, fabric_group_wire }
@@ -277,14 +280,17 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
 // admission as a credential-free step BEFORE the job acquires its WIF token, loads the fleet ssh key
 // or materializes the submission MAC key -- so a dispatch to another host refuses with no secret on
 // that host. The door's own entry re-runs the same admission after the credentials, from the same
-// pure fold, so neither seam can drift from the other.
+// pure fold, so neither seam can drift from the other. THE REVISION NAMES THE EXECUTING SOURCE: the
+// admission reads the checked-out tree's HEAD and requires it to equal expected_revision, so the
+// frozen sha is the source this binary was built from and runs (the workflow checks out that ref
+// and builds the release bins from it), never a dispatch-supplied value standing alone.
 data pair_serving_d0_consent_env: NonEmptyStr = "GUNBC_D0_CONSENT" as NonEmptyStr
 
 type D0ModeAdmission
   = D0ModeAdmitted { group: FabricGroup, transaction: NonEmptyStr, authorization: NonEmptyStr, execution_revision: NonEmptyStr }
   | D0ModeRefused { reason: String }
 
-fn pair_serving_d0_mode_admission(declared_host: String, kernel_host: String, consent: String, execution_revision: String) -> D0ModeAdmission {
+fn pair_serving_d0_mode_admission(declared_host: String, kernel_host: String, consent: String, execution_revision: String, checked_out_revision: String) -> D0ModeAdmission {
   if declared_host != (operator_host_srv1 as String) {
     D0ModeRefused { reason: join(["the dispatch names host ", declared_host, ": POST/GET /approvals is loopback on the machine that serves the dashboard, which is ", operator_host_srv1 as String], "") }
   } else if kernel_host != (operator_host_srv1 as String) {
@@ -293,6 +299,8 @@ fn pair_serving_d0_mode_admission(declared_host: String, kernel_host: String, co
     D0ModeRefused { reason: join([pair_serving_d0_consent_env as String, " is unset; the mode names no consent (escalation id), and a run must name the same one on every rerun"], "") }
   } else if execution_revision == "" {
     D0ModeRefused { reason: "no expected_revision; the consent is frozen with the executable that files it and a rerun must execute the same one" }
+  } else if checked_out_revision != execution_revision {
+    D0ModeRefused { reason: join(["expected_revision ", execution_revision, " is not the tree this job runs from (HEAD ", checked_out_revision, "); the frozen revision must name the executing source, not a dispatch-supplied value"], "") }
   } else {
     D0ModeAdmitted { group: FabricGroupA, transaction: consent as NonEmptyStr, authorization: consent as NonEmptyStr, execution_revision: execution_revision as NonEmptyStr }
   }
@@ -312,6 +320,11 @@ fn pair_serving_d0_execution_revision() -> String {
   }
 }
 
+fn pair_serving_d0_checked_out_revision() -> String {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  if !head.success { "" } else { head.sha as String }
+}
+
 fn pair_serving_d0_kernel_host() -> String
   uses net: Network
 {
@@ -326,7 +339,7 @@ fn pair_serving_d0_kernel_host() -> String
 fn pair_serving_d0_admit_executor() -> ProcessExit
   uses net: Network
 {
-  match pair_serving_d0_mode_admission(declared_host: pair_serving_d0_declared_host(), kernel_host: pair_serving_d0_kernel_host(), consent: actions_variable_trimmed(name: pair_serving_d0_consent_env), execution_revision: pair_serving_d0_execution_revision()) {
+  match pair_serving_d0_mode_admission(declared_host: pair_serving_d0_declared_host(), kernel_host: pair_serving_d0_kernel_host(), consent: actions_variable_trimmed(name: pair_serving_d0_consent_env), execution_revision: pair_serving_d0_execution_revision(), checked_out_revision: pair_serving_d0_checked_out_revision()) {
     D0ModeRefused { reason: r } => refuse(reason: r)
     D0ModeAdmitted { group: _, transaction: _, authorization: _, execution_revision: _ } => ExitSuccess
   }
@@ -335,7 +348,7 @@ fn pair_serving_d0_admit_executor() -> ProcessExit
 fn pair_serving_d0_ci_wet() -> ProcessExit
   uses net: Network
 {
-  match pair_serving_d0_mode_admission(declared_host: pair_serving_d0_declared_host(), kernel_host: pair_serving_d0_kernel_host(), consent: actions_variable_trimmed(name: pair_serving_d0_consent_env), execution_revision: pair_serving_d0_execution_revision()) {
+  match pair_serving_d0_mode_admission(declared_host: pair_serving_d0_declared_host(), kernel_host: pair_serving_d0_kernel_host(), consent: actions_variable_trimmed(name: pair_serving_d0_consent_env), execution_revision: pair_serving_d0_execution_revision(), checked_out_revision: pair_serving_d0_checked_out_revision()) {
     D0ModeRefused { reason: r } => refuse(reason: r)
     D0ModeAdmitted { group: g, transaction: tx, authorization: auth, execution_revision: rev } =>
       pair_serving_d0_wet(group: fabric_group_wire(g: g) as String, transaction: tx as String, authorization: auth as String, execution_revision: rev as String)
