@@ -296,7 +296,18 @@ fn operation_result_wire(r: OperationResult) -> String {
 // on an earlier one -- a networkd file before the reload that reads it, the ruleset before the unit
 // that loads it -- so continuing past a failure would leave the host in a state no row describes
 // and report the last operation's status as the run's, which is the fabricated output DESIGN
-// section 5 forbids. There is deliberately no tolerable-failure arm.
+// section 5 forbids. There is deliberately no tolerable-failure arm, and a stopped line leaves the
+// results of the operations that DID run in the receipt, so an operator reads where it stopped.
+//
+// THE CARRIER HOLDS "STILL RUNNING" AS A FIELD RATHER THAN RE-DERIVING IT FROM THE ACCUMULATOR.
+// Asking "did the previous operation succeed" by folding over the results so far re-establishes,
+// once per operation, a fact the previous step already knew -- DESIGN section 2's repeated demand
+// with a shared-state least common ancestor, which is the fold itself. Carrying it costs one field.
+type OperationSequence {
+  still_running: Bool
+  results: List<OperationResult>
+}
+
 fn run_operations_until_failure(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
@@ -304,30 +315,26 @@ fn run_operations_until_failure(
 ) -> List<OperationResult>
   uses net: Network
 {
-  fold(
+  let sequence = fold(
     ops,
-    init: [],
+    init: OperationSequence { still_running: true, results: [] },
     f: (acc, op) =>
-      if length(acc) > 0 && !operation_result_ok(r: last_result(rs: acc)) {
+      if !acc.still_running {
         acc
       } else {
-        concat(acc, [OperationResult {
-          argv: elevated_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String)),
-          leg: run_operation(subject: subject, context: context, op: op),
-        }])
+        {
+          let r = OperationResult {
+            argv: elevated_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String)),
+            leg: run_operation(subject: subject, context: context, op: op),
+          }
+          OperationSequence {
+            still_running: operation_result_ok(r: r),
+            results: concat(acc.results, [r]),
+          }
+        }
       },
   )
-}
-
-// THE LAST RESULT, AND THE EMPTY LIST IS A REFUSAL RATHER THAN A SUCCESS. An empty accumulator
-// means no operation has run, and a fold whose empty case reported success would let the guard above
-// read "the previous operation was fine" on the first iteration by accident rather than by fact.
-fn last_result(rs: List<OperationResult>) -> OperationResult {
-  fold(
-    rs,
-    init: OperationResult { argv: [], leg: ApplyLegRefused { reason: "no operation ran" } },
-    f: (acc, r) => r,
-  )
+  sequence.results
 }
 
 // ── The staged writes ────────────────────────────────────────────────────────────────────────────
