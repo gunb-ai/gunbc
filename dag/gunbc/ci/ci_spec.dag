@@ -998,6 +998,16 @@ data gunbc_ci_spark_runtime_image_probe_target: GunbcRunStepTarget = GunbcRunSte
   function: "v41_published_image_probe_ci_wet",
 }
 
+// THE PRODUCTION. It verifies the candidate's kernel wheels, converges the patched source tree,
+// builds the V4.1 image on the selected Spark, reads the produced digest back from inside itself
+// and admits that digest against the candidate. It needs this job's prelude for the same reason the
+// probe does -- docker's socket on a Spark is root-owned and the managed executor is in no docker
+// group -- and it is the only step in this job that can occupy a host for hours.
+data gunbc_ci_spark_v41_runtime_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_runtime_image_converge.dag",
+  function: "v41_runtime_image_produce_ci_wet",
+}
+
 data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_receipt_collector.dag",
   function: "collect_fleet_convergence_wet",
@@ -2498,6 +2508,19 @@ fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
     function: gunbc_ci_spark_runtime_image_probe_target.function,
     claim_run: false,
     receipt_rel: "target/v41-published-image-probe-receipt.txt"
+  )
+}
+
+// The production shares the probe's prelude, for the same reason and with the same credential: one
+// fleet-key agent from the job and one per-target administrator credential materialized to one file.
+fn gunbc_ci_spark_v41_runtime_image_build_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_runtime_image_build_target.entry,
+    function: gunbc_ci_spark_v41_runtime_image_build_target.function,
+    claim_run: false,
+    receipt_rel: "target/v41-runtime-image-produce-receipt.txt"
   )
 }
 
