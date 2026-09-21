@@ -665,6 +665,13 @@ fn observe_key_content(subject: ControllerKeyHost, context: FleetSshExecutionCon
 // REMOVE, THEN READ THE ABSENCE BACK. `rm -f` exits 0 on an absent path, so its exit alone cannot
 // distinguish "removed" from "never there" -- which is fine -- nor "there and still there", which is
 // not; the presence test is what answers that.
+// THE RESIDUE PREDICATE'S KEY IS DERIVED FROM THE SEAL, never supplied beside it. As a parameter
+// it was the one value of the three a caller could still spell freely, and it is exactly what
+// classify_staging_residue keys on: a name that does not match authorization.staging reads a
+// listing CONTAINING the residue as StagingAbsent, and that absence feeds ControllerAppKeyHeld --
+// the same false-absence class the parent-listing repair above exists to close. Deriving it here
+// is what makes the sole_constructor claim true of every input the leg uses rather than of two of
+// the three (DESIGN 4b meta-obligation 1; 5, construction over validation).
 fn clear_staging(
   authorization: StagingCleanupAuthorization,
   context: FleetSshExecutionContext,
@@ -674,13 +681,6 @@ fn clear_staging(
   let subject = authorization.subject
   let staging = authorization.staging
   let staging_parent = authorization.parent
-  // THE RESIDUE PREDICATE'S KEY IS DERIVED FROM THE SEAL, never supplied beside it. As a parameter
-  // it was the one value of the three a caller could still spell freely, and it is exactly what
-  // classify_staging_residue keys on: a name that does not match authorization.staging reads a
-  // listing CONTAINING the residue as StagingAbsent, and that absence feeds ControllerAppKeyHeld --
-  // the same false-absence class the parent-listing repair above exists to close. Deriving it here
-  // is what makes the sole_constructor claim true of every input the leg uses rather than of two of
-  // the three (DESIGN 4b meta-obligation 1; 5, construction over validation).
   let staging_name = path_basename(path: staging)
   match run_elevated_leg(subject: subject, context: context, argv: staging_remove_argv(staging: staging), stdin_payload: "") {
     ElevatedLegRefused { reason: r } => StagingUnobservable { reason: concat("staging removal not run: ", r) }
