@@ -144,13 +144,17 @@ pub enum Commands {
         #[arg(long)]
         measurement_child: bool,
     },
-    /// Run one target by its absolute label and report the standing its own
-    /// producer answers in. The label is exact: a target PATTERN refuses, and
-    /// an unbound or unknown target refuses rather than reporting a pass.
+    /// Run a target named by an absolute label or a bazel-style target PATTERN, and
+    /// report the standing its own producer answers in. An exact label routes to
+    /// its bound producer. A set form (`//pkg:all`, `//pkg:*`, `//pkg/...`) is
+    /// admitted and refused with status 2: it runs only through the native test
+    /// route, never the interpreter. A form the pattern grammar does not admit, or
+    /// an unbound or unknown target, refuses rather than reporting a pass.
     Test {
-        /// Absolute label of exactly one target, e.g.
-        /// `//gunbc/instruments:heads-reading-differential`.
-        #[arg(value_name = "LABEL")]
+        /// Absolute label of one target, or a pattern denoting a set:
+        /// `//gunbc/instruments:heads-reading-differential`,
+        /// `//dag/test/claim/roadmap:all`, `//dag/test/claim/roadmap/...`.
+        #[arg(value_name = "TARGET_PATTERN")]
         target: String,
     },
 }
