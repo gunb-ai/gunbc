@@ -20,6 +20,8 @@ data an_enumeration_capped_by_its_reading_tool: RecurringFailureMode = Recurring
 
     "THIS IS NOT truncated_local_diagnostics_indistinguishable_from_the_complete_set, and the boundary is worth stating because the two look alike. There, an ORACLE DIED mid-measure and its partial output read as a verdict -- nobody chose the truncation, and the discriminators are out of band (the abort line, the missing receipt, the stack limit). Here the truncation is CHOSEN, by the reader, as a display convenience, on a population the reader is about to act on; there is no abort to notice and no receipt to be missing. Same silence, different cause, different discriminator, different remedy.",
 
+    "THE RULE, SHARPER THAN EITHER STATEMENT THAT PRODUCED IT (reviewer on gunbc#11962, endorsed by the owning manager): PRESERVE THE COMPLETE CONSUMER SET AS THE MIGRATION INPUT, AND CHECK EVERY AFFECTED OUT-OF-GATE ROOT FROM THAT SET; TRUNCATE ONLY ITS DISPLAY. That splits the legitimate use of a cap from the illegitimate one cleanly, which neither `never truncate` nor `do not use head` manages: a cap on what you LOOK AT is fine and is how anyone reads a long list, and a cap on what you ACT FROM is the defect. The input and the view are two things, and the failure is using one as the other.",
+
     "DISCRIMINATOR, and it is a question about the ENUMERATION rather than about the diff: was the enumeration that justified this deletion or re-signature itself UNBOUNDED? Not 'did you check the consumers' -- the author of this specimen did check them. Whether the check could have shown all of them.",
 
     "RUNG FOUND AT: mitigatable, by the discipline of not capping a census and by a reviewer re-running it. Nothing refuses a capped enumeration because nothing sees one.",
