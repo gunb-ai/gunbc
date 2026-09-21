@@ -9,7 +9,7 @@ import gunbc.auth.approval_gate { ApprovalGateRefusal, ApprovalRecorded, Approva
 import gunbc.auth.approval_request_client { ApprovalPollStanding }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, fabric_group_hosts }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline }
-import gunbc.spark.v41_runtime_candidate { v41_candidate, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused }
+import gunbc.spark.v41_runtime_candidate { v41_candidate, V41CandidateStanding, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused }
 import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_hash, d0_intent_text, parse_d0_intent_text, D0ClaimReading, D0ClaimAt, D0ClaimAbsent, D0ClaimUnreadable }
 
 // ── THE ESCALATION → AUTHORIZATION PRODUCER FOR D0 (Cut D, the gate Cut 0 opens) ─────────────
@@ -27,21 +27,29 @@ import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_hash, d0_i
 // THE SUCCESSOR IS THE KEYED CANDIDATE, OR THERE IS NO SUBJECT. Identity is not permission, but
 // a consent over an unkeyed successor would authorize whatever bytes turned up: the subject
 // refuses to exist until gunbc.spark.v41_runtime_candidate keys the candidate (Cut 0).
+// A DEFECT IS NOT AN OBLIGATION here either: a candidate the source authority refuses (a malformed
+// published population) is a correction owed to the source, and no reading discharges it; an
+// unestablished one names what is still to be read. The door renders them apart.
 type D0SubjectStanding
   = D0SubjectFor { subject: D0Subject }
   | D0SubjectUnestablished { obligations: List<NonEmptyStr> }
+  | D0SubjectRefused { defects: List<NonEmptyStr> }
 
 // The lease term the consent is asked for: the bounded window in which D0 reads the fleet and
 // settles. Declared here as the one term every D0 consent names.
 data d0_consent_term: Second = second(count: 3600)
 
-fn d0_live_subject(group: FabricGroup) -> D0SubjectStanding {
-  match v41_candidate().standing {
+fn d0_subject_of_candidate(group: FabricGroup, standing: V41CandidateStanding) -> D0SubjectStanding {
+  match standing {
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: c, authorization_obligation: _ } =>
       D0SubjectFor { subject: D0Subject { group: group, hosts: fabric_group_hosts(g: group), successor: c, cleanup: QuiescentReservedBaseline, term: d0_consent_term } }
     V41CandidateUnestablished { obligations: o } => D0SubjectUnestablished { obligations: o }
-    V41CandidateRefused { defects: d } => D0SubjectUnestablished { obligations: d }
+    V41CandidateRefused { defects: d } => D0SubjectRefused { defects: d }
   }
+}
+
+fn d0_live_subject(group: FabricGroup) -> D0SubjectStanding {
+  d0_subject_of_candidate(group: group, standing: v41_candidate().standing)
 }
 
 // THE REQUEST, with the intent over the exact operation (sha256 through the realization; an
@@ -49,10 +57,12 @@ fn d0_live_subject(group: FabricGroup) -> D0SubjectStanding {
 type D0RequestStanding
   = D0RequestFor { request: AuthorizationRequest<D0Subject> }
   | D0RequestUnestablished { obligations: List<NonEmptyStr> }
+  | D0RequestRefused { defects: List<NonEmptyStr> }
 
 fn d0_authorization_request(group: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr) -> D0RequestStanding {
   match d0_live_subject(group: group) {
     D0SubjectUnestablished { obligations: o } => D0RequestUnestablished { obligations: o }
+    D0SubjectRefused { defects: d } => D0RequestRefused { defects: d }
     D0SubjectFor { subject: s } =>
       match d0_intent_hash(subject: s, group: group, transaction: transaction) {
         Absent => D0RequestUnestablished { obligations: ["the intent over the exact operation could not be digested (sha256sum unavailable)" as NonEmptyStr] }

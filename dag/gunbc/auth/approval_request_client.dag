@@ -90,29 +90,23 @@ type ApprovalPollStanding
   | PollNotFiled
   | PollUnreadable { detail: NonEmptyStr }
 
+// THE FILED REQUEST'S OWN WINDOW GOVERNS A PENDING STANDING. A pending status carries the
+// expires_at the broker filed (the one the operator was shown); the caller's expires_at is the
+// window it would file under and governs only a request that is NOT filed. A rerun that computes
+// a fresh window may therefore not extend a pending filing past what was filed, and a decision is
+// a decision whenever it is read.
 fn approval_poll_standing(
   status: FiledApprovalStatus,
   observed_at: Timestamp,
   expires_at: Timestamp,
 ) -> ApprovalPollStanding {
-  if observed_at > expires_at {
-    match status {
-      StatusApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
-        PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until }
-      StatusDenied { revision: r, decided_by: by, decided_at: at, reason: why } =>
-        PollDenied { revision: r, decided_by: by, decided_at: at, reason: why }
-      StatusUnreadable { detail: d } => PollUnreadable { detail: d }
-      _ => PollExpired
-    }
-  } else {
-    match status {
-      StatusNotFiled => PollNotFiled
-      StatusPending { expires_at: _ } => PollStillPending
-      StatusApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
-        PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until }
-      StatusDenied { revision: r, decided_by: by, decided_at: at, reason: why } =>
-        PollDenied { revision: r, decided_by: by, decided_at: at, reason: why }
-      StatusUnreadable { detail: d } => PollUnreadable { detail: d }
-    }
+  match status {
+    StatusApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+      PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until }
+    StatusDenied { revision: r, decided_by: by, decided_at: at, reason: why } =>
+      PollDenied { revision: r, decided_by: by, decided_at: at, reason: why }
+    StatusUnreadable { detail: d } => PollUnreadable { detail: d }
+    StatusPending { expires_at: filed } => if observed_at > filed { PollExpired } else { PollStillPending }
+    StatusNotFiled => if observed_at > expires_at { PollExpired } else { PollNotFiled }
   }
 }

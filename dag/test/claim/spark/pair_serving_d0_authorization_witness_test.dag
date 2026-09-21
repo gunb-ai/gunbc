@@ -13,8 +13,9 @@ import std.measure { second }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_text, d0_intent_hash }
+import gunbc.spark.v41_runtime_candidate { V41CandidateRefused, V41CandidateUnestablished }
 import gunbc.spark.pair_serving_d0_authorization {
-  D0SubjectFor, D0SubjectUnestablished, d0_live_subject,
+  D0SubjectFor, D0SubjectUnestablished, D0SubjectRefused, d0_live_subject, d0_subject_of_candidate,
   D0FiledRequestFor, D0FiledRequestRefused, d0_filed_request,
   d0_resumable_authorization, D0Resumable, D0NotRecorded, D0NotClaimedHere,
 }
@@ -37,10 +38,14 @@ fn w_request(intent: ContentHash) -> AuthorizationRequest<D0Subject> {
 // digest, at this writing); a keyed candidate is the successor. The claim is exhaustive over
 // both so it flips, rather than rots, when Cut 0 completes.
 test fn the_live_subject_exists_exactly_when_the_candidate_is_keyed() -> Bool {
-  match d0_live_subject(group: FabricGroupA) {
+  let live = match d0_live_subject(group: FabricGroupA) {
     D0SubjectUnestablished { obligations: o } => length(o) >= 1 && any(o, x => (x as String).contains("row-store"))
     D0SubjectFor { subject: s } => length(s.hosts) == 4
+    D0SubjectRefused { defects: _ } => false
   }
+  let refused = match d0_subject_of_candidate(group: FabricGroupA, standing: V41CandidateRefused { defects: ["weight manifest: path declared more than once" as NonEmptyStr] }) { D0SubjectRefused { defects: d } => length(d) == 1  _ => false }
+  let pending = match d0_subject_of_candidate(group: FabricGroupA, standing: V41CandidateUnestablished { obligations: ["row-store digest" as NonEmptyStr] }) { D0SubjectUnestablished { obligations: o } => length(o) == 1  _ => false }
+  live && refused && pending
 }
 
 // THE FILED REQUEST IS THE FROZEN TEXT, EXACTLY. The intent text a live request is frozen as

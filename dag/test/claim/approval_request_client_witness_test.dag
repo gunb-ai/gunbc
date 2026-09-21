@@ -109,6 +109,30 @@ test fn poll_expires_after_expires_at_unless_already_decided() -> Bool {
     }
 }
 
+// THE FILED WINDOW GOVERNS A PENDING REQUEST, NOT THE CALLER'S: a rerun that computed a fresh,
+// later window cannot keep a filing pending past the expires_at the broker filed; and a filing
+// still inside its own window stays pending even when the caller's window has passed. The caller's
+// window governs only a request that is not filed.
+test fn a_pending_filing_expires_by_its_filed_window_not_the_callers() -> Bool {
+  match approval_poll_standing(status: StatusPending { expires_at: "2026-09-16T21:00:00Z" }, observed_at: "2026-09-16T21:30:00Z", expires_at: "2026-09-16T23:00:00Z") {
+    PollExpired => true
+    _ => false
+  }
+    && match approval_poll_standing(status: StatusPending { expires_at: "2026-09-16T23:00:00Z" }, observed_at: "2026-09-16T21:30:00Z", expires_at: "2026-09-16T21:00:00Z") {
+      PollStillPending => true
+      _ => false
+    }
+    && match approval_poll_standing(status: StatusNotFiled, observed_at: "2026-09-16T21:30:00Z", expires_at: "2026-09-16T21:00:00Z") {
+      PollExpired => true
+      _ => false
+    }
+    && match approval_poll_standing(status: StatusNotFiled, observed_at: "2026-09-16T20:30:00Z", expires_at: "2026-09-16T21:00:00Z") {
+      PollNotFiled => true
+      _ => false
+    }
+}
+
+
 test fn post_filed_token_admits_poll_including_notify_failure() -> Bool {
   submission_body_admits_poll(body: submission_filed_text(filed: true, reason: "approval submission: filed esc-1 and notified (ntfy message m)"))
     && submission_body_admits_poll(body: submission_filed_text(filed: true, reason: "approval submission: escalation esc-1 is already filed"))

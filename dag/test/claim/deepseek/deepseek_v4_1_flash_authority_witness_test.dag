@@ -16,7 +16,7 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram_shard_1, deepseek_v4_1_flash_engram_shard_14,
   deepseek_v4_1_flash_published_manifest_text, deepseek_v4_1_flash_published_file_row, deepseek_v4_1_flash_tokenizer_role_row,
   deepseek_v4_1_flash_admit_weight_manifest, deepseek_v4_1_flash_weight_manifest_standing, WeightManifestAdmitted, WeightManifestRefused,
-  deepseek_v4_1_flash_index_reading, deepseek_v4_1_flash_safetensors_shard_count, deepseek_v4_1_flash_shard_path,
+  deepseek_v4_1_flash_index_reading, deepseek_v4_1_flash_index_reading_of, deepseek_v4_1_flash_safetensors_index_file, deepseek_v4_1_flash_safetensors_shard_count, deepseek_v4_1_flash_shard_path,
   deepseek_v4_1_flash_admit_tokenizer_population, deepseek_v4_1_flash_tokenizer_standing, deepseek_v4_1_flash_tokenizer_roles, deepseek_v4_1_flash_tokenizer_required_roles,
   TokenizerPopulationAdmitted, TokenizerPopulationRefused, TokenizerVocabulary, TokenizerPromptEncoding, TokenizerSpecialTokens, TokenizerGenerationDefaults, RoleNotConsumedByRuntime, RoleNoSeparateFile, RolePublishedFile,
   deepseek_v4_1_flash_tokenizer_json_file,
@@ -247,9 +247,15 @@ test fn the_weight_manifest_admits_exactly_the_48_shards_and_refuses_a_same_size
     WeightManifestRefused { defects: d } => any(d, x => (x as String).contains("outside the generated shard set: model-00049"))
     WeightManifestAdmitted { files: _, index: _, canonical_text: _ } => false
   }
+  // THE INDEX JOIN HAS ITS OWN RED: the same 48 files against an index whose weight_map names one
+  // shard fewer, and against one naming a 49th, refuse on the index arm alone.
+  let index_short = deepseek_v4_1_flash_index_reading_of(file: deepseek_v4_1_flash_safetensors_index_file, shard_paths: deepseek_v4_1_flash_index_reading.shard_paths |> take(n: 47))
+  let index_wide = deepseek_v4_1_flash_index_reading_of(file: deepseek_v4_1_flash_safetensors_index_file, shard_paths: concat(deepseek_v4_1_flash_index_reading.shard_paths, ["model-00049-of-00048.safetensors" as NonEmptyStr]))
+  let index_refuses = (match deepseek_v4_1_flash_admit_weight_manifest(rows: rows, index: index_short, shard_count: deepseek_v4_1_flash_safetensors_shard_count, tree_bytes: deepseek_v4_1_flash_safetensors_tree_file_bytes) { WeightManifestRefused { defects: d } => length(d) == 1 && any(d, x => (x as String).contains("weight_map shard population"))  _ => false })
+    && (match deepseek_v4_1_flash_admit_weight_manifest(rows: rows, index: index_wide, shard_count: deepseek_v4_1_flash_safetensors_shard_count, tree_bytes: deepseek_v4_1_flash_safetensors_tree_file_bytes) { WeightManifestRefused { defects: d } => length(d) == 1 && any(d, x => (x as String).contains("weight_map shard population"))  _ => false })
   let text = deepseek_v4_1_flash_published_manifest_text(rows: rows)
   let resized = map(rows, r => if (r.path as String) == "model-00002-of-00048.safetensors" { deepseek_v4_1_flash_published_file_row(path: r.path, file_bytes: byte_size(count: byte_size_count(b: r.file_bytes) + 1), sha256_hex: r.sha256.hex) } else { r })
-  admitted && owners && same_size_duplicate && foreign
+  admitted && owners && same_size_duplicate && foreign && index_refuses
     && text != deepseek_v4_1_flash_published_manifest_text(rows: resized)
     && (deepseek_v4_1_flash_shard_path(index: 7, count: 48) as String) == "model-00007-of-00048.safetensors"
 }

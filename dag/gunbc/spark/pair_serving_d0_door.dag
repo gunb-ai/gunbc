@@ -24,7 +24,7 @@ import gunbc.spark.pair_serving_d0 {
   d0_read_claim, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
 }
 import gunbc.spark.pair_serving_d0_authorization {
-  D0RequestFor, D0RequestUnestablished, d0_authorization_request, d0_request_intent_text,
+  D0RequestFor, D0RequestUnestablished, D0RequestRefused, d0_authorization_request, d0_request_intent_text,
   D0FiledRequestFor, D0FiledRequestRefused, d0_filed_request,
   d0_resumable_authorization, D0Resumable, D0NotRecorded, D0NotClaimedHere,
 }
@@ -97,7 +97,8 @@ fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEm
       }
     D0FilingAbsent =>
       match d0_authorization_request(group: g, escalation_id: escalation_id, transaction: transaction) {
-        D0RequestUnestablished { obligations: o } => D0RunRefused { reason: join(["the consent has no subject to be asked over: ", join(map(o, x => x as String), "; ")], "") }
+        D0RequestUnestablished { obligations: o } => D0RunRefused { reason: join(["the consent has no subject to be asked over yet; still to be established: ", join(map(o, x => x as String), "; ")], "") }
+        D0RequestRefused { defects: d } => D0RunRefused { reason: join(["the consent has no subject to be asked over: the candidate's source is refused and must be corrected, not read further: ", join(map(d, x => x as String), "; ")], "") }
         D0RequestFor { request: request } =>
           match d0_freeze_filing(store: store, escalation_id: escalation_id, intent_text: d0_request_intent_text(request: request, group: g, transaction: transaction)) {
             D0FilingFreezeRefused { reason: r } => D0RunRefused { reason: r as String }

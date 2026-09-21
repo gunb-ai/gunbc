@@ -427,7 +427,7 @@ fn v41_partition_inputs(p: V41EngramResidencyPartition) -> List<ArtifactRealizat
 type V41ManifestStanding
   = V41ManifestObserved { digest: Sha256Digest }
   | V41ManifestUnestablished { obligation: NonEmptyStr }
-  | V41ManifestRefused { defects: List<NonEmptyStr> }
+  | V41ManifestRefused { first: NonEmptyStr, rest: List<NonEmptyStr> }
 
 type V41ModelSourceInputs {
   checkpoint_revision: NonEmptyStr
@@ -439,15 +439,24 @@ fn v41_manifest_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
   match m {
     V41ManifestObserved { digest: _ } => [] as List<NonEmptyStr>
     V41ManifestUnestablished { obligation: o } => [o]
-    V41ManifestRefused { defects: _ } => [] as List<NonEmptyStr>
+    V41ManifestRefused { first: _, rest: _ } => [] as List<NonEmptyStr>
   }
 }
 
+// A refusal carries at least one defect BY CONSTRUCTION (first, rest), so an empty refusal that
+// would fall through to keying is not writable.
 fn v41_manifest_defects(m: V41ManifestStanding) -> List<NonEmptyStr> {
   match m {
     V41ManifestObserved { digest: _ } => [] as List<NonEmptyStr>
     V41ManifestUnestablished { obligation: _ } => [] as List<NonEmptyStr>
-    V41ManifestRefused { defects: d } => d
+    V41ManifestRefused { first: f, rest: r } => concat([f], r)
+  }
+}
+
+fn v41_manifest_refused(defects: List<NonEmptyStr>, subject: String) -> V41ManifestStanding {
+  match first(defects) {
+    Present { value: f } => V41ManifestRefused { first: f, rest: defects |> skip(n: 1) }
+    Absent => V41ManifestRefused { first: join([subject, ": refused with no defect named -- the admission's refusal carried an empty population"], "") as NonEmptyStr, rest: [] as List<NonEmptyStr> }
   }
 }
 
@@ -455,7 +464,7 @@ fn v41_manifest_value(m: V41ManifestStanding) -> String {
   match m {
     V41ManifestObserved { digest: d } => d.hex as String
     V41ManifestUnestablished { obligation: _ } => ""
-    V41ManifestRefused { defects: _ } => ""
+    V41ManifestRefused { first: _, rest: _ } => ""
   }
 }
 
@@ -524,7 +533,10 @@ fn v41_row_store_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
 // discharged by reading the index rather than by writing something.
 fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStanding {
   let membership = safetensors_population_closure_obligations(s: e.population)
-  if length(membership) != 0 {
+  let row_store_defects = v41_manifest_defects(m: e.row_store_encoding)
+  if length(row_store_defects) != 0 {
+    V41IdentityRefused { defects: row_store_defects }
+  } else if length(membership) != 0 {
     V41IdentityUnestablished { obligations: concat(membership, v41_row_store_obligations(m: e.row_store_encoding)) }
   } else {
   match v41_admit_partition(p: e.partition, standing: e.population) {
@@ -535,7 +547,7 @@ fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStand
       } else {
         match e.row_store_encoding {
           V41ManifestUnestablished { obligation: o } => V41IdentityUnestablished { obligations: [o] }
-          V41ManifestRefused { defects: d } => V41IdentityRefused { defects: d }
+          V41ManifestRefused { first: f, rest: r } => V41IdentityRefused { defects: concat([f], r) }
           V41ManifestObserved { digest: d } =>
             V41IdentityKeyed { key: artifact_realization_digest(inputs: concat(v41_partition_inputs(p: p), [
               v41_input(identity: "row_store_encoding", value: d.hex as String),
@@ -738,14 +750,14 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
 // sha256sum realization; unavailable is a typed obligation, never a structural fallback.
 fn v41_weight_manifest_standing() -> V41ManifestStanding {
   match deepseek_v4_1_flash_weight_manifest_standing() {
-    WeightManifestRefused { defects: d } => V41ManifestRefused { defects: map(d, x => join(["weight manifest: ", x as String], "") as NonEmptyStr) }
+    WeightManifestRefused { defects: d } => v41_manifest_refused(defects: map(d, x => join(["weight manifest: ", x as String], "") as NonEmptyStr), subject: "the weight manifest")
     WeightManifestAdmitted { files: _, index: _, canonical_text: t } => v41_manifest_digest(text: t, subject: "the admitted weight manifest (48 shards at dba1be0a)")
   }
 }
 
 fn v41_tokenizer_standing() -> V41ManifestStanding {
   match deepseek_v4_1_flash_tokenizer_standing() {
-    TokenizerPopulationRefused { defects: d } => V41ManifestRefused { defects: map(d, x => join(["tokenizer population: ", x as String], "") as NonEmptyStr) }
+    TokenizerPopulationRefused { defects: d } => v41_manifest_refused(defects: map(d, x => join(["tokenizer population: ", x as String], "") as NonEmptyStr), subject: "the tokenizer population")
     TokenizerPopulationAdmitted { files: _, canonical_text: t } => v41_manifest_digest(text: t, subject: "the admitted tokenizer population at dba1be0a")
   }
 }

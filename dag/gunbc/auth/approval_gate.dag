@@ -203,7 +203,7 @@ fn approval_poll_ticks(remaining: Int, cadence: Second, escalation_id: NonEmptyS
     PollObservedAt { standing: standing, observed_at: observed } =>
       match standing {
         PollStillPending =>
-          if remaining <= 1 {
+          if remaining <= 0 {
             PollObservedAt { standing: PollExpired, observed_at: observed }
           } else {
             let _paced = sleep_delay_seconds_second_carrier_projection(duration: cadence)

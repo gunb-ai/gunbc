@@ -772,9 +772,71 @@ type DeepseekV41IndexReading sole_constructor {
   shard_paths: List<NonEmptyStr>
 }
 
+// A reading from its two facts, the constructor a claim supplies a divergent index through.
+fn deepseek_v4_1_flash_index_reading_of(file: DeepseekV41PublishedFile, shard_paths: List<NonEmptyStr>) -> DeepseekV41IndexReading {
+  DeepseekV41IndexReading { file: file, shard_paths: shard_paths }
+}
+
+// THE WEIGHT_MAP'S SHARD POPULATION AS READ -- the distinct values of the index's weight_map,
+// transcribed from the file whose digest is cited above (read 2026-09-21), NOT derived from the
+// generator the admission joins them against: a reading that was the generator would make the
+// index join green by construction. It happens to equal the generated set at this revision, which
+// is the fact the admission establishes rather than assumes; an index naming one shard fewer, or
+// one more, is a refusal the witness drives with a supplied reading.
+data deepseek_v4_1_flash_index_weight_map_shards: List<NonEmptyStr> = [
+  "model-00001-of-00048.safetensors" as NonEmptyStr,
+  "model-00002-of-00048.safetensors" as NonEmptyStr,
+  "model-00003-of-00048.safetensors" as NonEmptyStr,
+  "model-00004-of-00048.safetensors" as NonEmptyStr,
+  "model-00005-of-00048.safetensors" as NonEmptyStr,
+  "model-00006-of-00048.safetensors" as NonEmptyStr,
+  "model-00007-of-00048.safetensors" as NonEmptyStr,
+  "model-00008-of-00048.safetensors" as NonEmptyStr,
+  "model-00009-of-00048.safetensors" as NonEmptyStr,
+  "model-00010-of-00048.safetensors" as NonEmptyStr,
+  "model-00011-of-00048.safetensors" as NonEmptyStr,
+  "model-00012-of-00048.safetensors" as NonEmptyStr,
+  "model-00013-of-00048.safetensors" as NonEmptyStr,
+  "model-00014-of-00048.safetensors" as NonEmptyStr,
+  "model-00015-of-00048.safetensors" as NonEmptyStr,
+  "model-00016-of-00048.safetensors" as NonEmptyStr,
+  "model-00017-of-00048.safetensors" as NonEmptyStr,
+  "model-00018-of-00048.safetensors" as NonEmptyStr,
+  "model-00019-of-00048.safetensors" as NonEmptyStr,
+  "model-00020-of-00048.safetensors" as NonEmptyStr,
+  "model-00021-of-00048.safetensors" as NonEmptyStr,
+  "model-00022-of-00048.safetensors" as NonEmptyStr,
+  "model-00023-of-00048.safetensors" as NonEmptyStr,
+  "model-00024-of-00048.safetensors" as NonEmptyStr,
+  "model-00025-of-00048.safetensors" as NonEmptyStr,
+  "model-00026-of-00048.safetensors" as NonEmptyStr,
+  "model-00027-of-00048.safetensors" as NonEmptyStr,
+  "model-00028-of-00048.safetensors" as NonEmptyStr,
+  "model-00029-of-00048.safetensors" as NonEmptyStr,
+  "model-00030-of-00048.safetensors" as NonEmptyStr,
+  "model-00031-of-00048.safetensors" as NonEmptyStr,
+  "model-00032-of-00048.safetensors" as NonEmptyStr,
+  "model-00033-of-00048.safetensors" as NonEmptyStr,
+  "model-00034-of-00048.safetensors" as NonEmptyStr,
+  "model-00035-of-00048.safetensors" as NonEmptyStr,
+  "model-00036-of-00048.safetensors" as NonEmptyStr,
+  "model-00037-of-00048.safetensors" as NonEmptyStr,
+  "model-00038-of-00048.safetensors" as NonEmptyStr,
+  "model-00039-of-00048.safetensors" as NonEmptyStr,
+  "model-00040-of-00048.safetensors" as NonEmptyStr,
+  "model-00041-of-00048.safetensors" as NonEmptyStr,
+  "model-00042-of-00048.safetensors" as NonEmptyStr,
+  "model-00043-of-00048.safetensors" as NonEmptyStr,
+  "model-00044-of-00048.safetensors" as NonEmptyStr,
+  "model-00045-of-00048.safetensors" as NonEmptyStr,
+  "model-00046-of-00048.safetensors" as NonEmptyStr,
+  "model-00047-of-00048.safetensors" as NonEmptyStr,
+  "model-00048-of-00048.safetensors" as NonEmptyStr
+]
+
 data deepseek_v4_1_flash_index_reading: DeepseekV41IndexReading = DeepseekV41IndexReading {
   file: deepseek_v4_1_flash_safetensors_index_file,
-  shard_paths: deepseek_v4_1_flash_shard_paths(),
+  shard_paths: deepseek_v4_1_flash_index_weight_map_shards,
 }
 
 // THE WEIGHT MANIFEST IS ADMITTED, NOT COUNTED. A count and a byte total let a duplicated row of
