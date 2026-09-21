@@ -118,6 +118,15 @@ const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 /// nothing about the limitation this row pins.
 const CLI_DOOR_EMIT_LIMITATION: &str = "infer_grounding_not_derived";
 
+/// THE EXACT STATUS A CLI REFUSAL TAKES, AND ANY-NONZERO IS NOT IT.
+///
+/// `v2.cli.compile_cli` `v2_cli_exit` maps every `CliRunRefused` through `std.process`
+/// `exit_failure`, which is `ExitFailure { code: exit_code_general_error }` -- and
+/// `extdeps.process.posix_exit` declares that as `1`. So a refusal this harness pins takes exactly
+/// 1. Accepting any non-zero admitted `101` (a Rust panic's status) beside plausible stderr, which
+/// is a crash wearing a refusal's clothes. Both door arms compare against this.
+const CLI_DOOR_REFUSAL_EXIT: i32 = 1;
+
 /// The refusal control's expected cause, quoted from `v2.cli.compile_cli` `cli_parse_finish`'s
 /// `cli_no_entry` arm. It is the DETAIL and not the reason symbol because the rendered main prints
 /// the `ProcessExit` reason string and nothing else, so the detail is the only part of the refusal
@@ -1188,12 +1197,20 @@ pub struct V2NativeCliHeld {
     pub seed_identity: String,
     pub exit_status: i64,
     pub warning_count: i64,
-    /// The status the built binary itself took on the EMIT PROBE, and the bytes it wrote on stdout.
-    /// Both are carried rather than folded into a Bool because a receipt that says only "the probe
+    /// The status the built binary itself took on the EMIT PROBE, and the length of what it wrote on
+    /// stdout. Carried rather than folded into a Bool because a receipt that says only "the probe
     /// held" cannot be read afterwards for what the door actually did — the flattening
-    /// `run_native_binary`'s annotation records paying for once already. `door_emitted_bytes` is
-    /// expected to be ZERO while the probe expects red, and it is recorded precisely so that a
-    /// nonzero value is visible in the receipt on the day the door starts emitting.
+    /// `run_native_binary`'s annotation records paying for once already.
+    ///
+    /// `door_emitted_bytes` IS ZERO BY CONSTRUCTION, AND AN EARLIER VERSION OF THIS DOC CLAIMED
+    /// OTHERWISE. It said a nonzero value would become "visible in the receipt on the day the door
+    /// starts emitting". No path produces that: `adjudicate_cli_emit_probe` returns `StdoutNotEmpty`
+    /// before `PinnedRefusalHeld` whenever stdout is non-empty, `walk_cli_door` binds this field only
+    /// in the admitting arm, and an emitting door answers `ProbeGreened`, which is an `Err` — so the
+    /// receipt is never built at all. The field records the probe's stdout length, which the
+    /// admitting arm requires to be zero, and that is all it records. Describing an observation the
+    /// code cannot make is the inflation DESIGN section 4b(1) forbids, and it is the third time this
+    /// file has carried that shape (reviews 69621, 69654).
     pub door_exit_status: i64,
     pub door_emitted_bytes: i64,
     /// The status the same binary took when `--entry` was removed from the emit probe's argv.
@@ -1278,9 +1295,15 @@ fn run_cli_door(binary: &Path, args: &[String]) -> Result<CliDoorRun, String> {
 /// practice, which is how the first cut of this probe shipped with a hole in it.
 #[derive(Debug)]
 enum CliEmitProbeVerdict {
-    /// The one admitting arm: a normal termination, a non-zero status, no stdout, and the CLI's
-    /// DETERMINING reason equal to the pinned limitation.
-    PinnedRefusalHeld { exit_status: i64 },
+    /// The one admitting arm: a normal termination, the CLI's own refusal status, no stdout, and a
+    /// fully rendered refusal whose DETERMINING reason equals the pinned limitation. The locus is
+    /// carried because the located chain supplies it and a reader needs where the fatal sat.
+    PinnedRefusalHeld {
+        exit_status: i64,
+        determining_locus: String,
+    },
+    /// A non-zero status that is not the one a CLI refusal takes -- 101 for a panic, say.
+    UnexpectedExitCode { status: i32 },
     /// The door emitted. The probe has outlived its subject and must be flipped, not relaxed.
     ProbeGreened { stdout_bytes: usize },
     /// No exit status at all: killed by a signal. NOT a refusal, and the reason this partition
@@ -1290,7 +1313,7 @@ enum CliEmitProbeVerdict {
     /// status it never took.
     TerminatedBySignal,
     /// A refusal was rendered, but the DETERMINING diagnostic is not the pinned one.
-    DeterminingReasonDiffers { determining: String },
+    DeterminingReasonDiffers { determining: String, locus: String },
     /// Non-zero, but nothing matching the CLI's refusal contract reached stderr.
     RefusalNotRendered,
     /// A refusal that also wrote to stdout: the CLI writes emitted text there and nothing else, so
@@ -1298,18 +1321,46 @@ enum CliEmitProbeVerdict {
     StdoutNotEmpty { stdout_bytes: usize },
 }
 
-/// THE DETERMINING REASON, READ THROUGH THE CLI'S OWN CONTRACT AND NOT BY SUBSTRING.
+/// What the CLI's refusal rendering decoded to: the determining reason and where it was located.
+struct CliRefusalRendering {
+    determining_reason: String,
+    determining_locus: String,
+}
+
+/// THE DETERMINING REASON, READ THROUGH THE CLI'S CURRENT CONTRACT.
 ///
-/// `v2.cli.compile_cli` renders `the closure did not emit; diagnostic chain: A -> B -> ... -> Z |
-/// FATAL AT <locus>`, and its `cli_fatal_diagnostic` folds the chain to its LAST element -- the
-/// module's own annotation states why: the head answers `parse_grammar_choice_overlap_residue` for
-/// every entry tried, which is a grammar-global ADVISORY and never the fatal. So `Z` is the
-/// determining reason and a `contains()` over the whole line is not: it matches an advisory sitting
-/// anywhere in the chain, which is precisely how an unrelated failure could satisfy this probe.
-fn cli_refusal_determining_reason(stderr: &str) -> Option<String> {
+/// `v2.cli.compile_cli` renders `REFUSED: the closure did not emit; diagnostic chain: <links> |
+/// FATAL AT <locus>`, and `diagnostics_fatal` folds the chain to its LAST link -- that module's
+/// annotation states why: the head answers `parse_grammar_choice_overlap_residue` for every entry
+/// tried, a grammar-global ADVISORY that is never the fatal.
+///
+/// EVERY LINK IS NOW LOCATED, AND THIS DECODER DID NOT KNOW THAT. gunbc#11965/#11985 moved the chain
+/// to `lens_verdict_diagnostics_located_chain_text`, so a link is
+/// `<reason> @ <locus>` (`lens_verdict_diagnostic_located_text`) rather than a bare reason. The
+/// previous decoder compared the WHOLE last link against the bare constant, so a CORRECT current
+/// refusal decoded as `DeterminingReasonDiffers` -- and the controls did not catch it because their
+/// fixture still fed the OLD unlocated rendering. That is the designed-fixture failure DESIGN
+/// section 3 names: the claim stayed green while the world it was written against moved. The reason
+/// is now split off the locus and the LOCATION IS KEPT, because where the fatal sits is the part a
+/// reader needs when the pinned limitation changes.
+///
+/// THE WHOLE RENDERING IS REQUIRED, NOT A PREFIX OF IT. `split(" | FATAL AT").next()` succeeds when
+/// the delimiter is ABSENT -- it returns the input -- so a truncated or malformed refusal would have
+/// decoded as if it were complete. Each marker is located explicitly and a missing one is `None`.
+fn cli_refusal_determining_reason(stderr: &str) -> Option<CliRefusalRendering> {
+    if !stderr.contains("REFUSED: ") {
+        return None;
+    }
     let chain = stderr.split("diagnostic chain: ").nth(1)?;
-    let chain = chain.split(" | FATAL AT").next()?;
-    Some(chain.split(" -> ").last()?.trim().to_string())
+    // The delimiter must be PRESENT, which `split(..).next()` cannot tell us.
+    let (chain, _) = chain.split_once(" | FATAL AT")?;
+    let last_link = chain.split(" -> ").last()?.trim();
+    // A located link is `<reason> @ <locus>`. An unlocated one is not this contract.
+    let (reason, locus) = last_link.split_once(" @ ")?;
+    Some(CliRefusalRendering {
+        determining_reason: reason.trim().to_string(),
+        determining_locus: locus.trim().to_string(),
+    })
 }
 
 fn adjudicate_cli_emit_probe(run: &CliDoorRun) -> CliEmitProbeVerdict {
@@ -1324,6 +1375,12 @@ fn adjudicate_cli_emit_probe(run: &CliDoorRun) -> CliEmitProbeVerdict {
             stdout_bytes: run.stdout.len(),
         };
     }
+    // THE STATUS IS THE ONE THE CLI'S OWN EXIT AUTHORITY PRODUCES, not merely "not success". A
+    // panic exits 101 and can carry plausible text on stderr; admitting it would file a crash as
+    // the pinned refusal.
+    if status != CLI_DOOR_REFUSAL_EXIT {
+        return CliEmitProbeVerdict::UnexpectedExitCode { status };
+    }
     if !run.stdout.is_empty() {
         return CliEmitProbeVerdict::StdoutNotEmpty {
             stdout_bytes: run.stdout.len(),
@@ -1331,12 +1388,16 @@ fn adjudicate_cli_emit_probe(run: &CliDoorRun) -> CliEmitProbeVerdict {
     }
     match cli_refusal_determining_reason(&run.stderr) {
         None => CliEmitProbeVerdict::RefusalNotRendered,
-        Some(determining) if determining == CLI_DOOR_EMIT_LIMITATION => {
+        Some(rendering) if rendering.determining_reason == CLI_DOOR_EMIT_LIMITATION => {
             CliEmitProbeVerdict::PinnedRefusalHeld {
                 exit_status: i64::from(status),
+                determining_locus: rendering.determining_locus,
             }
         }
-        Some(determining) => CliEmitProbeVerdict::DeterminingReasonDiffers { determining },
+        Some(rendering) => CliEmitProbeVerdict::DeterminingReasonDiffers {
+            determining: rendering.determining_reason,
+            locus: rendering.determining_locus,
+        },
     }
 }
 
@@ -1344,6 +1405,14 @@ fn adjudicate_cli_emit_probe(run: &CliDoorRun) -> CliEmitProbeVerdict {
 fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> String {
     match verdict {
         CliEmitProbeVerdict::PinnedRefusalHeld { .. } => String::new(),
+        CliEmitProbeVerdict::UnexpectedExitCode { status } => format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorUnexpectedExitCode — the built CLI exited \
+             {status}, and a refusal from this door exits {CLI_DOOR_REFUSAL_EXIT}: `v2_cli_exit` \
+             sends every `CliRunRefused` through `std.process` `exit_failure`, whose code is \
+             `exit_code_general_error`. A different non-zero status is a crash or another \
+             convention wearing a refusal's clothes. stderr: {}",
+            run.stderr.trim()
+        ),
         CliEmitProbeVerdict::ProbeGreened { stdout_bytes } => format!(
             "V2-NATIVE REFUSAL cause=NativeCliDoorEmitProbeGreened — the built CLI EMITTED {stdout_bytes} \
              byte(s) and exited 0. This probe expects the determining reason \
@@ -1358,18 +1427,20 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
              subject however complete the diagnostic on stderr looks. stderr: {}",
             run.stderr.trim()
         ),
-        CliEmitProbeVerdict::DeterminingReasonDiffers { determining } => format!(
+        CliEmitProbeVerdict::DeterminingReasonDiffers { determining, locus } => format!(
             "V2-NATIVE REFUSAL cause=NativeCliDoorRefusedForAnUnpinnedReason — the built CLI's \
-             DETERMINING diagnostic is `{determining}`, not `{CLI_DOOR_EMIT_LIMITATION}`. This probe \
-             pins ONE limitation by the last link of the chain, so a different fatal — even one whose \
-             chain also mentions the pinned word — is a change in the subject and is read rather than \
-             absorbed. stderr: {}",
+             DETERMINING diagnostic is `{determining}` at {locus}, not `{CLI_DOOR_EMIT_LIMITATION}`. \
+             This probe pins ONE limitation by the LAST link of the located chain, so a different \
+             fatal — even one whose chain also mentions the pinned word — is a change in the subject \
+             and is read rather than absorbed. stderr: {}",
             run.stderr.trim()
         ),
         CliEmitProbeVerdict::RefusalNotRendered => format!(
             "V2-NATIVE REFUSAL cause=NativeCliDoorRefusalNotRendered — the built CLI exited {:?} \
-             without rendering the `diagnostic chain:` form its refusal contract specifies, so there \
-             is no determining reason to compare. stderr: {}",
+             without the FULL refusal rendering its contract specifies: a `REFUSED: ` prefix, a \
+             `diagnostic chain: ` section, a ` | FATAL AT ` delimiter, and a last link of the form \
+             `<reason> @ <locus>`. A truncated or malformed render has no determining reason to \
+             compare and must not be decoded as though it were complete. stderr: {}",
             run.status,
             run.stderr.trim()
         ),
@@ -1441,15 +1512,19 @@ fn walk_cli_door(binary: &Path, workspace: &Path) -> Result<(i64, usize, i64), S
         ],
     )?;
     let (door_exit_status, emitted_bytes) = match adjudicate_cli_emit_probe(&emitted) {
-        CliEmitProbeVerdict::PinnedRefusalHeld { exit_status } => {
+        CliEmitProbeVerdict::PinnedRefusalHeld {
+            exit_status,
+            ref determining_locus,
+        } => {
+            eprintln!(
+                "v2-native-cli: door refused the emit as expected — determining reason \
+                 {CLI_DOOR_EMIT_LIMITATION} @ {determining_locus}, exit {exit_status}, stdout {} byte(s)",
+                emitted.stdout.len()
+            );
             (exit_status, emitted.stdout.len())
         }
         other => return Err(cli_emit_probe_refusal(&other, &emitted)),
     };
-    eprintln!(
-        "v2-native-cli: door refused the emit as expected — determining reason \
-         {CLI_DOOR_EMIT_LIMITATION}, exit {door_exit_status}, stdout {emitted_bytes} byte(s)"
-    );
 
     eprintln!("v2-native-cli: refusal control — the same argv with --entry removed");
     let refused = run_cli_door(
@@ -1460,16 +1535,19 @@ fn walk_cli_door(binary: &Path, workspace: &Path) -> Result<(i64, usize, i64), S
             root_arg.clone(),
         ],
     )?;
+    // THE SAME EXIT RULE AS THE EMIT ARM. `cli_no_entry` is a `CliRunRefused` like any other, so it
+    // exits `exit_code_general_error`; accepting any non-zero here would admit a panic or a spawn
+    // convention as the located refusal this arm exists to observe.
     match refused.status {
-        Some(0) | None => {
+        Some(CLI_DOOR_REFUSAL_EXIT) => {}
+        other => {
             return Err(format!(
                 "V2-NATIVE REFUSAL cause=NativeCliDoorRefusalNotDiscriminating — the built CLI \
-                 exited {:?} on an argv naming no --entry; a door that accepts the argv its own \
-                 `cli_no_entry` arm exists to refuse establishes nothing about the arm beside it",
-                refused.status
+                 exited {other:?} on an argv naming no --entry, and this door's refusals exit \
+                 {CLI_DOOR_REFUSAL_EXIT}. A zero accepts the argv its own `cli_no_entry` arm exists \
+                 to refuse; a signal or any other status is not a refusal at all."
             ))
         }
-        Some(_) => {}
     }
     if !refused.stderr.contains(CLI_DOOR_REFUSAL_DETAIL) {
         return Err(format!(
@@ -1836,71 +1914,116 @@ mod cli_emit_probe_tests {
         }
     }
 
-    /// The refusal the built binary actually renders, measured on the artifact.
-    fn real_pinned_refusal() -> String {
-        "REFUSED: the closure did not emit; diagnostic chain: infer_grounding_not_derived -> \
-         infer_grounding_not_derived | FATAL AT <node locus, no file>"
+    /// THE CURRENT RENDERING, AND THE FIXTURE THAT USED TO BE HERE WAS THE OLD ONE.
+    ///
+    /// gunbc#11965/#11985 located every link: `lens_verdict_diagnostic_located_text` emits
+    /// `<reason> @ <locus>`. The previous fixture fed bare reasons, so these controls stayed green
+    /// while a CORRECT refusal from the built binary decoded as `DeterminingReasonDiffers` -- the
+    /// designed-fixture failure DESIGN section 3 names, where the claim survives the world it was
+    /// written against moving.
+    fn located_pinned_refusal() -> String {
+        "REFUSED: the closure did not emit; diagnostic chain: \
+         infer_grounding_not_derived @ <node locus, no file> -> \
+         infer_grounding_not_derived @ <node locus, no file> | FATAL AT <node locus, no file>"
             .to_string()
     }
 
+    /// ACCEPTED: current chain + exit 1 + empty stdout.
     #[test]
-    fn the_real_named_refusal_passes() {
-        assert!(matches!(
-            adjudicate_cli_emit_probe(&run(Some(1), "", &real_pinned_refusal())),
-            CliEmitProbeVerdict::PinnedRefusalHeld { exit_status: 1 }
-        ));
+    fn the_current_located_refusal_at_exit_one_passes() {
+        match adjudicate_cli_emit_probe(&run(Some(1), "", &located_pinned_refusal())) {
+            CliEmitProbeVerdict::PinnedRefusalHeld {
+                exit_status,
+                determining_locus,
+            } => {
+                assert_eq!(exit_status, 1);
+                assert_eq!(determining_locus, "<node locus, no file>");
+            }
+            other => panic!("expected PinnedRefusalHeld, got {other:?}"),
+        }
     }
 
-    /// CONTROL: the expected word followed by a SIGNAL must fail. This is the hole the previous cut
-    /// had -- the stderr is byte-identical to the passing case and only the termination differs.
+    /// REFUSED: the same output with a SIGNAL. Byte-identical stderr; only the termination differs.
     #[test]
-    fn the_expected_word_with_a_signal_fails() {
+    fn the_same_output_with_a_signal_fails() {
         assert!(matches!(
-            adjudicate_cli_emit_probe(&run(None, "", &real_pinned_refusal())),
+            adjudicate_cli_emit_probe(&run(None, "", &located_pinned_refusal())),
             CliEmitProbeVerdict::TerminatedBySignal
         ));
     }
 
-    /// CONTROL: the expected word BESIDE a different terminal failure must fail. The pinned word is
-    /// present in the chain exactly as it is in the passing case; only the LAST link differs, which
-    /// is the one `cli_fatal_diagnostic` treats as the fatal.
+    /// REFUSED: the same output with an UNEXPECTED CODE. 101 is a Rust panic's status, and plausible
+    /// stderr beside it is exactly the crash-as-refusal this arm exists to reject.
     #[test]
-    fn the_expected_word_beside_a_different_fatal_fails() {
-        let stderr = "REFUSED: the closure did not emit; diagnostic chain: \
-                      infer_grounding_not_derived -> parse_g0_tokens_remain | FATAL AT \
-                      dag/extdeps/access/posix_effective_principal_read_op.dag bytes 1295..1302";
+    fn the_same_output_with_an_unexpected_code_fails() {
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(101), "", &located_pinned_refusal())),
+            CliEmitProbeVerdict::UnexpectedExitCode { status: 101 }
+        ));
+    }
+
+    /// REFUSED: a DIFFERENT determining reason, whose chain still mentions the pinned word.
+    #[test]
+    fn a_different_determining_reason_fails() {
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain:                       infer_grounding_not_derived @ <node locus, no file> ->                       parse_g0_tokens_remain @ dag/extdeps/access/posix_effective_principal_read_op.dag                       bytes 1295..1302 | FATAL AT dag/extdeps/access/posix_effective_principal_read_op.dag                       bytes 1295..1302";
         match adjudicate_cli_emit_probe(&run(Some(1), "", stderr)) {
-            CliEmitProbeVerdict::DeterminingReasonDiffers { determining } => {
+            CliEmitProbeVerdict::DeterminingReasonDiffers { determining, locus } => {
                 assert_eq!(determining, "parse_g0_tokens_remain");
+                assert!(locus.contains("posix_effective_principal_read_op.dag"));
             }
             other => panic!("expected DeterminingReasonDiffers, got {other:?}"),
         }
     }
 
-    /// The flip condition: the door emitting is a failure of the PROBE, not of the door.
+    /// REFUSED: a TRUNCATED render. `split(" | FATAL AT").next()` returns the whole input when the
+    /// delimiter is absent, so this decoded as complete before the delimiter was required.
     #[test]
-    fn an_emitting_door_fails_the_probe() {
+    fn a_truncated_render_without_the_fatal_delimiter_fails() {
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain:                       infer_grounding_not_derived @ <node locus, no file>";
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(1), "", stderr)),
+            CliEmitProbeVerdict::RefusalNotRendered
+        ));
+    }
+
+    /// REFUSED: a MALFORMED render -- an unlocated last link is not the current contract.
+    #[test]
+    fn an_unlocated_last_link_fails() {
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain:                       infer_grounding_not_derived | FATAL AT <node locus, no file>";
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(1), "", stderr)),
+            CliEmitProbeVerdict::RefusalNotRendered
+        ));
+    }
+
+    /// REFUSED: no `REFUSED: ` prefix at all.
+    #[test]
+    fn output_without_the_refused_prefix_fails() {
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(1), "", "thread 'main' panicked at src/main.rs")),
+            CliEmitProbeVerdict::RefusalNotRendered
+        ));
+    }
+
+    /// SUCCESS TRIGGERS THE FLIP: the door emitting fails the PROBE, not the door.
+    #[test]
+    fn an_emitting_door_triggers_the_flip() {
         assert!(matches!(
             adjudicate_cli_emit_probe(&run(Some(0), "pub const x: i64 = 1;", "")),
             CliEmitProbeVerdict::ProbeGreened { .. }
         ));
     }
 
-    /// A refusal that also wrote emitted text is not the termination being pinned.
+    /// REFUSED: a refusal that also wrote emitted text is not the termination being pinned.
     #[test]
     fn a_refusal_carrying_stdout_fails() {
         assert!(matches!(
-            adjudicate_cli_emit_probe(&run(Some(1), "some emitted text", &real_pinned_refusal())),
+            adjudicate_cli_emit_probe(&run(
+                Some(1),
+                "some emitted text",
+                &located_pinned_refusal()
+            )),
             CliEmitProbeVerdict::StdoutNotEmpty { .. }
-        ));
-    }
-
-    /// A non-zero exit with no rendered chain has no determining reason to compare.
-    #[test]
-    fn a_nonzero_exit_without_the_refusal_form_fails() {
-        assert!(matches!(
-            adjudicate_cli_emit_probe(&run(Some(101), "", "thread 'main' panicked at src/main.rs")),
-            CliEmitProbeVerdict::RefusalNotRendered
         ));
     }
 }
