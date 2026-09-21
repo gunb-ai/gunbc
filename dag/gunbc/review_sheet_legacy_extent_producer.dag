@@ -433,14 +433,6 @@ fn operator_declaration_evidence(
 
 // ── THE COMPOSED PRODUCER THE CONVERGE CALLS ──────────────────────────────────────────────────
 
-// AN OBSERVATION BEATS A DECLARATION, AND ONLY IN THE DIRECTION AN OBSERVATION CAN WIN. A positive
-// find is self-proving: the file is there, this client saw it, and no human statement that the old
-// generation is empty survives it. The declaration is consulted only where the search established
-// nothing -- which, for this field, is every arm except a find.
-//
-// THE ORDER IS NOT A PREFERENCE, IT IS THE ONLY ORDER THAT CANNOT LAUNDER. Reading the declaration
-// first and skipping the search on it would let a stale "there is nothing here" hide a file the
-// search would have returned, and that file is the one whose loss started this lane.
 // THE DECLARATION IS PASSED IN RATHER THAN READ HERE, AND THAT IS A CONSUMPTION FACT, NOT A STYLE
 // ONE. One converge pass reads the declaration file exactly once and hands the same value to this
 // producer and to the declared-id admission. Reading it twice would be two demands for one semantic
