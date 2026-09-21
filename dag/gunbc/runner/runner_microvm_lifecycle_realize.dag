@@ -1,0 +1,1250 @@
+module gunbc.runner_microvm_lifecycle_realize
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.nat { Nat }
+import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.resources { Filesystem, Network }
+import std.measure { Second, second, second_count, ByteSize, byte_size }
+import std.algebra { trim }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.posix.test_utility {
+  test_exists_command,
+  PathExistenceReading, PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable,
+  path_existence_reading, ContainedExistence, ContainedAbsent, ContainedPresent, ContainedUnreadable,
+  contained_existence,
+}
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.linux.cgroup_v2 {
+  cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
+  cgroup_v2_kill_path, cgroup_v2_kill_trigger_value, cgroup_v2_procs_interface_file, decode_cgroup_procs,
+  decode_cgroup_events_populated, CgroupEventsDecoded, CgroupEventsUnparseable,
+}
+import extdeps.systemd { systemd_unit_property_wire,
+  SystemdUnitProperty, EnvironmentProperty, ExecMainStatus,
+  SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path,
+}
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fabric_cell_converge { fabric_cell_slice_name }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, runner_microvm_attempt_unit_name, runner_microvm_attempt_dir,
+  runner_microvm_attempt_jail_base, runner_microvm_attempt_slice_property,
+}
+import gunbc.runner_attempt_launch {
+  AttemptGround, GroundClear, GroundOccupied,
+  AttemptLaunchPlan, LaunchAuthorized,
+  AttemptStagingVerdict, StagingAdmitsJailer, AttemptStagingReceipt,
+  JailMaterialStaging, jail_kernel_destination, jail_rootfs_destination,
+  WorkspaceReadback, WorkspaceSuperblockRead, WorkspaceReadbackFailed, WorkspaceStagingObservation,
+  attempt_staging_verdict, workspace_readback_command, stage_jit_device,
+  runner_attempt_vmm_deadline,
+}
+import gunbc.runner_microvm_cell_readiness {
+  CellBoundAttempt, CellIncarnationAdmission, cell_incarnation_admission,
+  CellReadinessWrite, in_flight_attempt_unit,
+}
+import gunbc.runner_microvm_cell_readiness_store {
+  read_cell_readiness_store, persist_cell_readiness_write,
+  CellReadinessStorePersist, StorePersisted,
+}
+import gunbc.runner_microvm_network {
+  BoundSlotNetworkReadback, slot_network_readback,
+  SlotNetworkSanitationSubject, SlotNetworkReadings,
+  TapReading, TapIpv6Reading, SlotResidueReading, HostResidueReading, RulesetReading,
+  TapHoldersUnreadable, TapIpv6Unread, ResidueUnreadable, RulesetUnreadable,
+}
+import product.fabric.sanitation { CellId }
+import extdeps.tools.e2fsprogs {
+  decode_dumpe2fs_superblock, Ext2SuperblockRead, Ext2SuperblockUnreadable, ext2_superblock_magic,
+}
+import extdeps.systemd.systemd_run { systemd_run_property_argv, SystemdRunProperty }
+import gunbc.runner_microvm_lifecycle {
+  CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
+  ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
+  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, ForceStopOutcomeUnobservable,
+  StopFoundAlreadyQuiescent, ForceNotAsked,
+  AttemptIdentity, CellBoundIdentity, CellBinding,
+  ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue,
+  StartRefused, StartBindingRefused, controller_start,
+  TerminalTrigger, VmmExited, DeadlineReached, StopRequested,
+  UnitExitStatusReading, ExitStatusRead, ExitStatusUnread,
+  ObservedStop, ObservedCgroup, ObservedPath, ObservedTeardown,
+  AttemptTeardownReadback,
+  TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject,
+  TeardownReadbackSubjectUnobservable,
+  UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
+  attempt_teardown_readback, settle_teardown, TeardownSettlement,
+}
+
+data runner_microvm_lifecycle_realize_disposition: Disposition = SingleAuthority
+
+// THE STOP-AND-OBSERVE REALIZATION OF THE microVM SLOT LIFECYCLE. IT IS NOT THE COMPLETE CONTROLLER,
+// AND THE DIFFERENCE IS ONE STEP THAT IS MISSING RATHER THAN ONE THAT IS WEAK.
+//
+// WHAT IT DOES: admits the cell, records the attempt in flight, stages and launches through the
+// sealed staging receipt, waits for a terminal condition, stops the cell and then force-stops its
+// subtree, reads back the cgroup and each attempt resource, joins every observed subject against the
+// attempt, and settles.
+//
+// WHAT IT DOES NOT DO: CLEAN UP. Between the stop and the readbacks there is no unmount, no delete of
+// the credential device, no delete of the workspace, no recursive delete of the attempt root, and no
+// network flush. The only host mutation in the whole teardown is the write to the cell slice's
+// cgroup.kill.
+//
+// SO A FIRST FULL RUN QUARANTINES, BY CONSTRUCTION, AND THAT IS NOT A BUG IN THE READBACKS. Staging
+// creates the jail root, the attempt directory and the credential device; nothing removes them; the
+// absence readbacks then find them present and refuse MountsRemoved, WritableLayersDeleted and
+// SecretsRemoved. The verdict is correct -- those resources ARE still there -- and the cell is
+// correctly not released. What it is not is a warm pool: no cell settles CellReady through this
+// module today, so nothing here can hand a cell to a second incarnation (side-chat ruling on
+// gunbc#11803, which offered the narrowing or the implementation; this is the narrowing, stated).
+//
+// DECLARED FRONTIER (DESIGN 3c) for the missing step, at capability grain. NAMED CONSUMER: this
+// module's teardown, between stop_attempt and the absence readbacks. TRIGGER: a cleanup realization
+// that unmounts the attempt's mounts, deletes the credential device, the workspace and the attempt
+// root, and flushes the slot's conntrack and neighbour entries -- each with its own readback, since a
+// delete that returns zero and a path that is gone are different facts. SUFFICIENT FOR deleting this
+// row and for this header's narrowing. NOT satisfied by a witness supplying absent readbacks, nor by
+// a cleanup whose result is taken on the tool's word.
+//
+// THE NETWORK FLUSH IS BLOCKED BEHIND THE SAME THING THE READINGS ARE (see
+// slot_network_readings_producer_frontier): there is no converged slot network on any host to flush.
+//
+// gunbc.runner_microvm_lifecycle owns every DECISION this module makes and it adds none. What it owns
+// is the other half that module deliberately cannot have: reaching the host. Each producer below
+// turns one host reading into one of that module's observation carriers, and a producer that decided
+// anything would be a second authority for a verdict (DESIGN section 3), so none of them does: the
+// arms they return are the arms that module declares.
+//
+// WHY THE PRODUCERS ARE SEPARATE FUNCTIONS RATHER THAN ONE OBSERVING FOLD. Each reads a different
+// interface -- the kernel's cgroup hierarchy, a path's existence, systemd's kill -- and each has its
+// own failure. Folding them into one would put every reading behind one refusal and lose which one
+// could not be taken, which is the distinction FactUnobservable exists to carry outward to an
+// operator.
+data attempt_cleanup_realization_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize's teardown, between stop_attempt and the resource-absence readbacks. TRIGGER: a cleanup realization that unmounts the attempt's mounts, deletes the credential device, the workspace and the attempt root, and flushes the slot's conntrack and neighbour entries, each with its own readback. SUFFICIENT FOR deleting this row and for retiring this module's stop-and-observe narrowing. NOT satisfied by a witness supplying absent readbacks, nor by a cleanup whose result is taken on the tool's word." as NonEmptyStr,
+)
+
+// ORIGINAL HEADER, KEPT BECAUSE ITS CLAIM IS STILL TRUE OF WHAT IS HERE:
+// THE WET HALF OF THE microVM SLOT LIFECYCLE: THE PROCESS THE SLOT UNIT EXECS AS ITS MainPID.
+//
+// gunbc.runner_microvm_lifecycle owns every DECISION this controller makes and this module adds
+// none. What it owns is the other half that module deliberately cannot have: reaching the host.
+// Each producer below turns one host reading into one of that module's observation carriers, and
+// the controller then hands those carriers to the folds that decide. A producer that decided
+// anything would be a second authority for a verdict (DESIGN section 3), so none of them does:
+// the arms they return are the arms that module declares.
+//
+// WHY THE PRODUCERS ARE SEPARATE FUNCTIONS RATHER THAN ONE OBSERVING FOLD. Each reads a different
+// interface -- the kernel's cgroup hierarchy, a path's existence, systemd's kill -- and each has
+// its own failure. Folding them into one would put every reading behind one refusal and lose which
+// one could not be taken, which is the distinction FactUnobservable exists to carry outward to an
+// operator.
+
+// --- the recursive cgroup readback ---
+
+// cgroup.events `populated` IS THE VERDICT AND THE WALK IS ONLY THE DETAIL, which is the whole
+// reason this readback is trustworthy without a complete traversal.
+//
+// The admin guide documents `populated` as "1 if the cgroup OR ITS DESCENDANTS contains any live
+// processes" -- so the kernel already answers the recursive question, in one read, with no walk to
+// get wrong. cgroup.procs cannot: it lists the pids attached to ONE cgroup and reads empty for an
+// inner node whose every process sits in a child, which is exactly the double-forked daemon moved
+// one level down that gunbc.runner_microvm_lifecycle names. A hand-rolled walk asked to decide
+// EMPTY would have to be complete, and an incomplete walk reporting empty is the silent narrow this
+// whole lane exists to close. Here the walk cannot say empty at all: it runs only after the kernel
+// has already said populated, and it exists to name the pids an operator must go look at.
+//
+// SO A WALK THAT RUNS OUT OF DEPTH TRUNCATES A DETAIL AND NEVER A VERDICT. The bound is real --
+// recursion in this substrate is bounded and forward (DESIGN section 4) -- and what it can cost is
+// a pid missing from a refusal message, never a cell released on an unread subtree.
+data cgroup_walk_depth_bound: Int = 8
+
+type CgroupWalkNode { path: NonEmptyStr, pids: List<Int> }
+
+type CgroupWalk { nodes: List<CgroupWalkNode> }
+
+fn cgroup_procs_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_procs_interface_file)
+}
+
+fn cgroup_procs_pids(cgroup_path: NonEmptyStr) -> List<Int>
+  uses net: Network
+{
+  let read = linux.CgroupV2.ReadInterfaceFile(file_path: cgroup_procs_path(cgroup_path: cgroup_path))
+  if read.success == false {
+    no_pids()
+  } else {
+    decode_cgroup_procs(body: read.value)
+  }
+}
+
+fn no_pids() -> List<Int> {
+  [] as List<Int>
+}
+
+fn cgroup_child_names(cgroup_path: NonEmptyStr) -> List<String>
+  uses net: Network
+{
+  let listed = linux.CgroupV2.ListChildCgroups(cgroup_path: cgroup_path)
+  if listed.success == false {
+    []
+  } else {
+    filter(split(s: listed.value, delimiter: "\n"), n => trim(s: n) != "")
+  }
+}
+
+fn walk_cgroup(cgroup_path: NonEmptyStr, depth: Int) -> CgroupWalk
+  uses net: Network
+{
+  let here = CgroupWalkNode { path: cgroup_path, pids: cgroup_procs_pids(cgroup_path: cgroup_path) }
+  if depth <= 0 {
+    CgroupWalk { nodes: [here] }
+  } else {
+    fold(cgroup_child_names(cgroup_path: cgroup_path), init: CgroupWalk { nodes: [here] }, f: (acc, name) =>
+      CgroupWalk {
+        nodes: concat(
+          acc.nodes,
+          walk_cgroup(cgroup_path: cgroup_v2_child_path(parent: cgroup_path, child: trim(s: name) as NonEmptyStr), depth: depth - 1).nodes,
+        ),
+      })
+  }
+}
+
+fn walk_pids(walk: CgroupWalk) -> List<Int> {
+  fold(walk.nodes, init: [], f: (acc, n) => concat(acc, n.pids))
+}
+
+fn walk_populated_cgroups(walk: CgroupWalk) -> List<NonEmptyStr> {
+  map(filter(walk.nodes, n => (n.pids |> count) > 0), n => n.path)
+}
+
+// A CELL WHOSE CGROUP IS NOT THERE HOLDS NO PROCESSES, and that is a reading rather than a gap.
+// The kernel represents a cgroup AS a directory, so "no directory" and "no tasks under it" are one
+// fact in its own representation; systemd removes an empty slice, so refusing here would quarantine
+// every cell whose teardown worked. The opposite arm is the one that must never be taken by
+// default: a directory that IS there and cannot be read is CgroupSubtreeReadFailed below.
+// THE HIERARCHY IS CONFIRMED BEFORE AN ABSENCE IS READ AS EMPTINESS, and this is what makes the
+// "no directory means no tasks" arm below sound rather than convenient. That arm is correct only
+// while we are looking at a live cgroup v2 hierarchy: if the mount is gone, or something is mounted
+// OVER it, every cell's path is absent and every cell reads clean. `cgroup.controllers` exists on
+// every cgroup v2 node including the root, so a mount point that cannot produce it is not a cgroup
+// hierarchy, and the honest answer for the whole reading is that it could not be taken
+// (zesty-pike-444's review named the masked-mount case).
+fn cgroup_hierarchy_is_live() -> Bool
+  uses net: Network
+{
+  linux.CgroupV2.ReadInterfaceFile(
+    file_path: cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: "cgroup.controllers" as NonEmptyStr),
+  ).success
+}
+
+fn observe_cgroup_subtree(slice: NonEmptyStr) -> CgroupSubtreeReadback
+  uses net: Network
+{
+  if !cgroup_hierarchy_is_live() {
+    CgroupSubtreeReadFailed {
+      reason: join([cgroup_v2_mount_point as String, " does not answer as a cgroup v2 hierarchy, so an absent cell cgroup says nothing about the cell"], "") as NonEmptyStr,
+    }
+  } else {
+    observe_slice_subtree(slice: slice)
+  }
+}
+
+fn observe_slice_subtree(slice: NonEmptyStr) -> CgroupSubtreeReadback
+  uses net: Network
+{
+  match systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: slice) {
+    SliceNameNotASlice { spelling: sp } =>
+      CgroupSubtreeReadFailed {
+        reason: join([sp, " is not a slice unit name, so it addresses no cgroup"], "") as NonEmptyStr,
+      }
+    SliceCgroupPath { path: p } => observe_cgroup_at(path: p)
+  }
+}
+
+// THE SLICE'S CGROUP IS NOT `<mount point>/<slice name>` AND THE FIRST WET RUN IS WHAT SAID SO.
+// systemd expands a dashed slice name into a path (extdeps.systemd systemd_slice_cgroup_path), and
+// every cell slice is dashed -- fabric-cell-<host>-<NN>.slice. Joined directly, the readback would
+// have found no directory at all and reported the subtree EMPTY, which is this whole lane's worst
+// arm: every cell released clean, whatever was running in it. It read green on a hermetic witness
+// because a supplied CgroupSubtreeReadback never touches a path.
+fn observe_cgroup_at(path: NonEmptyStr) -> CgroupSubtreeReadback
+  uses net: Network
+{
+  if linux.CgroupV2.PathIsDirectory(path: path).success == false {
+    CgroupSubtreeEmpty
+  } else {
+    let events = linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: path))
+    if events.success == false {
+      CgroupSubtreeReadFailed {
+        reason: join(["cgroup.events under ", path as String, " could not be read"], "") as NonEmptyStr,
+      }
+    } else {
+      match decode_cgroup_events_populated(body: events.value) {
+        CgroupEventsUnparseable { cause: c } =>
+          CgroupSubtreeReadFailed {
+            reason: join(["cgroup.events under ", path as String, " did not decode: ", c], "") as NonEmptyStr,
+          }
+        CgroupEventsDecoded { populated: p } =>
+          if p == false {
+            CgroupSubtreeEmpty
+          } else {
+            populated_readback(path: path)
+          }
+      }
+    }
+  }
+}
+
+// THE PIDS ARE THE DETAIL AND THE KERNEL'S `populated` IS THE VERDICT, so a walk that finds nothing
+// under a cgroup the kernel calls populated still reports POPULATED. The two readings are taken at
+// different instants and a process can exit between them; trusting the later, emptier one would let
+// a cell be released because the walk was slow, which is the readback's verdict following the
+// instrument's convenience. The cgroup itself is named so the message is still actionable.
+fn populated_readback(path: NonEmptyStr) -> CgroupSubtreeReadback
+  uses net: Network
+{
+  let walk = walk_cgroup(cgroup_path: path, depth: cgroup_walk_depth_bound)
+  let pids = walk_pids(walk: walk)
+  let holders = walk_populated_cgroups(walk: walk)
+  CgroupSubtreePopulated {
+    pids: pids,
+    cgroups: if (holders |> count) == 0 { [path] } else { holders },
+  }
+}
+
+// --- the per-resource absence readback ---
+
+// EXISTENCE IS READ FROM `test -e`'s EXIT STATUS, WHICH IS TOTAL, AND THE THIRD ARM IS THE POINT.
+// POSIX gives `test` exit 0 for true and 1 for false, and reserves anything else for the utility
+// itself failing. So exit 1 is the only reading that means ABSENT; every other nonzero status is an
+// instrument that did not answer, and reading it as absent is how a broken probe would release a
+// cell holding the previous tenant's writable layer. Matching on stderr text instead would be the
+// heuristic DESIGN section 4 rules out where a total discriminator exists -- and one does, here, in
+// the utility's own documented status.
+// AN ABSENCE IS ESTABLISHED THROUGH ITS PARENT, NOT FROM `test -e` ALONE.
+//
+// `test -e` is false both for a path that is not there and for one that cannot be STATTED -- a parent
+// without search permission, a dead mount, an I/O error -- and the utility cannot tell them apart.
+// ABSENT is the answer that RELEASES A CELL, so reading a false as absent would let a directory whose
+// parent lost +x report the tenant's storage as gone while the files sit under it. So the readback
+// asks the PARENT too and inherits: a present, readable parent makes the child's false mean absent,
+// because the directory was searched; anything else leaves it unreadable (side-chat ruling on
+// gunbc#11803, the containment repair its failure-mode row names).
+fn observe_resource_absence(path: String) -> ResourceReadback
+  uses net: Network
+{
+  if path == "" {
+    ResourceUnreadable { reason: "the resource to prove absent has no path, so nothing was read" as NonEmptyStr }
+  } else {
+    absence_of_containment(
+      path: path,
+      parent: parent_directory_of(path: path),
+      contained: contained_existence(
+        path: path,
+        parent: parent_directory_of(path: path),
+        parent_reading: observe_path_exists(path: parent_directory_of(path: path)),
+        child_reading: observe_path_exists(path: path),
+      ),
+    )
+  }
+}
+
+// THE PARENT IS THE PATH UP TO ITS LAST SEPARATOR, and a path with no separator has the working
+// directory as its parent -- which this controller never uses, since every path it proves absent is
+// absolute and derived from the attempt. A path that IS the root has itself as parent, which reads
+// present and therefore makes a child's false mean absent, correctly.
+fn parent_directory_of(path: String) -> String {
+  let segs = split(s: path, delimiter: "/")
+  if length(segs) < 3 {
+    "/"
+  } else {
+    join(segs.take(n: length(segs) - 1), "/")
+  }
+}
+
+fn absence_of_containment(path: String, parent: String, contained: ContainedExistence) -> ResourceReadback {
+  match contained {
+    ContainedAbsent => ResourceAbsent
+    ContainedPresent => ResourcePresent { detail: path as NonEmptyStr }
+    ContainedUnreadable { reason: r } => ResourceUnreadable { reason: r }
+  }
+}
+
+// THE SAME READING, ASKED FOR THE OPPOSITE DOMAIN FACT. Staging needs the jail's material to be
+// THERE; sanitation needs the attempt's resources to be GONE. One boundary reading, two folds.
+fn observe_path_exists(path: String) -> PathExistenceReading
+  uses net: Network
+{
+  path_existence_reading(
+    path: path,
+    outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec),
+  )
+}
+
+// THE GROUND CHECK IS THE SAME READING ASKED BEFORE THE ATTEMPT RUNS. gunbc.runner_attempt_launch
+// AttemptGround is the host's own answer to "is anything of a previous attempt still here", and the
+// controller consumes it at start (gunbc.runner_microvm_lifecycle controller_start). An UNREADABLE
+// resource counts as OCCUPIED here and that asymmetry is deliberate: before the attempt, not knowing
+// whether residue is present must refuse; there is no arm in which a failed probe clears the ground.
+fn observe_attempt_ground(attempt: MicroVmAttempt) -> AttemptGround
+  uses net: Network
+{
+  let readings = [
+    observe_resource_absence(path: runner_microvm_attempt_jail_base(attempt: attempt)),
+    observe_resource_absence(path: runner_microvm_attempt_dir(attempt: attempt)),
+  ]
+  match filter(readings, r => resource_is_absent(r: r) == false).first() {
+    Present { value: _ } => GroundOccupied
+    Absent => GroundClear
+  }
+}
+
+fn resource_is_absent(r: ResourceReadback) -> Bool {
+  match r {
+    ResourceAbsent => true
+    ResourcePresent { detail: _ } => false
+    ResourceUnreadable { reason: _ } => false
+  }
+}
+
+// --- the bounded stop ---
+
+// THE GRACE AND THE FORCE BOUND ARE TWO DURATIONS BECAUSE THEY ANSWER TWO QUESTIONS. The grace is
+// how long a well-behaved guest is given to finish; the force bound is how long the host waits for
+// the kernel to finish a SIGKILL, which it does promptly for every task that is not in
+// uninterruptible sleep. A task still present after the force bound is not slow, it is unkillable,
+// and that is the arm gunbc.runner_microvm_lifecycle ForceStopBoundExceeded carries.
+data attempt_stop_grace: Second = second(count: 30)
+
+data attempt_force_stop_bound: Second = second(count: 10)
+
+data attempt_stop_poll_interval: Second = second(count: 1)
+
+// THE STOP IS TWO STEPS AT TWO DIFFERENT SUBJECTS, AND THE ASYMMETRY IS THE WHOLE DESIGN.
+//
+// THE GRACEFUL ASK IS THE UNIT'S. `systemctl kill --signal=SIGTERM --kill-whom=all <unit>` reaches
+// the processes in THAT UNIT's control group -- the attempt's own -- which is exactly who a graceful
+// ask is addressed to. `--kill-whom=all` rather than the default because the default reaches only
+// the main process, and a VMM's children are the point.
+//
+// THE FORCE IS THE CELL'S, AND THIS WAS A DEFECT UNTIL A REVIEW FOUND IT (vivid-stag-809 on this PR,
+// relayed by sunny-ant-606). The force used to signal the same UNIT, under an annotation claiming it
+// "reaches the whole control group". It does not: it reaches the UNIT's cgroup. A process that moved
+// itself into a scope BESIDE the service under the same cell slice is still accounted to the cell,
+// is still found by the slice-wide readback, and was never reached by that kill -- so it survived
+// the force and quarantined a cell that a correct force would have cleaned. This file's own wet RED
+// proved it and the annotation contradicted it one function away, which is prose claiming more than
+// the code enforced.
+//
+// SO THE FORCE IS A WRITE TO THE CELL SLICE'S cgroup.kill, which is the kernel's own answer: it takes
+// the whole SUBTREE and is atomic against forking, so nothing escapes by forking mid-kill the way it
+// can between an enumeration and a signal loop. What must be true after a teardown is a fact about
+// the CELL, so the operation that establishes it is addressed to the cell.
+//
+// WHAT THAT MEANS FOR ForceStopBoundExceeded: after this repair the arm is reachable only by a task
+// the KERNEL could not end -- uninterruptible sleep, or a frozen cgroup -- which is what the type
+// always meant. A process merely hiding in a sibling cgroup no longer reaches it.
+//
+// WHY NOT `systemctl stop`: it sends SIGTERM and escalates to SIGKILL on the unit's own
+// TimeoutStopSec and reports one success, so a unit whose child ignored SIGTERM and one that exited
+// on it return the same thing, and StoppedGracefully would be indistinguishable from StoppedByForce.
+// Doing each step here, and reading the cgroup between them, is what lets the controller say WHICH of
+// the three happened.
+type StopQuiescence
+  = CgroupQuiet
+  | CgroupStillHolding { holding: CgroupNotQuiet }
+
+// A SUBTREE THAT IS STILL HOLDING CANNOT BE AN EMPTY ONE, AND THAT IS NOW UNWRITABLE RATHER THAN
+// MERELY UNREACHED. `CgroupStillHolding` used to carry the whole `CgroupSubtreeReadback`, so the
+// pairing `CgroupStillHolding { readback: CgroupSubtreeEmpty }` was constructible even though
+// `cgroup_quiescence` never produces it -- and the fold that read it answered `StoppedByForce`
+// WITHOUT consulting `asked`, which is precisely the claim the ask rule three screens down says must
+// never be made when nothing was asked. The guard and the rule disagreed, and the only reason the
+// disagreement was invisible is that one caller happened not to reach it (review 69372).
+//
+// The two arms below are the two readings that can actually hold: tasks the poll still sees, or a
+// read that failed so nothing can be concluded. `CgroupSubtreeEmpty` has no arm here, so the fold
+// over this type has no empty case to answer wrongly -- the third arm is DELETED rather than
+// corrected, which is the §5 move: the state has no constructor instead of a check that catches it.
+type CgroupNotQuiet
+  = CgroupHoldsTasks { pids: List<Int>, cgroups: List<NonEmptyStr> }
+  | CgroupHoldReadFailed { reason: NonEmptyStr }
+
+fn cgroup_quiescence(slice: NonEmptyStr) -> StopQuiescence
+  uses net: Network
+{
+  let r = observe_cgroup_subtree(slice: slice)
+  match r {
+    CgroupSubtreeEmpty => CgroupQuiet
+    CgroupSubtreePopulated { pids: p, cgroups: c } => CgroupStillHolding { holding: CgroupHoldsTasks { pids: p, cgroups: c } }
+    CgroupSubtreeReadFailed { reason: reason } => CgroupStillHolding { holding: CgroupHoldReadFailed { reason: reason } }
+  }
+}
+
+// A CGROUP THAT COULD NOT BE READ IS NOT QUIET. The poll below treats an unreadable subtree exactly
+// as it treats a populated one -- it keeps waiting and then escalates -- because "I could not tell"
+// is not evidence that the stop worked. The readback taken AFTER the stop reports the unreadability
+// on its own, at its own grain, where it quarantines the cell.
+fn poll_until_quiet(slice: NonEmptyStr, polls_remaining: Int) -> StopQuiescence
+  uses net: Network
+{
+  match cgroup_quiescence(slice: slice) {
+    CgroupQuiet => CgroupQuiet
+    CgroupStillHolding { holding: h } =>
+      if polls_remaining <= 0 {
+        CgroupStillHolding { holding: h }
+      } else {
+        let _slept = sleep_delay_seconds_second_carrier_projection(duration: attempt_stop_poll_interval)
+        poll_until_quiet(slice: slice, polls_remaining: polls_remaining - 1)
+      }
+  }
+}
+
+fn polls_for(bound: Second) -> Int {
+  second_count(s: bound) / second_count(s: attempt_stop_poll_interval)
+}
+
+fn stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
+  uses net: Network, fs: Filesystem
+{
+  match cgroup_quiescence(slice: slice) {
+    CgroupQuiet => StopFoundAlreadyQuiescent
+    CgroupStillHolding { holding: _ } => stop_a_running_cell(unit: unit, slice: slice)
+  }
+}
+
+// A CELL THAT WAS ALREADY EMPTY WAS NEITHER ASKED NOR FORCED, and saying otherwise claims a causality
+// the run did not have. The first cut reported StoppedGracefully for it -- a tenant asked and
+// complying, when nothing was running to ask. It is the ordinary state of a VMM that exited on its own
+// before the controller reached the stop, so it gets the neutral arm rather than the one that flatters
+// the controller (side-chat ruling on gunbc#11803).
+fn stop_a_running_cell(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
+  uses net: Network, fs: Filesystem
+{
+  let asked = systemd.Systemctl.KillUnitTerm(unit: unit).success
+  match poll_until_quiet(slice: slice, polls_remaining: polls_for(bound: attempt_stop_grace)) {
+    CgroupQuiet =>
+      if asked {
+        StoppedGracefully
+      } else {
+        force_stop_attempt(unit: unit, slice: slice)
+      }
+    CgroupStillHolding { holding: _ } => force_stop_attempt(unit: unit, slice: slice)
+  }
+}
+
+fn force_stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
+  uses net: Network, fs: Filesystem
+{
+  match systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: slice) {
+    SliceNameNotASlice { spelling: sp } =>
+      ForceStopOutcomeUnobservable {
+        reason: join([sp, " is not a slice unit name, so the cell's cgroup could not be addressed to force-stop it"], "") as NonEmptyStr,
+      }
+    SliceCgroupPath { path: p } => force_stop_subtree(path: p, slice: slice)
+  }
+}
+
+fn force_stop_subtree(path: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
+  uses net: Network, fs: Filesystem
+{
+  let kill_path = cgroup_v2_kill_path(cgroup_path: path) as String
+  let killed = Filesystem.Write(path: kill_path, content: cgroup_v2_kill_trigger_value)
+  force_stop_outcome_after_ask(
+    asked: killed.success,
+    ask_detail: join(["writing ", kill_path, " failed: ", killed.error], ""),
+    q: poll_until_quiet(slice: slice, polls_remaining: polls_for(bound: attempt_force_stop_bound)),
+  )
+}
+
+// A FORCE THAT COULD NOT BE ASKED STILL LETS THE CGROUP SPEAK, and the first repair of this defect
+// went one step too far the other way. Discarding the write was wrong -- a populated subtree then
+// read as a task the KERNEL could not end. But refusing immediately on a failed write was also wrong:
+// the poll still runs, and a subtree that goes empty afterwards establishes that nothing survived,
+// whoever ended it. So a failed ask is ForceNotAsked, which carries the reason and lets the cgroup
+// answer the surviving-process fact; what it must never become is StoppedByForce, which would claim
+// this controller's kill did the ending (side-chat ruling on gunbc#11803).
+fn force_stop_outcome_after_ask(asked: Bool, ask_detail: String, q: StopQuiescence) -> TeardownStop {
+  match q {
+    CgroupQuiet =>
+      if asked {
+        StoppedByForce
+      } else {
+        ForceNotAsked { reason: join(["the cell's subtree kill could not be asked for: ", ask_detail], "") as NonEmptyStr }
+      }
+    CgroupStillHolding { holding: h } => force_stop_outcome_of_holding(asked: asked, ask_detail: ask_detail, h: h)
+  }
+}
+
+fn force_stop_outcome_of_holding(asked: Bool, ask_detail: String, h: CgroupNotQuiet) -> TeardownStop {
+  match h {
+    CgroupHoldsTasks { pids: p, cgroups: _ } =>
+      if asked {
+        ForceStopBoundExceeded { survivors: p }
+      } else {
+        ForceNotAsked { reason: join(["the cell's subtree kill could not be asked for: ", ask_detail], "") as NonEmptyStr }
+      }
+    CgroupHoldReadFailed { reason: reason } =>
+      ForceStopOutcomeUnobservable {
+        reason: join(["the cell's cgroup subtree could not be read after the bounded force-stop: ", reason as String], "") as NonEmptyStr,
+      }
+  }
+}
+
+// --- the teardown observation, assembled for one bound attempt ---
+
+// THE ATTEMPT'S INVOCATION ID IS CARRIED INTO THE UNIT AND READ BACK OUT OF IT, AND THE FIRST CUT
+// READ THE WRONG IDENTIFIER ENTIRELY.
+//
+// gunbc.runner_microvm_lifecycle's teardown join compares the OBSERVED stop's invocation id against
+// the one the STORE recorded for this attempt, and that recorded value is the ATTEMPT's invocation
+// id -- written at WriteAttemptStarted, BEFORE anything is staged, so it cannot be systemd's
+// InvocationID, which does not exist until the unit starts. This module used to fill the observed
+// side with systemd's InvocationID: two different identifiers compared for equality, so the join
+// would have refused EVERY teardown and the controller could never have settled a cell. Nothing
+// here would have caught it -- the hermetic witness supplies both sides, and the wet receipt stops
+// short of assembling a teardown (zesty-pike-444's review, relayed by sunny-ant-606).
+//
+// SO THE UNIT CARRIES THE ATTEMPT'S OWN ID AND THE CONTROLLER READS IT BACK FROM THE UNIT. The launch
+// sets it as an Environment property and the teardown reads the unit's Environment. That
+// keeps the observed side an OBSERVATION rather than a second copy of the request: a value read off
+// the unit says which attempt THAT unit was started for, so a unit left over from a previous
+// incarnation answers with the previous attempt's id and the join refuses -- which is exactly the
+// stale-incarnation case a warm pool produces.
+//
+// IT DEPENDS ON THE UNIT STILL BEING LOADED, which is why the launch uses systemd-run's RETAINED
+// form: --collect unloads the unit the moment it exits and takes its Environment, its Result and its
+// ExecMainStatus with it.
+//
+// WHAT IS NOT MODELED, STATED RATHER THAN ASSUMED: nothing in the program orders the Environment read
+// against the stop. In `perform_teardown_and_observe` the invocation reading and the stop outcome are
+// bound independently -- neither consumes the other -- so the only thing sequencing them is that the
+// seed interpreter evaluates eagerly in source position, which is a fact about THIS realization and
+// not about the model. An earlier revision of this comment said the read happens BEFORE signalling;
+// that asserted a guarantee the program does not carry, and is the class this module exists to remove.
+//
+// NO EDGE IS MANUFACTURED HERE, DELIBERATELY. The staging steps a few screens down are chained with an
+// explicit `after:` receipt because their order is causal in the world. This pair is not the same: the
+// stop does not consume the invocation, so an `after:` parameter would exist only to imply an ordering
+// the program has no other reason to have -- a construction claiming a property it does not possess,
+// which is the defect wearing the repair's clothes. The honest state is that the ordering is currently
+// a realization property, and it is recorded as such rather than papered over.
+data workflow_effect_sequencing_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DECLARED FRONTIER (DESIGN 3c/4b). std carries NO effect-sequencing authority: whether a workflow function's let-chain lowers to a Bind continuation -- which would order these effects structurally -- or whether source position is only a seed-realization property, is undecided and has no home module. The two lawful constructions gunbc.recurring_failure_mode readback_ordered_only_by_statement_position names are the effect's Bind continuation and an explicit after: receipt; statement position is neither. TRIGGER, at capability grain: an effect-sequencing authority in std that says whether a workflow let-chain orders its effects, sufficient to decide whether this read is ordered against the stop by construction. SUFFICIENT FOR deleting this row and stating the ordering as a guarantee. NOT satisfied by this comment, by the seed continuing to evaluate in source order, or by a witness that happens to observe the read first." as NonEmptyStr,
+)
+data attempt_invocation_env_key: String = "GUNBC_ATTEMPT_INVOCATION_ID"
+
+fn attempt_invocation_env_setting(invocation_id: NonEmptyStr) -> SystemdRunProperty {
+  SystemdRunProperty {
+    property: EnvironmentProperty,
+    value: join([attempt_invocation_env_key, "=", invocation_id as String], "") as NonEmptyStr,
+  }
+}
+
+// THE UNIT'S Environment IS A LIST OF ASSIGNMENTS AND ONLY ONE OF THEM IS OURS. systemd renders the
+// property as space-separated `KEY=VALUE` words, so the reading splits on whitespace and takes the
+// assignment whose key is ours. An absent key reads as the empty string, which no attempt's
+// invocation id can equal, so the join refuses rather than matching.
+// THE GUARD IS BEFORE THE CROSSING, NOT AFTER IT, and the first cut had it the wrong way round.
+// It returned a String that was "" when the property could not be read or the key was absent, and
+// the caller crossed that into NonEmptyStr inside a record literal -- which is decided only when it
+// EVALUATES, so the designed empty case never reached the refusal the annotation promised. It would
+// have aborted inside the teardown instead, untyped and unlocated, after the stop had already been
+// asked: a failure arm that neither refuses nor is located, on the exact path this module exists to
+// make observable (review 69057). The three states are separated here, where they are produced, and
+// the empty string has no way out of this function.
+fn observe_unit_attempt_invocation(unit: NonEmptyStr) -> UnitInvocationReading
+  uses net: Network
+{
+  let shown = systemd.Systemctl.ShowProperty(
+    unit: unit,
+    property: systemd_unit_property_wire(property: EnvironmentProperty),
+  )
+  if shown.success == false {
+    UnitInvocationUnread {
+      reason: join(["the unit's Environment could not be read, so the attempt it was started for is unknown: ", unit as String], "") as NonEmptyStr,
+    }
+  } else {
+    invocation_of_environment(unit: unit, environment: trim(s: shown.value))
+  }
+}
+
+// THE UNIT'S Environment IS A LIST OF ASSIGNMENTS AND ONLY ONE OF THEM IS OURS. systemd renders the
+// property as space-separated `KEY=VALUE` words, so the reading splits on whitespace and takes the
+// assignment whose key is ours. A missing key and an EMPTY value are the same answer here -- neither
+// names an attempt -- and both are Unread rather than a value nothing can equal.
+fn invocation_of_environment(unit: NonEmptyStr, environment: String) -> UnitInvocationReading {
+  let found = fold(split(s: environment, delimiter: " "), init: "", f: (acc, word) =>
+    if starts_with(s: word, prefix: join([attempt_invocation_env_key, "="], "")) {
+      substring(s: word, start: string_length(s: attempt_invocation_env_key) + 1, end: string_length(s: word))
+    } else {
+      acc
+    })
+  if found == "" {
+    UnitInvocationUnread {
+      reason: join(["the unit carries no ", attempt_invocation_env_key, " assignment, so it names no attempt: ", unit as String], "") as NonEmptyStr,
+    }
+  } else {
+    UnitInvocationRead { invocation_id: found as NonEmptyStr }
+  }
+}
+
+// THE STOP AND THE READBACKS ARE ONE STEP IN ONE ORDER, AND THE ORDER IS THE EVIDENCE. Every
+// readback below is taken AFTER the stop has finished, because a cgroup read taken while the stop is
+// still running measures the stop's progress rather than its result. The stop's own outcome travels
+// out beside the readings, so surviving_process_observation can require BOTH host facts -- the stop
+// did not exceed its bound AND the subtree holds no pid -- exactly as
+// gunbc.runner_microvm_lifecycle declares.
+//
+// THE FUNCTION MUTATES, AND ITS NAME SAYS SO. It signals the unit. Naming it `observe_` would hide
+// the one step in this module that changes the host.
+// THE NETWORK READBACK IS CONSTRUCTED HERE, AFTER THE STOP, AND TAKING IT PREBUILT WAS A HOLE THAT
+// SEALING COULD NOT CLOSE.
+//
+// This function used to receive a BoundSlotNetworkReadback as a parameter. That record is sealed, so
+// its SUBJECT cannot be forged -- and subject identity is not the property at risk. A readback taken
+// before the attempt ran describes the right slot at the wrong TIME: a caller could hand in a clean
+// reading, the attempt could leave conntrack entries behind, the stop could run, and the stale clean
+// value would certify SlotNetworkQuiescent over a dirty slot. Sealing protects WHICH slot, never
+// WHEN (side-chat ruling on gunbc#11803).
+//
+// So the controller takes the SUBJECT and builds the readback itself, after the stop, from readings
+// it takes then. There is no parameter through which a reading from before the attempt can arrive.
+fn perform_teardown_and_observe(
+  bound: CellBoundAttempt,
+  subject: SlotNetworkSanitationSubject,
+) -> ObservedTeardown
+  uses net: Network, fs: Filesystem
+{
+  let attempt = bound.attempt.attempt
+  let unit = in_flight_attempt_unit(attempt: bound.attempt)
+  let slice = fabric_cell_slice_name(slot: attempt.slot) as NonEmptyStr
+  let invocation = observe_unit_attempt_invocation(unit: unit)
+  let outcome = stop_attempt(unit: unit, slice: slice)
+  let jail = runner_microvm_attempt_jail_base(attempt: attempt)
+  let dir = runner_microvm_attempt_dir(attempt: attempt)
+  let drive = bound.attempt.credential_device_path
+  ObservedTeardown {
+    host: attempt.slot.host as String,
+    generation: bound.generation,
+    stop: ObservedStop { unit: unit, invocation_id: invocation, outcome: outcome },
+    cgroup: ObservedCgroup { root: slice, readback: observe_cgroup_subtree(slice: slice) },
+    mounts: ObservedPath { path: jail, readback: observe_resource_absence(path: jail) },
+    attempt_storage: ObservedPath { path: dir, readback: observe_resource_absence(path: dir) },
+    credential_disk: ObservedPath { path: drive, readback: observe_resource_absence(path: drive) },
+    network: observe_slot_network_after_stop(subject: subject, after: outcome),
+  }
+}
+
+// DECLARED FRONTIER (DESIGN 3c) AND A HOST FACT, NOT A PLACEHOLDER: the slot network's readings
+// cannot be taken on any host this repository has.
+//
+// gunbc.runner_microvm_network owns the seven facts and the commands that would read them, and it is
+// pure decisions -- there is no producer. There cannot be one yet either: the readings need conntrack
+// and the converged gunbc-microvm nft table, and neither exists on srv1 (measured: no conntrack
+// binary, and nft lists only the stock ip/ip6 filter, nat and mangle tables). The slot-network
+// converge that would create them has not run on any host.
+//
+// SO EVERY READING IS Unreadable WITH THE REASON, WHICH QUARANTINES, AND THAT IS THE HONEST STATE.
+// SlotNetworkQuiescent is one of the required facts, so a teardown settled through this today can
+// only ever be CellQuarantined. That is not this function degrading -- it is the host being unable to
+// answer, reported as unable rather than as clean. The alternative, omitting the fact, is the
+// empty-observation narrow that product.fabric.sanitation exists to refuse.
+//
+// TRIGGER, at capability grain: the slot-network converge running on a host, so conntrack and the
+// gunbc-microvm ruleset exist to be read, and a readings producer in gunbc.runner_microvm_network
+// that takes them. SUFFICIENT FOR deleting this row. NOT satisfied by a witness supplying readings,
+// nor by this function returning anything other than what it read.
+fn observe_slot_network_after_stop(subject: SlotNetworkSanitationSubject, after: TeardownStop) -> BoundSlotNetworkReadback {
+  slot_network_readback(s: subject, readings: unreadable_slot_network_readings(s: subject, after: after))
+}
+
+data slot_network_readings_producer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize observe_slot_network_after_stop, which builds the teardown's BoundSlotNetworkReadback after the stop. TRIGGER: the slot-network converge running on a host so conntrack and the gunbc-microvm nft ruleset exist to be read, plus a readings producer in gunbc.runner_microvm_network that reads them. SUFFICIENT FOR deleting this row. NOT satisfied by a witness supplying SlotNetworkReadings, nor by this consumer returning anything other than what it read." as NonEmptyStr,
+)
+
+// THE READINGS TAKE THE STOP'S OUTCOME AS AN ARGUMENT so they cannot be hoisted above it. Order in
+// this substrate is data dependence and nothing else, and a network reading taken before the stop is
+// the very staleness this restructuring removed.
+//
+// THE TWO HOST-GRAIN FACTS CARRY THE RECEIPT'S OWN COORDINATES, and that is load-bearing rather than
+// decorative. `gunbc.runner_microvm_network` `host_residue_readback` and `ruleset_readback` gate on
+// `at_receipt`, which compares the reading's host AND generation against `s.converged`; a reading
+// that does not match is answered `different_generation`, whose sealed reason says the reading was
+// taken against a different converge generation. A literal generation here would therefore DISCARD
+// the reason built above -- the host cannot read the network at all -- and hand the operator a
+// stale-reading diagnosis for a host that simply cannot answer. Both fields are read from
+// `s.converged` because that is the carrier `at_receipt` compares; the subject's slot host is equal
+// to it by the sole_constructor's `ReceiptForDifferentHost` refusal, but reading it from there would
+// make this depend on a distant invariant instead of naming the compared authority.
+fn unreadable_slot_network_readings(s: SlotNetworkSanitationSubject, after: TeardownStop) -> SlotNetworkReadings {
+  let why = join([
+    "the slot network cannot be read on this host: no conntrack binary and no converged gunbc-microvm ruleset (stop outcome: ",
+    teardown_stop_label(stop: after),
+    ")",
+  ], "") as NonEmptyStr
+  SlotNetworkReadings {
+    tap: TapReading { subject: s.subject, observation: TapHoldersUnreadable { reason: why } },
+    tap_ipv6: TapIpv6Reading { subject: s.subject, observation: TapIpv6Unread { reason: why } },
+    guest_originated_conntrack: SlotResidueReading { subject: s.subject, observation: ResidueUnreadable { reason: why } },
+    guest_destined_conntrack: SlotResidueReading { subject: s.subject, observation: ResidueUnreadable { reason: why } },
+    guest_neighbour: SlotResidueReading { subject: s.subject, observation: ResidueUnreadable { reason: why } },
+    expectations: HostResidueReading { host: s.converged.host, generation: s.converged.generation, observation: ResidueUnreadable { reason: why } },
+    ruleset: RulesetReading { host: s.converged.host, generation: s.converged.generation, observation: RulesetUnreadable { reason: why } },
+  }
+}
+
+fn teardown_stop_label(stop: TeardownStop) -> String {
+  match stop {
+    StoppedGracefully => "stopped-gracefully"
+    StoppedByForce => "stopped-by-force"
+    StopFoundAlreadyQuiescent => "already-quiescent"
+    ForceStopBoundExceeded { survivors: _ } => "force-bound-exceeded"
+    ForceNotAsked { reason: _ } => "force-not-asked"
+    ForceStopOutcomeUnobservable { reason: _ } => "force-outcome-unobservable"
+  }
+}
+
+// THE RETAINED UNIT IS RELEASED ONLY AFTER THE BINDING IS KNOWN, AND NEVER WHEN THE BINDING REFUSED.
+//
+// It used to be released as soon as the readings were taken, one line before the join. That destroyed
+// the evidence the refusing arm exists to preserve: an UNOBSERVABLE invocation leaves the in-flight
+// record standing so the next admission owes recovery -- and recovery would then arrive at a unit
+// this run had already unloaded, so it could not read the invocation either, and the cell would be
+// stuck in a loop whose every pass destroys what the next pass needs. That is absorbing, and it is
+// the shape this lane keeps removing (side-chat ruling on gunbc#11803).
+//
+// SO THE RELEASE IS A CONSEQUENCE OF A SETTLED BINDING, not a step beside it. A refused binding keeps
+// the unit loaded on purpose: it is the only place the attempt's invocation id still exists.
+fn release_retained_unit(after: AttemptTeardownReadback) -> Bool
+  uses net: Network
+{
+  systemd.Systemctl.ResetFailedUnit(unit: after.observed.stop.unit).success
+}
+
+// AND IT TAKES THE PERSIST RESULT, so it cannot run before the record that outlives it is durable.
+// If the settlement did not persist, the in-flight record still stands and recovery will need this
+// unit exactly as the refusing arms do.
+fn release_after_persist(readback: AttemptTeardownReadback, persisted: CellReadinessStorePersist) -> Bool
+  uses net: Network
+{
+  match persisted {
+    StorePersisted { record: _ } => release_retained_unit(after: readback)
+    refused => false
+  }
+}
+
+// THE RELEASE IS PART OF THE SETTLED ARM AND OF NO OTHER, so the type itself says that a refused
+// binding leaves the unit loaded.
+type TeardownRun
+  = TeardownSettled { settlement: TeardownSettlement, persisted: CellReadinessStorePersist, unit_released: Bool }
+  | TeardownSubjectRefused { binding: TeardownReadbackBinding }
+
+fn run_teardown(
+  bound: CellBoundAttempt,
+  subject: SlotNetworkSanitationSubject,
+  trigger: TerminalTrigger,
+) -> TeardownRun
+  uses net: Network, fs: Filesystem
+{
+  let observed = perform_teardown_and_observe(bound: bound, subject: subject)
+  match attempt_teardown_readback(bound: bound, observed: observed) {
+    TeardownReadbackForeignSubject { subject: s, expected: e, observed: o } =>
+      TeardownSubjectRefused {
+        binding: TeardownReadbackForeignSubject { subject: s, expected: e, observed: o },
+      }
+    TeardownReadbackSubjectUnobservable { subject: s, reason: r } =>
+      TeardownSubjectRefused {
+        binding: TeardownReadbackSubjectUnobservable { subject: s, reason: r },
+      }
+    TeardownReadbackBound { readback: rb } => {
+      let settlement = settle_teardown(readback: rb, trigger: trigger)
+      let persisted = persist_cell_readiness_write(write: settlement.record)
+      TeardownSettled {
+        settlement: settlement,
+        persisted: persisted,
+        unit_released: release_after_persist(readback: rb, persisted: persisted),
+      }
+    }
+  }
+}
+
+// --- staging, and the one route to a running VMM ---
+
+// THE STAGING STEPS ARE CHAINED BY AN EXPLICIT `after:` RECEIPT, because the causal order is real and
+// the source was not expressing it. A jail root that was not created makes the copies meaningless and
+// a workspace that was not created cannot be formatted -- those edges exist in the world, and five
+// mutually independent `let`s stated none of them. Source position is not an ordering: the seed
+// interpreter happens to evaluate eagerly in source order, but that is a fact about THIS realization,
+// not about the model, and `gunbc.recurring_failure_mode` `readback_ordered_only_by_statement_position`
+// names the two lawful constructions as the effect's Bind continuation or an explicit `after:` receipt.
+// This is the second.
+//
+// IT CARRIES THE RECEIPT AND DOES NOT INSPECT IT, WHICH IS THE POINT: the step still runs and still
+// reports its own exit, so the verdict is unchanged for every input -- `jail_material_standing` and
+// `workspace_standing` read the same exits they read before. What changes is that the graph now says
+// the later step is downstream of the earlier one, so no realization may reorder them. Short-circuiting
+// on the prior exit would ALSO have ordered them, and was rejected: it would have to invent an exit for
+// a step that never ran, which is the fabricated-value class this module exists to remove.
+fn run_staged_after(after: ProcessOutcome, command: ArgvCommand) -> ProcessOutcome
+  uses net: Network
+{
+  run_shell_command_capture(command: command, transport: LocalExec)
+}
+
+fn command_exit_code(outcome: ProcessOutcome) -> Int {
+  match outcome {
+    ProcessOutputPresent { text: _ } => 0
+    ProcessOutputAbsent => 0
+    ProcessRefused { exit_code: c, stderr: _ } => c
+  }
+}
+
+// THE SUPERBLOCK READING NAMES THE IMAGE IT READ, because the path is what
+// gunbc.runner_attempt_launch workspace_standing compares against the plan's own workspace_path.
+// Reading some other image -- a previous attempt's, another slot's -- and reporting its size would
+// otherwise pass as this plan's workspace being ready.
+fn read_workspace_superblock(workspace_path: String) -> WorkspaceReadback
+  uses net: Network
+{
+  match run_shell_command_capture(command: workspace_readback_command(workspace_path: workspace_path), transport: LocalExec) {
+    ProcessRefused { exit_code: c, stderr: e } =>
+      WorkspaceReadbackFailed {
+        reason: join(["dumpe2fs on ", workspace_path, " exited ", to_string(c), ": ", trim(s: e)], "") as NonEmptyStr,
+      }
+    ProcessOutputAbsent =>
+      WorkspaceReadbackFailed { reason: join(["dumpe2fs on ", workspace_path, " printed no superblock"], "") as NonEmptyStr }
+    ProcessOutputPresent { text: t } =>
+      match decode_dumpe2fs_superblock(body: t) {
+        Ext2SuperblockUnreadable { cause: c } =>
+          WorkspaceReadbackFailed { reason: join([workspace_path, ": ", c], "") as NonEmptyStr }
+        Ext2SuperblockRead { magic: m, block_count: bc, block_size: bs } =>
+          WorkspaceSuperblockRead {
+            image_path: workspace_path,
+            ext_magic: m == ext2_superblock_magic,
+            bytes: byte_size(count: bc * bs),
+          }
+      }
+  }
+}
+
+// STAGING IS NOT A VERDICT AND THIS FUNCTION DOES NOT PRODUCE ONE. It runs what the plan said to
+// run and reads back what the host did, then hands BOTH stagings to
+// gunbc.runner_attempt_launch attempt_staging_verdict, which is the single authority for whether
+// a jailer may be released. A refused plan has nothing to stage -- its arms carry no commands --
+// so this reports that no staging was attempted rather than manufacturing observations to feed a
+// fold whose answer for those arms is already fixed.
+type AttemptStaging
+  = AttemptStaged { verdict: AttemptStagingVerdict }
+  | AttemptStagingNotPlanned { plan: AttemptLaunchPlan }
+
+fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
+  uses net: Network, fs: Filesystem
+{
+  match plan {
+    LaunchAuthorized {
+      authorization: _,
+      jit_runner_name: _,
+      jit_registration_id: _,
+      jit_device: device,
+      tap_device: _,
+      guest_ip_boot_arg: _,
+      slice: _,
+      jail_root: jail_root,
+      stage_jail_root: stage_root,
+      stage_kernel: stage_kernel,
+      stage_rootfs: stage_rootfs,
+      workspace_path: workspace_path,
+      workspace_create: create,
+      workspace_format: format,
+      kvm_device: _,
+      vm_config: _,
+      jailer: _,
+    } => {
+      let root_outcome = run_shell_command_capture(command: stage_root, transport: LocalExec)
+      let kernel_outcome = run_staged_after(after: root_outcome, command: stage_kernel)
+      let rootfs_outcome = run_staged_after(after: kernel_outcome, command: stage_rootfs)
+      let create_outcome = run_staged_after(after: rootfs_outcome, command: create)
+      let format_outcome = run_staged_after(after: create_outcome, command: format)
+      AttemptStaged {
+        verdict: attempt_staging_verdict(
+          plan: plan,
+          jail: JailMaterialStaging {
+            jail_root_exit: command_exit_code(outcome: root_outcome),
+            kernel_exit: command_exit_code(outcome: kernel_outcome),
+            rootfs_exit: command_exit_code(outcome: rootfs_outcome),
+            kernel: observe_path_exists(path: jail_kernel_destination(jail_root: jail_root)),
+            rootfs: observe_path_exists(path: jail_rootfs_destination(jail_root: jail_root)),
+          },
+          jit: stage_jit_device(device: device),
+          workspace: WorkspaceStagingObservation {
+            create_exit: command_exit_code(outcome: create_outcome),
+            format_exit: command_exit_code(outcome: format_outcome),
+            readback: read_workspace_superblock(workspace_path: workspace_path),
+          },
+        ),
+      }
+    }
+    refused => AttemptStagingNotPlanned { plan: refused }
+  }
+}
+
+// THE VMM STARTS FROM THE RECEIPT AND FROM NOWHERE ELSE.
+//
+// This is the consumption gunbc.runner_attempt_launch's workspace_staging_consumer_frontier was
+// waiting for -- that row named this step, and this step executes the plan's workspace create and
+// format, stages the JIT device, and reaches the jailer only through attempt_staging_verdict -- so
+// the row is deleted with this change rather than left standing over its own met trigger.
+//
+// IT IS NOT THE CONSUMPTION gunbc.github_effect_perform's jit_mint_lifecycle_controller_consumer_
+// frontier IS WAITING FOR, and an earlier revision of this annotation claimed both (review 69117).
+// That row's trigger is an attempt on srv1 MINTING through the App key and a runner registering
+// under the attempt's unit name. This controller does not mint: it takes an AttemptLaunchPlan as a
+// parameter, so the mint happened before it was called, and nothing here discharges that row.
+//
+// The sealed receipt is the whole reason the jailer cannot be reached another way. AttemptStagingReceipt is constructible only inside attempt_staging_verdict's
+// admitting arm, and the jailer argv is reachable only out of a receipt -- so there is no path from
+// this function to a running VMM that does not pass through a JIT device staged FOR THIS ATTEMPT and
+// a workspace read back as this plan's. Workspace readiness alone cannot release the jailer, because
+// the value that carries the jailer cannot exist without the other premise.
+//
+// THE UNIT IS THE ATTEMPT'S AND THE SLICE IS THE CELL'S, both derived from the attempt rather than
+// passed in: a VMM started outside the cell's slice is a guest whose CPU, memory and task
+// consumption no reservation accounts for (gunbc.runner_microvm_attempt), and Slice= cannot be added
+// after the fact.
+type AttemptLaunch
+  = VmmStarted { unit: NonEmptyStr, receipt: AttemptStagingReceipt }
+  | VmmRefusedStaging { verdict: AttemptStagingVerdict }
+  | VmmNotPlanned { plan: AttemptLaunchPlan }
+  | VmmStartFailed { unit: NonEmptyStr, detail: String }
+
+fn launch_attempt(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, plan: AttemptLaunchPlan) -> AttemptLaunch
+  uses net: Network, fs: Filesystem
+{
+  match stage_attempt(plan: plan) {
+    AttemptStagingNotPlanned { plan: p } => VmmNotPlanned { plan: p }
+    AttemptStaged { verdict: v } =>
+      match v {
+        StagingAdmitsJailer { receipt: r } => run_jailer_in_cell(attempt: attempt, invocation_id: invocation_id, receipt: r)
+        refused => VmmRefusedStaging { verdict: refused }
+      }
+  }
+}
+
+fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, receipt: AttemptStagingReceipt) -> AttemptLaunch
+  uses net: Network
+{
+  let unit = runner_microvm_attempt_unit_name(attempt: attempt)
+  let started = systemd.SystemdRun.RunTransientRetained(
+    unit: unit,
+    property_argv: systemd_run_property_argv(properties: [
+      runner_microvm_attempt_slice_property(attempt: attempt),
+      attempt_invocation_env_setting(invocation_id: invocation_id),
+    ]),
+    command_argv: concat([receipt.jailer.program as String], receipt.jailer.arguments),
+  )
+  if started.success {
+    VmmStarted { unit: unit, receipt: receipt }
+  } else {
+    VmmStartFailed { unit: unit, detail: trim(s: started.stderr) }
+  }
+}
+
+// --- waiting for a terminal condition ---
+
+// THE DEADLINE IS A TERMINAL TRIGGER AND NOT AN ERROR PATH. A guest that runs past its deadline is
+// torn down exactly as one that exited, through the same stop and the same readbacks, and the cell's
+// readiness is decided by what the host finds afterwards. That is gunbc.runner_microvm_lifecycle's
+// rule made operational: the trigger starts a teardown and never decides its outcome.
+//
+// THE EXIT STATUS IS CARRIED AND GOES NOWHERE. VmmExited holds it because an operator reading a
+// quarantine wants it; no fold downstream takes it, so a job that succeeded cannot argue its way
+// past a dirty readback.
+//
+// AND BECAUSE IT GOES NOWHERE, A SENTINEL THERE IS PURE DISHONESTY WITH NO SAFETY COST TO OFFSET IT.
+// This used to answer -1 when ShowProperty failed or the value did not parse, which is the fabricated
+// cause this lane removed twice elsewhere, sitting one function away from its own prohibition
+// (review 69084). That the field is downstream-inert bounds the SAFETY harm and not the honesty
+// defect: DESIGN 5's specimen is exactly a receipt whose verdict is right and whose cause is
+// invented.
+fn observe_unit_exit_status(unit: NonEmptyStr) -> UnitExitStatusReading
+  uses net: Network
+{
+  let shown = systemd.Systemctl.ShowProperty(
+    unit: unit,
+    property: systemd_unit_property_wire(property: ExecMainStatus),
+  )
+  if shown.success == false {
+    ExitStatusUnread {
+      reason: join(["ExecMainStatus could not be read for ", unit as String, ", so the VMM's exit status is unknown"], "") as NonEmptyStr,
+    }
+  } else {
+    match parse_int(s: trim(s: shown.value)) {
+      Present { value: n } => ExitStatusRead { exit_code: n }
+      Absent =>
+        ExitStatusUnread {
+          reason: join(["ExecMainStatus for ", unit as String, " read as `", trim(s: shown.value), "`, which is not an exit status"], "") as NonEmptyStr,
+        }
+    }
+  }
+}
+
+fn await_terminal(unit: NonEmptyStr, polls_remaining: Int) -> TerminalTrigger
+  uses net: Network
+{
+  if systemd.Systemctl.IsActive(unit: unit).active == false {
+    VmmExited { status: observe_unit_exit_status(unit: unit) }
+  } else if polls_remaining <= 0 {
+    DeadlineReached
+  } else {
+    let _slept = sleep_delay_seconds_second_carrier_projection(duration: attempt_stop_poll_interval)
+    await_terminal(unit: unit, polls_remaining: polls_remaining - 1)
+  }
+}
+
+// --- the controller ---
+
+// DECLARED FRONTIER (DESIGN 3c). The bring-up progression above VmmStarted -- GuestBooted,
+// RunnerListening, SlotServing -- is decided by gunbc.runner_microvm_lifecycle advance_bring_up from
+// BringUpEvents the GUEST reports, and this controller emits none of them: there is no channel from
+// the guest to the host in this tree yet. What the controller establishes on its own is
+// AttemptPrepared (staging read back) and VmmStarted (the host saw systemd start the unit in the
+// cell's slice), and it then waits for a terminal condition. NAMED CONSUMER of the missing half: this
+// module's run_controller, which will call advance_bring_up once a guest channel delivers a
+// BringUpEvent. TRIGGER: a modeled guest-to-host readiness channel -- the capability, not an
+// artifact -- carrying the runner's own listening report bound to this attempt's invocation id.
+// SUFFICIENT FOR deleting this row. NOT satisfied by the controller polling the host for something
+// the guest alone can know.
+//
+// WHY THAT IS SAFE TO DECLARE RATHER THAN FAKE. The progression decides only whether the slot is
+// SERVING. It never decides whether the cell is CLEAN, so a controller that never advances past
+// VmmStarted runs the job and settles the cell correctly; what it cannot do is tell a guest that
+// failed to boot from one that booted and is idle, and it will reach the deadline in both cases.
+data guest_bring_up_channel_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize run_controller, calling gunbc.runner_microvm_lifecycle advance_bring_up. TRIGGER: a modeled guest-to-host readiness channel carrying the runner's own listening report bound to this attempt's invocation id, so GuestBooted and RunnerListening are guest events the host receives rather than host guesses. SUFFICIENT FOR deleting this row. NOT satisfied by the controller polling host-side facts, which cannot distinguish a guest that failed to boot from one that booted and is idle." as NonEmptyStr,
+)
+
+// DECLARED FRONTIER (DESIGN 3c): NOTHING CALLS run_controller, AND THIS MODULE HAD NOT SAID SO.
+//
+// Everything below is reachable only from this entry, and `git grep "run_controller("` finds no
+// caller at all -- not a witness, not an instrument, not a unit file. That is the honest state of the
+// lane and it was visible only in a plan document and obliquely in another module's mint row, which
+// is not a declaration on the thing itself (review 69117 surfaced the gap while pointing at a
+// neighbouring row). §3c admits exactly this arm -- a named consumer landing in a named later change
+// -- and it is red only if the trigger is missing, so here it is.
+//
+// NAMED CONSUMER: the slot unit's ExecStart, which execs this controller as the unit's MainPID --
+// gunbc.runner_microvm's VmmUnderLifecycleController topology, where the unit's ExitType=main and
+// KillMode=control-group make systemd's stop reach the whole cgroup once this process exits.
+//
+// TRIGGER, at capability grain: a slot unit file whose ExecStart names this entry, emitted by the
+// same converge route that writes the other slot units, so the controller is what systemd starts for
+// a microVM slot rather than something a person runs by hand. SUFFICIENT FOR deleting this row. NOT
+// satisfied by a witness calling run_controller, by an instrument label invoking it, nor by a
+// hand-run invocation on a host -- each of those proves the function evaluates and none of them makes
+// it the slot's MainPID, which is the whole claim the topology rests on.
+//
+// WHY THAT IS SAFE TO DECLARE RATHER THAN RUSH: the cutover that makes a slot unit select this path
+// is sunny-ant-606's, not this lane's, and nothing here may make the floor CI job take it.
+data controller_main_pid_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the microVM slot unit's ExecStart, which execs gunbc.runner_microvm_lifecycle_realize run_controller as the unit's MainPID (gunbc.runner_microvm VmmUnderLifecycleController). TRIGGER: a slot unit file whose ExecStart names this entry, emitted by the converge route that writes the other slot units. SUFFICIENT FOR deleting this row. NOT satisfied by a witness calling run_controller, by an instrument label invoking it, nor by a hand-run invocation on a host -- none of those makes it the slot's MainPID." as NonEmptyStr,
+)
+
+// THE ORDER IS THE SAFETY PROPERTY AND IT IS NOT NEGOTIABLE.
+//
+// The in-flight record is written BEFORE anything is staged, and a record that did not persist stops
+// the controller before it stages or launches. That is the durable half of boot recovery
+// (gunbc.runner_microvm_cell_readiness): a controller lost at any later point leaves a record saying
+// cleanup is owed, rather than the previous attempt's settled Ready readmitting a cell whose VMM may
+// still be running. Launching first and recording afterwards would make the window between them
+// invisible, which is the one window in this whole lane that nobody can observe after the fact.
+//
+// AND THE TEARDOWN RUNS WHATEVER THE LAUNCH DID. A refused staging, a jailer that would not start and
+// a job that ran to completion all reach run_teardown, because all three can leave something behind
+// -- a staged credential device, a half-built workspace, a process. The trigger differs; the
+// obligation does not.
+type ControllerOutcome
+  = ControllerRefusedAdmission { admission: CellIncarnationAdmission }
+  | ControllerRefusedBinding { binding: CellBinding }
+  | ControllerQuarantinedUnattributedResidue { persisted: CellReadinessStorePersist }
+  | ControllerStartNotRecorded { persisted: CellReadinessStorePersist }
+  | ControllerRecovered { teardown: TeardownRun }
+  | ControllerRanAttempt { launch: AttemptLaunch, trigger: TerminalTrigger, teardown: TeardownRun }
+
+fn run_controller(
+  identity: AttemptIdentity,
+  allocation_generation: Int,
+  plan: AttemptLaunchPlan,
+  subject: SlotNetworkSanitationSubject,
+) -> ControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  let cell = runner_slot_instance_name(slot: identity.attempt.slot) as CellId
+  let admission = cell_incarnation_admission(
+    store: read_cell_readiness_store(),
+    cell: cell,
+    allocation_generation: allocation_generation,
+  )
+  match controller_start(admission: admission, ground: observe_attempt_ground(attempt: identity.attempt), identity: identity) {
+    StartRefused { admission: a } => ControllerRefusedAdmission { admission: a }
+    StartBindingRefused { binding: b } => ControllerRefusedBinding { binding: b }
+    StartQuarantineUnattributedResidue { trigger: _, record: r } =>
+      ControllerQuarantinedUnattributedResidue { persisted: persist_cell_readiness_write(write: r) }
+    StartRecovery { bound: b, trigger: t } => ControllerRecovered { teardown: run_teardown(bound: b, subject: subject, trigger: t) }
+    StartAttempt { bound: b, record: r } => run_started_attempt(bound: b, record: r, plan: plan, subject: subject)
+  }
+}
+
+fn run_started_attempt(
+  bound: CellBoundIdentity,
+  record: CellReadinessWrite,
+  plan: AttemptLaunchPlan,
+  subject: SlotNetworkSanitationSubject,
+) -> ControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  let persisted = persist_cell_readiness_write(write: record)
+  match persisted {
+    StorePersisted { record: _ } => run_launched_attempt(bound: bound, plan: plan, subject: subject)
+    refused => ControllerStartNotRecorded { persisted: refused }
+  }
+}
+
+fn run_launched_attempt(
+  bound: CellBoundIdentity,
+  plan: AttemptLaunchPlan,
+  subject: SlotNetworkSanitationSubject,
+) -> ControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  let launch = launch_attempt(
+    attempt: bound.attempt.attempt.attempt,
+    invocation_id: bound.attempt.attempt.invocation_id,
+    plan: plan,
+  )
+  let trigger = terminal_trigger_of_launch(launch: launch)
+  ControllerRanAttempt {
+    launch: launch,
+    trigger: trigger,
+    teardown: run_teardown(bound: bound.attempt, subject: subject, trigger: trigger),
+  }
+}
+
+// A LAUNCH THAT NEVER STARTED STILL HAS A TERMINAL TRIGGER, and it is StopRequested rather than an
+// invented exit: nothing ran, so there is no exit code to report, and the teardown that follows is a
+// stop asked for by the controller. Reporting VmmExited with a fabricated code would put a number
+// into a quarantine message that no process ever produced.
+fn terminal_trigger_of_launch(launch: AttemptLaunch) -> TerminalTrigger
+  uses net: Network
+{
+  match launch {
+    VmmStarted { unit: u, receipt: _ } => await_terminal(unit: u, polls_remaining: polls_for(bound: runner_attempt_vmm_deadline))
+    VmmRefusedStaging { verdict: _ } => StopRequested
+    VmmNotPlanned { plan: _ } => StopRequested
+    VmmStartFailed { unit: _, detail: _ } => StopRequested
+  }
+}

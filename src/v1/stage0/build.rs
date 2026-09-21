@@ -44,6 +44,72 @@ fn watch_git_path(path: &str) {
     }
 }
 
+/// The crates the executable links, read from the projection of the partition authority
+/// (`v2.compiler.self_host.stage0_executable_assembly` closed over
+/// `v2.workflow.rust_crate_partition`, rendered by `gunbc.stage0_executable_assembly_emit` and held
+/// to the model by the generated-artifact gate). The build script does not infer this set from
+/// manifest text: a scan recognises one spelling and treats every other -- `{path=..}`, a literal
+/// string, workspace inheritance -- as absence, and an absence here is a stale-stamp hole.
+const LINKED_PARTITION_CRATES_PROJECTION: &str = "linked_partition_crates.generated.txt";
+
+/// Watch every crate the executable links, transitively. Cargo reruns a build script only for
+/// the paths it names, and the executable's identity must go stale when ANY source it links
+/// changes -- not only this package's `src`. Measured 2026-09-19 (BuildBuddy, gunbc#11693): with
+/// only this package's inputs watched, an unstaged edit to `../stage0_v1_infer/src/lib.rs` was
+/// relinked into `gunbc` while `--version` kept reporting the clean commit, because nothing the
+/// script watched had moved. Each linked crate's `src`, `Cargo.toml` and `build.rs` are enrolled
+/// so that edit reruns the script, which then observes the dirty tree.
+///
+/// EVERY DISCOVERY FAILURE REFUSES THE BUILD. A projection that cannot be read, a line naming a
+/// directory with no manifest, or a crate with no `src` is not "no dependencies": it is a
+/// population nobody could complete, and minting a clean identity over it is exactly the silent
+/// wrongness the identity exists to rule out. The panic is the refusal -- Cargo reports it as a
+/// failed build script and nothing downstream links.
+fn watch_linked_partition_crates(manifest_dir: &Path) {
+    let projection = manifest_dir.join(LINKED_PARTITION_CRATES_PROJECTION);
+    println!("cargo:rerun-if-changed={}", projection.display());
+    let listing = std::fs::read_to_string(&projection).unwrap_or_else(|error| {
+        panic!(
+            "gunbc build cannot read the linked-partition-crates projection at {}: {error}; \
+             regenerate it (gunbc.stage0_executable_assembly_emit) rather than building without it",
+            projection.display()
+        )
+    });
+    let repo_root = manifest_dir
+        .join("../../..")
+        .canonicalize()
+        .expect("gunbc build cannot resolve the repository root above src/v1/stage0");
+    let mut watched = 0usize;
+    for line in listing.lines().map(str::trim) {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let crate_dir = repo_root.join(line);
+        for required in ["Cargo.toml", "src"] {
+            let path = crate_dir.join(required);
+            assert!(
+                path.exists(),
+                "gunbc build: linked partition crate {line} (from {}) has no {required} at {}; \
+                 the projection and the tree disagree, so the build identity is refused",
+                projection.display(),
+                path.display()
+            );
+            println!("cargo:rerun-if-changed={}", path.display());
+        }
+        let script = crate_dir.join("build.rs");
+        if script.exists() {
+            println!("cargo:rerun-if-changed={}", script.display());
+        }
+        watched += 1;
+    }
+    assert!(
+        watched > 0,
+        "gunbc build: the linked-partition-crates projection at {} names no crate; the host shell \
+         declares partition dependencies, so an empty projection is a stale or truncated file",
+        projection.display()
+    );
+}
+
 fn main() {
     // Re-run when the binary's Rust inputs change so a clean build cannot keep its
     // identity after those inputs become dirty. Watching the repository root would
@@ -53,6 +119,9 @@ fn main() {
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=Cargo.toml");
     println!("cargo:rerun-if-env-changed={MATERIALIZED_TREE_IDENTITY_ENV}");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .expect("gunbc build: Cargo did not supply CARGO_MANIFEST_DIR to the build script");
+    watch_linked_partition_crates(Path::new(&manifest_dir));
 
     // Ask Git for its real paths: a linked worktree's `.git` is a pointer file, and a branch's
     // HEAD file contains only a stable symbolic-ref name. Watch both the worktree HEAD and its

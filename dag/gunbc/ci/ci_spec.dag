@@ -1,6 +1,7 @@
 module gunbc.ci_spec
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
+import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import gunbc.spark.native_serving_apply { spark_native_apply_receipt_path }
@@ -802,6 +803,22 @@ data gunbc_ci_r2_mint_preflight_target: GunbcRunStepTarget = GunbcRunStepTarget 
   function: "observe_account_permission_groups_wet",
 }
 
+// THE BUCKET ENSURE PRECEDES THE MINT IN MEANING, NOT ONLY IN ORDER. A bucket-scoped token names a
+// bucket resource that must exist for any request it signs to succeed, and the account's R2
+// entitlement is a precondition of both; gunbc.cloudflare.r2_bucket_ensure observes the two facts
+// for every allocated purpose, creates an absent bucket, and refuses an unentitled account with the
+// dashboard step (gunbc#11713: nine days of failed signed requests against a bucket nobody had
+// observed).
+data gunbc_ci_r2_bucket_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_bucket_ensure.dag",
+  function: "ensure",
+}
+
+data gunbc_ci_r2_bucket_admin_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
+  function: "run_bucket_admin",
+}
+
 data gunbc_ci_r2_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
   function: "run_object_write",
@@ -1113,6 +1130,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_org_actions_inspect_target,
     gunbc_ci_r2_mint_preflight_target,
+    gunbc_ci_r2_bucket_ensure_target,
+    gunbc_ci_r2_bucket_admin_mint_target,
     gunbc_ci_r2_object_write_mint_target,
     gunbc_ci_runner_guest_image_observe_target,
     gunbc_ci_runner_guest_image_converge_target,
@@ -2213,6 +2232,26 @@ fn gunbc_ci_r2_mint_preflight_invoke() -> String {
     function: gunbc_ci_r2_mint_preflight_target.function,
     claim_run: false,
     receipt_rel: r2_mint_preflight_receipt_path
+  )
+}
+
+fn gunbc_ci_r2_bucket_ensure_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_bucket_ensure_target.entry,
+    function: gunbc_ci_r2_bucket_ensure_target.function,
+    claim_run: false,
+    receipt_rel: r2_bucket_ensure_receipt_path
+  )
+}
+
+fn gunbc_ci_r2_bucket_admin_mint_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_bucket_admin_mint_target.entry,
+    function: gunbc_ci_r2_bucket_admin_mint_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 
