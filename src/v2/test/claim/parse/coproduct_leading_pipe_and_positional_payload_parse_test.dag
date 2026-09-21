@@ -76,7 +76,7 @@ test fn bare_leading_pipe_without_variant_refuses_holds() -> Bool {
 }
 
 test fn positional_payload_variants_parse_and_normalize_holds() -> Bool {
-  cp_normalizes(text: "module m.t\n\ntype C =\n  | A(X)\n  | B { n: Int }\n  | D\n")
+  cp_normalizes(text: "module m.t\n\ntype C = A(X) | B { n: Int } | D\n")
 }
 
 test fn positional_payload_with_two_types_refuses_as_in_v1_holds() -> Bool {
@@ -117,14 +117,11 @@ test fn leading_pipe_normalizes_to_the_same_alternatives_as_without_holds() -> B
   }
 }
 
-// The positional row alone, with no leading `|`, at its construction site. This establishes that
-// the front end CONSUMES the spelling through normalize. It does not establish the field-"0"
-// lowering: no v2 stage lowers variant fields into declared field identities for ANY variant,
-// named or positional, so `A(Int)` and `A { v: Int }` are equally preserved and unlowered today
-// (gunbc.rung_drop variant_fields_unlowered_on_the_native_route).
-test fn positional_payload_without_leading_pipe_with_construction_normalizes_holds() -> Bool {
-  cp_normalizes(text: "module m.t\n\ntype C = A(Int) | B\n\nfn wrap(x: Int) -> C {\n  A(x)\n}\n")
-}
+// The positional row alone carries no leading `|`: positional_payload_variants_parse_and_normalize
+// exercises it inside a pipe-free coproduct, so removing only the leading-pipe row leaves it green.
+// It does not establish the field-"0" lowering: no v2 stage lowers variant fields into declared
+// field identities for ANY variant, named or positional, so `A(Int)` and `A { v: Int }` are equally
+// preserved and unlowered today (gunbc.rung_drop variant_fields_unlowered_on_the_native_route).
 
 fn cp_normalize_refuses_with(text: String, reason: Symbol) -> Bool {
   match cp_normalized(text: text) {
@@ -138,7 +135,7 @@ fn cp_normalize_refuses_with(text: String, reason: Symbol) -> Bool {
 // typed refusal (body_lower_match_arm_wire_from_sequence) until variant fields lower.
 test fn positional_pattern_binder_refuses_until_fields_lower_holds() -> Bool {
   cp_normalize_refuses_with(
-    text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n",
+    text: "module m.t\n\nfn u(c: C) -> Int {\n  match c {\n    A(x) => x\n  }\n}\n",
     reason: ^body_lowering_reason_positional_pattern_binder_unlowered
   )
 }
@@ -147,14 +144,14 @@ test fn positional_pattern_binder_refuses_until_fields_lower_holds() -> Bool {
 // content_hash_family is exactly this shape (`Fnv1a64(_) => Fnv1a64StructuralFamily`).
 test fn positional_wildcard_pattern_still_normalizes_holds() -> Bool {
   cp_normalizes(
-    text: "module m.t\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n"
+    text: "module m.t\n\nfn u(c: C) -> Int {\n  match c {\n    A(_) => 1\n  }\n}\n"
   )
 }
 
 // The refusal is not over-broad: the braced spelling of the same elimination still lowers.
 test fn braced_pattern_binder_still_normalizes_holds() -> Bool {
   cp_normalizes(
-    text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v: x } => x\n    B => 0\n  }\n}\n"
+    text: "module m.t\n\nfn u(c: C) -> Int {\n  match c {\n    A { v: x } => x\n  }\n}\n"
   )
 }
 
