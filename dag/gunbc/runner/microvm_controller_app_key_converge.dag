@@ -46,7 +46,8 @@ import gunbc.typed_remote_file_write {
   converge_typed_remote_file,
 }
 import gunbc.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
-import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_job_user }
+import gunbc.runner_host_grants { bootstrap_principal_is_not_the_job_user }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.live_deploy.member_observe {
   path_parent, path_basename, parent_listing_argv, listing_contains_entry,
   EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate,
