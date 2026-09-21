@@ -10,7 +10,7 @@ import gunbc.compute.attempt_lifecycle {
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_advanced, attempt_transition_wire,
-  attempt_state_wire, attempt_record_wire, attempt_record_decode,
+  attempt_state_wire, attempt_record_wire, attempt_record_decode, compute_pre_launch_ceiling_seconds,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
   UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
   RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryStateNotRecoverable,
@@ -31,6 +31,7 @@ fn record_for(reference: String) -> AttemptRecord {
     reference: reference,
     unit: join(["gunbc-compute-abcdef0123456789-", reference], ""),
     granted_kib: 27262976,
+    opened_at: 1800,
     launch_deadline: 2000,
     state: AttemptReserved,
   }
@@ -200,12 +201,12 @@ test fn a_launched_attempt_is_recovered_only_on_an_ended_unit() -> Bool {
   let launched = AttemptRecord {
     identity: "abcdef0123456789", reference: "attempt-launched",
     unit: "gunbc-compute-abcdef0123456789-attempt-launched", granted_kib: 27262976,
-    launch_deadline: 2000, state: AttemptLaunching,
+    opened_at: 1800, launch_deadline: 2000, state: AttemptLaunching,
   }
   let terminal = AttemptRecord {
     identity: "abcdef0123456789", reference: "attempt-done",
     unit: "gunbc-compute-abcdef0123456789-attempt-done", granted_kib: 27262976,
-    launch_deadline: 2000, state: AttemptTerminal { verdict: "released", detail: "done" },
+    opened_at: 1800, launch_deadline: 2000, state: AttemptTerminal { verdict: "released", detail: "done" },
   }
   recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999))
     && recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitTerminatedFailure { detail: "exit 101" }, now: 9999))
@@ -228,4 +229,42 @@ test fn an_undecodable_slot_is_unreadable_and_never_absent() -> Bool {
   planted.success
     && (match reading { AttemptSlotUnreadable { detail: d } => string_contains(s: d, pattern: "cannot decode")  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotAbsent => false })
     && (match absent_reading { AttemptSlotAbsent => true  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotUnreadable { detail: _ } => false })
+}
+
+// THE SELF-DECLARED BOUND HAS A BOUND, AND AN OVER-LONG DECLARATION REFUSES RATHER THAN BEING
+// CLAMPED. The deadline is declared by the party it protects, so nothing in the gate alone stops a
+// producer declaring an hour -- and the cost of that does not land on the producer, it lands on
+// every other contender as a seat nobody may reclaim. That is DESIGN 5's externalization: an
+// accepted risk re-exported to another principal while the contract keeps its name.
+//
+// CLAMPING WOULD BE THE WIDEN. Admitting the attempt under a bound it did not ask for, and then
+// reclaiming its seat mid-checkout, is a safety limit's clothes on a silent narrowing of somebody
+// else's window. It refuses, and the refusal names both numbers so the author learns the ceiling
+// instead of meeting it as a mysterious reclaim.
+test fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped() -> Bool {
+  let root = fresh_root() as NonEmptyStr
+  let base = record_for(reference: "attempt-greedy")
+  let greedy = AttemptRecord {
+    identity: base.identity, reference: base.reference, unit: base.unit, granted_kib: base.granted_kib,
+    opened_at: 1800, launch_deadline: 1800 + compute_pre_launch_ceiling_seconds + 1, state: AttemptReserved,
+  }
+  let at_ceiling = AttemptRecord {
+    identity: base.identity, reference: "attempt-at-ceiling", unit: base.unit, granted_kib: base.granted_kib,
+    opened_at: 1800, launch_deadline: 1800 + compute_pre_launch_ceiling_seconds, state: AttemptReserved,
+  }
+  let backwards = AttemptRecord {
+    identity: base.identity, reference: "attempt-backwards", unit: base.unit, granted_kib: base.granted_kib,
+    opened_at: 1800, launch_deadline: 1799, state: AttemptReserved,
+  }
+  let refused = attempt_open(root: root, record: greedy)
+  let admitted = attempt_open(root: root, record: at_ceiling)
+  let closed_window = attempt_open(root: root, record: backwards)
+  let greedy_slot = attempt_slot_read(root: root, reference: greedy.reference as NonEmptyStr)
+  !attempt_transition_advanced(t: refused)
+    && attempt_transition_advanced(t: admitted)
+    && !attempt_transition_advanced(t: closed_window)
+    && string_contains(s: attempt_transition_wire(t: refused), pattern: "every other contender")
+    && string_contains(s: attempt_transition_wire(t: refused), pattern: to_string(value: compute_pre_launch_ceiling_seconds))
+    && string_contains(s: attempt_transition_wire(t: closed_window), pattern: "already closed")
+    && (match greedy_slot { AttemptSlotAbsent => true  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotUnreadable { detail: _ } => false })
 }

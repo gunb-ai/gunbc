@@ -116,6 +116,7 @@ type AttemptRecord {
   reference: String
   unit: String
   granted_kib: Int
+  opened_at: Int
   launch_deadline: Int
   state: AttemptState
 }
@@ -126,6 +127,7 @@ fn attempt_record_json(r: AttemptRecord) -> JsonValue {
     json_kv(key: "reference", value: json_string(s: r.reference)),
     json_kv(key: "unit", value: json_string(s: r.unit)),
     json_kv(key: "granted_kib", value: json_int(n: r.granted_kib)),
+    json_kv(key: "opened_at", value: json_int(n: r.opened_at)),
     json_kv(key: "launch_deadline", value: json_int(n: r.launch_deadline)),
     json_kv(key: "state", value: json_string(s: attempt_state_wire(s: r.state))),
     json_kv(key: "detail", value: json_string(s: match r.state { AttemptTerminal { verdict: _, detail: d } => d  AttemptReserved => ""  AttemptLaunching => "" })),
@@ -137,7 +139,7 @@ fn attempt_record_wire(r: AttemptRecord) -> String {
 }
 
 fn attempt_record_with_state(r: AttemptRecord, state: AttemptState) -> AttemptRecord {
-  AttemptRecord { identity: r.identity, reference: r.reference, unit: r.unit, granted_kib: r.granted_kib, launch_deadline: r.launch_deadline, state: state }
+  AttemptRecord { identity: r.identity, reference: r.reference, unit: r.unit, granted_kib: r.granted_kib, opened_at: r.opened_at, launch_deadline: r.launch_deadline, state: state }
 }
 
 // ── READING THE SLOT, AND UNREADABLE IS NEVER ABSENT ──────────────────────────────────────────
@@ -190,6 +192,9 @@ fn attempt_record_decode(text: String) -> AttemptRecord? {
                   match attempt_member_int(doc: doc, key: "granted_kib") {
                     Absent => none
                     Present { value: granted } =>
+                      match attempt_member_int(doc: doc, key: "opened_at") {
+                        Absent => none
+                        Present { value: opened } =>
                       match attempt_member_int(doc: doc, key: "launch_deadline") {
                         Absent => none
                         Present { value: deadline } =>
@@ -199,9 +204,10 @@ fn attempt_record_decode(text: String) -> AttemptRecord? {
                               match attempt_state_decode(word: word, detail: match attempt_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" }) {
                                 Absent => none
                                 Present { value: state } =>
-                                  Present { value: AttemptRecord { identity: identity, reference: reference, unit: unit, granted_kib: granted, launch_deadline: deadline, state: state } }
+                                  Present { value: AttemptRecord { identity: identity, reference: reference, unit: unit, granted_kib: granted, opened_at: opened, launch_deadline: deadline, state: state } }
                               }
                           }
+                      }
                       }
                   }
               }
@@ -280,11 +286,54 @@ fn attempt_commit(root: NonEmptyStr, record: AttemptRecord, expected: CasExpecta
   }
 }
 
+// THE CEILING ON A SELF-DECLARED BOUND, AND WHY A DECLARATION IS NOT ENOUGH ON ITS OWN.
+//
+// The launch deadline is declared by the party it protects. A producer says what it needs for
+// checkout and argv assembly, and that same declaration is what stops anyone reclaiming its seat --
+// so nothing in the mechanism as described stops a producer declaring an hour. The cost of an
+// over-long declaration does not land on the producer: it lands on every other contender on that
+// host, as a seat nobody may reclaim. That is the EXTERNALIZATION DESIGN 5 names -- an accepted
+// risk quietly re-exported to another principal while the contract keeps its name -- and it is the
+// reason a self-declared bound needs a bound of its own.
+//
+// FIVE MINUTES, AND IT IS A POLICY BUDGET RATHER THAN A MEASUREMENT, said plainly because the
+// number is authored. What the window has to cover is one `git worktree add` of this repository and
+// the assembly of an argv; the srv1 receipts on gunbc#11962 show whole build attempts, checkout
+// included, completing in about four minutes, so a ceiling of five minutes for the checkout ALONE
+// is generous by a wide margin and still bounded. It is not derived from a measured checkout
+// distribution, and when one exists this row should be re-derived from it rather than defended.
+//
+// A DECLARATION ABOVE THE CEILING REFUSES AND IS NOT CLAMPED. Clamping would admit the attempt
+// under a bound it did not ask for and did not agree to, then let it be reclaimed mid-checkout --
+// a widen wearing a safety limit's clothes. The refusal is typed and names both numbers, so the
+// author of an over-long declaration learns what the ceiling is rather than discovering it as a
+// mysterious reclaim.
+data compute_pre_launch_ceiling_seconds: Int = 300
+
 // OPENING: the attempt declares itself Reserved, and it must be the FIRST writer of this reference.
 // ExpectSlotAbsent is what makes a duplicated reference a refusal rather than a silent overwrite of
 // somebody else's attempt.
 fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
-  attempt_commit(root: root, record: attempt_record_with_state(r: record, state: AttemptReserved), expected: ExpectSlotAbsent)
+  let declared = record.launch_deadline - record.opened_at
+  if declared > compute_pre_launch_ceiling_seconds {
+    AttemptTransitionRefused {
+      detail: join([
+        "the attempt declared a pre-launch window of ", to_string(value: declared),
+        " seconds and the ceiling is ", to_string(value: compute_pre_launch_ceiling_seconds),
+        "; a window nobody may reclaim a seat inside is a cost borne by every other contender on this host, so an over-long declaration is refused rather than clamped",
+      ], ""),
+    }
+  } else if declared < 0 {
+    AttemptTransitionRefused {
+      detail: join([
+        "the attempt declared a launch deadline of ", to_string(value: record.launch_deadline),
+        " which precedes the instant it opened, ", to_string(value: record.opened_at),
+        "; a window that has already closed would be reclaimable the moment it is written",
+      ], ""),
+    }
+  } else {
+    attempt_commit(root: root, record: attempt_record_with_state(r: record, state: AttemptReserved), expected: ExpectSlotAbsent)
+  }
 }
 
 // THE LAUNCH GATE. Called BEFORE the unit is spawned, never after.
@@ -328,6 +377,28 @@ fn attempt_transition_advanced(t: AttemptTransition) -> Bool {
 //
 // THE TRIGGER THEREFORE SPLITS ON THE STATE, and the reason is structural rather than a policy
 // choice:
+//
+// WHICH CLOCK, AND WHY THIS ONE IS SAFE HERE. The comparison is made by a process that did not
+// write the deadline, so the clock is a shared authority between two principals. It is the host's
+// own epoch clock (gunbc.fabric_event_log_host now_epoch_seconds), and it is the RIGHT one for two
+// reasons rather than for convenience: the compute pool is host-local by construction -- PR 1
+// placed its ledger on the host precisely because a host's own memory is not a fleet fact -- so
+// both principals read one clock; and the pool's own lease terms are already denominated in these
+// same epoch seconds, so reaching for a second time source here would be a second time authority
+// for one quantity.
+//
+// THE STORE OFFERS NO ORDERING TO PREFER OVER IT. The slot's generations order TRANSITIONS, not
+// elapsed time, so there is nothing in the store that answers "has the window passed".
+//
+// BOTH STEP DIRECTIONS, NAMED, AND THE ONE THAT MATTERS IS BOUNDED BY THE GATE RATHER THAN BY THE
+// CLOCK. A clock that steps FORWARD makes recovery fire late: the seat stays charged longer, which
+// is the fail-closed direction and costs throughput. A clock that steps BACKWARD makes recovery
+// fire early against a live pre-launch producer -- and that is the dangerous-sounding one, so it is
+// worth being exact about what it actually costs. It does NOT produce an unbacked launch: the
+// producer's gate CAS then expects a generation recovery has moved, so it is refused and never
+// spawns. The loss is the attempt, not the invariant -- a retry, not a seat handed to two holders.
+// The deadline decides who may ENTER the race; the compare-and-set decides who wins it, and only
+// the second is load-bearing for safety.
 //
 //   IN Reserved THERE IS NO UNIT TO OBSERVE, so observation is INCAPABLE of distinguishing a
 //   pre-launch producer from a dead one -- both present exactly the same absence. An observational
