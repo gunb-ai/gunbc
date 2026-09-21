@@ -103,7 +103,6 @@ import gunbc.github_app_acquisition {
   census_app_acquisition_standing,
   acquisition_standing_line,
   census_app_private_key_custody,
-  census_app_submission_artifact_path,
   AcquisitionFactMissing,
   RegistrationMissing,
   InstallationMissing,

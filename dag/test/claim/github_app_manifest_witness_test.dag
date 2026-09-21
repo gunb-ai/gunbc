@@ -180,6 +180,8 @@ import gunbc.github_app_acquisition {
   ManifestCodeUnavailable,
   admit_manifest_code,
   census_app_identity,
+  GitHubAppDeclaredIdentity,
+  census_app_registration_target,
 }
 import std.human_intervention { EveryProvision, human_intervention_frequency_eq }
 import gunbc.instruments.github_app_acquire {
@@ -485,6 +487,50 @@ test fn w_the_registration_instruction_names_the_artifact_and_not_a_field_that_d
         && !string_contains(s: i.instruction as String, pattern: "paste the manifest")
         && !string_contains(s: i.instruction as String, pattern: "manifest field")
         && ((i.subject as String) == (census_app_name as String))
+  }
+}
+
+// THE SUBMISSION DOCUMENT'S PATH IS A WRITE TARGET, SO AN UNSAFE NAME MUST REFUSE RATHER THAN WRITE.
+// An earlier cut of this PR built that path with a bare custody_handoff_path call, outside the guard
+// the same module applies to the other four per-App files -- so a name carrying a separator would
+// have escaped the git-ignored handoff directory under a real Filesystem.Write, with the modeled
+// refusal for exactly that state one function away (review 69495). The path now comes only from
+// custody_handoff_addressing, which means the guard cannot be bypassed rather than merely being
+// applied here. Both legs run: the intervention text refuses for an unsafe name, and it names the
+// addressed path for a safe one.
+test fn w_an_unsafe_app_name_refuses_the_submission_artifact_instead_of_writing_it() -> Bool {
+  let unsafe_name = "../../etc/gunbc" as NonEmptyStr
+  let refused = match custody_handoff_addressing(name: unsafe_name) {
+    CustodyAddressed { paths: _ } => false
+    CustodyNameNotPathSafe { name: n } => (n as String) == (unsafe_name as String)
+  }
+  let step_refuses = string_contains(
+    s: app_registration_submit_intervention(
+      identity: GitHubAppDeclaredIdentity { name: unsafe_name, target: census_app_registration_target },
+      addressing: custody_handoff_addressing(name: unsafe_name),
+    ).instruction as String,
+    pattern: "NO SUBMISSION DOCUMENT WAS WRITTEN",
+  )
+  let safe_step_names_the_addressed_path = string_contains(
+    s: app_registration_submit_intervention(
+      identity: census_app_identity,
+      addressing: custody_handoff_addressing(name: census_app_identity.name),
+    ).instruction as String,
+    pattern: ".gunbc/github-app-gunbc-global-census-register.html",
+  )
+  refused && step_refuses && safe_step_names_the_addressed_path
+}
+
+// AND THE REGISTRATION FORM IS ONE OF THE ADDRESSED PATHS, not a fifth one built beside them. This is
+// the structural half of the claim above: if a future edit moves it back out of the addressing, the
+// guard stops covering it and this goes red.
+test fn w_the_registration_form_is_one_of_the_addressed_handoff_paths() -> Bool {
+  match custody_handoff_addressing(name: census_app_identity.name) {
+    CustodyNameNotPathSafe { name: _ } => false
+    CustodyAddressed { paths: p } =>
+      (p.registration_form == ".gunbc/github-app-gunbc-global-census-register.html")
+        && starts_with(p.registration_form, prefix: concat(census_app_custody_handoff_directory, "/"))
+        && (p.registration_form != p.pem)
   }
 }
 
@@ -1338,7 +1384,7 @@ test fn w_an_adoption_row_and_a_handoff_naming_different_apps_conflict() -> Bool
 test fn w_the_human_steps_are_separate_identities_keyed_on_the_app() -> Bool {
   let submit = app_registration_submit_intervention(
     identity: census_app_identity,
-    artifact_path: ".gunbc/github-app-gunbc-global-census-register.html",
+    addressing: custody_handoff_addressing(name: census_app_identity.name),
   )
   let capture = app_registration_capture_intervention(identity: census_app_identity)
   let supply = app_key_supply_intervention(identity: census_app_identity)
@@ -1365,7 +1411,7 @@ test fn w_the_capture_step_declares_itself_a_choice_and_submit_declares_the_cons
   let supply = app_key_supply_intervention(identity: census_app_identity)
   let submit = app_registration_submit_intervention(
     identity: census_app_identity,
-    artifact_path: ".gunbc/x-register.html",
+    addressing: custody_handoff_addressing(name: census_app_identity.name),
   )
   string_contains(s: capture.instruction as String, pattern: "A DECLARED CHOICE, NOT A LIMIT")
     && string_contains(s: capture.instruction as String, pattern: "redirect catcher")

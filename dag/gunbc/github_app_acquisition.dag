@@ -272,11 +272,22 @@ fn custody_name_is_path_safe(name: NonEmptyStr) -> Bool {
     && !((name as String) == "")
 }
 
+// THE REGISTRATION FORM IS ADDRESSED HERE TOO, AND EXCLUDING IT IS WHAT LEFT A WRITE WITH NO WALL.
+// It is not a secret -- the manifest is public and the document carries none -- so an earlier cut of
+// this PR built its path with a bare custody_handoff_path call, reasoning that a non-secret does not
+// belong in a custody record. The reasoning was about the wrong property. What this record IS, is the
+// ADDRESSING of the per-App files in the handoff directory, and its constructor is the one place the
+// name is checked before it becomes a path; a file that skips it is a Filesystem.Write whose target a
+// name carrying a separator sends outside .gunbc/, with a modeled refusal for exactly that state
+// sitting one function away (review 69495, DESIGN 5: make the wrong state unwritable rather than
+// catching it). Membership is decided by "is this a path built from the App name", not by "is this
+// file secret".
 type CustodyHandoffPaths {
   pem: String
   webhook_secret: String
   client_secret: String
   identity: String
+  registration_form: String
 }
 
 type CustodyHandoffAddressing
@@ -295,6 +306,7 @@ fn custody_handoff_addressing(name: NonEmptyStr) -> CustodyHandoffAddressing {
         webhook_secret: custody_handoff_path(name: name, suffix: ".webhook-secret"),
         client_secret: custody_handoff_path(name: name, suffix: ".client-secret"),
         identity: custody_handoff_path(name: name, suffix: ".identity"),
+        registration_form: custody_handoff_path(name: name, suffix: "-register.html"),
       }
     }
   } else {
@@ -494,7 +506,38 @@ fn reconcile_acquisition_record(
 // WHAT REMAINS IRREDUCIBLY HUMAN IS NARROWER THAN THE OLD STEP CLAIMED, and the row says so now: the
 // act GitHub requires is an OWNER submitting the form, not a human transcribing a document. The
 // manifest, the action URL, the state binding and the form are all machine-produced.
+//
+// AND IT TAKES THE ADDRESSING RATHER THAN A PATH, so no caller can reach it with a name that was
+// never checked. The path is the target of a real Filesystem.Write, and the module already models
+// the refusal for a name that cannot address a file safely; taking a bare String here left that wall
+// one call away from a write instead of in front of it (review 69495). Both arms are reachable --
+// the carrier admits any NonEmptyStr name -- so this is a total fold over a real coproduct, not a
+// defensive arm over a state the constructor forbids.
 fn app_registration_submit_intervention(
+  identity: GitHubAppDeclaredIdentity,
+  addressing: CustodyHandoffAddressing,
+) -> HumanIntervention {
+  match addressing {
+    CustodyNameNotPathSafe { name: unsafe_name } =>
+      HumanIntervention {
+        identity: join(["github-app-submit-", identity.name as String], "") as HumanInterventionIdentity,
+        frequency: EveryProvision,
+        subject: identity.name,
+        instruction: join(
+          [
+            "NO SUBMISSION DOCUMENT WAS WRITTEN AND THERE IS NOTHING TO OPEN. The declared App name ",
+            unsafe_name as String,
+            " cannot address a file safely -- it carries a separator or a parent reference -- so writing the form would put it outside the git-ignored handoff directory. Correct the declared name; nothing about this flow is runnable until the artifact has a safe address.",
+          ],
+          "",
+        ) as NonEmptyStr,
+        completion_evidence: NoDischargeSiteModeled,
+      }
+    CustodyAddressed { paths: paths } => app_registration_submit_open_intervention(identity: identity, artifact_path: paths.registration_form)
+  }
+}
+
+fn app_registration_submit_open_intervention(
   identity: GitHubAppDeclaredIdentity,
   artifact_path: String,
 ) -> HumanIntervention {
@@ -607,15 +650,6 @@ data github_app_human_step_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-// THE ARTIFACT'S PATH, DERIVED FROM THE SAME DECLARED DIRECTORY the handoff files use. It is not a
-// custody path -- the manifest is public, and the document carries no secret -- but it is generated,
-// per-App and untracked, so it belongs beside them rather than in the worktree. It is addressed by
-// the DECLARED NAME for the same reason the custody files are: the slug is not known when it is
-// written, because writing it is what precedes the App existing at all.
-fn census_app_submission_artifact_path(name: NonEmptyStr) -> String {
-  custody_handoff_path(name: name, suffix: "-register.html")
-}
-
 // THE CENSUS APP'S OWN SUBMIT STEP, NAMED ONCE SO NOTHING RE-CONSTRUCTS IT. The privileged-effect
 // census embeds this step AND reports the effect's frequency beside it, and authoring those two
 // independently is how one effect came to carry two frequencies in one row (review 69472). A caller
@@ -623,7 +657,7 @@ fn census_app_submission_artifact_path(name: NonEmptyStr) -> String {
 fn census_app_registration_submit_step() -> HumanIntervention {
   app_registration_submit_intervention(
     identity: census_app_identity,
-    artifact_path: census_app_submission_artifact_path(name: census_app_identity.name),
+    addressing: custody_handoff_addressing(name: census_app_identity.name),
   )
 }
 
@@ -649,17 +683,29 @@ fn census_app_registration_instruction(state: GitHubAppManifestState) -> AppRegi
   ) {
     ManifestSubmissionNotRenderable { cause: c } =>
       RegistrationInstructionUnavailable { reason: c }
-    ManifestSubmissionRendered { html: html } => {
-      let path = census_app_submission_artifact_path(name: census_app_identity.name)
-      RegistrationInstructionReady {
-        intervention: app_registration_submit_intervention(
-          identity: census_app_identity,
-          artifact_path: path,
-        ),
-        artifact_path: path,
-        artifact_html: html,
+    ManifestSubmissionRendered { html: html } =>
+      match custody_handoff_addressing(name: census_app_identity.name) {
+        CustodyNameNotPathSafe { name: unsafe_name } =>
+          RegistrationInstructionUnavailable {
+            reason: join(
+              [
+                "the declared App name ",
+                unsafe_name as String,
+                " cannot address a file safely, so the submission document has no write target inside the handoff directory",
+              ],
+              "",
+            ) as NonEmptyStr
+          }
+        CustodyAddressed { paths: paths } =>
+          RegistrationInstructionReady {
+            intervention: app_registration_submit_intervention(
+              identity: census_app_identity,
+              addressing: CustodyAddressed { paths: paths },
+            ),
+            artifact_path: paths.registration_form,
+            artifact_html: html,
+          }
       }
-    }
   }
 }
 
