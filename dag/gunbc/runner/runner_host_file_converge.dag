@@ -344,6 +344,18 @@ fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmissio
 // this change removes everywhere else, surviving in the one module that decides teardown. The
 // refusal arm already exists here, so the obligation joins the other two conditions this
 // constructor refuses on.
+// WHO WE REACH A RUNNER HOST AS, in one place. The endpoint comes from the fleet reach authority and
+// the principal is the declared administrator; neither depends on the deploy row, so a converge that
+// resolves its subject some other way -- gunbc.microvm_controller_app_key_converge resolves custody
+// from the host SPEC, because the App key does not depend on slot width -- consumes this rather than
+// spelling the pair again (DESIGN §3).
+fn administrator_ssh_target(host: HostIdentity) -> SshTarget {
+  SshTarget {
+    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+    principal: executor_bootstrap_principal.login,
+  }
+}
+
 fn runner_host_file_subject_over_obligation(
   host: HostIdentity,
   units: List<NonEmptyStr>,
@@ -362,10 +374,7 @@ fn runner_host_file_subject_over_obligation(
       RunnerHostFileSubjectAdmitted {
         subject: RunnerHostFileSubject {
           host: host,
-          target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-            principal: executor_bootstrap_principal.login,
-          },
+          target: administrator_ssh_target(host: host),
           desired_units: units,
           retired_units: retired,
         },
