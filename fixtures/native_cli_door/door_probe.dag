@@ -1,0 +1,5 @@
+module fixture.native_cli_door.door_probe
+
+import v2.std.logic { Bool }
+
+fn door_probe_fn() -> Bool { true }

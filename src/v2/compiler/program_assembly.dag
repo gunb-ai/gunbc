@@ -11,6 +11,7 @@ import v2.compiler.source_authority {
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse {
   ParseArtifact,
+  parse_module_prepared_seeded,
   ParseProductionMeasured,
   PreparedGrammar,
   parse_memo_stats_empty,
@@ -47,6 +48,8 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.node { Node }
+import v2.std.provenance { SpanIndex, span_index_empty, span_index_merge }
+import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial }
 import v2.std.text { String }
 
 type ProgramAssemblyFoldState
@@ -71,10 +74,28 @@ type LocatedNormalizedTree {
   tree: NormalizedTree
 }
 
+// THE TWO PROVENANCE FIELDS ARE WHY A DIAGNOSTIC CAN NAME A FILE, and they are one fact in two
+// halves. `alloc` is the occurrence-id high-water mark reached so far, so the NEXT read is parsed
+// seeded from it rather than restarting at zero -- which is what makes an occurrence id unique
+// across the whole ingest instead of unique only within one file. `spans` is those ids' origins
+// merged into ONE index; because the ids are ingest-unique the merge cannot collide, and because
+// tokenize stamps each locus with the read's own compilation unit, every entry already names its
+// file. Together they turn "which file is this occurrence from" into a LOOKUP.
+//
+// THE ORDER OF THOSE TWO SENTENCES IS THE WHOLE DESIGN. Merging per-file indices WITHOUT seeding
+// would be the silent-wrongness arm: two files both mint occurrence #3, one entry overwrites or
+// shadows the other, and a node from file B resolves to a byte range in file A -- a confident,
+// plausible, wrong answer, which DESIGN section 5 forbids more strongly than no answer at all.
+// `std.occurrence_identity` `occurrence_identity_scope_law` already said so ("a production source
+// graph threads one allocator across every parsed source"; module-local reset is a FORBIDDEN
+// identity input); the fold simply stopped obeying it. Seeding is not an optimization here, it is
+// the precondition that makes the merge meaningful.
 type ProgramAssemblyLocatedFoldState
   = ProgramAssemblyLocatedFoldOk {
       located: FreeMonoid<LocatedNormalizedTree>,
-      index: SourceRootIndex
+      index: SourceRootIndex,
+      alloc: OccurrenceIdAllocator,
+      spans: SpanIndex
     }
   | ProgramAssemblyLocatedFoldFailed {
       diagnostics: NonEmptyDiagnostics
@@ -94,7 +115,7 @@ fn program_assembly_fold_state_from_located(
   match state {
     ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
       ProgramAssemblyFoldFailed { diagnostics: d }
-    ProgramAssemblyLocatedFoldOk { located: located, index: idx } =>
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: _ } =>
       ProgramAssemblyFoldOk {
         roots: list_map(xs: located, f: fn(item) { item.tree }),
         index: idx
@@ -228,6 +249,54 @@ fn program_assembly_phase_token_count(tokens: Outcome<TokenStream>) -> Int {
   }
 }
 
+// THE SEEDED PER-FILE FRONT END, WHICH IS THE ONE THE INGEST FOLD USES. It differs from the
+// projection below in exactly one respect: the occurrence ids it mints continue the ingest's count
+// instead of restarting, and it hands back the artifact so the fold can read the mark it reached
+// and the spans it recorded. Normalize is applied to the artifact's tree, so the normalized nodes
+// carry occurrence ids drawn from the SAME ingest-wide sequence the span index is keyed by -- that
+// agreement is what makes the later join a lookup rather than a search.
+type ProgramAssemblySeededRead {
+  tree: NormalizedTree,
+  alloc: OccurrenceIdAllocator,
+  spans: SpanIndex
+}
+
+fn program_assembly_read_to_normalized_root_seeded(
+  read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics,
+  seed: OccurrenceIdAllocator
+) -> Outcome<ProgramAssemblySeededRead> {
+  bind_outcome(
+    o: bind_outcome(
+      o: program_assembly_phase_tokenize(read: read, lm: lm),
+      f: fn(token_stream) {
+        parse_module_prepared_seeded(
+          tokens: token_stream,
+          prepared: prepared,
+          validation_residue: residue,
+          seed: seed
+        )
+      }
+    ),
+    f: fn(artifact) {
+      bind_outcome(
+        o: normalize(parse_tree: artifact.tree),
+        f: fn(tree) {
+          outcome_accepted(
+            value: ProgramAssemblySeededRead {
+              tree: tree,
+              alloc: artifact.alloc,
+              spans: artifact.span_index
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn program_assembly_read_to_normalized_root_prepared(
   read: DagSourceReadWitness,
   lm: LanguageModel,
@@ -269,17 +338,25 @@ fn program_assembly_fold_step(
   match state {
     ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
       ProgramAssemblyLocatedFoldFailed { diagnostics: d }
-    ProgramAssemblyLocatedFoldOk { located: acc, index: idx } =>
-      match program_assembly_read_to_normalized_root_prepared(read: read, lm: lm, prepared: prepared, residue: residue) {
-        Accepted { value: root, diagnostics: _ } =>
-          match qualified_name_from_module_node(root: root.root) {
+    ProgramAssemblyLocatedFoldOk { located: acc, index: idx, alloc: seed, spans: spans } =>
+      match program_assembly_read_to_normalized_root_seeded(
+        read: read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue,
+        seed: seed
+      ) {
+        Accepted { value: produced, diagnostics: _ } =>
+          match qualified_name_from_module_node(root: produced.tree.root) {
             Accepted { value: qn, diagnostics: _ } =>
               ProgramAssemblyLocatedFoldOk {
                 located: list_snoc_item(
                   xs: acc,
-                  item: LocatedNormalizedTree { path: read.artifact.file_path, tree: root }
+                  item: LocatedNormalizedTree { path: read.artifact.file_path, tree: produced.tree }
                 ),
-                index: source_root_index_insert(index: idx, module: qn, root: read.source_root)
+                index: source_root_index_insert(index: idx, module: qn, root: read.source_root),
+                alloc: produced.alloc,
+                spans: span_index_merge(base: spans, incoming: produced.spans)
               }
             Rejected { diagnostics: d } =>
               ProgramAssemblyLocatedFoldFailed { diagnostics: d }
@@ -324,7 +401,9 @@ fn program_assembly_fold_ingest_located(
     Empty =>
       ProgramAssemblyLocatedFoldOk {
         located: program_assembly_empty_located_roots(),
-        index: source_root_index_empty()
+        index: source_root_index_empty(),
+        alloc: occurrence_id_allocator_initial(),
+        spans: span_index_empty()
       }
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
@@ -335,7 +414,9 @@ fn program_assembly_fold_ingest_located(
             xs: ingest,
             empty: ProgramAssemblyLocatedFoldOk {
               located: program_assembly_empty_located_roots(),
-              index: source_root_index_empty()
+              index: source_root_index_empty(),
+              alloc: occurrence_id_allocator_initial(),
+              spans: span_index_empty()
             },
             cons: fn(state, read) {
               program_assembly_fold_step(state: state, read: read, lm: lm, prepared: prepared, residue: residue)
@@ -359,8 +440,30 @@ fn located_module_roots_from_source_root_ingest(
   lm: LanguageModel
 ) -> Outcome<FreeMonoid<LocatedNormalizedTree>> {
   match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
-    ProgramAssemblyLocatedFoldOk { located: located, index: _ } =>
+    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _ } =>
       outcome_accepted(value: located)
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+// ONE FOLD, BOTH HALVES OF THE IDENTITY JOIN. A consumer that needs to relate a node back to the
+// file it came from needs the per-file roots AND the index those roots' occurrences are keyed in,
+// and taking them from two separate calls would parse the ingest twice for one question (DESIGN
+// section 2) while leaving the two results free to disagree. They are one fold's output, so they are
+// returned together.
+type LocatedIngestRoots {
+  located: FreeMonoid<LocatedNormalizedTree>,
+  spans: SpanIndex
+}
+
+fn located_roots_and_spans_from_source_root_ingest(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> Outcome<LocatedIngestRoots> {
+  match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
+    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: spans } =>
+      outcome_accepted(value: LocatedIngestRoots { located: located, spans: spans })
     ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
       Rejected { diagnostics: d }
   }
@@ -395,26 +498,58 @@ fn assemble_program_from_module_roots(
   )
 }
 
+// THE SPANS RIDE BESIDE THE OUTCOME, NOT INSIDE IT, AND THAT IS THE WHOLE POINT. A diagnostic needs
+// its file exactly when the program did NOT assemble, and `Outcome`'s Rejected arm carries no value
+// -- so an index returned as part of the accepted program is an index that has evaporated precisely
+// where it was wanted. This carrier holds both arms' worth: the span index the fold recorded before
+// it stopped, and the outcome itself. It is the same stance `ParseProductionMeasured` already takes
+// for memo counters one layer down, for the same reason.
+//
+// A REFUSED ASSEMBLY STILL CARRIES THE SPANS OF EVERY FILE IT GOT THROUGH, which is the honest
+// answer rather than a convenient one: the fold is fail-closed and stops at the first refusing read,
+// so the index covers exactly the reads that were parsed, and an occurrence from a file that was
+// never reached is absent rather than fabricated. `span_index_lookup` refuses on absence, so the
+// renderer degrades to "no file" instead of to a wrong file.
+type IngestAssembly {
+  spans: SpanIndex,
+  program: Outcome<Node>
+}
+
+fn assemble_program_from_ingest_located(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  lm: LanguageModel
+) -> IngestAssembly {
+  match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
+      IngestAssembly { spans: span_index_empty(), program: Rejected { diagnostics: d } }
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: spans } =>
+      IngestAssembly {
+        spans: spans,
+        program: bind_outcome(
+          o: validate_module_roots(roots: list_map(xs: located, f: fn(item) { item.tree })),
+          f: fn(validated_roots) {
+            resolve_with_admission_grounded(
+              lm: lm,
+              roots: validated_roots.roots,
+              admission: admission,
+              index: idx,
+              active_roots: source_root_set_from_ingest(ingest: ingest)
+            )
+          }
+        )
+      }
+  }
+}
+
 fn assemble_program_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
   lm: LanguageModel
 ) -> Outcome<Node> {
-  match program_assembly_fold_ingest(ingest: ingest, lm: lm) {
-    ProgramAssemblyFoldFailed { diagnostics: d } =>
-      Rejected { diagnostics: d }
-    ProgramAssemblyFoldOk { roots: roots, index: idx } =>
-      bind_outcome(
-        o: validate_module_roots(roots: roots),
-        f: fn(validated_roots) {
-          resolve_with_admission_grounded(
-            lm: lm,
-            roots: validated_roots.roots,
-            admission: admission,
-            index: idx,
-            active_roots: source_root_set_from_ingest(ingest: ingest)
-          )
-        }
-      )
-  }
+  assemble_program_from_ingest_located(
+    ingest: ingest,
+    admission: admission,
+    lm: lm
+  ).program
 }

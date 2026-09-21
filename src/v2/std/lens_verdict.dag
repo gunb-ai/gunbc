@@ -16,6 +16,9 @@ import v2.std.diagnostic {
 }
 import v2.std.integer { integer_int_to_decimal_string }
 import v2.std.node { Symbol }
+import v2.std.provenance { SpanIndex, span_index_textual_locus_optional }
+import v2.std.optional { Absent, Present }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
 import v2.std.text { String }
 
 // LensVerdict is the shared fail-closed lattice for lenses that have not yet specialized to a
@@ -77,6 +80,56 @@ fn lens_verdict_extent_text(e: Extent) -> String {
         concat("bytes ", integer_int_to_decimal_string(value: st)),
         concat("..", integer_int_to_decimal_string(value: en))
       )
+  }
+}
+
+// THE LOCATED RENDERER: THE ONE PLACE A NODE ANCHOR BECOMES A FILE, AND IT IS A LOOKUP.
+//
+// A `NodeLocus` names the node a stage refused at, and a node carries an OCCURRENCE, not a
+// position. The ingest's span index is keyed by exactly that occurrence and its entries already
+// carry the compilation unit each token was read from, so the whole join is: read the node's
+// occurrence, look it up, render the Textual locus the existing sibling below already renders. No
+// tree is walked and no node is compared -- searching the program for a structurally equal node
+// would be a plausible guess about which file an occurrence came from, which DESIGN section 5
+// forbids, and it is also the reason this takes an INDEX rather than a program.
+//
+// A DERIVED OCCURRENCE RESOLVES THROUGH ITS CAUSES, WHICH IS WHY INTERIOR NODES ANSWER AT ALL.
+// `span_index_resolve_textual_locus` follows a `DerivedBy` origin to the ids it was derived from,
+// so a production node minted over its captured children reports the span of the source those
+// children came from. That is a recorded chain, not an inference.
+//
+// EVERY WAY OF NOT KNOWING RENDERS AS NOT KNOWING. A synthetic node has no occurrence; an
+// occurrence absent from the index (a file the fold never reached, because assembly is fail-closed
+// and stops at the first refusal) refuses at lookup; a chain that bottoms out in no textual origin
+// refuses too. All three fall through to the unlocated text below, which says plainly that there is
+// no file. None of them invents one.
+fn lens_verdict_diagnostic_locus_text_located(d: Diagnostic, index: SpanIndex) -> String {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      match a.at.occurrence_id {
+        OccurrenceSynthetic => lens_verdict_diagnostic_locus_text(d: d)
+        OccurrenceMinted { id: id } =>
+          lens_verdict_located_from_occurrence(d: d, index: index, id: id)
+        OccurrenceProjected { id: id, caused_by: _ } =>
+          lens_verdict_located_from_occurrence(d: d, index: index, id: id)
+      }
+    _ => lens_verdict_diagnostic_locus_text(d: d)
+  }
+}
+
+fn lens_verdict_located_from_occurrence(
+  d: Diagnostic,
+  index: SpanIndex,
+  id: OccurrenceId
+) -> String {
+  match span_index_textual_locus_optional(index: index, id: id) {
+    Present { value: locus } =>
+      match locus {
+        Textual { file: f, extent: e } =>
+          concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
+        _ => lens_verdict_diagnostic_locus_text(d: d)
+      }
+    Absent => lens_verdict_diagnostic_locus_text(d: d)
   }
 }
 

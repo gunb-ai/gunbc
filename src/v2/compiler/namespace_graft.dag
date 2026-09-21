@@ -608,7 +608,20 @@ fn namespace_graft_subtree_count_atom(n: Node, sym: Symbol) -> Int {
 // The body carries its identity projection first (namespace_graft_module_body_identity):
 // the producer marks where the spine ends. See the reader note beside
 // namespace_graft_node_is_module_body in v2.extdeps.languages.dag.
-fn namespace_graft_build_body_conj(edges: List<Edge>) -> Node {
+// THE SPINE IS THE AUTHORED MODULE HEADER RE-SHAPED, NOT NEW MATERIAL. The graft rewrites
+// `module a.b.c` plus the file's declarations into a containment spine, so every node it builds --
+// the body conj and each segment wrapper -- stands for text the author wrote at a real byte range
+// in a real file. Built with no occurrence, the whole module-level spine was unattributable, which
+// is what made a fatal anchored anywhere above a leaf report no file at all; every one of those
+// nodes now carries the occurrence of the module node it was grafted FROM. It is a carry, not an
+// invention: the source is the graft's own input, so nothing is searched for and nothing is guessed.
+//
+// THE TWO MARKER ATOMS DELIBERATELY STAY SYNTHETIC (namespace_graft_module_body_marker_node and
+// the dag_surface_module atom below). They are the producer's own marks saying where the spine ends
+// and what shape it is -- they stand for no authored text, so giving them the module's occurrence
+// would attribute a compiler-internal node to a span the author wrote, which is the plausible guess
+// DESIGN section 5 forbids rather than a preserved fact.
+fn namespace_graft_build_body_conj(edges: List<Edge>, source: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: concat(
@@ -620,11 +633,11 @@ fn namespace_graft_build_body_conj(edges: List<Edge>) -> Node {
       ],
       edges
     ),
-    occurrence_id: OccurrenceSynthetic
+    occurrence_id: source.occurrence_id
   }
 }
 
-fn namespace_graft_wrap_segment(segment: Symbol, inner: Node) -> Node {
+fn namespace_graft_wrap_segment(segment: Symbol, inner: Node, source: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -633,16 +646,16 @@ fn namespace_graft_wrap_segment(segment: Symbol, inner: Node) -> Node {
         target: inner
       }
     ],
-    occurrence_id: OccurrenceSynthetic
+    occurrence_id: source.occurrence_id
   }
 }
 
-fn namespace_graft_fold_spine(qn: QualifiedName, body: Node) -> Node {
+fn namespace_graft_fold_spine(qn: QualifiedName, body: Node, source: Node) -> Node {
   fold_list_right(
     xs: qn,
     empty: body,
     snoc: fn(inner, segment) {
-      namespace_graft_wrap_segment(segment: segment, inner: inner)
+      namespace_graft_wrap_segment(segment: segment, inner: inner, source: source)
     }
   )
 }
@@ -655,7 +668,7 @@ fn namespace_graft_atom_node(id: Symbol) -> Node {
   }
 }
 
-fn namespace_graft_wrap_module_shell(captured: Node) -> Node {
+fn namespace_graft_wrap_module_shell(captured: Node, source: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -668,7 +681,7 @@ fn namespace_graft_wrap_module_shell(captured: Node) -> Node {
         target: captured
       )
     ],
-    occurrence_id: OccurrenceSynthetic
+    occurrence_id: source.occurrence_id
   }
 }
 
@@ -747,9 +760,9 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
             } else {
-              let body = namespace_graft_build_body_conj(edges: graft_body.edges)
-              let spine = namespace_graft_fold_spine(qn: qn, body: body)
-              outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine))
+              let body = namespace_graft_build_body_conj(edges: graft_body.edges, source: root)
+              let spine = namespace_graft_fold_spine(qn: qn, body: body, source: root)
+              outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine, source: root))
             }
           }
         }

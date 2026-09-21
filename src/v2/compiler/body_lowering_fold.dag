@@ -93,6 +93,7 @@ import v2.std.node {
   is_empty_conj_root,
   match_arm_body,
   match_arm_pattern,
+  node_lowered_from,
   node_rebuild,
   node_synthetic,
   node_with_occurrence_id
@@ -359,10 +360,18 @@ fn body_lower_resolved_type_binding(sym: Symbol) -> Symbol {
   }
 }
 
-fn body_lower_type_atom_node(sym: Symbol) -> Node {
-  node_synthetic(
+// THE SOURCE IS THE AUTHORED TYPE NAME, and it is a parameter rather than an omission. This atom is
+// the lowered form of a type the author wrote -- `Bool` in `fn f() -> Bool` -- so it stands at that
+// text's position and keeps that text's occurrence. Built synthetic, it was a node an
+// `infer_grounding_not_derived` diagnostic anchors on with no occurrence to look up, which is how a
+// fatal ends up naming no file at all. Every caller already holds the node it read the symbol from,
+// so the source is supplied rather than searched for -- searching the tree for an equal node would
+// be the plausible guess DESIGN section 5 forbids.
+fn body_lower_type_atom_node(sym: Symbol, source: Node) -> Node {
+  node_lowered_from(
     kind: TypeNode { connective: Atom { identity: body_lower_resolved_type_binding(sym: sym) } },
-    children: []
+    children: [],
+    source: source
   )
 }
 
@@ -839,9 +848,10 @@ fn body_lower_operator_atom_optional(node: Node) -> Optional<Node> {
         optional_absent()
       } else if dag_lex_token_symbol(sym: id) && !body_lower_is_block_delimiter_token(id: id) {
         optional_present(
-          value: node_synthetic(
+          value: node_lowered_from(
             kind: TypeNode { connective: Atom { identity: id } },
-            children: []
+            children: [],
+            source: node
           )
         )
       } else {
@@ -1070,7 +1080,7 @@ fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
           Present { value: captured } =>
             match node_atom_identity_optional(node: captured) {
               Present { value: sym } =>
-                optional_present(value: body_lower_type_atom_node(sym: sym))
+                optional_present(value: body_lower_type_atom_node(sym: sym, source: captured))
               Absent =>
                 match body_lower_qualified_name_production_spine_optional(node: node, captured: captured) {
                   Present { value: spine } => Present { value: spine }
@@ -1085,14 +1095,14 @@ fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
     Absent =>
       match dag_binding_branded_atom_identity(node: node) {
         Present { value: binding } =>
-          Present { value: body_lower_type_atom_node(sym: binding) }
+          Present { value: body_lower_type_atom_node(sym: binding, source: node) }
         Absent =>
           match node_atom_identity_optional(node: node) {
             Present { value: sym } =>
               if dag_lex_token_symbol(sym: sym) {
                 optional_absent()
               } else {
-                optional_present(value: body_lower_type_atom_node(sym: sym))
+                optional_present(value: body_lower_type_atom_node(sym: sym, source: node))
               }
             Absent =>
               match sugar_sequence_pair_optional(node: node) {
@@ -1400,13 +1410,18 @@ fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
       let edges = body_lower_collect_param_edges(sequence_capture: comma_spine)
       if count(edges) == 0 {
         Present {
-          value: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+          value: node_lowered_from(
+            kind: TypeNode { connective: Conj },
+            children: [],
+            source: param_list
+          )
         }
       } else {
         Present {
-          value: node_synthetic(
+          value: node_lowered_from(
             kind: TypeNode { connective: Conj },
-            children: edges
+            children: edges,
+            source: param_list
           )
         }
       }
@@ -2080,9 +2095,10 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: children, diagnostics: d } =>
           outcome_with_diagnostics(
-            value: node_synthetic(
+            value: node_lowered_from(
               kind: ComputationNode { behavior: Transform },
-              children: children
+              children: children,
+              source: body
             ),
             diagnostics: d
           )
@@ -2091,12 +2107,16 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol) -> Node {
-  node_synthetic(
+// The wrap stands at the same authored text as the arrow it wraps -- one `fn` declaration -- so it
+// takes that declaration's occurrence rather than being a fresh anonymous node between the module
+// body and the arrow.
+fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol, source: Node) -> Node {
+  node_lowered_from(
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Named { name: fn_name }, target: arrow }
-    ]
+    ],
+    source: source
   )
 }
 
@@ -2169,7 +2189,8 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
                               match dag_surface_kw_then_ident_from_captured(captured: captured) {
                                 Absent => body_lower_wrapper_retained_shell(shell: shell)
                                 Present { value: fn_name } =>
-                                  let arrow = node_synthetic(
+                                  let arrow = node_lowered_from(
+                                    source: shell,
                                     kind: TypeNode { connective: Arrow },
                                     children: [
                                       Edge { label: Positional, target: domain },
@@ -2184,7 +2205,8 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
                                   outcome_with_diagnostics(
                                     value: body_lower_fn_decl_named_member_wrap(
                                       arrow: arrow,
-                                      fn_name: fn_name
+                                      fn_name: fn_name,
+                                      source: shell
                                     ),
                                     diagnostics: diagnostics_merge(outer: bd0, inner: bd)
                                   )
@@ -3987,7 +4009,7 @@ fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>
                         outcome_accepted(
                           value: optional_present(
                             value: lower_bind(
-                              key_binding: body_lower_type_atom_node(sym: key_binding),
+                              key_binding: body_lower_type_atom_node(sym: key_binding, source: captured),
                               value: value,
                               body_binding: body_ref
                             )
@@ -3999,7 +4021,7 @@ fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>
                             outcome_accepted(
                               value: optional_present(
                                 value: lower_bind(
-                                  key_binding: body_lower_type_atom_node(sym: key_binding),
+                                  key_binding: body_lower_type_atom_node(sym: key_binding, source: captured),
                                   value: value,
                                   body_binding: body_ref
                                 )
@@ -4016,7 +4038,7 @@ fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>
                             outcome_accepted(
                               value: optional_present(
                                 value: lower_bind(
-                                  key_binding: body_lower_type_atom_node(sym: key_binding),
+                                  key_binding: body_lower_type_atom_node(sym: key_binding, source: captured),
                                   value: value,
                                   body_binding: body_ref
                                 )
@@ -4028,7 +4050,7 @@ fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>
                                 outcome_accepted(
                                   value: optional_present(
                                     value: lower_bind(
-                                      key_binding: body_lower_type_atom_node(sym: key_binding),
+                                      key_binding: body_lower_type_atom_node(sym: key_binding, source: captured),
                                       value: value,
                                       body_binding: body_ref
                                     )
@@ -4322,7 +4344,7 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                                 f: fn(body) {
                                   outcome_accepted(
                                     value: lower_bind(
-                                      key_binding: body_lower_type_atom_node(sym: key),
+                                      key_binding: body_lower_type_atom_node(sym: key, source: let_captured),
                                       value: value,
                                       body_binding: body
                                     )

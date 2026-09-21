@@ -121,6 +121,29 @@ fn node_rebuild(n: Node, children: List<Edge>) -> Node {
   )
 }
 
+// A LOWERED NODE IS NOT A SYNTHETIC ONE, and the difference is the whole reason a diagnostic can
+// name a file. `node_synthetic` says "no authored origin exists"; this says "the authored origin is
+// the node I am lowering, and the shape changed while the occurrence did not". The front end lowers
+// an authored construct into its semantic form -- a type name into a type atom, a surface
+// expression into its core node -- and the result stands FOR the same authored text at the same
+// position, so it keeps that text's occurrence rather than losing it. `std.occurrence_identity`
+// names this case explicitly and rules out the alternative: "a carried-forward node gets no arm
+// here", i.e. OccurrenceProjected is for a node minted in a DIFFERENT allocator with a scoped
+// cause, not for a same-graph lowering, which owns its source's occurrence outright.
+//
+// THE SOURCE'S IDENTITY IS TAKEN WHOLE, including OccurrenceSynthetic. Lowering a node that had no
+// authored origin produces a node that still has none -- carrying "nothing" forward is the honest
+// answer, and borrowing a NEIGHBOUR's occurrence to fill the gap would be the plausible guess
+// DESIGN section 5 forbids. So this is never a way to manufacture attribution: it can only preserve
+// attribution that the source already had.
+fn node_lowered_from(kind: NodeKind, children: List<Edge>, source: Node) -> Node {
+  node_with_occurrence_id(
+    kind: kind,
+    children: children,
+    occurrence_id: source.occurrence_id
+  )
+}
+
 fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: kind,

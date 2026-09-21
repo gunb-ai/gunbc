@@ -13,7 +13,7 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present }
 import std.occurrence_identity { OccurrenceId }
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional, witness_violates }
 
@@ -127,6 +127,23 @@ fn span_index_resolve_textual_locus(index: SpanIndex, id: OccurrenceId) -> Witne
           span_index_resolve_textual_locus_from_ids(index: index, ids: from)
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+// THE OPTIONAL-SHAPED DOOR, FOR A CONSUMER THAT RENDERS RATHER THAN REFUSES. The Witness-returning
+// resolver above is the authority and this is its projection: a renderer asking "does this
+// occurrence have a source position" wants presence or absence, not a second diagnostic to fold
+// into the one it is already rendering. Collapsing the refusal here loses nothing, because the only
+// information in it is the absence this arm already reports.
+//
+// It exists as a projection rather than as a re-match on the index because the resolution RULE --
+// follow a DerivedBy or GeneratedBy origin to its causes, accept only a Textual locus -- is one
+// fact, and a consumer re-deciding it would be a second authority for where an occurrence comes
+// from (DESIGN section 3).
+fn span_index_textual_locus_optional(index: SpanIndex, id: OccurrenceId) -> Optional<Locus> {
+  match span_index_resolve_textual_locus(index: index, id: id) {
+    Holds { value: locus } => Present { value: locus }
+    Violates { diagnostic: _ } => Absent
   }
 }
 
