@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtcollins1_boot_run
 
-import std.types { Bool, Int, NonEmptyStr, String, Timestamp, Unit }
+import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
 import std.temporal_effect {
   HeldLeaseObservedState,
@@ -629,11 +629,11 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
   }
   match mtcollins1_boot_medium_refusal(medium: mtcollins1_boot_medium) {
     Present { value: why } => return exit_failure(reason: why)
-    Absent => Unit
+    Absent => {}
   }
   match mtcollins1_census_readback_refusal_before_filing(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
     Present { value: why } => return exit_failure(reason: why)
-    Absent => Unit
+    Absent => {}
   }
   let escalation = concat("mtcollins1-boot-", run_id) as NonEmptyStr
   let request = mtcollins1_boot_authorization_request(
