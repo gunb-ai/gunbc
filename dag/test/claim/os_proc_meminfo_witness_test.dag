@@ -31,6 +31,21 @@ test fn proc_meminfo_witnesses() -> Bool {
 // not a decimal count may not contribute a metric. Both are asserted against the same text with one
 // line changed, so the assertion discriminates the parse rather than the fixture.
 //
+// TWO DIFFERENT NON-kB SHAPES, BECAUSE THEY ARE CAUGHT BY TWO DIFFERENT PARTS OF THE FOLD AND ONE
+// OF THEM HAS NO OTHER WITNESS. A UNITLESS line (`HugePages_Total: 0`) is excluded by the arity
+// requirement; a line with the WRONG unit (`SomeFutureField: 64 MB`) is excluded only by the unit
+// COMPARISON, and nothing in /proc/meminfo authors that shape today -- so without the fixture the
+// comparison would be a permanently green decoration (DESIGN 4b: ask whether the RED is authorable
+// before writing the check, and a fixture is where it is authorable). Found by mutating the
+// comparison away and watching this cell stay GREEN.
+//
+// THE UNITLESS LINE IS EXCLUDED, AND THE PREVIOUS REVISION OF THIS CELL ASSERTED THE OPPOSITE. It
+// required count(all_metrics) == 8 against a fixture whose eighth line is `HugePages_Total: 0` --
+// so it pinned the defect it should have caught, which is the second time in this change a control
+// of mine locked in the behaviour it existed to refuse (review 69784). A MemoryMetric carrying a
+// page count is wrong by the huge page size and indistinguishable in the type from a real reading;
+// the seven kB-denominated lines are admitted and the unitless one is not.
+//
 // EVERY FIELD CARRIES A DISTINCT VALUE AND EVERY FIELD IS ASSERTED, because with seven lookups
 // written by hand a name paired with the WRONG field is the one defect the absence arms cannot
 // catch. And a field missing from the MIDDLE of the file names itself: that arm used to be
@@ -49,7 +64,7 @@ test fn parsing_meminfo_reads_the_named_fields_and_refuses_a_missing_one() -> Bo
          && kibibyte_count(k: m.cached) == 4194304
          && kibibyte_count(k: m.swap_total) == 2097152
          && kibibyte_count(k: m.swap_free) == 524288
-         && count(m.all_metrics) == 8
+         && count(m.all_metrics) == 7
      MeminfoFieldAbsent { field: _ } => false
    })
     && (match parse_proc_meminfo(text: without_available) {
@@ -62,6 +77,29 @@ test fn parsing_meminfo_reads_the_named_fields_and_refuses_a_missing_one() -> Bo
         })
     && (match parse_proc_meminfo(text: "") {
           MeminfoFieldAbsent { field: f } => (f as String) == "MemTotal"
+          MeminfoParsed { meminfo: _ } => false
+        })
+    && (match parse_proc_meminfo(text: text) {
+          MeminfoParsed { meminfo: m } =>
+            count(filter(m.all_metrics, x => (x.key as String) == "HugePages_Total")) == 0
+              && count(filter(m.all_metrics, x => (x.key as String) == "SwapFree")) == 1
+          MeminfoFieldAbsent { field: _ } => false
+        })
+    && (match parse_proc_meminfo(text: join([
+          "MemTotal:       16777216 kB\n", "MemFree:         1048576 kB\n", "MemAvailable:    8388608 kB\n",
+          "Buffers:           65536 kB\n", "Cached:          4194304 kB\n", "SwapTotal:       2097152 kB\n",
+          "SwapFree:         524288 kB\n", "SomeFutureField:      64 MB\n",
+        ], "")) {
+          MeminfoParsed { meminfo: m } =>
+            count(m.all_metrics) == 7 && count(filter(m.all_metrics, x => (x.key as String) == "SomeFutureField")) == 0
+          MeminfoFieldAbsent { field: _ } => false
+        })
+    && (match parse_proc_meminfo(text: join([
+          "MemTotal:       16777216 kB\n", "MemFree:         1048576 kB\n", "MemAvailable:    8388608 kB\n",
+          "Buffers:           65536 kB\n", "Cached:          4194304 kB\n", "SwapTotal:       2097152 kB\n",
+          "SwapFree:         524288\n",
+        ], "")) {
+          MeminfoFieldAbsent { field: f } => (f as String) == "SwapFree"
           MeminfoParsed { meminfo: _ } => false
         })
     && (match parse_proc_meminfo(text: join([
