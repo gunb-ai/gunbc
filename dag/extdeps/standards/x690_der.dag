@@ -52,6 +52,9 @@ type DerElement {
   next: Int
 }
 
+// DerTrailingOctets carries OCTET OFFSETS (what was consumed, out of what total);
+// DerChildCountUnexpected carries CHILD COUNTS for a structure whose arity the profile fixes. Two
+// facts, two names (review 69699 of gunbc#11975: one constructor had been carrying both).
 type DerRefusal
   = DerTruncated { at: Int, needed: Int, available: Int }
   | DerHighTagNumberRefused { at: Int }
@@ -62,6 +65,7 @@ type DerRefusal
   | DerClassUnexpected { at: Int }
   | DerConstructedUnexpected { at: Int, expected: Bool }
   | DerTrailingOctets { consumed: Int, total: Int }
+  | DerChildCountUnexpected { at: Int, expected: Int, found: Int }
   | DerIntegerMalformed { at: Int }
   | DerObjectIdentifierMalformed { at: Int }
   | DerBitStringUnusedBitsRefused { at: Int, unused: Int }
