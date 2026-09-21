@@ -4,6 +4,7 @@ import std.types { Int, String, List, Timestamp }
 import std.logic { Bool }
 import std.integer { UInt8 }
 import std.bignat { bignat_pad_front }
+import std.decimal { decimal_digits_only }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.standards.x690_der {
@@ -537,20 +538,8 @@ fn ecdsa_sig_value(octets: List<UInt8>, width: Int) -> EcdsaSigValue {
 // UTC instant std.types Timestamp carries ("YYYY-MM-DDTHH:MM:SSZ"), which compares lexicographically,
 // so validity is decided with the same comparison every other expiry in the corpus uses. A time
 // whose text is not exactly its arm's form refuses; nothing is guessed from a partial one.
-fn x509_digit_char(ch: String) -> Bool {
-  ch == "0" || ch == "1" || ch == "2" || ch == "3" || ch == "4" || ch == "5" || ch == "6" || ch == "7" || ch == "8" || ch == "9"
-}
-
-fn x509_digits_from(s: String, i: Int) -> Bool {
-  if i >= string_length(s: s) { true } else { x509_digit_char(ch: char_at(s: s, pos: i)) && x509_digits_from(s: s, i: i + 1) }
-}
-
-fn x509_digits_only(s: String) -> Bool {
-  x509_digits_from(s: s, i: 0)
-}
-
 fn x509_rfc3339_of_full(yyyymmddhhmmss: String) -> Timestamp? {
-  if string_length(s: yyyymmddhhmmss) != 14 || !x509_digits_only(s: yyyymmddhhmmss) { none } else {
+  if string_length(s: yyyymmddhhmmss) != 14 || !decimal_digits_only(s: yyyymmddhhmmss) { none } else {
     let t = yyyymmddhhmmss
     Present { value: substring(s: t, start: 0, end: 4) + "-" + substring(s: t, start: 4, end: 6) + "-" + substring(s: t, start: 6, end: 8) + "T" + substring(s: t, start: 8, end: 10) + ":" + substring(s: t, start: 10, end: 12) + ":" + substring(s: t, start: 12, end: 14) + "Z" }
   }
@@ -570,7 +559,7 @@ fn x509_time_rfc3339(t: X509Time) -> Timestamp? {
     UtcTime { text: text } =>
       if string_length(s: text) == 13 && substring(s: text, start: 12, end: 13) == "Z" {
         let yy = substring(s: text, start: 0, end: 2)
-        if !x509_digits_only(s: yy) { none } else {
+        if !decimal_digits_only(s: yy) { none } else {
           let century = if yy < "50" { "20" } else { "19" }
           x509_rfc3339_of_full(yyyymmddhhmmss: century + substring(s: text, start: 0, end: 12))
         }
