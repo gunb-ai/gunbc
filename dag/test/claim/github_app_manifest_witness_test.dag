@@ -169,8 +169,6 @@ import gunbc.github_app_acquisition {
   InstallationAdmissionDisposition,
   InstallationAdmissible,
   census_app_installation_subject,
-  LiveInstallationStanding,
-  LiveInstallationNotAdmitted,
   InstallationNotEstablished,
   InstallationUnreadable,
   InstallationInsufficient,
@@ -193,8 +191,6 @@ import gunbc.github_app_acquisition {
   InstallationReadingAmbiguous,
   InstallationReadingUnavailable,
   CustodyMissing,
-  census_app_acquisition_standing,
-  acquisition_standing_line,
   AcquisitionJudgment,
   AcquisitionFactsHold,
   AcquisitionFactsMissing,
@@ -729,26 +725,24 @@ fn judgment_line(j: AcquisitionJudgment) -> String {
   }
 }
 
-// THE SEAL CANNOT BE REACHED FROM AN AUTHORED POPULATION, and this is the control for it, run from
-// OUTSIDE the defining module. It authors the strongest evidence a caller can write -- a closed
-// population, walked by the real page fold, holding one exactly usable installation -- and the pure
-// judgment admits it, as it should. Handing that judgment to the receipt fold yields a refusal, not
-// CensusAppAcquired: the only arm carrying a disposition a caller can build is
-// LiveInstallationNotAdmitted, and an admissible disposition there is refused by name.
-//
-// THE OTHER HALF IS A RESOLUTION REFUSAL AND WAS EXECUTED RATHER THAN ARGUED. A probe module
-// authoring `AdmittedCensusInstallation { subject: ..., installation: ... }` and wrapping it in
-// LiveInstallationAdmitted was run against this tree and refused before evaluation:
-//
-//   error: sole_constructor type 'AdmittedCensusInstallation' cannot be constructed outside its
-//   defining module
-//
-// It cannot be enrolled because a module carrying it does not resolve (the std.page_fold
-// PageFoldState receipt is the same shape), so the receipt lives here.
+// AN AUTHORED POPULATION REACHES THE JUDGMENT AND NOTHING PAST IT. This authors the strongest
+// evidence a caller can write -- a closed population, walked by the real page fold, holding one
+// exactly usable installation -- and the pure judgment admits it, as it should: the judgment is
+// ordinary so that this claim can exist. What it can no longer do is hand that judgment, or any
+// standing, to the receipt's mint: census_app_acquisition_standing takes the acquisition RECORD and
+// performs the registration read, the installation walk and the custody read itself, so the
+// refusal is at resolution rather than at evaluation and cannot be enrolled as a claim in this
+// module. It is enrolled instead as an EXECUTED RED in
+// test.claim.census_app_acquisition_refusal_probe_witness, which hands the compiler
+// test.probe.census_app_acquisition_forged_probe -- a source that spells exactly the old route,
+// three authored standings into the mint beside an admissible disposition, and the receipt literal
+// -- and requires each refused by class at its subject. This claim is that probe's positive
+// control: the same authored population, admitted where admission is a judgment and refused where
+// it would become a receipt.
 test fn w_an_authored_closed_population_cannot_mint_the_acquisition_receipt() -> Bool {
   let custody = CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: ".gunbc/k.pem", destination: census_app_private_key_custody } }
   let authored = admit(installations: [usable_installation(app_id: 7, installation_id: 991)])
-  let judged_admissible = match census_app_acquisition_judgment(
+  match census_app_acquisition_judgment(
     registration: census_registration,
     installation: authored,
     custody: custody,
@@ -756,24 +750,6 @@ test fn w_an_authored_closed_population_cannot_mint_the_acquisition_receipt() ->
     AcquisitionFactsHold { app_id: _, slug: _, installation: i, key_custody: _ } => i.installation_id.value == 991
     AcquisitionFactsMissing { missing: _ } => false
   }
-  let receipt_refused = match census_app_acquisition_standing(
-    registration: census_registration,
-    installation: LiveInstallationNotAdmitted { disposition: authored },
-    custody: custody,
-  ) {
-    CensusAppAcquired { receipt: _ } => false
-    AcquisitionIncomplete { missing: m } =>
-      match m {
-        InstallationReadingUnavailable { reason: r } =>
-          string_contains(s: r as String, pattern: "without the live walk's admission")
-        RegistrationMissing { reason: _ } => false
-        InstallationConsentMissing { reason: _ } => false
-        InstallationConsentInsufficient { reason: _ } => false
-        InstallationReadingAmbiguous { reason: _ } => false
-        CustodyMissing { reason: _ } => false
-      }
-  }
-  judged_admissible && receipt_refused
 }
 
 // ----- the admission's five controls: the subject is complete, the population exhausted -----

@@ -2,6 +2,7 @@ module gunbc.github_app_acquisition
 
 import std.types { NonEmptyStr, String, Bool, List, Secret }
 import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionIdentity,
@@ -1365,13 +1366,13 @@ type RegistrationStanding
   = RegistrationEstablished { app_id: GitHubAppId, slug: NonEmptyStr }
   | RegistrationNotEstablished { reason: NonEmptyStr }
 
-// THE JUDGMENT IS ORDINARY AND THE ADMISSION IS NOT. InstallationAdmissionDisposition is what the
+// THE JUDGMENT IS ORDINARY AND THE RECEIPT IS NOT. InstallationAdmissionDisposition is what the
 // subject and a population decide, and it is pure and constructible anywhere, so every refusal and
-// the admissible case are witnessable. It does NOT carry the sealed AdmittedCensusInstallation: an
-// earlier cut did, and because its input -- a PageFoldOutcome -- is an ordinary coproduct, any module
-// could author PagesClosed over an authored installation and receive the sealed value with no walk
-// ever performed (review of f977a43c45). The seal is minted only by live_installation_standing,
-// after its own read produced the population.
+// the admissible case are witnessable. It carries no seal: an earlier cut sealed the admissible arm,
+// and because its input -- a PageFoldOutcome -- is an ordinary coproduct, any module could author
+// PagesClosed over an authored installation and receive the sealed value with no walk ever performed
+// (review of f977a43c45). Nothing here is evidence; only census_app_acquisition_standing, which
+// performs the walk itself, turns an admissible disposition into a receipt.
 type InstallationAdmissionDisposition
   = InstallationAdmissible { installation: GitHubAppInstallation, subject: CensusAppInstallationSubject }
   | InstallationNotEstablished { reason: NonEmptyStr }
@@ -1444,15 +1445,6 @@ fn census_app_installation_subject(app_id: GitHubAppId) -> CensusAppInstallation
     repository_selection: census_app_installation_selection,
     required_permissions: census_app_permissions,
   }
-}
-
-// THE ADMITTED INSTALLATION HAS ONE WRITER: live_installation_standing, which performs the read
-// itself and takes no population from its caller. sole_constructor confines construction to this
-// module, and within it that function is the only construction site, so there is no exported route
-// from a caller-supplied InstallationPopulation or PageFoldOutcome to this value.
-type AdmittedCensusInstallation sole_constructor {
-  subject: CensusAppInstallationSubject
-  installation: GitHubAppInstallation
 }
 
 // THE POPULATION IS READ TO EXHAUSTION OR IT IS UNREADABLE. PopulationWalked carries std.page_fold's
@@ -1575,10 +1567,10 @@ fn installation_admission_disposition(
   }
 }
 
-// ── THE LIVE PRODUCER: THE ONLY PLACE AN INSTALLATION IS ADMITTED ─────────────────────────────
-// The installations read lives here rather than in the instrument because the sealed
-// AdmittedCensusInstallation can be minted only in this module, and it must be minted by the
-// producer that performed the read -- never from a population a caller hands in.
+// ── THE LIVE READS: WHAT THE RECEIPT IS MINTED FROM, AND NOTHING ELSE ─────────────────────────
+// The installations read lives here rather than in the instrument because the receipt is minted
+// only in this module, by the producer that performed every read it certifies -- never from a
+// population, a registration or a custody standing a caller hands in.
 
 // THE SUCCESSFUL ARM IS NAMED FOR WHAT IT IS: THE FIRST PAGE. GitHub states whether another page
 // exists only in the RFC 8288 Link response header (extdeps.github.pagination), and the REST
@@ -1644,31 +1636,6 @@ fn decode_installation_records(records: List<GitHubAppInstallationRecord>) -> Ce
   })
 }
 
-// THE LIVE STANDING: SEALED ON ADMISSION, AN ORDINARY DISPOSITION OTHERWISE.
-// LiveInstallationNotAdmitted is ordinary so every refusal stays witnessable; a caller who puts an
-// InstallationAdmissible inside it gets a refusal from census_app_acquisition_standing, not a
-// receipt.
-type LiveInstallationStanding
-  = LiveInstallationAdmitted { admitted: AdmittedCensusInstallation }
-  | LiveInstallationNotAdmitted { disposition: InstallationAdmissionDisposition }
-
-fn live_installation_standing(registration: RegistrationStanding) -> LiveInstallationStanding
-  uses net: Network
-{
-  match installation_admission_disposition(registration: registration, population: live_installation_population()) {
-    InstallationAdmissible { installation: i, subject: subject } =>
-      LiveInstallationAdmitted { admitted: AdmittedCensusInstallation { subject: subject, installation: i } }
-    InstallationNotEstablished { reason: r } =>
-      LiveInstallationNotAdmitted { disposition: InstallationNotEstablished { reason: r } }
-    InstallationInsufficient { reason: r } =>
-      LiveInstallationNotAdmitted { disposition: InstallationInsufficient { reason: r } }
-    InstallationAmbiguous { reason: r } =>
-      LiveInstallationNotAdmitted { disposition: InstallationAmbiguous { reason: r } }
-    InstallationUnreadable { reason: r } =>
-      LiveInstallationNotAdmitted { disposition: InstallationUnreadable { reason: r } }
-  }
-}
-
 // EVERY LIVE ARM IS UNREADABLE TODAY, AND THE THIRD ONE IS THE ONE THAT MATTERS. A transport refusal
 // and an undecodable record are unreadable for the reasons they carry; a first page that decoded is
 // unreadable because nothing in it says whether a second page exists, and reading it as the
@@ -1702,23 +1669,34 @@ data census_app_installation_population_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-// THE TERMINAL RECEIPT IS SEALED, BECAUSE SEALING ITS INPUT WAS NOT ENOUGH (side-chat review,
-// 2026-09-21). AdmittedCensusInstallation is sole_constructor and can only be minted by the producer
-// that performed the read -- but this record was ORDINARY, so a caller could take an authentic seal
-// for App A, pattern-match it out, and wrap it in a receipt naming App B with an authored slug and
-// authored custody. That bypasses the registration-to-installation app id agreement, the
-// registration judgment, the custody judgment and the earliest-missing-fact ordering all at once,
-// and acquisition_standing_line would render the authored fields as a successful acquisition.
+// THE TERMINAL RECEIPT IS SEALED, AND ITS ONLY MINT TAKES NO EVIDENCE FROM ITS CALLER. Four
+// rounds of review found the same seam one layer further out each time: admit_census_installation
+// accepted an authored population, so the admitted installation was sealed; the receipt was an
+// ordinary record around that seal, so the receipt was sealed; the judgment wildcarded the subject,
+// so the app id law moved into the judgment; and then the exported minter still took a
+// RegistrationStanding and a CustodyStanding, both ordinary, beside the one sealed input -- so a
+// caller holding a genuine installation seal could mint the receipt over an authored slug and an
+// authored custody path, and acquisition_standing_line would print them as an acquisition. Each fix
+// sealed a VALUE while the FACTORY kept accepting authorable evidence (side-chat review, 2026-09-21).
 //
-// THE SHAPE IS THE ONE THIS PR KEEPS MEETING ONE LAYER OUT: an honest factory, a sealed input, and a
-// terminal authority still writable around it. The judgment stays ordinary and witnessable
-// (InstallationAdmissionDisposition, census_app_acquisition_judgment); the RECEIPT is the authority,
-// so it is minted in exactly one place -- census_app_acquisition_standing, after the app id
-// agreement it is the whole point of.
+// SO THE FACTORY IS SEALED INSTEAD OF A FIFTH VALUE. census_app_acquisition_standing performs the
+// registration read, the installation walk and the custody read ITSELF and accepts no standing at
+// all; its one parameter is the acquisition record, which ADDRESSES the public read (which slug to
+// GET) and establishes nothing -- a record naming an App the read does not find, or does not find
+// agreeing with the manifest, is refused by the classification, and an installation is admitted
+// only against the live listing. There is therefore one function through which authored evidence
+// cannot enter, and no sealed carrier is needed to ferry a fact across a boundary, so the
+// AdmittedCensusInstallation and LiveInstallationStanding that existed for that ferry are gone
+// (DESIGN 4b(4): a climb deletes the lower-rung production machinery it obsoletes). The judgment
+// stays ordinary and witnessable over supplied standings; only this producer turns its holding arm
+// into CensusAppAcquired. The executed evidence is test.claim.census_app_acquisition_refusal_probe_witness,
+// which hands the compiler a source that spells the old route -- three standings into the minter --
+// and requires it refused by class: each standing an argument no parameter is declared for, and the
+// record the minter does require unsupplied.
 type CensusAppAcquisitionReceipt sole_constructor {
   app_id: GitHubAppId
   slug: NonEmptyStr
-  installation: AdmittedCensusInstallation
+  installation: GitHubAppInstallation
   key_custody: CustodyAtHandoff
 }
 
@@ -1749,10 +1727,9 @@ type CensusAppAcquisitionStanding
 
 // THE FOUR-FACT JUDGMENT IS PURE, AND IT IS NOT THE RECEIPT. It decides, over supplied standings,
 // which fact is missing first or that all of them hold, so the ordering law -- no later fact mints
-// an earlier one -- is witnessable over any inputs. AcquisitionFactsHold carries an ordinary
-// installation and therefore cannot be written to the receipt file; only
-// census_app_acquisition_standing below turns it into CensusAppAcquired, and only beside a sealed
-// admission.
+// an earlier one -- is witnessable over any inputs. AcquisitionFactsHold is not the receipt and
+// cannot be written to the receipt file; only census_app_acquisition_standing below turns it into
+// CensusAppAcquired, and only over the standings its own reads produced.
 type AcquisitionJudgment
   = AcquisitionFactsHold {
       app_id: GitHubAppId
@@ -1802,38 +1779,87 @@ fn census_app_acquisition_judgment(
   }
 }
 
-// THE RECEIPT IS MINTED ONLY BESIDE A SEALED ADMISSION. The judgment runs over the disposition the
-// live standing carries; an admissible disposition that arrives WITHOUT the seal -- authored by a
-// caller rather than produced by the live walk -- is refused, and so is a seal minted for a different
-// App than the registration names. Neither refusal is reachable from the live producer; both are
-// the walls a supplied value meets.
-fn census_app_acquisition_standing(
-  registration: RegistrationStanding,
-  installation: LiveInstallationStanding,
-  custody: CustodyStanding,
-) -> CensusAppAcquisitionStanding {
-  match installation {
-    LiveInstallationNotAdmitted { disposition: d } =>
-      match census_app_acquisition_judgment(registration: registration, installation: d, custody: custody) {
-        AcquisitionFactsMissing { missing: m } => AcquisitionIncomplete { missing: m }
-        AcquisitionFactsHold { app_id: _, slug: _, installation: _, key_custody: _ } =>
-          AcquisitionIncomplete {
-            missing: InstallationReadingUnavailable {
-              reason: "an admissible installation arrived without the live walk's admission; a disposition supplied from outside live_installation_standing establishes nothing" as NonEmptyStr
-            }
-          }
+// THE OBSERVATION, PERFORMED. This is the live registration read: github.AppPublicRegistry.GetApp
+// against the recorded slug with the ordinary fleet PAT. When the record says the App was never
+// acquired there is no slug to address, so the observation is AppNotYetAddressable and NO request is
+// made - guessing a slug and reading a 404 would manufacture "absent" out of "we do not know where to
+// look". It moved here from the instrument with the receipt's mint, because the mint must perform
+// this read itself; the instrument's other entry points import it from here.
+fn observe_census_app_live(address: CensusAppReadAddress) -> CensusAppObservation uses net: Network {
+  match address {
+    ReadNotAddressable => AppNotYetAddressable
+    ReadAddressedAt { slug: slug } => {
+      let result = github.AppPublicRegistry.GetApp(
+        auth_token: "" as Secret,
+        app_slug: slug as String,
+      )
+      observe_census_app(record: result.result, outcome: result.outcome)
+    }
+  }
+}
+
+// CUSTODY IS READ AS AN OBSERVATION OF THE FILE, NOT AS A MEMORY OF HAVING WRITTEN ONE. A converge
+// that persisted the pem in some earlier run and a worktree that never had one are indistinguishable
+// from anything but the file itself, and the second is the state an operator reaches by cleaning
+// .gunbc/ -- at which point the key is gone and nothing else in this flow would notice. This read is
+// what makes CustodyAtHandoff in a receipt mean "the handoff file was read": no comparison against
+// an authored path could, which is why the mint below performs it rather than accepting a standing.
+fn live_custody_standing() -> CustodyStanding uses fs: std.resources.Filesystem {
+  match custody_handoff_addressing(name: census_app_identity.name) {
+    CustodyNameNotPathSafe { name: n } =>
+      CustodyNotEstablished {
+        reason: join(["the declared App name ", n as String, " is not safe to address a handoff file with"], "") as NonEmptyStr
       }
-    LiveInstallationAdmitted { admitted: a } =>
-      match census_app_acquisition_judgment(
-        registration: registration,
-        installation: InstallationAdmissible { installation: a.installation, subject: a.subject },
-        custody: custody,
-      ) {
-        AcquisitionFactsMissing { missing: m } => AcquisitionIncomplete { missing: m }
-        AcquisitionFactsHold { app_id: id, slug: slug, installation: _, key_custody: c } =>
-          CensusAppAcquired {
-            receipt: CensusAppAcquisitionReceipt { app_id: id, slug: slug, installation: a, key_custody: c }
+    CustodyAddressed { paths: paths } => {
+      let read = Filesystem.Read(path: paths.pem)
+      if read.success {
+        if trim(read.content) == "" {
+          CustodyNotEstablished {
+            reason: join(["the private key handoff at ", paths.pem, " is empty"], "") as NonEmptyStr
           }
+        } else {
+          CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: paths.pem, destination: census_app_private_key_custody } }
+        }
+      } else {
+        CustodyNotEstablished {
+          reason: join([
+            "no private key at ", paths.pem, ": ", read.error,
+            ". GitHub returns an App private key once at creation and no endpoint reissues it, so this is not repaired by re-reading anything.",
+          ], "") as NonEmptyStr
+        }
+      }
+    }
+  }
+}
+
+// THE ONE MINT, AND IT PERFORMS ITS OWN READS. Three independent readings, joined by the judgment
+// that refuses at the first missing fact: the public app record answers REGISTRATION, GET
+// /app/installations answers INSTALLATION, and the handoff file answers KEY CUSTODY -- three
+// endpoints, two credentials, one filesystem, none derived from another, and none supplied by the
+// caller. The judgment is the ordinary fold above, so every refusal it can reach is witnessable
+// over authored standings; what is not writable anywhere else is the step from its holding arm to
+// the receipt, and that step exists only here, over standings this function produced.
+fn census_app_acquisition_standing(record: GitHubAppAcquisitionRecord) -> CensusAppAcquisitionStanding
+  uses net: Network, fs: std.resources.Filesystem
+{
+  let registration = registration_standing(
+    record: record,
+    classification: classify_census_app(
+      policy: EnsureObserveOnly,
+      record: record,
+      observation: observe_census_app_live(address: census_app_read_address(record: record)),
+      code: none,
+    ),
+  )
+  match census_app_acquisition_judgment(
+    registration: registration,
+    installation: installation_admission_disposition(registration: registration, population: live_installation_population()),
+    custody: live_custody_standing(),
+  ) {
+    AcquisitionFactsMissing { missing: m } => AcquisitionIncomplete { missing: m }
+    AcquisitionFactsHold { app_id: id, slug: slug, installation: i, key_custody: c } =>
+      CensusAppAcquired {
+        receipt: CensusAppAcquisitionReceipt { app_id: id, slug: slug, installation: i, key_custody: c }
       }
   }
 }
@@ -1885,7 +1911,7 @@ fn acquisition_standing_line(standing: CensusAppAcquisitionStanding) -> String {
       acquisition_receipt_line(
         app_id: r.app_id,
         slug: r.slug,
-        installation: r.installation.installation,
+        installation: r.installation,
         key_custody: r.key_custody,
       )
     AcquisitionIncomplete { missing: m } => acquisition_missing_line(missing: m)

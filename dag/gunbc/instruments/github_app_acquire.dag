@@ -47,7 +47,7 @@ import gunbc.github_app_acquisition {
   AppRecordAbsent,
   AppRecordUnreadable,
   AppNotYetAddressable,
-  observe_census_app,
+  observe_census_app_live,
   classify_census_app,
   CensusAppExchangeOutcome,
   ExchangeIssued,
@@ -84,25 +84,15 @@ import gunbc.github_app_acquisition {
   InstallationInstructionReady,
   InstallationInstructionUnavailable,
   census_app_installation_instruction,
-  RegistrationStanding,
-  RegistrationEstablished,
-  RegistrationNotEstablished,
-  registration_standing,
   InstallationsFirstPageOnly,
   InstallationsUndecodable,
   InstallationsUnreadable,
   read_census_app_installations,
-  live_installation_standing,
-  CustodyStanding,
-  CustodyAtHandoff,
-  CustodyAtHandoffOnly,
-  CustodyNotEstablished,
   CensusAppAcquisitionStanding,
   CensusAppAcquired,
   AcquisitionIncomplete,
   census_app_acquisition_standing,
   acquisition_standing_line,
-  census_app_private_key_custody,
   AcquisitionFactMissing,
   RegistrationMissing,
   InstallationConsentMissing,
@@ -290,23 +280,8 @@ fn census_app_registration_instruction_receipt() -> ProcessExit uses fs: std.res
   }
 }
 
-// THE OBSERVATION, PERFORMED. This is the live read: github.AppPublicRegistry.GetApp against the
-// recorded slug with the ordinary fleet PAT. When the record says the App was never acquired there is
-// no slug to address, so the observation is AppNotYetAddressable and NO request is made - guessing a
-// slug and reading a 404 would manufacture "absent" out of "we do not know where to look".
-fn observe_census_app_live(address: CensusAppReadAddress) -> CensusAppObservation uses net: Network {
-  match address {
-    ReadNotAddressable => AppNotYetAddressable
-    ReadAddressedAt { slug: slug } => {
-      let result = github.AppPublicRegistry.GetApp(
-        auth_token: "" as Secret,
-        app_slug: slug as String,
-      )
-      observe_census_app(record: result.result, outcome: result.outcome)
-    }
-  }
-}
-
+// THE OBSERVATION IS PERFORMED BY gunbc.github_app_acquisition observe_census_app_live, imported
+// above: it moved there with the receipt's mint, which must perform that read itself.
 
 fn verdict_text(verdict: ObservationVerdict) -> String {
   match verdict {
@@ -818,38 +793,11 @@ fn installations_read_exit(installations: List<GitHubAppInstallation>) -> Proces
 // of them is derived from another, which is what makes the join worth anything: if installation were
 // inferred from a converged registration, or custody from a successful exchange, the receipt would
 // report a state nobody observed. It exits zero only when all three hold.
-// CUSTODY IS READ AS AN OBSERVATION OF THE FILE, NOT AS A MEMORY OF HAVING WRITTEN ONE. A converge
-// that persisted the pem in some earlier run and a worktree that never had one are indistinguishable
-// from anything but the file itself, and the second is the state an operator reaches by cleaning
-// .gunbc/ -- at which point the key is gone and nothing else in this flow would notice.
-fn live_custody_standing() -> CustodyStanding uses fs: std.resources.Filesystem {
-  match custody_handoff_addressing(name: census_app_identity.name) {
-    CustodyNameNotPathSafe { name: n } =>
-      CustodyNotEstablished {
-        reason: join(["the declared App name ", n as String, " is not safe to address a handoff file with"], "") as NonEmptyStr
-      }
-    CustodyAddressed { paths: paths } => {
-      let read = Filesystem.Read(path: paths.pem)
-      if read.success {
-        if trim(read.content) == "" {
-          CustodyNotEstablished {
-            reason: join(["the private key handoff at ", paths.pem, " is empty"], "") as NonEmptyStr
-          }
-        } else {
-          CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: paths.pem, destination: census_app_private_key_custody } }
-        }
-      } else {
-        CustodyNotEstablished {
-          reason: join([
-            "no private key at ", paths.pem, ": ", read.error,
-            ". GitHub returns an App private key once at creation and no endpoint reissues it, so this is not repaired by re-reading anything.",
-          ], "") as NonEmptyStr
-        }
-      }
-    }
-  }
-}
-
+// THE THREE READS ARE PERFORMED INSIDE gunbc.github_app_acquisition census_app_acquisition_standing,
+// not here: this entry point reads the record that ADDRESSES them and renders what the mint answers.
+// An earlier cut performed the registration and custody reads here and handed the standings across
+// the module boundary, which left the exported mint accepting authorable evidence beside the one
+// sealed input (side-chat review, 2026-09-21); the reads moved rather than being copied.
 fn census_app_acquisition_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
   match observed_acquisition_reading() {
     AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
@@ -864,20 +812,7 @@ fn census_app_acquisition_receipt() -> ProcessExit uses net: Network, fs: std.re
 fn census_app_acquisition_receipt_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
   uses net: Network, fs: std.resources.Filesystem
 {
-  let registration = registration_standing(
-    record: record,
-    classification: classify_census_app(
-      policy: EnsureObserveOnly,
-      record: record,
-      observation: observe_census_app_live(address: census_app_read_address(record: record)),
-      code: none,
-    ),
-  )
-  let standing = census_app_acquisition_standing(
-    registration: registration,
-    installation: live_installation_standing(registration: registration),
-    custody: live_custody_standing(),
-  )
+  let standing = census_app_acquisition_standing(record: record)
   match standing {
     CensusAppAcquired { receipt: r } => {
       let wrote = Filesystem.Write(
