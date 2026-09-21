@@ -136,6 +136,13 @@ const CLI_DOOR_EMIT_LIMITATION: &str = "translate_rejected_grounding_not_derived
 /// is a crash wearing a refusal's clothes. Both door arms compare against this.
 const CLI_DOOR_REFUSAL_EXIT: i32 = 1;
 
+/// THE THREE MARKERS OF THE CLI'S REFUSAL RECORD, named so each is required rather than sought.
+/// The rendered main prints `REFUSED: <reason>`; for an emit refusal that reason is
+/// `v2.cli.compile_cli`'s `the closure did not emit; diagnostic chain: <links> | FATAL AT <locus>`.
+const CLI_REFUSAL_PREFIX: &str = "REFUSED: ";
+const CLI_EMIT_REFUSAL_HEAD: &str = "the closure did not emit; diagnostic chain: ";
+const CLI_FATAL_AT_MARKER: &str = " | FATAL AT ";
+
 /// The refusal control's expected cause, quoted from `v2.cli.compile_cli` `cli_parse_finish`'s
 /// `cli_no_entry` arm. It is the DETAIL and not the reason symbol because the rendered main prints
 /// the `ProcessExit` reason string and nothing else, so the detail is the only part of the refusal
@@ -1357,18 +1364,52 @@ struct CliRefusalRendering {
 /// the delimiter is ABSENT -- it returns the input -- so a truncated or malformed refusal would have
 /// decoded as if it were complete. Each marker is located explicitly and a missing one is `None`.
 fn cli_refusal_determining_reason(stderr: &str) -> Option<CliRefusalRendering> {
-    if !stderr.contains("REFUSED: ") {
+    // THE PREFIX MUST FRAME THE LINE, NOT MERELY OCCUR IN THE STREAM. `contains("REFUSED: ")` is a
+    // presence test: a stray `REFUSED:` anywhere -- in a relayed child log, in a quoted sentence --
+    // followed by an unframed chain satisfied it. The refusal is ONE LINE that STARTS with the
+    // prefix, so the line is located and stripped.
+    let body = stderr
+        .lines()
+        .find_map(|line| line.trim_start().strip_prefix(CLI_REFUSAL_PREFIX))?;
+    // The whole record, in order, with every marker required rather than sought.
+    let chain_and_fatal = body.trim_start().strip_prefix(CLI_EMIT_REFUSAL_HEAD)?;
+    let (chain, fatal_locus) = chain_and_fatal.split_once(CLI_FATAL_AT_MARKER)?;
+    // THE TAIL IS NOT DISCARDED. `split_once` gave it to us and the previous cut threw it away, so
+    // `... | FATAL AT` with NOTHING after it parsed as a complete record.
+    let fatal_locus = fatal_locus.trim();
+    if fatal_locus.is_empty() {
         return None;
     }
-    let chain = stderr.split("diagnostic chain: ").nth(1)?;
-    // The delimiter must be PRESENT, which `split(..).next()` cannot tell us.
-    let (chain, _) = chain.split_once(" | FATAL AT")?;
     let last_link = chain.split(" -> ").last()?.trim();
     // A located link is `<reason> @ <locus>`. An unlocated one is not this contract.
     let (reason, locus) = last_link.split_once(" @ ")?;
+    let locus = locus.trim();
+    // THE TWO HALVES MUST AGREE. `diagnostics_fatal` picks the last link and
+    // `lens_verdict_diagnostic_locus_text` renders THAT diagnostic's locus, so a record whose
+    // `FATAL AT` names somewhere else is self-contradictory and is not this door's rendering --
+    // whatever produced it, the probe cannot claim to have read the fatal from it.
+    if locus != fatal_locus {
+        return None;
+    }
     Some(CliRefusalRendering {
         determining_reason: reason.trim().to_string(),
-        determining_locus: locus.trim().to_string(),
+        determining_locus: locus.to_string(),
+    })
+}
+
+/// THE NO-ENTRY ARM VALIDATES ITS OWN FRAME, and deliberately not through the chain decoder.
+///
+/// `cli_no_entry` is a PARSE refusal: `v2_cli_run` never runs, so there is no diagnostic chain and
+/// no `FATAL AT` -- the rendering is `REFUSED: <detail>` and nothing else. Routing it through the
+/// emit decoder would demand markers this arm's contract does not have; testing it with
+/// `contains(detail)` accepted the sentence occurring anywhere in the stream, including inside a
+/// longer refusal that failed for another reason. So the prefix must FRAME the line and the detail
+/// must be what that line carries.
+fn cli_no_entry_refusal_framed(stderr: &str) -> bool {
+    stderr.lines().any(|line| {
+        line.trim_start()
+            .strip_prefix(CLI_REFUSAL_PREFIX)
+            .is_some_and(|body| body.trim_start().starts_with(CLI_DOOR_REFUSAL_DETAIL))
     })
 }
 
@@ -1558,11 +1599,24 @@ fn walk_cli_door(binary: &Path, workspace: &Path) -> Result<(i64, usize, i64), S
             ))
         }
     }
-    if !refused.stderr.contains(CLI_DOOR_REFUSAL_DETAIL) {
+    // THE REFUSAL MUST BE THE WHOLE OUTPUT, not merely present in it. A `cli_no_entry` refusal is a
+    // PARSE refusal: `v2_cli_run` never runs, so nothing is emitted and stdout is empty.
+    if !refused.stdout.is_empty() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorRefusedWithOutput — the built CLI refused the \
+             no-entry argv but wrote {} byte(s) to stdout. `cli_no_entry` is decided during the \
+             PARSE, before `v2_cli_run` is reached, so nothing can have been emitted; bytes there \
+             mean this is not the termination this control observes.",
+            refused.stdout.len()
+        ));
+    }
+    if !cli_no_entry_refusal_framed(&refused.stderr) {
         return Err(format!(
             "V2-NATIVE REFUSAL cause=NativeCliDoorRefusedForAnotherReason — the built CLI exited \
-             {:?} without naming `{CLI_DOOR_REFUSAL_DETAIL}`; a non-zero exit is not evidence that \
-             the refusal this control asked for is the one that fired. stderr: {}",
+             {:?} without a line FRAMED as `{CLI_REFUSAL_PREFIX}{CLI_DOOR_REFUSAL_DETAIL}...`. A \
+             `contains` would accept that sentence occurring anywhere in the stream — inside a \
+             longer refusal that failed for another reason, or in relayed child output — so the \
+             prefix must start the line and the detail must be what that line carries. stderr: {}",
             refused.status,
             refused.stderr.trim()
         ));
@@ -1977,7 +2031,12 @@ mod cli_emit_probe_tests {
     /// REFUSED: a DIFFERENT determining reason, whose chain still mentions the pinned word.
     #[test]
     fn a_different_determining_reason_fails() {
-        let stderr = "REFUSED: the closure did not emit; diagnostic chain: infer_grounding_not_derived @ <synthetic node occurrence> -> parse_g0_tokens_remain @ dag/extdeps/access/posix_effective_principal_read_op.dag                       bytes 1295..1302 | FATAL AT dag/extdeps/access/posix_effective_principal_read_op.dag                       bytes 1295..1302";
+        // THE PINNED REASON SITS IN A NON-FINAL LINK. This is the control's whole point: the fatal
+        // is the LAST link, so a record that mentions `translate_rejected_grounding_not_derived`
+        // earlier and ends somewhere else must REFUSE. Using the old advisory here tested nothing
+        // about the current pin -- it could not distinguish "reads the last link" from "matches the
+        // pinned word anywhere".
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain: translate_rejected_grounding_not_derived @ <synthetic node occurrence> -> parse_g0_tokens_remain @ dag/extdeps/access/posix_effective_principal_read_op.dag bytes 1295..1302 | FATAL AT dag/extdeps/access/posix_effective_principal_read_op.dag bytes 1295..1302";
         match adjudicate_cli_emit_probe(&run(Some(1), "", stderr)) {
             CliEmitProbeVerdict::DeterminingReasonDiffers { determining, locus } => {
                 assert_eq!(determining, "parse_g0_tokens_remain");
@@ -1985,6 +2044,41 @@ mod cli_emit_probe_tests {
             }
             other => panic!("expected DeterminingReasonDiffers, got {other:?}"),
         }
+    }
+
+    /// REFUSED: the record is TRUNCATED AFTER THE MARKER — ` | FATAL AT` with nothing following.
+    /// `split_once` hands back an empty tail, and the previous cut discarded that tail entirely, so
+    /// this parsed as a complete record with a fatal location nobody wrote.
+    #[test]
+    fn a_record_truncated_after_the_fatal_marker_fails() {
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain: translate_rejected_grounding_not_derived @ <synthetic node occurrence> | FATAL AT ";
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(1), "", stderr)),
+            CliEmitProbeVerdict::RefusalNotRendered
+        ));
+    }
+
+    /// REFUSED: a CONTRADICTING suffix. `diagnostics_fatal` picks the last link and the locus is
+    /// rendered from THAT diagnostic, so a `FATAL AT` naming somewhere else is self-contradictory —
+    /// the probe cannot claim to have read the fatal from a record that disagrees with itself.
+    #[test]
+    fn a_contradicting_fatal_location_fails() {
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain: translate_rejected_grounding_not_derived @ <synthetic node occurrence> | FATAL AT other.dag bytes 1..2";
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(1), "", stderr)),
+            CliEmitProbeVerdict::RefusalNotRendered
+        ));
+    }
+
+    /// REFUSED: a STRAY prefix. `contains("REFUSED: ")` is a presence test, not framing: a relayed
+    /// line mentioning it, followed by an unframed chain, satisfied the old check.
+    #[test]
+    fn a_stray_refused_prefix_with_an_unframed_chain_fails() {
+        let stderr = "note: the child said REFUSED: earlier\n                      the closure did not emit; diagnostic chain: translate_rejected_grounding_not_derived @ <synthetic node occurrence> | FATAL AT <synthetic node occurrence>";
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(1), "", stderr)),
+            CliEmitProbeVerdict::RefusalNotRendered
+        ));
     }
 
     /// REFUSED: a TRUNCATED render. `split(" | FATAL AT").next()` returns the whole input when the
@@ -2024,6 +2118,27 @@ mod cli_emit_probe_tests {
             adjudicate_cli_emit_probe(&run(Some(0), "pub const x: i64 = 1;", "")),
             CliEmitProbeVerdict::ProbeGreened { .. }
         ));
+    }
+
+    /// THE NO-ENTRY ARM'S OWN FRAME, validated separately from the chain decoder because
+    /// `cli_no_entry` is a PARSE refusal: it renders `REFUSED: <detail>` with no chain and no
+    /// `FATAL AT`, so routing it through the emit decoder would demand markers its contract lacks.
+    #[test]
+    fn the_no_entry_refusal_frame_is_required() {
+        // The real rendering: the prefix FRAMES the line and the detail is what that line carries.
+        assert!(cli_no_entry_refusal_framed(&format!(
+            "{CLI_REFUSAL_PREFIX}{CLI_DOOR_REFUSAL_DETAIL} -- usage: <binary> emit --entry ..."
+        )));
+        // The detail present but NOT framed -- the shape `contains` accepted.
+        assert!(!cli_no_entry_refusal_framed(&format!(
+            "some other refusal mentioning {CLI_DOOR_REFUSAL_DETAIL} in passing"
+        )));
+        // A framed line carrying a DIFFERENT cause.
+        assert!(!cli_no_entry_refusal_framed(
+            "REFUSED: unknown verb emitx -- usage: <binary> emit --entry ..."
+        ));
+        // No refusal at all.
+        assert!(!cli_no_entry_refusal_framed("thread 'main' panicked"));
     }
 
     /// REFUSED: a refusal that also wrote emitted text is not the termination being pinned.
