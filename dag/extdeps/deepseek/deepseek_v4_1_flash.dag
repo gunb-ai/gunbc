@@ -750,8 +750,8 @@ fn deepseek_v4_1_flash_shard_path(index: Nat, count: Nat) -> NonEmptyStr {
   join(["model-", zero_pad_left(digits: to_string(index), width: 5), "-of-", zero_pad_left(digits: to_string(count), width: 5), ".safetensors"], "") as NonEmptyStr
 }
 
-fn deepseek_v4_1_flash_shard_paths() -> List<NonEmptyStr> {
-  map(nat_range_inclusive(1, deepseek_v4_1_flash_safetensors_shard_count), i => deepseek_v4_1_flash_shard_path(index: i, count: deepseek_v4_1_flash_safetensors_shard_count))
+fn deepseek_v4_1_flash_shard_paths(count: Nat) -> List<NonEmptyStr> {
+  map(nat_range_inclusive(1, count), i => deepseek_v4_1_flash_shard_path(index: i, count: count))
 }
 
 // THE SAFETENSORS INDEX AT THIS REVISION, as a published file (resolved bytes, sha256 taken over
@@ -857,7 +857,7 @@ fn path_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
 }
 
 fn deepseek_v4_1_flash_admit_weight_manifest(rows: List<DeepseekV41PublishedFile>, index: DeepseekV41IndexReading, shard_count: Nat, tree_bytes: ByteSize) -> DeepseekV41WeightManifestStanding {
-  let generated = map(nat_range_inclusive(1, shard_count), i => deepseek_v4_1_flash_shard_path(index: i, count: shard_count))
+  let generated = deepseek_v4_1_flash_shard_paths(count: shard_count)
   let paths = map(rows, r => r.path)
   let duplicate = map(duplicated_by_key(rows, fn(r) { r.path as String }), d => join(["path declared more than once: ", d.path as String], "") as NonEmptyStr)
   let foreign = map(filter(paths, p => !list_member(xs: generated, x: p, eq: path_eq)), p => join(["path outside the generated shard set: ", p as String], "") as NonEmptyStr)
