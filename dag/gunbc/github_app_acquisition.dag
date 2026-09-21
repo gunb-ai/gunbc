@@ -56,12 +56,16 @@ import extdeps.github.app {
   webhook_event_from_wire,
   GitHubAppRegistrationTarget,
   RegisterUnderOrganization,
-  RegistrationUrlBuilt,
-  RegistrationUrlStateUnencodable,
-  app_manifest_registration_url,
-  AppManifestRendered,
-  AppManifestNotRenderable,
-  render_app_manifest,
+  AppManifestSubmissionDocument,
+  ManifestSubmissionRendered,
+  ManifestSubmissionNotRenderable,
+  app_manifest_submission_document,
+  AppInstallUrl,
+  InstallUrlBuilt,
+  InstallUrlSlugUnencodable,
+  app_install_url,
+  GitHubAppInstallation,
+  GitHubAppInstallationId,
   GitHubAppManifestCode,
   GitHubAppManifestState,
   GitHubAppManifestConversion,
@@ -470,10 +474,27 @@ fn reconcile_acquisition_record(
 // the moment a second exists or an existing hand-made App is adopted, which is a case this fleet
 // wants. EveryProvision is the honest axis: registering an App is paid once per App provisioned, and
 // it multiplies with the number of Apps rather than being paid once ever.
+// THE INSTRUCTION NAMES AN ARTIFACT, NOT A FIELD THAT DOES NOT EXIST. The step this replaced said
+// "open the registration URL, paste the manifest into the form's manifest field, and submit", and an
+// operator followed it and reported a create page with no such field. That was not a wording defect:
+// a GET of the registration URL renders GitHub's ORDINARY App-creation form, which ignores manifests,
+// and the manifest protocol is a POST carrying a `manifest` form parameter
+// (extdeps.github.app app_manifest_form_parameter_name). There was no field to paste into because
+// there was no form -- the corpus had rendered only the action URL and left the form unwritten.
+//
+// SO THE INSTRUCTION TAKES THE PATH OF A DOCUMENT THE CONVERGE WROTE, and that path is a parameter
+// rather than a constant here because the instruction must not be constructible without one: an
+// intervention naming an artifact nobody produced is the same class of defect one layer along.
+// census_app_registration_instruction only builds this after
+// extdeps.github.app app_manifest_submission_document has rendered the document, and the acquire
+// entry point writes that document to this path before it prints the instruction.
+//
+// WHAT REMAINS IRREDUCIBLY HUMAN IS NARROWER THAN THE OLD STEP CLAIMED, and the row says so now: the
+// act GitHub requires is an OWNER submitting the form, not a human transcribing a document. The
+// manifest, the action URL, the state binding and the form are all machine-produced.
 fn app_registration_submit_intervention(
   identity: GitHubAppDeclaredIdentity,
-  url: String,
-  manifest_document: String,
+  artifact_path: String,
 ) -> HumanIntervention {
   HumanIntervention {
     identity: join(["github-app-submit-", identity.name as String], "") as HumanInterventionIdentity,
@@ -481,10 +502,34 @@ fn app_registration_submit_intervention(
     subject: identity.name,
     instruction: join(
       [
+        "Open the file ",
+        artifact_path,
+        " in a browser that is signed in as an owner of the target account, and press the submit button on it. That page is a form whose action is the manifest registration endpoint and whose one hidden field carries the declared manifest under the parameter name GitHub reads it from, so the submission is a POST rather than a paste. DO NOT open the registration URL directly: a GET of it renders the ordinary App-creation form, which carries no field for a manifest and ignores it entirely -- that was the instruction this replaced, and an operator followed it and found exactly that. GitHub requires ownership consent to create an App and exposes no API for it, so pressing the button is the one act in this flow nothing here can perform.",
+      ],
+      "",
+    ) as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+// FACT 2 IS A SECOND CONSENT AND THEREFORE A SECOND STEP. Registering the App grants it access to
+// nothing; an installation is where an account holder agrees to give it some of the permissions the
+// manifest asked for, over some repositories. Its page is addressed by the SLUG the conversion
+// returned, which is why this step cannot exist before registration and why no instruction for it can
+// be built out of the declared name alone (census_app_installation_instruction refuses without one).
+fn app_installation_consent_intervention(
+  identity: GitHubAppDeclaredIdentity,
+  install_url: String,
+) -> HumanIntervention {
+  HumanIntervention {
+    identity: join(["github-app-install-", identity.name as String], "") as HumanInterventionIdentity,
+    frequency: EveryProvision,
+    subject: identity.name,
+    instruction: join(
+      [
         "Open ",
-        url,
-        " while signed in as an owner of the target account, paste the manifest below into the form's manifest field, and submit. GitHub requires ownership consent to create an App and exposes no API for it, so this step is the one act in this flow nothing here can perform. MANIFEST: ",
-        manifest_document,
+        install_url,
+        " while signed in as an account holder for the target org, choose the repositories the census may read, and install. This is NOT the registration step and is not implied by it: a registered App with no installation has access to nothing and lifts no rate limit, and GitHub exposes no API that installs an App on an account -- consent is the account holder's act. Once it is granted, the installation id is read back automatically by the installations entry point; nothing needs transcribing.",
       ],
       "",
     ) as NonEmptyStr,
@@ -532,9 +577,16 @@ fn adopted_app_key_supply_intervention(identity: GitHubAppDeclaredIdentity) -> H
 data github_app_human_step_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "app_registration_submit_intervention"),
-    reason: "SUBMIT is irreducibly human today: GitHub requires the account or organization owner to submit the manifest form and exposes no API that creates an App, so no credential this fleet could hold substitutes for it",
+    reason: "SUBMIT is irreducibly human today: GitHub requires the account or organization owner to submit the manifest form and exposes no API that creates an App, so no credential this fleet could hold substitutes for it. What is human is now ONLY the submission -- the form, its action URL, its state binding and the manifest it carries are produced by census_app_registration_instruction and written to disk by the acquire entry point",
     dissolution: unbound_dissolution(
-      description: "dissolves when browser automation drives https://github.com/organizations/<org>/settings/apps/new under an owner session, fills the manifest field from app_manifest_json_document and submits it, so census_app_registration_instruction stops producing an instruction and the converge performs the submission. A Playwright dependency being modeled does not fire this; the form being driven end to end does"
+      description: "dissolves when browser automation opens the document census_app_registration_instruction produces under an owner session and submits its form, so the converge performs the submission and census_app_registration_instruction stops producing an instruction. A Playwright dependency being modeled does not fire this; the form being submitted end to end does"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "app_installation_consent_intervention"),
+    reason: "CONSENT is irreducibly human today and is a DIFFERENT act from SUBMIT, which is why it is a second row rather than a sentence inside the first: an App can be registered and never installed, and in that state it holds no access and lifts no rate limit. GitHub exposes no API that installs an App on an account -- the account holder chooses the repositories on the App's public install page",
+    dissolution: unbound_dissolution(
+      description: "dissolves when browser automation opens the App install page under an account-holder session, selects the declared repositories and grants the installation, so census_app_installation_instruction stops producing an instruction and the converge performs the consent. Reading the installation id back afterwards is ALREADY automated and does not fire this row"
     )
   ),
   frontier_row_decl(
@@ -553,32 +605,80 @@ data github_app_human_step_frontier_rows: List<FrontierRow> = [
   )
 ]
 
+// THE ARTIFACT'S PATH, DERIVED FROM THE SAME DECLARED DIRECTORY the handoff files use. It is not a
+// custody path -- the manifest is public, and the document carries no secret -- but it is generated,
+// per-App and untracked, so it belongs beside them rather than in the worktree. It is addressed by
+// the DECLARED NAME for the same reason the custody files are: the slug is not known when it is
+// written, because writing it is what precedes the App existing at all.
+fn census_app_submission_artifact_path(name: NonEmptyStr) -> String {
+  custody_handoff_path(name: name, suffix: "-register.html")
+}
+
+data census_app_submission_heading: String = "Register the gunbc global census GitHub App"
+
+data census_app_submission_guidance: String = "Pressing the button below POSTs the manifest under the exact form parameter GitHub reads it from, to the registration endpoint for the declared owner, carrying the state nonce this converge issued. The manifest is shown below the button so it can be read before it is submitted. Opening the registration URL directly instead renders the ordinary App-creation form, which has no manifest field."
+
 type AppRegistrationInstruction
-  = RegistrationInstructionReady { intervention: HumanIntervention }
+  = RegistrationInstructionReady { intervention: HumanIntervention, artifact_path: String, artifact_html: String }
   | RegistrationInstructionUnavailable { reason: NonEmptyStr }
 
+// THE INSTRUCTION AND THE ARTIFACT ARE PRODUCED TOGETHER OR NEITHER IS. RegistrationInstructionReady
+// carries the document itself and not a promise that one exists, so the entry point that prints the
+// instruction is the same one that writes the file the instruction names -- there is no arm in which
+// an operator is told to open a path nothing wrote.
 fn census_app_registration_instruction(state: GitHubAppManifestState) -> AppRegistrationInstruction {
-  match render_app_manifest(m: census_app_manifest) {
-    AppManifestNotRenderable { admission: _ } =>
-      RegistrationInstructionUnavailable {
-        reason: "declared census App manifest is not renderable; admit_app_manifest refused it" as NonEmptyStr
+  match app_manifest_submission_document(
+    target: census_app_identity.target,
+    state: state as NonEmptyStr,
+    m: census_app_manifest,
+    heading: census_app_submission_heading,
+    guidance: census_app_submission_guidance,
+  ) {
+    ManifestSubmissionNotRenderable { cause: c } =>
+      RegistrationInstructionUnavailable { reason: c }
+    ManifestSubmissionRendered { html: html } => {
+      let path = census_app_submission_artifact_path(name: census_app_identity.name)
+      RegistrationInstructionReady {
+        intervention: app_registration_submit_intervention(
+          identity: census_app_identity,
+          artifact_path: path,
+        ),
+        artifact_path: path,
+        artifact_html: html,
       }
-    AppManifestRendered { document: document } =>
-      match app_manifest_registration_url(
-        target: census_app_identity.target,
-        state: state as NonEmptyStr,
-      ) {
-        RegistrationUrlStateUnencodable { cause: _ } =>
-          RegistrationInstructionUnavailable {
-            reason: "registration state nonce is not percent-encodable" as NonEmptyStr
+    }
+  }
+}
+
+// FACT 2'S INSTRUCTION CANNOT BE BUILT FROM FACT 1'S DECLARATION, AND THAT REFUSAL IS THE POINT. The
+// install page is addressed by the slug, the slug is a value the conversion returns, and an App that
+// was never registered has none -- so asking for the installation step before registration produces a
+// typed refusal rather than a URL assembled from the declared name. This is the same distinction
+// census_app_read_address keeps for the public read: "we have not created it" is not "it is not
+// installed", and only one of them is repaired by clicking an install button.
+type AppInstallationInstruction
+  = InstallationInstructionReady { intervention: HumanIntervention, install_url: String }
+  | InstallationInstructionUnavailable { reason: NonEmptyStr }
+
+fn census_app_installation_instruction(record: GitHubAppAcquisitionRecord) -> AppInstallationInstruction {
+  match record {
+    AppNeverAcquired =>
+      InstallationInstructionUnavailable {
+        reason: "the census App is not registered, so it has no slug and no install page; registration is a different fact and must be established first" as NonEmptyStr
+      }
+    AppAcquired { app_id: _, slug: slug } =>
+      match app_install_url(slug: slug) {
+        InstallUrlSlugUnencodable { cause: _ } =>
+          InstallationInstructionUnavailable {
+            reason: join(["the recorded slug ", slug as String, " is not percent-encodable, so no install page can be addressed for it"], "") as NonEmptyStr
           }
-        RegistrationUrlBuilt { url: url } =>
-          RegistrationInstructionReady {
-            intervention: app_registration_submit_intervention(
+        InstallUrlBuilt { url: url } =>
+          InstallationInstructionReady {
+            intervention: app_installation_consent_intervention(
               identity: census_app_identity,
-              url: url,
-              manifest_document: document,
-            )
+              install_url: url,
+            ),
+            install_url: url,
           }
       }
   }
@@ -1065,5 +1165,276 @@ fn census_app_read_address(record: GitHubAppAcquisitionRecord) -> CensusAppReadA
   match record {
     AppNeverAcquired => ReadNotAddressable
     AppAcquired { app_id: _, slug: s } => ReadAddressedAt { slug: s }
+  }
+}
+
+
+// ── FACT 3: CALLBACK CAPTURE ───────────────────────────────────────────────────────────────────
+// THE CAPTURE IS A MODEL FACT AND ITS FILE READS ARE NOT, so the classification lives here and the
+// reads stay in the acquire entry point. It moved from that entry point in this change rather than
+// being copied: the four facts this lane keeps distinct are not distinct if one of them is only ever
+// a local type inside the instrument that consumes it, and a second spelling of the state wall would
+// have been the fork DESIGN 3 forbids. ManifestHandoffValue comes with it because the admission is
+// total over it -- a code, a state and their absences are one decision, not a decision plus three
+// missing-file checks scattered through a route.
+//
+// WHERE THIS FACT ENDS. Admitting a code establishes ONLY that a code arrived bound to the state this
+// converge issued. It does not establish that an App exists: the code is spendable exactly once and
+// expires in an hour, so a retry on an already-consumed one is a distinct refusal
+// (classify_census_app_exchange ExchangeCodeNotLive, a 404 on the conversion path) and not a
+// transport failure, which is the arm that must never widen into "try again".
+
+type ManifestHandoffValue
+  = HandoffValueRead { value: NonEmptyStr }
+  | HandoffValueMissing { path: String, cause: String }
+  | HandoffValueEmpty { path: String }
+
+fn handoff_value_refusal(v: ManifestHandoffValue) -> String {
+  match v {
+    HandoffValueRead { value: _ } => ""
+    HandoffValueMissing { path: p, cause: c } =>
+      join(["no value at ", p, ": ", c], "")
+    HandoffValueEmpty { path: p } => join(["value at ", p, " is empty"], "")
+  }
+}
+
+// THE STATE CHECK IS THE ONE WALL THIS PROCESS CAN STAND BEHIND ON THE HUMAN HALF. A code is a
+// bearer credential that creates an App under whatever manifest its flow declared; accepting one that
+// did not come back with the state we issued would spend it on someone else's registration. Comparing
+// them is cheap, total, and the only thing between the exchange and a code of unknown provenance.
+type ManifestCodeAdmission
+  = ManifestCodeAdmitted { code: GitHubAppManifestCode }
+  | ManifestCodeStateMismatch { issued: NonEmptyStr, observed: NonEmptyStr }
+  | ManifestCodeUnavailable { reason: String }
+
+fn admit_manifest_code(
+  issued: ManifestHandoffValue,
+  observed: ManifestHandoffValue,
+  code: ManifestHandoffValue,
+) -> ManifestCodeAdmission {
+  match issued {
+    HandoffValueMissing { path: p, cause: c } =>
+      ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueMissing { path: p, cause: c }) }
+    HandoffValueEmpty { path: p } =>
+      ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueEmpty { path: p }) }
+    HandoffValueRead { value: issued_state } =>
+      match observed {
+        HandoffValueMissing { path: p, cause: c } =>
+          ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueMissing { path: p, cause: c }) }
+        HandoffValueEmpty { path: p } =>
+          ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueEmpty { path: p }) }
+        HandoffValueRead { value: observed_state } =>
+          if (issued_state as String) != (observed_state as String) {
+            ManifestCodeStateMismatch { issued: issued_state, observed: observed_state }
+          } else {
+            match code {
+              HandoffValueMissing { path: p, cause: c } =>
+                ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueMissing { path: p, cause: c }) }
+              HandoffValueEmpty { path: p } =>
+                ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueEmpty { path: p }) }
+              HandoffValueRead { value: c } =>
+                ManifestCodeAdmitted { code: c as GitHubAppManifestCode }
+            }
+          }
+      }
+  }
+}
+
+
+// ── THE FOUR FACTS, FOLDED, WITH NO FACT IMPLIED BY ANOTHER ────────────────────────────────────
+// WHAT THIS EXISTS TO PREVENT. Before this fold, "the census App" was one word covering four
+// independently-establishable facts -- the App is REGISTERED, it is INSTALLED somewhere, a callback
+// code was CAPTURED and spent, and its private key is in CUSTODY the unit can read -- and the model
+// read as done while none of them held. A downstream success is the tempting evidence for an upstream
+// one, and it is never evidence: a handoff file full of credentials says nothing about whether any
+// account consented to an installation, and a successful installation read says nothing about whether
+// THIS fleet registered the App it names. So the fold below refuses at the EARLIEST fact that is not
+// established and names it, rather than reporting a standing assembled out of whichever readings
+// happened to succeed.
+//
+// THE ORDER IS CAUSAL, NOT A PREFERENCE. Registration precedes installation because the install page
+// is addressed by the slug registration returns; custody is asked last because the private key is
+// returned by the registration exchange and an App with no key is still a registered App -- a broken
+// one, which is why it is a missing fact rather than an ignorable one.
+
+// CUSTODY HAS ONE ARM FOR "ESTABLISHED" AND IT IS DELIBERATELY THE WEAKER FACT. The declared
+// destination for the pem is census_app_private_key_custody in GCP Secret Manager, and this process
+// cannot write there. What it can establish is that the bytes reached the handoff file, so that is
+// the only arm the type has -- there is no constructor here for "the key is at its destination",
+// which makes the stronger claim unwritable rather than merely unasserted (DESIGN 4b(4)).
+//
+// THE SECOND HOP IS PENDING A SIBLING LANE AND IS NOT BUILT HERE. The delivery of a credential to a
+// path under a declared owner, group and mode is being consolidated into ONE custody authority as a
+// closed roster of rows (the roadmap node ntfy-publisher-token-onto-gcp-custody, over the authority
+// gunbc#11679 established). The census App private key belongs in that roster AS A ROW, and minting a
+// second delivery path here to close this fact sooner would be the fork DESIGN 3 forbids -- so this
+// says plainly that it is pending instead. When that roster lands, this arm gains its sibling and the
+// row carries the SecretRef below, the handoff path, the reading principal and the mode.
+type CustodyStanding
+  = CustodyAtHandoffOnly { path: String, destination: SecretRef }
+  | CustodyNotEstablished { reason: NonEmptyStr }
+
+type RegistrationStanding
+  = RegistrationEstablished { app_id: GitHubAppId, slug: NonEmptyStr }
+  | RegistrationNotEstablished { reason: NonEmptyStr }
+
+type InstallationStanding
+  = InstallationEstablished { installation: GitHubAppInstallation }
+  | InstallationNotEstablished { reason: NonEmptyStr }
+  | InstallationUnreadable { reason: NonEmptyStr }
+
+// REGISTRATION IS ESTABLISHED BY THE DECISION, NOT BY THE RECORD. A record saying an App was acquired
+// is this fleet's own note; Converged is that note joined to an independent public read that found the
+// App and found it agreeing with the manifest. Every other verdict -- Absent, Drifted, Conflict,
+// Inaccessible, UnknownRefused -- leaves registration unestablished, including the ones that prove an
+// App exists, because an App that disagrees with the declared manifest is not the App this lane is
+// about.
+fn registration_standing(
+  record: GitHubAppAcquisitionRecord,
+  classification: UpsertClassification<CensusAppPlan>,
+) -> RegistrationStanding {
+  match classification.decision {
+    Noop =>
+      match record {
+        AppAcquired { app_id: id, slug: s } => RegistrationEstablished { app_id: id, slug: s }
+        AppNeverAcquired =>
+          RegistrationNotEstablished {
+            reason: "the classification converged while no acquisition record names an App; nothing here establishes which App converged" as NonEmptyStr
+          }
+      }
+    Apply { plan: _ } =>
+      RegistrationNotEstablished {
+        reason: "the census App is not registered: the classification decided to register one" as NonEmptyStr
+      }
+    Refuse { reason: r } => RegistrationNotEstablished { reason: r }
+  }
+}
+
+// THE INSTALLATION MUST NAME THE APP REGISTRATION NAMED. Reading installations authenticates as an
+// App, so a reading that arrives under a different App's JWT is a true fact about a different subject;
+// accepting it here would let one App's installation establish another's, which is the cross-fact
+// implication this whole fold exists to refuse.
+fn installation_standing_for(
+  registration: RegistrationStanding,
+  installations: List<GitHubAppInstallation>,
+) -> InstallationStanding {
+  match registration {
+    RegistrationNotEstablished { reason: r } =>
+      InstallationNotEstablished {
+        reason: join(["no installation can be attributed to an unregistered App: ", r as String], "") as NonEmptyStr
+      }
+    RegistrationEstablished { app_id: id, slug: s } =>
+      match filter(installations, i => i.app_id.value == id.value) |> first {
+        Absent =>
+          if count(installations) == 0 {
+            InstallationNotEstablished {
+              reason: join(
+                [
+                  "census App ",
+                  s as String,
+                  " is registered and has no installations; registering an App grants it access to nothing, so the account holder must still consent on its install page",
+                ],
+                "",
+              ) as NonEmptyStr
+            }
+          } else {
+            InstallationNotEstablished {
+              reason: join(
+                [
+                  "the installations read returned ",
+                  to_string(count(installations)),
+                  " installation(s) and none of them names app id ",
+                  to_string(id.value),
+                  "; an installation of a different App does not install this one",
+                ],
+                "",
+              ) as NonEmptyStr
+            }
+          }
+        Present { value: installation } => InstallationEstablished { installation: installation }
+      }
+  }
+}
+
+type CensusAppAcquisitionReceipt {
+  app_id: GitHubAppId
+  slug: NonEmptyStr
+  installation_id: GitHubAppInstallationId
+  key_custody: CustodyStanding
+}
+
+type AcquisitionFactMissing
+  = RegistrationMissing { reason: NonEmptyStr }
+  | InstallationMissing { reason: NonEmptyStr }
+  | CustodyMissing { reason: NonEmptyStr }
+
+type CensusAppAcquisitionStanding
+  = CensusAppAcquired { receipt: CensusAppAcquisitionReceipt }
+  | AcquisitionIncomplete { missing: AcquisitionFactMissing }
+
+fn census_app_acquisition_standing(
+  registration: RegistrationStanding,
+  installation: InstallationStanding,
+  custody: CustodyStanding,
+) -> CensusAppAcquisitionStanding {
+  match registration {
+    RegistrationNotEstablished { reason: r } =>
+      AcquisitionIncomplete { missing: RegistrationMissing { reason: r } }
+    RegistrationEstablished { app_id: id, slug: slug } =>
+      match installation {
+        InstallationNotEstablished { reason: r } =>
+          AcquisitionIncomplete { missing: InstallationMissing { reason: r } }
+        InstallationUnreadable { reason: r } =>
+          AcquisitionIncomplete { missing: InstallationMissing { reason: r } }
+        InstallationEstablished { installation: i } =>
+          match custody {
+            CustodyNotEstablished { reason: r } =>
+              AcquisitionIncomplete { missing: CustodyMissing { reason: r } }
+            CustodyAtHandoffOnly { path: p, destination: d } =>
+              CensusAppAcquired {
+                receipt: CensusAppAcquisitionReceipt {
+                  app_id: id,
+                  slug: slug,
+                  installation_id: i.installation_id,
+                  key_custody: CustodyAtHandoffOnly { path: p, destination: d },
+                }
+              }
+          }
+      }
+  }
+}
+
+// THE RECEIPT, RENDERED FOR THE ONE READER THAT ASKED FOR IT. The roadmap node this lane is closed
+// against hands back "a receipt naming the registered App, the installation, and the custody location
+// of its key, or a typed refusal saying which of the three is missing", so the two arms below are that
+// sentence and nothing else is added to them.
+fn acquisition_standing_line(standing: CensusAppAcquisitionStanding) -> String {
+  match standing {
+    CensusAppAcquired { receipt: r } =>
+      match r.key_custody {
+        CustodyNotEstablished { reason: _ } =>
+          "acquisition receipt reached with no custody, which census_app_acquisition_standing does not construct"
+        CustodyAtHandoffOnly { path: p, destination: d } =>
+          join(
+            [
+              "census App acquired: app_id=", to_string(r.app_id.value),
+              " slug=", r.slug as String,
+              " installation_id=", to_string(r.installation_id.value),
+              " key at handoff ", p,
+              " destined for secret ", d.secret as String,
+              " (the second hop into the fleet custody roster is pending; see CustodyStanding)",
+            ],
+            "",
+          )
+      }
+    AcquisitionIncomplete { missing: m } =>
+      match m {
+        RegistrationMissing { reason: r } =>
+          join(["census App NOT acquired -- REGISTRATION is missing: ", r as String], "")
+        InstallationMissing { reason: r } =>
+          join(["census App NOT acquired -- INSTALLATION is missing: ", r as String], "")
+        CustodyMissing { reason: r } =>
+          join(["census App NOT acquired -- KEY CUSTODY is missing: ", r as String], "")
+      }
   }
 }

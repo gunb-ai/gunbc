@@ -70,6 +70,44 @@ import gunbc.github_app_acquisition {
   custody_handoff_addressing,
   custody_identity_document,
   census_app_custody_handoff_directory,
+  ManifestHandoffValue,
+  HandoffValueRead,
+  HandoffValueMissing,
+  HandoffValueEmpty,
+  handoff_value_refusal,
+  ManifestCodeAdmission,
+  ManifestCodeAdmitted,
+  ManifestCodeStateMismatch,
+  ManifestCodeUnavailable,
+  admit_manifest_code,
+  AppInstallationInstruction,
+  InstallationInstructionReady,
+  InstallationInstructionUnavailable,
+  census_app_installation_instruction,
+  RegistrationStanding,
+  RegistrationEstablished,
+  RegistrationNotEstablished,
+  registration_standing,
+  InstallationStanding,
+  InstallationEstablished,
+  InstallationNotEstablished,
+  InstallationUnreadable,
+  installation_standing_for,
+  CustodyStanding,
+  CustodyAtHandoffOnly,
+  CustodyNotEstablished,
+  CensusAppAcquisitionStanding,
+  CensusAppAcquired,
+  AcquisitionIncomplete,
+  census_app_acquisition_standing,
+  acquisition_standing_line,
+  census_app_private_key_custody,
+  census_app_submission_artifact_path,
+  AcquisitionFactMissing,
+  RegistrationMissing,
+  InstallationMissing,
+  CustodyMissing,
+  adopted_app_key_supply_intervention,
 }
 import extdeps.github.app {
   GitHubAppManifestCode,
@@ -103,10 +141,23 @@ import extdeps.transports.rest {
   classify_rest_outcome,
 }
 
-// THE ROUTE THAT ACTUALLY RUNS THE FLOW. Three entry points rather than one, because the flow has a
-// human in the middle of it and a single entry would have to either block on that human or pretend
-// the click does not exist. They are argv-free: every value that varies per run arrives through a
-// declared file path, so nothing a caller types on a command line reaches a URL or a credential.
+// THE ROUTE THAT ACTUALLY RUNS THE FLOW. Four entry points rather than one, because the flow has two
+// humans in the middle of it and a single entry would have to either block on them or pretend the
+// clicks do not exist. They are argv-free: every value that varies per run arrives through a declared
+// file path, so nothing a caller types on a command line reaches a URL or a credential.
+//
+// THE FIRST ENTRY POINT WRITES A FILE, WHICH IS THE CHANGE THAT MADE THIS FLOW RUNNABLE AT ALL. It
+// used to print the registration URL and the manifest document and tell the operator to paste the
+// second into a field on the first. There is no such field: a GET of the registration URL renders
+// GitHub's ordinary App-creation form, and the manifest protocol is a POST carrying a `manifest` form
+// parameter. So the instruction was unexecutable, an operator ran it and reported exactly that, and
+// the repair is that the converge now WRITES the form -- an HTML document whose action is the
+// registration endpoint, whose hidden field carries the manifest under the parameter name GitHub
+// reads, and whose action URL carries the state nonce this run issued. The human act left is pressing
+// its button under an owner session, which is the consent GitHub requires and exposes no API for.
+//
+// THE FOURTH ENTRY POINT IS THE RECEIPT, and it is fourth because it asks a question none of the
+// other three answer: are all four facts this lane is about actually established.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/github_app_acquire.dag \
@@ -119,6 +170,10 @@ import extdeps.transports.rest {
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/github_app_acquire.dag \
 //     --function census_app_acquire_receipt
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function census_app_acquisition_receipt
 //
 // THE FILES ARE THE HUMAN'S SIDE OF THE HANDOFF. GitHub returns the temporary code by redirecting the
 // operator's BROWSER, and this process has no receiver on that redirect - the declared redirect_url
@@ -141,11 +196,6 @@ data census_app_code_path: String = manifest_handoff_path(suffix: "code")
 
 data census_app_observed_state_path: String = manifest_handoff_path(suffix: "observed-state")
 
-type ManifestHandoffValue
-  = HandoffValueRead { value: NonEmptyStr }
-  | HandoffValueMissing { path: String, cause: String }
-  | HandoffValueEmpty { path: String }
-
 fn read_handoff_value(path: String) -> ManifestHandoffValue uses fs: std.resources.Filesystem {
   let read = Filesystem.Read(path: path)
   if read.success {
@@ -157,57 +207,6 @@ fn read_handoff_value(path: String) -> ManifestHandoffValue uses fs: std.resourc
     }
   } else {
     HandoffValueMissing { path: path, cause: read.error }
-  }
-}
-
-fn handoff_value_refusal(v: ManifestHandoffValue) -> String {
-  match v {
-    HandoffValueRead { value: _ } => ""
-    HandoffValueMissing { path: p, cause: c } =>
-      join(["no value at ", p, ": ", c], "")
-    HandoffValueEmpty { path: p } => join(["value at ", p, " is empty"], "")
-  }
-}
-
-// THE STATE CHECK IS THE ONE WALL THIS PROCESS CAN STAND BEHIND ON THE HUMAN HALF. A code is a
-// bearer credential that creates an App under whatever manifest its flow declared; accepting one that
-// did not come back with the state we issued would spend it on someone else's registration. Comparing
-// them is cheap, total, and the only thing between the exchange and a code of unknown provenance.
-type ManifestCodeAdmission
-  = ManifestCodeAdmitted { code: GitHubAppManifestCode }
-  | ManifestCodeStateMismatch { issued: NonEmptyStr, observed: NonEmptyStr }
-  | ManifestCodeUnavailable { reason: String }
-
-fn admit_manifest_code(
-  issued: ManifestHandoffValue,
-  observed: ManifestHandoffValue,
-  code: ManifestHandoffValue,
-) -> ManifestCodeAdmission {
-  match issued {
-    HandoffValueMissing { path: p, cause: c } =>
-      ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueMissing { path: p, cause: c }) }
-    HandoffValueEmpty { path: p } =>
-      ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueEmpty { path: p }) }
-    HandoffValueRead { value: issued_state } =>
-      match observed {
-        HandoffValueMissing { path: p, cause: c } =>
-          ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueMissing { path: p, cause: c }) }
-        HandoffValueEmpty { path: p } =>
-          ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueEmpty { path: p }) }
-        HandoffValueRead { value: observed_state } =>
-          if (issued_state as String) != (observed_state as String) {
-            ManifestCodeStateMismatch { issued: issued_state, observed: observed_state }
-          } else {
-            match code {
-              HandoffValueMissing { path: p, cause: c } =>
-                ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueMissing { path: p, cause: c }) }
-              HandoffValueEmpty { path: p } =>
-                ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueEmpty { path: p }) }
-              HandoffValueRead { value: c } =>
-                ManifestCodeAdmitted { code: c as GitHubAppManifestCode }
-            }
-          }
-      }
   }
 }
 
@@ -284,12 +283,21 @@ fn census_app_registration_instruction_receipt() -> ProcessExit uses fs: std.res
             HandoffValueRead { value: state } =>
               match census_app_registration_instruction(state: state as GitHubAppManifestState) {
                 RegistrationInstructionUnavailable { reason: r } => exit_failure(reason: r as String)
-                RegistrationInstructionReady { intervention: i } =>
-                  exit_failure(reason: join([
-                    intervention_text(intervention: i),
-                    " || ",
-                    intervention_text(intervention: app_registration_capture_intervention(identity: census_app_identity)),
-                  ], ""))
+                RegistrationInstructionReady { intervention: i, artifact_path: path, artifact_html: html } => {
+                  let wrote = Filesystem.Write(path: path, content: html)
+                  if wrote.success {
+                    exit_failure(reason: join([
+                      intervention_text(intervention: i),
+                      " || ",
+                      intervention_text(intervention: app_registration_capture_intervention(identity: census_app_identity)),
+                    ], ""))
+                  } else {
+                    exit_failure(reason: join([
+                      "the registration submission document could not be written to ", path, ": ", wrote.error,
+                      ". REFUSING TO PRINT THE INSTRUCTION: it names that file, and an instruction naming an artifact nobody wrote is the defect this step replaced.",
+                    ], ""))
+                  }
+                }
               }
           }
       }
@@ -846,6 +854,162 @@ fn installations_read_exit(installations: List<GitHubAppInstallation>) -> Proces
     exit_failure(reason: join([
       "the installation listing was read and its report could not be written to ", path, ": ", wrote.error,
     ], ""))
+  }
+}
+
+// ── ENTRY FOUR: THE ACQUISITION RECEIPT, WHICH IS THE ONE THING THE LANE IS CLOSED AGAINST ─────
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function census_app_acquisition_receipt
+//
+// THREE INDEPENDENT READINGS, JOINED BY A FOLD THAT REFUSES AT THE FIRST MISSING FACT. The public
+// app record answers REGISTRATION, GET /app/installations answers INSTALLATION, and the handoff file
+// answers KEY CUSTODY -- three different endpoints, two different credentials, one filesystem. None
+// of them is derived from another, which is what makes the join worth anything: if installation were
+// inferred from a converged registration, or custody from a successful exchange, the receipt would
+// report a state nobody observed. It exits zero only when all three hold.
+fn live_installation_standing(registration: RegistrationStanding) -> InstallationStanding
+  uses net: Network
+{
+  match registration {
+    RegistrationNotEstablished { reason: r } =>
+      installation_standing_for(registration: RegistrationNotEstablished { reason: r }, installations: [])
+    RegistrationEstablished { app_id: id, slug: slug } => {
+      let result = github.AppInstallations.ListInstallations(auth_token: "" as Secret)
+      match classify_rest_outcome(standing: RestReadExchange { rest: result.outcome }) {
+        RestExchangeStatusRefused { status: status, body: body } =>
+          InstallationUnreadable {
+            reason: join([
+              "GET /app/installations refused with status ", to_string(status),
+              ": the installation fact could not be read, which is NOT the same as the App having no installation. It needs an RS256-signed App JWT in GITHUB_APP_JWT, minted externally from the stored pem. Body: ", body,
+            ], "") as NonEmptyStr
+          }
+        RestExchangeUnreached { cause: c } => InstallationUnreadable { reason: c }
+        RestExchangeUndecodable { status: _, cause: c } => InstallationUnreadable { reason: c }
+        RestExchangeCommitAmbiguous { detail: d } => InstallationUnreadable { reason: d }
+        RestExchangeSucceeded =>
+          match decode_installation_records(records: result.result) {
+            InstallationsUnreadable { reason: r } => InstallationUnreadable { reason: r }
+            InstallationsUndecodable { decode: _ } =>
+              InstallationUnreadable {
+                reason: "an installation record did not decode; refusing rather than reading a partial list as an absence" as NonEmptyStr
+              }
+            InstallationsRead { installations: installations } =>
+              installation_standing_for(
+                registration: RegistrationEstablished { app_id: id, slug: slug },
+                installations: installations,
+              )
+          }
+      }
+    }
+  }
+}
+
+// CUSTODY IS READ AS AN OBSERVATION OF THE FILE, NOT AS A MEMORY OF HAVING WRITTEN ONE. A converge
+// that persisted the pem in some earlier run and a worktree that never had one are indistinguishable
+// from anything but the file itself, and the second is the state an operator reaches by cleaning
+// .gunbc/ -- at which point the key is gone and nothing else in this flow would notice.
+fn live_custody_standing() -> CustodyStanding uses fs: std.resources.Filesystem {
+  match custody_handoff_addressing(name: census_app_identity.name) {
+    CustodyNameNotPathSafe { name: n } =>
+      CustodyNotEstablished {
+        reason: join(["the declared App name ", n as String, " is not safe to address a handoff file with"], "") as NonEmptyStr
+      }
+    CustodyAddressed { paths: paths } => {
+      let read = Filesystem.Read(path: paths.pem)
+      if read.success {
+        if trim(read.content) == "" {
+          CustodyNotEstablished {
+            reason: join(["the private key handoff at ", paths.pem, " is empty"], "") as NonEmptyStr
+          }
+        } else {
+          CustodyAtHandoffOnly { path: paths.pem, destination: census_app_private_key_custody }
+        }
+      } else {
+        CustodyNotEstablished {
+          reason: join([
+            "no private key at ", paths.pem, ": ", read.error,
+            ". GitHub returns an App private key once at creation and no endpoint reissues it, so this is not repaired by re-reading anything.",
+          ], "") as NonEmptyStr
+        }
+      }
+    }
+  }
+}
+
+fn census_app_acquisition_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+  match observed_acquisition_reading() {
+    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
+      acquisition_reading_exit(reading: AcquisitionRecordConflict { declared_slug: d, handoff_slug: h })
+    AcquisitionRecordUnparseable { path: p, cause: c } =>
+      acquisition_reading_exit(reading: AcquisitionRecordUnparseable { path: p, cause: c })
+    AcquisitionRecordRead { record: record, source: _ } =>
+      census_app_acquisition_receipt_for(record: record)
+  }
+}
+
+fn census_app_acquisition_receipt_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
+  uses net: Network, fs: std.resources.Filesystem
+{
+  let registration = registration_standing(
+    record: record,
+    classification: classify_census_app(
+      policy: EnsureObserveOnly,
+      record: record,
+      observation: observe_census_app_live(address: census_app_read_address(record: record)),
+      code: none,
+    ),
+  )
+  let standing = census_app_acquisition_standing(
+    registration: registration,
+    installation: live_installation_standing(registration: registration),
+    custody: live_custody_standing(),
+  )
+  match standing {
+    CensusAppAcquired { receipt: r } => {
+      let wrote = Filesystem.Write(
+        path: acquisition_receipt_path(),
+        content: acquisition_standing_line(standing: CensusAppAcquired { receipt: r }),
+      )
+      if wrote.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join([
+          "the census App is acquired and the receipt could not be written to ",
+          acquisition_receipt_path(), ": ", wrote.error,
+        ], ""))
+      }
+    }
+    AcquisitionIncomplete { missing: m } =>
+      exit_failure(reason: join([
+        acquisition_standing_line(standing: AcquisitionIncomplete { missing: m }),
+        " || ",
+        next_acquisition_step(record: record, missing: m),
+      ], ""))
+  }
+}
+
+fn acquisition_receipt_path() -> String {
+  join([census_app_custody_handoff_directory, "/github-app-acquisition-receipt"], "")
+}
+
+// THE REFUSAL NAMES THE NEXT ACT, AND THE ACT IT NAMES IS THE ONE FOR THE FACT THAT IS MISSING. A
+// refusal that told the operator to register when the installation was the gap is how four facts
+// became one word in the first place.
+fn next_acquisition_step(record: GitHubAppAcquisitionRecord, missing: AcquisitionFactMissing) -> String {
+  match missing {
+    RegistrationMissing { reason: _ } =>
+      "NEXT: run census_app_registration_instruction_receipt, which writes the submission document and names it."
+    InstallationMissing { reason: _ } =>
+      match census_app_installation_instruction(record: record) {
+        InstallationInstructionUnavailable { reason: r } =>
+          join(["NEXT: no installation step can be addressed: ", r as String], "")
+        InstallationInstructionReady { intervention: i, install_url: _ } =>
+          join(["NEXT: ", intervention_text(intervention: i)], "")
+      }
+    CustodyMissing { reason: _ } =>
+      join(["NEXT: ", intervention_text(intervention: adopted_app_key_supply_intervention(identity: census_app_identity))], "")
   }
 }
 

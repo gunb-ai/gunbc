@@ -12,10 +12,15 @@ import gunbc.spark.bootstrap_provision {
   CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
 }
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
+import gunbc.github_app_acquisition {
+  census_app_identity,
+  census_app_submission_artifact_path,
+  app_registration_submit_intervention,
+}
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
-  MintsNoCredential, MintsResourceScopedCredential, MintsAccountWideCredential,
+  MintsNoCredential, MintsResourceScopedCredential, MintsProjectWideCredential, MintsAccountWideCredential,
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
@@ -486,6 +491,25 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       billing: NoBillingConsequence,
     },
     realized: RealizedOperatorSession { arm: GcloudInteractive },
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.github_app_acquisition", decl_name: "app_registration_submit_intervention"),
+    effect: PrivilegedEffect {
+      subject: "register the gunbc global census GitHub App by submitting its manifest form, which returns the App private key once" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: IrreversibleEffect { what_is_lost: "the App private key is returned once and no endpoint reissues it, and the App name is unique across GitHub so the registration cannot be repeated under it" as NonEmptyStr },
+      surface: HumanSurfaceOnly {
+        step: app_registration_submit_intervention(
+          identity: census_app_identity,
+          artifact_path: census_app_submission_artifact_path(name: census_app_identity.name),
+        )
+      },
+      workload_identity: WorkloadIdentityUnbindable { cause: "GitHub exposes no API that creates an App; the manifest form is submitted by the account or organization owner under a browser session, so no federated principal can be bound to it" as NonEmptyStr },
+      minted_reach: MintsProjectWideCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedHumanStep,
     divergence_reason: none,
   },
   PrivilegedEffectSite {

@@ -25,17 +25,46 @@ census token as queued behind #11671 → #11677 → #11679; that is stale and th
 
 ### #11552 acquisition is modeled, not achieved
 
-`gunbc.github_app_acquisition` instructs the operator to "paste the manifest below into the
-form's manifest field, and submit". **That instruction is not executable.** GitHub's ordinary
+`gunbc.github_app_acquisition` instructed the operator to "paste the manifest below into the
+form's manifest field, and submit". **That instruction was not executable.** GitHub's ordinary
 App-creation page carries no manifest field; the manifest protocol requires a form POST carrying
 a `manifest` parameter, and a GET renders the blank create page. This was observed live: the
 operator followed the step and reported a form with no such field.
 
-Registration is also a different fact from INSTALLATION, and #11677's JWS/token route consumes an
-App and an installation that have already been admitted — it creates neither. So the remaining
-acquisition work is manifest submission, installation consent, callback capture, and credential
-custody, and no receipt in this corpus establishes that the census App was registered, installed
-and placed in usable custody.
+**The instruction is now an artifact.** `census_app_registration_instruction` renders an HTML
+document whose form POSTs to the registration endpoint, carries the declared manifest in a hidden
+field under the parameter name upstream reads it from
+(`extdeps.github.app app_manifest_form_parameter_name`), and carries the run's state nonce in its
+action URL; `census_app_registration_instruction_receipt` writes that document to
+`.gunbc/github-app-<name>-register.html` and refuses to print the instruction if the write failed.
+The human act left is pressing its button under an owner session, which is the consent GitHub
+requires and exposes no API for.
+
+**Four facts, kept apart.** REGISTRATION, INSTALLATION, CALLBACK CAPTURE and KEY CUSTODY are
+separately established and joined by `census_app_acquisition_standing`, which refuses at the
+earliest missing fact and names it. No later fact mints an earlier one: an installation reading
+and a private key on disk do not establish a registration, and an installation naming another
+App's id does not install this one. `census_app_acquisition_receipt` is the executing route —
+three independent readings (the public app record, `GET /app/installations`, the handoff file),
+exit zero only when all three hold. #11677's JWS/token route still consumes an App and an
+installation that have already been admitted; it creates neither.
+
+**What is still owed is the two browser acts and nothing else in the model.** No receipt in this
+corpus establishes registration, installation or custody for the census App today, and the
+acquisition receipt says so in those words rather than reading as done.
+
+**Custody's second hop is pending a sibling lane.** The declared destination for the App private
+key is `census_app_private_key_custody` in Secret Manager. This process cannot write there, so
+`CustodyStanding` has exactly one established arm — `CustodyAtHandoffOnly` — and no constructor
+for "the key is at its destination". The key belongs as a ROW in the closed custody roster the
+`ntfy-publisher-token-onto-gcp-custody` node consolidates; minting a second delivery path here to
+close the fact sooner would fork that authority.
+
+**Authorization pattern.** The registration effect is rostered in
+`gunbc.auth.privileged_effect_census` and the selection lands on `HumanOnlyStep`: the surface is
+human-only (no API creates an App), so every API pattern fails the surface gate, and the effect is
+irreversible (the private key is returned once, and the App name is spent) so a witness is
+required — which the human step is.
 
 ## The one fact everything else rests on
 

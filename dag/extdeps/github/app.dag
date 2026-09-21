@@ -32,6 +32,8 @@ import extdeps.languages.json.emit {
   serialize_json,
 }
 import extdeps.github.org_admin_auth { github_app_installation_access_token_url }
+import std.markup { Fragment, Element, FragmentText, attr }
+import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.transports.rest { RestOutcome }
 import v2.std.algebra { fold_list }
 
@@ -938,6 +940,174 @@ fn app_manifest_registration_url(
   }
 }
 
+// THE MANIFEST IS DELIVERED BY A FORM POST AND THERE IS NO FIELD TO PASTE IT INTO. This is the
+// upstream fact the acquisition lane got wrong, observed live: an operator opened the registration
+// URL, was told to "paste the manifest into the form's manifest field", and found a create page with
+// no such field. A GET of that URL renders GitHub's ORDINARY App-creation form, which is the manual
+// route and ignores manifests entirely; the manifest protocol is a POST to the SAME URL carrying one
+// application/x-www-form-urlencoded parameter named `manifest` whose value is the manifest JSON
+// (app_manifest_registration_citation, "Implementing the GitHub App Manifest flow", step 1). So the
+// registration URL alone is not an executable instruction -- it is only the ACTION of a form nobody
+// had written, and the missing form is the whole defect.
+//
+// THE PARAMETER NAME IS A ROW BECAUSE IT IS UPSTREAM'S, not this corpus's choice of spelling. A
+// consumer that spelled it itself would fork the one fact that decides whether the POST is a manifest
+// registration or an ignored request.
+data app_manifest_form_parameter_name: String = "manifest"
+
+// WHY A SUBMIT BUTTON RATHER THAN A SCRIPT THAT POSTS ON LOAD. A page that submits itself would hand
+// the operator's signed-in session to a POST they never read, at the one endpoint in this flow that
+// creates an App and mints a private key shown exactly once. The button is the consent act the
+// endpoint requires anyway (GitHub takes the submission from the account or organization OWNER), so
+// making it a click costs one click and keeps the artifact readable before it is spent.
+data app_manifest_submission_button_label: String = "Create this GitHub App"
+
+// THE ESCAPING IS THE WALL AND IT IS NOT THIS MODULE'S. The manifest document is JSON, so it carries
+// a double quote around every key and every string value; placed unescaped into value="..." it would
+// close the attribute at the first key and the remainder would be parsed as markup -- which is not a
+// cosmetic defect here but a silent one, because the browser would POST a TRUNCATED manifest and
+// GitHub would register an App with permissions nobody declared. std.markup escape_attribute is the
+// single authority for that, reached through extdeps.languages.html's serializer, and this module
+// hands it a Fragment rather than assembling any markup text of its own.
+type AppManifestSubmissionDocument
+  = ManifestSubmissionRendered { html: String }
+  | ManifestSubmissionNotRenderable { cause: NonEmptyStr }
+
+fn app_manifest_submission_fragment(
+  action_url: String,
+  manifest_document: String,
+  heading: String,
+  guidance: String,
+) -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [attr(name: "lang", value: "en")],
+    children: [
+      Element {
+        tag: "head",
+        attributes: [],
+        children: [
+          Element { tag: "meta", attributes: [attr(name: "charset", value: "utf-8")], children: [] },
+          Element { tag: "title", attributes: [], children: [FragmentText { content: heading }] },
+        ],
+      },
+      Element {
+        tag: "body",
+        attributes: [],
+        children: [
+          Element { tag: "h1", attributes: [], children: [FragmentText { content: heading }] },
+          Element { tag: "p", attributes: [], children: [FragmentText { content: guidance }] },
+          Element {
+            tag: "form",
+            attributes: [attr(name: "method", value: "post"), attr(name: "action", value: action_url)],
+            children: [
+              Element {
+                tag: "input",
+                attributes: [
+                  attr(name: "type", value: "hidden"),
+                  attr(name: "name", value: app_manifest_form_parameter_name),
+                  attr(name: "value", value: manifest_document),
+                ],
+                children: [],
+              },
+              Element {
+                tag: "button",
+                attributes: [attr(name: "type", value: "submit")],
+                children: [FragmentText { content: app_manifest_submission_button_label }],
+              },
+            ],
+          },
+          Element {
+            tag: "pre",
+            attributes: [],
+            children: [FragmentText { content: manifest_document }],
+          },
+        ],
+      },
+    ],
+  }
+}
+
+// THE DOCUMENT REFUSES RATHER THAN RENDERING A FORM THAT WOULD POST SOMETHING ELSE. Three things can
+// go wrong before there is an artifact -- the manifest does not admit, the state nonce does not
+// percent-encode into the action URL, the serializer refuses the fragment -- and each produces no
+// document at all. A partial page here is worse than none: the operator would click it.
+fn app_manifest_submission_document(
+  target: GitHubAppRegistrationTarget,
+  state: NonEmptyStr,
+  m: GitHubAppManifest,
+  heading: String,
+  guidance: String,
+) -> AppManifestSubmissionDocument {
+  match render_app_manifest(m: m) {
+    AppManifestNotRenderable { admission: _ } =>
+      ManifestSubmissionNotRenderable {
+        cause: "the declared manifest is not renderable, so there is nothing to submit" as NonEmptyStr
+      }
+    AppManifestRendered { document: document } =>
+      match app_manifest_registration_url(target: target, state: state) {
+        RegistrationUrlStateUnencodable { cause: _ } =>
+          ManifestSubmissionNotRenderable {
+            cause: "the registration state nonce is not percent-encodable, so the form has no action URL" as NonEmptyStr
+          }
+        RegistrationUrlBuilt { url: url } =>
+          match try_serialize_html_source(
+            node: app_manifest_submission_fragment(
+              action_url: url,
+              manifest_document: document,
+              heading: heading,
+              guidance: guidance,
+            )
+          ) {
+            EmitRejected { reason: r } =>
+              ManifestSubmissionNotRenderable {
+                cause: join(["the submission document was refused by the HTML serializer: ", r], "") as NonEmptyStr
+              }
+            EmitOk { html: html } => ManifestSubmissionRendered { html: html }
+          }
+      }
+  }
+}
+
+// INSTALLATION IS A SECOND CONSENT AT A SECOND URL, AND THAT IS WHY IT IS A SECOND FACT. Registering
+// an App creates it under an owner; it grants that App access to nothing. The permissions in the
+// manifest are what the App may ASK FOR, and an installation is where an account holder agrees to
+// give some of them over some repositories -- so an App can exist with zero installations
+// indefinitely, which is exactly the state a newly converted App is in (installations_count is the
+// field upstream omits at zero). The page that takes that consent is the App's public install page,
+// addressed by the SLUG the conversion returned, and like the registration form it is a browser act
+// by a signed-in account holder with no API behind it (app_install_citation).
+data app_install_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/apps/using-github-apps/installing-your-own-github-app"
+  }
+}
+
+data github_apps_install_locator_prefix: String = "github.com/apps/"
+
+type AppInstallUrl
+  = InstallUrlBuilt { url: String }
+  | InstallUrlSlugUnencodable { cause: UriPercentEncodeRefusalCause }
+
+// THE SLUG IS PERCENT-ENCODED RATHER THAN INTERPOLATED. It is a value GitHub returns, not one this
+// corpus authored, and it is being placed into a URL PATH; a slug carrying a separator would address
+// a different page while the refusal here names it instead.
+fn app_install_url(slug: NonEmptyStr) -> AppInstallUrl {
+  match uri_percent_encode_component(value: slug) {
+    UriPercentComponentRefused { cause: c } => InstallUrlSlugUnencodable { cause: c }
+    UriPercentComponentEncoded(encoded) =>
+      InstallUrlBuilt {
+        url: uri_wire(
+          uri: Uri {
+            scheme: Https,
+            locator: join([github_apps_install_locator_prefix, encoded as String, "/installations/new"], "") as NonEmptyStr,
+          }
+        ) as String
+      }
+  }
+}
+
 // THE TEMPORARY CODE IS SPENDABLE EXACTLY ONCE AND EXPIRES IN ONE HOUR (app_manifest_registration_citation:
 // "Must complete all three steps within one hour"). It is branded so a caller cannot hand the exchange
 // an App slug, a client id, or a state nonce - all of which are NonEmptyStr at this boundary.
@@ -1260,6 +1430,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     extdeps.github.app.private_key_citation,
     extdeps.github.app.app_webhook_config_citation,
     extdeps.github.app.app_manifest_registration_citation,
+    extdeps.github.app.app_install_citation,
     extdeps.github.app.app_manifest_conversion_citation,
     extdeps.github.app.get_an_app_citation,
     extdeps.github.app.list_app_installations_citation,
