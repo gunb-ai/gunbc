@@ -177,13 +177,34 @@ independently authored work has always addressed. Gone is everything around it: 
 history, working-tree alignment, rebasing, and cloning.
 
 **Identity is currently weaker than the model needs.** *Verified:* `v2.std.node` `Hash` is
-`Fnv1a64Structural` — 64-bit, non-cryptographic — and no SHA-256 *computation* exists in `.dag`
+`Fnv1a64Structural` — 64-bit, non-cryptographic. A 64-bit non-cryptographic digest is a **locator,
+not a durable intersubjective identity**, and adding a host builtin is closed because DESIGN freezes
+the v1 seed's growth surfaces. **Declared rung:** the first slice uses the available digest and
+states this limitation rather than implying cross-party agreement it cannot support.
+
+**Corrected 2026-09-21 — the dissolve-on condition has been half met, and the half that remains is a
+different one.** This paragraph said "no SHA-256 *computation* exists in `.dag`
 (`std.content_hash` `sha256_hex_digest` and `extdeps.crypto.hash` `sha256_digest` validate hex; they
-do not hash bytes). A 64-bit non-cryptographic digest is a **locator, not a durable intersubjective
-identity**, and adding a host builtin is closed because DESIGN freezes the v1 seed's growth
-surfaces. **Declared rung:** the first slice uses the available digest and states this limitation
-rather than implying cross-party agreement it cannot support. **Dissolve-on:** a computing
-cryptographic digest reachable from `.dag`.
+do not hash bytes)". That was true when written. `extdeps.crypto.sha2` now computes SHA-256 in the
+substrate (`sha256`, `sha256_hex`, FIPS 180-4), witnessed by `test.claim.sha256_fips_witness` — and
+the witness discriminates rather than restating the type, because `sha2` routes every 32-bit
+operation through `std.bitwise`, whose `word32_add` takes the modulus explicitly, so the
+interpreter's unbounded-`Int` evaluation yields the same residues and a wrong wrap changes the
+digest.
+
+What has **not** happened is the migration: `extdeps.crypto.sha2`'s only importers are
+`extdeps.crypto.nist_p256` and its own witness. `std.content_hash` does not import it, so
+`v2.std.node` `Hash` and `std.fabric_storage`'s object refs still mint through
+`content_hash_of_value`. **Revised dissolve-on:** `v2.std.node` `Hash` minted from a cryptographic
+family. `std.fabric_storage`'s object refs are being moved onto the pure kernel in gunbc#11996 —
+the shell-out alternative was refused there for a structural reason worth recording, since it is the
+one this note would otherwise invite: `fabric_object_preimage` produces bytes **in memory**, so a
+shell transport over a file path means a temp-file write per object, which manufactures the custody
+gap (hash one file, store another) that verification exists to close. `v2.std.node` is the half that
+remains, and it is gated on native emission of the `sha2` closure — blocked by
+`gunbc.recurring_failure_mode` `bounded_natural_arithmetic_evaluated_as_unbounded_int`, whose
+prerequisite is `MachineWidth<N>` reified as a value. Both halves are owned by the lane holding
+`#11819`; open question 2 below is narrowed accordingly rather than closed.
 
 ## 6. Confidentiality
 
@@ -506,7 +527,11 @@ operator decision, not this note's.
 
 1. **Authoring capture.** The largest fork, and the reason §7 is scoped as it is. Until an authoring
    surface records what an author *did*, proposals must be stated explicitly rather than inferred.
-2. **Durable identity** (§5) — the declared rung. Needs a computing cryptographic digest.
+2. **Durable identity** (§5) — the declared rung. **Narrowed 2026-09-21:** a computing
+   cryptographic digest now exists (`extdeps.crypto.sha2`); what is missing is a consumed path from
+   it to `v2.std.node` `Hash`, which is gated on native emission of that closure.
+   `std.fabric_storage` is being migrated in gunbc#11996; `v2.std.node` is the remaining half.
+   See §5.
 3. **Recursion into named edges** — the next slice, and the one that demonstrates the differentiator.
 4. **Retraction epochs** (§6) — the weakest claim in the note.
 5. **Positional append** — whether two appends commute. Special-casing risks re-importing the
