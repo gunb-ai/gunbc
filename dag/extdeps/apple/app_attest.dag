@@ -3,6 +3,7 @@ module extdeps.apple.app_attest
 import std.types { NonEmptyStr, String, Int, List, Timestamp }
 import std.logic { Bool }
 import std.integer { UInt8, QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.measure { byte_size_count }
 import std.encoding { base64_decode, base64_encode, base64_octets, Standard, UrlSafe }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.external_authority { ExternalAuthority }
@@ -19,7 +20,7 @@ import extdeps.standards.rfc_8949 {
 import extdeps.standards.webauthn_authenticator_data {
   AuthenticatorData, AuthenticatorDataDecoded, AuthenticatorDataRefused, decode_authenticator_data,
   AuthenticatorDataPrefix, AuthenticatorDataPrefixDecoded, AuthenticatorDataPrefixRefused, decode_authenticator_data_prefix,
-  authenticator_data_prefix_octets,
+  authenticator_data_prefix_size,
 }
 import extdeps.standards.x690_der {
   DerContextSpecific, DerElementRead, DerRefused, der_read_element, der_expect_sequence, der_expect, der_value, der_tag_octet_string,
@@ -618,13 +619,13 @@ type AssertionAuthenticatorData {
 }
 
 fn apple_assertion_authenticator_data(octets: List<UInt8>) -> AssertionAuthenticatorData? {
-  match decode_authenticator_data_prefix(octets: octets |> take(authenticator_data_prefix_octets)) {
+  match decode_authenticator_data_prefix(octets: octets |> take(byte_size_count(b: authenticator_data_prefix_size))) {
     AuthenticatorDataPrefixRefused { cause: _ } => none
     AuthenticatorDataPrefixDecoded { prefix: p } =>
-      if count(octets) == authenticator_data_prefix_octets { Present { value: AssertionAuthenticatorData { prefix: p, extensions: none } } }
+      if count(octets) == byte_size_count(b: authenticator_data_prefix_size) { Present { value: AssertionAuthenticatorData { prefix: p, extensions: none } } }
       else if !p.flags.extension_data_included { none }
       else {
-        match cbor_decode_item(octets: octets, at: authenticator_data_prefix_octets, depth: 0) {
+        match cbor_decode_item(octets: octets, at: byte_size_count(b: authenticator_data_prefix_size), depth: 0) {
           CborRefused { cause: _ } => none
           CborDecoded { value: v, next: n } => if n == count(octets) { Present { value: AssertionAuthenticatorData { prefix: p, extensions: Present { value: v } } } } else { none }
         }
