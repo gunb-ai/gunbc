@@ -347,13 +347,35 @@ test fn the_enrolment_route_refuses_a_genuine_attestation_at_the_ecdsa_frontier(
   }
 }
 
+// The mutated attestation's base64 is spliced, not re-encoded: base64 is a 3-octet-to-4-character
+// group code, so replacing octet 0 and appending octets changes only the first group and the
+// final partial group. The genuine string's middle groups are carried verbatim. Re-encoding the
+// whole 4 KB object through the sealed carrier costs more than the floor's wall budget admits
+// (the claim was interrupted at 8 s), and the route under test decodes the string it is handed
+// either way -- the splice changes what is fed, not what is exercised.
+fn base64_of(octets: List<UInt8>) -> String {
+  match base64_octets(values: octets) {
+    QualifiedOctetsReady { value: q } => base64_encode(octets: q, variant: Standard)
+    QualifiedOctetsRefused { observed: _ } => "!"
+  }
+}
+
+fn reencode_head_and_tail(head_byte: Int, tail: List<UInt8>) -> NonEmptyStr {
+  let bytes = genuine_octets()
+  let full_groups = length(bytes) / 3
+  let head = base64_of(octets: concat([head_byte], bytes.skip(n: 1).take(n: 2)))
+  let middle = join(map((genuine_attestation as String |> chars).skip(n: 4).take(n: full_groups * 4 - 4), c => from_code_point(c)), "")
+  let last = base64_of(octets: concat(bytes.skip(n: full_groups * 3), tail))
+  join([head, middle, last], "") as NonEmptyStr
+}
+
 // THE ROUTE'S BYPASS DISCRIMINATOR: a duplicate key the modeled CBOR decoder refuses reaches the
 // route as that decoder's typed cause. A route that walked the bytes by hand would not see it.
 test fn the_enrolment_route_refuses_a_duplicate_key_through_the_modeled_decoder() -> Bool {
   let dup: List<UInt8> = [99, 102, 109, 116, 97, 120]
   match ios_enrolment_admission(
     slot: live_slot(), decision_key: decision_key,
-    attestation_b64: reencode(octets: append(append([164], items: genuine_octets().skip(n: 1)), items: dup)),
+    attestation_b64: reencode_head_and_tail(head_byte: 164, tail: dup),
     key_id: genuine_key_id, environment: AppAttestDevelopment, policy: LaunchExtensionsOptional,
     admitted_categories: admitted_categories, observed_at: genuine_observed_at,
   ) {
