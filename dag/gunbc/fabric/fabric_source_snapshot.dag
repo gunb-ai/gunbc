@@ -592,6 +592,15 @@ fn capture_source_snapshot(
 // snapshot's CONTENTS, which the store verifies. It is the destination's ancestry, and only for
 // that one principal.
 //
+// AND IT IS NEVER ISOLATION BETWEEN UNTRUSTED SESSIONS SHARING A UID. The admitted parent and the
+// 0700 workspace separate PRINCIPALS; two sessions running as one uid are one principal to every
+// mechanism involved, so each can rename the other's workspace, read its bytes and substitute its
+// ancestry, and nothing here will notice. Two mutually untrusting workloads on one host need
+// separate uids, or a sandbox that is not a permission bit -- this route is not evidence that they
+// have either, and citing it as such would be the isolation claim it cannot support. The scope is
+// exactly: an actor at a DIFFERENT uid cannot substitute, and the owning uid is inside the trust
+// boundary by assumption (operator ruling, 2026-09-21).
+//
 // NEXT-RUNG TRIGGER, NAMING THE CAPABILITY RATHER THAN AN ARTIFACT: directory-anchored filesystem
 // primitives, openat-style, exist in the `.dag` filesystem surface -- an opened directory handle
 // plus `openat`/`mkdirat` with `O_NOFOLLOW`, so a path is resolved once and every later operation
@@ -626,76 +635,218 @@ type ProviderRootAdmission
   = ProviderRootAdmitted { root: NonEmptyStr }
   | ProviderRootRefused { root: String, cause: String }
 
-// THE TWO SAFE SHAPES, AND WHY THE SECOND IS AN ALLOWLIST OF SPELLINGS RATHER THAN A BIT TEST.
-// A parent is safe when another principal cannot rename our entry inside it. Sticky says that
-// directly. Owner-only says it a different way: a directory no other principal may traverse or
-// write has no other principal able to rename anything in it. The mode is compared as a WHOLE
-// STRING because the substrate has no string indexing, so extracting the group and other digits
-// would mean hand-rolling a scan -- a parser standing where a comparison was available.
+// WHY THE CANDIDATE ALONE IS NOT THE SUBJECT, AND WHY A PER-LEVEL RULE IS NOT EITHER.
 //
-// THE COST OF THAT CHOICE IS OVER-REFUSAL AND IT IS STATED RATHER THAN HIDDEN (DESIGN section 4d:
-// a mechanism that forbids more than the evidence supports costs real opportunities, and the cost
-// is the thing you never did). A 0755 parent is genuinely safe against a non-owner rename and is
-// refused here anyway. That direction is deliberate -- a refused allocation is a diagnostic with an
-// obvious remedy, while an admitted unsafe parent is the defect this admission exists for -- and
-// widening it is a matter of adding spellings, not of loosening the rule.
-data provider_root_owner_only_modes: List<String> = ["700", "0700"]
+// The first admission asked one question of one directory: is the candidate sticky, or owner-only?
+// Both halves were wrong in the same way, and the side chat reproduced both with two unprivileged
+// uids.
+//
+// A DIRECTORY'S MODE PROTECTS ITS CONTENTS, NOT ITS OWN ENTRY. A 0700 candidate under a 0777
+// non-sticky GRANDPARENT is renameable by any principal that can write the grandparent -- so the
+// workspace inside it is substituted whole while its own permissions never change. The subject is
+// therefore the ANCESTRY, every level from the base up to the root, and nothing less can answer.
+//
+// AND STICKY WITHOUT AN OWNER IS NOT A PROTECTION EITHER. Sticky says only that an entry may be
+// renamed by ITS OWNER (or root); a sticky directory owned by an untrusted principal is one that
+// principal may still rearrange. /tmp is safe because it is root-owned AND sticky, and the first
+// version of this rule kept the second half and dropped the first.
+//
+// SO EVERY LEVEL MUST BE OWNED BY A TRUSTED PRINCIPAL -- this process's own uid or root -- AND MUST
+// NOT BE WRITABLE BY OTHERS UNLESS IT IS STICKY. Both halves, at every level, or the allocation
+// refuses.
+type TrustedOwners { me: NonEmptyStr }
 
-fn admit_provider_root(candidate: String) -> ProviderRootAdmission {
-  if candidate == "" {
-    ProviderRootRefused { root: candidate, cause: "the candidate parent is empty" }
-  } else if !shell.Test.IsDirectory(path: candidate as FilePath).is_directory {
-    ProviderRootRefused { root: candidate, cause: "the candidate parent is not a directory" }
-  } else if shell.Test.IsSticky(path: candidate as FilePath).is_sticky {
-    ProviderRootAdmitted { root: candidate as NonEmptyStr }
+data provider_root_trusted_root_owner: NonEmptyStr = "root" as NonEmptyStr
+
+// THE MODES WITH NO GROUP OR OTHER WRITE BIT, COMPARED AS WHOLE STRINGS because the substrate has
+// no string indexing and a hand-rolled digit scan would be a parser standing where a comparison was
+// available. The roster covers what a protected ancestry is actually spelled with -- 0755 for `/`
+// and `/usr`, 0700 and 0750 for a private base, 0555 for a read-only mount -- and anything outside
+// it refuses. THE COST IS OVER-REFUSAL AND IT IS DELIBERATE (DESIGN section 4d): a refused
+// allocation is a diagnostic with an obvious remedy, an admitted unsafe ancestry is the defect this
+// exists to prevent, and widening is a matter of adding spellings rather than loosening the rule.
+data provider_root_unwritable_modes: List<String> = [
+  "700", "0700", "750", "0750", "755", "0755", "711", "0711",
+  "500", "0500", "550", "0550", "555", "0555", "444", "0444",
+]
+
+type LevelObservation
+  = LevelObserved { owner: String, mode: String, sticky: Bool }
+  | LevelUnobservable { detail: String }
+
+fn observe_level(path: String) -> LevelObservation {
+  let owner = shell.Stat.OwnerOf(path: path as FilePath)
+  if !owner.success {
+    LevelUnobservable { detail: join(["owner unreadable: ", owner.stderr], "") }
   } else {
-    let observed = shell.Stat.ModeOf(path: candidate as FilePath)
-    if !observed.success {
-      ProviderRootRefused {
-        root: candidate,
-        cause: join(["the candidate parent's mode could not be observed: ", observed.stderr], ""),
-      }
-    } else if any(provider_root_owner_only_modes, m => m == trim(s: observed.stdout)) {
-      ProviderRootAdmitted { root: candidate as NonEmptyStr }
+    let mode = shell.Stat.ModeOf(path: path as FilePath)
+    if !mode.success {
+      LevelUnobservable { detail: join(["mode unreadable: ", mode.stderr], "") }
     } else {
-      ProviderRootRefused {
-        root: candidate,
-        cause: join([
-          "the candidate parent is neither sticky nor owner-only (mode ",
-          trim(s: observed.stdout),
-          "), so another principal could rename the workspace inside it",
-        ], ""),
+      LevelObserved {
+        owner: trim(s: owner.stdout),
+        mode: trim(s: mode.stdout),
+        sticky: shell.Test.IsSticky(path: path as FilePath).is_sticky,
       }
     }
   }
 }
 
-// WHERE THE CANDIDATE COMES FROM, NAMED RATHER THAN INHERITED. `mktemp -d` with no template reads
-// TMPDIR and says nothing about it; reading it here makes the choice visible and, more to the
-// point, makes it ADMISSIBLE. An unset TMPDIR falls to the POSIX default, which is a declared
-// constant rather than a silent one.
-data provider_root_default: NonEmptyStr = "/tmp" as NonEmptyStr
-
-fn provider_root_candidate() -> String {
-  match shell.Env.Get(name: "TMPDIR" as NonEmptyStr).value {
-    Absent => provider_root_default as String
-    Present { value: v } =>
-      let named = trim(s: v)
-      if named == "" { provider_root_default as String } else { named }
+// THE DECISION, SEPARATED FROM THE OBSERVATION SO IT CAN BE CLAIMED OVER INPUTS THIS HOST CANNOT
+// PRODUCE. A sticky directory owned by another uid is the second defect above, and creating one
+// requires a privilege the test harness does not have -- so the wet control cannot construct it
+// while this function can be asked about it directly. That is the section 3 pairing shape used
+// correctly: the real observer feeds this same function in the wet control, and the case the host
+// cannot build is claimed over supplied values.
+fn level_is_safe(observed: LevelObservation, trusted: TrustedOwners) -> Bool {
+  match observed {
+    LevelUnobservable { detail: _ } => false
+    LevelObserved { owner: owner, mode: mode, sticky: sticky } =>
+      ((owner == (trusted.me as String)) || (owner == (provider_root_trusted_root_owner as String)))
+        && (sticky || any(provider_root_unwritable_modes, m => m == mode))
   }
 }
 
-// THE MODE IS ASSERTED, NOT INHERITED. `mktemp -d` creates at 0700 on every implementation this
-// runs on, and that is exactly the kind of fact that is true until it is not: the protection this
-// carrier rests on is the permission bits, so they are set rather than assumed, and a chmod that
-// fails refuses the allocation instead of handing back a workspace whose protection is unknown.
-fn allocate_provider_workspace() -> ProviderWorkspaceAllocation {
-  match admit_provider_root(candidate: provider_root_candidate()) {
-    ProviderRootRefused { root: r, cause: c } =>
-      ProviderWorkspaceRefused {
-        detail: join(["the allocation root ", r, " is inadmissible: ", c], ""),
+// THE WALK IS BY REPEATED "/..", AND IT IS BOUNDED RATHER THAN TERMINATED ON THE ROOT. There is no
+// path decomposition in the substrate, so an ancestor is named by appending another "/.." and
+// letting the kernel resolve it. At the filesystem root "/.." resolves to "/" again, so the last
+// iterations re-examine the root harmlessly -- which is why a fixed bound is sound here rather than
+// a truncation: the walk covers the whole real ancestry as long as the bound exceeds its depth, and
+// a deeper base than the bound REFUSES rather than admitting an unexamined level.
+data provider_root_ancestry_bound: Int = 24
+
+type AncestryVerdict
+  = AncestrySafe
+  | AncestryRefused { level: String, detail: String }
+
+fn ancestry_refusal_detail(observed: LevelObservation) -> String {
+  match observed {
+    LevelUnobservable { detail: d } => d
+    LevelObserved { owner: o, mode: m, sticky: st } =>
+      join([
+        "owner=", o, " mode=", m, " sticky=", if st { "yes" } else { "no" },
+        " -- every level must be owned by this process or root, and must not be writable by",
+        " others unless it is sticky",
+      ], "")
+  }
+}
+
+// THE WALK CARRIES THE PATH DOWN RATHER THAN REBUILDING IT PER LEVEL. Appending "/.." to the
+// previous path is one concatenation per step; re-deriving the n-th ancestor from the candidate
+// each time is the quadratic accumulator DESIGN section 6 says to fix regardless of the realized n.
+fn ancestry_walk(path: String, trusted: TrustedOwners, remaining: Int) -> AncestryVerdict {
+  if remaining <= 0 {
+    AncestrySafe
+  } else {
+    let observed = observe_level(path: path)
+    if level_is_safe(observed: observed, trusted: trusted) {
+      ancestry_walk(
+        path: join([path, "/.."], ""),
+        trusted: trusted,
+        remaining: remaining - 1,
+      )
+    } else {
+      AncestryRefused { level: path, detail: ancestry_refusal_detail(observed: observed) }
+    }
+  }
+}
+
+fn ancestry_is_safe(candidate: String, trusted: TrustedOwners) -> AncestryVerdict {
+  ancestry_walk(path: candidate, trusted: trusted, remaining: provider_root_ancestry_bound)
+}
+
+fn observe_trusted_owners() -> TrustedOwners? {
+  let me = shell.Id.UserName()
+  if !me.success {
+    none
+  } else {
+    let named = trim(s: me.stdout)
+    if named == "" { none } else { Present { value: TrustedOwners { me: named as NonEmptyStr } } }
+  }
+}
+
+fn admit_provider_root(candidate: String) -> ProviderRootAdmission {
+  if candidate == "" {
+    ProviderRootRefused { root: candidate, cause: "the candidate base is empty" }
+  } else if !shell.Test.IsDirectory(path: candidate as FilePath).is_directory {
+    ProviderRootRefused { root: candidate, cause: "the candidate base is not a directory" }
+  } else {
+    match observe_trusted_owners() {
+      Absent =>
+        ProviderRootRefused {
+          root: candidate,
+          cause: "this process could not name its own principal, so no owner is trusted",
+        }
+      Present { value: trusted } =>
+        match ancestry_is_safe(candidate: candidate, trusted: trusted) {
+          AncestryRefused { level: l, detail: d } =>
+            ProviderRootRefused {
+              root: candidate,
+              cause: join(["the ancestry is unprotected at ", l, ": ", d], ""),
+            }
+          AncestrySafe => ProviderRootAdmitted { root: candidate as NonEmptyStr }
+        }
+    }
+  }
+}
+
+// THE BASE IS PROVIDER-SELECTED FROM A DECLARED ORDER, NOT TAKEN FROM TMPDIR. TMPDIR is an
+// arbitrary caller-controlled string, and admitting whatever it names was the environment-shaped
+// form of the free-form parameter this module already deleted once. The provider names its own
+// candidates instead -- the per-user runtime directory first, because it is the one a system
+// actually provisions for this purpose, then /tmp, which is root-owned and sticky -- and each is
+// put through the same admission. No candidate qualifying is a refusal, not a fallback.
+data provider_root_candidates_note: NonEmptyStr = "XDG_RUNTIME_DIR then /tmp" as NonEmptyStr
+
+fn provider_root_candidates() -> List<String> {
+  match shell.Env.Get(name: "XDG_RUNTIME_DIR" as NonEmptyStr).value {
+    Absent => [provider_root_default as String]
+    Present { value: v } =>
+      let named = trim(s: v)
+      if named == "" {
+        [provider_root_default as String]
+      } else {
+        [named, provider_root_default as String]
       }
-    ProviderRootAdmitted { root: admitted } =>
+  }
+}
+
+data provider_root_default: NonEmptyStr = "/tmp" as NonEmptyStr
+
+type ProviderRootSelection
+  = ProviderRootSelected { root: NonEmptyStr }
+  | ProviderRootNoneAdmissible { detail: String }
+
+fn select_provider_root() -> ProviderRootSelection {
+  match fold(
+    provider_root_candidates(),
+    init: ProviderRootNoneAdmissible { detail: "no candidate base was considered" },
+    f: fn(acc, candidate) {
+      match acc {
+        ProviderRootSelected { root: r } => ProviderRootSelected { root: r }
+        ProviderRootNoneAdmissible { detail: previous } =>
+          match admit_provider_root(candidate: candidate) {
+            ProviderRootAdmitted { root: r } => ProviderRootSelected { root: r }
+            ProviderRootRefused { root: r, cause: c } =>
+              ProviderRootNoneAdmissible {
+                detail: join([previous, "; ", r, ": ", c], ""),
+              }
+          }
+      }
+    },
+  ) {
+    ProviderRootSelected { root: r } => ProviderRootSelected { root: r }
+    ProviderRootNoneAdmissible { detail: d } => ProviderRootNoneAdmissible { detail: d }
+  }
+}
+
+fn allocate_provider_workspace() -> ProviderWorkspaceAllocation {
+  match select_provider_root() {
+    ProviderRootNoneAdmissible { detail: d } =>
+      ProviderWorkspaceRefused {
+        detail: join(["no admissible allocation base (", provider_root_candidates_note as String, "): ", d], ""),
+      }
+    ProviderRootSelected { root: admitted } =>
       allocate_under_admitted_root(root: admitted)
   }
 }

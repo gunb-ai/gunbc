@@ -99,6 +99,7 @@ import gunbc.fabric_source_snapshot {
   ProviderRootAdmitted,
   ProviderRootRefused,
   admit_provider_root,
+  provider_root_default,
   allocate_provider_workspace,
   release_provider_workspace,
   provider_workspace_root,
@@ -856,62 +857,54 @@ fn run_duplicate_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenario
 // without a second uid -- which is the point, because a control that needed one could not run in
 // this harness and would not run anywhere.
 //
-// THREE SHAPES, AND THE ADMITTED ONES MATTER AS MUCH AS THE REFUSED ONE. A world-writable
-// non-sticky directory is exactly the unsafe TMPDIR the side chat reproduced against, and it must
-// refuse. A sticky directory and an owner-only directory are the two safe shapes, and they must be
-// ADMITTED -- without them this control would pass for an admission that refuses everything, which
-// is a wall-shaped hole in the capability rather than a wall.
+// THE FIXTURE IS AN OWNER-ONLY DIRECTORY UNDER A WORLD-WRITABLE NON-STICKY GRANDPARENT, because
+// that is the case a per-directory rule gets wrong: the child's 0700 protects its CONTENTS while
+// any principal that can write the grandparent renames the child itself, workspace and all. An
+// earlier version of this control made the CANDIDATE world-writable, which the first rule caught
+// by accident and which says nothing about ancestry.
+//
+// AND THE ADMITTED HALF MATTERS AS MUCH AS THE REFUSED ONE: /tmp, root-owned and sticky, must be
+// ADMITTED. Without that assertion this control would pass for an admission that refuses
+// everything, which is a wall-shaped hole in the capability rather than a wall. The third case --
+// a sticky directory owned by an untrusted uid -- cannot be built here, because creating one needs
+// a privilege this harness does not have; it is claimed over supplied observations in
+// test.claim.fabric_source_snapshot_witness against the same level_is_safe this control executes.
 fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
-  let unsafe_root = join([workspace.root, "/unsafe-parent"], "")
-  let owner_only_root = join([workspace.root, "/owner-only-parent"], "")
-  if !shell.Mkdir.Parents(path: unsafe_root as FilePath).success
-    || !shell.Mkdir.Parents(path: owner_only_root as FilePath).success {
+  let grandparent = join([workspace.root, "/open-grandparent"], "")
+  let child = join([grandparent, "/private-child"], "")
+  if !shell.Mkdir.Parents(path: child as FilePath).success {
     SnapshotScenarioFailed {
       scenario: "unsafe-allocation-root",
       step: "author-parents",
-      detail: "the candidate parents could not be created",
+      detail: "the candidate ancestry could not be created",
     }
-  } else if !shell.Chmod.WorldWritableDirectory(path: unsafe_root as FilePath).success {
+  } else if !shell.Chmod.OwnerOnlyDirectory(path: child as FilePath).success
+    || !shell.Chmod.WorldWritableDirectory(path: grandparent as FilePath).success {
     SnapshotScenarioFailed {
       scenario: "unsafe-allocation-root",
       step: "author-parents",
-      detail: "the unsafe parent could not be made world-writable",
-    }
-  } else if !shell.Chmod.OwnerOnlyDirectory(path: owner_only_root as FilePath).success {
-    SnapshotScenarioFailed {
-      scenario: "unsafe-allocation-root",
-      step: "author-parents",
-      detail: "the owner-only parent could not be made owner-only",
+      detail: "the candidate ancestry could not be given its modes",
     }
   } else {
-    match admit_provider_root(candidate: unsafe_root) {
+    match admit_provider_root(candidate: child) {
       ProviderRootAdmitted { root: _ } =>
         SnapshotScenarioFailed {
           scenario: "unsafe-allocation-root",
           step: "admit",
-          detail: "a world-writable non-sticky parent was admitted as an allocation root",
+          detail: "an owner-only base under a world-writable non-sticky grandparent was admitted",
         }
       ProviderRootRefused { root: _, cause: why } =>
-        match admit_provider_root(candidate: owner_only_root) {
+        match admit_provider_root(candidate: provider_root_default as String) {
           ProviderRootRefused { root: _, cause: c } =>
             SnapshotScenarioFailed {
               scenario: "unsafe-allocation-root",
               step: "admit",
-              detail: join(["an owner-only parent was refused: ", c], ""),
+              detail: join(["the root-owned sticky base was refused: ", c], ""),
             }
           ProviderRootAdmitted { root: _ } =>
-            match admit_provider_root(candidate: "/tmp") {
-              ProviderRootRefused { root: _, cause: c } =>
-                SnapshotScenarioFailed {
-                  scenario: "unsafe-allocation-root",
-                  step: "admit",
-                  detail: join(["a sticky parent was refused: ", c], ""),
-                }
-              ProviderRootAdmitted { root: _ } =>
-                SnapshotScenarioPassed {
-                  scenario: "unsafe-allocation-root",
-                  detail: join(["refused the unsafe parent: ", why], ""),
-                }
+            SnapshotScenarioPassed {
+              scenario: "unsafe-allocation-root",
+              detail: join(["refused the unprotected ancestry: ", why], ""),
             }
         }
     }

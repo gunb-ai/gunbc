@@ -273,6 +273,27 @@ fn shell_test_is_executable_argv(path: FilePath) -> List<String> {
   ["test", "-x", path as String]
 }
 
+// `id -un` names the principal this process runs as. It is a separate service from Stat because it
+// is a fact about the PROCESS rather than about a path, and the two are joined by the consumer
+// deciding whether a path's owner is trusted; folding the process identity into a path observation
+// would make one operation answer two questions.
+service shell.Id {
+  operation UserName {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["id", "-un"] }
+    exit {
+      0 => Unit "the effective user name is on stdout"
+      nonzero => String "id could not name the effective user"
+    }
+  }
+}
+
 service shell.Uname {
   operation KernelName {
     input {}

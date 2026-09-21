@@ -27,6 +27,11 @@ import gunbc.fabric_source_snapshot {
   RelativePathAdmitted,
   RelativePathRefused,
   admit_relative_source_path,
+  TrustedOwners,
+  LevelObservation,
+  LevelObserved,
+  LevelUnobservable,
+  level_is_safe,
   snapshot_inclusion_relative_path,
   SnapshotInclusion,
 }
@@ -141,4 +146,52 @@ test fn an_inclusion_lands_where_it_was_declared_to() -> Bool {
   }
   snapshot_inclusion_relative_path(inclusion: inclusion)
     == "public/dag/gunbc/snapshot_public_probe.dag"
+}
+
+// ── THE ANCESTRY RULE, OVER OBSERVATIONS THIS HOST CANNOT PRODUCE ────────────────────────────
+//
+// `level_is_safe` is the decision the wet control executes for real, once per ancestor, over
+// observations `observe_level` takes from the filesystem. These claims supply those observations
+// instead, for one reason: the case that matters most -- a STICKY DIRECTORY OWNED BY AN UNTRUSTED
+// PRINCIPAL -- cannot be built by the harness, because creating one requires a privilege it does
+// not have. The inhabitance obligation is discharged by tools.source_snapshot_handoff, whose
+// unsafe-allocation-root scenario runs this same function against a real ancestry and refuses; what
+// is supplied here is the input the world would not hand us.
+
+fn observed(owner: String, mode: String, sticky: Bool) -> LevelObservation {
+  LevelObserved { owner: owner, mode: mode, sticky: sticky }
+}
+
+fn trusted_as(me: String) -> TrustedOwners {
+  TrustedOwners { me: me as NonEmptyStr }
+}
+
+// THE DEFECT THE HARNESS CANNOT CONSTRUCT. Sticky says only that an entry may be renamed by ITS
+// OWNER; a sticky directory owned by someone else is one that principal may still rearrange. /tmp
+// is safe because it is root-owned AND sticky, and a rule that kept the second half and dropped the
+// first admits any sticky directory anybody set up.
+test fn a_sticky_directory_owned_by_another_principal_is_unsafe() -> Bool {
+  let me = trusted_as(me: "builder")
+  !level_is_safe(observed: observed(owner: "mallory", mode: "1777", sticky: true), trusted: me)
+    && level_is_safe(observed: observed(owner: "root", mode: "1777", sticky: true), trusted: me)
+    && level_is_safe(observed: observed(owner: "builder", mode: "1777", sticky: true), trusted: me)
+}
+
+// AND OWNERSHIP ALONE IS NOT ENOUGH EITHER. A directory this process owns but that anybody may
+// write is one anybody may rearrange, so the two halves are a conjunction rather than alternatives.
+test fn a_world_writable_level_is_unsafe_even_when_owned() -> Bool {
+  let me = trusted_as(me: "builder")
+  !level_is_safe(observed: observed(owner: "builder", mode: "777", sticky: false), trusted: me)
+    && level_is_safe(observed: observed(owner: "builder", mode: "700", sticky: false), trusted: me)
+    && level_is_safe(observed: observed(owner: "root", mode: "755", sticky: false), trusted: me)
+}
+
+// AN UNREADABLE LEVEL IS UNSAFE, NOT UNKNOWN. A level whose owner or mode could not be observed is
+// a level nothing was established about, and admitting it would be the empty observation read as a
+// clean one -- the absorbing arm DESIGN section 5 refuses.
+test fn an_unobservable_level_is_unsafe() -> Bool {
+  !level_is_safe(
+    observed: LevelUnobservable { detail: "owner unreadable" },
+    trusted: trusted_as(me: "builder"),
+  )
 }
