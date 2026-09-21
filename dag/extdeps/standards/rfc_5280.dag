@@ -15,7 +15,7 @@ import extdeps.standards.x690_der {
   der_object_identifier, DerOidRead, DerOidRefused, der_bit_string_octets, DerBitsRead, DerBitsRefused,
   der_boolean, DerBoolRead, DerBoolRefused,
   der_tag_integer, der_tag_bit_string, der_tag_octet_string, der_tag_object_identifier, der_tag_boolean, der_tag_utc_time, der_tag_generalized_time, der_tag_sequence,
-  DerElementAbsent, DerTrailingOctets, DerTagUnexpected,
+  DerElementAbsent, DerChildCountUnexpected, DerTagUnexpected,
 }
 
 // RFC 5280, Internet X.509 PKI Certificate and CRL Profile, §4.1 (the Certificate, TBSCertificate,
@@ -102,7 +102,7 @@ fn read_algorithm_identifier(octets: List<UInt8>, e: DerElement) -> AlgorithmIde
   match der_children(octets: octets, parent: e) {
     DerChildrenRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
     DerChildrenRead { elements: kids } =>
-      if count(kids) > 2 { AlgorithmIdentifierRefused { cause: DerTrailingOctets { consumed: 2, total: count(kids) } } } else {
+      if count(kids) > 2 { AlgorithmIdentifierRefused { cause: DerChildCountUnexpected { at: e.value_at, expected: 2, found: count(kids) } } } else {
       match typed_child(kids: kids, i: 0, at: e.value_at, tag_number: der_tag_object_identifier, constructed: false) {
         DerRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
         DerElementRead { element: alg } =>
@@ -163,7 +163,7 @@ fn read_validity(octets: List<UInt8>, e: DerElement) -> X509Validity {
   match der_children(octets: octets, parent: e) {
     DerChildrenRefused { cause: c } => X509ValidityRefused { cause: X509DerRefused { cause: c } }
     DerChildrenRead { elements: kids } =>
-      if count(kids) != 2 { X509ValidityRefused { cause: X509DerRefused { cause: DerTrailingOctets { consumed: 2, total: count(kids) } } } } else {
+      if count(kids) != 2 { X509ValidityRefused { cause: X509DerRefused { cause: DerChildCountUnexpected { at: e.value_at, expected: 2, found: count(kids) } } } } else {
       match der_child_at(children: kids, i: 0, at: e.value_at) {
         DerRefused { cause: c } => X509ValidityRefused { cause: X509DerRefused { cause: c } }
         DerElementRead { element: nb } =>
@@ -311,7 +311,7 @@ fn read_spki(octets: List<UInt8>, e: DerElement) -> SubjectPublicKeyInfo {
   match der_children(octets: octets, parent: e) {
     DerChildrenRefused { cause: c } => SpkiRefused { cause: c }
     DerChildrenRead { elements: kids } =>
-      if count(kids) != 2 { SpkiRefused { cause: DerTrailingOctets { consumed: 2, total: count(kids) } } } else {
+      if count(kids) != 2 { SpkiRefused { cause: DerChildCountUnexpected { at: e.value_at, expected: 2, found: count(kids) } } } else {
       match sequence_child(kids: kids, i: 0, at: e.value_at) {
         DerRefused { cause: c } => SpkiRefused { cause: c }
         DerElementRead { element: alg } =>
@@ -434,7 +434,7 @@ fn decode_certificate(octets: List<UInt8>) -> X509Decode {
         match der_children(octets: octets, parent: outer) {
           DerChildrenRefused { cause: c } => x509_der(c: c)
           DerChildrenRead { elements: kids } =>
-            if count(kids) != 3 { x509_der(c: DerTrailingOctets { consumed: 3, total: count(kids) }) } else {
+            if count(kids) != 3 { x509_der(c: DerChildCountUnexpected { at: outer.value_at, expected: 3, found: count(kids) }) } else {
             match sequence_child(kids: kids, i: 0, at: outer.value_at) {
               DerRefused { cause: c } => x509_der(c: c)
               DerElementRead { element: tbs } =>
@@ -509,7 +509,7 @@ fn ecdsa_sig_value(octets: List<UInt8>, width: Int) -> EcdsaSigValue {
       match der_children(octets: octets, parent: seq) {
         DerChildrenRefused { cause: c } => EcdsaSigValueRefused { cause: c }
         DerChildrenRead { elements: kids } =>
-          if count(kids) != 2 { EcdsaSigValueRefused { cause: DerElementAbsent { at: seq.value_at } } }
+          if count(kids) != 2 { EcdsaSigValueRefused { cause: DerChildCountUnexpected { at: seq.value_at, expected: 2, found: count(kids) } } }
           else {
             match typed_child(kids: kids, i: 0, at: seq.value_at, tag_number: der_tag_integer, constructed: false) {
               DerRefused { cause: c } => EcdsaSigValueRefused { cause: c }
