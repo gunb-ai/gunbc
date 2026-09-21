@@ -2242,7 +2242,7 @@ pub fn emit_compile_report(
 /// Waiting serializes into the same shared state with the same ambiguity; a private directory
 /// throws away the warm target dir. Refusing is the fail-closed arm: line stops, cause typed and
 /// located, operator sees two runs were attempted rather than a verdict computed across both.
-fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
+pub(crate) fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(root).map_err(|e| {
         format!(
             "could not create the caller-selected probe root {} ({e})",
