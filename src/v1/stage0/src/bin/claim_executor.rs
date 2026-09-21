@@ -14,8 +14,8 @@ use v1_compiler::cli_run::PhaseProfile;
 // located lines and set the status.
 use v1_compiler::cli_run::required_ci_measurement::{
     adjudicate_required_ci_measurement_receipt_file, completed_required_ci_measurement_receipt,
-    write_required_ci_measurement_receipt, RequiredCiAdmission, RequiredCiBlocker,
-    RequiredCiMeasurementReceipt,
+    synthesize_phase_blockers, write_required_ci_measurement_receipt, RequiredCiAdmission,
+    RequiredCiBlocker, RequiredCiMeasurementReceipt,
 };
 
 // ONE RELATION, ONE EXIT. Both consumers -- the separate `--adjudicate-measurement-receipt`
@@ -1077,28 +1077,16 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         if let Some(path) = required_ci_measurement_receipt {
             // EVERY REPORTED FAILURE MUST REACH THE BLOCKER SET, because the blocker set is
-            // what the exit is derived from below. Two things were wrong here and both were
-            // silent. The coverage test compared a blocker's PHASE to the whole failure
-            // sentence, so `floor refused: <cause>` never matched a floor blocker and was
-            // covered only by accident; and `floor` was carved out by name, so a floor that
-            // reported not-clean while yielding no blockers of its own produced an EMPTY
-            // blocker set from a failed phase -- a completed measurement with nothing to
-            // adjudicate. The test is now the failure's phase word against the blocker's phase,
-            // which is the same grain on both sides, and no phase is exempt.
+            // what the exit is derived from below AND what the separate adjudicating consumer
+            // prints. The fold lives in the library beside the admission relation, with its own
+            // controls, because it has now been wrong twice in two different directions and
+            // neither was visible from the process status -- see
+            // `required_ci_measurement::synthesize_phase_blockers`, which states both.
             //
             // Dissolve this compatibility boundary when every required phase returns its own
             // `Vec<RequiredCiBlocker>`: a human diagnostic must not remain the authority for a
             // blocker's phase and identity.
-            for failure in &phase_failures {
-                let phase = failure.split_whitespace().next().unwrap_or("unknown");
-                if !measurement_blockers.iter().any(|b| b.phase == phase) {
-                    measurement_blockers.push(RequiredCiBlocker {
-                        phase: phase.to_string(),
-                        identity: "<phase>".to_string(),
-                        cause: failure.clone(),
-                    });
-                }
-            }
+            synthesize_phase_blockers(&phase_failures, &mut measurement_blockers);
             // Reaching this branch means the measurement process returned after running every
             // selected phase. A phase refusal is therefore a completed measurement carrying
             // blockers, never MeasurementUnreached. The latter is sealed by the workflow's
