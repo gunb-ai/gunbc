@@ -19,7 +19,7 @@ import v2.compiler.name_resolve {
   validate_module_roots
 }
 import v2.std.declaration_marker { test_marker_channel_empty }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings}
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
@@ -128,7 +128,7 @@ fn fc_with_roots(
 }
 
 fn fc_admitted(n: Node) -> Outcome<NormalizedTree> {
-  admit_normalized_tree(test_markers: test_marker_channel_empty(), root: n, diagnostics: None)
+  admit_normalized_tree(import_bindings: no_import_bindings(), test_markers: test_marker_channel_empty(), root: n, diagnostics: None)
 }
 
 fn fc_duplicate_roots() -> Outcome<FreeMonoid<NormalizedTree>> {

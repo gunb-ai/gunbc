@@ -182,13 +182,40 @@ fn symbol_index_try_lexical_at(
 // docs/plans/namespace-resolution-design.md section 13 refuses. Re-binding the SAME declaration is
 // idempotent and contests nothing -- fill is run over roots whose bindings legitimately repeat, and
 // a position contested with itself would refuse every reference to a name bound exactly once.
+// THE INCUMBENT COUNTS EVEN THOUGH IT NEVER REGISTERED. Pass A writes a module's own declarations
+// through symbol_index_insert, which records no claimant -- it does not need one, because a
+// containment path names one place in the tree and cannot be claimed twice. But that leaves a
+// position a DECLARATION holds looking, to bind_at, exactly like a position nothing holds: `prior`
+// is empty either way. A module that declares `N` and also imports `N` therefore had its own
+// declaration overwritten by the import, silently, which is precisely the pick this machinery
+// exists to refuse -- it shipped that way and a reviewer of gunbc#12009 found it.
+//
+// The repair reads the incumbent rather than registering every declaration as it is written: an
+// occupied position with no recorded claimant was written by pass A, where the binding path IS the
+// declaring path, so that path is the incumbent's name. Recording all of them up front would double
+// the index for the one case in a thousand where a second claimant ever arrives.
+fn symbol_index_claimants_at(
+  index: SymbolIndex,
+  binding_path: QualifiedName
+) -> FreeMonoid<QualifiedName> {
+  let recorded = symbol_index_bound_declarings(index: index, binding_path: binding_path)
+  if is_empty(xs: recorded) {
+    match symbol_index_lookup(index: index, qualified_path: binding_path) {
+      Present { value: _ } => Cons { head: binding_path, tail: Empty }
+      Absent => Empty
+    }
+  } else {
+    recorded
+  }
+}
+
 fn symbol_index_bind_at(
   index: SymbolIndex,
   binding_path: QualifiedName,
   declaring_path: QualifiedName,
   resolved: Node
 ) -> SymbolIndex {
-  let prior = symbol_index_bound_declarings(index: index, binding_path: binding_path)
+  let prior = symbol_index_claimants_at(index: index, binding_path: binding_path)
   if contains(xs: prior, item: declaring_path, eq: fn(a, b) { a == b }) {
     index
   } else {

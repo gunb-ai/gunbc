@@ -107,7 +107,41 @@ fn wall_channel(marked: List<Symbol>) -> TestMarkerChannel {
 }
 
 fn wall_tree(root: Node, marked: List<Symbol>) -> Outcome<NormalizedTree> {
-  admit_normalized_tree(root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
+  admit_normalized_tree(import_bindings: no_import_bindings(), root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
+}
+
+// THE PEER'S NAMES ARE BOUND, BECAUSE UNDER THE CANDIDATE RULE THAT IS THE ONLY WAY TO REACH THEM.
+// These two rows are what `import wall.peer { peer_leaf, shared_fixture }` becomes
+// (v2.extdeps.languages.dag import_binding_rows_from_decl_node), supplied here because these roots
+// are built rather than parsed. Before gunbc#12009 the subject reached the peer with no binding at
+// all -- the corpus-wide bare-name search found the spelling -- so these claims were, without
+// saying so, asserting the wall on a route that no longer exists.
+//
+// THIS STRENGTHENS THE WALL RATHER THAN ACCOMMODATING IT. The refusal must fire on the path the
+// reference BOUND TO, and a transmuted import binds at the importing module's position while its
+// declaration stays in the peer. So this is the one route that could have let a test-marked
+// declaration in past the wall by arriving under a local name, and the RED below now runs on
+// exactly that route.
+fn wall_peer_import_bindings() -> FreeMonoid<AliasBindingRow> {
+  [
+    AliasBindingRow {
+      binding: ^peer_leaf,
+      target: Cons { head: ^wall, tail: Cons { head: ^peer, tail: Cons { head: ^peer_leaf, tail: Empty } } }
+    },
+    AliasBindingRow {
+      binding: ^shared_fixture,
+      target: Cons { head: ^wall, tail: Cons { head: ^peer, tail: Cons { head: ^shared_fixture, tail: Empty } } }
+    }
+  ]
+}
+
+fn wall_tree_importing_peer(root: Node, marked: List<Symbol>) -> Outcome<NormalizedTree> {
+  admit_normalized_tree(
+    import_bindings: wall_peer_import_bindings(),
+    root: root,
+    test_markers: wall_channel(marked: marked),
+    diagnostics: None
+  )
 }
 
 fn wall_verdict(outcome: Outcome<ResolvedTree>) -> String {
@@ -199,7 +233,7 @@ fn peer_serving_module() -> Outcome<NormalizedTree> {
 
 // A one-member serving module wall.serving whose only fn's body is `body`.
 fn serving_module_with_body(body: Node) -> Outcome<NormalizedTree> {
-  wall_tree(root: wall_module_root(leaf_segment: ^serving, members: [wall_member(name: ^uses_peer, body: body)]), marked: [])
+  wall_tree_importing_peer(root: wall_module_root(leaf_segment: ^serving, members: [wall_member(name: ^uses_peer, body: body)]), marked: [])
 }
 
 // INHABITANCE, THE ROUTE THE SUPPLIED ROOTS STAND ON: the real front end, on the source text the

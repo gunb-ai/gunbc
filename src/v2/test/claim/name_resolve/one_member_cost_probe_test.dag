@@ -6,7 +6,7 @@ import v2.compiler.name_resolve {
   ResolutionSubject,
   resolve_with_admission
 }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings}
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { ResolvedTree }
@@ -72,7 +72,7 @@ fn probe_one_member_qn() -> QualifiedName {
 
 fn probe_roots_for_export(export_sym: Symbol) -> Outcome<FreeMonoid<NormalizedTree>> {
   bind_outcome(
-    o: admit_normalized_tree(
+    o: admit_normalized_tree(import_bindings: no_import_bindings(), 
       test_markers: test_marker_channel_empty(),
       root: probe_one_member_root_export(export_sym: export_sym),
       diagnostics: None

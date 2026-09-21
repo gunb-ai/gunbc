@@ -530,6 +530,24 @@ type SymbolIndexAtomLookup
   | SymbolIndexAtomAmbiguous { class: AmbiguousLookupClass }
   | SymbolIndexAtomUnbound
 
+// NOTHING FOLLOWS AN EXHAUSTED CHAIN, which is what the LexicalUnbound arm below now says by
+// answering SymbolIndexAtomUnbound. That arm used to ask the corpus-wide bare-name index under
+// NamespaceOnlyY, and that question has no answer it is entitled to give: a name the reference's
+// own ancestor chain does not bind has no meaning AT THE REFERENCE, whatever else the corpus spells
+// the same way. docs/plans/namespace-resolution-design.md section 13 deletes the tier by name --
+// "global_bare dies as a mechanism" -- and the reference model this corpus grounds lookup in agrees
+// by ABSENCE: [basic.lookup.unqual] walks outward to the parent scope and, exhausted, the program
+// is ill-formed; there is no clause that searches a whole program for a unique declaration.
+//
+// WHAT REPLACES THE TIER IS NOT A WEAKER ANSWER BUT A BINDING THE AUTHOR WROTE. An import is
+// transmuted into a row at the importing position (v2.extdeps.languages.dag
+// import_binding_rows_from_decl_node, bound by v2.compiler.symbol_index_fill), so the names a
+// module actually uses are ON its chain and the lexical collector finds them there. Deleting the
+// tier without that transmutation would not have made these references resolve; it would have made
+// them unbound, which is why the two are one change.
+//
+// THE INDEX'S global_bare MAP SURVIVES, and only as what section 13 leaves it: a migration oracle
+// for the divergence census. No resolution path reaches it.
 fn lookup_symbol_index_atom_identity(
   ctx: ResolveContext,
   name: Symbol
@@ -546,20 +564,6 @@ fn lookup_symbol_index_atom_identity(
       }
     LexicalAmbiguous { candidates: candidates } =>
       SymbolIndexAtomAmbiguous { class: AmbiguousOnLexicalChain { candidates: candidates } }
-    // NOTHING FOLLOWS AN EXHAUSTED CHAIN. This arm used to ask the corpus-wide bare-name index
-    // under NamespaceOnlyY, and that question has no answer it is entitled to give: a name the
-    // reference's own ancestor chain does not bind has no meaning AT THE REFERENCE, whatever else
-    // the corpus spells the same way. docs/plans/namespace-resolution-design.md section 13 deletes
-    // the tier by name -- "global_bare dies as a mechanism" -- and the reference model this corpus
-    // grounds lookup in agrees by ABSENCE: [basic.lookup.unqual] walks outward to the parent scope
-    // and, exhausted, the program is ill-formed; there is no clause that searches a whole program
-    // for a unique declaration. What replaces the tier is not a weaker answer but a BINDING the
-    // author wrote: an import is transmuted into a row at the importing position
-    // (v2.extdeps.languages.dag import_binding_rows_from_decl_node), so the names a module actually
-    // uses are ON its chain and the collector above finds them there.
-    //
-    // THE INDEX'S global_bare MAP SURVIVES, and only as what section 13 leaves it as: a migration
-    // oracle for the divergence census. No resolution path reaches it.
     LexicalUnbound => SymbolIndexAtomUnbound
   }
 }

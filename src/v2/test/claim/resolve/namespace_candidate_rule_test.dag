@@ -111,6 +111,22 @@ import v2.ncr_disp_home { NcrDisp, NcrInputsOnly }
 data ncr_disp: NcrDisp = NcrInputsOnly
 "
 
+// DECLARING A NAME AND IMPORTING IT IS AN AMBIGUITY AT DISTANCE ZERO. Both claimants land on ONE
+// binding position -- this module's own -- rather than on two positions of the chain, so it is the
+// case a per-position map has exactly one slot for and would otherwise resolve by whichever writer
+// ran last. It shipped doing exactly that (a reviewer of gunbc#12009 found it: the pass that writes
+// a module's own declarations records no claimant, so the import saw an empty position and took
+// it), and this arm is why it cannot ship that way again.
+data ncr_shadow_source: String = "module v2.ncr_shadow
+
+import v2.std.logic { Bool }
+import v2.ncr_home_a { NcrTwin }
+
+type NcrTwin = Bool
+
+fn ncr_shadow_use(p: NcrTwin) -> Bool { p }
+"
+
 fn ncr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
@@ -118,6 +134,10 @@ fn ncr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSource
     compilation_unit: unit,
     source_root: DagTree
   }
+}
+
+fn ncr_shadow_read() -> DagSourceReadWitness {
+  ncr_read(source: ncr_shadow_source, id: ^ncr_shadow_artifact, unit: ^ncr_shadow_cu, path: "dag/ncr_shadow.dag")
 }
 
 fn ncr_disp_home_read() -> DagSourceReadWitness {
@@ -169,7 +189,10 @@ data ncr_ingest: SourceRootIngest = Cons {
             head: ncr_disp_home_read(),
             tail: Cons {
               head: ncr_disp_other_read(),
-              tail: Cons { head: ncr_disp_user_read(), tail: Empty }
+              tail: Cons {
+                head: ncr_disp_user_read(),
+                tail: Cons { head: ncr_shadow_read(), tail: Empty }
+              }
             }
           }
         }
@@ -192,7 +215,10 @@ data ncr_ingest_permuted: SourceRootIngest = Cons {
             head: ncr_disp_user_read(),
             tail: Cons {
               head: ncr_disp_other_read(),
-              tail: Cons { head: ncr_disp_home_read(), tail: Empty }
+              tail: Cons {
+                head: ncr_disp_home_read(),
+                tail: Cons { head: ncr_shadow_read(), tail: Empty }
+              }
             }
           }
         }
@@ -287,10 +313,12 @@ type NcrOutcomes
       unbound: NcrVerdict
       home_a: NcrVerdict
       disp_user: NcrVerdict
+      shadow: NcrVerdict
       importer_permuted: NcrVerdict
       double_permuted: NcrVerdict
       unbound_permuted: NcrVerdict
       disp_user_permuted: NcrVerdict
+      shadow_permuted: NcrVerdict
     }
 
 fn ncr_verdicts_for(ingest: SourceRootIngest, module_name: String) -> Optional<NativeCensusModuleOutcome> {
@@ -319,6 +347,8 @@ fn ncr_outcomes() -> NcrOutcomes {
             importer: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_importer")),
             double: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_double")),
             unbound: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_unbound")),
+            shadow: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_shadow")),
+            shadow_permuted: ncr_verdict_of(outcome: ncr_outcome_in(context: permuted_context, index: permuted_index, ingest: ncr_ingest_permuted, module_name: "v2.ncr_shadow")),
             disp_user: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_disp_user")),
             disp_user_permuted: ncr_verdict_of(outcome: ncr_outcome_in(context: permuted_context, index: permuted_index, ingest: ncr_ingest_permuted, module_name: "v2.ncr_disp_user")),
             home_a: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_home_a")),
@@ -402,7 +432,7 @@ fn ncr_verdict_same(left: NcrVerdict, right: NcrVerdict) -> Bool {
 test fn a_bound_sibling_declaration_resolves_by_containment_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: importer, double: _, unbound: _, home_a: home_a, disp_user: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _ } =>
+    NcrOutcomesDecided { importer: importer, double: _, unbound: _, home_a: home_a, disp_user: _, shadow: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _ } =>
       ncr_verdict_is_resolved(v: importer) && ncr_verdict_is_resolved(v: home_a)
   }
 }
@@ -413,7 +443,7 @@ test fn a_bound_sibling_declaration_resolves_by_containment_holds() -> Bool {
 test fn a_genuine_ambiguity_refuses_naming_both_binders_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: double, unbound: _, home_a: _, disp_user: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: double, unbound: _, home_a: _, disp_user: _, shadow: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _ } =>
       ncr_verdict_refuses_with(v: double, reason: ^resolve_reason_ambiguous_symbol)
         && ncr_verdict_names(v: double, dotted: "v2.ncr_home_a.NcrTwin")
         && ncr_verdict_names(v: double, dotted: "v2.ncr_home_b.NcrTwin")
@@ -429,7 +459,7 @@ test fn a_genuine_ambiguity_refuses_naming_both_binders_holds() -> Bool {
 test fn an_unbound_name_the_corpus_spells_twice_stays_unbound_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: unbound, home_a: _, disp_user: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: unbound, home_a: _, disp_user: _, shadow: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _ } =>
       ncr_verdict_refuses_with(v: unbound, reason: ^resolve_reason_unbound_symbol)
   }
 }
@@ -448,15 +478,18 @@ test fn reordering_the_files_changes_no_verdict_holds() -> Bool {
       unbound: unbound,
       home_a: _,
       disp_user: disp_user,
+      shadow: shadow,
       importer_permuted: importer_permuted,
       double_permuted: double_permuted,
       unbound_permuted: unbound_permuted,
-      disp_user_permuted: disp_user_permuted
+      disp_user_permuted: disp_user_permuted,
+      shadow_permuted: shadow_permuted
     } =>
       ncr_verdict_same(left: importer, right: importer_permuted)
         && ncr_verdict_same(left: double, right: double_permuted)
         && ncr_verdict_same(left: unbound, right: unbound_permuted)
         && ncr_verdict_same(left: disp_user, right: disp_user_permuted)
+        && ncr_verdict_same(left: shadow, right: shadow_permuted)
   }
 }
 
@@ -470,7 +503,22 @@ test fn reordering_the_files_changes_no_verdict_holds() -> Bool {
 test fn the_workload_bare_variant_reference_resolves_through_its_import_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: disp_user, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: disp_user, shadow: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _ } =>
       ncr_verdict_is_resolved(v: disp_user)
+  }
+}
+
+// A MODULE THAT DECLARES A NAME AND ALSO IMPORTS IT REFUSES, NAMING BOTH. Two claimants, one
+// binding position. Either name alone would mean the index had silently kept one writer -- the
+// import if it overwrote, the declaration if the import were merely dropped -- so both are
+// asserted, and the count with them.
+test fn declaring_and_importing_one_name_refuses_naming_both_holds() -> Bool {
+  match ncr_outcomes_warm {
+    NcrContextRefused => false
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: shadow, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _ } =>
+      ncr_verdict_refuses_with(v: shadow, reason: ^resolve_reason_ambiguous_symbol)
+        && ncr_verdict_names(v: shadow, dotted: "v2.ncr_shadow.NcrTwin")
+        && ncr_verdict_names(v: shadow, dotted: "v2.ncr_home_a.NcrTwin")
+        && ncr_verdict_competing_count(v: shadow) == 2
   }
 }

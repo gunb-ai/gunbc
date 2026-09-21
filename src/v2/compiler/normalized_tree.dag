@@ -49,6 +49,14 @@ type NormalizedTree sole_constructor {
 // while holding retention evidence. Next-rung trigger: the retention disposition riding in the
 // carrier's own type rather than decided at the door.
 
+// THE ABSENCE HAS A NAME, for the same reason test_marker_channel_empty does. A caller holding a
+// hand-built root has no import decls to offer, and `Empty` at the call site says only "a list",
+// leaving a reader to guess whether the caller dropped something. This says what is true: this
+// input carries no import bindings.
+fn no_import_bindings() -> FreeMonoid<AliasBindingRow> {
+  Empty
+}
+
 fn normalized_tree_retention_diagnostic(root: Node) -> Diagnostic {
   Diagnostic {
     reason: ^normalized_tree_reason_wrapper_retention_not_normalized,
