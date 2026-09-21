@@ -55,14 +55,56 @@ fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-fn normalize_fold_init(n: Node) -> Outcome<Node> {
-  Accepted { value: node_rebuild(n: n, children: []), diagnostics: None }
+// THE ENCLOSING NODE IS REBUILT ONCE, NOT ONCE PER CHILD.
+//
+// This fold used to carry a SHELL NODE as its accumulator: each step appended one edge to
+// `shell.children` and called `node_rebuild` on the result, so a node with k children was
+// reconstructed k times and k-1 of those reconstructions were built and immediately discarded --
+// only the last one is ever read. DESIGN section 6 names that shape outright ("a copied
+// accumulator, a quadratic fold") and rules that it is ALWAYS FIXED, regardless of the realized n,
+// because "n is small here" is not a time-stable fact: this fold runs over every node of every
+// file the front end sees, and the nodes where k is large are exactly the ones that dominate --
+// module roots carrying long declaration lists.
+//
+// The accumulator is now the EDGE LIST, and `node_rebuild` is called once by the caller after the
+// fold completes. What is deliberately unchanged: edge order (`list_snoc_item` still appends), the
+// diagnostics merge order (`diagnostics_merge(outer: ad, inner: cd)` per child, in the same
+// sequence), and the refusal behaviour -- the first Rejected absorbs and later children cannot
+// repair it, which is why the Rejected arm still returns without inspecting `child`.
+//
+// THE EQUIVALENCE IS BY CONSTRUCTION, NOT BY HOPE, AND IT TURNS ON OCCURRENCE IDENTITY. The old
+// shape computed `node_rebuild(node_rebuild(n, []), E)` -- the shell was itself a rebuild. That
+// equals `node_rebuild(n, E)` because `node_rebuild` copies KIND and OCCURRENCE_ID from its
+// argument and replaces only the children (v2.std.node node_rebuild -> node_with_occurrence_id),
+// so the intermediate shell carries `n.kind` and `n.occurrence_id` unchanged and rebuilding from
+// it is indistinguishable from rebuilding from `n`. Had `node_rebuild` minted a fresh occurrence
+// id, collapsing the k rebuilds into one would have CHANGED occurrence identity -- a semantic
+// change wearing a performance change's clothes -- so the property is stated here rather than
+// assumed.
+//
+// NO CACHE IS INDICATED HERE AND ONE WOULD HAVE BEEN WRONG. The repeated work is recomputation
+// INSIDE one fold, not a demand recurring across frames, so the repair is to carry the value
+// (DESIGN section 2) -- a provider would have made the discarded reconstructions cheap instead of
+// removing them, which is the signal-suppression that section names.
+// The empty accumulator is its own declaration because `Accepted { value: [] }` gives the literal
+// no type to take -- the constructor's payload is generic, so the annotation on this function is
+// what pins it to edges.
+fn normalize_no_edges() -> List<Edge> {
+  []
 }
 
-fn normalize_fold_step(acc: Outcome<Node>, edge: Edge, child: Outcome<Node>) -> Outcome<Node> {
+fn normalize_children_init() -> Outcome<List<Edge>> {
+  Accepted { value: normalize_no_edges(), diagnostics: None }
+}
+
+fn normalize_children_step(
+  acc: Outcome<List<Edge>>,
+  edge: Edge,
+  child: Outcome<Node>
+) -> Outcome<List<Edge>> {
   match acc {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: shell, diagnostics: ad } =>
+    Accepted { value: edges, diagnostics: ad } =>
       match child {
         Rejected { diagnostics: cr } =>
           Rejected {
@@ -70,12 +112,9 @@ fn normalize_fold_step(acc: Outcome<Node>, edge: Edge, child: Outcome<Node>) -> 
           }
         Accepted { value: child_node, diagnostics: cd } =>
           Accepted {
-            value: node_rebuild(
-              n: shell,
-              children: list_snoc_item(
-                xs: shell.children,
-                item: Edge { label: edge.label, target: child_node }
-              )
+            value: list_snoc_item(
+              xs: edges,
+              item: Edge { label: edge.label, target: child_node }
             ),
             diagnostics: diagnostics_merge(outer: ad, inner: cd)
           }
@@ -188,18 +227,18 @@ fn normalize_module_graft_finish(folded: Node, cd: Diagnostics) -> Outcome<Node>
 }
 
 fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
-  match fold(n.children, init: normalize_fold_init(n: n), f: fn(acc, e) {
-    normalize_fold_step(
+  match fold(n.children, init: normalize_children_init(), f: fn(acc, e) {
+    normalize_children_step(
       acc: acc,
       edge: e,
       child: normalize_node_ctx(n: e.target, under_fn_decl: under_fn_decl)
     )
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: folded, diagnostics: cd } =>
+    Accepted { value: edges, diagnostics: cd } =>
       match body_lower_finish_for_normalize(
         n: n,
-        folded: folded,
+        folded: node_rebuild(n: n, children: edges),
         cd: cd,
         fn_body_pass_through: false
       ) {
