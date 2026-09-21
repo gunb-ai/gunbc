@@ -123,7 +123,8 @@ type PartitionInterfaceClosureState {
 // returning PartitionR4ValidityVerdict. Rust refuses only SccSplit and UnitGraphCycle, both facts of
 // the module DAG and the assignment (the unit graph is the module edges projected through the
 // assignment, the same fact partition_fold derives as CompilationUnit.deps), so Rust's takes
-// (module_dag, assignment) and can be asked BEFORE any interface is built -- which is where
+// (module_dag, components, assignment) -- the components being the DAG's own SCCs, passed in by
+// the one resolve that derives them -- and so can be asked BEFORE any interface is built -- which is where
 // resolve_partition_outcome asks it. C's c_validate_partition_r4 keeps the units, because its
 // ByValueTypeCycle reads the derived interfaces. Each cause is a realization-agnostic
 // STRUCTURAL condition; each realization decides which it refuses. SccSplit (a module

@@ -549,10 +549,14 @@ fn resolve_partition_outcome(
   parameter: PartitionParameter,
   module_dag: ModuleDag
 ) -> ResolvePartitionOutcome {
+  // ONE COMPONENTS PASS PER RESOLVE: the policy lays out these components and the R4 verdict reads
+  // SCC membership from the same list, so both are handed the value rather than each re-deriving it.
+  let components = module_dag_components_dependencies_first(module_dag: module_dag)
   match parameter {
     ExplicitPartitionParam { partition: explicit } =>
       admit_partition_assignment(
         module_dag: module_dag,
+        components: components,
         assignment: explicit.assignment,
         provenance: partition_provenance_hand_explicit()
       )
@@ -562,7 +566,8 @@ fn resolve_partition_outcome(
       } else {
         admit_partition_assignment(
           module_dag: module_dag,
-          assignment: policy_partition_assignment(module_dag: module_dag, policy: policy),
+          components: components,
+          assignment: policy_partition_assignment(module_dag: module_dag, components: components, policy: policy),
           provenance: partition_provenance_policy_derived(policy: policy_partition_resolver_ref())
         )
       }
@@ -611,10 +616,11 @@ fn policy_partition_unit_id(unit_index: Int) -> CompilationUnitId {
 // the policy should pass, and the verdict is what establishes that it did.
 fn policy_partition_assignment(
   module_dag: ModuleDag,
+  components: List<List<String>>,
   policy: PartitionPolicy
 ) -> Map<ModuleId, CompilationUnitId> {
   let quota = (length(module_dag.modules) + policy.target_crate_count - 1) / policy.target_crate_count
-  let filled = module_dag_components_dependencies_first(module_dag: module_dag)
+  let filled = components
     |> fold(init: PolicyPartitionFill { assignment: empty_map(), unit_index: 0, filled: 0 }, f: fn(acc, component) {
       let opens_next_unit = (acc.filled >= quota) && (acc.unit_index + 1 < policy.target_crate_count)
       let unit_index = if opens_next_unit { acc.unit_index + 1 } else { acc.unit_index }
@@ -679,6 +685,7 @@ fn assignment_first_stranger(
 
 fn admit_partition_assignment(
   module_dag: ModuleDag,
+  components: List<List<String>>,
   assignment: Map<ModuleId, CompilationUnitId>,
   provenance: PartitionProvenance
 ) -> ResolvePartitionOutcome {
@@ -690,7 +697,7 @@ fn admit_partition_assignment(
         Present { value: module_id } =>
           ResolvePartitionRefused { cause: AssignmentNamesModuleOutsideDag { module_id: module_id } }
         Absent =>
-          match validate_partition_r4(module_dag: module_dag, assignment: assignment) {
+          match validate_partition_r4(module_dag: module_dag, components: components, assignment: assignment) {
             PartitionR4Refused { cause: cause } =>
               ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: cause } }
             PartitionR4Valid =>
@@ -726,10 +733,10 @@ data stage0_partition_receipt_outcome: Stage0PartitionReceiptOutcome = match sta
 // walk this replaces had no visited set, so on a cyclic DAG it did not terminate, and it paid a walk
 // per ordered pair besides.
 fn assignment_has_scc_split(
-  module_dag: ModuleDag,
+  components: List<List<String>>,
   assignment: Map<ModuleId, CompilationUnitId>
 ) -> Bool {
-  module_dag_components_dependencies_first(module_dag: module_dag)
+  components
     |> any(component => {
       let owners = component |> fold(init: [], f: fn(acc, member) {
         match assignment_owner(assignment: assignment, module_id: member as ModuleId) {
@@ -772,9 +779,10 @@ fn assignment_unit_graph_has_cycle(
 
 fn validate_partition_r4(
   module_dag: ModuleDag,
+  components: List<List<String>>,
   assignment: Map<ModuleId, CompilationUnitId>
 ) -> PartitionR4ValidityVerdict {
-  if assignment_has_scc_split(module_dag: module_dag, assignment: assignment) {
+  if assignment_has_scc_split(components: components, assignment: assignment) {
     PartitionR4Refused {
       cause: SccSplit { detail: "Rust R4: mutually dependent modules assigned to different compilation units" }
     }
