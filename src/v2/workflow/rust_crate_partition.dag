@@ -545,12 +545,13 @@ data stage0_module_dag: ModuleDag = ModuleDag {
     type_definitions: stage0_module_dag_type_definitions_map(),
   }
 
+// ONE COMPONENTS PASS PER RESOLVE: the policy lays out the DAG's components and the R4 verdict
+// reads SCC membership from the same list, so both are handed the value rather than each
+// re-deriving it.
 fn resolve_partition_outcome(
   parameter: PartitionParameter,
   module_dag: ModuleDag
 ) -> ResolvePartitionOutcome {
-  // ONE COMPONENTS PASS PER RESOLVE: the policy lays out these components and the R4 verdict reads
-  // SCC membership from the same list, so both are handed the value rather than each re-deriving it.
   let components = module_dag_components_dependencies_first(module_dag: module_dag)
   match parameter {
     ExplicitPartitionParam { partition: explicit } =>
