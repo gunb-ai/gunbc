@@ -45,10 +45,40 @@ import v2.std.node {
 // about stability, reconstruction and identity-free combination, and it is NOT adequate as a durable
 // intersubjective content identity for cross-party agreement: a 64-bit non-cryptographic digest is a
 // locator, and treating a locator as an identity witness is a defect class this repository has already
-// met elsewhere. No stronger option exists in .dag today -- the sha256 surfaces in std.content_hash and
-// extdeps.crypto.hash VALIDATE hex rather than computing it, and the v1 seed's builtin registry is
-// frozen against new rows. dissolve-on: a computing cryptographic digest reachable from .dag, at which
-// point ObjectId changes family and this note deletes.
+// met elsewhere.
+//
+// CORRECTED 2026-09-21 (gunbc#11996). This note said "No stronger option exists in .dag today -- the
+// sha256 surfaces in std.content_hash and extdeps.crypto.hash VALIDATE hex rather than computing it".
+// That was true when written and is now FALSE: extdeps.crypto.sha2 computes FIPS 180-4 SHA-256 over
+// List<UInt8> in the substrate, witnessed by test.claim.sha256_fips_witness_test, and
+// std.content_hash content_hash_of_value_cryptographic mints a Sha256Hash through it.
+// std.fabric_storage's object refs moved onto it in that change.
+//
+// AND THE OLD TRIGGER HAD TO BE REPLACED, NOT JUST THE REASON -- this is the DESIGN 4b(3) defect the
+// row was one merge away from committing. The dissolve-on read "a computing cryptographic digest
+// reachable from .dag", and that condition is NOW SATISFIED. Read literally it retires this row
+// today, while the capability it exists to protect is still completely dead: ObjectId would remain
+// fnv1a64, and nothing would be left saying so. A trigger must name the CAPABILITY, never an
+// artifact that would contribute to one.
+//
+// WHY THE CAPABILITY IS NATIVE EMISSION AND NOT THROUGHPUT, derived rather than assumed. ObjectId is
+// v2.std.node's Hash by alias, for the measured reason stated below, and that Hash is the COMPILER'S
+// OWN structural node identity -- it is computed for every node of every compile, including the
+// compiles by which v2 emits itself (DESIGN section 7). extdeps.crypto.sha2 does not emit:
+// UInt32 is Compose<UInt, MachineWidth<32>> over the Phantom carrier, so it is a STRUCTURAL operand,
+// and std.operator_realization operator_realization_for routes Add/Sub/Mul/Div/Mod on a structural
+// operand to structural_arithmetic_refusal -- a typed located refusal, not a slow path. So retyping
+// Hash onto sha2 today does not yield a slower compiler, it yields one that cannot be emitted at
+// all. That is a capability boundary and not a cost tradeoff, which is why no throughput measurement
+// decides it. The class is gunbc.recurring_failure_mode
+// bounded_natural_arithmetic_evaluated_as_unbounded_int, whose own prerequisite is MachineWidth<N>
+// reified as a value.
+//
+// DISSOLVE-ON, RESTATED AS THE CAPABILITY: native emission of the extdeps.crypto.sha2 closure --
+// SUFFICIENT FOR v2 to emit and build itself with node identity minted from a cryptographic family,
+// so that the digest carrying cross-party agreement is the same digest the compiler computes. When
+// that holds, ObjectId changes family with Hash and this note deletes. A SHA-256 bridge existing,
+// or std.fabric_storage consuming one, does not satisfy it and neither did satisfy it.
 //
 // ObjectId IS v2.std.node's Hash rather than a parallel alias over the same underlying digest type.
 // The typechecker treats two aliases of one primitive as distinct, so the first cut -- ObjectId
