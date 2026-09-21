@@ -1,0 +1,40 @@
+module gunbc.rung_drop.variant_fields_unlowered_on_the_native_route
+
+import std.types { List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-09-21 (gunbc#11998, side-chat ruling via neat-boar-16). ONE frontier for record
+// and positional variant fields together, because they are one fact spelled two ways: the seed
+// lowers `A { v: T }` to a Required field `v` and `A(T)` to a Required field "0"
+// (v1.compiler.parse parse_positional_variant_type_fields), and binds pattern binders from those
+// fields. On the native route no v2 stage lowers variant fields into declared field identities
+// for either spelling: namespace_graft_type_decl_is_fielded sends every fielded declaration to
+// the residual forest and body_lower_is_structure_preserved_emitted keeps field_decl_block and
+// positional_variant_payload as preserved structure. gunbc#11998 added the positional parse row,
+// so `A(T)` now reaches that same preserved state records already had -- parity, not a new gap.
+// The match-arm lowering kept only a pattern's constructor atom, so a positional binder was
+// silently lost; that loss is now the typed refusal
+// body_lowering_reason_positional_pattern_binder_unlowered.
+
+data variant_fields_unlowered_on_the_native_route_population: List<String> = [
+  "v2.compiler.namespace_graft namespace_graft_type_decl_is_fielded -- record and positional variants go to residual_units, no field identities",
+  "v2.compiler.body_lowering_fold body_lower_is_structure_preserved_emitted -- dag_surface_field_decl_block and dag_surface_positional_variant_payload preserved unlowered",
+  "v2.compiler.body_lowering_fold body_lower_match_arm_wire_from_sequence -- positional pattern binders refuse (body_lowering_reason_positional_pattern_binder_unlowered)",
+]
+
+data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
+  identity: "variant_fields_unlowered_on_the_native_route" as NonEmptyStr,
+  subject: "native route lowers variant fields, named and positional, into declared field identities and binds pattern binders from them, the way the seed does",
+  declared: "2026-09-21",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "a v2 stage lowers variant fields into declared field identities (named and positional \"0\")"
+    },
+    population: variant_fields_unlowered_on_the_native_route_population,
+    restoration_trigger: "a v2 stage lowers variant fields into declared field identities (named and positional \"0\"), sufficient for the match-arm path to bind a pattern binder, braced or positional, from the field it names. Parsing either spelling without that lowering does not retire this row, and neither does lowering one spelling alone."
+  }
+}

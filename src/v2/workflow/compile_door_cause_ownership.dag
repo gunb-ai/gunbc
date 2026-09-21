@@ -126,6 +126,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (2 modules)"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_positional_pattern_binder_unlowered,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "flips with gunbc.rung_drop variant_fields_unlowered_on_the_native_route: a v2 stage lowers variant fields into declared field identities (named and positional \"0\"), and the match-arm path binds from them. Until then a positional pattern `A(x) =>` refuses here instead of lowering to an arm whose binder vanished (the pre-existing loss, routed to a refusal in gunbc#11998)"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_statement_precedes_without_binding,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,

@@ -494,6 +494,7 @@ fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
 fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_type_variant)
     || (emitted == ^dag_surface_type_alias_rhs)
+    || (emitted == ^dag_surface_type_alias_rhs_lead)
     || (emitted == ^dag_surface_field_decl_block)
     || (emitted == ^dag_surface_positional_variant_payload)
     || (emitted == ^dag_surface_fn_type)
@@ -3143,12 +3144,39 @@ fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
   }
 }
 
+// POSITIONAL BINDERS ARE REFUSED, NOT DROPPED. body_lower_pattern_atom_optional keeps a pattern's
+// constructor atom and nothing else, so `A(x) => x` lowered to an arm on `A` whose body names an
+// `x` the arm never bound -- the payload's binder silently vanished. The seed binds it from the
+// variant's field "0" (v1.compiler.parse parse_positional_variant_type_fields), and no v2 stage
+// lowers variant fields into declared field identities for any variant, named or positional
+// (the frontier gunbc.rung_drop variant_fields_unlowered_on_the_native_route declares). Until one
+// does, a positional pattern is a typed, located refusal. The `(` atom is the discriminator
+// because the constructor pattern suffix (dag_grammar_constructor_pattern_suffix_expr) is the only
+// place a pattern admits one.
+fn body_lower_subtree_has_atom(n: Node, identity: Symbol) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: id } => id == identity
+    Absent =>
+      fold(n.children, init: false, f: fn(found, e) {
+        found || body_lower_subtree_has_atom(n: e.target, identity: identity)
+      })
+  }
+}
+
 fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
   match body_lower_find_captured(
     root: stripped,
     emitted: ^dag_surface_pattern
   ) {
     ParseSubtreeFound { captured: pat_capture } =>
+      if body_lower_subtree_has_atom(n: pat_capture, identity: ^dag_token_lparen) {
+        outcome_rejected(
+          d: body_lower_diagnostic(
+            reason: ^body_lowering_reason_positional_pattern_binder_unlowered,
+            n: pat_capture
+          )
+        )
+      } else {
       match body_lower_pattern_atom_optional(pattern_capture: pat_capture) {
         Present { value: pat_node } =>
           match body_lower_match_arm_body_capture_optional(stripped: stripped) {
@@ -3163,6 +3191,7 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
             Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
           }
         Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
+      }
       }
     ParseSubtreeAbsent =>
       match body_lower_match_spine_left(spine: stripped) {

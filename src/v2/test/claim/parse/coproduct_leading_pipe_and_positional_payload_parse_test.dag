@@ -1,14 +1,15 @@
 module v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse
 
 import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node }
+import v2.std.node { Node, canonicalize_node_strip_provenance }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -89,5 +90,77 @@ test fn positional_payload_is_not_a_type_decl_body_holds() -> Bool {
   match cp_parses(text: "module m.t\n\ntype R(X)\n") {
     true => false
     false => true
+  }
+}
+
+fn cp_normalized(text: String) -> Outcome<NormalizedTree> {
+  match cp_parse(text: text) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
+  }
+}
+
+// THE LEADING SEPARATOR IS LAYOUT, NOT MEANING: `type H = | A | B` and `type H = A | B` must
+// normalize to the same provenance-free tree (the leading `|` mints occurrence ids of its own, so
+// the comparison is over canonicalize_node_strip_provenance), so the
+// optional `|` cannot change the alternatives the rhs production yields.
+test fn leading_pipe_normalizes_to_the_same_alternatives_as_without_holds() -> Bool {
+  match cp_normalized(text: "module m.t\n\ntype H = | A | B\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: with_pipe, diagnostics: _ } =>
+      match cp_normalized(text: "module m.t\n\ntype H = A | B\n") {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: without_pipe, diagnostics: _ } =>
+          canonicalize_node_strip_provenance(n: with_pipe.root)
+            == canonicalize_node_strip_provenance(n: without_pipe.root)
+      }
+  }
+}
+
+// The positional row alone, with no leading `|`, at its construction site. This establishes that
+// the front end CONSUMES the spelling through normalize. It does not establish the field-"0"
+// lowering: no v2 stage lowers variant fields into declared field identities for ANY variant,
+// named or positional, so `A(Int)` and `A { v: Int }` are equally preserved and unlowered today
+// (gunbc.rung_drop variant_fields_unlowered_on_the_native_route).
+test fn positional_payload_without_leading_pipe_with_construction_normalizes_holds() -> Bool {
+  cp_normalizes(text: "module m.t\n\ntype C = A(Int) | B\n\nfn wrap(x: Int) -> C {\n  A(x)\n}\n")
+}
+
+fn cp_normalize_refuses_with(text: String, reason: Symbol) -> Bool {
+  match cp_normalized(text: text) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+// ELIMINATION REFUSES RATHER THAN LOSING THE BINDER. The match-arm lowering kept only a pattern's
+// constructor atom, so `A(x) => x` became an arm on `A` whose `x` was never bound. It is now a
+// typed refusal (body_lower_match_arm_wire_from_sequence) until variant fields lower.
+test fn positional_pattern_binder_refuses_until_fields_lower_holds() -> Bool {
+  cp_normalize_refuses_with(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n",
+    reason: ^body_lowering_reason_positional_pattern_binder_unlowered
+  )
+}
+
+// The refusal is not over-broad: the braced spelling of the same elimination still lowers.
+test fn braced_pattern_binder_still_normalizes_holds() -> Bool {
+  cp_normalizes(
+    text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v: x } => x\n    B => 0\n  }\n}\n"
+  )
+}
+
+// The discriminating half of the equality above: the same projection DOES separate two coproducts
+// whose alternatives differ, so the leading-pipe equality is not a comparison that cannot fail.
+test fn distinct_alternatives_do_not_normalize_to_the_same_tree_holds() -> Bool {
+  match cp_normalized(text: "module m.t\n\ntype H = | A | B\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: left, diagnostics: _ } =>
+      match cp_normalized(text: "module m.t\n\ntype H = A | C\n") {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: right, diagnostics: _ } =>
+          canonicalize_node_strip_provenance(n: left.root)
+            != canonicalize_node_strip_provenance(n: right.root)
+      }
   }
 }
