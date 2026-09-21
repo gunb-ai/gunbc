@@ -173,43 +173,63 @@ fn approval_status_from_get(success: Bool, body: String) -> FiledApprovalStatus 
 // parameters and a `uses` row -- and they need not be: what the broker is asked about is the
 // escalation id, and what comes back is a standing at an instant. The subject enters only in the
 // pure gate fold above, which the caller applies to the standing the read returns.
+//
+// A SPENT WAITING BUDGET IS NOT AN EXPIRED WINDOW. Only the timestamp fold (approval_poll_standing,
+// against the filed expires_at) may say the operator can no longer decide; a run that stops
+// waiting while the filing is still live says so as PollBudgetExhausted, whose remedy is to rerun
+// or keep polling the SAME filing, where expiry's remedy is a deliberate new request.
+type ApprovalStandingRead
+  = StandingReadAt { standing: ApprovalPollStanding, observed_at: Timestamp }
+  | StandingClockUnreadable
+
 type ApprovalPollOutcome
   = PollObservedAt { standing: ApprovalPollStanding, observed_at: Timestamp }
+  | PollBudgetExhausted { escalation_id: NonEmptyStr, observed_at: Timestamp }
   | PollClockUnreadable
 
 // One read of the broker's standing for this escalation, judged at a fresh canonical instant.
-fn approval_standing_read(escalation_id: NonEmptyStr, expires_at: Timestamp) -> ApprovalPollOutcome
+fn approval_standing_read(escalation_id: NonEmptyStr, expires_at: Timestamp) -> ApprovalStandingRead
   uses net: Network
 {
   match approval_instant_now() {
-    Absent => PollClockUnreadable
+    Absent => StandingClockUnreadable
     Present { value: observed } => {
       let got = http.Client.GetLocalhostBounded(url: approval_status_url(escalation_id: escalation_id))
-      PollObservedAt { standing: approval_poll_standing(status: approval_status_from_get(success: got.success, body: got.body), observed_at: observed, expires_at: expires_at), observed_at: observed }
+      StandingReadAt { standing: approval_poll_standing(status: approval_status_from_get(success: got.success, body: got.body), observed_at: observed, expires_at: expires_at), observed_at: observed }
     }
   }
 }
 
-// THE BOUNDED POLL. Each tick reads the standing at a fresh instant; a decided standing is
-// returned WITH the instant of that read, so the caller admits it live at the instant of THAT
-// read -- never an earlier tick's. Only a standing that is STILL PENDING consults the budget: with
-// ticks left it paces and reads again, with none left it is the expiry. A decision read on the
-// last tick is a decision, not an expiry (review 69509).
+// THE DECISION AFTER ONE READ, pure, so the ordering the bounded poll depends on is a witnessed
+// fact rather than a property of the wet recursion: a decided standing returns as read; a pending
+// one continues while ticks remain and is the exhausted budget when none do -- never an expiry.
+type ApprovalPollStep
+  = PollReturn { outcome: ApprovalPollOutcome }
+  | PollSleepAndContinue { next_remaining: Int }
+
+fn approval_poll_step(escalation_id: NonEmptyStr, standing: ApprovalPollStanding, observed_at: Timestamp, remaining: Int) -> ApprovalPollStep {
+  match standing {
+    PollStillPending =>
+      if remaining <= 0 { PollReturn { outcome: PollBudgetExhausted { escalation_id: escalation_id, observed_at: observed_at } } }
+      else { PollSleepAndContinue { next_remaining: remaining - 1 } }
+    _ => PollReturn { outcome: PollObservedAt { standing: standing, observed_at: observed_at } }
+  }
+}
+
+// THE BOUNDED POLL: N waits and a terminal read at the declared boundary, each read at a fresh
+// instant, each step decided by approval_poll_step.
 fn approval_poll_ticks(remaining: Int, cadence: Second, escalation_id: NonEmptyStr, expires_at: Timestamp) -> ApprovalPollOutcome
   uses net: Network
 {
   match approval_standing_read(escalation_id: escalation_id, expires_at: expires_at) {
-    PollClockUnreadable => PollClockUnreadable
-    PollObservedAt { standing: standing, observed_at: observed } =>
-      match standing {
-        PollStillPending =>
-          if remaining <= 0 {
-            PollObservedAt { standing: PollExpired, observed_at: observed }
-          } else {
-            let _paced = sleep_delay_seconds_second_carrier_projection(duration: cadence)
-            approval_poll_ticks(remaining: remaining - 1, cadence: cadence, escalation_id: escalation_id, expires_at: expires_at)
-          }
-        _ => PollObservedAt { standing: standing, observed_at: observed }
+    StandingClockUnreadable => PollClockUnreadable
+    StandingReadAt { standing: standing, observed_at: observed } =>
+      match approval_poll_step(escalation_id: escalation_id, standing: standing, observed_at: observed, remaining: remaining) {
+        PollReturn { outcome: o } => o
+        PollSleepAndContinue { next_remaining: n } => {
+          let _paced = sleep_delay_seconds_second_carrier_projection(duration: cadence)
+          approval_poll_ticks(remaining: n, cadence: cadence, escalation_id: escalation_id, expires_at: expires_at)
+        }
       }
   }
 }
@@ -218,6 +238,7 @@ fn approval_poll_ticks(remaining: Int, cadence: Second, escalation_id: NonEmptyS
 fn approval_gate_from_outcome<Subject>(outcome: ApprovalPollOutcome, request: AuthorizationRequest<Subject>) -> ApprovalGate<Subject> {
   match outcome {
     PollClockUnreadable => GateRefused { cause: ApprovalStoreUnreadable { detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr } }
+    PollBudgetExhausted { escalation_id: e, observed_at: _ } => GateRefused { cause: ApprovalPending { escalation_id: e } }
     PollObservedAt { standing: standing, observed_at: observed } => approval_gate_from_poll(poll: standing, request: request, observed_at: observed)
   }
 }

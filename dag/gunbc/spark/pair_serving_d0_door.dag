@@ -8,7 +8,7 @@ import std.resources { Network }
 import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization }
 import gunbc.auth.approval_gate {
   ApprovalGate, GateAdmitted, GateRefused, ApprovalStoreUnreadable, approval_gate_from_poll, approval_gate_from_outcome, approval_refusal_text,
-  approval_instant_now, approval_expires_at, approval_standing_read, approval_poll_ticks, PollObservedAt, PollClockUnreadable,
+  approval_instant_now, approval_expires_at, approval_standing_read, approval_poll_ticks, StandingReadAt, StandingClockUnreadable,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
 }
 import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, stored_request_from_authorization }
@@ -151,8 +151,8 @@ fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptySt
           }
         _ =>
           match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
-            PollClockUnreadable => D0DoorRefused { reason: "clock unreadable; refusing to judge expiry against a fabricated instant" }
-            PollObservedAt { standing: standing, observed_at: _ } =>
+            StandingClockUnreadable => D0DoorRefused { reason: "clock unreadable; refusing to judge expiry against a fabricated instant" }
+            StandingReadAt { standing: standing, observed_at: _ } =>
               match d0_resumable_authorization(claim: claim, transaction: transaction, poll: standing, request: request) {
                 D0Resumable { authorization: a } => D0DoorAdmitted { authorization: a }
                 D0NotRecorded { cause: c } => D0DoorRefused { reason: join(["the consent's recorded decision does not resume this run: ", approval_refusal_text(cause: c)], "") }

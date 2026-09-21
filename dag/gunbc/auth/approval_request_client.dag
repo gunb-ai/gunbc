@@ -8,6 +8,7 @@ import extdeps.crypto.mac {
 import gunbc.auth.approval_status_wire {
   FiledApprovalStatus, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
 }
+import gunbc.auth.approval_capability { utc_instant_before }
 import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, request_revision_of, approval_mac_key_id,
 }
@@ -90,6 +91,10 @@ type ApprovalPollStanding
   | PollNotFiled
   | PollUnreadable { detail: NonEmptyStr }
 
+// THE BOUNDARY IS THE CAPABILITY'S: expires_at is the instant a request STOPS being decidable
+// (gunbc.auth.approval_capability admits only observed_at < expires_at), so equality is expired
+// here too -- a client that still called the operator's request pending at the very second the
+// broker can no longer redeem the capability would wait for a decision that cannot land.
 // THE FILED REQUEST'S OWN WINDOW GOVERNS A PENDING STANDING. A pending status carries the
 // expires_at the broker filed (the one the operator was shown); the caller's expires_at is the
 // window it would file under and governs only a request that is NOT filed. A rerun that computes
@@ -106,7 +111,7 @@ fn approval_poll_standing(
     StatusDenied { revision: r, decided_by: by, decided_at: at, reason: why } =>
       PollDenied { revision: r, decided_by: by, decided_at: at, reason: why }
     StatusUnreadable { detail: d } => PollUnreadable { detail: d }
-    StatusPending { expires_at: filed } => if observed_at > filed { PollExpired } else { PollStillPending }
-    StatusNotFiled => if observed_at > expires_at { PollExpired } else { PollNotFiled }
+    StatusPending { expires_at: filed } => if utc_instant_before(a: observed_at, b: filed) { PollStillPending } else { PollExpired }
+    StatusNotFiled => if utc_instant_before(a: observed_at, b: expires_at) { PollNotFiled } else { PollExpired }
   }
 }

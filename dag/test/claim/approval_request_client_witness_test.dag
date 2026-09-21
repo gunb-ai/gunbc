@@ -132,6 +132,28 @@ test fn a_pending_filing_expires_by_its_filed_window_not_the_callers() -> Bool {
     }
 }
 
+// THE BOUNDARY IS THE CAPABILITY'S: at the exact expires_at the request is expired (the broker
+// can no longer redeem the capability), one second before it is still pending / still fileable.
+test fn the_exact_expiry_instant_is_expired_and_one_second_before_is_live() -> Bool {
+  match approval_poll_standing(status: StatusPending { expires_at: "2026-09-16T21:00:00Z" }, observed_at: "2026-09-16T21:00:00Z", expires_at: "2026-09-16T23:00:00Z") {
+    PollExpired => true
+    _ => false
+  }
+    && match approval_poll_standing(status: StatusNotFiled, observed_at: "2026-09-16T21:00:00Z", expires_at: "2026-09-16T21:00:00Z") {
+      PollExpired => true
+      _ => false
+    }
+    && match approval_poll_standing(status: StatusPending { expires_at: "2026-09-16T21:00:00Z" }, observed_at: "2026-09-16T20:59:59Z", expires_at: "2026-09-16T21:00:00Z") {
+      PollStillPending => true
+      _ => false
+    }
+    && match approval_poll_standing(status: StatusNotFiled, observed_at: "2026-09-16T20:59:59Z", expires_at: "2026-09-16T21:00:00Z") {
+      PollNotFiled => true
+      _ => false
+    }
+}
+
+
 
 test fn post_filed_token_admits_poll_including_notify_failure() -> Bool {
   submission_body_admits_poll(body: submission_filed_text(filed: true, reason: "approval submission: filed esc-1 and notified (ntfy message m)"))
