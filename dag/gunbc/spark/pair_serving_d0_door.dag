@@ -8,7 +8,7 @@ import std.resources { Network }
 import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization }
 import gunbc.auth.approval_gate {
   ApprovalGate, GateAdmitted, GateRefused, ApprovalStoreUnreadable, approval_gate_from_poll, approval_gate_from_outcome, approval_refusal_text,
-  approval_instant_now, approval_expires_at, approval_standing_read, approval_poll_ticks, StandingReadAt, StandingClockUnreadable,
+  approval_instant_now, approval_expires_at, approval_standing_read, approval_poll_ticks, ApprovalStandingRead, StandingReadAt, StandingClockUnreadable,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
 }
 import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, stored_request_from_authorization }
@@ -130,6 +130,27 @@ fn d0_door_gate_of(gate: ApprovalGate<D0Subject>) -> D0DoorGate {
   }
 }
 
+// THE STEP FOR A FROZEN FILING WITH NO CLAIM, pure over the read: nothing began, so the standing
+// is a first run's -- not filed: file the frozen request; pending: enter the bounded poll; decided:
+// the live gate at the instant of the read; unreadable clock: refuse before anything is dispatched.
+type D0AbsentClaimStep
+  = D0AbsentClaimClockUnreadable
+  | D0AbsentClaimFileFrozen
+  | D0AbsentClaimEnterPoll
+  | D0AbsentClaimDecided { gate: ApprovalGate<D0Subject> }
+
+fn d0_absent_claim_step(read: ApprovalStandingRead, request: AuthorizationRequest<D0Subject>) -> D0AbsentClaimStep {
+  match read {
+    StandingClockUnreadable => D0AbsentClaimClockUnreadable
+    StandingReadAt { standing: standing, observed_at: observed } =>
+      match standing {
+        PollNotFiled => D0AbsentClaimFileFrozen
+        PollStillPending => D0AbsentClaimEnterPoll
+        decided => D0AbsentClaimDecided { gate: approval_gate_from_poll(poll: decided, request: request, observed_at: observed) }
+      }
+  }
+}
+
 fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp) -> D0DoorGate
   uses net: Network
 {
@@ -140,14 +161,11 @@ fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptySt
       let claim = d0_read_claim(store: store, escalation_id: request.escalation_id)
       match claim {
         D0ClaimAbsent =>
-          match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
-            StandingClockUnreadable => D0DoorRefused { reason: "clock unreadable; refusing to judge expiry against a fabricated instant" }
-            StandingReadAt { standing: standing, observed_at: observed } =>
-              match standing {
-                PollNotFiled => d0_file_and_poll(request: request, issued: issued, expires: expires)
-                PollStillPending => d0_poll(request: request, expires: expires)
-                decided => d0_door_gate_of(gate: approval_gate_from_poll(poll: decided, request: request, observed_at: observed))
-              }
+          match d0_absent_claim_step(read: approval_standing_read(escalation_id: request.escalation_id, expires_at: expires), request: request) {
+            D0AbsentClaimClockUnreadable => D0DoorRefused { reason: "clock unreadable; refusing to judge expiry against a fabricated instant" }
+            D0AbsentClaimFileFrozen => d0_file_and_poll(request: request, issued: issued, expires: expires)
+            D0AbsentClaimEnterPoll => d0_poll(request: request, expires: expires)
+            D0AbsentClaimDecided { gate: g } => d0_door_gate_of(gate: g)
           }
         _ =>
           match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {

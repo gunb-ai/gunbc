@@ -7,7 +7,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, serialize_content_hash }
 import std.scoped_authorization { AuthorizationRequest, AuthorizationGranted }
 import gunbc.auth.approval_decision_store { request_revision_of }
-import gunbc.auth.approval_request_client { PollApproved }
+import gunbc.auth.approval_request_client { PollApproved, PollNotFiled, PollStillPending, PollDenied }
+import gunbc.auth.approval_gate { StandingReadAt, StandingClockUnreadable, ApprovalDenied }
+import gunbc.spark.pair_serving_d0_door { d0_absent_claim_step, D0AbsentClaimClockUnreadable, D0AbsentClaimFileFrozen, D0AbsentClaimEnterPoll, D0AbsentClaimDecided }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import std.measure { second }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
@@ -98,6 +100,27 @@ test fn a_recorded_approval_resumes_only_under_this_transactions_held_claim() ->
         && (match d0_resumable_authorization(claim: other, transaction: "tx-1" as NonEmptyStr, poll: approved, request: req) { D0NotClaimedHere { reason: r } => (r as String).contains("tx-9")  _ => false })
         && (match d0_resumable_authorization(claim: done, transaction: "tx-1" as NonEmptyStr, poll: approved, request: req) { D0NotClaimedHere { reason: _ } => true  _ => false })
         && (match d0_resumable_authorization(claim: held, transaction: "tx-1" as NonEmptyStr, poll: PollApproved { revision: "sha256:0000" as NonEmptyStr, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, request: req) { D0NotRecorded { cause: ApprovalIntentMismatch { requested_revision: _, decided_revision: _ } } => true  _ => false })
+    }
+  }
+}
+
+// THE DOOR'S STEP FOR A FROZEN FILING WITH NO CLAIM: not filed files the frozen request, pending
+// enters the poll, a decision goes through the live gate at the instant of the read (an approval
+// inside its window admits; a denial refuses), and an unreadable clock refuses before any of it.
+test fn a_frozen_filing_with_no_claim_files_polls_or_decides_live_by_the_read() -> Bool {
+  match w_sha(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
+    Absent => false
+    Present { value: intent } => {
+      let req = w_request(intent: intent)
+      let rev = request_revision_of(request: req)
+      let at = "2026-09-21T02:00:00Z" as Timestamp
+      let until = "2026-09-21T03:00:00Z" as Timestamp
+      (match d0_absent_claim_step(read: StandingReadAt { standing: PollNotFiled, observed_at: at }, request: req) { D0AbsentClaimFileFrozen => true  _ => false })
+        && (match d0_absent_claim_step(read: StandingReadAt { standing: PollStillPending, observed_at: at }, request: req) { D0AbsentClaimEnterPoll => true  _ => false })
+        && (match d0_absent_claim_step(read: StandingReadAt { standing: PollApproved { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, observed_at: "2026-09-21T02:30:00Z" as Timestamp }, request: req) { D0AbsentClaimDecided { gate: GateAdmitted { authorization: _ } } => true  _ => false })
+        && (match d0_absent_claim_step(read: StandingReadAt { standing: PollApproved { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, observed_at: "2026-09-21T04:00:00Z" as Timestamp }, request: req) { D0AbsentClaimDecided { gate: GateRefused { cause: ApprovalAuthorizeRefused { detail: _ } } } => true  _ => false })
+        && (match d0_absent_claim_step(read: StandingReadAt { standing: PollDenied { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, reason: "no" as NonEmptyStr }, observed_at: at }, request: req) { D0AbsentClaimDecided { gate: GateRefused { cause: ApprovalDenied { reason: _ } } } => true  _ => false })
+        && (match d0_absent_claim_step(read: StandingClockUnreadable, request: req) { D0AbsentClaimClockUnreadable => true  _ => false })
     }
   }
 }
