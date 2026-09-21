@@ -32,11 +32,14 @@ import v2.std.node {
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
 import v2.std.symbol_index {
   SymbolIndex,
+  symbol_index_bind_at,
   symbol_index_insert,
   symbol_index_lookup
 }
+import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
 import v2.extdeps.languages.dag {
   alias_binding_row_from_decl_node,
+  import_binding_rows_from_decl_node,
   dag_surface_module_header_metadata_edge,
   namespace_graft_spine_segment_edge_optional,
   qualified_name_from_module_node
@@ -201,6 +204,36 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
   )
 }
 
+// ONE ROW, ONE BINDING, WHATEVER SURFACE FORM WROTE IT. An `alias` decl and one named item of an
+// `import` both arrive here as an AliasBindingRow, so this is the single place a name is bound at a
+// position that is not its declaration's own. It binds through symbol_index_bind_at rather than
+// symbol_index_insert because a row may land on a position a declaration already holds -- a module
+// that declares `N` and also imports `N` -- and the map has one slot: an insert there would let the
+// fill order pick the meaning silently.
+//
+// A ROW WHOSE TARGET IS NOT IN THE INDEX BINDS NOTHING, and that is not a swallowed error. The
+// refusal docs/plans/namespace-resolution-design.md section 13 asks for is raised AT THE REFERENCE
+// SITE, not at the declaration: with no binding at the importing position, a reference to the name
+// is off its own ancestor chain and the resolver refuses it, located, with the name the source
+// actually wrote. Refusing here instead would report the importing MODULE as the failing subject
+// and lose every reference site inside it.
+fn symbol_index_fill_binding_row(
+  index: SymbolIndex,
+  module_qn: QualifiedName,
+  row: AliasBindingRow
+) -> SymbolIndex {
+  match symbol_index_lookup(index: index, qualified_path: row.target) {
+    Present { value: resolved } =>
+      symbol_index_bind_at(
+        index: index,
+        binding_path: qualified_name_snoc(qn: module_qn, segment: row.binding),
+        declaring_path: row.target,
+        resolved: resolved
+      )
+    Absent => index
+  }
+}
+
 fn symbol_index_fill_alias_binding(
   index: SymbolIndex,
   module_qn: QualifiedName,
@@ -210,15 +243,26 @@ fn symbol_index_fill_alias_binding(
   match alias_binding_row_from_decl_node(decl: decl, module_root: root) {
     Rejected { diagnostics: _ } => index
     Accepted { value: row, diagnostics: _ } =>
-      match symbol_index_lookup(index: index, qualified_path: row.target) {
-        Present { value: resolved } =>
-          symbol_index_insert(
-            index: index,
-            qualified_path: qualified_name_snoc(qn: module_qn, segment: row.binding),
-            resolved: resolved
-          )
-        Absent => index
-      }
+      symbol_index_fill_binding_row(index: index, module_qn: module_qn, row: row)
+  }
+}
+
+fn symbol_index_fill_import_binding(
+  index: SymbolIndex,
+  module_qn: QualifiedName,
+  root: Node,
+  decl: Node
+) -> SymbolIndex {
+  match import_binding_rows_from_decl_node(decl: decl, module_root: root) {
+    Rejected { diagnostics: _ } => index
+    Accepted { value: rows, diagnostics: _ } =>
+      fold_list(
+        xs: rows,
+        empty: index,
+        cons: fn(acc, row) {
+          symbol_index_fill_binding_row(index: acc, module_qn: module_qn, row: row)
+        }
+      )
   }
 }
 
@@ -231,8 +275,13 @@ fn symbol_index_fill_alias_bindings(
     node_subtree_nodes(root: root),
     init: index,
     f: fn(acc, n) {
-      symbol_index_fill_alias_binding(
-        index: acc,
+      symbol_index_fill_import_binding(
+        index: symbol_index_fill_alias_binding(
+          index: acc,
+          module_qn: module_qn,
+          root: root,
+          decl: n
+        ),
         module_qn: module_qn,
         root: root,
         decl: n
@@ -274,18 +323,16 @@ fn symbol_index_fill_unique_variant_aliases(
   )
 }
 
-fn symbol_index_fill_module_root(index: SymbolIndex, root: Node) -> SymbolIndex {
+// PASS A -- WHAT THIS ROOT DECLARES. Every path here is rooted at this module's own qualified name,
+// so no other root can write it and the result does not depend on when this root is visited.
+fn symbol_index_fill_module_declarations(index: SymbolIndex, root: Node) -> SymbolIndex {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
-      symbol_index_fill_alias_bindings(
-        index: symbol_index_fill_unique_variant_aliases(
-          index: symbol_index_fill_containment_node(
-            index: index,
-            path: module_qn,
-            node: root
-          ),
-          module_qn: module_qn,
-          root: root
+      symbol_index_fill_unique_variant_aliases(
+        index: symbol_index_fill_containment_node(
+          index: index,
+          path: module_qn,
+          node: root
         ),
         module_qn: module_qn,
         root: root
@@ -294,15 +341,104 @@ fn symbol_index_fill_module_root(index: SymbolIndex, root: Node) -> SymbolIndex 
   }
 }
 
-fn symbol_index_fill_module_roots(
+// PASS B -- WHAT THIS ROOT BINDS FROM ELSEWHERE. Every row here reads ANOTHER root's declarations
+// out of the index, so it can only be run once every root's pass A has been. The two sources of
+// rows differ only in where they SURVIVED: an `alias` decl is grafted into the tree as an ordinary
+// named unit and is still readable from the root, while an import decl was dissolved by the graft
+// and its rows ride on the carrier (v2.compiler.normalized_tree NormalizedTree import_bindings).
+// They are the same kind of row and bind by the same call.
+fn symbol_index_fill_module_bindings(index: SymbolIndex, tree: ModuleBindingSource) -> SymbolIndex {
+  match qualified_name_from_module_node(root: tree.root) {
+    Accepted { value: module_qn, diagnostics: _ } =>
+      fold_list(
+        xs: tree.import_bindings,
+        empty: symbol_index_fill_alias_bindings(
+          index: index,
+          module_qn: module_qn,
+          root: tree.root
+        ),
+        cons: fn(acc, row) {
+          symbol_index_fill_binding_row(index: acc, module_qn: module_qn, row: row)
+        }
+      )
+    Rejected { diagnostics: _ } => index
+  }
+}
+
+fn symbol_index_fill_module_tree(index: SymbolIndex, tree: ModuleBindingSource) -> SymbolIndex {
+  symbol_index_fill_module_bindings(
+    index: symbol_index_fill_module_declarations(index: index, root: tree.root),
+    tree: tree
+  )
+}
+
+// THE NODE-ONLY DOOR, AND ITS NAME SAYS WHAT IT CANNOT DO. A caller holding only a grafted Node has
+// no import rows to offer -- the graft dissolved them and they are not recoverable from what is
+// left -- so this fills declarations and the alias rows still present in the tree, and no import
+// bindings. That is a statement about the input, not a default: a caller holding a NormalizedTree
+// goes through symbol_index_fill_module_tree and gets all three.
+fn symbol_index_fill_module_root(index: SymbolIndex, root: Node) -> SymbolIndex {
+  match qualified_name_from_module_node(root: root) {
+    Accepted { value: module_qn, diagnostics: _ } =>
+      symbol_index_fill_alias_bindings(
+        index: symbol_index_fill_module_declarations(index: index, root: root),
+        module_qn: module_qn,
+        root: root
+      )
+    Rejected { diagnostics: _ } => index
+  }
+}
+
+// TWO PASSES OVER THE ROOTS, BECAUSE ONE PASS MAKES FILE ORDER DECIDE WHAT A REFERENCE MEANS.
+// A binding row reads its target out of the index, so under a single per-root pass a row pointing
+// at a root not yet visited finds nothing and binds nothing, while the same row in a corpus listed
+// the other way round binds fine. That is the corpus answering a resolution question with the order
+// its files were walked in, which docs/plans/namespace-resolution-design.md section 13 rules out as
+// a class -- and it is the quiet kind of order dependence, because the loser is an absence rather
+// than a wrong answer. Separating the passes removes the dependence by CONSTRUCTION rather than by
+// sorting the roots into some order that happens to work: after pass A every declaration any row
+// could name is present, so pass B's result is the same set for every permutation of the input.
+// THE PLURAL NODE-ONLY DOOR. Same statement as the singular one -- no import rows exist in a
+// grafted Node -- and the same two passes, so a census over a root list does not depend on the
+// order the list came in either.
+fn symbol_index_fill_module_root_nodes(
   index: SymbolIndex,
   roots: FreeMonoid<Node>
 ) -> SymbolIndex {
   fold_list(
     xs: roots,
-    empty: index,
+    empty: fold_list(
+      xs: roots,
+      empty: index,
+      cons: fn(acc, root) {
+        symbol_index_fill_module_declarations(index: acc, root: root)
+      }
+    ),
     cons: fn(acc, root) {
-      symbol_index_fill_module_root(index: acc, root: root)
+      match qualified_name_from_module_node(root: root) {
+        Accepted { value: module_qn, diagnostics: _ } =>
+          symbol_index_fill_alias_bindings(index: acc, module_qn: module_qn, root: root)
+        Rejected { diagnostics: _ } => acc
+      }
+    }
+  )
+}
+
+fn symbol_index_fill_module_roots(
+  index: SymbolIndex,
+  roots: FreeMonoid<ModuleBindingSource>
+) -> SymbolIndex {
+  fold_list(
+    xs: roots,
+    empty: fold_list(
+      xs: roots,
+      empty: index,
+      cons: fn(acc, tree) {
+        symbol_index_fill_module_declarations(index: acc, root: tree.root)
+      }
+    ),
+    cons: fn(acc, tree) {
+      symbol_index_fill_module_bindings(index: acc, tree: tree)
     }
   )
 }

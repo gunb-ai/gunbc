@@ -3,7 +3,7 @@ module v2.test.claim.provenance.loaded_carrier_receipts
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root_nodes }
 import v2.extdeps.languages.dag {
   dag_language_model,
   qualified_name_from_module_node
@@ -104,7 +104,7 @@ fn lcr_root_nodes() -> FreeMonoid<Node> {
 }
 
 fn lcr_index() -> SymbolIndex {
-  symbol_index_fill_module_roots(index: empty_symbol_index(), roots: lcr_root_nodes())
+  symbol_index_fill_module_root_nodes(index: empty_symbol_index(), roots: lcr_root_nodes())
 }
 
 fn lcr_root_named_step(acc: FreeMonoid<Node>, root: Node, wanted: QualifiedName) -> FreeMonoid<Node> {

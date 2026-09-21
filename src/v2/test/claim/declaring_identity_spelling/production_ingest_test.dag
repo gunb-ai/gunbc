@@ -15,7 +15,7 @@ import v2.compiler.resolution_provenance {
   resolve_reference_provenance
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root_nodes }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, is_empty }
 import v2.std.artifact { Artifact, SourceFile }
@@ -315,7 +315,7 @@ fn value_outside_call_roots() -> Optional<FreeMonoid<Node>> {
 
 fn marker_site_fill_lookup_is_present(roots: FreeMonoid<Node>) -> Bool {
   let collected = collect_reference_sites(roots: roots)
-  let index = symbol_index_fill_module_roots(index: empty_symbol_index(), roots: roots)
+  let index = symbol_index_fill_module_root_nodes(index: empty_symbol_index(), roots: roots)
   fold_list(
     xs: collected.sites,
     empty: false,

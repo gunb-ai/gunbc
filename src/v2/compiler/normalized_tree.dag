@@ -18,6 +18,7 @@ import std.algebra { Empty, FreeMonoid }
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.node { Node }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
+import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
 
 // A NormalizedTree is the ADMITTED product of normalize: a root whose own lowering left no wrapper
 // behind. It was an alias for Node until BL-1, which is why retention evidence reached resolve as a
@@ -27,9 +28,19 @@ import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty 
 // beside the root rather than inside it: `root` is byte-identical for a `test fn` and a plain `fn`,
 // and every consumer about Node structure reads `root` alone. Name resolution is the channel's
 // consumer, and refuses references to what it marks.
+// THE THIRD FIELD IS HERE FOR THE SAME REASON THE SECOND IS. The module graft dissolves an import
+// decl (v2.compiler.namespace_graft namespace_graft_unit_disposition, UnitDissolved) because an
+// import is not a declaration of this module and has no place in its containment tree. That is
+// right, and it erases the one fact docs/plans/namespace-resolution-design.md section 13 needs from
+// it: `import m.p { A }` BINDS `A` at this module's position. A `test` marker is erased by lowering
+// for an equally good reason and is carried here rather than recovered downstream; an import
+// binding is the same shape of fact and is carried the same way. Recovering it after the graft is
+// not an option -- the node is gone -- and re-reading the source at the index would be a second
+// read of a fact this carrier already passed.
 type NormalizedTree sole_constructor {
   root: Node,
   test_markers: TestMarkerChannel,
+  import_bindings: FreeMonoid<AliasBindingRow>,
 }
 
 // Rung: ACCEPTED REFINEMENT WITH EXECUTING REFUSAL, not structural impossibility. The invalid state
@@ -49,6 +60,7 @@ fn normalized_tree_retention_diagnostic(root: Node) -> Diagnostic {
 fn admit_normalized_tree(
   root: Node,
   test_markers: TestMarkerChannel,
+  import_bindings: FreeMonoid<AliasBindingRow>,
   diagnostics: Diagnostics
 ) -> Outcome<NormalizedTree> {
   if body_lowering_diagnostics_carry_wrapper_retention(d: diagnostics) {
@@ -59,8 +71,36 @@ fn admit_normalized_tree(
       )
     }
   } else {
-    Accepted { value: NormalizedTree { root: root, test_markers: test_markers }, diagnostics: diagnostics }
+    Accepted {
+      value: NormalizedTree {
+        root: root,
+        test_markers: test_markers,
+        import_bindings: import_bindings
+      },
+      diagnostics: diagnostics
+    }
   }
+}
+
+// Projection out of the sealed carrier for the symbol-index fill, which needs both halves of what a
+// module binds and can import neither this carrier nor the stages beneath it. Order-preserving for
+// the same reason the Node projection is.
+fn normalized_tree_roots_to_binding_sources(
+  roots: FreeMonoid<NormalizedTree>
+) -> FreeMonoid<ModuleBindingSource> {
+  fold_list(
+    xs: roots,
+    empty: Empty,
+    cons: fn(acc, tree) {
+      list_snoc_item(
+        xs: acc,
+        item: ModuleBindingSource {
+          root: tree.root,
+          import_bindings: tree.import_bindings
+        }
+      )
+    }
+  )
 }
 
 // Projection out of the sealed carrier for consumers genuinely about Node structure, not admission
@@ -74,9 +114,10 @@ fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMono
   )
 }
 
-// THE UNMARKED DOOR, AND ITS NAME SAYS SO. Its roots arrive as already-lowered Nodes, from which the
-// authored `test` marker cannot be recovered (lowering erases it by design), so every root is admitted
-// with an empty marker channel. That is a statement about the caller's input, not a default: a caller
+// THE UNMARKED DOOR, AND ITS NAME SAYS SO. Its roots arrive as already-lowered Nodes, from which
+// neither the authored `test` marker nor the module's import decls can be recovered (lowering erases
+// the first by design, the graft dissolves the second), so every root is admitted with an empty
+// marker channel and no import bindings. That is a statement about the caller's input, not a default: a caller
 // holding source goes through v2.compiler.normalize, which captures the channel from the parse tree.
 //
 // The plural door: the same decision per element, refusing as a whole so a partially admitted list
@@ -98,7 +139,12 @@ fn admit_unmarked_normalized_roots(
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: admitted, diagnostics: _ } =>
-          match admit_normalized_tree(root: root, test_markers: test_marker_channel_empty(), diagnostics: diagnostics) {
+          match admit_normalized_tree(
+            root: root,
+            test_markers: test_marker_channel_empty(),
+            import_bindings: Empty,
+            diagnostics: diagnostics
+          ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: one, diagnostics: _ } =>
               Accepted {

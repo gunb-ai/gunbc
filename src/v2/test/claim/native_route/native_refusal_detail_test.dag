@@ -314,15 +314,23 @@ test fn shadowed_reference_row_names_lookup_class_and_both_competing_declaration
   }
 }
 
-// THE GLOBAL-BARE CLASS IS NAMED AND NO CANDIDATE LIST IS FABRICATED. The bare index collapsed its
-// binders at fill time, so "where available" is honestly "not here": the class row says which
-// lookup was ambiguous and the chain carries zero competing-declaration rows.
-test fn global_bare_collision_row_names_its_lookup_class_without_fabricating_candidates_holds() -> Bool {
+// A BARE NAME TWO MODULES SPELL, BOUND ON NO CHAIN, IS UNBOUND -- NOT AMBIGUOUS. This arm used to
+// assert the opposite for this exact fixture: the resolver searched the corpus for the spelling,
+// found two, and refused as ambiguous while able to name NEITHER binder, because the bare index had
+// collapsed them at fill time. docs/plans/namespace-resolution-design.md section 13 deleted that
+// search, so the question this fixture asks has changed answer, and the arm moves with it rather
+// than retiring: `v2.ndq.user` binds `lone_value` nowhere, so it has no meaning here at all, and
+// what the corpus spells elsewhere is not evidence about this reference.
+//
+// IT STAYS ENROLLED BECAUSE IT IS THE DISCRIMINATOR FOR THE DELETION (DESIGN section 4b(4)).
+// Reinstating a corpus-wide bare-name search moves this arm back -- to ambiguous if the search
+// refuses over the spelling, to resolved if it picks -- and the two negative clauses below say
+// which wrong answer would be reported, so neither can pass quietly.
+test fn a_bare_name_bound_on_no_chain_is_unbound_not_ambiguous_holds() -> Bool {
   match ndp_collision_refusal() {
     Absent => false
     Present { value: d } =>
-      diagnostics_fatal_reason(d: d) == ^resolve_reason_ambiguous_symbol
-        && ndp_chain_has_reason(d: d, reason: ^resolve_ambiguous_on_global_bare)
+      diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
         && !ndp_chain_has_reason(d: d, reason: ^resolve_ambiguous_on_lexical_chain)
         && ndp_competing_declaration_count(d: d) == 0
   }

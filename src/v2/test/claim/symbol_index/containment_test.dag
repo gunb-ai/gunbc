@@ -342,7 +342,7 @@ data si_orphan_module_root_node: Node = si_module_root(
   ]
 )
 
-data si_multi_root_index: SymbolIndex = symbol_index_fill_module_roots(
+data si_multi_root_index: SymbolIndex = symbol_index_fill_module_root_nodes(
   index: empty_symbol_index(),
   roots: Cons {
     head: si_module_root_node,

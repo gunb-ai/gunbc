@@ -1,6 +1,8 @@
 module v2.compiler.normalize
 
-import v2.std.algebra { list_snoc_item }
+import v2.std.algebra { fold_list, list_snoc_item }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.collection { Absent, Present, optional_absent, optional_present }
 import v2.std.grammar { ParseTree }
 
@@ -24,6 +26,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   node_rebuild,
+  node_subtree_nodes,
   well_formed
 }
 import v2.std.compilers.sugar {
@@ -44,6 +47,7 @@ import v2.compiler.namespace_graft {
   namespace_graft_is_graft_candidate
 }
 import v2.extdeps.languages.dag {
+  import_binding_rows_from_decl_node,
   parse_production_emitted_identity_optional
 }
 
@@ -210,6 +214,45 @@ fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Nod
   }
 }
 
+// CAPTURED FROM THE PARSE TREE, FOR THE SAME REASON test_marker_capture IS. This runs BEFORE the
+// graft has dissolved the import decls, which is the only moment the rows can be read at all, and it
+// reads them from the authored source rather than reconstructing them from anything downstream.
+// One import decl yields one row per name in its block; a decl this reader cannot understand
+// REFUSES rather than contributing nothing, because a silently empty row set is indistinguishable
+// from a module that imports nothing and would surface far away as unbound references.
+fn import_binding_capture(tree: ParseTree) -> Outcome<FreeMonoid<AliasBindingRow>> {
+  fold_list(
+    xs: node_subtree_nodes(root: tree),
+    empty: Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
+    cons: fn(acc, n) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: rows, diagnostics: _ } =>
+          match parse_production_emitted_identity_optional(node: n) {
+            Absent => acc
+            Present { value: id } =>
+              if id != ^dag_surface_import_decl {
+                acc
+              } else {
+                match import_binding_rows_from_decl_node(decl: n, module_root: tree) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: fresh, diagnostics: _ } =>
+                    Accepted {
+                      value: fold_list(
+                        xs: fresh,
+                        empty: rows,
+                        cons: fn(a, row) { list_snoc_item(xs: a, item: row) }
+                      ),
+                      diagnostics: v2.std.diagnostic.None
+                    }
+                }
+              }
+          }
+      }
+    }
+  )
+}
+
 fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -222,7 +265,17 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
               Rejected { diagnostics: r } =>
                 Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
               Accepted { value: markers, diagnostics: _ } =>
-                admit_normalized_tree(root: grafted, test_markers: markers, diagnostics: d1)
+                match import_binding_capture(tree: parse_tree) {
+                  Rejected { diagnostics: r } =>
+                    Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
+                  Accepted { value: bindings, diagnostics: _ } =>
+                    admit_normalized_tree(
+                      root: grafted,
+                      test_markers: markers,
+                      import_bindings: bindings,
+                      diagnostics: d1
+                    )
+                }
             }
           } else {
             Rejected {

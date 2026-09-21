@@ -64,16 +64,12 @@ import v2.std.resolution_policy {
   default_name_resolution_policy
 }
 import v2.std.symbol_index {
-  GlobalBareHit,
-  GlobalBareLookupAmbiguous,
-  GlobalBareLookupUnbound,
   LexicalAmbiguous,
   LexicalBindingCandidate,
   LexicalHit,
   LexicalUnbound,
   SymbolIndex,
   empty_symbol_index,
-  symbol_index_global_unique_lookup,
   symbol_index_lexical_lookup,
   symbol_index_lookup
 }
@@ -439,14 +435,17 @@ fn ambiguous_symbol_diagnostic(n: Node) -> Diagnostic {
 // whole path also hits absolutely -- and a reader repairing the reference needs to know which
 // one, because the repair differs (qualify the reference; rename one declaration; drop the
 // shadowing binder). The competing declarations ride WHERE THE LOOKUP RETAINED THEM: the lexical
-// collector keeps every candidate's path; the global-bare index collapsed its binders to one
-// GlobalBareAmbiguous state at fill time and has nothing to name, which this arm says by carrying
-// nothing rather than by naming a list it does not have; the qualified case names the absolute
-// path that competed. Collapsing all three to one bare SymbolIndexAtomAmbiguous was where the
-// class and the candidates were dropped -- one symbol standing where the resolver had a list.
+// collector keeps every candidate's path; the qualified case names the absolute path that
+// competed. Collapsing them to one bare SymbolIndexAtomAmbiguous was where the class and the
+// candidates were dropped -- one symbol standing where the resolver had a list.
+//
+// THE THIRD ARM IS GONE WITH ITS MECHANISM. AmbiguousOnGlobalBare reported an ambiguity found by
+// searching the corpus for a spelling, and it was the one arm that could name NO competing
+// declaration, because the bare index had already collapsed its binders at fill time. Deleting the
+// search deleted the arm: every ambiguity the resolver can now reach was found among candidates it
+// still holds, so "competing declarations where available" is no longer a caveat this type needs.
 type AmbiguousLookupClass
   = AmbiguousOnLexicalChain { candidates: FreeMonoid<LexicalBindingCandidate> }
-  | AmbiguousOnGlobalBare
   | AmbiguousQualifiedHeadShadowsAbsolute { path: QualifiedName }
 
 fn ambiguous_lookup_class_diagnostic(n: Node, reason: Symbol) -> Diagnostic {
@@ -491,11 +490,6 @@ fn ambiguous_symbol_diagnostics(n: Node, class: AmbiguousLookupClass) -> NonEmpt
           ),
           item: fatal
         )
-      }
-    AmbiguousOnGlobalBare =>
-      NonEmptyDiagnostics {
-        head: ambiguous_lookup_class_diagnostic(n: n, reason: ^resolve_ambiguous_on_global_bare),
-        tail: [fatal]
       }
     AmbiguousQualifiedHeadShadowsAbsolute { path: path } =>
       NonEmptyDiagnostics {
@@ -552,23 +546,21 @@ fn lookup_symbol_index_atom_identity(
       }
     LexicalAmbiguous { candidates: candidates } =>
       SymbolIndexAtomAmbiguous { class: AmbiguousOnLexicalChain { candidates: candidates } }
-    LexicalUnbound =>
-      match ctx.policy {
-        NamespaceOnlyY =>
-          match symbol_index_global_unique_lookup(
-            index: ctx.namespace.symbol_index,
-            name: name
-          ) {
-            GlobalBareHit { node: node, path: path } =>
-              SymbolIndexAtomHit {
-                canonical: symbol_index_node_identity(node: node, fallback: name),
-                path: path
-              }
-            GlobalBareLookupAmbiguous => SymbolIndexAtomAmbiguous { class: AmbiguousOnGlobalBare }
-            GlobalBareLookupUnbound => SymbolIndexAtomUnbound
-          }
-        ImportScoped => SymbolIndexAtomUnbound
-      }
+    // NOTHING FOLLOWS AN EXHAUSTED CHAIN. This arm used to ask the corpus-wide bare-name index
+    // under NamespaceOnlyY, and that question has no answer it is entitled to give: a name the
+    // reference's own ancestor chain does not bind has no meaning AT THE REFERENCE, whatever else
+    // the corpus spells the same way. docs/plans/namespace-resolution-design.md section 13 deletes
+    // the tier by name -- "global_bare dies as a mechanism" -- and the reference model this corpus
+    // grounds lookup in agrees by ABSENCE: [basic.lookup.unqual] walks outward to the parent scope
+    // and, exhausted, the program is ill-formed; there is no clause that searches a whole program
+    // for a unique declaration. What replaces the tier is not a weaker answer but a BINDING the
+    // author wrote: an import is transmuted into a row at the importing position
+    // (v2.extdeps.languages.dag import_binding_rows_from_decl_node), so the names a module actually
+    // uses are ON its chain and the collector above finds them there.
+    //
+    // THE INDEX'S global_bare MAP SURVIVES, and only as what section 13 leaves it as: a migration
+    // oracle for the divergence census. No resolution path reaches it.
+    LexicalUnbound => SymbolIndexAtomUnbound
   }
 }
 

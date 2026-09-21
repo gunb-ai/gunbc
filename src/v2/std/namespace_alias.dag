@@ -1,6 +1,7 @@
 module v2.std.namespace_alias
 
-import v2.std.node { Symbol }
+import std.algebra { FreeMonoid }
+import v2.std.node { Node, Symbol }
 import v2.std.qualified_name { QualifiedName }
 
 // Namespace alias surface row (docs/plans/namespace-resolution-design.md §13): alias <binding> =
@@ -12,4 +13,16 @@ import v2.std.qualified_name { QualifiedName }
 type AliasBindingRow {
   binding: Symbol
   target: QualifiedName
+}
+
+// WHAT THE SYMBOL INDEX NEEDS FROM ONE MODULE IN ORDER TO BIND IT, and the reason it is a pair
+// rather than two parallel lists. The declarations come from the grafted root; the import rows
+// cannot, because the graft dissolved the decls that carried them, so they arrive from the carrier
+// that captured them at normalize. Holding the two in one value keeps them joined by CONSTRUCTION:
+// two lists walked in step would be joined by position, and a reordering of either would silently
+// bind one module's imports into another module's namespace. The type lives here, beside the row it
+// carries, because the index fill and the normalized-tree carrier cannot import each other.
+type ModuleBindingSource {
+  root: Node
+  import_bindings: FreeMonoid<AliasBindingRow>
 }

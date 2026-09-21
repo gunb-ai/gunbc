@@ -82,7 +82,7 @@ data cfp_roots: FreeMonoid<Node> = Cons {
   tail: Cons { head: cfp_consumer_root, tail: Empty }
 }
 
-data cfp_index: SymbolIndex = symbol_index_fill_module_roots(
+data cfp_index: SymbolIndex = symbol_index_fill_module_root_nodes(
   index: empty_symbol_index(),
   roots: cfp_roots
 )

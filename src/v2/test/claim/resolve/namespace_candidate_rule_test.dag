@@ -1,0 +1,476 @@
+module v2.test.claim.resolve.namespace_candidate_rule
+
+import v2.compiler.compile {
+  NativeCensusModule,
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeCensusModuleOutcome,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.native_test_vocabulary { NativeTestFileRefusal }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { contains, fold_list, for_all, length }
+import v2.std.collection { Map }
+import v2.std.integer { Int }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.artifact { Artifact, SourceFile }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic {
+  Accepted,
+  DeclarationLocus,
+  Diagnostic,
+  InvariantPortLocus,
+  NodeLocus,
+  NonEmptyDiagnostics,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  diagnostics_fatal_reason
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE CANDIDATE RULE ITSELF: which declarations a reference is PERMITTED to see.
+// docs/plans/namespace-resolution-design.md section 13 rules that they come from the reference's own
+// ancestor chain and from nothing else -- "fallback chains -- nearest-wins, global-unique-fallback,
+// first-hit, any silent-pick -- are rejected as a class" -- and the reference model this corpus
+// grounds that in (extdeps.languages.cpp.name_lookup, clause 6.5 [basic.lookup]) has no rule that
+// searches a whole program for a unique declaration either. The departure gunbc declares on top of
+// it is strictness: C++ takes the nearest scope's declarations and stops, gunbc refuses when two
+// scopes on the chain bind the name.
+//
+// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL, the split DESIGN section 3's standing rule asks
+// for. The boundary these claims discriminate is name resolution, so its INPUT -- source bytes --
+// is constructed, and everything above it is the production fold: native_test_context_from_ingest
+// tokenizes, parses and normalizes, and native_census_module_resolution runs the same resolver
+// under the same NamespaceOnlyY policy the native lane runs. No claim here builds a Node tree.
+//
+// WHY FIVE MODULES AND NOT ONE. Every arm of the rule is only discriminating against a corpus where
+// the same SPELLING exists twice: a single-module fixture resolves identically under the rule and
+// under the global spelling search the rule replaces, so it would be green either way and would
+// establish nothing. Two homes declare `NcrTwin`, and the three consumers differ only in what they
+// BIND -- one home, neither home, both homes -- which is exactly the variable the rule reads.
+
+data ncr_home_a_source: String = "module v2.ncr_home_a\n\nimport v2.std.logic { Bool }\n\ntype NcrTwin = Bool\n"
+
+data ncr_home_b_source: String = "module v2.ncr_home_b\n\nimport v2.std.logic { Bool }\n\ntype NcrTwin = Bool\n"
+
+// THE POSITIVE SUBJECT. `NcrTwin` is declared in two sibling namespaces and this module binds ONE of
+// them, so the reference has exactly one candidate on its chain and resolves -- while a search over
+// the corpus by spelling has two and can only pick or refuse. Containment decides it; the spelling
+// never could.
+data ncr_importer_source: String = "module v2.ncr_importer\n\nimport v2.std.logic { Bool }\nimport v2.ncr_home_a { NcrTwin }\n\nfn ncr_use(p: NcrTwin) -> Bool { p }\n"
+
+// THE GENUINE AMBIGUITY, AND IT IS GENUINE IN THE RULE'S OWN TERMS: two declarations are bound at
+// ONE position by two import rows. This is the case that must still refuse, and it is a different
+// fact from the corpus containing two `NcrTwin`s -- which the module below carries instead.
+data ncr_double_source: String = "module v2.ncr_double\n\nimport v2.std.logic { Bool }\nimport v2.ncr_home_a { NcrTwin }\nimport v2.ncr_home_b { NcrTwin }\n\nfn ncr_two(p: NcrTwin) -> Bool { p }\n"
+
+// THE MUTATION CONTROL, AUTHORED AS A MODULE RATHER THAN AS A DIFF. This module names `NcrTwin`
+// without binding it, so the name is nowhere on its chain and the rule refuses it as UNBOUND. Under
+// a reinstated global bare search the same reference is reachable -- the corpus has the spelling --
+// and this arm changes answer. That is the discriminator: it is red exactly when a spelling search
+// is back, and no other edit moves it.
+data ncr_unbound_source: String = "module v2.ncr_unbound\n\nimport v2.std.logic { Bool }\n\nfn ncr_reach(p: NcrTwin) -> Bool { p }\n"
+
+// THE WORKLOAD'S OWN REFUSAL, REBUILT AT FIXTURE SCALE. The native lane's run of
+// //v2/test/parse/expression_bodied_fn_decl_parse:all (binary 7cb36d26) refused all seven tests at
+// prepare on ONE reference: the bare variant `SubstrateInputsOnly` in the
+// `data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly` row every witness module
+// declares, reported as resolve_ambiguous_on_global_bare and naming no binder, because the bare
+// index had collapsed them. The three modules below are that shape: a home declaring a variant, an
+// unrelated module spelling the same variant name -- which is what made the corpus-wide search
+// ambiguous -- and a consumer that IMPORTS the home. The import is what the author wrote and what
+// the corpus-wide search never consulted.
+data ncr_disp_home_source: String = "module v2.ncr_disp_home
+
+type NcrDisp = NcrInputsOnly | NcrOther
+"
+
+data ncr_disp_other_source: String = "module v2.ncr_disp_other
+
+type NcrOtherDisp = NcrInputsOnly | NcrElse
+"
+
+data ncr_disp_user_source: String = "module v2.ncr_disp_user
+
+import v2.ncr_disp_home { NcrDisp, NcrInputsOnly }
+
+data ncr_disp: NcrDisp = NcrInputsOnly
+"
+
+fn ncr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+fn ncr_disp_home_read() -> DagSourceReadWitness {
+  ncr_read(source: ncr_disp_home_source, id: ^ncr_disp_home_artifact, unit: ^ncr_disp_home_cu, path: "dag/ncr_disp_home.dag")
+}
+
+fn ncr_disp_other_read() -> DagSourceReadWitness {
+  ncr_read(source: ncr_disp_other_source, id: ^ncr_disp_other_artifact, unit: ^ncr_disp_other_cu, path: "dag/ncr_disp_other.dag")
+}
+
+fn ncr_disp_user_read() -> DagSourceReadWitness {
+  ncr_read(source: ncr_disp_user_source, id: ^ncr_disp_user_artifact, unit: ^ncr_disp_user_cu, path: "dag/ncr_disp_user.dag")
+}
+
+fn ncr_home_a_read() -> DagSourceReadWitness {
+  ncr_read(source: ncr_home_a_source, id: ^ncr_home_a_artifact, unit: ^ncr_home_a_cu, path: "dag/ncr_home_a.dag")
+}
+
+fn ncr_home_b_read() -> DagSourceReadWitness {
+  ncr_read(source: ncr_home_b_source, id: ^ncr_home_b_artifact, unit: ^ncr_home_b_cu, path: "dag/ncr_home_b.dag")
+}
+
+fn ncr_importer_read() -> DagSourceReadWitness {
+  ncr_read(source: ncr_importer_source, id: ^ncr_importer_artifact, unit: ^ncr_importer_cu, path: "dag/ncr_importer.dag")
+}
+
+fn ncr_double_read() -> DagSourceReadWitness {
+  ncr_read(source: ncr_double_source, id: ^ncr_double_artifact, unit: ^ncr_double_cu, path: "dag/ncr_double.dag")
+}
+
+fn ncr_unbound_read() -> DagSourceReadWitness {
+  ncr_read(source: ncr_unbound_source, id: ^ncr_unbound_artifact, unit: ^ncr_unbound_cu, path: "dag/ncr_unbound.dag")
+}
+
+// THE TWO ORDERINGS ARE THE SAME CORPUS, and that is the whole content of the file-order claim.
+// A permutation of the ingest is the only difference between them; the importer's home is LAST in
+// the reversed one, so a fill that resolved binding rows as it walked would find nothing for it.
+data ncr_ingest: SourceRootIngest = Cons {
+  head: ncr_home_a_read(),
+  tail: Cons {
+    head: ncr_home_b_read(),
+    tail: Cons {
+      head: ncr_importer_read(),
+      tail: Cons {
+        head: ncr_double_read(),
+        tail: Cons {
+          head: ncr_unbound_read(),
+          tail: Cons {
+            head: ncr_disp_home_read(),
+            tail: Cons {
+              head: ncr_disp_other_read(),
+              tail: Cons { head: ncr_disp_user_read(), tail: Empty }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+data ncr_ingest_permuted: SourceRootIngest = Cons {
+  head: ncr_unbound_read(),
+  tail: Cons {
+    head: ncr_double_read(),
+    tail: Cons {
+      head: ncr_importer_read(),
+      tail: Cons {
+        head: ncr_home_b_read(),
+        tail: Cons {
+          head: ncr_home_a_read(),
+          tail: Cons {
+            head: ncr_disp_user_read(),
+            tail: Cons {
+              head: ncr_disp_other_read(),
+              tail: Cons { head: ncr_disp_home_read(), tail: Empty }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn ncr_outcome_in(
+  context: NativeTestContext,
+  index: Map<Symbol, NativeTestFileRefusal>,
+  ingest: SourceRootIngest,
+  module_name: String
+) -> Optional<NativeCensusModuleOutcome> {
+  fold_list(
+    xs: native_census_modules(ingest: ingest),
+    empty: optional_absent(),
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        optional_present(
+          value: native_census_module_resolution(
+            context: context,
+            refusal_index: index,
+            entry: entry
+          )
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// A RESOLUTION IS REPORTED BY ITS CAUSE, NOT BY A BOOLEAN. An arm that only asked "did it refuse"
+// would be green on the wrong refusal -- and the two refusals this fixture produces, an ambiguity
+// and an unbound name, are exactly the pair that must not be confused: one says the rule saw two
+// candidates, the other says it saw none. So each outcome is carried as a reason symbol, with the
+// competing declarations the ambiguity named beside it.
+type NcrVerdict
+  = NcrResolved
+  | NcrRefused { reason: Symbol, competing: FreeMonoid<QualifiedName> }
+  | NcrFileRefused
+  | NcrAbsent
+
+fn ncr_competing_declarations(d: NonEmptyDiagnostics) -> FreeMonoid<QualifiedName> {
+  fold_list(
+    xs: Cons { head: d.head, tail: d.tail },
+    empty: Empty,
+    cons: fn(acc, diag) {
+      if diag.reason == ^resolve_ambiguous_competing_declaration {
+        match diag.at {
+          DeclarationLocus { declaration: path } => Cons { head: path, tail: acc }
+          Textual { file: _, extent: _ } => acc
+          NodeLocus { anchor: _ } => acc
+          SourcePortLocus { anchor: _, file: _, extent: _ } => acc
+          InvariantPortLocus { anchor: _, invariant: _ } => acc
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn ncr_verdict_of(outcome: Optional<NativeCensusModuleOutcome>) -> NcrVerdict {
+  match outcome {
+    Absent => NcrAbsent
+    Present { value: o } =>
+      match o {
+        NativeCensusModuleResolved => NcrResolved
+        NativeCensusModuleFileRefused => NcrFileRefused
+        NativeCensusModuleResolveRefused { diagnostics: d } =>
+          NcrRefused {
+            reason: diagnostics_fatal_reason(d: d),
+            competing: ncr_competing_declarations(d: d)
+          }
+      }
+  }
+}
+
+// ONE NULLARY PRODUCER, FORCED ONCE, for the reason v2.test.claim.native_census.whole_tree_census_resolve
+// states in full: the floor builds a fresh evaluation frame per claim, so a per-claim helper would
+// re-enter the whole front end once per arm and be refused on cost -- a claim whose evaluation is
+// dominated by ONE call whose result shape is all it inspects. This declaration is pure and nullary,
+// so it is preparation-forceable, and each claim below reads a value. Both orderings are resolved
+// here because the file-order claim compares them and every other claim reads the first.
+type NcrOutcomes
+  = NcrContextRefused
+  | NcrOutcomesDecided {
+      importer: NcrVerdict
+      double: NcrVerdict
+      unbound: NcrVerdict
+      home_a: NcrVerdict
+      disp_user: NcrVerdict
+      importer_permuted: NcrVerdict
+      double_permuted: NcrVerdict
+      unbound_permuted: NcrVerdict
+      disp_user_permuted: NcrVerdict
+    }
+
+fn ncr_verdicts_for(ingest: SourceRootIngest, module_name: String) -> Optional<NativeCensusModuleOutcome> {
+  match native_test_context_from_ingest(ingest: ingest) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      ncr_outcome_in(
+        context: context,
+        index: native_lane_file_refusal_index(refusals: context.file_refusals),
+        ingest: ingest,
+        module_name: module_name
+      )
+  }
+}
+
+fn ncr_outcomes() -> NcrOutcomes {
+  match native_test_context_from_ingest(ingest: ncr_ingest) {
+    Rejected { diagnostics: _ } => NcrContextRefused
+    Accepted { value: context, diagnostics: _ } => {
+      let index = native_lane_file_refusal_index(refusals: context.file_refusals)
+      match native_test_context_from_ingest(ingest: ncr_ingest_permuted) {
+        Rejected { diagnostics: _ } => NcrContextRefused
+        Accepted { value: permuted_context, diagnostics: _ } => {
+          let permuted_index = native_lane_file_refusal_index(refusals: permuted_context.file_refusals)
+          NcrOutcomesDecided {
+            importer: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_importer")),
+            double: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_double")),
+            unbound: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_unbound")),
+            disp_user: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_disp_user")),
+            disp_user_permuted: ncr_verdict_of(outcome: ncr_outcome_in(context: permuted_context, index: permuted_index, ingest: ncr_ingest_permuted, module_name: "v2.ncr_disp_user")),
+            home_a: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_home_a")),
+            importer_permuted: ncr_verdict_of(outcome: ncr_outcome_in(context: permuted_context, index: permuted_index, ingest: ncr_ingest_permuted, module_name: "v2.ncr_importer")),
+            double_permuted: ncr_verdict_of(outcome: ncr_outcome_in(context: permuted_context, index: permuted_index, ingest: ncr_ingest_permuted, module_name: "v2.ncr_double")),
+            unbound_permuted: ncr_verdict_of(outcome: ncr_outcome_in(context: permuted_context, index: permuted_index, ingest: ncr_ingest_permuted, module_name: "v2.ncr_unbound"))
+          }
+        }
+      }
+    }
+  }
+}
+
+data ncr_outcomes_warm: NcrOutcomes = ncr_outcomes()
+
+fn ncr_verdict_is_resolved(v: NcrVerdict) -> Bool {
+  match v {
+    NcrResolved => true
+    NcrRefused { reason: _, competing: _ } => false
+    NcrFileRefused => false
+    NcrAbsent => false
+  }
+}
+
+fn ncr_verdict_refuses_with(v: NcrVerdict, reason: Symbol) -> Bool {
+  match v {
+    NcrResolved => false
+    NcrRefused { reason: r, competing: _ } => r == reason
+    NcrFileRefused => false
+    NcrAbsent => false
+  }
+}
+
+fn ncr_verdict_names(v: NcrVerdict, dotted: String) -> Bool {
+  match v {
+    NcrResolved => false
+    NcrRefused { reason: _, competing: competing } =>
+      contains(
+        xs: competing,
+        item: qualified_name_from_dotted_string(dotted: dotted),
+        eq: fn(a, b) { a == b }
+      )
+    NcrFileRefused => false
+    NcrAbsent => false
+  }
+}
+
+fn ncr_verdict_competing_count(v: NcrVerdict) -> Int {
+  match v {
+    NcrResolved => 0
+    NcrRefused { reason: _, competing: competing } => length(xs: competing)
+    NcrFileRefused => 0
+    NcrAbsent => 0
+  }
+}
+
+fn ncr_verdict_same(left: NcrVerdict, right: NcrVerdict) -> Bool {
+  match left {
+    NcrResolved => ncr_verdict_is_resolved(v: right)
+    NcrFileRefused => match right { NcrFileRefused => true, NcrResolved => false, NcrRefused { reason: _, competing: _ } => false, NcrAbsent => false }
+    NcrAbsent => match right { NcrAbsent => true, NcrResolved => false, NcrRefused { reason: _, competing: _ } => false, NcrFileRefused => false }
+    NcrRefused { reason: r, competing: c } =>
+      ncr_verdict_refuses_with(v: right, reason: r)
+        && ncr_verdict_competing_count(v: right) == length(xs: c)
+        && for_all(xs: c, predicate: fn(path) {
+             match right {
+               NcrRefused { reason: _, competing: rc } =>
+                 contains(xs: rc, item: path, eq: fn(a, b) { a == b })
+               NcrResolved => false
+               NcrFileRefused => false
+               NcrAbsent => false
+             }
+           })
+  }
+}
+
+// A SAME-NAMED PAIR IN SIBLING SCOPES RESOLVES BY CONTAINMENT. `NcrTwin` is declared in both
+// v2.ncr_home_a and v2.ncr_home_b; this module binds one of them and its reference resolves. The
+// corpus-wide spelling is ambiguous and always was -- what makes the reference decidable is the
+// binding at this module's own position, which is the rule's whole claim.
+test fn a_bound_sibling_declaration_resolves_by_containment_holds() -> Bool {
+  match ncr_outcomes_warm {
+    NcrContextRefused => false
+    NcrOutcomesDecided { importer: importer, double: _, unbound: _, home_a: home_a, disp_user: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _ } =>
+      ncr_verdict_is_resolved(v: importer) && ncr_verdict_is_resolved(v: home_a)
+  }
+}
+
+// A GENUINE AMBIGUITY REFUSES AND NAMES BOTH BINDERS. Two import rows bind `NcrTwin` at one
+// position, so the reference has two candidates and the rule may not pick. Either binder alone
+// would be a pick wearing a refusal's clothes, so the count is asserted as well as the membership.
+test fn a_genuine_ambiguity_refuses_naming_both_binders_holds() -> Bool {
+  match ncr_outcomes_warm {
+    NcrContextRefused => false
+    NcrOutcomesDecided { importer: _, double: double, unbound: _, home_a: _, disp_user: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _ } =>
+      ncr_verdict_refuses_with(v: double, reason: ^resolve_reason_ambiguous_symbol)
+        && ncr_verdict_names(v: double, dotted: "v2.ncr_home_a.NcrTwin")
+        && ncr_verdict_names(v: double, dotted: "v2.ncr_home_b.NcrTwin")
+        && ncr_verdict_competing_count(v: double) == 2
+  }
+}
+
+// THE RED MUTATION CONTROL. A name the corpus declares twice and this module binds zero times is
+// UNBOUND, not ambiguous and not resolved: a global spelling search never chooses a meaning, and
+// here it has no meaning to offer. Reinstating a corpus-wide bare-name search moves this arm --
+// to resolved if the search picks, to ambiguous if it refuses over the spelling -- and nothing else
+// in this file moves with it.
+test fn an_unbound_name_the_corpus_spells_twice_stays_unbound_holds() -> Bool {
+  match ncr_outcomes_warm {
+    NcrContextRefused => false
+    NcrOutcomesDecided { importer: _, double: _, unbound: unbound, home_a: _, disp_user: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _ } =>
+      ncr_verdict_refuses_with(v: unbound, reason: ^resolve_reason_unbound_symbol)
+  }
+}
+
+// REORDERING FILES CHANGES NOTHING. The permuted ingest is the same five modules with the
+// importer's home moved from first to last, which under a fill that resolved binding rows as it
+// walked would leave the importer's binding unmade. Each of the three consumers is compared at the
+// grain that would move -- the cause, and for the ambiguity the binder set -- rather than by a
+// pass/fail flag that two different refusals would share.
+test fn reordering_the_files_changes_no_verdict_holds() -> Bool {
+  match ncr_outcomes_warm {
+    NcrContextRefused => false
+    NcrOutcomesDecided {
+      importer: importer,
+      double: double,
+      unbound: unbound,
+      home_a: _,
+      disp_user: disp_user,
+      importer_permuted: importer_permuted,
+      double_permuted: double_permuted,
+      unbound_permuted: unbound_permuted,
+      disp_user_permuted: disp_user_permuted
+    } =>
+      ncr_verdict_same(left: importer, right: importer_permuted)
+        && ncr_verdict_same(left: double, right: double_permuted)
+        && ncr_verdict_same(left: unbound, right: unbound_permuted)
+        && ncr_verdict_same(left: disp_user, right: disp_user_permuted)
+  }
+}
+
+
+// THE WORKLOAD'S REFUSAL, RESOLVED. This is the fixture-scale rebuild of the one reference that
+// refused all seven tests of //v2/test/parse/expression_bodied_fn_decl_parse:all at prepare: a bare
+// VARIANT name whose spelling a second, unrelated module also uses. The corpus-wide search saw two
+// and could name neither; the rule sees the import the author wrote, which binds exactly one, and
+// resolves. v2.ncr_disp_other stays in the ingest precisely so the spelling stays ambiguous -- drop
+// it and this arm would pass under either mechanism and discriminate nothing.
+test fn the_workload_bare_variant_reference_resolves_through_its_import_holds() -> Bool {
+  match ncr_outcomes_warm {
+    NcrContextRefused => false
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: disp_user, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _ } =>
+      ncr_verdict_is_resolved(v: disp_user)
+  }
+}

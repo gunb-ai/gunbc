@@ -3,7 +3,7 @@ module v2.compiler.name_resolve
 import v2.std.language_model { LanguageModel }
 
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_binding_sources, normalized_tree_roots_to_nodes }
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.resolve {
@@ -130,7 +130,7 @@ fn resolution_context(
           roots: validated_roots,
           symbol_index: symbol_index_fill_module_roots(
             index: empty_symbol_index(),
-            roots: normalized_tree_roots_to_nodes(roots: validated_roots.roots)
+            roots: normalized_tree_roots_to_binding_sources(roots: validated_roots.roots)
           )
         },
         diagnostics: d

@@ -5550,6 +5550,95 @@ fn alias_binding_row_target_from_decl(decl: Node, module_root: Node) -> Outcome<
   }
 }
 
+// AN IMPORT IS AN ALIAS ROW PER NAMED ITEM, AND THAT IS THE WHOLE OF THE TRANSMUTATION.
+// docs/plans/namespace-resolution-design.md section 13 rules that `import` becomes a binding node at
+// the IMPORTING position -- "the source of truth is the walk's resolved target" -- so
+// `import m.p { A, B }` in module S is two rows, S.A -> m.p.A and S.B -> m.p.B, carried in the SAME
+// AliasBindingRow type an `alias` decl produces. Minting a second row type here would give one
+// concept two names (DESIGN section 3) and would let the two forms drift apart in the one place
+// they must not: what a binding at a position MEANS.
+//
+// THE BLOCK IS THE BINDING SET, NOT THE MODULE. A block-less `import m.p` yields ZERO rows rather
+// than every name m.p declares. Admitting the module wholesale is a using-directive, which the
+// cited reference model (extdeps.languages.cpp.name_lookup, [basic.lookup.udir]) carries as an
+// EXCLUDED form and which section 13's edit-stability invariant forbids for the same reason:
+// a name added to m.p would silently start binding in S. Zero rows is not a silent drop -- the
+// reference that wanted the name is then off its own chain and refuses, located, at the reference
+// site, which is where section 13 puts the refusal.
+// THE IMPORTED MODULE'S PATH, READ IN WHICHEVER FORM THE TREE IS IN. A parsed tree still carries
+// the grammar's capture for the qualified name; a normalized one carries the emitted edge
+// `dag_surface_import_decl_qualified_name` instead. Both are this row's authority for the same fact,
+// and reading only one of them is how a reader looks correct and silently returns nothing on the
+// tree it is actually given. The alias form's reader cannot stand in here: its fallback names
+// `dag_surface_alias_decl_target`, an edge no import decl has.
+fn import_decl_target_module(decl: Node, module_root: Node) -> Outcome<QualifiedName> {
+  match parse_subtree_find_production_captured(
+    root: decl,
+    emitted: ^dag_surface_qualified_name
+  ) {
+    ParseSubtreeFound { captured: qn_capture } =>
+      match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: module_root) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: segments, diagnostics: _ } =>
+          qualified_name_from_symbol_segments(segments: segments, root: module_root)
+      }
+    ParseSubtreeAbsent =>
+      match find_named_child(root: decl, name: ^dag_surface_import_decl_qualified_name) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: qn_node, diagnostics: _ } =>
+          qualified_name_from_node(root: qn_node)
+      }
+  }
+}
+
+fn import_binding_rows_from_decl_node(
+  decl: Node,
+  module_root: Node
+) -> Outcome<List<AliasBindingRow>> {
+  match parse_production_emitted_identity_optional(node: decl) {
+    Absent =>
+      outcome_rejected(Diagnostic {
+        reason: ^import_binding_row_not_import_decl,
+        at: node_locus(node: decl),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    Present { value: id } =>
+      if id != ^dag_surface_import_decl {
+        outcome_rejected(Diagnostic {
+          reason: ^import_binding_row_not_import_decl,
+          at: node_locus(node: decl),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+      } else {
+        bind_outcome(
+          o: import_decl_target_module(decl: decl, module_root: module_root),
+          f: fn(target_module) {
+            bind_outcome(
+              o: parse_import_block_idents(import_decl_node: decl, root: module_root),
+              f: fn(names) {
+                outcome_accepted(
+                  value: fold_list(
+                    xs: names,
+                    empty: Empty,
+                    cons: fn(acc, name) {
+                      list_snoc_item(
+                        xs: acc,
+                        item: AliasBindingRow {
+                          binding: name,
+                          target: qualified_name_snoc(qn: target_module, segment: name)
+                        }
+                      )
+                    }
+                  )
+                )
+              }
+            )
+          }
+        )
+      }
+  }
+}
+
 fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<AliasBindingRow> {
   match parse_production_emitted_identity_optional(node: decl) {
     Present { value: id } =>
