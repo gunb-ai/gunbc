@@ -217,9 +217,10 @@ fn bignat_bits(a: BigNat) -> List<Int> {
 // refusing admission on montgomery_modulus that establishes each invariant above and returns a typed
 // refusal naming the one that failed, SUFFICIENT FOR an inconsistent modulus to have no constructor
 // rather than merely no outside constructor. It is deferred to its own change because making this
-// admission refusing turns p256_field and p256_order into refusable data rows, cascading through
-// every consumer of the field arithmetic -- and the P-256 witness suite has never executed, so that
-// restructuring cannot yet be read for breakage.
+// admission refusing turns the field and order contexts extdeps.crypto.nist_prime_curve prime_curve
+// builds into refusable values, cascading through every consumer of the field arithmetic -- and
+// the P-256 witness suite has never executed on the floor, so that restructuring cannot yet be read
+// for breakage.
 type MontgomeryModulus sole_constructor {
   modulus: BigNat
   width: Int

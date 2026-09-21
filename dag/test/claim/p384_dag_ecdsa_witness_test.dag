@@ -5,7 +5,7 @@ import std.types { Int, String, List }
 import std.integer { UInt8 }
 import std.bignat { BigNat, bignat_from_octets }
 import extdeps.crypto.sha2 { sha256, sha384 }
-import extdeps.crypto.nist_p384 { p384_on_curve, p384_point_octets_on_curve, p384_ecdsa_verify_octets, p384_gx, p384_gy }
+import extdeps.crypto.nist_p384 { p384_on_curve, p384_point_octets_on_curve, p384_ecdsa_verify_octets, p384_gx, p384_gy, p384_p_octets, p384_gy_octets }
 import extdeps.standards.rfc_8949 {
   CborValue, CborSimple, CborDocumentDecoded, CborDocumentRefused, cbor_decode_document,
   CborMemberFound, cbor_map_unique_text_member, cbor_byte_string_octets, cbor_array_items,
@@ -75,6 +75,13 @@ test fn the_p384_base_point_is_on_the_curve() -> Bool {
 // A point with the y coordinate of G incremented by one is not.
 test fn a_point_beside_the_base_point_is_off_the_curve() -> Bool {
   !p384_on_curve(x: p384_gx, y: bignat_from_octets(octets: [54, 23, 222, 74, 150, 38, 44, 111, 93, 158, 152, 191, 146, 146, 220, 41, 248, 244, 29, 189, 40, 154, 20, 124, 233, 218, 49, 19, 181, 240, 184, 192, 10, 96, 177, 206, 29, 126, 129, 157, 122, 67, 29, 124, 144, 234, 14, 96]))
+}
+
+// A 97-octet point whose x coordinate is p itself (an unreduced residue) is NOT admitted, whatever
+// its y: the Montgomery routines assume reduced operands, so the predicate refuses before the
+// arithmetic rather than computing on it (review 69664 of gunbc#11981).
+test fn a_point_with_a_coordinate_at_p_is_not_admitted() -> Bool {
+  !p384_point_octets_on_curve(point: concat([4], concat(p384_p_octets, p384_gy_octets)))
 }
 
 // Apple's real P-384 keys -- CA 1's from the sample chain, the root's from the pinned PEM -- are
