@@ -3,6 +3,7 @@ module test.claim.app_attest_verifier_witness_test
 import std.logic { Bool }
 import std.types { Int, String, List, NonEmptyStr, Timestamp }
 import std.integer { UInt8 }
+import std.integer { UInt8 }
 import extdeps.apple.app_attest {
   AttestKeyId, AppIdPrefix, AppAttestDevelopment, AppAttestProduction, app_attest_app_id,
   AttestationExpectation, verify_attestation, AttestationVerified, AttestationRefused,
@@ -10,8 +11,11 @@ import extdeps.apple.app_attest {
   AttestationCounterNonZero, AttestationEnvironmentUnexpected, AttestationCredentialIdMismatch, AttestationValidationCategoryAbsent,
   AttestationUndecodable,
   AssertionExpectation, verify_assertion, AssertionAuthentic, AssertionRefused, AssertionAppIdMismatch, AssertionValidationCategoryAbsent,
-  assertion_signature_verifies_for,
+  assertion_signature_verifies_for, chain_link_verifies, apple_app_attestation_root_ca_pem,
 }
+import extdeps.standards.rfc_8949 { CborValue, CborSimple, CborDocumentDecoded, CborDocumentRefused, cbor_decode_document, CborMemberFound, cbor_map_unique_text_member, cbor_byte_string_octets, cbor_array_items }
+import extdeps.standards.rfc_5280 { X509Certificate, X509TbsFields, X509Decoded, X509Refused, decode_certificate }
+import extdeps.standards.rfc_7468 { pem_decode, PemDecoded, PemRefused, pem_certificate_label }
 import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_team_identifier, sample_bundle_identifier,
   sample_assertion_counter,
@@ -22,9 +26,12 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
 // the whole attestation fold REFUSES on it, correctly, with AttestationValidationCategoryAbsent --
 // and because every check before that one in the fold's order is a step Apple names (nonce, key
 // id, RP ID, counter, AAGUID, credentialId, chain names, validity), reaching that refusal IS the
-// executed evidence that steps 2-8 pass on real bytes. A positive control for the whole fold needs
-// an attestation with those extensions: the first object off the operator's phone, which is why
-// that positive control is a declared frontier here and not a designed fixture.
+// executed evidence that steps 2-8 pass on real bytes. TWO THINGS THIS DOES NOT ESTABLISH, each
+// with its own reason: the whole-fold positive control needs an attestation carrying those
+// extensions (the first object off the operator's phone); and step 1, the chain signatures, runs
+// after the extension steps and so is not reached here at all -- it is claimed at its own producer
+// below, where its refusing arms execute and its verifying arms are enrolled with the P-384 cost
+// stated as the reason they do not.
 
 fn sample_expectation() -> AttestationExpectation {
   AttestationExpectation {
@@ -131,5 +138,112 @@ test fn the_sample_assertion_signature_is_false_for_other_client_data() -> Bool 
   match assertion_signature_verifies_for(object: sample_assertion_octets, e: AssertionExpectation { key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) {
     Present { value: v } => !v
     Absent => false
+  }
+}
+
+
+// ── The chain link (Apple's step 1), claimed at its own producer ─────────────────────────────
+fn vf_member(v: CborValue, key: String) -> CborValue {
+  match cbor_map_unique_text_member(v: v, key: key) {
+    CborMemberFound { value: m } => m
+    _ => CborSimple { value: 23 }
+  }
+}
+
+fn vf_x5c(i: Int) -> X509Certificate? {
+  match cbor_decode_document(octets: sample_attestation_octets) {
+    CborDocumentRefused { cause: _ } => none
+    CborDocumentDecoded { value: att } =>
+      match cbor_array_items(v: vf_member(v: vf_member(v: att, key: "attStmt"), key: "x5c")) {
+        Absent => none
+        Present { value: items } =>
+          match items |> get(i) {
+            null => none
+            c => match cbor_byte_string_octets(v: c) {
+              Absent => none
+              Present { value: o } => match decode_certificate(octets: o) {
+                X509Decoded { certificate: cert } => Present { value: cert }
+                X509Refused { cause: _ } => none
+              }
+            }
+          }
+      }
+  }
+}
+
+fn vf_root() -> X509Certificate? {
+  match pem_decode(text: apple_app_attestation_root_ca_pem(), label: pem_certificate_label) {
+    PemRefused { cause: _ } => none
+    PemDecoded { der: der } => match decode_certificate(octets: der) {
+      X509Decoded { certificate: cert } => Present { value: cert }
+      X509Refused { cause: _ } => none
+    }
+  }
+}
+
+// THE REFUSING ARMS, cheap and discriminating over the real leaf and CA: a subject whose signature
+// algorithm is not an ECDSA one the verifier carries is Absent; an issuer whose key names no curve
+// is Absent; an issuer on a curve the verifier does not carry is Absent. None is a verdict.
+test fn chain_link_refuses_an_unsupported_algorithm_or_curve_by_absence() -> Bool {
+  match vf_x5c(i: 0) {
+    Absent => false
+    Present { value: leaf } =>
+      match vf_x5c(i: 1) {
+        Absent => false
+        Present { value: ca } => {
+          let other_alg = X509Certificate { tbs: leaf.tbs, signature_algorithm: "1.2.840.113549.1.1.11", signature_octets: leaf.signature_octets }
+          let no_curve = X509Certificate { tbs: X509TbsFields {
+            tbs_octets: ca.tbs.tbs_octets, serial: ca.tbs.serial, tbs_signature_algorithm: ca.tbs.tbs_signature_algorithm,
+            issuer_octets: ca.tbs.issuer_octets, not_before: ca.tbs.not_before, not_after: ca.tbs.not_after, subject_octets: ca.tbs.subject_octets,
+            spki_algorithm: ca.tbs.spki_algorithm, spki_named_curve: none, spki_public_key: ca.tbs.spki_public_key, extensions: ca.tbs.extensions,
+          }, signature_algorithm: ca.signature_algorithm, signature_octets: ca.signature_octets }
+          let other_curve = X509Certificate { tbs: X509TbsFields {
+            tbs_octets: ca.tbs.tbs_octets, serial: ca.tbs.serial, tbs_signature_algorithm: ca.tbs.tbs_signature_algorithm,
+            issuer_octets: ca.tbs.issuer_octets, not_before: ca.tbs.not_before, not_after: ca.tbs.not_after, subject_octets: ca.tbs.subject_octets,
+            spki_algorithm: ca.tbs.spki_algorithm, spki_named_curve: Present { value: "1.3.132.0.35" }, spki_public_key: ca.tbs.spki_public_key, extensions: ca.tbs.extensions,
+          }, signature_algorithm: ca.signature_algorithm, signature_octets: ca.signature_octets }
+          match chain_link_verifies(subject: other_alg, issuer: ca) {
+            Absent => match chain_link_verifies(subject: leaf, issuer: no_curve) {
+              Absent => match chain_link_verifies(subject: leaf, issuer: other_curve) {
+                Absent => true
+                _ => false
+              }
+              _ => false
+            }
+            _ => false
+          }
+        }
+      }
+  }
+}
+
+// THE VERIFYING LINKS -- Apple's step 1 on real bytes: the leaf under CA 1 (SHA-256 digest,
+// P-384 key) and CA 1 under the pinned root (SHA-384, P-384). ENROLLED, NOT EXECUTED on the
+// interpreter: a P-384 verification at 16 limbs exceeds what a session container holds (one P-256
+// verify is 15.5 GiB); the native gunbc test row the frontier names is their executing route, as
+// for #11645's eight P-256 rows.
+test fn the_sample_leaf_link_verifies_under_ca_1() -> Bool {
+  match vf_x5c(i: 0) {
+    Absent => false
+    Present { value: leaf } => match vf_x5c(i: 1) {
+      Absent => false
+      Present { value: ca } => match chain_link_verifies(subject: leaf, issuer: ca) {
+        Present { value: v } => v
+        Absent => false
+      }
+    }
+  }
+}
+
+test fn the_sample_ca_link_verifies_under_the_pinned_root() -> Bool {
+  match vf_x5c(i: 1) {
+    Absent => false
+    Present { value: ca } => match vf_root() {
+      Absent => false
+      Present { value: root } => match chain_link_verifies(subject: ca, issuer: root) {
+        Present { value: v } => v
+        Absent => false
+      }
+    }
   }
 }

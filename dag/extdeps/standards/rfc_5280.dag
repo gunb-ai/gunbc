@@ -548,11 +548,11 @@ type X509ValidityStanding
   | X509ValidityUndecodable { text: String }
 
 fn x509_validity_at(cert: X509Certificate, observed_at: Timestamp) -> X509ValidityStanding {
-  match x509_time_rfc3339(text: cert.not_before) {
-    Absent => X509ValidityUndecodable { text: cert.not_before }
+  match x509_time_rfc3339(text: cert.tbs.not_before) {
+    Absent => X509ValidityUndecodable { text: cert.tbs.not_before }
     Present { value: nb } =>
-      match x509_time_rfc3339(text: cert.not_after) {
-        Absent => X509ValidityUndecodable { text: cert.not_after }
+      match x509_time_rfc3339(text: cert.tbs.not_after) {
+        Absent => X509ValidityUndecodable { text: cert.tbs.not_after }
         Present { value: na } =>
           if observed_at < nb { X509NotYetValid { not_before: nb, observed_at: observed_at } }
           else if !(observed_at < na) { X509Expired { not_after: na, observed_at: observed_at } }

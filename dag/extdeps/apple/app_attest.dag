@@ -396,25 +396,31 @@ fn app_attest_root() -> X509Certificate? {
 }
 
 // One chain link: `subject` signed by `issuer`, under the issuer's key, with the digest the
-// subject's signature algorithm names. `none` is an encoding refusal from the curve verifier.
+// subject's signature algorithm names. `none` is an encoding refusal -- an algorithm or curve the
+// verifier does not carry, or a signature that is not an ECDSA-Sig-Value for the issuer's width --
+// and never a verdict. ITS EVIDENCE: the refusing arms are claimed cheaply over the real leaf
+// (test.claim.app_attest_verifier_witness_test); the two verifying links are enrolled there and in
+// test.claim.p384_dag_ecdsa_witness_test and are NOT executed on the interpreter, because a P-384
+// verification at 16 limbs exceeds what a session container holds (one P-256 verify is 15.5 GiB);
+// their executing route is the native gunbc test row the frontier names.
 fn chain_link_verifies(subject: X509Certificate, issuer: X509Certificate) -> Bool? {
-  let digest = if subject.signature_algorithm == oid_ecdsa_with_sha256 { Present { value: sha256(message: subject.tbs_octets) } }
-    else if subject.signature_algorithm == oid_ecdsa_with_sha384 { Present { value: sha384(message: subject.tbs_octets) } }
+  let digest = if subject.signature_algorithm == oid_ecdsa_with_sha256 { Present { value: sha256(message: subject.tbs.tbs_octets) } }
+    else if subject.signature_algorithm == oid_ecdsa_with_sha384 { Present { value: sha384(message: subject.tbs.tbs_octets) } }
     else { none }
   match digest {
     Absent => none
     Present { value: d } =>
-      match issuer.spki_named_curve {
+      match issuer.tbs.spki_named_curve {
         Absent => none
         Present { value: curve } =>
           if curve == oid_secp384r1 {
             match ecdsa_sig_value(octets: subject.signature_octets, width: 48) {
-              EcdsaSigValueRead { r_s_fixed: rs } => p384_ecdsa_verify_octets(key: issuer.spki_public_key, signature: rs, digest: d)
+              EcdsaSigValueRead { r_s_fixed: rs } => p384_ecdsa_verify_octets(key: issuer.tbs.spki_public_key, signature: rs, digest: d)
               _ => none
             }
           } else if curve == oid_prime256v1 {
             match ecdsa_sig_value(octets: subject.signature_octets, width: 32) {
-              EcdsaSigValueRead { r_s_fixed: rs } => curve_ecdsa_verify_octets(c: p256_curve, key: issuer.spki_public_key, signature: rs, digest: d)
+              EcdsaSigValueRead { r_s_fixed: rs } => curve_ecdsa_verify_octets(c: p256_curve, key: issuer.tbs.spki_public_key, signature: rs, digest: d)
               _ => none
             }
           } else { none }
@@ -448,7 +454,7 @@ fn validation_category_refusal(extensions: CborValue?, admitted: List<Int>) -> A
         Absent => Present { value: AttestationValidationCategoryAbsent }
         Present { value: v } =>
           match cbor_unsigned_value(v: v) {
-            Absent => Present { value: AttestationValidationCategoryRefused { category: 0 - 1 } }
+            Absent => Present { value: app_attest_undecodable(cause: "apple_validation_category_01 is not a CBOR unsigned integer") }
             Present { value: category } =>
               if any(admitted, a => a == category) { none } else { Present { value: AttestationValidationCategoryRefused { category: category } } }
           }
@@ -501,7 +507,7 @@ fn attestation_structural_refusal(parts: AttestationParts, leaf: X509Certificate
       Absent => Present { value: AttestationNonceMismatch }
       Present { value: n } => if n == nonce { none } else { Present { value: AttestationNonceMismatch } }
     },
-    if sha256(message: leaf.spki_public_key) == key_id_octets { none } else { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } },
+    if sha256(message: leaf.tbs.spki_public_key) == key_id_octets { none } else { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } },
     if auth.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { Present { value: AttestationAppIdMismatch { expected_app_id: e.app_id } } },
     if auth.sign_count == 0 { none } else { Present { value: AttestationCounterNonZero { counter: auth.sign_count } } },
     match credential {
@@ -512,8 +518,8 @@ fn attestation_structural_refusal(parts: AttestationParts, leaf: X509Certificate
       Absent => Present { value: AttestationCredentialIdMismatch { declared: e.key_id } }
       Present { value: c } => if c.credential_id == key_id_octets { none } else { Present { value: AttestationCredentialIdMismatch { declared: e.key_id } } }
     },
-    if leaf.issuer_octets == ca.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the credential certificate's issuer is not the intermediate" } } },
-    if ca.issuer_octets == root.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the intermediate's issuer is not the Apple App Attestation Root CA" } } },
+    if leaf.tbs.issuer_octets == ca.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the credential certificate's issuer is not the intermediate" } } },
+    if ca.tbs.issuer_octets == root.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the intermediate's issuer is not the Apple App Attestation Root CA" } } },
     validity_refusal(cert: leaf, observed_at: e.observed_at, which: "credential"),
     validity_refusal(cert: ca, observed_at: e.observed_at, which: "intermediate"),
     validation_category_refusal(extensions: auth.extensions, admitted: e.admitted_validation_categories),
@@ -579,9 +585,9 @@ fn verify_attestation(object: List<UInt8>, e: AttestationExpectation) -> Attesta
     AttestationDecodeRefused { cause: c } => AttestationRefused { cause: c }
     AttestationDecodeOk { decoded: d } =>
       match attestation_refusal(d: d, e: e) {
-        Present { value: r } => attestation_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: "-" as NonEmptyStr, receipt_b64: "-" as NonEmptyStr, environment: e.environment, client_data: e.client_data, refusal: Present { value: r })
+        Present { value: r } => AttestationRefused { cause: r }
         Absent =>
-          match base64_of(octets: d.leaf.spki_public_key, url_safe: true) {
+          match base64_of(octets: d.leaf.tbs.spki_public_key, url_safe: true) {
             Absent => AttestationRefused { cause: app_attest_undecodable(cause: "credential public key octets are not bytes") }
             Present { value: point } =>
               match base64_of(octets: d.parts.receipt, url_safe: false) {
@@ -729,10 +735,16 @@ fn assertion_signature_verifies_for(object: List<UInt8>, e: AssertionExpectation
 }
 
 // THE SUPPLIER of assertion_verification_from_implementation: the document is decoded once and
-// both the counter and the refusal are read from that decode.
+// both the counter and the refusal are read from that decode. A refusal is built as the refusal
+// arm directly; the seam is reached only with the facts a success carries, so no stand-in counter
+// or key ever exists (review 69652 of gunbc#11989).
 fn verify_assertion(object: List<UInt8>, e: AssertionExpectation) -> AssertionVerification {
   match assertion_parts(object: object) {
-    AssertionPartsRefused { cause: c } => assertion_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, counter: 0 - 1, client_data: e.client_data, refusal: Present { value: c })
-    AssertionPartsOk { parts: parts } => assertion_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, counter: parts.auth.prefix.sign_count, client_data: e.client_data, refusal: assertion_refusal(parts: parts, e: e))
+    AssertionPartsRefused { cause: c } => AssertionRefused { cause: c }
+    AssertionPartsOk { parts: parts } =>
+      match assertion_refusal(parts: parts, e: e) {
+        Present { value: r } => AssertionRefused { cause: r }
+        Absent => assertion_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, counter: parts.auth.prefix.sign_count, client_data: e.client_data, refusal: none)
+      }
   }
 }

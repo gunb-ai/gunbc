@@ -19,7 +19,12 @@ import extdeps.uri { Uri, Https }
 // WHO CONSUMES THIS: extdeps.crypto.signature verify_signature binds p256_ecdsa_verify_octets
 // through signature_verification_from_implementation with the decoded octet sizes -- the join
 // the earlier header of this module declared as its frontier -- and extdeps.apple.app_attest
-// verifies assertion signatures and P-256-issued chain links over the family fold directly.
+// verifies assertion signatures and P-256-issued chain links over the family fold directly. THOSE
+// FOLDS ARE THEMSELVES THE DECLARED FRONTIER gunbc.auth.approval_device_redemption
+// ecdsa_verification_realization_frontier, reached by no served route yet: their callers outside
+// dag/test/claim land with the device routes, and their per-request execution waits on the native
+// realization that row names (review 69652 of gunbc#11989 -- the frontier is one hop outward, not
+// closed).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
