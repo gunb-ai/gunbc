@@ -49,6 +49,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -938,6 +939,11 @@ data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "mtcollins1_fan_observe_wet",
 }
 
+data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_census_image.dag",
+  function: "mtcollins1_census_image_publish_wet",
+}
+
 data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/managed_grant_install.dag",
   function: "spark_grant_install_ci_wet",
@@ -1134,6 +1140,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
+    gunbc_ci_mtcollins1_census_image_publish_target,
     gunbc_ci_spark_grant_install_target,
     gunbc_ci_spark_bootstrap_target,
     gunbc_ci_spark_serving_apply_target,
@@ -2358,6 +2365,18 @@ fn gunbc_ci_runner_microvm_boot_probe_invoke() -> String {
     function: gunbc_ci_runner_microvm_boot_probe_target.function,
     claim_run: false,
     receipt_rel: "target/runner-microvm-boot-probe.txt"
+  )
+}
+
+// The census image publish needs no credential prelude: it reads and writes only the runner's own
+// host (srv2's /srv/bmc export) and reaches no controller, so its step is the plain gunbc run.
+fn gunbc_ci_mtcollins1_census_image_publish_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_census_image_publish_target.entry,
+    function: gunbc_ci_mtcollins1_census_image_publish_target.function,
+    claim_run: false,
+    receipt_rel: mtcollins1_census_image_receipt_path
   )
 }
 
