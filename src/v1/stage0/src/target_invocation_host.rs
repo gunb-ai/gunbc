@@ -694,12 +694,15 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
                 Termination::ObservationDidNotHold
             },
             message: format!(
-                "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={}",
+                "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={} \
+                 door_universe={} door_refusal_reason=\"{}\"",
                 held.closure_identity,
                 held.binary_identity,
                 held.seed_identity,
                 held.exit_status,
                 held.warning_count,
+                held.door_universe,
+                held.door_refusal_reason,
             ),
         },
         Err(cause) => InvocationOutcome {
@@ -718,9 +721,17 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 /// door.
 ///
 /// IT SHARES `prepare_emitted_compiler_for_entry` WITH THE SELF-HOST STEP, parameterised by the
-/// entry, so the two instruments cannot disagree about what "emitted and built clean" means. What
-/// they do not share is the closure: this one compiles `v2.cli.compile_cli`, which declares
-/// `NativeCliDriver` and reaches no part of `v2.compiler.compile`.
+/// entry, so the two instruments cannot disagree about what "emitted and built clean" means — and
+/// since that preparation now establishes its own discriminating red by mutation, neither subject
+/// can report a green cargo verdict that is not a function of the emitted bytes. What they do not
+/// share is the closure: this one compiles `v2.cli.compile_cli`, which declares `NativeCliDriver`
+/// and reaches no part of `v2.compiler.compile`.
+///
+/// WHAT IT ADDS THAT ITS SIBLING DOES NOT: the built artifact's ENTRYPOINT IS EXECUTED. The
+/// self-host step's binary is the SourceRootEvalDriver, whose entrypoint the operator-invoked
+/// `--required-v2-native` route already spawns in both its modes; this one's was spawned by
+/// nothing until `walk_cli_door` ran it, so the instrument admitted a door that compiled and was
+/// never opened.
 fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_native_cli(source_roots) {
         Ok(held) => InvocationOutcome {
@@ -730,12 +741,16 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
                 Termination::ObservationDidNotHold
             },
             message: format!(
-                "v2-native-cli: closure={} binary={} seed={} exit_status={} warning_count={}",
+                "v2-native-cli: closure={} binary={} seed={} exit_status={} warning_count={} \
+                 door_exit_status={} door_emitted_bytes={} door_refusal_exit_status={}",
                 held.closure_identity,
                 held.binary_identity,
                 held.seed_identity,
                 held.exit_status,
                 held.warning_count,
+                held.door_exit_status,
+                held.door_emitted_bytes,
+                held.door_refusal_exit_status,
             ),
         },
         Err(cause) => InvocationOutcome {

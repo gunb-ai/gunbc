@@ -1,0 +1,25 @@
+module fixture.native_cli_door.door_probe
+
+// THE V2-NATIVE CLI'S POSITIVE CONTROL, AND THE REASON IT IS ITS OWN SOURCE ROOT.
+//
+// `//gunbc/instruments:v2-native-cli` emits and BUILDS `v2.cli.compile_cli`; until the step that
+// consumes this file landed, that was the whole instrument -- the door compiled and was never
+// walked through, which DESIGN section 5 names as specification-without-execution: a green that
+// establishes the closure typechecks and nothing about whether the program runs. This file is the
+// argv the built binary is handed so that it does run: `emit --entry
+// fixture.native_cli_door.door_probe --source-root fixtures/native_cli_door`.
+//
+// IT HAS NO IMPORTS, for the same reason `fixture.closure.rustc_green_probe` has none: the
+// admission's subject resolves against the validated roots the ingest produced, so a module whose
+// closure is itself is the SMALLEST subject that still walks argv parse, source-root read, ingest,
+// resolution and emission end to end. A subject with imports would add nothing to what the door
+// decides and would make a red attributable to the import graph rather than to the door.
+//
+// IT IS ITS OWN DIRECTORY AND NOT A FILE IN AN EXISTING FIXTURE ROOT, because the CLI's source
+// root is walked RECURSIVELY for every `.dag` file under it; sharing a directory would make the
+// control's ingest a function of what some other fixture's author adds next to it.
+//
+// THE DECLARED VALUE IS WHAT THE STEP READS BACK. The positive control requires the emitted text
+// on stdout to name this declaration, so an emission that reached stdout but carried some other
+// module's bytes is not admitted as this subject's emission.
+data native_cli_door_probe_value: Int = 606060

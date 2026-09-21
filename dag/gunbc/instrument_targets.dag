@@ -131,6 +131,14 @@ fn compile_clean_diagnostic_census_label() -> Label {
 // `v2.compiler.compile` declares `SourceRootEvalDriver`, whose rendered main answers `census` and
 // `adjudicate` and has no compile mode at all. That refusal is the honest next position and belongs
 // in this instrument when a driver can reach it.
+//
+// WHAT IT NOW ALSO ESTABLISHES, ADDED RATHER THAN IMPLIED. The cargo green is no longer taken on
+// its own: the preparation injects one type error into the entry's own emitted module and requires
+// cargo to fail alone on a diagnostic naming it, so a fingerprint alias or a replayed cached
+// verdict cannot stand in for a compile. And the built driver is STARTED -- `census` over one
+// well-formed module must report no per-file refusal, and the same mode over the committed poison
+// specimen must report one naming it. Until that pair ran, this instrument admitted an executable
+// nothing had executed.
 fn self_host_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "self-host" } }
 }
@@ -143,7 +151,27 @@ fn self_host_label() -> Label {
 // `adjudicate` and has no compile mode. `v2.cli.compile_cli` is the entry that has one -- a
 // `NativeCliDriver` whose `.dag` fold decides the verb, every refusal, what to emit and the process
 // status, with a rendered main that only reads argv, walks the roots the PLAN named, writes stdout
-// and sets the status. This instrument asks whether that door compiles.
+// and sets the status. This instrument asks whether that door compiles AND whether its ENTRYPOINT
+// EXECUTES -- which are different questions, and the second one was asked by nothing until the
+// built binary was spawned. It is spawned twice over `fixtures/native_cli_door`.
+//
+// THE EXECUTING EVIDENCE IS THE REFUSAL ARM, not an emission. `emit --source-root <root>` with no
+// `--entry` is admitted only when the process exits non-zero carrying `cli_no_entry`'s located
+// sentence -- a cause only this program's own `.dag` fold produces, so reaching it establishes that
+// the process started, read argv, parsed it, decided, rendered its own cause and set its own status.
+//
+// THE OTHER ARM EXPECTS RED, AND THAT IS A MEASURED FACT ABOUT THE DOOR RATHER THAN A WEAKENED
+// CHECK. The built binary CANNOT EMIT A CLOSURE: over the fixture root it answers
+// `infer_grounding_not_derived`, and over the real corpus a located `parse_g0_tokens_remain` at the
+// `service ... { operation ... }` form. Those are limitations in the emitted front end, and
+// `v2.cli.compile_cli` records the same shape measured at gunbc#11507 on three different entries.
+// So the arm PINS that limitation by name: a crash, a spawn failure or any other refusal fails the
+// instrument, and an exit 0 fails it too, with instructions to flip the probe into a regression
+// control asserting the door emits. Deleting it instead would leave nothing to notice the day the
+// limitation lifts (DESIGN section 4b(4)).
+//
+// What is still unclaimed is the second generation, and by a wider margin than a green would
+// suggest: this door has never emitted anything.
 //
 // IT IS A SEPARATE LABEL BECAUSE IT IS A SEPARATE CLOSURE, not because the question is different.
 // The two closures are DIFFERENT rather than nested, and neither contains the other's

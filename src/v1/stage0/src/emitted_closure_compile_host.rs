@@ -116,7 +116,7 @@ pub(crate) fn probe_package_name(entry: &str) -> String {
 /// collide with emitted output, and the item is `pub` so no dead-code lint elides it.
 /// The symbol the injected item declares. The faulted arm's diagnostics must NAME it — that is
 /// what attributes the red to this phase's fault rather than anything else wrong in the tree.
-const MUTATION_PROBE_SYMBOL: &str = "EMIT_COMPILE_MUTATION_PROBE";
+pub(crate) const MUTATION_PROBE_SYMBOL: &str = "EMIT_COMPILE_MUTATION_PROBE";
 
 const MUTATION_ITEM: &str =
     "\npub const EMIT_COMPILE_MUTATION_PROBE: u8 = \"the phase's own discriminating red\";\n";
@@ -1067,7 +1067,7 @@ pub(crate) fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
 /// One fault, in one file, failing alone -- the baseline before is the control, the restore after
 /// the second control. Several things changing at once would show cargo responds to damage, not
 /// that this instrument reads this closure.
-fn establish_discriminating_red(
+pub(crate) fn establish_discriminating_red(
     crate_dir: &Path,
     workspace: &Path,
     entry_module: &str,
@@ -1208,7 +1208,7 @@ fn establish_discriminating_red(
 }
 
 /// The rust module basename an entry `.dag` file emits under, from its own `module` line.
-fn entry_rust_module(entry: &str, workspace: &Path) -> Result<String, String> {
+pub(crate) fn entry_rust_module(entry: &str, workspace: &Path) -> Result<String, String> {
     let path = workspace.join(entry);
     let content = std::fs::read_to_string(&path)
         .map_err(|e| format!("reading the entry {}: {e}", path.display()))?;

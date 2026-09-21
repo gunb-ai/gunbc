@@ -77,6 +77,59 @@ const MALFORMED_SPECIMEN_COMMITTED: &str = "fixtures/native_lane_malformed/poiso
 const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root";
 const MALFORMED_MATERIALIZED_PATH: &str = "target/v2-native-lane/malformed-control-root/poison.dag";
 
+/// THE TWO DOORS' CONTROL INPUTS, AS THE THREE FACTS THEIR ARGV IS BUILT FROM.
+///
+/// The root is named for its PROPERTY and not for one of its readers, because both walks use it:
+/// the CLI door emits this subject, and the eval driver's accepting control censuses it. A
+/// `CLI_DOOR_` prefix would have been a fact about which caller was written first.
+///
+/// The source root is a directory of its own because the CLI walks a root RECURSIVELY for every
+/// `.dag` file under it: a control sharing a directory with other fixtures would ingest whatever
+/// their authors add next, so what the door compiled would stop being a fact this harness states.
+/// The subject is the module that directory's one file declares, and the witness word is a
+/// declaration name from that same file — which is what makes the positive control an assertion
+/// about THIS subject's emission rather than about stdout being non-empty.
+const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door";
+const CLI_DOOR_ENTRY_MODULE: &str = "fixture.native_cli_door.door_probe";
+const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
+
+/// THE EMIT PROBE'S EXPECTED REFUSAL, AND WHY THIS CONSTANT IS THE PROBE'S WHOLE POINT.
+///
+/// The built door CANNOT EMIT A CLOSURE TODAY. Measured on the artifact this preparation produces:
+/// over the fixture root alone it answers `infer_grounding_not_derived` thirty-five times, and over
+/// the real corpus it answers a LOCATED `parse_g0_tokens_remain` at
+/// `dag/extdeps/access/posix_effective_principal_read_op.dag`, whose bytes at that offset are the
+/// `service ... { operation ... }` form. Those are COMPILER LIMITATIONS in the emitted front end,
+/// not defects in this instrument, and `v2.cli.compile_cli` already records the same shape measured
+/// at gunbc#11507 on three different entries.
+///
+/// SO THE PROBE EXPECTS RED, AND IT IS ENROLLED RATHER THAN DELETED (DESIGN section 4b(4)). A probe
+/// that is removed because its subject cannot pass yet leaves nothing to notice when the subject
+/// starts passing. This one pins the limitation by its CAUSE, so the day the door can ground a
+/// closure the probe stops matching and this instrument REFUSES -- which is the signal to flip it
+/// into a permanent regression control asserting the door emits. It is deliberately NOT satisfied
+/// by any non-zero exit: a door that refused for some other reason, or crashed, would establish
+/// nothing about the limitation this row pins.
+const CLI_DOOR_EMIT_LIMITATION: &str = "infer_grounding_not_derived";
+
+/// The refusal control's expected cause, quoted from `v2.cli.compile_cli` `cli_parse_finish`'s
+/// `cli_no_entry` arm. It is the DETAIL and not the reason symbol because the rendered main prints
+/// the `ProcessExit` reason string and nothing else, so the detail is the only part of the refusal
+/// that crosses the process boundary — the gap `compile_cli`'s own annotation records having been
+/// measured on a built binary. Matching the sentence therefore establishes that the arm the door
+/// took is the one this control asked for; matching only "REFUSED" would be satisfied by every
+/// other refusal the door has.
+const CLI_DOOR_REFUSAL_DETAIL: &str = "emit needs the module to resolve as its subject";
+
+/// What one spawn of the built CLI observed. Returned rather than adjudicated so the step that
+/// knows which control it was running decides what the observation means — the same split
+/// `run_self_host` and `run_v2_native_cli` make against the instrument seam.
+struct CliDoorRun {
+    status: Option<i32>,
+    stdout: String,
+    stderr: String,
+}
+
 /// The emitted compiler, prepared: where the binary is, what its bytes are, and the identity of
 /// the closure it was emitted from.
 struct EmittedPreparation {
@@ -206,10 +259,16 @@ fn prepare_emitted_compiler_for_entry(
         super::emitted_closure_compile_host::probe_cargo_invocation(&crate_dir, &workspace)
             .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?;
     let rustc = invocation.rustc_identity.clone();
+    // THE BASELINE IS ATTRIBUTED TO THE SAME PROBE SYMBOL THE FAULTED ARM WILL CARRY. This
+    // argument used to be the literal `"v2_native_lane_carries_no_mutation_probe"`, which was a
+    // true statement about this lane and is now a false one: the discriminating red below is
+    // established on every preparation, so the baseline and the faulted arm are two runs of one
+    // pair and must be read against one symbol. A second spelling here would let the green arm
+    // search for a symbol the red arm never injects.
     let verdict = super::emitted_closure_compile_host::run_cargo(
         &crate_dir,
         &workspace,
-        "v2_native_lane_carries_no_mutation_probe",
+        super::emitted_closure_compile_host::MUTATION_PROBE_SYMBOL,
     );
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
         return Err(format!(
@@ -266,6 +325,58 @@ fn prepare_emitted_compiler_for_entry(
         "v2-native-route: emitted compiler at {} (sha256 {binary_identity})",
         binary_path.display()
     );
+
+    // THE PLANTED DEFECT, ON THE ARTIFACT THIS PREPARATION IS ABOUT TO HAND ON.
+    //
+    // Until this block landed, both retained native build subjects -- the test driver
+    // (`v2.compiler.compile`) and the CLI (`v2.cli.compile_cli`) -- were admitted on a GREEN CARGO
+    // RUN ALONE, and this call site passed the literal
+    // `"v2_native_lane_carries_no_mutation_probe"` where the required emit-compile phase passes its
+    // probe symbol. A cargo phase that is green because nothing was measured is the decoration
+    // DESIGN section 4b calls worse than absent: a fingerprint alias, a replayed cached verdict or
+    // an emitter that stopped reaching rustc all report `Completed status=0` byte-identically to a
+    // real compile, and the instrument would carry the green under the subject's name.
+    //
+    // IT IS THE SAME PRODUCER THE REQUIRED PHASE USES, NOT A SECOND ONE.
+    // `emitted_closure_compile_host` `establish_discriminating_red` injects ONE type error into the
+    // ENTRY'S OWN emitted module, requires cargo to fail ALONE on it with a diagnostic NAMING the
+    // injected symbol, restores the bytes byte-exactly, and returns a typed non-discriminating
+    // verdict for every other shape. Calling it here rather than copying its shape is what keeps
+    // "the emitted tree is really being compiled" one fact with one home (DESIGN section 3).
+    //
+    // IT RUNS AFTER THE BINARY IS IDENTIFIED AND THE IDENTITY IS RE-READ AFTERWARDS. The faulted
+    // arm is a cargo run over the same crate and target directory, so the artifact this function
+    // returns must be shown to be the one the GREEN baseline produced rather than assumed to be:
+    // a mutation that somehow left a different executable at that path would otherwise be handed
+    // to the entrypoint step as though it were the baseline's.
+    let entry_module = super::emitted_closure_compile_host::entry_rust_module(entry, &workspace)
+        .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EntryModuleUnreadable — {cause}"))?;
+    eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
+    let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
+        &crate_dir,
+        &workspace,
+        &entry_module,
+    );
+    if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
+            super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
+        ));
+    }
+    eprintln!(
+        "v2-native-route: discriminating red established — {}",
+        super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
+    );
+    let identity_after_mutation = sha256_file(&binary_path)?;
+    if identity_after_mutation != binary_identity {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=EmittedCompilerReplacedByFaultedArm — {} was {binary_identity} \
+             when the clean baseline built it and is {identity_after_mutation} after the fault was \
+             injected and removed; the executable handed on is not the one the green build produced",
+            binary_path.display()
+        ));
+    }
+
     Ok(EmittedPreparation {
         binary_path,
         binary_identity,
@@ -853,7 +964,9 @@ fn write_host_facts(
 /// because only one of them decides it.
 ///
 /// WHAT THIS DOES NOT ESTABLISH, named so the green is not read for more than it carries. It is
-/// EMISSION AND COMPILATION, not behavioural equivalence: DESIGN section 7 asks that the emitted
+/// EMISSION, COMPILATION AND A BOUNDED EXECUTION — `walk_eval_driver_door` starts the built driver
+/// and requires it to accept a well-formed root and refuse a malformed one — and it is still not
+/// behavioural equivalence: DESIGN section 7 asks that the emitted
 /// module also behave as the seed does on a discriminating corpus, and that half
 /// (`--behavioral-receipt-*`) is a declared drop that no required run performs. Nor is it the
 /// second generation: the built binary emitting the same closure is the v2 -> v2 boundary, and it
@@ -870,6 +983,120 @@ pub struct SelfHostHeld {
     pub seed_identity: String,
     pub exit_status: i64,
     pub warning_count: i64,
+    /// What the built driver observed when this instrument STARTED it: the size of the universe
+    /// its accepting control derived, and the cause it gave for refusing the poison specimen.
+    /// Carried as the refusal's own sentence rather than as a Bool, so a receipt reader can see
+    /// WHICH refusal fired — the flattening this file's `run_native_binary` annotation records
+    /// having already cost one unanswerable question.
+    pub door_universe: i64,
+    pub door_refusal_reason: String,
+}
+
+/// WALK THROUGH THE TEST DRIVER'S DOOR, BOTH WAYS.
+///
+/// WHAT THIS CLOSES, AND WHY IT IS NOT THE SAME GAP THE CLI HAD. The eval driver's entrypoint IS
+/// spawned somewhere — by `run_required_v2_native`, which the operator invokes with
+/// `--required-v2-native` — but nothing spawned it from `//gunbc/instruments:self-host`, so that
+/// instrument's green said "the closure emitted and cargo accepted it" about an executable it never
+/// started. An artifact admitted without being run is the specification-without-execution shape
+/// DESIGN section 5 names, and it is that shape whether or not a DIFFERENT route happens to run the
+/// same program: the instrument is the thing reporting, and its evidence has to be its own.
+///
+/// THIS CONTROL IS A SECOND READER OF THE EVAL DRIVER'S VERB SURFACE, AND SAYS SO RATHER THAN
+/// LEAVING IT TO BE DISCOVERED. The argv below spells `census` as a literal. The driver itself is
+/// the first reader and the authority: it decides what verbs it accepts. So there are two places
+/// that know this driver's argv, which is the §3 fork in its mildest form -- mild because the
+/// literal is one word in one call, and real because a change to the driver's surface makes this
+/// control spawn an argv the driver no longer accepts, and the failure would look like a broken
+/// door rather than a stale spelling.
+///
+/// IT IS ADMITTED RATHER THAN REPAIRED HERE BECAUSE THE JOIN HAS ANOTHER OWNER. gunbc#11952 turns
+/// that verb surface into a plan -- `native_driver_parse` and the plan it returns -- which is
+/// exactly the authority this control should ASK instead of spelling. That PR is OPEN and its
+/// symbols DO NOT RESOLVE in this tree; they are named here as provenance for the trigger, not as
+/// citations of declarations that exist (`gunbc.recurring_failure_mode`
+/// `unlanded_citation_indistinguishable_at_the_citing_end`). Consuming it from here would invert
+/// the dependency and block this instrument on an unlanded PR.
+///
+/// RETIREMENT TRIGGER, AT CAPABILITY GRAIN AND NOT ARTIFACT GRAIN: this literal is retired when THE
+/// ENTRYPOINT CONTROL DERIVES ITS ARGV FROM THE DRIVER'S OWN PLAN, once that plan is on main --
+/// sufficient that no spelling of any verb survives in this file. It is deliberately NOT "when
+/// #11952 lands": that PR could land with the plan reachable and this call still spelling `census`,
+/// which would satisfy an artifact-grain trigger while the second reader stood (DESIGN §4b(3) --
+/// a trigger naming less than the capability is satisfied while the capability stays dead).
+///
+/// THE PAIR IS TWO CENSUS RUNS DIFFERING ONLY IN THEIR ROOT. Over `fixtures/native_cli_door` — one
+/// well-formed module — the driver must reach `census` and report NO per-file refusal; over the
+/// materialized poison specimen it must report one naming that path. A binary that refused
+/// everything would pass the second alone, and one whose front-end refusal arm is dead would pass
+/// the first alone; only the pair discriminates. It is `census` rather than `adjudicate` because
+/// the question is whether the ENTRYPOINT executes and the front end answers, and adjudication
+/// would additionally derive and judge the whole `v2.test.*` universe — the hours-long subject of
+/// the required-v2-native route, and a different claim.
+fn walk_eval_driver_door(binary: &Path, workspace: &Path) -> Result<(u64, String), String> {
+    let clean_root = workspace.join(WELL_FORMED_CONTROL_ROOT);
+    if !clean_root.is_dir() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorControlRootAbsent — {} is not a directory, so \
+             the accepting control has no input",
+            clean_root.display()
+        ));
+    }
+    eprintln!(
+        "self-host: walking the driver — census over {}",
+        clean_root.display()
+    );
+    let clean = run_native_binary(
+        binary,
+        &["census".to_string(), clean_root.display().to_string()],
+        None,
+    )?;
+    if clean.terminal.mode != "census" {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeRunFailed — the accepting control reported mode {}, not census",
+            clean.terminal.mode
+        ));
+    }
+    if !clean.file_refusals.is_empty() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=EvalDriverRefusedItsAcceptingControl — the driver reported {} \
+             per-file refusal(s) over {}, whose one file is well formed; a front end that refuses \
+             this input makes the refusal beside it uninformative",
+            clean.file_refusals.len(),
+            clean_root.display()
+        ));
+    }
+    let universe = clean.terminal.universe;
+    eprintln!("self-host: driver accepted the clean root — mode=census universe={universe}");
+
+    // THE ROOT IS ABSOLUTE HERE AND RELATIVE IN `run_required_v2_native`, and the difference is the
+    // caller's cwd rather than a preference. That lane anchors at the workspace root before it
+    // spawns; an instrument producer is invoked from wherever the operator ran `gunbc test`, so a
+    // workspace-relative root would name a directory that does not exist and the refusal control
+    // would report "no refusal" for a reason that has nothing to do with the front end.
+    let poison_root = workspace
+        .join(materialize_malformed_specimen(workspace)?)
+        .display()
+        .to_string();
+    eprintln!("self-host: refusal control — the same mode over the materialized poison specimen");
+    let poisoned = run_native_binary(binary, &["census".to_string(), poison_root], None)?;
+    let Some(refusal) = poisoned
+        .file_refusals
+        .iter()
+        .find(|fr| fr.path.contains(MALFORMED_MATERIALIZED_PATH))
+    else {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=EvalDriverAcceptedThePoisonSpecimen — the driver reported no \
+             per-file refusal naming {MALFORMED_MATERIALIZED_PATH}; a route that accepts a source \
+             whose string never terminates has a dead front-end refusal arm, and every refusal \
+             verdict it reports elsewhere is then worthless"
+        ));
+    };
+    eprintln!(
+        "self-host: driver refused the poison specimen — path=\"{}\" reason=\"{}\"",
+        refusal.path, refusal.fatal_reason
+    );
+    Ok((universe, refusal.fatal_reason.clone()))
 }
 
 pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
@@ -891,12 +1118,16 @@ pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
     // NOT HOLD, and a refusal above is the subject never having been reached; those are different
     // terminations with different exit statuses, and the instrument seam is the one place that
     // knows the vocabulary. Deciding it here too would give one fact two homes.
+    let (door_universe, door_refusal_reason) =
+        walk_eval_driver_door(&prepared.binary_path, &super::process_workspace_root())?;
     Ok(SelfHostHeld {
         closure_identity: prepared.closure_identity,
         binary_identity: prepared.binary_identity,
         seed_identity: prepared.seed_identity,
         exit_status: prepared.build.exit_status,
         warning_count: prepared.build.warning_count,
+        door_universe: door_universe as i64,
+        door_refusal_reason,
     })
 }
 
@@ -910,6 +1141,19 @@ pub struct V2NativeCliHeld {
     pub seed_identity: String,
     pub exit_status: i64,
     pub warning_count: i64,
+    /// The status the built binary itself took on the EMIT PROBE, and the bytes it wrote on stdout.
+    /// Both are carried rather than folded into a Bool because a receipt that says only "the probe
+    /// held" cannot be read afterwards for what the door actually did — the flattening
+    /// `run_native_binary`'s annotation records paying for once already. `door_emitted_bytes` is
+    /// expected to be ZERO while the probe expects red, and it is recorded precisely so that a
+    /// nonzero value is visible in the receipt on the day the door starts emitting.
+    pub door_exit_status: i64,
+    pub door_emitted_bytes: i64,
+    /// The status the same binary took when the one argument the positive control supplies was
+    /// removed. It is beside the green deliberately: the pair is the evidence, and a reader given
+    /// only the green would have no way to tell an executing door from one that exits 0 on
+    /// anything.
+    pub door_refusal_exit_status: i64,
 }
 
 /// THE V2-EXCLUSIVE CLI, EMITTED AND BUILT. This is the door the self-host step stops in front of.
@@ -928,11 +1172,176 @@ pub struct V2NativeCliHeld {
 /// green there are two facts about two compilations, and collapsing them would let one subject's
 /// regression be reported under the other's name.
 ///
-/// WHAT A GREEN DOES NOT ESTABLISH. It is EMISSION AND COMPILATION of the CLI's closure. It is not
-/// the second generation either: that is this built binary emitting a closure, which is the next
-/// position and needs this binary to exist first. The `.dag` folds the CLI decides with are
-/// separately executed by `v2.test.cli.v2_native_cli`, so a green here plus those witnesses is
-/// "the decisions hold and the door compiles", not "the door has been walked through".
+/// WHAT A GREEN ESTABLISHES, CORRECTED BY THIS CHANGE RATHER THAN RESTATED. The paragraph here
+/// used to end "a green here plus those witnesses is 'the decisions hold and the door compiles',
+/// not 'the door has been walked through'" — an accurate description of an instrument that stopped
+/// at cargo. It no longer stops there: `walk_cli_door` below spawns the binary this preparation
+/// produced, twice, and admits it only on an emission that names its subject and a refusal that
+/// names its cause. So the door IS walked through, on a fixture closure.
+///
+/// WHAT IS STILL NOT CLAIMED, and the distinction is the whole reason the door exists. This is not
+/// the second generation: that is this binary emitting the COMPILER'S OWN closure, and the subject
+/// walked here is `fixture.native_cli_door.door_probe`, a single import-free module. What the walk
+/// establishes is that argv parsing, the source-root read, ingest, resolution, emission and the
+/// process exit all execute in the built artifact — the inhabitance obligation beside
+/// `v2.test.cli.v2_native_cli`, whose rows supply their argv and their ingest and are claims about
+/// the folds rather than about the program.
+/// SPAWN THE BUILT CLI ONCE, BY EXPLICIT PATH, AND CARRY WHAT IT DID.
+///
+/// IT IS NOT `run_native_binary`, AND THE DIFFERENCE IS THE PROTOCOL RATHER THAN THE PROCESS. That
+/// function decodes the SourceRootEvalDriver's stdout — population rows and a terminal marker —
+/// and every check it performs is about that stream. The CLI driver's rendered main prints the
+/// EMITTED TEXT on stdout and `REFUSED: <reason>` on stderr, so handing its output to that parser
+/// would report a working door as an unparseable one. Two drivers, two stdout contracts; sharing
+/// the reader would be a fork of the contract, not a saving.
+///
+/// STDOUT IS CHECKED UTF-8 AND NOT LOSSY, on the rule `run_native_binary` already states: a lossy
+/// decode substitutes U+FFFD and would let this harness assert about bytes the child did not
+/// write. Stderr is lossy-decoded because it is diagnostic relay rather than a subject.
+fn run_cli_door(binary: &Path, args: &[String]) -> Result<CliDoorRun, String> {
+    let output = Command::new(binary).args(args).output().map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorSpawnFailed — spawning {} {args:?}: {e}",
+            binary.display()
+        )
+    })?;
+    let stdout = String::from_utf8(output.stdout.clone()).map_err(|cause| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorStdoutNotUtf8 — {} {args:?} wrote {} byte(s) that are not valid UTF-8: {cause}",
+            binary.display(),
+            output.stdout.len()
+        )
+    })?;
+    Ok(CliDoorRun {
+        status: output.status.code(),
+        stdout,
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
+/// WALK THROUGH THE DOOR, BOTH WAYS.
+///
+/// WHAT THIS CLOSES. Before it, `//gunbc/instruments:v2-native-cli` emitted the CLI's closure and
+/// built it, and stopped — the door compiled and nothing ever opened it. DESIGN section 5 names
+/// that exactly: a typecheck is not a consumer, and "done" is a real consumer green BY EXECUTION
+/// plus a discriminating input that goes red. `v2.test.cli.v2_native_cli` executes the door's
+/// FOLDS over supplied argv and a supplied ingest, which is the right subject for those claims and
+/// is not this one; the inhabitance obligation beside them is that the REAL PATH runs, and the real
+/// path is the built process reading real argv and real files.
+///
+/// AND THE FIRST THING IT ESTABLISHED WAS THAT THE DOOR DOES NOT EMIT, which is the point rather
+/// than a disappointment. An entrypoint-execution control exists to find out what the program
+/// actually does, and on its first real run it found a limitation the instrument had been silently
+/// carrying: the emitted front end cannot ground a closure. The probe is enrolled around that fact
+/// instead of being tuned until it passes.
+///
+/// WHAT THE PAIR ESTABLISHES, AND IT IS NOT WHAT AN EARLIER DRAFT OF THIS COMMENT CLAIMED. The
+/// door CANNOT EMIT yet, so there is no arm here that ends in a successful emission. What the pair
+/// does establish is that THE BUILT BINARY'S ENTRYPOINT EXECUTES: the `cli_no_entry` arm reaches a
+/// LOCATED refusal that only this program's own `.dag` fold can produce, which means the process
+/// started, read argv, parsed it, decided, rendered its own cause and set its own exit status.
+/// That is the inhabitance claim `v2.test.cli.v2_native_cli` cannot make, because its rows supply
+/// argv and ingest rather than running the program.
+///
+/// TWO SPAWNS, ONE BINARY, DIFFERING IN ONE ARGUMENT. The emit probe hands the door a complete
+/// argv and pins the named limitation that stops it (`CLI_DOOR_EMIT_LIMITATION`). The refusal
+/// control removes ONLY `--entry` and requires `cli_no_entry`'s located sentence. One argument
+/// differs, so the second arm's cause is information about THAT argument rather than about the door
+/// being broken in general — and the two causes being DIFFERENT is itself the evidence that the
+/// door is deciding rather than failing uniformly.
+///
+/// NEITHER ARM IS SATISFIED BY A NON-ZERO EXIT. A door that panicked, could not find its source
+/// root, or refused for any of its other causes also exits non-zero, and admitting those would
+/// green this control on a broken door. Both arms match the CAUSE, and a non-zero exit with the
+/// wrong cause refuses the instrument rather than passing it.
+fn walk_cli_door(binary: &Path, workspace: &Path) -> Result<(i64, usize, i64), String> {
+    let root = workspace.join(WELL_FORMED_CONTROL_ROOT);
+    if !root.is_dir() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorControlRootAbsent — {} is not a directory, so \
+             neither control has an input and a green here would describe nothing",
+            root.display()
+        ));
+    }
+    let root_arg = root.display().to_string();
+
+    eprintln!(
+        "v2-native-cli: walking the door — emit --entry {CLI_DOOR_ENTRY_MODULE} --source-root {root_arg}"
+    );
+    let emitted = run_cli_door(
+        binary,
+        &[
+            "emit".to_string(),
+            "--entry".to_string(),
+            CLI_DOOR_ENTRY_MODULE.to_string(),
+            "--source-root".to_string(),
+            root_arg.clone(),
+        ],
+    )?;
+    // THE EXPECTING-RED ARM. A GREEN HERE IS THE FAILURE, and it is the good kind: it means the
+    // emitted front end can ground a closure, so this probe has outlived its subject and must
+    // become the regression control that asserts the door emits. Refusing loudly is what makes that
+    // transition happen on the day it becomes true instead of whenever someone next reads the file.
+    if emitted.status == Some(0) {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorEmitProbeGreened — the built CLI EMITTED {} \
+             byte(s) and exited 0. This probe expects `{CLI_DOOR_EMIT_LIMITATION}` because the \
+             emitted front end could not ground a closure; that limitation is gone. FLIP THIS PROBE \
+             into a regression control that requires exit 0 and requires the emitted text to name \
+             `{CLI_DOOR_EMITTED_WITNESS}` — do not delete it, and do not relax this arm.",
+            emitted.stdout.len()
+        ));
+    }
+    if !emitted.stderr.contains(CLI_DOOR_EMIT_LIMITATION) {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorRefusedForAnUnpinnedReason — the built CLI exited \
+             {:?} without naming `{CLI_DOOR_EMIT_LIMITATION}`. A non-zero exit is not this probe's \
+             subject: it pins ONE named limitation, so a different refusal, a crash or a spawn \
+             failure must be read rather than absorbed. stderr: {}",
+            emitted.status,
+            emitted.stderr.trim()
+        ));
+    }
+    let door_exit_status = i64::from(emitted.status.unwrap_or_default());
+    let emitted_bytes = emitted.stdout.len();
+    eprintln!(
+        "v2-native-cli: door refused the emit as expected — {CLI_DOOR_EMIT_LIMITATION}, exit {door_exit_status}, stdout {emitted_bytes} byte(s)"
+    );
+
+    eprintln!("v2-native-cli: refusal control — the same argv with --entry removed");
+    let refused = run_cli_door(
+        binary,
+        &[
+            "emit".to_string(),
+            "--source-root".to_string(),
+            root_arg.clone(),
+        ],
+    )?;
+    match refused.status {
+        Some(0) | None => {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeCliDoorRefusalNotDiscriminating — the built CLI \
+                 exited {:?} on an argv naming no --entry; a door that accepts the argv its own \
+                 `cli_no_entry` arm exists to refuse establishes nothing about the arm beside it",
+                refused.status
+            ))
+        }
+        Some(_) => {}
+    }
+    if !refused.stderr.contains(CLI_DOOR_REFUSAL_DETAIL) {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorRefusedForAnotherReason — the built CLI exited \
+             {:?} without naming `{CLI_DOOR_REFUSAL_DETAIL}`; a non-zero exit is not evidence that \
+             the refusal this control asked for is the one that fired. stderr: {}",
+            refused.status,
+            refused.stderr.trim()
+        ));
+    }
+    let refusal_status = i64::from(refused.status.unwrap_or_default());
+    eprintln!("v2-native-cli: door refused as cli_no_entry — exit {refusal_status}");
+    Ok((door_exit_status, emitted_bytes, refusal_status))
+}
+
 pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, String> {
     let started = std::time::Instant::now();
     eprintln!(
@@ -944,6 +1353,14 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
         "v2-native-cli: emit and build completed — exit_status={} warning_count={} wall_s={wall_s}",
         prepared.build.exit_status, prepared.build.warning_count,
     );
+    // THE ENTRYPOINT EXECUTES, OR THE SUBJECT WAS NEVER REACHED. A refusal from the walk is a
+    // `SubjectUnreached` at the instrument seam for the same reason a refusal from the preparation
+    // is: the door failing to spawn, to find its control root or to emit says the observation could
+    // not be taken, which is a different termination from the build having reported non-zero
+    // counters. The one arm that is deliberately NOT a "did not hold" is the refusal control going
+    // green — a door that accepts everything is a broken instrument, not a broken build.
+    let (door_exit_status, door_emitted_bytes, door_refusal_exit_status) =
+        walk_cli_door(&prepared.binary_path, &super::process_workspace_root())?;
     // The counters are carried and not adjudicated here, on the same rule `run_self_host` follows:
     // a non-clean build is an observation that did not hold, a refusal above is the subject never
     // having been reached, and the instrument seam is the one place that knows the difference.
@@ -953,6 +1370,9 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
         seed_identity: prepared.seed_identity,
         exit_status: prepared.build.exit_status,
         warning_count: prepared.build.warning_count,
+        door_exit_status,
+        door_emitted_bytes: door_emitted_bytes as i64,
+        door_refusal_exit_status,
     })
 }
 

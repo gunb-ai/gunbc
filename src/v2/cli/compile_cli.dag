@@ -82,6 +82,29 @@ import v2.std.text { String }
 // Closing the two gaps above moves the walk itself into this fold, which is what the second
 // generation needs.
 //
+// AND THE DOOR IS NOW WALKED THROUGH RATHER THAN ONLY COMPILED.
+// `//gunbc/instruments:v2-native-cli` used to end at cargo: the closure emitted, the crate built,
+// and the process this module decides for was started by nobody. The witnesses in
+// `v2.test.cli.v2_native_cli` executed the folds below over SUPPLIED argv and a SUPPLIED ingest,
+// which is the right subject for those rows and is not evidence that any program runs -- DESIGN
+// section 3's pairing obligation asks for one inhabitance claim that the real path executes, and
+// there was none. The instrument now spawns the built binary twice over
+// `fixtures/native_cli_door`: once with `--entry` removed, admitted only when stderr carries
+// `cli_no_entry`'s located sentence -- which is the EXECUTING evidence, because that cause is
+// produced by the fold below and by nothing else -- and once on a complete argv, which is an
+// EXPECTING-RED probe.
+//
+// THE EMIT ARM EXPECTS RED BECAUSE THIS DOOR CANNOT EMIT, MEASURED ON THE BUILT BINARY. Over the
+// fixture root it answers `infer_grounding_not_derived`; over the real corpus it answers a located
+// `parse_g0_tokens_remain` at `dag/extdeps/access/posix_effective_principal_read_op.dag`, whose
+// bytes there are the `service ... { operation ... }` form. That is consistent with the gunbc#11507
+// measurement recorded further down this file, on three different entries. The probe pins the cause
+// by NAME, so a different refusal or a crash fails the instrument, and an exit 0 fails it too and
+// says to flip it into a regression control rather than to relax it.
+//
+// WHAT THAT STILL DOES NOT MAKE IT. The second generation is unchanged and unclaimed, and the gap is
+// wider than a passing instrument would suggest: this door has never emitted any closure at all.
+//
 // THE PROTOCOL IS TWO CALLS AND A WRITE, and the shape is forced by the boundary above. The host
 // cannot know which roots to walk until the argv has been parsed, and this module cannot parse argv
 // and then read the roots itself, so the plan must come back to the host as a VALUE it can act on:
