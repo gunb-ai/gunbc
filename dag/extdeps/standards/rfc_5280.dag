@@ -536,7 +536,7 @@ fn ecdsa_sig_value(octets: List<UInt8>, width: Int) -> EcdsaSigValue {
 // (§4.1.2.5.1); GeneralizedTime is YYYYMMDDHHMMSSZ (§4.1.2.5.2). Both are rendered as the RFC 3339
 // UTC instant std.types Timestamp carries ("YYYY-MM-DDTHH:MM:SSZ"), which compares lexicographically,
 // so validity is decided with the same comparison every other expiry in the corpus uses. A time
-// that is not exactly one of the two forms refuses; nothing is guessed from a partial one.
+// whose text is not exactly its arm's form refuses; nothing is guessed from a partial one.
 fn x509_digit_char(ch: String) -> Bool {
   ch == "0" || ch == "1" || ch == "2" || ch == "3" || ch == "4" || ch == "5" || ch == "6" || ch == "7" || ch == "8" || ch == "9"
 }
@@ -556,18 +556,29 @@ fn x509_rfc3339_of_full(yyyymmddhhmmss: String) -> Timestamp? {
   }
 }
 
-fn x509_time_rfc3339(text: String) -> Timestamp? {
-  let n = string_length(s: text)
-  if n == 13 && substring(s: text, start: 12, end: 13) == "Z" {
-    let yy = substring(s: text, start: 0, end: 2)
-    if !x509_digits_only(s: yy) { none } else {
-      let century = if yy < "50" { "20" } else { "19" }
-      x509_rfc3339_of_full(yyyymmddhhmmss: century + substring(s: text, start: 0, end: 12))
-    }
-  } else if n == 15 && substring(s: text, start: 14, end: 15) == "Z" {
-    x509_rfc3339_of_full(yyyymmddhhmmss: substring(s: text, start: 0, end: 14))
-  } else {
-    none
+fn x509_time_text(t: X509Time) -> String {
+  match t {
+    UtcTime { text: x } => x
+    GeneralizedTime { text: x } => x
+  }
+}
+
+// The conversion reads the CHOICE arm, never the length: UTCTime's YY is 1950..2049 (§4.1.2.5.1),
+// GeneralizedTime carries four digits (§4.1.2.5.2).
+fn x509_time_rfc3339(t: X509Time) -> Timestamp? {
+  match t {
+    UtcTime { text: text } =>
+      if string_length(s: text) == 13 && substring(s: text, start: 12, end: 13) == "Z" {
+        let yy = substring(s: text, start: 0, end: 2)
+        if !x509_digits_only(s: yy) { none } else {
+          let century = if yy < "50" { "20" } else { "19" }
+          x509_rfc3339_of_full(yyyymmddhhmmss: century + substring(s: text, start: 0, end: 12))
+        }
+      } else { none }
+    GeneralizedTime { text: text } =>
+      if string_length(s: text) == 15 && substring(s: text, start: 14, end: 15) == "Z" {
+        x509_rfc3339_of_full(yyyymmddhhmmss: substring(s: text, start: 0, end: 14))
+      } else { none }
   }
 }
 
@@ -582,11 +593,11 @@ type X509ValidityStanding
   | X509ValidityUndecodable { text: String }
 
 fn x509_validity_at(cert: X509Certificate, observed_at: Timestamp) -> X509ValidityStanding {
-  match x509_time_rfc3339(text: cert.tbs.not_before) {
-    Absent => X509ValidityUndecodable { text: cert.tbs.not_before }
+  match x509_time_rfc3339(t: cert.tbs.not_before) {
+    Absent => X509ValidityUndecodable { text: x509_time_text(t: cert.tbs.not_before) }
     Present { value: nb } =>
-      match x509_time_rfc3339(text: cert.tbs.not_after) {
-        Absent => X509ValidityUndecodable { text: cert.tbs.not_after }
+      match x509_time_rfc3339(t: cert.tbs.not_after) {
+        Absent => X509ValidityUndecodable { text: x509_time_text(t: cert.tbs.not_after) }
         Present { value: na } =>
           if observed_at < nb { X509NotYetValid { not_before: nb, observed_at: observed_at } }
           else if !(observed_at < na) { X509Expired { not_after: na, observed_at: observed_at } }
