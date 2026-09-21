@@ -39,9 +39,10 @@ import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
 import gunbc.machine_intake_host_capture_envelope {
-  HostCaptureBound, HostCaptureUnbound,
-  host_capture_bind, host_capture_bound_section, host_capture_bound_section_exit_zero,
-  host_capture_bound_nproc_exact, host_capture_bound_edac_clean, host_capture_bound_workload_stable,
+  HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound, BoundHostCaptureEnvelope, HostCaptureRunIdentity,
+  SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
+  host_capture_bind, host_capture_section_reading, host_capture_output_value_after, host_capture_output_has_line,
+  host_capture_mc0_counter, host_capture_workload_write_rc_token, host_capture_workload_stable_token,
 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
@@ -339,27 +340,217 @@ fn mtcollins1_boot_medium_refusal(medium: MtCollins1BootMedium) -> String? {
 // image the grant was issued for, the medium names the image this verdict expects to have booted,
 // and a terminal is a fact about ONE image. A census terminal against a stock-authorized subject is
 // refused here rather than accepted (review 5261662425).
-fn mtcollins1_boot_terminal_observed(capture: String, subject: MtCollins1BootSubject, medium: MtCollins1BootMedium) -> Bool {
-  let threads = hardware_thread_count_value(t: mtcollins1_nproc) as String
-  let joined = (subject.image_name as String) == (mtcollins1_boot_medium_image_name(medium: medium) as String)
-    && (subject.image_sha256 as String) == (mtcollins1_boot_medium_image_sha256(medium: medium) as String)
-  match if joined { mtcollins1_boot_medium_label(medium: medium) } else { none } {
-    Absent => false
-    Present { value: label } =>
-      match host_capture_bind(capture: capture, machine: subject.machine) {
-        HostCaptureUnbound { reason: _ } => false
-        HostCaptureBound { envelope: envelope } =>
-          host_capture_bound_nproc_exact(envelope: envelope, threads: threads)
-            && host_capture_bound_section_exit_zero(envelope: envelope, name: "boot-media")
-            && match host_capture_bound_section(envelope: envelope, name: "boot-media") {
-              Absent => false
-              Present { value: media } => string_contains(s: media.body, pattern: label as String)
-            }
-            && host_capture_bound_edac_clean(envelope: envelope, name: "edac-before")
-            && host_capture_bound_workload_stable(envelope: envelope)
-            && host_capture_bound_edac_clean(envelope: envelope, name: "edac-after")
+// THE TERMINAL IS A THREE-VALUED VERDICT, NOT A BOOL. A Bool collapsed "no complete observation
+// yet" with "a complete observation that does not qualify", so the await loop kept polling a
+// capture that had already answered: boot 23 attempt 3 (run 35612872611) printed nproc 80 and
+// workload-write-rc=1 and the run reported a TIMEOUT for a disagreement it had observed eight
+// minutes earlier (DESIGN §5: no-observation and observation-that-did-not-hold are different
+// facts). Now: PENDING while the envelope or the section a qualification needs is still being
+// written; REFUSED, with EVERY cause the complete sections establish, as soon as one does -- an
+// open envelope may refuse but never accept; ACCEPTED only over a CLOSED envelope in which every
+// qualification holds. Causes are collected, not short-circuited, so the topology disagreement
+// stays visible beside the workload failure it also caused.
+type MtCollins1BootTerminalCause
+  = TerminalSubjectMediumDisjoint { subject_image: NonEmptyStr, subject_sha256: NonEmptyStr, medium_image: NonEmptyStr, medium_sha256: NonEmptyStr }
+  | TerminalCaptureUnbound { reason: String }
+  | TerminalSectionAbsent { name: String }
+  | TerminalSectionFailed { name: String, exit_code: String }
+  | TerminalSectionMalformed { name: String, reason: String }
+  | HardwareThreadCountMismatch { expected: String, observed: String }
+  | BootMediaLabelAbsent { label: NonEmptyStr }
+  | EdacCountersNotClean { name: String }
+  | WorkloadWriteFailed { rc: String }
+  | WorkloadDigestUnstable
+
+type MtCollins1BootTerminalVerdict
+  = TerminalPending { reason: String }
+  | TerminalRefused { causes: List<MtCollins1BootTerminalCause> }
+  | TerminalAccepted { run: HostCaptureRunIdentity, threads: String }
+
+// ONE QUALIFICATION READ AS ONE OF THREE: still being written, refused with a cause, or held.
+type TerminalQualification
+  = QualificationPending
+  | QualificationRefused { cause: MtCollins1BootTerminalCause }
+  | QualificationHeld
+
+// A complete section with a nonzero exit refuses on the exit alone; a zero exit is then judged
+// by the section's own reader, which answers a cause or none.
+fn qualification_judged(name: String, exit_code: String, cause: MtCollins1BootTerminalCause?) -> TerminalQualification {
+  if exit_code != "0" {
+    QualificationRefused { cause: TerminalSectionFailed { name: name, exit_code: exit_code } }
+  } else {
+    match cause {
+      Absent => QualificationHeld
+      Present { value: c } => QualificationRefused { cause: c }
+    }
+  }
+}
+
+fn nproc_qualification(envelope: BoundHostCaptureEnvelope, expected: String) -> TerminalQualification {
+  match host_capture_section_reading(envelope: envelope, name: "nproc") {
+    SectionAbsent => QualificationPending
+    SectionPending { output: _ } => QualificationPending
+    SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: "nproc", reason: r } }
+    SectionComplete { exit_code: code, output: out } => qualification_judged(name: "nproc", exit_code: code, cause: nproc_judge(expected: expected, out: out))
+  }
+}
+
+fn boot_media_qualification(envelope: BoundHostCaptureEnvelope, label: NonEmptyStr) -> TerminalQualification {
+  match host_capture_section_reading(envelope: envelope, name: "boot-media") {
+    SectionAbsent => QualificationPending
+    SectionPending { output: _ } => QualificationPending
+    SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: "boot-media", reason: r } }
+    SectionComplete { exit_code: code, output: out } => qualification_judged(name: "boot-media", exit_code: code, cause: boot_media_judge(label: label, out: out))
+  }
+}
+
+fn edac_qualification(envelope: BoundHostCaptureEnvelope, name: String) -> TerminalQualification {
+  match host_capture_section_reading(envelope: envelope, name: name) {
+    SectionAbsent => QualificationPending
+    SectionPending { output: _ } => QualificationPending
+    SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: name, reason: r } }
+    SectionComplete { exit_code: code, output: out } => qualification_judged(name: name, exit_code: code, cause: edac_judge(name: name, out: out))
+  }
+}
+
+// nproc's reading is the WHOLE last output line; anything else beside it is not a count.
+fn nproc_judge(expected: String, out: List<String>) -> MtCollins1BootTerminalCause? {
+  let observed = fold(out, init: "", f: (acc, l) => if l == "" { acc } else { l })
+  if observed == expected { none } else { Present { value: HardwareThreadCountMismatch { expected: expected, observed: observed } } }
+}
+
+fn boot_media_judge(label: NonEmptyStr, out: List<String>) -> MtCollins1BootTerminalCause? {
+  if any(out, l => string_contains(s: l, pattern: label as String)) { none } else { Present { value: BootMediaLabelAbsent { label: label } } }
+}
+
+fn edac_judge(name: String, out: List<String>) -> MtCollins1BootTerminalCause? {
+  let body = join(out, "\n")
+  let padded = concat("\n", body, "\n")
+  if host_capture_mc0_counter(section: padded, counter: "ce_count", value: "0") && host_capture_mc0_counter(section: padded, counter: "ue_count", value: "0") {
+    none
+  } else {
+    Present { value: EdacCountersNotClean { name: name } }
+  }
+}
+
+fn workload_judge(out: List<String>) -> MtCollins1BootTerminalCause? {
+  match host_capture_output_value_after(output: out, token: host_capture_workload_write_rc_token) {
+    Absent => Present { value: WorkloadWriteFailed { rc: "unreported" } }
+    Present { value: rc } =>
+      if rc != "0" {
+        Present { value: WorkloadWriteFailed { rc: rc } }
+      } else if host_capture_output_has_line(output: out, line: host_capture_workload_stable_token) {
+        none
+      } else {
+        Present { value: WorkloadDigestUnstable }
       }
   }
+}
+
+// The workload section exits nonzero on every failure path, and its cause is finer than the exit
+// code: read the write rc and the stable token first, and fall back to the exit code only when the
+// section carries neither. A PENDING workload section that has already printed a nonzero write rc
+// has refused: the writes are over and failed, whatever the hashing after them is still doing --
+// boot 23 attempt 3 sat in exactly that state for eight minutes.
+fn workload_qualification(envelope: BoundHostCaptureEnvelope) -> TerminalQualification {
+  match host_capture_section_reading(envelope: envelope, name: "workload") {
+    SectionAbsent => QualificationPending
+    SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: "workload", reason: r } }
+    SectionPending { output: out } =>
+      match host_capture_output_value_after(output: out, token: host_capture_workload_write_rc_token) {
+        Absent => QualificationPending
+        Present { value: rc } => if rc == "0" { QualificationPending } else { QualificationRefused { cause: WorkloadWriteFailed { rc: rc } } }
+      }
+    SectionComplete { exit_code: code, output: out } =>
+      match workload_judge(out: out) {
+        Present { value: c } => QualificationRefused { cause: c }
+        Absent => if code == "0" { QualificationHeld } else { QualificationRefused { cause: TerminalSectionFailed { name: "workload", exit_code: code } } }
+      }
+  }
+}
+
+type TerminalFold {
+  causes: List<MtCollins1BootTerminalCause>
+  pending: Bool
+}
+
+fn terminal_fold_step(acc: TerminalFold, q: TerminalQualification) -> TerminalFold {
+  match q {
+    QualificationHeld => acc
+    QualificationPending => TerminalFold { causes: acc.causes, pending: true }
+    QualificationRefused { cause: c } => TerminalFold { causes: append(acc.causes, items: [c]), pending: acc.pending }
+  }
+}
+
+fn mtcollins1_boot_qualifications(envelope: BoundHostCaptureEnvelope, threads: String, label: NonEmptyStr) -> TerminalFold {
+  fold(
+    [
+      nproc_qualification(envelope: envelope, expected: threads),
+      boot_media_qualification(envelope: envelope, label: label),
+      edac_qualification(envelope: envelope, name: "edac-before"),
+      workload_qualification(envelope: envelope),
+      edac_qualification(envelope: envelope, name: "edac-after"),
+    ],
+    init: TerminalFold { causes: [], pending: false },
+    f: (acc, q) => terminal_fold_step(acc: acc, q: q),
+  )
+}
+
+// A closed envelope owes every section: a missing one is a refusal, not a pending. An open
+// envelope's missing or unfinished section is pending, because the program may still write it.
+fn terminal_over_closed(envelope: BoundHostCaptureEnvelope, threads: String, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
+  let f = mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label)
+  let absent = filter(["nproc", "boot-media", "edac-before", "workload", "edac-after"], n =>
+    match host_capture_section_reading(envelope: envelope, name: n) { SectionComplete { exit_code: _, output: _ } => false  SectionMalformed { reason: _ } => false  SectionAbsent => true  SectionPending { output: _ } => true })
+  let causes = concat(f.causes, map(absent, n => TerminalSectionAbsent { name: n }))
+  if count(causes) == 0 { TerminalAccepted { run: envelope.run, threads: threads } } else { TerminalRefused { causes: causes } }
+}
+
+fn terminal_over_open(envelope: BoundHostCaptureEnvelope, threads: String, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
+  let f = mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label)
+  if count(f.causes) == 0 { TerminalPending { reason: "envelope open; no complete section refuses" } } else { TerminalRefused { causes: f.causes } }
+}
+
+fn mtcollins1_boot_terminal_verdict(capture: String, subject: MtCollins1BootSubject, medium: MtCollins1BootMedium) -> MtCollins1BootTerminalVerdict {
+  let threads = hardware_thread_count_value(t: mtcollins1_nproc) as String
+  let medium_image = mtcollins1_boot_medium_image_name(medium: medium)
+  let medium_sha256 = mtcollins1_boot_medium_image_sha256(medium: medium)
+  let joined = (subject.image_name as String) == (medium_image as String)
+    && (subject.image_sha256 as String) == (medium_sha256 as String)
+  match if joined { mtcollins1_boot_medium_label(medium: medium) } else { none } {
+    Absent => TerminalRefused { causes: [TerminalSubjectMediumDisjoint { subject_image: subject.image_name, subject_sha256: subject.image_sha256, medium_image: medium_image, medium_sha256: medium_sha256 }] }
+    Present { value: label } =>
+      match host_capture_bind(capture: capture, machine: subject.machine) {
+        HostCaptureNotBegun => TerminalPending { reason: "no begin marker for this machine yet" }
+        HostCaptureUnbound { reason: r } => TerminalRefused { causes: [TerminalCaptureUnbound { reason: r }] }
+        HostCaptureOpen { envelope: envelope } => terminal_over_open(envelope: envelope, threads: threads, label: label)
+        HostCaptureBound { envelope: envelope } => terminal_over_closed(envelope: envelope, threads: threads, label: label)
+      }
+  }
+}
+
+fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> String {
+  match cause {
+    TerminalSubjectMediumDisjoint { subject_image: si, subject_sha256: ss, medium_image: mi, medium_sha256: ms } =>
+      if (si as String) == (mi as String) {
+        concat("signed subject and medium row both name ", si as String, " but the subject binds sha256 ", ss as String, " and the medium row ", ms as String)
+      } else {
+        concat("signed subject names ", si as String, " (", ss as String, ") but the medium row names ", mi as String, " (", ms as String, ")")
+      }
+    TerminalCaptureUnbound { reason: r } => concat("capture does not bind: ", r)
+    TerminalSectionAbsent { name: n } => concat("closed envelope carries no ", n, " section")
+    TerminalSectionFailed { name: n, exit_code: c } => concat(n, " exited ", c)
+    TerminalSectionMalformed { name: _, reason: r } => r
+    HardwareThreadCountMismatch { expected: e, observed: o } => concat("nproc observed ", o, ", qualification expects ", e)
+    BootMediaLabelAbsent { label: l } => concat("boot-media does not name the census volume ", l as String)
+    EdacCountersNotClean { name: n } => concat(n, ": mc0 ce_count/ue_count not both 0")
+    WorkloadWriteFailed { rc: rc } => concat("workload write rc=", rc)
+    WorkloadDigestUnstable => "workload digest not stable across passes"
+  }
+}
+
+fn mtcollins1_boot_terminal_refusal_text(causes: List<MtCollins1BootTerminalCause>) -> String {
+  concat("mtcollins1 boot: host qualification REFUSED (", join(map(causes, c => mtcollins1_boot_terminal_cause_text(cause: c)), "; "), "); capture preserved; claim will abort, not complete")
 }
 
 fn mtcollins1_boot_await_capture_terminal(
@@ -371,15 +562,18 @@ fn mtcollins1_boot_await_capture_terminal(
     exit_failure(reason: "mtcollins1 boot: timed out waiting for the host-capture terminal in SOL; capture preserved; claim will abort, not complete")
   } else {
     let capture = Filesystem.Read(path: capture_path)
-    if capture.success && mtcollins1_boot_terminal_observed(capture: capture.content, subject: subject, medium: mtcollins1_boot_medium) {
-      ExitSuccess
-    } else {
-      let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
-      mtcollins1_boot_await_capture_terminal(
-        remaining: remaining - 1,
-        capture_path: capture_path,
-        subject: subject,
-      )
+    let verdict = if capture.success { mtcollins1_boot_terminal_verdict(capture: capture.content, subject: subject, medium: mtcollins1_boot_medium) } else { TerminalPending { reason: "capture unreadable" } }
+    match verdict {
+      TerminalAccepted { run: _, threads: _ } => ExitSuccess
+      TerminalRefused { causes: causes } => exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes))
+      TerminalPending { reason: _ } => {
+        let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
+        mtcollins1_boot_await_capture_terminal(
+          remaining: remaining - 1,
+          capture_path: capture_path,
+          subject: subject,
+        )
+      }
     }
   }
 }

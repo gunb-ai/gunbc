@@ -12,9 +12,13 @@ import gunbc.witness_v2_native_route {
   native_route_live_control_false_declaration,
   native_route_live_control_module,
   native_route_live_control_true_declaration,
+  native_route_label_in_package,
+  native_route_module_package_text,
+  native_route_default_pattern,
   native_route_universe_member,
   required_v2_native_job_name
 }
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryAccepted,
   FloorDiscoveryRefused,
@@ -23,6 +27,11 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_finalize_source_outcomes
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import extdeps.bazel.label { Label, LabelParsed, LabelRefused }
+import extdeps.bazel.target_pattern {
+  TargetPattern, TargetPatternParsed, TargetPatternRefused, TargetPatternRefusal,
+  parse_target_pattern, target_pattern_matches, target_pattern_refusal_text
+}
 import v2.std.logic { Bool }
 import v2.std.integer { integer_int_to_decimal_string }
 import v2.compiler.emit { emit }
@@ -142,6 +151,8 @@ import v2.extdeps.runtimes.v2_evaluator {
   v2_eval_runtime_bool_is_true
 }
 import v2.std.text { String }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import v2.std.witness { Holds, Violates, Witness, witness_violates }
 
 // THIS MODULE IS THE COMPILER PIPELINE ENTRY. It carries the fact rather than being recognised
@@ -1823,30 +1834,331 @@ type NativeLaneUniverse {
   module_sources: List<NativeRouteModuleSource>
 }
 
-fn native_lane_universe_module_for_source(facts: NativeLaneSourceFacts) -> List<NativeLaneUniverseModule> {
-  match facts.module {
-    Absent => []
-    Present { value: declared } =>
-      if native_route_universe_member(module_qn: declared) {
-        let declarations = fold_list(
-          xs: facts.discovery.rows,
-          empty: [],
-          cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.function) }
-        )
-        if length(xs: declarations) == 0 {
-          []
-        } else {
-          [NativeLaneUniverseModule {
-            module: declared,
-            path: facts.path,
-            declarations: declarations
-          }]
-        }
+// THE DRIVER'S COMMAND LINE, AS A PLAN -- the same three-part shape v2.cli.compile_cli established,
+// applied to the other rendered main.
+//
+// WHY A PLAN AND NOT A DISPATCH. The rendered main decided the verb itself: it read argv, compared
+// the first word against three literals, and called one of three host functions, refusing inline at
+// three points with its own message and its own status. Every one of those is a DECISION, and
+// `gunbc.source_root_eval_driver_seed_growth` names the capability that retires its row -- the
+// rendered main becomes one call into a fold. A decision taken in emitted Rust is a decision no
+// `.dag` consumer can read, no witness can exercise, and no refusal vocabulary owns; moving it here
+// is what makes the verb surface a modeled fact rather than a property of the emitter's string.
+//
+// THE SPLIT IS THE SAME ONE AND FOR THE SAME REASON. The host cannot know which roots to walk, or
+// which facts file to read, until argv has been parsed; and this module cannot read a directory.
+// So `native_driver_parse` answers with a plan, `native_driver_plan_source_roots` says which roots
+// the host must walk, and the run folds receive what came back. A single call would force one of
+// those two to be wrong. The facts path needs no accessor: only `NativeDriverAdjudicate` carries
+// one, and the rendered main reads it from that verb in the arm that runs adjudication -- the same
+// plan value, not argv (and it retires with `facts_path` itself, trigger stated on the type).
+//
+// THE RENDERED MAIN CALLS THIS AND NOTHING ELSE DECIDES THE VERB. v1.compiler.emit_rust
+// `emit_source_root_eval_driver_main_rs` renders `main` as one `native_driver_parse` call, reads
+// the roots and facts path from the plan, sets the status `native_driver_plan_exit` returns, and
+// dispatches on the verb the plan carries -- the literal comparisons and inline refusals it used to
+// render are deleted in the same change, so these strings are the program's, not a copy of them.
+//
+// BEHAVIOUR IS PRESERVED, including the parts that look like omissions. `census` with no roots is
+// PLANNED here, not refused, because the rendered main collected an empty vector and let the run
+// fold answer -- adding a parse-time refusal would be a new wall wearing a refactor's clothes. The
+// one textual change is the usage line, which no longer names the binary: the emitted main
+// interpolated its crate name there, and a fold that cannot know which crate it was emitted into
+// must not spell one (an earlier draft of this row hardcoded `v1_compiled`, which is the name of
+// the PIPELINE-FREE crate and so was wrong for every binary this plan runs in).
+// `facts_path` IS EXISTING BEHAVIOUR OF A KNOWN-WRONG SHAPE (operator ruling 2026-09-21). The host
+// facts it names -- seed, closure and executable identities, old-route and malformed-control
+// verdicts -- are OBSERVED by the runner, and a user must never hand-author them as a file passed on
+// argv. It is kept only because nothing else supplies them yet, so removing it would starve the
+// lane. RETIREMENT TRIGGER, a capability rather than an artifact: the runner-side producer that
+// observes host facts feeds this plan. At that point `NativeDriverAdjudicate` loses `facts_path`,
+// and the public verb becomes `test` over a target pattern (v2 foundation package 9). No other
+// change retires it.
+type NativeDriverVerb
+  = NativeDriverCensus { source_roots: FreeMonoid<String> }
+  | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
+  | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
+
+type NativeDriverPlan
+  = NativeDriverPlanned { verb: NativeDriverVerb }
+  | NativeDriverPlanRefused { reason: Symbol, detail: String }
+
+data native_driver_verb_census: String = "census"
+
+data native_driver_verb_census_resolve: String = "census-resolve"
+
+data native_driver_verb_adjudicate: String = "adjudicate"
+
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <target-pattern> <source-root>... | census <source-root>... | census-resolve <source-root>..."
+
+data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
+
+data native_driver_adjudicate_needs_pattern: String = "REFUSED: adjudicate takes a target pattern after the host facts file and before the source roots"
+
+// THE PATTERN OPERAND IS PARSED BY ITS AUTHORITY, AND A BAD ONE IS A COMMAND-LINE REFUSAL. The text
+// goes to `extdeps.bazel.target_pattern` `parse_target_pattern` unchanged; its typed cause is
+// rendered by that module's own `target_pattern_refusal_text`, and the plan refuses with the misuse
+// status like every other unusable argv -- no universe is derived for a pattern that does not parse.
+fn native_driver_pattern_refused_detail(word: String, cause: TargetPatternRefusal) -> String {
+  concat(
+    concat(concat("REFUSED: adjudicate target pattern ", word), " -- "),
+    target_pattern_refusal_text(r: cause)
+  )
+}
+
+// THE STATE IS THE VERB ALREADY DECIDED, which is why there is no separate "mode" field. Once the
+// first word is read the remaining words mean something different for each verb -- roots for two of
+// them, a facts path then roots for the third -- so carrying the verb in the state is what lets one
+// step function stay total without asking "which mode are we in" at every arm.
+type NativeDriverParseState
+  = DriverSeekVerb
+  | DriverCensusRoots { roots: FreeMonoid<String> }
+  | DriverCensusResolveRoots { roots: FreeMonoid<String> }
+  | DriverAdjudicateSeekFacts
+  | DriverAdjudicateSeekPattern { facts_path: String }
+  | DriverAdjudicateRoots { facts_path: String, pattern: TargetPattern, roots: FreeMonoid<String> }
+  | DriverParseRefused { reason: Symbol, detail: String }
+
+fn native_driver_unknown_verb_detail(word: String) -> String {
+  concat(
+    concat("REFUSED: unknown mode ", word),
+    " -- expected adjudicate, census or census-resolve"
+  )
+}
+
+// A REFUSED STATE ABSORBS THE REST OF ARGV rather than reconsidering it. The first bad word is the
+// located cause; a later word cannot repair it, and letting one re-decide the verb would make the
+// refusal depend on how many arguments followed it.
+fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> NativeDriverParseState {
+  match state {
+    DriverParseRefused { reason: reason, detail: detail } =>
+      DriverParseRefused { reason: reason, detail: detail }
+    DriverSeekVerb =>
+      if word == native_driver_verb_census {
+        DriverCensusRoots { roots: [] }
+      } else if word == native_driver_verb_census_resolve {
+        DriverCensusResolveRoots { roots: [] }
+      } else if word == native_driver_verb_adjudicate {
+        DriverAdjudicateSeekFacts
       } else {
-        []
+        DriverParseRefused {
+          reason: ^native_driver_unknown_verb,
+          detail: native_driver_unknown_verb_detail(word: word)
+        }
+      }
+    DriverCensusRoots { roots: roots } =>
+      DriverCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverCensusResolveRoots { roots: roots } =>
+      DriverCensusResolveRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverAdjudicateSeekFacts =>
+      DriverAdjudicateSeekPattern { facts_path: word }
+    DriverAdjudicateSeekPattern { facts_path: facts_path } =>
+      match parse_target_pattern(text: word) {
+        TargetPatternRefused { cause: cause } =>
+          DriverParseRefused {
+            reason: ^native_driver_adjudicate_pattern_refused,
+            detail: native_driver_pattern_refused_detail(word: word, cause: cause)
+          }
+        TargetPatternParsed { pattern: pattern } =>
+          DriverAdjudicateRoots { facts_path: facts_path, pattern: pattern, roots: [] }
+      }
+    DriverAdjudicateRoots { facts_path: facts_path, pattern: pattern, roots: roots } =>
+      DriverAdjudicateRoots {
+        facts_path: facts_path,
+        pattern: pattern,
+        roots: list_snoc_item(xs: roots, item: word)
       }
   }
 }
+
+// THE TWO STATES THAT ARE INCOMPLETE RATHER THAN EMPTY. Reaching the end still seeking a verb means
+// argv was empty; still seeking a facts path means `adjudicate` was the last word. Both are
+// refusals the rendered main raised inline, and both are raised here with its exact message.
+fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan {
+  match state {
+    DriverParseRefused { reason: reason, detail: detail } =>
+      NativeDriverPlanRefused { reason: reason, detail: detail }
+    DriverSeekVerb =>
+      NativeDriverPlanRefused {
+        reason: ^native_driver_no_verb_given,
+        detail: native_driver_usage
+      }
+    DriverAdjudicateSeekFacts =>
+      NativeDriverPlanRefused {
+        reason: ^native_driver_adjudicate_without_facts_path,
+        detail: native_driver_adjudicate_needs_facts
+      }
+    DriverCensusRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensus { source_roots: roots } }
+    DriverCensusResolveRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusResolve { source_roots: roots } }
+    DriverAdjudicateSeekPattern { facts_path: _ } =>
+      NativeDriverPlanRefused {
+        reason: ^native_driver_adjudicate_without_pattern,
+        detail: native_driver_adjudicate_needs_pattern
+      }
+    DriverAdjudicateRoots { facts_path: facts_path, pattern: pattern, roots: roots } =>
+      NativeDriverPlanned {
+        verb: NativeDriverAdjudicate { facts_path: facts_path, pattern: pattern, source_roots: roots }
+      }
+  }
+}
+
+fn native_driver_parse(argv: FreeMonoid<String>) -> NativeDriverPlan {
+  native_driver_parse_finish(
+    state: fold_list(xs: argv, empty: DriverSeekVerb, cons: native_driver_parse_step)
+  )
+}
+
+// A REFUSED PLAN NAMES NO ROOTS AND NO FACTS FILE, so the host walks nothing and reads nothing for
+// one. That is the same rule v2.cli.compile_cli states for its own refused plan: the reads a run
+// performs are derived from the plan, never from argv in parallel, or the roots walked and the
+// roots reported could disagree.
+fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String> {
+  match plan {
+    NativeDriverPlanRefused { reason: _, detail: _ } => []
+    NativeDriverPlanned { verb: verb } =>
+      match verb {
+        NativeDriverCensus { source_roots: roots } => roots
+        NativeDriverCensusResolve { source_roots: roots } => roots
+        NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
+      }
+  }
+}
+
+// THE STATUS IS DERIVED FROM THE PLAN AND DECIDES NOTHING. Exit 2 is the cited misuse code, which
+// is what the rendered main used for all three of these refusals -- a command line that was not
+// usable, as distinct from work that ran and failed. A shim choosing the status from whether the
+// detail string was empty would be a second representation of the verdict, free to disagree with
+// the plan it came from.
+fn native_driver_plan_exit(plan: NativeDriverPlan) -> ProcessExit {
+  match plan {
+    NativeDriverPlanned { verb: _ } => ExitSuccess
+    NativeDriverPlanRefused { reason: _, detail: detail } =>
+      ExitFailure { code: exit_code_misuse, reason: detail }
+  }
+}
+
+// THE POPULATION IS A SELECTION: EVERY UNIVERSE IDENTITY IS A LABEL, AND THE PATTERN DECIDES.
+// `native_lane_label_universe` spells each identity of every universe member as a `Label` ONCE --
+// the module's package text once per module, `parse_label` once per declaration -- and carries the
+// parsed label forward; `native_lane_universe_module_for_source` then admits by
+// `extdeps.bazel.target_pattern` `target_pattern_matches` over the CARRIED label, the one matcher,
+// within the floor's universe. There is one decision site for a refused label and one parse per
+// identity (review 69565: the earlier pre-pass and filter each re-derived every label).
+// `the_default_pattern_admits_every_universe_member` pins that the default narrows nothing.
+//
+// THE UNIVERSE AND THE SELECTION ARE TWO AUTHORITIES. The universe is the floor's
+// (`native_route_universe_member`, the required gate's own prefix): only its members are labeled at
+// all, so a module outside it -- including a declaration no label can name, `test fn all` -- is
+// neither the lane's population nor the lane's defect (review 69555). The pattern only narrows
+// WITHIN the universe; a pattern reaching outside it selects nothing rather than widening the lane.
+//
+// PER IDENTITY IS THE GRAIN THE SINGLE-TARGET FORM NEEDS: `//pkg:name` names a declaration, not a
+// module. A MODULE WITH NO ADMITTED DECLARATION IS NOT IN THE UNIVERSE, so the emptiness check
+// sits below the filter.
+type NativeLaneLabeledIdentity {
+  declaration: String
+  label: Label
+}
+
+type NativeLaneLabeledSource {
+  module: String
+  path: Symbol
+  identities: List<NativeLaneLabeledIdentity>
+}
+
+type NativeLaneSourceLabels
+  = NativeLaneSourceLabeled { identities: List<NativeLaneLabeledIdentity> }
+  | NativeLaneSourceLabelRefused { identity: String }
+
+type NativeLaneLabeling
+  = NativeLaneLabeled { sources: List<NativeLaneLabeledSource> }
+  | NativeLaneLabelRefused { identity: String }
+
+// ONE PACKAGE TEXT PER MODULE, ONE PARSE PER DECLARATION. The first refused declaration absorbs:
+// it is the located cause, and a later row cannot repair it.
+fn native_lane_label_rows(declared: String, rows: List<FloorDiscoveryRow>) -> NativeLaneSourceLabels {
+  let package_text = native_route_module_package_text(module_qn: declared)
+  fold_list(
+    xs: rows,
+    empty: NativeLaneSourceLabeled { identities: [] },
+    cons: fn(state, row) {
+      match state {
+        NativeLaneSourceLabelRefused { identity: _ } => state
+        NativeLaneSourceLabeled { identities: identities } =>
+          match native_route_label_in_package(package_text: package_text, declaration: row.function) {
+            LabelRefused { cause: _ } =>
+              NativeLaneSourceLabelRefused { identity: concat(concat(declared, "."), row.function) }
+            LabelParsed { label: label } =>
+              NativeLaneSourceLabeled {
+                identities: list_snoc_item(
+                  xs: identities,
+                  item: NativeLaneLabeledIdentity { declaration: row.function, label: label }
+                )
+              }
+          }
+      }
+    }
+  )
+}
+
+// ONLY UNIVERSE MEMBERS ARE LABELED. A source with no declared module never reaches here (the
+// unowned-row refusal runs first), and a module outside the floor's universe is skipped whole.
+fn native_lane_label_universe(facts: List<NativeLaneSourceFacts>) -> NativeLaneLabeling {
+  fold_list(
+    xs: facts,
+    empty: NativeLaneLabeled { sources: [] },
+    cons: fn(acc, f) {
+      match acc {
+        NativeLaneLabelRefused { identity: _ } => acc
+        NativeLaneLabeled { sources: sources } =>
+          match f.module {
+            Absent => acc
+            Present { value: declared } =>
+              if !native_route_universe_member(module_qn: declared) {
+                acc
+              } else {
+                match native_lane_label_rows(declared: declared, rows: f.discovery.rows) {
+                  NativeLaneSourceLabelRefused { identity: identity } =>
+                    NativeLaneLabelRefused { identity: identity }
+                  NativeLaneSourceLabeled { identities: identities } =>
+                    NativeLaneLabeled {
+                      sources: list_snoc_item(
+                        xs: sources,
+                        item: NativeLaneLabeledSource { module: declared, path: f.path, identities: identities }
+                      )
+                    }
+                }
+              }
+          }
+      }
+    }
+  )
+}
+
+fn native_lane_universe_module_for_source(
+  pattern: TargetPattern,
+  source: NativeLaneLabeledSource
+) -> List<NativeLaneUniverseModule> {
+  let declarations = fold_list(
+    xs: source.identities,
+    empty: [],
+    cons: fn(acc, identity) {
+      if target_pattern_matches(pattern: pattern, target: identity.label) {
+        list_snoc_item(xs: acc, item: identity.declaration)
+      } else {
+        acc
+      }
+    }
+  )
+  if length(xs: declarations) == 0 {
+    []
+  } else {
+    [NativeLaneUniverseModule { module: source.module, path: source.path, declarations: declarations }]
+  }
+}
+
 
 // THE DERIVATION IS THE FLOOR'S OWN PRODUCER, FINALIZED THE FLOOR'S OWN WAY. The per-source
 // states are handed to floor_discovery_finalize_source_outcomes untouched — so a walk failure, a
@@ -1875,6 +2187,15 @@ fn native_lane_unowned_row_path(facts: List<NativeLaneSourceFacts>) -> Optional<
 }
 
 fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse> {
+  native_lane_universe_selected(ingest: ingest, pattern: native_route_default_pattern())
+}
+
+// THE SELECTED UNIVERSE: the same derivation, every refusal intact, over the identities `pattern`
+// admits. `native_lane_universe` is this at the default pattern and is what the lane's rendered
+// main calls; a caller naming a narrower pattern gets a narrower population through the same
+// producer -- never a filter applied to the default universe after the fact, so a corpus refusal
+// outside the pattern still refuses (a narrower question does not make a broken corpus sound).
+fn native_lane_universe_selected(ingest: SourceRootIngest, pattern: TargetPattern) -> Outcome<NativeLaneUniverse> {
   let facts = native_lane_source_facts(ingest: ingest)
   match native_lane_malformed_import_row(facts: facts) {
     Present { value: f } =>
@@ -1895,7 +2216,12 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
             detail: symbol_lexeme(sym: unowned)
           )
         Absent =>
-          native_lane_universe_after_ownership(facts: facts)
+          match native_lane_label_universe(facts: facts) {
+            NativeLaneLabelRefused { identity: identity } =>
+              native_lane_refused(reason: ^native_lane_identity_label_refused, detail: identity)
+            NativeLaneLabeled { sources: sources } =>
+              native_lane_universe_after_ownership(pattern: pattern, facts: facts, sources: sources)
+          }
       }
   }
 }
@@ -1904,7 +2230,11 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
 // it is an expression: `.dag` has no early `return` to fall through, so the accepted path has to be
 // the other arm of the same match. Splitting it keeps that arm one call wide instead of indenting
 // the entire derivation inside a match arm. Consumer: native_lane_universe, the only caller.
-fn native_lane_universe_after_ownership(facts: List<NativeLaneSourceFacts>) -> Outcome<NativeLaneUniverse> {
+fn native_lane_universe_after_ownership(
+  pattern: TargetPattern,
+  facts: List<NativeLaneSourceFacts>,
+  sources: List<NativeLaneLabeledSource>
+) -> Outcome<NativeLaneUniverse> {
   match floor_discovery_finalize_source_outcomes(
     outcomes: fold_list(xs: facts, empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: f.discovery) })
   ) {
@@ -1912,11 +2242,11 @@ fn native_lane_universe_after_ownership(facts: List<NativeLaneSourceFacts>) -> O
       native_lane_refused(reason: ^native_lane_universe_derivation_refused, detail: reason)
     FloorDiscoveryAccepted { rows: _ } => {
       let modules = fold_list(
-        xs: facts,
+        xs: sources,
         empty: [],
-        cons: fn(acc, f) {
+        cons: fn(acc, source) {
           fold_list(
-            xs: native_lane_universe_module_for_source(facts: f),
+            xs: native_lane_universe_module_for_source(pattern: pattern, source: source),
             empty: acc,
             cons: fn(inner, m) { list_snoc_item(xs: inner, item: m) }
           )
