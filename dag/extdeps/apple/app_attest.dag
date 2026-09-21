@@ -9,9 +9,9 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.crypto.sha2 { sha256, sha384 }
-import extdeps.crypto.nist_prime_curve { curve_ecdsa_verify_octets }
+import extdeps.crypto.nist_prime_curve { PrimeCurve, curve_ecdsa_verify_octets }
 import extdeps.crypto.nist_p256 { p256_curve }
-import extdeps.crypto.nist_p384 { p384_ecdsa_verify_octets }
+import extdeps.crypto.nist_p384 { p384_curve }
 import extdeps.standards.rfc_8949 {
   CborValue, CborDocumentDecoded, CborDocumentRefused, cbor_decode_document, cbor_decode_item, CborDecoded, CborRefused,
   CborMemberFound, CborMemberAbsent, CborMemberDuplicated, CborMemberNotAMap, cbor_map_unique_text_member,
@@ -418,18 +418,27 @@ fn chain_link_verifies(subject: X509Certificate, issuer: X509Certificate) -> Boo
       match issuer.tbs.spki_named_curve {
         Absent => none
         Present { value: curve } =>
-          if curve == oid_secp384r1 {
-            match ecdsa_sig_value(octets: subject.signature_octets, width: 48) {
-              EcdsaSigValueRead { r_s_fixed: rs } => p384_ecdsa_verify_octets(key: issuer.tbs.spki_public_key, signature: rs, digest: d)
-              _ => none
-            }
-          } else if curve == oid_prime256v1 {
-            match ecdsa_sig_value(octets: subject.signature_octets, width: 32) {
-              EcdsaSigValueRead { r_s_fixed: rs } => curve_ecdsa_verify_octets(c: p256_curve, key: issuer.tbs.spki_public_key, signature: rs, digest: d)
-              _ => none
-            }
-          } else { none }
+          match issuer_curve(named_curve: curve) {
+            Absent => none
+            Present { value: c } => ecdsa_verifies_on(c: c, key: issuer.tbs.spki_public_key, signature_octets: subject.signature_octets, digest: d)
+          }
       }
+  }
+}
+
+// The issuer's key selects the curve, and the curve row is the one authority for the coordinate
+// width the DER SIG-VALUE is read at and the verifier checks (review 69750 of gunbc#11989: a
+// `width:` literal beside the curve value that owns it was a second authority for one fact).
+fn issuer_curve(named_curve: String) -> PrimeCurve? {
+  if named_curve == oid_secp384r1 { Present { value: p384_curve } }
+  else if named_curve == oid_prime256v1 { Present { value: p256_curve } }
+  else { none }
+}
+
+fn ecdsa_verifies_on(c: PrimeCurve, key: List<UInt8>, signature_octets: List<UInt8>, digest: List<UInt8>) -> Bool? {
+  match ecdsa_sig_value(octets: signature_octets, width: c.coordinate_octets) {
+    EcdsaSigValueRead { r_s_fixed: rs } => curve_ecdsa_verify_octets(c: c, key: key, signature: rs, digest: digest)
+    _ => none
   }
 }
 
@@ -753,10 +762,7 @@ fn assertion_signature_verifies(parts: AssertionParts, e: AssertionExpectation) 
   match base64_decode(s: e.public_key_point_b64url as String, variant: UrlSafe) {
     Absent => none
     Present { value: key } =>
-      match ecdsa_sig_value(octets: parts.signature, width: 32) {
-        EcdsaSigValueRead { r_s_fixed: rs } => curve_ecdsa_verify_octets(c: p256_curve, key: key, signature: rs, digest: sha256(message: nonce))
-        _ => none
-      }
+      ecdsa_verifies_on(c: p256_curve, key: key, signature_octets: parts.signature, digest: sha256(message: nonce))
   }
 }
 

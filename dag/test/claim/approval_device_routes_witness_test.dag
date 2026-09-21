@@ -2,13 +2,14 @@ module test.claim.approval_device_routes_witness_test
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Timestamp }
-import gunbc.auth.approval_writer_authority { BrokerProcess, RoadmapProcess, ApprovalWriteAdmitted, ApprovalWriteRefused, approval_write_admission }
+import gunbc.auth.approval_writer_authority { ApprovalServingProcess, BrokerProcess, RoadmapProcess, ApprovalWriteAdmitted, ApprovalWriteRefused, approval_write_admission }
 import gunbc.auth.approval_device_routes {
   DeviceRouteResponse,
   device_enrol_response_at, device_redeem_response_at, device_pending_response_at, device_request_response_at, device_enrollment_readback_response_at, device_push_update_response_at,
   redemption_status, requested_at_within_skew,
 }
 import gunbc.auth.approval_device_redemption { DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused, DevicePlatformUnrealized, DeviceCapabilityTagMalformed }
+import gunbc.auth.approval_device_redemption_fixtures { envelope_vector_body }
 import gunbc.auth.approval_device_wire { ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json, ApnsRegistration, path_segment }
 import extdeps.apple.apns { ApnsProduction }
 import gunbc.auth.approval_app_attest_config { approval_app_attest_verifier, AppAttestVerifierAwaitingOperator, AppAttestVerifierConfigured }
@@ -66,6 +67,17 @@ test fn the_non_writer_process_is_refused_on_the_mutating_routes() -> Bool {
   let asker = if non_writer() { BrokerProcess } else { RoadmapProcess }
   let push = push_update_request_json(r: PushUpdateRequest { auth: fx_auth, push: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "a1b2" } })
   device_route_refused_with(r: device_push_update_response_at(body: push, process: asker, observed_at: fx_now), status: 503, fragment: "writer authority")
+    && gated_route_refused(name: "enrolment_request", asker: asker, route: fn(body) { device_enrol_response_at(body: body, process: asker, observed_at: fx_now) })
+    && gated_route_refused(name: "signed_redemption", asker: asker, route: fn(body) { device_redeem_response_at(body: body, process: asker, observed_at: fx_now) })
+}
+
+// The named envelope vector's body driven through one mutating route from the non-holder: a missing
+// vector is a false claim, not a skipped one.
+fn gated_route_refused(name: String, asker: ApprovalServingProcess, route: fn(String) -> DeviceRouteResponse) -> Bool {
+  match envelope_vector_body(name: name) {
+    Absent => false
+    Present { value: body } => device_route_refused_with(r: route(body), status: 503, fragment: "writer authority")
+  }
 }
 
 // UNTIL THE OPERATOR SUPPLIES THE APP ID PREFIX, every authenticated read refuses 503 naming what
