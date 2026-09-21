@@ -64,7 +64,7 @@ import gunbc.roadmap_dispatch_actuator {
 import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
-import gunbc.roadmap_belt_actuate { belt_tick_receipt_schema }
+import gunbc.roadmap_belt_actuate { belt_tick_receipt_schema, belt_path_parent_dir }
 import gunbc.roadmap_belt_actuate {
   BeltCommitOutcome, CommitRecorded, CommitSkipped, CommitFailed, CommitDeferred,
   CommitSubjectUnaddressable,
@@ -2327,4 +2327,13 @@ test fn the_unaddressable_outcome_is_named_in_the_tick_receipt() -> Bool {
   }))
   string_contains(s: rendered, pattern: "subject-unaddressable")
     && string_contains(s: rendered, pattern: "legacy-node")
+}
+
+// The publish edge materializes recovered corpus paths; the parent-dir computation is the one pure
+// decision in it, and losing the first segment or keeping the basename would write outside or beside
+// the integration worktree's structure.
+test fn the_publish_edge_parent_dir_drops_exactly_the_basename() -> Bool {
+  belt_path_parent_dir(path: "dag/gunbc/ci/ci_spec.dag") == "dag/gunbc/ci"
+    && belt_path_parent_dir(path: "dag/a.dag") == "dag"
+    && belt_path_parent_dir(path: "README.md") == ""
 }

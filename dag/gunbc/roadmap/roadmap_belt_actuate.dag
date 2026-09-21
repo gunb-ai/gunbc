@@ -397,7 +397,14 @@ import gunbc.scm.object_store {
   store_authored_source, SourceStored, SourceLocatorCollision,
   store_corpus_manifest, CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
 }
-import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository, commit_at_reference }
+import gunbc.scm.object_store {
+  find_corpus_manifest_record,
+  CorpusManifestFound, CorpusManifestAbsent, CorpusManifestIsAuthoredSource, CorpusManifestIsSemanticNode,
+  AuthoredSourceEmpty, AuthoredSourceText,
+}
+import std.list { distinct_by_key }
+import gunbc.scm.checkout { recover_corpus, CorpusRecovered, CorpusRecoveryRefused, RecoveredSourceFile }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
 import gunbc.scm.checkout {
   checkout_repository_at,
@@ -8765,19 +8772,338 @@ fn belt_publish_attempt_for_instance(
       } else {
         match node_project_membership(node_id: node_id, edges: declared_roadmap_edges()) {
           MembershipMember { arc } =>
-            PublishDeferred {
+            belt_publish_project_for_instance(
+              instance: instance,
               node_id: node_id,
-              reason: join([
-                "the project ", arc,
-                " is fully integrated; its publication edge (materialize the integration head to a git branch, one PR per project) lands with the publish-edge change",
-              ], ""),
-            }
+              attempt_key: attempt_key,
+              project_key: arc,
+            )
           _ => belt_publish_attempt_adjudicate(instance: instance, node_id: node_id, attempt_key: attempt_key)
         }
       }
   }
 }
 
+
+// THE PROJECT PUBLICATION EDGE: the integration head, materialized to a git branch, handed to the
+// same helper boundary the attempt flow uses. SCM inside, git only here at the edge -- the
+// materialization reads the corpus OUT of the object store through the SCM checkout verbs and
+// writes plain files; git's whole role is worktree-add/checkout/add/commit/push, and the helper's
+// observe-first reconciliation (an existing PR is discovered, never duplicated) is unchanged.
+//
+// THE INTEGRATION WORKTREE IS BELT-OWNED, DETERMINISTIC, AND RE-SEDED EVERY PUBLICATION. It is
+// created once (`git worktree add --detach` at the intake base), and every publication resets it
+// (`checkout -B <integration branch> <base>` + `git clean -fdx`) before the corpus is written, so
+// the tree afterwards holds exactly the integration head's corpus -- never a residue of an
+// earlier materialization. No worker ever runs in it.
+fn belt_publish_project_worktree(instance: HostDashboardInstance, project_key: String, base_sha: String) -> BeltExecOutcome {
+  let root = dashboard_instance_dispatch_worktree_root(instance: instance) as String
+  let path = join([root, "/", project_key, "-integration"], "")
+  let listing = Filesystem.List(path: root)
+  if !listing.success {
+    ExecFailed {
+      program: "git",
+      exit_code: -1,
+      stderr: join(["the dispatch worktree root could not be listed: ", root, " (", listing.error, ")"], ""),
+    }
+  } else if !filesystem_listing_names_entry(listing: listing.entries, name: join([project_key, "-integration"], "")) {
+    belt_exec(
+      cmd: host_exec_argv(
+        program: dispatch_capability_program(
+          environment: instance.execution_environment,
+          cap: GitWorkspaceCapability,
+        ),
+        args: ["worktree", "add", "--detach", path, base_sha],
+      ),
+      workdir: belt_actuate_workdir as String,
+    )
+  } else {
+    ExecOk { stdout: "" }
+  }
+}
+
+fn belt_publish_project_subject_repository(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+) -> PublicationSubjectObservation {
+  match belt_lookup_node(node_id: node_id) {
+    AuthorityProjectionRefused { detail } =>
+      PublicationSubjectUnobserved { reason: concat("roadmap authority projection refused: ", detail) }
+    NodeMissing =>
+      PublicationSubjectUnobserved { reason: "the roadmap authority declares no node with this id" }
+    NodeFound { node } =>
+      belt_publication_subject_for_node(
+        node: node,
+        attempt_key: attempt_key,
+        branch: dispatch_branch_name(
+          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+          attempt_key: attempt_key,
+        ),
+        base_branch: dispatch_base_branch(instance: instance),
+        head: belt_worktree_head_observe(
+          instance: instance,
+          worktree: dispatch_worktree_path_for_instance(
+            instance: instance,
+            node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+            attempt_key: attempt_key,
+          ),
+        ),
+      )
+  }
+}
+
+type BeltDirAcc { skipped: Bool, segments: List<String> }
+
+fn belt_path_parent_dir(path: String) -> String {
+  let acc = fold(
+    reverse(split(s: path, delimiter: "/")),
+    init: BeltDirAcc { skipped: false, segments: [] },
+    f: (acc, seg) =>
+      if acc.skipped {
+        BeltDirAcc { skipped: true, segments: concat([seg], acc.segments) }
+      } else {
+        BeltDirAcc { skipped: true, segments: [] }
+      },
+  )
+  join(acc.segments, "/")
+}
+
+// Materialize the integration head's corpus into the belt-owned integration worktree and commit
+// it at the edge. The recovered files' parent directories are created in ONE install -d -- the
+// Filesystem.Write intrinsic creates no parents, the lesson the publication directory taught.
+fn belt_publish_project_materialize(
+  instance: HostDashboardInstance,
+  worktree: String,
+  files: List<RecoveredSourceFile>,
+) -> BeltScmCapture {
+  let dirs = distinct_by_key(
+    xs: files
+      |> map(f => belt_path_parent_dir(path: f.path as String))
+      |> filter(d => d != ""),
+    key: d => d,
+  )
+  match belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(
+        environment: instance.execution_environment,
+        cap: AttemptStateDirectoryCapability,
+      ),
+      args: concat(["-d", "-m", "0700"], dirs),
+    ),
+    workdir: worktree,
+  ) {
+    ExecFailed { program, exit_code, stderr } =>
+      ScmCaptureRefused {
+        detail: belt_commit_exec_detail(step: "materialize-directories", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }),
+      }
+    ExecRefused { program, reason } =>
+      ScmCaptureRefused {
+        detail: belt_commit_exec_detail(step: "materialize-directories", outcome: ExecRefused { program: program, reason: reason }),
+      }
+    ExecOk { stdout: _ } =>
+      match fold(
+        files,
+        init: ScmCandidateCaptured { repository_path: "", commit_ordinal: 0 },
+        f: (acc, f) =>
+          match acc {
+            ScmCaptureRefused { detail: _ } => acc
+            ScmCandidateCaptured { repository_path: _, commit_ordinal: _ } => {
+              let write = Filesystem.Write(
+                path: join([worktree, "/", f.path as String], ""),
+                content: match f.content {
+                  AuthoredSourceEmpty => ""
+                  AuthoredSourceText(t) => t as String
+                },
+              )
+              if write.success {
+                acc
+              } else {
+                ScmCaptureRefused {
+                  detail: join(["the integration head's ", f.path as String, " could not be materialized: ", write.error], ""),
+                }
+              }
+            }
+          },
+      ) {
+        ScmCaptureRefused { detail } => ScmCaptureRefused { detail: detail }
+        ScmCandidateCaptured { repository_path: _, commit_ordinal: _ } =>
+          ScmCandidateCaptured { repository_path: "", commit_ordinal: 0 }
+      }
+  }
+}
+
+fn belt_publish_project_for_instance(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  project_key: String,
+) -> BeltPublishOutcome {
+  match belt_scm_base_sha_observe(
+    instance: instance,
+    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+    attempt_key: attempt_key,
+  ) {
+    BaseShaUnobserved { reason } =>
+      PublishEvidenceUnreadable { node_id: node_id, detail: reason }
+    BaseShaObserved { base_sha } =>
+      match belt_publish_project_worktree(instance: instance, project_key: project_key, base_sha: base_sha) {
+        ExecFailed { program, exit_code, stderr } =>
+          PublishEvidenceUnreadable {
+            node_id: node_id,
+            detail: belt_commit_exec_detail(step: "integration-worktree", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }),
+          }
+        ExecRefused { program, reason } =>
+          PublishEvidenceUnreadable {
+            node_id: node_id,
+            detail: belt_commit_exec_detail(step: "integration-worktree", outcome: ExecRefused { program: program, reason: reason }),
+          }
+        ExecOk { stdout: _ } => {
+          let branch = join(["dispatch-", project_key, "-integration"], "")
+          let worktree = join([
+            dashboard_instance_dispatch_worktree_root(instance: instance) as String,
+            "/", project_key, "-integration",
+          ], "")
+          match belt_commit_git(instance: instance, worktree: worktree, args: ["checkout", "-B", branch, base_sha]) {
+            ExecFailed { program, exit_code, stderr } =>
+              PublishEvidenceUnreadable {
+                node_id: node_id,
+                detail: belt_commit_exec_detail(step: "integration-branch", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }),
+              }
+            ExecRefused { program, reason } =>
+              PublishEvidenceUnreadable {
+                node_id: node_id,
+                detail: belt_commit_exec_detail(step: "integration-branch", outcome: ExecRefused { program: program, reason: reason }),
+              }
+            ExecOk { stdout: _ } =>
+              match belt_commit_git(instance: instance, worktree: worktree, args: ["clean", "-fdx"]) {
+                ExecFailed { program, exit_code, stderr } =>
+                  PublishEvidenceUnreadable {
+                    node_id: node_id,
+                    detail: belt_commit_exec_detail(step: "integration-clean", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }),
+                  }
+                ExecRefused { program, reason } =>
+                  PublishEvidenceUnreadable {
+                    node_id: node_id,
+                    detail: belt_commit_exec_detail(step: "integration-clean", outcome: ExecRefused { program: program, reason: reason }),
+                  }
+                ExecOk { stdout: _ } => {
+                  let envelope_path = belt_scm_project_repository_path(instance: instance, project_key: project_key)
+                  match load_repository(path: envelope_path) {
+                    RepositoryLoadRefused { cause } =>
+                      PublishEvidenceUnreadable { node_id: node_id, detail: belt_scm_load_refusal_detail(cause: cause) }
+                    RepositoryLoaded { path: _, envelope } =>
+                      match envelope.checked_out {
+                        Absent =>
+                          PublishEvidenceUnreadable {
+                            node_id: node_id,
+                            detail: "the project envelope selects no integration head, so there is nothing to publish",
+                          }
+                        Present { value: head } =>
+                          match commit_at_reference(commits: envelope.commits, reference: head) {
+                            Absent =>
+                              PublishEvidenceUnreadable {
+                                node_id: node_id,
+                                detail: "the integration head is not a commit of its own envelope, which is envelope damage",
+                              }
+                            Present { value: head_commit } =>
+                              match find_corpus_manifest_record(store: envelope.store, identity: head_commit.root.locator) {
+                                CorpusManifestAbsent { identity: _ } =>
+                                  PublishEvidenceUnreadable { node_id: node_id, detail: "the integration head's manifest is absent from the store" }
+                                CorpusManifestIsAuthoredSource { identity: _ } =>
+                                  PublishEvidenceUnreadable { node_id: node_id, detail: "the integration head's root is an authored source, which is store damage" }
+                                CorpusManifestIsSemanticNode { identity: _ } =>
+                                  PublishEvidenceUnreadable { node_id: node_id, detail: "the integration head's root is a semantic node, which is store damage" }
+                                CorpusManifestFound(record) =>
+                                  match recover_corpus(store: envelope.store, entries: record.entries) {
+                                    CorpusRecoveryRefused { cause: _ } =>
+                                      PublishEvidenceUnreadable { node_id: node_id, detail: "the integration head's corpus is unrecoverable from the store" }
+                                    CorpusRecovered { files } =>
+                                      match belt_publish_project_materialize(instance: instance, worktree: worktree, files: files) {
+                                        ScmCaptureRefused { detail } =>
+                                          PublishEvidenceUnreadable { node_id: node_id, detail: detail }
+                                        ScmCandidateCaptured { repository_path: _, commit_ordinal: _ } =>
+                                          match belt_commit_staged(
+                                            instance: instance,
+                                            worktree: worktree,
+                                            message: join(["integration: ", project_key], "") as NonEmptyStr,
+                                          ) {
+                                            StagedCommitFailed { detail } =>
+                                              PublishEvidenceUnreadable { node_id: node_id, detail: detail }
+                                            StagedCommitRecorded =>
+                                              match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+                                                WorktreeHeadUnobserved { reason } =>
+                                                  PublishEvidenceUnreadable { node_id: node_id, detail: reason }
+                                                WorktreeHeadObserved { revision } =>
+                                                  match belt_publish_project_subject_repository(
+                                                    instance: instance,
+                                                    node_id: node_id,
+                                                    attempt_key: attempt_key,
+                                                  ) {
+                                                    PublicationSubjectUnobserved { reason } =>
+                                                      PublishDeferred { node_id: node_id, reason: reason }
+                                                    PublicationSubjectObserved { subject } => {
+                                                      let project_subject = RoadmapPublicationSubject {
+                                                        node_id: project_key,
+                                                        attempt_key: "integration",
+                                                        repository: subject.repository,
+                                                        branch: branch as NonEmptyStr,
+                                                        expected_base: subject.expected_base,
+                                                        expected_head: revision as CommitSha,
+                                                      }
+                                                      match publication_answer_standing(
+                                                        instance_root: instance.instance_root as String,
+                                                        subject: project_subject,
+                                                        worktree: worktree,
+                                                      ) {
+                                                        AnswerSpoolRefused { reason } =>
+                                                          PublishEvidenceUnreadable {
+                                                            node_id: node_id,
+                                                            detail: join([
+                                                              "the publication helper's spool refused, so it is unknown whether this integration head has been published: ",
+                                                              reason,
+                                                            ], ""),
+                                                          }
+                                                        AnswerAwaited { request_path } =>
+                                                          PublishRequested {
+                                                            node_id: project_key,
+                                                            head_sha: revision as String,
+                                                            request_path: request_path,
+                                                          }
+                                                        AnswerReady { receipt } => {
+                                                          let write = Filesystem.Write(
+                                                            path: join([
+                                                              belt_scm_projects_dir(instance: instance),
+                                                              "/", project_key, ".publication-receipt.json",
+                                                            ], ""),
+                                                            content: publication_receipt_json(receipt: receipt),
+                                                          )
+                                                          belt_publish_write_outcome(
+                                                            node_id: project_key,
+                                                            subject: project_subject,
+                                                            receipt: receipt,
+                                                            write_success: write.success,
+                                                            write_error: write.error,
+                                                          )
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                              }
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+                }
+              }
+          }
+        }
+      }
+  }
+}
 
 fn belt_publish_attempt_adjudicate(
   instance: HostDashboardInstance,
