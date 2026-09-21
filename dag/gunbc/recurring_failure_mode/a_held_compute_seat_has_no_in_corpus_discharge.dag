@@ -31,6 +31,6 @@ data a_held_compute_seat_has_no_in_corpus_discharge: RecurringFailureMode = Recu
     decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_stuck_reservation_remedy"),
     decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "unit_termination_frees_capacity"),
     decl_ref(module_path: "gunbc.compute.host_capacity", decl_name: "compute_release"),
-    decl_ref(module_path: "test.claim.compute.work_request_witness", decl_name: "only_proven_absence_or_an_ended_cgroup_frees_a_seat"),
+    decl_ref(module_path: "test.claim.compute.work_request_witness_test", decl_name: "only_proven_absence_or_an_ended_cgroup_frees_a_seat"),
   ],
 }
