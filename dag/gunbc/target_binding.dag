@@ -453,9 +453,14 @@ type CompileCleanDiagnosticCensusStanding
 // grain of the decision's OUTCOME rather than at the grain of the distant symptom (an unresolved
 // type reported modules away) or of the reason (which only the carrier could supply).
 //
-// SO THIS IS THE RUNG-2 STEP AND NOT THE CEILING. A gate that changes behaviour turns the target
-// red; a decline still writes nothing anywhere. The invalid state stays writable and safety
-// depends on this target executing, which is rung 2 by DESIGN section 4b's own definition.
+// THIS CARRIER STATES NO RUNG, AND THE OMISSION IS DELIBERATE. The class's rung is the ledger
+// row's fact and has exactly one home -- `gunbc.recurring_failure_mode`
+// `bare_reference_channel_declines_a_pull_in_silence`, which reports 1 and says why. An earlier
+// revision of this annotation claimed rung 2 here; that was a second statement of one fact on the
+// carrier a reader meets first, which is the DESIGN section 3 fork, and it was wrong on the
+// merits besides: a gate that changes behaviour turns this target red for whoever RUNS it and
+// blocks no landing, and section 4b rung 2 is a mechanism that exposes AND blocks. Read the rung
+// from the row.
 type BareChannelEligibility
   = BareChannelRuns
   | BareChannelDisabledByImportLine
