@@ -127,9 +127,14 @@ and #11850.
 | `session/royal-moth-544` | `80ec5065822` | 14/14 + 4/4 PASS, two mutation controls | `std.measure round_up_to_grain` (resolves the unowned rounder fork), ceiling-as-parameter, permit-in-provenance |
 
 The same three file paths exist on both with different contents, so **merging them is a
-textual conflict on every file, not a union.** Pick one base and port the other's evidence;
-both PRs (#11883, #11885) are **draft, and must stay draft** while parked — ready buys
-reviewer coverage that was not approved.
+textual conflict on every file, not a union.** Pick one base and port the other's evidence.
+
+**Both PRs (#11883, #11885) were found NON-DRAFT on 2026-09-21, although both lanes believed
+they had left them draft** — so a parked program was consuming CI and reviewer attention on
+every push. Both were converted back to draft at wind-down. Keep them draft while parked:
+ready buys coverage that was never approved. *The lesson is the gap itself* — "I left it
+draft" is a belief about a past action, and the dashboard opens PRs on a lane's behalf, so
+it must be re-read rather than remembered.
 
 **The defect, stated correctly** (it is a bypass, not an absence). All three verified against
 `origin/main`:
