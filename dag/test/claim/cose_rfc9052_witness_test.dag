@@ -7,7 +7,7 @@ import std.measure { byte_size_count }
 import extdeps.standards.rfc_8949 { CborValue, CborUnsigned, CborNegative, CborByteString, CborMap, CborArray, CborEntry }
 import extdeps.standards.rfc_9052 {
   CoseEc2P256KeyRead, CoseEc2P256KeyRefused, cose_ec2_p256_key,
-  CoseKeyTypeUnexpected, CoseKeyCurveUnexpected, CoseKeyAlgorithmUnexpected, CoseKeyCoordinateMalformed, CoseKeyLabelRefused, CoseKeyLabelNotAnInteger,
+  CoseKeyTypeUnexpected, CoseKeyCurveUnexpected, CoseKeyAlgorithmUnexpected, CoseKeyCoordinateMalformed, CoseKeyCoordinateNotAByteString, CoseKeyLabelRefused, CoseKeyLabelNotAnInteger,
   CoseLabelAbsent, CoseLabelDuplicated, CoseKeyNotAMap,
 }
 
@@ -82,7 +82,7 @@ test fn a_wrong_type_curve_or_algorithm_refuses_by_name() -> Bool {
 }
 
 // A 31-octet x refuses naming label -2, 31 declared against the 32 the signature suite owns; a y
-// that is not a byte string refuses with 0 declared.
+// that is not a byte string refuses as exactly that -- not as a coordinate of length zero.
 test fn a_malformed_coordinate_refuses_with_its_label() -> Bool {
   match cose_ec2_p256_key(key: ec2_key(kty: 2, alg: 0 - 7, crv: 1, x: coordinate(n: 31, fill: 1, acc: []), y: coordinate(n: 32, fill: 2, acc: []))) {
     CoseEc2P256KeyRefused { cause: CoseKeyCoordinateMalformed { label: lx, declared: dx, expected: ex } } =>
@@ -91,7 +91,7 @@ test fn a_malformed_coordinate_refuses_with_its_label() -> Bool {
         cose_entry(k: 0 - 2, v: CborByteString { octets: coordinate(n: 32, fill: 1, acc: []) }),
         cose_entry(k: 0 - 3, v: label(n: 5)),
       ] }) {
-        CoseEc2P256KeyRefused { cause: CoseKeyCoordinateMalformed { label: ly, declared: dy, expected: _ } } => ly == 0 - 3 && byte_size_count(b: dy) == 0
+        CoseEc2P256KeyRefused { cause: CoseKeyCoordinateNotAByteString { label: ly } } => ly == 0 - 3
         _ => false
       }
     _ => false

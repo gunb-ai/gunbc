@@ -59,7 +59,7 @@ type CborRefusal
   | CborReservedAdditionalInfo { at: Int, info: Int }
   | CborIntegerBeyondExact { at: Int }
   | CborTextNotUtf8 { at: Int }
-  | CborTrailingOctets { consumed: Int, total: Int }
+  | CborTrailingOctets { consumed: ByteSize, total: ByteSize }
   | CborDepthExceeded { at: Int, limit: Int }
 
 type CborDecode
@@ -252,7 +252,7 @@ fn cbor_decode_document(octets: List<UInt8>) -> CborDocument {
   match cbor_decode_item(octets: octets, at: 0, depth: 0) {
     CborRefused { cause: c } => CborDocumentRefused { cause: c }
     CborDecoded { value: v, next: n } =>
-      if n != count(octets) { CborDocumentRefused { cause: CborTrailingOctets { consumed: n, total: count(octets) } } }
+      if n != count(octets) { CborDocumentRefused { cause: CborTrailingOctets { consumed: byte_size(count: n), total: byte_size(count: count(octets)) } } }
       else { CborDocumentDecoded { value: v } }
   }
 }
@@ -313,6 +313,9 @@ fn cbor_array_items(v: CborValue) -> List<CborValue>? {
   }
 }
 
+// CONSUMED BY A NAMED LATER CHANGE (DESIGN section 3c): the App Attest verifier fold
+// (gunbc#11989, extdeps.apple.app_attest validation_category_refusal) reads the validation
+// category through this accessor; no reader exists at step 1.
 fn cbor_unsigned_value(v: CborValue) -> Int? {
   match v {
     CborUnsigned { value: n } => Present { value: n }
