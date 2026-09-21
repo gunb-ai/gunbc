@@ -12,7 +12,7 @@ import extdeps.standards.rfc_8949 {
 import extdeps.standards.x690_der {
   DerElement, DerRefusal, DerElementRead, DerRefused, der_read_element, der_read_document, DerDocumentRead, DerDocumentRefused,
   der_children, DerChildrenRead, DerChildrenRefused, der_child_at, der_object_identifier, DerOidRead, DerOidRefused, DerObjectIdentifierMalformed, der_value,
-  DerIndefiniteLengthRefused, DerLengthNotMinimal, DerHighTagNumberRefused, DerTruncated, DerTrailingOctets, DerBitStringUnusedBitsRefused,
+  DerIndefiniteLengthRefused, DerLengthNotMinimal, DerHighTagNumberRefused, DerTruncated, DerTrailingOctets, DerBitStringUnusedBitsRefused, DerTagUnexpected,
   der_bit_string_octets, DerBitsRead, DerBitsRefused, der_unsigned_integer, DerUnsignedRead, DerUnsignedRefused, DerIntegerMalformed, DerContextSpecific,
   der_expect_sequence, der_expect, der_tag_octet_string,
 }
@@ -248,9 +248,10 @@ test fn a_cut_or_extended_leaf_refuses() -> Bool {
   }
 }
 
-// DESIGNED DER REFUSALS (X.690 §8.1.3.6, §10.1, §8.1.2.4, §8.3): an indefinite length; a long
-// form carrying 5 (not minimal); a high tag number; a BIT STRING with 3 unused bits; an INTEGER
-// with a redundant leading zero; an INTEGER with the sign bit set (negative, not admitted).
+// DESIGNED DER REFUSALS (X.690 §8.1.3.6, §10.1, §8.1.2.4, §8.6.2.3, §8.3): an indefinite length; a
+// long form carrying 5 (not minimal); a high tag number; a BIT STRING with 3 unused bits; an
+// INTEGER with a redundant leading zero; an INTEGER with the sign bit set (negative, not
+// admitted); a BIT STRING with no contents octet at all.
 test fn der_walls_refuse_by_name() -> Bool {
   let indefinite = match der_read_element(octets: [48, 128, 0, 0], at: 0) {
     DerRefused { cause: DerIndefiniteLengthRefused { at: 1 } } => true
@@ -285,7 +286,26 @@ test fn der_walls_refuse_by_name() -> Bool {
     }
     _ => false
   }
-  indefinite && not_minimal && high_tag && unused_bits && leading_zero && negative
+  let empty_bits = match der_read_element(octets: [3, 0, 0], at: 0) {
+    DerElementRead { element: e } => match der_bit_string_octets(octets: [3, 0, 0], e: e) {
+      DerBitsRefused { cause: DerTruncated { at: 2, needed: 1, available: 0 } } => true
+      _ => false
+    }
+    _ => false
+  }
+  indefinite && not_minimal && high_tag && unused_bits && leading_zero && negative && empty_bits
+}
+
+// POSITIONAL READS ASSERT THEIR TYPE: the real leaf with its serialNumber's INTEGER tag (0x02,
+// at offset 13: outer header 4, TBS header 4, [0] version 5) rewritten to OCTET STRING refuses
+// as a tag mismatch at that offset rather than reading the octets as a serial.
+test fn a_tbs_field_of_the_wrong_type_refuses_by_position() -> Bool {
+  let leaf = sample_x5c(i: 0)
+  let mutated = concat(leaf |> take(13), concat([4], leaf |> skip(14)))
+  match decode_certificate(octets: mutated) {
+    X509Refused { cause: X509DerRefused { cause: DerTagUnexpected { at: 13, expected: 2, found: 4 } } } => true
+    _ => false
+  }
 }
 
 // The OID decoder on Apple's nonce OID as DER (06 09 2a 86 48 86 f7 63 64 08 02); the same OID
