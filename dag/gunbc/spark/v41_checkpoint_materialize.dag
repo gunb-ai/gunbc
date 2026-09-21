@@ -6,7 +6,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.algebra { trim }
 import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
-import std.measure { byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity, host_identity_eq }
@@ -14,7 +14,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { sha256sum_argv, sha256sum_line_digest }
 import extdeps.tools.sha256sum { sha256sum_byte_span_argv }
 import extdeps.tools.findutils { find_regular_file_sizes_argv }
-import extdeps.tools.gnu_coreutils { df_available_bytes_argv }
+import gunbc.host_disk_observation { host_disk_free_space_argv, host_disk_observation_of_df, HostDiskObservation, DiskObserved, DiskObservationRefused, DiskUnobserved }
 import extdeps.huggingface.hub { hub_resolve_url, hub_repo_cache_directory_name }
 import extdeps.deepseek.deepseek_v4_1_flash {
   DeepseekV41PublishedFile,
@@ -96,8 +96,16 @@ import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, obse
 // every file is digested where it would be, and a host that already holds a verified copy in its Hub
 // cache is offered to the fold as the first source (a local copy) before the network.
 
-data v41_checkpoint_directory: NonEmptyStr = "/home/briansrls/models/deepseek-ai--DeepSeek-V4.1-Flash/dba1be0a40aa45a94ad051997016db3960a90277" as NonEmptyStr
-data v41_checkpoint_staging_directory: NonEmptyStr = "/home/briansrls/models/deepseek-ai--DeepSeek-V4.1-Flash/.gunbc-staging" as NonEmptyStr
+// THE DIRECTORY IS DERIVED FROM THE REPO AND THE PIN, so a revision bump lands in a new directory rather
+// than on top of the old one.
+data v41_checkpoint_models_root: NonEmptyStr = "/home/briansrls/models" as NonEmptyStr
+
+fn v41_checkpoint_repo_directory() -> String {
+  join([v41_checkpoint_models_root as String, "/", hub_repo_cache_directory_name(repo: deepseek_v4_1_flash_hub_repo) as String], "")
+}
+
+data v41_checkpoint_directory: NonEmptyStr = join([v41_checkpoint_repo_directory(), "/", deepseek_v4_1_flash_revision as String], "") as NonEmptyStr
+data v41_checkpoint_staging_directory: NonEmptyStr = join([v41_checkpoint_repo_directory(), "/.gunbc-staging"], "") as NonEmptyStr
 
 // ── THE POPULATION IS THE ADMITTED ONE, NEVER THE RAW ROWS ───────────────────────────────────
 //
@@ -119,8 +127,8 @@ fn v41_checkpoint_population() -> V41CheckpointPopulation {
   }
 }
 
-fn v41_checkpoint_bytes(files: List<DeepseekV41PublishedFile>) -> Nat {
-  fold(files, init: 0, f: (acc, r) => acc + byte_size_count(b: r.file_bytes))
+fn v41_checkpoint_bytes(files: List<DeepseekV41PublishedFile>) -> ByteSize {
+  byte_size(count: fold(files, init: 0, f: (acc, r) => acc + byte_size_count(b: r.file_bytes)))
 }
 
 // ── ONE ACQUISITION SUBJECT PER PUBLISHED FILE ─────────────────────────────────────────────────
@@ -382,7 +390,7 @@ fn v41_checkpoint_handler(ctx: SparkMaterializeContext) -> AcquisitionHandler {
 // Staging and install share one filesystem, so a publish is a rename and needs no second copy. The
 // available bytes are df's answer for the filesystem that will hold the directory.
 type V41DiskReading
-  = V41DiskRead { required: Nat, available: Nat, population: Nat }
+  = V41DiskRead { required: ByteSize, available: ByteSize, population: ByteSize }
   | V41DiskUnread { cause: NonEmptyStr }
 
 fn v41_line_size_for(listing: List<String>, path: NonEmptyStr) -> String? {
@@ -395,31 +403,19 @@ fn v41_line_size_for(listing: List<String>, path: NonEmptyStr) -> String? {
   }
 }
 
-fn v41_required_bytes(files: List<DeepseekV41PublishedFile>, listing: List<String>) -> Nat {
+fn v41_required_bytes(files: List<DeepseekV41PublishedFile>, listing: List<String>) -> ByteSize {
   v41_checkpoint_bytes(files: filter(files, f => match v41_line_size_for(listing: listing, path: f.path) {
     Present { value: s } => s != to_string(byte_size_count(b: f.file_bytes))
     Absent => true
   }))
 }
 
-fn v41_parse_nat(s: String) -> Nat? {
-  match parse_int(s: trim(s: s)) {
-    Absent => none
-    Present { value: n } => match checked_int_magnitude(a: n) {
-      CheckedNatOverflow { cause: _ } => none
-      CheckedNatReady { value: v } => if n < 0 { none } else { Present { value: v } }
-    }
-  }
-}
 
 // THREE PLAIN LEGS. The directory is probed first, because an absent directory holds nothing and find
 // over it would exit non-zero; listing is extdeps.tools.findutils find_regular_file_sizes_argv. The
 // directory is then created -- an empty directory, the only write before the refusal, and one the
 // fold's ensure_parent makes anyway -- so df answers for the filesystem that will hold the files
 // rather than for a parent this module would otherwise have to walk to.
-fn v41_last_line(s: String) -> String {
-  fold(split(s: s, delimiter: "\n"), init: "", f: (acc, l) => if trim(s: l) == "" { acc } else { l })
-}
 
 fn v41_read_disk(ctx: SparkMaterializeContext, files: List<DeepseekV41PublishedFile>) -> V41DiskReading {
   let dir = v41_checkpoint_directory as String
@@ -434,17 +430,16 @@ fn v41_read_disk(ctx: SparkMaterializeContext, files: List<DeepseekV41PublishedF
               RemoteUnreachable { cause: c } => V41DiskUnread { cause: join(["the directory could not be created for the free-space read: ", c], "") as NonEmptyStr }
               RemoteRan { exit_code: m, stdout: _, stderr: merr } =>
                 if m != 0 { V41DiskUnread { cause: join(["mkdir exited ", to_string(m), ": ", trim(s: merr)], "") as NonEmptyStr } } else {
-                  match spark_remote_run(ctx: ctx, argv: df_available_bytes_argv(path: dir)) {
+                  match spark_remote_run(ctx: ctx, argv: host_disk_free_space_argv(path: dir)) {
                     RemoteUnreachable { cause: c } => V41DiskUnread { cause: join(["the free-space read did not run: ", c], "") as NonEmptyStr }
                     RemoteRan { exit_code: e2, stdout: avail, stderr: err2 } =>
-                      if e2 != 0 { V41DiskUnread { cause: join(["df exited ", to_string(e2), ": ", trim(s: err2)], "") as NonEmptyStr } } else {
-                        match v41_parse_nat(s: v41_last_line(s: avail)) {
-                          Absent => V41DiskUnread { cause: join(["df answered no byte count: ", avail], "") as NonEmptyStr }
-                          Present { value: a } => V41DiskRead {
-                            required: v41_required_bytes(files: files, listing: split(s: listing, delimiter: "\n")),
-                            available: a,
-                            population: v41_checkpoint_bytes(files: files),
-                          }
+                      match host_disk_observation_of_df(exit_code: e2, stdout: avail, stderr: err2, observed_on: "spark_v41_checkpoint_materialize" as NonEmptyStr) {
+                        DiskObservationRefused { detail: d } => V41DiskUnread { cause: d }
+                        DiskUnobserved { reason: r } => V41DiskUnread { cause: r as NonEmptyStr }
+                        DiskObserved { free_bytes: free, observed_on: _ } => V41DiskRead {
+                          required: v41_required_bytes(files: files, listing: split(s: listing, delimiter: "\n")),
+                          available: free,
+                          population: v41_checkpoint_bytes(files: files),
                         }
                       }
                   }
@@ -468,7 +463,7 @@ fn v41_disk_line(d: V41DiskReading) -> String {
   match d {
     V41DiskUnread { cause: c } => join(["disk unread: ", c as String, "\n"], "")
     V41DiskRead { required: r, available: a, population: p } =>
-      join(["disk required_bytes=", to_string(r), " available_bytes=", to_string(a), " population_bytes=", to_string(p), " directory=", v41_checkpoint_directory as String, "\n"], "")
+      join(["disk required_bytes=", to_string(byte_size_count(b: r)), " available_bytes=", to_string(byte_size_count(b: a)), " population_bytes=", to_string(byte_size_count(b: p)), " directory=", v41_checkpoint_directory as String, "\n"], "")
   }
 }
 
@@ -548,8 +543,8 @@ fn v41_materialize_checkpoint(ctx: SparkMaterializeContext) -> V41MaterializeRun
       match disk {
         V41DiskUnread { cause: c } => V41MaterializeRefusedBeforeFetch { cause: join(["the disk requirement could not be checked, so nothing was fetched: ", c as String], "") as NonEmptyStr, disk: disk }
         V41DiskRead { required: r, available: a, population: _ } =>
-          if a < r {
-            V41MaterializeRefusedBeforeFetch { cause: join(["the checkpoint needs ", to_string(r), " more bytes under ", v41_checkpoint_directory as String, " and the filesystem has ", to_string(a), " available, so nothing was fetched"], "") as NonEmptyStr, disk: disk }
+          if byte_size_count(b: a) < byte_size_count(b: r) {
+            V41MaterializeRefusedBeforeFetch { cause: join(["the checkpoint needs ", to_string(byte_size_count(b: r)), " more bytes under ", v41_checkpoint_directory as String, " and the filesystem has ", to_string(byte_size_count(b: a)), " available, so nothing was fetched"], "") as NonEmptyStr, disk: disk }
           } else {
             let receipts = map(files, f => V41FileReceipt { path: f.path, outcome: acquire_artifact(subject: v41_checkpoint_subject(file: f), handler: v41_checkpoint_handler(ctx: ctx)) })
             V41MaterializeRan { disk: disk, files: receipts, spans: v41_spans_after(ctx: ctx, receipts: receipts), index_selection: v41_index_selection_after(ctx: ctx, receipts: receipts) }

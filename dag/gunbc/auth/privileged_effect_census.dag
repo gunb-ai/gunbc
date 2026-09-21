@@ -285,8 +285,8 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.microvm_controller_app_key_converge", decl_name: "microvm_controller_app_key_converge_ci_wet"),
-    effect: recurring_credential_read(subject: "read the gunbai-ci App key over WIF and place it on one runner host as root:root 0400, outside every jail root, for the microVM lifecycle controller" as NonEmptyStr),
+    site: site(module_path: "gunbc.host_credential_custody_converge", decl_name: "host_credential_custody_converge_ci_wet"),
+    effect: recurring_credential_read(subject: "read one rostered custody credential over WIF -- the gunbai-ci App key for the microVM lifecycle controller, or the approval ntfy publisher token -- and place it on one fleet host at its row's owner, group and mode" as NonEmptyStr),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },
