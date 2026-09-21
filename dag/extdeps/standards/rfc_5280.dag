@@ -164,6 +164,7 @@ fn read_validity(octets: List<UInt8>, e: DerElement) -> X509Validity {
   match der_children(octets: octets, parent: e) {
     DerChildrenRefused { cause: c } => X509ValidityRefused { cause: X509DerRefused { cause: c } }
     DerChildrenRead { elements: kids } =>
+      if count(kids) != 2 { X509ValidityRefused { cause: X509DerRefused { cause: DerTrailingOctets { consumed: 2, total: count(kids) } } } } else {
       match der_child_at(children: kids, i: 0, at: e.value_at) {
         DerRefused { cause: c } => X509ValidityRefused { cause: X509DerRefused { cause: c } }
         DerElementRead { element: nb } =>
@@ -179,6 +180,7 @@ fn read_validity(octets: List<UInt8>, e: DerElement) -> X509Validity {
                   }
               }
           }
+      }
       }
   }
 }
@@ -310,6 +312,7 @@ fn read_spki(octets: List<UInt8>, e: DerElement) -> SubjectPublicKeyInfo {
   match der_children(octets: octets, parent: e) {
     DerChildrenRefused { cause: c } => SpkiRefused { cause: c }
     DerChildrenRead { elements: kids } =>
+      if count(kids) != 2 { SpkiRefused { cause: DerTrailingOctets { consumed: 2, total: count(kids) } } } else {
       match sequence_child(kids: kids, i: 0, at: e.value_at) {
         DerRefused { cause: c } => SpkiRefused { cause: c }
         DerElementRead { element: alg } =>
@@ -325,6 +328,7 @@ fn read_spki(octets: List<UInt8>, e: DerElement) -> SubjectPublicKeyInfo {
                   }
               }
           }
+      }
       }
   }
 }

@@ -3,6 +3,7 @@ module test.claim.app_attest_sample_decode_witness_test
 import std.logic { Bool }
 import std.types { Int, String, List, NonEmptyStr }
 import std.integer { UInt8 }
+import std.measure { byte_size_count }
 import std.encoding { base64_decode, Standard }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256 }
@@ -174,7 +175,7 @@ test fn the_sample_assertion_decodes_as_a_prefix_with_counter_one() -> Bool {
             && count(member_octets(v: v, key: "signature")) == 70
             && match decode_authenticator_data(octets: ad) {
               AuthenticatorDataDecoded { data: _ } => false
-              AuthenticatorDataRefused { cause: AuthenticatorDataTruncated { at: 37, needed: 18, available: 0 } } => true
+              AuthenticatorDataRefused { cause: AuthenticatorDataTruncated { at: 37, needed: n, available: a } } => byte_size_count(b: n) == 18 && byte_size_count(b: a) == 0
               AuthenticatorDataRefused { cause: _ } => false
             }
       }
