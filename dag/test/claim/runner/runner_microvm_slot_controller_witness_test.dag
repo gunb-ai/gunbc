@@ -32,7 +32,10 @@ import gunbc.runner_microvm_slot_unit {
   microvm_slot_unit_file, microvm_slot_unit_execs_controller, microvm_slot_unit_timeout_stop_seconds,
   microvm_slot_controller_entry_function,
 }
-import gunbc.runner_microvm_slot_controller { slot_of_instance }
+import gunbc.runner_microvm_slot_controller { slot_of_instance, minted_registration }
+import gunbc.github_effect_perform { JitMintReceived, JitMintClockUnread }
+import gunbc.runner.runner_jit_perform { JitCredentialBoundToAttempt, JitCredentialMintNotCreated, JitCredentialNotDispatched, DispatchRefusedCellNotOwned }
+import extdeps.github.actions_jit_runner { jit_config_mint_outcome, JitConfigMinted }
 import gunbc.live_deploy.emit { microvm_slot_unit_file_with_workspace_root }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import extdeps.systemd.unit_file { Environment }
@@ -47,7 +50,7 @@ import extdeps.systemd.unit_file { Environment }
 // --- the unit execs the controller as MainPID ---
 
 fn rendered() -> SystemdUnitFile {
-  microvm_slot_unit_file(release_dir: "/opt/gunbc/microvm-controller/releases/abc", timeout_stop_sec: "630")
+  microvm_slot_unit_file(release_dir: "/opt/gunbc/microvm-controller/releases/abc", timeout_stop_sec: "620")
 }
 
 fn service_directives(f: SystemdUnitFile) -> List<SystemdServiceDirective> {
@@ -234,4 +237,29 @@ test fn the_controller_selects_only_a_fabric_member_out_of_its_instance_name() -
   let github_slot = match slot_of_instance(instance: "srv1-01") { Present { value: _ } => false  Absent => true }
   let member_count = fabric_execution_slot_identities().count()
   shakedown && github_slot && member_count == 5
+}
+
+// --- a refused plan is reconciled only when a registration was minted ---
+
+// A MINT THAT DELIVERED A REGISTRATION IS THE ONE CASE THE CONTROLLER MUST STILL BE ENTERED FOR
+// (review 69759): a refused plan after a delivered mint leaves a GitHub registration behind, and
+// the controller's in-flight record is where it is recorded. Every other mint outcome leaves
+// nothing to reconcile and refuses with the host untouched.
+fn delivered_mint() -> Bool {
+  match attempt_on(slot: srv1_microvm_shakedown_slot()).first() {
+    Absent => false
+    Present { value: a } =>
+      match jit_config_mint_outcome(status: 201, encoded: "ZmFrZS1qaXQtY29uZmlnLXRoYXQtaXMtbG9uZy1lbm91Z2gtdG8tcGFzcy10aGUtZmxvb3ItY2hlY2stZm9yLXRoZS13aXRuZXNz", runner_id: 4242, error_body: "") {
+        JitConfigMinted { config: c, runner_id: id } =>
+          minted_registration(mint: JitMintReceived { delivery: JitCredentialBoundToAttempt { attempt: a, credential: c, runner_id: id } }) == Present { value: 4242 }
+        _ => false
+      }
+  }
+}
+
+test fn only_a_delivered_mint_carries_a_registration_into_the_controller() -> Bool {
+  delivered_mint()
+    && minted_registration(mint: JitMintReceived { delivery: JitCredentialMintNotCreated { outcome: jit_config_mint_outcome(status: 409, encoded: "", runner_id: 0, error_body: "taken") } }) == none
+    && minted_registration(mint: JitMintReceived { delivery: JitCredentialNotDispatched { refusal: DispatchRefusedCellNotOwned { cause: "unowned" } } }) == none
+    && minted_registration(mint: JitMintClockUnread { detail: "no clock" }) == none
 }

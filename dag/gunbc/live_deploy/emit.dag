@@ -1920,6 +1920,9 @@ fn release_locus_install_steps(owner: NonEmptyStr, copy: ReleaseLocusCopy, base_
   )
 }
 
+// 🟡 dissolve-on: the privileged arm below assembles a `printf … | sudo install /dev/stdin` pipeline
+// as a string (medium-as-string, the same class approval_broker_tree_digest_expr marks); it
+// dissolves when v2.workflow.bash_emit can render a piped command from modeled parts.
 // THE RECEIPT IS WRITTEN BY THE SAME PRINCIPAL THAT OWNS THE LOCUS: `install -m 0644 /dev/stdin`
 // into a root-owned directory needs root, and the digest pipeline feeding it is the same either way.
 fn release_locus_tree_receipt_step(copy: ReleaseLocusCopy, base_root: String, revision: ReleaseRevisionBinding) -> PipelineStep {
@@ -1971,6 +1974,9 @@ fn microvm_controller_vmm_receipt_path(revision: ReleaseRevisionBinding) -> Stri
   join([microvm_controller_release_dir(revision: revision), "/.gunbc-vmm-receipt"], "")
 }
 
+// 🟡 dissolve-on: the last step below assembles `sha256sum … | sudo install /dev/stdin` as a string
+// (medium-as-string); it dissolves when v2.workflow.bash_emit can render a piped command from
+// modeled parts, exactly as approval_broker_tree_digest_expr's marker says.
 fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   let rel = microvm_controller_firecracker_release
   let dir = microvm_controller_release_dir(revision: revision)
