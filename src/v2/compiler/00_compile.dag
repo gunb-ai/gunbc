@@ -134,6 +134,8 @@ import v2.extdeps.runtimes.v2_evaluator {
   v2_eval_runtime_bool_is_true
 }
 import v2.std.text { String }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import v2.std.witness { Holds, Violates, Witness, witness_violates }
 
 // THIS MODULE IS THE COMPILER PIPELINE ENTRY. It carries the fact rather than being recognised
@@ -1772,6 +1774,173 @@ type NativeLaneUniverse {
   identities: List<NativeRouteTestIdentity>
   module_sources: List<NativeRouteModuleSource>
 }
+
+// THE DRIVER'S COMMAND LINE, AS A PLAN -- the same three-part shape v2.cli.compile_cli established,
+// applied to the other rendered main.
+//
+// WHY A PLAN AND NOT A DISPATCH. The rendered main decided the verb itself: it read argv, compared
+// the first word against three literals, and called one of three host functions, refusing inline at
+// three points with its own message and its own status. Every one of those is a DECISION, and
+// `gunbc.source_root_eval_driver_seed_growth` names the capability that retires its row -- the
+// rendered main becomes one call into a fold. A decision taken in emitted Rust is a decision no
+// `.dag` consumer can read, no witness can exercise, and no refusal vocabulary owns; moving it here
+// is what makes the verb surface a modeled fact rather than a property of the emitter's string.
+//
+// THE SPLIT IS THE SAME ONE AND FOR THE SAME REASON. The host cannot know which roots to walk, or
+// which facts file to read, until argv has been parsed; and this module cannot read a directory.
+// So `native_driver_parse` answers with a plan, `native_driver_plan_source_roots` and
+// `native_driver_plan_facts_path` say what the host must fetch, and the run folds receive what came
+// back. A single call would force one of those two to be wrong.
+//
+// BEHAVIOUR IS PRESERVED EXACTLY, including the parts that look like omissions. `census` with no
+// roots is PLANNED here, not refused, because the rendered main collects an empty vector and lets
+// the run fold answer -- adding a parse-time refusal would be a new wall wearing a refactor's
+// clothes. The three refusal messages are carried verbatim for the same reason: this change moves
+// where a decision is taken, and moves nothing else.
+type NativeDriverVerb
+  = NativeDriverCensus { source_roots: FreeMonoid<String> }
+  | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
+  | NativeDriverAdjudicate { facts_path: String, source_roots: FreeMonoid<String> }
+
+type NativeDriverPlan
+  = NativeDriverPlanned { verb: NativeDriverVerb }
+  | NativeDriverPlanRefused { reason: Symbol, detail: String }
+
+data native_driver_verb_census: String = "census"
+
+data native_driver_verb_census_resolve: String = "census-resolve"
+
+data native_driver_verb_adjudicate: String = "adjudicate"
+
+data native_driver_usage: String = "REFUSED: no mode given -- usage: v1_compiled adjudicate <host-facts.tsv> <source-root>... | v1_compiled census <source-root>... | v1_compiled census-resolve <source-root>..."
+
+data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
+
+// THE STATE IS THE VERB ALREADY DECIDED, which is why there is no separate "mode" field. Once the
+// first word is read the remaining words mean something different for each verb -- roots for two of
+// them, a facts path then roots for the third -- so carrying the verb in the state is what lets one
+// step function stay total without asking "which mode are we in" at every arm.
+type NativeDriverParseState
+  = DriverSeekVerb
+  | DriverCensusRoots { roots: FreeMonoid<String> }
+  | DriverCensusResolveRoots { roots: FreeMonoid<String> }
+  | DriverAdjudicateSeekFacts
+  | DriverAdjudicateRoots { facts_path: String, roots: FreeMonoid<String> }
+  | DriverParseRefused { reason: Symbol, detail: String }
+
+fn native_driver_unknown_verb_detail(word: String) -> String {
+  concat(
+    concat("REFUSED: unknown mode ", word),
+    " -- expected adjudicate, census or census-resolve"
+  )
+}
+
+// A REFUSED STATE ABSORBS THE REST OF ARGV rather than reconsidering it. The first bad word is the
+// located cause; a later word cannot repair it, and letting one re-decide the verb would make the
+// refusal depend on how many arguments followed it.
+fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> NativeDriverParseState {
+  match state {
+    DriverParseRefused { reason: reason, detail: detail } =>
+      DriverParseRefused { reason: reason, detail: detail }
+    DriverSeekVerb =>
+      if word == native_driver_verb_census {
+        DriverCensusRoots { roots: [] }
+      } else if word == native_driver_verb_census_resolve {
+        DriverCensusResolveRoots { roots: [] }
+      } else if word == native_driver_verb_adjudicate {
+        DriverAdjudicateSeekFacts
+      } else {
+        DriverParseRefused {
+          reason: ^native_driver_unknown_verb,
+          detail: native_driver_unknown_verb_detail(word: word)
+        }
+      }
+    DriverCensusRoots { roots: roots } =>
+      DriverCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverCensusResolveRoots { roots: roots } =>
+      DriverCensusResolveRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverAdjudicateSeekFacts =>
+      DriverAdjudicateRoots { facts_path: word, roots: [] }
+    DriverAdjudicateRoots { facts_path: facts_path, roots: roots } =>
+      DriverAdjudicateRoots { facts_path: facts_path, roots: list_snoc_item(xs: roots, item: word) }
+  }
+}
+
+// THE TWO STATES THAT ARE INCOMPLETE RATHER THAN EMPTY. Reaching the end still seeking a verb means
+// argv was empty; still seeking a facts path means `adjudicate` was the last word. Both are
+// refusals the rendered main raised inline, and both are raised here with its exact message.
+fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan {
+  match state {
+    DriverParseRefused { reason: reason, detail: detail } =>
+      NativeDriverPlanRefused { reason: reason, detail: detail }
+    DriverSeekVerb =>
+      NativeDriverPlanRefused {
+        reason: ^native_driver_no_verb_given,
+        detail: native_driver_usage
+      }
+    DriverAdjudicateSeekFacts =>
+      NativeDriverPlanRefused {
+        reason: ^native_driver_adjudicate_without_facts_path,
+        detail: native_driver_adjudicate_needs_facts
+      }
+    DriverCensusRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensus { source_roots: roots } }
+    DriverCensusResolveRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusResolve { source_roots: roots } }
+    DriverAdjudicateRoots { facts_path: facts_path, roots: roots } =>
+      NativeDriverPlanned {
+        verb: NativeDriverAdjudicate { facts_path: facts_path, source_roots: roots }
+      }
+  }
+}
+
+fn native_driver_parse(argv: FreeMonoid<String>) -> NativeDriverPlan {
+  native_driver_parse_finish(
+    state: fold_list(xs: argv, empty: DriverSeekVerb, cons: native_driver_parse_step)
+  )
+}
+
+// A REFUSED PLAN NAMES NO ROOTS AND NO FACTS FILE, so the host walks nothing and reads nothing for
+// one. That is the same rule v2.cli.compile_cli states for its own refused plan: the reads a run
+// performs are derived from the plan, never from argv in parallel, or the roots walked and the
+// roots reported could disagree.
+fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String> {
+  match plan {
+    NativeDriverPlanRefused { reason: _, detail: _ } => []
+    NativeDriverPlanned { verb: verb } =>
+      match verb {
+        NativeDriverCensus { source_roots: roots } => roots
+        NativeDriverCensusResolve { source_roots: roots } => roots
+        NativeDriverAdjudicate { facts_path: _, source_roots: roots } => roots
+      }
+  }
+}
+
+fn native_driver_plan_facts_path(plan: NativeDriverPlan) -> Optional<String> {
+  match plan {
+    NativeDriverPlanRefused { reason: _, detail: _ } => optional_absent()
+    NativeDriverPlanned { verb: verb } =>
+      match verb {
+        NativeDriverCensus { source_roots: _ } => optional_absent()
+        NativeDriverCensusResolve { source_roots: _ } => optional_absent()
+        NativeDriverAdjudicate { facts_path: path, source_roots: _ } => optional_present(value: path)
+      }
+  }
+}
+
+// THE STATUS IS DERIVED FROM THE PLAN AND DECIDES NOTHING. Exit 2 is the cited misuse code, which
+// is what the rendered main used for all three of these refusals -- a command line that was not
+// usable, as distinct from work that ran and failed. A shim choosing the status from whether the
+// detail string was empty would be a second representation of the verdict, free to disagree with
+// the plan it came from.
+fn native_driver_plan_exit(plan: NativeDriverPlan) -> ProcessExit {
+  match plan {
+    NativeDriverPlanned { verb: _ } => ExitSuccess
+    NativeDriverPlanRefused { reason: _, detail: detail } =>
+      ExitFailure { code: exit_code_misuse, reason: detail }
+  }
+}
+
 
 fn native_lane_universe_module_for_source(facts: NativeLaneSourceFacts) -> List<NativeLaneUniverseModule> {
   match facts.module {
