@@ -175,8 +175,15 @@ fn v2_compiler_materialization_ladder_holds() -> Bool {
 // unmet obligation does not open the door. Today the parse-table demand is Discharged, so no
 // live behaviour changes; what changes is that it is admitted BECAUSE it is green rather than
 // because every Refused arm happened to answer Memoize too.
-fn admitted_prescription(identity: String) -> Materialization {
-  match ladder_verdict_for(verdicts: v2_compiler_materialization_verdicts(), identity: identity) {
+// ONE BODY, and the verdict list is a parameter so that a control can exercise THE DOOR rather
+// than a copy of it. Review 69791 caught the previous shape: refused_scope_prescription had this
+// body inlined with only the verdict source swapped, so deleting the green test HERE -- the
+// production door, which parse_table_memo_materialization and compile_stage_memo_materialization
+// consume -- left the control that exists to catch that deletion green. A control evaluating its
+// own copy of the property it guards cannot fail, which is the forged control DESIGN section
+// 4b(1) refuses: the discriminating RED has to run on the real acceptance path.
+fn admitted_prescription_in(verdicts: List<LadderVerdict>, identity: String) -> Materialization {
+  match ladder_verdict_for(verdicts: verdicts, identity: identity) {
     Absent => Recompute
     Present { value: chosen } =>
       if ladder_verdict_is_green(v: chosen) {
@@ -185,6 +192,13 @@ fn admitted_prescription(identity: String) -> Materialization {
         Recompute
       }
   }
+}
+
+fn admitted_prescription(identity: String) -> Materialization {
+  admitted_prescription_in(
+    verdicts: v2_compiler_materialization_verdicts(),
+    identity: identity
+  )
 }
 
 fn parse_table_memo_materialization() -> Materialization {
@@ -278,23 +292,15 @@ fn unruled_identity_prescription() -> Materialization {
 
 // THE RED REVIEW 69770 ASKED FOR: a REFUSED identity must not permit the store. The plural
 // parse-table demands refuse with RefusedScopeTooNarrow against the very provider that
-// discharges the single-site demand, so this is the same identity and the same provider,
-// refused for a reason that is about scope rather than absence -- exactly the arm that
-// ladder_verdict_prescribes answers Memoize for. Restoring the bare prescription (dropping the
-// green test in admitted_prescription) makes this return Memoize and the control fails.
+// discharges the single-site demand -- same identity, same provider, refused on scope rather
+// than absence, which is exactly an arm ladder_verdict_prescribes answers Memoize for. It runs
+// through admitted_prescription_in, THE DOOR'S OWN BODY, so dropping the green test there makes
+// this return Memoize and the control dies with it.
 fn refused_scope_prescription() -> Materialization {
-  match ladder_verdict_for(
+  admitted_prescription_in(
     verdicts: parse_table_memo_plural_verdicts(providers: v2_compiler_cache_providers()),
     identity: parse_table_memo_demand_identity
-  ) {
-    Absent => Recompute
-    Present { value: chosen } =>
-      if ladder_verdict_is_green(v: chosen) {
-        ladder_verdict_prescribes(v: chosen)
-      } else {
-        Recompute
-      }
-  }
+  )
 }
 
 fn refused_scope_refuses_store() -> Bool {
