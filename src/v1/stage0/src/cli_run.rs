@@ -1302,13 +1302,28 @@ mod roadmap_acceptance_history_projection_tests {
 // (env/argv) or Step 5 deletes this Rust parallel and the v2 floor workflow owns path
 // resolution.
 pub fn workspace_root() -> PathBuf {
-    static ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-    ROOT.get_or_init(|| {
-        let cwd =
-            std::env::current_dir().expect("workspace_root: process working directory unavailable");
-        workspace_root_from(&cwd)
-    })
-    .clone()
+    CHECKOUT_ROOT
+        .get_or_init(|| {
+            let cwd = std::env::current_dir()
+                .expect("workspace_root: process working directory unavailable");
+            workspace_root_from(&cwd)
+        })
+        .clone()
+}
+
+static CHECKOUT_ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Receive the checkout root from the request rather than walking up to find a `.git`.
+///
+/// This is the dissolution THIS SCAFFOLD ALREADY NAMES -- "release bins receive checkout-root at
+/// spawn (env/argv)" -- discharged for the population that can supply it: a `run` whose source
+/// roots name their own base. The walk stays for every caller that supplies nothing, so no
+/// existing invocation changes, and the two roots this file memoizes are bound to ONE derived
+/// directory rather than to two independent proxies for it (DESIGN section 3: one fact, one
+/// authority). They were never two facts -- in a checkout they are the same directory, and outside
+/// one the walk simply has no answer.
+pub(crate) fn bind_checkout_root(root: PathBuf) {
+    let _ = CHECKOUT_ROOT.set(root);
 }
 
 /// The process working directory is one mutable cell shared by every test thread in this binary,
@@ -2069,11 +2084,91 @@ pub(crate) const CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER: &str =
 /// walk up from cwd. Fail-closed panic when neither locates the workspace — no silent fallback
 /// to cwd-relative or absolute spellings as index keys.
 fn process_workspace_root() -> PathBuf {
-    static ROOT: OnceLock<PathBuf> = OnceLock::new();
-    ROOT.get_or_init(resolve_process_workspace_root).clone()
+    PROCESS_WORKSPACE_ROOT
+        .get_or_init(resolve_process_workspace_root)
+        .clone()
 }
 
-fn resolve_process_workspace_root() -> PathBuf {
+static PROCESS_WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
+
+/// Why a request may NAME its workspace root instead of the process discovering one.
+///
+/// `resolve_process_workspace_root` below answers "which tree am I in" by asking git for a
+/// checkout carrying Cargo.toml beside dag/. That is a proxy, and it is wrong exactly where the
+/// tree is not a checkout -- which is not an exotic case: it is an executor handed an immutable
+/// source snapshot by content identity (`gunbc.fabric_source_snapshot`), the whole point of which
+/// is that no repository travelled with the bytes. Discovery answers that invocation with a panic
+/// before a single module is read, so "source without a repository" was unrunnable rather than
+/// unsupported.
+///
+/// WHAT THE ROOT ACTUALLY ESTABLISHES, which is what the rule is derived from: a base such that
+/// every source root and module file has a stable repo-relative spelling, so module-graph facts and
+/// module-content indices key alike across processes. A RELATIVE `--source-root` spelling is
+/// already relative to the process's cwd -- that is what the spelling MEANS -- so when every
+/// declared root resolves under cwd, the invocation has named its own base and nothing needs to be
+/// discovered. This is not a second authority over the same population: it is the declared answer
+/// for invocations that declare one, and discovery keeps the population that does not.
+///
+/// THE CONSERVATIVE CLAUSE IS LOAD-BEARING. A declared root that does NOT resolve under cwd leaves
+/// this rule with nothing to say, and it falls through to discovery rather than refusing -- an
+/// invocation run from a subdirectory of a checkout works today and must keep working. So no
+/// invocation that succeeds now changes its keys: where the declared base applies, cwd and the
+/// discovered root are the same directory.
+pub(crate) fn declared_workspace_root(source_roots: &[String]) -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    if source_roots.is_empty() {
+        return None;
+    }
+    for root in source_roots {
+        let spelled = Path::new(root);
+        if spelled.is_absolute() {
+            return None;
+        }
+        if !cwd.join(spelled).is_dir() {
+            return None;
+        }
+    }
+    Some(cwd)
+}
+
+/// Bind the process workspace root once, from the request, before anything reads it.
+///
+/// Returns `Err` with a located cause when neither the request nor discovery can name a base --
+/// the state `resolve_process_workspace_root` answers with a panic. A panic is not a refusal: it
+/// carries no exit contract and prints no diagnostic a caller can act on, which is precisely what
+/// DESIGN section 5 forbids at a boundary whose job is to refuse precisely.
+pub fn bind_process_workspace_root(source_roots: &[String]) -> Result<PathBuf, String> {
+    if let Some(root) = PROCESS_WORKSPACE_ROOT.get() {
+        return Ok(root.clone());
+    }
+    if let Some(declared) = declared_workspace_root(source_roots) {
+        let _ = PROCESS_WORKSPACE_ROOT.set(declared.clone());
+        bind_checkout_root(declared.clone());
+        return Ok(declared);
+    }
+    match try_resolve_process_workspace_root() {
+        Some(discovered) => {
+            let _ = PROCESS_WORKSPACE_ROOT.set(discovered.clone());
+            bind_checkout_root(discovered.clone());
+            Ok(discovered)
+        }
+        None => Err(format!(
+            "no workspace root: every --source-root would have to resolve under the current \
+             directory {}, and none of its ancestors is a git checkout carrying Cargo.toml \
+             beside dag/.\n  cause: the root is the base every repo-relative module key is \
+             spelled against, so a run without one would key its module graph and its content \
+             indices differently.\n  remedy: name the source roots relative to the directory the \
+             run starts in.",
+            std::env::current_dir()
+                .map(|d| d.display().to_string())
+                .unwrap_or_else(|_| "<unavailable>".into()),
+        )),
+    }
+}
+
+/// The discovery half of [`resolve_process_workspace_root`], without the panic, so the boundary
+/// above can turn its absence into a typed refusal rather than an abort.
+fn try_resolve_process_workspace_root() -> Option<PathBuf> {
     if let Ok(output) = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()
@@ -2083,28 +2178,34 @@ fn resolve_process_workspace_root() -> PathBuf {
             if !root.is_empty() {
                 let candidate = PathBuf::from(&root);
                 if candidate.join("Cargo.toml").is_file() && candidate.join("dag").is_dir() {
-                    return candidate;
+                    return Some(candidate);
                 }
             }
         }
     }
-    let mut dir = std::env::current_dir().expect("process_workspace_root: cwd unavailable");
+    let mut dir = std::env::current_dir().ok()?;
     loop {
         if dir.join("Cargo.toml").is_file() && dir.join("dag").is_dir() {
-            return dir;
+            return Some(dir);
         }
         if !dir.pop() {
-            let cwd = std::env::current_dir()
-                .map(|d| d.display().to_string())
-                .unwrap_or_else(|_| "<unavailable>".into());
-            panic!(
-                "process_workspace_root: cannot locate workspace — git rev-parse did not name \
-                 a Cargo.toml+dag/ tree and no such ancestor of cwd {cwd}; compiled-in root \
-                 was {}",
-                workspace_root().display()
-            );
+            return None;
         }
     }
+}
+
+fn resolve_process_workspace_root() -> PathBuf {
+    try_resolve_process_workspace_root().unwrap_or_else(|| {
+        let cwd = std::env::current_dir()
+            .map(|d| d.display().to_string())
+            .unwrap_or_else(|_| "<unavailable>".into());
+        panic!(
+            "process_workspace_root: cannot locate workspace — git rev-parse did not name \
+             a Cargo.toml+dag/ tree and no such ancestor of cwd {cwd}; compiled-in root \
+             was {}",
+            workspace_root().display()
+        )
+    })
 }
 
 /// Repo-relative path under [`process_workspace_root`]. Fail-closed: returns a typed refusal

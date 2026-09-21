@@ -1159,6 +1159,21 @@ fn run_verb(
         };
     }
 
+    // THE WORKSPACE ROOT IS BOUND FROM THE REQUEST, AND IT IS BOUND FIRST.
+    //
+    // Everything downstream keys module-graph facts and content indices against it, so it must be
+    // decided before the first read rather than discovered on first use -- and it is decided HERE
+    // because this is the only place that holds the request's source roots. An invocation whose
+    // roots are named relative to the directory it starts in has stated its own base; only one
+    // that has not falls through to discovery, and a run with neither refuses with a located cause
+    // instead of aborting inside a helper thirty frames down.
+    if let Err(cause) = cli_run::bind_process_workspace_root(source_roots) {
+        return Verdict {
+            status: 2,
+            message: Some(format!("error: {cause}")),
+        };
+    }
+
     // Refuse a malformed --arg BEFORE the compile, so the diagnostic is the first thing
     // printed rather than the last thing after a minute of resolution.
     let run_args = match decode_run_args(args) {

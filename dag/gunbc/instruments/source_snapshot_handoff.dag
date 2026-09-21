@@ -77,11 +77,6 @@ import gunbc.fabric_source_snapshot {
   materialize_source_snapshot,
   snapshot_leaf_object,
   source_composition_wire,
-  ExecutorTreeStanding,
-  ExecutorTreeReady,
-  ExecutorTreeRepositoryRefused,
-  ExecutorTreeManifestRefused,
-  prepare_executor_tree,
 }
 import gunbc.ensure { EnsurePolicy, EnsureObserveOnly }
 import gunbc.roadmap_execution_contract {
@@ -376,7 +371,7 @@ fn snapshot_refusal_wire(cause: SnapshotMaterializeRefusal) -> String {
   match cause {
     SnapshotManifestUnavailable { manifest: _, fault: f } => join(["manifest-unavailable:", f], "")
     SnapshotCompositionMismatch { expected: _, found: _ } => "composition-mismatch"
-    SnapshotEntryUnavailable { manifest: _, fault: f } => join(["entry-unavailable:", f], "")
+    SnapshotEntryUnavailable { object: _, fault: f } => join(["entry-unavailable:", f], "")
     SnapshotEntryMalformed { detail: _ } => "entry-malformed"
     SnapshotEntryOutsideComposition { path: _, composition: _ } => "entry-outside-composition"
     SnapshotDirectoryNotCreated { directory: _ } => "directory-not-created"
@@ -427,20 +422,6 @@ fn run_executed_request_scenario(workspace: SnapshotWorkspace, binary: ScmAccept
               detail: "the destination holds a git directory",
             }
           } else {
-            match prepare_executor_tree(destination: workspace.destination as NonEmptyStr) {
-              ExecutorTreeRepositoryRefused { detail: d } =>
-                SnapshotScenarioFailed {
-                  scenario: "executed-request",
-                  step: "executor-tree",
-                  detail: join(["the executor repository marker refused: ", d], ""),
-                }
-              ExecutorTreeManifestRefused { detail: d } =>
-                SnapshotScenarioFailed {
-                  scenario: "executed-request",
-                  step: "executor-tree",
-                  detail: join(["the executor workspace manifest refused: ", d], ""),
-                }
-              ExecutorTreeReady =>
             match run_snapshot_request(workspace: workspace, binary: binary) {
               RequestUnspellable =>
                 SnapshotScenarioFailed {
@@ -467,7 +448,6 @@ fn run_executed_request_scenario(workspace: SnapshotWorkspace, binary: ScmAccept
                     detail: join(["exit ", to_string(code), ": ", err], ""),
                   }
                 }
-            }
             }
           }
       }
@@ -501,7 +481,7 @@ fn run_corrupted_bytes_scenario(workspace: SnapshotWorkspace, binary: ScmAccepta
             }
           SnapshotMaterializeRefused { cause: c } =>
             match c {
-              SnapshotEntryUnavailable { manifest: _, fault: f } =>
+              SnapshotEntryUnavailable { object: _, fault: f } =>
                 SnapshotScenarioPassed {
                   scenario: "corrupted-bytes",
                   detail: join(["refused: ", f], ""),
@@ -545,7 +525,7 @@ fn run_missing_object_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptan
             }
           SnapshotMaterializeRefused { cause: c } =>
             match c {
-              SnapshotEntryUnavailable { manifest: _, fault: f } =>
+              SnapshotEntryUnavailable { object: _, fault: f } =>
                 SnapshotScenarioPassed { scenario: "missing-object", detail: join(["refused: ", f], "") }
               _ =>
                 SnapshotScenarioFailed {

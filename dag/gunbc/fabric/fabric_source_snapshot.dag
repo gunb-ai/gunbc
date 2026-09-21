@@ -37,6 +37,38 @@ module gunbc.fabric_source_snapshot
 // dissolve-on: a modeled file-mode and link-kind carrier reaching the inclusion, at which point the
 // entry object gains those facts and this paragraph names what it covers instead.
 
+// ── WHAT THE EXECUTOR'S CLI ONCE DEMANDED OF A TREE, AND NO LONGER DOES ──────────────────────
+//
+// THIS SECTION RECORDS A REPAIR RATHER THAN A CARRIER, because the carrier it used to hold was a
+// workaround and the honest fix was one link upstream.
+//
+// The first writing of this module ended with `prepare_executor_tree`, which planted an empty git
+// repository and a workspace manifest at the destination so the seed CLI would consent to run
+// there. It was named, typed and declared -- and it was still a workaround: "an executor with
+// source and no repository" is exactly the capability this module exists to provide, so a function
+// that manufactures a repository to obtain it had answered the symptom at the link where the
+// symptom appeared. DESIGN section 6b names that shape and names the remedy: re-derive the slice
+// and stop at the earliest boundary that cannot justify itself.
+//
+// THAT BOUNDARY WAS v1_compiler.cli_run process_workspace_root. What the workspace root ESTABLISHES
+// is a base such that every source root and module file has a stable repo-relative spelling; what
+// it DID was ask git for a checkout carrying Cargo.toml beside dag/, and PANIC when none answered.
+// The checkout is a proxy for the base, correct in a checkout and unable to say anything at all
+// outside one -- while the base was sitting in the request the whole time, because a relative
+// `--source-root` spelling is by definition relative to the directory the run starts in.
+//
+// So the root is now bound from the request at the verb, before anything reads it, and a run that
+// can name no base refuses with a located cause at exit 2 instead of aborting inside a helper. The
+// same derivation binds the checkout root, discharging for this population the dissolution that
+// scaffold already named -- release bins receive the checkout root at spawn. Measured: a directory
+// holding three modules, no .git and no Cargo.toml now resolves three source roots and exits 0,
+// where before the repair it exited 101.
+//
+// WHAT IS DELETED WITH IT: prepare_executor_tree, ExecutorTreeStanding, the workspace-manifest
+// constant, and executor_tree_requires_repository_marker_frontier. A frontier row is a statement
+// that something is owed; this one is paid, and keeping it would leave a reader looking for a
+// workaround that is no longer there.
+
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -66,8 +98,6 @@ import std.fabric_storage {
   fabric_object_ref_wire,
   fabric_storage_fault_wire,
 }
-import extdeps.git.plumbing
-import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt }
 import gunbc.fabric_storage_file_store {
   FabricStorageFileRoot,
   fabric_storage_file_get,
@@ -233,10 +263,17 @@ type SnapshotCapture
 // exists to make loud. Two of them are answered by std.fabric_storage rather than derived here:
 // a missing object is FabricObjectMissing and a byte that moved is FabricObjectCorrupt, both
 // carried through in `fault` rather than re-decided.
+// ONE FIELD, ONE SUBJECT. `SnapshotEntryUnavailable.object` names WHICHEVER object could not be
+// fetched -- the entry, its name or its content -- because all three are the same kind of failure
+// and the ref is what a reader needs to look it up. It was first spelled `manifest`, and three
+// call sites then passed three different subjects into a field whose name asserted a fourth: an
+// operator reading "manifest <ref>" would have gone looking for a manifest that was never the
+// thing missing. Caught by review 69557 on gunbc#11960, and it is the same meaning fork this
+// module's own header warns about, reproduced inside the refusal family meant to remove it.
 type SnapshotMaterializeRefusal
   = SnapshotManifestUnavailable { manifest: String, fault: String }
   | SnapshotCompositionMismatch { expected: String, found: String }
-  | SnapshotEntryUnavailable { manifest: String, fault: String }
+  | SnapshotEntryUnavailable { object: String, fault: String }
   | SnapshotEntryMalformed { detail: String }
   | SnapshotEntryOutsideComposition { path: String, composition: String }
   | SnapshotDirectoryNotCreated { directory: String }
@@ -250,14 +287,6 @@ type SnapshotMaterializeRefusal
 type SnapshotMaterialization
   = SnapshotMaterialized { manifest: FabricObjectRef, destination: NonEmptyStr, files: Int, composition: String }
   | SnapshotMaterializeRefused { cause: SnapshotMaterializeRefusal }
-
-fn snapshot_materialized_manifest_wire(materialization: SnapshotMaterialization) -> String {
-  match materialization {
-    SnapshotMaterialized { manifest: m, destination: _, files: _, composition: _ } =>
-      fabric_object_ref_wire(object: m) as String
-    SnapshotMaterializeRefused { cause: _ } => ""
-  }
-}
 
 // ── CAPTURE ─────────────────────────────────────────────────────────────────────────────────
 
@@ -496,14 +525,14 @@ fn snapshot_materialize_entry_links(
   match fabric_storage_file_get(root: store, object: name_ref) {
     FabricObjectGetRefused { fault: f } =>
       snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryUnavailable {
-        manifest: fabric_object_ref_wire(object: name_ref) as String,
+        object: fabric_object_ref_wire(object: name_ref) as String,
         fault: fabric_storage_fault_wire(fault: f),
       })
     FabricObjectFetched { stored: name } =>
       match fabric_storage_file_get(root: store, object: content_ref) {
         FabricObjectGetRefused { fault: f } =>
           snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryUnavailable {
-            manifest: fabric_object_ref_wire(object: content_ref) as String,
+            object: fabric_object_ref_wire(object: content_ref) as String,
             fault: fabric_storage_fault_wire(fault: f),
           })
         FabricObjectFetched { stored: content } =>
@@ -583,7 +612,7 @@ fn snapshot_materialize_step(
       match fabric_storage_file_get(root: store, object: entry_ref) {
         FabricObjectGetRefused { fault: f } =>
           snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryUnavailable {
-            manifest: fabric_object_ref_wire(object: entry_ref) as String,
+            object: fabric_object_ref_wire(object: entry_ref) as String,
             fault: fabric_storage_fault_wire(fault: f),
           })
         FabricObjectFetched { stored: entry } =>
@@ -653,74 +682,5 @@ fn materialize_source_snapshot(
             }
         }
       }
-  }
-}
-
-
-// ── WHAT THE EXECUTOR'S CLI DEMANDS OF A TREE, WHICH IS NOT WHAT THE HANDOFF DELIVERS ────────
-//
-// A MATERIALIZED SNAPSHOT IS NOT YET A TREE THE SEED CLI WILL RUN IN, and that is a fact about the
-// CLI rather than about the snapshot. v1_compiler.cli_run process_workspace_root locates the
-// workspace by asking `git rev-parse` for a tree carrying Cargo.toml beside dag/, and PANICS when
-// no ancestor of the process's cwd answers -- so a directory holding nothing but source refuses
-// before a single module is read, with a panic rather than a diagnostic. Measured directly: a
-// destination holding the three modules and nothing else exits 101 at process_workspace_root; the
-// same destination carrying an empty repository and a workspace manifest runs the request and
-// exits 0.
-//
-// SO THESE TWO MARKERS ARE THE EXECUTOR'S PRECONDITION AND ARE DELIBERATELY NOT SNAPSHOT ENTRIES.
-// Putting them in the manifest would make them SOURCE, and they are not: they carry no program, the
-// executor's composition does not name them, and a snapshot that shipped its host's workspace
-// markers would be a snapshot of the wrong thing. They are established at the destination, by the
-// party preparing the executor, and they are named here because an unnamed precondition is how a
-// route acquires a dependency nobody can see.
-//
-// AND THE REPOSITORY IS THE EXECUTOR'S OWN, EMPTY, AND NEVER THE CALLER'S. `git init` at the
-// destination creates an object store holding nothing and an index referring to nothing; no object
-// is fetched, no remote is named, no path of the caller's repository is read or written. That is
-// the distinction the whole route turns on: git is not how the source travelled, and could not be
-// -- what travelled is a digest and the bytes it names. If the marker requirement dissolves, this
-// function deletes and the handoff is unchanged, which is the test that it is a precondition and
-// not a transport.
-type ExecutorTreeStanding
-  = ExecutorTreeReady
-  | ExecutorTreeRepositoryRefused { detail: String }
-  | ExecutorTreeManifestRefused { detail: String }
-
-data executor_workspace_manifest: NonEmptyStr = "[workspace]\nmembers = []\n" as NonEmptyStr
-
-// THE FRONTIER IS ON THE SEED, NOT ON THIS FUNCTION, because this function is a consequence and the
-// scaffold is the cause. gunbc.cli_run_workspace_root_scaffold already declares the .git-ancestor
-// walk a seed-retained hand-Rust scaffold with its own dissolution; what was missing is a consumer
-// stating what that scaffold COSTS -- and the cost is that an executor which has source and no
-// repository cannot run at all, which is precisely the executor a source snapshot exists to serve.
-data executor_tree_requires_repository_marker_frontier: FrontierRow = frontier_row_decl(
-  ref: decl_ref(
-    module_path: "gunbc.cli_run_workspace_root_scaffold",
-    decl_name: "cli_run_workspace_root_discovery_scaffold",
-  ),
-  reason: "the seed CLI locates its workspace through a git rev-parse for a Cargo.toml-beside-dag tree, so a destination holding only source panics at process_workspace_root; prepare_executor_tree establishes those markers at the executor and nowhere else",
-  dissolution: unbound_dissolution(
-    description: "the workspace root reaches the CLI from the invocation -- a source-root-derived or explicitly named root -- rather than from a VCS marker discovered by walking cwd's ancestors, at which point prepare_executor_tree deletes and a materialized snapshot is directly runnable. Not satisfied by the panic becoming a typed refusal, which would refuse the same population more politely" as NonEmptyStr,
-  ),
-)
-
-fn prepare_executor_tree(destination: NonEmptyStr) -> ExecutorTreeStanding {
-  let initialized = git.Plumbing.InitAt(
-    address: GitWorktreeAt { path: destination as FilePath },
-    path: destination as FilePath,
-  )
-  if initialized.exit_code != 0 {
-    ExecutorTreeRepositoryRefused { detail: initialized.stderr }
-  } else {
-    let written = Filesystem.Write(
-      path: join([destination as String, "/Cargo.toml"], ""),
-      content: executor_workspace_manifest as String,
-    )
-    if written.success {
-      ExecutorTreeReady
-    } else {
-      ExecutorTreeManifestRefused { detail: written.error }
-    }
   }
 }
