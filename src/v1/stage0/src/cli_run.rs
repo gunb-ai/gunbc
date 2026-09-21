@@ -43172,7 +43172,7 @@ fn spawn_floor_heartbeat() {
         beat += 1;
         // The raw memory.stat counters every beat (one file read); the full multi-level
         // envelope every tenth. See floor_cgroup_stat_beat for why the cadences differ.
-        floor_cgroup_stat_beat(&format!("beat-{beat}"));
+        floor_cgroup_stat_beat(&format!("beat-{beat}"), stall.as_ref());
         if beat % 10 == 0 {
             floor_cgroup_envelope(&format!("beat-{beat}"));
         }

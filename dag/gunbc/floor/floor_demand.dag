@@ -530,7 +530,7 @@ fn floor_memory_requirement_of(standing: FloorHeldSetStanding) -> MemoryRequirem
 // it stays constructible because a fresh corpus without the instrument's receipt is exactly the
 // state it represents; the Work states no memory while it stands, and the guest shape refuses on
 // that absence rather than being sized to the charge ceiling.
-data gunbc_floor_held_set_instrument: NonEmptyStr = "the required-witnesses-floor job's [floor-cgroup] stat_level= seam= memory_stat= heartbeat lines on the host slot, raw beats transcribed, the held set derived by beat_held_set and its maximum taken over the run's beats, and the peak's seam read from the same line by receipt_peak_seam"
+data gunbc_floor_held_set_instrument: NonEmptyStr = "the required-witnesses-floor job's [floor-cgroup] stat_level= seam= stall_per_min= memory_stat= heartbeat lines on the host slot, raw beats transcribed, the held set derived by beat_held_set and its maximum taken over the run's beats, and the peak's seam read from the same line by receipt_peak_seam"
 
 fn gunbc_floor_held_set_standing() -> FloorHeldSetStanding {
   held_set_standing_of(receipt: gunbc_floor_memory_stat_receipt_2026_09_19, instrument: gunbc_floor_held_set_instrument)

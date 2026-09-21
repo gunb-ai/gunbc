@@ -5588,7 +5588,10 @@ pub(crate) fn floor_cgroup_envelope(when: &str) {
 ///
 /// Every field is printed as read or as `na`; a missing key is never rendered as zero, for the
 /// reason `floor_resource_sample` gives.
-pub(crate) fn floor_cgroup_stat_beat(when: &str) {
+pub(crate) fn floor_cgroup_stat_beat(
+    when: &str,
+    stall: Option<&crate::memory_governor::MemoryStallObservation>,
+) {
     let leaf = floor_cgroup_dir();
     let body = std::fs::read_to_string(format!("{leaf}/memory.stat")).ok();
     let key = |k: &str| -> String {
@@ -5606,8 +5609,19 @@ pub(crate) fn floor_cgroup_stat_beat(when: &str) {
         .map(|v| v.trim().to_string())
         .unwrap_or_else(|_| "na".to_string());
     let seam = floor_seam_current();
+    // THE STALL CLAUSE ON THE BEAT'S OWN LINE, for the same reason as the seam. It is the
+    // heartbeat's quantity and used to be readable only from the heartbeat line printed BESIDE
+    // this one, so `gunbc.floor_demand` `FloorMemoryStatBeat.stall` was transcribed by adjacency
+    // -- and `receipt_last_unstalled_beat` derives the guest's cache allowance from that field,
+    // so a mis-joined stall mis-sizes a guest. `na` where the window could not be read, never a
+    // zero: a zero stall is the healthiest reading this line can carry, so fabricating one would
+    // manufacture progress, which is the inverse of the error the counters exist to catch.
+    let stall_text = match stall {
+        Some(o) => crate::memory_governor::memory_stall_major_faults_per_minute(o).to_string(),
+        None => "na".to_string(),
+    };
     eprintln!(
-        "[floor-cgroup] when={when} stat_level={leaf} seam={seam} current={current} \
+        "[floor-cgroup] when={when} stat_level={leaf} seam={seam} stall_per_min={stall_text} current={current} \
          memory_stat=[anon,{},file,{},shmem,{},unevictable,{},slab_unreclaimable,{},\
          slab_reclaimable,{},kernel_stack,{},pagetables,{},percpu,{},sock,{},file_dirty,{}]",
         key("anon"),
@@ -5660,7 +5674,7 @@ pub fn run_required_floor(
         );
     }
     floor_cgroup_envelope("floor-entry");
-    floor_cgroup_stat_beat("floor-entry");
+    floor_cgroup_stat_beat("floor-entry", None);
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
     eprintln!("[floor-phase] phase=strict-preparation state=started");
