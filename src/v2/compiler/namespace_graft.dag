@@ -323,20 +323,33 @@ fn namespace_graft_type_decl_target(root: Node) -> Node {
 // dag_grammar_type_variant_expr; sugar leaves those blocks in the tree).
 // Narrowing by type_alias_rhs / `=` rehomes records. Class
 // gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
-fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
+// A positional payload `Name(T)` is the same fielded variant spelled positionally
+// (dag_grammar_positional_variant_payload_expr), so it takes the same residual arm.
+fn namespace_graft_type_decl_is_fielded(unit: Node) -> Bool {
   match parse_subtree_locate_production(root: unit, emitted: ^dag_surface_field_decl_block) {
-    Present { value: _ } => optional_absent()
+    Present { value: _ } => true
     Absent =>
-      match namespace_graft_type_decl_name(unit: unit) {
-        Absent => optional_absent()
-        Present { value: type_name } =>
-          optional_present(
-            value: Edge {
-              label: Named { name: type_name },
-              target: namespace_graft_type_decl_target(root: unit)
-            }
-          )
+      match parse_subtree_locate_production(root: unit, emitted: ^dag_surface_positional_variant_payload) {
+        Present { value: _ } => true
+        Absent => false
       }
+  }
+}
+
+fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
+  if namespace_graft_type_decl_is_fielded(unit: unit) {
+    optional_absent()
+  } else {
+    match namespace_graft_type_decl_name(unit: unit) {
+      Absent => optional_absent()
+      Present { value: type_name } =>
+        optional_present(
+          value: Edge {
+            label: Named { name: type_name },
+            target: namespace_graft_type_decl_target(root: unit)
+          }
+        )
+    }
   }
 }
 
@@ -483,12 +496,9 @@ fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
       } else {
         match edge.target.kind {
           TypeNode { connective: Conj } =>
-            match parse_subtree_locate_production(
-              root: edge.target,
-              emitted: ^dag_surface_field_decl_block
-            ) {
-              Present { value: _ } => false
-              Absent => true
+            match namespace_graft_type_decl_is_fielded(unit: edge.target) {
+              true => false
+              false => true
             }
           _ => true
         }

@@ -50,7 +50,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match }
-import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.diagnostic {
   Accepted,
@@ -494,7 +494,9 @@ fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
 fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_type_variant)
     || (emitted == ^dag_surface_type_alias_rhs)
+    || (emitted == ^dag_surface_type_alias_rhs_lead)
     || (emitted == ^dag_surface_field_decl_block)
+    || (emitted == ^dag_surface_positional_variant_payload)
     || (emitted == ^dag_surface_fn_type)
     || (emitted == ^dag_surface_field_init)
     || (emitted == ^dag_surface_where_refinement_clause)
@@ -3142,12 +3144,98 @@ fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
   }
 }
 
+// POSITIONAL BINDERS ARE REFUSED, NOT DROPPED. body_lower_pattern_atom_optional keeps a pattern's
+// constructor atom and nothing else, so `A(x) => x` lowered to an arm on `A` whose body names an
+// `x` the arm never bound -- the payload's binder silently vanished, and a nested constructor
+// `A(B)` silently matched every `A`. The seed binds from the variant's field "0"
+// (v1.compiler.parse parse_positional_variant_type_fields), and no v2 stage lowers variant fields
+// into declared field identities for any variant, named or positional (the frontier
+// gunbc.rung_drop variant_fields_unlowered_on_the_native_route declares). Until one does, a
+// positional suffix that names anything is a typed, located refusal. `A(_)` names nothing and
+// loses nothing -- the constructor atom is the whole of what it tests -- so it still lowers. The
+// `(` atom locates the suffix because the constructor pattern suffix
+// (dag_grammar_constructor_pattern_suffix_expr) is the only place a pattern admits one.
+fn body_lower_is_pattern_punctuation(id: Symbol) -> Bool {
+  (id == ^dag_token_lparen) || (id == ^dag_token_rparen) || (id == ^dag_token_comma)
+}
+
+fn body_lower_subtree_names_non_wildcard(n: Node) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: id } =>
+      if body_lower_is_pattern_punctuation(id: id) {
+        false
+      } else {
+        id != symbol_intern_lexeme(lexeme: "_")
+      }
+    Absent =>
+      fold(n.children, init: false, f: fn(found, e) {
+        found || (!body_lower_is_production_identity_edge(e: e) && body_lower_subtree_names_non_wildcard(n: e.target))
+      })
+  }
+}
+
+// A production shell names its production on an identity-projection edge; that atom is parse
+// machinery, never a name the pattern binds.
+fn body_lower_is_production_identity_edge(e: Edge) -> Bool {
+  match e.label {
+    Named { name: sym } => sym == ^grammar_production_identity_node_projection
+    Positional => false
+  }
+}
+
+type PositionalBinderScan {
+  after_lparen: Bool
+  found: Bool
+}
+
+fn body_lower_positional_binder_scan_step(acc: PositionalBinderScan, e: Edge) -> PositionalBinderScan {
+  if acc.found {
+    acc
+  } else {
+    match node_atom_identity_optional(node: e.target) {
+      Present { value: id } =>
+        if id == ^dag_token_lparen {
+          PositionalBinderScan { after_lparen: true, found: false }
+        } else {
+          PositionalBinderScan {
+            after_lparen: acc.after_lparen,
+            found: acc.after_lparen && body_lower_subtree_names_non_wildcard(n: e.target)
+          }
+        }
+      Absent =>
+        PositionalBinderScan {
+          after_lparen: acc.after_lparen,
+          found: (acc.after_lparen && body_lower_subtree_names_non_wildcard(n: e.target))
+            || body_lower_pattern_names_positional_binder(n: e.target)
+        }
+    }
+  }
+}
+
+// A sequence node's children are ordered (left, right), so a `(` terminal is followed by the
+// payload's pattern list within the same spine; the walk carries that fact down the spine.
+fn body_lower_pattern_names_positional_binder(n: Node) -> Bool {
+  fold(
+    n.children,
+    init: PositionalBinderScan { after_lparen: false, found: false },
+    f: fn(acc, e) { body_lower_positional_binder_scan_step(acc: acc, e: e) }
+  ).found
+}
+
 fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
   match body_lower_find_captured(
     root: stripped,
     emitted: ^dag_surface_pattern
   ) {
     ParseSubtreeFound { captured: pat_capture } =>
+      if body_lower_pattern_names_positional_binder(n: pat_capture) {
+        outcome_rejected(
+          d: body_lower_diagnostic(
+            reason: ^body_lowering_reason_positional_pattern_binder_unlowered,
+            n: pat_capture
+          )
+        )
+      } else {
       match body_lower_pattern_atom_optional(pattern_capture: pat_capture) {
         Present { value: pat_node } =>
           match body_lower_match_arm_body_capture_optional(stripped: stripped) {
@@ -3162,6 +3250,7 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
             Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
           }
         Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
+      }
       }
     ParseSubtreeAbsent =>
       match body_lower_match_spine_left(spine: stripped) {

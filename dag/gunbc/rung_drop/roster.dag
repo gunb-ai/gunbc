@@ -89,6 +89,7 @@ import gunbc.rung_drop.type_reference_location_fallback_keys_production_realizat
 import gunbc.rung_drop.persisted_resolved_graph_disk_probe_unqualified_format { persisted_resolved_graph_disk_probe_unqualified_format }
 import gunbc.rung_drop.self_host_emit_derisk_claim_unobserved { self_host_emit_derisk_claim_unobserved }
 import gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property { g0_type_decl_modifier_parse_without_sealing_property }
+import gunbc.rung_drop.variant_fields_unlowered_on_the_native_route { variant_fields_unlowered_on_the_native_route }
 import gunbc.rung_drop.fabric_storage_append_principal_unrefused { fabric_storage_append_principal_unrefused }
 import gunbc.rung_drop.namespace_wave_admission_wall_removed { namespace_wave_admission_wall_removed }
 import gunbc.rung_drop.systemctl_show_property_input_type_wall { systemctl_show_property_input_type_wall }
@@ -163,6 +164,7 @@ data rung_drop_roster: List<RungDrop> = [
   persisted_resolved_graph_disk_probe_unqualified_format,
   self_host_emit_derisk_claim_unobserved,
   g0_type_decl_modifier_parse_without_sealing_property,
+  variant_fields_unlowered_on_the_native_route,
   approval_store_single_writer_by_agreement,
   fabric_storage_append_principal_unrefused,
   namespace_wave_admission_wall_removed,
