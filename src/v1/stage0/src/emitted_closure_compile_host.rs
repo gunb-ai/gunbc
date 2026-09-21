@@ -685,12 +685,28 @@ pub fn required_ci_emit_compile_probe_root() -> Result<PathBuf, String> {
 /// two tenants never name one path — without inventing a declaration the standalone mode does not
 /// have, and it is the narrowest change that closes the observed collision.
 ///
-/// IT IS DELIBERATELY NOT A PRIVATE DIRECTORY PER RUN. `acquire_probe_root_lock`'s note rejects
-/// that arm in terms that apply here unchanged: a private directory throws away the warm cargo
-/// target dir, which is what makes a rebuild cheap and a restore comparable. Concurrency is
-/// already that lock's subject, and it already separates `AlreadyExists` (a live peer) from
-/// `PermissionDenied` (the root itself is wrong). This changes only WHICH root, so that the
-/// second of those stops being reachable by a stranger's leftovers.
+/// IT IS DELIBERATELY NOT A PRIVATE DIRECTORY PER RUN, for the reason `acquire_probe_root_lock`'s
+/// note gives against that arm: a private directory throws away the warm cargo target dir, which
+/// is what makes a rebuild cheap and a restore comparable.
+///
+/// WHAT THIS DOES NOT ESTABLISH, STATED BECAUSE AN EARLIER VERSION OF THIS NOTE CLAIMED IT. That
+/// version said "concurrency is already that lock's subject". IT IS NOT, ON THIS ROUTE.
+/// `acquire_probe_root_lock` is taken only by `run_required_emit_compile`; `run_self_host` and
+/// `run_v2_native_cli` reach `prepare_emitted_compiler` and take NO probe-root lock. So on the
+/// route this function serves:
+///
+///   - the CRATE-SOURCE directory is unprotected against a concurrent writer of the same euid;
+///   - the cargo TARGET directory is protected by cargo's own build lock, which is cargo's
+///     guarantee about its target dir and says nothing about arbitrary crate-source writes
+///     performed outside it;
+///   - the interleaving hazard that lock's note describes ("one's faulted tree is the other's
+///     baseline") needs the fault-inject/restore probe, which this route does not perform.
+///
+/// AND AN EUID IN A PREDICTABLE NAME IS NOT PROOF OF OWNERSHIP of a directory that already exists.
+/// `std::env::temp_dir` is documented as a location that may be shared and whose fixed names need
+/// secure-creation handling; scoping by euid removes the CROSS-TENANT collision that was measured,
+/// and is not hostile-tenant isolation. The remaining same-euid source-write and lifecycle
+/// obligation is undischarged here and stays visible to whoever runs concurrent builds on one host.
 pub fn local_emit_compile_probe_root() -> PathBuf {
     // SAFETY: `geteuid` reads the calling process's effective uid. It takes no arguments, touches
     // no memory the caller owns, and is documented as always succeeding.
