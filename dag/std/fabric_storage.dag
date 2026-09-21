@@ -147,6 +147,12 @@ fn fabric_head_admits(expected: FabricHeadExpectation, observed: FabricHeadReadi
 //
 // A lost race is NOT a fault and has no arm here: it is FabricHeadMoved, an outcome carrying both
 // sides. The git realization answered both "lost race" and "unreachable" with exit 128.
+// FabricObjectDigestUnavailable: THE MINT ITSELF COULD NOT ANSWER. Distinct from
+// FabricObjectCorrupt, which says the held bytes hash to something else -- a real, reportable
+// disagreement. This says no digest was computed at all, so nothing was compared. Collapsing the
+// two would report a corruption that was never observed, which is a fabricated plausible output
+// (DESIGN 5); keeping them apart is what lets a reader tell a store that lied from a digest that
+// was not available.
 type FabricStorageFault
   = FabricStoreUnreachable { detail: NonEmptyStr }
   | FabricStoreRefused { cause: CasStoreFailure }
@@ -154,11 +160,6 @@ type FabricStorageFault
   | FabricObjectCorrupt { object: FabricObjectRef, detail: NonEmptyStr }
   | FabricReplyUndecodable { detail: NonEmptyStr }
   | FabricHeadNameRefused { name: NonEmptyStr }
-  // THE MINT ITSELF COULD NOT ANSWER. Distinct from FabricObjectCorrupt, which says the held bytes
-  // hash to something else -- a real, reportable disagreement. This says no digest was computed at
-  // all, so nothing was compared. Collapsing the two would report a corruption that was never
-  // observed, which is a fabricated plausible output (DESIGN 5); keeping them apart is what lets a
-  // reader tell a store that lied from a digest that was not available.
   | FabricObjectDigestUnavailable { detail: NonEmptyStr }
 
 type FabricPut

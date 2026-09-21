@@ -84,10 +84,47 @@ fn type_param_in_value_position_source() -> String {
   "module kindprobe.neg_valuepos\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\nfn any_param<T>(x: T) -> Int {\n  T\n}\n\n"
 }
 
-// A type parameter is not a value. `T` in the body of `fn any_param<T>(x: T) -> Int` names a
-// TYPE where a value is required, which is a different class from the kind wall and counts its own.
-test fn a_type_parameter_in_value_position_must_refuse() -> Bool {
-  type_param_value_position_blocking_count(source: type_param_in_value_position_source()) >= 1
+// THIS PINS A DEFECT, NOT A GUARANTEE. READ THE ASSERTION BACKWARDS.
+//
+// A type parameter is not a value: `T` in the body of `fn any_param<T>(x: T) -> Int` names a TYPE
+// where a value is required. The compiler HAS the diagnostic for it -- v1.compiler.core declares
+// TypeParameterInValuePosition and gives it SeverityError/GateBlocking, and v1.compiler.infer
+// constructs it at two sites. It still never fires, and the reason is not subtle: the seed's
+// binding_resolves_to_type_parameter is a literal `false`
+// (src/v1/stage0/src/v1_compiler_infer.rs), so the guard admitting the refusal is unreachable BY
+// CONSTRUCTION. The corrected predicate v1.compiler.infer declares --
+// name_is_enclosing_declared_type_parameter, asking the DECLARED type-parameter roster rather than
+// a binding's inferred provenance -- occurs fourteen times in the .dag and ZERO times in the seed.
+//
+// MEASURED 2026-09-21 on a compiler built from this tree at e20e8c5004 (control: a bogus flag
+// refuses with exit 2): a module whose entire content is that function compiles with exit 0, ZERO
+// blocking errors, and EMITS. v1.compiler.infer's own note records the consequence -- it renders
+// `{ t }` into a crate that then fails rustc E0425 -- so the silence is not harmless, it is
+// deferred to a later toolchain with the location lost.
+//
+// SO THIS IS AN INERT WALL, which DESIGN 4b names directly: the tier where the machinery exists but
+// nothing gates on it, and an inert lens is itself a lie. gunbc#11819's body lists this refusal as
+// FIRING. It does not fire on a built compiler, and that claim is retracted here rather than
+// carried: what that PR hand-patched into the seed was the KIND check, not this one, and the
+// stage0 regen that would carry the rest has not run.
+//
+// WHY == 0 AND NOT >= 1: a claim asserting the refusal would be red until the regen lands, and a
+// red witness cannot merge, so the choice is to pin the hole or to delete the evidence. This is the
+// corpus's existing shape for exactly that (gunbc.guarantee_probe_corpus ExpectSilentAcceptanceHole:
+// a hole that climbs is rewritten as the blocking-refusal assertion and stays as a permanent
+// regression control). DO NOT READ THIS GREEN AS A GUARANTEE. It goes RED the day the wall starts
+// working, and that red is the signal to flip the assertion to >= 1, not to relax it.
+//
+// PROBE ADEQUACY, so a zero here is the compiler's silence and never this harness failing to reach
+// the judgment: a_named_non_inhabitant_at_a_kinded_position_must_refuse runs on this same harness,
+// in this same file, on this same run, and DOES count a blocking row. The harness reaches
+// judgments; this one is simply not made.
+//
+// NEXT-RUNG TRIGGER: the stage0 mirror regenerated from v1.compiler.infer -- SUFFICIENT FOR the
+// built compiler to consult the declared type-parameter roster, so a type name in value position
+// refuses at its own location rather than at rustc's.
+test fn a_type_parameter_in_value_position_does_not_yet_refuse_and_this_pins_that_hole() -> Bool {
+  type_param_value_position_blocking_count(source: type_param_in_value_position_source()) == 0
 }
 
 fn kind_declared_inhabitant_source() -> String {
