@@ -1,0 +1,199 @@
+module test.claim.app_attest_sample_decode_witness_test
+
+import std.logic { Bool }
+import std.types { Int, String, List, NonEmptyStr }
+import std.integer { UInt8 }
+import std.encoding { base64_decode, Standard }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256 }
+import extdeps.standards.rfc_8949 {
+  CborValue, CborTextString, CborByteString, CborArray, CborMap, CborSimple,
+  CborDocumentDecoded, CborDocumentRefused, cbor_decode_document,
+  CborMemberFound, cbor_map_unique_text_member, cbor_byte_string_octets, cbor_text_string_value, cbor_array_items,
+}
+import extdeps.standards.rfc_9052 { CoseEc2P256KeyRead, CoseEc2P256KeyRefused, cose_ec2_p256_key }
+import extdeps.standards.webauthn_authenticator_data {
+  AuthenticatorData, AuthenticatorDataDecoded, AuthenticatorDataRefused, decode_authenticator_data,
+  AuthenticatorDataTruncated, AuthenticatorDataTrailingOctets,
+  AuthenticatorDataPrefixDecoded, AuthenticatorDataPrefixRefused, decode_authenticator_data_prefix,
+}
+import extdeps.apple.app_attest { app_attest_app_id, AppIdPrefix }
+import extdeps.apple.app_attest_sample_ios_14_4 {
+  sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_team_identifier, sample_bundle_identifier,
+  sample_assertion_counter,
+}
+
+// THE INHABITANCE CLAIMS for the three decoders (DESIGN §3, the pairing obligation): the RFC 8949
+// Appendix A vectors, the COSE label reads and the authenticator-data layout are each claimed over
+// designed bytes elsewhere; here the SAME folds run over an object Apple's service actually
+// issued, and what they read is compared to the facts the corpus publishes beside it. Deleting
+// any of the three decoders reds these; a decoder that agrees with its own fixtures but not with
+// Apple's bytes reds these too.
+
+fn octets_or_empty(b64: String) -> List<UInt8> {
+  match base64_decode(s: b64, variant: Standard) {
+    Present { value: o } => o
+    Absent => []
+  }
+}
+
+fn sample_ascii(s: String) -> List<UInt8> {
+  bytes_octets(b: utf8_encode_bytes(s: s))
+}
+
+fn sample_attestation() -> CborValue {
+  match cbor_decode_document(octets: sample_attestation_octets) {
+    CborDocumentDecoded { value: v } => v
+    CborDocumentRefused { cause: _ } => CborSimple { value: 23 }
+  }
+}
+
+fn member_octets(v: CborValue, key: String) -> List<UInt8> {
+  match cbor_map_unique_text_member(v: v, key: key) {
+    CborMemberFound { value: m } =>
+      match cbor_byte_string_octets(v: m) {
+        Present { value: o } => o
+        Absent => []
+      }
+    _ => []
+  }
+}
+
+fn member_value(v: CborValue, key: String) -> CborValue {
+  match cbor_map_unique_text_member(v: v, key: key) {
+    CborMemberFound { value: m } => m
+    _ => CborSimple { value: 23 }
+  }
+}
+
+// The object is CBOR { fmt: "apple-appattest", attStmt: { x5c: [leaf, ca], receipt }, authData }
+// (extdeps.apple.app_attest, "Validation, in Apple's order"). The two certificate lengths and the
+// receipt length are the corpus's bytes as decoded, so a decoder that mis-sizes a byte string
+// cannot agree with all three.
+test fn the_sample_attestation_decodes_to_apples_shape() -> Bool {
+  let att = sample_attestation()
+  let fmt = match cbor_text_string_value(v: member_value(v: att, key: "fmt")) {
+    Present { value: t } => t
+    Absent => ""
+  }
+  let stmt = member_value(v: att, key: "attStmt")
+  let x5c = match cbor_array_items(v: member_value(v: stmt, key: "x5c")) {
+    Present { value: items } => items
+    Absent => []
+  }
+  let leaf_len = match x5c |> get(0) {
+    null => 0
+    c => count(match cbor_byte_string_octets(v: c) {
+      Present { value: o } => o
+      Absent => []
+    })
+  }
+  let ca_len = match x5c |> get(1) {
+    null => 0
+    c => count(match cbor_byte_string_octets(v: c) {
+      Present { value: o } => o
+      Absent => []
+    })
+  }
+  fmt == "apple-appattest" && count(x5c) == 2 && leaf_len == 761 && ca_len == 583
+    && count(member_octets(v: stmt, key: "receipt")) == 3703
+    && count(member_octets(v: att, key: "authData")) == 164
+}
+
+fn sample_auth_data() -> AuthenticatorData? {
+  match decode_authenticator_data(octets: member_octets(v: sample_attestation(), key: "authData")) {
+    AuthenticatorDataDecoded { data: d } => Present { value: d }
+    AuthenticatorDataRefused { cause: _ } => none
+  }
+}
+
+// Apple's steps 6, 7 and 8 read from real authData: counter 0, the development AAGUID
+// ("appattestdevelop", extdeps.apple.app_attest AppAttestEnvironment), credentialId equal to the
+// key id. The AT flag is set and no extensions follow.
+test fn the_sample_auth_data_carries_apples_facts() -> Bool {
+  match sample_auth_data() {
+    Absent => false
+    Present { value: d } =>
+      match d.attested_credential {
+        Absent => false
+        Present { value: c } =>
+          d.flags.attested_credential_data_included && !d.flags.extension_data_included
+            && d.sign_count == 0
+            && c.aaguid == sample_ascii(s: "appattestdevelop")
+            && c.credential_id == octets_or_empty(b64: sample_key_id_b64)
+            && match d.extensions {
+              Absent => true
+              Present { value: _ } => false
+            }
+      }
+  }
+}
+
+// Apple's step 5 on real bytes: rpIdHash equals SHA-256 of "<team id>.<bundle id>", built by
+// app_attest_app_id. This is the one claim that joins extdeps.crypto.sha2 to the sample.
+test fn the_sample_rp_id_hash_is_sha256_of_the_app_id() -> Bool {
+  match sample_auth_data() {
+    Absent => false
+    Present { value: d } =>
+      d.rp_id_hash == sha256(message: sample_ascii(s: app_attest_app_id(prefix: sample_team_identifier as AppIdPrefix, bundle_id: sample_bundle_identifier) as String))
+  }
+}
+
+// Apple's step 4 on real bytes: the credential public key, read as a COSE EC2 P-256 key and
+// rendered as the SEC 1 uncompressed point, hashes to the key id.
+test fn the_sample_credential_key_hashes_to_the_key_id() -> Bool {
+  match sample_auth_data() {
+    Absent => false
+    Present { value: d } =>
+      match d.attested_credential {
+        Absent => false
+        Present { value: c } =>
+          match cose_ec2_p256_key(key: c.credential_public_key) {
+            CoseEc2P256KeyRefused { cause: _ } => false
+            CoseEc2P256KeyRead { sec1_uncompressed: pt } =>
+              count(pt) == 65 && sha256(message: pt) == octets_or_empty(b64: sample_key_id_b64)
+          }
+      }
+  }
+}
+
+// The assertion is CBOR { signature, authenticatorData }: a 37-octet authenticatorData with
+// counter 1 and a DER ECDSA signature. Its flags octet is 0x40 -- the AT bit with no attested
+// credential data behind it -- so it decodes as the prefix and the full WebAuthn decoder REFUSES
+// it; both arms are claimed so the prefix reader cannot be quietly replaced by the full one.
+test fn the_sample_assertion_decodes_as_a_prefix_with_counter_one() -> Bool {
+  match cbor_decode_document(octets: sample_assertion_octets) {
+    CborDocumentRefused { cause: _ } => false
+    CborDocumentDecoded { value: v } => {
+      let ad = member_octets(v: v, key: "authenticatorData")
+      match decode_authenticator_data_prefix(octets: ad) {
+        AuthenticatorDataPrefixRefused { cause: _ } => false
+        AuthenticatorDataPrefixDecoded { prefix: p } =>
+          count(ad) == 37 && p.sign_count == sample_assertion_counter
+            && p.flags.attested_credential_data_included
+            && count(member_octets(v: v, key: "signature")) == 70
+            && match decode_authenticator_data(octets: ad) {
+              AuthenticatorDataDecoded { data: _ } => false
+              AuthenticatorDataRefused { cause: AuthenticatorDataTruncated { at: 37, needed: 18, available: 0 } } => true
+              AuthenticatorDataRefused { cause: _ } => false
+            }
+      }
+    }
+  }
+}
+
+// CONTROL: the same real authData with its last octet dropped refuses as truncated inside the
+// COSE key, and with one octet appended refuses as trailing. Both name the offset.
+test fn the_sample_auth_data_reds_when_cut_or_extended() -> Bool {
+  let ad = member_octets(v: sample_attestation(), key: "authData")
+  let cut = ad |> take(163)
+  let extended = ad |> list_push(0)
+  match decode_authenticator_data(octets: cut) {
+    AuthenticatorDataDecoded { data: _ } => false
+    AuthenticatorDataRefused { cause: _ } =>
+      match decode_authenticator_data(octets: extended) {
+        AuthenticatorDataRefused { cause: AuthenticatorDataTrailingOctets { consumed: 164, total: 165 } } => true
+        _ => false
+      }
+  }
+}

@@ -1,0 +1,121 @@
+module test.claim.cose_rfc9052_witness_test
+
+import std.logic { Bool }
+import std.types { Int, List }
+import std.integer { UInt8 }
+import extdeps.standards.rfc_8949 { CborValue, CborUnsigned, CborNegative, CborByteString, CborMap, CborArray, CborEntry }
+import extdeps.standards.rfc_9052 {
+  CoseEc2P256KeyRead, CoseEc2P256KeyRefused, cose_ec2_p256_key,
+  CoseKeyTypeUnexpected, CoseKeyCurveUnexpected, CoseKeyAlgorithmUnexpected, CoseKeyCoordinateMalformed, CoseKeyLabelRefused, CoseKeyLabelNotAnInteger,
+  CoseLabelAbsent, CoseLabelDuplicated, CoseKeyNotAMap,
+}
+
+// DESIGNED COSE_Key maps, each one label away from the EC2 P-256 ES256 shape the reader admits.
+// The real-producer inhabitance is test.claim.app_attest_sample_decode_witness_test
+// the_sample_credential_key_hashes_to_the_key_id, over Apple's bytes.
+
+fn coordinate(n: Int, fill: Int, acc: List<UInt8>) -> List<UInt8> {
+  if n <= 0 { acc } else { coordinate(n: n - 1, fill: fill, acc: acc |> list_push(fill)) }
+}
+
+fn label(n: Int) -> CborValue {
+  if n < 0 { CborNegative { value: n } } else { CborUnsigned { value: n } }
+}
+
+fn cose_entry(k: Int, v: CborValue) -> CborEntry {
+  CborEntry { key: label(n: k), value: v }
+}
+
+fn ec2_key(kty: Int, alg: Int, crv: Int, x: List<UInt8>, y: List<UInt8>) -> CborValue {
+  CborMap { entries: [
+    cose_entry(k: 1, v: label(n: kty)),
+    cose_entry(k: 3, v: label(n: alg)),
+    cose_entry(k: 0 - 1, v: label(n: crv)),
+    cose_entry(k: 0 - 2, v: CborByteString { octets: x }),
+    cose_entry(k: 0 - 3, v: CborByteString { octets: y }),
+  ] }
+}
+
+fn cose_well_formed() -> CborValue {
+  ec2_key(kty: 2, alg: 0 - 7, crv: 1, x: coordinate(n: 32, fill: 1, acc: []), y: coordinate(n: 32, fill: 2, acc: []))
+}
+
+// The admitted shape renders 0x04 || x || y, 65 octets, x first.
+test fn a_well_formed_ec2_p256_key_renders_the_sec1_point() -> Bool {
+  match cose_ec2_p256_key(key: cose_well_formed()) {
+    CoseEc2P256KeyRefused { cause: _ } => false
+    CoseEc2P256KeyRead { sec1_uncompressed: pt } =>
+      count(pt) == 65
+        && match pt |> get(0) {
+          null => false
+          o => o == 4
+        }
+        && match pt |> get(1) {
+          null => false
+          o => o == 1
+        }
+        && match pt |> get(33) {
+          null => false
+          o => o == 2
+        }
+  }
+}
+
+// kty 1 (OKP) is not EC2; crv 2 (P-384) is not P-256; alg -35 (ES384) is not ES256. Each refusal
+// names the value it saw, and the checks fire in that order.
+test fn a_wrong_type_curve_or_algorithm_refuses_by_name() -> Bool {
+  let x = coordinate(n: 32, fill: 1, acc: [])
+  let y = coordinate(n: 32, fill: 2, acc: [])
+  match cose_ec2_p256_key(key: ec2_key(kty: 1, alg: 0 - 7, crv: 1, x: x, y: y)) {
+    CoseEc2P256KeyRefused { cause: CoseKeyTypeUnexpected { kty: 1 } } =>
+      match cose_ec2_p256_key(key: ec2_key(kty: 2, alg: 0 - 7, crv: 2, x: x, y: y)) {
+        CoseEc2P256KeyRefused { cause: CoseKeyCurveUnexpected { crv: 2 } } =>
+          match cose_ec2_p256_key(key: ec2_key(kty: 2, alg: 0 - 35, crv: 1, x: x, y: y)) {
+            CoseEc2P256KeyRefused { cause: CoseKeyAlgorithmUnexpected { alg: a } } => a == 0 - 35
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A 31-octet x refuses naming label -2 and 31; a y that is not a byte string refuses with 0.
+test fn a_malformed_coordinate_refuses_with_its_label() -> Bool {
+  match cose_ec2_p256_key(key: ec2_key(kty: 2, alg: 0 - 7, crv: 1, x: coordinate(n: 31, fill: 1, acc: []), y: coordinate(n: 32, fill: 2, acc: []))) {
+    CoseEc2P256KeyRefused { cause: CoseKeyCoordinateMalformed { label: lx, octets: 31 } } =>
+      lx == 0 - 2 && match cose_ec2_p256_key(key: CborMap { entries: [
+        cose_entry(k: 1, v: label(n: 2)), cose_entry(k: 3, v: label(n: 0 - 7)), cose_entry(k: 0 - 1, v: label(n: 1)),
+        cose_entry(k: 0 - 2, v: CborByteString { octets: coordinate(n: 32, fill: 1, acc: []) }),
+        cose_entry(k: 0 - 3, v: label(n: 5)),
+      ] }) {
+        CoseEc2P256KeyRefused { cause: CoseKeyCoordinateMalformed { label: ly, octets: 0 } } => ly == 0 - 3
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A missing kty, a kty given twice, a kty that is a byte string, and a key that is an array.
+test fn label_lookup_refusals_are_carried() -> Bool {
+  let x = CborByteString { octets: coordinate(n: 32, fill: 1, acc: []) }
+  let missing = CborMap { entries: [cose_entry(k: 3, v: label(n: 0 - 7)), cose_entry(k: 0 - 1, v: label(n: 1)), cose_entry(k: 0 - 2, v: x), cose_entry(k: 0 - 3, v: x)] }
+  let twice = CborMap { entries: [cose_entry(k: 1, v: label(n: 2)), cose_entry(k: 1, v: label(n: 2)), cose_entry(k: 3, v: label(n: 0 - 7)), cose_entry(k: 0 - 1, v: label(n: 1)), cose_entry(k: 0 - 2, v: x), cose_entry(k: 0 - 3, v: x)] }
+  let not_int = CborMap { entries: [cose_entry(k: 1, v: x), cose_entry(k: 3, v: label(n: 0 - 7)), cose_entry(k: 0 - 1, v: label(n: 1)), cose_entry(k: 0 - 2, v: x), cose_entry(k: 0 - 3, v: x)] }
+  match cose_ec2_p256_key(key: missing) {
+    CoseEc2P256KeyRefused { cause: CoseKeyLabelRefused { lookup: CoseLabelAbsent { label: 1 } } } =>
+      match cose_ec2_p256_key(key: twice) {
+        CoseEc2P256KeyRefused { cause: CoseKeyLabelRefused { lookup: CoseLabelDuplicated { label: 1 } } } =>
+          match cose_ec2_p256_key(key: not_int) {
+            CoseEc2P256KeyRefused { cause: CoseKeyLabelNotAnInteger { label: 1 } } =>
+              match cose_ec2_p256_key(key: CborArray { items: [] }) {
+                CoseEc2P256KeyRefused { cause: CoseKeyLabelRefused { lookup: CoseKeyNotAMap } } => true
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
