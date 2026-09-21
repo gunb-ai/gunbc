@@ -255,12 +255,9 @@ fn executor_home_wet() -> String? {
 // writable /dev/kvm or no Firecracker cannot boot anything, and a probe that discovered that by
 // failing to produce a console would report an IMAGE verdict for a HOST fact -- sending a reader to
 // the wrong module, which is the state-space conflation this repository refuses elsewhere.
-//
-// THE EXECUTOR LOGIN THIS FOLD ASKS ABOUT COMES FROM THE HOST'S ROSTER ROW, because the standing
-// carries the executor's group enrolment and that is a fact about a named account. So the host
-// binding is resolved before any login is named, and a probe running on a host with no roster row
-// has no executor to ask about -- which this fold reports as a BootNotAttempted cause like any
-// other, rather than as an image or console verdict.
+// THE LOGIN COMES FROM THE HOST'S ROSTER ROW, because the standing now carries the executor's
+// group enrolment and that is a fact about a named account. A probe on a host with no roster
+// row has no executor to ask about, which is a BootNotAttempted cause like any other.
 fn runner_microvm_boot_probe_wet() -> ProcessExit
   uses net: Network
 {

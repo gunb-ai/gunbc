@@ -181,12 +181,10 @@ fn termination_withheld_completion(termination: SupervisedTermination) -> Bool {
 //   a pin     -- the peak sits AT a limit, which is the censored signature even when the counters
 //                have not yet ticked, and is what a throttled run looks like from the outside.
 // Only a run that survived all three may be read as a demand.
-//
-// AN UNREADABLE LIMIT REFUSES BEFORE THE THREE SEVERITY TESTS. The pin test depends
-// on both limits; the termination and memory.events tests do not, but neither can turn
-// a failed limit reading into a complete qualification. A body the upstream parser
-// rejects therefore reaches DemandUnreadable before qualify_against_readable_limits
-// can mint either DemandBounded or DemandObserved.
+// AN UNREADABLE LIMIT REFUSES BEFORE ANYTHING ELSE IS ASKED. Every question below -- was it
+// pinned, did it fit -- is a comparison AGAINST the limits, so a limit that could not be read
+// makes those questions unanswerable rather than negative. This is the arm whose absence let a
+// run with an unknown throttle line publish as a demand.
 fn qualify_floor_memory_demand(
   peak: ByteSize,
   limit_max: CgroupMemoryLimitValue,
