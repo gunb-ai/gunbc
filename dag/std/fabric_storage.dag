@@ -1,7 +1,7 @@
 module std.fabric_storage
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
-import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_from_structural_digest }
+import std.content_hash { ContentHash, content_hash_of_value_cryptographic, serialize_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, parse_content_hash }
 import std.durable_compare_and_set { CasGeneration, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_unreadable_slot_detail }
 
 // THE FABRIC DB INTERFACE: IMMUTABLE CONTENT-ADDRESSED OBJECTS AND COMPARE-AND-SET NAMED HEADS.
@@ -53,16 +53,50 @@ fn fabric_object_preimage(object: FabricObject) -> NonEmptyStr {
   join(["fabric_storage.object;", link_words, "B", to_string(length(object.body as String)), ":", object.body as String], "") as NonEmptyStr
 }
 
-fn fabric_object_ref_of(object: FabricObject) -> FabricObjectRef {
-  FabricObjectRef { digest: content_hash_of_value(value: fabric_object_preimage(object: object)) }
+// THE DIGEST IS NOW CRYPTOGRAPHIC, AND THE SIGNATURE CHANGED BECAUSE OF IT.
+//
+// This minted Fnv1a64Structural through content_hash_of_value until now: sixty-four
+// non-cryptographic bits. Against an adversary that is a LOCATOR, not an identity -- a second
+// preimage is findable at birthday work no attacker would notice paying -- so a store built on it
+// can say "these are the bytes I have" and cannot say "these are the bytes you asked for". The
+// verified-cache guarantee this module exists to support is exactly the second sentence, so minting
+// a locator and calling the check verification would be rung inflation in the DESIGN 4b(1) sense.
+//
+// IT STAYS PURE, WHICH IS THE WHOLE REASON THE KERNEL AND NOT THE SHELL ARM SERVES HERE.
+// extdeps.crypto.hash carries a shell-out digest (crypto.Sha256Sum.File, sha256sum_line_digest) and
+// it does not fit this seam for a reason stronger than its cost: that operation takes a PATH, and
+// fabric_object_preimage produces a NonEmptyStr in memory. Reaching it would mean writing every
+// object to a file before hashing it, which re-opens the custody gap verification exists to close --
+// hash one file, store another -- and turns ref-minting into an effect, which is what makes
+// fabric_object_verified a pure check today. std.content_hash content_hash_of_value_cryptographic
+// reaches the same FIPS 180-4 digest with neither a write nor a spawn.
+//
+// THE OPTIONAL IS PROPAGATED RATHER THAN ABSORBED. content_hash_of_value_cryptographic can refuse,
+// for the reason stated at its own declaration, and the tempting repair -- fall back to the
+// structural digest so the signature stays total -- is precisely the absorbing fallback DESIGN 5
+// forbids: it would answer with a locator in the one case where the identity could not be
+// established, and no caller could tell the two apart. So the refusal travels, and every consumer
+// says what it does with it.
+fn fabric_object_ref_of(object: FabricObject) -> FabricObjectRef? {
+  match content_hash_of_value_cryptographic(value: fabric_object_preimage(object: object)) {
+    Present { value: h } => Present { value: FabricObjectRef { digest: h } }
+    Absent => none
+  }
 }
 
 fn fabric_object_ref_wire(object: FabricObjectRef) -> NonEmptyStr {
   serialize_content_hash(hash: object.digest)
 }
 
+// THE INVERSE MOVED WITH THE MINT, AND IT HAD TO. This read content_hash_from_structural_digest,
+// which admits sixteen hex digits and nothing else, while fabric_object_ref_wire now serializes a
+// Sha256Hash as `sha256:<64 hex>`. Left alone it would refuse every ref this module now mints --
+// the round trip would be broken in the one direction a READ depends on. parse_content_hash is the
+// std.content_hash authority for that wire in both directions and carries its own re-serialization
+// check, so a candidate that does not re-serialize to the text it was read from is refused rather
+// than guessed at.
 fn fabric_object_ref_of_wire(wire: String) -> FabricObjectRef? {
-  match content_hash_from_structural_digest(digest: wire) {
+  match parse_content_hash(wire: wire) {
     Present { value: h } => Present { value: FabricObjectRef { digest: h } }
     Absent => none
   }
@@ -120,6 +154,12 @@ type FabricStorageFault
   | FabricObjectCorrupt { object: FabricObjectRef, detail: NonEmptyStr }
   | FabricReplyUndecodable { detail: NonEmptyStr }
   | FabricHeadNameRefused { name: NonEmptyStr }
+  // THE MINT ITSELF COULD NOT ANSWER. Distinct from FabricObjectCorrupt, which says the held bytes
+  // hash to something else -- a real, reportable disagreement. This says no digest was computed at
+  // all, so nothing was compared. Collapsing the two would report a corruption that was never
+  // observed, which is a fabricated plausible output (DESIGN 5); keeping them apart is what lets a
+  // reader tell a store that lied from a digest that was not available.
+  | FabricObjectDigestUnavailable { detail: NonEmptyStr }
 
 type FabricPut
   = FabricObjectStored { object: FabricObjectRef }
@@ -159,7 +199,18 @@ type FabricObjectVerification
   | FabricObjectVerificationFailed { fault: FabricStorageFault }
 
 fn fabric_object_verified(asked: FabricObjectRef, content: FabricObject) -> FabricObjectVerification {
-  let actual = fabric_object_ref_of(object: content)
+  match fabric_object_ref_of(object: content) {
+    Absent =>
+      FabricObjectVerificationFailed {
+        fault: FabricObjectDigestUnavailable {
+          detail: "the held bytes could not be reduced to a digest, so nothing was compared" as NonEmptyStr
+        }
+      }
+    Present { value: actual } => fabric_object_compared(asked: asked, content: content, actual: actual)
+  }
+}
+
+fn fabric_object_compared(asked: FabricObjectRef, content: FabricObject, actual: FabricObjectRef) -> FabricObjectVerification {
   if fabric_object_ref_eq(a: asked, b: actual) {
     FabricObjectVerified { stored: FabricStoredObject { object: asked, content: content } }
   } else {
@@ -183,6 +234,7 @@ fn fabric_storage_fault_wire(fault: FabricStorageFault) -> String {
     FabricObjectCorrupt { object: o, detail: d } => join(["object corrupt: ", fabric_object_ref_wire(object: o) as String, " ", d as String], "")
     FabricReplyUndecodable { detail: d } => join(["reply undecodable: ", d as String], "")
     FabricHeadNameRefused { name: n } => join(["head name refused: ", n as String], "")
+    FabricObjectDigestUnavailable { detail: d } => join(["object digest unavailable: ", d as String], "")
   }
 }
 

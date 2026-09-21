@@ -6,7 +6,7 @@ import std.measure { Count, One }
 import product.placement_supply { HostIdentity }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.fabric_storage {
-  FabricObject, FabricObjectRef, fabric_object_ref_of, fabric_object_ref_wire, fabric_object_ref_of_wire,
+  FabricObject, FabricObjectRef, fabric_object_ref_wire, fabric_object_ref_of_wire,
   FabricHeadAbsent, FabricHeadAt, ExpectHeadAbsent, ExpectHeadAt, FabricHeadExpectation,
   FabricStorageFault, fabric_storage_fault_wire,
   FabricObjectStored, FabricPutRefused, FabricHeadObserved, FabricHeadReadRefused,

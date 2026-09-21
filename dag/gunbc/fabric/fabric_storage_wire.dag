@@ -12,7 +12,7 @@ import std.fabric_storage {
   FabricObjectRef, FabricObject, FabricStoredObject, fabric_object_ref_wire, fabric_object_ref_of_wire, fabric_object_preimage, fabric_object_ref_of, fabric_object_ref_eq,
   fabric_objects_decode_stream,
   FabricHeadReading, FabricHeadAbsent, FabricHeadAt, FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
-  FabricStorageFault, FabricStoreUnreachable, FabricStoreRefused, FabricObjectMissing, FabricObjectCorrupt, FabricReplyUndecodable, FabricHeadNameRefused,
+  FabricStorageFault, FabricStoreUnreachable, FabricStoreRefused, FabricObjectMissing, FabricObjectCorrupt, FabricReplyUndecodable, FabricHeadNameRefused, FabricObjectDigestUnavailable,
   FabricPut, FabricObjectStored, FabricPutRefused,
   FabricHeadRead, FabricHeadObserved, FabricHeadReadRefused,
   FabricHeadAdvance, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
@@ -65,6 +65,7 @@ fn fault_words(fault: FabricStorageFault) -> List<String> {
     FabricObjectCorrupt { object: o, detail: d } => ["corrupt", ref_word(object: o), d as String]
     FabricReplyUndecodable { detail: d } => ["undecodable", d as String]
     FabricHeadNameRefused { name: n } => ["name", n as String]
+    FabricObjectDigestUnavailable { detail: d } => ["digest-unavailable", d as String]
     FabricStoreRefused { cause: c } =>
       match c {
         CasGenerationPublicationRefused { detail: d } => ["store-publish", d as String]
@@ -187,6 +188,7 @@ fn decode_fault(ws: List<String>, i: Int, line: String) -> FabricStorageFault {
     "missing" => match decode_ref(word: word_at(ws: ws, i: i + 1)) { Present { value: o } => FabricObjectMissing { object: o }  Absent => undecodable(line: line) }
     "corrupt" => match decode_ref(word: word_at(ws: ws, i: i + 1)) { Present { value: o } => FabricObjectCorrupt { object: o, detail: nonempty_or(text: rest_from(ws: ws, i: i + 2), fallback: "unspecified") }  Absent => undecodable(line: line) }
     "name" => FabricHeadNameRefused { name: nonempty_or(text: detail, fallback: "unnamed") }
+    "digest-unavailable" => FabricObjectDigestUnavailable { detail: nonempty_or(text: detail, fallback: "unspecified") }
     "unreachable" => FabricStoreUnreachable { detail: nonempty_or(text: detail, fallback: "unspecified") }
     "undecodable" => FabricReplyUndecodable { detail: nonempty_or(text: detail, fallback: "unspecified") }
     "store-publish" => FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: nonempty_or(text: detail, fallback: "unspecified") } }
@@ -275,8 +277,23 @@ fn fabric_storage_unwire_advance(text: String) -> FabricHeadAdvance {
 // newest object must BE the head the reply names, so a carrier that dropped or substituted the tip
 // is refused. Deeper links are then joined by the caller's own walk (product.capacity.event_chain
 // chain_from_head), which refuses a hole by id.
-fn closure_stored(objs: List<FabricObject>) -> List<FabricStoredObject> {
-  map(objs, o => FabricStoredObject { object: fabric_object_ref_of(object: o), content: o })
+// THE OPTIONAL MINT REACHES HERE AS A REFUSAL FOR THE WHOLE REPLY, NEVER AS A DROPPED OBJECT.
+// fabric_object_ref_of can now answer none, and the shape that suggests itself -- filter_map, keep
+// the objects that hashed -- is the absorbing fallback DESIGN 5 forbids: a reply one object short
+// still satisfies every check below it, so a carrier could silently shorten a closure and the walk
+// would report a hole it could not attribute. One object that cannot be named means this reply
+// cannot be checked, so the whole read refuses.
+fn closure_stored(objs: List<FabricObject>) -> List<FabricStoredObject>? {
+  fold(objs, init: Present { value: [] }, f: (acc, o) =>
+    match acc {
+      Absent => none
+      Present { value: xs } =>
+        match fabric_object_ref_of(object: o) {
+          Absent => none
+          Present { value: r } => Present { value: concat(xs, [FabricStoredObject { object: r, content: o }]) }
+        }
+    }
+  )
 }
 
 fn closure_tip_matches(reading: FabricHeadReading, stored: List<FabricStoredObject>) -> Bool {
@@ -306,11 +323,18 @@ fn fabric_storage_unwire_closure(text: String) -> FabricClosureRead {
               Present { value: rd } =>
                 match fabric_objects_decode_stream(text: r.body, acc: []) {
                   Absent => FabricClosureRefused { fault: undecodable(line: "closure body is not a stream of fabric objects") }
-                  Present { value: objs } => {
-                    let stored = closure_stored(objs: objs)
-                    if closure_tip_matches(reading: rd, stored: stored) { FabricClosureRead { reading: rd, newest_first: stored } }
-                    else { FabricClosureRefused { fault: undecodable(line: "closure body does not begin at the head it names") } }
-                  }
+                  Present { value: objs } =>
+                    match closure_stored(objs: objs) {
+                      Absent =>
+                        FabricClosureRefused {
+                          fault: FabricObjectDigestUnavailable {
+                            detail: "a carried object could not be reduced to a digest, so the closure could not be checked" as NonEmptyStr
+                          }
+                        }
+                      Present { value: stored } =>
+                        if closure_tip_matches(reading: rd, stored: stored) { FabricClosureRead { reading: rd, newest_first: stored } }
+                        else { FabricClosureRefused { fault: undecodable(line: "closure body does not begin at the head it names") } }
+                    }
                 }
             }
           _ => FabricClosureRefused { fault: undecodable(line: r.line) }
