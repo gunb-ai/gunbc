@@ -55,6 +55,89 @@ fn write_required_ci_measurement_receipt(
         .map_err(|e| format!("write required CI measurement receipt {path}: {e}"))
 }
 
+/// The verdict of a `--required-ci` run, as a value rather than as an exit code, so it can be
+/// asserted. `ExitCode` implements neither `PartialEq` nor `Debug`, so a control over the real
+/// return type could compare nothing; that is why the seam is here and not at the `return`.
+#[derive(Debug, PartialEq, Eq)]
+enum RequiredCiVerdict {
+    Clean,
+    Blocked { phases: usize },
+}
+
+/// PUBLISH, THEN ADJUDICATE -- IN THAT ORDER, IN ONE PLACE, WITH NO ARM THAT DOES ONLY THE FIRST.
+///
+/// THIS EXISTS AS A FUNCTION BECAUSE THE DEFECT IT CLOSES WAS UNREACHABLE FROM ONE. The escape
+/// hatch was a `return Ok(ExitCode::SUCCESS)` INSIDE the receipt branch, upstream of the ledger
+/// check -- so a control over "empty ledger passes, non-empty ledger fails" would have been GREEN
+/// with the bug present, because the failing path never reached the code such a control covers
+/// (DESIGN section 5, specification-without-execution: the control must sit on the route that
+/// actually failed). The publication and the verdict are therefore one function taking the receipt
+/// path, and the only way to ask for a receipt is to ask for the verdict with it.
+///
+/// A WRITE FAILURE IS ITS OWN REFUSAL and is returned as `Err` rather than folded into the ledger:
+/// a receipt that could not be written is a measurement nobody holds, which is a different fact
+/// from a measurement holding blockers.
+fn publish_then_adjudicate_required_ci(
+    receipt_path: Option<&str>,
+    mut measurement_blockers: Vec<RequiredCiBlocker>,
+    phase_failures: &[String],
+) -> Result<RequiredCiVerdict, String> {
+    if let Some(path) = receipt_path {
+        // Dissolve this compatibility boundary when every required phase returns its own
+        // `Vec<RequiredCiBlocker>`: a human diagnostic must not remain the authority for a
+        // blocker's phase and identity.
+        for failure in phase_failures {
+            if !measurement_blockers
+                .iter()
+                .any(|b| b.phase == failure.as_str())
+                && failure != "floor"
+            {
+                measurement_blockers.push(RequiredCiBlocker {
+                    phase: failure
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    identity: "<phase>".to_string(),
+                    cause: failure.clone(),
+                });
+            }
+        }
+        // Reaching here means the measurement process ran every selected phase. A phase refusal is
+        // therefore a completed measurement carrying blockers, never MeasurementUnreached. The
+        // latter is sealed by the workflow's outer finalizer only when this process cannot return a
+        // receipt at all (a failed instrument build, or a killed process).
+        write_required_ci_measurement_receipt(
+            path,
+            completed_required_ci_measurement_receipt(measurement_blockers),
+        )?;
+        eprintln!("required-ci: measurement completed receipt={path}");
+    }
+    // THE RECEIPT IS A PUBLICATION, NEVER THE VERDICT. Writing one used to return
+    // `ExitCode::SUCCESS` unconditionally, so `--measurement-receipt` was an escape hatch in the
+    // sense DESIGN section 5 forbids: a flag whose only effect is to proceed as if the refusal had
+    // not fired. The contract it assumed -- "some later adjudicator consumes the receipt and reds"
+    // -- was an UNDECLARED assumption about the CALLER, and the caller that actually emits
+    // `.github/workflows/witnesses.yml` (`gunbc.compiler_gate_workflow`) does not adjudicate it: it
+    // reuses `witness_floor_run_script`, which carries the flag, and then stops.
+    //
+    // MEASURED, job 106378500935 of run 35613461226: `phases_run=2 phases_failed=2`,
+    // `required-floor: verdict=FloorRefused unexpected_failures=6`, and the job and the run both
+    // concluded SUCCESS.
+    //
+    // A caller that genuinely wants the run to continue past a refusal in order to publish and then
+    // adjudicate says so in its own medium -- `gunbc.witness_floor_workflow`'s D0-MEASURE step
+    // declares `continue_on_error: true` and keeps its D0-ADJUDICATE step -- rather than reaching
+    // into this process's exit contract.
+    if phase_failures.is_empty() {
+        Ok(RequiredCiVerdict::Clean)
+    } else {
+        Ok(RequiredCiVerdict::Blocked {
+            phases: phase_failures.len(),
+        })
+    }
+}
+
 fn adjudicate_required_ci_measurement_receipt(path: &str) -> Result<ExitCode, ExitCode> {
     let body = std::fs::read(path).map_err(|e| {
         eprintln!("required-ci: adjudication REFUSED receipt unreadable path={path} cause={e}");
@@ -1138,60 +1221,20 @@ fn run() -> Result<ExitCode, ExitCode> {
         for failure in &phase_failures {
             eprintln!("required-ci: FAILED PHASE {failure}");
         }
-        if let Some(path) = required_ci_measurement_receipt {
-            // Dissolve this compatibility boundary when every required phase returns its own
-            // `Vec<RequiredCiBlocker>`: a human diagnostic must not remain the authority for a
-            // blocker's phase and identity.
-            for failure in &phase_failures {
-                if !measurement_blockers
-                    .iter()
-                    .any(|b| b.phase == failure.as_str())
-                    && failure != "floor"
-                {
-                    measurement_blockers.push(RequiredCiBlocker {
-                        phase: failure
-                            .split_whitespace()
-                            .next()
-                            .unwrap_or("unknown")
-                            .to_string(),
-                        identity: "<phase>".to_string(),
-                        cause: failure.clone(),
-                    });
-                }
-            }
-            // Reaching this branch means the measurement process returned after running every
-            // selected phase. A phase refusal is therefore a completed measurement carrying
-            // blockers, never MeasurementUnreached. The latter is sealed by the workflow's
-            // outer finalizer only when this process cannot return a receipt at all (for example,
-            // a failed instrument build or a killed process).
-            let receipt = completed_required_ci_measurement_receipt(measurement_blockers);
-            if let Err(e) = write_required_ci_measurement_receipt(&path, receipt) {
+        return match publish_then_adjudicate_required_ci(
+            required_ci_measurement_receipt.as_deref(),
+            measurement_blockers,
+            &phase_failures,
+        ) {
+            Err(e) => {
                 eprintln!("required-ci: measurement REFUSED {e}");
-                return Err(ExitCode::from(1));
+                Err(ExitCode::from(1))
             }
-            eprintln!("required-ci: measurement completed receipt={path}");
-        }
-        // THE RECEIPT IS A PUBLICATION, NEVER THE VERDICT. Writing one used to RETURN
-        // `ExitCode::SUCCESS` unconditionally, so `--measurement-receipt` was an escape hatch in
-        // the sense DESIGN §5 forbids: a flag whose only effect is to proceed as if the
-        // refusal had not fired. The contract it assumed -- "some later adjudicator consumes the
-        // receipt and reds" -- was an UNDECLARED assumption about the caller, and the caller that
-        // actually emits `.github/workflows/witnesses.yml` (`gunbc.compiler_gate_workflow`) does
-        // not adjudicate it: it reuses `witness_floor_run_script`, which carries the flag, and
-        // then stops. Measured, job 106378500935 of run 35613461226: `phases_run=2
-        // phases_failed=2`, `required-floor: verdict=FloorRefused unexpected_failures=6`, and the
-        // job and the run both concluded SUCCESS.
-        //
-        // The exit is therefore derived from the phase ledger in EVERY mode, and asking for the
-        // ledger in a file can no longer cost the red. A caller that genuinely wants the run to
-        // continue past a refusal in order to publish and then adjudicate says so in its own
-        // medium -- `gunbc.witness_floor_workflow`'s D0-MEASURE step declares
-        // `continue_on_error: true` and keeps its D0-ADJUDICATE step -- rather than reaching into
-        // this process's exit contract.
-        return if phase_failures.is_empty() {
-            Ok(ExitCode::SUCCESS)
-        } else {
-            Err(ExitCode::from(1))
+            Ok(RequiredCiVerdict::Clean) => Ok(ExitCode::SUCCESS),
+            Ok(RequiredCiVerdict::Blocked { phases }) => {
+                eprintln!("required-ci: REFUSED blocking phases={phases}");
+                Err(ExitCode::from(1))
+            }
         };
     }
 
@@ -2357,6 +2400,97 @@ mod tests {
             .collect()
         );
         assert_eq!(expected_lane_phases(&rows, None).len(), 4);
+    }
+
+    /// THE DISCRIMINATING RED FOR THE ESCAPE HATCH gunbc#11982 CLOSED, and it is deliberately
+    /// exercised THROUGH THE RECEIPT PATH rather than over a bare ledger predicate. The defect was
+    /// a `return Ok(ExitCode::SUCCESS)` inside the receipt branch, upstream of the ledger check, so
+    /// a control that only asked "does a non-empty ledger fail" would have passed with the bug
+    /// present. `receipt_path` is `Some` here for exactly that reason: this asserts that ASKING FOR
+    /// THE RECEIPT NO LONGER COSTS THE RED.
+    ///
+    /// Re-derive: `cargo test --release -p v1-compiler --bin claim_executor`. This target is
+    /// COMPILED by the required clippy step and RUN BY NO CI STEP -- `gunbc.rung_drop`
+    /// `rust_unit_tests_off_the_merge_path` -- so this pair is executed evidence that is LOCAL AND
+    /// NOT ENROLLED, and the class row says so rather than claiming the enrolled rung.
+    #[test]
+    fn asking_for_the_receipt_does_not_surrender_the_red() {
+        let path = std::env::temp_dir().join(format!(
+            "gunbc-11982-red-{}-{:?}.json",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let verdict = publish_then_adjudicate_required_ci(
+            path.to_str(),
+            Vec::new(),
+            &["floor".to_string(), "parse (3 error(s))".to_string()],
+        )
+        .expect("the receipt must be writable");
+        assert_eq!(
+            verdict,
+            RequiredCiVerdict::Blocked { phases: 2 },
+            "a non-empty phase ledger must block even when a receipt was requested -- this is the \
+             exact state job 106378500935 of run 35613461226 reported as SUCCESS"
+        );
+        // AND THE RECEIPT IS STILL PUBLISHED. Turning the red back on must not have cost the
+        // ledger, or this repair would have traded one loss for another.
+        let body = std::fs::read_to_string(&path).expect("receipt written");
+        assert!(
+            body.contains("measurement_completed") && body.contains("parse"),
+            "the blocking receipt must still carry its blockers: {body}"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// THE POSITIVE CONTROL, WITHOUT WHICH THE RED ABOVE PROVES NOTHING: a run that reaches the
+    /// same receipt path with an EMPTY ledger still passes and still writes the receipt. Absent
+    /// this, an implementation that refused unconditionally would satisfy the red and would stop
+    /// every merge forever.
+    #[test]
+    fn a_clean_ledger_still_passes_and_still_publishes() {
+        let path = std::env::temp_dir().join(format!(
+            "gunbc-11982-green-{}-{:?}.json",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let verdict = publish_then_adjudicate_required_ci(path.to_str(), Vec::new(), &[])
+            .expect("the receipt must be writable");
+        assert_eq!(verdict, RequiredCiVerdict::Clean);
+        let body = std::fs::read_to_string(&path).expect("receipt written");
+        assert!(
+            body.contains("measurement_completed") && body.contains("\"blockers\": []"),
+            "a clean run must publish an empty-blocker receipt: {body}"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// NO RECEIPT REQUESTED IS THE SAME VERDICT. The flag selects whether a ledger is published,
+    /// and nothing else -- which is the whole content of the repair, stated as a claim.
+    #[test]
+    fn the_verdict_does_not_depend_on_whether_a_receipt_was_requested() {
+        let failures = vec!["floor".to_string()];
+        assert_eq!(
+            publish_then_adjudicate_required_ci(None, Vec::new(), &failures).expect("no write"),
+            RequiredCiVerdict::Blocked { phases: 1 }
+        );
+        assert_eq!(
+            publish_then_adjudicate_required_ci(None, Vec::new(), &[]).expect("no write"),
+            RequiredCiVerdict::Clean
+        );
+    }
+
+    /// A RECEIPT THAT CANNOT BE WRITTEN IS ITS OWN REFUSAL, not a blocker folded into the ledger:
+    /// "nobody holds a measurement" and "the measurement holds blockers" are different facts.
+    #[test]
+    fn an_unwritable_receipt_refuses_rather_than_reporting_a_verdict() {
+        let unwritable = std::env::temp_dir()
+            .join("gunbc-11982-no-such-directory")
+            .join("receipt.json");
+        let outcome = publish_then_adjudicate_required_ci(unwritable.to_str(), Vec::new(), &[]);
+        assert!(
+            outcome.is_err(),
+            "an unwritable receipt path must refuse, not report Clean"
+        );
     }
 
     #[test]
