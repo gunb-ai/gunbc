@@ -88,13 +88,11 @@ import gunbc.github_app_acquisition {
   RegistrationEstablished,
   RegistrationNotEstablished,
   registration_standing,
-  InstallationStanding,
-  InstallationEstablished,
-  InstallationNotEstablished,
-  InstallationUnreadable,
-  InstallationPopulation,
-  PopulationUnreadable,
-  installation_standing_for,
+  InstallationsFirstPageOnly,
+  InstallationsUndecodable,
+  InstallationsUnreadable,
+  read_census_app_installations,
+  live_installation_standing,
   CustodyStanding,
   CustodyAtHandoff,
   CustodyAtHandoffOnly,
@@ -121,29 +119,12 @@ import extdeps.github.app {
   GitHubAppCredentialIssuance,
   CredentialIssuedOnce,
   GitHubAppInstallation,
-  GitHubAppInstallationRecord,
-  InstallationRecordDecode,
-  InstallationDecoded,
-  InstallationSelectionUnreadable,
-  InstallationPermissionsUnreadable,
-  InstallationSlugEmpty,
-  InstallationHtmlUrlUnreadable,
-  installation_from_record,
   repository_selection_wire_name,
   GitHubInstallationTokenRequest,
   RepositoryNarrowingOmitted,
   PermissionNarrowingOmitted,
   installation_token_request_url,
   installation_token_request_body,
-}
-import extdeps.transports.rest {
-  RestReadExchange,
-  RestExchangeSucceeded,
-  RestExchangeStatusRefused,
-  RestExchangeCommitAmbiguous,
-  RestExchangeUnreached,
-  RestExchangeUndecodable,
-  classify_rest_outcome,
 }
 
 // THE ROUTE THAT ACTUALLY RUNS THE FLOW. Four entry points rather than one, because the flow has two
@@ -736,6 +717,25 @@ fn public_app_absence_receipt() -> ProcessExit uses net: Network {
   }
 }
 
+// THE TOKEN REQUEST IS PROJECTED, NOT SENT. Its endpoint and body are what the external minting step
+// must issue for each installation, derived from the installation this read observed rather than
+// hand-typed beside it. Narrowing is omitted because the App's own permission set is already the
+// declared minimum; a narrowing would be a second policy fact and belongs to whatever consumer needs
+// less than the App holds.
+fn installation_token_plan_line(installation: GitHubAppInstallation) -> String {
+  let request = GitHubInstallationTokenRequest {
+    installation_id: installation.installation_id,
+    repositories: RepositoryNarrowingOmitted,
+    permissions: PermissionNarrowingOmitted,
+  }
+  join([
+    "POST ", installation_token_request_url(request: request),
+    " body ", installation_token_request_body(request: request),
+    " account ", installation.account.login,
+    " selection ", repository_selection_wire_name(mode: installation.repository_selection) as String,
+  ], "")
+}
+
 // THE BUDGET PATH, ROUTED. GET /app/installations is the only endpoint that answers "how much API
 // budget does this App actually hold", and it is the one call in this flow that needs an RS256-signed
 // App JWT. Nothing in this corpus can sign one, so the credential is read at the transport from
@@ -757,89 +757,6 @@ fn public_app_absence_receipt() -> ProcessExit uses net: Network {
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/github_app_acquire.dag \
 //     --function census_app_installations_receipt
-// THE SUCCESSFUL ARM IS NAMED FOR WHAT IT IS: THE FIRST PAGE. GitHub states whether another page
-// exists only in the RFC 8288 Link response header (extdeps.github.pagination), and the REST
-// transport github.AppInstallations is declared on returns the decoded body and its outcome and
-// no response header at all. So this read cannot know whether the listing continues, and the arm
-// may not be called the population: an earlier cut named it InstallationsRead and the acquisition
-// receipt treated it as the complete set, which let an intended installation on page two read as
-// absent. The report below prints it labelled as a first page; the acquisition refuses it as
-// unreadable (census_app_installation_population_frontier_rows).
-type CensusAppInstallationReading
-  = InstallationsFirstPageOnly { installations: List<GitHubAppInstallation> }
-  | InstallationsUndecodable { decode: InstallationRecordDecode }
-  | InstallationsUnreadable { reason: NonEmptyStr }
-
-// ONE PRODUCER FOR "WHAT DID /app/installations SAY", AND THE TWO CONSUMERS ONLY RENDER IT. Two
-// entry points need that fact -- the installations report and the acquisition receipt -- and an
-// earlier cut of this PR authored the whole ladder twice: the same call, the same five
-// classify_rest_outcome arms, the same three decode arms, in two functions. They had already drifted
-// inside the same commit, with two different sentences for the identical 401 condition (review
-// 69482). Two sources for one semantic fact is the parallel authority DESIGN 6 names as a tell and
-// DESIGN 2 prices, and it undercuts this PR's own thesis: one fact, one establishment.
-//
-// THE TRANSPORT ARMS FOLD INTO InstallationsUnreadable RATHER THAN BEING CARRIED SEPARATELY, because
-// every one of them answers the same question the same way -- the list was not read -- and the arm
-// already carries the reason that distinguishes them for a human. What must NOT collapse is
-// unreadable into EMPTY, and that stays two arms: "the JWT was stale" and "the App has no
-// installation" prescribe opposite acts.
-fn read_census_app_installations() -> CensusAppInstallationReading uses net: Network {
-  let result = github.AppInstallations.ListInstallations(auth_token: "" as Secret)
-  match classify_rest_outcome(standing: RestReadExchange { rest: result.outcome }) {
-    RestExchangeStatusRefused { status: status, body: body } =>
-      InstallationsUnreadable {
-        reason: join([
-          "GET /app/installations refused with status ", to_string(status),
-          ". It needs an RS256-signed App JWT in GITHUB_APP_JWT, minted externally from the stored pem; this instrument does not sign one itself, because the census App key is not custodied as a file where it runs. Body: ", body,
-        ], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause: c } => InstallationsUnreadable { reason: c }
-    RestExchangeUndecodable { status: _, cause: c } => InstallationsUnreadable { reason: c }
-    RestExchangeCommitAmbiguous { detail: d } => InstallationsUnreadable { reason: d }
-    RestExchangeSucceeded => decode_installation_records(records: result.result)
-  }
-}
-
-fn decode_installation_records(records: List<GitHubAppInstallationRecord>) -> CensusAppInstallationReading {
-  fold(records, init: InstallationsFirstPageOnly { installations: [] }, f: fn(acc, record) {
-    match acc {
-      InstallationsUndecodable { decode: d } => InstallationsUndecodable { decode: d }
-      InstallationsUnreadable { reason: r } => InstallationsUnreadable { reason: r }
-      InstallationsFirstPageOnly { installations: got } =>
-        match installation_from_record(record: record) {
-          InstallationDecoded { installation: i } =>
-            InstallationsFirstPageOnly { installations: concat(got, [i]) }
-          InstallationSelectionUnreadable { raw: raw } =>
-            InstallationsUndecodable { decode: InstallationSelectionUnreadable { raw: raw } }
-          InstallationPermissionsUnreadable { decode: d } =>
-            InstallationsUndecodable { decode: InstallationPermissionsUnreadable { decode: d } }
-          InstallationSlugEmpty => InstallationsUndecodable { decode: InstallationSlugEmpty }
-          InstallationHtmlUrlUnreadable { raw: raw } =>
-            InstallationsUndecodable { decode: InstallationHtmlUrlUnreadable { raw: raw } }
-        }
-    }
-  })
-}
-
-// THE TOKEN REQUEST IS PROJECTED, NOT SENT. Its endpoint and body are what the external minting step
-// must issue for each installation, derived from the installation this read observed rather than
-// hand-typed beside it. Narrowing is omitted because the App's own permission set is already the
-// declared minimum; a narrowing would be a second policy fact and belongs to whatever consumer needs
-// less than the App holds.
-fn installation_token_plan_line(installation: GitHubAppInstallation) -> String {
-  let request = GitHubInstallationTokenRequest {
-    installation_id: installation.installation_id,
-    repositories: RepositoryNarrowingOmitted,
-    permissions: PermissionNarrowingOmitted,
-  }
-  join([
-    "POST ", installation_token_request_url(request: request),
-    " body ", installation_token_request_body(request: request),
-    " account ", installation.account.login,
-    " selection ", repository_selection_wire_name(mode: installation.repository_selection) as String,
-  ], "")
-}
-
 fn census_app_installations_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
   match read_census_app_installations() {
     InstallationsUnreadable { reason: r } => exit_failure(reason: r as String)
@@ -901,56 +818,6 @@ fn installations_read_exit(installations: List<GitHubAppInstallation>) -> Proces
 // of them is derived from another, which is what makes the join worth anything: if installation were
 // inferred from a converged registration, or custody from a successful exchange, the receipt would
 // report a state nobody observed. It exits zero only when all three hold.
-fn live_installation_standing(registration: RegistrationStanding) -> InstallationStanding
-  uses net: Network
-{
-  match registration {
-    RegistrationNotEstablished { reason: r } =>
-      installation_standing_for(
-        registration: RegistrationNotEstablished { reason: r },
-        population: PopulationUnreadable { reason: "the installation population was not read: no App is registered to read it as" as NonEmptyStr },
-      )
-    RegistrationEstablished { app_id: id, slug: slug } =>
-      installation_standing_for(
-        registration: RegistrationEstablished { app_id: id, slug: slug },
-        population: live_installation_population(),
-      )
-  }
-}
-
-// EVERY LIVE ARM IS UNREADABLE TODAY, AND THE THIRD ONE IS THE ONE THAT MATTERS. A transport refusal
-// and an undecodable record are unreadable for the reasons they carry; a first page that decoded is
-// unreadable because nothing in it says whether a second page exists, and reading it as the
-// population is the one-page truncation the admission exists to refuse. PopulationWalked, the arm
-// that can admit, is produced by a std.page_fold walk and waits on the transport capability named in
-// census_app_installation_population_frontier_rows.
-fn live_installation_population() -> InstallationPopulation uses net: Network {
-  match read_census_app_installations() {
-    InstallationsUnreadable { reason: r } => PopulationUnreadable { reason: r }
-    InstallationsUndecodable { decode: _ } =>
-      PopulationUnreadable {
-        reason: "an installation record did not decode; refusing rather than reading a partial list as an absence" as NonEmptyStr
-      }
-    InstallationsFirstPageOnly { installations: got } =>
-      PopulationUnreadable {
-        reason: join([
-          "GET /app/installations returned a first page of ", to_string(count(got)),
-          " installation(s), and the transport does not surface the Link response header GitHub states continuation in, so the listing was not read to exhaustion; a first page is not the population",
-        ], "") as NonEmptyStr
-      }
-  }
-}
-
-data census_app_installation_population_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.instruments.github_app_acquire", decl_name: "live_installation_population"),
-    reason: "the live installation read cannot be walked to exhaustion: github.AppInstallations.ListInstallations is declared on the REST transport, whose result carries the decoded body and a RestOutcome and no response header, and GitHub states whether another page exists only in the RFC 8288 Link header (extdeps.github.pagination). A short or empty page is not closure (std.page_fold PageContinuation), so every live read is refused as unreadable and the acquisition receipt cannot admit an installation until this lands",
-    dissolution: unbound_dissolution(
-      description: "NAMED CAPABILITY: a REST operation result carries the response's Link header field value, so live_installation_population can drive std.page_fold page_fold_live over ListInstallations with github_continuation_from_link_header and return PopulationWalked. SUFFICIENT FOR admitting an installation over a population the authority itself closed. NOT satisfied by a larger per_page, by stopping at a short or empty page, or by routing the read through a CLI whose credential a PAT could satisfy"
-    )
-  )
-]
-
 // CUSTODY IS READ AS AN OBSERVATION OF THE FILE, NOT AS A MEMORY OF HAVING WRITTEN ONE. A converge
 // that persisted the pem in some earlier run and a worktree that never had one are indistinguishable
 // from anything but the file itself, and the second is the state an operator reaches by cleaning

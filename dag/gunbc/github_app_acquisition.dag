@@ -1,6 +1,7 @@
 module gunbc.github_app_acquisition
 
-import std.types { NonEmptyStr, String, Bool, List }
+import std.types { NonEmptyStr, String, Bool, List, Secret }
+import std.resources { Network }
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionIdentity,
@@ -66,6 +67,14 @@ import extdeps.github.app {
   app_install_url,
   GitHubAppInstallation,
   GitHubAppInstallationId,
+  GitHubAppInstallationRecord,
+  InstallationRecordDecode,
+  InstallationDecoded,
+  InstallationSelectionUnreadable,
+  InstallationPermissionsUnreadable,
+  InstallationSlugEmpty,
+  InstallationHtmlUrlUnreadable,
+  installation_from_record,
   GitHubAppRepositorySelectionMode,
   SelectionSelected,
   repository_selection_wire_name,
@@ -1356,8 +1365,15 @@ type RegistrationStanding
   = RegistrationEstablished { app_id: GitHubAppId, slug: NonEmptyStr }
   | RegistrationNotEstablished { reason: NonEmptyStr }
 
-type InstallationStanding
-  = InstallationEstablished { admitted: AdmittedCensusInstallation }
+// THE JUDGMENT IS ORDINARY AND THE ADMISSION IS NOT. InstallationAdmissionDisposition is what the
+// subject and a population decide, and it is pure and constructible anywhere, so every refusal and
+// the admissible case are witnessable. It does NOT carry the sealed AdmittedCensusInstallation: an
+// earlier cut did, and because its input -- a PageFoldOutcome -- is an ordinary coproduct, any module
+// could author PagesClosed over an authored installation and receive the sealed value with no walk
+// ever performed (review of f977a43c45). The seal is minted only by live_installation_standing,
+// after its own read produced the population.
+type InstallationAdmissionDisposition
+  = InstallationAdmissible { installation: GitHubAppInstallation }
   | InstallationNotEstablished { reason: NonEmptyStr }
   | InstallationInsufficient { reason: NonEmptyStr }
   | InstallationAmbiguous { reason: NonEmptyStr }
@@ -1430,10 +1446,10 @@ fn census_app_installation_subject(app_id: GitHubAppId) -> CensusAppInstallation
   }
 }
 
-// THE ADMITTED INSTALLATION HAS ONE WRITER, AND IT IS THE ADMISSION BELOW. InstallationEstablished
-// used to carry a bare GitHubAppInstallation, so any caller could wrap any installation in it and
-// census_app_acquisition_standing would mint a receipt from it. sole_constructor makes the only way
-// to hold one passing the complete subject through admit_census_installation.
+// THE ADMITTED INSTALLATION HAS ONE WRITER: live_installation_standing, which performs the read
+// itself and takes no population from its caller. sole_constructor confines construction to this
+// module, and within it that function is the only construction site, so there is no exported route
+// from a caller-supplied InstallationPopulation or PageFoldOutcome to this value.
 type AdmittedCensusInstallation sole_constructor {
   subject: CensusAppInstallationSubject
   installation: GitHubAppInstallation
@@ -1465,7 +1481,7 @@ fn first_unmet_permission(
   })
 }
 
-fn installation_unattributable(reason: NonEmptyStr) -> InstallationStanding {
+fn installation_unattributable(reason: NonEmptyStr) -> InstallationAdmissionDisposition {
   InstallationNotEstablished {
     reason: join(["no installation can be attributed to an unregistered App: ", reason as String], "") as NonEmptyStr
   }
@@ -1480,7 +1496,7 @@ fn admit_census_installation(
   subject: CensusAppInstallationSubject,
   slug: NonEmptyStr,
   population: InstallationPopulation,
-) -> InstallationStanding {
+) -> InstallationAdmissionDisposition {
   match population {
     PopulationUnreadable { reason: r } => InstallationUnreadable { reason: r }
     PopulationWalked { outcome: outcome } =>
@@ -1539,9 +1555,7 @@ fn admit_census_installation(
                       ], "") as NonEmptyStr
                     }
                   Absent =>
-                    InstallationEstablished {
-                      admitted: AdmittedCensusInstallation { subject: subject, installation: i }
-                    }
+                    InstallationAdmissible { installation: i }
                 }
               }
           }
@@ -1550,16 +1564,150 @@ fn admit_census_installation(
   }
 }
 
-fn installation_standing_for(
+fn installation_admission_disposition(
   registration: RegistrationStanding,
   population: InstallationPopulation,
-) -> InstallationStanding {
+) -> InstallationAdmissionDisposition {
   match registration {
     RegistrationNotEstablished { reason: r } => installation_unattributable(reason: r)
     RegistrationEstablished { app_id: id, slug: s } =>
       admit_census_installation(subject: census_app_installation_subject(app_id: id), slug: s, population: population)
   }
 }
+
+// ── THE LIVE PRODUCER: THE ONLY PLACE AN INSTALLATION IS ADMITTED ─────────────────────────────
+// The installations read lives here rather than in the instrument because the sealed
+// AdmittedCensusInstallation can be minted only in this module, and it must be minted by the
+// producer that performed the read -- never from a population a caller hands in.
+
+// THE SUCCESSFUL ARM IS NAMED FOR WHAT IT IS: THE FIRST PAGE. GitHub states whether another page
+// exists only in the RFC 8288 Link response header (extdeps.github.pagination), and the REST
+// transport github.AppInstallations is declared on returns the decoded body and its outcome and
+// no response header at all. So this read cannot know whether the listing continues, and the arm
+// may not be called the population: an earlier cut named it InstallationsRead and the acquisition
+// receipt treated it as the complete set, which let an intended installation on page two read as
+// absent. The report below prints it labelled as a first page; the acquisition refuses it as
+// unreadable (census_app_installation_population_frontier_rows).
+type CensusAppInstallationReading
+  = InstallationsFirstPageOnly { installations: List<GitHubAppInstallation> }
+  | InstallationsUndecodable { decode: InstallationRecordDecode }
+  | InstallationsUnreadable { reason: NonEmptyStr }
+
+// ONE PRODUCER FOR "WHAT DID /app/installations SAY", AND THE TWO CONSUMERS ONLY RENDER IT. Two
+// entry points need that fact -- the installations report and the acquisition receipt -- and an
+// earlier cut of this PR authored the whole ladder twice: the same call, the same five
+// classify_rest_outcome arms, the same three decode arms, in two functions. They had already drifted
+// inside the same commit, with two different sentences for the identical 401 condition (review
+// 69482). Two sources for one semantic fact is the parallel authority DESIGN 6 names as a tell and
+// DESIGN 2 prices, and it undercuts this PR's own thesis: one fact, one establishment.
+//
+// THE TRANSPORT ARMS FOLD INTO InstallationsUnreadable RATHER THAN BEING CARRIED SEPARATELY, because
+// every one of them answers the same question the same way -- the list was not read -- and the arm
+// already carries the reason that distinguishes them for a human. What must NOT collapse is
+// unreadable into EMPTY, and that stays two arms: "the JWT was stale" and "the App has no
+// installation" prescribe opposite acts.
+fn read_census_app_installations() -> CensusAppInstallationReading uses net: Network {
+  let result = github.AppInstallations.ListInstallations(auth_token: "" as Secret)
+  match classify_rest_outcome(standing: RestReadExchange { rest: result.outcome }) {
+    RestExchangeStatusRefused { status: status, body: body } =>
+      InstallationsUnreadable {
+        reason: join([
+          "GET /app/installations refused with status ", to_string(status),
+          ". It needs an RS256-signed App JWT in GITHUB_APP_JWT, minted externally from the stored pem; this instrument does not sign one itself, because the census App key is not custodied as a file where it runs. Body: ", body,
+        ], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause: c } => InstallationsUnreadable { reason: c }
+    RestExchangeUndecodable { status: _, cause: c } => InstallationsUnreadable { reason: c }
+    RestExchangeCommitAmbiguous { detail: d } => InstallationsUnreadable { reason: d }
+    RestExchangeSucceeded => decode_installation_records(records: result.result)
+  }
+}
+
+fn decode_installation_records(records: List<GitHubAppInstallationRecord>) -> CensusAppInstallationReading {
+  fold(records, init: InstallationsFirstPageOnly { installations: [] }, f: fn(acc, record) {
+    match acc {
+      InstallationsUndecodable { decode: d } => InstallationsUndecodable { decode: d }
+      InstallationsUnreadable { reason: r } => InstallationsUnreadable { reason: r }
+      InstallationsFirstPageOnly { installations: got } =>
+        match installation_from_record(record: record) {
+          InstallationDecoded { installation: i } =>
+            InstallationsFirstPageOnly { installations: concat(got, [i]) }
+          InstallationSelectionUnreadable { raw: raw } =>
+            InstallationsUndecodable { decode: InstallationSelectionUnreadable { raw: raw } }
+          InstallationPermissionsUnreadable { decode: d } =>
+            InstallationsUndecodable { decode: InstallationPermissionsUnreadable { decode: d } }
+          InstallationSlugEmpty => InstallationsUndecodable { decode: InstallationSlugEmpty }
+          InstallationHtmlUrlUnreadable { raw: raw } =>
+            InstallationsUndecodable { decode: InstallationHtmlUrlUnreadable { raw: raw } }
+        }
+    }
+  })
+}
+
+// THE LIVE STANDING: SEALED ON ADMISSION, AN ORDINARY DISPOSITION OTHERWISE.
+// LiveInstallationNotAdmitted is ordinary so every refusal stays witnessable; a caller who puts an
+// InstallationAdmissible inside it gets a refusal from census_app_acquisition_standing, not a
+// receipt.
+type LiveInstallationStanding
+  = LiveInstallationAdmitted { admitted: AdmittedCensusInstallation }
+  | LiveInstallationNotAdmitted { disposition: InstallationAdmissionDisposition }
+
+fn live_installation_standing(registration: RegistrationStanding) -> LiveInstallationStanding
+  uses net: Network
+{
+  match registration {
+    RegistrationNotEstablished { reason: r } =>
+      LiveInstallationNotAdmitted { disposition: installation_unattributable(reason: r) }
+    RegistrationEstablished { app_id: id, slug: slug } => {
+      let subject = census_app_installation_subject(app_id: id)
+      match admit_census_installation(subject: subject, slug: slug, population: live_installation_population()) {
+        InstallationAdmissible { installation: i } =>
+          LiveInstallationAdmitted { admitted: AdmittedCensusInstallation { subject: subject, installation: i } }
+        InstallationNotEstablished { reason: r } =>
+          LiveInstallationNotAdmitted { disposition: InstallationNotEstablished { reason: r } }
+        InstallationInsufficient { reason: r } =>
+          LiveInstallationNotAdmitted { disposition: InstallationInsufficient { reason: r } }
+        InstallationAmbiguous { reason: r } =>
+          LiveInstallationNotAdmitted { disposition: InstallationAmbiguous { reason: r } }
+        InstallationUnreadable { reason: r } =>
+          LiveInstallationNotAdmitted { disposition: InstallationUnreadable { reason: r } }
+      }
+    }
+  }
+}
+
+// EVERY LIVE ARM IS UNREADABLE TODAY, AND THE THIRD ONE IS THE ONE THAT MATTERS. A transport refusal
+// and an undecodable record are unreadable for the reasons they carry; a first page that decoded is
+// unreadable because nothing in it says whether a second page exists, and reading it as the
+// population is the one-page truncation the admission exists to refuse. PopulationWalked, the arm
+// that can admit, is produced by a std.page_fold walk and waits on the transport capability named in
+// census_app_installation_population_frontier_rows.
+fn live_installation_population() -> InstallationPopulation uses net: Network {
+  match read_census_app_installations() {
+    InstallationsUnreadable { reason: r } => PopulationUnreadable { reason: r }
+    InstallationsUndecodable { decode: _ } =>
+      PopulationUnreadable {
+        reason: "an installation record did not decode; refusing rather than reading a partial list as an absence" as NonEmptyStr
+      }
+    InstallationsFirstPageOnly { installations: got } =>
+      PopulationUnreadable {
+        reason: join([
+          "GET /app/installations returned a first page of ", to_string(count(got)),
+          " installation(s), and the transport does not surface the Link response header GitHub states continuation in, so the listing was not read to exhaustion; a first page is not the population",
+        ], "") as NonEmptyStr
+      }
+  }
+}
+
+data census_app_installation_population_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "live_installation_population"),
+    reason: "the live installation read cannot be walked to exhaustion: github.AppInstallations.ListInstallations is declared on the REST transport, whose result carries the decoded body and a RestOutcome and no response header, and GitHub states whether another page exists only in the RFC 8288 Link header (extdeps.github.pagination). A short or empty page is not closure (std.page_fold PageContinuation), so every live read is refused as unreadable and the acquisition receipt cannot admit an installation until this lands",
+    dissolution: unbound_dissolution(
+      description: "NAMED CAPABILITY: a REST operation result carries the response's Link header field value, so live_installation_population can drive std.page_fold page_fold_live over ListInstallations with github_continuation_from_link_header and return PopulationWalked. SUFFICIENT FOR admitting an installation over a population the authority itself closed. NOT satisfied by a larger per_page, by stopping at a short or empty page, or by routing the read through a CLI whose credential a PAT could satisfy"
+    )
+  )
+]
 
 type CensusAppAcquisitionReceipt {
   app_id: GitHubAppId
@@ -1572,7 +1720,7 @@ type CensusAppAcquisitionReceipt {
 // installation arms into one is the defect this type was corrected for (review 69499). The rule is
 // stated on read_census_app_installations -- unreadable must not collapse into empty, because "the
 // JWT was stale" and "the App has no installation" prescribe OPPOSITE acts -- and an earlier cut
-// obeyed it everywhere except where it mattered: both arms survived in InstallationStanding and in
+// obeyed it everywhere except where it mattered: both arms survived in InstallationAdmissionDisposition and in
 // the printed reason, while the PRESCRIPTION was derived from a single collapsed arm and was
 // identical for both. A stale-JWT 401 told the operator to go grant a consent that may already
 // exist.
@@ -1593,37 +1741,92 @@ type CensusAppAcquisitionStanding
   = CensusAppAcquired { receipt: CensusAppAcquisitionReceipt }
   | AcquisitionIncomplete { missing: AcquisitionFactMissing }
 
-fn census_app_acquisition_standing(
+// THE FOUR-FACT JUDGMENT IS PURE, AND IT IS NOT THE RECEIPT. It decides, over supplied standings,
+// which fact is missing first or that all of them hold, so the ordering law -- no later fact mints
+// an earlier one -- is witnessable over any inputs. AcquisitionFactsHold carries an ordinary
+// installation and therefore cannot be written to the receipt file; only
+// census_app_acquisition_standing below turns it into CensusAppAcquired, and only beside a sealed
+// admission.
+type AcquisitionJudgment
+  = AcquisitionFactsHold {
+      app_id: GitHubAppId
+      slug: NonEmptyStr
+      installation: GitHubAppInstallation
+      key_custody: CustodyAtHandoff
+    }
+  | AcquisitionFactsMissing { missing: AcquisitionFactMissing }
+
+fn census_app_acquisition_judgment(
   registration: RegistrationStanding,
-  installation: InstallationStanding,
+  installation: InstallationAdmissionDisposition,
   custody: CustodyStanding,
-) -> CensusAppAcquisitionStanding {
+) -> AcquisitionJudgment {
   match registration {
     RegistrationNotEstablished { reason: r } =>
-      AcquisitionIncomplete { missing: RegistrationMissing { reason: r } }
+      AcquisitionFactsMissing { missing: RegistrationMissing { reason: r } }
     RegistrationEstablished { app_id: id, slug: slug } =>
       match installation {
         InstallationNotEstablished { reason: r } =>
-          AcquisitionIncomplete { missing: InstallationConsentMissing { reason: r } }
+          AcquisitionFactsMissing { missing: InstallationConsentMissing { reason: r } }
         InstallationInsufficient { reason: r } =>
-          AcquisitionIncomplete { missing: InstallationConsentInsufficient { reason: r } }
+          AcquisitionFactsMissing { missing: InstallationConsentInsufficient { reason: r } }
         InstallationAmbiguous { reason: r } =>
-          AcquisitionIncomplete { missing: InstallationReadingAmbiguous { reason: r } }
+          AcquisitionFactsMissing { missing: InstallationReadingAmbiguous { reason: r } }
         InstallationUnreadable { reason: r } =>
-          AcquisitionIncomplete { missing: InstallationReadingUnavailable { reason: r } }
-        InstallationEstablished { admitted: i } =>
+          AcquisitionFactsMissing { missing: InstallationReadingUnavailable { reason: r } }
+        InstallationAdmissible { installation: i } =>
           match custody {
             CustodyNotEstablished { reason: r } =>
-              AcquisitionIncomplete { missing: CustodyMissing { reason: r } }
+              AcquisitionFactsMissing { missing: CustodyMissing { reason: r } }
             CustodyAtHandoffOnly { custody: c } =>
-              CensusAppAcquired {
-                receipt: CensusAppAcquisitionReceipt {
-                  app_id: id,
-                  slug: slug,
-                  installation: i,
-                  key_custody: c,
-                }
+              AcquisitionFactsHold { app_id: id, slug: slug, installation: i, key_custody: c }
+          }
+      }
+  }
+}
+
+// THE RECEIPT IS MINTED ONLY BESIDE A SEALED ADMISSION. The judgment runs over the disposition the
+// live standing carries; an admissible disposition that arrives WITHOUT the seal -- authored by a
+// caller rather than produced by the live walk -- is refused, and so is a seal minted for a different
+// App than the registration names. Neither refusal is reachable from the live producer; both are
+// the walls a supplied value meets.
+fn census_app_acquisition_standing(
+  registration: RegistrationStanding,
+  installation: LiveInstallationStanding,
+  custody: CustodyStanding,
+) -> CensusAppAcquisitionStanding {
+  match installation {
+    LiveInstallationNotAdmitted { disposition: d } =>
+      match census_app_acquisition_judgment(registration: registration, installation: d, custody: custody) {
+        AcquisitionFactsMissing { missing: m } => AcquisitionIncomplete { missing: m }
+        AcquisitionFactsHold { app_id: _, slug: _, installation: _, key_custody: _ } =>
+          AcquisitionIncomplete {
+            missing: InstallationReadingUnavailable {
+              reason: "an admissible installation arrived without the live walk's admission; a disposition supplied from outside live_installation_standing establishes nothing" as NonEmptyStr
+            }
+          }
+      }
+    LiveInstallationAdmitted { admitted: a } =>
+      match census_app_acquisition_judgment(
+        registration: registration,
+        installation: InstallationAdmissible { installation: a.installation },
+        custody: custody,
+      ) {
+        AcquisitionFactsMissing { missing: m } => AcquisitionIncomplete { missing: m }
+        AcquisitionFactsHold { app_id: id, slug: slug, installation: _, key_custody: c } =>
+          if a.subject.app_id.value != id.value {
+            AcquisitionIncomplete {
+              missing: InstallationReadingUnavailable {
+                reason: join([
+                  "the admitted installation was admitted for app id ", to_string(a.subject.app_id.value),
+                  " and the registration names app id ", to_string(id.value),
+                ], "") as NonEmptyStr
               }
+            }
+          } else {
+            CensusAppAcquired {
+              receipt: CensusAppAcquisitionReceipt { app_id: id, slug: slug, installation: a, key_custody: c }
+            }
           }
       }
   }
@@ -1633,35 +1836,52 @@ fn census_app_acquisition_standing(
 // against hands back "a receipt naming the registered App, the installation, and the custody location
 // of its key, or a typed refusal saying which of the three is missing", so the two arms below are that
 // sentence and nothing else is added to them.
+fn acquisition_receipt_line(
+  app_id: GitHubAppId,
+  slug: NonEmptyStr,
+  installation: GitHubAppInstallation,
+  key_custody: CustodyAtHandoff,
+) -> String {
+  join(
+    [
+      "census App acquired: app_id=", to_string(app_id.value),
+      " slug=", slug as String,
+      " installation_id=", to_string(installation.installation_id.value),
+      " account=", installation.account.login,
+      " key at handoff ", key_custody.path,
+      " destined for secret ", key_custody.destination.secret as String,
+      " (the second hop into the fleet custody roster is pending; see CustodyStanding)",
+    ],
+    "",
+  )
+}
+
+fn acquisition_missing_line(missing: AcquisitionFactMissing) -> String {
+  match missing {
+    RegistrationMissing { reason: r } =>
+      join(["census App NOT acquired -- REGISTRATION is missing: ", r as String], "")
+    InstallationConsentMissing { reason: r } =>
+      join(["census App NOT acquired -- INSTALLATION is missing: ", r as String], "")
+    InstallationConsentInsufficient { reason: r } =>
+      join(["census App NOT acquired -- the INSTALLATION exists and grants less than the census consent: ", r as String], "")
+    InstallationReadingAmbiguous { reason: r } =>
+      join(["census App NOT acquired -- the INSTALLATION reading is ambiguous: ", r as String], "")
+    InstallationReadingUnavailable { reason: r } =>
+      join(["census App NOT acquired -- the INSTALLATION fact could not be READ, which is not the same as having none: ", r as String], "")
+    CustodyMissing { reason: r } =>
+      join(["census App NOT acquired -- KEY CUSTODY is missing: ", r as String], "")
+  }
+}
+
 fn acquisition_standing_line(standing: CensusAppAcquisitionStanding) -> String {
   match standing {
     CensusAppAcquired { receipt: r } =>
-      join(
-        [
-          "census App acquired: app_id=", to_string(r.app_id.value),
-          " slug=", r.slug as String,
-          " installation_id=", to_string(r.installation.installation.installation_id.value),
-          " account=", r.installation.installation.account.login,
-          " key at handoff ", r.key_custody.path,
-          " destined for secret ", r.key_custody.destination.secret as String,
-          " (the second hop into the fleet custody roster is pending; see CustodyStanding)",
-        ],
-        "",
+      acquisition_receipt_line(
+        app_id: r.app_id,
+        slug: r.slug,
+        installation: r.installation.installation,
+        key_custody: r.key_custody,
       )
-    AcquisitionIncomplete { missing: m } =>
-      match m {
-        RegistrationMissing { reason: r } =>
-          join(["census App NOT acquired -- REGISTRATION is missing: ", r as String], "")
-        InstallationConsentMissing { reason: r } =>
-          join(["census App NOT acquired -- INSTALLATION is missing: ", r as String], "")
-        InstallationConsentInsufficient { reason: r } =>
-          join(["census App NOT acquired -- the INSTALLATION exists and grants less than the census consent: ", r as String], "")
-        InstallationReadingAmbiguous { reason: r } =>
-          join(["census App NOT acquired -- the INSTALLATION reading is ambiguous: ", r as String], "")
-        InstallationReadingUnavailable { reason: r } =>
-          join(["census App NOT acquired -- the INSTALLATION fact could not be READ, which is not the same as having none: ", r as String], "")
-        CustodyMissing { reason: r } =>
-          join(["census App NOT acquired -- KEY CUSTODY is missing: ", r as String], "")
-      }
+    AcquisitionIncomplete { missing: m } => acquisition_missing_line(missing: m)
   }
 }
