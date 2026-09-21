@@ -1043,7 +1043,15 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     // 5. THE LANE RUN. The emitted binary, by explicit path, over the real source roots: it
     // derives the universe, executes it, mints the receipt and judges it.
     eprintln!("v2-native-route: adjudicating through the emitted compiler");
-    let mut args = vec!["adjudicate".to_string(), facts_file.display().to_string()];
+    // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes the default pattern: this literal is the
+    // seed's mirror of `gunbc.witness_v2_native_route` `native_route_default_pattern`
+    // (`//v2/test/...`, which narrows nothing within the floor's universe). A narrower pattern is an
+    // operator's argument to the emitted binary, never this runner's.
+    let mut args = vec![
+        "adjudicate".to_string(),
+        facts_file.display().to_string(),
+        "//v2/test/...".to_string(),
+    ];
     args.extend(source_roots.iter().cloned());
     let rows_file = workspace
         .join("target")

@@ -26,8 +26,28 @@ import gunbc.review_sheet_drive_converge {
   SheetSearchUnreadable,
   SpreadsheetCreatePlan,
   spreadsheet_from_file_list,
-  ensure_review_spreadsheet,
   review_sheet_search_query,
+}
+import gunbc.review_sheet_identity_converge {
+  review_sheet_identity_subject,
+  ensure_review_spreadsheet_on_identity,
+}
+import gunbc.review_sheet_legacy_extent_producer {
+  OperatorLegacyDeclaration,
+  review_sheet_legacy_extent,
+  read_operator_legacy_declaration,
+}
+import gunbc.review_sheet_declared_id_admission {
+  DeclaredIdAdmission,
+  DeclaredIdAdmitted,
+  DeclaredIdRefused,
+  NoDeclaredIdOffered,
+  admit_declared_id,
+}
+import gunbc.review_sheet_identity {
+  ReviewSheetIdentitySubject,
+  ReviewSheetIdentityDisposition,
+  review_sheet_identity_standing_disposition,
 }
 
 // THE HARDER AMBIGUITY, AND THE REASON THE KEY IS CHOSEN BEFORE THE CALL. A lost answer from
@@ -41,8 +61,14 @@ import gunbc.review_sheet_drive_converge {
 // a FILE, and without the key the next pass would find nothing and mint a second one, with the
 // first invisible and holding whatever was written to it.
 
+// AN OPERATOR-ADJUDICATED ADOPTION IS ITS OWN OUTCOME AND NOT A PLAIN SpreadsheetAdopted. The two
+// are reached by different authorities -- one by an observation that settled on its own, one by a
+// human choosing between observed lineages after a file-by-id preflight -- and collapsing them
+// would make the run's own report unable to say which. An operator reading a converge log needs to
+// know that the sheet in use is the one they named, because that is the fact they would revisit.
 type SpreadsheetConvergeOutcome
   = SpreadsheetAdopted { file_id: NonEmptyStr }
+  | SpreadsheetAdoptedByDeclaredId { file_id: NonEmptyStr }
   | SpreadsheetCreatedAndVerified { file_id: NonEmptyStr }
   | SpreadsheetCreateUnverified { cause: NonEmptyStr }
   | SpreadsheetConvergeRefused { cause: NonEmptyStr }
@@ -154,44 +180,89 @@ fn perform_spreadsheet_create(
   }
 }
 
+// TWO READINGS AND ONE DECLARATION ENTER, AND NONE OF THEM DECIDES. The current-marker search
+// answers what this drive holds under the live marker field; the legacy-extent producer answers
+// what can be established about the superseded one; the operator declaration is read once and used
+// twice, as the extent's settling statement or as a selection, never as both.
+// gunbc.review_sheet_identity joins the two readings into a standing,
+// gunbc.review_sheet_declared_id_admission decides whether a declared id may be acted on, and
+// gunbc.review_sheet_identity_converge decides the ordinary create. This function performs.
+//
+// THE ADMISSION IS ASKED FIRST BECAUSE IT IS THE NARROWER AUTHORITY. It answers NoDeclaredIdOffered
+// for every run that declared no selection, which is almost all of them, and only a declaration
+// that survived the subject check, the standing check, the contradicting-observation check and an
+// exact file-by-id preflight can reach an adoption through it. A refusal there is final: a
+// selection that could not be admitted must not fall through to the ordinary path, because the
+// ordinary path would answer about a state the operator has said is wrong.
+//
+// THE DECLARATION FILE IS READ EXACTLY ONCE PER PASS. Two reads would be two demands for one fact
+// with the converge as their least common ancestor, and they could disagree if the operator edits
+// the file between them -- so the extent producer and the admission are handed the same value.
+//
+// THE DECLARATION PATH IS A DECLARED ROW AND NOT AN ARGUMENT. gunbc run passes arguments only as
+// argv, and on this fleet an argv word is readable by any job payload a pull request can influence
+// -- the reason converge_drive_half_cli takes no arguments at all. A caller-supplied path would
+// also be a caller-supplied ANSWER: point it at a file you wrote and the extent settles.
 fn converge_review_spreadsheet(
   drive_id: NonEmptyStr,
   sheet_name: NonEmptyStr,
   marker_value: NonEmptyStr,
   policy: EnsurePolicy,
-) -> SpreadsheetConvergeOutcome uses net: Network {
+) -> SpreadsheetConvergeOutcome uses net: Network, fs: std.resources.Filesystem {
+  let subject = review_sheet_identity_subject(drive_id: drive_id, marker_value: marker_value)
+  let declaration = read_operator_legacy_declaration(
+    path: review_sheet_legacy_declaration_path as String,
+  )
   let observed = read_spreadsheet(drive_id: drive_id, marker_value: marker_value)
-  match ensure_review_spreadsheet(
-    policy: policy,
-    observed: observed,
-    drive_id: drive_id,
-    sheet_name: sheet_name,
-    marker_value: marker_value,
-  ) {
-    Noop => spreadsheet_noop_outcome(observed: observed)
-    Refuse { reason: r } => SpreadsheetConvergeRefused { cause: r }
-    Apply { plan: p } => perform_spreadsheet_create(plan: p)
+  let disposition = review_sheet_identity_standing_disposition(
+    subject: subject,
+    current: observed,
+    legacy: review_sheet_legacy_extent(subject: subject, declaration: declaration),
+  )
+  match admit_declared_id(subject: subject, disposition: disposition, declaration: declaration) {
+    DeclaredIdAdmitted { file_id: f } => SpreadsheetAdoptedByDeclaredId { file_id: f }
+    DeclaredIdRefused { cause: c } => SpreadsheetConvergeRefused { cause: c }
+    NoDeclaredIdOffered =>
+      match ensure_review_spreadsheet_on_identity(
+        policy: policy,
+        disposition: disposition,
+        drive_id: drive_id,
+        sheet_name: sheet_name,
+        marker_value: marker_value,
+      ) {
+        Noop => spreadsheet_noop_outcome(observed: observed)
+        Refuse { reason: r } => SpreadsheetConvergeRefused { cause: r }
+        Apply { plan: p } => perform_spreadsheet_create(plan: p)
+      }
   }
 }
+
+// WHERE AN OPERATOR WRITES THE DECLARATION. One fixed path per host, because the declaration's
+// subject lives in its CONTENT: a path cannot say which drive, which marker generation or which
+// sheet it speaks for, and a declaration that outlives its subject is worse than an absent one --
+// it is a stale assertion that still reads as authoritative, unlocking exactly the adopt and create
+// decisions that lose data when they are wrong. The kernel refuses a declaration whose carried
+// subject is not the intended one, which is what makes one path safe.
+data review_sheet_legacy_declaration_path: NonEmptyStr = "/etc/gunbc/review-sheet-legacy-extent-declaration.json"
 
 fn spreadsheet_noop_outcome(observed: ReviewSpreadsheetObservation) -> SpreadsheetConvergeOutcome {
   match observed {
     SheetObservedOne { file_id: id } => SpreadsheetAdopted { file_id: id }
     SheetAbsent =>
       SpreadsheetConvergeRefused {
-        cause: "converged on an absent spreadsheet, which no arm of ensure_review_spreadsheet produces" as NonEmptyStr
+        cause: "converged on an absent spreadsheet, which no arm of ensure_review_spreadsheet_on_identity produces" as NonEmptyStr
       }
     SheetDuplicated { file_ids: _ } =>
       SpreadsheetConvergeRefused {
-        cause: "converged on duplicated spreadsheets, which no arm of ensure_review_spreadsheet produces" as NonEmptyStr
+        cause: "converged on duplicated spreadsheets, which no arm of ensure_review_spreadsheet_on_identity produces" as NonEmptyStr
       }
     SheetSearchIncomplete =>
       SpreadsheetConvergeRefused {
-        cause: "converged on an incomplete search, which no arm of ensure_review_spreadsheet produces" as NonEmptyStr
+        cause: "converged on an incomplete search, which no arm of ensure_review_spreadsheet_on_identity produces" as NonEmptyStr
       }
     SheetPageIncomplete { next_page_token: _ } =>
       SpreadsheetConvergeRefused {
-        cause: "converged on one page of a longer file list, which no arm of ensure_review_spreadsheet produces" as NonEmptyStr
+        cause: "converged on one page of a longer file list, which no arm of ensure_review_spreadsheet_on_identity produces" as NonEmptyStr
       }
     SheetSearchUnreadable { reason: r } =>
       SpreadsheetConvergeRefused {
@@ -203,6 +274,8 @@ fn spreadsheet_noop_outcome(observed: ReviewSpreadsheetObservation) -> Spreadshe
 fn spreadsheet_outcome_text(o: SpreadsheetConvergeOutcome) -> String {
   match o {
     SpreadsheetAdopted { file_id: id } => join(["adopted existing sheet ", id as String], "")
+    SpreadsheetAdoptedByDeclaredId { file_id: id } =>
+      join(["adopted operator-declared sheet ", id as String, ", confirmed by an exact file-by-id read"], "")
     SpreadsheetCreatedAndVerified { file_id: id } =>
       join(["created and verified by readback: ", id as String], "")
     SpreadsheetCreateUnverified { cause: c } => join(["UNVERIFIED: ", c as String], "")
