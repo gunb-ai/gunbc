@@ -1415,6 +1415,15 @@ data guest_resolver_configuration_frontier: DissolutionCondition = unbound_disso
 // tap this fleet would never mint is a receipt about something else.
 data converged_slot_network_wire_schema: NonEmptyStr = "gunbc.converged_slot_network.v1" as NonEmptyStr
 
+// THE PARSE HALF IS UNCONSUMED AND SAYS SO IN A ROW, NOT IN THIS PROSE. The render half has a
+// production consumer (receipt_text folds it into the persisted artifact); the parse half does not
+// yet, and DESIGN section 4c is explicit that an annotation is never evidence that a machine claim
+// holds. So the gap carries the same typed row every other unconsumed surface in this module
+// carries, rather than resting on the paragraph above (review 69448).
+data converged_slot_network_parse_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the microVM slot lifecycle controller (gunbc#11670), which runs in a LATER PROCESS than the converge that wrote the receipt and therefore cannot hold the in-memory ConvergedSlotNetwork -- it must read the persisted artifact back and recover the VALUE, because slot_network_sanitation_subject takes a receipt rather than prose. COVERS the whole wire-parse family: parse_converged_slot_network, parse_converged_body, parse_helper_standing, parse_converged_slot_line, parse_converged_slot_tail, parse_helper_surface, parse_auto_assignment_wire, parse_tap_ipv6_wire, candidate_named, wire_value, wire_lines and drop_prefix. WHAT REMAINS: no controller exists to read a receipt, and no receipt has been written by any run, so the only executing callers are witnesses. TRIGGER: that controller reads a receipt this fleet wrote, recovers the ConvergedSlotNetwork through parse_converged_slot_network, and derives the slot's network fact through slot_network_sanitation_subject on the value it parsed rather than on one it built. SUFFICIENT FOR deleting this row. NOT satisfied by the render half having a consumer, by a witness round-tripping render into parse, by the module compiling, or by the annotation above naming the controller." as NonEmptyStr,
+)
+
 fn helper_surface_wire(r: HelperSurfaceReading) -> String {
   match r {
     HelperSurfaceCounted { count: n } => join(["counted:", to_string(n)], "")
