@@ -19,7 +19,9 @@ import std.materialization_ladder {
   CacheProvider, CoversAllComputations,
   LadderVerdict,
   materialization_ladder, materialization_ladder_holds,
-  ladder_prescription_for,
+  ladder_verdict_prescribes,
+  ladder_verdict_for,
+  ladder_verdict_is_green,
   empty_frame_path, no_cost_floor_exemptions, no_cache_providers,
   verdict_is_accepted_single_recompute,
   verdict_is_discharged_by,
@@ -142,13 +144,11 @@ fn parse_table_memo_verdicts_for(r: ParseMemoRecurrence) -> List<LadderVerdict> 
 
 // ONCE PER GRAMMAR, CARRIED. The caller stores this on GrammarFirstAnalysis and every ParseTable
 // built from that analysis carries it; parse_table_lookup and parse_table_insert read the carried
-// value and never re-run the ladder. Every refusal arm prescribes Memoize (ladder_verdict_prescribes):
-// a refusal is an unmet obligation and never licenses dropping the store.
+// value and never re-run the ladder. Admission is GREEN-ONLY (admitted_from): a refused verdict
+// is an unmet obligation that stays enrolled and readable, and it neither opens the door nor
+// deletes the provider or the store.
 fn parse_table_memo_materialization_for(r: ParseMemoRecurrence) -> Materialization {
-  match ladder_prescription_for(verdicts: parse_table_memo_verdicts_for(r: r), identity: parse_table_memo_demand_identity) {
-    Present { value: prescribed } => prescribed
-    Absent => Recompute
-  }
+  admitted_from(verdicts: parse_table_memo_verdicts_for(r: r), identity: parse_table_memo_demand_identity)
 }
 
 data parse_memo_no_recurrence: ParseMemoRecurrence = ParseMemoRecurrence {
@@ -228,15 +228,41 @@ fn v2_compiler_materialization_ladder_holds() -> Bool {
 // ruled on has no admission to consume, so the store is not permitted. It is deliberately NOT
 // the same answer as a ruled Recompute, which is why ladder_prescription_for reports the gap
 // instead of flattening it.
-fn prescription_or_recompute(identity: String) -> Materialization {
-  match ladder_prescription_for(verdicts: v2_compiler_materialization_verdicts(), identity: identity) {
-    Present { value: prescribed } => prescribed
+// A REFUSED VERDICT IS NOT AN ADMISSION, and this is the correction review 69770 asked for.
+// std.materialization_ladder.ladder_verdict_prescribes answers what materialization each verdict
+// IMPLIES, and for five of the six Refused arms it answers Memoize -- deliberately, because a
+// refusal is an UNMET OBLIGATION and the standing ruling is that it is not a licence to delete
+// the store. That table is right for what it is. What it is NOT is a door's admission, and this
+// module is what turned it into one: read as permission, "the obligation is unmet" became
+// "permission granted", which is DESIGN section 5's widen -- a failure arm must refuse.
+//
+// So admission is green-or-nothing. The obligation, the provider and the store all remain --
+// nothing here deletes them, and the refusal verdict stays enrolled and readable -- but an
+// unmet obligation does not open the door. Today the parse-table demand is Discharged, so no
+// live behaviour changes; what changes is that it is admitted BECAUSE it is green rather than
+// because every Refused arm happened to answer Memoize too.
+//
+// ONE admission rule, over whichever verdict list ruled the identity: the compile-stage demand is
+// ruled once in v2_compiler_materialization_verdicts, the parse demand per grammar in
+// parse_table_memo_verdicts_for, and both doors pass through this same green test.
+fn admitted_from(verdicts: List<LadderVerdict>, identity: String) -> Materialization {
+  match ladder_verdict_for(verdicts: verdicts, identity: identity) {
     Absent => Recompute
+    Present { value: chosen } =>
+      if ladder_verdict_is_green(v: chosen) {
+        ladder_verdict_prescribes(v: chosen)
+      } else {
+        Recompute
+      }
   }
 }
 
+fn admitted_prescription(identity: String) -> Materialization {
+  admitted_from(verdicts: v2_compiler_materialization_verdicts(), identity: identity)
+}
+
 fn compile_stage_memo_materialization() -> Materialization {
-  prescription_or_recompute(identity: compile_stage_memo_demand_identity)
+  admitted_prescription(identity: compile_stage_memo_demand_identity)
 }
 
 type CachedStageRealization {
@@ -318,17 +344,40 @@ fn parse_table_memo_verdict_is_single_recompute_for(r: ParseMemoRecurrence) -> B
 
 // The discriminating RED for the fail-closed arm: an identity the ladder never ruled on has no
 // admitted decision, so the door must refuse the store rather than inherit the permissive
-// answer. Deleting the Absent arm of prescription_or_recompute makes this return Memoize.
+// answer. Deleting the Absent arm of admitted_prescription makes this return Memoize.
 data unruled_demand_identity: String = "identity-the-ladder-never-ruled-on"
 
 fn unruled_identity_prescription() -> Materialization {
-  match ladder_prescription_for(
-    verdicts: v2_compiler_materialization_verdicts(),
-    identity: unruled_demand_identity
-  ) {
-    Present { value: prescribed } => prescribed
-    Absent => Recompute
-  }
+  admitted_prescription(identity: unruled_demand_identity)
+}
+
+// THE RED REVIEW 69770 ASKED FOR: a REFUSED identity must not permit the store. The plural
+// parse-table demands refuse with RefusedScopeTooNarrow against the very provider that
+// discharges the single-site demand, so this is the same identity and the same provider,
+// refused for a reason that is about scope rather than absence -- exactly the arm that
+// ladder_verdict_prescribes answers Memoize for. Restoring the bare prescription (dropping the
+// green test in admitted_prescription) makes this return Memoize and the control fails.
+fn refused_scope_prescription() -> Materialization {
+  admitted_from(
+    verdicts: parse_table_memo_plural_verdicts(providers: v2_compiler_cache_providers()),
+    identity: parse_table_memo_demand_identity
+  )
+}
+
+fn refused_scope_refuses_store() -> Bool {
+  !materialization_allows_memo_store(m: refused_scope_prescription())
+}
+
+// The positive control that keeps the pair honest: the SAME fold over the SAME provider admits
+// the recurrent-grammar demand. Without this, refused_scope_refuses_store would also pass if
+// admitted_from simply never admitted anything.
+data parse_memo_one_discarding_site: ParseMemoRecurrence = ParseMemoRecurrence {
+  discarding_backtrack_sites: 1,
+  nullable_nonterminals: 0
+}
+
+fn discharged_scope_admits_store() -> Bool {
+  materialization_allows_memo_store(m: parse_table_memo_materialization_for(r: parse_memo_one_discarding_site))
 }
 
 fn unruled_identity_refuses_store() -> Bool {

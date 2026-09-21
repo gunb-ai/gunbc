@@ -760,9 +760,13 @@ fn verdict_identity(v: LadderVerdict) -> String {
 // the ladder never ruled on it. That is not the same as a verdict that prescribes Recompute,
 // and the distinction is the consumer's to make: this fold reports the gap rather than
 // substituting the permissive answer for it (DESIGN section 5, a failure arm must refuse).
-fn ladder_prescription_for(verdicts: List<LadderVerdict>, identity: String) -> Materialization? {
+fn ladder_verdict_for(verdicts: List<LadderVerdict>, identity: String) -> LadderVerdict? {
   let mine = verdicts |> filter(v => verdict_identity(v: v) == identity)
-  match mine.first() {
+  mine.first()
+}
+
+fn ladder_prescription_for(verdicts: List<LadderVerdict>, identity: String) -> Materialization? {
+  match ladder_verdict_for(verdicts: verdicts, identity: identity) {
     Absent => Absent
     Present { value: chosen } => Present { value: ladder_verdict_prescribes(v: chosen) }
   }
