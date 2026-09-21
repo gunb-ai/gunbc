@@ -3,7 +3,7 @@ module gunbc.auth.approval_device_routes
 import std.types { NonEmptyStr, String, Int, List, Timestamp, HttpStatus }
 import std.logic { Bool }
 import std.integer { UInt8 }
-import std.measure { Second, second, second_count, byte_size_count }
+import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.encoding { base64_decode, Standard, UrlSafe }
 import std.algebra { trim }
@@ -555,13 +555,13 @@ fn device_push_update_response_at(body: String, process: ApprovalServingProcess,
 // delivered so the code the operator receives is already valid; a delivery that fails leaves an
 // unspent code nobody knows, which expires.
 data approval_enrolment_code_window: Second = second(count: 600)
-data approval_enrolment_code_entropy_octets: Int = 4
+data approval_enrolment_code_entropy: ByteSize = byte_size(count: 4)
 data approval_enrolment_code_notification_title: NonEmptyStr = "Device enrolment code"
 
 fn mint_enrolment_code() -> NonEmptyStr? {
-  match base64_decode(s: trim(s: Urandom.ReadBytes(count: approval_enrolment_code_entropy_octets).octets_b64), variant: Standard) {
+  match base64_decode(s: trim(s: Urandom.ReadBytes(count: byte_size_count(b: approval_enrolment_code_entropy)).octets_b64), variant: Standard) {
     Absent => none
-    Present { value: octets } => if count(octets) != approval_enrolment_code_entropy_octets { none } else { Present { value: base16_encode_lower(octets: octets) as NonEmptyStr } }
+    Present { value: octets } => if count(octets) != byte_size_count(b: approval_enrolment_code_entropy) { none } else { Present { value: base16_encode_lower(octets: octets) as NonEmptyStr } }
   }
 }
 

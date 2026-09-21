@@ -1,6 +1,7 @@
 module gunbc.rust_item_scan
 
 import extdeps.languages.rust.syntax { rust_item_forms }
+import std.decimal { decimal_digit_char }
 import gunbc.rust_item_identity {
   RustConst,
   RustEnum,
@@ -196,7 +197,7 @@ fn rust_item_kind_keyword_mapping_is_total() -> Bool {
 fn char_is_ident(c: String) -> Bool {
   (c >= "a" && c <= "z")
     || (c >= "A" && c <= "Z")
-    || (c >= "0" && c <= "9")
+    || decimal_digit_char(ch: c)
     || c == "_"
 }
 

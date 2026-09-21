@@ -198,9 +198,11 @@ fn exact_decimal_wire(d: ExactDecimal) -> String {
 
 // ── Decimal digit text ───────────────────────────────────────────────────────────────────────
 // THE ONE PREDICATE for "this character is a decimal digit" and "this text is nothing but decimal
-// digits", so a reader of a fixed-width decimal field (an X.509 time, a slot generation, a
-// version component) consumes it rather than minting its own (review 69672 of gunbc#12000 counted
-// four hand-rolled copies). Hexadecimal digits are extdeps.numeric.base16's, a different alphabet.
+// digits": the copies review 69672 of gunbc#12000 counted (gunbc.auth.approval_capability is_digit,
+// gunbc.build_cache.build_cache_endpoint_observe, gunbc.rust_item_host_observation,
+// gunbc.rust_item_scan) were cut over to it in the same change that added it, so a reader of a
+// fixed-width decimal field consumes it rather than minting its own. Hexadecimal digits are
+// extdeps.numeric.base16's, a different alphabet.
 fn decimal_digit_char(ch: String) -> Bool {
   ch == "0" || ch == "1" || ch == "2" || ch == "3" || ch == "4" || ch == "5" || ch == "6" || ch == "7" || ch == "8" || ch == "9"
 }

@@ -3,6 +3,7 @@ module test.claim.cbor_rfc8949_witness_test
 import std.logic { Bool }
 import std.types { Int, String, List }
 import std.integer { UInt8 }
+import std.measure { byte_size_count }
 import extdeps.standards.rfc_8949 {
   CborValue, CborUnsigned, CborNegative, CborByteString, CborTextString, CborArray, CborMap, CborTagged, CborSimple, CborEntry,
   CborDocument, CborDocumentDecoded, CborDocumentRefused,
@@ -161,23 +162,18 @@ test fn reserved_additional_info_refuses() -> Bool {
 
 // The truncations: an empty document; a two-octet argument with one octet present; a byte string
 // declaring four octets over three; an array declaring three items over two.
-test fn truncated_items_refuse_with_the_offset() -> Bool {
-  match cbor_refuses(octets: []) {
-    Present { value: CborTruncated { at: 0, needed: 1, available: 0 } } =>
-      match cbor_refuses(octets: [25, 3]) {
-        Present { value: CborTruncated { at: 1, needed: 2, available: 1 } } =>
-          match cbor_refuses(octets: [68, 1, 2, 3]) {
-            Present { value: CborTruncated { at: 1, needed: 4, available: 3 } } =>
-              match cbor_refuses(octets: [131, 1, 2]) {
-                Present { value: CborTruncated { at: 3, needed: 1, available: 0 } } => true
-                _ => false
-              }
-            _ => false
-          }
-        _ => false
-      }
+fn truncated_at(r: CborRefusal?, at: Int, needed: Int, available: Int) -> Bool {
+  match r {
+    Present { value: CborTruncated { at: a, needed: n, available: v } } => a == at && byte_size_count(b: n) == needed && byte_size_count(b: v) == available
     _ => false
   }
+}
+
+test fn truncated_items_refuse_with_the_offset() -> Bool {
+  truncated_at(r: cbor_refuses(octets: []), at: 0, needed: 1, available: 0)
+    && truncated_at(r: cbor_refuses(octets: [25, 3]), at: 1, needed: 2, available: 1)
+    && truncated_at(r: cbor_refuses(octets: [68, 1, 2, 3]), at: 1, needed: 4, available: 3)
+    && truncated_at(r: cbor_refuses(octets: [131, 1, 2]), at: 3, needed: 1, available: 0)
 }
 
 // One item followed by another octet is not one document.

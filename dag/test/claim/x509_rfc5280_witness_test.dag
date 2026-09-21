@@ -12,7 +12,7 @@ import extdeps.standards.rfc_8949 {
 import extdeps.standards.x690_der {
   DerElement, DerRefusal, DerElementRead, DerRefused, der_read_element, der_read_document, DerDocumentRead, DerDocumentRefused,
   der_children, DerChildrenRead, DerChildrenRefused, der_child_at, der_object_identifier, DerOidRead, DerOidRefused, DerObjectIdentifierMalformed, der_value,
-  DerIndefiniteLengthRefused, DerLengthNotMinimal, DerHighTagNumberRefused, DerTruncated, DerTrailingOctets, DerBitStringUnusedBitsRefused, DerTagUnexpected,
+  DerIndefiniteLengthRefused, DerLengthNotMinimal, DerHighTagNumberRefused, DerTruncated, DerTrailingOctets, DerChildCountUnexpected, DerBitStringUnusedBitsRefused, DerTagUnexpected,
   der_bit_string_octets, DerBitsRead, DerBitsRefused, der_unsigned_integer, DerUnsignedRead, DerUnsignedRefused, DerIntegerMalformed, DerContextSpecific,
   der_expect_sequence, der_expect, der_tag_octet_string,
 }
@@ -235,7 +235,7 @@ test fn extra_children_refuse() -> Bool {
   let leaf = sample_x5c(i: 0)
   let with_null = concat(concat(leaf |> take(2), [2, 247]), concat(leaf |> skip(4), [5, 0]))
   match decode_certificate(octets: with_null) {
-    X509Refused { cause: X509DerRefused { cause: DerTrailingOctets { consumed: 3, total: 4 } } } => true
+    X509Refused { cause: X509DerRefused { cause: DerChildCountUnexpected { at: 4, expected: 3, found: 4 } } } => true
     _ => false
   }
 }

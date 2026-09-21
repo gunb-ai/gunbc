@@ -31,7 +31,7 @@ import gunbc.durable_cas_file_store {
   DerivedPayloadKeyNotSlotAddressable,
   file_compare_and_set,
   observe_cas_slot_state,
-  CasSlotKeys, CasSlotKeysListed, CasSlotKeysListingRefused, cas_slot_keys,
+  CasSlotKeys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused, cas_slot_keys,
 }
 import std.durable_compare_and_set {
   cas_unreadable_slot_detail,
@@ -820,6 +820,7 @@ type PendingFold {
 fn pending_escalations(root: NonEmptyStr) -> PendingEscalations {
   match cas_slot_keys(root: root) {
     CasSlotKeysListingRefused { root: _, detail: d } => PendingEscalationsRefused { detail: d }
+    CasSlotKeysSubjectRefused { root: r, cause: c } => PendingEscalationsRefused { detail: "store root " + (r as String) + " is not an admissible directory: " + c }
     CasSlotKeysListed { keys: keys } => {
       let f = fold(keys, init: PendingFold { pending: [], unreadable: [] }, f: (acc, k) => match observe_escalation(root: root, escalation_id: k) {
         EscalationPending { request: r } => PendingFold { pending: acc.pending |> list_push(r), unreadable: acc.unreadable }

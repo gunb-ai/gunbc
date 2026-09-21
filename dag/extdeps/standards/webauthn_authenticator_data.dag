@@ -62,19 +62,40 @@ type AuthenticatorFlags {
   extension_data_included: Bool
 }
 
-fn flag_bit_set(flags: Int, bit: Int) -> Bool {
-  let shifted = if bit == 0 { flags } else if bit == 2 { flags / 4 } else if bit == 3 { flags / 8 } else if bit == 4 { flags / 16 } else if bit == 6 { flags / 64 } else { flags / 128 }
-  shifted % 2 == 1
+// THE FLAG BITS ARE A CLOSED SUM, not an Int a caller could name a seventh of (review 69692 of
+// gunbc#11970): each arm carries its bit position from §6.1 Table 1, and the reader matches
+// exhaustively, so there is no arm for an unnamed bit to fall through to.
+type AuthenticatorFlagBit
+  = UserPresentBit
+  | UserVerifiedBit
+  | BackupEligibleBit
+  | BackupStateBit
+  | AttestedCredentialDataIncludedBit
+  | ExtensionDataIncludedBit
+
+fn authenticator_flag_bit_divisor(bit: AuthenticatorFlagBit) -> Int {
+  match bit {
+    UserPresentBit => 1
+    UserVerifiedBit => 4
+    BackupEligibleBit => 8
+    BackupStateBit => 16
+    AttestedCredentialDataIncludedBit => 64
+    ExtensionDataIncludedBit => 128
+  }
+}
+
+fn flag_bit_set(flags: Int, bit: AuthenticatorFlagBit) -> Bool {
+  (flags / authenticator_flag_bit_divisor(bit: bit)) % 2 == 1
 }
 
 fn authenticator_flags_of(octet: Int) -> AuthenticatorFlags {
   AuthenticatorFlags {
-    user_present: flag_bit_set(flags: octet, bit: 0),
-    user_verified: flag_bit_set(flags: octet, bit: 2),
-    backup_eligible: flag_bit_set(flags: octet, bit: 3),
-    backup_state: flag_bit_set(flags: octet, bit: 4),
-    attested_credential_data_included: flag_bit_set(flags: octet, bit: 6),
-    extension_data_included: flag_bit_set(flags: octet, bit: 7),
+    user_present: flag_bit_set(flags: octet, bit: UserPresentBit),
+    user_verified: flag_bit_set(flags: octet, bit: UserVerifiedBit),
+    backup_eligible: flag_bit_set(flags: octet, bit: BackupEligibleBit),
+    backup_state: flag_bit_set(flags: octet, bit: BackupStateBit),
+    attested_credential_data_included: flag_bit_set(flags: octet, bit: AttestedCredentialDataIncludedBit),
+    extension_data_included: flag_bit_set(flags: octet, bit: ExtensionDataIncludedBit),
   }
 }
 
