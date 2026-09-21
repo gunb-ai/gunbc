@@ -1,0 +1,3 @@
+module probe.brc.bare_record_consumer
+
+type BrcRecordCarrier { id: BrcRecordId }

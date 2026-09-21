@@ -1,0 +1,130 @@
+module gunbc.spark.pair_serving_d0_authorization
+
+import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp }
+import std.measure { Second, second, second_count }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash }
+import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization, ClaimedBy }
+import gunbc.auth.approval_gate { ApprovalGateRefusal, ApprovalRecorded, ApprovalNotRecorded, approval_recorded_from_poll }
+import gunbc.auth.approval_request_client { ApprovalPollStanding }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, fabric_group_hosts }
+import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline }
+import gunbc.spark.v41_runtime_candidate { v41_candidate, V41CandidateStanding, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused }
+import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_hash, d0_intent_text, parse_d0_intent_text, D0ClaimReading, D0ClaimAt, D0ClaimAbsent, D0ClaimUnreadable }
+
+// ── THE ESCALATION → AUTHORIZATION PRODUCER FOR D0 (Cut D, the gate Cut 0 opens) ─────────────
+//
+// An operator's consent to D0 is an approval decision over ONE exact request: the group, its
+// current host population, the KEYED successor candidate, the cleanup baseline, the lease term
+// and the transaction word, digested into the intent the decision's revision names. This module
+// produces that request from the live authorities -- and, for a rerun, re-derives the SAME request
+// from the intent text the door froze when it filed (gunbc.spark.pair_serving_d0 d0_freeze_filing),
+// so a lifecycle finishes under the request the operator saw rather than one rebuilt from moved
+// source. Turning the broker's poll into a ScopedAuthorization<D0Subject> is not D0's to own: that
+// is gunbc.auth.approval_gate, generic over the subject, which the door binds to this request
+// exactly as the Mt. Collins boot binds it to its own. This module is pure over supplied readings.
+
+// THE SUCCESSOR IS THE KEYED CANDIDATE, OR THERE IS NO SUBJECT. Identity is not permission, but
+// a consent over an unkeyed successor would authorize whatever bytes turned up: the subject
+// refuses to exist until gunbc.spark.v41_runtime_candidate keys the candidate (Cut 0).
+// A DEFECT IS NOT AN OBLIGATION here either: a candidate the source authority refuses (a malformed
+// published population) is a correction owed to the source, and no reading discharges it; an
+// unestablished one names what is still to be read. The door renders them apart.
+type D0SubjectStanding
+  = D0SubjectFor { subject: D0Subject }
+  | D0SubjectUnestablished { obligations: List<NonEmptyStr> }
+  | D0SubjectRefused { defects: List<NonEmptyStr> }
+
+// The lease term the consent is asked for: the bounded window in which D0 reads the fleet and
+// settles. Declared here as the one term every D0 consent names.
+data d0_consent_term: Second = second(count: 3600)
+
+fn d0_subject_of_candidate(group: FabricGroup, standing: V41CandidateStanding) -> D0SubjectStanding {
+  match standing {
+    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: c, authorization_obligation: _ } =>
+      D0SubjectFor { subject: D0Subject { group: group, hosts: fabric_group_hosts(g: group), successor: c, cleanup: QuiescentReservedBaseline, term: d0_consent_term } }
+    V41CandidateUnestablished { obligations: o } => D0SubjectUnestablished { obligations: o }
+    V41CandidateRefused { defects: d } => D0SubjectRefused { defects: d }
+  }
+}
+
+fn d0_live_subject(group: FabricGroup) -> D0SubjectStanding {
+  d0_subject_of_candidate(group: group, standing: v41_candidate().standing)
+}
+
+// THE REQUEST, with the intent over the exact operation (sha256 through the realization; an
+// unavailable digest is no request, never a structural substitute).
+type D0RequestStanding
+  = D0RequestFor { request: AuthorizationRequest<D0Subject> }
+  | D0RequestUnestablished { obligations: List<NonEmptyStr> }
+  | D0RequestRefused { defects: List<NonEmptyStr> }
+
+fn d0_authorization_request(group: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr) -> D0RequestStanding {
+  match d0_live_subject(group: group) {
+    D0SubjectUnestablished { obligations: o } => D0RequestUnestablished { obligations: o }
+    D0SubjectRefused { defects: d } => D0RequestRefused { defects: d }
+    D0SubjectFor { subject: s } =>
+      match d0_intent_hash(subject: s, group: group, transaction: transaction) {
+        Absent => D0RequestUnestablished { obligations: ["the intent over the exact operation could not be digested (sha256sum unavailable)" as NonEmptyStr] }
+        Present { value: i } => D0RequestFor { request: d0_request(escalation_id: escalation_id, subject: s, transaction: transaction, intent: i) }
+      }
+  }
+}
+
+// THE REQUEST AS IT WAS FILED, from the frozen intent text. The text is parsed, not trusted: it
+// must round-trip through d0_intent_text, name the group and transaction this run was dispatched
+// for, and digest -- so the request it yields carries the filed revision by construction, and a
+// slot holding another transaction's filing under this escalation is a refusal, not a resume.
+type D0FiledRequestStanding
+  = D0FiledRequestFor { request: AuthorizationRequest<D0Subject>, intent_text: String }
+  | D0FiledRequestRefused { reason: NonEmptyStr }
+
+fn d0_filed_request(text: String, group: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr) -> D0FiledRequestStanding {
+  match parse_d0_intent_text(text: text) {
+    Absent => D0FiledRequestRefused { reason: "the frozen filing under this escalation is not one D0 intent" as NonEmptyStr }
+    Present { value: parsed } =>
+      if (fabric_group_wire(g: parsed.group) as String) != (fabric_group_wire(g: group) as String) {
+        D0FiledRequestRefused { reason: join(["the frozen filing under this escalation is over group ", fabric_group_wire(g: parsed.group) as String, ", not ", fabric_group_wire(g: group) as String], "") as NonEmptyStr }
+      } else if (parsed.transaction as String) != (transaction as String) {
+        D0FiledRequestRefused { reason: join(["the frozen filing under this escalation is transaction ", parsed.transaction as String, ", not ", transaction as String], "") as NonEmptyStr }
+      } else {
+        match d0_intent_hash(subject: parsed.subject, group: group, transaction: transaction) {
+          Absent => D0FiledRequestRefused { reason: "the frozen intent could not be digested (sha256sum unavailable)" as NonEmptyStr }
+          Present { value: i } => D0FiledRequestFor { request: d0_request(escalation_id: escalation_id, subject: parsed.subject, transaction: transaction, intent: i), intent_text: text }
+        }
+      }
+  }
+}
+
+// The intent text a live request is frozen as: the same bytes its intent hash was taken over.
+fn d0_request_intent_text(request: AuthorizationRequest<D0Subject>, group: FabricGroup, transaction: NonEmptyStr) -> String {
+  d0_intent_text(subject: request.subject, group: group, transaction: transaction)
+}
+
+// A RECORDED APPROVAL BECOMES A RESUMABLE AUTHORIZATION ONLY AGAINST THE DURABLE CLAIM. The right
+// to finish what an approval began belongs to the lifecycle that claimed it: the claim slot must
+// read ClaimedBy THIS transaction. Any other reading -- absent (nothing began; a start is a live
+// admission and must pass the live gate), held by another attempt, completed, aborted, or
+// unreadable -- refuses here, so "historically approved" never reaches d0_dispatch as an
+// authorization without the proof that distinguishes a resume from a start.
+type D0ResumableAuthorization
+  = D0Resumable { authorization: ScopedAuthorization<D0Subject> }
+  | D0NotRecorded { cause: ApprovalGateRefusal }
+  | D0NotClaimedHere { reason: NonEmptyStr }
+
+fn d0_resumable_authorization(claim: D0ClaimReading, transaction: NonEmptyStr, poll: ApprovalPollStanding, request: AuthorizationRequest<D0Subject>) -> D0ResumableAuthorization {
+  match claim {
+    D0ClaimAt { state: ClaimedBy { attempt: who, claimed_at: _ }, generation: _ } =>
+      if (who as String) == (transaction as String) {
+        match approval_recorded_from_poll(poll: poll, request: request) {
+          ApprovalRecorded { authorization: a } => D0Resumable { authorization: a }
+          ApprovalNotRecorded { cause: c } => D0NotRecorded { cause: c }
+        }
+      } else {
+        D0NotClaimedHere { reason: join(["the consent is claimed by attempt ", who as String, ", not ", transaction as String], "") as NonEmptyStr }
+      }
+    D0ClaimAt { state: _, generation: _ } => D0NotClaimedHere { reason: "the consent's claim is not held: unclaimed, completed or aborted" as NonEmptyStr }
+    D0ClaimAbsent => D0NotClaimedHere { reason: "no claim of the consent exists; this run is a start" as NonEmptyStr }
+    D0ClaimUnreadable { reason: r } => D0NotClaimedHere { reason: r }
+  }
+}

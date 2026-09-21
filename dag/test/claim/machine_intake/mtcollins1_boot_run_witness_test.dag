@@ -9,13 +9,14 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
   mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance,
   mtcollins1_boot_submit_timeout,
-  mtcollins1_status_from_get, mtcollins1_boot_instant_from_probe,   mtcollins1_boot_sol_is_held,
+  mtcollins1_boot_sol_is_held,
   mtcollins1_boot_sol_held_from_observations,
   mtcollins1_sol_observed_from_collector,
   mtcollins1_boot_terminal_observed,
   mtcollins1_boot_medium_refusal,
   mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1,
 }
+import gunbc.auth.approval_gate { approval_status_from_get, approval_instant_from_probe }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet_converge_workflow { fleet_converge_fleet_ssh_key_step_if }
 import std.process { ExitSuccess }
@@ -68,12 +69,12 @@ test fn a_zero_window_expires_on_the_next_observation() -> Bool {
 }
 
 test fn a_failed_status_get_is_unreadable_not_pending() -> Bool {
-  match mtcollins1_status_from_get(success: false, body: "") {
+  match approval_status_from_get(success: false, body: "") {
     StatusUnreadable { detail: _ } => true
     _ => false
   }
     && match approval_poll_standing(
-      status: mtcollins1_status_from_get(success: false, body: ""),
+      status: approval_status_from_get(success: false, body: ""),
       observed_at: "2026-09-16T20:00:00Z",
       expires_at: "2026-09-16T20:22:30Z",
     ) {
@@ -87,9 +88,9 @@ test fn a_failed_status_get_is_unreadable_not_pending() -> Bool {
 }
 
 test fn clock_unreadable_is_not_an_observation_instant() -> Bool {
-  match mtcollins1_boot_instant_from_probe(reading: none) { Absent => true  _ => false }
-    && match mtcollins1_boot_instant_from_probe(reading: Present { value: "clock-unreadable" as NonEmptyStr }) { Absent => true  _ => false }
-    && match mtcollins1_boot_instant_from_probe(reading: Present { value: "2026-09-16T20:00:00Z" as NonEmptyStr }) {
+  match approval_instant_from_probe(reading: none) { Absent => true  _ => false }
+    && match approval_instant_from_probe(reading: Present { value: "clock-unreadable" as NonEmptyStr }) { Absent => true  _ => false }
+    && match approval_instant_from_probe(reading: Present { value: "2026-09-16T20:00:00Z" as NonEmptyStr }) {
       Present { value: t } => t as String == "2026-09-16T20:00:00Z"
       _ => false
     }

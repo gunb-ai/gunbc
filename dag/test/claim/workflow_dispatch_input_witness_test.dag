@@ -8,6 +8,7 @@ import gunbc.fleet_converge_plan {
 }
 import v2.std.collection { Present, Absent }
 import gunbc.fleet_converge_workflow {
+  fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
   fleet_converge_mode_step_if, fleet_converge_mode_scope,
   ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
@@ -15,6 +16,8 @@ import gunbc.fleet_converge_workflow {
   RunnerPasswordSessionToolConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
+  fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
+  MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
   fleet_converge_workflow, expected_fleet_converge_yml,
@@ -471,4 +474,63 @@ test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> 
     m => match fleet_converge_mode_scope(mode: m) { Present { value: _ } => true  Absent => false },
   )
   deploy_live && plans_present
+}
+
+// THE microVM NETWORK STEP MUST CARRY THE DISPATCHED HOST INTO ITS ENVIRONMENT, OR THE MODE REFUSES
+// EVERY TIME IT RUNS. Its wet entry compares FLEET_CONVERGE_EXPECTED_HOST against the machine's own
+// hostname before staging anything; a step that does not supply the variable makes that comparison
+// answer HostBindingUnnamed on every dispatch, so the mode could never reach its first staging write
+// (side-chat hold on #11751). A claim over the pure decision cannot see that: the decision is right
+// and nothing joins it to the generated workflow. This reads the STEP and the rendered YAML.
+fn yaml_scalar_text(v: YamlValue) -> String {
+  match v {
+    YamlString { value: t } => t
+    YamlNull => ""
+    YamlBool { value: _ } => ""
+    YamlInt { lexeme: l } => l
+    YamlFloat { lexeme: l } => l
+    YamlSequence { elements: _ } => ""
+    YamlMapping { entries: _ } => ""
+  }
+}
+
+fn microvm_network_step_env_text() -> String {
+  match fleet_converge_microvm_network_observe_step() {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match e {
+        Present { value: pairs } => join(map(pairs, pair => join([pair.key, "=", yaml_scalar_text(v: pair.value)], "")), "\n")
+        Absent => ""
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+test fn the_microvm_network_step_binds_the_dispatched_host_into_its_environment() -> Bool {
+  let env = microvm_network_step_env_text()
+  let yml = expected_fleet_converge_yml_content()
+  string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST")
+    && string_contains(s: env, pattern: "github.event.inputs.host")
+    && string_contains(s: yml, pattern: "id: microvm_network_observe")
+    && string_contains(s: yml, pattern: "FLEET_CONVERGE_EXPECTED_HOST: $\{\{ github.event.inputs.host \}\}")
+}
+
+// THE MODE IS LOCAL, SO IT CLAIMS NO FLEET KEY. Every effect it has runs on the machine executing it:
+// its own hostname, its own staging writes, sudo -n over LocalExec, and procfs, ip, nft, xtables and
+// conntrack reads on that host. Materialising the fleet SSH key for it would widen a capability with
+// no consumer in the source (side-chat hold on #11751).
+test fn the_microvm_network_mode_claims_no_fleet_ssh_key() -> Bool {
+  match fleet_converge_mode_fleet_ssh_key_demand(mode: MicrovmNetworkObserve) {
+    FleetSshKeyNotConsumed => true
+    FleetSshKeyConsumed => false
+  }
+}
+
+// THE IDENTITY RECEIPT IS UPLOADED ON A FAILED OBSERVATION TOO: a step condition with no status
+// function is implicitly success(), and the observer exits failure for exactly the reading whose
+// receipt matters most (the placed host's unproxied one), so the upload's condition carries
+// always() beside the mode test, while the observation step's own condition is the bare mode test.
+test fn the_fabric_writer_identity_receipt_upload_survives_a_failed_observation() -> Bool {
+  fleet_converge_fabric_writer_identity_observe_receipt_if.starts_with("always() && ")
+    && fleet_converge_fabric_writer_identity_observe_receipt_if.contains("github.event.inputs.mode == 'fabric_writer_identity_observe'")
+    && !fleet_converge_fabric_writer_identity_observe_step_if.contains("always()")
 }

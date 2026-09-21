@@ -63,6 +63,13 @@ fn conntrack_list_command(filter: ConntrackOriginalAddress, address: String) -> 
 // THE EXPECTATION TABLE, WHOLE. Expectations are the related-flow entries a conntrack helper creates
 // (an FTP data channel, a SIP media stream); `-L expect` prints one line per entry. The table has no
 // original-source filter in conntrack(8), so this lists every expectation on the host.
+//
+// THE ARGUMENTS ARE THEIR OWN AUTHORITY BECAUSE TWO CALLERS NEED THEM. This module builds the
+// ArgvCommand for a direct invocation; a privileged read projection prepends a sudo binary path and
+// needs the SAME words after it. Spelling `-L expect` in both places would be two sources for one
+// upstream fact (DESIGN 3), so the words are declared once here and both consumers read them.
+data conntrack_list_expectations_arguments: List<NonEmptyStr> = ["-L", "expect"]
+
 fn conntrack_list_expectations_command() -> ArgvCommand {
-  argv_command(program: conntrack_program, arguments: ["-L", "expect"])
+  argv_command(program: conntrack_program, arguments: map(conntrack_list_expectations_arguments, a => a as String))
 }
