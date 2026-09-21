@@ -173,8 +173,28 @@ fn selection_against_standing(
 // that refusal: the extent is SETTLED on this arm (a legacy-only lineage is reached only through a
 // positive find, which is self-proving), the id is one that observation returned, and the
 // file-by-id preflight confirms the selected id names a readable spreadsheet before anything acts
-// on it. What it authorizes is an ADOPTION -- a read and a format -- never a create beside the
-// file and never a write to it, so the duplicate this lane exists to prevent stays impossible.
+// on it.
+//
+// WHAT IT AUTHORIZES IS AN ADOPTION -- A READ AND A FORMAT -- AND THE FORMAT IS A WRITE TO THAT
+// FILE. An earlier draft of this sentence said "never a write to it", which was false and is the
+// reason it is spelled out here (review 69620). SpreadsheetAdoptedByDeclaredId reaches
+// gunbc.review_sheet_converge_cli format_converged_spreadsheet, which formats through
+// gunbc.review_sheet_format_actuator converge_review_sheet_format, and that issues Sheets
+// batchUpdate operations against the selected id. On base this route was unreachable for a
+// legacy-only lineage because the ensure refused and formatting was skipped; this change opens it,
+// and that is the only behavioural widening in the diff.
+//
+// IT IS ACCEPTABLE ON THIS ARM AND ON NO OTHER, and the reason is the settled extent rather than
+// the operator's say-so. A legacy-only lineage is reached only through a POSITIVE FIND, which is
+// self-proving, so there is no unread generation this write could be landing on by mistake -- the
+// file being formatted is the file observation returned and the operator then named by id. The
+// adjacent unsettled case has no such proof and therefore admits no selection at all. Formatting
+// is also what adoption MEANS on every other arm; withholding it here would adopt a sheet and
+// leave it unformatted, which is a half-converged state nobody asked for.
+//
+// THE CONTAINMENT THAT DOES HOLD, and the one this lane exists for: never a CREATE beside the
+// file. The duplicate stays impossible -- that claim is about minting a second lineage, not about
+// touching the one the operator adjudicated.
 fn selection_against_sole_observed_file(
   selection: LegacyFileSelection,
   observed: NonEmptyStr,
