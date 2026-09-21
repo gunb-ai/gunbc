@@ -1373,7 +1373,7 @@ type RegistrationStanding
 // ever performed (review of f977a43c45). The seal is minted only by live_installation_standing,
 // after its own read produced the population.
 type InstallationAdmissionDisposition
-  = InstallationAdmissible { installation: GitHubAppInstallation }
+  = InstallationAdmissible { installation: GitHubAppInstallation, subject: CensusAppInstallationSubject }
   | InstallationNotEstablished { reason: NonEmptyStr }
   | InstallationInsufficient { reason: NonEmptyStr }
   | InstallationAmbiguous { reason: NonEmptyStr }
@@ -1555,7 +1555,7 @@ fn admit_census_installation(
                       ], "") as NonEmptyStr
                     }
                   Absent =>
-                    InstallationAdmissible { installation: i }
+                    InstallationAdmissible { installation: i, subject: subject }
                 }
               }
           }
@@ -1655,24 +1655,17 @@ type LiveInstallationStanding
 fn live_installation_standing(registration: RegistrationStanding) -> LiveInstallationStanding
   uses net: Network
 {
-  match registration {
-    RegistrationNotEstablished { reason: r } =>
-      LiveInstallationNotAdmitted { disposition: installation_unattributable(reason: r) }
-    RegistrationEstablished { app_id: id, slug: slug } => {
-      let subject = census_app_installation_subject(app_id: id)
-      match admit_census_installation(subject: subject, slug: slug, population: live_installation_population()) {
-        InstallationAdmissible { installation: i } =>
-          LiveInstallationAdmitted { admitted: AdmittedCensusInstallation { subject: subject, installation: i } }
-        InstallationNotEstablished { reason: r } =>
-          LiveInstallationNotAdmitted { disposition: InstallationNotEstablished { reason: r } }
-        InstallationInsufficient { reason: r } =>
-          LiveInstallationNotAdmitted { disposition: InstallationInsufficient { reason: r } }
-        InstallationAmbiguous { reason: r } =>
-          LiveInstallationNotAdmitted { disposition: InstallationAmbiguous { reason: r } }
-        InstallationUnreadable { reason: r } =>
-          LiveInstallationNotAdmitted { disposition: InstallationUnreadable { reason: r } }
-      }
-    }
+  match installation_admission_disposition(registration: registration, population: live_installation_population()) {
+    InstallationAdmissible { installation: i, subject: subject } =>
+      LiveInstallationAdmitted { admitted: AdmittedCensusInstallation { subject: subject, installation: i } }
+    InstallationNotEstablished { reason: r } =>
+      LiveInstallationNotAdmitted { disposition: InstallationNotEstablished { reason: r } }
+    InstallationInsufficient { reason: r } =>
+      LiveInstallationNotAdmitted { disposition: InstallationInsufficient { reason: r } }
+    InstallationAmbiguous { reason: r } =>
+      LiveInstallationNotAdmitted { disposition: InstallationAmbiguous { reason: r } }
+    InstallationUnreadable { reason: r } =>
+      LiveInstallationNotAdmitted { disposition: InstallationUnreadable { reason: r } }
   }
 }
 
@@ -1809,7 +1802,7 @@ fn census_app_acquisition_standing(
     LiveInstallationAdmitted { admitted: a } =>
       match census_app_acquisition_judgment(
         registration: registration,
-        installation: InstallationAdmissible { installation: a.installation },
+        installation: InstallationAdmissible { installation: a.installation, subject: a.subject },
         custody: custody,
       ) {
         AcquisitionFactsMissing { missing: m } => AcquisitionIncomplete { missing: m }
