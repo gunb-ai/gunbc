@@ -915,6 +915,11 @@ data gunbc_ci_approval_keyring_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "approval_keyring_converge_wet",
 }
 
+data gunbc_ci_pair_serving_d0_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/pair_serving_d0_door.dag",
+  function: "pair_serving_d0_ci_wet",
+}
+
 data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
   function: "mtcollins1_boot_wet",
@@ -1167,7 +1172,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_publication_admit_target,
     gunbc_ci_heal_publication_publish_target,
     gunbc_ci_approval_keyring_converge_target,
-    gunbc_ci_mtcollins1_boot_target
+    gunbc_ci_mtcollins1_boot_target,
+    gunbc_ci_pair_serving_d0_target
   ]
 }
 
@@ -2546,6 +2552,49 @@ data gunbc_ci_mtcollins1_boot_credential_shell_emit_scaffold: Disposition = Scaf
 }
 
 data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, PINNED BMC and submission-MAC secret versions fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+
+// THE D0 DOOR'S PRELUDE materializes the submission MAC key alone (the door signs one filing; it
+// holds no BMC credential and no capability key): the shared auth header and SM decode, one
+// pinned secret version to a 0600 file under RUNNER_TEMP, the trap armed before it touches disk.
+fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/pair-serving-d0-auth-header\"") },
+    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/pair-serving-d0-sm.json\"") },
+    Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
+    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$SUB_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_submission_mac_access_url(), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
+  ]
+}
+
+data gunbc_ci_pair_serving_d0_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_pair_serving_d0_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_pair_serving_d0_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_pair_serving_d0_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned submission-MAC secret version fetched over curl through the shared auth header and SM decode, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the key touches disk. The pipeline steps are modeled (gunbc_ci_pair_serving_d0_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold -- the same trigger as gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger, whose fetch this shares")
+
+fn gunbc_ci_pair_serving_d0_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_pair_serving_d0_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_pair_serving_d0_prelude(),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_pair_serving_d0_target.entry,
+      function: gunbc_ci_pair_serving_d0_target.function,
+      claim_run: false,
+      receipt_rel: none
+    )
+  )
+}
 
 fn gunbc_ci_approval_keyring_converge_invoke() -> String {
   concat(

@@ -1,7 +1,7 @@
 module gunbc.spark.pair_serving_d0_door
 
 import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, Minute, minute }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, exit_failure }
 import std.resources { Network }
@@ -13,6 +13,8 @@ import gunbc.auth.approval_gate {
 }
 import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, stored_request_from_authorization }
 import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
+import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.fabric_switch_observed { FabricGroup, parse_fabric_group, fabric_group_hosts }
@@ -75,6 +77,16 @@ data d0_submit_body_file_name: String = "pair-serving-d0-approval-submit.json"
 
 fn d0_approval_window() -> Second {
   second(count: d0_poll_tick_budget * (second_count(s: d0_poll_cadence) as Int))
+}
+
+// The mode's step timeout: the approval window, the transaction's own bounded reads and the
+// prelude, rounded up to whole minutes.
+data d0_transaction_allowance: Second = second(count: 900)
+data d0_prelude_allowance: Second = second(count: 120)
+
+fn pair_serving_d0_step_timeout_minutes() -> Minute {
+  let secs = (second_count(s: d0_approval_window()) as Int) + (second_count(s: d0_transaction_allowance) as Int) + (second_count(s: d0_prelude_allowance) as Int)
+  minute(count: (secs + 59) / 60)
 }
 
 fn refuse(reason: String) -> ProcessExit {
@@ -237,6 +249,35 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
       }
       }
       }
+      }
+  }
+}
+
+// ── THE FLEET-CONVERGE MODE: pair_serving_d0 on the broker host ──────────────────────────────
+//
+// The door is dispatched as a fleet-converge mode with the group and the consent as inputs. THE
+// CONSENT NAMES THE TRANSACTION: one escalation id is one consent is one lifecycle, and a rerun
+// after a crash names the SAME consent so it finds its frozen filing and its held claim -- which is
+// why the id is an operator-supplied input and never derived from the run id (a fresh run id per
+// invocation would make every rerun a first run). The broker is loopback on the host that serves
+// the dashboard, so the mode refuses any executor but srv1 before reading anything.
+data pair_serving_d0_group_env: NonEmptyStr = "GUNBC_D0_GROUP" as NonEmptyStr
+data pair_serving_d0_consent_env: NonEmptyStr = "GUNBC_D0_CONSENT" as NonEmptyStr
+
+fn pair_serving_d0_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } => refuse(reason: join([v, " ", d, "; the broker is loopback on srv1 only"], ""))
+    ActionsVariablePresent { value: host } =>
+      if host != (operator_host_srv1 as String) {
+        refuse(reason: join(["refuses host ", host, ": POST/GET /approvals is loopback on the machine that serves the dashboard, which is ", operator_host_srv1 as String], ""))
+      } else {
+        let group = actions_variable_trimmed(name: pair_serving_d0_group_env)
+        let consent = actions_variable_trimmed(name: pair_serving_d0_consent_env)
+        if group == "" { refuse(reason: join([pair_serving_d0_group_env as String, " is unset; the mode names no fabric group"], "")) }
+        else if consent == "" { refuse(reason: join([pair_serving_d0_consent_env as String, " is unset; the mode names no consent (escalation id), and a run must name the same one on every rerun"], "")) }
+        else { pair_serving_d0_wet(group: group, transaction: consent, authorization: consent) }
       }
   }
 }
