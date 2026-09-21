@@ -38,6 +38,10 @@ import gunbc.fleet_posix_accounts {
   SudoIptablesLegacySave,
   SudoNfct,
 }
+import extdeps.tools.conntrack { conntrack_list_expectations_arguments }
+import extdeps.nftables.ruleset { nft_list_ruleset_arguments, nft_list_table_arguments_wire }
+import extdeps.netfilter.iptables_legacy { iptables_legacy_save_arguments }
+import extdeps.netfilter.nfct { nfct_helper_list_arguments }
 
 // A GRANTED READ IS AN OPERATION TOO. ReadNftTable mutates nothing, and it is here because the
 // sudoers roster is derived from this type: listing a table needs CAP_NET_ADMIN, so a readback that
@@ -132,31 +136,11 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       systemctl_restart_verb,
       u
     ]
-    ReadNftRuleset => [
-      ci_runner_sudo_binary_path(b: SudoNft),
-      "list" as NonEmptyStr,
-      "ruleset" as NonEmptyStr
-    ]
-    ReadConntrackExpectations => [
-      ci_runner_sudo_binary_path(b: SudoConntrack),
-      "-L" as NonEmptyStr,
-      "expect" as NonEmptyStr
-    ]
-    ReadLegacyXtablesRules => [
-      ci_runner_sudo_binary_path(b: SudoIptablesLegacySave)
-    ]
-    ReadUserspaceConntrackHelpers => [
-      ci_runner_sudo_binary_path(b: SudoNfct),
-      "helper" as NonEmptyStr,
-      "list" as NonEmptyStr
-    ]
-    ReadNftTable { family: f, table: t } => [
-      ci_runner_sudo_binary_path(b: SudoNft),
-      "list" as NonEmptyStr,
-      "table" as NonEmptyStr,
-      f,
-      t
-    ]
+    ReadNftRuleset => concat([ci_runner_sudo_binary_path(b: SudoNft)], nft_list_ruleset_arguments)
+    ReadConntrackExpectations => concat([ci_runner_sudo_binary_path(b: SudoConntrack)], conntrack_list_expectations_arguments)
+    ReadLegacyXtablesRules => concat([ci_runner_sudo_binary_path(b: SudoIptablesLegacySave)], iptables_legacy_save_arguments)
+    ReadUserspaceConntrackHelpers => concat([ci_runner_sudo_binary_path(b: SudoNfct)], nfct_helper_list_arguments)
+    ReadNftTable { family: f, table: t } => concat([ci_runner_sudo_binary_path(b: SudoNft)], nft_list_table_arguments_wire(family_wire: f, name: t))
     SystemdDaemonReload => [
       ci_runner_sudo_binary_path(b: SudoSystemctl),
       "daemon-reload" as NonEmptyStr
