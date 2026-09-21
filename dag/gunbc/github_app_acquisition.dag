@@ -1437,9 +1437,23 @@ type CensusAppAcquisitionReceipt {
   key_custody: CustodyAtHandoff
 }
 
+// THE MISSING FACT KEEPS THE DISTINCTION THAT DECIDES WHAT TO DO NEXT, and collapsing the two
+// installation arms into one is the defect this type was corrected for (review 69499). The rule is
+// stated on read_census_app_installations -- unreadable must not collapse into empty, because "the
+// JWT was stale" and "the App has no installation" prescribe OPPOSITE acts -- and an earlier cut
+// obeyed it everywhere except where it mattered: both arms survived in InstallationStanding and in
+// the printed reason, while the PRESCRIPTION was derived from a single collapsed arm and was
+// identical for both. A stale-JWT 401 told the operator to go grant a consent that may already
+// exist.
+//
+// SO THE ARMS ARE SEPARATE HERE AND THE CONSUMER MATCHES ON THEM, rather than the consumer re-reading
+// the reason string to recover what this type discarded. Re-parsing would put the discrimination back
+// in a consumer after the type had thrown it away, which is the same shape as the unguarded path
+// builder deleted one commit earlier: a wall standing one call away from the thing it guards.
 type AcquisitionFactMissing
   = RegistrationMissing { reason: NonEmptyStr }
-  | InstallationMissing { reason: NonEmptyStr }
+  | InstallationConsentMissing { reason: NonEmptyStr }
+  | InstallationReadingUnavailable { reason: NonEmptyStr }
   | CustodyMissing { reason: NonEmptyStr }
 
 type CensusAppAcquisitionStanding
@@ -1457,9 +1471,9 @@ fn census_app_acquisition_standing(
     RegistrationEstablished { app_id: id, slug: slug } =>
       match installation {
         InstallationNotEstablished { reason: r } =>
-          AcquisitionIncomplete { missing: InstallationMissing { reason: r } }
+          AcquisitionIncomplete { missing: InstallationConsentMissing { reason: r } }
         InstallationUnreadable { reason: r } =>
-          AcquisitionIncomplete { missing: InstallationMissing { reason: r } }
+          AcquisitionIncomplete { missing: InstallationReadingUnavailable { reason: r } }
         InstallationEstablished { installation: i } =>
           match custody {
             CustodyNotEstablished { reason: r } =>
@@ -1500,8 +1514,10 @@ fn acquisition_standing_line(standing: CensusAppAcquisitionStanding) -> String {
       match m {
         RegistrationMissing { reason: r } =>
           join(["census App NOT acquired -- REGISTRATION is missing: ", r as String], "")
-        InstallationMissing { reason: r } =>
+        InstallationConsentMissing { reason: r } =>
           join(["census App NOT acquired -- INSTALLATION is missing: ", r as String], "")
+        InstallationReadingUnavailable { reason: r } =>
+          join(["census App NOT acquired -- the INSTALLATION fact could not be READ, which is not the same as having none: ", r as String], "")
         CustodyMissing { reason: r } =>
           join(["census App NOT acquired -- KEY CUSTODY is missing: ", r as String], "")
       }

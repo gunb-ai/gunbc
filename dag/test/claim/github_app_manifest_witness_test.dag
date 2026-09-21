@@ -169,7 +169,8 @@ import gunbc.github_app_acquisition {
   AcquisitionIncomplete,
   AcquisitionFactMissing,
   RegistrationMissing,
-  InstallationMissing,
+  InstallationConsentMissing,
+  InstallationReadingUnavailable,
   CustodyMissing,
   census_app_acquisition_standing,
   acquisition_standing_line,
@@ -190,6 +191,7 @@ import gunbc.instruments.github_app_acquire {
   census_app_observed_state_path,
   installations_report,
   installations_report_path,
+  next_acquisition_step,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -572,7 +574,8 @@ test fn w_an_installation_and_a_key_do_not_establish_a_registration() -> Bool {
     AcquisitionIncomplete { missing: m } =>
       match m {
         RegistrationMissing { reason: r } => string_contains(s: r as String, pattern: "found no App")
-        InstallationMissing { reason: _ } => false
+        InstallationConsentMissing { reason: _ } => false
+        InstallationReadingUnavailable { reason: _ } => false
         CustodyMissing { reason: _ } => false
       }
   }
@@ -624,13 +627,47 @@ test fn w_an_unreadable_installation_list_is_not_an_absent_installation() -> Boo
     CensusAppAcquired { receipt: _ } => false
     AcquisitionIncomplete { missing: m } =>
       match m {
-        InstallationMissing { reason: r } =>
+        InstallationReadingUnavailable { reason: r } =>
           string_contains(s: r as String, pattern: "401")
             && !string_contains(s: r as String, pattern: "grants it access to nothing")
+        InstallationConsentMissing { reason: _ } => false
         RegistrationMissing { reason: _ } => false
         CustodyMissing { reason: _ } => false
       }
   }
+}
+
+// THE PRESCRIPTION IS WHERE THE DISTINCTION HAS TO LAND, AND THE CLAIM ABOVE DID NOT REACH IT. That
+// one asserts the REASON keeps unreadable apart from empty, and it was green while
+// next_acquisition_step matched a single collapsed arm, discarded the reason, and told the operator
+// to go grant a consent on a stale-JWT 401 -- a state in which the App may ALREADY be installed
+// (review 69499). A wall that does not execute over the thing it names is not a wall, so this one
+// executes over the PRESCRIPTION.
+//
+// THE DISCRIMINATION IS TWO-WAY AND BOTH LEGS MATTER. The unreadable arm must send the operator to
+// the credential and must NOT send them to the install page; the consent arm must do the opposite.
+// Asserting only the first would pass a prescription that named both acts at once.
+test fn w_an_unreadable_installation_prescribes_the_credential_and_never_the_consent() -> Bool {
+  let record = AppAcquired { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr }
+  let unreadable_step = next_acquisition_step(
+    record: record,
+    missing: InstallationReadingUnavailable { reason: "GET /app/installations refused with status 401" as NonEmptyStr },
+  )
+  let consent_step = next_acquisition_step(
+    record: record,
+    missing: InstallationConsentMissing { reason: "the App has no installations" as NonEmptyStr },
+  )
+  let unreadable_sends_them_to_the_credential =
+    string_contains(s: unreadable_step, pattern: "GITHUB_APP_JWT")
+      && !string_contains(s: unreadable_step, pattern: "installations/new")
+      && !string_contains(s: unreadable_step, pattern: "choose the repositories")
+  let consent_sends_them_to_the_install_page =
+    string_contains(s: consent_step, pattern: "installations/new")
+      && string_contains(s: consent_step, pattern: "choose the repositories")
+      && !string_contains(s: consent_step, pattern: "GITHUB_APP_JWT")
+  unreadable_sends_them_to_the_credential
+    && consent_sends_them_to_the_install_page
+    && (unreadable_step != consent_step)
 }
 
 // A REGISTERED AND INSTALLED APP WHOSE KEY IS GONE IS NOT ACQUIRED, and the receipt says which fact
@@ -648,7 +685,8 @@ test fn w_a_registered_and_installed_app_with_no_key_is_not_acquired() -> Bool {
       match m {
         CustodyMissing { reason: r } => string_contains(s: r as String, pattern: "no private key at")
         RegistrationMissing { reason: _ } => false
-        InstallationMissing { reason: _ } => false
+        InstallationConsentMissing { reason: _ } => false
+        InstallationReadingUnavailable { reason: _ } => false
       }
   }
   refused && string_contains(s: acquisition_standing_line(standing: standing), pattern: "KEY CUSTODY is missing")

@@ -105,7 +105,8 @@ import gunbc.github_app_acquisition {
   census_app_private_key_custody,
   AcquisitionFactMissing,
   RegistrationMissing,
-  InstallationMissing,
+  InstallationConsentMissing,
+  InstallationReadingUnavailable,
   CustodyMissing,
   app_key_supply_intervention,
 }
@@ -1000,17 +1001,28 @@ fn acquisition_receipt_path() -> String {
 // THE REFUSAL NAMES THE NEXT ACT, AND THE ACT IT NAMES IS THE ONE FOR THE FACT THAT IS MISSING. A
 // refusal that told the operator to register when the installation was the gap is how four facts
 // became one word in the first place.
+//
+// AND THE TWO INSTALLATION ARMS PRESCRIBE OPPOSITE ACTS, WHICH IS THE WHOLE REASON THEY ARE TWO ARMS
+// (review 69499). An earlier cut matched one collapsed InstallationMissing arm and discarded its
+// reason, so a stale-JWT 401 -- a state in which the App may ALREADY be installed -- told the
+// operator to go grant a consent. That is this lane's own rule broken one layer along: the reading
+// kept unreadable and empty apart, and the PRESCRIPTION derived from them did not. The discrimination
+// is taken from the arm rather than re-read out of the reason string, because recovering it in the
+// consumer after the type discarded it is the same shape as a wall standing one call away from what
+// it guards.
 fn next_acquisition_step(record: GitHubAppAcquisitionRecord, missing: AcquisitionFactMissing) -> String {
   match missing {
     RegistrationMissing { reason: _ } =>
       "NEXT: run census_app_registration_instruction_receipt, which writes the submission document and names it."
-    InstallationMissing { reason: _ } =>
+    InstallationConsentMissing { reason: _ } =>
       match census_app_installation_instruction(record: record) {
         InstallationInstructionUnavailable { reason: r } =>
           join(["NEXT: no installation step can be addressed: ", r as String], "")
         InstallationInstructionReady { intervention: i, install_url: _ } =>
           join(["NEXT: ", intervention_text(intervention: i)], "")
       }
+    InstallationReadingUnavailable { reason: _ } =>
+      "NEXT: mint a fresh App JWT and export it as GITHUB_APP_JWT, then re-run this receipt. DO NOT go and install the App on the strength of this: the installation fact was NOT READ, so it may already be granted, and a consent flow is not what repairs an unreadable credential."
     CustodyMissing { reason: _ } =>
       join(["NEXT: ", intervention_text(intervention: app_key_supply_intervention(identity: census_app_identity))], "")
   }
