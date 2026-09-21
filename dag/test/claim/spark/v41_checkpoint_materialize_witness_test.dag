@@ -11,10 +11,12 @@ import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { spark_serving_admissible_hosts }
 import gunbc.spark.v41_engram_row_store { V41PublishedSpan }
+import extdeps.tools.sha256sum { sha256sum_byte_span_program }
 import gunbc.spark.v41_checkpoint_materialize {
   V41CheckpointPopulation, V41CheckpointPopulationAdmitted, V41CheckpointPopulationRefused,
   v41_checkpoint_population, v41_checkpoint_bytes, v41_checkpoint_subject, v41_required_bytes,
   v41_group_a_admission, v41_span_read_argv, v41_checkpoint_directory,
+  V41SpanReadOutcome, V41SpanPlanRefused, v41_span_line, v41_span_is_read,
 }
 
 // THE MODE'S PURE DECISIONS, OVER THE REAL ADMITTED POPULATION. Nothing here reaches a host: the
@@ -91,15 +93,17 @@ test fn only_a_group_a_host_is_admitted() -> Bool {
     && (match v41_group_a_admission(raw: "srv1" as HostIdentity, held: held) { Absent => false  Present { value: _ } => true })
 }
 
-// THE SPAN READ IS EXACTLY THE PLANNED REGION, and a failed read cannot pass as an empty stream's digest.
+// THE SPAN READ IS EXACTLY THE PLANNED REGION: the fixed program owned by extdeps.tools.sha256sum,
+// with the shard path, offset and length as its positional operands -- nothing spliced into the text.
 test fn the_span_read_reads_exactly_its_region() -> Bool {
   let argv = v41_span_read_argv(sp: V41PublishedSpan { tensor: "layers.1.engram.embed.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr, file_offset: 664, length: 98305579008 })
-  match get(xs: argv, index: 2) {
-    Absent => false
-    Present { value: script } =>
-      script.contains("set -o pipefail")
-        && script.contains("skip=664 count=98305579008")
-        && script.contains("iflag=skip_bytes,count_bytes")
-        && script.contains(join([v41_checkpoint_directory as String, "/model-00047-of-00048.safetensors"], ""))
-  }
+  argv == ["bash", "-c", sha256sum_byte_span_program as String, "bash", join([v41_checkpoint_directory as String, "/model-00047-of-00048.safetensors"], ""), "664", "98305579008"]
+}
+
+// AN UNPLANNABLE SPAN PLAN IS CARRIED INTO THE RECEIPT, NOT DROPPED: its defects are the line, and the
+// run is not a success on it.
+test fn a_refused_span_plan_reaches_the_receipt() -> Bool {
+  let refused = V41SpanPlanRefused { defects: ["storage-backed tensor layers.1.engram.embed.weight is not exactly one header row" as NonEmptyStr] }
+  v41_span_line(o: refused).contains("span-plan-refused: storage-backed tensor layers.1.engram.embed.weight")
+    && !v41_span_is_read(o: refused)
 }

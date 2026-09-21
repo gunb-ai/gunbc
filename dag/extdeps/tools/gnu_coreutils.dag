@@ -292,3 +292,12 @@ fn timeout_command(duration: Second, kill_after: Second, command: ArgvCommand) -
 // different events: a subject that ran and failed, and a subject that was still running when its
 // deadline arrived. Only the second says the bound did work.
 data coreutils_timeout_expired_exit_code: Int = 124
+
+// THE BYTES AVAILABLE ON THE FILESYSTEM HOLDING A PATH (df(1): -B1 byte units, --output=avail the one
+// column). df prints a header line and then the figure, so the caller reads the last line.
+data df_program: NonEmptyStr = "df"
+
+fn df_available_bytes_argv(path: String) -> List<String> {
+  [df_program as String, "-B1", "--output=avail", path]
+}
+
