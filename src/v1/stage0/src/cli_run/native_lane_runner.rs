@@ -102,7 +102,8 @@ const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 /// THE EMIT PROBE'S EXPECTED REFUSAL, AND WHY THIS CONSTANT IS THE PROBE'S WHOLE POINT.
 ///
 /// The built door CANNOT EMIT A CLOSURE TODAY. Measured on the artifact this preparation produces:
-/// over the fixture root alone it answers `infer_grounding_not_derived` thirty-five times, and over
+/// over the fixture root it refuses with a chain of `infer_grounding_not_derived` ADVISORIES whose
+/// LAST link -- the fatal -- is `translate_rejected_grounding_not_derived`; over
 /// the real corpus it answers a LOCATED `parse_g0_tokens_remain` at
 /// `dag/extdeps/access/posix_effective_principal_read_op.dag`, whose bytes at that offset are the
 /// `service ... { operation ... }` form. Those are COMPILER LIMITATIONS in the emitted front end,
@@ -116,7 +117,15 @@ const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 /// into a permanent regression control asserting the door emits. It is deliberately NOT satisfied
 /// by any non-zero exit: a door that refused for some other reason, or crashed, would establish
 /// nothing about the limitation this row pins.
-const CLI_DOOR_EMIT_LIMITATION: &str = "infer_grounding_not_derived";
+/// THIS CONSTANT PINNED THE ADVISORY UNTIL 2026-09-21, AND THE SUBSTRING DECODER HID IT. It read
+/// `infer_grounding_not_derived` -- what the chain is FULL of, and never the fatal. The original
+/// measurement printed only the chain's HEAD, so the tail was never seen: exactly the error
+/// `v2.cli.compile_cli`'s own annotation warns about ("the head is not the cause"), kept invisible
+/// by a `contains()` that matched the advisory anywhere in the line. Decoding the LAST link
+/// surfaced it on the first real run against the built binary. The corpus already held the answer:
+/// `v2.test.claim.translate_underived_refusal` `translate_refused_canonical_grounding` asserts BOTH
+/// halves -- the fatal is `translate_rejected_grounding_not_derived`, and it is NOT the advisory.
+const CLI_DOOR_EMIT_LIMITATION: &str = "translate_rejected_grounding_not_derived";
 
 /// THE EXACT STATUS A CLI REFUSAL TAKES, AND ANY-NONZERO IS NOT IT.
 ///
@@ -1922,9 +1931,12 @@ mod cli_emit_probe_tests {
     /// designed-fixture failure DESIGN section 3 names, where the claim survives the world it was
     /// written against moving.
     fn located_pinned_refusal() -> String {
-        "REFUSED: the closure did not emit; diagnostic chain: \
-         infer_grounding_not_derived @ <node locus, no file> -> \
-         infer_grounding_not_derived @ <node locus, no file> | FATAL AT <node locus, no file>"
+        // THE REAL SHAPE, transcribed from the built binary's own stderr: a run of
+        // `infer_grounding_not_derived` ADVISORIES and a final
+        // `translate_rejected_grounding_not_derived` FATAL. The advisory in front is what makes this
+        // fixture discriminating -- a decoder matching anywhere in the chain would accept it while
+        // pinning the wrong symbol, which is the defect the first real run exposed.
+        "REFUSED: the closure did not emit; diagnostic chain: infer_grounding_not_derived @ <node occurrence #15> -> infer_grounding_not_derived @ <synthetic node occurrence> -> translate_rejected_grounding_not_derived @ <synthetic node occurrence> | FATAL AT <synthetic node occurrence>"
             .to_string()
     }
 
@@ -1937,7 +1949,7 @@ mod cli_emit_probe_tests {
                 determining_locus,
             } => {
                 assert_eq!(exit_status, 1);
-                assert_eq!(determining_locus, "<node locus, no file>");
+                assert_eq!(determining_locus, "<synthetic node occurrence>");
             }
             other => panic!("expected PinnedRefusalHeld, got {other:?}"),
         }
@@ -1965,7 +1977,7 @@ mod cli_emit_probe_tests {
     /// REFUSED: a DIFFERENT determining reason, whose chain still mentions the pinned word.
     #[test]
     fn a_different_determining_reason_fails() {
-        let stderr = "REFUSED: the closure did not emit; diagnostic chain:                       infer_grounding_not_derived @ <node locus, no file> ->                       parse_g0_tokens_remain @ dag/extdeps/access/posix_effective_principal_read_op.dag                       bytes 1295..1302 | FATAL AT dag/extdeps/access/posix_effective_principal_read_op.dag                       bytes 1295..1302";
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain: infer_grounding_not_derived @ <synthetic node occurrence> -> parse_g0_tokens_remain @ dag/extdeps/access/posix_effective_principal_read_op.dag                       bytes 1295..1302 | FATAL AT dag/extdeps/access/posix_effective_principal_read_op.dag                       bytes 1295..1302";
         match adjudicate_cli_emit_probe(&run(Some(1), "", stderr)) {
             CliEmitProbeVerdict::DeterminingReasonDiffers { determining, locus } => {
                 assert_eq!(determining, "parse_g0_tokens_remain");
@@ -1979,7 +1991,7 @@ mod cli_emit_probe_tests {
     /// delimiter is absent, so this decoded as complete before the delimiter was required.
     #[test]
     fn a_truncated_render_without_the_fatal_delimiter_fails() {
-        let stderr = "REFUSED: the closure did not emit; diagnostic chain:                       infer_grounding_not_derived @ <node locus, no file>";
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain: translate_rejected_grounding_not_derived @ <synthetic node occurrence>";
         assert!(matches!(
             adjudicate_cli_emit_probe(&run(Some(1), "", stderr)),
             CliEmitProbeVerdict::RefusalNotRendered
@@ -1989,7 +2001,7 @@ mod cli_emit_probe_tests {
     /// REFUSED: a MALFORMED render -- an unlocated last link is not the current contract.
     #[test]
     fn an_unlocated_last_link_fails() {
-        let stderr = "REFUSED: the closure did not emit; diagnostic chain:                       infer_grounding_not_derived | FATAL AT <node locus, no file>";
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain: translate_rejected_grounding_not_derived | FATAL AT <synthetic node occurrence>";
         assert!(matches!(
             adjudicate_cli_emit_probe(&run(Some(1), "", stderr)),
             CliEmitProbeVerdict::RefusalNotRendered
