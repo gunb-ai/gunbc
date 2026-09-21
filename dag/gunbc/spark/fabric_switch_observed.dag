@@ -288,6 +288,13 @@ fn fabric_group_wire(g: FabricGroup) -> NonEmptyStr {
   }
 }
 
+// The exact inverse of fabric_group_wire; a word naming no group is no group.
+fn parse_fabric_group(wire: String) -> FabricGroup? {
+  if wire == "group-a" { Present { value: FabricGroupA } }
+  else if wire == "group-b" { Present { value: FabricGroupB } }
+  else { none }
+}
+
 fn fabric_group_hosts(g: FabricGroup) -> List<HostIdentity> {
   map(filter(fabric_lane_observations, o => o.cage == fabric_group_cage(g: g)), o => o.host)
 }

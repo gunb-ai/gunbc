@@ -14,14 +14,15 @@ import gunbc.action_use_admission {
   checkout_action, download_artifact_action, upload_artifact_action,
   admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
 }
-import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
-import gunbc.fleet.org_actions_converge { org_actions_validation_receipt_path }
+import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
+import gunbc.fleet.org_actions_inspection { org_actions_validation_receipt_path }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
+import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
-  r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite,
+  r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite, R2AccountBucketAdmin,
 }
 import gunbc.roadmap_execution_contract { CargoCapability }
 import gunbc.toolchain_home_standing {
@@ -84,13 +85,15 @@ import gunbc.ci_spec {
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
-  gunbc_ci_org_actions_converge_invoke,
-  gunbc_ci_app_control_plane_converge_invoke,
+  gunbc_ci_org_actions_inspect_invoke,
+  gunbc_ci_app_control_plane_inspect_invoke,
   gunbc_ci_app_key_version_verify_mint_script,
   gunbc_ci_app_key_version_verify_verdict_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_mtcollins1_census_image_publish_invoke,
   gunbc_ci_r2_mint_preflight_invoke,
+  gunbc_ci_r2_bucket_ensure_invoke,
+  gunbc_ci_r2_bucket_admin_mint_invoke,
   gunbc_ci_r2_object_write_mint_invoke,
   gunbc_ci_approval_keyring_converge_invoke,
   gunbc_ci_mtcollins1_boot_invoke,
@@ -218,6 +221,8 @@ type FleetConvergeWorkflowMode
   | RunnerPasswordSessionToolConverge
   | MicrovmControllerAppKeyConverge
   | R2MintPreflight
+  | R2BucketEnsure
+  | R2BucketAdminMint
   | R2ObjectWriteMint
   | ApprovalKeyringConverge
   | MtCollins1Boot
@@ -255,6 +260,8 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
     MicrovmControllerAppKeyConverge => "microvm_controller_app_key_converge"
     R2MintPreflight => "r2_mint_preflight"
+    R2BucketEnsure => "r2_bucket_ensure"
+    R2BucketAdminMint => "r2_bucket_admin_mint"
     R2ObjectWriteMint => "r2_object_write_mint"
     ApprovalKeyringConverge => "approval_keyring_converge"
     MtCollins1Boot => "mtcollins1_boot"
@@ -285,8 +292,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, MicrovmControllerAppKeyConverge, AppKeyVersionVerify]
-
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, MicrovmControllerAppKeyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -337,6 +343,8 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     RunnerPasswordSessionToolConverge => none
     MicrovmControllerAppKeyConverge => none
     R2MintPreflight => none
+    R2BucketEnsure => none
+    R2BucketAdminMint => none
     R2ObjectWriteMint => none
     ApprovalKeyringConverge => none
     MtCollins1Boot => none
@@ -358,12 +366,14 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 // inherit the fleet key by omission. The fleet-converge job materializes the fleet key only for a
 // dispatch whose mode consumes it: an API-only read (the org credential observe and the org runner
 // roster read, both of which reach GitHub over gh and open no host session) must not hold host SSH
-// authority it never uses. Three modes are established as not consuming it: the two API-only reads,
-// and the Mt. Collins boot, whose route is BMC/IPMI, SOL and HTTP approval submission with no fleet
-// SSH operation. Every mode that predates this declaration keeps the key it held before, which is
+// authority it never uses. Five modes are established as not consuming it: the two API-only reads;
+// the Mt. Collins boot, whose route is BMC/IPMI, SOL and HTTP approval submission with no fleet
+// SSH operation; and the two R2 modes, whose route is api.cloudflare.com and
+// secretmanager.googleapis.com over HTTPS as the run's own federated identity, opening no host
+// session either. Every mode that predates this declaration keeps the key it held before, which is
 // the status quo rather than a finding that it needs it; a mode added AFTER it has no prior standing
 // to keep, so its arm is derived from its operation route (the approval keyring converge executes
-// over fleet SSH to srv1 and consumes it).
+// over fleet SSH to srv1 and consumes it; the R2 modes reach no host and do not).
 //
 // THE ENUMERATION BEHIND THAT SENTENCE, kept because the route is the whole argument and the
 // sentence above only names it. Every transport the closure of mtcollins1_boot_wet reaches, with the
@@ -393,11 +403,28 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 // contributes operator_host_srv1 (a host record), neither of which opens a session.
 type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
 
+// THE TWO MODES ADDED BY gunbc#11484 REACHED THIS MATCH LAST, AND ARE REPAIRED HERE RATHER THAN
+// LEFT AS FOUND (2026-09-20). That change added ApprovalKeyringConverge and MtCollins1Boot to
+// FleetConvergeWorkflowMode and updated two of the three matches over it; this one was missed, so
+// gunbc.instruments.generated_artifact_gate failed to resolve with "non-exhaustive match: missing
+// variant(s) ApprovalKeyringConverge, MtCollins1Boot" and the heal job refused. The file is
+// byte-identical to main, so the defect is main's rather than this branch's; it is fixed here
+// because a branch cannot go green around it and DESIGN 6b is explicit that a link read and found
+// wrong is followed rather than left.
+//
+// BOTH ANSWER FleetSshKeyConsumed, AND THE DIRECTION IS THE ARGUMENT. Every mode that acts on a host
+// consumes the key; only the two org-roster OBSERVE modes do not. A converge and a boot both act on
+// hosts, so they follow the pattern -- and the two errors are not symmetric: declaring the key
+// consumed when it is not provisions something unnecessarily, while declaring it unconsumed when it
+// is leaves the workflow without a key it needs. The conservative arm is the one that cannot strand
+// a converge.
 fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> FleetSshKeyDemand {
   match mode {
     OrgActionsObserve => FleetSshKeyNotConsumed
     OrgRunnerRosterObserve => FleetSshKeyNotConsumed
     AppKeyVersionVerify => FleetSshKeyNotConsumed
+    R2BucketEnsure => FleetSshKeyNotConsumed
+    R2BucketAdminMint => FleetSshKeyNotConsumed
     FullHostPlan => FleetSshKeyConsumed
     LaunchEnvironmentPlan => FleetSshKeyConsumed
     AllocationStorePlan => FleetSshKeyConsumed
@@ -1403,7 +1430,7 @@ fn fleet_converge_org_actions_step() -> Step {
   RunStep {
     name: Present { value: "Org Actions credential validation + read-only settings diff" },
     id: Present { value: "org_actions_observe" },
-    run: gunbc_ci_org_actions_converge_invoke(),
+    run: gunbc_ci_org_actions_inspect_invoke(),
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -1459,7 +1486,7 @@ fn fleet_converge_app_control_plane_step() -> Step {
   RunStep {
     name: Present { value: "GitHub App control plane: registration + webhook config observation" },
     id: Present { value: "app_control_plane_observe" },
-    run: gunbc_ci_app_control_plane_converge_invoke(),
+    run: gunbc_ci_app_control_plane_inspect_invoke(),
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -1496,6 +1523,8 @@ fn fleet_converge_app_control_plane_step() -> Step {
 // short-lived access token the WIF auth step mints for THIS run, read in-process by
 // gunbc.auth.access_token_source rather than interpolated into a command line.
 data fleet_converge_r2_mint_preflight_step_if: String = fleet_converge_mode_step_if(mode: R2MintPreflight)
+data fleet_converge_r2_bucket_ensure_step_if: String = fleet_converge_mode_step_if(mode: R2BucketEnsure)
+data fleet_converge_r2_bucket_admin_mint_step_if: String = fleet_converge_mode_step_if(mode: R2BucketAdminMint)
 data fleet_converge_r2_object_write_mint_step_if: String = fleet_converge_mode_step_if(mode: R2ObjectWriteMint)
 
 // ── THE APP-KEY VERSION VERIFIER ─────────────────────────────────────────────────────────────
@@ -1697,6 +1726,87 @@ fn fleet_converge_r2_mint_preflight_receipt_upload_step() -> Step {
     ] },
     env: none,
     if_condition: Present { value: fleet_converge_r2_mint_preflight_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE BUCKET ENSURE IS ITS OWN MODE, NOT A PREFIX OF THE MINT. It is the one R2 step whose effect is
+// idempotent under readback (a Create only on an established absence, confirmed by a second Get), and
+// it answers a question -- is the account entitled, does each allocated bucket exist -- worth asking
+// on its own at any time. Fusing it into the mint would make that question unaskable without also
+// minting a non-idempotent token.
+fn fleet_converge_r2_bucket_ensure_step() -> Step {
+  RunStep {
+    name: Present { value: "R2 bucket ensure: entitlement + bucket existence per allocated purpose (create on absence, readback)" },
+    id: Present { value: "r2_bucket_ensure" },
+    run: gunbc_ci_r2_bucket_ensure_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_r2_bucket_ensure_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// always(): a refusing run -- an unentitled account, a bucket in the wrong jurisdiction -- is the run
+// whose receipt names what to do, and the entry writes the receipt before it fails.
+fn fleet_converge_r2_bucket_ensure_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload R2 bucket ensure receipt" },
+    id: Present { value: "r2_bucket_ensure_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "r2-bucket-ensure")),
+      kv(key: "path", value: yaml_string(s: r2_bucket_ensure_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_r2_bucket_ensure_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE BUCKET-ADMIN MINT IS THE OBJECT-WRITE MINT'S STEP AT ANOTHER PROFILE: same fold, same custody
+// bracket, same attempt-scoped orphan receipt, a disjoint container. It precedes r2_bucket_ensure,
+// which signs with the token this mints and refuses naming this mode until it is pinned.
+fn fleet_converge_r2_bucket_admin_mint_step() -> Step {
+  RunStep {
+    name: Present { value: "R2 bucket-admin token mint (AccountTokens.Create + Secret Manager custody)" },
+    id: Present { value: "r2_bucket_admin_mint" },
+    run: gunbc_ci_r2_bucket_admin_mint_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_r2_bucket_admin_mint_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_r2_bucket_admin_mint_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload R2 bucket-admin mint receipt (token id + custody version resource; no secret)" },
+    id: Present { value: "r2_bucket_admin_mint_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "r2-bucket-admin-mint-receipt")),
+      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+        scope: fleet_converge_r2_mint_receipt_scope(),
+        profile: R2AccountBucketAdmin,
+      ))),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_r2_bucket_admin_mint_step_if], "") },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -2263,6 +2373,10 @@ fn fleet_converge_job() -> Job {
         fleet_converge_mtcollins1_census_image_publish_receipt_upload_step(),
         fleet_converge_r2_mint_preflight_step(),
         fleet_converge_r2_mint_preflight_receipt_upload_step(),
+        fleet_converge_r2_bucket_admin_mint_step(),
+        fleet_converge_r2_bucket_admin_mint_receipt_upload_step(),
+        fleet_converge_r2_bucket_ensure_step(),
+        fleet_converge_r2_bucket_ensure_receipt_upload_step(),
         fleet_converge_r2_object_write_mint_step(),
         fleet_converge_r2_object_write_mint_receipt_upload_step(),
         fleet_converge_approval_keyring_converge_step(),

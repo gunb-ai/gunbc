@@ -1,0 +1,423 @@
+module test.claim.spark.pair_serving_d0_front_door_real_execution
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, FilePath, List, Int, Port }
+import v2.std.optional { Present, Absent }
+import std.measure { second }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.python
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { trim }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
+
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
+import gunbc.harness.harness_backend { HarnessBoundedPresence, HarnessResponded, HarnessConnectFailed, HarnessDeadline, HarnessTransportUnread, harness_bounded_presence, harness_models_url }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
+import gunbc.spark.pair_serving_authority { FencedRefusal, pair_serving_authority_for }
+import gunbc.spark.serving_incarnation_observe { UnitInstalled, EndpointListenerReading, EndpointNoListener, EndpointListening, EndpointListenerUnread, read_endpoint_listener }
+import gunbc.host_effect { LocalShell }
+import gunbc.spark.pair_incumbent_identity { DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, AuthorityTransitionAppended, pair_serving_authority_transition, AuthorityEstablishedAt, AuthorityEstablishmentRefused, pair_serving_authority_establish }
+import gunbc.spark.pair_serving_d0 {
+  FrontDoorReading, FrontDoorNoStatus, FrontDoorAnsweredUnread, FrontDoorUnread, FrontDoorAnswered, observe_front_door, front_door_as_incumbent,
+  IncumbentReading, IncumbentAnsweredUnread, IncumbentDidNotAnswer, IncumbentRouteUnread, D0Observation, RankOccupancyReading,
+  HeadEndpointReading, HeadEndpointQuiet, HeadEndpointListening, HeadEndpointUnread,
+  D0Outcome, D0Settled, D0Decision, D0DecidedFence, D0DecidedSuspend, D0Cause, D0IncumbentUnidentified, D0OccupancyUnread, DeclaredOccupantDrifted, d0_transaction,
+  AdmittedD0Grant, D0GrantAdmitted, admit_d0_grant, D0Subject, d0_intent_hash, d0_authorized_action,
+}
+import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, Unclaimed, AuthorizationScope, AttemptIdentity }
+import std.effect_grant { Write, NamespacePosition, CodeNameTree }
+import gunbc.spark.released_baseline { QuiescentReservedBaseline }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE HTTP-STATUS DISTINCTION AT ITS PRODUCTION INTERFACE, BY REAL EXECUTION. The D0 decision has
+// hermetic controls over a SUPPLIED IncumbentAnsweredUnread; what none of them can notice is the
+// transport regaining curl's -f, or the %{http_code} binding drifting, after which a 500 would read
+// as silence again and the supplied-arm claims would stay green. So a local listener that answers
+// one chosen status is started, the real http.Client.StatusWithin is run against it through
+// harness_bounded_presence and observe_front_door, and the reading is carried through the real
+// transaction to FencedRefusal on the log. The listener is CPython's http.server, forked into the
+// background by the fixture below, which prints the port and pid; it is killed at the end of the
+// scenario and exits by itself after a bounded lifetime if the kill never comes.
+
+data d0fd_listener_fixture: String = "import http.server, os, socketserver, sys, threading, time\nstatus = int(sys.argv[1]) if sys.argv[1] != 'hang' else 0\nlifetime = float(sys.argv[2])\nclass H(http.server.BaseHTTPRequestHandler):\n    def do_GET(self):\n        if status == 0:\n            time.sleep(lifetime)\n            return\n        self.send_response(status)\n        self.send_header('Content-Length', '0')\n        self.end_headers()\n    def log_message(self, *a):\n        pass\nsocketserver.TCPServer.allow_reuse_address = True\nsrv = socketserver.TCPServer(('127.0.0.1', 0), H)\nport = srv.server_address[1]\npid = os.fork()\nif pid:\n    sys.stdout.write('%d %d\\n' % (port, pid))\n    sys.stdout.flush()\n    os._exit(0)\nos.setsid()\nnull = os.open(os.devnull, os.O_RDWR)\nos.dup2(null, 0)\nos.dup2(null, 1)\nos.dup2(null, 2)\nthreading.Thread(target=srv.serve_forever, daemon=True).start()\ntime.sleep(lifetime)\nos._exit(0)\n"
+
+data d0fd_kill_fixture: String = "import os, signal, sys\nos.kill(int(sys.argv[1]), signal.SIGTERM)\n"
+
+type D0fdListener {
+  port: Int
+  pid: Int
+}
+
+fn d0fd_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+fn d0fd_parse_listener(out: String) -> D0fdListener? {
+  let parts = split(s: trim(s: out), delimiter: " ")
+  match get(xs: parts, index: 0) {
+    Absent => none
+    Present { value: p } =>
+      match get(xs: parts, index: 1) {
+        Absent => none
+        Present { value: q } =>
+          match parse_int(s: p) {
+            Absent => none
+            Present { value: port } =>
+              match parse_int(s: q) {
+                Absent => none
+                Present { value: pid } => Present { value: D0fdListener { port: port, pid: pid } }
+              }
+          }
+      }
+  }
+}
+
+// A listener answering `status` for the scenario, killed afterwards whatever the scenario says.
+fn d0fd_with_listener(dir: FilePath, status: String, scenario: fn(D0fdListener) -> Bool) -> Bool {
+  let script = join([dir as String, "/listener.py"], "")
+  let kill = join([dir as String, "/kill.py"], "")
+  let w1 = Filesystem.Write(path: script, content: d0fd_listener_fixture)
+  let w2 = Filesystem.Write(path: kill, content: d0fd_kill_fixture)
+  if !w1.success || !w2.success { false } else {
+    let run = python.Interpreter.RunFile(workdir: dir, script_path: script as FilePath, args: [status, "60"])
+    if !run.success { false } else {
+      match d0fd_parse_listener(out: run.stdout) {
+        Absent => false
+        Present { value: l } => {
+          let observed = scenario(l)
+          let killed = python.Interpreter.RunFile(workdir: dir, script_path: kill as FilePath, args: [to_string(l.pid)])
+          observed && killed.success
+        }
+      }
+    }
+  }
+}
+
+fn d0fd_port(n: Int) -> Port {
+  n
+}
+
+fn d0fd_endpoint(port: Int) -> ServingRouteEndpoint {
+  d0fd_endpoint_at(address: "127.0.0.1", port: port)
+}
+
+fn d0fd_endpoint_at(address: String, port: Int) -> ServingRouteEndpoint {
+  ServingRouteEndpoint { group: FabricGroupA, address: address as NonEmptyStr, port: d0fd_port(n: port) }
+}
+
+// The head's endpoint reading over the LOCAL host: the kernel's socket tables for a LISTEN on
+// the port. (The engine-process scan half runs over the fleet ssh leg and is not driven here.)
+fn d0fd_head_endpoint(port: Int) -> HeadEndpointReading {
+  match read_endpoint_listener(transport: LocalShell, port: d0fd_port(n: port)) {
+    EndpointNoListener { port: _ } => HeadEndpointQuiet
+    EndpointListening { port: p, rows: rs } => HeadEndpointListening { port: p, rows: rs }
+    EndpointListenerUnread { port: _, cause: c } => HeadEndpointUnread { cause: c as NonEmptyStr }
+  }
+}
+
+fn d0fd_status_is(p: HarnessBoundedPresence, status: String) -> Bool {
+  match p {
+    HarnessResponded { status: s } => s == status
+    _ => false
+  }
+}
+
+// 500 and 401 are ANSWERS -- the transport reports the status, the front door reads as answered
+// and unread, and the incumbent reading fences. No listener (the port just vacated) is SILENCE:
+// no HTTP response, the front door reads silent, and the incumbent reading is absence.
+test fn an_error_status_is_an_answer_and_no_listener_is_silence_by_real_execution() -> Bool {
+  d0fd_with_temp_dir(scenario: fn(dir) {
+    d0fd_with_listener(dir: dir, status: "500", scenario: fn(l) {
+      d0fd_status_is(p: harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: l.port))), status: "500")
+        && (match observe_front_door(endpoint: d0fd_endpoint(port: l.port)) { FrontDoorAnsweredUnread { cause: c } => (c as String).contains("HTTP 500")  _ => false })
+        && (match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: l.port)), head: fn() { HeadEndpointQuiet }) { Present { value: IncumbentAnsweredUnread { cause: _ } } => true  _ => false })
+    })
+      && d0fd_with_listener(dir: dir, status: "401", scenario: fn(l) {
+        d0fd_status_is(p: harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: l.port))), status: "401")
+          && (match observe_front_door(endpoint: d0fd_endpoint(port: l.port)) { FrontDoorAnsweredUnread { cause: _ } => true  _ => false })
+      })
+      && d0fd_with_listener(dir: dir, status: "200", scenario: fn(l) {
+        d0fd_status_is(p: harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: l.port))), status: "200")
+          && (match observe_front_door(endpoint: d0fd_endpoint(port: l.port)) { FrontDoorAnswered => true  _ => false })
+          && (match front_door_as_incumbent(r: FrontDoorAnswered, head: fn() { HeadEndpointQuiet }) { Absent => true  Present { value: _ } => false })
+      })
+  })
+}
+
+// The port a killed listener vacated fails to connect (curl 7): the same transport, the same bound,
+// and the one failure arm under which absence can still be established -- on the head, below.
+test fn a_vacated_port_reads_as_no_response_by_real_execution() -> Bool {
+  d0fd_with_temp_dir(scenario: fn(dir) {
+    match d0fd_vacated_port(dir: dir) {
+      Absent => false
+      Present { value: port } =>
+        (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: port))) { HarnessConnectFailed { url: _, curl_exit: code } => code == 7  _ => false })
+          && (match observe_front_door(endpoint: d0fd_endpoint(port: port)) { FrontDoorNoStatus { receipt: _ } => true  _ => false })
+          && (match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: port)), head: fn() { HeadEndpointQuiet }) { Present { value: IncumbentDidNotAnswer { receipt: _, head: HeadEndpointQuiet } } => true  _ => false })
+    }
+  })
+}
+
+// A LISTENER THAT ACCEPTS AND NEVER ANSWERS IS NOT ABSENCE. The fixture in `hang` mode accepts the
+// connection and writes no status line; after the front-door bound curl exits 28, the presence
+// reading is AcceptedNoAnswer, the front door is Unread, the incumbent reading is RouteUnread --
+// and through the transaction the group is FENCED at generation 2, never suspended as absent.
+test fn a_listener_that_accepts_and_never_answers_fences_rather_than_reading_as_absent_by_real_execution() -> Bool {
+  d0fd_with_hash(scenario: fn(h) {
+    d0fd_with_temp_dir(scenario: fn(dir) {
+      let store = d0fd_witness_layout(dir: dir)
+      d0fd_witness_remote_ready(dir: dir)
+        && d0fd_with_listener(dir: dir, status: "hang", scenario: fn(l) {
+          (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: l.port))) { HarnessDeadline { url: _ } => true  _ => false })
+            && (match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: l.port)), head: fn() { HeadEndpointQuiet }) { Present { value: IncumbentRouteUnread { cause: _ } } => true  _ => false })
+            && (match d0fd_w_admitted(store: store, successor: h) {
+                  Absent => false
+                  Present { value: admitted } =>
+                    (match d0_transaction(store: store, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: admitted, transaction: "tx-front-door" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z",
+                           observe: fn(g) {
+                             D0Observation {
+                               group: g,
+                               incumbent: match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: l.port)), head: fn() { HeadEndpointQuiet }) {
+                                 Present { value: r } => r
+                                 Absent => IncumbentDidNotAnswer { receipt: "witness: the front door answered 2xx, which this fixture does not" as NonEmptyStr, head: HeadEndpointQuiet }
+                               },
+                               ranks: [] as List<RankOccupancyReading>,
+                             }
+                           }) {
+                       D0Settled { decision: D0DecidedFence { next: _, cause: D0OccupancyUnread { cause: _ } }, generation: g2, receipt_path: _, entry_state: _ } => g2 == 2
+                       _ => false
+                     })
+                })
+        })
+    })
+  })
+}
+
+// Start a listener, kill it, and hand back its port -- vacated, since the kill's success is
+// checked before the port is returned.
+fn d0fd_vacated_port(dir: FilePath) -> Int? {
+  let script = join([dir as String, "/listener.py"], "")
+  let kill = join([dir as String, "/kill.py"], "")
+  let w1 = Filesystem.Write(path: script, content: d0fd_listener_fixture)
+  let w2 = Filesystem.Write(path: kill, content: d0fd_kill_fixture)
+  if !w1.success || !w2.success { none } else {
+    let run = python.Interpreter.RunFile(workdir: dir, script_path: script as FilePath, args: ["204", "60"])
+    if !run.success { none } else {
+      match d0fd_parse_listener(out: run.stdout) {
+        Absent => none
+        Present { value: l } => {
+          let killed = python.Interpreter.RunFile(workdir: dir, script_path: kill as FilePath, args: [to_string(l.pid)])
+          if killed.success { Present { value: l.port } } else { none }
+        }
+      }
+    }
+  }
+}
+
+// ── THROUGH THE TRANSACTION TO THE LOG ─────────────────────────────────────────────────────────
+
+fn d0fd_witness_layout(dir: FilePath) -> FabricStorageBinding {
+  FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr) }
+}
+
+// A ready remote has group A's source row ESTABLISHED on its partition (the log's durable
+// genesis) at 990, before any scenario event.
+fn d0fd_witness_remote_ready(dir: FilePath) -> Bool {
+  (match fabric_storage_file_root_ensure(root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr)) { FabricStorageRootReady => true  _ => false })
+    && (match pair_serving_authority_for(group: FabricGroupA) {
+          Absent => false
+          Present { value: desired } =>
+            match pair_serving_authority_establish(store: d0fd_witness_layout(dir: dir), group: FabricGroupA, authority: desired, actor: "witness" as NonEmptyStr, at: 990) { AuthorityEstablishedAt { id: _ } => true  AuthorityEstablishmentRefused { group: _, step: _, reason: _ } => false }
+        })
+}
+
+fn d0fd_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
+  match sha256_hex_digest(hex: "4444444444444444444444444444444444444444444444444444444444444444") {
+    Absent => false
+    Present { value: d } => scenario(Sha256Hash(d))
+  }
+}
+
+fn d0fd_w_admitted(store: FabricStorageBinding, successor: ContentHash) -> AdmittedD0Grant? {
+  d0fd_w_admitted_as(store: store, successor: successor, tx: "tx-front-door" as NonEmptyStr, esc: "esc-front-door" as NonEmptyStr)
+}
+
+fn d0fd_w_admitted_as(store: FabricStorageBinding, successor: ContentHash, tx: NonEmptyStr, esc: NonEmptyStr) -> AdmittedD0Grant? {
+  let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+  match d0_intent_hash(subject: subject, group: FabricGroupA, transaction: tx) {
+    Absent => none
+    Present { value: intent } => {
+      let auth = AuthorizationGranted {
+        grant: OperatorGrant {
+          escalation_id: esc,
+          subject: subject,
+          scopes: [AuthorizationScope { verb: Write, resource: NamespacePosition { tree: CodeNameTree, path: ["gunbc", "spark", "pair_serving_authority"] }, action: d0_authorized_action }],
+          purpose: "witness d0 front door" as NonEmptyStr,
+          attempt: (tx as String) as AttemptIdentity,
+          intent_hash: intent,
+          granted_by: "witness" as NonEmptyStr,
+          granted_at: "2026-09-18T00:00:00Z",
+          expires_at: "2026-09-19T00:00:00Z",
+        },
+        claim: Unclaimed,
+      }
+      match admit_d0_grant(store: store, authorization: auth, escalation_id: esc, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), transaction: tx, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z") {
+        D0GrantAdmitted { admitted: a } => Present { value: a }
+        _ => none
+      }
+    }
+  }
+}
+
+// A front door answering 500, read by the real transport INSIDE the transaction's observer (under
+// the pending state, as production reads it), reaches D0DecidedFence with the unidentified-
+// incumbent cause and FencedRefusal on the log at generation 2 -- the ranks never consulted.
+test fn a_front_door_answering_500_fences_the_group_through_the_transaction_by_real_execution() -> Bool {
+  d0fd_with_hash(scenario: fn(h) {
+    d0fd_with_temp_dir(scenario: fn(dir) {
+      let store = d0fd_witness_layout(dir: dir)
+      d0fd_witness_remote_ready(dir: dir)
+        && d0fd_with_listener(dir: dir, status: "500", scenario: fn(l) {
+          match d0fd_w_admitted(store: store, successor: h) {
+            Absent => false
+            Present { value: admitted } =>
+              (match d0_transaction(store: store, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: admitted, transaction: "tx-front-door" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z",
+                     observe: fn(g) {
+                       D0Observation {
+                         group: g,
+                         incumbent: match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: l.port)), head: fn() { HeadEndpointQuiet }) {
+                           Present { value: r } => r
+                           Absent => IncumbentDidNotAnswer { receipt: "witness: the front door answered 2xx, which this fixture does not" as NonEmptyStr, head: HeadEndpointQuiet }
+                         },
+                         ranks: [] as List<RankOccupancyReading>,
+                       }
+                     }) {
+                 D0Settled { decision: D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: _ } }, generation: g2, receipt_path: _, entry_state: _ } => g2 == 2
+                 _ => false
+               })
+                && (match current_pair_serving_authority(store: store, group: FabricGroupA, at: 1001) {
+                      CurrentAuthorityRead { authority: FencedRefusal { group: _, cause: c, disposition_authority: _ }, head: _, generation: g, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => g == 2 && (c as String).contains("HTTP 500")
+                      _ => false
+                    })
+          }
+        })
+    })
+  })
+}
+
+// A FAILED CONNECT IS NOT ABSENCE BY ITSELF. The same vacated port, read inside the transaction:
+// with the head's declared unit ACTIVE the group is fenced (a listener the route did not reach);
+// with every declared unit installed and inactive, absence is corroborated on the head and the
+// group is suspended drifted-eligible.
+fn d0fd_ranks(head_active: Bool) -> List<RankOccupancyReading> {
+  match declared_pair_realization(group: FabricGroupA) {
+    DeclaredPairRealizationUnavailable { group: _, obligation: _ } => [] as List<RankOccupancyReading>
+    DeclaredPairRealizationKeyed { declared: d } =>
+      concat(
+        [RankOccupancyReading { host: d.head.host, unit_name: d.head.unit_name, occupancy: UnitInstalled { active: head_active, unit_digest: d.head.digest } }],
+        map(d.workers, w => RankOccupancyReading { host: w.host, unit_name: w.unit_name, occupancy: UnitInstalled { active: false, unit_digest: w.digest } }),
+      )
+  }
+}
+
+fn d0fd_observe_vacated(port: Int, head_active: Bool, g: FabricGroup) -> D0Observation {
+  D0Observation {
+    group: g,
+    incumbent: match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: port)), head: fn() { d0fd_head_endpoint(port: port) }) {
+      Present { value: r } => r
+      Absent => IncumbentAnsweredUnread { cause: "witness: a vacated port answered" as NonEmptyStr }
+    },
+    ranks: d0fd_ranks(head_active: head_active),
+  }
+}
+
+test fn a_failed_connect_fences_under_an_active_head_unit_and_suspends_only_under_a_quiet_one_by_real_execution() -> Bool {
+  d0fd_with_hash(scenario: fn(h) {
+    d0fd_with_temp_dir(scenario: fn(dir) {
+      let store = d0fd_witness_layout(dir: dir)
+      d0fd_witness_remote_ready(dir: dir)
+        && (match d0fd_vacated_port(dir: dir) {
+              Absent => false
+              Present { value: port } =>
+                match d0fd_w_admitted(store: store, successor: h) {
+                  Absent => false
+                  Present { value: admitted } =>
+                    (match d0_transaction(store: store, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: admitted, transaction: "tx-front-door" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z", observe: fn(g) { d0fd_observe_vacated(port: port, head_active: true, g: g) }) {
+                       D0Settled { decision: D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: _ } }, generation: g2, receipt_path: _, entry_state: _ } => g2 == 2
+                       _ => false
+                     })
+                      && (match current_pair_serving_authority(store: store, group: FabricGroupA, at: 1001) {
+                            CurrentAuthorityRead { authority: fenced, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
+                              match pair_serving_authority_for(group: FabricGroupA) {
+                                Absent => false
+                                Present { value: resting } =>
+                                  match pair_serving_authority_transition(store: store, group: FabricGroupA, expected: fenced, next: resting, transaction: "tx-operator-restore" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
+                                    AuthorityTransitionAppended { id: _, generation: g3, next: _ } => g3 == 3
+                                    _ => false
+                                  }
+                              }
+                            _ => false
+                          })
+                      && (match d0fd_w_admitted_as(store: store, successor: h, tx: "tx-front-door-2" as NonEmptyStr, esc: "esc-front-door-2" as NonEmptyStr) {
+                            Absent => false
+                            Present { value: second } =>
+                              match d0_transaction(store: store, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: second, transaction: "tx-front-door-2" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1002, now: "2026-09-18T00:00:02Z", observe: fn(g) { d0fd_observe_vacated(port: port, head_active: false, g: g) }) {
+                                D0Settled { decision: D0DecidedSuspend { next: _, reconciliation: DeclaredOccupantDrifted { drifted: ds } }, generation: g5, receipt_path: _, entry_state: _ } => g5 == 5 && length(ds) == 4
+                                _ => false
+                              }
+                          })
+                }
+            })
+    })
+  })
+}
+
+// A LISTENER THE ROUTE DID NOT REACH. The fixture listens on 127.0.0.1:P; the door is asked at
+// 127.0.0.2:P, where nothing accepts, so curl exits 7 (a failed connect, exactly what a broken
+// route produces). The head's socket tables, read on this host through the real procfs
+// operation, show the LISTEN on P: the head endpoint reads Listening, and through the transaction
+// the group is FENCED as an unidentified incumbent -- never suspended as absent. Once the listener
+// is killed the same tables read no listener on P.
+test fn a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_real_execution() -> Bool {
+  d0fd_with_hash(scenario: fn(h) {
+    d0fd_with_temp_dir(scenario: fn(dir) {
+      let store = d0fd_witness_layout(dir: dir)
+      d0fd_witness_remote_ready(dir: dir)
+        && d0fd_with_listener(dir: dir, status: "200", scenario: fn(l) {
+          (match read_endpoint_listener(transport: LocalShell, port: d0fd_port(n: l.port)) { EndpointListening { port: p, rows: rs } => (p as Int) == l.port && length(rs) >= 1  _ => false })
+            && (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint_at(address: "127.0.0.2", port: l.port))) { HarnessConnectFailed { url: _, curl_exit: code } => code == 7  _ => false })
+            && (match d0fd_w_admitted(store: store, successor: h) {
+                  Absent => false
+                  Present { value: admitted } =>
+                    match d0_transaction(store: store, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: admitted, transaction: "tx-front-door" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z",
+                          observe: fn(g) {
+                            D0Observation {
+                              group: g,
+                              incumbent: match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint_at(address: "127.0.0.2", port: l.port)), head: fn() { d0fd_head_endpoint(port: l.port) }) {
+                                Present { value: r } => r
+                                Absent => IncumbentAnsweredUnread { cause: "witness: 127.0.0.2 answered" as NonEmptyStr }
+                              },
+                              ranks: d0fd_ranks(head_active: false),
+                            }
+                          }) {
+                      D0Settled { decision: D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: c } }, generation: g2, receipt_path: _, entry_state: _ } => g2 == 2 && (c as String).contains("LISTEN")
+                      _ => false
+                    }
+                })
+        })
+        && (match d0fd_vacated_port(dir: dir) {
+              Absent => false
+              Present { value: port } => match read_endpoint_listener(transport: LocalShell, port: d0fd_port(n: port)) { EndpointNoListener { port: _ } => true  _ => false }
+            })
+    })
+  })
+}

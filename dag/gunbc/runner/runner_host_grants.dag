@@ -457,5 +457,17 @@ fn bootstrap_principal_is_not_the_grantee(
   bootstrap: ExecutorBootstrapPrincipal,
   deploy: RunnerHostDeploy,
 ) -> Bool {
-  bootstrap.login != deploy.job_user
+  bootstrap_principal_is_not_the_job_user(bootstrap: bootstrap, job_user: deploy.job_user)
+}
+
+// THE SAME LAW OVER THE JOB USER ALONE. A deploy row is a spec plus an ADMITTED WIDTH, and the
+// privilege law does not depend on the width: whether the writer is the account CI jobs run as is a
+// fact about the two principals, not about how many slots a host admits. A custody converge that
+// resolves its host from runner_host_spec_for asks this directly rather than re-spelling the
+// comparison, so the law has one authority and the deploy arm above is one caller of it.
+fn bootstrap_principal_is_not_the_job_user(
+  bootstrap: ExecutorBootstrapPrincipal,
+  job_user: NonEmptyStr,
+) -> Bool {
+  bootstrap.login != job_user
 }
