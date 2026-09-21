@@ -48,8 +48,6 @@ import gunbc.typed_remote_file_write {
 import gunbc.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
 import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_job_user }
 import gunbc.live_deploy.member_observe { path_parent, path_basename, parent_listing_argv, listing_contains_entry }
-import extdeps.exec.command { argv_words }
-import extdeps.tools.stat { stat_file_type_command }
 import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate }
 import gunbc.runner_host_file_converge {
   administrator_ssh_target,
@@ -64,6 +62,7 @@ import gunbc.runner_host_file_converge {
   HostFileMetadataUnread,
   classify_host_file_path,
   runner_host_file_settled_standing,
+  runner_host_file_metadata_probe_argv,
   runner_host_file_standing_of_report,
   RunnerHostPathMetadata,
   PathsRootOnly,
@@ -708,7 +707,7 @@ fn key_content_path_standing(
 fn observe_key_content(subject: ControllerKeyHost, context: FleetSshExecutionContext, write: TypedRemoteFileWrite) -> RunnerHostFileStanding
   uses net: Network
 {
-  match run_elevated_leg(subject: subject, context: context, argv: argv_words(command: stat_file_type_command(path: write.path as String)), stdin_payload: "") {
+  match run_elevated_leg(subject: subject, context: context, argv: runner_host_file_metadata_probe_argv(path: write.path as String), stdin_payload: "") {
     ElevatedLegRefused { reason: r } => HostFileUnobservable { reason: r }
     ElevatedLegRan { exit_code: pc, stdout: po, stderr: pe } =>
       match key_content_path_standing(subject: subject, context: context, path: write.path as String, reading: classify_host_file_metadata(exit_code: pc, stdout: po, stderr: pe)) {
