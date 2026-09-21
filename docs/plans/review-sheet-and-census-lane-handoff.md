@@ -49,9 +49,24 @@ three independent readings (the public app record, `GET /app/installations`, the
 exit zero only when all three hold. #11677's JWS/token route still consumes an App and an
 installation that have already been admitted; it creates neither.
 
-**What is still owed is the two browser acts and nothing else in the model.** No receipt in this
+**The two browser acts are owed, and they are NOT sufficient on their own.** No receipt in this
 corpus establishes registration, installation or custody for the census App today, and the
-acquisition receipt says so in those words rather than reading as done.
+acquisition receipt says so in those words rather than reading as done. But an earlier wording of
+this paragraph said the browser acts were all that remained "in the model", and the diff it
+described contradicts it: `live_installation_population` returns `PopulationUnreadable` on *every*
+arm, including a successful decode, because this repository's REST transport models request headers
+only and GitHub states whether another page exists solely in the RFC 8288 `Link` header. A short or
+empty page is not closure. So after an operator submits the manifest, grants consent and places the
+pem, `census_app_acquisition_receipt` still exits non-zero with `InstallationReadingUnavailable`.
+
+**What is also owed is that transport capability**, and it is declared rather than described:
+`census_app_installation_population_frontier_rows` names it — a REST operation result carrying the
+response's `Link` header value, sufficient for admitting an installation over a population the
+authority itself closed, and explicitly NOT satisfied by a larger `per_page`, by stopping at a short
+or empty page, or by routing the read through a CLI whose credential a PAT could satisfy. That
+refusal is the honest state and should not be relaxed to make the runbook end green; the operator
+should know before they start that the browser acts leave the receipt refusing for a reason that is
+not theirs to fix.
 
 **Custody's second hop is pending a sibling lane.** The declared destination for the App private
 key is `census_app_private_key_custody` in Secret Manager. This process cannot write there, so
