@@ -126,6 +126,15 @@ fn beat(n: Int, anon: Int, file: Int, shmem: Int, unevictable: Int, stall: Int) 
   seamed_beat(n: n, seam: SeamUnrecorded, anon: anon, file: file, shmem: shmem, unevictable: unevictable, stall: stall)
 }
 
+// THE RATE OF A BEAT THAT READ ONE, for claims that assert a specific figure. StallUnread answers
+// false rather than matching any n: "we could not tell" is not a reading, so it cannot equal one.
+fn stall_rate_is(b: FloorMemoryStatBeat, n: Int) -> Bool {
+  match b.stall {
+    StallUnread => false
+    StallRead { rate: r } => events_per_minute_count(r: r) == n
+  }
+}
+
 fn seamed_beat(n: Int, seam: FloorSeam, anon: Int, file: Int, shmem: Int, unevictable: Int, stall: Int) -> FloorMemoryStatBeat {
   FloorMemoryStatBeat {
     beat: n, seam: seam, charge: byte_size(anon + file + 10),
@@ -250,15 +259,15 @@ test fn the_production_receipt_joins_its_typed_beats_to_the_cited_producer_readi
         && byte_size_count(b: held) == 26725773568
         && byte_size_count(b: p.anon) == 26664632320
         && byte_size_count(b: p.file_dirty) == 0
-        && events_per_minute_count(r: p.stall) == 6
+        && stall_rate_is(b: p, n: 6)
         && byte_size_count(b: p.file) * 100 < byte_size_count(b: p.charge)
         && byte_size_count(b: held) <= byte_size_count(b: p.charge)
         && byte_size_count(b: held) <= byte_size_count(b: gunbc_runner_slot_desired().memory_max)
   }
-  let thrash_beat_ok = any(r.beats, b => b.beat == 15 && events_per_minute_count(r: b.stall) == 66940)
+  let thrash_beat_ok = any(r.beats, b => b.beat == 15 && stall_rate_is(b: b, n: 66940))
   let unstalled_ok = match receipt_last_unstalled_beat(r: r) {
     Absent => false
-    Present { value: u } => u.beat == 13 && byte_size_count(b: u.file) == 1895120896 && events_per_minute_count(r: u.stall) == 0
+    Present { value: u } => u.beat == 13 && byte_size_count(b: u.file) == 1895120896 && stall_rate_is(b: u, n: 0)
   }
   !r.run_completed && r.beats_sampled > 0 && count(r.beats) == 4 && peak_ok && thrash_beat_ok && unstalled_ok
 }
