@@ -48,6 +48,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
+import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -971,6 +972,11 @@ data gunbc_ci_fleet_host_key_enroll_target: GunbcRunStepTarget = GunbcRunStepTar
   function: "fleet_host_key_enroll_wet",
 }
 
+data gunbc_ci_fabric_writer_identity_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fabric/fabric_writer_identity_observe.dag",
+  function: "fabric_writer_identity_observe_wet",
+}
+
 data gunbc_ci_probe_identity_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_probe_identity_observe.dag",
   function: "fleet_probe_identity_observe_wet",
@@ -1129,6 +1135,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_host_key_scan_target,
     gunbc_ci_fleet_host_key_enroll_target,
     gunbc_ci_probe_identity_observe_target,
+    gunbc_ci_fabric_writer_identity_observe_target,
     gunbc_ci_authorized_key_enroll_target,
     gunbc_ci_live_deploy_apply_srv1_target,
     gunbc_ci_live_deploy_transaction_target,
@@ -2246,6 +2253,16 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
     function: gunbc_ci_runner_host_file_observe_target.function,
     claim_run: false,
     receipt_rel: "target/runner-host-file-converge-receipt.txt"
+  )
+}
+
+fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fabric_writer_identity_observe_target.entry,
+    function: gunbc_ci_fabric_writer_identity_observe_target.function,
+    claim_run: false,
+    receipt_rel: fabric_writer_identity_receipt_path
   )
 }
 

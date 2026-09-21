@@ -1,0 +1,138 @@
+module gunbc.fabric_writer_identity_observe
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.fabric_storage { fabric_storage_fault_wire }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageServed, FabricStorageBindingUnplaced, fabric_storage_binding_for, fabric_storage_presented_identity }
+import gunbc.fabric_storage_wire { FabricIdentityRead, FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused }
+import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.host_effect { LocalShell }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
+
+// THE READING THE WRITER-ROSTER WALL IS WAITING FOR. gunbc.rung_drop.fabric_storage_append_principal_unrefused
+// names its restoration trigger as a roster of fabric writer principals GROUNDED IN AN OBSERVED
+// READING of the identity each fleet writer presents through tailscale serve on srv1 -- because
+// the Tailscale-User-Login header is set for user-owned devices and absent for tagged ones, and
+// which the fleet hosts are has not been read. A roster written before that reading would either
+// refuse every real writer or admit every one.
+//
+// This mode takes that reading from the one place it can be true: the fleet host itself, through
+// the served door its writes take (gunbc.fabric_storage_client fabric_storage_presented_identity ->
+// gunbc.fabric_storage_serve's `identity` operation). One dispatch per fleet host, one receipt per
+// dispatch, naming the host, the binding it resolved to and the identity that came back. It reads
+// nothing else and writes nothing on any host but the runner's own receipt file.
+//
+// THE HOST THE DISPATCH NAMES MUST BE THE HOST THE JOB RUNS ON. The runner label selects the
+// machine, but the receipt is a claim about a principal, so the kernel hostname is read and must
+// agree with the dispatch input; a receipt taken on one host and labelled with another is exactly
+// the guess the trigger forbids, and it refuses rather than being written.
+
+data fabric_writer_identity_receipt_path: String = "target/fabric-writer-identity-receipt.txt"
+
+type FabricWriterIdentityReceipt {
+  host: HostIdentity
+  binding: FabricStorageBinding
+  read: FabricIdentityRead
+  observed_at: NonEmptyStr
+}
+
+fn binding_words(binding: FabricStorageBinding) -> String {
+  match binding {
+    FabricStorageLocalFiles { root: _ } => "local"
+    FabricStorageServed { endpoint: e } => join(["served ", e as String], "")
+    FabricStorageBindingUnplaced => "unplaced"
+  }
+}
+
+fn identity_words(read: FabricIdentityRead) -> String {
+  match read {
+    FabricIdentityPresented { identity: i } =>
+      match i {
+        TailnetUser { login: l } => join(["present ", l as String], "")
+        TailnetIdentityAbsent => "absent"
+      }
+    FabricIdentityUnproxied => "unproxied"
+    FabricIdentityReadRefused { fault: f } => join(["unread ", fabric_storage_fault_wire(fault: f)], "")
+  }
+}
+
+// One line per fact; the identity line is last because its detail may hold spaces.
+fn fabric_writer_identity_receipt_text(r: FabricWriterIdentityReceipt) -> String {
+  join([
+    "fabric_writer_identity host=", r.host as String, "\n",
+    "observed_at=", r.observed_at as String, "\n",
+    "binding=", binding_words(binding: r.binding), "\n",
+    "identity=", identity_words(read: r.read), "\n",
+  ], "")
+}
+
+// WHETHER THE READING GROUNDS A ROSTER ROW. Only a served reply does: a login names the principal to
+// roster, and an absent header is itself a finding (the host presents no login, so a login roster
+// cannot admit it and the wall needs another principal). An unproxied reading is not about the
+// door, and an unread one is the transport failing, not the identity.
+fn fabric_writer_identity_reading_grounds_roster(read: FabricIdentityRead) -> Bool {
+  match read {
+    FabricIdentityPresented { identity: _ } => true
+    FabricIdentityUnproxied => false
+    FabricIdentityReadRefused { fault: _ } => false
+  }
+}
+
+type FabricWriterIdentitySubject
+  = FabricWriterIdentitySubjectAdmitted { host: HostIdentity }
+  | FabricWriterIdentitySubjectRefused { reason: String }
+
+fn fabric_writer_identity_subject(dispatched: String, kernel_hostname: String) -> FabricWriterIdentitySubject {
+  if dispatched == "" {
+    FabricWriterIdentitySubjectRefused { reason: "the dispatch names no host" }
+  } else if kernel_hostname == "" {
+    FabricWriterIdentitySubjectRefused { reason: join(["the kernel hostname could not be read on the runner the dispatch named ", dispatched], "") }
+  } else if dispatched != kernel_hostname {
+    FabricWriterIdentitySubjectRefused { reason: join(["the dispatch names ", dispatched, " but this job runs on ", kernel_hostname, "; a receipt labelled with a host it was not taken on is refused"], "") }
+  } else {
+    FabricWriterIdentitySubjectAdmitted { host: dispatched as HostIdentity }
+  }
+}
+
+fn local_kernel_hostname() -> String {
+  match hostname_short_read(transport: LocalShell) {
+    HostnameShortCaptured { value: v } => v
+    HostnameShortCaptureRefused { reason: _ } => ""
+  }
+}
+
+fn fabric_writer_identity_observe_wet() -> ProcessExit
+  uses net: Network
+{
+  let dispatched = match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  match fabric_writer_identity_subject(dispatched: dispatched, kernel_hostname: local_kernel_hostname()) {
+    FabricWriterIdentitySubjectRefused { reason: why } => exit_failure(reason: join(["fabric_writer_identity_observe: ", why], ""))
+    FabricWriterIdentitySubjectAdmitted { host: h } => {
+      let binding = fabric_storage_binding_for(placement: fabric_storage_placement(), executor: h)
+      let receipt = FabricWriterIdentityReceipt {
+        host: h,
+        binding: binding,
+        read: fabric_storage_presented_identity(binding: binding),
+        observed_at: probed_at_word(reading: clock_now_probed_at()),
+      }
+      let text = fabric_writer_identity_receipt_text(r: receipt)
+      let w = Filesystem.Write(path: fabric_writer_identity_receipt_path, content: text)
+      if w.success == false {
+        exit_failure(reason: join(["fabric_writer_identity_observe: receipt write failed: ", w.error, "\n", text], ""))
+      } else if fabric_writer_identity_reading_grounds_roster(read: receipt.read) == false {
+        exit_failure(reason: join(["fabric_writer_identity_observe: no reading of the served door was taken\n", text], ""))
+      } else {
+        ExitSuccess
+      }
+    }
+  }
+}

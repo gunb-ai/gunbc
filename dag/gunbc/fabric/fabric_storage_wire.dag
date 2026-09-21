@@ -7,6 +7,7 @@ import std.durable_compare_and_set {
   cas_generation_count,
 }
 import std.content_hash { serialize_content_hash, content_hash_from_structural_digest }
+import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent }
 import std.fabric_storage {
   FabricObjectRef, FabricObject, FabricStoredObject, fabric_object_ref_wire, fabric_object_ref_of_wire, fabric_object_preimage, fabric_object_ref_of, fabric_object_ref_eq,
   fabric_objects_decode_stream,
@@ -106,6 +107,18 @@ fn fabric_storage_wire_closure(read: FabricClosureRead) -> String {
       join([wire_line(words: concat(["closure", "read"], reading_words(reading: r))), "\n", join(map(xs, s => fabric_object_preimage(object: s.content) as String), "")], "")
     FabricClosureBudgetExhausted { at: a, bound: b } => wire_line(words: ["closure", "exhausted", ref_word(object: a), to_string(b)])
     FabricClosureRefused { fault: f } => wire_line(words: concat(["closure", "refused"], fault_words(fault: f)))
+  }
+}
+
+// THE PRESENTED IDENTITY, echoed. Not a store operation: the fifth reply of the SERVED door only,
+// naming the Tailscale-User-Login the proxy handed the handler (extdeps.tailscale.identity), so a
+// fleet writer can read the principal it presents before any roster is written from it. `present`
+// carries the login as the last field; `absent` is the arm a tagged device, a direct connection and
+// a stripped header all produce, and it is written as absent, never as an anonymous login.
+fn fabric_storage_wire_identity(identity: TailnetIdentity) -> String {
+  match identity {
+    TailnetUser { login: l } => wire_line(words: ["identity", "present", l as String])
+    TailnetIdentityAbsent => wire_line(words: ["identity", "absent"])
   }
 }
 
@@ -298,6 +311,34 @@ fn fabric_storage_unwire_closure(text: String) -> FabricClosureRead {
                 }
             }
           _ => FabricClosureRefused { fault: undecodable(line: r.line) }
+        }
+      }
+  }
+}
+
+// ── THE IDENTITY REPLY, decoded ──────────────────────────────────────────────────────────────
+// Read by the observing writer. A reply that is not this protocol, or whose identity words are not
+// `present <login>` / `absent`, is undecodable and names the line -- a served door of another
+// version answering something else is a skew, never an absent identity.
+type FabricIdentityRead
+  = FabricIdentityPresented { identity: TailnetIdentity }
+  | FabricIdentityUnproxied
+  | FabricIdentityReadRefused { fault: FabricStorageFault }
+
+fn fabric_storage_unwire_identity(text: String) -> FabricIdentityRead {
+  match wire_reply(text: text) {
+    Absent => FabricIdentityReadRefused { fault: undecodable(line: text) }
+    Present { value: r } =>
+      if word_at(ws: r.words, i: 0) != "identity" { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
+      else {
+        match word_at(ws: r.words, i: 1) {
+          "absent" => FabricIdentityPresented { identity: TailnetIdentityAbsent }
+          "present" =>
+            match rest_from(ws: r.words, i: 2) {
+              "" => FabricIdentityReadRefused { fault: undecodable(line: r.line) }
+              login => FabricIdentityPresented { identity: TailnetUser { login: login as NonEmptyStr } }
+            }
+          _ => FabricIdentityReadRefused { fault: undecodable(line: r.line) }
         }
       }
   }
