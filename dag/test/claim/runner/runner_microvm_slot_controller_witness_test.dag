@@ -2,7 +2,8 @@ module test.claim.runner.runner_microvm_slot_controller_witness_test
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
-import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size }
+import std.measure { byte_size_count, byte_size, gibibyte, gibibyte_to_byte_size }
+import extdeps.systemd.unit_file { slice_memory_max, slice_memory_swap_max }
 import v2.std.optional { Absent, Present }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, ExecStart, ServiceType, ExecMode,
@@ -30,8 +31,10 @@ import gunbc.runner_attempt_launch {
 }
 import gunbc.runner_microvm_slot_unit {
   microvm_slot_unit_file, microvm_slot_unit_execs_controller, microvm_slot_unit_timeout_stop_seconds,
-  microvm_slot_controller_entry_function,
+  microvm_slot_controller_entry_function, microvm_controller_slice_unit_name, microvm_controller_slice_unit_file,
+  microvm_controller_slice_memory_max,
 }
+import extdeps.systemd.unit_file { ServiceSlice, SliceUnitFile, SystemdSliceDirective, MemoryMax, MemorySwapMax, DirectiveByteCount }
 import gunbc.runner_microvm_slot_controller { slot_of_instance, minted_registration }
 import gunbc.github_effect_perform { JitMintReceived, JitMintClockUnread }
 import gunbc.runner.runner_jit_perform { JitCredentialBoundToAttempt, JitCredentialMintNotCreated, JitCredentialNotDispatched, DispatchRefusedCellNotOwned }
@@ -102,6 +105,30 @@ test fn the_installed_unit_sets_the_checkout_root_at_spawn_and_the_bare_render_d
   carries_spawn_root(f: microvm_slot_unit_file_with_workspace_root(release_dir: dir), release_dir: dir)
     && !carries_spawn_root(f: rendered(), release_dir: dir)
     && microvm_slot_unit_execs_controller(file: microvm_slot_unit_file_with_workspace_root(release_dir: dir))
+}
+
+// THE CONTROLLER RUNS IN ITS OWN BOUNDED SLICE, not the cell's and not unbounded: the seed refuses
+// an unlimited cgroup, and a controller inside the cell slice would charge its 7 GiB corpus load
+// against the attempt's 28 GiB.
+fn slice_bytes(f: SystemdUnitFile, wanted: List<SystemdSliceDirective>) -> Bool {
+  match f {
+    SliceUnitFile { unit: _, slice: ds, install: _ } => fold(wanted, init: true, f: (acc, w) => acc && any(ds, d => d == w))
+    _ => false
+  }
+}
+
+test fn the_controller_unit_joins_its_own_bounded_no_swap_slice_outside_the_cell() -> Bool {
+  let joins = fold(service_directives(f: rendered()), init: false, f: (acc, d) => acc || match d {
+    ServiceSlice { name: n } => (n as String) == (microvm_controller_slice_unit_name as String)
+    _ => false
+  })
+  joins
+    && (microvm_controller_slice_unit_name as String) != "fabric-cell-srv1-13.slice"
+    && slice_bytes(f: microvm_controller_slice_unit_file(), wanted: [
+      slice_memory_max(bytes: microvm_controller_slice_memory_max),
+      slice_memory_swap_max(bytes: byte_size(0)),
+    ])
+    && byte_size_count(b: microvm_controller_slice_memory_max) < gunbc_microvm_shakedown_slot_memory_max_bytes
 }
 
 // THE STOP TIMEOUT EXCEEDS THE VMM DEADLINE, so systemd cannot SIGKILL the controller before its

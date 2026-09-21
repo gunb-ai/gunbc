@@ -77,6 +77,7 @@ import gunbc.runner_microvm_slot_unit {
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
   microvm_slot_unit_template_name, microvm_slot_unit_path, microvm_slot_unit_file,
   microvm_slot_unit_timeout_stop_sec,
+  microvm_controller_slice_unit_name, microvm_controller_slice_unit_path, microvm_controller_slice_unit_file,
 }
 import extdeps.tools.findutils { find_program, xargs_program }
 import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program }
@@ -2028,6 +2029,15 @@ fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUni
 
 fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   [
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: microvm_controller_slice_unit_name as String,
+      content: serialize_systemd_unit_file(file: microvm_controller_slice_unit_file()),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: microvm_controller_slice_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: microvm_controller_slice_unit_path() as String,
+    )),
     deploy_raw(command: deploy_stage_write_command(
       stage_name: microvm_slot_unit_template_name as String,
       content: serialize_systemd_unit_file(file: microvm_slot_unit_file_with_workspace_root(
