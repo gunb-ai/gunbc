@@ -318,7 +318,21 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // test.claim.long.roadmap_page_witness (row shape, derived open attribute, depth-cap affordance,
 // live exemplar), plus the register censuses staying green. Derived by execution from this tree
 // (roadmap_css_derived_digest run 2026-09-20); this digest only pins bytes, never chosen.
-data roadmap_css_lift_parity_digest: String = "91596523ca64b443"
+
+// Re-pinned 2026-09-21 for the hero activity face + chain collapse (operator requests 2026-09-20/
+// 21): the roadmap bytes move intentionally — the .stage-strip family lands (one segment per
+// workflow obligation, state-keyed paint: complete in the figure role, active on the in-progress
+// band with the round-pulse on .stage-live, pending dimmed, failed and refused on their bands),
+// the .activity-throughput line lands, the summary's semantic classes
+// (.activity-summary.activity-line-done / -error-refusal) land, the round strip's COLOR decls move
+// from the per-kind classes onto the semantic .activity-line-* vocabulary (paint values unchanged,
+// a re-homing to one authority), the project bar gains hero height and the .project-error flag
+// (loud left edge + count, the anomaly idiom), and the .project-chain line lands for collapsed
+// single-child chains. Behavioral receipts: the hero/red-flag/classification witnesses in
+// test.claim.long.roadmap_page_witness and test.claim.roadmap_presentation_witness, plus the
+// register censuses. Derived by execution from this tree (roadmap_css_derived_digest run
+// 2026-09-21); this digest only pins bytes, never chosen.
+data roadmap_css_lift_parity_digest: String = "9d5d1d23dce5e2f8"
 // Re-pinned 2026-08-23 for the daily-workspace fleet capacity panel (operator request: live fleet
 // info on the workspace): the roadmap bytes move intentionally — the .fleet-capacity-panel family
 // lands (panel surface, .capacity-title, .capacity-summary, .capacity-row with its active/withdrawn

@@ -32,7 +32,7 @@ import gunbc.roadmap_provider_events {
   provider_execution_detail,
   parse_codex_jsonl,
 }
-import gunbc.harness.harness_throughput { HarnessRoundLedger }
+import gunbc.harness.harness_throughput { HarnessRoundLedger, throughput_cell_text, harness_throughput_from_ledger }
 import gunbc.roadmap.roadmap_review_role { CriterionReviewEvidence }
 import gunbc.roadmap.roadmap_review_function { ReviewReport }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_reconcile }
@@ -1305,6 +1305,10 @@ fn workflow_attempt_progress_json_members(
     json_kv(
       key: "validation_summary",
       value: json_string(s: progress.validation_summary),
+    ),
+    json_kv(
+      key: "throughput",
+      value: json_string(s: throughput_cell_text(t: harness_throughput_from_ledger(ledger: progress.rounds))),
     ),
     json_kv(
       key: "admission_receipt",

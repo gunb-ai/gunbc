@@ -2,7 +2,7 @@ module test.claim.long.roadmap_page_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.harness.harness_throughput {
-  HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved }
+  HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation, HarnessThroughput, ThroughputUnobserved }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 
 import std.markup { Fragment, Element, FragmentText, attr }
@@ -910,6 +910,7 @@ test fn witness_project_row_renders_progress_bar_and_tasks() -> Bool {
         && occurrence_count(s: h, pattern: "class=\"node-head\"") == 3
         && occurrence_count(s: h, pattern: "class=\"workflow-controls\"") == 3
         && occurrence_count(s: h, pattern: "<button class=\"dispatch-btn") == 3
+        && !string_contains(s: h, pattern: "class=\"project-chain\"")
   }
 }
 
@@ -940,14 +941,23 @@ fn fx_page_chain_nodes() -> List<RoadmapNode> {
       done: false, content: "chain level three", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000004", id: "page-chain-c4",
       done: false, content: "chain level four", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+    gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000005", id: "page-chain-x1",
+      done: false, content: "chain side leaf one", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+    gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000006", id: "page-chain-x2",
+      done: false, content: "chain side leaf two", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+    gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000007", id: "page-chain-x3",
+      done: false, content: "chain side leaf three", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
   ]
 }
 
 fn fx_page_chain_edges() -> List<RoadmapEdge> {
   [
     gunbc.roadmap_authority.edge(child: "page-chain-c1", parent: "page-chain-c2"),
+    gunbc.roadmap_authority.edge(child: "page-chain-c1", parent: "page-chain-x1"),
     gunbc.roadmap_authority.edge(child: "page-chain-c2", parent: "page-chain-c3"),
+    gunbc.roadmap_authority.edge(child: "page-chain-c2", parent: "page-chain-x2"),
     gunbc.roadmap_authority.edge(child: "page-chain-c3", parent: "page-chain-c4"),
+    gunbc.roadmap_authority.edge(child: "page-chain-c3", parent: "page-chain-x3"),
   ]
 }
 
@@ -963,30 +973,35 @@ fn fx_page_chain_html() -> HtmlEmitResult {
   try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing()))
 }
 
-// THE DEPTH CAP: three project levels render expanded by default; a project AT the cap renders
-// its tasks behind a collapsed "+N deeper" disclosure (N = the tasks hidden at the next level),
-// and the rows beyond still render inside it — the cap bounds the default view, it never drops a
-// node.
+// THE DEPTH CAP, APPLIED AFTER COLLAPSING (operator ruling 2026-09-21): the fixture is a chain of
+// three MULTI-child projects (each carries a side leaf, so no link collapses), reaching a fourth
+// level past the cap — three project levels render expanded by default; a project AT the cap
+// renders its tasks behind a collapsed "+N deeper" disclosure (N = the tasks hidden at the next
+// level), and the rows beyond still render inside it — the cap bounds the default view, it never
+// drops a node.
 test fn witness_project_depth_cap_renders_deeper_affordance() -> Bool {
   match fx_page_chain_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       occurrence_count(s: h, pattern: "<li class=\"node node-project ") == 3
         && occurrence_count(s: h, pattern: "<details class=\"project-tasks project-deeper\">") == 1
-        && string_contains(s: h, pattern: "+1 deeper")
+        && string_contains(s: h, pattern: "+2 deeper")
         && !string_contains(s: h, pattern: "project-deeper\" open")
         && occurrence_count(s: h, pattern: "data-node=\"page-chain-c4\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "data-node=\"page-chain-x3\" tabindex=\"0\"") == 1
         && string_contains(s: h, pattern: "chain level four")
   }
 }
 
-// THE LIVE EXEMPLAR (identity grain, never a population count): over the real unfocused
-// authority, the arc shell-typed-invocation renders as a project row, and the arc plus each of
-// its ten authored shell-dag-* tasks renders exactly once — the no-node-lost / no-duplication law
-// checked against the graph the operator actually works from.
+// THE LIVE EXEMPLAR (identity grain, never a population count), post the 2026-09-21 collapse
+// ruling: over the real unfocused authority the chain shell-residue-zero → shell-gate-migration →
+// shell-effectplan-to-bash → shell-typed-invocation is four single-child links, so it renders as
+// ONE collapsed project row — residue-zero's — carrying the arc's ten authored shell-dag-* tasks
+// one disclosure down, with the three swallowed intermediates on the chain line (identity grain:
+// each exactly once, as a chain member, never as its own row). No node is lost and none is
+// duplicated.
 test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
-  let ids = [
-    "shell-typed-invocation",
+  let task_ids = [
     "shell-dag-cron-entry-line-builder",
     "shell-dag-floor-peak-calibration-rows",
     "shell-dag-ci-fmt-gate-line",
@@ -998,12 +1013,293 @@ test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
     "shell-dag-live-deploy-install-owned",
     "shell-dag-live-deploy-restart-tailscale",
   ]
+  let chain_ids = ["shell-gate-migration", "shell-effectplan-to-bash", "shell-typed-invocation"]
   match try_serialize_html_source(node: roadmap_daily_workspace_page(
       doc: gunbc.roadmap_authority.roadmap_authority_for(focus: NoFocus), merged: [])) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<li class=\"node node-project node-open\" data-node=\"shell-typed-invocation\"")
-        && all(ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
+      string_contains(s: h, pattern: "<li class=\"node node-project node-open\" data-node=\"shell-residue-zero\"")
+        && all(task_ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
+        && all(chain_ids, id => occurrence_count(s: h, pattern: join(["class=\"project-chain-member\" data-node=\"", id, "\""], "")) == 1)
+        && occurrence_count(s: h, pattern: "data-node=\"shell-typed-invocation\" tabindex=\"0\"") == 0
         && string_contains(s: h, pattern: " tasks closed")
   }
+}
+
+// THE COLLAPSED ROW'S SHAPE over a constructed chain (the ruling's rendering half): the top
+// project carries its own head, the chain end's counts and bar, and one task disclosure holding
+// the chain line (the swallowed intermediate, by identity) plus the chain end's task rows — and
+// the swallowed intermediate renders no row of its own.
+test fn witness_collapsed_chain_renders_one_row_with_chain_line() -> Bool {
+  let top = gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00001", id: "page-collapse-top",
+    done: false, content: "collapse top", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
+  let mid = gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00002", id: "page-collapse-mid",
+    done: false, content: "collapse mid", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
+  let t1 = gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00003", id: "page-collapse-t1",
+    done: false, content: "collapse task one", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
+  let t2 = gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00004", id: "page-collapse-t2",
+    done: false, content: "collapse task two", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "page-collapse-top", parent: "page-collapse-mid"),
+    gunbc.roadmap_authority.edge(child: "page-collapse-mid", parent: "page-collapse-t1"),
+    gunbc.roadmap_authority.edge(child: "page-collapse-mid", parent: "page-collapse-t2"),
+  ]
+  let doc = RoadmapDocument {
+    preamble: [],
+    lead_lanes: [],
+    sections: [ RoadmapSection {
+      title: "Collapse",
+      elements: [ section_group(label: "", nodes: [top, mid, t1, t2], edges: edges) ],
+    } ],
+  }
+  match try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing())) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      occurrence_count(s: h, pattern: "<li class=\"node node-project ") == 1
+        && string_contains(s: h, pattern: "<li class=\"node node-project node-open\" data-node=\"page-collapse-top\"")
+        && string_contains(s: h, pattern: "0 of 2 tasks closed")
+        && occurrence_count(s: h, pattern: "class=\"project-chain-member\" data-node=\"page-collapse-mid\"") == 1
+        && string_contains(s: h, pattern: "collapse mid")
+        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-mid\" tabindex=\"0\"") == 0
+        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-t1\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-t2\" tabindex=\"0\"") == 1
+        && string_contains(s: h, pattern: ">tasks</summary>")
+  }
+}
+
+// ── Hero attempt rows, red flags, activity coloring (operator request 2026-09-21) ───────────────
+//
+// The attempt row's collapsed face is the bar: the stage strip (one segment per workflow
+// obligation, state class from the wire's own decided state key), the one-line state carrying its
+// decided activity-line class, and the throughput line. Everything that used to ride the face —
+// the round strip, the obligation ledger with its texts, the bounded refusal payloads, the
+// session/process evidence — sits behind the activity disclosure, which never arrives open. The
+// strip segment classes below pin EVERY state; the refused and failed fixtures pin the red
+// segment and the error-refusal summary class; the project fixture pins the red flag on the
+// progress region derived from the seam's subtree_error.
+
+fn hero_green_segments() -> List<gunbc.roadmap_workflow_stage.WorkflowSegment> {
+  [
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentActive, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.SubmissionWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentStopped, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.ReviewWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.GoalAuditWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+  ]
+}
+
+fn hero_rounds_fixture() -> HarnessRoundLedger {
+  RoundsObserved { rounds: [
+    RoundObservation { step: 1, input_tokens: 0, output_tokens: 10, epoch_ms: 0, files_changed: none, tool_calls: none },
+    RoundObservation { step: 2, input_tokens: 0, output_tokens: 20, epoch_ms: 5000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+    RoundObservation { step: 3, input_tokens: 0, output_tokens: 30, epoch_ms: 9000, files_changed: Present { value: 2 }, tool_calls: Present { value: 1 } },
+    RoundObservation { step: 4, input_tokens: 0, output_tokens: 40, epoch_ms: 12000, files_changed: Present { value: 2 }, tool_calls: Present { value: 0 } },
+  ] }
+}
+
+fn hero_row_view(node_id: String, activity: gunbc.roadmap_presentation.ActivityView, alive: Bool) -> gunbc.roadmap_presentation.WorkRowView {
+  gunbc.roadmap_presentation.WorkRowView {
+    node_id: node_id,
+    headline: "Hero specimen row",
+    summary: none,
+    lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+    scheduling: gunbc.roadmap_presentation.SchedulingReady,
+    superseded_by: "",
+    activity: activity,
+    action: gunbc.roadmap_presentation.action_view(
+      lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+      admission: LaunchAdmitted { identity: launch_fixture_identity(node_id: node_id, cause: Operator, mode: ManualReady) }),
+    supporting_facts: [],
+    disclosure: gunbc.roadmap_presentation.NoDisclosure,
+    rounds: hero_rounds_fixture(),
+    worker_alive: alive,
+    standing: none,
+    attempt_stale: false,
+  }
+}
+
+fn hero_row_html(view: gunbc.roadmap_presentation.WorkRowView) -> HtmlEmitResult {
+  try_serialize_html_source(node: Element {
+    tag: "li",
+    attributes: gunbc.roadmap_page.node_li_attributes(view: view),
+    children: gunbc.roadmap_page.render_work_row(view: view),
+  })
+}
+
+fn hero_green_view(alive: Bool) -> gunbc.roadmap_presentation.WorkRowView {
+  hero_row_view(
+    node_id: "hero-green",
+    activity: gunbc.roadmap_presentation.ActiveWork {
+      summary: "Agent working",
+      obligations: hero_green_segments(),
+      remaining_obligation_count: 6,
+      current_activity: "",
+      attention: gunbc.roadmap_presentation.ActivityRoutine,
+      evidence: [],
+    },
+    alive: alive)
+}
+
+test fn witness_hero_attempt_row_is_bar_first() -> Bool {
+  match hero_row_html(view: hero_green_view(alive: true)) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "<div class=\"node-activity\" data-arm=\"active\" data-attention=\"routine\"><div class=\"stage-strip\">")
+        && occurrence_count(s: h, pattern: "class=\"stage-segment stage-complete\"") == 1
+        && occurrence_count(s: h, pattern: "class=\"stage-segment stage-active stage-live\"") == 1
+        && occurrence_count(s: h, pattern: "class=\"stage-segment stage-pending\"") == 5
+        && occurrence_count(s: h, pattern: "class=\"stage-segment stage-stopped\"") == 1
+        && string_contains(s: h, pattern: "title=\"Environment · complete\"")
+        && string_contains(s: h, pattern: "title=\"Workspace · active\"")
+        && string_contains(s: h, pattern: "<span class=\"activity-summary activity-line-neutral\">Agent working</span><span class=\"activity-throughput\">")
+        && string_contains(s: h, pattern: "<details class=\"activity-detail\">")
+        && !string_contains(s: h, pattern: "<details class=\"activity-detail\" open")
+  }
+}
+
+// The live pulse belongs to the active segment ONLY while the worker is alive; the same attempt
+// with a dead process renders the active segment without it.
+test fn witness_stage_live_only_while_worker_alive() -> Bool {
+  match hero_row_html(view: hero_green_view(alive: false)) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      occurrence_count(s: h, pattern: "class=\"stage-segment stage-active\"") == 1
+        && !string_contains(s: h, pattern: "stage-live")
+  }
+}
+
+// The round strip moved UNDER the disclosure (bar-first face): it renders only inside the activity
+// details, and its segments carry the semantic activity-line classes — a read round, a write
+// round, and a no-tool-call (provider round-trip) round from the fixture ledger.
+test fn witness_round_strip_disclosed_and_classified() -> Bool {
+  match hero_row_html(view: hero_green_view(alive: true)) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let parts = split(s: h, delimiter: "<details class=\"activity-detail\"")
+      count(parts) == 2
+        && !string_contains(s: first(parts).value, pattern: "activity-round-strip")
+        && string_contains(s: string_at(parts: parts, index: 1), pattern: "class=\"activity-round-strip\"")
+        && string_contains(s: h, pattern: "activity-round-read activity-line-read")
+        && string_contains(s: h, pattern: "activity-round-write activity-line-write")
+        && string_contains(s: h, pattern: "activity-round-reason activity-line-provider-call")
+  }
+}
+
+type StringPick {
+  seen: Int
+  found: String
+}
+
+fn string_at(parts: List<String>, index: Int) -> String {
+  fold(parts, init: StringPick { seen: 0, found: "" }, f: (acc, p) =>
+    if acc.seen == index {
+      StringPick { seen: acc.seen + 1, found: p }
+    } else {
+      StringPick { seen: acc.seen + 1, found: acc.found }
+    }).found
+}
+
+fn hero_refused_view() -> gunbc.roadmap_presentation.WorkRowView {
+  hero_row_view(
+    node_id: "hero-refused",
+    activity: gunbc.roadmap_presentation.activity_view_from_parts(
+      segments: [
+        gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+        gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused, detail: "oracle missing" },
+      ],
+      remaining: 6,
+      process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
+      throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+      current_activity: ""),
+    alive: false)
+}
+
+fn hero_failed_view() -> gunbc.roadmap_presentation.WorkRowView {
+  hero_row_view(
+    node_id: "hero-failed",
+    activity: gunbc.roadmap_presentation.activity_view_from_parts(
+      segments: [
+        gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentFailed, detail: "exit 1 before terminal event" },
+      ],
+      remaining: 6,
+      process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 1, last_command: "codex" },
+      throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+      current_activity: ""),
+    alive: false)
+}
+
+// THE RED FLAG: a refused segment renders RED at its stage segment and the one-line state carries
+// error-refusal; the refused payload stays behind a disclosure that does not arrive open. The
+// failed arm flags the same way at its own segment.
+test fn witness_red_flagged_attempt_row() -> Bool {
+  match hero_row_html(view: hero_refused_view()) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      occurrence_count(s: h, pattern: "class=\"stage-segment stage-refused\"") == 1
+        && occurrence_count(s: h, pattern: "class=\"stage-segment stage-complete\"") == 1
+        && string_contains(s: h, pattern: "class=\"activity-summary activity-line-error-refusal\"")
+        && string_contains(s: h, pattern: "data-arm=\"refused\"")
+        && !string_contains(s: h, pattern: "<details class=\"activity-detail\" open")
+  }
+    && match hero_row_html(view: hero_failed_view()) {
+      EmitRejected { reason: _ } => false
+      EmitOk { html: h } =>
+        occurrence_count(s: h, pattern: "class=\"stage-segment stage-failed\"") == 1
+          && string_contains(s: h, pattern: "class=\"activity-summary activity-line-error-refusal\"")
+          && string_contains(s: h, pattern: "data-attention=\"anomalous\"")
+    }
+}
+
+// The project bar's red flag renders from the seam's DECIDED subtree_error: the renderer reads the
+// field, it does not re-derive. (The derivation — refused or anomalous attempt anywhere in the
+// subtree — is pinned in test.claim.roadmap_presentation_witness.)
+test fn witness_project_bar_flags_red_from_decided_field() -> Bool {
+  let base = gunbc.roadmap_presentation.ProjectTreeView {
+    row: hero_green_view(alive: false),
+    chain: [],
+    depth: 1,
+    closed_count: 1,
+    total_count: 3,
+    auto_open: false,
+    subtree_error: true,
+    entries: [],
+  }
+  let quiet = gunbc.roadmap_presentation.ProjectTreeView {
+    row: hero_green_view(alive: false),
+    chain: [],
+    depth: 1,
+    closed_count: 1,
+    total_count: 3,
+    auto_open: false,
+    subtree_error: false,
+    entries: [],
+  }
+  match try_serialize_html_source(node: gunbc.roadmap_page.project_tree_li(view: base, observation: gunbc.roadmap_presentation.ObservationsNominal)) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: flagged } =>
+      match try_serialize_html_source(node: gunbc.roadmap_page.project_tree_li(view: quiet, observation: gunbc.roadmap_presentation.ObservationsNominal)) {
+        EmitRejected { reason: _ } => false
+        EmitOk { html: calm } =>
+          string_contains(s: flagged, pattern: "class=\"project-progress project-error\"")
+            && string_contains(s: flagged, pattern: "1 of 3 tasks closed")
+            && !string_contains(s: calm, pattern: "project-error")
+            && string_contains(s: calm, pattern: "class=\"project-progress\"")
+      }
+  }
+}
+
+// The client's half of the hero face (single projection authority): the emitted asset paints the
+// stage strip from the wire's decided segment state keys, the summary's decided class, and the
+// wire throughput — all verbatim, no policy.
+test fn witness_client_paints_hero_face_verbatim() -> Bool {
+  let js = dispatch_client_js_source()
+  string_contains(s: js, pattern: "stage-strip")
+    && string_contains(s: js, pattern: "stage-segment stage-")
+    && string_contains(s: js, pattern: "+ seg.state")
+    && string_contains(s: js, pattern: "attempt.throughput")
+    && string_contains(s: js, pattern: "av.summary_class")
+    && string_contains(s: js, pattern: "activity-throughput")
 }

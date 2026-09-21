@@ -349,6 +349,19 @@ data activity_round_remaining_class: String = "activity-round-remaining"
 data activity_located_reason_class: String = "activity-located-reason"
 data session_facts_class: String = "session-facts"
 
+// The hero activity face (operator request 2026-09-21): the stage strip is the attempt row's
+// prominent progress bar — one segment per workflow obligation, class stage-<state key> decided by
+// the wire's own state field (no client-side derivation), stage-live marking the pulsing active
+// segment. The throughput line rides the face beside the one-line state. Semantic activity-line
+// coloring (gunbc.roadmap_presentation's ActivityLineClass) composes as activity-line-<key> from
+// this prefix plus the decided key — one string authority for server markup, the emitted client,
+// and the stylesheet.
+data stage_strip_class: String = "stage-strip"
+data stage_segment_class: String = "stage-segment"
+data stage_live_class: String = "stage-live"
+data activity_throughput_class: String = "activity-throughput"
+data activity_line_prefix_class: String = "activity-line-"
+
 // The stale-attempt dim (operator ruling 2026-09-20): a row whose attempt was launched against a
 // revision that is no longer the deployed tree's head carries this class on its li (set by the
 // server render from the revision comparison in gunbc.roadmap_presentation.stale_attempt_nodes)
@@ -364,9 +377,12 @@ data node_attempt_stale_class: String = "node-attempt-stale"
 // rule's 'no attempt, no furniture' is realized as DOM absence, not display:none. All content is
 // painted VERBATIM from the decided view (gunbc.roadmap_presentation, single projection authority):
 // activity.summary/outcome/reason are final strings, data-arm and data-attention are the decided
-// keys the stylesheet materializes, the obligation ledger renders the wire's canonical segment
-// rows, and evidence rows are label/value pairs. The client holds NO composition policy — a summary
-// sentence assembled in TypeScript is the two-authorities defect this region dissolved. The
+// keys the stylesheet materializes, the hero stage strip paints one segment per wire segment with
+// the wire's own decided state key as its class, the summary carries the decided summary_class,
+// the throughput line paints the wire's throughput cell text, the obligation ledger renders the
+// wire's canonical segment rows, and evidence rows are label/value pairs. The client holds NO
+// composition policy — a summary sentence assembled in TypeScript is the two-authorities defect
+// this region dissolved. The
 // disclosure no longer auto-opens on a refused arm (the 2026-09-20 status-surface ruling: the
 // refusal's loudness lives in the decided LABEL, its payload behind the disclosure, so a board of
 // refusals is a board of one-line labels); the former auto-open-once-per-anomaly-transition
@@ -2445,6 +2461,16 @@ fn activity_container_create_stmts() -> List<TsStmt> {
           args: [ts_ident(name: "act")])),
       ]) },
     ),
+    ts_const(name: "astrip", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+      args: [ts_lit_str(value: "div")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "astrip"), property: "className"),
+      op: "=",
+      right: ts_lit_str(value: stage_strip_class))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "act"), property: "append"),
+      args: [ts_ident(name: "astrip")])),
     ts_const(name: "asum", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
       args: [ts_lit_str(value: "span")])),
@@ -2455,6 +2481,16 @@ fn activity_container_create_stmts() -> List<TsStmt> {
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(object: ts_ident(name: "act"), property: "append"),
       args: [ts_ident(name: "asum")])),
+    ts_const(name: "athr", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+      args: [ts_lit_str(value: "span")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "athr"), property: "className"),
+      op: "=",
+      right: ts_lit_str(value: activity_throughput_class))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "act"), property: "append"),
+      args: [ts_ident(name: "athr")])),
     ts_const(name: "adet", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
       args: [ts_lit_str(value: "details")])),
@@ -2550,6 +2586,76 @@ fn activity_paint_stmts() -> List<TsStmt> {
         left: ts_member(object: ts_ident(name: "asum"), property: "textContent"),
         op: "=",
         right: activity_summary_text_expr()))),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "asum"),
+      op: "&&",
+      right: ts_binop(
+        left: ts_member(object: ts_ident(name: "asum"), property: "className"),
+        op: "=",
+        right: ts_binop(
+          left: ts_lit_str(value: join([activity_summary_class, " ", activity_line_prefix_class], "")),
+          op: "+",
+          right: ts_binop(
+            left: ts_member(object: ts_ident(name: "av"), property: "summary_class"),
+            op: "||",
+            right: ts_lit_str(value: "neutral")))))),
+    ts_const(name: "athr", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
+      args: [ts_lit_str(value: join([".", activity_throughput_class], ""))])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "athr"),
+      op: "&&",
+      right: ts_binop(
+        left: ts_member(object: ts_ident(name: "athr"), property: "textContent"),
+        op: "=",
+        right: ts_binop(
+          left: ts_member(object: ts_ident(name: "attempt"), property: "throughput"),
+          op: "||",
+          right: ts_lit_str(value: ""))))),
+    ts_const(name: "astrip", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
+      args: [ts_lit_str(value: join([".", stage_strip_class], ""))])),
+    ts_if(
+      cond: ts_ident(name: "astrip"),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "astrip"), property: "textContent"),
+          op: "=",
+          right: ts_lit_str(value: ""))),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(
+            object: ts_binop(
+              left: ts_member(object: ts_ident(name: "attempt"), property: "segments"),
+              op: "||",
+              right: ts_array(elements: [])),
+            property: "forEach"),
+          args: [ts_arrow(params: ["seg"], body: ts_block(stmts: [
+            ts_const(name: "sp", value: ts_call(
+              callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+              args: [ts_lit_str(value: "span")])),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "sp"), property: "className"),
+              op: "=",
+              right: ts_binop(
+                left: ts_lit_str(value: join([stage_segment_class, " stage-"], "")),
+                op: "+",
+                right: ts_member(object: ts_ident(name: "seg"), property: "state")))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "sp"), property: "title"),
+              op: "=",
+              right: ts_binop(
+                left: ts_binop(
+                  left: ts_member(object: ts_ident(name: "seg"), property: "label"),
+                  op: "+",
+                  right: ts_lit_str(value: activity_state_sep)),
+                op: "+",
+                right: ts_member(object: ts_ident(name: "seg"), property: "state")))),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "astrip"), property: "append"),
+              args: [ts_ident(name: "sp")])),
+          ]))])),
+      ]),
+      else_stmt: none),
     ts_const(name: "aled", value: ts_call(
       callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
       args: [ts_lit_str(value: join([".", activity_ledger_class], ""))])),

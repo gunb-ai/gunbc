@@ -123,7 +123,7 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
           ProviderEventsRefused { activity, detail: _ } => activity == legacy_attempt_supersedable_label
           _ => false
         }
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     _ => false
   }
 }

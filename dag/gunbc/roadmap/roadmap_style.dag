@@ -52,6 +52,7 @@ import gunbc.roadmap_component {
   activity_evidence_class, activity_evidence_row_class,
   activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class,
   activity_located_reason_class, session_facts_class,
+  stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class,
   dashboard_instance_class,
   node_attempt_stale_class,
 }
@@ -368,6 +369,11 @@ fn standing_chip_rules() -> List<BuildRule> {
   ]
 }
 
+// The round strip's GEOMETRY and MOTION stay on the per-kind classes; the COLOR moved to the
+// semantic activity-line vocabulary (operator request 2026-09-21, gunbc.roadmap_presentation
+// ActivityLineClass): read dims, write takes the figure role, a no-tool-call round is the provider
+// round-trip (figure halo), unmeasured stays outlined-never-filled. The paint values are unchanged
+// — this is a re-homing to one vocabulary, proven byte-mapped by the digest re-pin.
 fn activity_round_strip_rules() -> List<BuildRule> {
   [
     StaticRule { selector: ClassSelector { name: activity_round_strip_class }, decls: [
@@ -382,19 +388,14 @@ fn activity_round_strip_rules() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: activity_round_read_class }, decls: [
       decl(prop: MinWidth, value: "0"),
       decl(prop: TransformOrigin, value: "left center"),
-      role_decl(prop: Background, r: TextDimRole),
-      decl(prop: Opacity, value: "0.45"),
     ] },
     StaticRule { selector: ClassSelector { name: activity_round_write_class }, decls: [
       decl(prop: MinWidth, value: "3px"),
       decl(prop: TransformOrigin, value: "left center"),
-      role_decl(prop: Background, r: FigureRole),
     ] },
     StaticRule { selector: ClassSelector { name: activity_round_reason_class }, decls: [
       decl(prop: MinWidth, value: "0"),
       decl(prop: TransformOrigin, value: "left center"),
-      role_decl(prop: Background, r: FigureHaloRole),
-      decl(prop: Opacity, value: "0.7"),
     ] },
     StaticRule { selector: ClassSelector { name: activity_round_remaining_class }, decls: [
       decl(prop: MinWidth, value: "0"),
@@ -405,6 +406,19 @@ fn activity_round_strip_rules() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: activity_round_unmeasured_class }, decls: [
       decl(prop: MinWidth, value: "0"),
       decl(prop: TransformOrigin, value: "left center"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", activity_round_strip_class, " .", activity_line_prefix_class, "read"], "") }, decls: [
+      role_decl(prop: Background, r: TextDimRole),
+      decl(prop: Opacity, value: "0.45"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", activity_round_strip_class, " .", activity_line_prefix_class, "write"], "") }, decls: [
+      role_decl(prop: Background, r: FigureRole),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", activity_round_strip_class, " .", activity_line_prefix_class, "provider-call"], "") }, decls: [
+      role_decl(prop: Background, r: FigureHaloRole),
+      decl(prop: Opacity, value: "0.7"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", activity_round_strip_class, " .", activity_line_prefix_class, "neutral"], "") }, decls: [
       decl(prop: Background, value: "transparent"),
       decl(prop: BoxShadow, value: "inset 0 0 0 1px currentColor"),
       decl(prop: Opacity, value: "0.35"),
@@ -1104,6 +1118,51 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
+    StaticRule { selector: ClassSelector { name: stage_strip_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: scale_var(t: space_1)),
+      decl(prop: Height, value: scale_var(t: space_8)),
+      decl(prop: MarginTop, value: scale_var(t: space_2)),
+      decl(prop: MarginBottom, value: scale_var(t: space_1)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Overflow, value: "hidden"),
+    ] },
+    StaticRule { selector: ClassSelector { name: stage_segment_class }, decls: [
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", stage_segment_class, ".stage-pending"], "") }, decls: [
+      role_decl(prop: Background, r: TextDimRole),
+      decl(prop: Opacity, value: "0.45"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", stage_segment_class, ".stage-complete"], "") }, decls: [
+      role_decl(prop: Background, r: FigureRole),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", stage_segment_class, ".stage-active"], "") }, decls: [
+      decl(prop: Background, value: "var(--band-in-progress)"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", stage_segment_class, ".stage-failed"], "") }, decls: [
+      decl(prop: Background, value: "var(--band-fail)"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", stage_segment_class, ".stage-refused"], "") }, decls: [
+      decl(prop: Background, value: "var(--band-loud)"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", stage_segment_class, ".stage-stopped"], "") }, decls: [
+      role_decl(prop: Background, r: FigureHaloRole),
+    ] },
+    AmbientRule { selector: RawSelector { text: join([".", stage_segment_class, ".", stage_live_class], "") }, cycle: round_pulse_cycle, timing: round_pulse_timing, repeat: RunForever },
+    StaticRule { selector: ClassSelector { name: activity_throughput_class }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", activity_summary_class, ".", activity_line_prefix_class, "done"], "") }, decls: [
+      role_decl(prop: Color, r: FigureRole),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", activity_summary_class, ".", activity_line_prefix_class, "error-refusal"], "") }, decls: [
+      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: FontWeight, value: "600"),
+    ] },
     StaticRule { selector: ClassSelector { name: "workspace-observation" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "baseline"),
@@ -1145,7 +1204,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontVariantNumeric, value: "tabular-nums"),
     ] },
     StaticRule { selector: ClassSelector { name: "project-progress" }, decls: [
-      decl(prop: MarginTop, value: scale_var(t: space_1)),
+      decl(prop: MarginTop, value: scale_var(t: space_2)),
     ] },
     StaticRule { selector: ClassSelector { name: "project-progress-count" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
@@ -1155,7 +1214,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
     StaticRule { selector: ClassSelector { name: "project-progress-bar" }, decls: [
       decl(prop: Display, value: "flex"),
-      decl(prop: Height, value: scale_var(t: space_6)),
+      decl(prop: Height, value: scale_var(t: space_8)),
       decl(prop: MarginTop, value: scale_var(t: space_1)),
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),
       decl(prop: Overflow, value: "hidden"),
@@ -1167,6 +1226,14 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "project-progress-open" }, decls: [
       decl(prop: MinWidth, value: scale_var(t: space_0)),
       role_decl(prop: Background, r: FigureHaloRole),
+    ] },
+    StaticRule { selector: RawSelector { text: ".project-progress.project-error" }, decls: [
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
+      decl(prop: PaddingLeft, value: scale_var(t: space_4)),
+    ] },
+    StaticRule { selector: RawSelector { text: ".project-progress.project-error .project-progress-count" }, decls: [
+      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: FontWeight, value: "600"),
     ] },
     StaticRule { selector: RawSelector { text: "details.project-tasks" }, decls: [
       decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_2)),
@@ -1182,6 +1249,25 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
     StaticRule { selector: RawSelector { text: "details.project-deeper > summary" }, decls: [
       decl(prop: FontStyle, value: "italic"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "project-chain" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_2)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "project-chain-label" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "project-chain-sep" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "project-chain-title" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
     ] },
     StaticRule { selector: RawSelector { text: ".node-head .dispatch-btn" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),

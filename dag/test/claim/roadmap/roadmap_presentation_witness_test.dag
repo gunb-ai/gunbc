@@ -2,7 +2,9 @@ module test.claim.roadmap_presentation_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.harness.harness_throughput {
-  HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved }
+  HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved,
+  RoundSegmentKind, ReadRound, WriteRound, ReasonRound, UnmeasuredRound }
+import extdeps.languages.json.emit { serialize_json }
 
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge,
@@ -50,6 +52,7 @@ import gunbc.roadmap_presentation {
   row_headline, row_summary, legacy_lead,
   dispatch_action, action_view,
   activity_view_from_parts, activity_summary_line,
+  activity_view_json_value,
   WorkRowView, work_row_view, row_supporting_facts,
   DisclosureView, NoDisclosure, TicketDisclosure, LegacyBodyDisclosure,
   SessionActionView, NoSessionAction, SessionAction,
@@ -62,6 +65,9 @@ import gunbc.roadmap_presentation {
   WorkBandEntry, BandRow, BandFamily, BandProject,
   ProjectTreeEntry, ProjectTreeView, ProjectLeaf, ProjectNested,
   project_tree_view, project_tree_row_ids, project_task_rows,
+  ActivityLineClass, ActivityLineExec,
+  activity_line_class_key, activity_line_class_of_round, activity_line_class_of_activity,
+  row_activity_erred,
   row_is_project, row_is_nested, row_display_parent_id, row_pulses,
   AttemptRevisionObservation, stale_attempt_nodes,
   activity_uniform_lane_summary,
@@ -116,9 +122,9 @@ test fn witness_specimen_summary_states_consequence_and_next_obligation() -> Boo
         && remaining == 4
         && match attention { ActivityRoutine => true ActivityAnomalous => false }
     NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -132,9 +138,9 @@ test fn witness_specimen_evidence_rows_carry_raw_facts_as_evidence() -> Bool {
         && fold(evidence, init: false, f: (acc, row) => acc || (row.label == "throughput" && row.value == "unmeasured"))
         && count(obligations) == 7
     NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -156,9 +162,9 @@ test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
     ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } =>
       summary == "Agent working"
     NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -181,13 +187,13 @@ test fn witness_refused_segment_projects_located_reason() -> Bool {
     throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     current_activity: "",
   ) {
-    ActiveWorkRefused { summary, located_reason, evidence: _ } =>
+    ActiveWorkRefused { summary, located_reason, evidence: _, obligations: _ } =>
       summary == "Agent · refused — turn.completed with process unobserved: no exit was established"
         && located_reason == "turn.completed with process unobserved: no exit was established"
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
     NoActiveWork => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -207,9 +213,9 @@ test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
       summary == "Agent failed"
         && match attention { ActivityAnomalous => true ActivityRoutine => false }
     NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -259,9 +265,9 @@ test fn witness_no_attempt_projects_zero_furniture() -> Bool {
   match activity_view_of(facts: NoActiveAttempt) {
     NoActiveWork => true
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -271,9 +277,9 @@ test fn witness_unobservable_preserves_located_reason() -> Bool {
     ActivityUnobservable { reason } => reason == "attempt state file unreadable: permission denied"
     NoActiveWork => false
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
   }
 }
 
@@ -294,10 +300,10 @@ test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
     throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     current_activity: "",
   ) {
-    CompletedWork { outcome, evidence: _ } => outcome == "All obligations complete"
+    CompletedWork { outcome, evidence: _, obligations: _ } => outcome == "All obligations complete"
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
     NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
@@ -510,7 +516,7 @@ test fn witness_work_row_view_composes_from_fixture() -> Bool {
     && match row.summary { Absent => true Present { value: _ } => false }
     && fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "sizing")
     && !fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "owner")
-    && match row.activity { NoActiveWork => true ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false CompletedWork { outcome: _, evidence: _ } => false ActivityUnobservable { reason: _ } => false }
+    && match row.activity { NoActiveWork => true ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false CompletedWork { outcome: _, evidence: _, obligations: _ } => false ActivityUnobservable { reason: _ } => false }
 }
 
 // The scheduling axis discriminates by the SAME predicates spawn_frontier filters (operator blocker
@@ -804,7 +810,7 @@ test fn witness_refused_review_lane_labels_and_bounds() -> Bool {
     throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     current_activity: "",
   ) {
-    ActiveWorkRefused { summary, located_reason, evidence: _ } =>
+    ActiveWorkRefused { summary, located_reason, evidence: _, obligations: _ } =>
       summary == "Review · refused — 14/14 lanes — reviewer exited 1 without a verdict"
         && !string_contains(s: summary, pattern: "minimize-redundancy")
         && string_contains(s: located_reason, pattern: "minimize-redundancy: reviewer exited 1 without a verdict")
@@ -814,7 +820,7 @@ test fn witness_refused_review_lane_labels_and_bounds() -> Bool {
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
     NoActiveWork => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -1039,7 +1045,7 @@ test fn witness_shared_task_nests_under_first_declared_parent() -> Bool {
       }) |> first {
       Present { value: e } => match e {
         BandProject { project } =>
-          project.total_count == 1 && count(project.entries) == 0
+          project.total_count == 1 && count(project.entries) == 0 && count(project.chain) == 0
         BandRow { row: _ } => false
         BandFamily { family: _ } => false
       }
@@ -1053,6 +1059,7 @@ test fn witness_shared_task_nests_under_first_declared_parent() -> Bool {
       Present { value: e } => match e {
         BandProject { project } =>
           project.total_count == 1
+            && count(project.chain) == 0
             && map(project.entries, ent => fx_entry_id(entry: ent)) == ["hier-shared"]
         BandRow { row: _ } => false
         BandFamily { family: _ } => false
@@ -1079,10 +1086,13 @@ test fn witness_project_auto_open_follows_subtree_pulse() -> Bool {
     && !row_pulses(row: fx_row_of(rows: quiet, node_id: "hier-task-open"))
 }
 
-// RECURSION: a task that itself has rendered prerequisites is an intermediate project — the
-// shell-residue-zero → shell-gate-migration → shell-effectplan-to-bash chain shape — nested one
-// level deeper with its own tree, and the whole chain renders exactly once.
-test fn witness_intermediate_project_nests_recursively() -> Bool {
+// SINGLE-CHILD CHAIN COLLAPSE (operator ruling 2026-09-21): a project whose ONLY display child is
+// itself a project collapses — the shell-residue-zero → shell-gate-migration →
+// shell-effectplan-to-bash → shell-typed-invocation chain shape — rendering as ONE project row
+// carrying the topmost identity, the swallowed intermediates as its chain, and the chain end's
+// tasks as its entries. The whole chain renders exactly once (chain members are accounted in
+// project_tree_row_ids), and the depth the entries sit at is one below the top row.
+test fn witness_single_child_chain_collapses() -> Bool {
   let nodes = [
     fx_sized(id: "hier-chain-a", content: "chain top"),
     fx_sized(id: "hier-chain-b", content: "chain mid"),
@@ -1103,13 +1113,13 @@ test fn witness_intermediate_project_nests_recursively() -> Bool {
         BandProject { project } =>
           project.row.node_id == "hier-chain-a"
             && project.depth == 1
+            && map(project.chain, r => r.node_id) == ["hier-chain-b"]
+            && map(project.entries, x => fx_entry_id(entry: x)) == ["hier-chain-c"]
+            && project.total_count == 1
             && (match project.entries.first() {
               Present { value: ent } => match ent {
-                ProjectNested { project: mid } =>
-                  mid.row.node_id == "hier-chain-b"
-                    && mid.depth == 2
-                    && map(mid.entries, x => fx_entry_id(entry: x)) == ["hier-chain-c"]
-                ProjectLeaf { row: _ } => false
+                ProjectLeaf { row } => row.node_id == "hier-chain-c"
+                ProjectNested { project: _ } => false
               }
               Absent => false
             })
@@ -1119,6 +1129,149 @@ test fn witness_intermediate_project_nests_recursively() -> Bool {
       Absent => false
     })
     && band_entry_row_count(entries: ws.ready) == 0
+}
+
+// MULTI-CHILD PROJECTS NEVER COLLAPSE: with two display children the recursion keeps its nested
+// project arm — the intermediate renders as ProjectNested one level deeper with its own tree, its
+// own (empty) chain, and its own entries.
+test fn witness_multi_child_project_never_collapses() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-multi-a", content: "top project"),
+    fx_sized(id: "hier-multi-b", content: "mid project"),
+    fx_sized(id: "hier-multi-x", content: "side leaf"),
+    fx_sized(id: "hier-multi-c", content: "base leaf"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-multi-a", parent: "hier-multi-b"),
+    gunbc.roadmap_authority.edge(child: "hier-multi-a", parent: "hier-multi-x"),
+    gunbc.roadmap_authority.edge(child: "hier-multi-b", parent: "hier-multi-c"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 4
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && (match ws.upcoming.first() {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          project.row.node_id == "hier-multi-a"
+            && count(project.chain) == 0
+            && map(project.entries, x => fx_entry_id(entry: x)) == ["hier-multi-b", "hier-multi-x"]
+            && (match project.entries.first() {
+              Present { value: ent } => match ent {
+                ProjectNested { project: mid } =>
+                  mid.row.node_id == "hier-multi-b"
+                    && mid.depth == 2
+                    && count(mid.chain) == 0
+                    && map(mid.entries, x => fx_entry_id(entry: x)) == ["hier-multi-c"]
+                ProjectLeaf { row: _ } => false
+              }
+              Absent => false
+            })
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+}
+
+// CHAIN-END COUNTING: the collapsed top row's k of n is the chain END's display children — the
+// shell chain's shape, where the residue-zero row counts the arc's tasks (here one done task and
+// one open task of two), not the intermediates.
+test fn witness_chain_end_tasks_count_in_top_row() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-cc-r", content: "residue analogue"),
+    fx_sized(id: "hier-cc-g", content: "gate analogue"),
+    fx_sized(id: "hier-cc-e", content: "effectplan analogue"),
+    fx_sized(id: "hier-cc-arc", content: "arc analogue"),
+    gunbc.roadmap_authority.sign(
+      rn: fx_sized(id: "hier-cc-t1", content: "done task"),
+      s: gunbc.roadmap_authority.signed(
+        by: "op",
+        works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_chain_end_tasks_count_in_top_row", executed_on: "2026-09-21" },
+        scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
+        as_expected: true)),
+    fx_sized(id: "hier-cc-t2", content: "open task"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-cc-r", parent: "hier-cc-g"),
+    gunbc.roadmap_authority.edge(child: "hier-cc-g", parent: "hier-cc-e"),
+    gunbc.roadmap_authority.edge(child: "hier-cc-e", parent: "hier-cc-arc"),
+    gunbc.roadmap_authority.edge(child: "hier-cc-arc", parent: "hier-cc-t1"),
+    gunbc.roadmap_authority.edge(child: "hier-cc-arc", parent: "hier-cc-t2"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 6
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && (match ws.upcoming.first() {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          project.row.node_id == "hier-cc-r"
+            && map(project.chain, r => r.node_id) == ["hier-cc-g", "hier-cc-e", "hier-cc-arc"]
+            && project.total_count == 2
+            && project.closed_count == 1
+            && map(project.entries, x => fx_entry_id(entry: x)) == ["hier-cc-t1", "hier-cc-t2"]
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+}
+
+// THE OWNERSHIP CLAUSE (the fleet-closed-loop-converge interaction): a project collapses through
+// its single display child only when it OWNS that child (the child's primary display parent is
+// the collapsing project). Here the shared intermediate project M gates both P1 and P2, and M's
+// primary parent is P2 (first declared edge): P2 collapses through M and carries M's task, while
+// P1 keeps its honest "0 of 1" with no entries and no chain — M joins exactly one chain.
+test fn witness_shared_project_child_collapses_only_under_owner() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-sp-p1", content: "project one"),
+    fx_sized(id: "hier-sp-p2", content: "project two"),
+    fx_sized(id: "hier-sp-m", content: "shared project"),
+    fx_sized(id: "hier-sp-t", content: "shared project task"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-sp-p2", parent: "hier-sp-m"),
+    gunbc.roadmap_authority.edge(child: "hier-sp-p1", parent: "hier-sp-m"),
+    gunbc.roadmap_authority.edge(child: "hier-sp-m", parent: "hier-sp-t"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 4
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && (match ws.upcoming |> filter(e => match e {
+        BandProject { project } => project.row.node_id == "hier-sp-p1"
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }) |> first {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          count(project.chain) == 0
+            && project.total_count == 1
+            && count(project.entries) == 0
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+    && (match ws.upcoming |> filter(e => match e {
+        BandProject { project } => project.row.node_id == "hier-sp-p2"
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }) |> first {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          map(project.chain, r => r.node_id) == ["hier-sp-m"]
+            && project.total_count == 1
+            && map(project.entries, x => fx_entry_id(entry: x)) == ["hier-sp-t"]
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
 }
 
 // FAMILY-FIRST: the closing-contract family is the presentation authority for its generated task
@@ -1157,4 +1310,122 @@ test fn witness_family_member_never_nests() -> Bool {
       }
       Absent => false
     })
+}
+
+// ── Hero rows, red flags, and activity classification (operator request 2026-09-21) ─────────────
+//
+// The semantic activity-line classes derive from TYPED sources only — the round ledger's segment
+// kinds, the decided activity arm and attention — never from the rendered text. Every class has a
+// discriminating fixture below, plus one unclassifiable-stays-neutral control; exec is the
+// declared vocabulary member with no on-page producer today (its trigger is named in the authority
+// comment: ProviderRunning carrying the typed CodexItemActivity).
+
+fn fx_refused_activity() -> ActivityView {
+  activity_view_from_parts(
+    segments: [
+      WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+      WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
+    ],
+    remaining: 6,
+    process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    current_activity: "",
+  )
+}
+
+fn fx_completed_activity() -> ActivityView {
+  activity_view_from_parts(
+    segments: [
+      WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+      WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    ],
+    remaining: 0,
+    process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    current_activity: "",
+  )
+}
+
+fn fx_failed_activity() -> ActivityView {
+  activity_view_from_parts(
+    segments: [
+      WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentFailed, detail: "exit 1 before terminal event" },
+    ],
+    remaining: 6,
+    process: WorkerProcessExited { exit_code: 1, last_command: "" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    current_activity: "",
+  )
+}
+
+test fn witness_activity_line_classification_is_typed() -> Bool {
+  activity_line_class_key(c: activity_line_class_of_round(k: ReadRound)) == "read"
+    && activity_line_class_key(c: activity_line_class_of_round(k: WriteRound)) == "write"
+    && activity_line_class_key(c: activity_line_class_of_round(k: ReasonRound)) == "provider-call"
+    && activity_line_class_key(c: activity_line_class_of_round(k: UnmeasuredRound)) == "neutral"
+    && activity_line_class_key(c: activity_line_class_of_activity(a: fx_specimen_activity())) == "neutral"
+    && activity_line_class_key(c: activity_line_class_of_activity(a: fx_refused_activity())) == "error-refusal"
+    && activity_line_class_key(c: activity_line_class_of_activity(a: fx_failed_activity())) == "error-refusal"
+    && activity_line_class_key(c: activity_line_class_of_activity(a: fx_completed_activity())) == "done"
+    && activity_line_class_key(c: activity_line_class_of_activity(a: NoActiveWork)) == "neutral"
+    && activity_line_class_key(c: activity_line_class_of_activity(a: ActivityUnobservable { reason: "channel unreadable" })) == "neutral"
+    && activity_line_class_key(c: ActivityLineExec) == "exec"
+}
+
+// The refused and completed arms carry their obligation roster (the hero stage strip reads it):
+// the refused strip shows WHICH segment is red, the completed strip reads all-done. Constructed
+// before this increment they had no segments field, and the strip had nothing to paint.
+test fn witness_refused_and_completed_arms_carry_the_roster() -> Bool {
+  match fx_refused_activity() {
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations } =>
+      count(obligations) == 2
+        && (match obligations |> filter(s => workflow_segment_state_key(state: s.state) == "refused") |> first {
+          Present { value: s } => workflow_segment_state_key(state: s.state) == "refused"
+          Absent => false
+        })
+    NoActiveWork => false
+    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
+    ActivityUnobservable { reason: _ } => false
+  }
+    && match fx_completed_activity() {
+      CompletedWork { outcome: _, evidence: _, obligations } =>
+        count(obligations) == 2
+          && all(obligations, s => workflow_segment_state_key(state: s.state) == "complete")
+      NoActiveWork => false
+      ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+      ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
+      LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+      ActivityUnobservable { reason: _ } => false
+    }
+}
+
+// THE RED FLAG DERIVES FROM DECIDED STATES: a project whose subtree carries a refused or a failed
+// (anomalous) attempt flags; the same tree quiet or green does not. The erred row itself keeps the
+// attention law and surfaces in the Active band — the flag is derived over display children,
+// whether or not they render nested.
+test fn witness_project_red_flag_derives_from_decided_states() -> Bool {
+  let edges = fx_hier_edges()
+  let rows_ok = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
+  let rows_refused = fx_hier_rows(activity_for_open: fx_refused_activity(), standing_for_open: none)
+  let rows_failed = fx_hier_rows(activity_for_open: fx_failed_activity(), standing_for_open: none)
+  let rows_done = fx_hier_rows(activity_for_open: fx_completed_activity(), standing_for_open: none)
+  !fx_project_tree(rows: rows_ok, edges: edges, node_id: "hier-project").subtree_error
+    && fx_project_tree(rows: rows_refused, edges: edges, node_id: "hier-project").subtree_error
+    && fx_project_tree(rows: rows_failed, edges: edges, node_id: "hier-project").subtree_error
+    && !fx_project_tree(rows: rows_done, edges: edges, node_id: "hier-project").subtree_error
+    && row_activity_erred(row: fx_row_of(rows: rows_refused, node_id: "hier-task-open"))
+    && row_activity_erred(row: fx_row_of(rows: rows_failed, node_id: "hier-task-open"))
+    && !row_activity_erred(row: fx_row_of(rows: rows_ok, node_id: "hier-task-open"))
+}
+
+// The wire carries the DECIDED summary class so the client paints it verbatim (the single
+// projection authority's wire half): refused flags error-refusal, completed reads done, a routine
+// active attempt stays neutral.
+test fn witness_wire_carries_decided_summary_class() -> Bool {
+  string_contains(s: serialize_json(v: activity_view_json_value(view: fx_refused_activity())), pattern: "\"summary_class\": \"error-refusal\"")
+    && string_contains(s: serialize_json(v: activity_view_json_value(view: fx_completed_activity())), pattern: "\"summary_class\": \"done\"")
+    && string_contains(s: serialize_json(v: activity_view_json_value(view: fx_specimen_activity())), pattern: "\"summary_class\": \"neutral\"")
+    && string_contains(s: serialize_json(v: activity_view_json_value(view: NoActiveWork)), pattern: "\"summary_class\": \"neutral\"")
 }

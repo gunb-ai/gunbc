@@ -557,6 +557,7 @@ test fn workflow_json_exposes_segment_and_provider_facts() -> Bool {
     && string_contains(s: wire, pattern: "\"kind\": \"publish\"")
     && string_contains(s: wire, pattern: "\"kind\": \"audit\"")
     && string_contains(s: wire, pattern: "\"workflow_status\": \"failed\"")
+    && string_contains(s: wire, pattern: "\"throughput\": \"")
     && string_contains(s: wire, pattern: "\"desired_obligations\": 8")
     && string_contains(s: wire, pattern: "\"observed_obligations\": 4")
     && string_contains(s: wire, pattern: "\"remaining_obligations\": 5")

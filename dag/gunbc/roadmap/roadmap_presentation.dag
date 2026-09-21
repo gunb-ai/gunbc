@@ -56,6 +56,7 @@ import gunbc.worker_lifecycle {
 }
 import gunbc.harness.harness_throughput {
   HarnessThroughput, HarnessRoundLedger, RoundsUnobserved, throughput_cell_text, harness_throughput_from_ledger,
+  RoundSegmentKind, ReadRound, WriteRound, ReasonRound, UnmeasuredRound,
 }
 
 // THE PRESENTATION SEAM (A2, operator-directed 2026-08-01;
@@ -116,7 +117,10 @@ type ActivityEvidenceRow {
 // count, and the evidence rows grounding the summary (session container / worker process — stated
 // as evidence, never as actions). ActiveWorkRefused carries the located reason: a refusal is a
 // first-class state, not a styling variant of progress. CompletedWork is the terminal projection —
-// the receipt-backed outcome, not the machinery. ActivityUnobservable is 'the evidence could not
+// the receipt-backed outcome, not the machinery. The refused and completed arms also carry the
+// obligation roster (obligations) — the 2026-09-21 hero ruling paints the stage strip from it on
+// every attempt arm, and a refused strip without its red segment would be a refusal with no
+// location. ActivityUnobservable is 'the evidence could not
 // be read', distinct from refusal and absence — collapsing it into either is the state-space
 // conflation §5 names. NAMING: the field is current_activity, not latest_observation — the event
 // authority establishes no temporal order across observation channels, so 'latest' would claim an
@@ -136,6 +140,7 @@ type ActivityView
       summary: String
       located_reason: String
       evidence: List<ActivityEvidenceRow>
+      obligations: List<WorkflowSegment>
     }
   | LegacySupersedableAttempt {
       summary: String
@@ -146,6 +151,7 @@ type ActivityView
   | CompletedWork {
       outcome: String
       evidence: List<ActivityEvidenceRow>
+      obligations: List<WorkflowSegment>
     }
   | ActivityUnobservable {
       reason: String
@@ -895,6 +901,7 @@ fn activity_view_from_parts(
       summary: activity_refusal_summary(kind: refused.kind, detail: refused.detail),
       located_reason: workflow_segment_detail_bounded(detail: refused.detail),
       evidence: evidence,
+      obligations: segments,
     }
     Absent =>
       match first_failed(segments: segments) {
@@ -911,6 +918,7 @@ fn activity_view_from_parts(
             Absent => CompletedWork {
               outcome: "All obligations complete",
               evidence: evidence,
+              obligations: segments,
             }
             Present { value: _ } => ActiveWork {
               summary: activity_summary(segments: segments, remaining: remaining, process: process),
@@ -1030,9 +1038,9 @@ fn activity_arm_key(a: ActivityView) -> String {
   match a {
     NoActiveWork => "none"
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => "active"
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => "refused"
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => "refused"
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => "legacy_supersedable"
-    CompletedWork { outcome: _, evidence: _ } => "completed"
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => "completed"
     ActivityUnobservable { reason: _ } => "unobservable"
   }
 }
@@ -1058,10 +1066,100 @@ fn activity_summary_line(a: ActivityView) -> String {
   match a {
     NoActiveWork => ""
     ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => summary
-    ActiveWorkRefused { summary, located_reason: _, evidence: _ } => summary
+    ActiveWorkRefused { summary, located_reason: _, evidence: _, obligations: _ } => summary
     LegacySupersedableAttempt { summary, located_reason: _, attempt_key: _, evidence: _ } => summary
-    CompletedWork { outcome, evidence: _ } => outcome
+    CompletedWork { outcome, evidence: _, obligations: _ } => outcome
     ActivityUnobservable { reason } => join(["workflow evidence unobservable — ", reason], "")
+  }
+}
+
+// THE ACTIVITY LINE CLASSIFICATION (operator request 2026-09-21: "coloring for tool calls, errors,
+// etc — I see reads and writes right now"). Every activity line the page renders now carries a
+// semantic class from its TYPED source, never from text: round segments classify from
+// RoundSegmentKind (a read round is a file read, a write round a tree write, a reasoning round —
+// no tool call — is the provider round-trip itself, and an unmeasured round is honestly neutral);
+// the one-line state classifies from the decided arm and attention (a completed attempt is done; a
+// refused arm or an anomalous — failed-segment — attempt is error-refusal; everything else is
+// neutral). The vocabulary names an EXEC class for command execution, which NO line on the page
+// produces today: the typed source exists (gunbc.roadmap_provider_events CodexItemActivity) but the
+// provider fold flattens it into the current-activity string, and the honest thread —
+// ProviderRunning carrying the typed item — touches nine modules; it is the named trigger for the
+// day a tool-call line lands, so exec is declared here and deliberately unproduced rather than
+// regex-sniffed from prose. The class is decided HERE, once: the server paints it, and the wire
+// carries its key (summary_class) so the client paints verbatim.
+
+type ActivityLineClass
+  = ActivityLineRead
+  | ActivityLineWrite
+  | ActivityLineExec
+  | ActivityLineProviderCall
+  | ActivityLineErrorRefusal
+  | ActivityLineDone
+  | ActivityLineNeutral
+
+fn activity_line_class_key(c: ActivityLineClass) -> String {
+  match c {
+    ActivityLineRead => "read"
+    ActivityLineWrite => "write"
+    ActivityLineExec => "exec"
+    ActivityLineProviderCall => "provider-call"
+    ActivityLineErrorRefusal => "error-refusal"
+    ActivityLineDone => "done"
+    ActivityLineNeutral => "neutral"
+  }
+}
+
+fn activity_line_class_of_round(k: RoundSegmentKind) -> ActivityLineClass {
+  match k {
+    ReadRound => ActivityLineRead
+    WriteRound => ActivityLineWrite
+    ReasonRound => ActivityLineProviderCall
+    UnmeasuredRound => ActivityLineNeutral
+  }
+}
+
+fn activity_line_class_of_activity(a: ActivityView) -> ActivityLineClass {
+  match a {
+    NoActiveWork => ActivityLineNeutral
+    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention, evidence: _ } =>
+      match attention {
+        ActivityRoutine => ActivityLineNeutral
+        ActivityAnomalous => ActivityLineErrorRefusal
+      }
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => ActivityLineErrorRefusal
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => ActivityLineNeutral
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => ActivityLineDone
+    ActivityUnobservable { reason: _ } => ActivityLineNeutral
+  }
+}
+
+// The red flag for the project hero bar (operator request 2026-09-21): an attempt is ERRED when
+// its decided activity is the refused arm or an anomalous active arm (a failed segment — both
+// decided states, never text). A project's bar flags red when its own row or any rendered
+// descendant carries an erred attempt; the derivation walks the same display-children relation the
+// tree does.
+fn row_activity_erred(row: WorkRowView) -> Bool {
+  match row.activity {
+    NoActiveWork => false
+    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention, evidence: _ } =>
+      match attention {
+        ActivityRoutine => false
+        ActivityAnomalous => true
+      }
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => true
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
+    ActivityUnobservable { reason: _ } => false
+  }
+}
+
+fn project_subtree_errored(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int) -> Bool {
+  if fuel <= 0 {
+    false
+  } else {
+    any(project_task_rows(rows: rows, edges: edges, members: members, node_id: node_id), r =>
+      row_activity_erred(row: r)
+        || project_subtree_errored(rows: rows, edges: edges, members: members, node_id: r.node_id, fuel: fuel - 1))
   }
 }
 
@@ -1075,27 +1173,32 @@ fn activity_evidence_row_json_value(row: ActivityEvidenceRow) -> JsonValue {
 // The wire realization of the DECIDED view — what makes the single projection authority real:
 // /workflow.json carries these fields and the client paints them verbatim (arm selects the
 // container's presence and material; summary/outcome/reason are final strings; attention is the
-// expansion key; evidence rows are label/value pairs). The obligation ledger is NOT duplicated
+// expansion key; summary_class is the decided activity-line class the summary span wears;
+// evidence rows are label/value pairs). The obligation ledger is NOT duplicated
 // here — the attempt payload already carries the canonical segments and the client renders the
 // ledger from those rows; a second segments copy under activity would be the dual representation
 // §3 forbids.
 fn activity_view_json_value(view: ActivityView) -> JsonValue {
+  let summary_class = activity_line_class_key(c: activity_line_class_of_activity(a: view))
   match view {
     NoActiveWork => json_object(members: [
       json_kv(key: "arm", value: json_string(s: "none")),
+      json_kv(key: "summary_class", value: json_string(s: summary_class)),
     ])
     ActiveWork { summary, obligations: _, remaining_obligation_count, current_activity, attention, evidence } =>
       json_object(members: [
         json_kv(key: "arm", value: json_string(s: "active")),
+        json_kv(key: "summary_class", value: json_string(s: summary_class)),
         json_kv(key: "summary", value: json_string(s: summary)),
         json_kv(key: "remaining_obligation_count", value: json_int(n: remaining_obligation_count)),
         json_kv(key: "current_activity", value: json_string(s: current_activity)),
         json_kv(key: "attention", value: json_string(s: activity_attention_key(a: attention))),
         json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
       ])
-    ActiveWorkRefused { summary, located_reason, evidence } =>
+    ActiveWorkRefused { summary, located_reason, evidence, obligations: _ } =>
       json_object(members: [
         json_kv(key: "arm", value: json_string(s: "refused")),
+        json_kv(key: "summary_class", value: json_string(s: summary_class)),
         json_kv(key: "summary", value: json_string(s: summary)),
         json_kv(key: "located_reason", value: json_string(s: located_reason)),
         json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
@@ -1103,20 +1206,23 @@ fn activity_view_json_value(view: ActivityView) -> JsonValue {
     LegacySupersedableAttempt { summary, located_reason, attempt_key, evidence } =>
       json_object(members: [
         json_kv(key: "arm", value: json_string(s: "legacy_supersedable")),
+        json_kv(key: "summary_class", value: json_string(s: summary_class)),
         json_kv(key: "summary", value: json_string(s: summary)),
         json_kv(key: "located_reason", value: json_string(s: located_reason)),
         json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
         json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
       ])
-    CompletedWork { outcome, evidence } =>
+    CompletedWork { outcome, evidence, obligations: _ } =>
       json_object(members: [
         json_kv(key: "arm", value: json_string(s: "completed")),
+        json_kv(key: "summary_class", value: json_string(s: summary_class)),
         json_kv(key: "outcome", value: json_string(s: outcome)),
         json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
       ])
     ActivityUnobservable { reason } =>
       json_object(members: [
         json_kv(key: "arm", value: json_string(s: "unobservable")),
+        json_kv(key: "summary_class", value: json_string(s: summary_class)),
         json_kv(key: "reason", value: json_string(s: reason)),
       ])
   }
@@ -1291,9 +1397,9 @@ fn workspace_covers_row_activity(observation: ObservationImpactView, a: Activity
         ActivityUnobservable { reason: _ } => true
         NoActiveWork => false
         ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
-        ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+        ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
         LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-        CompletedWork { outcome: _, evidence: _ } => false
+        CompletedWork { outcome: _, evidence: _, obligations: _ } => false
       }
   }
 }
@@ -1363,6 +1469,22 @@ type WorkFamilyView {
 // Closed = accepted or superseded (node_closes_dependency), read off the row's DECIDED lifecycle:
 // DoneLifecycle and SupersededLifecycle close; ReviewLifecycle — a merged PR without an accepting
 // signoff — does not. "Has a PR" is never progress.
+//
+// SINGLE-CHILD CHAIN COLLAPSE (operator ruling 2026-09-21): a project with EXACTLY ONE display
+// child which is itself a project collapses — the chain renders as one project row carrying the
+// TOPMOST project's identity and headline, whose tasks and k-of-n counts are the chain END's
+// display children. The exemplar is the reason: shell-residue-zero → shell-gate-migration →
+// shell-effectplan-to-bash → shell-typed-invocation are four single-child links, so the arc's ten
+// shell-dag-* tasks sat two disclosures deep; collapsed, the residue-zero row carries the arc's
+// bar and its ten tasks render one click down. Multi-child projects never collapse. A project
+// collapses THROUGH a child only it OWNS (the child's primary display parent is the collapsing
+// project): fleet-closed-loop-converge's single display child is shell-gate-migration, whose
+// primary parent is shell-residue-zero (first declared edge), so fleet-closed-loop-converge does
+// not collapse — its "k of 1" stays honest and gate-migration joins exactly one chain. The
+// swallowed intermediates are not lost: the collapsed row carries them as its CHAIN (rendered as
+// the chain line inside the task disclosure, identity plus lifecycle chip each), so every node
+// still renders exactly once. The depth cap counts collapsed rows once and applies after
+// collapsing — a collapsed chain is one level, its tasks the next.
 
 type ProjectTreeEntry
   = ProjectLeaf { row: WorkRowView }
@@ -1370,11 +1492,18 @@ type ProjectTreeEntry
 
 type ProjectTreeView {
   row: WorkRowView
+  chain: List<WorkRowView>
   depth: Int
   closed_count: Int
   total_count: Int
   auto_open: Bool
+  subtree_error: Bool
   entries: List<ProjectTreeEntry>
+}
+
+type ProjectChainWalk {
+  end: WorkRowView
+  chain: List<WorkRowView>
 }
 
 fn row_is_closed(row: WorkRowView) -> Bool {
@@ -1500,24 +1629,62 @@ fn project_subtree_pulses(rows: List<WorkRowView>, edges: List<RoadmapEdge>, mem
 // standing vocabulary's motion states; NodeOpen is the routine default and never opens anything).
 // Quiet projects collapse. Pure function of the decided rows; the renderer only paints the
 // attribute.
+
+// The collapse walk (owner ruling above): from a project, swallow exactly one display child at a
+// time while that child is itself a project AND owned by the current node (its primary display
+// parent is the current node — the single-ownership clause that keeps a shared prerequisite out of
+// two chains). The walk stops at the chain end: a node with zero or several display children, or
+// one whose single display child is a leaf or owned elsewhere. chain carries every swallowed
+// project INCLUDING the end; an uncollapsed project has chain [] and end == its own row.
+fn project_chain_walk(row: WorkRowView, rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, fuel: Int) -> ProjectChainWalk {
+  if fuel <= 0 {
+    ProjectChainWalk { end: row, chain: [] }
+  } else {
+    let disp = project_task_rows(rows: rows, edges: edges, members: members, node_id: row.node_id)
+    if count(disp) == 1 {
+      match disp.first() {
+        Absent => ProjectChainWalk { end: row, chain: [] }
+        Present { value: c } =>
+          if row_is_project(rows: rows, edges: edges, members: members, row: c)
+            && (match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: c.node_id) {
+              Present { value: p } => p == row.node_id
+              Absent => false
+            }) {
+            let rest = project_chain_walk(row: c, rows: rows, edges: edges, members: members, fuel: fuel - 1)
+            ProjectChainWalk { end: rest.end, chain: concat([c], rest.chain) }
+          } else {
+            ProjectChainWalk { end: row, chain: [] }
+          }
+      }
+    } else {
+      ProjectChainWalk { end: row, chain: [] }
+    }
+  }
+}
+
 fn project_tree_view(row: WorkRowView, rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, depth: Int, fuel: Int) -> ProjectTreeView {
-  let tasks = project_task_rows(rows: rows, edges: edges, members: members, node_id: row.node_id)
+  let walk = project_chain_walk(row: row, rows: rows, edges: edges, members: members, fuel: fuel)
+  let end = walk.end
+  let tasks = project_task_rows(rows: rows, edges: edges, members: members, node_id: end.node_id)
   let nested = if fuel <= 0 {
     []
   } else {
     tasks |> filter(t =>
       row_is_banded(row: t)
         && (match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: t.node_id) {
-          Present { value: p } => p == row.node_id
+          Present { value: p } => p == end.node_id
           Absent => false
         }))
   }
   ProjectTreeView {
     row: row,
+    chain: walk.chain,
     depth: depth,
     closed_count: count(tasks |> filter(t => row_is_closed(row: t))),
     total_count: count(tasks),
     auto_open: project_subtree_pulses(rows: rows, edges: edges, members: members, node_id: row.node_id, fuel: count(rows)),
+    subtree_error: row_activity_erred(row: row)
+      || project_subtree_errored(rows: rows, edges: edges, members: members, node_id: row.node_id, fuel: count(rows)),
     entries: map(nested, t =>
       if row_is_project(rows: rows, edges: edges, members: members, row: t) {
         ProjectNested { project: project_tree_view(row: t, rows: rows, edges: edges, members: members, depth: depth + 1, fuel: fuel - 1) }
@@ -1530,19 +1697,23 @@ fn project_tree_view(row: WorkRowView, rows: List<WorkRowView>, edges: List<Road
 fn project_tree_statuses(view: ProjectTreeView) -> List<String> {
   concat(
     [ work_lifecycle_key(l: view.row.lifecycle) ],
-    flat_map(view.entries, e => match e {
-      ProjectLeaf { row } => [ work_lifecycle_key(l: row.lifecycle) ]
-      ProjectNested { project } => project_tree_statuses(view: project)
-    }))
+    concat(
+      map(view.chain, r => work_lifecycle_key(l: r.lifecycle)),
+      flat_map(view.entries, e => match e {
+        ProjectLeaf { row } => [ work_lifecycle_key(l: row.lifecycle) ]
+        ProjectNested { project } => project_tree_statuses(view: project)
+      })))
 }
 
 fn project_tree_row_ids(view: ProjectTreeView) -> List<String> {
   concat(
     [ view.row.node_id ],
-    flat_map(view.entries, e => match e {
-      ProjectLeaf { row } => [ row.node_id ]
-      ProjectNested { project } => project_tree_row_ids(view: project)
-    }))
+    concat(
+      map(view.chain, r => r.node_id),
+      flat_map(view.entries, e => match e {
+        ProjectLeaf { row } => [ row.node_id ]
+        ProjectNested { project } => project_tree_row_ids(view: project)
+      })))
 }
 
 type WorkBandEntry
@@ -1563,10 +1734,10 @@ type DailyWorkspaceView {
 fn row_is_active_work(row: WorkRowView) -> Bool {
   match row.activity {
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => true
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => true
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => true
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => true
     NoActiveWork => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
