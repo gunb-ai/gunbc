@@ -11,6 +11,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   FilesystemFailureKind,   filesystem_create_new, filesystem_exact_read, filesystem_failure_kind_name,
+  filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_entry_names,
 }
 
 data authorization_claim_store_root: NonEmptyStr = "/var/lib/gunbc/authorization-claims" as NonEmptyStr
@@ -705,6 +706,7 @@ fn file_compare_and_set(
 type CasSlotKeys
   = CasSlotKeysListed { keys: List<NonEmptyStr> }
   | CasSlotKeysListingRefused { root: NonEmptyStr, detail: String }
+  | CasSlotKeysSubjectRefused { root: NonEmptyStr, cause: String }
 
 fn cas_name_is_digits(s: String) -> Bool {
   s != "" && decimal_digits_only(s: s)
@@ -727,12 +729,15 @@ fn cas_key_of_slot_name(name: String) -> NonEmptyStr? {
 
 fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
   let listing = Filesystem.List(path: root as String)
-  if !listing.success { CasSlotKeysListingRefused { root: root, detail: listing.error } } else {
-    let names = filter(listing.entries.split(delimiter: "\n"), n => trim(s: n) != "")
-    let keys = fold(names, init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
-      Absent => acc
-      Present { value: k } => acc |> list_push(k)
-    })
-    CasSlotKeysListed { keys: distinct_by_key(xs: keys, key: fn(k) { k as String }) }
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => CasSlotKeysSubjectRefused { root: root, cause: c }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => CasSlotKeysListingRefused { root: root, detail: e }
+    FilesystemDirectoryListed(listed) => {
+      let keys = fold(filesystem_listing_entry_names(listing: listed), init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
+        Absent => acc
+        Present { value: k } => acc |> list_push(k)
+      })
+      CasSlotKeysListed { keys: distinct_by_key(xs: keys, key: fn(k) { k as String }) }
+    }
   }
 }
