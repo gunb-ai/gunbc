@@ -31,8 +31,8 @@ data p384_b_octets: List<UInt8> = [179, 49, 47, 167, 226, 62, 231, 228, 152, 142
 data p384_gx_octets: List<UInt8> = [170, 135, 202, 34, 190, 139, 5, 55, 142, 177, 199, 30, 243, 32, 173, 116, 110, 29, 59, 98, 139, 167, 155, 152, 89, 247, 65, 224, 130, 84, 42, 56, 85, 2, 242, 93, 191, 85, 41, 108, 58, 84, 94, 56, 114, 118, 10, 183]
 data p384_gy_octets: List<UInt8> = [54, 23, 222, 74, 150, 38, 44, 111, 93, 158, 152, 191, 146, 146, 220, 41, 248, 244, 29, 189, 40, 154, 20, 124, 233, 218, 49, 19, 181, 240, 184, 192, 10, 96, 177, 206, 29, 126, 129, 157, 122, 67, 29, 124, 144, 234, 14, 95]
 
-data p384_p: BigNat = bignat_from_octets(octets: p384_p_octets)
-data p384_n: BigNat = bignat_from_octets(octets: p384_n_octets)
+// The base point as BigNat for the witnesses; p, n and b reach the family fold as octets through
+// p384_curve and have no other reader.
 data p384_gx: BigNat = bignat_from_octets(octets: p384_gx_octets)
 data p384_gy: BigNat = bignat_from_octets(octets: p384_gy_octets)
 
