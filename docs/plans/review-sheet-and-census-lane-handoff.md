@@ -150,6 +150,15 @@ necessary-but-not-sufficient for that trigger.
 
 Not blocked. #11679 is merged, so the custody authority this consolidates into exists today.
 
+**Landed as a consolidation** into `gunbc.host_credential_custody_converge` (the #11679 module,
+renamed because it no longer holds one key): fleet-converge mode `host_credential_custody_converge`
+with a `credential` choice over `host_custody_credential_roster` — `ControllerAppKey` first, then
+`ApprovalNtfyPublisherToken`. The delivery HumanIntervention is deleted; what stays human is the
+**mint** (`approval_ntfy_publisher_token_mint_intervention`): creating the ntfy user and adding its
+token to Secret Manager. Two operator acts remain before the first live receipt for the ntfy row:
+the mint, and ensuring `gunbc.auth.fleet_secret_accessor_roster`
+`approval_ntfy_publisher_token_accessor_row`.
+
 ## Small, unblocked
 
 Seven unused imports across `gunbc.ci_workflow_scan_producer` (`CodeSearchPage`,

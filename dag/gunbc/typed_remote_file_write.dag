@@ -93,7 +93,7 @@ type TypedRemoteFileWriteOutcome
 // cmp's exit vocabulary plus the whole route over a hermetic fixture, not a near-side byte compare.
 // For a unit file the transfer is a few hundred bytes.
 // OWNER-READ-ONLY IS ITS OWN ARM, not a caller-supplied octal: a signing key read by root alone
-// (gunbc.microvm_controller_app_key_converge) has no reason to be writable even by its owner, and an
+// (gunbc.host_credential_custody_converge ControllerAppKey) has no reason to be writable even by its owner, and an
 // open octal parameter would let any consumer spell a group- or world-readable key.
 type RemoteFileMode
   = RemoteFileModeOwnerReadWrite

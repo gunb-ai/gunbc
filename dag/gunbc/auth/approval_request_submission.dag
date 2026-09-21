@@ -70,10 +70,11 @@ data approval_submission_mac_key_id: MacKeyId = "approval-submission-mac-key/1" 
 
 data approval_submission_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approval-submission-mac-key"
 
-// THE PUBLISHER TOKEN IS THE NTFY SERVER'S, AT THE PATH ITS DEPLOYMENT WROTE
-// (gunbc.auth.approval_ntfy_deployment approval_ntfy_publisher_token_intervention): root:gunbc-ntfy
-// 0640 today, so the roadmap unit's user cannot read it until the converge step (part D) admits
-// that user to the group. An unreadable token is a typed refusal below, never a fabricated publish.
+// THE PUBLISHER TOKEN IS THE NTFY SERVER'S, DELIVERED FROM SECRET MANAGER by the custody roster
+// (gunbc.host_credential_custody_converge ApprovalNtfyPublisherToken): root:gunbc-ntfy 0640 in a
+// root:gunbc-ntfy 0750 directory, so the roadmap unit's user reads it only once
+// gunbc.auth.approval_keyring_converge admits that user to the group. An unreadable token is a
+// typed refusal below, never a fabricated publish.
 data approval_publisher_token_path: NonEmptyStr = "/etc/gunbc-ntfy/publisher-token"
 
 fn read_submission_keyring() -> ApprovalKeyringRead {

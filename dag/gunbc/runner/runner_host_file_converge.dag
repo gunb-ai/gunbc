@@ -347,7 +347,7 @@ fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmissio
 // constructor refuses on.
 // WHO WE REACH A RUNNER HOST AS, in one place. The endpoint comes from the fleet reach authority and
 // the principal is the declared administrator; neither depends on the deploy row, so a converge that
-// resolves its subject some other way -- gunbc.microvm_controller_app_key_converge resolves custody
+// resolves its subject some other way -- gunbc.host_credential_custody_converge resolves custody
 // from the host SPEC, because the App key does not depend on slot width -- consumes this rather than
 // spelling the pair again (DESIGN §3).
 fn administrator_ssh_target(host: HostIdentity) -> SshTarget {

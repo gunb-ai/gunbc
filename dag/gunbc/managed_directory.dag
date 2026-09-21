@@ -45,6 +45,70 @@ import gunbc.host_layout { srv1_dispatch_attempt_state_root }
 // deployment_owned_steps carries a ManagedDirectory, at which point install_d_owned_command loses
 // its mode argument entirely and this frontier note is deleted.
 
+// ── THE DIRECTORIES WHOSE DEPENDENTS ARE NOT YET ESTABLISHED ────────────────────────────────────
+//
+// THIS IS THE "SHARED CONSTANT" THE SCOPE NOTE ABOVE ALREADY ADMITS, GIVEN A HOME AND A TYPE. That
+// note says the other owned directories keep a shared constant until each one's dependents are
+// established by evidence rather than by assumption, and that a blanket re-derivation is a host
+// behaviour change disguised as a refactor. What it did not do is say WHERE the constant lives, so
+// each directory kept its own: gunbc.auth.approval_ntfy_converge declared the octal "0750" for the
+// ntfy state and config directories, and gunbc.host_credential_custody_converge declared "0750" and
+// "0700" again for the custody rows -- one of which ensures THE SAME DIRECTORY as the ntfy config
+// member. Two converges asserting a mode on one directory would flap it on every run, and the
+// repair reached for was a witness holding the two strings equal, which is §5's validation standing
+// where construction was available.
+//
+// SO THE ARM IS CLOSED AND THE OCTAL IS DERIVED. A named arm, never a caller-supplied octal, so no
+// consumer can spell a group- or world-writable directory; and the octal is rendered by
+// file_mode_octal over a constructed FileMode, the same Open Group serialization
+// managed_directory_mode_octal uses, so this module still mints no permission literal. It is the
+// INTERIM shape, not a rival to the derivation above: a directory here has a mode because someone
+// chose one, and a directory above has a mode because its dependents require one.
+//
+// DISSOLUTION: an arm-holding directory becomes a ManagedDirectory with its dependents declared,
+// at which point its consumers take managed_directory_mode_octal and the arm is deleted. That is
+// the same trigger the scope note already carries, and it is blocked for the ntfy directories by a
+// modelled gap worth naming rather than working around: ManagedDirectory derives owner/group/other
+// class membership from the OWNER's uid and gid (dependent_class_of), so it cannot yet express a
+// root-owned directory whose GROUP is another principal's -- root:gunbc-ntfy, which is exactly what
+// both ntfy directories are. Extending it to carry an owning group distinct from the owner's
+// primary group is the capability that retires these arms.
+type DeclaredDirectoryMode
+  = DirectoryOwnerOnly
+  | DirectoryOwnerAllGroupTraverse
+
+fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
+  match m {
+    DirectoryOwnerOnly => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: false, write: false, execute: false },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: false,
+      sticky: false,
+    }
+    DirectoryOwnerAllGroupTraverse => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: true, write: false, execute: true },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: false,
+      sticky: false,
+    }
+  }
+}
+
+fn declared_directory_mode_octal(m: DeclaredDirectoryMode) -> String {
+  file_mode_octal(mode: declared_directory_mode(m: m))
+}
+
+// THE GROUP LEG READ OFF THE SAME ARM, so a consumer asking whether a group may traverse a
+// directory asks the mode rather than re-deciding it. The custody admission gate needs exactly this
+// to refuse a group-readable file under a directory the group cannot enter.
+fn declared_directory_grants_group_traverse(m: DeclaredDirectoryMode) -> Bool {
+  declared_directory_mode(m: m).group.execute
+}
+
 type DirectoryDependent {
   who: PosixUser
   needs: List<Verb>

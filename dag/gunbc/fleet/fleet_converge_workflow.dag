@@ -133,6 +133,7 @@ import gunbc.ci_spec {
 }
 import gunbc.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name }
+import gunbc.host_credential_custody_converge { host_custody_credential_options, host_credential_custody_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
 import gunbc.runner_slot_allocation { runner_host_label }
@@ -227,7 +228,7 @@ type FleetConvergeWorkflowMode
   | SitePxeEdgeObserve
   | SitePxeEdgeConverge
   | RunnerPasswordSessionToolConverge
-  | MicrovmControllerAppKeyConverge
+  | HostCredentialCustodyConverge
   | R2MintPreflight
   | R2BucketEnsure
   | R2BucketAdminMint
@@ -269,7 +270,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     SitePxeEdgeObserve => "site_pxe_edge_observe"
     SitePxeEdgeConverge => "site_pxe_edge_converge"
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
-    MicrovmControllerAppKeyConverge => "microvm_controller_app_key_converge"
+    HostCredentialCustodyConverge => "host_credential_custody_converge"
     R2MintPreflight => "r2_mint_preflight"
     R2BucketEnsure => "r2_bucket_ensure"
     R2BucketAdminMint => "r2_bucket_admin_mint"
@@ -305,7 +306,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41RuntimeImageBuild, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, MicrovmControllerAppKeyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41RuntimeImageBuild, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -355,7 +356,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     SitePxeEdgeObserve => none
     SitePxeEdgeConverge => none
     RunnerPasswordSessionToolConverge => none
-    MicrovmControllerAppKeyConverge => none
+    HostCredentialCustodyConverge => none
     R2MintPreflight => none
     R2BucketEnsure => none
     R2BucketAdminMint => none
@@ -466,7 +467,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     SitePxeEdgeObserve => FleetSshKeyConsumed
     SitePxeEdgeConverge => FleetSshKeyConsumed
     RunnerPasswordSessionToolConverge => FleetSshKeyConsumed
-    MicrovmControllerAppKeyConverge => FleetSshKeyConsumed
+    HostCredentialCustodyConverge => FleetSshKeyConsumed
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
     ApprovalKeyringConverge => FleetSshKeyConsumed
@@ -993,7 +994,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     SitePxeEdgeObserve => ExecutorDomain
     SitePxeEdgeConverge => ExecutorDomain
     RunnerPasswordSessionToolConverge => ExecutorDomain
-    MicrovmControllerAppKeyConverge => ExecutorDomain
+    HostCredentialCustodyConverge => ExecutorDomain
     R2MintPreflight => ExecutorDomain
     R2BucketEnsure => ExecutorDomain
     R2BucketAdminMint => ExecutorDomain
@@ -1379,45 +1380,48 @@ fn fleet_converge_runner_password_session_tool_converge_step() -> Step {
   )
 }
 
-// THE CONTROLLER APP KEY MODE (gunbc.microvm_controller_app_key_converge). A step in the host-pinned
-// job like the password-session mode, but NOT through fleet_converge_runner_host_file_step: it reads
-// the key from Secret Manager in-process, so it carries the run's workload-identity token beside the
-// host binding. Dispatching it delivers custody only; nothing selects the microVM path for the floor
-// job.
-data fleet_converge_microvm_controller_app_key_converge_step_if: String = fleet_converge_mode_step_if(mode: MicrovmControllerAppKeyConverge)
+// THE HOST CREDENTIAL CUSTODY MODE (gunbc.host_credential_custody_converge). ONE mode for every
+// custody row: the credential is the `credential` dispatch choice over that module's closed roster
+// (host_custody_credential_options), not a mode per secret. A step in the host-pinned job like the
+// password-session mode, but NOT through fleet_converge_runner_host_file_step: it reads the
+// credential from Secret Manager in-process, so it carries the run's workload-identity token beside
+// the host binding. Dispatching the controller-key row delivers custody only; nothing selects the
+// microVM path for the floor job.
+data fleet_converge_host_credential_custody_converge_step_if: String = fleet_converge_mode_step_if(mode: HostCredentialCustodyConverge)
 
-fn fleet_converge_microvm_controller_app_key_converge_step() -> Step {
+fn fleet_converge_host_credential_custody_converge_step() -> Step {
   RunStep {
-    name: Present { value: "MicroVM controller App key: deliver root:root 0400 from Secret Manager, read owner, mode, bytes and staging back" },
-    id: Present { value: "microvm_controller_app_key_converge" },
-    run: gunbc_ci_microvm_controller_app_key_converge_invoke(),
+    name: Present { value: "Host credential custody: deliver the chosen rostered credential from Secret Manager at its row's owner, group and mode, read owner, mode, directory, bytes and staging back" },
+    id: Present { value: "host_credential_custody_converge" },
+    run: gunbc_ci_host_credential_custody_converge_invoke(),
     shell: none,
     env: Present {
       value: [
         kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+        kv(key: host_credential_custody_env_name, value: yaml_string(s: "${{ github.event.inputs.credential }}")),
         kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       ]
     },
     working_directory: none,
-    if_condition: Present { value: fleet_converge_microvm_controller_app_key_converge_step_if },
+    if_condition: Present { value: fleet_converge_host_credential_custody_converge_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_host_file_step_timeout_minutes }
   }
 }
 
-fn fleet_converge_microvm_controller_app_key_receipt_upload_step() -> Step {
+fn fleet_converge_host_credential_custody_receipt_upload_step() -> Step {
   UsesStep {
-    name: Present { value: "Upload microVM controller App key custody receipt" },
-    id: Present { value: "microvm_controller_app_key_receipt_upload" },
+    name: Present { value: "Upload host credential custody receipt" },
+    id: Present { value: "host_credential_custody_receipt_upload" },
     uses: upload_artifact_action,
     with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "microvm-controller-app-key-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/microvm-controller-app-key-converge-receipt.txt")),
+      kv(key: "name", value: yaml_string(s: "host-credential-custody-converge-receipt")),
+      kv(key: "path", value: yaml_string(s: "target/host-credential-custody-converge-receipt.txt")),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
     env: none,
-    if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_controller_app_key_converge_step_if, ")")) },
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_host_credential_custody_converge_step_if, ")")) },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -2626,8 +2630,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_runner_host_file_converge_step(),
         fleet_converge_runner_password_session_tool_converge_step(),
         fleet_converge_runner_password_session_tool_receipt_upload_step(),
-        fleet_converge_microvm_controller_app_key_converge_step(),
-        fleet_converge_microvm_controller_app_key_receipt_upload_step(),
+        fleet_converge_host_credential_custody_converge_step(),
+        fleet_converge_host_credential_custody_receipt_upload_step(),
         fleet_converge_runner_host_file_receipt_upload_step(),
         fleet_converge_site_pxe_edge_observe_step(),
         fleet_converge_site_pxe_edge_converge_step(),
@@ -2793,6 +2797,13 @@ data fleet_converge_workflow: Workflow = Workflow {
           required: false,
           default: none,
           type: InputChoice { options: fleet_converge_reset_observer_options },
+        },
+        DispatchInput {
+          name: "credential",
+          description: Present { value: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and a row scoped to one host refuses any other" },
+          required: false,
+          default: none,
+          type: InputChoice { options: host_custody_credential_options },
         },
         DispatchInput {
           name: "d0_consent",
