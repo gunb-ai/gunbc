@@ -26,7 +26,7 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
   mtcollins1_boot_authorization_request,
 }
 import gunbc.auth.approval_gate {
-  ApprovalGate, GateAdmitted, GatePending, GateDenied, GateExpired, GateNotFiled, GateIntentMismatch, GateStoreUnreadable, GateAuthorizeRefused,
+  ApprovalGate, GateAdmitted, GateRefused, ApprovalPending, ApprovalDenied, ApprovalExpired, ApprovalNotFiled, ApprovalIntentMismatch, ApprovalStoreUnreadable, ApprovalAuthorizeRefused,
   approval_instant_now, approval_expires_at, approval_poll_ticks, approval_gate_from_outcome,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
 }
@@ -97,20 +97,23 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
 fn mtcollins1_boot_refusal(gate: ApprovalGate<MtCollins1BootSubject>) -> ProcessExit {
   match gate {
     GateAdmitted { authorization: _ } => ExitSuccess
-    GatePending { escalation_id: e } =>
-      exit_failure(reason: concat("mtcollins1 boot: still pending operator decision for ", e as String))
-    GateDenied { reason: r } =>
-      exit_failure(reason: concat("mtcollins1 boot: operator denied; controller untouched: ", r as String))
-    GateExpired =>
-      exit_failure(reason: "mtcollins1 boot: approval window expired; controller untouched")
-    GateNotFiled { escalation_id: e } =>
-      exit_failure(reason: concat("mtcollins1 boot: no request filed for ", e as String))
-    GateIntentMismatch { requested_revision: a, decided_revision: b } =>
-      exit_failure(reason: concat("mtcollins1 boot: stored decision is for another intent (", concat(a as String, concat(" vs ", b as String)), ")"))
-    GateStoreUnreadable { detail: d } =>
-      exit_failure(reason: concat("mtcollins1 boot: approval store unreadable: ", d as String))
-    GateAuthorizeRefused { detail: d } =>
-      exit_failure(reason: concat("mtcollins1 boot: grant present but authorize refused: ", d as String))
+    GateRefused { cause: c } =>
+      match c {
+        ApprovalPending { escalation_id: e } =>
+          exit_failure(reason: concat("mtcollins1 boot: still pending operator decision for ", e as String))
+        ApprovalDenied { reason: r } =>
+          exit_failure(reason: concat("mtcollins1 boot: operator denied; controller untouched: ", r as String))
+        ApprovalExpired =>
+          exit_failure(reason: "mtcollins1 boot: approval window expired; controller untouched")
+        ApprovalNotFiled { escalation_id: e } =>
+          exit_failure(reason: concat("mtcollins1 boot: no request filed for ", e as String))
+        ApprovalIntentMismatch { requested_revision: a, decided_revision: b } =>
+          exit_failure(reason: concat("mtcollins1 boot: stored decision is for another intent (", concat(a as String, concat(" vs ", b as String)), ")"))
+        ApprovalStoreUnreadable { detail: d } =>
+          exit_failure(reason: concat("mtcollins1 boot: approval store unreadable: ", d as String))
+        ApprovalAuthorizeRefused { detail: d } =>
+          exit_failure(reason: concat("mtcollins1 boot: grant present but authorize refused: ", d as String))
+      }
   }
 }
 

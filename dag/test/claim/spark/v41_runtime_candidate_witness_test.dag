@@ -18,7 +18,7 @@ import gunbc.spark.v41_runtime_candidate {
   V41EnginePatch, v41_engine_patch, V41PatchPopulation, V41PatchesObserved, V41PatchesAbsentByObservation, V41PatchesUnestablished,
   V41EngramPartitionAuthority, PartitionFixedByPatch, PartitionByLaunchConfiguration,
   V41RuntimeArtifactInputs, V41ModelSourceInputs, V41EngramRealizationInputs, V41CandidateInputs,
-  V41ManifestObserved, V41ManifestUnestablished,
+  V41ManifestObserved, V41ManifestUnestablished, V41ManifestRefused, V41ModelSourceInputs, v41_model_source_key, V41IdentityRefused, V41IdentityUnestablished, V41IdentityKeyed,
   V41EngramResidencyPartition, V41PartitionAdmitted, V41PartitionRefused, v41_admit_partition,
   V41CandidateStanding, V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_candidate_standing, v41_candidate, v41_candidate_inputs, v41_candidate_partition, v41_candidate_recipe,
@@ -147,6 +147,17 @@ test fn the_live_candidate_is_unestablished_and_names_every_missing_axis() -> Bo
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
     V41CandidateRefused { defects: _ } => false
   }
+}
+
+// A DEFECT IS NOT AN OBLIGATION: a refused weight population refuses the model source naming the
+// defects (and the candidate with it), while an undigested tokenizer is an obligation; both present,
+// the defect is answered, never hidden behind pending work.
+test fn a_refused_manifest_refuses_the_model_source_and_is_not_an_obligation() -> Bool {
+  let refused = V41ModelSourceInputs { checkpoint_revision: "dba1be0a40aa45a94ad051997016db3960a90277" as NonEmptyStr, weights: V41ManifestRefused { defects: ["weight manifest: path declared more than once: model-00003-of-00048.safetensors" as NonEmptyStr] }, tokenizer: V41ManifestUnestablished { obligation: "the tokenizer text could not be digested" as NonEmptyStr } }
+  let pending = V41ModelSourceInputs { checkpoint_revision: "dba1be0a40aa45a94ad051997016db3960a90277" as NonEmptyStr, weights: V41ManifestObserved { digest: w_sha(c: "a") }, tokenizer: V41ManifestUnestablished { obligation: "the tokenizer text could not be digested" as NonEmptyStr } }
+  (match v41_model_source_key(s: refused) { V41IdentityRefused { defects: d } => length(d) == 1 && any(d, x => (x as String).contains("more than once"))  _ => false })
+    && (match v41_model_source_key(s: pending) { V41IdentityUnestablished { obligations: o } => length(o) == 1  _ => false })
+    && (match v41_candidate_standing(c: w_default(patches: w_two_patches())).standing { V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => true  _ => false })
 }
 
 // THE POSITIVE CONTROL: the same inputs with every axis established key, and the keyed candidate still

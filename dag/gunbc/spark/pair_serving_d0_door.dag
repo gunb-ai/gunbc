@@ -7,7 +7,7 @@ import std.process { ProcessExit, exit_failure }
 import std.resources { Network }
 import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization }
 import gunbc.auth.approval_gate {
-  ApprovalGate, GateAdmitted, GateStoreUnreadable, approval_gate_from_poll, approval_gate_from_outcome, approval_gate_text,
+  ApprovalGate, GateAdmitted, GateRefused, ApprovalStoreUnreadable, approval_gate_from_poll, approval_gate_from_outcome, approval_refusal_text,
   approval_instant_now, approval_expires_at, approval_standing_read, approval_poll_ticks, PollObservedAt, PollClockUnreadable,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
 }
@@ -125,7 +125,7 @@ type D0DoorGate
 fn d0_door_gate_of(gate: ApprovalGate<D0Subject>) -> D0DoorGate {
   match gate {
     GateAdmitted { authorization: scoped } => D0DoorAdmitted { authorization: scoped }
-    other => D0DoorRefused { reason: join(["the consent was not admitted: ", approval_gate_text(g: other)], "") }
+    GateRefused { cause: c } => D0DoorRefused { reason: join(["the consent was not admitted: ", approval_refusal_text(cause: c)], "") }
   }
 }
 
@@ -140,7 +140,7 @@ fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptySt
       match claim {
         D0ClaimAbsent =>
           match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
-            PollClockUnreadable => d0_door_gate_of(gate: GateStoreUnreadable { detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr })
+            PollClockUnreadable => D0DoorRefused { reason: "clock unreadable; refusing to judge expiry against a fabricated instant" }
             PollObservedAt { standing: standing, observed_at: observed } =>
               match standing {
                 PollNotFiled => d0_file_and_poll(request: request, issued: issued, expires: expires)
@@ -150,11 +150,11 @@ fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptySt
           }
         _ =>
           match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
-            PollClockUnreadable => d0_door_gate_of(gate: GateStoreUnreadable { detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr })
+            PollClockUnreadable => D0DoorRefused { reason: "clock unreadable; refusing to judge expiry against a fabricated instant" }
             PollObservedAt { standing: standing, observed_at: _ } =>
               match d0_resumable_authorization(claim: claim, transaction: transaction, poll: standing, request: request) {
                 D0Resumable { authorization: a } => D0DoorAdmitted { authorization: a }
-                D0NotRecorded { gate: g } => d0_door_gate_of(gate: g)
+                D0NotRecorded { cause: c } => D0DoorRefused { reason: join(["the consent's recorded decision does not resume this run: ", approval_refusal_text(cause: c)], "") }
                 D0NotClaimedHere { reason: r } => D0DoorRefused { reason: join(["the consent cannot be resumed by this run: ", r as String], "") }
               }
           }

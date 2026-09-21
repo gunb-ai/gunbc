@@ -5,7 +5,7 @@ import std.measure { Second, second, second_count }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash }
 import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization, ClaimedBy }
-import gunbc.auth.approval_gate { ApprovalGate, ApprovalRecorded, ApprovalNotRecorded, approval_recorded_from_poll }
+import gunbc.auth.approval_gate { ApprovalGateRefusal, ApprovalRecorded, ApprovalNotRecorded, approval_recorded_from_poll }
 import gunbc.auth.approval_request_client { ApprovalPollStanding }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, fabric_group_hosts }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline }
@@ -99,7 +99,7 @@ fn d0_request_intent_text(request: AuthorizationRequest<D0Subject>, group: Fabri
 // authorization without the proof that distinguishes a resume from a start.
 type D0ResumableAuthorization
   = D0Resumable { authorization: ScopedAuthorization<D0Subject> }
-  | D0NotRecorded { gate: ApprovalGate<D0Subject> }
+  | D0NotRecorded { cause: ApprovalGateRefusal }
   | D0NotClaimedHere { reason: NonEmptyStr }
 
 fn d0_resumable_authorization(claim: D0ClaimReading, transaction: NonEmptyStr, poll: ApprovalPollStanding, request: AuthorizationRequest<D0Subject>) -> D0ResumableAuthorization {
@@ -108,7 +108,7 @@ fn d0_resumable_authorization(claim: D0ClaimReading, transaction: NonEmptyStr, p
       if (who as String) == (transaction as String) {
         match approval_recorded_from_poll(poll: poll, request: request) {
           ApprovalRecorded { authorization: a } => D0Resumable { authorization: a }
-          ApprovalNotRecorded { gate: g } => D0NotRecorded { gate: g }
+          ApprovalNotRecorded { cause: c } => D0NotRecorded { cause: c }
         }
       } else {
         D0NotClaimedHere { reason: join(["the consent is claimed by attempt ", who as String, ", not ", transaction as String], "") as NonEmptyStr }

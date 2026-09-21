@@ -20,7 +20,7 @@ import gunbc.spark.pair_serving_d0_authorization {
 }
 import gunbc.spark.pair_serving_d0 { D0ClaimAbsent, D0ClaimAt }
 import std.scoped_authorization { ClaimedBy, CompletedBy, AttemptIdentity }
-import gunbc.auth.approval_gate { approval_gate_from_poll, approval_recorded_from_poll, ApprovalRecorded, ApprovalNotRecorded, GateAdmitted, GateAuthorizeRefused, GateIntentMismatch }
+import gunbc.auth.approval_gate { approval_gate_from_poll, approval_recorded_from_poll, ApprovalRecorded, ApprovalNotRecorded, GateAdmitted, GateRefused, ApprovalAuthorizeRefused, ApprovalIntentMismatch }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -86,13 +86,13 @@ test fn a_recorded_approval_resumes_only_under_this_transactions_held_claim() ->
       let held = D0ClaimAt { state: ClaimedBy { attempt: "tx-1" as AttemptIdentity, claimed_at: at }, generation: 1 }
       let other = D0ClaimAt { state: ClaimedBy { attempt: "tx-9" as AttemptIdentity, claimed_at: at }, generation: 1 }
       let done = D0ClaimAt { state: CompletedBy { attempt: "tx-1" as AttemptIdentity, completed_at: at }, generation: 2 }
-      (match approval_gate_from_poll(poll: approved, request: req, observed_at: "2026-09-21T04:00:00Z" as Timestamp) { GateAuthorizeRefused { detail: _ } => true  _ => false })
+      (match approval_gate_from_poll(poll: approved, request: req, observed_at: "2026-09-21T04:00:00Z" as Timestamp) { GateRefused { cause: ApprovalAuthorizeRefused { detail: _ } } => true  _ => false })
         && (match approval_recorded_from_poll(poll: approved, request: req) { ApprovalRecorded { authorization: AuthorizationGranted { grant: g, claim: _ } } => (g.escalation_id as String) == "d0-esc-1"  _ => false })
         && (match d0_resumable_authorization(claim: held, transaction: "tx-1" as NonEmptyStr, poll: approved, request: req) { D0Resumable { authorization: _ } => true  _ => false })
         && (match d0_resumable_authorization(claim: D0ClaimAbsent, transaction: "tx-1" as NonEmptyStr, poll: approved, request: req) { D0NotClaimedHere { reason: _ } => true  _ => false })
         && (match d0_resumable_authorization(claim: other, transaction: "tx-1" as NonEmptyStr, poll: approved, request: req) { D0NotClaimedHere { reason: r } => (r as String).contains("tx-9")  _ => false })
         && (match d0_resumable_authorization(claim: done, transaction: "tx-1" as NonEmptyStr, poll: approved, request: req) { D0NotClaimedHere { reason: _ } => true  _ => false })
-        && (match d0_resumable_authorization(claim: held, transaction: "tx-1" as NonEmptyStr, poll: PollApproved { revision: "sha256:0000" as NonEmptyStr, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, request: req) { D0NotRecorded { gate: GateIntentMismatch { requested_revision: _, decided_revision: _ } } => true  _ => false })
+        && (match d0_resumable_authorization(claim: held, transaction: "tx-1" as NonEmptyStr, poll: PollApproved { revision: "sha256:0000" as NonEmptyStr, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, request: req) { D0NotRecorded { cause: ApprovalIntentMismatch { requested_revision: _, decided_revision: _ } } => true  _ => false })
     }
   }
 }

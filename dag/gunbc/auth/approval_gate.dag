@@ -39,36 +39,69 @@ import gunbc.auth.approval_status_wire { parse_filed_approval_status, FiledAppro
 // was denied, was taken over another intent, could not be read, or is a grant std.scoped_authorization
 // refuses for this request. Only GateAdmitted carries an authorization.
 
+// THE REFUSALS HAVE THEIR OWN CARRIER, one that cannot hold an authorization: every non-admitted
+// standing is a cause, and a value that is not GateAdmitted is by construction one nothing may
+// act under. The recorded-decision fold below shares the same cause carrier for its negative arm
+// for the same reason -- "not recorded" cannot smuggle an admission.
+type ApprovalGateRefusal
+  = ApprovalPending { escalation_id: NonEmptyStr }
+  | ApprovalNotFiled { escalation_id: NonEmptyStr }
+  | ApprovalDenied { reason: NonEmptyStr }
+  | ApprovalExpired
+  | ApprovalIntentMismatch { requested_revision: NonEmptyStr, decided_revision: NonEmptyStr }
+  | ApprovalStoreUnreadable { detail: NonEmptyStr }
+  | ApprovalAuthorizeRefused { detail: NonEmptyStr }
+
 type ApprovalGate<Subject>
   = GateAdmitted { authorization: ScopedAuthorization<Subject> }
-  | GatePending { escalation_id: NonEmptyStr }
-  | GateNotFiled { escalation_id: NonEmptyStr }
-  | GateDenied { reason: NonEmptyStr }
-  | GateExpired
-  | GateIntentMismatch { requested_revision: NonEmptyStr, decided_revision: NonEmptyStr }
-  | GateStoreUnreadable { detail: NonEmptyStr }
-  | GateAuthorizeRefused { detail: NonEmptyStr }
+  | GateRefused { cause: ApprovalGateRefusal }
 
-// THE LIVE GATE: std.scoped_authorization decides permission at the observed instant, so a grant
-// whose window has not opened or has closed refuses. This is the only fold that mints GateAdmitted.
-fn approval_gate_from_poll<Subject>(poll: ApprovalPollStanding, request: AuthorizationRequest<Subject>, observed_at: Timestamp) -> ApprovalGate<Subject> {
+// The standing read once for both folds: every non-approved standing is its cause, and an
+// approval is its four decision facts. Neither fold has an arm the other's reading cannot reach.
+type ApprovalReading
+  = ApprovalUndecided { cause: ApprovalGateRefusal }
+  | ApprovalDecidedApproved { revision: NonEmptyStr, decided_by: NonEmptyStr, decided_at: Timestamp, execute_by: Timestamp }
+
+fn approval_reading<Subject>(poll: ApprovalPollStanding, request: AuthorizationRequest<Subject>) -> ApprovalReading {
   match poll {
-    PollStillPending => GatePending { escalation_id: request.escalation_id }
-    PollNotFiled => GateNotFiled { escalation_id: request.escalation_id }
-    PollExpired => GateExpired
-    PollUnreadable { detail: d } => GateStoreUnreadable { detail: d }
+    PollStillPending => ApprovalUndecided { cause: ApprovalPending { escalation_id: request.escalation_id } }
+    PollNotFiled => ApprovalUndecided { cause: ApprovalNotFiled { escalation_id: request.escalation_id } }
+    PollExpired => ApprovalUndecided { cause: ApprovalExpired }
+    PollUnreadable { detail: d } => ApprovalUndecided { cause: ApprovalStoreUnreadable { detail: d } }
     PollDenied { revision: r, decided_by: _, decided_at: _, reason: why } =>
-      if r != request_revision_of(request: request) { GateIntentMismatch { requested_revision: request_revision_of(request: request), decided_revision: r } }
-      else { GateDenied { reason: why } }
-    PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+      if r != request_revision_of(request: request) { ApprovalUndecided { cause: ApprovalIntentMismatch { requested_revision: request_revision_of(request: request), decided_revision: r } } }
+      else { ApprovalUndecided { cause: ApprovalDenied { reason: why } } }
+    PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } => ApprovalDecidedApproved { revision: r, decided_by: by, decided_at: at, execute_by: until }
+  }
+}
+
+// An approval over this request's revision derives to its authorization, or names why not.
+type ApprovalDerivation<Subject>
+  = ApprovalDerived { authorization: ScopedAuthorization<Subject> }
+  | ApprovalNotDerived { cause: ApprovalGateRefusal }
+
+fn approval_derive<Subject>(reading: ApprovalReading, request: AuthorizationRequest<Subject>) -> ApprovalDerivation<Subject> {
+  match reading {
+    ApprovalUndecided { cause: c } => ApprovalNotDerived { cause: c }
+    ApprovalDecidedApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
       match grant_from_approved_decision(request: request, revision: r, decided_by: by, decided_at: at, execute_by: until) {
-        GrantForAnotherIntent { requested_revision: a, decided_revision: b } => GateIntentMismatch { requested_revision: a, decided_revision: b }
-        GrantDerived { authorization: auth } =>
-          match authorize(authorization: auth, request: request, observed_at: observed_at) {
-            AuthorizationPermitted { grant: _ } => GateAdmitted { authorization: auth }
-            AuthorizationRefused { cause: c } => GateAuthorizeRefused { detail: join(["scoped authorization refused the approved grant for this request: ", authorization_refusal_reason(cause: c)], "") as NonEmptyStr }
-          }
-        _ => GateStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr }
+        GrantForAnotherIntent { requested_revision: a, decided_revision: b } => ApprovalNotDerived { cause: ApprovalIntentMismatch { requested_revision: a, decided_revision: b } }
+        GrantDerived { authorization: auth } => ApprovalDerived { authorization: auth }
+        _ => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
+      }
+  }
+}
+
+// THE LIVE GATE: the derived authorization is admitted only if std.scoped_authorization permits
+// it at the observed instant, so a grant whose window has not opened or has closed refuses. This
+// is the only fold that mints GateAdmitted.
+fn approval_gate_from_poll<Subject>(poll: ApprovalPollStanding, request: AuthorizationRequest<Subject>, observed_at: Timestamp) -> ApprovalGate<Subject> {
+  match approval_derive(reading: approval_reading(poll: poll, request: request), request: request) {
+    ApprovalNotDerived { cause: c } => GateRefused { cause: c }
+    ApprovalDerived { authorization: auth } =>
+      match authorize(authorization: auth, request: request, observed_at: observed_at) {
+        AuthorizationPermitted { grant: _ } => GateAdmitted { authorization: auth }
+        AuthorizationRefused { cause: c } => GateRefused { cause: ApprovalAuthorizeRefused { detail: join(["scoped authorization refused the approved grant for this request: ", authorization_refusal_reason(cause: c)], "") as NonEmptyStr } }
       }
   }
 }
@@ -83,36 +116,31 @@ fn approval_gate_from_poll<Subject>(poll: ApprovalPollStanding, request: Authori
 // for "recorded".
 type RecordedApproval<Subject>
   = ApprovalRecorded { authorization: ScopedAuthorization<Subject> }
-  | ApprovalNotRecorded { gate: ApprovalGate<Subject> }
+  | ApprovalNotRecorded { cause: ApprovalGateRefusal }
 
 fn approval_recorded_from_poll<Subject>(poll: ApprovalPollStanding, request: AuthorizationRequest<Subject>) -> RecordedApproval<Subject> {
-  match poll {
-    PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
-      match grant_from_approved_decision(request: request, revision: r, decided_by: by, decided_at: at, execute_by: until) {
-        GrantForAnotherIntent { requested_revision: a, decided_revision: b } => ApprovalNotRecorded { gate: GateIntentMismatch { requested_revision: a, decided_revision: b } }
-        GrantDerived { authorization: auth } => ApprovalRecorded { authorization: auth }
-        _ => ApprovalNotRecorded { gate: GateStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
-      }
-    PollStillPending => ApprovalNotRecorded { gate: GatePending { escalation_id: request.escalation_id } }
-    PollNotFiled => ApprovalNotRecorded { gate: GateNotFiled { escalation_id: request.escalation_id } }
-    PollExpired => ApprovalNotRecorded { gate: GateExpired }
-    PollUnreadable { detail: d } => ApprovalNotRecorded { gate: GateStoreUnreadable { detail: d } }
-    PollDenied { revision: r, decided_by: _, decided_at: _, reason: why } =>
-      if r != request_revision_of(request: request) { ApprovalNotRecorded { gate: GateIntentMismatch { requested_revision: request_revision_of(request: request), decided_revision: r } } }
-      else { ApprovalNotRecorded { gate: GateDenied { reason: why } } }
+  match approval_derive(reading: approval_reading(poll: poll, request: request), request: request) {
+    ApprovalNotDerived { cause: c } => ApprovalNotRecorded { cause: c }
+    ApprovalDerived { authorization: auth } => ApprovalRecorded { authorization: auth }
+  }
+}
+
+fn approval_refusal_text(cause: ApprovalGateRefusal) -> String {
+  match cause {
+    ApprovalPending { escalation_id: e } => join(["escalation ", e as String, " is still pending the operator's decision"], "")
+    ApprovalNotFiled { escalation_id: e } => join(["escalation ", e as String, " is not filed with the approval broker"], "")
+    ApprovalDenied { reason: r } => join(["the operator denied the request: ", r as String], "")
+    ApprovalExpired => "the approval window expired before a decision"
+    ApprovalIntentMismatch { requested_revision: a, decided_revision: b } => join(["the decision is over another intent (requested ", a as String, ", decided ", b as String, ")"], "")
+    ApprovalStoreUnreadable { detail: d } => join(["the approval store could not be read: ", d as String], "")
+    ApprovalAuthorizeRefused { detail: d } => d as String
   }
 }
 
 fn approval_gate_text<Subject>(g: ApprovalGate<Subject>) -> String {
   match g {
     GateAdmitted { authorization: _ } => "admitted"
-    GatePending { escalation_id: e } => join(["escalation ", e as String, " is still pending the operator's decision"], "")
-    GateNotFiled { escalation_id: e } => join(["escalation ", e as String, " is not filed with the approval broker"], "")
-    GateDenied { reason: r } => join(["the operator denied the request: ", r as String], "")
-    GateExpired => "the approval window expired before a decision"
-    GateIntentMismatch { requested_revision: a, decided_revision: b } => join(["the decision is over another intent (requested ", a as String, ", decided ", b as String, ")"], "")
-    GateStoreUnreadable { detail: d } => join(["the approval store could not be read: ", d as String], "")
-    GateAuthorizeRefused { detail: d } => d as String
+    GateRefused { cause: c } => approval_refusal_text(cause: c)
   }
 }
 
@@ -162,25 +190,26 @@ fn approval_standing_read(escalation_id: NonEmptyStr, expires_at: Timestamp) -> 
   }
 }
 
-// THE BOUNDED POLL. Each tick reads the standing at a fresh instant; a pending decision paces and
-// ticks again until the budget is spent, and any other standing is returned WITH the instant of
-// that read, so the caller admits it live at the instant of THAT read -- never an earlier tick's.
+// THE BOUNDED POLL. Each tick reads the standing at a fresh instant; a decided standing is
+// returned WITH the instant of that read, so the caller admits it live at the instant of THAT
+// read -- never an earlier tick's. Only a standing that is STILL PENDING consults the budget: with
+// ticks left it paces and reads again, with none left it is the expiry. A decision read on the
+// last tick is a decision, not an expiry (review 69509).
 fn approval_poll_ticks(remaining: Int, cadence: Second, escalation_id: NonEmptyStr, expires_at: Timestamp) -> ApprovalPollOutcome
   uses net: Network
 {
   match approval_standing_read(escalation_id: escalation_id, expires_at: expires_at) {
     PollClockUnreadable => PollClockUnreadable
     PollObservedAt { standing: standing, observed_at: observed } =>
-      if remaining <= 0 {
-        PollObservedAt { standing: PollExpired, observed_at: observed }
-      } else {
-        match standing {
-          PollStillPending => {
+      match standing {
+        PollStillPending =>
+          if remaining <= 1 {
+            PollObservedAt { standing: PollExpired, observed_at: observed }
+          } else {
             let _paced = sleep_delay_seconds_second_carrier_projection(duration: cadence)
             approval_poll_ticks(remaining: remaining - 1, cadence: cadence, escalation_id: escalation_id, expires_at: expires_at)
           }
-          _ => PollObservedAt { standing: standing, observed_at: observed }
-        }
+        _ => PollObservedAt { standing: standing, observed_at: observed }
       }
   }
 }
@@ -188,7 +217,7 @@ fn approval_poll_ticks(remaining: Int, cadence: Second, escalation_id: NonEmptyS
 // The gate over a poll outcome, admitted live at the outcome's own instant.
 fn approval_gate_from_outcome<Subject>(outcome: ApprovalPollOutcome, request: AuthorizationRequest<Subject>) -> ApprovalGate<Subject> {
   match outcome {
-    PollClockUnreadable => GateStoreUnreadable { detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr }
+    PollClockUnreadable => GateRefused { cause: ApprovalStoreUnreadable { detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr } }
     PollObservedAt { standing: standing, observed_at: observed } => approval_gate_from_poll(poll: standing, request: request, observed_at: observed)
   }
 }

@@ -8,7 +8,7 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
 }
 import gunbc.auth.approval_gate {
   approval_gate_from_poll,
-  GatePending, GateAdmitted, GateIntentMismatch, GateDenied, GateExpired, GateNotFiled, GateStoreUnreadable,
+  GateAdmitted, GateRefused, ApprovalPending, ApprovalIntentMismatch, ApprovalDenied, ApprovalExpired, ApprovalNotFiled, ApprovalStoreUnreadable,
 }
 import gunbc.auth.approval_request_client { PollStillPending, PollExpired, PollDenied, PollNotFiled, PollUnreadable, PollApproved }
 import gunbc.auth.approval_decision_store { request_revision_of }
@@ -51,23 +51,23 @@ test fn pending_denied_expired_and_unfiled_do_not_write_the_controller() -> Bool
     reason: "no" as NonEmptyStr,
   }
   match approval_gate_from_poll(poll: PollStillPending, request: r, observed_at: at) {
-    GatePending { escalation_id: _ } => true
+    GateRefused { cause: ApprovalPending { escalation_id: _ } } => true
     _ => false
   }
     && match approval_gate_from_poll(poll: denied, request: r, observed_at: at) {
-      GateDenied { reason: _ } => true
+      GateRefused { cause: ApprovalDenied { reason: _ } } => true
       _ => false
     }
     && match approval_gate_from_poll(poll: PollExpired, request: r, observed_at: at) {
-      GateExpired => true
+      GateRefused { cause: ApprovalExpired } => true
       _ => false
     }
     && match approval_gate_from_poll(poll: PollNotFiled, request: r, observed_at: at) {
-      GateNotFiled { escalation_id: _ } => true
+      GateRefused { cause: ApprovalNotFiled { escalation_id: _ } } => true
       _ => false
     }
     && match approval_gate_from_poll(poll: PollUnreadable { detail: "get failed" as NonEmptyStr }, request: r, observed_at: at) {
-      GateStoreUnreadable { detail: _ } => true
+      GateRefused { cause: ApprovalStoreUnreadable { detail: _ } } => true
       _ => false
     }
 }
@@ -79,7 +79,7 @@ test fn poll_pending_is_the_pending_gate() -> Bool {
     execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   )
   match approval_gate_from_poll(poll: PollStillPending, request: r, observed_at: "2026-09-16T20:30:00Z") {
-    GatePending { escalation_id: e } => e as String == "esc-mtc1-1"
+    GateRefused { cause: ApprovalPending { escalation_id: e } } => e as String == "esc-mtc1-1"
     _ => false
   }
 }
@@ -109,7 +109,7 @@ test fn poll_approved_http_fields_admit_and_a_foreign_revision_does_not() -> Boo
       _ => false
     }
     && match approval_gate_from_poll(poll: foreign, request: r, observed_at: at) {
-      GateIntentMismatch { requested_revision: _, decided_revision: d } => d as String == "other-intent"
+      GateRefused { cause: ApprovalIntentMismatch { requested_revision: _, decided_revision: d } } => d as String == "other-intent"
       _ => false
     }
 }

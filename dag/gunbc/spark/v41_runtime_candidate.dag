@@ -420,9 +420,14 @@ fn v41_partition_inputs(p: V41EngramResidencyPartition) -> List<ArtifactRealizat
 
 // A MANIFEST IS OBSERVED AS ONE DIGEST OVER ITS FILE POPULATION, OR IT IS NOT YET AN IDENTITY. The
 // checkpoint revision alone is an upstream name, not bytes this repository has read.
+// AN OBLIGATION IS NOT A DEFECT. Unestablished names something still to be read or written (a
+// digest not yet taken); refused names a population the authority admits is WRONG (a duplicated
+// shard, a role with two carriers), which no reading discharges. The candidate carries them apart
+// so a defect never reads as pending work.
 type V41ManifestStanding
   = V41ManifestObserved { digest: Sha256Digest }
   | V41ManifestUnestablished { obligation: NonEmptyStr }
+  | V41ManifestRefused { defects: List<NonEmptyStr> }
 
 type V41ModelSourceInputs {
   checkpoint_revision: NonEmptyStr
@@ -434,6 +439,15 @@ fn v41_manifest_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
   match m {
     V41ManifestObserved { digest: _ } => [] as List<NonEmptyStr>
     V41ManifestUnestablished { obligation: o } => [o]
+    V41ManifestRefused { defects: _ } => [] as List<NonEmptyStr>
+  }
+}
+
+fn v41_manifest_defects(m: V41ManifestStanding) -> List<NonEmptyStr> {
+  match m {
+    V41ManifestObserved { digest: _ } => [] as List<NonEmptyStr>
+    V41ManifestUnestablished { obligation: _ } => [] as List<NonEmptyStr>
+    V41ManifestRefused { defects: d } => d
   }
 }
 
@@ -441,12 +455,16 @@ fn v41_manifest_value(m: V41ManifestStanding) -> String {
   match m {
     V41ManifestObserved { digest: d } => d.hex as String
     V41ManifestUnestablished { obligation: _ } => ""
+    V41ManifestRefused { defects: _ } => ""
   }
 }
 
 fn v41_model_source_key(s: V41ModelSourceInputs) -> V41IdentityStanding {
+  let defects = concat(v41_manifest_defects(m: s.weights), v41_manifest_defects(m: s.tokenizer))
   let obligations = concat(v41_manifest_obligations(m: s.weights), v41_manifest_obligations(m: s.tokenizer))
-  if length(obligations) != 0 {
+  if length(defects) != 0 {
+    V41IdentityRefused { defects: defects }
+  } else if length(obligations) != 0 {
     V41IdentityUnestablished { obligations: obligations }
   } else {
     V41IdentityKeyed { key: artifact_realization_digest(inputs: [
@@ -492,10 +510,7 @@ fn v41_decl_field_wire(f: DeclField) -> String {
 // one missing axis where there were two -- a partial answer that looks complete, which is worse than the
 // silence it replaced because it would be read as the full list.
 fn v41_row_store_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
-  match m {
-    V41ManifestUnestablished { obligation: o } => [o]
-    V41ManifestObserved { digest: _ } => [] as List<NonEmptyStr>
-  }
+  v41_manifest_obligations(m: m)
 }
 
 // AN UNRECONCILED MEMBERSHIP IS AN UNESTABLISHED AXIS, NOT A KEYABLE ONE. This module's own law is that
@@ -520,6 +535,7 @@ fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStand
       } else {
         match e.row_store_encoding {
           V41ManifestUnestablished { obligation: o } => V41IdentityUnestablished { obligations: [o] }
+          V41ManifestRefused { defects: d } => V41IdentityRefused { defects: d }
           V41ManifestObserved { digest: d } =>
             V41IdentityKeyed { key: artifact_realization_digest(inputs: concat(v41_partition_inputs(p: p), [
               v41_input(identity: "row_store_encoding", value: d.hex as String),
@@ -715,20 +731,21 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
 // the publisher's declared digests at the pinned revision (extdeps.deepseek.deepseek_v4_1_flash
 // carries them with their provenance); the candidate never digests the raw row list -- it consumes
 // the module's admission (exact shard cover, index reconciliation, role cover), so a defective
-// population is an UNESTABLISHED model source naming its defects, never a differently keyed one.
+// population is a REFUSED model source naming its defects -- not an obligation and never a
+// differently keyed one.
 // The canonical text is order-free (sorted by path), so a shard digest, a file size or a path
 // that changes changes the key and a reordering does not. The digest is taken through the
 // sha256sum realization; unavailable is a typed obligation, never a structural fallback.
 fn v41_weight_manifest_standing() -> V41ManifestStanding {
   match deepseek_v4_1_flash_weight_manifest_standing() {
-    WeightManifestRefused { defects: d } => V41ManifestUnestablished { obligation: join(["the weight manifest is not an admitted population: ", join(map(d, x => x as String), "; ")], "") as NonEmptyStr }
+    WeightManifestRefused { defects: d } => V41ManifestRefused { defects: map(d, x => join(["weight manifest: ", x as String], "") as NonEmptyStr) }
     WeightManifestAdmitted { files: _, index: _, canonical_text: t } => v41_manifest_digest(text: t, subject: "the admitted weight manifest (48 shards at dba1be0a)")
   }
 }
 
 fn v41_tokenizer_standing() -> V41ManifestStanding {
   match deepseek_v4_1_flash_tokenizer_standing() {
-    TokenizerPopulationRefused { defects: d } => V41ManifestUnestablished { obligation: join(["the tokenizer population is not admitted: ", join(map(d, x => x as String), "; ")], "") as NonEmptyStr }
+    TokenizerPopulationRefused { defects: d } => V41ManifestRefused { defects: map(d, x => join(["tokenizer population: ", x as String], "") as NonEmptyStr) }
     TokenizerPopulationAdmitted { files: _, canonical_text: t } => v41_manifest_digest(text: t, subject: "the admitted tokenizer population at dba1be0a")
   }
 }
