@@ -521,30 +521,38 @@ fn attestation_structural_refusal(parts: AttestationParts, leaf: X509Certificate
   ])
 }
 
-fn attestation_refusal(object: List<UInt8>, e: AttestationExpectation) -> AttestationRefusal? {
+// EVERYTHING DECODED ONCE, then carried: the parts, both certificates, the pinned root and the
+// authenticator data are read here and handed to the refusal fold and to the success mint alike
+// (review 69631 of gunbc#11989: an earlier cut re-decoded the object on the success path, which is
+// the shared-ancestor duplication DESIGN §2 names).
+type AttestationDecoded {
+  parts: AttestationParts
+  leaf: X509Certificate
+  ca: X509Certificate
+  root: X509Certificate
+  auth: AuthenticatorData
+}
+
+type AttestationDecode
+  = AttestationDecodeOk { decoded: AttestationDecoded }
+  | AttestationDecodeRefused { cause: AttestationRefusal }
+
+fn decode_attestation(object: List<UInt8>) -> AttestationDecode {
   match attestation_parts(object: object) {
-    AttestationPartsRefused { cause: c } => Present { value: c }
+    AttestationPartsRefused { cause: c } => AttestationDecodeRefused { cause: c }
     AttestationPartsOk { parts: parts } =>
       match app_attest_certificate(octets: parts.leaf) {
-        Absent => Present { value: AttestationChainUntrusted { detail: "credential certificate does not decode as X.509" } }
+        Absent => AttestationDecodeRefused { cause: AttestationChainUntrusted { detail: "credential certificate does not decode as X.509" } }
         Present { value: leaf } =>
           match app_attest_certificate(octets: parts.ca) {
-            Absent => Present { value: AttestationChainUntrusted { detail: "intermediate certificate does not decode as X.509" } }
+            Absent => AttestationDecodeRefused { cause: AttestationChainUntrusted { detail: "intermediate certificate does not decode as X.509" } }
             Present { value: ca } =>
               match app_attest_root() {
-                Absent => Present { value: AttestationChainUntrusted { detail: "the pinned root does not decode" } }
+                Absent => AttestationDecodeRefused { cause: AttestationChainUntrusted { detail: "the pinned root does not decode" } }
                 Present { value: root } =>
                   match decode_authenticator_data(octets: parts.auth_data) {
-                    AuthenticatorDataRefused { cause: _ } => Present { value: app_attest_undecodable(cause: "authData does not decode as WebAuthn authenticator data") }
-                    AuthenticatorDataDecoded { data: auth } =>
-                      match attestation_structural_refusal(parts: parts, leaf: leaf, ca: ca, root: root, auth: auth, e: e) {
-                        Present { value: r } => Present { value: r }
-                        Absent =>
-                          first_attestation_refusal(rs: [
-                            chain_link_refusal(subject: leaf, issuer: ca, which: "credential certificate"),
-                            chain_link_refusal(subject: ca, issuer: root, which: "intermediate"),
-                          ])
-                      }
+                    AuthenticatorDataRefused { cause: _ } => AttestationDecodeRefused { cause: app_attest_undecodable(cause: "authData does not decode as WebAuthn authenticator data") }
+                    AuthenticatorDataDecoded { data: auth } => AttestationDecodeOk { decoded: AttestationDecoded { parts: parts, leaf: leaf, ca: ca, root: root, auth: auth } }
                   }
               }
           }
@@ -552,27 +560,34 @@ fn attestation_refusal(object: List<UInt8>, e: AttestationExpectation) -> Attest
   }
 }
 
+fn attestation_refusal(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  match attestation_structural_refusal(parts: d.parts, leaf: d.leaf, ca: d.ca, root: d.root, auth: d.auth, e: e) {
+    Present { value: r } => Present { value: r }
+    Absent =>
+      first_attestation_refusal(rs: [
+        chain_link_refusal(subject: d.leaf, issuer: d.ca, which: "credential certificate"),
+        chain_link_refusal(subject: d.ca, issuer: d.root, which: "intermediate"),
+      ])
+  }
+}
+
 // THE SUPPLIER of attestation_verification_from_implementation. On success the verified facts
 // are the credential certificate's public key (SEC 1 point, base64url), the receipt (base64) and
 // the environment the AAGUID named, over exactly the client data supplied.
 fn verify_attestation(object: List<UInt8>, e: AttestationExpectation) -> AttestationVerification {
-  match attestation_refusal(object: object, e: e) {
-    Present { value: r } => attestation_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: "-" as NonEmptyStr, receipt_b64: "-" as NonEmptyStr, environment: e.environment, client_data: e.client_data, refusal: Present { value: r })
-    Absent =>
-      match attestation_parts(object: object) {
-        AttestationPartsRefused { cause: c } => AttestationRefused { cause: c }
-        AttestationPartsOk { parts: parts } =>
-          match app_attest_certificate(octets: parts.leaf) {
-            Absent => AttestationRefused { cause: AttestationChainUntrusted { detail: "credential certificate does not decode as X.509" } }
-            Present { value: leaf } =>
-              match base64_of(octets: leaf.spki_public_key, url_safe: true) {
-                Absent => AttestationRefused { cause: app_attest_undecodable(cause: "credential public key octets are not bytes") }
-                Present { value: point } =>
-                  match base64_of(octets: parts.receipt, url_safe: false) {
-                    Absent => AttestationRefused { cause: app_attest_undecodable(cause: "receipt octets are not bytes") }
-                    Present { value: receipt } =>
-                      attestation_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: point as NonEmptyStr, receipt_b64: receipt as NonEmptyStr, environment: e.environment, client_data: e.client_data, refusal: none)
-                  }
+  match decode_attestation(object: object) {
+    AttestationDecodeRefused { cause: c } => AttestationRefused { cause: c }
+    AttestationDecodeOk { decoded: d } =>
+      match attestation_refusal(d: d, e: e) {
+        Present { value: r } => attestation_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: "-" as NonEmptyStr, receipt_b64: "-" as NonEmptyStr, environment: e.environment, client_data: e.client_data, refusal: Present { value: r })
+        Absent =>
+          match base64_of(octets: d.leaf.spki_public_key, url_safe: true) {
+            Absent => AttestationRefused { cause: app_attest_undecodable(cause: "credential public key octets are not bytes") }
+            Present { value: point } =>
+              match base64_of(octets: d.parts.receipt, url_safe: false) {
+                Absent => AttestationRefused { cause: app_attest_undecodable(cause: "receipt octets are not bytes") }
+                Present { value: receipt } =>
+                  attestation_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: point as NonEmptyStr, receipt_b64: receipt as NonEmptyStr, environment: e.environment, client_data: e.client_data, refusal: none)
               }
           }
       }
@@ -669,24 +684,19 @@ fn first_assertion_refusal(rs: List<AssertionRefusal?>) -> AssertionRefusal? {
 // Steps 1-4, 7 and 8 (the module's stated scope for AssertionAuthentic); the counter is carried
 // out for the consumer's step 5 and the client data for its step 6. As with attestations the
 // P-256 verification (step 3) runs after the structural checks.
-fn assertion_refusal(object: List<UInt8>, e: AssertionExpectation) -> AssertionRefusal? {
-  match assertion_parts(object: object) {
-    AssertionPartsRefused { cause: c } => Present { value: c }
-    AssertionPartsOk { parts: parts } => {
-      match first_assertion_refusal(rs: [
-        if parts.auth.prefix.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { Present { value: AssertionAppIdMismatch { expected_app_id: e.app_id } } },
-        assertion_category_refusal(extensions: parts.auth.extensions, admitted: e.admitted_validation_categories),
-        assertion_version_refusal(extensions: parts.auth.extensions, expected: e.expected_bundle_version),
-      ]) {
-        Present { value: r } => Present { value: r }
-        Absent =>
-          match assertion_signature_verifies(parts: parts, e: e) {
-            Present { value: true } => none
-            Present { value: false } => Present { value: AssertionSignatureInvalid }
-            Absent => Present { value: AssertionSignatureInvalid }
-          }
+fn assertion_refusal(parts: AssertionParts, e: AssertionExpectation) -> AssertionRefusal? {
+  match first_assertion_refusal(rs: [
+    if parts.auth.prefix.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { Present { value: AssertionAppIdMismatch { expected_app_id: e.app_id } } },
+    assertion_category_refusal(extensions: parts.auth.extensions, admitted: e.admitted_validation_categories),
+    assertion_version_refusal(extensions: parts.auth.extensions, expected: e.expected_bundle_version),
+  ]) {
+    Present { value: r } => Present { value: r }
+    Absent =>
+      match assertion_signature_verifies(parts: parts, e: e) {
+        Present { value: true } => none
+        Present { value: false } => Present { value: AssertionSignatureInvalid }
+        Absent => Present { value: AssertionSignatureInvalid }
       }
-    }
   }
 }
 
@@ -718,14 +728,11 @@ fn assertion_signature_verifies_for(object: List<UInt8>, e: AssertionExpectation
   }
 }
 
-fn assertion_counter(object: List<UInt8>) -> Int {
-  match assertion_parts(object: object) {
-    AssertionPartsRefused { cause: _ } => 0 - 1
-    AssertionPartsOk { parts: parts } => parts.auth.prefix.sign_count
-  }
-}
-
-// THE SUPPLIER of assertion_verification_from_implementation.
+// THE SUPPLIER of assertion_verification_from_implementation: the document is decoded once and
+// both the counter and the refusal are read from that decode.
 fn verify_assertion(object: List<UInt8>, e: AssertionExpectation) -> AssertionVerification {
-  assertion_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, counter: assertion_counter(object: object), client_data: e.client_data, refusal: assertion_refusal(object: object, e: e))
+  match assertion_parts(object: object) {
+    AssertionPartsRefused { cause: c } => assertion_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, counter: 0 - 1, client_data: e.client_data, refusal: Present { value: c })
+    AssertionPartsOk { parts: parts } => assertion_verification_from_implementation(key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, counter: parts.auth.prefix.sign_count, client_data: e.client_data, refusal: assertion_refusal(parts: parts, e: e))
+  }
 }
