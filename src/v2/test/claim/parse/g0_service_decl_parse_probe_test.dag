@@ -42,10 +42,22 @@ fn smallest_service_parsed() -> Outcome<ParseArtifact> {
   parse_src(src: smallest_service_source)
 }
 
-fn refuses(src: String) -> Bool {
-  match parses(src: src) {
-    true => false
-    false => true
+// A refusal claim names the PARSE DOOR, so it must establish that the door is the thing that
+// refused. `parse_src` folds a tokenize rejection and a parse rejection into one `Rejected`, so a
+// helper that is merely the negation of `parses` is green whenever ANYTHING fails -- including a
+// fixture that never reached the parser. That is the absorbing arm DESIGN 5 refuses: it widens
+// instead of discriminating, and every one of the five service refusals below would have passed
+// for a reason it is not about. This helper requires tokenize to ACCEPT and parse to REJECT, so the
+// stage is pinned and a fixture that dies in the lexer reds instead of flattering the claim.
+fn refuses_at_parse(src: String) -> Bool {
+  let lm = probe_cached_lm
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -102,38 +114,57 @@ test fn smallest_service_tree_is_well_formed_holds() -> Bool {
 }
 
 test fn service_without_name_still_refuses_holds() -> Bool {
-  refuses(src: missing_name_red_source)
+  refuses_at_parse(src: missing_name_red_source)
 }
 
 test fn service_without_brace_still_refuses_holds() -> Bool {
-  refuses(src: missing_brace_red_source)
+  refuses_at_parse(src: missing_brace_red_source)
 }
 
 test fn unknown_operation_modifier_still_refuses_holds() -> Bool {
-  refuses(src: unknown_modifier_red_source)
+  refuses_at_parse(src: unknown_modifier_red_source)
 }
 
-// RETIRED: service_keywords_remain_usable_as_names_holds, and the retirement IS the climb.
-// It pinned that keywording these words did not steal ordinary names, which was a real risk while
-// they were keyword token classes -- a CHECK over a state that was writable. The 12 keyword lex
-// rules are deleted, so no rule in dag_lex_rules can produce these spellings as anything but
-// dag_token_ident, and the bad state has no constructor left: the property is STRUCTURALLY
-// GUARANTEED rather than checked (DESIGN 4b(4), the climb deletes the lower-rung machinery).
-// Census, on which that guarantee rests: zero references to the 12 ^dag_token_kw_* symbols in the
-// tree, no lex rule carrying those texts, and all 12 marker words authored as literal terminals
-// over ^dag_token_ident and no other class.
-// So the claim's RED is no longer authorable even against a hostile fixture -- a permanently green
-// row that would be cited as coverage (DESIGN 4b: ask whether the red is authorable before writing
-// the check). It is NOT held by choice_plan's a_literal_terminal_publishes_the_class_identity_not_
-// its_word: that is the neighbouring match-is-not-stamp property, and a later author must not read
-// name usability as riding on it.
+// RESTORED (gunbc#11955). An earlier revision retired this claim as a 4b(4) climb, arguing that
+// deleting the twelve keyword lex rules left its RED unauthorable. That is the one thing 4b(4)
+// does not permit: a climb dissolves the lower-rung PRODUCTION machinery and never the evidence.
+// The RED is authorable and this fixture IS the authoring -- 4b decides the question at the
+// fixture boundary, not the corpus boundary, and plain source using the marker words as ordinary
+// names is exactly source handed to the compiler by a fixture. Deleting the lex rules removes the
+// mechanism that could break name usability TODAY; it is not evidence that a later lexer or
+// grammar change cannot add one, and this claim is what would notice.
+//
+// G0 IS THE SUBJECT, NOT THE SEED. Seven of the marker words are reserved in the SEED's
+// extdeps.languages.dag.syntax dag_keyword_set, so this text is not writable as .dag source today;
+// it is tokenized here by G0's own lex rules, which carry no keyword entry for any of them. The
+// asymmetry is real and belongs to the seed, not to this family.
+data keyword_as_name_source: String = "module m\nfn f(from: Int, input: Int) -> Int { let transport = from\n transport + input }\n"
+
+// THE STAGE PIN'S OWN CONTROL. refuses_at_parse replaced a helper that was the negation of
+// `parses`, and a stage pin nobody has seen discriminate is indistinguishable from the helper it
+// replaced. This source dies in the LEXER, so the old helper called it a refusal and the new one
+// must not: refuses_at_parse is false here, and false is the passing reading. Delete the tokenize
+// arm of refuses_at_parse and this claim goes red while every service refusal above stays green --
+// which is the point, since those five could not tell the two doors apart either.
+data lexically_invalid_source: String = "module m\nfn f() -> Int { 1 @ 2 }\n"
+
+test fn a_lexical_failure_is_not_a_parse_door_refusal_holds() -> Bool {
+  match refuses_at_parse(src: lexically_invalid_source) {
+    true => false
+    false => true
+  }
+}
+
+test fn service_keywords_remain_usable_as_names_holds() -> Bool {
+  parses(src: keyword_as_name_source)
+}
 
 test fn field_default_parses_holds() -> Bool {
   parses(src: field_default_source)
 }
 
 test fn field_default_without_expr_still_refuses_holds() -> Bool {
-  refuses(src: field_default_without_expr_red_source)
+  refuses_at_parse(src: field_default_without_expr_red_source)
 }
 
 test fn posix_effective_principal_service_parses_holds() -> Bool {
@@ -145,11 +176,11 @@ test fn remaining_service_arms_parse_holds() -> Bool {
 }
 
 test fn exit_entry_without_arrow_still_refuses_holds() -> Bool {
-  refuses(src: exit_entry_without_arrow_red_source)
+  refuses_at_parse(src: exit_entry_without_arrow_red_source)
 }
 
 test fn mock_entry_without_expr_still_refuses_holds() -> Bool {
-  refuses(src: mock_entry_without_expr_red_source)
+  refuses_at_parse(src: mock_entry_without_expr_red_source)
 }
 
 test fn plain_type_still_parses_holds() -> Bool {
@@ -157,11 +188,11 @@ test fn plain_type_still_parses_holds() -> Bool {
 }
 
 test fn type_field_default_still_refuses_holds() -> Bool {
-  refuses(src: type_field_default_red_source)
+  refuses_at_parse(src: type_field_default_red_source)
 }
 
 test fn type_field_from_key_still_refuses_holds() -> Bool {
-  refuses(src: type_field_from_red_source)
+  refuses_at_parse(src: type_field_from_red_source)
 }
 
 // ROUTE, not only parse. A service parses but has no body-lowering producer yet, so normalize must

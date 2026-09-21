@@ -29,6 +29,7 @@ import v2.std.grammar {
   grammar_expr_optional,
   grammar_expr_terminal,
   grammar_expr_terminal_bound,
+  grammar_expr_literal_terminal,
   grammar_expr_terminal_lexeme,
   formal_grammar_symbol_to_grammar_expr,
   ParseGrammar,
@@ -683,6 +684,16 @@ fn dag_grammar_terminal_bound(token_class: Symbol, binding: Symbol) -> GrammarEx
 
 fn dag_grammar_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
   grammar_expr_terminal_lexeme(token_class: token_class)
+}
+
+// The exact-word terminal: matches ONE lexeme within a token class, so a marker word stays an
+// ordinary identifier everywhere else and costs no lexer rule. Seven of this family's marker words
+// -- service, operation, input, output, readonly, idempotent, hermetic -- are reserved in
+// extdeps.languages.dag.syntax dag_keyword_set, so `^service` is not writable in .dag source at
+// all: the caret literal takes an identifier and a keyword is not one. Those seven are interned
+// from their String spelling instead, which no keyword rule can intercept.
+fn dag_grammar_literal_terminal(token_class: Symbol, lexeme: Symbol) -> GrammarExpr {
+  grammar_expr_literal_terminal(token_class: token_class, lexeme: lexeme)
 }
 
 fn dag_grammar_nonterminal(production: Symbol) -> GrammarExpr {
@@ -1916,8 +1927,8 @@ fn dag_grammar_status_expr_entry_expr() -> GrammarExpr {
 fn dag_grammar_io_block_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_choice(
-      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^input),
-      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^output)
+      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "input")),
+      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "output"))
     ),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
@@ -1933,10 +1944,10 @@ fn dag_grammar_io_block_expr() -> GrammarExpr {
 
 fn dag_grammar_op_modifier_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^readonly),
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "readonly")),
     right: dag_grammar_choice(
-      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^idempotent),
-      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^hermetic)
+      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "idempotent")),
+      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "hermetic"))
     )
   )
 }
@@ -2023,7 +2034,7 @@ fn dag_grammar_operation_body_entry_expr() -> GrammarExpr {
 
 fn dag_grammar_operation_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^operation),
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "operation")),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
       right: dag_grammar_sequence(
@@ -2048,7 +2059,7 @@ fn dag_grammar_service_body_entry_expr() -> GrammarExpr {
 
 fn dag_grammar_service_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^service),
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "service")),
     right: dag_grammar_sequence(
       left: dag_grammar_nonterminal(production: ^dag_production_qualified_name),
       right: dag_grammar_sequence(
