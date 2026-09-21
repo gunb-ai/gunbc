@@ -224,8 +224,38 @@ fn gunbc_floor_cgroup_charge_ceiling() -> ByteSize {
 // the carrier that clause's producer returns -- gunbc.memory_stall_refusal
 // memory_stall_major_fault_rate yields std.measure EventsPerMinute -- so the receipt and the
 // instrument hold one representation of one quantity.
+// THE SEAM A BEAT WAS SAMPLED IN, AS A CLOSED VOCABULARY, so which phase established the peak is
+// a value a fold reads rather than a sentence a transcriber wrote. The floor names its own seams
+// (v1_compiler.cli_run required_floor_runner floor_seam) and there are exactly these six; the
+// heartbeat has always read that slot for its human line, and the stat beat now prints it on its
+// OWN line beside the counters. Before that the two facts were separate stderr streams joined
+// only by the order the lines happened to appear in -- a positional citation (DESIGN 3), which any
+// line emitted between them by another thread invalidates silently.
+//
+// TWO ARMS ARE NOT SEAMS AND THAT IS THE POINT. SeamNotYetEntered is a beat taken before the first
+// floor_seam call -- genuinely un-attributed, and rendering it as the first seam would attribute
+// entry-time memory to preparation. SeamUnrecorded is a beat transcribed from a line that carried
+// no seam field at all, which is every beat taken before the instrument grew one: the 2026-09-19
+// receipt below is such a receipt, and this arm is what makes its un-attributability structural
+// rather than a caveat in prose. Neither arm may size or attribute anything.
+//
+// WHAT THIS VOCABULARY DOES NOT COVER, stated so its absence is not read as a reading: checkout and
+// the toolchain build are JOB STEPS BEFORE THIS PROCESS EXISTS, so no in-process beat can carry
+// them. Their wall is the job's own step timing (gunbc_floor_job_wall_receipt_2026_09_19
+// build_step_wall), and attributing memory to them needs a reader outside claim_executor.
+type FloorSeam
+  = SeamStrictPreparation
+  | SeamPublishedMockProjection
+  | SeamSiteProjection
+  | SeamDiscoveryAuthority
+  | SeamClaimScopeProjection
+  | SeamClaimEvaluationFold
+  | SeamNotYetEntered
+  | SeamUnrecorded
+
 type FloorMemoryStatBeat {
   beat: Int
+  seam: FloorSeam
   charge: ByteSize
   anon: ByteSize
   file: ByteSize
@@ -343,6 +373,48 @@ fn receipt_peak_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
   }
 }
 
+// WHICH SEAM ESTABLISHED THE PEAK, DERIVED FROM THE RECEIPT AND REFUSING WHERE IT CANNOT BE SAID.
+// This is the whole point of carrying the seam: a consumer asking what to reduce needs the phase
+// the demand was established in, and until now that answer came from a reader eyeballing which
+// heartbeat line sat above which stat line. The fold takes the peak beat the existing held-set
+// fold already selects -- one derivation of "the peak", not a second one -- and reports its seam.
+//
+// IT REFUSES ON THE TWO NON-SEAM ARMS RATHER THAN NAMING THEM AS PHASES. A receipt whose peak beat
+// is SeamUnrecorded cannot attribute its peak at all, and saying so is the honest answer; the
+// alternative -- letting SeamUnrecorded flow out as though it were a phase -- would let a
+// pre-instrument receipt look attributed. The 2026-09-19 receipt is exactly that case, so this
+// function answers PeakSeamUnattributable for it today, which is a true statement about what that
+// run recorded rather than a defect in this fold.
+type PeakSeamAttribution
+  = PeakAttributedTo { seam: FloorSeam, beat: Int, bytes: ByteSize }
+  | PeakSeamUnattributable { cause: NonEmptyStr }
+
+fn seam_is_attributable(seam: FloorSeam) -> Bool {
+  match seam {
+    SeamNotYetEntered => false
+    SeamUnrecorded => false
+    SeamStrictPreparation => true
+    SeamPublishedMockProjection => true
+    SeamSiteProjection => true
+    SeamDiscoveryAuthority => true
+    SeamClaimScopeProjection => true
+    SeamClaimEvaluationFold => true
+  }
+}
+
+fn receipt_peak_seam(r: FloorHeldSetReceipt) -> PeakSeamAttribution {
+  match receipt_held_set_peak(r: r) {
+    HeldSetPeakNoBeats => PeakSeamUnattributable { cause: "the receipt carries no beats, so there is no peak to attribute" }
+    HeldSetPeakUnrepresentable { cause: _ } => PeakSeamUnattributable { cause: "the receipt is torn: a beat's held set does not sum, so no beat may be called the peak" }
+    HeldSetPeakAt { beat: b, bytes: v } =>
+      if seam_is_attributable(seam: b.seam) {
+        PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+      } else {
+        PeakSeamUnattributable { cause: "the peak beat carries no seam: it was sampled before the floor entered its first seam, or transcribed from a line printed before the instrument carried one" }
+      }
+  }
+}
+
 fn later_unstalled_before(peak: FloorMemoryStatBeat, a: FloorMemoryStatBeat, b: FloorMemoryStatBeat) -> FloorMemoryStatBeat {
   if b.beat < peak.beat && events_per_minute_count(r: b.stall) == 0 && (b.beat > a.beat || !(a.beat < peak.beat && events_per_minute_count(r: a.stall) == 0)) { b } else { a }
 }
@@ -393,6 +465,15 @@ fn held_set_standing_of(receipt: FloorHeldSetReceipt, instrument: NonEmptyStr) -
 // charge ceiling -- the kernel was still holding the workload -- but on the axis reclaim cannot
 // answer. Beat 13 is the last unstalled beat: 24736395264 bytes anonymous beside 1895120896 bytes
 // of file at zero stall, one minute before the cache squeezed to 13 MiB.
+//
+// EVERY BEAT HERE IS SeamUnrecorded, AND THAT IS A FACT ABOUT THE RUN RATHER THAN A GAP IN THE
+// TRANSCRIPTION. This run predates the seam field on the stat line, so the lines it was read from
+// carried no seam at all and there is nothing to transcribe; receipt_peak_seam therefore answers
+// PeakSeamUnattributable for it. WHAT THAT COSTS IS THE POINT: this receipt sizes the Work's
+// memory minimum, the microVM guest shape and the fit stall, and it cannot say which phase
+// established the figure it sizes them with -- so nothing derived from it can name a reduction.
+// A dated successor taken under the seam-carrying instrument is what closes that, and until one
+// exists the demand below is a number without an attributable cause.
 data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeldSetReceipt {
   run_id: "35419304682",
   runner_unit: "actions-runner@srv4-04.service",
@@ -400,28 +481,28 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
   beats_sampled: 16,
   beats: [
     FloorMemoryStatBeat {
-      beat: 12, charge: byte_size(24022126592),
+      beat: 12, seam: SeamUnrecorded, charge: byte_size(24022126592),
       anon: byte_size(21794160640), file: byte_size(2022780928), shmem: byte_size(51593216), unevictable: byte_size(0),
       slab_unreclaimable: byte_size(1560576), slab_reclaimable: byte_size(156761160), kernel_stack: byte_size(1097728),
       pagetables: byte_size(44994560), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
       stall: events_per_minute(count: 0),
     },
     FloorMemoryStatBeat {
-      beat: 13, charge: byte_size(26838556672),
+      beat: 13, seam: SeamUnrecorded, charge: byte_size(26838556672),
       anon: byte_size(24736395264), file: byte_size(1895120896), shmem: byte_size(51609600), unevictable: byte_size(0),
       slab_unreclaimable: byte_size(1574544), slab_reclaimable: byte_size(153271000), kernel_stack: byte_size(1114112),
       pagetables: byte_size(50749440), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
       stall: events_per_minute(count: 0),
     },
     FloorMemoryStatBeat {
-      beat: 14, charge: byte_size(26841255936),
+      beat: 14, seam: SeamUnrecorded, charge: byte_size(26841255936),
       anon: byte_size(26664632320), file: byte_size(13160448), shmem: byte_size(3547136), unevictable: byte_size(0),
       slab_unreclaimable: byte_size(1560576), slab_reclaimable: byte_size(103120256), kernel_stack: byte_size(1097728),
       pagetables: byte_size(54919168), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
       stall: events_per_minute(count: 6),
     },
     FloorMemoryStatBeat {
-      beat: 15, charge: byte_size(26843291648),
+      beat: 15, seam: SeamUnrecorded, charge: byte_size(26843291648),
       anon: byte_size(26578046976), file: byte_size(28610560), shmem: byte_size(13893632), unevictable: byte_size(0),
       slab_unreclaimable: byte_size(1591640), slab_reclaimable: byte_size(103131208), kernel_stack: byte_size(1146880),
       pagetables: byte_size(54964224), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
@@ -448,7 +529,7 @@ fn floor_memory_requirement_of(standing: FloorHeldSetStanding) -> MemoryRequirem
 // it stays constructible because a fresh corpus without the instrument's receipt is exactly the
 // state it represents; the Work states no memory while it stands, and the guest shape refuses on
 // that absence rather than being sized to the charge ceiling.
-data gunbc_floor_held_set_instrument: NonEmptyStr = "the required-witnesses-floor job's [floor-cgroup] stat_level= memory_stat= heartbeat lines on the host slot, raw beats transcribed, the held set derived by beat_held_set and its maximum taken over the run's beats"
+data gunbc_floor_held_set_instrument: NonEmptyStr = "the required-witnesses-floor job's [floor-cgroup] stat_level= seam= memory_stat= heartbeat lines on the host slot, raw beats transcribed, the held set derived by beat_held_set and its maximum taken over the run's beats, and the peak's seam read from the same line by receipt_peak_seam"
 
 fn gunbc_floor_held_set_standing() -> FloorHeldSetStanding {
   held_set_standing_of(receipt: gunbc_floor_memory_stat_receipt_2026_09_19, instrument: gunbc_floor_held_set_instrument)

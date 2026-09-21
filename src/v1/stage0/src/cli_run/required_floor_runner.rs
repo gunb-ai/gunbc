@@ -4336,6 +4336,29 @@ pub fn floor_seam(name: &str) {
     }
 }
 
+/// THE SEAM AS IT STANDS RIGHT NOW, so a reading can say WHERE IN THE RUN it was taken.
+///
+/// `floor_seam` writes this slot; the heartbeat has always read it for its human line. This
+/// reader exists because `floor_cgroup_stat_beat` needs the same fact on its OWN line: a beat
+/// and the seam it was sampled in were two separate stderr streams, joined only by the order
+/// the lines happened to appear in, which is a positional citation of the kind DESIGN 3 forbids
+/// — any line emitted between them by any other thread invalidates the join, and the reader
+/// transcribing a receipt is the one who silently guesses. With the seam ON the beat, which
+/// phase established a peak is a value a fold reads rather than an author's reading of a log.
+///
+/// The empty slot is reported as `none` and never as a seam: a beat sampled before the first
+/// `floor_seam` call is genuinely un-attributed, and rendering that as the first seam would
+/// attribute entry-time memory to preparation. An unreadable lock reports its own cause for
+/// the reason `floor_resource_sample` gives — a fabricated reading here re-creates the exact
+/// class of error the instrument exists to end.
+pub(crate) fn floor_seam_current() -> String {
+    match FLOOR_SEAM.lock() {
+        Ok(g) if g.is_empty() => "none".to_string(),
+        Ok(g) => g.clone(),
+        Err(_) => "<seam unreadable>".to_string(),
+    }
+}
+
 // THE CONSTRUCTOR A DECODE ACTUALLY OBSERVED, for refusals whose cause is a shape mismatch.
 //
 // A decode arm that reports only "not the expected shape" identifies its seam and nothing else:
@@ -5582,8 +5605,9 @@ pub(crate) fn floor_cgroup_stat_beat(when: &str) {
     let current = std::fs::read_to_string(format!("{leaf}/memory.current"))
         .map(|v| v.trim().to_string())
         .unwrap_or_else(|_| "na".to_string());
+    let seam = floor_seam_current();
     eprintln!(
-        "[floor-cgroup] when={when} stat_level={leaf} current={current} \
+        "[floor-cgroup] when={when} stat_level={leaf} seam={seam} current={current} \
          memory_stat=[anon,{},file,{},shmem,{},unevictable,{},slab_unreclaimable,{},\
          slab_reclaimable,{},kernel_stack,{},pagetables,{},percpu,{},sock,{},file_dirty,{}]",
         key("anon"),
