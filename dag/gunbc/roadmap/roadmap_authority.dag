@@ -3155,6 +3155,81 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the corrected import and a phase run that reports it clean."
       )
     ),
+    active(
+      identity: "rn_J01EG5E1CAAVTYVJPKPXFXZCGM",
+      id: "action-use-yaml-reader-contract",
+      owner: "generated-artifact",
+      path: "dag/gunbc/action_use_admission.dag",
+      t: fields(
+        headline: "Read a workflow file once, correctly, and delete the second reader",
+        boundary: "extdeps.languages.yaml accepts only the YAML subset it reads with the correct meaning and refuses the rest with a located reason, parser and emitter fixed together, witnessed by comparing decoded structures rather than re-emitted bytes. The action-use census then reads every committed workflow through it, one claim per file joined to the directory listing, and gunbc.action_use_admission's line projection plus its frontier row are deleted.",
+        displaced_cost: "Two readers of one medium disagree eventually, and the cheap one cannot see a flow-style mapping, an escaped key or a complex key at all. Until it is gone, the repository-wide ban on substituted action runtimes rests partly on a scanner that reads lines.",
+        first_slice: "Land the bounded-subset contract and its decoded-structure witnesses; the projection deletes in the same change once the census reads every workflow through the modeled reader.",
+        red_control: "A planted wrong-meaning case per construct turns its own control red, and the census refuses a workflow the projection could not see (flow-style `[\{uses: ...}]`).",
+        out_of_scope: "The interpreter's eager `&&` operand demand, which has its own recurring-failure-mode row.",
+        handback: "Return the contract, the witnesses, the deleted projection and the census cost re-derived by its named instrument."
+      )
+    ),
+    active(
+      identity: "rn_PDMRS0Y8J3EBDYNRPWZFH23C93",
+      id: "required-lane-exit-on-refused-phase",
+      owner: "ci-control",
+      path: "dag/gunbc/witness/witness_floor_workflow.dag",
+      t: fields(
+        headline: "A required lane that refuses a phase must not exit zero",
+        boundary: "When the required-CI lane reports FAILED PHASE and counts phases_failed, the process exits non-zero and the aggregating job cannot read it as green. The refusal itself stays: declining to plan on an unobservable base is correct.",
+        displaced_cost: "Reproduced on two heads (runs 35503853026 and 35510547600): the floor refused with ChangedWitnessObservationFailed, the log carried phases_failed=1, and the step concluded success. Every change touching a file the base reconstruction needs has had its changed-witness observation skipped while CI reported green.",
+        first_slice: "Map a refused phase to a non-zero exit at the one place that owns the lane's status, and audit every other refusal arm in that lane for the same shape.",
+        red_control: "A refused phase that maps to exit 0 reds; a clean lane still exits 0.",
+        out_of_scope: "Widening or narrowing the changed-witness subject to make the refusal disappear.",
+        handback: "Return the exit mapping, the audit of the lane's other arms, the recurring-failure-mode row with both runs as receipts, and how far back the silent skipping reaches."
+      )
+    ),
+    active(
+      identity: "rn_BR2JFR598QVXCXM82STJS2RW4S",
+      id: "workflow-census-claim-budget-margin",
+      owner: "ci-cost",
+      path: "dag/extdeps/languages/yaml/ingest.dag",
+      t: fields(
+        headline: "Cut the reader's per-entry cost so the workflow census is not one edit from red",
+        boundary: "The census claim over the largest committed workflow sits within a couple of percent of the new-witness eval-step budget, and its subject grows from lanes that do not own it. Cut the modeled reader's per-entry path so the margin is structural rather than incidental.",
+        displaced_cost: "A required claim that reds when an unrelated workflow gains lines teaches everyone that the gate is noise, and the tempting repairs are the forbidden ones: a raised budget, a second reader, or a declared drop.",
+        first_slice: "Measure where the per-entry cost lives in the mapping-entry path and cut it there, re-deriving the cost with claim_batch eval_steps over ingest_yaml_source on the largest workflow.",
+        red_control: "The census claim stays inside its budget with the largest committed workflow grown by a realistic increment.",
+        out_of_scope: "Raising the budget, splitting the subject to fit, or reintroducing a line projection.",
+        handback: "Return the cut, the before and after re-derived by the named instrument, and the margin stated against a grown subject."
+      )
+    ),
+    active(
+      identity: "rn_XMKDEM3GM4NYQ4QXPEDVK4H6MB",
+      id: "action-runtime-epoch-observation",
+      owner: "generated-artifact",
+      path: "dag/extdeps/github/action_runtime_policy.dag",
+      t: fields(
+        headline: "Notice when the platform's runtime epoch has moved, and when a runner overrides it",
+        boundary: "The node-runtime policy epoch is dated and cited, but nothing reads that date against a clock and nothing observes the override variable set in a runner HOST's environment rather than in a workflow. Give the epoch a standing that refuses once a newer cited epoch exists, and observe the runner-side override on the fleet's own runner units.",
+        displaced_cost: "The ban on provider-substituted action runtimes holds only while the epoch row is current. When GitHub moves again, the corpus keeps answering Exact until a human notices a warning -- the exact interaction the ban exists to end.",
+        first_slice: "Observe the override variable on the runner units and refuse a workflow admitted under an epoch the fleet's runners no longer match.",
+        red_control: "An epoch row older than an observed platform change refuses; a runner carrying the override refuses.",
+        out_of_scope: "Guessing GitHub's next deprecation date.",
+        handback: "Return the epoch standing, the runner-side observation and both refusals."
+      )
+    ),
+    active(
+      identity: "rn_DRN7QV1SE98SC0CRJEWZKM96VF",
+      id: "namespace-relocation-batch-grain",
+      owner: "namespace",
+      path: "docs/plans/namespace-resolution-design.md",
+      t: fields(
+        headline: "Admit one declaration relocation, not one file per consumer",
+        boundary: "The namespace wall admits a binding transition at the enclosing-declaration grain, so moving one declaration's home costs one admission file per consuming declaration. Add an exact relocation subject -- from and to declaration references -- whose derived delta population must equal the observed one in both directions, and keep the per-consumer reporting.",
+        displaced_cost: "Moving seven selection rows to their new home authored forty near-identical admission files. The cost falls on the author of any correct relocation, so the wall prices the move rather than the mistake.",
+        first_slice: "Derive the expected binding-delta population for an exact from/to pair from the base graph, and require observed and derived to match both ways.",
+        red_control: "A batch that admits a transition outside its declared relocation reds, as does a relocation whose derived population is incomplete.",
+        out_of_scope: "A module-wide wildcard, a permissive predicate, or aliases left behind at the old home -- each lowers the wall instead of moving its grain.",
+        handback: "Return the relocation subject, its derivation, the both-ways equality and the collapsed file count for a real relocation."
+      )
+    ),
   ], concat(guarantee_ladder_nodes(), typed_module_store_nodes()))
 }
 
