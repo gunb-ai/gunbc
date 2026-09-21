@@ -4346,17 +4346,24 @@ pub fn floor_seam(name: &str) {
 /// transcribing a receipt is the one who silently guesses. With the seam ON the beat, which
 /// phase established a peak is a value a fold reads rather than an author's reading of a log.
 ///
-/// The empty slot is reported as `none` and never as a seam: a beat sampled before the first
-/// `floor_seam` call is genuinely un-attributed, and rendering that as the first seam would
-/// attribute entry-time memory to preparation. An unreadable lock reports its own cause for
-/// the reason `floor_resource_sample` gives — a fabricated reading here re-creates the exact
-/// class of error the instrument exists to end.
-pub(crate) fn floor_seam_current() -> String {
-    match FLOOR_SEAM.lock() {
-        Ok(g) if g.is_empty() => "none".to_string(),
-        Ok(g) => g.clone(),
-        Err(_) => "<seam unreadable>".to_string(),
-    }
+/// THE READ IS THE SHARED FACT; THE RENDERING IS NOT. This returns the slot's own state and
+/// renders nothing, because its two consumers owe DIFFERENT spellings of the same state and
+/// collapsing them here would be a fork wearing a helper's clothes (review 69697 caught the
+/// first version of this function doing exactly that).
+///
+/// `None` is a poisoned lock — no reading at all. `Some("")` is the genuinely unset slot, before
+/// any `floor_seam` call. `Some(name)` is the seam.
+///
+/// Why the callers differ, and why this must not decide for them: the heartbeat's seam crosses
+/// into `gunbc.observation_seed_render` `seed_heartbeat_subject`, which branches on `seam == ""`
+/// to decide whether a beat carries a `PhaseSegment` at all — the empty string IS that model's
+/// representation of "no phase", pinned by `test.claim.observation_seed_heartbeat_witness_test`.
+/// Handing it the beat line's `none` would mint `PhaseSegment { name: "none" }`, fabricating a
+/// phase named after the absence of one. The stat beat, whose line is transcribed into a typed
+/// `gunbc.floor_demand` `FloorSeam`, wants a single non-empty token it can map to
+/// `SeamNotYetEntered`. Same fact, two boundaries, one read.
+pub(crate) fn floor_seam_current() -> Option<String> {
+    FLOOR_SEAM.lock().ok().map(|g| g.clone())
 }
 
 // THE CONSTRUCTOR A DECODE ACTUALLY OBSERVED, for refusals whose cause is a shape mismatch.
@@ -5608,7 +5615,15 @@ pub(crate) fn floor_cgroup_stat_beat(
     let current = std::fs::read_to_string(format!("{leaf}/memory.current"))
         .map(|v| v.trim().to_string())
         .unwrap_or_else(|_| "na".to_string());
-    let seam = floor_seam_current();
+    // The beat line's own spelling of the three states -- one token each, no spaces, because
+    // this line is parsed field-by-field into a typed receipt. `none` is the unset slot and maps
+    // to `SeamNotYetEntered`; `unreadable` is a poisoned lock and maps to nothing that can size
+    // or attribute anything.
+    let seam = match floor_seam_current() {
+        None => "unreadable".to_string(),
+        Some(s) if s.is_empty() => "none".to_string(),
+        Some(s) => s,
+    };
     // THE STALL CLAUSE ON THE BEAT'S OWN LINE, for the same reason as the seam. It is the
     // heartbeat's quantity and used to be readable only from the heartbeat line printed BESIDE
     // this one, so `gunbc.floor_demand` `FloorMemoryStatBeat.stall` was transcribed by adjacency

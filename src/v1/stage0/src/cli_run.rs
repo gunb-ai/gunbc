@@ -43126,10 +43126,12 @@ fn spawn_floor_heartbeat() {
     };
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(period_s));
-        let seam = FLOOR_SEAM
-            .lock()
-            .map(|g| g.clone())
-            .unwrap_or_else(|_| "<seam unreadable>".to_string());
+        // ONE READER OF THE SLOT (`floor_seam_current`), this caller's own rendering. The empty
+        // string is deliberate and load-bearing: `gunbc.observation_seed_render`
+        // `seed_heartbeat_subject` branches on `seam == ""` to omit the `PhaseSegment`, so an
+        // unset seam must reach the mirror as "" and not as any word standing for absence.
+        let seam = required_floor_runner::floor_seam_current()
+            .unwrap_or_else(|| "<seam unreadable>".to_string());
         // Read both counters through the governor's readers -- `self_user_cpu_ms` is utime alone
         // BY CONSTRUCTION, which is the whole point of routing through it rather than re-reading
         // /proc here as the resource sample does.
