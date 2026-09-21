@@ -40,7 +40,7 @@ test fn the_admitted_population_is_the_shards_the_index_and_the_tokenizer() -> B
   let fs = w_files()
   let shards = filter(fs, f => (f.path as String).ends_with(".safetensors"))
   length(fs) == 52 && length(shards) == 48
-    && v41_checkpoint_bytes(files: shards) == byte_size_count(b: deepseek_v4_1_flash_safetensors_tree_file_bytes)
+    && byte_size_count(b: v41_checkpoint_bytes(files: shards)) == byte_size_count(b: deepseek_v4_1_flash_safetensors_tree_file_bytes)
     && length(w_file(path: "model.safetensors.index.json")) == 1
     && length(w_file(path: "encoding/encoding.py")) == 1
 }
@@ -77,9 +77,9 @@ test fn the_disk_requirement_counts_only_what_is_missing() -> Bool {
   let all_present = map(fs, f => join([to_string(byte_size_count(b: f.file_bytes)), " ", f.path as String], ""))
   let one_short = map(fs, f => if (f.path as String) == "tokenizer.json" { "1 tokenizer.json" } else { join([to_string(byte_size_count(b: f.file_bytes)), " ", f.path as String], "") })
   let tok = match first(w_file(path: "tokenizer.json")) { Present { value: t } => byte_size_count(b: t.file_bytes)  Absent => 0 }
-  v41_required_bytes(files: fs, listing: [] as List<String>) == v41_checkpoint_bytes(files: fs)
-    && v41_required_bytes(files: fs, listing: all_present) == 0
-    && v41_required_bytes(files: fs, listing: one_short) == tok
+  byte_size_count(b: v41_required_bytes(files: fs, listing: [] as List<String>)) == byte_size_count(b: v41_checkpoint_bytes(files: fs))
+    && byte_size_count(b: v41_required_bytes(files: fs, listing: all_present)) == 0
+    && byte_size_count(b: v41_required_bytes(files: fs, listing: one_short)) == tok
     && tok > 0
 }
 
@@ -106,4 +106,9 @@ test fn a_refused_span_plan_reaches_the_receipt() -> Bool {
   let refused = V41SpanPlanRefused { defects: ["storage-backed tensor layers.1.engram.embed.weight is not exactly one header row" as NonEmptyStr] }
   v41_span_line(o: refused).contains("span-plan-refused: storage-backed tensor layers.1.engram.embed.weight")
     && !v41_span_is_read(o: refused)
+}
+
+// THE DIRECTORY IS THE REPO'S CACHE NAME AND THE PIN, derived rather than spelled.
+test fn the_checkpoint_directory_is_derived_from_the_repo_and_the_pin() -> Bool {
+  (v41_checkpoint_directory as String) == "/home/briansrls/models/models--deepseek-ai--DeepSeek-V4.1-Flash/dba1be0a40aa45a94ad051997016db3960a90277"
 }
