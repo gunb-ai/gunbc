@@ -10,7 +10,7 @@ import extdeps.shell.exec { ProcessObservation }
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureBound,
   HostCaptureStage,
-  HostCaptureUnbound,
+  HostCaptureUnbound, HostCaptureOpen,
   host_capture_bind,
   host_capture_bound_edac_clean,
   host_capture_bound_nproc_exact,
@@ -64,6 +64,7 @@ test fn the_attempt_three_capture_binds_and_reads_by_real_execution() -> Bool {
   let read = Filesystem.Read(path: census_historical_capture.path as String)
   read.success && match host_capture_bind(capture: read.content, machine: "mtcollins1") {
     HostCaptureUnbound { reason: _ } => false
+    HostCaptureOpen { envelope: _ } => false
     HostCaptureBound { envelope: e } =>
       host_capture_bound_nproc_exact(envelope: e, threads: "160")
         && host_capture_bound_edac_clean(envelope: e, name: "edac-before")
@@ -80,6 +81,7 @@ test fn the_historical_binding_holds_against_the_committed_capture_by_real_execu
   let read = Filesystem.Read(path: census_historical_capture.path as String)
   read.success && match host_capture_bind(capture: read.content, machine: "mtcollins1") {
     HostCaptureUnbound { reason: _ } => false
+    HostCaptureOpen { envelope: _ } => false
     HostCaptureBound { envelope: e } => bindings_hold_against_capture(envelope: e, stages: host_capture_census_stages)
   }
 }
@@ -137,6 +139,7 @@ test fn the_rendered_program_runs_and_its_output_parses_by_real_execution() -> B
   obs.exit_code == 0
     && match host_capture_bind(capture: out, machine: "witness") {
       HostCaptureUnbound { reason: _ } => false
+      HostCaptureOpen { envelope: _ } => false
       HostCaptureBound { envelope: e } =>
         host_capture_bound_nproc_exact(envelope: e, threads: "160")
           && host_capture_bound_edac_clean(envelope: e, name: "edac-before")
