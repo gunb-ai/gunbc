@@ -183,7 +183,8 @@ import std.operator_realization {
   HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType,
   OperandShapeFacts, OperandDeclaration,
   StructuralOrderingBinding, OrderingTest, OrderingIs, OrderingIsNot,
-  operator_realization_for, operator_realization_refusal_message
+  OperandDemand, DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent,
+  operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label
 }
 import gunbc.structural_realization_bindings { structural_ordering_rows, structural_connective_rows }
 import v1.compiler.infer_types {
@@ -14186,8 +14187,75 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: Opera
       StructuralEquality { declaration: _ } =>
         emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
       HostOperator =>
-        emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
+        emit_rust_demanded_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
     }
+  }
+}
+
+// WHICH OPERANDS THE HOST TOKEN ASKS FOR, which is a fact about Rust and therefore lives here and
+// not in std.operator_realization. Rust evaluates both operands of every binary operator except
+// `&&` and `||`, whose right operand is a conditionally-evaluated expression.
+fn rust_host_token_demands_both_operands(op: BinOp) -> Bool {
+  match op {
+    And => false
+    Or => false
+    NullCoalesce => false
+    Add => true
+    Sub => true
+    Mul => true
+    Div => true
+    Mod => true
+    Eq => true
+    Ne => true
+    Lt => true
+    Gt => true
+    Le => true
+    Ge => true
+  }
+}
+
+// THE RENDERING IS DERIVED FROM THE DECLARED DEMAND, NOT ASSUMED FROM THE SPELLING. Before this
+// fold the emitter spliced `l && r` because `&&` is what binop_label says And renders as, and the
+// interpreter evaluated both operands because that is what its expression arm did; neither
+// consulted a fact about WHICH OPERANDS THE OPERATOR ASKS FOR, because none was declared. That is
+// the class filed as gunbc.recurring_failure_mode
+// realization_arms_diverge_on_whether_the_program_refuses, and std.operator_realization
+// operand_demand is the carrier its next-rung trigger named. Both realizations now read it: the
+// interpreter derives whether to evaluate the right operand, and this fold derives whether the
+// host token is a faithful lowering of that demand.
+//
+// THREE OUTCOMES, and each is reachable by changing the row rather than the source, which is what
+// makes this a derivation and not a decoration (DESIGN section 4b):
+//   AGREE            the token asks for exactly what the operator declares. Splice it, as before.
+//                    This is every operator on main today, so the emitted bytes do not move.
+//   DECLARED STRICT, TOKEN LAZY   an operator declaring DemandsBothOperands whose Rust token would
+//                    skip the right operand. The operands are bound to temporaries first, so both
+//                    are demanded and the token then combines two values.
+//   DECLARED LAZY, TOKEN STRICT   an operator whose right operand must be conditional and whose
+//                    Rust token cannot express that. An infix form cannot carry it and guessing one
+//                    would be the silent wrongness DESIGN section 5 forbids, so the line stops.
+fn emit_rust_demanded_host_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, right: Node, l_str: String, r_str: String, scope: InferScope) -> String {
+  let token_demands_both = rust_host_token_demands_both_operands(op: op)
+  match operand_demand(op: op) {
+    DemandsBothOperands =>
+      if token_demands_both {
+        emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
+      } else {
+        let op_str = emit_bin_op_symbol(op: op, target: Rust, algebra_field: algebra_field)
+        concat(concat(concat(concat(concat("{ let __dag_lhs = ", l_str), "; let __dag_rhs = "), r_str), concat("; __dag_lhs ", op_str)), " __dag_rhs }")
+      }
+    DemandsRightOnlyWhenLeftIs { deciding: _ } =>
+      if token_demands_both {
+        emit_rust_compile_error_expr(message: concat(concat("operand demand: `", binop_label(op: op)), "` declares its right operand conditional and the Rust token for it evaluates both, so no infix lowering is faithful (std.operator_realization operand_demand)"))
+      } else {
+        emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
+      }
+    DemandsRightOnlyWhenLeftIsAbsent =>
+      if token_demands_both {
+        emit_rust_compile_error_expr(message: concat(concat("operand demand: `", binop_label(op: op)), "` declares its right operand conditional on the left being absent and the Rust token for it evaluates both (std.operator_realization operand_demand)"))
+      } else {
+        emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
+      }
   }
 }
 

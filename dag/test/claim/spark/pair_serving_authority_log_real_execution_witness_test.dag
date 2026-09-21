@@ -298,7 +298,7 @@ test fn an_overdue_host_effect_claim_fences_until_released_by_real_execution() -
         Present { value: resting } =>
           alr_witness_remote_ready(dir: dir)
             && (match pair_serving_authority_transition(store: store, group: FabricGroupA, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: _, next: _ } => true  _ => false })
-            && (match host_effect_admit(store: store, host: srv, purpose: "a crashed lane" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 10), residue: alr_residue(pattern: "/srv/build"), at: 1001) {
+          let effect_lifecycle_holds = (match host_effect_admit(store: store, host: srv, purpose: "a crashed lane" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 10), residue: alr_residue(pattern: "/srv/build"), at: 1001) {
                   HostEffectClaimed { id: claim } =>
                     (match host_effect_admit(store: store, host: srv, purpose: "a second lane" as NonEmptyStr, executor: "executor-2" as NonEmptyStr, term: second(count: 10), residue: alr_residue(pattern: "/srv/build"), at: 1002) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "held"  _ => false })
                       && (match pair_serving_authority_transition(store: store, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1005) { AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "host-effects"  _ => false })
@@ -395,20 +395,35 @@ test fn a_release_needs_the_host_observed_quiet_by_real_execution() -> Bool {
       match pair_serving_authority_for(group: FabricGroupA) {
         Absent => false
         Present { value: resting } => {
-          let observed = w.success && spawned.success && pid != ""
-            && alr_witness_remote_ready(dir: dir)
-            && (match pair_serving_authority_transition(store: store, group: FabricGroupA, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: _, next: _ } => true  _ => false })
+          let remote_ready = alr_witness_remote_ready(dir: dir)
+          let released_from_resting = (match pair_serving_authority_transition(store: store, group: FabricGroupA, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: _, next: _ } => true  _ => false })
             && (match host_effect_admit(store: store, host: srv, purpose: "a witness build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1001) {
                   HostEffectClaimed { id: c } => {
                     let handle = HostEffectHandle { host: srv, residue: spec, claim: c }
-                    (match settle_host_effect_over(handle: handle, provenance: ClaimantTerminal { claim: handle.claim, claimant_executor: "executor-1" as NonEmptyStr }, run: fn(argv) { alr_local_leg(argv: argv) }, store: store, executor: "executor-1" as NonEmptyStr, at: 1002) { HostEffectStillHeld { cause: why } => why.contains("still carries the effect")  HostEffectSettled => false })
-                      && (match pair_serving_authority_transition(store: store, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1003) { AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "host-effects"  _ => false })
-                      && shell.Exec.RunArgv(program: "kill", arguments: ["-9", pid]).exit_code == 0
-                      && (match settle_host_effect_over(handle: handle, provenance: ClaimantTerminal { claim: handle.claim, claimant_executor: "executor-1" as NonEmptyStr }, run: fn(argv) { alr_local_leg(argv: argv) }, store: store, executor: "executor-1" as NonEmptyStr, at: 1004) { HostEffectSettled => true  HostEffectStillHeld { cause: _ } => false })
-                      && (match pair_serving_authority_transition(store: store, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1005) { AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2  _ => false })
+                    let held_while_effect_stands = (match settle_host_effect_over(handle: handle, provenance: ClaimantTerminal { claim: handle.claim, claimant_executor: "executor-1" as NonEmptyStr }, run: fn(argv) { alr_local_leg(argv: argv) }, store: store, executor: "executor-1" as NonEmptyStr, at: 1002) { HostEffectStillHeld { cause: why } => why.contains("still carries the effect")  HostEffectSettled => false })
+                    let reclaim_refused_on_host_effects = (match pair_serving_authority_transition(store: store, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1003) { AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "host-effects"  _ => false })
+                    let residue_killed = shell.Exec.RunArgv(program: "kill", arguments: ["-9", pid]).exit_code == 0
+                    let settles_once_residue_is_gone = (match settle_host_effect_over(handle: handle, provenance: ClaimantTerminal { claim: handle.claim, claimant_executor: "executor-1" as NonEmptyStr }, run: fn(argv) { alr_local_leg(argv: argv) }, store: store, executor: "executor-1" as NonEmptyStr, at: 1004) { HostEffectSettled => true  HostEffectStillHeld { cause: _ } => false })
+                    let reclaim_appends_after_settlement = (match pair_serving_authority_transition(store: store, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1005) { AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2  _ => false })
+                    held_while_effect_stands
+                      && reclaim_refused_on_host_effects
+                      && residue_killed
+                      && settles_once_residue_is_gone
+                      && reclaim_appends_after_settlement
                   }
                   _ => false
                 })
+          // EVERY EFFECTFUL STEP IS BOUND BEFORE ANY OF THEM IS CONJOINED. This witness drives an
+          // ORDERED LIFECYCLE -- release, admit, settle-while-held, refuse the reclaim, kill the
+          // residue, settle, reclaim -- and each step must run. Under `&&` whether a step runs at
+          // all is an undeclared evaluation-order fact (gunbc.recurring_failure_mode
+          // realization_arms_diverge_on_whether_the_program_refuses), so a false earlier step would
+          // skip the `kill -9` and leak the spawned process onto the host. A `let` is demanded by
+          // both realizations; the conjunction below is over values and decides only the verdict.
+          let observed = w.success && spawned.success && pid != ""
+            && remote_ready
+            && released_from_resting
+            && effect_lifecycle_holds
           let cleaned = shell.Exec.RunArgv(program: "kill", arguments: ["-9", pid])
           observed
         }
