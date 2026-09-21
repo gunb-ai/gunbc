@@ -177,29 +177,13 @@ independently authored work has always addressed. Gone is everything around it: 
 history, working-tree alignment, rebasing, and cloning.
 
 **Identity is currently weaker than the model needs.** *Verified:* `v2.std.node` `Hash` is
-`Fnv1a64Structural` — 64-bit, non-cryptographic — and a 64-bit non-cryptographic digest is a
-**locator, not a durable intersubjective identity**.
-
-**What has changed since this section was written: a SHA-256 *computation* now exists in `.dag`.**
-The claim this paragraph used to carry — that `std.content_hash` `sha256_hex_digest` and
-`extdeps.crypto.hash` `sha256_digest` only *validate* hex and nothing hashes bytes — was true when
-written and is no longer true. `extdeps.crypto.sha2` `sha256` and `sha256_hex` compute FIPS 180-4
-SHA-256 over `List<UInt8>` in the substrate, witnessed against the standard's vectors by
-`test.claim.sha256_fips_witness_test`. The validating mints are unchanged and still the only way a
-digest is *carried*; what is new is a producer for them.
-
-**So the remaining question is realization, not existence, and it is open.** Two realizations of the
-same digest interface exist and neither is yet bound to fabric identity: the pure kernel above,
-which the emitter currently refuses (`std.operator_realization` refuses infix arithmetic on
-`Compose<UInt, MachineWidth<N>>` operands, so `std.bitwise` `word32_add` and its callers are
-emit-blocked and only the interpreter runs them); and `extdeps.crypto.hash` `sha256sum_file_command`
-/ `sha256sum_line_digest`, a shell-out over a file path, which executes today and costs one process
-spawn per object. Per DESIGN §3 transport is not a fact of the interface, so which one serves is a
-`std.decision` question over object size, not a prerequisite ordering. **Declared rung:** the first
-slice uses the available structural digest and states this limitation rather than implying
-cross-party agreement it cannot support. **Dissolve-on:** a *bound and executed* path from the
-accepted bytes to fabric identity and verification — not merely the existence of a computing digest,
-which is already satisfied.
+`Fnv1a64Structural` — 64-bit, non-cryptographic — and no SHA-256 *computation* exists in `.dag`
+(`std.content_hash` `sha256_hex_digest` and `extdeps.crypto.hash` `sha256_digest` validate hex; they
+do not hash bytes). A 64-bit non-cryptographic digest is a **locator, not a durable intersubjective
+identity**, and adding a host builtin is closed because DESIGN freezes the v1 seed's growth
+surfaces. **Declared rung:** the first slice uses the available digest and states this limitation
+rather than implying cross-party agreement it cannot support. **Dissolve-on:** a computing
+cryptographic digest reachable from `.dag`.
 
 ## 6. Confidentiality
 
@@ -522,10 +506,7 @@ operator decision, not this note's.
 
 1. **Authoring capture.** The largest fork, and the reason §7 is scoped as it is. Until an authoring
    surface records what an author *did*, proposals must be stated explicitly rather than inferred.
-2. **Durable identity** (§5) — the declared rung. A computing cryptographic digest now exists
-   (`extdeps.crypto.sha2` `sha256_hex`); what is open is which realization binds it to fabric
-   identity, since the pure kernel is emit-blocked and the `extdeps.crypto.hash` shell-out costs a
-   process spawn per object.
+2. **Durable identity** (§5) — the declared rung. Needs a computing cryptographic digest.
 3. **Recursion into named edges** — the next slice, and the one that demonstrates the differentiator.
 4. **Retraction epochs** (§6) — the weakest claim in the note.
 5. **Positional append** — whether two appends commute. Special-casing risks re-importing the
