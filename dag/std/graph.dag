@@ -30,11 +30,6 @@ type SccComponentAcc {
   members: List<String>
 }
 
-type SccMembersAcc {
-  visited: Set<String>
-  members: List<String>
-}
-
 fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
   names |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, [])
@@ -108,31 +103,49 @@ fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc
   }
 }
 
-fn graph_multi_node_scc_members(
+type SccComponentsAcc {
+  visited: Set<String>
+  components: List<List<String>>
+}
+
+// Kosaraju: the second pass visits the transpose in decreasing finish order, so the components
+// arrive in topological order of the condensation -- a component precedes every component its
+// members reach. Consumers that want dependencies first reverse the list; the order is a fact of
+// the algorithm, not a presentation choice.
+fn graph_strongly_connected_components(
   names: List<String>,
   graph: CallGraph,
-) -> List<String> {
+) -> List<List<String>> {
   let adjacency = build_adjacency_views(names: names, graph: graph)
   let finish = names |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, name) =>
     dfs_finish_order(node: name, adjacency: adjacency.forward, acc: acc)
   )
-  let result = finish.order |> reverse |> fold(init: SccMembersAcc { visited: empty_set(), members: [] }, f: (acc, name) =>
+  let result = finish.order |> reverse |> fold(init: SccComponentsAcc { visited: empty_set(), components: [] }, f: (acc, name) =>
     if set_contains(acc.visited, name) {
       acc
     } else {
       let component = dfs_collect_component(node: name, adjacency: adjacency.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
-      let members = if (component.members |> count) > 1 {
-        concat(acc.members, component.members)
-      } else {
-        acc.members
-      }
-      SccMembersAcc {
+      SccComponentsAcc {
         visited: component.visited,
-        members: members
+        components: acc.components |> list_push(component.members)
       }
     }
   )
-  result.members
+  result.components
+}
+
+fn graph_multi_node_scc_members(
+  names: List<String>,
+  graph: CallGraph,
+) -> List<String> {
+  graph_strongly_connected_components(names: names, graph: graph)
+    |> fold(init: [], f: (acc, component) =>
+      if (component |> count) > 1 {
+        concat(acc, component)
+      } else {
+        acc
+      }
+    )
 }
 
 fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {

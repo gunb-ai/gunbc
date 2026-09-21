@@ -1,0 +1,8 @@
+module test.fixture.emitted_closure_partition.mutated.right
+
+import std.types { Int }
+import test.fixture.emitted_closure_partition.mutated.sink { mutated_sink_value }
+
+fn mutated_right_value() -> Int {
+  mutated_sink_value()
+}

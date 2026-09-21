@@ -118,9 +118,14 @@ type PartitionInterfaceClosureState {
 // PartitionInterfaceTruncated if budget exhausts without fixpoint. Default: home supplies full
 // referenced-declaration set + by-value type defs; each target R3 may project a subset.
 
-// R4 validity interface (locked 2026-07-16, eager-ferret-110): realizations implement fn
-// validate_partition_r4(module_dag: ModuleDag, assignment: Map<ModuleId, CompilationUnitId>, units:
-// List<CompilationUnit>) -> PartitionR4ValidityVerdict. Each cause is a realization-agnostic
+// R4 validity interface (locked 2026-07-16, eager-ferret-110; inputs narrowed for Rust in Pkg7):
+// each realization implements its validate_partition_r4 over the facts its refused causes read,
+// returning PartitionR4ValidityVerdict. Rust refuses only SccSplit and UnitGraphCycle, both facts of
+// the module DAG and the assignment (the unit graph is the module edges projected through the
+// assignment, the same fact partition_fold derives as CompilationUnit.deps), so Rust's takes
+// (module_dag, assignment) and can be asked BEFORE any interface is built -- which is where
+// resolve_partition_outcome asks it. C's c_validate_partition_r4 keeps the units, because its
+// ByValueTypeCycle reads the derived interfaces. Each cause is a realization-agnostic
 // STRUCTURAL condition; each realization decides which it refuses. SccSplit (a module
 // strongly-connected-component split across units) and UnitGraphCycle (a cycle in the unit
 // condensation) are refused by Rust (crates are acyclic) but ACCEPTED by C (translation units link

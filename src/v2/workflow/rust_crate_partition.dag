@@ -7,7 +7,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.graph {
   CallGraph,
   GraphEdge,
-  graph_has_multi_node_scc
+  graph_has_multi_node_scc,
+  graph_strongly_connected_components
 }
 import std.disposition { RealizationDispatch }
 import std.types { List, String, Bool, Int, NonEmptyStr }
@@ -36,13 +37,15 @@ import v2.std.compilers.compilation_unit {
   PartitionProvenance,
   PartitionR4Refused,
   PartitionR4Valid,
+  PartitionR4ValidityCause,
   PartitionR4ValidityVerdict,
   SccSplit,
   UnitGraphCycle,
   PartitionFoldOutcome,
   PartitionFoldRefusalCause,
   partition_fold_outcome,
-  partition_provenance_hand_explicit
+  partition_provenance_hand_explicit,
+  partition_provenance_policy_derived
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node, Symbol }
@@ -59,15 +62,21 @@ type PartitionParameter
   = ExplicitPartitionParam { partition: ExplicitPartition }
   | PolicyPartitionParam { policy: PartitionPolicy }
 
-type PolicyResolverUnimplemented {
-  policy: PartitionPolicy
-}
-
+// Every refusal names the module or the Rust rule it is about. An assignment is admitted only when
+// every module of the DAG has exactly one owner (the Map gives uniqueness; coverage and the absence
+// of strangers are checked here) and the R4 verdict is valid -- on BOTH arms, because a partition an
+// author supplied is no more trusted than one the policy derived.
 type ResolvePartitionRefusalCause
-  = PolicyResolverUnimplemented { policy: PartitionPolicy }
+  = PolicyTargetCountNotPositive { policy: PartitionPolicy }
+  | AssignmentOmitsModule { module_id: ModuleId }
+  | AssignmentNamesModuleOutsideDag { module_id: ModuleId }
+  | PartitionRustAdmissibilityRefused { cause: PartitionR4ValidityCause }
 
 type ResolvePartitionOutcome
-  = ResolvePartitionOk { assignment: Map<ModuleId, CompilationUnitId> }
+  = ResolvePartitionOk {
+      assignment: Map<ModuleId, CompilationUnitId>
+      provenance: PartitionProvenance
+    }
   | ResolvePartitionRefused { cause: ResolvePartitionRefusalCause }
 
 type Stage0PartitionReceiptOutcome
@@ -542,10 +551,151 @@ fn resolve_partition_outcome(
 ) -> ResolvePartitionOutcome {
   match parameter {
     ExplicitPartitionParam { partition: explicit } =>
-      ResolvePartitionOk { assignment: explicit.assignment }
+      admit_partition_assignment(
+        module_dag: module_dag,
+        assignment: explicit.assignment,
+        provenance: partition_provenance_hand_explicit()
+      )
     PolicyPartitionParam { policy: policy } =>
-      ResolvePartitionRefused {
-        cause: PolicyResolverUnimplemented { policy: policy }
+      if policy.target_crate_count < 1 {
+        ResolvePartitionRefused { cause: PolicyTargetCountNotPositive { policy: policy } }
+      } else {
+        admit_partition_assignment(
+          module_dag: module_dag,
+          assignment: policy_partition_assignment(module_dag: module_dag, policy: policy),
+          provenance: partition_provenance_policy_derived(policy: policy_partition_resolver_ref())
+        )
+      }
+  }
+}
+
+fn policy_partition_resolver_ref() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v2.workflow.rust_crate_partition" as NonEmptyStr,
+    decl_name: "policy_partition_assignment" as NonEmptyStr,
+    field: WholeDeclaration,
+  }
+}
+
+fn module_dag_call_graph(module_dag: ModuleDag) -> CallGraph {
+  CallGraph {
+    edges: module_dag.edges
+      |> map(edge => GraphEdge { caller: edge.from as String, callee: edge.to as String })
+  }
+}
+
+// The strongly connected components of the module DAG, dependencies first. Kosaraju yields them
+// importers first (std.graph graph_strongly_connected_components), so this reverses once.
+fn module_dag_components_dependencies_first(module_dag: ModuleDag) -> List<List<String>> {
+  graph_strongly_connected_components(
+    names: module_dag.modules |> map(module_id => module_id as String),
+    graph: module_dag_call_graph(module_dag: module_dag)
+  ) |> reverse
+}
+
+type PolicyPartitionFill {
+  assignment: Map<ModuleId, CompilationUnitId>
+  unit_index: Int
+  filled: Int
+}
+
+fn policy_partition_unit_id(unit_index: Int) -> CompilationUnitId {
+  ("policy-unit-" + to_string(unit_index)) as CompilationUnitId
+}
+
+// THE BALANCED POLICY, AND WHY IT CANNOT PRODUCE AN INADMISSIBLE PARTITION. Components are laid out
+// dependencies first and cut into contiguous runs of about ceil(modules / target) members, so:
+// a component is never divided (no SccSplit), and every module edge runs from a later run to an
+// earlier or the same one, so the unit graph points strictly backwards (no UnitGraphCycle). The R4
+// verdict is still asked of the result in admit_partition_assignment -- the argument above is why
+// the policy should pass, and the verdict is what establishes that it did.
+fn policy_partition_assignment(
+  module_dag: ModuleDag,
+  policy: PartitionPolicy
+) -> Map<ModuleId, CompilationUnitId> {
+  let quota = (length(module_dag.modules) + policy.target_crate_count - 1) / policy.target_crate_count
+  let filled = module_dag_components_dependencies_first(module_dag: module_dag)
+    |> fold(init: PolicyPartitionFill { assignment: empty_map(), unit_index: 0, filled: 0 }, f: fn(acc, component) {
+      let opens_next_unit = (acc.filled >= quota) && (acc.unit_index + 1 < policy.target_crate_count)
+      let unit_index = if opens_next_unit { acc.unit_index + 1 } else { acc.unit_index }
+      let already = if opens_next_unit { 0 } else { acc.filled }
+      let unit_id = policy_partition_unit_id(unit_index: unit_index)
+      PolicyPartitionFill {
+        assignment: component |> fold(init: acc.assignment, f: fn(inner, member) {
+          map_insert(inner, member as ModuleId, unit_id)
+        }),
+        unit_index: unit_index,
+        filled: already + length(component)
+      }
+    })
+  filled.assignment
+}
+
+fn assignment_owner(
+  assignment: Map<ModuleId, CompilationUnitId>,
+  module_id: ModuleId
+) -> Optional<CompilationUnitId> {
+  match map_get(assignment, module_id) {
+    Accepted { value: owner, diagnostics: _ } => owner
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn assignment_first_omitted_module(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Optional<ModuleId> {
+  module_dag.modules |> fold(init: Absent, f: fn(acc, module_id) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match assignment_owner(assignment: assignment, module_id: module_id) {
+          Present { value: _ } => Absent
+          Absent => Present { value: module_id }
+        }
+    }
+  })
+}
+
+fn assignment_first_stranger(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Optional<ModuleId> {
+  let known = module_dag.modules |> fold(init: empty_map(), f: fn(acc, module_id) {
+    map_insert(acc, module_id, true)
+  })
+  map_keys(assignment) |> fold(init: Absent, f: fn(acc, module_id) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match map_get(known, module_id) {
+          Accepted { value: Present { value: _ }, diagnostics: _ } => Absent
+          Accepted { value: Absent, diagnostics: _ } => Present { value: module_id }
+          Rejected { diagnostics: _ } => Present { value: module_id }
+        }
+    }
+  })
+}
+
+fn admit_partition_assignment(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  provenance: PartitionProvenance
+) -> ResolvePartitionOutcome {
+  match assignment_first_omitted_module(module_dag: module_dag, assignment: assignment) {
+    Present { value: module_id } =>
+      ResolvePartitionRefused { cause: AssignmentOmitsModule { module_id: module_id } }
+    Absent =>
+      match assignment_first_stranger(module_dag: module_dag, assignment: assignment) {
+        Present { value: module_id } =>
+          ResolvePartitionRefused { cause: AssignmentNamesModuleOutsideDag { module_id: module_id } }
+        Absent =>
+          match validate_partition_r4(module_dag: module_dag, assignment: assignment) {
+            PartitionR4Refused { cause: cause } =>
+              ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: cause } }
+            PartitionR4Valid =>
+              ResolvePartitionOk { assignment: assignment, provenance: provenance }
+          }
       }
   }
 }
@@ -561,7 +711,7 @@ data stage0_resolve_partition_outcome: ResolvePartitionOutcome = resolve_partiti
 )
 
 data stage0_partition_receipt_outcome: Stage0PartitionReceiptOutcome = match stage0_resolve_partition_outcome {
-  ResolvePartitionOk { assignment: assignment } =>
+  ResolvePartitionOk { assignment: assignment, provenance: _ } =>
     match partition_fold_outcome(module_dag: stage0_module_dag, assignment: assignment) {
       PartitionFoldOk { units: units } =>
         Stage0PartitionReceiptOk { units: units }
@@ -572,78 +722,63 @@ data stage0_partition_receipt_outcome: Stage0PartitionReceiptOutcome = match sta
     Stage0PartitionReceiptResolveRefused { cause: cause }
 }
 
-fn module_dag_reaches(
-  edges: List<ModuleDagEdge>,
-  from: ModuleId,
-  to: ModuleId
-) -> Bool {
-  if from == to {
-    true
-  } else {
-    edges
-      |> filter(edge => edge.from == from)
-      |> any(edge => module_dag_reaches(edges: edges, from: edge.to, to: to))
-  }
-}
-
-fn module_pair_in_same_scc(
-  edges: List<ModuleDagEdge>,
-  left: ModuleId,
-  right: ModuleId
-) -> Bool {
-  (left != right)
-    && module_dag_reaches(edges: edges, from: left, to: right)
-    && module_dag_reaches(edges: edges, from: right, to: left)
-}
-
+// SCC membership is read from the components, not re-derived per pair: the pairwise reachability
+// walk this replaces had no visited set, so on a cyclic DAG it did not terminate, and it paid a walk
+// per ordered pair besides.
 fn assignment_has_scc_split(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>
 ) -> Bool {
-  module_dag.modules |> any(left =>
-    module_dag.modules |> any(right => {
-      if !module_pair_in_same_scc(edges: module_dag.edges, left: left, right: right) {
-        false
-      } else {
-        match v2.std.collection.map_get(assignment, left) {
-          Accepted { value: Present { value: left_unit }, diagnostics: _ } =>
-            match v2.std.collection.map_get(assignment, right) {
-              Accepted { value: Present { value: right_unit }, diagnostics: _ } =>
-                left_unit != right_unit
-              Rejected { diagnostics: _ } => false
-              Accepted { value: Absent, diagnostics: _ } => false
-            }
-          Rejected { diagnostics: _ } => false
-          Accepted { value: Absent, diagnostics: _ } => false
+  module_dag_components_dependencies_first(module_dag: module_dag)
+    |> any(component => {
+      let owners = component |> fold(init: [], f: fn(acc, member) {
+        match assignment_owner(assignment: assignment, module_id: member as ModuleId) {
+          Present { value: owner } => if acc |> any(seen => seen == owner) { acc } else { acc |> list_push(owner) }
+          Absent => acc
         }
-      }
+      })
+      length(owners) > 1
     })
-  )
 }
 
-fn unit_graph_has_cycle(units: List<CompilationUnit>) -> Bool {
-  let unit_names = units |> map(unit => unit.id as String)
-  let edges = units
-    |> flat_map(unit =>
-      unit.deps
-        |> map(dep => GraphEdge { caller: unit.id as String, callee: dep as String })
-    )
+// The unit graph is the module edges projected through the assignment -- the same fact
+// partition_fold_outcome derives as CompilationUnit.deps, read here without asking for interfaces.
+fn assignment_unit_graph_has_cycle(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Bool {
+  let unit_edges = module_dag.edges |> fold(init: [], f: fn(acc, edge) {
+    match assignment_owner(assignment: assignment, module_id: edge.from) {
+      Present { value: from_unit } =>
+        match assignment_owner(assignment: assignment, module_id: edge.to) {
+          Present { value: to_unit } =>
+            if from_unit == to_unit {
+              acc
+            } else {
+              acc |> list_push(GraphEdge { caller: from_unit as String, callee: to_unit as String })
+            }
+          Absent => acc
+        }
+      Absent => acc
+    }
+  })
   graph_has_multi_node_scc(
-    names: unit_names,
-    graph: CallGraph { edges: edges }
+    names: map_values(assignment) |> fold(init: [], f: fn(acc, unit) {
+      if acc |> any(seen => seen == (unit as String)) { acc } else { acc |> list_push(unit as String) }
+    }),
+    graph: CallGraph { edges: unit_edges }
   )
 }
 
 fn validate_partition_r4(
   module_dag: ModuleDag,
-  assignment: Map<ModuleId, CompilationUnitId>,
-  units: List<CompilationUnit>
+  assignment: Map<ModuleId, CompilationUnitId>
 ) -> PartitionR4ValidityVerdict {
   if assignment_has_scc_split(module_dag: module_dag, assignment: assignment) {
     PartitionR4Refused {
       cause: SccSplit { detail: "Rust R4: mutually dependent modules assigned to different compilation units" }
     }
-  } else if unit_graph_has_cycle(units: units) {
+  } else if assignment_unit_graph_has_cycle(module_dag: module_dag, assignment: assignment) {
     PartitionR4Refused {
       cause: UnitGraphCycle { detail: "Rust R4: compilation-unit dependency graph is cyclic" }
     }
@@ -821,23 +956,12 @@ fn stage0_partition_row_lookups_resolved() -> Bool {
   layered_ok && emit_shell_ok
 }
 
+// resolve_partition_outcome admits an assignment only through the R4 verdict, so an Ok resolve IS
+// the valid verdict; asking validate_partition_r4 again here would pay the same verdict twice.
 fn stage0_partition_r4_valid() -> Bool {
-  match stage0_partition_receipt_outcome {
-    Stage0PartitionReceiptOk { units: units } =>
-      match stage0_resolve_partition_outcome {
-        ResolvePartitionOk { assignment: assignment } =>
-          match validate_partition_r4(
-            module_dag: stage0_module_dag,
-            assignment: assignment,
-            units: units
-          ) {
-            PartitionR4Valid => true
-            PartitionR4Refused { cause: _ } => false
-          }
-        ResolvePartitionRefused { cause: _ } => false
-      }
-    Stage0PartitionReceiptResolveRefused { cause: _ } => false
-    Stage0PartitionReceiptFoldRefused { cause: _ } => false
+  match stage0_resolve_partition_outcome {
+    ResolvePartitionOk { assignment: _, provenance: _ } => true
+    ResolvePartitionRefused { cause: _ } => false
   }
 }
 
@@ -850,7 +974,7 @@ fn stage0_partition_fold_ok() -> Bool {
   }
 }
 
-data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — replace ExplicitPartition assignment with PolicyPartition \{ target_crate_count: declared_core_target } when balanced partition policy lands; provenance flips HandExplicit → PolicyDerived.")
+data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: stage0_module_dag's edges and module lists are authored (stage0_cross_unit_import_edges, the stage0_*_modules lists) over v1 mirror basenames, not derived, so a policy over them would balance an incomplete graph. Stage0 flips to PolicyPartition \{ target_crate_count: declared_core_target } with provenance PolicyDerived when its ModuleDag is derived from the mirrors' resolved dependency facts the way v2.workflow.emitted_closure_crate_partition module_dag_from_dependency_facts derives the emitted closure's.")
 
 data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
 
