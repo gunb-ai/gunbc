@@ -245,6 +245,12 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "the_real_observation_reads_this_machine" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "the_real_observation_reads_this_machine",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "a_held_seat_is_recoverable_by_reference_and_an_unheld_one_writes_nothing" },
       entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
       function: "a_held_seat_is_recoverable_by_reference_and_an_unheld_one_writes_nothing",

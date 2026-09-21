@@ -2,6 +2,10 @@ module test.claim.compute.work_request_witness_test
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import gunbc.compute.work_provider_local {
+  UnitTermination, UnitQuiescent, UnitStillActive, UnitTerminationUnobserved,
+  unit_state_termination, unit_termination_frees_capacity,
+}
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
@@ -73,4 +77,34 @@ test fn the_stored_outcome_round_trips_and_a_broken_one_is_unreadable() -> Bool 
     && string_contains(s: ok, pattern: "\"blob\": \"deadbeef\"")
     && (match stored_outcome_decode(text: "{\"identity\": \"abc\"}") { StoredOutcomeUnreadable { reason: _ } => true  StoredOutcomeFound { ending: _, identity: _, document: _ } => false })
     && (match stored_outcome_decode(text: "not json") { StoredOutcomeUnreadable { reason: _ } => true  StoredOutcomeFound { ending: _, identity: _, document: _ } => false })
+}
+
+// ONLY A UNIT THAT IS DEMONSTRABLY GONE MAY FREE ITS SEAT, and the arm that matters is the one in
+// the middle. `systemd-run --wait` is a LAUNCHER, not the unit's parent, so a launcher that dies or
+// times out returns failure while the transient service keeps running; releasing on that signal
+// would hand a live cargo's memory to the next arrival. Empty and inactive and failed are all
+// "nothing of ours is holding that memory" -- never started and already collected are the same fact
+// for this decision. Everything systemd calls live keeps the charge, and a word this fold has never
+// seen keeps it too: a future ActiveState must not read as permission to take memory back.
+test fn only_a_gone_unit_frees_its_seat_and_an_unknown_state_does_not() -> Bool {
+  all(["", "inactive", "failed", "  inactive  "], s =>
+        match unit_state_termination(state: s) {
+          UnitQuiescent { state: _ } => true
+          UnitStillActive { state: _ } => false
+          UnitTerminationUnobserved { detail: _ } => false
+        })
+    && all(["active", "activating", "deactivating", "reloading", "maintenance"], s =>
+        match unit_state_termination(state: s) {
+          UnitStillActive { state: _ } => true
+          UnitQuiescent { state: _ } => false
+          UnitTerminationUnobserved { detail: _ } => false
+        })
+    && all(["quantum-superposed", "ACTIVE", "1"], s =>
+        match unit_state_termination(state: s) {
+          UnitTerminationUnobserved { detail: _ } => true
+          UnitQuiescent { state: _ } => false
+          UnitStillActive { state: _ } => false
+        })
+    && all(["", "inactive", "failed"], s => unit_termination_frees_capacity(t: unit_state_termination(state: s)))
+    && all(["active", "activating", "deactivating", "quantum-superposed"], s => !unit_termination_frees_capacity(t: unit_state_termination(state: s)))
 }

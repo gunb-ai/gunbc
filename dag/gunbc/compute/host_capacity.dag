@@ -216,6 +216,14 @@ fn compute_lease_policy(term_seconds: Nat) -> LeasePolicy {
 // actually has" is one predicate evaluated in one CAS'd step, and the second 26 GiB request is
 // refused as a full pool because 26 + 26 > 30.
 //
+// WHAT THIS ADMITS AGAINST IS AN ESTIMATE, AND IT IS NOT A NO-OOM GUARANTEE. MemAvailable is the
+// kernel's own ESTIMATE of what a new workload could obtain without swapping, it moves between the
+// reading and the grant, and nothing here constrains the processes outside this pool. So the claim
+// this relation supports is "this pool does not knowingly promise more than the machine reported",
+// which is a real property and is strictly weaker than "no admitted workload will be OOM-killed".
+// The unit's own MemoryMax is what bounds a single workload; this is what stops the POOL from
+// over-promising. Conflating the two would be the rung inflation DESIGN 4b forbids.
+//
 // WORST-CASE-SOUND, AND CONSERVATIVE, AND SAYING SO. MemAvailable already excludes whatever the
 // pool's outstanding grants have actually touched, so a grant that is fully resident is counted
 // twice -- once in the machine's reading and once in the committed total. That errs toward refusing
@@ -270,30 +278,53 @@ fn compute_reserve(instance: HostDashboardInstance, reference: NonEmptyStr, term
   }
 }
 
+// THE DECISION TAKES THE OBSERVATION AS A VALUE, AND THE DOOR ABOVE TAKES THE READING.
+//
+// It used to read /proc/meminfo itself, which made the admission arithmetic untestable except
+// against whatever the host happened to be doing: the headroom control had to DERIVE its fixture
+// from the live reading, and a fixture derived from the thing under test is not a fixture. It was
+// wrong in both directions -- on a lightly loaded host the derived appropriation exceeded MemTotal
+// and the cell refused before reaching the comparison it existed to make, and on a busy one it
+// passed for reasons unrelated to the relation (side-chat review of gunbc#11962 at 725d9c58).
+//
+// So the boundary is here: this fold decides admission from a supplied observation, and
+// compute_reserve supplies the real one. DESIGN 3's pairing obligation is discharged by an
+// inhabitance claim that observe_host_memory really produces a well-formed reading of this machine,
+// and by the srv1 receipts, where the whole path runs for real.
 fn compute_reserve_on(subject: ComputeCapacitySubject, reference: NonEmptyStr, term_seconds: Nat) -> ComputeReservation {
   match observe_host_memory() {
     HostMemoryUnobserved { detail: d } => ComputeReservationRefused { detail: join(["the host's memory could not be observed, so nothing was reserved: ", d], "") }
     HostMemoryObserved { total: total, available: available } =>
-      if kibibyte_count(k: subject.appropriation) > kibibyte_count(k: total) {
-        ComputeReservationRefused {
-          detail: join([
-            "the compute appropriation is ", to_string(value: kibibyte_count(k: subject.appropriation)),
-            " KiB and this host has ", to_string(value: kibibyte_count(k: total)),
-            " KiB installed, so the share was never backed by the machine",
-          ], ""),
+      compute_reserve_against(subject: subject, reference: reference, term_seconds: term_seconds, total: total, available: available)
+  }
+}
+
+fn compute_reserve_against(
+  subject: ComputeCapacitySubject,
+  reference: NonEmptyStr,
+  term_seconds: Nat,
+  total: Kibibyte,
+  available: Kibibyte,
+) -> ComputeReservation {
+  if kibibyte_count(k: subject.appropriation) > kibibyte_count(k: total) {
+    ComputeReservationRefused {
+      detail: join([
+        "the compute appropriation is ", to_string(value: kibibyte_count(k: subject.appropriation)),
+        " KiB and this host has ", to_string(value: kibibyte_count(k: total)),
+        " KiB installed, so the share was never backed by the machine",
+      ], ""),
+    }
+  } else if kibibyte_count(k: available) < kibibyte_count(k: subject.request) {
+    ComputeHostBelowFloor { requested: subject.request, available: available }
+  } else {
+    match compute_capacity_store_ensure(subject: subject) {
+      FabricStorageRootRefused { area: a, detail: d } => ComputeReservationRefused { detail: join(["the capacity ledger could not be prepared at ", a, ": ", d], "") }
+      FabricStorageRootReady =>
+        match now_epoch_seconds() {
+          Absent => ComputeReservationRefused { detail: "the clock could not be read as epoch seconds" }
+          Present { value: now } => compute_seat(subject: subject, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(subject: subject, available: available))
         }
-      } else if kibibyte_count(k: available) < kibibyte_count(k: subject.request) {
-        ComputeHostBelowFloor { requested: subject.request, available: available }
-      } else {
-        match compute_capacity_store_ensure(subject: subject) {
-          FabricStorageRootRefused { area: a, detail: d } => ComputeReservationRefused { detail: join(["the capacity ledger could not be prepared at ", a, ": ", d], "") }
-          FabricStorageRootReady =>
-            match now_epoch_seconds() {
-              Absent => ComputeReservationRefused { detail: "the clock could not be read as epoch seconds" }
-              Present { value: now } => compute_seat(subject: subject, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(subject: subject, available: available))
-            }
-        }
-      }
+    }
   }
 }
 

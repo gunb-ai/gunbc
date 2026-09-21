@@ -12,7 +12,7 @@ import gunbc.compute.host_capacity {
   compute_capacity_subject, compute_capacity_root, compute_memory_partition,
   HostMemoryObservation, HostMemoryObserved, HostMemoryUnobserved, observe_host_memory,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
-  compute_reserve_on, compute_release, compute_release_on, ComputeRelease, ComputeReleased, ComputeReleaseRefused,
+  compute_reserve_on, compute_reserve_against, compute_release, compute_release_on, ComputeRelease, ComputeReleased, ComputeReleaseRefused,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
 }
 
@@ -117,19 +117,15 @@ test fn competing_reservations_cannot_over_reserve_and_a_release_returns_the_cap
 // The request is the machine's own installed memory, which is strictly above what it reports
 // available on any host that is running anything at all -- including the one running this witness.
 test fn a_request_the_machine_cannot_back_refuses_below_the_live_floor() -> Bool {
-  match observe_host_memory() {
-    HostMemoryUnobserved { detail: _ } => false
-    HostMemoryObserved { total: total, available: available } => {
-      let installed = kibibyte_count(k: total)
-      let subject = subject_at(root: fresh_root(), appropriation_kib: installed, request_kib: installed)
-      kibibyte_count(k: available) < installed
-        && (match compute_reserve_on(subject: subject, reference: "wet-floor" as NonEmptyStr, term_seconds: 60) {
-              ComputeHostBelowFloor { requested: rq, available: av } => kibibyte_count(k: rq) == installed && kibibyte_count(k: av) > 0
-              ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
-              ComputeCapacityFull { wire: _ } => false
-              ComputeReservationRefused { detail: _ } => false
-            })
-    }
+  let total = kibibyte(count: 64 * one_gibibyte_in_kibibytes)
+  let available = kibibyte(count: 4 * one_gibibyte_in_kibibytes)
+  let subject = subject_at(root: fresh_root(), appropriation_kib: 52 * one_gibibyte_in_kibibytes, request_kib: 26 * one_gibibyte_in_kibibytes)
+  match compute_reserve_against(subject: subject, reference: "wet-floor" as NonEmptyStr, term_seconds: 60, total: total, available: available) {
+    ComputeHostBelowFloor { requested: rq, available: av } =>
+      kibibyte_count(k: rq) == 26 * one_gibibyte_in_kibibytes && kibibyte_count(k: av) == 4 * one_gibibyte_in_kibibytes
+    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+    ComputeCapacityFull { wire: _ } => false
+    ComputeReservationRefused { detail: _ } => false
   }
 }
 
@@ -137,17 +133,13 @@ test fn a_request_the_machine_cannot_back_refuses_below_the_live_floor() -> Bool
 // presenting hours later as a build the kernel killed. It is refused ahead of the floor check,
 // because a share that was never backed is wrong whatever this instant's availability happens to be.
 test fn an_appropriation_larger_than_the_machine_refuses_rather_than_admitting() -> Bool {
-  match observe_host_memory() {
-    HostMemoryUnobserved { detail: _ } => false
-    HostMemoryObserved { total: total, available: _ } => {
-      let subject = subject_at(root: fresh_root(), appropriation_kib: kibibyte_count(k: total) + 1, request_kib: one_gibibyte_in_kibibytes)
-      match compute_reserve_on(subject: subject, reference: "wet-oversized" as NonEmptyStr, term_seconds: 60) {
-        ComputeReservationRefused { detail: d } => string_contains(s: d, pattern: "never backed by the machine")
-        ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
-        ComputeCapacityFull { wire: _ } => false
-        ComputeHostBelowFloor { requested: _, available: _ } => false
-      }
-    }
+  let total = kibibyte(count: 64 * one_gibibyte_in_kibibytes)
+  let subject = subject_at(root: fresh_root(), appropriation_kib: 64 * one_gibibyte_in_kibibytes + 1, request_kib: one_gibibyte_in_kibibytes)
+  match compute_reserve_against(subject: subject, reference: "wet-oversized" as NonEmptyStr, term_seconds: 60, total: total, available: total) {
+    ComputeReservationRefused { detail: d } => string_contains(s: d, pattern: "never backed by the machine")
+    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+    ComputeCapacityFull { wire: _ } => false
+    ComputeHostBelowFloor { requested: _, available: _ } => false
   }
 }
 
@@ -211,27 +203,37 @@ test fn a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool
 // live observation, so the fixture states the relation rather than a number: it asks for slightly
 // more than half of what the host reports free, twice.
 test fn two_requests_summing_past_the_observed_headroom_cannot_both_admit() -> Bool {
+  let total = kibibyte(count: 64 * one_gibibyte_in_kibibytes)
+  let available = kibibyte(count: 30 * one_gibibyte_in_kibibytes)
+  let subject = subject_at(root: fresh_root(), appropriation_kib: 52 * one_gibibyte_in_kibibytes, request_kib: 26 * one_gibibyte_in_kibibytes)
+  let first = compute_reserve_against(subject: subject, reference: "wet-headroom-a" as NonEmptyStr, term_seconds: 60, total: total, available: available)
+  let second = compute_reserve_against(subject: subject, reference: "wet-headroom-b" as NonEmptyStr, term_seconds: 60, total: total, available: available)
+  kibibyte_count(k: subject.request) <= kibibyte_count(k: available)
+    && kibibyte_count(k: subject.request) * 2 > kibibyte_count(k: available)
+    && kibibyte_count(k: subject.appropriation) >= kibibyte_count(k: subject.request) * 2
+    && kibibyte_count(k: subject.appropriation) <= kibibyte_count(k: total)
+    && reserved_amount(r: first) == kibibyte_count(k: subject.request)
+    && is_capacity_full(r: second)
+}
+
+// THE PAIRING OBLIGATION FOR EVERY SUPPLIED OBSERVATION ABOVE (DESIGN 3): the real producer emits a
+// reading of THIS machine, and it is a reading rather than a shape -- installed memory is positive,
+// availability does not exceed it, and the two are not the same number on a host that is running
+// anything. A fixture cannot establish that and the supplied cells do not claim to.
+test fn the_real_observation_reads_this_machine() -> Bool {
   match observe_host_memory() {
     HostMemoryUnobserved { detail: _ } => false
-    HostMemoryObserved { total: _, available: available } => {
-      let each = kibibyte_count(k: available) / 2 + 1024
-      let subject = subject_at(root: fresh_root(), appropriation_kib: each * 4, request_kib: each)
-      let first = compute_reserve_on(subject: subject, reference: "wet-headroom-a" as NonEmptyStr, term_seconds: 60)
-      let second = compute_reserve_on(subject: subject, reference: "wet-headroom-b" as NonEmptyStr, term_seconds: 60)
-      reserved_amount(r: first) == each
-        && is_capacity_full(r: second)
-        && each * 2 > kibibyte_count(k: available)
-        && each * 4 > each * 2
-    }
+    HostMemoryObserved { total: total, available: available } =>
+      kibibyte_count(k: total) > 0
+        && kibibyte_count(k: available) > 0
+        && kibibyte_count(k: available) < kibibyte_count(k: total)
   }
 }
 
 // A WEDGED SEAT CAN ACTUALLY BE RECOVERED, BY REFERENCE, BY SOMEONE WHO NEVER HELD THE RESERVATION.
 // Under QuiescenceRequired a term frees nothing, so this route is the ONLY way capacity returns
 // after a release fails to land -- and until review 69595 the module claimed it in prose while no
-// declaration reached it. The cell holds the whole appropriation, releases it with nothing but the
-// reference (the reservation value is deliberately not used), and shows the capacity is admissible
-// again.
+// declaration reached it.
 //
 // AND A REFERENCE THE POOL IS NOT HOLDING WRITES NOTHING. That is the sharper half: an unheld
 // reference appended anyway would not fail at the append, it would fail at every later READ, when
