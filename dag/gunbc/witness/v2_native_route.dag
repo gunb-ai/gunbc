@@ -9,8 +9,9 @@ import v2.std.optional { Absent, Optional, Present }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
-  NativeTestFileRefusal
+  NativeTestFileRefusal, native_test_verdict_text
 }
+import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.workflow.compile_door_cause_ownership {
   CauseLane, DiagnosticGrain, FatalGrain, HeadGrain, cause_ownership_lookup, known_frontier_causes
 }
@@ -132,6 +133,18 @@ fn native_route_reference_for(
 type NativeRouteMemberRow {
   identity: NativeRouteTestIdentity
   verdict: NativeTestVerdict
+}
+
+// THE OPERATOR'S LINE FOR ONE ROW: the subject the lane keys on, then the verdict as the
+// vocabulary renders it. The driver prints this on stderr for every row that did not pass,
+// beside the JSON row it persists on stdout, so the command an operator runs names the failing
+// subject with its stage, its cause and where the cause is -- read off the same value the row
+// carries, never re-derived by the host from the bytes it wrote.
+fn native_route_member_row_text(row: NativeRouteMemberRow) -> String {
+  concat(
+    native_route_identity_qualified(identity: row.identity),
+    concat(" ", native_test_verdict_text(verdict: row.verdict))
+  )
 }
 
 // THE MODULE → SOURCE-PATH RELATION, OVER THE UNIVERSE'S OWN MODULES. A Context-stage row is a
@@ -262,22 +275,25 @@ fn native_route_disposition(
         FloorRouteGapRefusal => NativeDivergence { cause: NativeReachedRouteGap }
       }
     NativeTestReturnedOther => NativeDivergence { cause: NativeReturnedOtherVerdict }
-    NativeTestRefused { stage: stage, reason: reason } =>
-      match reference {
-        FloorRouteGapRefusal =>
-          match stage {
-            NativeTestStageEval =>
-              if native_route_reason_member(reason: reason, roster: native_route_effect_boundary_reasons) {
-                NativeAgreementRouteGap
-              } else {
-                NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
-              }
-            NativeTestStageContext => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
-            NativeTestStagePrepare => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
-            NativeTestStageEntry => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
-          }
-        FloorExpectedPass => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
-        FloorExpectedRed => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+    NativeTestRefused { stage: stage, diagnostics: d } =>
+      {
+        let reason = diagnostics_fatal_reason(d: d)
+        match reference {
+          FloorRouteGapRefusal =>
+            match stage {
+              NativeTestStageEval =>
+                if native_route_reason_member(reason: reason, roster: native_route_effect_boundary_reasons) {
+                  NativeAgreementRouteGap
+                } else {
+                  NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+                }
+              NativeTestStageContext => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+              NativeTestStagePrepare => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+              NativeTestStageEntry => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+            }
+          FloorExpectedPass => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+          FloorExpectedRed => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+        }
       }
   }
 }
@@ -791,13 +807,13 @@ fn native_route_head_advisories_attributed(receipt: NativeRouteReceipt) -> Bool 
 fn native_route_context_refusals_backed(receipt: NativeRouteReceipt) -> Bool {
   !any(xs: receipt.population, predicate: fn(row) {
     match row.verdict {
-      NativeTestRefused { stage: stage, reason: reason } =>
+      NativeTestRefused { stage: stage, diagnostics: d } =>
         match stage {
           NativeTestStageContext =>
             !any(xs: receipt.module_source_index, predicate: fn(ms) {
               ms.module == row.identity.module
               && any(xs: receipt.file_refusals, predicate: fn(fr) {
-                fr.path == ms.path && fr.fatal_reason == reason
+                fr.path == ms.path && fr.fatal_reason == diagnostics_fatal_reason(d: d)
               })
             })
           NativeTestStagePrepare => false
@@ -832,7 +848,7 @@ fn native_route_false_control_holds(receipt: NativeRouteReceipt) -> Bool {
         NativeTestReturnedFalse => true
         NativeTestPassed => false
         NativeTestReturnedOther => false
-        NativeTestRefused { stage: _, reason: _ } => false
+        NativeTestRefused { stage: _, diagnostics: _ } => false
       }
     Absent => false
   }
@@ -845,7 +861,7 @@ fn native_route_true_control_holds(receipt: NativeRouteReceipt) -> Bool {
         NativeTestPassed => true
         NativeTestReturnedFalse => false
         NativeTestReturnedOther => false
-        NativeTestRefused { stage: _, reason: _ } => false
+        NativeTestRefused { stage: _, diagnostics: _ } => false
       }
     Absent => false
   }

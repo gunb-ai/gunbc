@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.located_cause_folded_to_its_reason_at_a_result_boundary
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data located_cause_folded_to_its_reason_at_a_result_boundary: RecurringFailureMode = RecurringFailureMode {
+  identity: "located_cause_folded_to_its_reason_at_a_result_boundary" as NonEmptyStr,
+
+  receipts: [
+    "A failing stage computes a LOCATED, typed cause -- v2.std.diagnostic Diagnostic: reason, locus, correction, and for a rejection the whole NonEmptyDiagnostics chain -- and a result boundary downstream copies ONE FIELD out of it, the reason symbol, into the carrier it hands on. Every consumer past that boundary then reports WHAT refused and cannot report WHERE, and the information was not missing: it was in hand at the stage and discarded at the seam. DESIGN section 5 requires a typed, located refusal; this row is about the location surviving the trip through a result carrier, which the stage having produced it does not by itself secure.",
+
+    "THE INVALID STATE, stated so it can be recognised in a diff: a verdict, observation, receipt or row type with a field `reason: Symbol` where the producer that fills it holds a Diagnostic or a NonEmptyDiagnostics. The tell is the constructor: `reason: fatal_reason(d)`, `reason: d.head.reason`, or a projection function whose whole body is a fold to one Symbol. A second tell one layer up is the fold's own name -- `*_fatal_reason`, `*_last_reason` -- spelled per consumer, because each consumer that summarised re-derived the same 'the fatal is the last' fold for itself.",
+
+    "RECEIPT ONE, gunbc#11507, recorded on v2.cli.compile_cli: the native CLI's rejected arm carried `d.head.reason` into a ProcessExit whose rendered text was one sentence, so three different entries refused with the same nine words and the located fatal -- file and byte extent, already computed by the parse stage -- was printed nowhere. Repaired there by rendering the fatal's locus through lens_verdict_diagnostic_locus_text.",
+
+    "RECEIPT TWO, 2026-09-21, the native test route: v2.compiler.native_test_vocabulary NativeTestVerdict's refused arm was `NativeTestRefused { stage, reason: Symbol }`, filled at every site in v2.compiler.compile by `native_test_fatal_reason(d)`. The persisted population rows the emitted driver wrote and the admission authority judged therefore carried a stage and one symbol per refused identity. An ambiguous reference was reported as `resolve_reason_ambiguous_symbol` and nothing else, while the resolver had computed WHICH lookup was ambiguous (lexical chain, global bare index, qualified head shadowing an absolute hit) and, for the lexical case, the qualified path of every competing binder -- discarded one seam earlier still, at `SymbolIndexAtomAmbiguous`, a bare variant standing where the lookup had answered `LexicalAmbiguous { candidates }`. Repaired by carrying the stage's NonEmptyDiagnostics on the verdict, deriving the reason at the consumer through v2.std.diagnostic diagnostics_fatal_reason, and naming each competing declaration on a DeclarationLocus.",
+
+    "THE SAME SHAPE AT ANOTHER GRAIN IN THE SAME LANE, LEFT STANDING AND NAMED: NativeTestFileRefusal carries `head_reason` and `fatal_reason` for a front-end refusal whose diagnostics carry Textual file-and-extent loci -- the most actionable position the pipeline produces. The row is read by the seed host runner's TSV-shaped decoder, so widening it is a change to that decoder as well; it is the declared remainder of the package that filed this row, not an oversight.",
+
+    "WHY IT RECURS: the reason symbol is the field every AUTHORITY keys on -- cause-ownership tables, expected-red rosters, exclusion taxonomies all classify by reason -- so a carrier designed for the authority's question carries exactly the authority's key and nothing more, and the operator's question (where) has no field. The fix is never to add a second field beside the reason: it is to carry the Diagnostic and DERIVE the reason, so the authority reads the same symbol and the operator reads the same value.",
+
+    "RECOGNITION RULE: at any type that carries a refusal, ask what the PRODUCER held when it filled the field. If the producer held a Diagnostic or NonEmptyDiagnostics and the field is a Symbol, the boundary has folded a located cause to its name. The counter-tell that keeps this from over-firing: a reason minted by the boundary itself, for a refusal no stage produced, legitimately starts as a Symbol -- and even then it owes a locus (native_test_refused_located demands one).",
+
+    "CEILING AND TRIGGER. The class is decidable -- a field typed Symbol filled from a value typed Diagnostic is a shape a lens can read off the Node tree -- so its ceiling is mechanically preventable at least, and structurally guaranteed where the carrier is sealed to a constructor that takes the diagnostics. This row sits at mitigatable: two receipts repaired by hand, and the reading is by reviewer. NEXT-RUNG TRIGGER, naming the capability: a lens over refusal-carrying types that refuses a Symbol-typed field whose fill site projects a Diagnostic's reason, with the file-refusal row above as its first authorable red.",
+  ],
+
+  evidence: [],
+}
