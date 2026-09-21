@@ -127,6 +127,20 @@ type NcrTwin = Bool
 fn ncr_shadow_use(p: NcrTwin) -> Bool { p }
 "
 
+// A RE-EXPORT CHAIN, WHICH IS WHERE THE ORDER-INDEPENDENCE CLAIM WAS TOO LARGE FOR ITS EVIDENCE
+// (review 69735). `ncr_relay` imports `NcrTwin` and declares nothing, so its own binding is what
+// `ncr_chain` imports -- one row's target is another row's BINDING, not a declaration. Splitting
+// declarations from bindings does not order these two: the relay's row has to bind before the
+// chain's can. The specimen is the corpus's own shape, where v2.compiler.normalize imports `Absent`
+// from v2.std.collection, which imports it from v2.std.optional and declares it nowhere.
+//
+// IT IS PLACED SO THE PERMUTATION MOVES IT. In ncr_ingest the relay precedes the chain and in the
+// permuted ingest it follows it, so a fill that gave each row one attempt in root order would bind
+// this in one and silently not in the other.
+data ncr_relay_source: String = "module v2.ncr_relay\n\nimport v2.ncr_home_a { NcrTwin }\n"
+
+data ncr_chain_source: String = "module v2.ncr_chain\n\nimport v2.std.logic { Bool }\nimport v2.ncr_relay { NcrTwin }\n\nfn ncr_chain_use(p: NcrTwin) -> Bool { p }\n"
+
 fn ncr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
@@ -134,6 +148,14 @@ fn ncr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSource
     compilation_unit: unit,
     source_root: DagTree
   }
+}
+
+fn ncr_relay_read() -> DagSourceReadWitness {
+  ncr_read(source: ncr_relay_source, id: ^ncr_relay_artifact, unit: ^ncr_relay_cu, path: "dag/ncr_relay.dag")
+}
+
+fn ncr_chain_read() -> DagSourceReadWitness {
+  ncr_read(source: ncr_chain_source, id: ^ncr_chain_artifact, unit: ^ncr_chain_cu, path: "dag/ncr_chain.dag")
 }
 
 fn ncr_shadow_read() -> DagSourceReadWitness {
@@ -191,7 +213,13 @@ data ncr_ingest: SourceRootIngest = Cons {
               head: ncr_disp_other_read(),
               tail: Cons {
                 head: ncr_disp_user_read(),
-                tail: Cons { head: ncr_shadow_read(), tail: Empty }
+                tail: Cons {
+                  head: ncr_shadow_read(),
+                  tail: Cons {
+                    head: ncr_relay_read(),
+                    tail: Cons { head: ncr_chain_read(), tail: Empty }
+                  }
+                }
               }
             }
           }
@@ -217,7 +245,13 @@ data ncr_ingest_permuted: SourceRootIngest = Cons {
               head: ncr_disp_other_read(),
               tail: Cons {
                 head: ncr_disp_home_read(),
-                tail: Cons { head: ncr_shadow_read(), tail: Empty }
+                tail: Cons {
+                  head: ncr_shadow_read(),
+                  tail: Cons {
+                    head: ncr_chain_read(),
+                    tail: Cons { head: ncr_relay_read(), tail: Empty }
+                  }
+                }
               }
             }
           }
@@ -314,11 +348,13 @@ type NcrOutcomes
       home_a: NcrVerdict
       disp_user: NcrVerdict
       shadow: NcrVerdict
+      chain: NcrVerdict
       importer_permuted: NcrVerdict
       double_permuted: NcrVerdict
       unbound_permuted: NcrVerdict
       disp_user_permuted: NcrVerdict
       shadow_permuted: NcrVerdict
+      chain_permuted: NcrVerdict
     }
 
 fn ncr_verdicts_for(ingest: SourceRootIngest, module_name: String) -> Optional<NativeCensusModuleOutcome> {
@@ -347,6 +383,8 @@ fn ncr_outcomes() -> NcrOutcomes {
             importer: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_importer")),
             double: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_double")),
             unbound: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_unbound")),
+            chain: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_chain")),
+            chain_permuted: ncr_verdict_of(outcome: ncr_outcome_in(context: permuted_context, index: permuted_index, ingest: ncr_ingest_permuted, module_name: "v2.ncr_chain")),
             shadow: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_shadow")),
             shadow_permuted: ncr_verdict_of(outcome: ncr_outcome_in(context: permuted_context, index: permuted_index, ingest: ncr_ingest_permuted, module_name: "v2.ncr_shadow")),
             disp_user: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_disp_user")),
@@ -432,7 +470,7 @@ fn ncr_verdict_same(left: NcrVerdict, right: NcrVerdict) -> Bool {
 test fn a_bound_sibling_declaration_resolves_by_containment_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: importer, double: _, unbound: _, home_a: home_a, disp_user: _, shadow: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _ } =>
+    NcrOutcomesDecided { importer: importer, double: _, unbound: _, home_a: home_a, disp_user: _, shadow: _, chain: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _ } =>
       ncr_verdict_is_resolved(v: importer) && ncr_verdict_is_resolved(v: home_a)
   }
 }
@@ -443,7 +481,7 @@ test fn a_bound_sibling_declaration_resolves_by_containment_holds() -> Bool {
 test fn a_genuine_ambiguity_refuses_naming_both_binders_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: double, unbound: _, home_a: _, disp_user: _, shadow: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: double, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _ } =>
       ncr_verdict_refuses_with(v: double, reason: ^resolve_reason_ambiguous_symbol)
         && ncr_verdict_names(v: double, dotted: "v2.ncr_home_a.NcrTwin")
         && ncr_verdict_names(v: double, dotted: "v2.ncr_home_b.NcrTwin")
@@ -459,7 +497,7 @@ test fn a_genuine_ambiguity_refuses_naming_both_binders_holds() -> Bool {
 test fn an_unbound_name_the_corpus_spells_twice_stays_unbound_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: unbound, home_a: _, disp_user: _, shadow: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: unbound, home_a: _, disp_user: _, shadow: _, chain: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _ } =>
       ncr_verdict_refuses_with(v: unbound, reason: ^resolve_reason_unbound_symbol)
   }
 }
@@ -479,17 +517,20 @@ test fn reordering_the_files_changes_no_verdict_holds() -> Bool {
       home_a: _,
       disp_user: disp_user,
       shadow: shadow,
+      chain: chain,
       importer_permuted: importer_permuted,
       double_permuted: double_permuted,
       unbound_permuted: unbound_permuted,
       disp_user_permuted: disp_user_permuted,
-      shadow_permuted: shadow_permuted
+      shadow_permuted: shadow_permuted,
+      chain_permuted: chain_permuted
     } =>
       ncr_verdict_same(left: importer, right: importer_permuted)
         && ncr_verdict_same(left: double, right: double_permuted)
         && ncr_verdict_same(left: unbound, right: unbound_permuted)
         && ncr_verdict_same(left: disp_user, right: disp_user_permuted)
         && ncr_verdict_same(left: shadow, right: shadow_permuted)
+        && ncr_verdict_same(left: chain, right: chain_permuted)
   }
 }
 
@@ -503,7 +544,7 @@ test fn reordering_the_files_changes_no_verdict_holds() -> Bool {
 test fn the_workload_bare_variant_reference_resolves_through_its_import_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: disp_user, shadow: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: disp_user, shadow: _, chain: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _ } =>
       ncr_verdict_is_resolved(v: disp_user)
   }
 }
@@ -515,10 +556,24 @@ test fn the_workload_bare_variant_reference_resolves_through_its_import_holds() 
 test fn declaring_and_importing_one_name_refuses_naming_both_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: shadow, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: shadow, chain: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _ } =>
       ncr_verdict_refuses_with(v: shadow, reason: ^resolve_reason_ambiguous_symbol)
         && ncr_verdict_names(v: shadow, dotted: "v2.ncr_shadow.NcrTwin")
         && ncr_verdict_names(v: shadow, dotted: "v2.ncr_home_a.NcrTwin")
         && ncr_verdict_competing_count(v: shadow) == 2
+  }
+}
+
+// A RE-EXPORT CHAIN RESOLVES, AND RESOLVES IN EITHER ROOT ORDER. `v2.ncr_chain` reaches
+// `v2.ncr_home_a.NcrTwin` through `v2.ncr_relay`, which binds it without declaring it -- so this
+// row's target is another row's binding and cannot be present until that row has bound. The
+// permutation arm above carries the same pair with the two roots swapped; this arm is what says the
+// chain resolves AT ALL, which "unchanged under permutation" would not (two matching unbound
+// refusals are also unchanged).
+test fn a_re_export_chain_resolves_through_its_relay_holds() -> Bool {
+  match ncr_outcomes_warm {
+    NcrContextRefused => false
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: chain, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _ } =>
+      ncr_verdict_is_resolved(v: chain)
   }
 }

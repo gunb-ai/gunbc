@@ -26,3 +26,13 @@ type ModuleBindingSource {
   root: Node
   import_bindings: FreeMonoid<AliasBindingRow>
 }
+
+// A BINDING ROW WAITING FOR ITS TARGET, carried with the position it binds at. Pass B cannot bind a
+// row until the row's TARGET is in the index, and a target is not always a declaration: a re-export
+// chain (`m.b` imports `X` from `m.c`, `m.a` imports `X` from `m.b`) makes one row's target another
+// row's binding. So the rows that could not bind yet are carried forward as values and retried,
+// rather than being dropped in the order the roots happened to arrive in.
+type PendingBinding {
+  module_qn: QualifiedName
+  row: AliasBindingRow
+}
