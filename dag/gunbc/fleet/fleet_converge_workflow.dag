@@ -366,6 +366,33 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 // the status quo rather than a finding that it needs it; a mode added AFTER it has no prior standing
 // to keep, so its arm is derived from its operation route (the approval keyring converge executes
 // over fleet SSH to srv1 and consumes it; the R2 modes reach no host and do not).
+//
+// THE ENUMERATION BEHIND THAT SENTENCE, kept because the route is the whole argument and the
+// sentence above only names it. Every transport the closure of mtcollins1_boot_wet reaches, with the
+// credential each presents, read at REACHED-SYMBOL grain rather than from the module import closure
+// (which is a superset and does contain ssh-reaching modules this entry never calls into -- reading
+// it at module grain is what made this arm look undecidable):
+//   - extdeps.filesystem.filesystem_io Filesystem.Read/Write/WriteOwnerOnly/WriteCreateNew/Delete --
+//     local files on the srv1-pinned runner, no credential;
+//   - extdeps.http.client Client.GetLocalhostBounded and Client.PostJsonFromFile -- curl to the
+//     approvals server over HTTP loopback, authorized by the approval submission MAC key the step's
+//     own prelude fetches from its pinned Secret Manager version;
+//   - extdeps.bmc.megarac Media.OpenSession/GetRemoteConfigurations/GetRemoteImages/StartMedia/
+//     CloseSession/ProbeSessionOnMediaRoute -- curl over HTTPS to the BMC, authorized by the pinned
+//     mtcollins1 BMC credential file (gunbc.secret_provision mtcollins1_bmc_gunbc_secret_ref);
+//   - extdeps.bmc.ipmi Tool.ChassisBootDevWithOptions/ChassisBootParamGet/ChassisPowerControl/
+//     SolDeactivate and gunbc.machine_intake.sol_hold ActivateHeld -- ipmitool -I lanplus against the
+//     BMC, authorized by that same credential file via -f. THE SOL SESSION IS CARRIED BY IPMI TO THE
+//     BMC, not by an ssh channel to the host, so it presents the BMC credential and never an
+//     identity from the agent;
+//   - extdeps.tools.env shell.Env.Get, extdeps.tools.sleep Delay.Seconds, extdeps.clock Clock.Now --
+//     no credential.
+// No reached symbol resolves fleet_ssh_locus, constructs an SshTarget, or calls typed_argv_exec over
+// fleet SSH, on the first attempt or on any retry or fallback arm; gunbc.remote_shell_command,
+// gunbc.fleet_ssh_access and gunbc.fleet_reach are outside the reached set entirely. The two imports
+// that could suggest otherwise take one inert symbol each: gunbc.host_reset_return_run contributes
+// host_reset_bmc_credential_path_env (an environment-variable NAME) and gunbc.fleet_intent_network
+// contributes operator_host_srv1 (a host record), neither of which opens a session.
 type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
 
 fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> FleetSshKeyDemand {

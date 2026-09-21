@@ -180,7 +180,7 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // `host-reset-return` is held to it for a sharper reason than the others -- it POWER-CYCLES its
 // subject, so a stale binary there would drive a real machine from a model nobody reviewed.
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  fleet_converge_workflow.jobs.length() == 5
+  fleet_converge_workflow.jobs.length() == 6
     && fleet_converge_workflow.jobs[0].id == "build"
     && fleet_converge_workflow.jobs[1].id == "fleet-converge"
     && fleet_converge_workflow.jobs[1].needs == ["build"]
@@ -188,8 +188,10 @@ test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
     && fleet_converge_workflow.jobs[2].needs == ["build"]
     && fleet_converge_workflow.jobs[3].id == "dashboard-deploy"
     && fleet_converge_workflow.jobs[3].needs == ["build"]
-    && fleet_converge_workflow.jobs[4].id == "rlm-launch-deployment-receipt"
+    && fleet_converge_workflow.jobs[4].id == "approval-broker-dark-install"
     && fleet_converge_workflow.jobs[4].needs == ["build"]
+    && fleet_converge_workflow.jobs[5].id == "rlm-launch-deployment-receipt"
+    && fleet_converge_workflow.jobs[5].needs == ["build"]
 }
 
 fn expected_fleet_converge_yml_content() -> String {
