@@ -4,26 +4,38 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import std.scoped_authorization { AttemptIdentity, authorize, AuthorizationRefused, AuthorizationExpired }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
-  mtcollins1_boot_authorization_request, mtcollins1_boot_subject, mtcollins1_boot_required_scopes,
+  mtcollins1_boot_authorization_request,
+  mtcollins1_boot_subject,
+  mtcollins1_boot_required_scopes,
   mtcollins1_boot_gate_from_poll,
-  BootGatePending, BootGateAdmitted, BootGateIntentMismatch, BootGateDenied, BootGateExpired, BootGateNotFiled, BootGateStoreUnreadable,
+  BootGatePending,
+  BootGateAdmitted,
+  BootGateIntentMismatch,
+  BootGateDenied,
+  BootGateExpired,
+  BootGateNotFiled,
+  BootGateStoreUnreadable,
+  mtcollins1_boot_medium,
+  mtcollins1_boot_medium_image_name,
+  mtcollins1_boot_medium_image_sha256,
 }
 import gunbc.auth.approval_request_client { PollStillPending, PollExpired, PollDenied, PollNotFiled, PollUnreadable, PollApproved }
 import gunbc.auth.approval_decision_store { request_revision_of }
-import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn request_is_destructive_and_names_the_diskless_image() -> Bool {
+test fn request_is_destructive_and_names_the_selected_medium() -> Bool {
   let r = mtcollins1_boot_authorization_request(
     escalation_id: "esc-mtc1-1",
     attempt: "mtc1-1" as AttemptIdentity,
     execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   )
   r.destructive
-    && r.subject.image_name == mtcollins1_diskless_image_name
+    && r.subject.image_name == mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium)
+    && r.subject.image_sha256 == mtcollins1_boot_medium_image_sha256(medium: mtcollins1_boot_medium)
+    && (r.subject.image_name as String) == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso"
     && r.subject.machine as String == "mtcollins1"
     && r.subject.execution_revision as String == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     && r.subject.selection.architecture == Aarch64
