@@ -573,7 +573,12 @@ fn run_bare_reference_channel_outcome() -> InvocationOutcome {
     }
     let mut message = format!(
         "bare-reference-channel-outcome: entries={} unmet={}",
-        expectations.len(),
+        // THE READINGS, NOT THE EXPECTATIONS, because that is what the `.dag` authority renders
+        // (`gunbc.instrument_targets` `bare_reference_channel_standing_rendered` counts the
+        // readings). The two cannot differ today -- one reading is demanded per expectation -- so
+        // this is not a defect being fixed but a drift point being closed, of exactly the kind
+        // `gunbc.bare_reference_channel_outcome_seed_growth` enrolls this mirror for.
+        readings.len(),
         unmet.len()
     );
     for line in lines.iter().chain(unmet.iter()) {
