@@ -115,9 +115,12 @@ import gunbc.runner_host_file_converge {
 // PLAINTEXT STAGING. The only staging is the far-side sibling <path>.gunbc-staging that
 // converge_typed_remote_file writes, modes and renames. It lives inside the root-only directory,
 // which is verified BEFORE the stage leg runs, so even the moment between `dd` and `chmod 400` is not
-// observable by a non-root uid. It is removed after every run whether or not a write was attempted,
-// and its absence is READ BACK; a failed removal or a surviving sibling refuses the run (the
-// cleanup-is-part-of-the-mint rule of gunbc.secret_provision_actuator).
+// observable by a non-root uid. It is removed after every attempt WHOSE ANCESTOR AND
+// PARENT-DIRECTORY AUTHORITY HAS BEEN ESTABLISHED -- whether or not a write was attempted, but never
+// beneath a path the route declined to trust, because `rm` is a root mutation through that same path
+// (see StagingCleanupAuthorization). Its absence is READ BACK; a failed removal, a surviving sibling,
+// or a withheld cleanup refuses the run (the cleanup-is-part-of-the-mint rule of
+// gunbc.secret_provision_actuator).
 
 // ── Placement (pure) ─────────────────────────────────────────────────────────────────────────────
 
@@ -259,6 +262,66 @@ type StagingResidue
   = StagingAbsent
   | StagingResiduePresent { path: String }
   | StagingUnobservable { reason: String }
+
+// CLEANUP IS A ROOT MUTATION, so it is entitled to the same path authority the WRITE is. The
+// earlier revision ran `rm -f --` beneath the very ancestors controller_app_key_action had just
+// declined to trust: the non-write arms of that match produced `none` and then fell through to an
+// unconditional clear_staging. A group- or other-writable upper ancestor made this representable --
+// PathsNotRootOnly, directory only observed, action refused, no key content written, and an
+// ELEVATED rm still executing through a path component a non-root principal can replace with a
+// directory or a symlink between the observation and the leg. That is not residue; it is a root
+// mutation through the exact containment the route declined to trust.
+//
+// The gate is PATH AUTHORITY and deliberately not the whole action: a content or file-metadata
+// observation may be unobservable while the path is safely root-contained, and cleanup is still
+// desirable there. So the seal joins three facts and nothing else -- upper ancestors PathsRootOnly,
+// the key directory KeyDirRootOnly, and the staging path's parent being that admitted directory.
+// sole_constructor makes the bad state UNWRITABLE rather than merely unreached (DESIGN §4b rung 4):
+// clear_staging accepts the sealed authorization, so there is no way to spell a cleanup leg over a
+// subject and a bare path that no admission fold produced.
+type StagingCleanupAuthorization sole_constructor {
+  subject: ControllerKeyHost
+  parent: String
+  staging: String
+}
+
+type StagingCleanupAdmission
+  = StagingCleanupAuthorized { authorization: StagingCleanupAuthorization }
+  | StagingCleanupWithheld { reason: String }
+
+// THE ONLY MINT. PURE, over readings the caller already has: no leg runs here.
+fn admit_staging_cleanup(
+  subject: ControllerKeyHost,
+  upper_ancestors: RunnerHostPathMetadata,
+  dir: KeyDirMetadata,
+  key_dir: String,
+  staging: String,
+) -> StagingCleanupAdmission {
+  match upper_ancestors {
+    PathsRootOnly =>
+      match dir {
+        KeyDirRootOnly =>
+          if path_parent(path: staging) != key_dir {
+            StagingCleanupWithheld { reason: join(["staging parent ", path_parent(path: staging), " is not the admitted key directory ", key_dir], "") }
+          } else {
+            StagingCleanupAuthorized {
+              authorization: StagingCleanupAuthorization { subject: subject, parent: key_dir, staging: staging },
+            }
+          }
+        _ => StagingCleanupWithheld { reason: concat("key directory is not root-only: ", key_dir_metadata_wire(m: dir)) }
+      }
+    _ => StagingCleanupWithheld { reason: concat("an ancestor directory is not root-only: ", runner_host_path_metadata_wire(m: upper_ancestors)) }
+  }
+}
+
+data staging_cleanup_withheld_reason: String = "staging cleanup withheld because root-only path authority was not established"
+
+fn staging_cleanup_admission_wire(a: StagingCleanupAdmission) -> String {
+  match a {
+    StagingCleanupAuthorized { authorization: z } => concat("authorized ", z.staging)
+    StagingCleanupWithheld { reason: r } => concat("WITHHELD ", r)
+  }
+}
 
 // PURE, over a listing that SUCCEEDED. The caller reaches this only on a successful leg, so every
 // arm here is a reading of what the parent contains -- there is no exit code to misread. The argv
@@ -604,14 +667,15 @@ fn observe_key_content(subject: ControllerKeyHost, context: FleetSshExecutionCon
 // distinguish "removed" from "never there" -- which is fine -- nor "there and still there", which is
 // not; the presence test is what answers that.
 fn clear_staging(
-  subject: ControllerKeyHost,
+  authorization: StagingCleanupAuthorization,
   context: FleetSshExecutionContext,
-  staging: String,
-  staging_parent: String,
   staging_name: String,
 ) -> StagingResidue
   uses net: Network
 {
+  let subject = authorization.subject
+  let staging = authorization.staging
+  let staging_parent = authorization.parent
   match run_elevated_leg(subject: subject, context: context, argv: staging_remove_argv(staging: staging), stdin_payload: "") {
     ElevatedLegRefused { reason: r } => StagingUnobservable { reason: concat("staging removal not run: ", r) }
     ElevatedLegRan { exit_code: rc, stdout: _, stderr: re } =>
@@ -708,13 +772,18 @@ fn converge_controller_app_key(
       }
     _ => none
   }
-  let staging_after = clear_staging(
+  let cleanup_admission = admit_staging_cleanup(
     subject: subject,
-    context: context,
+    upper_ancestors: ancestors_before,
+    dir: dir_before,
+    key_dir: key_dir as String,
     staging: staging,
-    staging_parent: path_parent(path: staging),
-    staging_name: path_basename(path: staging),
   )
+  let staging_after = match cleanup_admission {
+    StagingCleanupAuthorized { authorization: z } =>
+      clear_staging(authorization: z, context: context, staging_name: path_basename(path: staging))
+    StagingCleanupWithheld { reason: _ } => StagingUnobservable { reason: staging_cleanup_withheld_reason }
+  }
   ControllerAppKeyRun {
     host: subject.host,
     key_path: placed_path,

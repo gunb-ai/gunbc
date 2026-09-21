@@ -48,6 +48,10 @@ import gunbc.microvm_controller_app_key_converge {
   controller_app_key_action,
   key_path_find_argv,
   key_path_exactly_owner_read_clause,
+  KeyDirMetadataUnobservable,
+  admit_staging_cleanup,
+  StagingCleanupAuthorized,
+  StagingCleanupWithheld,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -63,6 +67,8 @@ data held_file: KeyPathFindReading = KeyPathFindReading { root_owned: true, grou
 data held_dir: KeyPathFindReading = KeyPathFindReading { root_owned: true, group_or_other_bits: false, exactly_owner_read: false }
 
 data staging_path: String = "/etc/gunbc/microvm-controller/app.pem.gunbc-staging"
+
+data cleanup_key_dir: String = "/etc/gunbc/microvm-controller"
 data staging_name: String = "app.pem.gunbc-staging"
 
 // THE STAGING READING IS SUPPLIED AS THE VALUE IT IS, not as an exit code. classify_staging_residue
@@ -273,5 +279,114 @@ test fn an_empty_parent_listing_is_absence_because_the_parent_was_read() -> Bool
   match staging_from_listing(listing: "") {
     StagingAbsent => true
     _ => false
+  }
+}
+
+
+// ── cleanup is a root mutation, so it carries the same path authority the write does ────────────
+
+// THE FOURTH FINDING IN THIS FAMILY, one step further down the same route. The ordering repair
+// stopped `install -d` beneath an untrusted ancestor, but clear_staging still ran UNCONDITIONALLY
+// after the action refused, and it BEGINS with `sudo rm -f -- <staging>`. On a host whose /etc or
+// /etc/gunbc is group- or other-writable the route refused the write and then performed a root
+// mutation through the very path component it had declined to trust -- a component a non-root
+// principal can replace with a directory or a symlink between the observation and the leg.
+//
+// These controls run the PURE admission, which is the whole gate: sole_constructor means
+// StagingCleanupAuthorization exists nowhere else, so an unauthorized arm has no value to pass to
+// clear_staging and the rm has no way to be spelled. The previous 21 could not see the defect
+// because they invoked only controller_app_key_action and never reached the cleanup leg.
+
+test fn a_writable_upper_ancestor_withholds_the_staging_cleanup() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostRefused { cause: _ } => false
+    ControllerKeyHostAdmitted { subject: s } =>
+      match admit_staging_cleanup(
+        subject: s,
+        upper_ancestors: PathsNotRootOnly { paths: ["/etc/gunbc"], detail: "" },
+        dir: KeyDirRootOnly,
+        key_dir: cleanup_key_dir,
+        staging: staging_path,
+      ) {
+        StagingCleanupWithheld { reason: r } => string_contains(s: r, pattern: "ancestor")
+        StagingCleanupAuthorized { authorization: _ } => false
+      }
+  }
+}
+
+test fn an_unsafe_key_directory_withholds_the_staging_cleanup() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostRefused { cause: _ } => false
+    ControllerKeyHostAdmitted { subject: s } =>
+      match admit_staging_cleanup(
+        subject: s,
+        upper_ancestors: PathsRootOnly,
+        dir: KeyDirGroupOrOtherAccess,
+        key_dir: cleanup_key_dir,
+        staging: staging_path,
+      ) {
+        StagingCleanupWithheld { reason: r } => string_contains(s: r, pattern: "not root-only")
+        StagingCleanupAuthorized { authorization: _ } => false
+      }
+  }
+}
+
+// UNREADABLE IS NOT SAFE. A directory whose metadata could not be read is exactly the state where a
+// cleanup leg would be running blind, so it withholds for the same reason an unsafe one does.
+test fn an_unreadable_key_directory_withholds_the_staging_cleanup() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostRefused { cause: _ } => false
+    ControllerKeyHostAdmitted { subject: s } =>
+      match admit_staging_cleanup(
+        subject: s,
+        upper_ancestors: PathsRootOnly,
+        dir: KeyDirMetadataUnobservable { reason: "find leg exit=1" },
+        key_dir: cleanup_key_dir,
+        staging: staging_path,
+      ) {
+        StagingCleanupWithheld { reason: _ } => true
+        StagingCleanupAuthorized { authorization: _ } => false
+      }
+  }
+}
+
+// THE JOIN, not merely the two readings: a staging path whose parent is NOT the directory that was
+// admitted is unauthorized even when both readings are root-only, because the authority established
+// is over that directory and nothing else.
+test fn a_staging_path_outside_the_admitted_directory_is_withheld() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostRefused { cause: _ } => false
+    ControllerKeyHostAdmitted { subject: s } =>
+      match admit_staging_cleanup(
+        subject: s,
+        upper_ancestors: PathsRootOnly,
+        dir: KeyDirRootOnly,
+        key_dir: cleanup_key_dir,
+        staging: "/tmp/app.pem.gunbc-staging",
+      ) {
+        StagingCleanupWithheld { reason: r } => string_contains(s: r, pattern: "admitted key directory")
+        StagingCleanupAuthorized { authorization: _ } => false
+      }
+  }
+}
+
+// THE POSITIVE CONTROL. Root-only ancestors and a root-only directory containing the staging path
+// authorize exactly one cleanup, and the seal names the exact parent and staging path the leg will
+// run over -- not the subject's idea of them.
+test fn root_only_ancestors_and_directory_authorize_the_exact_staging_path() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostRefused { cause: _ } => false
+    ControllerKeyHostAdmitted { subject: s } =>
+      match admit_staging_cleanup(
+        subject: s,
+        upper_ancestors: PathsRootOnly,
+        dir: KeyDirRootOnly,
+        key_dir: cleanup_key_dir,
+        staging: staging_path,
+      ) {
+        StagingCleanupAuthorized { authorization: z } =>
+          z.staging == staging_path && z.parent == cleanup_key_dir && (z.subject.host as String) == (operator_host_srv2 as String)
+        StagingCleanupWithheld { reason: _ } => false
+      }
   }
 }
