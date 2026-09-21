@@ -1,0 +1,181 @@
+module extdeps.standards.rfc_9052
+
+import std.types { Int, List }
+import std.logic { Bool }
+import std.integer { UInt8 }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import extdeps.crypto.signature { EcdsaP256Sha256, signature_suite_public_key_size }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.rfc_8949 { CborValue, CborUnsigned, CborNegative, CborByteString, CborMap, CborEntry }
+
+// RFC 9052, CBOR Object Signing and Encryption (COSE): Structures and Process, §7 (Key Objects):
+// a COSE_Key is a CBOR map keyed by integer labels. The labels and the EC2 parameters are registered
+// in RFC 9053 §7.1.1 (kty 2 = EC2; crv -1, x -2, y -3) and the IANA COSE registries: kty label 1,
+// alg label 3, P-256 is crv 1, ES256 is alg -7. This module reads exactly the EC2 P-256 key shape
+// WebAuthn's attestedCredentialData carries for an App Attest credential.
+data rfc_9052_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9052#section-7"
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = rfc_9052_external_authority_anchor
+
+data cose_key_label_kty: Int = 1
+data cose_key_label_alg: Int = 3
+data cose_ec2_label_crv: Int = 0 - 1
+data cose_ec2_label_x: Int = 0 - 2
+data cose_ec2_label_y: Int = 0 - 3
+data cose_kty_ec2: Int = 2
+data cose_crv_p256: Int = 1
+data cose_alg_es256: Int = 0 - 7
+// THE COORDINATE WIDTH IS DERIVED FROM extdeps.crypto.signature's public-key size, the one
+// authority for the SEC 1 uncompressed point this key renders to (review 69598 of gunbc#11970: a
+// second literal for 32 would let 65 = 1 + 2·32 drift in two places). One prefix octet, then x
+// and y of equal width.
+fn cose_p256_coordinate_size() -> ByteSize {
+  byte_size(count: (byte_size_count(b: signature_suite_public_key_size(s: EcdsaP256Sha256)) - 1) / 2)
+}
+
+// Each label is an integer key; a map may carry a label at most once (RFC 9052 §7: "keys in the
+// map MUST be unique"), so a duplicated label is refused rather than first- or last-wins.
+type CoseLabelLookup
+  = CoseLabelFound { value: CborValue }
+  | CoseLabelAbsent { label: Int }
+  | CoseLabelDuplicated { label: Int }
+  | CoseKeyNotAMap
+
+fn cose_integer_of(v: CborValue) -> Int? {
+  match v {
+    CborUnsigned { value: n } => Present { value: n }
+    CborNegative { value: n } => Present { value: n }
+    _ => none
+  }
+}
+
+fn cose_label_matches(k: CborValue, label: Int) -> Bool {
+  match cose_integer_of(v: k) {
+    Present { value: n } => n == label
+    Absent => false
+  }
+}
+
+fn cose_entries_labelled(entries: List<CborEntry>, label: Int) -> List<CborValue> {
+  fold(entries, init: [], f: (acc, e) => if cose_label_matches(k: e.key, label: label) { acc |> list_push(e.value) } else { acc })
+}
+
+fn cose_key_label(key: CborValue, label: Int) -> CoseLabelLookup {
+  match key {
+    CborMap { entries: entries } => {
+      let hits = cose_entries_labelled(entries: entries, label: label)
+      if count(hits) == 0 { CoseLabelAbsent { label: label } }
+      else if count(hits) > 1 { CoseLabelDuplicated { label: label } }
+      else {
+        match hits |> get(0) {
+          null => CoseLabelAbsent { label: label }
+          h => CoseLabelFound { value: h }
+        }
+      }
+    }
+    _ => CoseKeyNotAMap
+  }
+}
+
+type CoseKeyRefusal
+  = CoseKeyLabelRefused { lookup: CoseLabelLookup }
+  | CoseKeyTypeUnexpected { kty: Int }
+  | CoseKeyCurveUnexpected { crv: Int }
+  | CoseKeyAlgorithmUnexpected { alg: Int }
+  | CoseKeyCoordinateMalformed { label: Int, declared: ByteSize, expected: ByteSize }
+  | CoseKeyCoordinateNotAByteString { label: Int }
+  | CoseKeyLabelNotAnInteger { label: Int }
+
+// The one key shape read here: EC2 over P-256 with ES256, x and y each exactly 32 octets. The
+// output is the SEC 1 uncompressed point 0x04 || x || y, which is extdeps.crypto.signature's
+// Sec1Uncompressed encoding and the input extdeps.crypto.nist_p256 p256_ecdsa_verify_octets takes.
+type CoseEc2P256Key
+  = CoseEc2P256KeyRead { sec1_uncompressed: List<UInt8> }
+  | CoseEc2P256KeyRefused { cause: CoseKeyRefusal }
+
+fn cose_required_integer(key: CborValue, label: Int) -> CoseKeyRefusal? {
+  match cose_key_label(key: key, label: label) {
+    CoseLabelFound { value: v } =>
+      match cose_integer_of(v: v) {
+        Present { value: _ } => none
+        Absent => Present { value: CoseKeyLabelNotAnInteger { label: label } }
+      }
+    other => Present { value: CoseKeyLabelRefused { lookup: other } }
+  }
+}
+
+// The integer at a label, or none: never a fabricated 0 (review 69674 of gunbc#11970 -- the
+// caller's presence check made the 0 unreachable, and a guard is not what keeps an arm honest).
+fn cose_integer_at(key: CborValue, label: Int) -> Int? {
+  match cose_key_label(key: key, label: label) {
+    CoseLabelFound { value: v } => cose_integer_of(v: v)
+    _ => none
+  }
+}
+
+type CoseCoordinate
+  = CoseCoordinateRead { octets: List<UInt8> }
+  | CoseCoordinateRefused { cause: CoseKeyRefusal }
+
+fn cose_coordinate(key: CborValue, label: Int) -> CoseCoordinate {
+  match cose_key_label(key: key, label: label) {
+    CoseLabelFound { value: v } =>
+      match v {
+        CborByteString { octets: o } =>
+          if count(o) == byte_size_count(b: cose_p256_coordinate_size()) { CoseCoordinateRead { octets: o } }
+          else { CoseCoordinateRefused { cause: CoseKeyCoordinateMalformed { label: label, declared: byte_size(count: count(o)), expected: cose_p256_coordinate_size() } } }
+        _ => CoseCoordinateRefused { cause: CoseKeyCoordinateNotAByteString { label: label } }
+      }
+    other => CoseCoordinateRefused { cause: CoseKeyLabelRefused { lookup: other } }
+  }
+}
+
+fn cose_first_refusal(rs: List<CoseKeyRefusal?>) -> CoseKeyRefusal? {
+  fold(rs, init: none, f: (acc, r) => match acc {
+    Present { value: a } => Present { value: a }
+    Absent => r
+  })
+}
+
+fn cose_ec2_p256_key(key: CborValue) -> CoseEc2P256Key {
+  match cose_first_refusal(rs: [
+    cose_required_integer(key: key, label: cose_key_label_kty),
+    cose_required_integer(key: key, label: cose_key_label_alg),
+    cose_required_integer(key: key, label: cose_ec2_label_crv),
+  ]) {
+    Present { value: c } => CoseEc2P256KeyRefused { cause: c }
+    Absent =>
+      match cose_integer_at(key: key, label: cose_key_label_kty) {
+        Absent => CoseEc2P256KeyRefused { cause: CoseKeyLabelNotAnInteger { label: cose_key_label_kty } }
+        Present { value: kty } =>
+      match cose_integer_at(key: key, label: cose_key_label_alg) {
+        Absent => CoseEc2P256KeyRefused { cause: CoseKeyLabelNotAnInteger { label: cose_key_label_alg } }
+        Present { value: alg } =>
+      match cose_integer_at(key: key, label: cose_ec2_label_crv) {
+        Absent => CoseEc2P256KeyRefused { cause: CoseKeyLabelNotAnInteger { label: cose_ec2_label_crv } }
+        Present { value: crv } =>
+      if kty != cose_kty_ec2 { CoseEc2P256KeyRefused { cause: CoseKeyTypeUnexpected { kty: kty } } }
+      else if alg != cose_alg_es256 { CoseEc2P256KeyRefused { cause: CoseKeyAlgorithmUnexpected { alg: alg } } }
+      else if crv != cose_crv_p256 { CoseEc2P256KeyRefused { cause: CoseKeyCurveUnexpected { crv: crv } } }
+      else {
+        match cose_coordinate(key: key, label: cose_ec2_label_x) {
+          CoseCoordinateRefused { cause: c } => CoseEc2P256KeyRefused { cause: c }
+          CoseCoordinateRead { octets: x } =>
+            match cose_coordinate(key: key, label: cose_ec2_label_y) {
+              CoseCoordinateRefused { cause: c } => CoseEc2P256KeyRefused { cause: c }
+              CoseCoordinateRead { octets: y } =>
+                CoseEc2P256KeyRead { sec1_uncompressed: concat(concat([4], x), y) }
+            }
+        }
+      }
+      }
+      }
+      }
+  }
+}

@@ -1,0 +1,250 @@
+module test.claim.cbor_rfc8949_witness_test
+
+import std.logic { Bool }
+import std.types { Int, String, List }
+import std.integer { UInt8 }
+import std.measure { byte_size_count }
+import extdeps.standards.rfc_8949 {
+  CborValue, CborUnsigned, CborNegative, CborByteString, CborTextString, CborArray, CborMap, CborTagged, CborSimple, CborEntry,
+  CborDocument, CborDocumentDecoded, CborDocumentRefused,
+  CborRefusal, CborTruncated, CborIndefiniteLengthRefused, CborFloatRefused, CborReservedAdditionalInfo, CborIntegerBeyondExact,
+  CborTextNotUtf8, CborTrailingOctets, CborDepthExceeded,
+  cbor_decode_document, cbor_values_equal,
+  CborMemberLookup, CborMemberFound, CborMemberAbsent, CborMemberDuplicated, CborMemberNotAMap, cbor_map_unique_text_member,
+  cbor_nesting_limit,
+}
+
+// Every accepted vector below is a row of RFC 8949 Appendix A (Examples of Encoded CBOR Data
+// Items); the refused ones are the same appendix's indefinite-length and floating-point rows,
+// plus truncations and a trailing octet the appendix does not list because they are not items.
+
+fn cbor_decodes_to(octets: List<UInt8>, expected: CborValue) -> Bool {
+  match cbor_decode_document(octets: octets) {
+    CborDocumentDecoded { value: v } => cbor_values_equal(a: v, b: expected)
+    CborDocumentRefused { cause: _ } => false
+  }
+}
+
+fn cbor_refuses(octets: List<UInt8>) -> CborRefusal? {
+  match cbor_decode_document(octets: octets) {
+    CborDocumentDecoded { value: _ } => none
+    CborDocumentRefused { cause: c } => Present { value: c }
+  }
+}
+
+// 0x00 -> 0; 0x17 -> 23: the argument carried in the initial byte.
+test fn appendix_a_small_unsigned_decode() -> Bool {
+  cbor_decodes_to(octets: [0], expected: CborUnsigned { value: 0 }) && cbor_decodes_to(octets: [23], expected: CborUnsigned { value: 23 })
+}
+
+// 0x1818 -> 24 (one following octet); 0x1903e8 -> 1000 (two); 0x1a000f4240 -> 1000000 (four);
+// 0x1b000000e8d4a51000 -> 1000000000000 (eight).
+test fn appendix_a_widened_unsigned_decode() -> Bool {
+  cbor_decodes_to(octets: [24, 24], expected: CborUnsigned { value: 24 })
+    && cbor_decodes_to(octets: [25, 3, 232], expected: CborUnsigned { value: 1000 })
+    && cbor_decodes_to(octets: [26, 0, 15, 66, 64], expected: CborUnsigned { value: 1000000 })
+    && cbor_decodes_to(octets: [27, 0, 0, 0, 232, 212, 165, 16, 0], expected: CborUnsigned { value: 1000000000000 })
+}
+
+// 0x20 -> -1; 0x3863 -> -100; 0x3903e7 -> -1000.
+test fn appendix_a_negative_decode() -> Bool {
+  cbor_decodes_to(octets: [32], expected: CborNegative { value: 0 - 1 })
+    && cbor_decodes_to(octets: [56, 99], expected: CborNegative { value: 0 - 100 })
+    && cbor_decodes_to(octets: [57, 3, 231], expected: CborNegative { value: 0 - 1000 })
+}
+
+// 0x40 -> h''; 0x4401020304 -> h'01020304'.
+test fn appendix_a_byte_string_decode() -> Bool {
+  cbor_decodes_to(octets: [64], expected: CborByteString { octets: [] })
+    && cbor_decodes_to(octets: [68, 1, 2, 3, 4], expected: CborByteString { octets: [1, 2, 3, 4] })
+}
+
+// 0x60 -> ""; 0x6161 -> "a"; 0x6449455446 -> "IETF"; 0x62c3bc -> "ü" (two-octet UTF-8);
+// 0x63e6b0b4 -> "水" (three-octet); 0x64f0908591 -> "𐅑" (four-octet).
+test fn appendix_a_text_string_decode() -> Bool {
+  cbor_decodes_to(octets: [96], expected: CborTextString { text: "" })
+    && cbor_decodes_to(octets: [97, 97], expected: CborTextString { text: "a" })
+    && cbor_decodes_to(octets: [100, 73, 69, 84, 70], expected: CborTextString { text: "IETF" })
+    && cbor_decodes_to(octets: [98, 195, 188], expected: CborTextString { text: "ü" })
+    && cbor_decodes_to(octets: [99, 230, 176, 180], expected: CborTextString { text: "水" })
+    && cbor_decodes_to(octets: [100, 240, 144, 133, 145], expected: CborTextString { text: "𐅑" })
+}
+
+// 0x80 -> []; 0x83010203 -> [1, 2, 3]; 0x8301820203820405 -> [1, [2, 3], [4, 5]].
+test fn appendix_a_array_decode() -> Bool {
+  cbor_decodes_to(octets: [128], expected: CborArray { items: [] })
+    && cbor_decodes_to(octets: [131, 1, 2, 3], expected: CborArray { items: [CborUnsigned { value: 1 }, CborUnsigned { value: 2 }, CborUnsigned { value: 3 }] })
+    && cbor_decodes_to(
+      octets: [131, 1, 130, 2, 3, 130, 4, 5],
+      expected: CborArray { items: [
+        CborUnsigned { value: 1 },
+        CborArray { items: [CborUnsigned { value: 2 }, CborUnsigned { value: 3 }] },
+        CborArray { items: [CborUnsigned { value: 4 }, CborUnsigned { value: 5 }] },
+      ] },
+    )
+}
+
+// 0xa0 -> {}; 0xa201020304 -> {1: 2, 3: 4}; 0xa26161016162820203 -> {"a": 1, "b": [2, 3]}.
+test fn appendix_a_map_decode() -> Bool {
+  cbor_decodes_to(octets: [160], expected: CborMap { entries: [] })
+    && cbor_decodes_to(
+      octets: [162, 1, 2, 3, 4],
+      expected: CborMap { entries: [
+        CborEntry { key: CborUnsigned { value: 1 }, value: CborUnsigned { value: 2 } },
+        CborEntry { key: CborUnsigned { value: 3 }, value: CborUnsigned { value: 4 } },
+      ] },
+    )
+    && cbor_decodes_to(
+      octets: [162, 97, 97, 1, 97, 98, 130, 2, 3],
+      expected: CborMap { entries: [
+        CborEntry { key: CborTextString { text: "a" }, value: CborUnsigned { value: 1 } },
+        CborEntry { key: CborTextString { text: "b" }, value: CborArray { items: [CborUnsigned { value: 2 }, CborUnsigned { value: 3 }] } },
+      ] },
+    )
+}
+
+// 0xc11a514b67b0 -> 1(1363896240): a tagged unsigned.
+test fn appendix_a_tagged_decode() -> Bool {
+  cbor_decodes_to(octets: [193, 26, 81, 75, 103, 176], expected: CborTagged { tag: 1, item: CborUnsigned { value: 1363896240 } })
+}
+
+// 0xf4 -> false (simple 20); 0xf5 -> true (21); 0xf6 -> null (22); 0xf7 -> undefined (23);
+// 0xf0 -> simple(16); 0xf8ff -> simple(255).
+test fn appendix_a_simple_decode() -> Bool {
+  cbor_decodes_to(octets: [244], expected: CborSimple { value: 20 })
+    && cbor_decodes_to(octets: [245], expected: CborSimple { value: 21 })
+    && cbor_decodes_to(octets: [246], expected: CborSimple { value: 22 })
+    && cbor_decodes_to(octets: [247], expected: CborSimple { value: 23 })
+    && cbor_decodes_to(octets: [240], expected: CborSimple { value: 16 })
+    && cbor_decodes_to(octets: [248, 255], expected: CborSimple { value: 255 })
+}
+
+// 0x9fff -> [_ ] (indefinite array); 0x5f42010243030405ff (indefinite byte string);
+// 0xbf6161016162820203ff (indefinite map): each refuses AT ITS HEAD, naming the major type.
+test fn indefinite_length_items_refuse() -> Bool {
+  match cbor_refuses(octets: [159, 255]) {
+    Present { value: CborIndefiniteLengthRefused { at: 0, major: 4 } } =>
+      match cbor_refuses(octets: [95, 66, 1, 2, 67, 3, 4, 5, 255]) {
+        Present { value: CborIndefiniteLengthRefused { at: 0, major: 2 } } =>
+          match cbor_refuses(octets: [191, 97, 97, 1, 97, 98, 130, 2, 3, 255]) {
+            Present { value: CborIndefiniteLengthRefused { at: 0, major: 5 } } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// 0xf93c00 -> 1.0 (half); 0xfa47c35000 -> 100000.0 (single); 0xfb3ff199999999999a -> 1.1 (double).
+test fn floating_point_items_refuse() -> Bool {
+  match cbor_refuses(octets: [249, 60, 0]) {
+    Present { value: CborFloatRefused { at: 0, info: 25 } } =>
+      match cbor_refuses(octets: [250, 71, 195, 80, 0]) {
+        Present { value: CborFloatRefused { at: 0, info: 26 } } =>
+          match cbor_refuses(octets: [251, 63, 241, 153, 153, 153, 153, 153, 154]) {
+            Present { value: CborFloatRefused { at: 0, info: 27 } } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Additional information 28 (0x1c) is reserved (§3, Table 3).
+test fn reserved_additional_info_refuses() -> Bool {
+  match cbor_refuses(octets: [28]) {
+    Present { value: CborReservedAdditionalInfo { at: 0, info: 28 } } => true
+    _ => false
+  }
+}
+
+// The truncations: an empty document; a two-octet argument with one octet present; a byte string
+// declaring four octets over three; an array declaring three items over two.
+fn truncated_at(r: CborRefusal?, at: Int, needed: Int, available: Int) -> Bool {
+  match r {
+    Present { value: CborTruncated { at: a, needed: n, available: v } } => a == at && byte_size_count(b: n) == needed && byte_size_count(b: v) == available
+    _ => false
+  }
+}
+
+test fn truncated_items_refuse_with_the_offset() -> Bool {
+  truncated_at(r: cbor_refuses(octets: []), at: 0, needed: 1, available: 0)
+    && truncated_at(r: cbor_refuses(octets: [25, 3]), at: 1, needed: 2, available: 1)
+    && truncated_at(r: cbor_refuses(octets: [68, 1, 2, 3]), at: 1, needed: 4, available: 3)
+    && truncated_at(r: cbor_refuses(octets: [131, 1, 2]), at: 3, needed: 1, available: 0)
+}
+
+// One item followed by another octet is not one document.
+test fn trailing_octets_refuse() -> Bool {
+  match cbor_refuses(octets: [1, 2]) {
+    Present { value: CborTrailingOctets { consumed: c, total: t } } => byte_size_count(b: c) == 1 && byte_size_count(b: t) == 2
+    _ => false
+  }
+}
+
+// 0x1bffffffffffffffff -> 18446744073709551615, the largest uint64: beyond Int's exact range.
+test fn integers_beyond_exact_range_refuse() -> Bool {
+  match cbor_refuses(octets: [27, 255, 255, 255, 255, 255, 255, 255, 255]) {
+    Present { value: CborIntegerBeyondExact { at: 0 } } => true
+    _ => false
+  }
+}
+
+// A text string whose payload is not UTF-8 (a lone continuation octet) refuses at the payload.
+test fn text_string_not_utf8_refuses() -> Bool {
+  match cbor_refuses(octets: [97, 128]) {
+    Present { value: CborTextNotUtf8 { at: 1 } } => true
+    _ => false
+  }
+}
+
+fn nested_arrays(n: Int, acc: List<UInt8>) -> List<UInt8> {
+  if n <= 0 { acc |> list_push(128) } else { nested_arrays(n: n - 1, acc: acc |> list_push(129)) }
+}
+
+// One level past the nesting limit refuses; exactly at the limit decodes. The two arms bracket the
+// bound so a limit that is not enforced reds the first and a limit off by one reds the second.
+test fn nesting_past_the_limit_refuses_and_at_the_limit_decodes() -> Bool {
+  let past = cbor_refuses(octets: nested_arrays(n: cbor_nesting_limit + 1, acc: []))
+  let at = cbor_refuses(octets: nested_arrays(n: cbor_nesting_limit, acc: []))
+  match past {
+    Present { value: CborDepthExceeded { at: _, limit: _ } } =>
+      match at {
+        Absent => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn text_keyed_map(octets: List<UInt8>) -> CborValue {
+  match cbor_decode_document(octets: octets) {
+    CborDocumentDecoded { value: v } => v
+    CborDocumentRefused { cause: _ } => CborSimple { value: 23 }
+  }
+}
+
+// {"a": 1, "b": [2, 3]}: "a" is found, "c" is absent; {"a": 1, "a": 2} is duplicated; an array is
+// not a map.
+test fn unique_text_member_lookup_discriminates() -> Bool {
+  let m = text_keyed_map(octets: [162, 97, 97, 1, 97, 98, 130, 2, 3])
+  let dup = text_keyed_map(octets: [162, 97, 97, 1, 97, 97, 2])
+  match cbor_map_unique_text_member(v: m, key: "a") {
+    CborMemberFound { value: CborUnsigned { value: 1 } } =>
+      match cbor_map_unique_text_member(v: m, key: "c") {
+        CborMemberAbsent { key: "c" } =>
+          match cbor_map_unique_text_member(v: dup, key: "a") {
+            CborMemberDuplicated { key: "a" } =>
+              match cbor_map_unique_text_member(v: CborArray { items: [] }, key: "a") {
+                CborMemberNotAMap => true
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
