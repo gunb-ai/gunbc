@@ -3,8 +3,8 @@ module test.claim.compute.work_request_witness_test
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.compute.work_provider_local {
-  UnitTermination, UnitQuiescent, UnitStillActive, UnitTerminationUnobserved,
-  unit_state_termination, unit_termination_frees_capacity,
+  UnitTermination, UnitAbsentAuthoritatively, UnitTerminatedObserved, UnitPopulated, UnitTerminationUnavailable,
+  unit_termination_frees_capacity, unit_termination_wire,
 }
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
@@ -79,32 +79,22 @@ test fn the_stored_outcome_round_trips_and_a_broken_one_is_unreadable() -> Bool 
     && (match stored_outcome_decode(text: "not json") { StoredOutcomeUnreadable { reason: _ } => true  StoredOutcomeFound { ending: _, identity: _, document: _ } => false })
 }
 
-// ONLY A UNIT THAT IS DEMONSTRABLY GONE MAY FREE ITS SEAT, and the arm that matters is the one in
-// the middle. `systemd-run --wait` is a LAUNCHER, not the unit's parent, so a launcher that dies or
-// times out returns failure while the transient service keeps running; releasing on that signal
-// would hand a live cargo's memory to the next arrival. Empty and inactive and failed are all
-// "nothing of ours is holding that memory" -- never started and already collected are the same fact
-// for this decision. Everything systemd calls live keeps the charge, and a word this fold has never
-// seen keeps it too: a future ActiveState must not read as permission to take memory back.
-test fn only_a_gone_unit_frees_its_seat_and_an_unknown_state_does_not() -> Bool {
-  all(["", "inactive", "failed", "  inactive  "], s =>
-        match unit_state_termination(state: s) {
-          UnitQuiescent { state: _ } => true
-          UnitStillActive { state: _ } => false
-          UnitTerminationUnobserved { detail: _ } => false
-        })
-    && all(["active", "activating", "deactivating", "reloading", "maintenance"], s =>
-        match unit_state_termination(state: s) {
-          UnitStillActive { state: _ } => true
-          UnitQuiescent { state: _ } => false
-          UnitTerminationUnobserved { detail: _ } => false
-        })
-    && all(["quantum-superposed", "ACTIVE", "1"], s =>
-        match unit_state_termination(state: s) {
-          UnitTerminationUnobserved { detail: _ } => true
-          UnitQuiescent { state: _ } => false
-          UnitStillActive { state: _ } => false
-        })
-    && all(["", "inactive", "failed"], s => unit_termination_frees_capacity(t: unit_state_termination(state: s)))
-    && all(["active", "activating", "deactivating", "quantum-superposed"], s => !unit_termination_frees_capacity(t: unit_state_termination(state: s)))
+// ONLY PROVEN ABSENCE OR AN OBSERVED-EMPTY CGROUP MAY FREE A SEAT, and the two arms this cell
+// exists to pin RED are the ones an earlier revision got wrong: `failed` can coexist with live
+// processes while a unit's stop reaches its SIGKILL timeout, and an empty ActiveState is the
+// manager declining to answer rather than authoritative absence. Neither may free capacity. The
+// unavailable arm is the one that matters most -- it is what a lost launcher, an unreadable manager
+// and a missing cgroup all look like, and reading any of them as permission is the absorbing
+// fallback DESIGN 5 forbids.
+test fn only_proven_absence_or_an_empty_cgroup_frees_a_seat() -> Bool {
+  let absent = UnitAbsentAuthoritatively { detail: "LoadState=not-found" }
+  let terminated = UnitTerminatedObserved { detail: "populated 0" }
+  let populated = UnitPopulated { detail: "populated 1" }
+  let unavailable = UnitTerminationUnavailable { detail: "the manager could not be read" }
+  unit_termination_frees_capacity(t: absent)
+    && unit_termination_frees_capacity(t: terminated)
+    && !unit_termination_frees_capacity(t: populated)
+    && !unit_termination_frees_capacity(t: unavailable)
+    && string_contains(s: unit_termination_wire(t: populated), pattern: "STILL POPULATED")
+    && string_contains(s: unit_termination_wire(t: unavailable), pattern: "UNAVAILABLE")
 }

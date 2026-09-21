@@ -2,7 +2,7 @@ module gunbc.fabric_event_log
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { Count, One }
+import std.measure { Count, One, Measure }
 import product.placement_supply { HostIdentity }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.fabric_storage {
@@ -244,13 +244,20 @@ type SeatAttemptState {
 // and take a reading. Every step is the one seat_attempt already runs, which is what keeps this a
 // second QUESTION rather than a second authority -- there is no separate notion here of what a seat
 // is or when a pool is full.
-type SeatStandingObservation
-  = SeatRoomObserved { headroom: Nat, generation: Nat }
+// THE HEADROOM CARRIES ITS DIMENSION, AND THIS PR IS WHY IT HAS TO. A bare Nat was legitimate while
+// this fold was fixed at Pool<Count, One>: seats are dimensionless and the field meant seats. The
+// generalization to Pool<Q, S> above made the same field mean KiB for a memory pool and seats for a
+// seat pool, with nothing in the type to say which -- so the unit moved into the consumer's head and
+// into rendered strings, which is the unit modeled twice and checked nowhere (review 69624). The
+// earliest unjustified boundary is this declaration, not its consumers, and it is one this change
+// moved itself (DESIGN 6b).
+type SeatStandingObservation<Q, S>
+  = SeatRoomObserved { headroom: Measure<Q, S, Nat>, generation: Nat }
   | SeatFullObserved { generation: Nat }
   | SeatStandingUnobserved { step: String, reason: String }
   | SeatStandingStoreRefused { cause: EventLogRefusal }
 
-fn fabric_seat_observe<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, at: EpochSecs, budget: Nat) -> SeatStandingObservation {
+fn fabric_seat_observe<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, at: EpochSecs, budget: Nat) -> SeatStandingObservation<Q, S> {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => SeatStandingStoreRefused { cause: c }
     PartitionReadOk { head: _, walk: walk } =>
@@ -268,7 +275,7 @@ fn fabric_seat_observe<Q, S>(store: FabricStorageBinding, partition: PartitionId
                 PoolReadingRefused { at: t, anchor: a } =>
                   SeatStandingUnobserved { step: "reading", reason: join(["instant ", to_string(t), " precedes the pool anchor ", to_string(a)], "") }
                 PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } =>
-                  if h.count > 0 { SeatRoomObserved { headroom: h.count, generation: g } }
+                  if h.count > 0 { SeatRoomObserved { headroom: h, generation: g } }
                   else { SeatFullObserved { generation: g } }
               }
           }

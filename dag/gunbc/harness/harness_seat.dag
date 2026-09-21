@@ -3,7 +3,7 @@ module gunbc.harness.harness_seat
 import product.placement_supply { HostIdentity }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
-import std.measure { Measure, Count, One, money_amount_micro, second }
+import std.measure { Measure, Count, One, money_amount_micro, second, measure_count }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire, fabric_group_hosts }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
@@ -334,7 +334,7 @@ fn harness_class_held(route: ServingRoute, class: ServingCoTenancyClass, store: 
               }
             SeatFullObserved { generation: _ } => ClassSeatsHeld { held: ceiling }
             SeatRoomObserved { headroom: h, generation: _ } =>
-              ClassSeatsHeld { held: ceiling - nat_min(a: h, b: ceiling) }
+              ClassSeatsHeld { held: ceiling - nat_min(a: measure_count(h), b: ceiling) }
           }
       }
   }

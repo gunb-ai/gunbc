@@ -251,12 +251,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "a_held_seat_is_recoverable_by_reference_and_an_unheld_one_writes_nothing" },
-      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
-      function: "a_held_seat_is_recoverable_by_reference_and_an_unheld_one_writes_nothing",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "two_requests_summing_past_the_observed_headroom_cannot_both_admit" },
       entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
       function: "two_requests_summing_past_the_observed_headroom_cannot_both_admit",

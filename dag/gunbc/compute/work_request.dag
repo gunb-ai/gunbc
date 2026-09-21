@@ -1,6 +1,7 @@
 module gunbc.compute.work_request
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.measure { Kibibyte, kibibyte_count }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import extdeps.languages.json.emit {
@@ -138,6 +139,14 @@ type WorkOutcome
 // this class reserves, the checkout or the store could not be prepared, or a dependency of this
 // operation (the build the compile consumes) did not succeed.
 //
+// THE MEMORY ARMS CARRY Kibibyte, NOT Int FIELDS NAMED _kib. A unit in a field NAME on a bare Int
+// is the unit modeled twice -- once in the name and once in the " KiB" this module then renders --
+// and modeled nowhere the compiler can see. The producer already had it right
+// (gunbc.compute.host_capacity ComputeHostBelowFloor carries Kibibyte) and the provider was calling
+// kibibyte_count to STRIP the carrier on the way in, which is the tell (review 69624). The deleted
+// arm this replaced, HostAtColdBuildCap { in_flight, cap }, was a dimensionless COUNT, so Int was
+// right there and is not right here.
+//
 // THREE CAPACITY ARMS WHERE THERE USED TO BE ONE COUNT. HostAtColdBuildCap { in_flight, cap } is
 // DELETED, and its disposition is that the fact it reported -- this host is already carrying as
 // much as it may -- is now HostComputeCapacityFull, measured in the memory the pool actually
@@ -148,7 +157,7 @@ type WorkOutcome
 type WorkInfrastructureRefusal
   = ProducerInFlight { lease_path: String }
   | HostComputeCapacityFull { wire: String }
-  | HostBelowMemoryFloor { requested_kib: Int, available_kib: Int }
+  | HostBelowMemoryFloor { requested: Kibibyte, available: Kibibyte }
   | ComputeCapacityLedgerUnavailable { detail: String }
   | CheckoutUnavailable { detail: String }
   | StoreUnavailable { detail: String }
@@ -180,7 +189,7 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
   match r {
     ProducerInFlight { lease_path } => join(["a producer already holds the lease at ", lease_path, "; attach later, do not start a second one"], "")
     HostComputeCapacityFull { wire } => join(["this host's compute memory pool has no room for another reservation: ", wire], "")
-    HostBelowMemoryFloor { requested_kib, available_kib } => join(["this class reserves ", to_string(value: requested_kib), " KiB and the host reports only ", to_string(value: available_kib), " KiB available, so the reservation would not have been backed by the machine"], "")
+    HostBelowMemoryFloor { requested, available } => join(["this class reserves ", to_string(value: kibibyte_count(k: requested)), " KiB and the host reports only ", to_string(value: kibibyte_count(k: available)), " KiB available, so the reservation would not have been backed by the machine"], "")
     ComputeCapacityLedgerUnavailable { detail } => join(["the host's compute capacity ledger could not be transacted: ", detail], "")
     CheckoutUnavailable { detail } => join(["checkout unavailable: ", detail], "")
     StoreUnavailable { detail } => join(["store unavailable: ", detail], "")

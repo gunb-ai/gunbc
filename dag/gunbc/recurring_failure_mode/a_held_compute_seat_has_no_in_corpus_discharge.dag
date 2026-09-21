@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.a_held_compute_seat_has_no_in_corpus_discharge
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_held_compute_seat_has_no_in_corpus_discharge: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_held_compute_seat_has_no_in_corpus_discharge" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a quantitative reservation is taken under a release law that never lapses, and the only path that returns it is the settlement of the run that took it. When that settlement cannot prove the unit is gone -- or cannot append at all -- the encumbrance stays Held and NO DECLARATION IN THE CORPUS CAN DISCHARGE IT. HARM: the host's compute pool shrinks by one grant per occurrence and never grows back; at gunbc.compute.host_capacity compute_pool_slots = 2, two occurrences consume the whole appropriation, after which every request is refused for capacity on a host with its memory free.",
+
+    "THIS IS A NEW CLASS RATHER THAN A DECLARED RUNG DROP, and the distinction is the one DESIGN 4b(3) turns on: a drop is a rung that FELL. Before gunbc#11962 this host admitted work by counting lease files (gunbc.compute.work_provider_local compute_cold_build_cap, deleted), so there were no reservations at all and nothing to discharge. The state becomes reachable for the first time with the pool, so it is filed here and not in gunbc.rung_drop.",
+
+    "WHY THE RESERVATION IS NOT SIMPLY FREED ON DOUBT, which is the repair that suggests itself and is the wrong one: the pool's release law for a compute seat is QuiescenceRequired precisely because nothing can prove a systemd transient unit stopped using memory from outside it. Freeing a seat whose cargo is still resident hands its memory to the next arrival on top of a live build. Every arm that cannot prove termination therefore keeps the charge, so this class's harm is UNDER-admission -- the fail-closed direction -- and its opposite would be over-admission on a shared host.",
+
+    "SPECIMEN, EXECUTED ON srv1 (2026-09-21, gunbc#11962): a real release build was started under a grant of 27262976 KiB and the gunbc driver was SIGKILLed mid-run. The unit stayed active, the partition carried the acquire and no release, and the producer lease stayed held -- the commitment correctly stayed charged, and nothing in the corpus could return it.",
+
+    "RUNG FOUND AT: mitigatable. The state is reachable, its harm is bounded to one host's compute appropriation, it is visible in the outcome document and in the partition, and it never over-promises.",
+
+    "CEILING: mechanically preventable. A discharge route exists to be built -- the evidence needed is a termination decision bound to the unit plus a settled lifecycle state that a retry consumes -- so this is not a class that must stay a ratchet.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY AND NOT AN ARTIFACT: the compute reservation LIFECYCLE capability -- a discharge that (a) decides termination from authoritative absence or an observed-empty cgroup rather than from a state word, (b) binds the attempt and its unit from the authoritative attempt record so releasing one cannot release another's live reservation, (c) coordinates with a pending producer so a release cannot race a launch that has not happened yet, and (d) produces a settled state a retry consumes, with history kept. Until a discharge with all four properties is consumed by a real caller, this row stands.",
+
+    "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration, and gunbc.compute.work_provider_local compute_stuck_reservation_remedy carries the remedy sentence into the refusal a caller actually receives.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_stuck_reservation_remedy"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "unit_termination_frees_capacity"),
+    decl_ref(module_path: "gunbc.compute.host_capacity", decl_name: "compute_release"),
+    decl_ref(module_path: "test.claim.compute.work_request_witness", decl_name: "only_proven_absence_or_an_empty_cgroup_frees_a_seat"),
+  ],
+}

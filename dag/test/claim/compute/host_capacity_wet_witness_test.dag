@@ -5,14 +5,13 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.algebra { trim }
 import product.capacity.event_chain { PartitionId }
-import gunbc.compute.host_capacity { compute_capacity_store }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance, dashboard_instance_compute_root }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
   compute_capacity_subject, compute_capacity_root, compute_memory_partition,
   HostMemoryObservation, HostMemoryObserved, HostMemoryUnobserved, observe_host_memory,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
-  compute_reserve_on, compute_reserve_against, compute_release, compute_release_on, ComputeRelease, ComputeReleased, ComputeReleaseRefused,
+  compute_reserve_on, compute_reserve_against, compute_release, ComputeRelease, ComputeReleased, ComputeReleaseRefused,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
 }
 
@@ -230,27 +229,3 @@ test fn the_real_observation_reads_this_machine() -> Bool {
   }
 }
 
-// A WEDGED SEAT CAN ACTUALLY BE RECOVERED, BY REFERENCE, BY SOMEONE WHO NEVER HELD THE RESERVATION.
-// Under QuiescenceRequired a term frees nothing, so this route is the ONLY way capacity returns
-// after a release fails to land -- and until review 69595 the module claimed it in prose while no
-// declaration reached it.
-//
-// AND A REFERENCE THE POOL IS NOT HOLDING WRITES NOTHING. That is the sharper half: an unheld
-// reference appended anyway would not fail at the append, it would fail at every later READ, when
-// the fold hits UnknownEncumbrance and refuses the WHOLE partition. So the refusal is asserted
-// BESIDE a subsequent successful reservation, which is what establishes the ledger is still
-// readable after the bad attempt.
-test fn a_held_seat_is_recoverable_by_reference_and_an_unheld_one_writes_nothing() -> Bool {
-  let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes, request_kib: one_gibibyte_in_kibibytes)
-  let store = compute_capacity_store(subject: subject)
-  let held = compute_reserve_on(subject: subject, reference: "wet-wedged" as NonEmptyStr, term_seconds: 60)
-  let full = compute_reserve_on(subject: subject, reference: "wet-blocked" as NonEmptyStr, term_seconds: 60)
-  let bogus = compute_release_on(store: store, partition: subject.partition, appropriation: subject.appropriation, reference: "wet-never-held" as NonEmptyStr, reason: "operator recovery" as NonEmptyStr)
-  let recovered = compute_release_on(store: store, partition: subject.partition, appropriation: subject.appropriation, reference: "wet-wedged" as NonEmptyStr, reason: "operator recovery" as NonEmptyStr)
-  let readmitted = compute_reserve_on(subject: subject, reference: "wet-after-recovery" as NonEmptyStr, term_seconds: 60)
-  reserved_amount(r: held) == one_gibibyte_in_kibibytes
-    && is_capacity_full(r: full)
-    && !released(r: bogus)
-    && released(r: recovered)
-    && reserved_amount(r: readmitted) == one_gibibyte_in_kibibytes
-}

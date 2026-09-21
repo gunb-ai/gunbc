@@ -12,6 +12,10 @@ import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.systemd.systemd_run { systemd_run_user_wait_arguments, systemd_run_property }
 import extdeps.systemd.systemctl
+import extdeps.linux.cgroup_v2 {
+  cgroup_v2_mount_point, cgroup_v2_events_path,
+  CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
+}
 import extdeps.cache.sccache { sccache_installed_binary_path }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.roadmap_dashboard_instance {
@@ -25,7 +29,7 @@ import gunbc.roadmap_execution_contract {
 import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size }
 import gunbc.compute.host_capacity {
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
-  ComputeRelease, ComputeReleased, ComputeReleaseRefused, compute_reserve, compute_release, compute_release_reference, compute_reservation_wire,
+  ComputeRelease, ComputeReleased, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
 }
 import gunbc.compute.work_request {
@@ -68,7 +72,6 @@ type ComputeLayout {
   log_path: String
   outcome_path: String
   consumption_path: String
-  obligations_dir: String
 }
 
 fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
@@ -86,7 +89,6 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
     log_path: join([work_dir, "/log"], ""),
     outcome_path: join([work_dir, "/outcome.json"], ""),
     consumption_path: join([work_dir, "/consumption"], ""),
-    obligations_dir: join([root, "/obligations"], ""),
   }
 }
 
@@ -240,70 +242,105 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
 
 // ── WHETHER THE UNIT IS STILL USING THE MEMORY ────────────────────────────────────────────────
 //
-// THE RELEASE LAW SAID "QUIESCENCE REQUIRED" AND NOTHING OBSERVED QUIESCENCE. That was the gap:
-// compute_release ran unconditionally on whatever compute_run_leased returned, and what it returns
-// is the exit of `systemd-run --wait`, which is NOT the unit. systemd-run is a launcher, not the
-// unit's parent -- the transient service is owned by the manager -- so a launcher that is killed,
-// times out, or loses its bus connection yields ComputeExecFailed WHILE THE UNIT KEEPS RUNNING, and
-// the seat's memory would be handed to the next arrival on top of a live cargo. product.capacity.lease
-// already models this exactly (QuiescenceFact = Quiescent | QuiescenceUnobserved) and the corpus was
-// simply not consulting it (side-chat review of gunbc#11962 at 725d9c58).
+// THE RELEASE LAW SAID "QUIESCENCE REQUIRED" AND NOTHING OBSERVED QUIESCENCE. compute_release ran
+// on whatever compute_run_leased returned, and what it returns is the exit of `systemd-run --wait`,
+// which is NOT the unit. systemd-run is a launcher, not the unit's parent -- the transient service
+// is owned by the manager -- so a launcher killed, timed out, or disconnected from the bus yields
+// ComputeExecFailed WHILE THE UNIT KEEPS RUNNING, and the seat's memory would be handed to the next
+// arrival on top of a live cargo. product.capacity.lease already models this (QuiescenceFact) and
+// this provider was not consulting it.
 //
-// SO A RELEASE NOW CONSUMES A TERMINATION DECISION BOUND TO THE ACTUAL UNIT, and only two arms may
-// free capacity: the manager knows nothing about the unit, or it knows it has stopped. Running and
-// UNOBSERVED both keep the commitment -- an unobserved unit is the case a fail-open would swallow,
-// and it is the one that matters, because "I could not ask" is exactly what a lost launcher looks
-// like.
+// ActiveState ALONE IS NOT THE EVIDENCE, AND THE FIRST FIX OF THIS THOUGHT IT WAS. Two arms it
+// treated as free are not (side-chat review of gunbc#11962 at 9172cf7):
 //
-// AN EMPTY ActiveState IS QUIESCENT AND THAT IS NOT A GUESS. `systemctl --user show` prints an empty
-// value for a unit the manager has no record of, which for a transient --wait unit means it ran and
-// was collected, and for a unit that never started means there is nothing consuming memory. Both are
-// the same fact for THIS decision -- no process of ours is holding that memory -- and the reviewer's
-// own formulation admits both: never started, or demonstrated quiescent.
+//   `failed` CAN COEXIST WITH LIVE PROCESSES. A unit whose stop reaches the SIGKILL timeout is
+//   reported failed while its processes are still being killed, and a task wedged in
+//   uninterruptible sleep outlives the state word entirely.
+//
+//   AN EMPTY ActiveState IS NOT AUTHORITATIVE ABSENCE. It is the manager declining to answer in a
+//   form this provider cannot distinguish from a unit it has never heard of. The repo's own
+//   systemctl authority already names the observation that proves absence, and it is LoadState:
+//   `systemctl show` exits 0 for a unit the manager has never heard of and prints not-found, so a
+//   nonzero exit means the MANAGER was unreadable, which is a different refusal from an absent unit
+//   and must not be folded into it.
+//
+// SO THE DECISION IS FOUR-VALUED AND ONLY THE FIRST TWO FREE CAPACITY. Authoritative absence, from
+// the one wire value that proves it. Observed termination, from the cgroup this unit owns reporting
+// no processes -- the kernel's own answer to "is anything still running here", which is the question
+// the memory is actually about. Populated keeps the charge. And UNAVAILABLE keeps it too, which is
+// the arm that matters most: "I could not ask" is what a lost launcher, an unreadable manager and a
+// missing cgroup all look like, and reading any of them as permission to take the memory back is the
+// absorbing fallback DESIGN 5 forbids.
 type UnitTermination
-  = UnitQuiescent { state: String }
-  | UnitStillActive { state: String }
-  | UnitTerminationUnobserved { detail: String }
+  = UnitAbsentAuthoritatively { detail: String }
+  | UnitTerminatedObserved { detail: String }
+  | UnitPopulated { detail: String }
+  | UnitTerminationUnavailable { detail: String }
 
-data unit_active_state_property: NonEmptyStr = "ActiveState" as NonEmptyStr
+data unit_load_state_property: NonEmptyStr = "LoadState" as NonEmptyStr
+data unit_control_group_property: NonEmptyStr = "ControlGroup" as NonEmptyStr
+data unit_load_state_absent_wire: String = "not-found"
 
-// THE CLOSED SET IS UPSTREAM'S (systemd.unit(5) ActiveState), and an unrecognised word is UNOBSERVED
-// rather than assumed dead. A new systemd state that this fold has never seen must not be read as
-// permission to take the memory back.
-fn unit_state_termination(state: String) -> UnitTermination {
-  let s = trim(s: state)
-  if s == "" || s == "inactive" || s == "failed" {
-    UnitQuiescent { state: s }
-  } else if s == "active" || s == "activating" || s == "deactivating" || s == "reloading" || s == "maintenance" {
-    UnitStillActive { state: s }
+// THE USER MANAGER IS ASKED, NOT THE SYSTEM ONE. systemctl_show_load_state_argv exists and is
+// system-scope; these are transient --user units, so asking the system manager would answer
+// not-found for EVERY one of them -- a fabricated authoritative absence, which is the single worst
+// answer this fold can produce. The property goes through the user-scope show operation for that
+// reason and no other.
+fn observe_unit_termination(identity_hex: String) -> UnitTermination {
+  let unit = compute_unit_name(identity_hex: identity_hex)
+  let load = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_load_state_property)
+  if !load.success {
+    UnitTerminationUnavailable { detail: join(["the user manager could not be read for ", unit as String], "") }
+  } else if trim(s: load.value) == unit_load_state_absent_wire {
+    UnitAbsentAuthoritatively { detail: join([unit as String, " LoadState=", unit_load_state_absent_wire], "") }
   } else {
-    UnitTerminationUnobserved { detail: join(["systemd reported an ActiveState this provider does not model: ", s], "") }
+    observe_unit_cgroup(unit: unit, load_state: trim(s: load.value))
   }
 }
 
-fn observe_unit_termination(identity_hex: String) -> UnitTermination {
-  let unit = compute_unit_name(identity_hex: identity_hex)
-  let r = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_active_state_property)
-  if !r.success {
-    UnitTerminationUnobserved { detail: join(["systemctl --user show ", unit as String, " could not be read"], "") }
+// THE UNIT EXISTS, SO THE QUESTION IS WHETHER ANYTHING IS STILL RUNNING IN IT, and the kernel
+// answers that directly. ControlGroup is empty for a unit that is loaded and holds no processes --
+// systemd removes the cgroup when the last one exits -- so an empty value here is observed
+// termination rather than a failed read, and it is the ordinary answer after a clean run.
+fn observe_unit_cgroup(unit: NonEmptyStr, load_state: String) -> UnitTermination {
+  let cg = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_control_group_property)
+  if !cg.success {
+    UnitTerminationUnavailable { detail: join(["the control group of ", unit as String, " could not be read"], "") }
+  } else if trim(s: cg.value) == "" {
+    UnitTerminatedObserved { detail: join([unit as String, " LoadState=", load_state, " holds no control group, so no process of this unit survives"], "") }
   } else {
-    unit_state_termination(state: r.value)
+    let events = linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: join([cgroup_v2_mount_point as String, trim(s: cg.value)], "") as NonEmptyStr))
+    if !events.success {
+      UnitTerminationUnavailable { detail: join(["the cgroup events of ", unit as String, " could not be read at ", trim(s: cg.value)], "") }
+    } else {
+      match decode_cgroup_events_populated(body: events.value) {
+        CgroupEventsUnparseable { cause: c } => UnitTerminationUnavailable { detail: join(["the cgroup events of ", unit as String, " could not be decoded: ", c], "") }
+        CgroupEventsDecoded { populated: p } =>
+          if p {
+            UnitPopulated { detail: join([unit as String, " still has processes in ", trim(s: cg.value)], "") }
+          } else {
+            UnitTerminatedObserved { detail: join([unit as String, " cgroup ", trim(s: cg.value), " reports populated 0"], "") }
+          }
+      }
+    }
   }
 }
 
 fn unit_termination_frees_capacity(t: UnitTermination) -> Bool {
   match t {
-    UnitQuiescent { state: _ } => true
-    UnitStillActive { state: _ } => false
-    UnitTerminationUnobserved { detail: _ } => false
+    UnitAbsentAuthoritatively { detail: _ } => true
+    UnitTerminatedObserved { detail: _ } => true
+    UnitPopulated { detail: _ } => false
+    UnitTerminationUnavailable { detail: _ } => false
   }
 }
 
 fn unit_termination_wire(t: UnitTermination) -> String {
   match t {
-    UnitQuiescent { state: s } => join(["quiescent (ActiveState=", if s == "" { "<unknown to the manager>" } else { s }, ")"], "")
-    UnitStillActive { state: s } => join(["STILL ACTIVE (ActiveState=", s, "), so the seat stays charged"], "")
-    UnitTerminationUnobserved { detail: d } => join(["termination unobserved, so the seat stays charged: ", d], "")
+    UnitAbsentAuthoritatively { detail: d } => join(["absent (", d, ")"], "")
+    UnitTerminatedObserved { detail: d } => join(["terminated (", d, ")"], "")
+    UnitPopulated { detail: d } => join(["STILL POPULATED (", d, "), so the seat stays charged"], "")
+    UnitTerminationUnavailable { detail: d } => join(["termination UNAVAILABLE (", d, "), so the seat stays charged"], "")
   }
 }
 
@@ -394,39 +431,38 @@ fn compute_run_and_settle(
   } else {
     ComputeReleaseRefused { detail: join(["the seat was NOT released: ", unit_termination_wire(t: termination)], "") }
   }
-  let measured = Filesystem.Write(path: layout.consumption_path, content: join([compute_capacity_standing_wire(s: standing), "\n"], ""))
-  let notes = join(["; consumption recorded: ", if measured.success { "yes" } else { measured.error }], "")
   let settled = if compute_release_landed(r: returned) {
-    compute_settled_record(layout: layout, identity: identity, subject: subject, op: op, outcome: outcome, notes: notes)
+    compute_settled_record(layout: layout, identity: identity, subject: subject, op: op, outcome: outcome)
   } else {
     compute_unreleased_record(
       layout: layout, identity: identity, subject: subject, op: op, outcome: outcome,
-      reservation: reservation, returned: returned, reference: reference, termination: termination, notes: notes)
+      reservation: reservation, returned: returned, reference: reference, termination: termination)
   }
   let dropped = Filesystem.Delete(path: layout.lease_path)
-  if dropped.success { settled } else { compute_lease_undropped(result: settled, layout: layout, identity: identity, subject: subject, op: op, error: dropped.error) }
+  let measured = Filesystem.Write(
+    path: layout.consumption_path,
+    content: join([
+      compute_capacity_standing_wire(s: standing), "\n",
+      "unit: ", unit_termination_wire(t: termination), "\n",
+      "reservation: ", compute_release_wire(r: returned), "\n",
+      if dropped.success { "" } else { compute_stale_lease_note(layout: layout, error: dropped.error) },
+    ], ""))
+  if measured.success { settled } else { settled }
 }
 
-fn compute_lease_undropped(
-  result: ProvideResult,
-  layout: ComputeLayout,
-  identity: String,
-  subject: WorkSubject,
-  op: WorkOperation,
-  error: String,
-) -> ProvideResult {
-  compute_fresh(
-    outcome: WorkRefusedByInfrastructure {
-      identity: identity,
-      cause: StoreUnavailable {
-        detail: join([
-          "the record was published as ", provide_result_ending(r: result),
-          " but the producer lease at ", layout.lease_path, " could not be dropped: ", error,
-          "; the next request for this identity will refuse as ProducerInFlight until it is removed",
-        ], ""),
-      },
-    },
-    subject: subject, op: op)
+// BLOCKER (7): ONE CONTRACT, AND THE CONTRACT IS THE STORED RECORD. This arm used to hand the
+// caller a refusal while the outcome document already said the run had SUCCEEDED, and then state
+// that the next request would refuse as ProducerInFlight -- three claims that cannot all be true,
+// because the stored record is exactly what the next caller attaches to. So the stored record
+// decides: a published success IS the result, the caller is told the same thing the next caller
+// will read, and the stale lease is recorded as the operational fact it is rather than converted
+// into a verdict about the work. An operator removes the name; nothing about the run changed.
+fn compute_stale_lease_note(layout: ComputeLayout, error: String) -> String {
+  join([
+    "STALE PRODUCER LEASE: ", layout.lease_path, " could not be dropped: ", error,
+    "; the record for this identity is published and is authoritative, and the next request will ",
+    "refuse as ProducerInFlight until an operator removes the name\n",
+  ], "")
 }
 
 // THE ORDINARY ENDING: the reservation came back, so the record is the run's own ending and the
@@ -437,7 +473,6 @@ fn compute_settled_record(
   subject: WorkSubject,
   op: WorkOperation,
   outcome: WorkOutcome,
-  notes: String,
 ) -> ProvideResult {
   let document = work_outcome_wire(o: outcome, subject: subject, op: op)
   let written = Filesystem.Write(path: layout.outcome_path, content: document)
@@ -451,7 +486,7 @@ fn compute_settled_record(
           detail: join([
             "the work ended ", work_outcome_ending(o: outcome),
             " and its reservation was released, but the record could not be completed -- outcome written: ",
-            written.error, notes,
+            written.error,
           ], ""),
         },
       },
@@ -471,25 +506,13 @@ fn compute_unreleased_record(
   returned: ComputeRelease,
   reference: NonEmptyStr,
   termination: UnitTermination,
-  notes: String,
 ) -> ProvideResult {
-  let obligation = join([
-    "identity=", identity, "\n",
-    "reference=", reference as String, "\n",
-    "unit=", unit_termination_wire(t: termination), "\n",
-    "work_ending=", work_outcome_ending(o: outcome), "\n",
-    "reservation=", compute_reservation_wire(r: reservation), "\n",
-    "release_attempt=", compute_release_wire(r: returned), "\n",
-  ], "")
-  let prepared = compute_ensure_dir_at(path: layout.obligations_dir)
-  let recorded = Filesystem.WriteCreateNew(path: compute_obligation_path(layout: layout, reference: reference), content: obligation)
   let cause = ComputeCapacityLedgerUnavailable {
     detail: join([
-      "the seat for ", reference as String, " is still charged; the work itself ended ",
-      work_outcome_ending(o: outcome), " and any declared outputs are in the store. ",
-      compute_release_wire(r: returned),
-      ". obligation recorded: ", if prepared && recorded.success { compute_obligation_path(layout: layout, reference: reference) } else { recorded.error },
-      notes,
+      "the seat for ", reference as String, " is STILL CHARGED and this provider has no way to discharge it: ",
+      unit_termination_wire(t: termination), ". ", compute_release_wire(r: returned),
+      ". The work itself ended ", work_outcome_ending(o: outcome),
+      " and any declared outputs are in the store. ", compute_stuck_reservation_remedy,
     ], ""),
   }
   let document = work_outcome_wire(o: WorkRefusedByInfrastructure { identity: identity, cause: cause }, subject: subject, op: op)
@@ -501,18 +524,17 @@ fn compute_unreleased_record(
   }
 }
 
-// ONE OBLIGATION FILE PER ATTEMPT, NOT PER IDENTITY. The obligation used to live at a path derived
-// from the work identity while the reservation it describes is keyed by the ATTEMPT, so a retry
-// overwrote the first obligation and the first seat became unrecoverable -- the reference that was
-// the only way to release it was gone. The reference is the name of the hold, so it is the name of
-// the obligation, and the create is EXCLUSIVE so a second writer cannot silently replace one.
-fn compute_obligation_path(layout: ComputeLayout, reference: NonEmptyStr) -> String {
-  join([layout.obligations_dir, "/", reference as String], "")
-}
-
-fn compute_ensure_dir_at(path: String) -> Bool {
-  shell.Mkdir.Parents(path: path as FilePath).success
-}
+// THE REMEDY SENTENCE FOR A SEAT THIS PROVIDER CANNOT GIVE BACK, and it is a declared absence
+// rather than a route claimed in prose. No discharge existed on main -- there were no reservations
+// at all, only a count of lease files -- so this is not a rung that dropped; it is a failure mode
+// this change makes reachable for the first time, rostered as
+// gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge, whose trigger names
+// the capability that closes it.
+//
+// WHAT KEEPS IT FAIL-CLOSED MEANWHILE: every arm that cannot prove the unit is gone keeps the
+// charge, so the host UNDER-admits. Nothing is over-promised; the pool simply shrinks until an
+// operator clears the partition by hand. That is the direction a capacity ledger must fail in.
+data compute_stuck_reservation_remedy: String = "Until the compute lifecycle capability lands (gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge), the only discharge is an operator clearing this host's compute capacity partition by hand; this host will under-admit until then, which is the fail-closed direction."
 
 // THE ORDER THE TWO HOLDS ARE TAKEN IN// THE ORDER THE TWO HOLDS ARE TAKEN IN, and they are two facts rather than one. The producer lease
 // excludes a SECOND PRODUCER OF THIS IDENTITY and is a NAME, so an exclusive create settles it; the
@@ -557,22 +579,6 @@ fn compute_provide_leaf(
   } else if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.store_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir)) {
     compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["could not create the compute directories under ", layout.root], "") } }, subject: subject, op: op)
   } else {
-    let outstanding = compute_outstanding_obligation(layout: layout, identity: identity)
-    if outstanding != "" {
-      compute_fresh(
-        outcome: WorkRefusedByInfrastructure {
-          identity: identity,
-          cause: ComputeCapacityLedgerUnavailable {
-            detail: join([
-              "this identity has an unreleased reservation from an earlier attempt and will not take a second one: ",
-              outstanding,
-              ". Discharge it with the release verb once the unit is demonstrably gone; until then a retry would ",
-              "reserve on top of a seat that is still charged and could publish an outcome over the obligation.",
-            ], ""),
-          },
-        },
-        subject: subject, op: op)
-    } else {
     let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
     if !lease.success {
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: layout.lease_path } }, subject: subject, op: op)
@@ -583,7 +589,7 @@ fn compute_provide_leaf(
         ComputeCapacityFull { wire: w } =>
           compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostComputeCapacityFull { wire: w })
         ComputeHostBelowFloor { requested: rq, available: av } =>
-          compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostBelowMemoryFloor { requested_kib: kibibyte_count(k: rq), available_kib: kibibyte_count(k: av) })
+          compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostBelowMemoryFloor { requested: rq, available: av })
         ComputeReservationRefused { detail: d } =>
           compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: ComputeCapacityLedgerUnavailable { detail: d })
         ComputeReserved { grant: _, partition: _, amount: granted, store: _ } =>
@@ -592,33 +598,9 @@ fn compute_provide_leaf(
             dependency_store: dependency_store, granted: granted, reference: reference, reservation: reservation)
       }
     }
-    }
   }
 }
 
-// WHAT A RETRY MUST LOOK AT BEFORE IT RESERVES AGAIN, and the reason this is a read rather than a
-// convention. An obligation names a seat that is still charged; a retry of the same identity that
-// ignored it would take a SECOND reservation while the first is outstanding, and -- because the
-// outcome document is keyed by identity -- could publish its own ending over the record that was
-// carrying the obligation. So the lifecycle state is consumed, not remembered: the obligations
-// directory is listed, and any entry naming this identity refuses the request by name and points at
-// the release verb. Empty means nothing outstanding; an unreadable directory means nothing
-// outstanding either, because the directory does not exist until the first obligation is written.
-fn compute_outstanding_obligation(layout: ComputeLayout, identity: String) -> String {
-  let listing = Filesystem.List(path: layout.obligations_dir)
-  if !listing.success {
-    ""
-  } else {
-    fold(split(s: listing.entries, delimiter: "\n"), init: "", f: (acc, entry) =>
-      if acc != "" || trim(s: entry) == "" {
-        acc
-      } else if !starts_with(s: trim(s: entry), prefix: identity) {
-        acc
-      } else {
-        join([layout.obligations_dir, "/", trim(s: entry)], "")
-      })
-  }
-}
 
 // THE CONSUMPTION READING IS ITS OWN FILE AND MUST NOT JOIN THE OUTCOME DOCUMENT. It was appended
 // to outcome.json first, and the first real run on srv1 (2026-09-21) is what said why that is
@@ -787,60 +769,6 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
           }
         }
       }
-  }
-}
-
-// THE OPERATOR'S RECOVERY DOOR, and the executing consumer of compute_release_reference. A
-// reservation whose release did not land leaves its reference in
-// <work_dir>/unreleased-reservation and in the partition; this is how it is given back. It is a
-// verb on the same CLI rather than a script, so the refusal vocabulary is the module's: a reference
-// the pool is not holding writes nothing and exits non-zero saying so, which is the answer a
-// mistyped reference must get -- appending a release for an unheld reference would make the
-// partition unfoldable for every later reader.
-fn compute_release_cli(repo_root: String, identity: String, reference: String, reason: String, receipt_path: String) -> ProcessExit {
-  match dashboard_instance_for_repo_root(repo_root: repo_root) {
-    DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: 2, reason: join(["compute: no dashboard instance is rooted at ", r], "") }
-    DashboardInstanceResolved { instance } =>
-      if identity == "" || reference == "" || reason == "" {
-        ExitFailure { code: 2, reason: "compute: release needs the identity and the reference the obligation file names, and a reason saying why the seat is being given back" }
-      } else {
-        compute_release_observed(instance: instance, identity: identity, reference: reference, reason: reason, receipt_path: receipt_path)
-      }
-  }
-}
-
-// THE RECOVERY DOOR OBSERVES THE UNIT TOO, and this is the half a reason string cannot supply. An
-// operator releasing "because the worker looked dead" is asserting exactly the fact that nothing
-// checked -- and releasing a seat whose cargo is still resident hands its memory to the next
-// arrival. So recovery consumes the same termination decision settlement does: only a unit the
-// manager reports stopped, or has no record of, may be released. A running unit is refused BY NAME
-// with the state that refused it, so the operator's next move is to stop the unit rather than to
-// argue with the tool.
-fn compute_release_observed(instance: HostDashboardInstance, identity: String, reference: String, reason: String, receipt_path: String) -> ProcessExit {
-  let termination = observe_unit_termination(identity_hex: identity)
-  let wire = if unit_termination_frees_capacity(t: termination) {
-    compute_release_cli_wire(r: compute_release_reference(
-      instance: instance,
-      reference: reference as NonEmptyStr,
-      reason: join([reason, " (unit ", unit_termination_wire(t: termination), ")"], "") as NonEmptyStr))
-  } else {
-    join(["refused: ", unit_termination_wire(t: termination), "; stop the unit first, then release"], "")
-  }
-  let receipt = Filesystem.Write(path: receipt_path, content: join([wire, "\n"], ""))
-  if !receipt.success {
-    ExitFailure { code: 2, reason: join(["compute: receipt could not be written to ", receipt_path, ": ", receipt.error, "; release was ", wire], "") }
-  } else if starts_with(s: wire, prefix: "released ") {
-    ExitSuccess
-  } else {
-    ExitFailure { code: 1, reason: join(["compute release refused: ", wire], "") }
-  }
-}
-
-fn compute_release_cli_wire(r: ComputeRelease) -> String {
-  match r {
-    ComputeReleased { partition: p, reference: ref_, reason: why } =>
-      join(["released ", ref_ as String, " on ", p as String, " (", why as String, ")"], "")
-    ComputeReleaseRefused { detail: d } => join(["refused: ", d], "")
   }
 }
 

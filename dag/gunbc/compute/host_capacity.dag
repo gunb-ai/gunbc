@@ -379,40 +379,20 @@ fn compute_release(reservation: ComputeReservation, reason: NonEmptyStr) -> Comp
   }
 }
 
-// THE RECOVERY ROUTE, AND IT EXISTS BECAUSE THE MODULE CLAIMED IT (review 69595 on gunbc#11962).
+// THE ONE RELEASE PATH, CHECKED. It reads, folds, PROPOSES the release against the folded pool and
+// appends only what the pool admits -- the mirror of the acquire. That check is load-bearing rather
+// than defensive: a reference the pool is not holding, appended anyway, would not fail at the
+// append; it would fail at every later READ, when the fold hits UnknownEncumbrance and refuses the
+// WHOLE partition.
 //
-// The prose above says a wedged seat is recovered by an explicit release naming why. Until this
-// function that was FALSE: compute_release took a ComputeReservation, whose only constructor is
-// compute_reserve_on, whose result lives and dies inside one compute_provide_leaf invocation. So a
-// release that failed to land left an encumbrance that -- under QuiescenceRequired, which by design
-// never lapses -- nothing in the corpus could ever discharge. Two of those consume the whole host
-// appropriation, and every later request then gets a CAPACITY refusal on a host with its memory
-// free: the exact conflation this change added a witness to prevent, arriving through a different
-// door. A claimed route that no declaration reaches is the dangling consumption DESIGN 3c refuses.
-//
-// IT TAKES A REFERENCE, because that is all a recovering operator has: the reservation value is
-// gone with the process that held it, and the reference is what the ledger and the obligation file
-// both name. It is CHECKED against the folded pool before anything is appended -- a reference the
-// pool is not holding writes nothing and refuses by name, because appending a release for an unheld
-// reference would make the partition unfoldable for every later reader.
-fn compute_release_reference(instance: HostDashboardInstance, reference: NonEmptyStr, reason: NonEmptyStr) -> ComputeRelease {
-  match compute_capacity_subject(instance: instance) {
-    ComputeSubjectHostUnresolved { host: h } =>
-      ComputeReleaseRefused { detail: join(["no dashboard instance is declared for host ", h as String], "") }
-    ComputeSubjectResolved { subject: subject } =>
-      compute_release_on(
-        store: compute_capacity_store(subject: subject),
-        partition: subject.partition,
-        appropriation: subject.appropriation,
-        reference: reference,
-        reason: reason,
-      )
-  }
-}
-
-// ONE RELEASE PATH FOR BOTH DOORS. The provider's own completion and the operator's recovery append
-// the same event against the same check; a second spelling of "give the seat back" is the fork this
-// module would otherwise grow the moment recovery existed.
+// THE OPERATOR'S RECOVERY DOOR IS NOT HERE, and its absence is declared rather than implied. The
+// discharge of a seat whose release did not land needs a termination decision bound to the unit, an
+// attempt-to-unit binding that cannot release another attempt's live reservation, and a settled
+// state a retry consumes -- see gunbc.recurring_failure_mode
+// a_held_compute_seat_has_no_in_corpus_discharge, whose trigger names that capability. Shipping a
+// recovery route with any of those missing would FREE SEATS THAT SHOULD NOT BE FREED, which is
+// worse than not having one: without it every failure here keeps the charge and the host merely
+// under-admits.
 //
 // THE APPROPRIATION PASSED HERE IS NOT LOAD-BEARING AND THE ZERO IS NOT A FABRICATED READING. product.capacity.pool
 // ruled that replay never adjudicates the ceiling, so a release is decided by whether the ledger
@@ -460,7 +440,7 @@ fn compute_release_on(
 // committed far above the machine's own shortfall means the pool is over-reserving each class, and
 // the reverse means work is running outside the pool.
 type ComputeCapacityStanding
-  = ComputeCapacityStandingRead { committed: Kibibyte, ceiling: Kibibyte, headroom: Nat, observed_available: Kibibyte, observed_total: Kibibyte }
+  = ComputeCapacityStandingRead { committed: Kibibyte, ceiling: Kibibyte, headroom: Kibibyte, observed_available: Kibibyte, observed_total: Kibibyte }
   | ComputeCapacityStandingUnread { detail: String }
 
 fn compute_capacity_standing(instance: HostDashboardInstance) -> ComputeCapacityStanding {
@@ -486,7 +466,7 @@ fn compute_capacity_standing_on(subject: ComputeCapacitySubject) -> ComputeCapac
           ) {
             SeatRoomObserved { headroom: h, generation: _ } =>
               ComputeCapacityStandingRead {
-                committed: kibibyte(count: kibibyte_count(k: subject.appropriation) - h),
+                committed: kibibyte(count: kibibyte_count(k: subject.appropriation) - kibibyte_count(k: h)),
                 ceiling: subject.appropriation,
                 headroom: h,
                 observed_available: available,
@@ -496,7 +476,7 @@ fn compute_capacity_standing_on(subject: ComputeCapacitySubject) -> ComputeCapac
               ComputeCapacityStandingRead {
                 committed: subject.appropriation,
                 ceiling: subject.appropriation,
-                headroom: 0,
+                headroom: kibibyte(count: 0),
                 observed_available: available,
                 observed_total: total,
               }
@@ -523,7 +503,7 @@ fn compute_capacity_standing_wire(s: ComputeCapacityStanding) -> String {
     ComputeCapacityStandingRead { committed: c, ceiling: cl, headroom: h, observed_available: av, observed_total: tt } =>
       join([
         "committed ", to_string(value: kibibyte_count(k: c)), " KiB of ", to_string(value: kibibyte_count(k: cl)),
-        " KiB (headroom ", to_string(value: h), " KiB); host reports ", to_string(value: kibibyte_count(k: av)),
+        " KiB (headroom ", to_string(value: kibibyte_count(k: h)), " KiB); host reports ", to_string(value: kibibyte_count(k: av)),
         " KiB available of ", to_string(value: kibibyte_count(k: tt)), " KiB installed",
       ], "")
     ComputeCapacityStandingUnread { detail: d } => join(["unread: ", d], "")
