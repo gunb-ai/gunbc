@@ -8,8 +8,10 @@ import gunbc.compute.work_provider_local {
   unit_termination_frees_capacity, unit_termination_wire, compute_attempt_completed,
   ProvideResult, ProvideFresh, ProvideAttached, HostRecordStatus, HostRecordWritten, HostRecordLost,
   provide_result_host_record, provide_result_ending, provide_result_document, host_record_was_written, host_record_wire,
-  compute_with_lost_host_record, ComputeLayout, compute_layout,
+  compute_with_lost_host_record, ComputeLayout, compute_layout, compute_unit_properties,
+  compute_kill_mode_property, compute_kill_mode_value,
 }
+import std.measure { kibibyte }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
@@ -172,4 +174,20 @@ test fn a_lost_host_record_changes_no_contract_the_next_caller_reads() -> Bool {
     && host_record_was_written(h: provide_result_host_record(r: settled))
     && !host_record_was_written(h: provide_result_host_record(r: lost))
     && string_contains(s: host_record_wire(h: provide_result_host_record(r: lost)), pattern: "STILL HELD")
+}
+
+// THE TERMINATION POLICY THE RELEASE DECISION LEANS ON IS ACTUALLY BOUND ON THE INVOCATION. A
+// completed wait is allowed to confirm a release only because KillMode=control-group means systemd
+// tears the cgroup down with the unit; under process or none a forked child outlives the main
+// process and goes on using the memory this seat accounts for. systemd's DEFAULT is
+// control-group -- but a default is not a declaration, and a drop-in or a future default could
+// change it while this provider kept reasoning from the old one. So it is bound, and this cell is
+// what makes "bound" a fact rather than a sentence.
+test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -> Bool {
+  let props = compute_unit_properties(
+    layout: compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc"),
+    granted: kibibyte(count: 1048576))
+  contains(props, join([compute_kill_mode_property, "=", compute_kill_mode_value], ""))
+    && compute_kill_mode_value == "control-group"
+    && count(filter(props, p => starts_with(s: p, prefix: "MemoryMax="))) == 1
 }

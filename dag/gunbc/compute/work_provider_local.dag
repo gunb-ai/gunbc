@@ -264,6 +264,18 @@ fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
 data compute_kill_mode_property: String = "KillMode"
 data compute_kill_mode_value: String = "control-group"
 
+// THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE. A termination policy that is only
+// asserted in prose is exactly the thing the release decision must not trust, and the whole point
+// of binding it is that the decision leans on it -- so the invocation's properties are produced
+// where a control can read them rather than spelled inline at the call.
+fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<String> {
+  [
+    systemd_run_property(name: "MemoryMax", value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted)))),
+    systemd_run_property(name: compute_kill_mode_property, value: compute_kill_mode_value),
+    systemd_run_property(name: "WorkingDirectory", value: layout.checkout),
+  ]
+}
+
 // Run the operation as a transient user unit and wait for it: the unit carries THE MEMORY THE POOL
 // GRANTED -- not a ceiling read independently from the instance, which would let the reservation and
 // the enforcement drift apart -- the checkout as working directory, the shared per-host target
@@ -278,11 +290,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       workdir: layout.checkout,
       args: systemd_run_user_wait_arguments(
         unit: compute_unit_name(identity_hex: identity_hex),
-        properties: [
-          systemd_run_property(name: "MemoryMax", value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted)))),
-          systemd_run_property(name: compute_kill_mode_property, value: compute_kill_mode_value),
-          systemd_run_property(name: "WorkingDirectory", value: layout.checkout),
-        ],
+        properties: compute_unit_properties(layout: layout, granted: granted),
         setenv_bindings: [
           join(["CARGO_TARGET_DIR=", layout.target_dir], ""),
           join(["RUSTC_WRAPPER=", sccache_installed_binary_path], ""),
