@@ -143,6 +143,14 @@ test fn positional_pattern_binder_refuses_until_fields_lower_holds() -> Bool {
   )
 }
 
+// A wildcard payload binds nothing, so nothing is lost and it still lowers: std.content_hash
+// content_hash_family is exactly this shape (`Fnv1a64(_) => Fnv1a64StructuralFamily`).
+test fn positional_wildcard_pattern_still_normalizes_holds() -> Bool {
+  cp_normalizes(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n"
+  )
+}
+
 // The refusal is not over-broad: the braced spelling of the same elimination still lowers.
 test fn braced_pattern_binder_still_normalizes_holds() -> Bool {
   cp_normalizes(
