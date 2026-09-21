@@ -12,6 +12,7 @@ import extdeps.cloud.gcp.secret_manager {
   sm_version_id_is_number,
 }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.cloud.gcp.secret_ref { ExactVersion, AliasLatest }
 import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
 import gunbc.auth.secret_rotation {
   SecretRotationIntent,
@@ -19,8 +20,6 @@ import gunbc.auth.secret_rotation {
   GeneratedInWorkflow,
   DisableOnly,
   DisableThenDestroy,
-  ExactVersion,
-  AliasLatest,
   ConsumerVerificationRequirement,
   ConsumerVersionEvidence,
   ResolvedVersionObserved,

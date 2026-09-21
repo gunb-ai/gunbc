@@ -13,7 +13,14 @@ import extdeps.cloudflare.r2 {
   r2_account_resource_name,
   workers_r2_storage_bucket_item_read_permission_group_id,
 }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, gcp_resource_names_this_version, secret_ref_version_resource }
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import extdeps.cloud.gcp.secret_ref {
+  SecretRef, HashPending, secret_ref_version_resource,
+  SecretRefVersionResolvedExact,
+  SecretRefVersionResolvedAlias,
+  SecretRefVersionResolutionRefused,
+  resolve_returned_version,
+}
 import std.allocation_roster {
   AllocationAdmission,
   AllocationAdmitted,
@@ -421,9 +428,10 @@ test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> 
 }
 
 // THE PIN'S RESOURCE NAME JOINS THIS FLEET'S PROJECT NUMBER, not a transcribed AccessVersion string.
-// secret_ref_version_resource is derived from the origin declaration; gcp_resource_names_this_version
-// is the same identity join the bootstrap fetch uses. A pin that names another project fails while
-// fleet_secrets_project_number stays put.
+// secret_ref_version_resource is derived from the origin declaration; resolve_returned_version is
+// the same identity join the bootstrap fetch uses. A pin that names another project fails while
+// fleet_secrets_project_number stays put. The EXACT arm is the one asserted, because the origin pin
+// is a number: an alias resolution here would mean the pin had stopped naming one generation.
 test fn r2_origin_read_pin_names_this_project_version() -> Bool {
   match fabric_durable_origin_standing() {
     R2OriginUnallocated { purpose: _ } => false
@@ -432,11 +440,15 @@ test fn r2_origin_read_pin_names_this_project_version() -> Bool {
         OriginCredentialUnminted { mint_entry: _ } => false
         OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
         OriginCredentialPinned { access_key_id: _, token_value: locus } =>
-          gcp_resource_names_this_version(
-            returned: secret_ref_version_resource(ref: locus),
+          match resolve_returned_version(
+            returned: secret_ref_version_resource(ref: locus) as SmResolvedVersionIdentity,
             ref: locus,
             project_number: fleet_secrets_project_number,
-          )
+          ) {
+            SecretRefVersionResolvedExact { version: _ } => true
+            SecretRefVersionResolvedAlias { alias: _, version: _ } => false
+            SecretRefVersionResolutionRefused { requested: _, returned: _ } => false
+          }
       }
   }
 }
