@@ -117,6 +117,22 @@ data flashinfer_0_6_18_post1_wheels: List<FlashInferWheel> = [
   },
 ]
 
+// WHERE THE 0.6.18.post1 WHEELS RESOLVE AS FILES. The row above records that each digest was read
+// from two agreeing upstream surfaces, one of which is the asset listing of the GitHub release
+// v0.6.18.post1 on flashinfer-ai/flashinfer; a release asset is addressed by its filename under the
+// release's download base, which is the same derivation the nightly row performs and is carried once
+// here for the same reason -- a consumer derives a wheel's URL instead of re-spelling it.
+//
+// THIS IS AN ADDRESS, NOT AN AVAILABILITY GUARANTEE, and the distinction is the same one the nightly
+// row draws: what makes a fetched file the wheel this repository means is its sha256 matching the row
+// above, never the URL it arrived from. A consumer that fetches without comparing has established
+// nothing.
+data flashinfer_0_6_18_post1_release_url: NonEmptyStr = "https://github.com/flashinfer-ai/flashinfer/releases/download/v0.6.18.post1" as NonEmptyStr
+
+fn flashinfer_0_6_18_post1_wheel_url(w: FlashInferWheel) -> NonEmptyStr {
+  join([flashinfer_0_6_18_post1_release_url as String, "/", w.filename as String], "") as NonEmptyStr
+}
+
 // THE PLAIN 0.6.18 SPELLING, which upstream pinned before the .post1 release existed:
 // requirements/cuda.txt at 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (2026-09-04) states
 // `flashinfer-python==0.6.18` and `flashinfer-cubin==0.6.18`, and docker/Dockerfile at the same
