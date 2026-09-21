@@ -27,14 +27,19 @@ import extdeps.safetensors.format {
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_revision, deepseek_v4_1_flash_engram_population,
   DeepseekV41EngramTables, deepseek_v4_1_flash_engram,
+  deepseek_v4_1_flash_weight_manifest_standing, WeightManifestAdmitted, WeightManifestRefused,
+  deepseek_v4_1_flash_tokenizer_standing, TokenizerPopulationAdmitted, TokenizerPopulationRefused,
 }
 import gunbc.spark.vllm_runtime_image_build {
-  vllm_image_build_key_inputs, v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
+  v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
+}
+import gunbc.spark.vllm_image_identity {
+  vllm_image_build_key_inputs,
 }
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
 import gunbc.spark.serving_deployment_selection { TopologyShape, topology_shape }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity }
-import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell, sha256sum_stdin_digest_via_shell }
 
 // ── ONE EXACT DeepSeek V4.1 RUNTIME CANDIDATE, AS IDENTITY ONLY ──────────────────────────────────
 //
@@ -415,9 +420,14 @@ fn v41_partition_inputs(p: V41EngramResidencyPartition) -> List<ArtifactRealizat
 
 // A MANIFEST IS OBSERVED AS ONE DIGEST OVER ITS FILE POPULATION, OR IT IS NOT YET AN IDENTITY. The
 // checkpoint revision alone is an upstream name, not bytes this repository has read.
+// AN OBLIGATION IS NOT A DEFECT. Unestablished names something still to be read or written (a
+// digest not yet taken); refused names a population the authority admits is WRONG (a duplicated
+// shard, a role with two carriers), which no reading discharges. The candidate carries them apart
+// so a defect never reads as pending work.
 type V41ManifestStanding
   = V41ManifestObserved { digest: Sha256Digest }
   | V41ManifestUnestablished { obligation: NonEmptyStr }
+  | V41ManifestRefused { first: NonEmptyStr, rest: List<NonEmptyStr> }
 
 type V41ModelSourceInputs {
   checkpoint_revision: NonEmptyStr
@@ -429,6 +439,24 @@ fn v41_manifest_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
   match m {
     V41ManifestObserved { digest: _ } => [] as List<NonEmptyStr>
     V41ManifestUnestablished { obligation: o } => [o]
+    V41ManifestRefused { first: _, rest: _ } => [] as List<NonEmptyStr>
+  }
+}
+
+// A refusal carries at least one defect BY CONSTRUCTION (first, rest), so an empty refusal that
+// would fall through to keying is not writable.
+fn v41_manifest_defects(m: V41ManifestStanding) -> List<NonEmptyStr> {
+  match m {
+    V41ManifestObserved { digest: _ } => [] as List<NonEmptyStr>
+    V41ManifestUnestablished { obligation: _ } => [] as List<NonEmptyStr>
+    V41ManifestRefused { first: f, rest: r } => concat([f], r)
+  }
+}
+
+fn v41_manifest_refused(defects: List<NonEmptyStr>, subject: String) -> V41ManifestStanding {
+  match first(defects) {
+    Present { value: f } => V41ManifestRefused { first: f, rest: defects |> skip(n: 1) }
+    Absent => V41ManifestRefused { first: join([subject, ": refused with no defect named -- the admission's refusal carried an empty population"], "") as NonEmptyStr, rest: [] as List<NonEmptyStr> }
   }
 }
 
@@ -436,12 +464,16 @@ fn v41_manifest_value(m: V41ManifestStanding) -> String {
   match m {
     V41ManifestObserved { digest: d } => d.hex as String
     V41ManifestUnestablished { obligation: _ } => ""
+    V41ManifestRefused { first: _, rest: _ } => ""
   }
 }
 
 fn v41_model_source_key(s: V41ModelSourceInputs) -> V41IdentityStanding {
+  let defects = concat(v41_manifest_defects(m: s.weights), v41_manifest_defects(m: s.tokenizer))
   let obligations = concat(v41_manifest_obligations(m: s.weights), v41_manifest_obligations(m: s.tokenizer))
-  if length(obligations) != 0 {
+  if length(defects) != 0 {
+    V41IdentityRefused { defects: defects }
+  } else if length(obligations) != 0 {
     V41IdentityUnestablished { obligations: obligations }
   } else {
     V41IdentityKeyed { key: artifact_realization_digest(inputs: [
@@ -487,10 +519,7 @@ fn v41_decl_field_wire(f: DeclField) -> String {
 // one missing axis where there were two -- a partial answer that looks complete, which is worse than the
 // silence it replaced because it would be read as the full list.
 fn v41_row_store_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
-  match m {
-    V41ManifestUnestablished { obligation: o } => [o]
-    V41ManifestObserved { digest: _ } => [] as List<NonEmptyStr>
-  }
+  v41_manifest_obligations(m: m)
 }
 
 // AN UNRECONCILED MEMBERSHIP IS AN UNESTABLISHED AXIS, NOT A KEYABLE ONE. This module's own law is that
@@ -504,7 +533,10 @@ fn v41_row_store_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
 // discharged by reading the index rather than by writing something.
 fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStanding {
   let membership = safetensors_population_closure_obligations(s: e.population)
-  if length(membership) != 0 {
+  let row_store_defects = v41_manifest_defects(m: e.row_store_encoding)
+  if length(row_store_defects) != 0 {
+    V41IdentityRefused { defects: row_store_defects }
+  } else if length(membership) != 0 {
     V41IdentityUnestablished { obligations: concat(membership, v41_row_store_obligations(m: e.row_store_encoding)) }
   } else {
   match v41_admit_partition(p: e.partition, standing: e.population) {
@@ -515,6 +547,7 @@ fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStand
       } else {
         match e.row_store_encoding {
           V41ManifestUnestablished { obligation: o } => V41IdentityUnestablished { obligations: [o] }
+          V41ManifestRefused { first: f, rest: r } => V41IdentityRefused { defects: concat([f], r) }
           V41ManifestObserved { digest: d } =>
             V41IdentityKeyed { key: artifact_realization_digest(inputs: concat(v41_partition_inputs(p: p), [
               v41_input(identity: "row_store_encoding", value: d.hex as String),
@@ -693,8 +726,8 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   },
   model_source: V41ModelSourceInputs {
     checkpoint_revision: deepseek_v4_1_flash_revision,
-    weights: V41ManifestUnestablished { obligation: "the weight manifest at dba1be0a is not read: extdeps.deepseek.deepseek_v4_1_flash carries sha256 for the two Engram shards only, not the other 46" as NonEmptyStr },
-    tokenizer: V41ManifestUnestablished { obligation: "the tokenizer file population and digests at dba1be0a are not read" as NonEmptyStr },
+    weights: v41_weight_manifest_standing(),
+    tokenizer: v41_tokenizer_standing(),
   },
   engram: V41EngramRealizationInputs {
     partition: v41_candidate_partition,
@@ -704,6 +737,40 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   },
   topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
   device: gb10_observed_compute_capability,
+}
+
+// A MANIFEST AXIS IS KEYED BY THE DIGEST OF AN ADMITTED POPULATION'S CANONICAL TEXT. The rows are
+// the publisher's declared digests at the pinned revision (extdeps.deepseek.deepseek_v4_1_flash
+// carries them with their provenance); the candidate never digests the raw row list -- it consumes
+// the module's admission (exact shard cover, index reconciliation, role cover), so a defective
+// population is a REFUSED model source naming its defects -- not an obligation and never a
+// differently keyed one.
+// The canonical text is order-free (sorted by path), so a shard digest, a file size or a path
+// that changes changes the key and a reordering does not. The digest is taken through the
+// sha256sum realization; unavailable is a typed obligation, never a structural fallback.
+fn v41_weight_manifest_standing() -> V41ManifestStanding {
+  match deepseek_v4_1_flash_weight_manifest_standing() {
+    WeightManifestRefused { defects: d } => v41_manifest_refused(defects: map(d, x => join(["weight manifest: ", x as String], "") as NonEmptyStr), subject: "the weight manifest")
+    WeightManifestAdmitted { files: _, index: _, canonical_text: t } => v41_manifest_digest(text: t, subject: "the admitted weight manifest (48 shards at dba1be0a)")
+  }
+}
+
+fn v41_tokenizer_standing() -> V41ManifestStanding {
+  match deepseek_v4_1_flash_tokenizer_standing() {
+    TokenizerPopulationRefused { defects: d } => v41_manifest_refused(defects: map(d, x => join(["tokenizer population: ", x as String], "") as NonEmptyStr), subject: "the tokenizer population")
+    TokenizerPopulationAdmitted { files: _, canonical_text: t } => v41_manifest_digest(text: t, subject: "the admitted tokenizer population at dba1be0a")
+  }
+}
+
+fn v41_manifest_digest(text: String, subject: String) -> V41ManifestStanding {
+  match sha256sum_stdin_digest_via_shell(content: text) {
+    Sha256FileDigestUnavailable { path: _, reason: r } => V41ManifestUnestablished { obligation: join([subject, " could not be digested: ", r], "") as NonEmptyStr }
+    Sha256FileDigest { digest: d } =>
+      match sha256_hex_digest(hex: d.hex as String) {
+        Absent => V41ManifestUnestablished { obligation: join([subject, ": sha256sum did not answer a sha256 digest"], "") as NonEmptyStr }
+        Present { value: h } => V41ManifestObserved { digest: h }
+      }
+  }
 }
 
 fn v41_candidate() -> V41CandidateVerdict {

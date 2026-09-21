@@ -213,6 +213,8 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/iproute2/ip_address.dag",
+  "dag/extdeps/iputils/arping.dag",
   "dag/extdeps/pci/identity.dag",
   "dag/extdeps/github/action_release.dag",
   "dag/extdeps/github/action_runtime_policy.dag",
@@ -291,6 +293,9 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/bmc/aspeed_ast2500.dag",
   "dag/extdeps/bmc/ipmi_channel.dag",
   "dag/extdeps/bmc/ipmi_boot_selection.dag",
+  "dag/extdeps/bmc/ipmi_sdr.dag",
+  "dag/extdeps/bmc/megarac_fan_policy.dag",
+  "dag/extdeps/bmc/phosphor_fan_control.dag",
   "dag/extdeps/ocp/mt_mitchell/platform.dag",
   "dag/extdeps/cpu_attachment/ilm4926.dag",
   "dag/extdeps/ssh/client_options.dag",
@@ -541,6 +546,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/cloudflare/client_v4.dag",
   "dag/extdeps/cloudflare/account_api_tokens.dag",
   "dag/extdeps/cloudflare/r2.dag",
+  "dag/extdeps/cloudflare/r2_buckets.dag",
   "dag/extdeps/deepseek/deepseek_v4_1_flash.dag",
   "dag/extdeps/zhipu/glm_5_3.dag",
   "dag/extdeps/radixark/glm_5_3_nvfp4.dag",

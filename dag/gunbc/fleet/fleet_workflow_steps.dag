@@ -462,6 +462,15 @@ DISSOLVE-ON: the first successful srv6 canary produces the measurement this enve
 
 data gunbc_ci_runner_guest_image_step_timeout_minutes: Duration = 30
 
+// THE CENSUS IMAGE BUILD IS A FULL LIVE-SERVER ISO REMASTER, NOT AN AUX STEP: sha256sum over the pinned
+// ~3 GB stock ISO, xorriso tree extraction, the pinned-dates replay, then sha256sum over the staged
+// output, all inside the served /srv/bmc export. Cancelled mid-xorriso it would leave the staging
+// directory in the export with no publication and no receipt (review 69382), so it carries the same
+// class of envelope the guest-image build does rather than the shared aux 5m.
+// STATED AS AN ENVELOPE, NOT A MEASUREMENT. DISSOLVE-ON: the first mtcollins1_census_image_publish
+// run produces the measurement this stands in for -- replace it with that receipt, dated and cited.
+data gunbc_ci_mtcollins1_census_image_step_timeout_minutes: Duration = 30
+
 data gunbc_ci_runner_guest_image_step_timeout_note: String = "Runner micro-VM guest image observe/converge step budget, raised from the shared aux 5m. It is its own constant rather than a bump to gunbc_ci_aux_step_timeout_minutes for the reason the Spark serving envelope one section up already records: that value is multiplied by the step count in the fleet job backstop, so raising it inflates every unrelated aux step and the job cap together.
 
 STATED AS AN ENVELOPE, NOT A MEASUREMENT, and the honest reason is that NONE of the three inputs has a modeled size. extdeps.virtualization.firecracker carries the CI kernel and the Ubuntu 24.04 rootfs by URL ONLY -- the vendor publishes no digest beside them, which is the same gap gunbc.runner_guest_image opens its first-observed provenance rows for, and a URL that does not carry a digest does not carry a byte count either. The Actions runner tarball is pinned by digest on extdeps.github.actions_runner and still has no modeled size. Nor has throughput from a runner host to either origin ever been measured. So no honest derivation produces a minute count, and 5m was never a considered budget for this step -- it was the shared aux default inherited by construction.
@@ -570,7 +579,25 @@ data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
 // input, so plan/apply, dashboard deploy and the launch-deployment receipt of ONE host queue behind
 // each other while different hosts stay independent. Expression-valued because the host is a
 // dispatch input, not a constant of the workflow.
-data fleet_host_mutation_concurrency_group_expression: String = "gunbc-host-mutation-${{ github.event.inputs.host }}"
+// THE PREFIX AND THE INPUT REFERENCE ARE EACH ONE DATUM, because a second mode composes its own
+// ternary around this same domain (gunbc.fleet.fleet_converge_workflow): spelling either half twice
+// would let one job move domain while the others stayed, which is exactly the interleaving the
+// ruling above forbids.
+data fleet_host_mutation_group_prefix: String = "gunbc-host-mutation-"
+
+data fleet_host_input_expression: String = "github.event.inputs.host"
+
+data fleet_host_mutation_concurrency_group_expression: String = join([fleet_host_mutation_group_prefix, "${{ ", fleet_host_input_expression, " }}"], "")
+
+// ── THE HOST DOMAIN IS NOT THE ONLY MUTATION DOMAIN, AND THE EXCEPTION IS NAMED ELSEWHERE ─────
+//
+// The row above keys the domain to the `host` INPUT, which names the EXECUTOR a dispatch runs on. For
+// every mode whose subject is that executor the two coincide and this is right. One mode's subject is
+// not its executor -- gunbc.fleet.fleet_converge_workflow's native serving apply reaches out and
+// mutates Group B's four cage-2 hosts from whichever executor was selected -- so its group is
+// composed there, where the mode's own wire value lives and a second spelling of the mode name is not
+// needed. This row stays the host-domain authority and is unchanged by that.
+data fleet_arm_mutation_group_glm_group_b_native: String = "gunbc-arm-mutation-glm-group-b-native"
 
 // The Int->Nat crossing is admitted at a function RETURN position (std.checked_arithmetic's own
 // note), so the sum of the positive per-step allowances crosses here and the public fn carries the
@@ -645,7 +672,9 @@ data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 // figure either. The runner_host_file_observe and runner_host_file_converge modes DO add steps to
 // this job -- one gated run step each plus one shared receipt upload -- and still do not move the
 // bound: a dispatch of either runs one step at gunbc_ci_runner_host_file_step_timeout_minutes and one
-// transfer-tier upload, which is below the spark_grants branch that sets the worst case.
+// transfer-tier upload, which is below the spark_grants branch that sets the worst case. The
+// site_pxe_edge_observe and site_pxe_edge_converge modes (gunbc.site_pxe_edge_converge) have the same
+// shape -- one gated run step each at that timeout plus one shared upload -- and do not move it either.
 type JobTimeoutBudget
   = JobTimeoutWithinCeiling { minutes: Int }
   | JobTimeoutExceedsCeiling { minutes: Int, ceiling: Int }

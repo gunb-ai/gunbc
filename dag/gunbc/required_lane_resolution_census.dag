@@ -1,0 +1,135 @@
+module gunbc.required_lane_resolution_census
+
+import std.types { String, Bool, List, Int }
+import v2.std.optional { Optional, Present, Absent }
+
+// FOR EVERY MODULE UNDER THE SOURCE ROOTS, DOES AT LEAST ONE REQUIRED LANE RESOLVE IT?
+//
+// DESIGN section 3 states the hazard as a warning: outside the required gate the substrate still
+// refuses and nothing asks it to, so a product-layer dependent can stop resolving, stay broken,
+// and let every required lane report SUCCESS. On 2026-09-20 it was the live state --
+// gunbc.site_pxe_edge_converge did not resolve on main while all four required lanes were green,
+// with four approvals and a place in the merge queue (gunbc#11607) -- and the question "which
+// modules can do that" had no instrument, only the warning. This module is the instrument's fold:
+// pure, over supplied populations, so its claims discriminate at one interface and its live
+// entry (gunbc.required_lane_resolution_census_live) supplies the populations from the lanes'
+// own producers.
+//
+// "RESOLVE" MEANS ONE THING: the module's source is in the source set the lane's compile
+// transaction hands to compile_to_resolved under the Strict gate. A module named only in a
+// `run:` line's argv is not resolved by that step unless the entry's closure reaches it.
+//
+// NOMINAL, NOT DIFF-SCOPED. The floor also seeds its subject from a run's diff, so a module a PR
+// touches is resolved on THAT run. The population this census reports is the complement of what
+// the lanes resolve when the diff seeds nothing -- exactly the modules a rename elsewhere can
+// break without any lane noticing, which is the incident's shape.
+//
+// IDENTITIES ARE THE PRODUCT. The unreached population is printed by identity and every count in
+// the receipt is rendered from a list the receipt also prints; nothing here is a number to be
+// transcribed into prose (DESIGN section 6: name the instrument).
+
+// One population of module identities as a compiler query answers it, or the typed reason the
+// population could not be established. The live entry's three queries
+// (source_root_ingest_module_identities, required_floor_nominal_subject_module_identities,
+// entry_closure_module_identities) return this; the census refuses on the second arm rather than
+// treating an unestablished population as empty.
+type ModuleIdentityPopulation
+  = ModuleIdentityPopulationObserved { modules: List<String> }
+  | ModuleIdentityPopulationRefused { cause: String }
+
+// WHAT ONE REQUIRED JOB RESOLVES, as a subject kind naming the producer that decides it.
+//   FloorNominalPreparedSubject -- `claim_executor --required-ci --required-lane witnesses`: the
+//     prepared subject over the gate's nominal seeds (v1_compiler.cli_run
+//     required_floor_nominal_subject_seeds, assemble_prepared_subject_closure).
+//   RunEntryClosure -- `gunbc run --entry <path>`: the entry's loader closure
+//     (v1_compiler.cli_run load_sources_for_entry_with_pool, the call resolve_entry_graph makes).
+//   ResolvesNoDagModule -- a job that compiles Rust or aggregates lane results and hands no .dag
+//     source to the compiler; the reason names what it does instead.
+type LaneResolutionSubject
+  = FloorNominalPreparedSubject
+  | RunEntryClosure { entry_path: String }
+  | ResolvesNoDagModule { reason: String }
+
+// One required job and the subjects its steps resolve. A job may carry several (the floor job
+// runs the witness fold AND the drift gate); a job with none is unclassified, which the live
+// entry refuses rather than reading as "resolves nothing".
+type LaneResolutionRow {
+  job_id: String
+  subjects: List<LaneResolutionSubject>
+}
+
+// The resolved population one (job, subject) pair contributed, supplied to the fold.
+type LaneResolvedPopulation {
+  job_id: String
+  subject: LaneResolutionSubject
+  modules: List<String>
+}
+
+type ResolutionCensusInputs {
+  admitted: List<String>
+  resolved: List<LaneResolvedPopulation>
+}
+
+type ResolutionCensus {
+  admitted: List<String>
+  reached: List<String>
+  unreached: List<String>
+  lanes: List<LaneResolvedPopulation>
+}
+
+type ResolutionCensusStanding
+  = ResolutionCensusHeld
+  | ResolutionCensusDidNotHold { unreached: List<String> }
+
+// THE JOIN IS AT IDENTITY GRAIN. Reached is every admitted identity some lane resolved; unreached
+// is the rest, in the admitted order. A resolved identity the ingestion does not admit is not an
+// admitted module and is neither reached nor unreached: the denominator is the ingestion's, not
+// the union's.
+fn resolution_census(inputs: ResolutionCensusInputs) -> ResolutionCensus {
+  let reached_by_any = inputs.resolved |> fold(init: empty_map(), f: fn(acc, lane) {
+    lane.modules |> fold(init: acc, f: fn(m, x) { map_insert(m, x, true) })
+  })
+  let reached = inputs.admitted |> filter(x => map_contains_key(reached_by_any, x))
+  let unreached = inputs.admitted |> filter(x => !map_contains_key(reached_by_any, x))
+  ResolutionCensus { admitted: inputs.admitted, reached: reached, unreached: unreached, lanes: inputs.resolved }
+}
+
+fn resolution_census_standing(c: ResolutionCensus) -> ResolutionCensusStanding {
+  if (c.unreached |> count) == 0 { ResolutionCensusHeld {} } else { ResolutionCensusDidNotHold { unreached: c.unreached } }
+}
+
+fn subject_rendered(s: LaneResolutionSubject) -> String {
+  match s {
+    FloorNominalPreparedSubject => "floor-nominal-prepared-subject"
+    RunEntryClosure { entry_path: p } => concat("run-entry-closure:", p)
+    ResolvesNoDagModule { reason: _ } => "resolves-no-dag-module"
+  }
+}
+
+fn json_string(s: String) -> String {
+  concat(concat("\"", s), "\"")
+}
+
+fn json_string_list(xs: List<String>) -> String {
+  concat(concat("[", xs |> map(x => json_string(s: x)) |> join(separator: ",")), "]")
+}
+
+// THE RECEIPT: one JSON object per line. A summary line whose counts are the lengths of lists
+// printed beneath it; one `lane` line per (job, subject) with the identities it resolved; and one
+// `unreached` line per unreached identity, so the population is greppable by identity and a
+// consumer never has to re-derive it from a count.
+fn census_receipt_lines(c: ResolutionCensus) -> List<String> {
+  let summary = concat(concat(concat(concat(
+    "{\"kind\":\"summary\",\"instrument\":\"required-lane-resolution-census\",\"admitted\":", to_string(c.admitted |> count)),
+    concat(",\"reached\":", to_string(c.reached |> count))),
+    concat(",\"unreached\":", to_string(c.unreached |> count))),
+    concat(",\"lanes\":", concat(to_string(c.lanes |> count), "}")))
+  let lane_lines = c.lanes |> map(l =>
+    concat(concat(concat(concat(concat(concat(
+      "{\"kind\":\"lane\",\"job_id\":", json_string(s: l.job_id)),
+      ",\"subject\":"), json_string(s: subject_rendered(s: l.subject))),
+      ",\"resolved\":"), to_string(l.modules |> count)),
+      concat(",\"modules\":", concat(json_string_list(xs: l.modules), "}"))))
+  let unreached_lines = c.unreached |> map(m => concat(concat("{\"kind\":\"unreached\",\"module\":", json_string(s: m)), "}"))
+  concat(concat([summary], lane_lines), unreached_lines)
+}

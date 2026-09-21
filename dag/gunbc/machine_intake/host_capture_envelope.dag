@@ -1,0 +1,563 @@
+module gunbc.machine_intake_host_capture_envelope
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure {
+  Gibibyte,
+  Mebibyte,
+  gibibyte,
+  gibibyte_to_byte_size,
+  measure_fit_count_floor,
+  mebibyte,
+  mebibyte_count,
+  mebibyte_to_byte_size,
+}
+import v2.std.optional { Present }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.posix.shell_command_language { posix_single_quote }
+
+// ONE GRAMMAR, READ IN BOTH DIRECTIONS (DESIGN §4). The census program that runs on the host EMITS
+// this envelope and the boot run's verdict PARSES it. Before this module the two sides were spelled
+// independently -- the parser as literals in gunbc.machine_intake_mtcollins1_boot_run, the emitter as
+// a program that was never committed at all -- so a renamed section or a changed separator would
+// have left a capture the verdict could not read, reported as a hardware refusal. Every token below
+// is consumed by a renderer AND by a parser; neither side authors a spelling of its own.
+//
+// THE SHAPE IS A RECONSTRUCTION, and it says what from. The only surviving evidence of the earlier
+// census is its output, artifacts/bmc/mtcollins1-host-capture.txt (attempt=3, committed in #10965);
+// the seed and program that produced it are in no commit. The framing, section names and argv here
+// are read off that file's ENVELOPE, ----SECTION, ----ARGV and ----EXIT lines, so a capture from the
+// new image parses the same way that one does.
+
+data host_capture_envelope_tag: NonEmptyStr = "GUNBC-HOST-CAPTURE"
+
+data host_capture_envelope_rule: String = "====="
+
+data host_capture_section_open: String = "----SECTION "
+
+data host_capture_argv_open: String = "----ARGV "
+
+data host_capture_exit_open: String = "----EXIT "
+
+data host_capture_line_close: String = "----"
+
+// The edac stages print one `<path> == <value>` line per counter file, which is what lets the
+// verdict read mc0's ce_count and ue_count out of a section without trusting a whole-tree summary.
+data host_capture_counter_separator: String = " == "
+
+data host_capture_edac_root: String = "/sys/devices/system/edac"
+
+data host_capture_edac_mc0: String = "/sys/devices/system/edac/mc/mc0/"
+
+data host_capture_workload_write_rc_token: String = "workload-write-rc="
+
+data host_capture_workload_stable_token: String = "workload-digest-stable=yes"
+
+// WHICH RUN THIS ENVELOPE IS, named for what the medium can actually know. attempt=3's envelope
+// carried an ATTEMPT ORDINAL, which a host counting its own boots cannot produce: the census image is
+// static media with no state across boots, so the only run identity available to it is the kernel's
+// boot id. Reusing `attempt=` for that would be DESIGN §3's meaning fork -- one spelling, two
+// materially different meanings, with nothing in the parser to discriminate -- so the field is named
+// for the value it carries. The boot-id stage prints the same value inside the envelope; here it
+// identifies the run even when every section fails.
+data host_capture_run_token: String = "boot-id="
+
+// attempt=3's spelling, carried so the historical form PARSES AS ITSELF rather than being skipped to
+// make both captures read. It is never rendered: a static medium cannot count its own boots.
+data host_capture_historical_attempt_token: String = "attempt="
+
+type HostCaptureEnvelopeMarker = HostCaptureBegin | HostCaptureEnd
+
+fn host_capture_marker_word(marker: HostCaptureEnvelopeMarker) -> String {
+  match marker {
+    HostCaptureBegin => "begin"
+    HostCaptureEnd => "end"
+  }
+}
+
+// A stage is one section of the envelope: the name the verdict looks it up by, and the command the
+// program runs. The command is printed VERBATIM on the ARGV line, so what a reader sees is what ran.
+type HostCaptureStage {
+  name: NonEmptyStr
+  command: NonEmptyStr
+}
+
+fn host_capture_edac_counters_command() -> NonEmptyStr {
+  concat(
+    "find ", host_capture_edac_root,
+    " -type f -name '*count' | sort | while read -r f; do echo \"$f",
+    host_capture_counter_separator,
+    "$(cat \"$f\")\"; done",
+  ) as NonEmptyStr
+}
+
+// THE WORKLOAD MUST NOT BE ABLE TO MINT A CLEAN RESULT. Comparing two digest lists is not enough: if
+// both hash passes FAIL the same way -- both empty, or both missing the same unreadable chunk -- the
+// two lists are equal and a naive body prints the stable token over a workload that hashed nothing.
+// So the token requires, and the exit status carries, four independent facts: every write succeeded,
+// BOTH passes exited zero, EACH pass covered exactly the expected four chunks, and the two manifests
+// agree. The chunks are named explicitly rather than globbed, so a missing chunk is a sha256sum
+// failure rather than a silently shorter list.
+data host_capture_workload_chunk_dir: String = "/dev/shm/gunbc"
+
+// THE CHUNKS ARE NAMED, NOT GLOBBED, and the expected count is DERIVED from the same row: a glob
+// silently shortens when a chunk is missing, and a separately authored count could disagree with the
+// list it counts. ONLY THE STEMS ARE AUTHORED -- the directory is host_capture_workload_chunk_dir and
+// nothing else, for the reason the tty row states one screen up. Authored twice, an edit to the dir
+// row alone would leave mkdir and rm acting on one directory while dd and sha256sum act on another:
+// the census would write its whole footprint somewhere it never cleans and STILL emit the stable
+// token, because every fact the token requires would hold about the other directory.
+data host_capture_workload_chunk_stems: String = "chunk0 chunk1 chunk2 chunk3"
+
+fn host_capture_workload_chunk_paths() -> String {
+  let stems = split(s: host_capture_workload_chunk_stems, delimiter: " ")
+  fold(stems, init: "", f: (acc, stem) => match acc == "" {
+    true => concat(host_capture_workload_chunk_dir, "/", stem)
+    false => concat(acc, " ", host_capture_workload_chunk_dir, "/", stem)
+  })
+}
+
+fn host_capture_workload_chunk_count() -> Int {
+  split(s: host_capture_workload_chunk_stems, delimiter: " ").length()
+}
+
+// THE FOOTPRINT IS A MEASURE, not digits inside a shell string. dd's operands are rendered from
+// these rows, so the size written per chunk and the block size are one fact each and the count
+// operand is DERIVED by fitting one into the other -- a footprint edit cannot leave a stale
+// count= behind, and the total this stage exercises is readable without parsing shell text.
+data host_capture_workload_chunk_size: Gibibyte = gibibyte(16)
+
+data host_capture_workload_dd_block: Mebibyte = mebibyte(1)
+
+fn host_capture_workload_dd_count() -> Nat {
+  measure_fit_count_floor(
+    capacity: gibibyte_to_byte_size(g: host_capture_workload_chunk_size),
+    each: mebibyte_to_byte_size(m: host_capture_workload_dd_block),
+  )
+}
+
+
+fn host_capture_workload_command() -> NonEmptyStr {
+  let dir = host_capture_workload_chunk_dir
+  let paths = host_capture_workload_chunk_paths()
+  let want = host_capture_workload_chunk_count() as String
+  let bs = concat(mebibyte_count(m: host_capture_workload_dd_block) as String, "M")
+  let count = host_capture_workload_dd_count() as String
+  concat(
+    "mkdir -p ", dir, " && rc=0; for f in ", paths, "; do ",
+    "dd if=/dev/urandom of=$f bs=", bs, " count=", count, " status=none || rc=1; done; ",
+    "echo ", host_capture_workload_write_rc_token, "$rc; ",
+    "a=$(sha256sum ", paths, "); sa=$?; b=$(sha256sum ", paths, "); sb=$?; ",
+    "na=$(printf '%s\\n' \"$a\" | grep -c .); nb=$(printf '%s\\n' \"$b\" | grep -c .); ",
+    "printf '%s\\n' \"$a\"; ",
+    "ok=0; [ \"$rc\" = 0 ] && [ \"$sa\" = 0 ] && [ \"$sb\" = 0 ] && [ \"$na\" = ", want, " ] && [ \"$nb\" = ", want, " ] && [ \"$a\" = \"$b\" ] && ok=1; ",
+    "[ \"$ok\" = 1 ] && echo ", host_capture_workload_stable_token, "; ",
+    "rm -rf ", dir, "; [ \"$ok\" = 1 ]",
+  ) as NonEmptyStr
+}
+
+// The census roster, in run order: attempt=3's sections with attempt=3's argv, so the two captures
+// answer the same questions about the same machine -- including the DIMM inventory (dmidecode types
+// 16 and 17) and meminfo, which the memory intake this census serves reads. ONE SECTION IS
+// DELIBERATELY NOT CARRIED: attempt=3's `dmesg-full`. The image boots with console=ttyAMA0, so the
+// kernel ring buffer is already on the very serial stream the envelope is written to, and printing
+// it again inside the envelope made it most of attempt=3's capture without adding a fact. Re-adding it is one row here if a verdict ever needs the ring buffer inside the envelope.
+// The envelope's END marker follows the last stage and is the only thing that may precede the halt;
+// it is not a section, because a section can fail and still be followed by more output, whereas END
+// is the program's statement that it wrote everything.
+data host_capture_census_stages: List<HostCaptureStage> = [
+  HostCaptureStage { name: "subject-system", command: "dmidecode --type 1" },
+  HostCaptureStage { name: "subject-baseboard", command: "dmidecode --type 2" },
+  HostCaptureStage { name: "subject-chassis", command: "dmidecode --type 3" },
+  HostCaptureStage { name: "boot-id", command: "cat /proc/sys/kernel/random/boot_id" },
+  HostCaptureStage { name: "boot-cmdline", command: "cat /proc/cmdline" },
+  HostCaptureStage { name: "kernel", command: "uname -a" },
+  HostCaptureStage { name: "boot-media", command: "ls -l /dev/disk/by-label; blkid" },
+  HostCaptureStage { name: "nproc", command: "nproc" },
+  HostCaptureStage { name: "lscpu", command: "lscpu" },
+  HostCaptureStage { name: "numa", command: "cat /sys/devices/system/node/online; numactl -H" },
+  HostCaptureStage { name: "meminfo", command: "grep -E 'MemTotal|MemAvailable' /proc/meminfo" },
+  HostCaptureStage { name: "dmidecode-type16", command: "dmidecode --type 16" },
+  HostCaptureStage { name: "dmidecode-type17", command: "dmidecode --type 17" },
+  HostCaptureStage {
+    name: "edac-mc-name",
+    command: "for d in /sys/devices/system/edac/mc/mc*; do echo \"$d/mc_name = $(cat $d/mc_name)\"; done",
+  },
+  HostCaptureStage { name: "edac-find", command: "find /sys/devices/system/edac | sort" },
+  HostCaptureStage { name: "edac-before", command: host_capture_edac_counters_command() },
+  HostCaptureStage { name: "workload", command: host_capture_workload_command() },
+  HostCaptureStage { name: "edac-after", command: host_capture_edac_counters_command() },
+]
+
+fn host_capture_marker_line(machine: NonEmptyStr, marker: HostCaptureEnvelopeMarker) -> String {
+  concat(
+    host_capture_envelope_rule, host_capture_envelope_tag as String, " ", machine as String,
+    " ", host_capture_run_token, "$GUNBC_BOOT_ID ", host_capture_marker_word(marker: marker),
+    " $(date -u +%Y-%m-%dT%H:%M:%SZ)", host_capture_envelope_rule,
+  )
+}
+
+// THE CAPTURE PROGRAM IS SHELL TEXT BUILT BY CONCATENATION, and that carrier half is declared rather
+// than left implicit: what it runs and how it is framed are modeled (the roster and the envelope
+// tokens above, read by the parser too), but the program that sequences them is a string.
+data host_capture_program_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.machine_intake_host_capture_envelope host_capture_program / host_capture_stage_program / host_capture_edac_counters_command / host_capture_workload_command -- concat-built POSIX sh for the live-session census (exec to the console, per-stage section/argv/exit framing, sync, halt), quoting through extdeps.posix.shell_command_language posix_single_quote. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) renders a stage roster through orchestration emit without a medium-as-string scaffold, at which point these renderers become one emitted program derived from the same roster rows.")
+
+fn host_capture_stage_program(stage: HostCaptureStage) -> String {
+  let name = stage.name as String
+  concat(
+    "echo ", posix_single_quote(spelling: concat(host_capture_section_open, name, host_capture_line_close)), "\n",
+    "echo ", posix_single_quote(spelling: concat(host_capture_argv_open, name, ": ", stage.command as String)), "\n",
+    "sh -c ", posix_single_quote(spelling: stage.command as String), " 2>&1\n",
+    "echo \"", host_capture_exit_open, name, ": $?\"\n",
+  )
+}
+
+// The whole program. Output goes to the console device ONLY, so the envelope is what the BMC's SOL
+// collector records; `sync` then the halt run only after END is echoed. The halt is a parameter
+// because it is the one line whose effect is on the machine rather than the envelope: the census
+// image halts with a forced power-off, and an execution witness renders the same program with a
+// halt that returns.
+fn host_capture_program(
+  machine: NonEmptyStr,
+  console_device: NonEmptyStr,
+  stages: List<HostCaptureStage>,
+  halt_command: NonEmptyStr,
+) -> NonEmptyStr {
+  concat(
+    "#!/bin/sh\n",
+    "exec >", console_device as String, " 2>&1\n",
+    "GUNBC_BOOT_ID=$(cat /proc/sys/kernel/random/boot_id)\n",
+    "echo \"", host_capture_marker_line(machine: machine, marker: HostCaptureBegin), "\"\n",
+    join(map(stages, s => host_capture_stage_program(stage: s)), ""),
+    "echo \"", host_capture_marker_line(machine: machine, marker: HostCaptureEnd), "\"\n",
+    "sync\n",
+    halt_command as String, "\n",
+  ) as NonEmptyStr
+}
+
+// ---------------------------------------------------------------------------------------------
+// ONE BOUND ENVELOPE, NOT A SEARCH OVER THE STREAM.
+//
+// The console this is read from is a CONTINUOUS STREAM across boots: a BMC's SOL capture holds every
+// run the unit has made. Searching it for "a begin line", "an end line" and "a section" independently
+// lets a verdict assemble a pass out of three different runs -- begin from the attempt that hung,
+// sections from the attempt that was interrupted, end from the attempt that halted -- and every one
+// of those reads is individually true. So the stream is BOUND FIRST: one begin, the matching end for
+// the same machine AND the same run, and only the text between them is a capture at all.
+//
+// THE RUN IDENTITY IS TYPED RATHER THAN IGNORED. attempt=3 carried an ordinal; the census image
+// carries a kernel boot id, because static media cannot count its own boots. Those are different
+// identity forms and the parser keeps them apart -- an unrecognized spelling REFUSES rather than
+// being skipped to make both parse, which would restore exactly the cross-run join this exists to
+// prevent.
+
+type HostCaptureRunIdentity
+  = HistoricalAttemptOrdinal { ordinal: NonEmptyStr }
+  | KernelBootId { boot_id: NonEmptyStr }
+
+fn host_capture_run_identity_value(run: HostCaptureRunIdentity) -> String {
+  match run {
+    HistoricalAttemptOrdinal { ordinal: o } => o as String
+    KernelBootId { boot_id: b } => b as String
+  }
+}
+
+fn host_capture_run_identity_of(field: String) -> HostCaptureRunIdentity? {
+  if starts_with(s: field, prefix: host_capture_historical_attempt_token) {
+    let rest = substring(s: field, start: host_capture_historical_attempt_token.length(), end: field.length())
+    if rest.length() == 0 { none } else { Present { value: HistoricalAttemptOrdinal { ordinal: rest as NonEmptyStr } } }
+  } else if starts_with(s: field, prefix: host_capture_run_token) {
+    let rest = substring(s: field, start: host_capture_run_token.length(), end: field.length())
+    if rest.length() == 0 { none } else { Present { value: KernelBootId { boot_id: rest as NonEmptyStr } } }
+  } else {
+    none
+  }
+}
+
+type HostCaptureMarker {
+  machine: NonEmptyStr
+  run: HostCaptureRunIdentity
+  kind: HostCaptureEnvelopeMarker
+}
+
+// A marker line is `=====GUNBC-HOST-CAPTURE <machine> <run-field> <begin|end> <instant>=====`. Every
+// field is required: a line missing the run field is not a marker, because a marker with no run
+// identity is precisely what would let two runs be joined.
+fn host_capture_marker_of(line: String) -> HostCaptureMarker? {
+  if string_contains(s: line, pattern: concat(host_capture_envelope_rule, host_capture_envelope_tag as String, " ")) == false {
+    none
+  } else {
+    match get(xs: split(s: line, delimiter: concat(host_capture_envelope_tag as String, " ")), index: 1) {
+      Absent => none
+      Present { value: after_tag } => {
+        let fields = split(s: after_tag, delimiter: " ")
+        match get(xs: fields, index: 0) {
+          Absent => none
+          Present { value: machine } =>
+            match get(xs: fields, index: 1) {
+              Absent => none
+              Present { value: run_field } =>
+                match get(xs: fields, index: 2) {
+                  Absent => none
+                  Present { value: word } =>
+                    match host_capture_run_identity_of(field: run_field) {
+                      Absent => none
+                      Present { value: run } =>
+                        if machine.length() == 0 {
+                          none
+                        } else if word == host_capture_marker_word(marker: HostCaptureBegin) {
+                          Present { value: HostCaptureMarker { machine: machine as NonEmptyStr, run: run, kind: HostCaptureBegin } }
+                        } else if word == host_capture_marker_word(marker: HostCaptureEnd) {
+                          Present { value: HostCaptureMarker { machine: machine as NonEmptyStr, run: run, kind: HostCaptureEnd } }
+                        } else {
+                          none
+                        }
+                    }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+type HostCaptureBoundSection {
+  name: NonEmptyStr
+  body: String
+}
+
+type BoundHostCaptureEnvelope {
+  machine: NonEmptyStr
+  run: HostCaptureRunIdentity
+  sections: List<HostCaptureBoundSection>
+}
+
+type HostCaptureBinding
+  = HostCaptureBound { envelope: BoundHostCaptureEnvelope }
+  | HostCaptureUnbound { reason: String }
+
+// TWO RUN IDENTITIES ARE THE SAME RUN ONLY IF THEY ARE THE SAME KIND OF IDENTITY. Comparing the
+// projected TEXT alone made attempt=3 and boot-id=3 the same run, so an envelope begun by the
+// historical program and ended by a kernel boot could close as one -- the exact confusion the two
+// forms were introduced to end. A historical attempt ordinal and a kernel boot id are drawn from
+// different spaces and a shared spelling between them means nothing.
+fn host_capture_run_identity_same(a: HostCaptureRunIdentity, b: HostCaptureRunIdentity) -> Bool {
+  match a {
+    HistoricalAttemptOrdinal { ordinal: x } =>
+      match b {
+        HistoricalAttemptOrdinal { ordinal: y } => (x as String) == (y as String)
+        KernelBootId { boot_id: _ } => false
+      }
+    KernelBootId { boot_id: x } =>
+      match b {
+        KernelBootId { boot_id: y } => (x as String) == (y as String)
+        HistoricalAttemptOrdinal { ordinal: _ } => false
+      }
+  }
+}
+
+fn host_capture_marker_matches(a: HostCaptureMarker, machine: NonEmptyStr, run: HostCaptureRunIdentity) -> Bool {
+  (a.machine as String) == (machine as String)
+    && host_capture_run_identity_same(a: a.run, b: run)
+}
+
+type HostCaptureScan {
+  begun: Bool
+  closed: Bool
+  machine: NonEmptyStr
+  run: HostCaptureRunIdentity
+  body: List<String>
+}
+
+// The first begin for the machine opens the envelope; the first end for the SAME machine and run
+// closes it. Lines before the begin and after the end are other runs' and are not read. An end that
+// precedes the begin is never reached, so a reversed pair leaves the envelope unclosed.
+fn host_capture_scan_line(acc: HostCaptureScan, line: String, machine: NonEmptyStr) -> HostCaptureScan {
+  if acc.closed {
+    acc
+  } else {
+    match host_capture_marker_of(line: line) {
+      Absent => if acc.begun { HostCaptureScan { begun: true, closed: false, machine: acc.machine, run: acc.run, body: append(acc.body, items: [line]) } } else { acc }
+      Present { value: m } =>
+        match m.kind {
+          HostCaptureBegin =>
+            if acc.begun == false && (m.machine as String) == (machine as String) {
+              HostCaptureScan { begun: true, closed: false, machine: m.machine, run: m.run, body: [] }
+            } else {
+              acc
+            }
+          HostCaptureEnd =>
+            if acc.begun && host_capture_marker_matches(a: m, machine: acc.machine, run: acc.run) {
+              HostCaptureScan { begun: true, closed: true, machine: acc.machine, run: acc.run, body: acc.body }
+            } else {
+              acc
+            }
+        }
+    }
+  }
+}
+
+fn host_capture_section_name_of(line: String) -> NonEmptyStr? {
+  if starts_with(s: line, prefix: host_capture_section_open) == false {
+    none
+  } else {
+    let rest = substring(s: line, start: host_capture_section_open.length(), end: line.length())
+    match get(xs: split(s: rest, delimiter: host_capture_line_close), index: 0) {
+      Absent => none
+      Present { value: name } => if name.length() == 0 { none } else { Present { value: name as NonEmptyStr } }
+    }
+  }
+}
+
+type HostCaptureSectionScan {
+  sections: List<HostCaptureBoundSection>
+  open_name: NonEmptyStr?
+  open_body: List<String>
+  duplicate: Bool
+}
+
+fn host_capture_section_seen(sections: List<HostCaptureBoundSection>, name: NonEmptyStr) -> Bool {
+  fold(sections, init: false, f: (acc, s) => acc || (s.name as String) == (name as String))
+}
+
+fn host_capture_close_open_section(acc: HostCaptureSectionScan) -> List<HostCaptureBoundSection> {
+  match acc.open_name {
+    Absent => acc.sections
+    Present { value: n } => append(acc.sections, items: [HostCaptureBoundSection { name: n, body: join(acc.open_body, "\n") }])
+  }
+}
+
+// A section runs from its opener to the next opener or to the envelope's end. A name that opens
+// TWICE inside one envelope refuses the whole capture: with two candidates there is no fact about
+// which one the verdict read, and picking either is the silent choice this refuses to make.
+fn host_capture_section_scan_line(acc: HostCaptureSectionScan, line: String) -> HostCaptureSectionScan {
+  match host_capture_section_name_of(line: line) {
+    Absent =>
+      match acc.open_name {
+        Absent => acc
+        Present { value: _ } => HostCaptureSectionScan { sections: acc.sections, open_name: acc.open_name, open_body: append(acc.open_body, items: [line]), duplicate: acc.duplicate }
+      }
+    Present { value: n } => {
+      let closed = host_capture_close_open_section(acc: acc)
+      HostCaptureSectionScan {
+        sections: closed,
+        open_name: Present { value: n },
+        open_body: [],
+        duplicate: acc.duplicate || host_capture_section_seen(sections: closed, name: n),
+      }
+    }
+  }
+}
+
+fn host_capture_bind(capture: String, machine: NonEmptyStr) -> HostCaptureBinding {
+  let scan = fold(
+    split(s: capture, delimiter: "\n"),
+    init: HostCaptureScan { begun: false, closed: false, machine: machine, run: KernelBootId { boot_id: "unbound" }, body: [] },
+    f: (acc, line) => host_capture_scan_line(acc: acc, line: line, machine: machine),
+  )
+  if scan.begun == false {
+    HostCaptureUnbound { reason: concat("no begin marker for ", machine as String) }
+  } else if scan.closed == false {
+    HostCaptureUnbound {
+      reason: concat(
+        "the envelope for ", machine as String, " run ", host_capture_run_identity_value(run: scan.run),
+        " was opened and never closed by an end marker for that same run",
+      )
+    }
+  } else {
+    let sections = fold(
+      scan.body,
+      init: HostCaptureSectionScan { sections: [], open_name: none, open_body: [], duplicate: false },
+      f: (acc, line) => host_capture_section_scan_line(acc: acc, line: line),
+    )
+    if sections.duplicate {
+      HostCaptureUnbound {
+        reason: concat("a section name opens twice inside the envelope for ", machine as String, "; which one the verdict would read is not a fact")
+      }
+    } else {
+      HostCaptureBound {
+        envelope: BoundHostCaptureEnvelope {
+          machine: scan.machine,
+          run: scan.run,
+          sections: host_capture_close_open_section(acc: sections),
+        }
+      }
+    }
+  }
+}
+
+fn host_capture_bound_section(envelope: BoundHostCaptureEnvelope, name: String) -> HostCaptureBoundSection? {
+  fold(
+    envelope.sections,
+    init: none,
+    f: (acc, s) => match acc {
+      Present { value: _ } => acc
+      Absent => if (s.name as String) == name { Present { value: s } } else { none }
+    },
+  )
+}
+
+fn host_capture_exit_zero_line(name: String) -> String {
+  concat(host_capture_exit_open, name, ": 0")
+}
+
+fn host_capture_bound_section_exit_zero(envelope: BoundHostCaptureEnvelope, name: String) -> Bool {
+  match host_capture_bound_section(envelope: envelope, name: name) {
+    Absent => false
+    Present { value: s } => string_contains(s: s.body, pattern: host_capture_exit_zero_line(name: name))
+  }
+}
+
+// The ARGV line a bound section carries, as the command text after its own `----ARGV <name>: `
+// prefix. The historical binding reads this to check what attempt=3 ran against what the new roster
+// says it ran.
+fn host_capture_bound_section_argv(envelope: BoundHostCaptureEnvelope, name: String) -> String? {
+  match host_capture_bound_section(envelope: envelope, name: name) {
+    Absent => none
+    Present { value: s } => {
+      let opener = concat(host_capture_argv_open, name, ": ")
+      match get(xs: split(s: s.body, delimiter: opener), index: 1) {
+        Absent => none
+        Present { value: tail } => get(xs: split(s: tail, delimiter: "\n"), index: 0)
+      }
+    }
+  }
+}
+
+// The count must be the WHOLE output line of the nproc section, immediately before that section's
+// zero exit: a 160 printed anywhere else in the capture, or inside nproc beside other text, is not a
+// reading of nproc.
+fn host_capture_bound_nproc_exact(envelope: BoundHostCaptureEnvelope, threads: String) -> Bool {
+  match host_capture_bound_section(envelope: envelope, name: "nproc") {
+    Absent => false
+    Present { value: s } =>
+      string_contains(s: s.body, pattern: concat("\n", threads, "\n", host_capture_exit_zero_line(name: "nproc")))
+  }
+}
+
+fn host_capture_mc0_counter(section: String, counter: String, value: String) -> Bool {
+  string_contains(s: section, pattern: concat(host_capture_edac_mc0, counter, host_capture_counter_separator, value, "\n"))
+}
+
+fn host_capture_bound_edac_clean(envelope: BoundHostCaptureEnvelope, name: String) -> Bool {
+  match host_capture_bound_section(envelope: envelope, name: name) {
+    Absent => false
+    Present { value: s } =>
+      string_contains(s: s.body, pattern: host_capture_exit_zero_line(name: name))
+        && host_capture_mc0_counter(section: s.body, counter: "ce_count", value: "0")
+        && host_capture_mc0_counter(section: s.body, counter: "ue_count", value: "0")
+  }
+}
+
+// Both tokens are matched as WHOLE OUTPUT LINES. The ARGV line prints the workload command verbatim
+// and that command contains both tokens, so a substring match reads the program text as its own
+// result and a failed workload passes.
+fn host_capture_bound_workload_stable(envelope: BoundHostCaptureEnvelope) -> Bool {
+  match host_capture_bound_section(envelope: envelope, name: "workload") {
+    Absent => false
+    Present { value: s } =>
+      string_contains(s: s.body, pattern: host_capture_exit_zero_line(name: "workload"))
+        && string_contains(s: s.body, pattern: concat("\n", host_capture_workload_write_rc_token, "0\n"))
+        && string_contains(s: s.body, pattern: concat("\n", host_capture_workload_stable_token, "\n"))
+  }
+}

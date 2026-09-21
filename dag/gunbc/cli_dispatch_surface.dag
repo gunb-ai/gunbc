@@ -333,7 +333,7 @@ fn gunbc_cli_version_text(identity: CliVersionIdentity) -> String {
 // The policy and formatting are modeled above; `build.rs` remains the host observation that asks
 // Git for HEAD and observes whether the Rust inputs are dirty, then binds GUNBC_BUILD_IDENTITY for
 // the Rust realization. This is counted interim HAND-Rust growth, not a census shrink.
-data gunbc_cli_build_identity_seed_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the GUNBC_BUILD_IDENTITY observation block in src/v1/stage0/build.rs — exactly one removable seed unit. DISSOLVES WHEN the v1-zero-hand-maintained-rust ROADMAP lane (gunbc.roadmap_authority roadmap_nodes) emits the build-time Git observation from gunbc.cli_dispatch_surface, at which point git_output and the identity block delete together rather than leaving a second producer. Checkable until deletion: GUNBC_BUILD_IDENTITY has exactly one cargo:rustc-env producer in src/v1/stage0/build.rs and gunbc_cli_version_text is its sole formatting authority.")
+data gunbc_cli_build_identity_seed_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the GUNBC_BUILD_IDENTITY observation block in src/v1/stage0/build.rs — exactly one removable seed unit. DISSOLVES WHEN the v1-zero-hand-maintained-rust ROADMAP lane (gunbc.roadmap_authority roadmap_nodes) emits the build-time Git observation from gunbc.cli_dispatch_surface, at which point git_output and the identity block delete together rather than leaving a second producer. Checkable until deletion: GUNBC_BUILD_IDENTITY has exactly one cargo:rustc-env producer in src/v1/stage0/build.rs, gunbc_cli_version_text is its sole formatting authority, and the rerun watch set that keeps the identity fresh is read from the one projection src/v1/stage0/linked_partition_crates.generated.txt (Stage0LinkedPartitionCratesArtifact, rendered by gunbc.stage0_executable_assembly_emit from the partition authority) -- build.rs names no crate itself and refuses the build when that projection is unreadable, names a crate without a manifest, or is empty.")
 
 // WHAT IS DELIBERATELY NOT HERE: `--dry-run`.
 //
@@ -811,12 +811,12 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
       verb: "test",
       variant: "Test",
       doc: [
-        "Run targets named by an absolute label or a bazel-style target PATTERN, and",
-        "report the standing each subject's own producer answers in. An exact label",
-        "routes to its bound producer; a set form (`//pkg:all`, `//pkg:*`,",
-        "`//pkg/...`) selects and runs every matching witness module. A form the",
-        "pattern grammar does not admit, or an unbound or unknown target, refuses",
-        "rather than reporting a pass."
+        "Run a target named by an absolute label or a bazel-style target PATTERN, and",
+        "report the standing its own producer answers in. An exact label routes to",
+        "its bound producer. A set form (`//pkg:all`, `//pkg:*`, `//pkg/...`) is",
+        "admitted and refused with status 2: it runs only through the native test",
+        "route, never the interpreter. A form the pattern grammar does not admit, or",
+        "an unbound or unknown target, refuses rather than reporting a pass."
       ],
       operands: [
         CliOperandRow {

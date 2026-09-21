@@ -36,6 +36,7 @@ import extdeps.github.pagination {
   github_continuation_from_link_header, github_listing_subject, github_first_page_cursor
 }
 import extdeps.github.cli_api_include { GhApiIncludedParse, GhApiIncludedParsed, GhApiIncludedUnreadable, parse_gh_api_included }
+import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import extdeps.github.ci_runner {
   GitHubSelfHostedRunnerRegistration,
   GitHubRunnerRegistrationStatus, GitHubRunnerOnline, GitHubRunnerOffline,
@@ -45,7 +46,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.host_cli_dependency { HostCliDependencyAbsence, first_absent_gh_cli_operation_host_cli_dependency, host_dependency_absent_wire }
 import gunbc.runner_slot_allocation { runner_label_sets_equal }
 import gunbc.runner_host_deploy { github_app_runner_org, gunbc_ci_github_app }
-import gunbc.fleet.org_actions_converge {
+import gunbc.fleet.org_actions_inspection {
   org_admin_token_env_name,
   json_member_string,
   json_member_int,
@@ -63,7 +64,7 @@ import gunbc.fleet_runner_connectivity {
 // waiting for: GET /orgs/{org}/actions/runners, read through the gh CLI under the gunbai-ci App
 // installation token that gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude mints in-run into
 // GUNBC_ORG_ADMIN_TOKEN and GH_TOKEN -- the same credential route and custody
-// gunbc.fleet.org_actions_converge already reads runner groups through. Nothing here holds a key,
+// gunbc.fleet.org_actions_inspection already reads runner groups through. Nothing here holds a key,
 // mints a token, or places one on an argv.
 //
 // WITHOUT THAT CREDENTIAL THE ANSWER IS RosterReadUnavailable, NEVER THE PINNED CORPUS. The
@@ -320,9 +321,22 @@ fn roster_request_target(listing: OrganizationRunnerListing, cursor: PageCursor)
 // WHAT ONE REQUEST RETURNED, as the transport hands it back. The live walk fills it from gh; a
 // witness fills it from a supplied response. Everything after it -- admission, framing, decode,
 // the fold -- is the same code in both.
-type RosterTransportResponse {
-  stdout: String
-  stderr: String
+//
+// TWO ARMS BECAUSE THE TRANSPORT HAS TWO ANSWERS. RosterTransportAnswered is a gh process that ran:
+// its streams are what the framing reader consumes, and a non-2xx status inside them is still an
+// answer. RosterTransportRefused is extdeps.transports.shell ShellSpawnRefused carried to the
+// walk: no process ran, so there are no streams to read, and the arm keeps the program and the
+// host's cause instead of a fabricated empty stdout. A record with a nullable stdout would have
+// made every reader unwrap an Optional to learn a fact the discriminator already states. This is
+// where a gh that disappears MID-WALK becomes a page failure rather than an aborted evaluation --
+// the executor prerequisite gunbc.host_cli_dependency observes before the first request is an
+// earlier reading, not the result of the spawn that failed later.
+type RosterTransportResponse
+  = RosterTransportAnswered { stdout: String, stderr: String }
+  | RosterTransportRefused { program: NonEmptyStr, cause: NonEmptyStr }
+
+fn spawn_refusal_cause(program: NonEmptyStr, cause: NonEmptyStr) -> NonEmptyStr {
+  join(["gh could not be spawned: '", program as String, "' ", cause as String], "") as NonEmptyStr
 }
 
 fn fetch_roster_page_via(
@@ -332,16 +346,38 @@ fn fetch_roster_page_via(
 ) -> OrganizationRunnerRosterPageRead {
   match roster_request_target(listing: listing, cursor: cursor) {
     RosterRequestRefused { cause } => RosterPageFailed { cause: cause }
-    RosterRequestAt { target } => {
-      let response = respond(target)
-      roster_page_read_from_included(target: target as String, stdout: response.stdout, stderr: response.stderr)
+    RosterRequestAt { target } => match respond(target) {
+      RosterTransportRefused { program, cause } => RosterPageFailed { cause: spawn_refusal_cause(program: program, cause: cause) }
+      RosterTransportAnswered { stdout, stderr } =>
+        roster_page_read_from_included(target: target as String, stdout: stdout, stderr: stderr)
     }
   }
 }
 
+// THE gh REALIZATIONS OF THE TRANSPORT, one per operation. Each matches the operation's declared
+// ShellOutcome BEFORE it reads a stream, because on ShellSpawnRefused the streams are absent.
 fn gh_roster_transport(target: NonEmptyStr) -> RosterTransportResponse {
   let response = github.CliOrgSelfHostedRunners.ListOrgRunnersPage(target: target)
-  RosterTransportResponse { stdout: response.stdout, stderr: response.stderr }
+  match response.outcome {
+    ShellSpawnRefused { program, cause } => RosterTransportRefused { program: program, cause: cause }
+    ShellExited => RosterTransportAnswered { stdout: response.stdout, stderr: response.stderr }
+  }
+}
+
+fn gh_organization_transport(org: NonEmptyStr) -> RosterTransportResponse {
+  let response = github.CliOrganizations.GetOrganization(org: org)
+  match response.outcome {
+    ShellSpawnRefused { program, cause } => RosterTransportRefused { program: program, cause: cause }
+    ShellExited => RosterTransportAnswered { stdout: response.stdout, stderr: response.stderr }
+  }
+}
+
+fn gh_runner_transport(org: NonEmptyStr, runner_id: Int) -> RosterTransportResponse {
+  let response = github.CliOrgSelfHostedRunners.GetOrgRunner(org: org, runner_id: runner_id)
+  match response.outcome {
+    ShellSpawnRefused { program, cause } => RosterTransportRefused { program: program, cause: cause }
+    ShellExited => RosterTransportAnswered { stdout: response.stdout, stderr: response.stderr }
+  }
 }
 
 // THE WALK KEEPS WHAT std.page_fold DELIBERATELY DOES NOT, AND SAYS WHY.
@@ -655,28 +691,51 @@ fn organization_runner_roster_org() -> NonEmptyStr {
 }
 
 // The numeric id is READ from the authority (GET /orgs/{org}), never authored, and only so that
-// GitHub's own id-addressed continuation links can be admitted as this organization's.
-fn organization_runner_scope(org: NonEmptyStr) -> OrganizationRunnerScope {
-  let response = github.CliOrganizations.GetOrganization(org: org)
-  OrganizationRunnerScope { login: org, id: organization_id_from_included(stdout: response.stdout) }
+// GitHub's own id-addressed continuation links can be admitted as this organization's. An answer
+// without a usable id (a non-200, an unreadable body) leaves the id absent and the walk proceeds --
+// id-addressed continuations then refuse rather than guess. A transport that never spawned gh is
+// not that: nothing about the organization was read, so the scope is not formed and the read
+// reports unavailable with the spawn's cause.
+type OrganizationScopeRead
+  = OrganizationScopeFormed { scope: OrganizationRunnerScope }
+  | OrganizationScopeUnread { cause: NonEmptyStr }
+
+fn organization_runner_scope_from(org: NonEmptyStr, response: RosterTransportResponse) -> OrganizationScopeRead {
+  match response {
+    RosterTransportRefused { program, cause } => OrganizationScopeUnread { cause: spawn_refusal_cause(program: program, cause: cause) }
+    RosterTransportAnswered { stdout, stderr: _ } =>
+      OrganizationScopeFormed { scope: OrganizationRunnerScope { login: org, id: organization_id_from_included(stdout: stdout) } }
+  }
+}
+
+fn organization_runner_scope(org: NonEmptyStr) -> OrganizationScopeRead {
+  organization_runner_scope_from(org: org, response: gh_organization_transport(org: org))
+}
+
+fn unavailable_roster_report(reason: String, note: String) -> OrganizationRunnerRosterReport {
+  OrganizationRunnerRosterReport {
+    evidence: RosterReadUnavailable { reason: reason },
+    pages: [],
+    pages_read: 0,
+    disputed_ids: [],
+    note: note
+  }
 }
 
 fn organization_runner_roster_report(org: NonEmptyStr, page_size: PageSize) -> OrganizationRunnerRosterReport {
   match organization_runner_read_route() {
-    OrgRunnerRouteRefused { reason } => OrganizationRunnerRosterReport {
-      evidence: RosterReadUnavailable { reason: reason as String },
-      pages: [],
-      pages_read: 0,
-      disputed_ids: [],
-      note: "credential route refused"
-    }
-    OrgRunnerRouteAdmitted { route: _ } => {
-      let walk = roster_walk_pump(
-        listing: OrganizationRunnerListing { scope: organization_runner_scope(org: org), page_size: page_size },
-        walk: roster_walk_begin(),
-        respond: fn(t) { gh_roster_transport(target: t) }
-      )
-      classify_roster_walk(walk: walk, observed_on: clock_now_probed_at_or_unknown())
+    OrgRunnerRouteRefused { reason } => unavailable_roster_report(reason: reason as String, note: "credential route refused")
+    OrgRunnerRouteAdmitted { route: _ } => match organization_runner_scope(org: org) {
+      OrganizationScopeUnread { cause } =>
+        unavailable_roster_report(reason: concat("the organization was not read: ", cause as String), note: "organization read refused before the first page")
+      OrganizationScopeFormed { scope } => {
+        let walk = roster_walk_pump(
+          listing: OrganizationRunnerListing { scope: scope, page_size: page_size },
+          walk: roster_walk_begin(),
+          respond: fn(t) { gh_roster_transport(target: t) }
+        )
+        classify_roster_walk(walk: walk, observed_on: clock_now_probed_at_or_unknown())
+      }
     }
   }
 }
@@ -774,6 +833,22 @@ fn runner_visibility_from_report(org: NonEmptyStr, route: OrgRunnerReadRoute, re
   }
 }
 
+// THE PER-ID READ OVER WHAT ITS TRANSPORT RETURNED: a gh that could not be spawned is Unobserved
+// with the spawn's cause -- never Absent, which only a 404 under established visibility may say.
+fn runner_id_observation_from_transport(
+  org: NonEmptyStr,
+  visibility: OrganizationRunnerVisibility,
+  runner_id: Int,
+  response: RosterTransportResponse,
+) -> OrganizationRunnerIdObservation {
+  match response {
+    RosterTransportRefused { program, cause } =>
+      RunnerIdUnobserved { org: org, runner_id: runner_id, reason: spawn_refusal_cause(program: program, cause: cause) }
+    RosterTransportAnswered { stdout, stderr } =>
+      runner_id_observation_from_included(org: org, visibility: visibility, runner_id: runner_id, stdout: stdout, stderr: stderr)
+  }
+}
+
 // ONE GET PER ID, joined against visibility the caller established for the same organization.
 fn organization_runner_id_observations(
   org: NonEmptyStr,
@@ -782,10 +857,8 @@ fn organization_runner_id_observations(
 ) -> List<OrganizationRunnerIdObservation> {
   match organization_runner_read_route() {
     OrgRunnerRouteRefused { reason } => map(runner_ids, id => RunnerIdUnobserved { org: org, runner_id: id, reason: reason })
-    OrgRunnerRouteAdmitted { route: _ } => map(runner_ids, id => {
-      let response = github.CliOrgSelfHostedRunners.GetOrgRunner(org: org, runner_id: id)
-      runner_id_observation_from_included(org: org, visibility: visibility, runner_id: id, stdout: response.stdout, stderr: response.stderr)
-    })
+    OrgRunnerRouteAdmitted { route: _ } => map(runner_ids, id =>
+      runner_id_observation_from_transport(org: org, visibility: visibility, runner_id: id, response: gh_runner_transport(org: org, runner_id: id)))
   }
 }
 

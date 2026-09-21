@@ -13,7 +13,6 @@ import extdeps.bazel.target_pattern {
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, json_bool, json_array, serialize_json }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
-  dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown,
 }
 import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap_execution_contract { GitWorkspaceCapability }
@@ -26,12 +25,8 @@ import gunbc.compute.test_selection {
   WitnessModuleSelection, WitnessModuleSelected, WitnessModuleNotAWitness, WitnessStanding, WitnessPlanned, WitnessDeclined,
 }
 
-// THE CANONICAL TEST PROCESS, EFFECTFUL HALF: `gunbc test <pattern>` for a worker. The CLI verb
-// admits patterns (gunbc.cli_dispatch_surface names extdeps.bazel.target_pattern as the operand's
-// authority) and reaches this module through `test_verb_pattern_cli` below; `test_pattern_cli` is
-// the same entry spelled for the harness, which knows the instance's repo root rather than the
-// host it is on. Both are thin instance resolutions over the ONE semantics, `test_run` -- the
-// subject is a SNAPSHOT of the worker's worktree -- the tree it has on disk,
+// THE CANONICAL TEST PROCESS, EFFECTFUL HALF: `gunbc test <pattern>` for a worker, until the CLI verb
+// admits patterns. The subject is a SNAPSHOT of the worker's worktree -- the tree it has on disk,
 // staged and written as a dangling commit that moves no ref -- so a worker that may not commit can
 // still test exactly the bytes it will hand back, and the verifier that later tests the committed
 // head lands on the same identity when the trees agree. Every selected module runs as one RunClaims
@@ -288,39 +283,20 @@ fn compile_entry_cli(repo_root: String, worktree: String, entry: String, receipt
 // The report is written to receipt_path; the exit is zero only when at least one module was selected
 // and every selected module ran green or was wholly declined by the floor's home policy. A pattern
 // that selects nothing is a failure, not a pass: the worker named a package that does not exist.
-//
-// THE INSTANCE RESOLUTION IS THE ONLY THING THE TWO ENTRIES DECIDE, and each decides it for the
-// caller it serves. `test_pattern_cli` resolves by REPO ROOT because the harness knows the
-// instance's root; `test_verb_pattern_cli` resolves by HOST because the `test` verb runs wherever
-// the worker is standing and its worktree is not the instance's registered root. Everything below
-// the resolution -- snapshot, selection, execution, receipt, exit -- is the one body, so the two
-// entries cannot drift apart on anything but the question each actually answers.
-fn test_run_cli(instance: HostDashboardInstance, worktree: String, pattern: String, receipt_path: String) -> ProcessExit {
-  let report = test_run(instance: instance, worktree: worktree, pattern_text: pattern)
-  let document = serialize_json(v: test_run_report_json(r: report))
-  let receipt = Filesystem.Write(path: receipt_path, content: document)
-  if !receipt.success {
-    ExitFailure { code: 2, reason: join(["gunbc test: receipt could not be written to ", receipt_path, ": ", receipt.error, "; report was ", document], "") }
-  } else if test_run_succeeded(r: report) {
-    ExitSuccess
-  } else {
-    ExitFailure { code: 1, reason: join(["gunbc test: ", document], "") }
-  }
-}
-
 fn test_pattern_cli(repo_root: String, worktree: String, pattern: String, receipt_path: String) -> ProcessExit {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: 2, reason: join(["gunbc test: no dashboard instance is rooted at ", r], "") }
-    DashboardInstanceResolved { instance } => test_run_cli(instance: instance, worktree: worktree, pattern: pattern, receipt_path: receipt_path)
-  }
-}
-
-// THE VERB'S ENTRY (`gunbc test <pattern>` on a set form), resolved by the host the process runs
-// on. An unregistered host refuses as itself -- no observation was taken, which is exit 2, not a
-// failing run.
-fn test_verb_pattern_cli(host: String, worktree: String, pattern: String, receipt_path: String) -> ProcessExit {
-  match dashboard_instance_for_host(host: host) {
-    DashboardInstanceHostUnknown { host: h } => ExitFailure { code: 2, reason: join(["gunbc test: no dashboard instance answers for host ", h], "") }
-    DashboardInstanceForHost { instance } => test_run_cli(instance: instance, worktree: worktree, pattern: pattern, receipt_path: receipt_path)
+    DashboardInstanceResolved { instance } => {
+      let report = test_run(instance: instance, worktree: worktree, pattern_text: pattern)
+      let document = serialize_json(v: test_run_report_json(r: report))
+      let receipt = Filesystem.Write(path: receipt_path, content: document)
+      if !receipt.success {
+        ExitFailure { code: 2, reason: join(["gunbc test: receipt could not be written to ", receipt_path, ": ", receipt.error, "; report was ", document], "") }
+      } else if test_run_succeeded(r: report) {
+        ExitSuccess
+      } else {
+        ExitFailure { code: 1, reason: join(["gunbc test: ", document], "") }
+      }
+    }
   }
 }

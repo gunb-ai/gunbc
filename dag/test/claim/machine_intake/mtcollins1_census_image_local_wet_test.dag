@@ -1,0 +1,260 @@
+module test.claim.mtcollins1_census_image_local_wet
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import extdeps.exec.command { LocalExec }
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.command_runner { run_shell_command_observe }
+import extdeps.shell.exec { ProcessObservation }
+import gunbc.machine_intake_host_capture_envelope {
+  HostCaptureBound,
+  HostCaptureStage,
+  HostCaptureUnbound,
+  host_capture_bind,
+  host_capture_bound_edac_clean,
+  host_capture_bound_nproc_exact,
+  host_capture_bound_section_exit_zero,
+  host_capture_bound_workload_stable,
+  host_capture_census_stages,
+  host_capture_program,
+  host_capture_workload_command,
+}
+import gunbc.machine_intake_host_capture_historical_binding {
+  bindings_hold_against_capture,
+  census_historical_capture,
+}
+import std.content_hash { Sha256Hash }
+import std.measure { byte_size_count }
+import extdeps.shell
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.provisioning.ubuntu_seeded_install_media {
+  ubuntu_seeded_install_media_built,
+  ubuntu_seeded_install_media_record_path,
+}
+import gunbc.machine_intake_boot_image_fetch { boot_image_published_path }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_input }
+import gunbc.seeded_install_media_publish {
+  SeededImageResolution,
+  SeededImageResolved,
+  SeededImageRecordedImageAbsent,
+  SeededImageRecordDiverged,
+  resolve_seeded_image,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INHABITANCE HALF OF test.claim.mtcollins1_census_image (DESIGN §3: a supplied input owes one
+// claim that the real producer emits that shape). The hermetic file hands the parser designed
+// captures; these two claims run the real producers. The first reads the one capture a census host
+// has actually written. The second executes the PROGRAM THE RENDERER WRITES under a real shell and
+// hands its real output to the parser, so the route asserted is render -> run -> parse and not a
+// string built from the same tokens the parser reads.
+//
+// It is local-wet for the reason the precedent in test.claim.spark_snapshot_verify_wrapper_local_wet
+// gives: shell.Exec.RunArgv and Filesystem.Read carry no mock_response, and their subject here is the
+// output of a real process and the bytes of a real file. Nothing leaves the host; there is no network.
+//
+// attempt=3 was written by the program this grammar reconstructs, so the grammar must read it on
+// every axis the census verdict uses. A reconstruction that drifted from the real framing fails here.
+// attempt=3's capture must BIND -- one begin, the matching end for the same machine and run -- and
+// every verdict axis must read that bound envelope. This is the committed file, not a copy.
+test fn the_attempt_three_capture_binds_and_reads_by_real_execution() -> Bool {
+  let read = Filesystem.Read(path: census_historical_capture.path as String)
+  read.success && match host_capture_bind(capture: read.content, machine: "mtcollins1") {
+    HostCaptureUnbound { reason: _ } => false
+    HostCaptureBound { envelope: e } =>
+      host_capture_bound_nproc_exact(envelope: e, threads: "160")
+        && host_capture_bound_edac_clean(envelope: e, name: "edac-before")
+        && host_capture_bound_edac_clean(envelope: e, name: "edac-after")
+        && host_capture_bound_workload_stable(envelope: e)
+        && host_capture_bound_section_exit_zero(envelope: e, name: "boot-media")
+  }
+}
+
+// THE HISTORICAL MAP IS CHECKED AGAINST THE BYTES, not by eye: every binding row's `original` must be
+// the ARGV line the committed capture actually carries, every Exact row's command must BE that line,
+// and the omitted section must be present in the file and absent from the roster.
+test fn the_historical_binding_holds_against_the_committed_capture_by_real_execution() -> Bool {
+  let read = Filesystem.Read(path: census_historical_capture.path as String)
+  read.success && match host_capture_bind(capture: read.content, machine: "mtcollins1") {
+    HostCaptureUnbound { reason: _ } => false
+    HostCaptureBound { envelope: e } => bindings_hold_against_capture(envelope: e, stages: host_capture_census_stages)
+  }
+}
+
+// THE PRODUCER IS CONSTRAINED BY THE CAPTURE'S COMMITTED IDENTITY, not by its name. The bindings
+// above are statements about ONE artifact; read against a different file they would be statements
+// about nothing, and the file sits in the worktree where anything may rewrite it. So the digest and
+// the byte count the census observation committed are checked against the bytes on disk, and this
+// is the claim that goes red on the brief's digest-disagreement refusal. It also makes the identity
+// row load-bearing: before this, the row named a digest that nothing compared anything to.
+test fn the_committed_capture_matches_its_recorded_identity_by_real_execution() -> Bool {
+  let path = census_historical_capture.path
+  let digest_holds = match sha256sum_file_digest_via_shell(path: path) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+    Sha256FileDigest { digest: observed } =>
+      match census_historical_capture.digest {
+        Sha256Hash(recorded) => (observed.hex as String) == (recorded.hex as String)
+        _ => false
+      }
+  }
+  let counted = run_shell_command_observe(
+    command: posix_sh_program_command(script: concat("printf '%s' \"$(wc -c < ", path as String, ")\"\n")),
+    transport: LocalExec,
+  )
+  digest_holds
+    && counted.exit_code == 0
+    && counted.stdout == (byte_size_count(b: census_historical_capture.byte_count) as String)
+}
+
+// A roster whose stages print what the census stages print, cheaply: the nproc reading, mc0's counter
+// lines, the workload's two result tokens, and one stage that FAILS so the exit framing is exercised
+// on a nonzero status as well as zero. The halt returns, so running it halts nothing.
+data census_round_trip_stages: List<HostCaptureStage> = [
+  HostCaptureStage { name: "nproc", command: "echo 160" },
+  HostCaptureStage {
+    name: "edac-before",
+    command: "printf '/sys/devices/system/edac/mc/mc0/ce_count == 0\\n/sys/devices/system/edac/mc/mc0/ue_count == 0\\n'",
+  },
+  HostCaptureStage { name: "workload", command: "echo workload-write-rc=0; echo workload-digest-stable=yes" },
+  HostCaptureStage { name: "boot-media", command: "echo 'it'\\''s quoted'; exit 3" },
+]
+
+test fn the_rendered_program_runs_and_its_output_parses_by_real_execution() -> Bool {
+  let program = host_capture_program(
+    machine: "witness",
+    console_device: "/dev/stdout",
+    stages: census_round_trip_stages,
+    halt_command: "true",
+  )
+  let obs = run_shell_command_observe(
+    command: posix_sh_program_command(script: program as String),
+    transport: LocalExec,
+  )
+  let out = obs.stdout
+  obs.exit_code == 0
+    && match host_capture_bind(capture: out, machine: "witness") {
+      HostCaptureUnbound { reason: _ } => false
+      HostCaptureBound { envelope: e } =>
+        host_capture_bound_nproc_exact(envelope: e, threads: "160")
+          && host_capture_bound_edac_clean(envelope: e, name: "edac-before")
+          && host_capture_bound_workload_stable(envelope: e)
+          && host_capture_bound_section_exit_zero(envelope: e, name: "boot-media") == false
+    }
+    && string_contains(s: out, pattern: "----EXIT boot-media: 3")
+    && string_contains(s: out, pattern: "\nit's quoted\n")
+}
+
+fn census_image_path_in(dir: NonEmptyStr, digest: NonEmptyStr) -> NonEmptyStr {
+  boot_image_published_path(
+    export_dir: dir,
+    image_name: ubuntu_seeded_install_media_built(input: mtcollins1_census_image_input, output_digest: digest).image_name,
+  )
+}
+
+// THE RESOLVER'S THREE UNRESOLVED STATES KEEP THEIR REMEDIES APART, driven through the real resolver
+// against a real directory. A record whose image was REMOVED resolves as absent (publish may rebuild
+// into the free name), never as diverged; an image holding OTHER bytes under the recorded name is
+// diverged (nothing is replaced); and the positive control -- the record naming the file's own
+// measured digest -- resolves. The digest is read off the written file, not authored beside it.
+test fn a_removed_image_is_absent_not_diverged_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as NonEmptyStr
+  let probe_path = concat(dir.path as String, "/probe") as NonEmptyStr
+  let wrote_probe = Filesystem.Write(path: probe_path as String, content: "census-image-bytes")
+  let digest = match sha256sum_file_digest_via_shell(path: probe_path) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => "unreadable" as NonEmptyStr
+    Sha256FileDigest { digest: x } => x.hex
+  }
+  let record = ubuntu_seeded_install_media_record_path(dir: d, input: mtcollins1_census_image_input)
+  let wrote_record = Filesystem.Write(path: record as String, content: concat(digest as String, "\n"))
+  let absent = match resolve_seeded_image(input: mtcollins1_census_image_input, dir: d) {
+    SeededImageRecordedImageAbsent { path: _, recorded: r } => r == digest
+    _ => false
+  }
+  let image = census_image_path_in(dir: d, digest: digest)
+  let wrote_other = Filesystem.Write(path: image as String, content: "some-other-bytes")
+  let diverged = match resolve_seeded_image(input: mtcollins1_census_image_input, dir: d) {
+    SeededImageRecordDiverged { path: _, recorded: _, observed: _ } => true
+    _ => false
+  }
+  let wrote_same = Filesystem.Write(path: image as String, content: "census-image-bytes")
+  let resolved = match resolve_seeded_image(input: mtcollins1_census_image_input, dir: d) {
+    SeededImageResolved { built: b, path: p } => b.output_digest == digest && p == image
+    _ => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote_probe.success && wrote_record.success && wrote_other.success && wrote_same.success
+    && absent && diverged && resolved
+}
+
+// THE WORKLOAD'S OWN FAILURE MODES, EXECUTED ON THE REAL RENDERED BODY. The token this stage emits is
+// what the census verdict reads, so the body must not be able to emit it over a workload that hashed
+// nothing. POSIX shell functions take precedence over PATH, so each case prefixes the UNMODIFIED body
+// with stubs for the two tools it calls -- no 64 GiB is written and no real hashing happens, while
+// every line of the body under test is the one the image carries.
+// ONE SPAWN PER CASE. The stdout and the exit status are two fields of ONE observation, so reading
+// them through two functions ran the program twice per case to learn what a single run already
+// reported -- eight executions where four suffice. It also made the disagreeing case incoherent:
+// that stub counts invocations, so a second spawn continued a sequence the first had started.
+fn workload_case(stubs: String) -> ProcessObservation {
+  run_shell_command_observe(
+    command: posix_sh_program_command(script: concat(stubs, "\n", host_capture_workload_command() as String, "\n")),
+    transport: LocalExec,
+  )
+}
+
+// The token must be a WHOLE LINE, not a substring -- a body emitting "workload-digest-stable=yesX",
+// or the token inside an argv echo, may not satisfy this. Captured stdout carries no trailing
+// newline, so the capture is padded on BOTH sides before the line-delimited match.
+fn workload_emitted_the_token(o: ProcessObservation) -> Bool {
+  string_contains(s: concat("\n", o.stdout, "\n"), pattern: "\nworkload-digest-stable=yes\n")
+}
+
+data workload_stub_dd: String = "dd() { :; }; rm() { :; }; mkdir() { :; };"
+
+// Every named chunk hashes, both passes agree: the one case that may emit the token.
+data workload_stub_complete: String = "sha256sum() { for f in \"$@\"; do echo \"deadbeef  $f\"; done; };"
+
+// Both passes fail and print nothing. The two empty manifests AGREE -- this is the case a
+// compare-only body calls stable.
+data workload_stub_both_empty: String = "sha256sum() { return 1; };"
+
+// Both passes omit the same chunk and exit zero. The manifests agree again, over three files.
+data workload_stub_partial: String = "sha256sum() { for f in \"$@\"; do case \"$f\" in *chunk3) continue;; esac; echo \"deadbeef  $f\"; done; };"
+
+// Complete passes that DISAGREE: the genuine instability this stage exists to detect.
+data workload_stub_disagree: String = "sha256sum() { n=$(cat /tmp/gunbc-wl-counter 2>/dev/null || echo 0); n=$((n+1)); echo $n > /tmp/gunbc-wl-counter; for f in \"$@\"; do echo \"dead$n  $f\"; done; };"
+
+test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution() -> Bool {
+  let complete = workload_case(stubs: concat(workload_stub_dd, workload_stub_complete))
+  workload_emitted_the_token(o: complete) && complete.exit_code == 0
+}
+
+// (Hoisted to module grain from the body of the item below: a source annotation inside a
+// declaration body is not modeled and refuses to parse.)
+// ABSENCE IS ASSERTED AS A SUBSTRING, not as a whole line: substring-absence is the STRONGER
+// claim -- it also rules out the token appearing with anything appended -- and a RED may not be
+// weakened to share a helper with the positive case.
+//
+// THE THREE REDS. Each would be called STABLE by a body that only compares the two manifests: both
+// empty agree, both partial agree, and the disagreeing case is the ordinary instability. None may
+// emit the token, and each must leave the stage nonzero.
+// ABSENCE IS ASSERTED AS A SUBSTRING, not as a whole line: substring-absence is the STRONGER
+// claim -- it also rules out the token appearing with anything appended -- and a RED may not be
+// weakened to share a helper with the positive case.
+test fn a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution() -> Bool {
+  let cleared = shell.Remove.FileForce(path: "/tmp/gunbc-wl-counter")
+  let empty = workload_case(stubs: concat(workload_stub_dd, workload_stub_both_empty))
+  let partial = workload_case(stubs: concat(workload_stub_dd, workload_stub_partial))
+  let cleared_again = shell.Remove.FileForce(path: "/tmp/gunbc-wl-counter")
+  let disagree = workload_case(stubs: concat(workload_stub_dd, workload_stub_disagree))
+  string_contains(s: empty.stdout, pattern: "workload-digest-stable=yes") == false
+    && empty.exit_code != 0
+    && string_contains(s: partial.stdout, pattern: "workload-digest-stable=yes") == false
+    && partial.exit_code != 0
+    && string_contains(s: disagree.stdout, pattern: "workload-digest-stable=yes") == false
+    && disagree.exit_code != 0
+}

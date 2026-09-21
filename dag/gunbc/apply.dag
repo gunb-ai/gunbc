@@ -2,7 +2,7 @@ module gunbc.apply
 
 import std.types { String, Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.live_deploy.apply { live_deploy_apply_srv1_wet }
+import gunbc.live_deploy.apply { live_deploy_apply_srv1_wet, approval_broker_dark_install_srv1_wet }
 import gunbc.runner_capacity_plan {
   RunnerCapacityPlan,
   PlanReady,
@@ -18,9 +18,15 @@ import gunbc.runner_capacity_realize { runner_capacity_apply_wet_exit }
 // routes through gunbc.runner_capacity_realize (PR C) into shared HostEffect arms from PR B
 // (#7946).
 
+// approval-broker-dark IS A WORKFLOW RATHER THAN A MODE ON dashboard-srv1, because a mode would
+// have made an additive install one argument away from a release deploy at the exact moment roadmap
+// redeploys are frozen (operator directive 2026-09-19). It installs the broker's slice and unit on
+// its one port and starts one unit; it writes nothing the roadmap deployment owns, and the unit it
+// starts holds no writer authority until the cutover transfers it.
 type ApplyWorkflow
   = DashboardSrv1
   | RunnerCapacity
+  | ApprovalBrokerDark
 
 type ApplyMode
   = Plan
@@ -39,6 +45,8 @@ fn parse_apply_workflow(value: String) -> ApplyWorkflowParse {
     WorkflowParsed { workflow: RunnerCapacity }
   } else if value == "dashboard-srv1" {
     WorkflowParsed { workflow: DashboardSrv1 }
+  } else if value == "approval-broker-dark" {
+    WorkflowParsed { workflow: ApprovalBrokerDark }
   } else {
     WorkflowParseRefused { reason: concat("unknown apply workflow: ", value) }
   }
@@ -109,6 +117,12 @@ fn apply_dispatch(
         live_deploy_apply_srv1_wet()
       } else {
         exit_failure(reason: "dashboard-srv1 supports mode=apply only in this increment")
+      }
+    WorkflowParsed { workflow: ApprovalBrokerDark } =>
+      if mode == "apply" {
+        approval_broker_dark_install_srv1_wet()
+      } else {
+        exit_failure(reason: "approval-broker-dark supports mode=apply only: there is no plan pole for an additive unit install, and a plan arm that printed the script without a preflight would be a second, ungated path to the same mutation")
       }
     WorkflowParsed { workflow: RunnerCapacity } =>
       apply_runner_capacity_plan(srv3_width: srv3_width, srv4_width: srv4_width, mode: mode)

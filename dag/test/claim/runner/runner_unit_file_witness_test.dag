@@ -12,7 +12,7 @@ import extdeps.systemd.unit_file {
   After,
   Wants,
   StartLimitIntervalSec,
-  ServiceType,
+  ServiceType, SimpleMode,
   ServiceUser,
   WorkingDirectory,
   ExecStart,
@@ -448,7 +448,7 @@ fn expected_live_unit_file(fifo_path: String, daemon_service: NonEmptyStr) -> Sy
     ],
     service: concat(
       [
-        ServiceType { mode: "simple" as NonEmptyStr },
+        ServiceType { mode: SimpleMode },
         ServiceUser { name: wt_srv1_deploy().runner_user },
         WorkingDirectory { path: runner_slot_instance_directory() as NonEmptyStr },
       ],
@@ -546,7 +546,7 @@ fn expected_invocation_local_unit_file(jobs: String) -> SystemdUnitFile {
     ],
     service: concat(
       [
-        ServiceType { mode: "simple" as NonEmptyStr },
+        ServiceType { mode: SimpleMode },
         ServiceUser { name: wt_srv1_deploy().runner_user },
         WorkingDirectory { path: runner_slot_instance_directory() as NonEmptyStr },
       ],

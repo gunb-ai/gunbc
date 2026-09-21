@@ -42,6 +42,9 @@ data true_program: NonEmptyStr = "true"
 data whoami_program: NonEmptyStr = "whoami"
 data readlink_program: NonEmptyStr = "readlink"
 data ls_program: NonEmptyStr = "ls"
+data install_program: NonEmptyStr = "install"
+data sort_program: NonEmptyStr = "sort"
+data cut_program: NonEmptyStr = "cut"
 
 // -1 ALONE, AND THE NAME CARRIES IT FOR THE SAME REASON rm_force_command's DOES. `-1` forces ONE
 // ENTRY PER LINE, which is what makes the output splittable by the caller: ls(1) columnates when
@@ -60,6 +63,17 @@ fn cat_command(path: String) -> ArgvCommand {
 
 fn cp_command(source: String, destination: String) -> ArgvCommand {
   argv_command(program: cp_program, arguments: [source, destination])
+}
+
+// install(1) COPYING /dev/null CREATES AN EMPTY FILE WITH ITS FINAL OWNER AND MODE IN ONE STEP.
+// The point is the ORDER it makes possible: a file that will later hold a secret exists with its
+// restrictive mode before a single secret byte is written, so there is no window in which the bytes
+// sit under the default umask. Mode is an octal spelling because that is what -m documents.
+fn install_empty_file_command(path: String, octal_mode: NonEmptyStr, uid: Int, gid: Int) -> ArgvCommand {
+  argv_command(
+    program: install_program,
+    arguments: ["-m", octal_mode as String, "-o", to_string(uid), "-g", to_string(gid), "/dev/null", path],
+  )
 }
 
 // -f ALONE, NEVER -rf, AND THAT IS THE POINT OF THE NAME. -f makes a missing file a success, which
@@ -82,6 +96,39 @@ fn rm_force_command(path: String) -> ArgvCommand {
 // property that failed, which no Accepted program could contradict.
 fn rm_recursive_force_command(path: String) -> ArgvCommand {
   argv_command(program: coreutils_rm_binary_name, arguments: [coreutils_rm_force_recursive_flags as String, path])
+}
+
+// ln(1) -- GNU coreutils, "ln: Make links between files". -s makes a SYMBOLIC link, -f removes an
+// existing destination first, -n treats a destination that is itself a symlink to a directory as a
+// file to replace, and -T (--no-target-directory) makes ln REFUSE when the destination is a real
+// directory instead of creating the link INSIDE it. The four are one operation -- "make exactly
+// this path a symlink to that target, or refuse" -- and the name carries all of them so a caller
+// cannot obtain the target-directory form by dropping a flag.
+//
+// THIS IS THE ONE HOME OF `ln -sfnT`. extdeps.shell carried a `shell.Symlink AtomicReplace` service
+// with the same argv and the same -T rationale; its two consumers (gunbc.package_delivery
+// publish_codex_runtime_current_link and the event-log real-execution witness) were moved onto this
+// builder and the service deleted, so one upstream fact has one declaration (review 68813 on
+// #11760) -- the direction gunbc.plans.transport_argv_anemia_dissolution names. extdeps.linux.usb_gadget configfs_op_line still
+// hand-spells `ln -sf` inside a script string; that is a declared frontier of its own
+// (configfs_op_render_dissolution_trigger) and folds onto this row when it dissolves.
+//
+// -T IS THE FAIL-CLOSED HALF AND -n IS NOT A SUBSTITUTE FOR IT (sunny-ant-606 review of #11760).
+// -n covers only a symlink-to-directory; against a REAL directory at LINK_NAME, `ln -sfn T D` exits
+// 0 having created D/T's-basename, so the command succeeds while the intended path was never made a
+// link -- a witness pinning the argv stays green over an image with no link. With -T that case is a
+// nonzero exit, which is what makes the builder's claim ("this path is now a link") true whenever it
+// returns success. The target is spelled as given and never resolved: a symlink's target is text the
+// kernel reads at open time, which is the whole reason gunbc.runner_guest_image can point a file
+// inside an image at a path that exists only once that image has booted.
+data coreutils_ln_binary_name: NonEmptyStr = "ln"
+data coreutils_ln_symbolic_force_exact_destination_flags: NonEmptyStr = "-sfnT"
+
+fn ln_symbolic_force_command(target: String, link_name: String) -> ArgvCommand {
+  argv_command(
+    program: coreutils_ln_binary_name,
+    arguments: [coreutils_ln_symbolic_force_exact_destination_flags as String, target, link_name],
+  )
 }
 
 // The format string is the first operand and the values follow it, exactly as printf(1) takes them.

@@ -33,7 +33,7 @@ import gunbc.session_reservation_policy {
 import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
-import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_pressure_limit, gunbc_oomd_sessions_slice }
+import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_pressure_limit, gunbc_oomd_sessions_slice, pressure_is_kill }
 import extdeps.systemd {
   systemd_memory_max_property,
   systemd_memory_swap_max_property,
@@ -679,8 +679,13 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
   ])
 }
 
+// pressure_value was named kill_value: it renders whatever the POLICY says,
+// which is no longer necessarily kill. The old name read as a constant, and
+// that is how the stale `desired: "true"` label survived the policy flip to
+// ManagedOomAuto -- apply_value was already derived, the label was not.
 fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<ConvergeKnob> {
-  let kill_value = managed_oom_action_value(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure)
+  let pressure_value = managed_oom_action_value(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure)
+  let pressure_kill_desired = if pressure_is_kill(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure) { "true" } else { "false" }
   let pct = to_string(percent_count(p: gunbc_oomd_sessions_pressure_limit))
   [
     slice_numeric_knob(
@@ -702,12 +707,12 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
     legacy_converge_knob(
       slice: SessionsSlice,
       name: "oom_pressure_kill",
-      desired: "true",
+      desired: pressure_kill_desired,
       target: SliceProperty {
         unit: gunbc_oomd_sessions_slice,
         property: oomd_managed_oom_memory_pressure_property,
-        apply_value: kill_value,
-        expected_effective: kill_value,
+        apply_value: pressure_value,
+        expected_effective: pressure_value,
       }
     ),
     legacy_converge_knob(

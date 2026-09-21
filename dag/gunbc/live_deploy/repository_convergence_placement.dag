@@ -45,7 +45,7 @@ import extdeps.languages.json.parse {
 import extdeps.systemd.unit_file {
   ServiceUnitFile,
   Description,
-  ServiceType,
+  ServiceType, OneshotMode,
   ServiceUser,
   ServiceGroup,
   ServiceSlice,
@@ -568,7 +568,7 @@ fn convergence_unit_doc(
       text: "gunbc deployed-repository git-native convergence (service-user principal, admitted binary, runner-checkout corpus)" as NonEmptyStr,
     }],
     service: [
-      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceType { mode: OneshotMode },
       ServiceUser { name: user },
       ServiceGroup { name: user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },

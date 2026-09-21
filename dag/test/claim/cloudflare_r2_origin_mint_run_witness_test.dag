@@ -10,6 +10,7 @@ import extdeps.vendor.cloudflare { cloudflare }
 import extdeps.cloudflare.r2 {
   R2JurisdictionDefault,
   r2_bucket_resource_name,
+  r2_account_resource_name,
   workers_r2_storage_bucket_item_read_permission_group_id,
 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, gcp_resource_names_this_version, secret_ref_version_resource }
@@ -50,6 +51,8 @@ import gunbc.cloudflare.r2_origin {
   fabric_durable_origin_read_secret_version,
   fabric_durable_origin_read_access_key_id,
   fabric_durable_origin_write_secret_id,
+  fabric_durable_origin_write_secret_version,
+  fabric_durable_origin_write_access_key_id,
   cloudflare_bootstrap_custody_secret_id,
   FabricCommitManifestsAndContentAddressedOutputs,
   DigestKeyedBootArtifacts,
@@ -61,6 +64,7 @@ import gunbc.cloudflare.r2_origin {
 }
 import gunbc.cloudflare.r2_permission_group_observe {
   cloudflare_r2_bucket_item_write_observed_permission_group_id,
+  cloudflare_r2_storage_write_observed_permission_group_id,
 }
 import gunbc.cloudflare.r2_permission_group_observe {
   ObservedPermissionGroup,
@@ -71,6 +75,7 @@ import gunbc.cloudflare.r2_token_mint_run {
   classify_r2_mint,
   R2OriginObjectRead,
   R2OriginObjectWrite,
+  R2AccountBucketAdmin,
   origin_credential_pin_is_exact,
   R2MintReady,
   R2MintBootstrapCustodyUnrecorded,
@@ -82,7 +87,7 @@ import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_custody_container_intervention,
   r2_orphan_receipt_content,
   NothingWasWritten, WriteOutcomeUnknown, VersionLandedUnverified,
-  ObserveCustodyContainer, CustodyContainerNotNeeded,
+  EnsureCustodyContainer, CustodyContainerNotNeeded,
   r2_mint_container_not_required_reason,
   r2_mint_receipt_path_in, r2_mint_receipt_glob_in, r2_mint_receipt_scope,
   r2_mint_receipt_dir_root, r2_mint_receipt_dir,
@@ -357,22 +362,26 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
   }
 }
 
-// THE WRITE CREDENTIAL IS UNMINTED AND SAYS WHICH ENTRY MINTS IT. This is the state the origin is
-// declared in until run_object_write has executed; the test pins the arm AND the entry it names,
-// so a pin that lands later must retire this test deliberately (turning it into the write twin of
-// the read test above) rather than leaving a stale expectation green.
-test fn r2_origin_bucket_write_credential_is_unminted_and_names_its_mint_entry() -> Bool {
+// THE WRITE CREDENTIAL IS THE MINTED CONTAINER -- the write twin of the read test above, into which
+// the unminted-write test was retired when run_object_write executed and its version was pinned
+// (2026-09-19). Same join: the secret the mint stores into, this project, an exact non-latest
+// version, and the access key id the mint's receipt reported.
+test fn r2_origin_bucket_write_credential_is_the_minted_container() -> Bool {
   match fabric_durable_origin_standing() {
     R2OriginUnallocated { purpose: _ } => false
     R2OriginAllocated { bucket: bucket } =>
       match bucket.write_credential {
-        OriginCredentialPinned { access_key_id: _, token_value: _ } => false
+        OriginCredentialUnminted { mint_entry: _ } => false
         OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
-        OriginCredentialUnminted { mint_entry: entry } =>
-          (entry.module_path as String) == "gunbc.cloudflare.r2_token_mint_run"
-            && (entry.decl_name as String) == "run_object_write"
+        OriginCredentialPinned { access_key_id: access_key_id, token_value: locus } =>
+          (locus.secret as String) == (fabric_durable_origin_write_secret_id as String)
+            && (locus.project as String) == (fleet_secrets_gcp_project as String)
+            && (locus.version as String) == (fabric_durable_origin_write_secret_version as String)
+            && (locus.version as String) != "latest"
+            && (access_key_id as String) == (fabric_durable_origin_write_access_key_id as String)
+            && (access_key_id as String) != (fabric_durable_origin_read_access_key_id as String)
       }
-        && !origin_credential_pin_is_exact(credential: bucket.write_credential)
+        && origin_credential_pin_is_exact(credential: bucket.write_credential)
   }
 }
 
@@ -617,7 +626,7 @@ test fn a_non_writing_entry_waives_the_container_with_a_stated_reason() -> Bool 
   match CustodyContainerNotNeeded { reason: r2_mint_container_not_required_reason } {
     CustodyContainerNotNeeded { reason: reason } =>
       string_contains(s: reason as String, pattern: "writes no Secret Manager version")
-    ObserveCustodyContainer => false
+    EnsureCustodyContainer => false
   }
 }
 
@@ -696,4 +705,42 @@ test fn a_scoped_receipt_needs_a_directory_deeper_than_the_root() -> Bool {
   string_contains(s: scoped, pattern: root)
     && scoped != root
     && string_contains(s: scoped, pattern: "34843927208-1/")
+}
+
+// THE BUCKET-ADMIN MINT IS ACCOUNT-SCOPED AND HOLDS ONLY THE OBSERVED STORAGE-WRITE GROUP. Red if the
+// profile is routed to a bucket-item grant (it could not create a bucket), if it gains an object
+// grant (it could read or write origin bytes), or if its resource names a bucket instead of the
+// account (bucket creation has no bucket to scope to).
+test fn r2_bucket_admin_mint_is_account_scoped_with_only_the_storage_write_group() -> Bool {
+  match classify_r2_mint(
+    profile: R2AccountBucketAdmin,
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_durable_origin_standing(),
+    container: ContainerAdmitted,
+  ) {
+    R2MintReady { account_id: _, bootstrap_locus: _, request: request } =>
+      string_contains(s: request.name, pattern: "-bucket-admin")
+        && !string_contains(s: request.name, pattern: declared_bucket_name())
+        && all(request.policies, p =>
+             all(p.permission_groups, g =>
+               (g.id as String) == (cloudflare_r2_storage_write_observed_permission_group_id as String))
+             && p.permission_groups.length() == 1
+             && match map_get(p.resources, r2_account_resource_name(account_id: fleet_cloudflare_account_id as String)) {
+                  Present { value: scope } => scope == "*"
+                  Absent => false
+                }
+             && match map_get(p.resources, r2_bucket_resource_name(
+                  account_id: fleet_cloudflare_account_id as String,
+                  jurisdiction: R2JurisdictionDefault,
+                  bucket_name: declared_bucket_name())) {
+                  Present { value: _ } => false
+                  Absent => true
+                })
+    R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
+    R2MintAccountUnallocated { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
+  }
 }

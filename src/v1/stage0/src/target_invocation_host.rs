@@ -224,10 +224,13 @@ pub enum TargetProducer {
     BehavioralReceiptSelftest,
     CompileCleanDiagnosticCensus,
     EvaluationStoreAddressExactHead,
+    FloorMemoryQualification,
     PrimitiveEgressCensus,
     PrimitiveEgressCensusV2,
     PrimitiveEgressCensusDag,
     PrimitiveEgressCensusSeed,
+    RequiredLaneResolutionCensus,
+    BareReferenceChannelOutcome,
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -286,6 +289,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::EvaluationStoreAddressExactHead,
         ),
         (
+            instrument_label("floor-memory-qualification"),
+            TargetProducer::FloorMemoryQualification,
+        ),
+        (
             instrument_label("primitive-egress-census"),
             TargetProducer::PrimitiveEgressCensus,
         ),
@@ -300,6 +307,14 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("primitive-egress-census-seed"),
             TargetProducer::PrimitiveEgressCensusSeed,
+        ),
+        (
+            instrument_label("required-lane-resolution-census"),
+            TargetProducer::RequiredLaneResolutionCensus,
+        ),
+        (
+            instrument_label("bare-reference-channel-outcome"),
+            TargetProducer::BareReferenceChannelOutcome,
         ),
     ]
 }
@@ -469,6 +484,182 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE BARE-REFERENCE CHANNEL'S OUTCOME OVER THE FOUR HERMETIC ENTRIES
+// ---------------------------------------------------------------------------------------------
+
+/// `gunbc.instrument_targets` `bare_reference_channel_source_roots`. The subject is the
+/// instrument's own fact on the rule every sibling here follows, and it is a FIXTURE root rather
+/// than the live corpus: the reading must not move when `dag` does.
+fn bare_reference_channel_source_roots() -> Vec<String> {
+    vec!["fixtures/bare_reference_channel".to_string()]
+}
+
+/// `gunbc.target_binding` `BareChannelEligibility`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BareChannelEligibility {
+    Runs,
+    DisabledByImportLine,
+}
+
+/// `gunbc.instrument_targets` `bare_reference_channel_expectations`, mirrored. Each row states the
+/// OUTCOME the entry's one isolated condition produces, so a gate that moves flips exactly the row
+/// that isolates it.
+struct BareChannelExpectation {
+    module_path: &'static str,
+    isolated_condition: &'static str,
+    eligibility: BareChannelEligibility,
+    pulled_modules: &'static [&'static str],
+}
+
+fn bare_reference_channel_expectations() -> Vec<BareChannelExpectation> {
+    vec![
+        BareChannelExpectation {
+            module_path: "probe.brc.bare_record_consumer",
+            isolated_condition: "no imports; bare reference to a RECORD type -- pullable holds",
+            eligibility: BareChannelEligibility::Runs,
+            pulled_modules: &["probe.brc.record_home"],
+        },
+        BareChannelExpectation {
+            module_path: "probe.brc.bare_alias_consumer",
+            isolated_condition:
+                "no imports; bare reference to a nullary type alias -- every arm of pullable declines",
+            eligibility: BareChannelEligibility::Runs,
+            pulled_modules: &[],
+        },
+        BareChannelExpectation {
+            module_path: "probe.brc.imported_record_consumer",
+            isolated_condition:
+                "the row-one reference plus ONE unrelated import line -- gate one turns the channel off",
+            eligibility: BareChannelEligibility::DisabledByImportLine,
+            pulled_modules: &[],
+        },
+        BareChannelExpectation {
+            module_path: "probe.brc.transitive_alias_consumer",
+            isolated_condition:
+                "no imports; a bare CALL whose callee imports the alias home -- the alias arrives as a passenger",
+            eligibility: BareChannelEligibility::Runs,
+            pulled_modules: &["probe.brc.alias_home", "probe.brc.passenger_home"],
+        },
+    ]
+}
+
+fn bare_channel_eligibility_rendered(e: BareChannelEligibility) -> &'static str {
+    match e {
+        BareChannelEligibility::Runs => "RUNS",
+        BareChannelEligibility::DisabledByImportLine => "DISABLED",
+    }
+}
+
+/// `gunbc.instrument_targets` `bare_reference_channel_holds`, mirrored: set equality at identity
+/// grain, never a count, and eligibility compared as its own field so an ineligible channel and an
+/// eligible one that pulled nothing can never satisfy each other's row.
+fn run_bare_reference_channel_outcome() -> InvocationOutcome {
+    let source_roots = bare_reference_channel_source_roots();
+    let missing: Vec<String> = source_roots
+        .iter()
+        .filter(|r| !std::path::Path::new(r.as_str()).exists())
+        .cloned()
+        .collect();
+    if !missing.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!(
+                "bare-reference-channel-outcome: subject unreached (fixture source root absent): {}",
+                missing.join(", ")
+            ),
+        };
+    }
+    let expectations = bare_reference_channel_expectations();
+    let entries: Vec<String> = expectations
+        .iter()
+        .map(|e| e.module_path.to_string())
+        .collect();
+    let readings = match cli_run::bare_reference_channel_readings(&source_roots, &entries) {
+        Ok(readings) => readings,
+        Err(detail) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "bare-reference-channel-outcome: subject unreached (module index refused): {detail}"
+                ),
+            };
+        }
+    };
+    let mut lines: Vec<String> = Vec::new();
+    let mut unmet: Vec<String> = Vec::new();
+    for expected in expectations.iter() {
+        let matched: Vec<&cli_run::BareReferenceChannelEntryReading> = readings
+            .iter()
+            .filter(|r| r.module_path == expected.module_path)
+            .collect();
+        let [observed] = matched.as_slice() else {
+            unmet.push(format!(
+                "bare-reference-channel-outcome: UNMET {} ({}): expected exactly one reading, got {}",
+                expected.module_path,
+                expected.isolated_condition,
+                matched.len()
+            ));
+            continue;
+        };
+        let observed_eligibility = if observed.bare_channel_eligible {
+            BareChannelEligibility::Runs
+        } else {
+            BareChannelEligibility::DisabledByImportLine
+        };
+        let expected_pulled: Vec<String> = {
+            let mut v: Vec<String> = expected
+                .pulled_modules
+                .iter()
+                .map(|m| (*m).to_string())
+                .collect();
+            v.sort();
+            v
+        };
+        lines.push(format!(
+            "bare-reference-channel-outcome: {} channel={} pulled=[{}]",
+            observed.module_path,
+            bare_channel_eligibility_rendered(observed_eligibility),
+            observed.pulled_modules.join(", ")
+        ));
+        if observed_eligibility != expected.eligibility
+            || observed.pulled_modules != expected_pulled
+        {
+            unmet.push(format!(
+                "bare-reference-channel-outcome: UNMET {} ({}): expected channel={} pulled=[{}], observed channel={} pulled=[{}]",
+                expected.module_path,
+                expected.isolated_condition,
+                bare_channel_eligibility_rendered(expected.eligibility),
+                expected_pulled.join(", "),
+                bare_channel_eligibility_rendered(observed_eligibility),
+                observed.pulled_modules.join(", "),
+            ));
+        }
+    }
+    let mut message = format!(
+        "bare-reference-channel-outcome: entries={} unmet={}",
+        // THE READINGS, NOT THE EXPECTATIONS, because that is what the `.dag` authority renders
+        // (`gunbc.instrument_targets` `bare_reference_channel_standing_rendered` counts the
+        // readings). The two cannot differ today -- one reading is demanded per expectation -- so
+        // this is not a defect being fixed but a drift point being closed, of exactly the kind
+        // `gunbc.bare_reference_channel_outcome_seed_growth` enrolls this mirror for.
+        readings.len(),
+        unmet.len()
+    );
+    for line in lines.iter().chain(unmet.iter()) {
+        message.push('\n');
+        message.push_str(line);
+    }
+    InvocationOutcome {
+        termination: if unmet.is_empty() {
+            Termination::ObservationHeld
+        } else {
+            Termination::ObservationDidNotHold
+        },
+        message,
+    }
+}
+
 /// THE REALIZATION DISPATCH, AND IT IS THE ONLY PLACE A PRODUCER IS NAMED. Selecting a realization
 /// is itself realization (DESIGN section 3): periphery, never the route above or the CLI surface.
 fn run_producer(producer: TargetProducer) -> InvocationOutcome {
@@ -491,6 +682,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::EvaluationStoreAddressExactHead => {
             run_evaluation_store_address_exact_head()
         }
+        TargetProducer::FloorMemoryQualification => run_floor_memory_qualification(),
         TargetProducer::PrimitiveEgressCensus => {
             run_primitive_egress_census("primitive-egress-census", "primitive_egress_census_exit")
         }
@@ -505,6 +697,12 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::PrimitiveEgressCensusSeed => run_primitive_egress_census(
             "primitive-egress-census-seed",
             "primitive_egress_census_seed_exit",
+        ),
+        TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
+        TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
+            "required-lane-resolution-census",
+            "dag/gunbc/required_lane_resolution_census_live.dag",
+            "required_lane_resolution_census_exit",
         ),
     }
 }
@@ -524,7 +722,23 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
 /// names (`gunbc.primitive_egress.census_live` `census_wire(scope:)` decides what it walks), so a
 /// bounded projection is a label of its own and not a flag on the full one.
 fn run_primitive_egress_census(label: &'static str, function: &'static str) -> InvocationOutcome {
-    const ENTRY: &str = "dag/gunbc/primitive_egress/census_live.dag";
+    run_cli_wire_census(
+        label,
+        "dag/gunbc/primitive_egress/census_live.dag",
+        function,
+    )
+}
+
+/// ONE RUNNER FOR EVERY INSTRUMENT WHOSE `.dag` ENTRY ANSWERS A `CliWireResponse`: resolve the
+/// entry, evaluate the named function, print the wire bytes on every termination, and map the
+/// wire exit to a Termination through the one classifier in `cli_run`. The primitive egress
+/// census labels and the required-lane resolution census share it; a new instrument of that
+/// shape is a label row plus one arm naming its entry and function, never a second runner.
+fn run_cli_wire_census(
+    label: &'static str,
+    entry: &'static str,
+    function: &'static str,
+) -> InvocationOutcome {
     let label_name = label;
     let function_name = function;
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
@@ -534,12 +748,12 @@ fn run_primitive_egress_census(label: &'static str, function: &'static str) -> I
         };
     }
     let roots = cli_run::default_source_roots();
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, entry) {
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::SubjectUnreached,
-                message: format!("{label_name}: resolve failed for {ENTRY}: {cause}"),
+                message: format!("{label_name}: resolve failed for {entry}: {cause}"),
             };
         }
     };
@@ -550,7 +764,7 @@ fn run_primitive_egress_census(label: &'static str, function: &'static str) -> I
         return InvocationOutcome {
             termination: Termination::Refused,
             message: format!(
-                "{label_name}: {ENTRY} has blocking diagnostics: {}",
+                "{label_name}: {entry} has blocking diagnostics: {}",
                 blocking.iter().cloned().collect::<Vec<_>>().join("; ")
             ),
         };
@@ -906,14 +1120,25 @@ fn behavioral_outcome(
 
 /// THE ONE SEAM: argv operand -> pattern admission -> route. A SINGLE target builds the registry
 /// and looks up EXACTLY — no prefix, suffix or "did you mean": a near miss silently running a
-/// different target is worse than a refusal naming the one asked for. A SET form delegates to the
-/// `.dag` authority `gunbc.compute.test_run` — selection and execution are modeled there, and a
-/// host re-implementation would be the second authority this file exists to avoid being.
+/// different target is worse than a refusal naming the one asked for. A SET form is ADMITTED by
+/// the grammar and REFUSED by the route (status 2, no observation): its only executor is the
+/// native `gunbc test` route (v2 foundation package 9), and handing it to the interpreter would
+/// let an interpreted run stand in for a native one. Mirrors `gunbc.target_invocation`
+/// `test_operand_set_form_refusal_rendered`.
+fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
+    format!(
+        "gunbc test: {operand} denotes a SET of targets; set forms run only through the native test route, which is not yet available, and are never delegated to the interpreter"
+    )
+}
+
 pub fn test_verb(operand: &str) -> InvocationOutcome {
     let label = match parse_target_pattern(operand) {
         Ok(TargetPattern::SingleTarget(label)) => label,
         Ok(TargetPattern::PackageTargets(_)) | Ok(TargetPattern::SubtreeTargets(_)) => {
-            return run_witness_pattern(operand);
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: test_operand_set_form_refusal_rendered(operand),
+            };
         }
         Err(cause) => {
             return InvocationOutcome {
@@ -941,58 +1166,216 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
     }
 }
 
-/// The host the verb runs on, as the short name `dashboard_instance_for_host` is keyed on.
-/// `/proc/sys/kernel/hostname` first (no libc buffer sizing), then the POSIX call; an unreadable
-/// name is returned as such and the instance lookup refuses it, rather than fabricating a host.
-fn short_hostname() -> String {
-    if let Ok(name) = std::fs::read_to_string("/proc/sys/kernel/hostname") {
-        let trimmed = name.trim();
-        if !trimmed.is_empty() {
-            return trimmed.split('.').next().unwrap_or(trimmed).to_string();
-        }
-    }
-    let mut buf = [0u8; 256];
-    // SAFETY: `buf` is a live, fully-owned buffer; `gethostname` writes at most `buf.len()`
-    // bytes into it and nothing else.
-    let rc = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
-    if rc == 0 {
-        let end = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
-        let name = String::from_utf8_lossy(&buf[..end]).trim().to_string();
-        if !name.is_empty() {
-            return name.split('.').next().unwrap_or(&name).to_string();
-        }
-    }
-    "hostname-unreadable".to_string()
+/// THE SUBJECT IS OWNED HERE, IN RUST, AND THAT IS A MEASURED DECISION RATHER THAN A SHORTCUT.
+///
+/// Every sibling instrument keeps its subject in `gunbc.instrument_targets` and mirrors it here,
+/// and this one was built that way first: two rows, `floor_memory_qualification_source_roots` and
+/// `floor_memory_qualification_lane`, read through the interpreter before spawning the child so
+/// the model would be the single authority for what gets measured.
+///
+/// IT CORRUPTS THE MEASUREMENT, AND THE COST WAS MEASURED RATHER THAN FEARED. Reading those rows
+/// means resolving a corpus graph, and this supervisor shares its cgroup with the child BY
+/// DESIGN — that sharing is what lets `memory.peak` survive the child's death. So the resolve
+/// lands in the very counter the instrument reports. Three runs of the same failing floor, same
+/// tree, same binary, differing only in whether the subject was read from the model:
+///
+///   Rust-owned subject   peak 15746146304  (14.66 GiB)
+///   Rust-owned subject   peak 15704227840  (14.63 GiB)   <- 0.2% apart, reproducible
+///   read from the model  peak 22293544960  (20.76 GiB)   <- +6.1 GiB, 42% inflation
+///
+/// An instrument may not consult the authority from inside the cgroup it is measuring; the act of
+/// reading perturbs the reading. Netting the supervisor's footprint back out is not available
+/// either — that would replace a measured number with an adjusted one, which is the whole habit
+/// `gunbc.floor_memory_demand` exists to refuse.
+///
+/// SO THE TWO `.dag` ROWS ARE DELETED RATHER THAN LEFT UNCONSUMED. A modeled subject nothing reads
+/// is the DESIGN section 3c dangling declaration, and keeping it while Rust silently owned the
+/// real fact would be worse than owning it openly: two authorities, one of them decorative. The
+/// honest state is one authority, here, saying plainly that it is here and why.
+///
+/// WHAT WOULD RESTORE THE MODELED SUBJECT: any route that reads the rows OUTSIDE the measured
+/// cgroup — a supervisor that resolves the subject before entering the scope, or a scope created
+/// after the read rather than around it. Both need the cgroup lifecycle to be modeled, which is
+/// the same capability `gunbc.target_invocation_seed_growth` names as this subset's trigger.
+fn floor_memory_qualification_source_roots() -> Vec<String> {
+    vec!["dag".to_string(), "src/v2".to_string()]
 }
 
-/// THE WITNESS-SET ROUTE: hand the operand to `gunbc.compute.test_run` `test_verb_pattern_cli`
-/// and report its ProcessExit in this seam's termination vocabulary. The instance is resolved
-/// there by HOST — the verb runs wherever the caller is standing, and the worktree under test is
-/// this checkout; the snapshot, selection, per-module claims run and receipt are all the modeled
-/// machinery's. The receipt JSON is the message, exactly as the worker flow writes it.
+fn floor_memory_qualification_lane() -> String {
+    "witnesses".to_string()
+}
+
+/// THE SUPERVISED MEMORY QUALIFICATION OF A REQUIRED-FLOOR RUN.
 ///
-/// THE THREE TERMINATIONS map off the modeled exit: success is every selected witness green (or
-/// wholly declined), `ExitFailure { code: 1 }` is a run that took readings and found a
-/// non-green module — `ObservationDidNotHold` — and any other failure code is a refusal before
-/// or around the run (unadmitted pattern shape the mirror already excluded, unknown host,
-/// snapshot or receipt failure). A resolve or eval failure of the entry itself is
-/// `SubjectUnreached`: the machinery never observed anything.
-fn run_witness_pattern(operand: &str) -> InvocationOutcome {
-    const ENTRY: &str = "dag/gunbc/compute/test_run.dag";
-    const FUNCTION: &str = "gunbc.compute.test_run.test_verb_pattern_cli";
+/// The three terminations are load-bearing and map onto `gunbc.floor_memory_demand`'s three arms:
+/// `DemandObserved` is ObservationHeld (0), `DemandBounded` is ObservationDidNotHold (1) — the
+/// peak is a LOWER BOUND, so the run produced a reading that may not size anything downward — and
+/// every refusal is Refused (2), no observation at all. An instrument that rendered "could not
+/// read" the same as "it fits" would reproduce one layer out the conflation it exists to remove.
+///
+/// THE PRECONDITION IS CHECKED BEFORE THE WORKLOAD, NOT AFTER. Resolving the measurement cgroup
+/// first means a 35-minute run is never spent producing a figure that cannot be qualified — and,
+/// more importantly, an invocation with no enforceable limit REFUSES instead of reporting a
+/// number. An unbounded run and a bounded one are indistinguishable in everything the workload
+/// itself emits, which is the class
+/// `gunbc.recurring_failure_mode.suppressed_precondition_failure_runs_the_workload_unconstrained`.
+fn run_floor_memory_qualification() -> InvocationOutcome {
+    use cli_run::floor_memory_supervisor as sup;
+
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
             termination: Termination::Refused,
-            message: format!("gunbc test: refused: could not anchor at the workspace root: {e}"),
+            message: format!(
+                "floor-memory-qualification: refused: could not anchor at the workspace root: {e}"
+            ),
         };
     }
-    let roots = cli_run::default_source_roots();
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+
+    let measured_roots = floor_memory_qualification_source_roots();
+    let measured_lane = floor_memory_qualification_lane();
+
+    let cgroup = match sup::resolve_measurement_cgroup() {
+        Ok(dir) => dir,
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    };
+
+    // BOTH GUARDS RUN BEFORE THE WORKLOAD, not after: a 35-minute run that turns out to be
+    // unattributable is a wasted run, and worse, a tempting one to publish anyway.
+    match sup::children_of_cgroup(&cgroup) {
+        Ok(children) if !children.is_empty() => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "floor-memory-qualification: refused: {}",
+                    sup::QualificationRefusal::MeasurementCgroupHasChildren {
+                        dir: cgroup.to_string_lossy().to_string(),
+                        children,
+                    }
+                    .render()
+                ),
+            };
+        }
+        Ok(_) => {}
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    }
+
+    match sup::strangers_in_cgroup(&cgroup) {
+        Ok(strangers) if !strangers.is_empty() => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "floor-memory-qualification: refused: {}",
+                    sup::QualificationRefusal::MeasurementCgroupShared {
+                        dir: cgroup.to_string_lossy().to_string(),
+                        strangers,
+                    }
+                    .render()
+                ),
+            };
+        }
+        Ok(_) => {}
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    }
+
+    let baseline_peak = match sup::reset_or_baseline_peak(&cgroup) {
+        Ok(b) => b,
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    };
+
+    let exe = match std::env::current_exe() {
+        Ok(p) => p.with_file_name("claim_executor"),
+        Err(e) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "floor-memory-qualification: refused: could not locate the measured binary \
+                     beside this one: {e}"
+                ),
+            };
+        }
+    };
+
+    let mut args = vec![
+        "--required-ci".to_string(),
+        "--required-lane".to_string(),
+        measured_lane.clone(),
+    ];
+    for root in measured_roots.iter().cloned() {
+        args.push("--source-root".to_string());
+        args.push(root);
+    }
+
+    let termination = match sup::run_child_in_own_cgroup(&exe.to_string_lossy(), &args) {
+        Ok(t) => t,
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    };
+
+    let read = match sup::read_cgroup_memory(&cgroup) {
+        Ok(r) => r,
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    };
+
+    // THE PEAK MUST HAVE RISEN, or it is not this run's. Where the kernel refused to reset the
+    // counter, a post-run peak equal to the pre-run one says only that nothing here exceeded
+    // history — it says nothing about what this run demanded, and publishing it would attribute
+    // another workload's high-water mark to the floor.
+    if read.peak <= baseline_peak {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "floor-memory-qualification: refused: {}",
+                sup::QualificationRefusal::PeakDominatedByPriorHistory {
+                    dir: read.dir.clone(),
+                    before: baseline_peak,
+                    after: read.peak,
+                }
+                .render()
+            ),
+        };
+    }
+
+    // THE JUDGMENT IS THE `.dag` MODULE'S, NOT THIS FUNCTION'S. Reproducing the arms here in
+    // Rust would give one decision two authorities (DESIGN section 3); the host reads the
+    // counters and the substrate decides what they mean — including how to parse a `max` body,
+    // which `extdeps.linux.cgroup_v2_memory` already owns.
+    const ENTRY: &str = "dag/gunbc/floor_memory_demand.dag";
+    const FUNCTION: &str = "qualify_floor_memory_from_readings";
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&measured_roots, ENTRY) {
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::SubjectUnreached,
-                message: format!("gunbc test: resolve failed for {ENTRY}: {cause}"),
+                message: format!("floor-memory-qualification: resolve failed for {ENTRY}: {cause}"),
             };
         }
     };
@@ -1003,68 +1386,130 @@ fn run_witness_pattern(operand: &str) -> InvocationOutcome {
         return InvocationOutcome {
             termination: Termination::Refused,
             message: format!(
-                "gunbc test: {ENTRY} has blocking diagnostics: {}",
+                "floor-memory-qualification: {ENTRY} has blocking diagnostics: {}",
                 blocking.iter().cloned().collect::<Vec<_>>().join("; ")
             ),
         };
     }
-    let worktree = cli_run::workspace_root().to_string_lossy().into_owned();
-    let receipt_path = format!("{worktree}/.gunbc-test-receipt.json");
-    let arguments = vec![
-        (
-            Some("host".to_string()),
-            crate::v1_interpreter::str_value(short_hostname()),
-        ),
-        (
-            Some("worktree".to_string()),
-            crate::v1_interpreter::str_value(worktree),
-        ),
-        (
-            Some("pattern".to_string()),
-            crate::v1_interpreter::str_value(operand),
-        ),
-        (
-            Some("receipt_path".to_string()),
-            crate::v1_interpreter::str_value(receipt_path.clone()),
-        ),
-    ];
     let ctx = cli_run::make_eval_context(
         graph.as_ref(),
         source_indices,
         crate::v1_interpreter::ExecutionMode::Wet,
     );
-    let value =
-        match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &arguments, true) {
-            Ok(value) => value,
-            Err(cause) => {
-                return InvocationOutcome {
-                    termination: Termination::SubjectUnreached,
-                    message: format!("gunbc test: eval failed: {cause}"),
-                }
+    let (signalled, code) = match &termination {
+        sup::SupervisedTermination::Exited { code } => (false, *code as i64),
+        sup::SupervisedTermination::Signalled { signal } => (true, *signal as i64),
+    };
+    let args: Vec<(Option<String>, crate::v1_interpreter::Value)> = vec![
+        (
+            Some("peak_bytes".to_string()),
+            crate::v1_interpreter::Value::Int(read.peak as i64),
+        ),
+        (
+            Some("limit_max_body".to_string()),
+            crate::v1_interpreter::Value::Str(read.limit_max.as_str().into()),
+        ),
+        (
+            Some("limit_high_body".to_string()),
+            crate::v1_interpreter::Value::Str(read.limit_high.as_str().into()),
+        ),
+        (
+            Some("high_events".to_string()),
+            crate::v1_interpreter::Value::Int(read.high_events as i64),
+        ),
+        (
+            Some("max_events".to_string()),
+            crate::v1_interpreter::Value::Int(read.max_events as i64),
+        ),
+        (
+            Some("oom_kills".to_string()),
+            crate::v1_interpreter::Value::Int(read.oom_kills as i64),
+        ),
+        (
+            Some("terminated_by_signal".to_string()),
+            crate::v1_interpreter::Value::Bool(signalled),
+        ),
+        (
+            Some("exit_code".to_string()),
+            crate::v1_interpreter::Value::Int(code),
+        ),
+    ];
+    let verdict = match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &args, true)
+    {
+        Ok(v) => v,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "floor-memory-qualification: the judgment could not be reached: {cause}"
+                ),
+            };
+        }
+    };
+
+    // The supervisor shares the cgroup with the child, so its own few MiB are inside this peak.
+    // Stated rather than netted out: subtracting an estimate would replace a measured number with
+    // an adjusted one.
+    let detail = format!(
+        "floor-memory-qualification: cgroup={} peak={} memory.max={} memory.high={} \
+         events=[high {} / max {} / oom_kill {}] termination={} lane={} \
+         (the supervisor shares this cgroup with the measured child, so its own footprint — a few \
+         MiB — is included in the peak rather than subtracted)",
+        read.dir,
+        read.peak,
+        read.limit_max,
+        read.limit_high,
+        read.high_events,
+        read.max_events,
+        read.oom_kills,
+        match &termination {
+            sup::SupervisedTermination::Exited { code } => format!("exited {code}"),
+            sup::SupervisedTermination::Signalled { signal } => format!("signalled {signal}"),
+        },
+        measured_lane,
+    );
+
+    // WILDCARD-FREE ON PURPOSE: a fourth arm added to `FloorMemoryQualification` must land here
+    // rather than inherit whichever termination a `_` happened to name.
+    match &verdict {
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "DemandObserved") =>
+        {
+            InvocationOutcome {
+                termination: Termination::ObservationHeld,
+                message: format!(
+                    "{detail}\nDemandObserved — nothing held this run, so the peak is a DEMAND."
+                ),
             }
-        };
-    let exit = cli_run::classify_exit(&value, &ctx);
-    let receipt = std::fs::read_to_string(&receipt_path).unwrap_or_default();
-    match exit {
-        cli_run::ExitClass::Success => InvocationOutcome {
-            termination: Termination::ObservationHeld,
-            message: receipt,
-        },
-        cli_run::ExitClass::Failure { code: 1, reason } => InvocationOutcome {
-            termination: Termination::ObservationDidNotHold,
-            message: if receipt.is_empty() {
-                reason.unwrap_or_else(|| "gunbc test: run did not hold".to_string())
-            } else {
-                receipt
-            },
-        },
-        cli_run::ExitClass::Failure { code: _, reason } => InvocationOutcome {
-            termination: Termination::Refused,
-            message: reason.unwrap_or_else(|| "gunbc test: refused".to_string()),
-        },
-        cli_run::ExitClass::NotProcessExit { type_name } => InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!("gunbc test: {FUNCTION} returned `{type_name}`, not a ProcessExit"),
+        }
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "DemandBounded") =>
+        {
+            InvocationOutcome {
+                termination: Termination::ObservationDidNotHold,
+                message: format!(
+                    "{detail}\nDemandBounded — the peak is a LOWER BOUND, not a demand: the run \
+                     was killed, throttled, or pinned to a limit. It may not be used to size \
+                     anything downward."
+                ),
+            }
+        }
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "DemandUnreadable") =>
+        {
+            InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "{detail}\nDemandUnreadable — the reading could not be qualified."
+                ),
+            }
+        }
+        other => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!(
+                "floor-memory-qualification: {FUNCTION} returned a value this seam does not \
+                 recognise as a FloorMemoryQualification: {other:?}"
+            ),
         },
     }
 }

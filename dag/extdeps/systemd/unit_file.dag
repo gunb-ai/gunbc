@@ -187,8 +187,97 @@ fn systemd_environment_reference(name: NonEmptyStr) -> String {
 data systemd_exit_code_variable: NonEmptyStr = "EXIT_CODE" as NonEmptyStr
 data systemd_exit_status_variable: NonEmptyStr = "EXIT_STATUS" as NonEmptyStr
 
+// THE SERVICE TYPE IS A CLOSED UPSTREAM VOCABULARY, NOT A WORD. `Type=` takes one of eight values
+// systemd.service(5) enumerates, so a NonEmptyStr here admitted `Type=banana` and, worse, made the
+// question a consumer actually asks -- what does this unit's ActiveState ESTABLISH -- answerable
+// only by matching strings, which cannot be exhaustive. All eight are modeled because this is
+// extdeps and the upstream closed the set; a partial enum would need an unmodelled arm that no
+// valid systemd unit could ever reach.
+type SystemdServiceMode
+  = SimpleMode
+  | ExecMode
+  | ForkingMode
+  | OneshotMode
+  | DbusMode
+  | NotifyMode
+  | NotifyReloadMode
+  | IdleMode
+
+fn systemd_service_mode_wire(mode: SystemdServiceMode) -> NonEmptyStr {
+  match mode {
+    SimpleMode => "simple" as NonEmptyStr
+    ExecMode => "exec" as NonEmptyStr
+    ForkingMode => "forking" as NonEmptyStr
+    OneshotMode => "oneshot" as NonEmptyStr
+    DbusMode => "dbus" as NonEmptyStr
+    NotifyMode => "notify" as NonEmptyStr
+    NotifyReloadMode => "notify-reload" as NonEmptyStr
+    IdleMode => "idle" as NonEmptyStr
+  }
+}
+
+// WHAT `ActiveState=active` ESTABLISHES, WHICH IS A FUNCTION OF THE TYPE AND NOT A CONSTANT. This is
+// the distinction the whole block exists for. For `simple`, `exec`, `forking` and `idle`, systemd
+// declares the unit started as soon as it has forked or execed the main process -- the service has
+// announced nothing and may be minutes from usable, or may be permanently wedged. For `oneshot` the
+// exec ran to completion. Only `dbus`, `notify` and `notify-reload` carry a statement FROM THE
+// SERVICE that it is ready: a bus name appearing, or sd_notify READY=1.
+//
+// THE THREE ARE NOT ORDERED AND THE MIDDLE ONE IS NOT WEAKER READINESS. `ExecCompleted` is a
+// stronger fact than `ExecStarted` about a process that has finished and a weaker one about a
+// service that should still be answering, so collapsing them onto a scale would invite a consumer
+// to accept the wrong one by comparison. They are three different facts.
+type ActiveStateEstablishes
+  = ExecStarted
+  | ExecCompleted
+  | ServiceAnnouncedReady
+
+fn systemd_active_state_establishes(mode: SystemdServiceMode) -> ActiveStateEstablishes {
+  match mode {
+    SimpleMode => ExecStarted
+    ExecMode => ExecStarted
+    ForkingMode => ExecStarted
+    IdleMode => ExecStarted
+    OneshotMode => ExecCompleted
+    DbusMode => ServiceAnnouncedReady
+    NotifyMode => ServiceAnnouncedReady
+    NotifyReloadMode => ServiceAnnouncedReady
+  }
+}
+
+// THE WALL A READINESS CONSUMER MUST GO THROUGH. A caller that wants to conclude "this service is
+// serving" from `ActiveState=active` calls this and gets a refusal for every type that cannot
+// support the conclusion -- so the category error is caught at the type rather than remembered by
+// whoever reads the unit. The refusal carries the mode and what it DOES establish, because a
+// consumer's next move differs: a `simple` unit needs an independent readback, while a service that
+// could plausibly adopt `Type=notify` has a climb available instead.
+//
+// MEASURED, NOT SUPPOSED. gunbc.spark.native_serving_realization declares its four ranks
+// `Type=simple` under `Restart=always`, and on 2026-09-16 three of them sat `ActiveState=active`
+// for the better part of an hour inside a dead torch rendezvous epoch: the processes were alive, the
+// service was participating in nothing, and `Restart=always` never fired because systemd had nothing
+// to restart. Anything reading those units' active state as health would have reported a serving arm
+// that could not answer a single request.
+type ReadinessFromActiveState
+  = ReadinessEstablishedByService
+  | ReadinessNotEstablished { mode: NonEmptyStr, establishes: ActiveStateEstablishes }
+
+fn systemd_readiness_from_active_state(mode: SystemdServiceMode) -> ReadinessFromActiveState {
+  match systemd_active_state_establishes(mode: mode) {
+    ServiceAnnouncedReady => ReadinessEstablishedByService
+    ExecStarted => ReadinessNotEstablished { mode: systemd_service_mode_wire(mode: mode), establishes: ExecStarted }
+    ExecCompleted => ReadinessNotEstablished { mode: systemd_service_mode_wire(mode: mode), establishes: ExecCompleted }
+  }
+}
+
+// RemainAfterExit= IS WHAT MAKES A ONESHOT'S WORK OUTLIVE ITS PROCESS. systemd.service(5) (v255):
+// a Type=oneshot unit is "active" only while its ExecStart runs unless this is set, and with it the
+// unit stays active after the process exits -- which is how a unit whose job is to INSTALL state
+// (load a ruleset, apply a sysctl) reports that the state is in place rather than that a program is
+// running. The boolean renders as systemd's own yes/no rather than true/false.
 type SystemdServiceDirective
-  = ServiceType { mode: NonEmptyStr }
+  = ServiceType { mode: SystemdServiceMode }
+  | RemainAfterExit { active: Bool }
   | ExecStartPre { command: NonEmptyStr }
   | ExecStart { command: NonEmptyStr }
   | ExecStartPost { command: NonEmptyStr }
@@ -213,6 +302,7 @@ type SystemdServiceDirective
   | RestartSec { duration: NonEmptyStr }
   | ServiceTasksMax { count: Int }
   | TimeoutStopSec { duration: NonEmptyStr }
+
 
 // THE THREE RESOURCE-DISCIPLINE DIRECTIVES, AND WHY THE MIDDLE ONE IS A COPRODUCT AND NOT A STRING.
 //
@@ -620,7 +710,8 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
 
 fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String {
   match directive {
-    ServiceType { mode: v } => join(["Type=", v as String], "")
+    ServiceType { mode: v } => join(["Type=", systemd_service_mode_wire(mode: v) as String], "")
+    RemainAfterExit { active: v } => join(["RemainAfterExit=", if v { "yes" } else { "no" }], "")
     ExecStartPre { command: v } => join(["ExecStartPre=", v as String], "")
     ExecStart { command: v } => join(["ExecStart=", v as String], "")
     ExecStartPost { command: v } => join(["ExecStartPost=", v as String], "")
@@ -737,6 +828,10 @@ type SystemdUnitFile
 // spelling systemd syntax outside the module that owns it -- the same §3 fork this file exists to
 // close for directive names.
 data systemd_instance_name_specifier: String = "%i"
+
+// The administrator's system unit directory, the first entry of systemd's system unit search path
+// (systemd.unit(5), "System Unit Search Path"); units placed here take precedence over packaged ones.
+data systemd_system_unit_directory: NonEmptyStr = "/etc/systemd/system"
 
 data systemd_unit_section_header: String = "[Unit]"
 

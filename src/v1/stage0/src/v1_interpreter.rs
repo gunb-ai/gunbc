@@ -5960,7 +5960,19 @@ fn call_function(
     });
     let result = call_function_guarded(ctx, fn_node, args, env, depth);
     CALL_DEPTH.with(|d| d.set(d.get() - 1));
-    result
+    // A located TypeError carries its raise site but no route back up the call chain, which made
+    // a production-path defect (harness_probe_cli, 2026-09-18) expensive to attribute. Append each
+    // frame as the error unwinds, bounded so a deep chain cannot grow the message without limit.
+    match result {
+        Err(InterpError::TypeError { msg })
+            if msg.contains(" [at ") && msg.matches(" <- ").count() < 12 =>
+        {
+            Err(InterpError::TypeError {
+                msg: format!("{} <- {}", msg, fn_node.name),
+            })
+        }
+        other => other,
+    }
 }
 
 fn call_function_guarded(
@@ -10144,8 +10156,21 @@ fn eval_field_access(
             Value::Null => Ok(Value::Null),
             _ => Ok(base_val),
         },
-        Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx),
-        _ => extract_field(&base_val, &field_name, env, ctx),
+        Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx)
+            .map_err(|e| locate_field_access_error(e, node)),
+        _ => extract_field(&base_val, &field_name, env, ctx)
+            .map_err(|e| locate_field_access_error(e, node)),
+    }
+}
+
+// A field-access TypeError named no location, which made a production-path defect
+// (harness_probe_cli, 2026-09-18) unlocatable without a bisect scaffold. Attach the span.
+fn locate_field_access_error(e: InterpError, node: &Rc<Node>) -> InterpError {
+    match e {
+        InterpError::TypeError { msg } => InterpError::TypeError {
+            msg: format!("{} [at {} byte {}]", msg, node.span.file, node.span.start),
+        },
+        other => other,
     }
 }
 
@@ -13758,6 +13783,30 @@ fn primitive_callee_identity_value(
             "UndeterminedFreeCallee",
             vec![(ctx.sym("spelling"), str_value(spelling))],
         ),
+    }
+}
+
+/// `gunbc.required_lane_resolution_census` `ModuleIdentityPopulation`, lifted from the host's
+/// carrier. Two arms and nothing else: an observed identity list, or the typed cause the
+/// population could not be established -- never an empty list standing for a refusal.
+fn module_identity_population_value(
+    population: crate::cli_run::ModuleIdentityPopulation,
+    ctx: &InterpContext,
+) -> Value {
+    match population {
+        crate::cli_run::ModuleIdentityPopulation::Refused { cause } => Value::Variant {
+            type_name: ctx.sym("ModuleIdentityPopulation"),
+            variant_name: ctx.sym("ModuleIdentityPopulationRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+        crate::cli_run::ModuleIdentityPopulation::Observed { modules } => Value::Variant {
+            type_name: ctx.sym("ModuleIdentityPopulation"),
+            variant_name: ctx.sym("ModuleIdentityPopulationObserved"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("modules"),
+                list_value(modules.into_iter().map(str_value).collect::<Vec<_>>()),
+            )])),
+        },
     }
 }
 
@@ -20984,6 +21033,31 @@ macro_rules! v1_builtin_arms {
                 let entry_prefixes = expect_str_list($positional.get(2).copied(), $name)?;
                 Ok(Some(primitive_call_edge_census_value(
                     crate::cli_run::compile_dag_primitive_call_edges(&exclude_substrings, &pool_roots, &entry_prefixes),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.source_root_ingest_module_identities" { "source_root_ingest_module_identities" } => {
+                let source_roots = expect_str_list($positional.first().copied(), $name)?;
+                Ok(Some(module_identity_population_value(
+                    crate::cli_run::source_root_ingest_module_identities(&source_roots),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.required_floor_nominal_subject_module_identities" { "required_floor_nominal_subject_module_identities" } => {
+                let source_roots = expect_str_list($positional.first().copied(), $name)?;
+                Ok(Some(module_identity_population_value(
+                    crate::cli_run::required_floor_nominal_subject_module_identities(&source_roots),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.entry_closure_module_identities" { "entry_closure_module_identities" } => {
+                let source_roots = expect_str_list($positional.first().copied(), $name)?;
+                let entry_path = expect_str($positional.get(1).copied(), $name)?;
+                Ok(Some(module_identity_population_value(
+                    crate::cli_run::entry_closure_module_identities(&source_roots, &entry_path),
                     $ctx,
                 )))
             },

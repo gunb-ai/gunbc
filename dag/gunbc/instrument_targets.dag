@@ -7,6 +7,7 @@ import gunbc.target_binding {
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
   BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
+  FloorMemoryQualificationProducer,
   CompileCleanDiagnosticCensusProducer,
   EvaluationStoreAddressExactHeadProducer,
   CompileCleanDiagnosticCensusStanding,
@@ -37,6 +38,13 @@ import gunbc.target_binding {
   DifferentialSourcePopulationIndexRefused,
   HeadsReadingDifferentialRefusalCause,
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
+  BareReferenceChannelOutcomeProducer,
+  BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
+  BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
+  BareReferenceChannelStanding, BareReferenceChannelRead,
+  BareReferenceChannelSubjectUnreached,
+  BareReferenceChannelSubjectCause,
+  BareChannelFixtureRootAbsent, BareChannelEntryAbsent, BareChannelIndexRefused,
 }
 import gunbc.target_invocation {
   TargetInvocationRoute,
@@ -74,6 +82,17 @@ fn heads_reading_differential_label() -> Label {
   Label {
     package: instruments_package()
     target: TargetName { name: "heads-reading-differential" }
+  }
+}
+
+// THE FLOOR'S MEMORY DEMAND, QUALIFIED. The subject is the required-floor PROCESS -- not any
+// function inside it -- which is why the reading is taken by a supervisor from outside rather than
+// by anything the floor itself emits. See `gunbc.floor_memory_demand` for why an in-process
+// observer cannot report the two terminations that matter most.
+fn floor_memory_qualification_label() -> Label {
+  Label {
+    package: instruments_package()
+    target: TargetName { name: "floor-memory-qualification" }
   }
 }
 
@@ -177,6 +196,28 @@ fn primitive_egress_census_seed_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "primitive-egress-census-seed" } }
 }
 
+// THE REQUIRED-LANE RESOLUTION CENSUS: for every module under the source roots, does at least
+// one required lane RESOLVE it -- hand its source to compile_to_resolved under the Strict gate?
+// The unreached population, by identity, is the printed product; the exit says whether it is
+// empty. This is DESIGN section 3's "a product-layer dependent can stop resolving, stay broken,
+// and let every required lane report SUCCESS" measured rather than warned about, after
+// gunbc.site_pxe_edge_converge did exactly that on 2026-09-20 (gunbc#11607). The lane roster it
+// classifies is read from gunbc.compiler_gate_workflow, the authority that emits witnesses.yml.
+// `gunbc test //gunbc/instruments:required-lane-resolution-census`.
+fn required_lane_resolution_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "required-lane-resolution-census" } }
+}
+
+// THE BARE-REFERENCE CHANNEL'S OUTCOME OVER THE FOUR HERMETIC ENTRIES at
+// `fixtures/bare_reference_channel`, one per condition, asserting per entry whether the bare half
+// RAN and which modules it PULLED. The fixture set landed in gunbc#11943 as a set a reader
+// re-runs; this target is the consumer that row named, so a loader change that moves either gate
+// turns a target red instead of leaving a stale sentence in a receipt.
+// `gunbc test //gunbc/instruments:bare-reference-channel-outcome`.
+fn bare_reference_channel_outcome_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "bare-reference-channel-outcome" } }
+}
+
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
 // than placeholders. It answers a test question — does the heads reading read the same grammar as
 // the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
@@ -189,6 +230,18 @@ fn heads_reading_differential_target() -> BuildTarget {
   }
 }
 
+// A `*_target()` HERE IS NOT NECESSARILY CONSUMED, AND ADDING ONE BY REFLEX IS THE TRAP. The two
+// folds below are the live consumers: `instrument_targets()` folds LABELS and
+// `instrument_bindings()` folds BINDINGS. NEITHER READS A `BuildTarget`, so a `*_target()` earns
+// its place only if some other module reads it -- `self_host_target` does, and several siblings do
+// not. That residue is a DESIGN section 3c dangling set, recorded rather than resolved because
+// resolving it is a separate change.
+//
+// The population is deliberately NOT enumerated here: a hand-written list of which ones dangle
+// goes stale the moment someone adds an instrument, which is the same positional-citation decay
+// section 3 forbids. Check it instead -- a `*_target()` whose only occurrence in `dag/` is its own
+// definition line has no consumer. The floor-memory row adds no `*_target()` for exactly this
+// reason.
 fn instrument_test_target(label: Label) -> BuildTarget {
   BuildTarget { label: label kind: TestRule {} dependencies: [] }
 }
@@ -235,6 +288,10 @@ fn primitive_egress_census_dag_target() -> BuildTarget {
 
 fn primitive_egress_census_seed_target() -> BuildTarget {
   instrument_test_target(label: primitive_egress_census_seed_label())
+}
+
+fn required_lane_resolution_census_target() -> BuildTarget {
+  instrument_test_target(label: required_lane_resolution_census_label())
 }
 
 fn v2_native_cli_binding() -> TargetBinding {
@@ -284,8 +341,23 @@ fn primitive_egress_census_dag_binding() -> TargetBinding {
   TargetBinding { target: primitive_egress_census_dag_label() producer: PrimitiveEgressCensusDagProducer {} }
 }
 
+fn floor_memory_qualification_binding() -> TargetBinding {
+  TargetBinding {
+    target: floor_memory_qualification_label()
+    producer: FloorMemoryQualificationProducer {}
+  }
+}
+
 fn primitive_egress_census_seed_binding() -> TargetBinding {
   TargetBinding { target: primitive_egress_census_seed_label() producer: PrimitiveEgressCensusSeedProducer {} }
+}
+
+fn required_lane_resolution_census_binding() -> TargetBinding {
+  TargetBinding { target: required_lane_resolution_census_label() producer: RequiredLaneResolutionCensusProducer {} }
+}
+
+fn bare_reference_channel_outcome_binding() -> TargetBinding {
+  TargetBinding { target: bare_reference_channel_outcome_label() producer: BareReferenceChannelOutcomeProducer {} }
 }
 
 // THE SUBJECT IS THE INSTRUMENT'S OWN FACT, NOT AN ARGUMENT THE CALLER SUPPLIES.
@@ -350,7 +422,9 @@ fn instrument_targets() -> List<Label> {
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
     compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
-    primitive_egress_census_v2_label(), primitive_egress_census_dag_label(), primitive_egress_census_seed_label()
+    primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
+    primitive_egress_census_seed_label(), floor_memory_qualification_label(),
+    required_lane_resolution_census_label(), bare_reference_channel_outcome_label()
   ]
 }
 
@@ -360,7 +434,9 @@ fn instrument_bindings() -> List<TargetBinding> {
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
     compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
-    primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(), primitive_egress_census_seed_binding()
+    primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
+    primitive_egress_census_seed_binding(), floor_memory_qualification_binding(),
+    required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding()
   ]
 }
 
@@ -603,4 +679,191 @@ fn compile_clean_diagnostic_census_standing_rendered(
         diagnostic_census_refusal_cause_rendered(c: c)
       )
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE BARE-REFERENCE CHANNEL'S OWN SUBJECT, EXPECTATIONS, CLASSIFIER AND RENDERING
+// ---------------------------------------------------------------------------------------------
+
+// THE SUBJECT IS A FIXTURE ROOT AND THAT IS WHY THE RED IS AUTHORABLE (DESIGN section 4b).
+//
+// The corpus cannot express "this file's bare channel declined" -- the loader writes nothing when
+// it declines, which is the class this instrument governs. But a SOURCE ROOT HANDED TO THE
+// COMPILER can express every condition exactly, one per entry, and a compiler's regression probes
+// are precisely such inputs. So the forbidden behaviour is expressible where this check runs, and
+// declining to enroll it would be the specification-without-execution DESIGN section 5 names.
+//
+// Hermetic: seven modules, no `std`, nothing imported from `dag` or `src/v2`, so a corpus-wide
+// change cannot move this reading and a moved reading means a moved gate.
+fn bare_reference_channel_source_roots() -> List<String> {
+  ["fixtures/bare_reference_channel"]
+}
+
+// THE FOUR ENTRIES, EACH ISOLATING EXACTLY ONE CONDITION, AND THE OUTCOME EACH MUST PRODUCE.
+//
+// Rows one and two differ in exactly `pullable` (`v1_compiler.cli_run`
+// `visit_bare_reference_providers`): a record type's connective is not `NoConnective` and pulls; a
+// nullary alias satisfies no arm and does not. Rows one and three differ in exactly gate one
+// (`source_declares_import_lines`): one unrelated import line turns the channel off for every
+// other name in the file. Row four is the passenger shape that falsified the first hypothesis --
+// a bare CALL pulls its callee, and the callee's import closure carries the alias home in as a
+// passenger, so the same alias reference that is declined in row two resolves here.
+//
+// EACH ROW IS DISCRIMINATING IN BOTH DIRECTIONS. Widening `pullable` to pull aliases makes row
+// two's set non-empty; narrowing it makes row one's set empty. Removing gate one makes row three
+// eligible and non-empty; extending it makes row one ineligible. No row can be satisfied by the
+// compiler merely not crashing.
+fn bare_reference_channel_expectations() -> List<BareReferenceChannelExpectation> {
+  [
+    BareReferenceChannelExpectation {
+      module_path: "probe.brc.bare_record_consumer" as NonEmptyStr
+      isolated_condition: "no imports; bare reference to a RECORD type -- pullable holds" as NonEmptyStr
+      eligibility: BareChannelRuns {}
+      pulled_modules: ["probe.brc.record_home"]
+    },
+    BareReferenceChannelExpectation {
+      module_path: "probe.brc.bare_alias_consumer" as NonEmptyStr
+      isolated_condition: "no imports; bare reference to a nullary type alias -- every arm of pullable declines" as NonEmptyStr
+      eligibility: BareChannelRuns {}
+      pulled_modules: []
+    },
+    BareReferenceChannelExpectation {
+      module_path: "probe.brc.imported_record_consumer" as NonEmptyStr
+      isolated_condition: "the row-one reference plus ONE unrelated import line -- gate one turns the channel off" as NonEmptyStr
+      eligibility: BareChannelDisabledByImportLine {}
+      pulled_modules: []
+    },
+    BareReferenceChannelExpectation {
+      module_path: "probe.brc.transitive_alias_consumer" as NonEmptyStr
+      isolated_condition: "no imports; a bare CALL whose callee imports the alias home -- the alias arrives as a passenger" as NonEmptyStr
+      eligibility: BareChannelRuns {}
+      pulled_modules: ["probe.brc.alias_home", "probe.brc.passenger_home"]
+    },
+  ]
+}
+
+// RENDERED BY AN EXHAUSTIVE MATCH TO ITS OWN SPELLING, NEVER THROUGH A `Bool`.
+//
+// The earlier shape was a two-arm projection to `Bool` consumed as `if runs { "RUNS" } else
+// { "DISABLED" }`. That is fine for exactly as long as the carrier has two arms, and the comment
+// on `bare_channel_reading_agrees` says it is expected to gain a third when the decline carrier
+// lands -- at which point the `else` renders a NEW, DISTINCT state as `DISABLED`, which is the
+// fabricated plausible output DESIGN section 5 forbids. An exhaustive match makes that misrender
+// UNWRITABLE rather than merely unlikely: a third arm fails to compile here instead of quietly
+// inheriting another state's word. This is also what the host mirror does.
+fn bare_channel_eligibility_rendered(e: BareChannelEligibility) -> String {
+  match e {
+    BareChannelRuns => "RUNS"
+    BareChannelDisabledByImportLine => "DISABLED"
+  }
+}
+
+fn bare_channel_module_named(modules: List<String>, wanted: String) -> Bool {
+  (modules |> filter(m => m == wanted) |> count) > 0
+}
+
+// SET EQUALITY AT IDENTITY GRAIN, NOT A COUNT (DESIGN section 5). A count equality would admit a
+// gate change that swapped which module was pulled for another, which is exactly the fact this
+// instrument exists to hold.
+fn bare_channel_module_sets_equal(expected: List<String>, observed: List<String>) -> Bool {
+  ((expected |> count) == (observed |> count))
+    && ((expected |> filter(m => !bare_channel_module_named(modules: observed, wanted: m)) |> count) == 0)
+    && ((observed |> filter(m => !bare_channel_module_named(modules: expected, wanted: m)) |> count) == 0)
+}
+
+// THE ELIGIBILITY FIELDS ARE COMPARED DIRECTLY, NEVER THROUGH THE Bool PROJECTION BESIDE THEM.
+//
+// An earlier revision compared the two eligibilities through a `Bool` projection. That is
+// equivalent today, when the carrier has two arms, and stops being equivalent the moment it gains
+// a third -- which is exactly what the ceiling receipt anticipates
+// when the decline carrier lands, since a declined name's arm is a state the channel reached. A
+// projection comparison would then read two DISTINCT non-running states as agreeing, and this
+// authority would silently disagree with its own host mirror. Compare the field.
+fn bare_channel_reading_agrees(
+  expected: BareReferenceChannelExpectation,
+  observed: BareReferenceChannelEntryReading
+) -> Bool {
+  (expected.eligibility == observed.eligibility)
+    && bare_channel_module_sets_equal(
+         expected: expected.pulled_modules,
+         observed: observed.pulled_modules
+       )
+}
+
+// EXACTLY ONE READING PER EXPECTATION, JOINED ON IDENTITY. A missing entry and a duplicated one
+// both fail here rather than being skipped: an expectation nothing answered is not a satisfied
+// expectation, which is the silent-decline shape this whole class is about, one layer up.
+fn bare_channel_expectation_met(
+  expected: BareReferenceChannelExpectation,
+  readings: List<BareReferenceChannelEntryReading>
+) -> Bool {
+  ((readings |> filter(r => r.module_path == expected.module_path) |> count) == 1)
+    && ((readings
+          |> filter(r => (r.module_path == expected.module_path)
+                          && bare_channel_reading_agrees(expected: expected, observed: r))
+          |> count) == 1)
+}
+
+fn bare_reference_channel_unmet_expectations(
+  readings: List<BareReferenceChannelEntryReading>
+) -> List<BareReferenceChannelExpectation> {
+  bare_reference_channel_expectations()
+    |> filter(e => !bare_channel_expectation_met(expected: e, readings: readings))
+}
+
+fn bare_reference_channel_holds(readings: List<BareReferenceChannelEntryReading>) -> Bool {
+  ((readings |> count) == (bare_reference_channel_expectations() |> count))
+    && ((bare_reference_channel_unmet_expectations(readings: readings) |> count) == 0)
+}
+
+fn bare_reference_channel_termination(s: BareReferenceChannelStanding) -> InvocationTermination {
+  match s {
+    BareReferenceChannelRead { readings: r } =>
+      if bare_reference_channel_holds(readings: r) {
+        InvocationObservationHeld {}
+      } else {
+        InvocationObservationDidNotHold {}
+      }
+    BareReferenceChannelSubjectUnreached { cause: _ } => InvocationSubjectUnreached {}
+  }
+}
+
+// THE CAUSE CARRIES A PAYLOAD AND THE RENDERING SURFACES IT. Matching without binding the field
+// would drop the one fact a reader of an unreached subject needs -- WHICH root, WHICH entry, WHICH
+// refusal -- and leave a located cause rendering as an unlocated sentence.
+fn bare_channel_subject_cause_rendered(c: BareReferenceChannelSubjectCause) -> String {
+  match c {
+    BareChannelFixtureRootAbsent { root: r } => concat("fixture source root absent: ", r)
+    BareChannelEntryAbsent { module_path: m } =>
+      concat("fixture entry absent from the module index: ", m)
+    BareChannelIndexRefused { detail: d } => concat("module index refused: ", d)
+  }
+}
+
+// THE STANDING RENDERING, in the producer's own vocabulary and never in the aggregate's words:
+// no PASSED, no FAILED. A read standing reports what was observed and how many expectations went
+// unmet; an unreached subject reports its located cause and reports NO counts, because a run that
+// observed nothing has no populations to report and printing `unmet=0` there would read as a
+// clean result.
+fn bare_reference_channel_standing_rendered(s: BareReferenceChannelStanding) -> String {
+  match s {
+    BareReferenceChannelRead { readings: rs } =>
+      join([
+        "bare-reference-channel-outcome: entries=", to_string(rs |> count),
+        " unmet=", to_string(bare_reference_channel_unmet_expectations(readings: rs) |> count)
+      ], "")
+    BareReferenceChannelSubjectUnreached { cause: c } =>
+      concat(
+        "bare-reference-channel-outcome: subject unreached: ",
+        bare_channel_subject_cause_rendered(c: c)
+      )
+  }
+}
+
+fn bare_channel_reading_rendered(r: BareReferenceChannelEntryReading) -> String {
+  join([
+    "bare-reference-channel-outcome: ", r.module_path,
+    " channel=", bare_channel_eligibility_rendered(e: r.eligibility),
+    " pulled=[", join(r.pulled_modules, ", "), "]"
+  ], "")
 }

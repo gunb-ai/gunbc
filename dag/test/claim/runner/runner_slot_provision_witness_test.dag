@@ -61,7 +61,12 @@ import gunbc.membership_reconcile {
 }
 import gunbc.ownership { Owned }
 import product.placement_supply { HostIdentity }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, host_fabric_slot_count, host_memory_admitted_width }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  host_fabric_slot_count,
+  host_memory_admitted_width,
+}
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.exec.command { shell_command_render }
 import gunbc.runner_slot_retirement {
@@ -195,10 +200,11 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
   match runner_slot_enumeration_postcondition(host: operator_host_srv3, observed: observed) {
     RunnerSlotEnumerationMismatch { host: h, declared_count: d, observed_count: o } =>
       h == operator_host_srv3
-        && d == gunbc_runner_slots_per_host(host: operator_host_srv3)
+        && d == provision_width_of(host: operator_host_srv3)
         && o == 1
         && d > o
     RunnerSlotEnumerationMatched => false
+    RunnerSlotEnumerationWidthUnresolved { host: _, cause: _ } => false
   }
 }
 
@@ -373,7 +379,7 @@ test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
 // NO DEPLOY ROW OUT-COMMITS THE MEMORY BUDGET, and this is a join between two authorities rather
 // than a restatement of one.
 //
-// runner_count derives from gunbc.runner_slot_allocation gunbc_runner_slots_per_host, which is the
+// runner_count derives from gunbc.runner_slot_allocation gunbc_runner_committed_width, which is the
 // MINIMUM over the memory, CPU and disk axes. host_memory_admitted_width is the memory axis ALONE.
 // The memory-only gunbc.fleet_host_budget declared_runner_count_for that used to stand here was a
 // SECOND producer of the committed width and is deleted; the axis it approximated is named directly. Asserting equality between them would be wrong as well as vacuous -- since the 2026-08-23
@@ -399,27 +405,61 @@ test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
 // have proposed installing a GitHub Actions runner over srv3's fabric execution slot -- and
 // reconcile would have seen it as an ordinary missing member, so apply would have done it with no
 // refusal anywhere. The width says how many slots exist; it does not say what they are for.
-test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
+// srv3-07 MOVED SIDES (2026-09-18) AND THAT IS WHY THIS ROW IS EDITED RATHER THAN LEFT ALONE. It was
+// the positive control here -- the index just above the canary, asserted PRESENT to prove the row
+// excludes the fabric member specifically rather than truncating the desired set. srv3-07 is now the
+// second fabric member, so it must be absent for exactly the reason srv3-06 is, and the control
+// moves up to srv3-08.
+//
+// THE CONTROL IS STILL LOAD-BEARING and must not be dropped just because there are two exclusions
+// now: without an index asserted PRESENT above the excluded ones, a desired set that simply stopped
+// at srv3-05 would satisfy every other clause.
+test fn the_fabric_slots_are_not_provisioning_targets() -> Bool {
   let names = map(
     desired_runner_slot_members(deploy: wt_srv3_deploy()),
     m => runner_slot_member_key(m: m) as String,
   )
   (any(names, n => n == "srv3-06") == false)
+    && (any(names, n => n == "srv3-07") == false)
     && any(names, n => n == "srv3-05")
-    && any(names, n => n == "srv3-07")
+    && any(names, n => n == "srv3-08")
 }
 
 // THE POSITIVE CONTROL AND THE ARITHMETIC, without which the row above is satisfied by a desired set
-// that is simply too small. srv3 gives up exactly one slot to the fabric; every other host carries
+// that is simply too small. srv3 and srv4 each give up exactly two slots to the fabric; srv1 carries
 // no fabric member and loses nothing.
-test fn only_the_fabric_host_loses_a_provisioning_target() -> Bool {
+//
+// THE COUNTS ARE AUTHORED POLICY AND THE WIDTHS ARE DERIVED, which is why the two appear
+// differently. The committed width is RESOLVED rather than transcribed -- a width literal here
+// would go stale the next time an axis moves, as the prose in the authority did across the
+// 2026-08-22 DIMM upgrade -- while the per-host fabric count IS a declared decision (operator,
+// 2026-09-18: two execution slots on each of srv3 and srv4) and is therefore written as the literal
+// it is. Widening the population without editing this row leaves the subtraction disagreeing with
+// the authority, which is the discrimination this control exists to provide.
+fn provision_width_of(host: HostIdentity) -> Int {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: _ } => 0 - 1
+    RunnerWidthDerived { slots: n } => n
+  }
+}
+
+fn resolution_count_is(r: RunnerWidthResolution, expected: Int) -> Bool {
+  match r {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: n } => n == expected
+  }
+}
+
+test fn only_the_fabric_hosts_lose_provisioning_targets() -> Bool {
   list_length(items: desired_runner_slot_members(deploy: wt_srv3_deploy()))
-    == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
-    && host_fabric_slot_count(host: operator_host_srv3) == 1
+    == provision_width_of(host: operator_host_srv3) - 2
+    && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv3), expected: 2)
     && list_length(items: desired_runner_slot_members(deploy: wt_srv4_deploy()))
-         == gunbc_runner_slots_per_host(host: operator_host_srv4)
+         == provision_width_of(host: operator_host_srv4) - 2
+    && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv4), expected: 2)
     && list_length(items: desired_runner_slot_members(deploy: wt_srv1_deploy()))
-         == gunbc_runner_slots_per_host(host: operator_host_srv1)
+         == provision_width_of(host: operator_host_srv1)
+    && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv1), expected: 0)
 }
 
 

@@ -1,0 +1,132 @@
+module gunbc.machine_intake_mtjade1_factory_network
+
+import std.types { Bool, NonEmptyStr }
+import extdeps.network.ipv4 { Ipv4Address, PrefixLength, ipv4_address, ipv4_address_eq }
+import extdeps.network.mac { Eui48Address }
+
+// THE UNIT'S BMC IS ON A FACTORY STATIC ADDRESS, AND THE GSG SAYS IT SHOULD NOT BE.
+//
+// Page 14 step 3 of the Mt. Jade GSG (Issue 1.00, digest f6528f70) instructs the operator to
+// cable the BMC management port to "the network switch which provides DHCP IP", and the document
+// states no static default anywhere. This unit answered on a static address before any DHCP lease
+// existed. That divergence is the fact worth carrying, and it is why this standing is a COMPARISON
+// rather than an observation filed under the document's expectation: recording the address as
+// though it were the documented behaviour would erase the one thing the observation establishes.
+//
+// WHAT IT ESTABLISHES, CONCRETELY: "brand new" does not prove factory-default BMC NVRAM. The unit
+// arrived sealed and its network configuration is not what the shipping document describes, so the
+// safe reading is that this controller was configured before it reached us. That is a reason to
+// preserve the configuration as evidence rather than reset it, and the no-reset standing elsewhere
+// in intake rests on this row rather than on a caution.
+
+type BmcNetworkModeExpectation
+  = DocumentExpectsDhcp { citation: NonEmptyStr }
+  | DocumentStatesStatic { citation: NonEmptyStr }
+  | DocumentStatesNoNetworkDefault { citation: NonEmptyStr }
+
+data mt_jade_gsg_bmc_network_expectation: BmcNetworkModeExpectation = DocumentExpectsDhcp {
+  citation: "Mt. Jade GSG Issue 1.00 page 14, Step 3 (3): connect the BMC Ethernet Management port to the network switch which provides DHCP IP. The document states no static default.",
+}
+
+type ObservedBmcNetwork
+  = BmcNetworkUnobserved { discriminator: NonEmptyStr }
+  | BmcNetworkObservedStatic {
+      address: Ipv4Address
+      prefix: PrefixLength
+      gateway: Ipv4Address
+      link: Eui48Address
+      basis: NonEmptyStr
+    }
+  | BmcNetworkObservedDhcpLease {
+      address: Ipv4Address
+      prefix: PrefixLength
+      basis: NonEmptyStr
+    }
+
+// THE COMPARISON IS THE POINT, so it is a coproduct rather than a Bool: a reader needs to know
+// WHICH way the unit diverged, and an unobserved network is not agreement.
+type FactoryBmcNetworkStanding
+  = FactoryNetworkUnobserved { discriminator: NonEmptyStr }
+  | FactoryNetworkMatchesDocument { expectation: BmcNetworkModeExpectation }
+  | FactoryNetworkDivergesFromDocument {
+      expectation: BmcNetworkModeExpectation
+      observed: ObservedBmcNetwork
+      divergence: NonEmptyStr
+    }
+
+fn factory_bmc_network_standing(
+  expectation: BmcNetworkModeExpectation,
+  observed: ObservedBmcNetwork,
+) -> FactoryBmcNetworkStanding {
+  match observed {
+    BmcNetworkUnobserved { discriminator: d } => FactoryNetworkUnobserved { discriminator: d }
+    BmcNetworkObservedStatic { address: _, prefix: _, gateway: _, link: _, basis: _ } =>
+      match expectation {
+        DocumentExpectsDhcp { citation: _ } =>
+          FactoryNetworkDivergesFromDocument {
+            expectation: expectation,
+            observed: observed,
+            divergence: "the document instructs a DHCP-served management port and states no static default; the controller answered on a static address with no lease in the router table",
+          }
+        DocumentStatesStatic { citation: _ } => FactoryNetworkMatchesDocument { expectation: expectation }
+        DocumentStatesNoNetworkDefault { citation: _ } =>
+          FactoryNetworkDivergesFromDocument {
+            expectation: expectation,
+            observed: observed,
+            divergence: "the document states no network default at all, so a configured static is unattributable to it",
+          }
+      }
+    BmcNetworkObservedDhcpLease { address: _, prefix: _, basis: _ } =>
+      match expectation {
+        DocumentExpectsDhcp { citation: _ } => FactoryNetworkMatchesDocument { expectation: expectation }
+        DocumentStatesStatic { citation: _ } =>
+          FactoryNetworkDivergesFromDocument {
+            expectation: expectation,
+            observed: observed,
+            divergence: "the document states a static default and the controller took a DHCP lease",
+          }
+        DocumentStatesNoNetworkDefault { citation: _ } =>
+          FactoryNetworkDivergesFromDocument {
+            expectation: expectation,
+            observed: observed,
+            divergence: "the document states no network default at all, so a DHCP lease is unattributable to it",
+          }
+      }
+  }
+}
+
+// THE OBSERVED ROW FOR UNIT 1, from the operator's read of the controller and srv1's ARP capture.
+// The MAC is the one srv1 saw as the source of the BMC's own ARP broadcasts, which is also what
+// establishes the shared segment: ARP does not cross a router.
+data mtjade1_bmc_observed_network: ObservedBmcNetwork = BmcNetworkObservedStatic {
+  address: ipv4_address(octet1: 10, octet2: 0, octet3: 7, octet4: 2),
+  prefix: 29,
+  gateway: ipv4_address(octet1: 10, octet2: 0, octet3: 7, octet4: 1),
+  link: Eui48Address {
+    octet1: 112,
+    octet2: 226,
+    octet3: 132,
+    octet4: 149,
+    octet5: 51,
+    octet6: 107,
+  },
+  basis: "operator read of the controller, corroborated by a 90s tcpdump on srv1's enP3p3s0f1 which received this MAC's own ARP broadcasts (who-has 10.0.7.1 tell 10.0.7.2)",
+}
+
+data mtjade1_factory_bmc_network_standing: FactoryBmcNetworkStanding = factory_bmc_network_standing(
+  expectation: mt_jade_gsg_bmc_network_expectation,
+  observed: mtjade1_bmc_observed_network,
+)
+
+// THE ADDRESS srv1 MUST REACH, and the one it takes to do so. .1 is the controller's configured
+// GATEWAY and taking it would impersonate that; .3 is a free host address in the same /29 that
+// reaches .2 on-link without claiming the gateway identity.
+data mtjade1_bmc_address: Ipv4Address = ipv4_address(octet1: 10, octet2: 0, octet3: 7, octet4: 2)
+
+data srv1_factory_segment_address: Ipv4Address = ipv4_address(octet1: 10, octet2: 0, octet3: 7, octet4: 3)
+
+data mtjade1_factory_segment_prefix: PrefixLength = 29
+
+fn srv1_segment_address_is_not_the_bmc(a: Ipv4Address, b: Ipv4Address) -> Bool {
+  ipv4_address_eq(a: a, b: b) == false
+}

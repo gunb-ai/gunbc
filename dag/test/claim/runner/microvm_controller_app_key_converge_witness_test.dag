@@ -1,0 +1,418 @@
+module test.claim.microvm_controller_app_key_converge_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.github_effect_perform { lifecycle_controller_app_key }
+import gunbc.runner_host_file_converge {
+  HostFileIdentical,
+  HostFileDiffers,
+  PathsRootOnly,
+  PathsNotRootOnly,
+  runner_host_file_subject,
+  RunnerHostFileSubjectAdmitted,
+  RunnerHostFileSubjectRefused,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.microvm_controller_app_key_converge {
+  controller_key_host,
+  ControllerKeyHostAdmitted,
+  ControllerKeyHostRefused,
+  StagingResidue,
+  ControllerAppKeyPlaced,
+  ControllerAppKeyPlacementRefused,
+  controller_app_key_placement,
+  signing_key_file_path,
+  KeyPathFindReading,
+  KeyFileRootOwnerRead,
+  KeyFileWrongOwner,
+  KeyFileGroupOrOtherAccess,
+  KeyFileModeNotOwnerReadOnly,
+  KeyFileAbsent,
+  KeyDirRootOnly,
+  KeyDirGroupOrOtherAccess,
+  classify_key_file_metadata,
+  classify_key_dir_metadata,
+  StagingAbsent,
+  StagingResiduePresent,
+  StagingUnobservable,
+  classify_staging_residue,
+  ControllerAppKeyReadback,
+  ControllerAppKeyHeld,
+  ControllerAppKeyNotHeld,
+  controller_app_key_custody,
+  AppKeyLeaveInPlace,
+  AppKeyWrite,
+  AppKeyActionRefused,
+  controller_app_key_action,
+  key_path_find_argv,
+  key_path_exactly_owner_read_clause,
+  KeyDirMetadataUnobservable,
+  admit_staging_cleanup,
+  StagingCleanupAuthorized,
+  StagingCleanupWithheld,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT OF EVERY CLAIM HERE IS ONE PURE INTERFACE, with its inputs SUPPLIED (DESIGN §3, a
+// witness discriminates at one interface): the far-side find answers and the cmp/test exits are
+// constructed rather than produced by a host. The execution route (fleet SSH, sudo, Secret Manager)
+// has no hermetic seam that returns distinct answers per leg, so its inhabitance is the dispatched
+// fleet-converge mode's receipt, not a claim in this file.
+
+data held_file: KeyPathFindReading = KeyPathFindReading { root_owned: true, group_or_other_bits: false, exactly_owner_read: true }
+
+data held_dir: KeyPathFindReading = KeyPathFindReading { root_owned: true, group_or_other_bits: false, exactly_owner_read: false }
+
+data staging_path: String = "/etc/gunbc/microvm-controller/app.pem.gunbc-staging"
+
+data cleanup_key_dir: String = "/etc/gunbc/microvm-controller"
+data staging_name: String = "app.pem.gunbc-staging"
+
+// THE STAGING READING IS SUPPLIED AS THE VALUE IT IS, not as an exit code. classify_staging_residue
+// is now pure over a listing that SUCCEEDED, so StagingUnobservable has no constructor inside it --
+// that arm belongs to the leg, and the claim that needs it supplies it directly.
+fn staging_from_listing(listing: String) -> StagingResidue {
+  classify_staging_residue(path: staging_path, name: staging_name, stdout: listing)
+}
+
+fn readback_with(file: KeyPathFindReading, staging: StagingResidue, content_identical: Bool) -> ControllerAppKeyReadback {
+  ControllerAppKeyReadback {
+    file: classify_key_file_metadata(reading: file),
+    dir: classify_key_dir_metadata(reading: held_dir),
+    upper_ancestors: PathsRootOnly,
+    content: if content_identical { HostFileIdentical } else { HostFileDiffers },
+    staging: staging,
+  }
+}
+
+fn is_held(r: ControllerAppKeyReadback) -> Bool {
+  match controller_app_key_custody(readback: r) {
+    ControllerAppKeyHeld => true
+    ControllerAppKeyNotHeld { causes: _ } => false
+  }
+}
+
+// ── positive control ────────────────────────────────────────────────────────────────────────────
+
+test fn a_root_owned_0400_identical_key_with_no_staging_is_held() -> Bool {
+  is_held(r: readback_with(file: held_file, staging: staging_from_listing(listing: "other-file\napp.pem"), content_identical: true))
+}
+
+// ── discriminating reds, each changing ONE input from the control and asserting the REASON ──────
+
+test fn a_runner_owned_key_is_not_held_and_is_named_wrong_owner() -> Bool {
+  let r = readback_with(file: KeyPathFindReading { root_owned: false, group_or_other_bits: false, exactly_owner_read: true }, staging: staging_from_listing(listing: "other-file\napp.pem"), content_identical: true)
+  !is_held(r: r) && match r.file {
+    KeyFileWrongOwner => true
+    _ => false
+  }
+}
+
+test fn a_group_readable_key_is_not_held_and_is_named_group_or_other_access() -> Bool {
+  let r = readback_with(file: KeyPathFindReading { root_owned: true, group_or_other_bits: true, exactly_owner_read: false }, staging: staging_from_listing(listing: "other-file\napp.pem"), content_identical: true)
+  !is_held(r: r) && match r.file {
+    KeyFileGroupOrOtherAccess => true
+    _ => false
+  }
+}
+
+test fn an_owner_writable_key_is_not_held_and_is_named_mode_not_0400() -> Bool {
+  let r = readback_with(file: KeyPathFindReading { root_owned: true, group_or_other_bits: false, exactly_owner_read: false }, staging: staging_from_listing(listing: "other-file\napp.pem"), content_identical: true)
+  !is_held(r: r) && match r.file {
+    KeyFileModeNotOwnerReadOnly => true
+    _ => false
+  }
+}
+
+test fn a_key_whose_bytes_differ_from_the_sm_version_is_not_held() -> Bool {
+  !is_held(r: readback_with(file: held_file, staging: staging_from_listing(listing: "other-file\napp.pem"), content_identical: false))
+}
+
+test fn a_surviving_staging_sibling_is_not_held_and_is_named_residue() -> Bool {
+  let r = readback_with(file: held_file, staging: staging_from_listing(listing: "app.pem\napp.pem.gunbc-staging"), content_identical: true)
+  !is_held(r: r) && match r.staging {
+    StagingResiduePresent { path: _ } => true
+    _ => false
+  }
+}
+
+// THE NAME SAYS WHAT IT ESTABLISHES: a leg that did not run is not absence. The probe this
+// replaced was `test -e`, whose exit 1 collapsed "gone" with "could not look" -- and the absent
+// arm is the one that lets ControllerAppKeyHeld be minted.
+test fn an_unrunnable_staging_listing_is_unobservable_not_absent() -> Bool {
+  let r = readback_with(file: held_file, staging: StagingUnobservable { reason: "staging parent listing exit=2 ls: cannot open directory" }, content_identical: true)
+  !is_held(r: r) && match r.staging {
+    StagingUnobservable { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_group_traversable_directory_is_not_held() -> Bool {
+  let r = ControllerAppKeyReadback {
+    file: classify_key_file_metadata(reading: held_file),
+    dir: classify_key_dir_metadata(reading: KeyPathFindReading { root_owned: true, group_or_other_bits: true, exactly_owner_read: false }),
+    upper_ancestors: PathsRootOnly,
+    content: HostFileIdentical,
+    staging: StagingAbsent,
+  }
+  !is_held(r: r) && match r.dir {
+    KeyDirGroupOrOtherAccess => true
+    _ => false
+  }
+}
+
+// ── the decision before a write ─────────────────────────────────────────────────────────────────
+
+test fn an_identical_key_with_wrong_owner_is_rewritten_not_left() -> Bool {
+  match controller_app_key_action(dir: KeyDirRootOnly, upper_ancestors: PathsRootOnly, content: HostFileIdentical, file: KeyFileWrongOwner) {
+    AppKeyWrite => true
+    _ => false
+  }
+}
+
+test fn a_held_key_is_left_in_place() -> Bool {
+  match controller_app_key_action(dir: KeyDirRootOnly, upper_ancestors: PathsRootOnly, content: HostFileIdentical, file: KeyFileRootOwnerRead) {
+    AppKeyLeaveInPlace => true
+    _ => false
+  }
+}
+
+// WHAT THESE TWO ESTABLISH, STATED IN THEIR NAMES. They call the pure controller_app_key_action
+// with SUPPLIED observations; they do not execute the converge, so they cannot establish that no
+// host mutation preceded the decision. What they do establish is that neither an unsafe key
+// directory nor a writable ancestor reaches the arm that writes KEY CONTENT. Their previous names
+// said "before any write", which advertised a property of the production route that the route did
+// not have: converge_controller_app_key ran ensure_key_dir (install -d) before the ancestors were
+// observed. That ordering is now repaired -- the create is gated on the ancestor reading -- but the
+// names stay scoped to what a claim over a pure function can reach.
+test fn an_unsafe_directory_refuses_before_any_key_content_write() -> Bool {
+  match controller_app_key_action(dir: KeyDirGroupOrOtherAccess, upper_ancestors: PathsRootOnly, content: HostFileDiffers, file: KeyFileAbsent) {
+    AppKeyActionRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_writable_ancestor_refuses_before_any_key_content_write() -> Bool {
+  match controller_app_key_action(dir: KeyDirRootOnly, upper_ancestors: PathsNotRootOnly { paths: ["/etc/gunbc"], detail: "" }, content: HostFileDiffers, file: KeyFileAbsent) {
+    AppKeyActionRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+// ── placement ───────────────────────────────────────────────────────────────────────────────────
+
+// THE REAL PATH, not a fixture: this reddens if lifecycle_controller_app_key moves somewhere
+// with no dedicated root-only directory or into the fabric-cell tree.
+test fn the_modeled_key_path_places_in_its_own_directory_under_etc() -> Bool {
+  match controller_app_key_placement(key_path: signing_key_file_path(key: lifecycle_controller_app_key)) {
+    ControllerAppKeyPlaced { key_path: _, key_dir: d, upper_ancestors: ua } =>
+      (d as String) == "/etc/gunbc/microvm-controller" && ua == ["/etc", "/etc/gunbc"]
+    ControllerAppKeyPlacementRefused { cause: _ } => false
+  }
+}
+
+test fn a_key_path_under_the_attempt_tree_is_refused() -> Bool {
+  match controller_app_key_placement(key_path: "/opt/fabric-cells/slot-1/attempts/a1/app.pem" as NonEmptyStr) {
+    ControllerAppKeyPlacementRefused { cause: c } => string_contains(s: c as String, pattern: "fabric-cell tree")
+    ControllerAppKeyPlaced { key_path: _, key_dir: _, upper_ancestors: _ } => false
+  }
+}
+
+test fn the_mode_leg_asks_for_exactly_0400() -> Bool {
+  key_path_find_argv(path: "/p", kind: "f", clause: key_path_exactly_owner_read_clause)
+    == ["find", "/p", "-maxdepth", "0", "-type", "f", "-perm", "0400"]
+}
+
+
+// ── the custody subject is independent of slot width ────────────────────────────────────────────
+
+// THE DISCRIMINATING PAIR, and the reason this repair exists. srv2's runner width is unresolved, so
+// it has no admitted RunnerHostDeploy and runner_host_file_subject refuses it -- while the mode
+// described itself as covering srv1 and srv2. The App key's location, administrator target and
+// custody do not depend on how many slots a host admits, so controller_key_host resolves the same
+// host from its SPEC and admits it. If a future edit re-couples custody to the deploy row, the
+// first of these goes red.
+test fn srv2_resolves_a_custody_subject_although_its_slot_width_is_unresolved() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostAdmitted { subject: s } => (s.host as String) == (operator_host_srv2 as String)
+    ControllerKeyHostRefused { cause: _ } => false
+  }
+}
+
+test fn the_deploy_route_still_refuses_srv2_which_is_what_made_the_mode_terminate() -> Bool {
+  match runner_host_file_subject(host: operator_host_srv2) {
+    RunnerHostFileSubjectRefused { cause: _ } => true
+    RunnerHostFileSubjectAdmitted { subject: _ } => false
+  }
+}
+
+test fn a_host_with_no_runner_spec_is_refused_as_a_custody_subject() -> Bool {
+  match controller_key_host(host: "not-a-fleet-host" as HostIdentity) {
+    ControllerKeyHostRefused { cause: c } => string_contains(s: c, pattern: "no runner host spec")
+    ControllerKeyHostAdmitted { subject: _ } => false
+  }
+}
+
+// ── staging absence comes from the parent listing ───────────────────────────────────────────────
+
+test fn a_parent_listing_without_the_staging_name_establishes_absence() -> Bool {
+  match staging_from_listing(listing: "app.pem\nother") {
+    StagingAbsent => true
+    _ => false
+  }
+}
+
+test fn a_parent_listing_carrying_the_staging_name_is_residue() -> Bool {
+  match staging_from_listing(listing: "app.pem\napp.pem.gunbc-staging") {
+    StagingResiduePresent { path: p } => p == staging_path
+    _ => false
+  }
+}
+
+// AN EMPTY LISTING IS ABSENCE, and that is the one case worth stating apart: the parent was read and
+// held nothing, which is a reading. It is NOT the same as a listing that never ran, which cannot
+// reach this function at all.
+test fn an_empty_parent_listing_is_absence_because_the_parent_was_read() -> Bool {
+  match staging_from_listing(listing: "") {
+    StagingAbsent => true
+    _ => false
+  }
+}
+
+
+// ── cleanup is a root mutation, so it carries the same path authority the write does ────────────
+
+// THE FOURTH FINDING IN THIS FAMILY, one step further down the same route. The ordering repair
+// stopped `install -d` beneath an untrusted ancestor, but clear_staging still ran UNCONDITIONALLY
+// after the action refused, and it BEGINS with `sudo rm -f -- <staging>`. On a host whose /etc or
+// /etc/gunbc is group- or other-writable the route refused the write and then performed a root
+// mutation through the very path component it had declined to trust -- a component a non-root
+// principal can replace with a directory or a symlink between the observation and the leg.
+//
+// These controls run the PURE admission, which is the whole gate: sole_constructor means
+// StagingCleanupAuthorization exists nowhere else, so an unauthorized arm has no value to pass to
+// clear_staging and the rm has no way to be spelled. The previous 21 could not see the defect
+// because they invoked only controller_app_key_action and never reached the cleanup leg.
+
+test fn a_writable_upper_ancestor_withholds_the_staging_cleanup() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostRefused { cause: _ } => false
+    ControllerKeyHostAdmitted { subject: s } =>
+      match admit_staging_cleanup(
+        subject: s,
+        upper_ancestors: PathsNotRootOnly { paths: ["/etc/gunbc"], detail: "" },
+        dir: KeyDirRootOnly,
+        key_dir: cleanup_key_dir,
+        staging: staging_path,
+      ) {
+        StagingCleanupWithheld { reason: r } => string_contains(s: r, pattern: "ancestor")
+        StagingCleanupAuthorized { authorization: _ } => false
+      }
+  }
+}
+
+test fn an_unsafe_key_directory_withholds_the_staging_cleanup() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostRefused { cause: _ } => false
+    ControllerKeyHostAdmitted { subject: s } =>
+      match admit_staging_cleanup(
+        subject: s,
+        upper_ancestors: PathsRootOnly,
+        dir: KeyDirGroupOrOtherAccess,
+        key_dir: cleanup_key_dir,
+        staging: staging_path,
+      ) {
+        StagingCleanupWithheld { reason: r } => string_contains(s: r, pattern: "not root-only")
+        StagingCleanupAuthorized { authorization: _ } => false
+      }
+  }
+}
+
+// UNREADABLE IS NOT SAFE. A directory whose metadata could not be read is exactly the state where a
+// cleanup leg would be running blind, so it withholds for the same reason an unsafe one does.
+test fn an_unreadable_key_directory_withholds_the_staging_cleanup() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostRefused { cause: _ } => false
+    ControllerKeyHostAdmitted { subject: s } =>
+      match admit_staging_cleanup(
+        subject: s,
+        upper_ancestors: PathsRootOnly,
+        dir: KeyDirMetadataUnobservable { reason: "find leg exit=1" },
+        key_dir: cleanup_key_dir,
+        staging: staging_path,
+      ) {
+        StagingCleanupWithheld { reason: _ } => true
+        StagingCleanupAuthorized { authorization: _ } => false
+      }
+  }
+}
+
+// THE JOIN, not merely the two readings: a staging path whose parent is NOT the directory that was
+// admitted is unauthorized even when both readings are root-only, because the authority established
+// is over that directory and nothing else.
+test fn a_staging_path_outside_the_admitted_directory_is_withheld() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostRefused { cause: _ } => false
+    ControllerKeyHostAdmitted { subject: s } =>
+      match admit_staging_cleanup(
+        subject: s,
+        upper_ancestors: PathsRootOnly,
+        dir: KeyDirRootOnly,
+        key_dir: cleanup_key_dir,
+        staging: "/tmp/app.pem.gunbc-staging",
+      ) {
+        StagingCleanupWithheld { reason: r } => string_contains(s: r, pattern: "admitted key directory")
+        StagingCleanupAuthorized { authorization: _ } => false
+      }
+  }
+}
+
+// THE POSITIVE CONTROL. Root-only ancestors and a root-only directory containing the staging path
+// authorize exactly one cleanup, and the seal names the exact parent and staging path the leg will
+// run over -- not the subject's idea of them.
+test fn root_only_ancestors_and_directory_authorize_the_exact_staging_path() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostRefused { cause: _ } => false
+    ControllerKeyHostAdmitted { subject: s } =>
+      match admit_staging_cleanup(
+        subject: s,
+        upper_ancestors: PathsRootOnly,
+        dir: KeyDirRootOnly,
+        key_dir: cleanup_key_dir,
+        staging: staging_path,
+      ) {
+        StagingCleanupAuthorized { authorization: z } =>
+          z.staging == staging_path && z.parent == cleanup_key_dir && (z.subject.host as String) == (operator_host_srv2 as String)
+        StagingCleanupWithheld { reason: _ } => false
+      }
+  }
+}
+
+// THE THREE WITHHELD CAUSES ARE DISTINCT, which is what makes the diagnostic LOCATED rather than
+// merely typed. An earlier revision discarded admit_staging_cleanup's computed cause at the call
+// site and substituted one constant, so a receipt said "root-only path authority was not
+// established" without saying whether an operator should fix an ancestor, the directory, or a
+// staging path pointing outside it. This reddens if the three are ever flattened back together.
+test fn the_three_withheld_causes_name_which_fact_failed() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostRefused { cause: _ } => false
+    ControllerKeyHostAdmitted { subject: s } => {
+      let ancestor_cause = match admit_staging_cleanup(subject: s, upper_ancestors: PathsNotRootOnly { paths: ["/etc/gunbc"], detail: "" }, dir: KeyDirRootOnly, key_dir: cleanup_key_dir, staging: staging_path) {
+        StagingCleanupWithheld { reason: r } => r
+        StagingCleanupAuthorized { authorization: _ } => ""
+      }
+      let dir_cause = match admit_staging_cleanup(subject: s, upper_ancestors: PathsRootOnly, dir: KeyDirGroupOrOtherAccess, key_dir: cleanup_key_dir, staging: staging_path) {
+        StagingCleanupWithheld { reason: r } => r
+        StagingCleanupAuthorized { authorization: _ } => ""
+      }
+      let path_cause = match admit_staging_cleanup(subject: s, upper_ancestors: PathsRootOnly, dir: KeyDirRootOnly, key_dir: cleanup_key_dir, staging: "/tmp/app.pem.gunbc-staging") {
+        StagingCleanupWithheld { reason: r } => r
+        StagingCleanupAuthorized { authorization: _ } => ""
+      }
+      ancestor_cause != "" && ancestor_cause != dir_cause && dir_cause != path_cause && ancestor_cause != path_cause
+    }
+  }
+}

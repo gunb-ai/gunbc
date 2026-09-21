@@ -1,0 +1,44 @@
+module test.claim.scoped_authorization_claim_state
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import std.scoped_authorization {
+  AuthorizationClaimState, Unclaimed, ClaimedBy, CompletedBy, AbortedBy, AttemptIdentity,
+  serialize_authorization_claim_state, parse_authorization_claim_state,
+}
+
+// THE PARSER IS THE SERIALIZER'S EXACT INVERSE, at the same home, so a consumer that must know
+// WHO holds a slot (gunbc.spark.pair_serving_d0's recovery join) reads the closed state rather
+// than re-spelling the tag word and the tab layout. Every arm round-trips; bytes that inhabit no
+// arm -- an unknown tag, a missing field, an empty attempt -- are Absent, never a guessed state.
+
+fn sacs_attempt(s: String) -> AttemptIdentity {
+  (s as NonEmptyStr) as AttemptIdentity
+}
+
+fn sacs_round_trips(state: AuthorizationClaimState) -> Bool {
+  match parse_authorization_claim_state(payload: serialize_authorization_claim_state(state: state)) {
+    Absent => false
+    Present { value: back } => serialize_authorization_claim_state(state: back) == serialize_authorization_claim_state(state: state)
+  }
+}
+
+test fn every_claim_state_round_trips_through_its_wire_form() -> Bool {
+  sacs_round_trips(state: Unclaimed)
+    && sacs_round_trips(state: ClaimedBy { attempt: sacs_attempt(s: "tx-1"), claimed_at: "2026-09-18T00:00:00Z" })
+    && sacs_round_trips(state: CompletedBy { attempt: sacs_attempt(s: "tx-1"), completed_at: "2026-09-18T00:00:01Z" })
+    && sacs_round_trips(state: AbortedBy { attempt: sacs_attempt(s: "tx-1"), aborted_at: "2026-09-18T00:00:02Z", cause: "no fleet ssh context" as NonEmptyStr })
+    && (match parse_authorization_claim_state(payload: serialize_authorization_claim_state(state: ClaimedBy { attempt: sacs_attempt(s: "tx-9"), claimed_at: "t" })) {
+          Present { value: ClaimedBy { attempt: who, claimed_at: when } } => (who as String) == "tx-9" && when == "t"
+          _ => false
+        })
+}
+
+test fn bytes_that_inhabit_no_claim_state_parse_to_nothing() -> Bool {
+  (match parse_authorization_claim_state(payload: "held-by\ttx-1\tt" as NonEmptyStr) { Absent => true  Present { value: _ } => false })
+    && (match parse_authorization_claim_state(payload: "claimed-by\ttx-1" as NonEmptyStr) { Absent => true  Present { value: _ } => false })
+    && (match parse_authorization_claim_state(payload: "claimed-by\t\tt" as NonEmptyStr) { Absent => true  Present { value: _ } => false })
+    && (match parse_authorization_claim_state(payload: "aborted-by\ttx-1\tt" as NonEmptyStr) { Absent => true  Present { value: _ } => false })
+    && (match parse_authorization_claim_state(payload: "unclaimed\textra" as NonEmptyStr) { Absent => true  Present { value: _ } => false })
+}
