@@ -1,0 +1,135 @@
+module test.claim.app_attest_verifier_witness_test
+
+import std.logic { Bool }
+import std.types { Int, String, List, NonEmptyStr, Timestamp }
+import std.integer { UInt8 }
+import extdeps.apple.app_attest {
+  AttestKeyId, AppIdPrefix, AppAttestDevelopment, AppAttestProduction, app_attest_app_id,
+  AttestationExpectation, verify_attestation, AttestationVerified, AttestationRefused,
+  AttestationFormatUnexpected, AttestationChainUntrusted, AttestationNonceMismatch, AttestationKeyIdMismatch, AttestationAppIdMismatch,
+  AttestationCounterNonZero, AttestationEnvironmentUnexpected, AttestationCredentialIdMismatch, AttestationValidationCategoryAbsent,
+  AttestationUndecodable,
+  AssertionExpectation, verify_assertion, AssertionAuthentic, AssertionRefused, AssertionAppIdMismatch, AssertionValidationCategoryAbsent,
+  assertion_signature_verifies_for,
+}
+import extdeps.apple.app_attest_sample_ios_14_4 {
+  sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_team_identifier, sample_bundle_identifier,
+  sample_assertion_counter,
+}
+
+// THE VERIFIER FOLDS OVER APPLE'S REAL OBJECT. The sample predates the two extension steps (9 and
+// 10: apple_validation_category_01 and apple_bundle_version_01 in authData's extensions map), so
+// the whole attestation fold REFUSES on it, correctly, with AttestationValidationCategoryAbsent --
+// and because every check before that one in the fold's order is a step Apple names (nonce, key
+// id, RP ID, counter, AAGUID, credentialId, chain names, validity), reaching that refusal IS the
+// executed evidence that steps 2-8 pass on real bytes. A positive control for the whole fold needs
+// an attestation with those extensions: the first object off the operator's phone, which is why
+// that positive control is a declared frontier here and not a designed fixture.
+
+fn sample_expectation() -> AttestationExpectation {
+  AttestationExpectation {
+    key_id: sample_key_id_b64 as AttestKeyId,
+    client_data: "wurzelpfropf" as NonEmptyStr,
+    app_id: app_attest_app_id(prefix: sample_team_identifier as AppIdPrefix, bundle_id: sample_bundle_identifier),
+    environment: AppAttestDevelopment,
+    observed_at: "2021-01-23T12:13:35Z",
+    admitted_validation_categories: [2, 3, 4],
+    expected_bundle_version: "1" as NonEmptyStr,
+  }
+}
+
+fn refusal_of(e: AttestationExpectation) -> String {
+  match verify_attestation(object: sample_attestation_octets, e: e) {
+    AttestationVerified { verified: _ } => "verified"
+    AttestationRefused { cause: c } => match c {
+      AttestationFormatUnexpected { declared: d } => "format:" + d
+      AttestationChainUntrusted { detail: d } => "chain:" + d
+      AttestationNonceMismatch => "nonce"
+      AttestationKeyIdMismatch { declared: _ } => "key-id"
+      AttestationAppIdMismatch { expected_app_id: _ } => "app-id"
+      AttestationCounterNonZero { counter: _ } => "counter"
+      AttestationEnvironmentUnexpected { expected: _ } => "environment"
+      AttestationCredentialIdMismatch { declared: _ } => "credential-id"
+      AttestationValidationCategoryAbsent => "category-absent"
+      AttestationUndecodable { cause: d } => "undecodable:" + d
+      _ => "other"
+    }
+  }
+}
+
+// Steps 2-8 and the chain's names and validity pass on the real object; the first refusal is
+// step 9's absence, which the 2021 sample cannot satisfy.
+test fn the_sample_passes_every_step_before_the_extension_steps() -> Bool {
+  refusal_of(e: sample_expectation()) == "category-absent"
+}
+
+// Each earlier step reds by name when its expectation is wrong: client data (nonce), key id,
+// App ID, environment; and observing it in 2026 finds the credential certificate expired.
+test fn each_expectation_reds_its_own_step() -> Bool {
+  let e = sample_expectation()
+  refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "nonce"
+    && refusal_of(e: AttestationExpectation { key_id: "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3Q=" as AttestKeyId, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "key-id"
+    && refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: "6MURL8TA57.de.vincent-haupert.other" as NonEmptyStr, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "app-id"
+    && refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: AppAttestProduction, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "environment"
+    && refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: "2026-09-21T00:00:00Z", admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "chain:credential certificate expired at 2021-01-25T12:13:35Z"
+}
+
+// The object with one octet of "apple-appattest" changed refuses as a format it does not know;
+// cut to 100 octets it refuses as undecodable.
+test fn a_malformed_object_refuses_before_any_step() -> Bool {
+  let mutated = concat(sample_attestation_octets |> take(20), concat([117], sample_attestation_octets |> skip(21)))
+  let cut = sample_attestation_octets |> take(100)
+  match verify_attestation(object: mutated, e: sample_expectation()) {
+    AttestationRefused { cause: AttestationFormatUnexpected { declared: "apple-appattesu" } } =>
+      match verify_attestation(object: cut, e: sample_expectation()) {
+        AttestationRefused { cause: AttestationUndecodable { cause: _ } } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn assertion_expectation() -> AssertionExpectation {
+  AssertionExpectation {
+    key_id: sample_key_id_b64 as AttestKeyId,
+    public_key_point_b64url: "BIjANKGQqn28WgYVAcZUKAOUJYIZiz8cxUZzyjua0gtBUoJnpU9f26BGn6-0a7aZCjlr8E-UpJ1DIMgcerJAo5g=" as NonEmptyStr,
+    client_data: "wurzelpfropf" as NonEmptyStr,
+    app_id: app_attest_app_id(prefix: sample_team_identifier as AppIdPrefix, bundle_id: sample_bundle_identifier),
+    admitted_validation_categories: [2, 3, 4],
+    expected_bundle_version: "1" as NonEmptyStr,
+  }
+}
+
+// The assertion fold: RP ID passes on real bytes and the first refusal is step 7's absence (the
+// 37-octet prefix carries no extensions); the counter is carried out as 1 either way; a wrong App
+// ID reds step 4 by name.
+test fn the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions() -> Bool {
+  let e = assertion_expectation()
+  match verify_assertion(object: sample_assertion_octets, e: e) {
+    AssertionRefused { cause: AssertionValidationCategoryAbsent } =>
+      match verify_assertion(object: sample_assertion_octets, e: AssertionExpectation { key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, client_data: e.client_data, app_id: "6MURL8TA57.de.other" as NonEmptyStr, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) {
+        AssertionRefused { cause: AssertionAppIdMismatch { expected_app_id: _ } } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// STEPS 1-3 ON REAL BYTES: Apple's assertion signature verifies under the credential key for
+// nonce = SHA-256(authenticatorData || SHA-256("wurzelpfropf")); and is false for other client
+// data. One interpreted P-256 verification each (gunbc#11645's cost shape) -- executable on a
+// quiet host, budget-refused by the floor, native row is the enrolled evidence.
+test fn the_sample_assertion_signature_verifies_under_the_credential_key() -> Bool {
+  match assertion_signature_verifies_for(object: sample_assertion_octets, e: assertion_expectation()) {
+    Present { value: v } => v
+    Absent => false
+  }
+}
+
+test fn the_sample_assertion_signature_is_false_for_other_client_data() -> Bool {
+  let e = assertion_expectation()
+  match assertion_signature_verifies_for(object: sample_assertion_octets, e: AssertionExpectation { key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) {
+    Present { value: v } => !v
+    Absent => false
+  }
+}
