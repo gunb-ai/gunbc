@@ -105,7 +105,8 @@ import gunbc.runner_slot_retirement {
   CgroupEventsBatchRead,
   CgroupEventsBatchUnread,
 }
-import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_grantee }
+import gunbc.runner_host_grants {  bootstrap_principal_is_not_the_grantee }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 
 // THE HOST FILES A RUNNER HOST MUST CARRY FOR ITS SLOTS TO BE TORN DOWN WHOLE, CONVERGED OVER THE
 // FLEET EDGE AS THE HOST'S ADMINISTRATOR.
@@ -132,7 +133,7 @@ import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_princi
 // and needrestart `eval`s its conf.d snippet as Perl. A sudo grant letting the fleet-converge job user
 // install them would let every CI job on the host, pull requests included, stage its own content and
 // become root. So the writes run over the fleet SSH edge as the declared administrator principal
-// (gunbc.runner_host_grants executor_bootstrap_principal), and the job user gains no grant.
+// (gunbc.fleet_bootstrap_principal executor_bootstrap_principal), and the job user gains no grant.
 //
 // NOTHING HERE RESTARTS A SLOT. The drop-in takes effect at daemon-reload for every loaded unit, and a
 // running job keeps running; the next stop of that slot, from any source, reaches the whole cgroup.

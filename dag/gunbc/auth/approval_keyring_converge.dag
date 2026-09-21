@@ -22,7 +22,7 @@ import gunbc.auth.approval_keyring_pins {
   approval_mac_key_payload_sha256_prefix,
   approval_submission_mac_key_payload_sha256_prefix,
 }
-import gunbc.runner_host_grants { executor_bootstrap_principal }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_usermod_binary_path }
 import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
