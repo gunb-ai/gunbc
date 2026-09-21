@@ -16,6 +16,7 @@ import gunbc.action_use_admission {
 }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.fleet.org_actions_inspection { org_actions_validation_receipt_path }
+import gunbc.spark.pair_serving_d0_door { pair_serving_d0_consent_env, pair_serving_d0_step_timeout_minutes }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
@@ -66,7 +67,7 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes,
   gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout,
   fleet_host_mutation_concurrency_group_expression,
-  fleet_arm_mutation_group_glm_group_b_native,
+  fleet_arm_mutation_group_glm_group_b_native, fleet_arm_mutation_group_deepseek_group_a,
   checked_job_timeout_minutes,
   JobTimeoutWithinCeiling,
   JobTimeoutExceedsCeiling,
@@ -99,6 +100,8 @@ import gunbc.ci_spec {
   gunbc_ci_r2_object_write_mint_invoke,
   gunbc_ci_approval_keyring_converge_invoke,
   gunbc_ci_mtcollins1_boot_invoke,
+  gunbc_ci_pair_serving_d0_invoke,
+  gunbc_ci_pair_serving_d0_admit_invoke,
   gunbc_ci_org_runner_roster_observe_invoke,
   gunbc_ci_runner_guest_image_observe_invoke,
   gunbc_ci_runner_guest_image_converge_invoke,
@@ -229,6 +232,7 @@ type FleetConvergeWorkflowMode
   | R2ObjectWriteMint
   | ApprovalKeyringConverge
   | MtCollins1Boot
+  | PairServingD0
   | MtCollins1FanObserve
   | FabricWriterIdentityObserve
   | MtCollins1CensusImagePublish
@@ -269,6 +273,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     R2ObjectWriteMint => "r2_object_write_mint"
     ApprovalKeyringConverge => "approval_keyring_converge"
     MtCollins1Boot => "mtcollins1_boot"
+    PairServingD0 => "pair_serving_d0"
     MtCollins1FanObserve => "mtcollins1_fan_observe"
     FabricWriterIdentityObserve => "fabric_writer_identity_observe"
     MtCollins1CensusImagePublish => "mtcollins1_census_image_publish"
@@ -297,7 +302,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -353,6 +358,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     R2ObjectWriteMint => none
     ApprovalKeyringConverge => none
     MtCollins1Boot => none
+    PairServingD0 => none
     MtCollins1FanObserve => none
     FabricWriterIdentityObserve => none
     MtCollins1CensusImagePublish => none
@@ -460,6 +466,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     R2ObjectWriteMint => FleetSshKeyConsumed
     ApprovalKeyringConverge => FleetSshKeyConsumed
     MtCollins1Boot => FleetSshKeyConsumed
+    PairServingD0 => FleetSshKeyConsumed
     MtCollins1FanObserve => FleetSshKeyNotConsumed
     FabricWriterIdentityObserve => FleetSshKeyNotConsumed
     MtCollins1CensusImagePublish => FleetSshKeyNotConsumed
@@ -923,7 +930,10 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // two coincide. `spark_native_serving_apply` does not: it reaches out from whichever executor was
 // selected and relaunches Group B's four cage-2 hosts, so two dispatches naming different executors
 // would land in different domains and queue behind nothing while reloading the same 328 GB arm. Its
-// group is therefore constant for the arm.
+// group is therefore constant for the arm. `pair_serving_d0` and `spark_serving_apply` are the same
+// shape for Group A: the door moves Group A's authority and hosts from the broker host and the pair
+// apply rewrites Group A's units from any executor, so both land in Group A's arm group and queue
+// behind each other -- an apply that read Active before D0's suspension CAS cannot execute across it.
 //
 // AND THIS IS BELT, NOT THE WALL, which is worth saying because a reader could take it for the
 // protection. Actions concurrency cannot help a direct CLI invocation, which is how this entry is
@@ -932,12 +942,87 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // The wall is the source-level lock: gunbc.spark.native_serving_apply acquires an O_EXCL fence per
 // unit carrying a kernel-UUID transaction identity, and every leg that removes an artifact refuses
 // unless it owns that identity.
+// WHICH DOMAIN A MODE MUTATES is one modeled fact per mode, EXHAUSTIVE AND WITHOUT A WILDCARD: a
+// mode added to the vocabulary makes this match non-exhaustive, so its author must say whether it
+// mutates its executor or an arm -- an absorbing default here would hand the next arm-mutating mode
+// executor serialization, the class this projection exists to prevent. The concurrency expression
+// is derived from it.
+//
+// D0 HAS TWO DOMAINS AND ONE KEY. The door runs on srv1 (the broker is loopback there, the placed
+// fabric store is in process) AND moves Group A's authority and hosts; GitHub admits one group per
+// job, so Group A's arm key IS the srv1 host key: D0 keeps serializing with every srv1 control-plane
+// mutation (the fleet apply, the keyring converge, the dashboard deploy, the broker install), and
+// the pair-serving apply -- which rewrites Group A's units from any executor -- joins that same key,
+// so an apply that read Active before D0's suspension CAS cannot execute across it. Belt, not the
+// wall: the wall is the authority log's lease and claim (gunbc.spark.pair_serving_d0).
+type FleetMutationDomain
+  = ArmDomain { group: String }
+  | ExecutorDomain
+
+fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> FleetMutationDomain {
+  match mode {
+    FullHostPlan => ExecutorDomain
+    LaunchEnvironmentPlan => ExecutorDomain
+    AllocationStorePlan => ExecutorDomain
+    FleetApply => ExecutorDomain
+    OrgActionsObserve => ExecutorDomain
+    AppControlPlaneObserve => ExecutorDomain
+    AppKeyVersionVerify => ExecutorDomain
+    MicrovmHostConverge => ExecutorDomain
+    MicrovmNetworkObserve => ExecutorDomain
+    GuestImageObserve => ExecutorDomain
+    GuestImageConverge => ExecutorDomain
+    MicrovmBootProbe => ExecutorDomain
+    SparkGrants => ExecutorDomain
+    SparkBootstrap => ExecutorDomain
+    SparkServingApply => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkNativeServingApply => ArmDomain { group: fleet_arm_mutation_group_glm_group_b_native }
+    SparkRuntimeImageProbe => ExecutorDomain
+    DashboardDeploy => ExecutorDomain
+    RlmLaunchDeploymentReceipt => ExecutorDomain
+    HostResetReturn => ExecutorDomain
+    RunnerHostFileObserve => ExecutorDomain
+    ApprovalBrokerDarkInstall => ExecutorDomain
+    RunnerHostFileConverge => ExecutorDomain
+    SitePxeEdgeObserve => ExecutorDomain
+    SitePxeEdgeConverge => ExecutorDomain
+    RunnerPasswordSessionToolConverge => ExecutorDomain
+    HostCredentialCustodyConverge => ExecutorDomain
+    R2MintPreflight => ExecutorDomain
+    R2BucketEnsure => ExecutorDomain
+    R2BucketAdminMint => ExecutorDomain
+    R2ObjectWriteMint => ExecutorDomain
+    ApprovalKeyringConverge => ExecutorDomain
+    MtCollins1Boot => ExecutorDomain
+    PairServingD0 => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    MtCollins1FanObserve => ExecutorDomain
+    FabricWriterIdentityObserve => ExecutorDomain
+    MtCollins1CensusImagePublish => ExecutorDomain
+    OrgRunnerRosterObserve => ExecutorDomain
+  }
+}
+
+// The group a dispatch lands in, for a mode and the executor it named.
+fn fleet_converge_mutation_group_for(mode: FleetConvergeWorkflowMode, host: String) -> String {
+  match fleet_converge_mode_mutation_domain(mode: mode) {
+    ArmDomain { group: g } => g
+    ExecutorDomain => join([fleet_host_mutation_group_prefix, host], "")
+  }
+}
+
+fn fleet_converge_arm_domain_clause(mode: FleetConvergeWorkflowMode) -> String {
+  match fleet_converge_mode_mutation_domain(mode: mode) {
+    ArmDomain { group: g } => join(["github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: mode), "' && '", g, "' || "], "")
+    ExecutorDomain => ""
+  }
+}
+
 data fleet_converge_mutation_concurrency_group_expression: String = join([
-  "${{ github.event.inputs.mode == '",
-  fleet_converge_workflow_mode_wire(mode: SparkNativeServingApply),
-  "' && '", fleet_arm_mutation_group_glm_group_b_native,
-  "' || format('", fleet_host_mutation_group_prefix, "{0}', ", fleet_host_input_expression, ") }}",
+  "${{ ",
+  join(map(fleet_converge_workflow_modes, m => fleet_converge_arm_domain_clause(mode: m)), ""),
+  "format('", fleet_host_mutation_group_prefix, "{0}', ", fleet_host_input_expression, ") }}",
 ], "")
+
 data fleet_converge_spark_runtime_image_probe_step_if: String = fleet_converge_mode_step_if(mode: SparkRuntimeImageProbe)
 
 data fleet_converge_dashboard_deploy_step_if: String = fleet_converge_mode_step_if(mode: DashboardDeploy)
@@ -1912,6 +1997,53 @@ fn fleet_converge_mtcollins1_boot_step() -> Step {
   }
 }
 
+// THE D0 DOOR AS A MODE (gunbc.spark.pair_serving_d0_door pair_serving_d0_ci_wet): on the broker
+// host, files the consent under the named escalation, waits for the operator, and runs the Cut D
+// D0 transaction over the named group under the admitted grant. It consumes the fleet ssh key
+// because the transaction's observation reads the group's hosts over ssh. The consent is an
+// operator-supplied input reused on every rerun (see the door), so nothing here derives it.
+data fleet_converge_pair_serving_d0_step_if: String = fleet_converge_mode_step_if(mode: PairServingD0)
+
+// THE ADMISSION RUNS BEFORE ANY CREDENTIAL: placed after the release bins are verified and before
+// the WIF token, the fleet key and the submission key, it refuses a dispatch to any host but srv1
+// (declared AND kernel) with no secret on that host.
+fn fleet_converge_pair_serving_d0_admit_step() -> Step {
+  RunStep {
+    name: Present { value: "Pair-serving D0 admission (credential-free): the executor is srv1, the consent and the expected revision are named" },
+    id: Present { value: "pair_serving_d0_admit" },
+    run: gunbc_ci_pair_serving_d0_admit_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      kv(key: pair_serving_d0_consent_env as String, value: yaml_string(s: "${{ github.event.inputs.d0_consent }}")),
+      kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_pair_serving_d0_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_pair_serving_d0_step() -> Step {
+  RunStep {
+    name: Present { value: "Pair-serving D0 (Cut D): file the consent, wait for the operator, suspend the group's authority for the keyed successor under the admitted grant" },
+    id: Present { value: "pair_serving_d0" },
+    run: gunbc_ci_pair_serving_d0_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      kv(key: pair_serving_d0_consent_env as String, value: yaml_string(s: "${{ github.event.inputs.d0_consent }}")),
+      kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_pair_serving_d0_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: minute_count(pair_serving_d0_step_timeout_minutes()) }
+  }
+}
+
 fn fleet_converge_mtcollins1_boot_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload Mt. Collins unit 1 boot SOL capture and receipts" },
@@ -2393,6 +2525,7 @@ fn fleet_converge_job() -> Job {
         [
           ci_release_bins_download_step(),
           ci_release_bins_unpack_verify_step(),
+          fleet_converge_pair_serving_d0_admit_step(),
           ci_fleet_wif_auth_step(),
           ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if }),
         ]
@@ -2418,6 +2551,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_mtcollins1_fan_observe_receipt_upload_step(),
         fleet_converge_fabric_writer_identity_observe_step(),
         fleet_converge_fabric_writer_identity_observe_receipt_upload_step(),
+        fleet_converge_pair_serving_d0_step(),
         fleet_converge_mtcollins1_census_image_publish_step(),
         fleet_converge_mtcollins1_census_image_publish_receipt_upload_step(),
         fleet_converge_r2_mint_preflight_step(),
@@ -2623,6 +2757,13 @@ data fleet_converge_workflow: Workflow = Workflow {
           required: false,
           default: none,
           type: InputChoice { options: host_custody_credential_options },
+        },
+        DispatchInput {
+          name: "d0_consent",
+          description: Present { value: "pair_serving_d0 only (Cut D, Group A on srv1; expected_revision is required and frozen with the filing): the escalation id the consent is filed under. It names the transaction, and a rerun after a crash MUST name the same id to find its frozen filing and held claim -- a fresh id is a new consent" },
+          required: false,
+          default: none,
+          type: InputString,
         },
         DispatchInput {
           name: "app_key_version",
