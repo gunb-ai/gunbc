@@ -614,6 +614,17 @@ fn census_app_submission_artifact_path(name: NonEmptyStr) -> String {
   custody_handoff_path(name: name, suffix: "-register.html")
 }
 
+// THE CENSUS APP'S OWN SUBMIT STEP, NAMED ONCE SO NOTHING RE-CONSTRUCTS IT. The privileged-effect
+// census embeds this step AND reports the effect's frequency beside it, and authoring those two
+// independently is how one effect came to carry two frequencies in one row (review 69472). A caller
+// that needs both takes them from here.
+fn census_app_registration_submit_step() -> HumanIntervention {
+  app_registration_submit_intervention(
+    identity: census_app_identity,
+    artifact_path: census_app_submission_artifact_path(name: census_app_identity.name),
+  )
+}
+
 data census_app_submission_heading: String = "Register the gunbc global census GitHub App"
 
 data census_app_submission_guidance: String = "Pressing the button below POSTs the manifest under the exact form parameter GitHub reads it from, to the registration endpoint for the declared owner, carrying the state nonce this converge issued. The manifest is shown below the button so it can be read before it is submitted. Opening the registration URL directly instead renders the ordinary App-creation form, which has no manifest field."
@@ -1270,8 +1281,23 @@ fn admit_manifest_code(
 // second delivery path here to close this fact sooner would be the fork DESIGN 3 forbids -- so this
 // says plainly that it is pending instead. When that roster lands, this arm gains its sibling and the
 // row carries the SecretRef below, the handoff path, the reading principal and the mode.
+//
+// AND THE ESTABLISHED FACT IS ITS OWN RECORD, SO A RECEIPT CANNOT CARRY A STANDING. An earlier cut
+// typed CensusAppAcquisitionReceipt.key_custody as the STANDING, which made CustodyNotEstablished
+// representable inside a value whose whole meaning is "acquired" -- and forced the renderer to carry
+// a defensive arm whose own text admitted it was unreachable. That arm was not a refusal: it returned
+// an ordinary line the caller writes to the receipt file on ExitSuccess, so the one state it existed
+// to catch would have been REPORTED AS THE RECEIPT. Validation standing where construction was
+// available, at the same seam this type was congratulating itself for closing one field earlier
+// (review 69472, DESIGN 5). The receipt now carries CustodyAtHandoff, which has no "not established"
+// inhabitant, and the arm is gone rather than made louder.
+type CustodyAtHandoff {
+  path: String
+  destination: SecretRef
+}
+
 type CustodyStanding
-  = CustodyAtHandoffOnly { path: String, destination: SecretRef }
+  = CustodyAtHandoffOnly { custody: CustodyAtHandoff }
   | CustodyNotEstablished { reason: NonEmptyStr }
 
 type RegistrationStanding
@@ -1360,7 +1386,7 @@ type CensusAppAcquisitionReceipt {
   app_id: GitHubAppId
   slug: NonEmptyStr
   installation_id: GitHubAppInstallationId
-  key_custody: CustodyStanding
+  key_custody: CustodyAtHandoff
 }
 
 type AcquisitionFactMissing
@@ -1390,13 +1416,13 @@ fn census_app_acquisition_standing(
           match custody {
             CustodyNotEstablished { reason: r } =>
               AcquisitionIncomplete { missing: CustodyMissing { reason: r } }
-            CustodyAtHandoffOnly { path: p, destination: d } =>
+            CustodyAtHandoffOnly { custody: c } =>
               CensusAppAcquired {
                 receipt: CensusAppAcquisitionReceipt {
                   app_id: id,
                   slug: slug,
                   installation_id: i.installation_id,
-                  key_custody: CustodyAtHandoffOnly { path: p, destination: d },
+                  key_custody: c,
                 }
               }
           }
@@ -1411,22 +1437,17 @@ fn census_app_acquisition_standing(
 fn acquisition_standing_line(standing: CensusAppAcquisitionStanding) -> String {
   match standing {
     CensusAppAcquired { receipt: r } =>
-      match r.key_custody {
-        CustodyNotEstablished { reason: _ } =>
-          "acquisition receipt reached with no custody, which census_app_acquisition_standing does not construct"
-        CustodyAtHandoffOnly { path: p, destination: d } =>
-          join(
-            [
-              "census App acquired: app_id=", to_string(r.app_id.value),
-              " slug=", r.slug as String,
-              " installation_id=", to_string(r.installation_id.value),
-              " key at handoff ", p,
-              " destined for secret ", d.secret as String,
-              " (the second hop into the fleet custody roster is pending; see CustodyStanding)",
-            ],
-            "",
-          )
-      }
+      join(
+        [
+          "census App acquired: app_id=", to_string(r.app_id.value),
+          " slug=", r.slug as String,
+          " installation_id=", to_string(r.installation_id.value),
+          " key at handoff ", r.key_custody.path,
+          " destined for secret ", r.key_custody.destination.secret as String,
+          " (the second hop into the fleet custody roster is pending; see CustodyStanding)",
+        ],
+        "",
+      )
     AcquisitionIncomplete { missing: m } =>
       match m {
         RegistrationMissing { reason: r } =>

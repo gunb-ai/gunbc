@@ -94,6 +94,7 @@ import gunbc.github_app_acquisition {
   InstallationUnreadable,
   installation_standing_for,
   CustodyStanding,
+  CustodyAtHandoff,
   CustodyAtHandoffOnly,
   CustodyNotEstablished,
   CensusAppAcquisitionStanding,
@@ -924,7 +925,7 @@ fn live_custody_standing() -> CustodyStanding uses fs: std.resources.Filesystem 
             reason: join(["the private key handoff at ", paths.pem, " is empty"], "") as NonEmptyStr
           }
         } else {
-          CustodyAtHandoffOnly { path: paths.pem, destination: census_app_private_key_custody }
+          CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: paths.pem, destination: census_app_private_key_custody } }
         }
       } else {
         CustodyNotEstablished {

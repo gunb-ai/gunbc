@@ -12,11 +12,7 @@ import gunbc.spark.bootstrap_provision {
   CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
 }
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
-import gunbc.github_app_acquisition {
-  census_app_identity,
-  census_app_submission_artifact_path,
-  app_registration_submit_intervention,
-}
+import gunbc.github_app_acquisition { census_app_registration_submit_step }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -493,18 +489,40 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
   },
+// THIS ROW READS FleetOnce WHILE THE STEP IT EMBEDS DECLARES EveryProvision, AND THAT IS A STATED
+// DIVERGENCE RATHER THAN AN OVERSIGHT (review 69472, DESIGN 3b: the middle value is admitted, the
+// unstated one is the red). The two answer different questions through one shared type.
+//
+// THE STEP'S AXIS IS BURDEN MULTIPLICITY: how does this human cost scale. Its own annotation rules
+// that registering an App is paid once per App PROVISIONED and multiplies with the number of Apps,
+// which is why FleetOnce was withdrawn there -- it was right for exactly one App and wrong the moment
+// this fleet adopts a second.
+//
+// THIS ROW'S AXIS IS WHAT unattended_required READS OFF IT: whether the effect must complete with no
+// human present, because "there is no human at the end of a cron". Registering the census App is not
+// at the end of a cron -- provisioning an App is itself a human decision, and this fleet provisions
+// this one once.
+//
+// THE CONSEQUENCE OF NOT DIVERGING WAS MEASURED, NOT GUESSED. With the row deriving its frequency
+// from the step, select_authorization_pattern returns NoAdmissiblePattern and this site lands in
+// undecidable_sites: EVERY candidate, HumanOnlyStep included, violates constraint_unattended_required,
+// because no pattern completes an effect with no API and no human. That verdict would be the
+// selection faithfully reporting a premise this row does not hold -- an effect GitHub requires an
+// owner to perform is not one that must run unattended -- so adopting the step's value here would
+// assert something false about the effect in order to make two fields agree.
+//
+// WHAT THE DIVERGENCE ACTUALLY LOCATES is one type carrying two questions:
+// std.human_intervention HumanInterventionFrequency is read as burden multiplicity by the
+// intervention roster and as an attendance premise by unattended_required. Splitting it is a change
+// to that authority and to every consumer of it, which is not this row's to make; naming it here is
+// the honest disposition until someone takes it.
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.github_app_acquisition", decl_name: "app_registration_submit_intervention"),
     effect: PrivilegedEffect {
       subject: "register the gunbc global census GitHub App by submitting its manifest form, which returns the App private key once" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: IrreversibleEffect { what_is_lost: "the App private key is returned once and no endpoint reissues it, and the App name is unique across GitHub so the registration cannot be repeated under it" as NonEmptyStr },
-      surface: HumanSurfaceOnly {
-        step: app_registration_submit_intervention(
-          identity: census_app_identity,
-          artifact_path: census_app_submission_artifact_path(name: census_app_identity.name),
-        )
-      },
+      surface: HumanSurfaceOnly { step: census_app_registration_submit_step() },
       workload_identity: WorkloadIdentityUnbindable { cause: "GitHub exposes no API that creates an App; the manifest form is submitted by the account or organization owner under a browser session, so no federated principal can be bound to it" as NonEmptyStr },
       minted_reach: MintsProjectWideCredential,
       billing: NoBillingConsequence,

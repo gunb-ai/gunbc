@@ -161,6 +161,7 @@ import gunbc.github_app_acquisition {
   InstallationUnreadable,
   installation_standing_for,
   CustodyStanding,
+  CustodyAtHandoff,
   CustodyAtHandoffOnly,
   CustodyNotEstablished,
   CensusAppAcquisitionStanding,
@@ -519,7 +520,7 @@ test fn w_an_installation_and_a_key_do_not_establish_a_registration() -> Bool {
   match census_app_acquisition_standing(
     registration: RegistrationNotEstablished { reason: "the public read found no App" as NonEmptyStr },
     installation: InstallationEstablished { installation: acquired_installation(app_id: 7, installation_id: 991) },
-    custody: CustodyAtHandoffOnly { path: ".gunbc/k.pem", destination: census_app_private_key_custody },
+    custody: CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: ".gunbc/k.pem", destination: census_app_private_key_custody } },
   ) {
     CensusAppAcquired { receipt: _ } => false
     AcquisitionIncomplete { missing: m } =>
@@ -572,7 +573,7 @@ test fn w_an_unreadable_installation_list_is_not_an_absent_installation() -> Boo
   match census_app_acquisition_standing(
     registration: RegistrationEstablished { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr },
     installation: InstallationUnreadable { reason: "GET /app/installations refused with status 401" as NonEmptyStr },
-    custody: CustodyAtHandoffOnly { path: ".gunbc/k.pem", destination: census_app_private_key_custody },
+    custody: CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: ".gunbc/k.pem", destination: census_app_private_key_custody } },
   ) {
     CensusAppAcquired { receipt: _ } => false
     AcquisitionIncomplete { missing: m } =>
@@ -616,8 +617,10 @@ test fn w_all_three_facts_established_is_a_receipt_naming_all_three() -> Bool {
     registration: RegistrationEstablished { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr },
     installation: InstallationEstablished { installation: acquired_installation(app_id: 7, installation_id: 991) },
     custody: CustodyAtHandoffOnly {
-      path: ".gunbc/github-app-gunbc-global-census.pem",
-      destination: census_app_private_key_custody,
+      custody: CustodyAtHandoff {
+        path: ".gunbc/github-app-gunbc-global-census.pem",
+        destination: census_app_private_key_custody,
+      }
     },
   )
   let acquired = match standing {
