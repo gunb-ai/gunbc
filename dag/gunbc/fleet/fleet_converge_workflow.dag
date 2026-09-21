@@ -203,6 +203,7 @@ type FleetConvergeWorkflowMode
   | AppControlPlaneObserve
   | AppKeyVersionVerify
   | MicrovmHostConverge
+  | MicrovmNetworkObserve
   | GuestImageObserve
   | GuestImageConverge
   | MicrovmBootProbe
@@ -242,6 +243,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     AppControlPlaneObserve => "app_control_plane_observe"
     AppKeyVersionVerify => "app_key_version_verify"
     MicrovmHostConverge => "microvm_host_converge"
+    MicrovmNetworkObserve => "microvm_network_observe"
     GuestImageObserve => "guest_image_observe"
     GuestImageConverge => "guest_image_converge"
     MicrovmBootProbe => "microvm_boot_probe"
@@ -294,8 +296,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, MicrovmControllerAppKeyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve]
-
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, MicrovmControllerAppKeyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -326,6 +327,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     AppControlPlaneObserve => none
     AppKeyVersionVerify => none
     MicrovmHostConverge => none
+    MicrovmNetworkObserve => none
     GuestImageObserve => none
     GuestImageConverge => none
     MicrovmBootProbe => none
@@ -369,9 +371,8 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 // inherit the fleet key by omission. The fleet-converge job materializes the fleet key only for a
 // dispatch whose mode consumes it: an API-only read (the org credential observe and the org runner
 // roster read, both of which reach GitHub over gh and open no host session) must not hold host SSH
-// authority it never uses. Five modes are established as not consuming it: the two API-only reads;
-// the Mt. Collins boot, whose route is BMC/IPMI, SOL and HTTP approval submission with no fleet
-// SSH operation; and the two R2 modes, whose route is api.cloudflare.com and
+// authority it never uses. Four modes are established as not consuming it: the two API-only reads,
+// and the two R2 modes, whose route is api.cloudflare.com and
 // secretmanager.googleapis.com over HTTPS as the run's own federated identity, opening no host
 // session either. Every mode that predates this declaration keeps the key it held before, which is
 // the status quo rather than a finding that it needs it; a mode added AFTER it has no prior standing
@@ -398,12 +399,13 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 //     identity from the agent;
 //   - extdeps.tools.env shell.Env.Get, extdeps.tools.sleep Delay.Seconds, extdeps.clock Clock.Now --
 //     no credential.
-// No reached symbol resolves fleet_ssh_locus, constructs an SshTarget, or calls typed_argv_exec over
-// fleet SSH, on the first attempt or on any retry or fallback arm; gunbc.remote_shell_command,
-// gunbc.fleet_ssh_access and gunbc.fleet_reach are outside the reached set entirely. The two imports
-// that could suggest otherwise take one inert symbol each: gunbc.host_reset_return_run contributes
-// host_reset_bmc_credential_path_env (an environment-variable NAME) and gunbc.fleet_intent_network
-// contributes operator_host_srv1 (a host record), neither of which opens a session.
+//   - AND, SINCE CENSUS STAGE 0D, gunbc.machine_intake_mtcollins1_census_medium_readback
+//     mtcollins1_census_medium_readback -- sha256sum over the served census image on srv2 through
+//     typed_argv_exec_over_fleet_ssh as the fleet principal, before the signed subject is minted.
+//     That one leg is why the Mt. Collins boot CONSUMES the fleet key: the publication receipt in
+//     the medium row is publication-time evidence, and the bytes the BMC will mount over NFS are
+//     re-measured on the host that serves them. The enumeration above was exact until this leg was
+//     added and is kept because the route is still the argument.
 type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
 
 // THE TWO MODES ADDED BY gunbc#11484 REACHED THIS MATCH LAST, AND ARE REPAIRED HERE RATHER THAN
@@ -434,6 +436,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     FleetApply => FleetSshKeyConsumed
     AppControlPlaneObserve => FleetSshKeyConsumed
     MicrovmHostConverge => FleetSshKeyConsumed
+    MicrovmNetworkObserve => FleetSshKeyNotConsumed
     GuestImageObserve => FleetSshKeyConsumed
     GuestImageConverge => FleetSshKeyConsumed
     MicrovmBootProbe => FleetSshKeyConsumed
@@ -455,7 +458,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
     ApprovalKeyringConverge => FleetSshKeyConsumed
-    MtCollins1Boot => FleetSshKeyNotConsumed
+    MtCollins1Boot => FleetSshKeyConsumed
     MtCollins1FanObserve => FleetSshKeyNotConsumed
     FabricWriterIdentityObserve => FleetSshKeyNotConsumed
     MtCollins1CensusImagePublish => FleetSshKeyNotConsumed
@@ -844,6 +847,8 @@ data fleet_converge_microvm_boot_probe_step_if: String = fleet_converge_mode_ste
 
 data fleet_converge_microvm_host_converge_step_if: String = fleet_converge_mode_step_if(mode: MicrovmHostConverge)
 
+data fleet_converge_microvm_network_observe_step_if: String = fleet_converge_mode_step_if(mode: MicrovmNetworkObserve)
+
 
 
 
@@ -1162,6 +1167,51 @@ fn fleet_converge_microvm_host_converge_step() -> Step {
     if_condition: Present { value: fleet_converge_microvm_host_converge_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
+  }
+}
+
+// THIS MODE READS; IT INSTALLS NOTHING. The microVM network mutations are not granted to the job
+// user and must not be -- that pair would be root (gunbc.runner_microvm_network_converge
+// microvm_network_host_mutation_principal_frontier) -- so this mode reads the slot taps, their
+// addresses, routes and v6 standing, the host's forwarding, ruleset digest and helper standing, and
+// records them as a ConvergedSlotNetwork receipt. It is its own dispatch rather than a step of the
+// host converge because the two fail for different reasons and an operator routinely wants one
+// without the other: a Firecracker release that will not verify says nothing about a tap's address.
+fn fleet_converge_microvm_network_observe_step() -> Step {
+  RunStep {
+    name: Present { value: "Runner micro-VM network: read the slot taps, ruleset and forwarding back into a receipt (installs nothing)" },
+    id: Present { value: "microvm_network_observe" },
+    run: gunbc_ci_runner_microvm_network_observe_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_microvm_network_observe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
+  }
+}
+
+// THE RECEIPT UPLOADS ON FAILURE TOO, because a refusal is the reading worth having: it names which
+// fact the host did not establish.
+fn fleet_converge_microvm_network_observe_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload runner micro-VM network converge receipt" },
+    id: Present { value: "microvm_network_observe_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "runner-microvm-network-observe-receipt")),
+      kv(key: "path", value: yaml_string(s: "target/microvm-network-observe.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_network_observe_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }
 
@@ -2382,6 +2432,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_guest_image_receipt_upload_step(),
         fleet_converge_microvm_host_converge_step(),
         fleet_converge_microvm_host_standing_upload_step(),
+        fleet_converge_microvm_network_observe_step(),
+        fleet_converge_microvm_network_observe_receipt_upload_step(),
         fleet_converge_microvm_boot_probe_step(),
         fleet_converge_microvm_boot_probe_receipt_upload_step(),
         fleet_converge_spark_grants_step(),

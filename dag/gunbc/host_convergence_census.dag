@@ -701,6 +701,15 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
+    identity: cite(module_path: "gunbc.runner_microvm_network_converge", decl_name: "runner_microvm_network_observe_wet"),
+    subject: MicrovmHost,
+    phases: protocol_phases(false, true, false, false, false, false, false),
+    current_authority: cite(module_path: "gunbc.runner_microvm_network_converge", decl_name: "runner_microvm_network_observe_wet"),
+    persistent_host_effect: DoesNotMutateHost,
+    disposition: BindToAuthority { target: fleet_plan() },
+    first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
+  ),
+  census_row(
     identity: cite(module_path: "gunbc.runner_guest_image", decl_name: "runner_guest_image_converge_wet"),
     subject: GuestImage,
     phases: protocol_phases(false, true, false, false, false, false, false),

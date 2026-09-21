@@ -1,6 +1,7 @@
 module test.claim.jade_first_contact_model_witness
 
-import std.types { Bool, List, Nat, String }
+import std.types { Bool, List, String }
+import std.nat { Nat }
 import std.measure { ClockBasis, ObservationInstant, ProcessMonotonic, SharedMonotonic, WallClock, nanosecond }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
