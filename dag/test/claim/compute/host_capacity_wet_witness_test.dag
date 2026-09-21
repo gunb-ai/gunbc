@@ -1,0 +1,156 @@
+module test.claim.compute.host_capacity_wet_witness
+
+import extdeps.shell
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.measure { Kibibyte, kibibyte, kibibyte_count }
+import std.algebra { trim }
+import product.capacity.event_chain { PartitionId }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_compute_root }
+import gunbc.compute.host_capacity {
+  ComputeCapacitySubject, compute_capacity_subject, compute_capacity_root, compute_memory_partition,
+  HostMemoryObservation, HostMemoryObserved, HostMemoryUnobserved, observe_host_memory,
+  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
+  compute_reserve_on, compute_release, ComputeRelease, ComputeReleased, ComputeReleaseRefused,
+  ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
+}
+
+// WET CONTROLS FOR THE HOST'S COMPUTE MEMORY POOL. Every reservation below is a real append to a
+// real event log on a real temporary directory, decided against a real reading of this machine's
+// /proc/meminfo. Nothing here is a fixture standing in for the store: the linearization being
+// asserted is the one gunbc.compute.work_provider_local runs.
+//
+// THE SUBJECT IS SUPPLIED AND THE JOIN THAT PRODUCES ONE IS ASSERTED SEPARATELY (DESIGN 3, the
+// pairing obligation): a ComputeCapacitySubject is four values, and deriving it here would mean
+// standing up a whole deployment record to exercise arithmetic that does not depend on one. The
+// inhabitance claim is the_deployment_join_roots_the_ledger_under_the_instance_compute_root below,
+// which runs the real producer.
+
+data one_gibibyte_in_kibibytes: Int = 1048576
+
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_compute_capacity.XXXXXX").path
+}
+
+fn subject_at(root: String, appropriation_kib: Int, request_kib: Int) -> ComputeCapacitySubject {
+  ComputeCapacitySubject {
+    root: join([trim(s: root), "/capacity"], "") as NonEmptyStr,
+    partition: "compute-memory-wet-witness" as PartitionId,
+    appropriation: kibibyte(count: appropriation_kib),
+    request: kibibyte(count: request_kib),
+  }
+}
+
+fn reserved_amount(r: ComputeReservation) -> Int {
+  match r {
+    ComputeReserved { grant: _, partition: _, amount: a, store: _ } => kibibyte_count(k: a)
+    ComputeCapacityFull { wire: _ } => 0
+    ComputeHostBelowFloor { requested: _, available: _ } => 0
+    ComputeReservationRefused { detail: _ } => 0
+  }
+}
+
+fn is_capacity_full(r: ComputeReservation) -> Bool {
+  match r {
+    ComputeCapacityFull { wire: w } => string_contains(s: w, pattern: "pool-full")
+    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+    ComputeHostBelowFloor { requested: _, available: _ } => false
+    ComputeReservationRefused { detail: _ } => false
+  }
+}
+
+fn released(r: ComputeRelease) -> Bool {
+  match r {
+    ComputeReleased { partition: _, reference: _, reason: _ } => true
+    ComputeReleaseRefused { detail: _ } => false
+  }
+}
+
+fn standing_committed(s: ComputeCapacityStanding) -> Int {
+  match s {
+    ComputeCapacityStandingRead { committed: c, ceiling: _, headroom: _, observed_available: _, observed_total: _ } => kibibyte_count(k: c)
+    ComputeCapacityStandingUnread { detail: _ } => 0 - 1
+  }
+}
+
+// THE CONTROL THIS WHOLE CHANGE EXISTS FOR, AND IT IS RED UNDER THE THING IT REPLACED. A pool of two
+// gibibytes admits two one-gibibyte reservations and REFUSES THE THIRD; the deleted admission --
+// count the lease directory, compare, then create -- admitted the third whenever the two lease
+// files belonged to different identities, because a count of names excludes no quantity. Then the
+// release returns exactly what it held and the next request is admitted again, which is the other
+// half: capacity that never comes back is a wall, not a pool.
+//
+// MUTATION CONTROL: raise the appropriation above the sum of the three requests and the third
+// reservation is admitted, so this cell goes red for the reason it names rather than for any
+// property of the store.
+test fn competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity() -> Bool {
+  let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes * 2, request_kib: one_gibibyte_in_kibibytes)
+  let first = compute_reserve_on(subject: subject, reference: "wet-first" as NonEmptyStr, term_seconds: 60)
+  let second = compute_reserve_on(subject: subject, reference: "wet-second" as NonEmptyStr, term_seconds: 60)
+  let full = compute_reserve_on(subject: subject, reference: "wet-third" as NonEmptyStr, term_seconds: 60)
+  let at_capacity = compute_capacity_standing_on(subject: subject)
+  let back = compute_release(reservation: first, reason: "witness completion" as NonEmptyStr)
+  let after_release = compute_capacity_standing_on(subject: subject)
+  let readmitted = compute_reserve_on(subject: subject, reference: "wet-fourth" as NonEmptyStr, term_seconds: 60)
+  reserved_amount(r: first) == one_gibibyte_in_kibibytes
+    && reserved_amount(r: second) == one_gibibyte_in_kibibytes
+    && is_capacity_full(r: full)
+    && standing_committed(s: at_capacity) == one_gibibyte_in_kibibytes * 2
+    && released(r: back)
+    && standing_committed(s: after_release) == one_gibibyte_in_kibibytes
+    && reserved_amount(r: readmitted) == one_gibibyte_in_kibibytes
+}
+
+// A RESERVATION THE MACHINE CANNOT BACK IS REFUSED BEFORE THE LEDGER IS TOUCHED, and it is a
+// DIFFERENT refusal from a full pool: the pool's own commitments are irrelevant here (this ledger is
+// empty), and the remedy is to find out what else is on the host rather than to wait for a seat.
+// The request is the machine's own installed memory, which is strictly above what it reports
+// available on any host that is running anything at all -- including the one running this witness.
+test fn a_request_the_machine_cannot_back_refuses_below_the_live_floor() -> Bool {
+  match observe_host_memory() {
+    HostMemoryUnobserved { detail: _ } => false
+    HostMemoryObserved { total: total, available: available } => {
+      let installed = kibibyte_count(k: total)
+      let subject = subject_at(root: fresh_root(), appropriation_kib: installed, request_kib: installed)
+      kibibyte_count(k: available) < installed
+        && (match compute_reserve_on(subject: subject, reference: "wet-floor" as NonEmptyStr, term_seconds: 60) {
+              ComputeHostBelowFloor { requested: rq, available: av } => kibibyte_count(k: rq) == installed && kibibyte_count(k: av) > 0
+              ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+              ComputeCapacityFull { wire: _ } => false
+              ComputeReservationRefused { detail: _ } => false
+            })
+    }
+  }
+}
+
+// AN APPROPRIATION LARGER THAN THE MACHINE IS A CONFIGURATION ERROR AND SAYS SO, rather than
+// presenting hours later as a build the kernel killed. It is refused ahead of the floor check,
+// because a share that was never backed is wrong whatever this instant's availability happens to be.
+test fn an_appropriation_larger_than_the_machine_refuses_rather_than_admitting() -> Bool {
+  match observe_host_memory() {
+    HostMemoryUnobserved { detail: _ } => false
+    HostMemoryObserved { total: total, available: _ } => {
+      let subject = subject_at(root: fresh_root(), appropriation_kib: kibibyte_count(k: total) + 1, request_kib: one_gibibyte_in_kibibytes)
+      match compute_reserve_on(subject: subject, reference: "wet-oversized" as NonEmptyStr, term_seconds: 60) {
+        ComputeReservationRefused { detail: d } => string_contains(s: d, pattern: "never backed by the machine")
+        ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+        ComputeCapacityFull { wire: _ } => false
+        ComputeHostBelowFloor { requested: _, available: _ } => false
+      }
+    }
+  }
+}
+
+// THE INHABITANCE CLAIM FOR EVERY SUPPLIED SUBJECT ABOVE (DESIGN 3). The real producer is the
+// deployment join, and what it must establish is the ROUTE and not only the shape: the ledger a
+// live instance reserves against is rooted under THAT INSTANCE'S compute root, and its partition
+// names that instance, so two instances on one machine cannot silently transact on one pool.
+test fn the_deployment_join_roots_the_ledger_under_the_instance_compute_root() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let subject = compute_capacity_subject(instance: instance)
+  let compute_root = dashboard_instance_compute_root(instance: instance) as String
+  starts_with(s: subject.root as String, prefix: compute_root)
+    && (subject.root as String) == join([compute_root, "/capacity"], "")
+    && string_contains(s: subject.partition as String, pattern: instance.instance_id as String)
+    && kibibyte_count(k: subject.appropriation) == kibibyte_count(k: subject.request) * 2
+    && kibibyte_count(k: subject.request) > 0
+}

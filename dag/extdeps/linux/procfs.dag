@@ -87,9 +87,11 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
 // operation with a shell transport, so gunbc.host_operation_exec can carry it over whichever
 // transport the caller holds (DESIGN 3: the transport is a realization bound to this shape, never
 // a fact about procfs). `cat` is the whole realization: procfs files are read-once text and the
-// kernel synthesizes them on open, so there is nothing to seek, follow or lock. Three operations
-// and not one generic ReadFile, so that the operation's identity says which file it reads and an
-// argv over an arbitrary path cannot be materialized from this service.
+// kernel synthesizes them on open, so there is nothing to seek, follow or lock. ONE OPERATION PER
+// FILE and not one generic ReadFile, so that the operation's identity says which file it reads and
+// an argv over an arbitrary path cannot be materialized from this service. ReadMeminfo serves the
+// host memory capacity and live availability a compute admission reads before it reserves
+// (gunbc.compute.host_capacity).
 service linux.Procfs {
   operation ReadStat {
     input {}
@@ -105,6 +107,23 @@ service linux.Procfs {
     }
     mock_response {
       0 => { value: "cpu  1 0 1 1 0 0 0 0 0 0\nbtime 1789000000\nprocesses 1\n", success: true } "hermetic linux.Procfs.ReadStat"
+    }
+  }
+
+  operation ReadMeminfo {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/meminfo"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/meminfo read failed"
+    }
+    mock_response {
+      0 => { value: "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    8388608 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n", success: true } "hermetic linux.Procfs.ReadMeminfo"
     }
   }
 

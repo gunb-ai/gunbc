@@ -1,8 +1,9 @@
 module extdeps.linux.proc_meminfo
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String, Bool, Int }
 import std.types { List }
-import std.measure { Kibibyte }
+import std.measure { Kibibyte, kibibyte }
+import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -38,3 +39,85 @@ data meminfo_field_names: List<NonEmptyStr> = [
   "SwapTotal",
   "SwapFree",
 ]
+
+// READING THE FILE'S TEXT BACK INTO THE SHAPE ABOVE. proc.5 describes /proc/meminfo as one metric
+// per line, `Name:` followed by a decimal count and, for every field this module names, the unit
+// `kB` -- which proc.5 spells in kilobytes and the kernel emits in KIBIBYTES, so the field type is
+// Kibibyte and not a kilobyte. The parse lives here because this module owns the file's shape; the
+// transport that produces the text is extdeps.linux.procfs, one of N (DESIGN 3).
+//
+// A MISSING FIELD IS ITS OWN ARM AND NEVER A ZERO. A host whose kernel does not publish
+// MemAvailable (pre-3.14) would otherwise read as a host with no memory available, which is the
+// state-space conflation an admission decision cannot survive: zero headroom and unknown headroom
+// have opposite remedies, and only one of them is a refusal.
+type MeminfoRead
+  = MeminfoParsed { meminfo: ProcMeminfo }
+  | MeminfoFieldAbsent { field: NonEmptyStr }
+
+fn meminfo_line_metric(line: String) -> MemoryMetric? {
+  let tokens = filter(split(s: line, delimiter: " "), t => trim(s: t) != "")
+  match first(tokens) {
+    Absent => none
+    Present { value: head } =>
+      if !ends_with(s: head, suffix: ":") {
+        none
+      } else {
+        let key = substring(s: head, start: 0, end: length(head) - 1)
+        match first(tokens |> skip(n: 1)) {
+          Absent => none
+          Present { value: raw } =>
+            match parse_int(s: trim(s: raw)) {
+              Absent => none
+              Present { value: n } =>
+                if key == "" || n < 0 { none } else { Present { value: MemoryMetric { key: key as NonEmptyStr, value: kibibyte(count: n) } } }
+            }
+        }
+      }
+  }
+}
+
+fn meminfo_metrics(text: String) -> List<MemoryMetric> {
+  fold(split(s: text, delimiter: "\n"), init: [], f: (acc, line) =>
+    match meminfo_line_metric(line: line) {
+      Absent => acc
+      Present { value: m } => concat(acc, [m])
+    })
+}
+
+fn meminfo_metric_named(metrics: List<MemoryMetric>, name: NonEmptyStr) -> Kibibyte? {
+  match first(filter(metrics, m => (m.key as String) == (name as String))) {
+    Absent => none
+    Present { value: m } => Present { value: m.value }
+  }
+}
+
+// THE SEVEN NAMED FIELDS ARE REQUIRED TOGETHER, in the order meminfo_field_names declares them, so
+// the roster above is the authority for what this parse demands rather than a second list here.
+fn parse_proc_meminfo(text: String) -> MeminfoRead {
+  let metrics = meminfo_metrics(text: text)
+  match first(filter(meminfo_field_names, f => match meminfo_metric_named(metrics: metrics, name: f) { Absent => true  Present { value: _ } => false })) {
+    Present { value: missing } => MeminfoFieldAbsent { field: missing }
+    Absent =>
+      MeminfoParsed {
+        meminfo: ProcMeminfo {
+          mem_total: meminfo_required(metrics: metrics, name: "MemTotal" as NonEmptyStr),
+          mem_free: meminfo_required(metrics: metrics, name: "MemFree" as NonEmptyStr),
+          mem_available: meminfo_required(metrics: metrics, name: "MemAvailable" as NonEmptyStr),
+          buffers: meminfo_required(metrics: metrics, name: "Buffers" as NonEmptyStr),
+          cached: meminfo_required(metrics: metrics, name: "Cached" as NonEmptyStr),
+          swap_total: meminfo_required(metrics: metrics, name: "SwapTotal" as NonEmptyStr),
+          swap_free: meminfo_required(metrics: metrics, name: "SwapFree" as NonEmptyStr),
+          all_metrics: metrics,
+        },
+      }
+  }
+}
+
+// Reached only under the absence check above, which is why it can answer at all; the zero is the
+// unreachable arm of an optional, not a fabricated reading.
+fn meminfo_required(metrics: List<MemoryMetric>, name: NonEmptyStr) -> Kibibyte {
+  match meminfo_metric_named(metrics: metrics, name: name) {
+    Present { value: k } => k
+    Absent => kibibyte(count: 0)
+  }
+}

@@ -24,3 +24,34 @@ test fn proc_meminfo_witnesses() -> Bool {
     && measure_count(m: info.mem_available) <= measure_count(m: info.mem_total)
     && measure_count(m: metric.value) > 0
 }
+
+// THE PARSE, AND THE TWO THINGS IT MUST NOT DO. A field the kernel did not publish may not read as
+// a zero (a host with no MemAvailable line would otherwise present as a host with no memory
+// available, and an admission would refuse forever for the wrong reason), and a line whose value is
+// not a decimal count may not contribute a metric. Both are asserted against the same text with one
+// line changed, so the assertion discriminates the parse rather than the fixture.
+test fn parsing_meminfo_reads_the_named_fields_and_refuses_a_missing_one() -> Bool {
+  let text = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    8388608 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\nHugePages_Total:       0\n"
+  let without_available = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n"
+  let unparseable = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    not-a-number kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n"
+  (match parse_proc_meminfo(text: text) {
+     MeminfoParsed { meminfo: m } =>
+       kibibyte_count(k: m.mem_total) == 16777216
+         && kibibyte_count(k: m.mem_available) == 8388608
+         && kibibyte_count(k: m.swap_total) == 0
+         && count(m.all_metrics) == 8
+     MeminfoFieldAbsent { field: _ } => false
+   })
+    && (match parse_proc_meminfo(text: without_available) {
+          MeminfoFieldAbsent { field: f } => (f as String) == "MemAvailable"
+          MeminfoParsed { meminfo: _ } => false
+        })
+    && (match parse_proc_meminfo(text: unparseable) {
+          MeminfoFieldAbsent { field: f } => (f as String) == "MemAvailable"
+          MeminfoParsed { meminfo: _ } => false
+        })
+    && (match parse_proc_meminfo(text: "") {
+          MeminfoFieldAbsent { field: f } => (f as String) == "MemTotal"
+          MeminfoParsed { meminfo: _ } => false
+        })
+}

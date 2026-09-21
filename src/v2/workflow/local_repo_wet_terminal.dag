@@ -245,6 +245,30 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "a_request_the_machine_cannot_back_refuses_below_the_live_floor" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "a_request_the_machine_cannot_back_refuses_below_the_live_floor",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "an_appropriation_larger_than_the_machine_refuses_rather_than_admitting" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "an_appropriation_larger_than_the_machine_refuses_rather_than_admitting",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "the_deployment_join_roots_the_ledger_under_the_instance_compute_root" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "the_deployment_join_roots_the_ledger_under_the_instance_compute_root",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.effect_plan_bash_materialize_real_execution_witness", function: "effect_plan_bash_two_declared_operations_execute" },
       entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag",
       function: "effect_plan_bash_two_declared_operations_execute",

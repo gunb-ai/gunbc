@@ -157,7 +157,7 @@ fn harness_worker_guidance_at(worktree: String, test_command: String, test_recei
     grounded(premise: TestProcessIs { command: test_command, receipt_path: test_receipt_path },
              module_path: "gunbc.compute.test_run", decl_name: "test_pattern_cli"),
     grounded(premise: CapabilityWithheld { capability: BuildOrTestOutsideTheProcess },
-             module_path: "gunbc.compute.work_provider_local", decl_name: "compute_cold_build_cap"),
+             module_path: "gunbc.compute.host_capacity", decl_name: "compute_reserve"),
   ])
 }
 

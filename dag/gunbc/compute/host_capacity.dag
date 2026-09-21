@@ -1,0 +1,356 @@
+module gunbc.compute.host_capacity
+
+import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
+import std.nat { Nat }
+import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size_count }
+import extdeps.linux.procfs
+import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
+import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
+import product.capacity.event_chain { PartitionId }
+import product.capacity.pool_events { SeatRequest, PoolReleased }
+import product.capacity.lease { LeasePolicy, LeaseGrant, QuiescenceRequired }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootStanding, FabricStorageRootReady, FabricStorageRootRefused }
+import gunbc.fabric_event_log {
+  SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused,
+  fabric_seat_acquire, seat_acquisition_wire,
+  SeatStandingObservation, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved, SeatStandingStoreRefused, fabric_seat_observe,
+  PoolEventAppend, PoolEventAppended, PoolEventContended, PoolEventAppendRefused, fabric_pool_event_append, pool_event_append_wire,
+}
+import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_compute_root }
+
+// THE HOST'S COMPUTE MEMORY IS A POOL, AND A WORK REQUEST TAKES A SEAT IN IT BEFORE IT RUNS.
+//
+// gunbc.compute.work_provider_local admitted work by COUNTING LEASE FILES against a policy budget
+// of two (compute_cold_build_cap): list the lease directory, compare the count, then create a lease
+// for THIS identity. Two things were wrong with that and only the second is about arithmetic.
+//
+// FIRST, IT WAS NOT ATOMIC. The list and the create are two operations on different names, and the
+// create excludes only a second producer of the SAME identity. Two requests with DIFFERENT
+// identities both read one lease in flight, both compared 1 < 2, and both created their own lease:
+// the cap admitted three. O_EXCL cannot close that, because the thing being over-committed is not a
+// name -- it is a quantity, and no exclusive create of any path excludes a quantity.
+//
+// SECOND, A COUNT IS NOT A CAPACITY. Two producers on a 125 GiB host and two on a 502 GiB host are
+// the same policy applied to hosts that differ by a factor of four, and a class that needs a
+// gibibyte is charged the same as a release build. What the host actually has is memory, so what is
+// reserved is memory -- and the ceiling is compared against a READING of the host rather than
+// assumed.
+//
+// WHAT THIS IS NOT A SECOND AUTHORITY FOR. product.capacity.pool owns the appropriation, the
+// encumbrance, the term and the release law; product.capacity.pool_events owns the transitions;
+// gunbc.fabric_event_log owns the linearization -- one compare-and-set per append against the
+// partition's head, which is what makes the reservation atomic across competing requests rather
+// than merely checked. This module declares WHICH pool (the host's compute appropriation), WHERE it
+// is linearized (this host, not the fleet), and joins it to the observation. It coins no capacity
+// vocabulary of its own.
+
+// ── WHERE THE LEDGER LIVES, AND WHY NOT THE FLEET'S ────────────────────────────────────────────
+//
+// gunbc.fabric_storage_placement places the fabric DB on ONE host and every other host reaches it
+// over its served endpoint, which is correct for a fact the FLEET contends on -- an upstream's rate
+// limit is metered on the credential, so every host must linearize against one partition.
+//
+// A HOST'S OWN MEMORY IS NOT SUCH A FACT. The contenders for it are all local, and routing their
+// reservation through another machine would mean a local build refusing because a remote host was
+// unreachable -- a fail-open in the other direction, since the refusal would not be about capacity
+// at all. So the store is the SAME realization (gunbc.fabric_storage_file_store, whose exclusive
+// create supplies the linearization) rooted under this host's own compute root. The partition names
+// the host so a ledger copied between machines does not silently answer for the wrong one.
+// THE SUBJECT OF A RESERVATION: which ledger, which partition, how much the pool appropriates and
+// how much this request takes. It is separated from the instance deliberately, and not only to be
+// testable: everything below is arithmetic and transaction over these four facts, while reading
+// them off a HostDashboardInstance is a JOIN with the deployment's authority. Fusing the two would
+// have made every reservation carry a whole deployment record in order to add two numbers, and
+// would have left no seam at which the transaction can be exercised on a host other than the one
+// the deployment describes.
+type ComputeCapacitySubject {
+  root: NonEmptyStr
+  partition: PartitionId
+  appropriation: Kibibyte
+  request: Kibibyte
+}
+
+fn compute_capacity_root(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([dashboard_instance_compute_root(instance: instance) as String, "/capacity"], "") as NonEmptyStr
+}
+
+fn compute_memory_partition(instance: HostDashboardInstance) -> PartitionId {
+  join(["compute-memory-", instance.instance_id as String], "") as PartitionId
+}
+
+// THE JOIN WITH THE DEPLOYMENT, and the only function in this module that knows what an instance is.
+fn compute_capacity_subject(instance: HostDashboardInstance) -> ComputeCapacitySubject {
+  ComputeCapacitySubject {
+    root: compute_capacity_root(instance: instance),
+    partition: compute_memory_partition(instance: instance),
+    appropriation: compute_memory_appropriation(instance: instance),
+    request: compute_request_memory(instance: instance),
+  }
+}
+
+fn compute_capacity_store(subject: ComputeCapacitySubject) -> FabricStorageBinding {
+  FabricStorageLocalFiles { root: fabric_storage_file_root(root: subject.root) }
+}
+
+fn compute_capacity_store_ensure(subject: ComputeCapacitySubject) -> FabricStorageRootStanding {
+  fabric_storage_file_root_ensure(root: fabric_storage_file_root(root: subject.root))
+}
+
+// ── WHAT THE HOST HAS, READ RATHER THAN SPELLED ────────────────────────────────────────────────
+//
+// TWO FIGURES AND THEY ANSWER DIFFERENT QUESTIONS. MemTotal is the machine's installed memory and
+// does not move, which is what a ledger needs: an appropriation whose ceiling changed between two
+// folds would make the same chain of events add up differently each time it was read. MemAvailable
+// is what is free RIGHT NOW including everything outside this pool -- the runner slices, the
+// sessions, the page cache the kernel can hand back -- and it is a LIVE FLOOR, not a ceiling.
+//
+// Both are needed and neither substitutes for the other. The pool alone would admit work while
+// another tenant had eaten the machine; MemAvailable alone would admit work whose own ledger says
+// the memory is already promised, because memory a reservation holds but has not yet touched is
+// still available to read.
+type HostMemoryObservation
+  = HostMemoryObserved { total: Kibibyte, available: Kibibyte }
+  | HostMemoryUnobserved { detail: String }
+
+fn observe_host_memory() -> HostMemoryObservation {
+  let read = linux.Procfs.ReadMeminfo()
+  if !read.success {
+    HostMemoryUnobserved { detail: "/proc/meminfo could not be read on this host" }
+  } else {
+    match parse_proc_meminfo(text: read.value) {
+      MeminfoFieldAbsent { field: f } => HostMemoryUnobserved { detail: join(["/proc/meminfo carries no readable ", f as String, " line"], "") }
+      MeminfoParsed { meminfo: m } => HostMemoryObserved { total: m.mem_total, available: m.mem_available }
+    }
+  }
+}
+
+// ── THE APPROPRIATION, AND WHAT IT REPLACES ────────────────────────────────────────────────────
+//
+// THE SHARE OF THE HOST THIS PROVIDER MAY COMMIT, denominated in the bytes the old count was
+// implicitly worth: compute_cold_build_cap was two producers, and each producer runs under the
+// instance's worker memory ceiling, so two ceilings is EXACTLY the memory the deleted row admitted.
+// Nothing is widened by this change and a class that needs less than a ceiling now admits more
+// requests than a count ever could.
+//
+// DECLARED FRONTIER (DESIGN 3c), STATED BECAUSE IT IS THE HONEST LIMIT OF THIS ROW: charging this
+// appropriation against the host's OTHER commitments -- the runner slice, the sessions slice, the
+// fixed overhead -- is gunbc.ci_runner_placement's conservation wall, and this appropriation is
+// DECLARED rather than derived from it. What keeps that from being fail-open is the pair of
+// observations below: an appropriation larger than the machine refuses outright, and a request is
+// refused when the machine's live availability cannot back it whatever the ledger says.
+data compute_pool_slots: Nat = 2
+
+fn compute_memory_appropriation(instance: HostDashboardInstance) -> Kibibyte {
+  kibibyte(count: kibibyte_count(k: kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)) * compute_pool_slots)
+}
+
+// THE UNIT'S CEILING IS THE RESERVED AMOUNT, and that identity is the whole point rather than a
+// convenience. A reservation of X that caps the unit at Y is arithmetic about a number nothing
+// enforces: if Y > X the pool's total is a fiction, and if Y < X the pool refuses work the host
+// could have run. So one figure serves both, and it is the instance's worker memory ceiling --
+// the existing safety limit, unchanged and now also the thing being counted.
+//
+// DECLARED FRONTIER: a per-work-class amount (a claims run does not need a release build's
+// ceiling) needs per-class peak measurements, which the consumption reading this change starts
+// recording is the first producer of. Until those exist every class reserves the ceiling, which
+// over-reserves and never under-reserves.
+fn compute_request_memory(instance: HostDashboardInstance) -> Kibibyte {
+  kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)
+}
+
+// A COMPUTE SEAT IS QUIESCENCE-REQUIRED AND THAT IS THE SAFE ARM, NOT A LIMITATION. A running cargo
+// cannot be told its lease lapsed -- there is no fence a compute unit honours -- so a term that runs
+// out frees nothing, and product.capacity.pool holds the encumbrance until the seat is RELEASED.
+// A worker that dies wedges its own share rather than silently handing it to the next arrival,
+// which is the only direction that cannot oversubscribe a machine. Recovering a wedged seat is an
+// explicit release naming why, which is the same entry completion and cancellation take.
+fn compute_lease_policy(term_seconds: Nat) -> LeasePolicy {
+  LeasePolicy { maximum_duration_seconds: term_seconds, release_law: QuiescenceRequired }
+}
+
+fn compute_memory_root_pool(subject: ComputeCapacitySubject) -> Pool<Memory, Kibi> {
+  pool_of(
+    identity: subject.partition as String as NonEmptyStr,
+    ceiling: subject.appropriation,
+    replenishment: NoReplenishment,
+    release_law: QuiescenceRequired,
+  )
+}
+
+// ── THE RESERVATION ────────────────────────────────────────────────────────────────────────────
+//
+// EVERY ARM IS TYPED AND NONE OF THEM WIDENS. Insufficient capacity is ComputeCapacityFull and says
+// so; a machine whose live availability cannot back the request is ComputeHostBelowFloor and is a
+// DIFFERENT fact with a different remedy (wait, or find out who else is on the host); an
+// unobservable host reserves nothing at all rather than reserving against a guess.
+type ComputeReservation
+  = ComputeReserved { grant: LeaseGrant, partition: PartitionId, amount: Kibibyte, store: FabricStorageBinding }
+  | ComputeCapacityFull { wire: String }
+  | ComputeHostBelowFloor { requested: Kibibyte, available: Kibibyte }
+  | ComputeReservationRefused { detail: String }
+
+data compute_seat_attempts: Nat = 3
+data compute_partition_read_budget: Nat = 4096
+
+// THE APPROPRIATION IS CHECKED AGAINST THE MACHINE BEFORE ANY SEAT IS TAKEN. A host too small for
+// the declared share is a configuration error that would otherwise present as an OOM kill during a
+// build, which is the same information arriving hours later and destructively.
+fn compute_reserve(instance: HostDashboardInstance, reference: NonEmptyStr, term_seconds: Nat) -> ComputeReservation {
+  compute_reserve_on(subject: compute_capacity_subject(instance: instance), reference: reference, term_seconds: term_seconds)
+}
+
+fn compute_reserve_on(subject: ComputeCapacitySubject, reference: NonEmptyStr, term_seconds: Nat) -> ComputeReservation {
+  match observe_host_memory() {
+    HostMemoryUnobserved { detail: d } => ComputeReservationRefused { detail: join(["the host's memory could not be observed, so nothing was reserved: ", d], "") }
+    HostMemoryObserved { total: total, available: available } =>
+      if kibibyte_count(k: subject.appropriation) > kibibyte_count(k: total) {
+        ComputeReservationRefused {
+          detail: join([
+            "the compute appropriation is ", to_string(value: kibibyte_count(k: subject.appropriation)),
+            " KiB and this host has ", to_string(value: kibibyte_count(k: total)),
+            " KiB installed, so the share was never backed by the machine",
+          ], ""),
+        }
+      } else if kibibyte_count(k: available) < kibibyte_count(k: subject.request) {
+        ComputeHostBelowFloor { requested: subject.request, available: available }
+      } else {
+        match compute_capacity_store_ensure(subject: subject) {
+          FabricStorageRootRefused { area: a, detail: d } => ComputeReservationRefused { detail: join(["the capacity ledger could not be prepared at ", a, ": ", d], "") }
+          FabricStorageRootReady =>
+            match now_epoch_seconds() {
+              Absent => ComputeReservationRefused { detail: "the clock could not be read as epoch seconds" }
+              Present { value: now } => compute_seat(subject: subject, reference: reference, now: now, term_seconds: term_seconds)
+            }
+        }
+      }
+  }
+}
+
+fn compute_seat(subject: ComputeCapacitySubject, reference: NonEmptyStr, now: EpochSecs, term_seconds: Nat) -> ComputeReservation {
+  let store = compute_capacity_store(subject: subject)
+  match fabric_seat_acquire(
+    store: store,
+    partition: subject.partition,
+    root: compute_memory_root_pool(subject: subject),
+    actor: reference,
+    request: SeatRequest { reference: reference, amount: kibibyte_count(k: subject.request), at: now, term_seconds: term_seconds },
+    policy: compute_lease_policy(term_seconds: term_seconds),
+    attempts: compute_seat_attempts,
+    budget: compute_partition_read_budget,
+  ) {
+    SeatGranted { grant: g, generation: _, attempts_used: _ } => ComputeReserved { grant: g, partition: subject.partition, amount: subject.request, store: store }
+    SeatFull { wire: w, attempts_used: n } => ComputeCapacityFull { wire: join([w, " (attempt ", to_string(value: n), ")"], "") }
+    other => ComputeReservationRefused { detail: seat_acquisition_wire(a: other) }
+  }
+}
+
+// ── THE RELEASE, WHICH IS THE ONLY WAY CAPACITY COMES BACK ─────────────────────────────────────
+//
+// COMPLETION AND CANCELLATION ARE THE SAME TRANSITION WITH DIFFERENT REASONS, which is why the
+// reason is carried rather than encoded in two functions: the pool does not care why a holder
+// stopped, and a caller that had to choose between two spellings would eventually pick the wrong
+// one on the path it exercises least -- which is always the cancellation path.
+//
+// A RELEASE THAT DID NOT LAND IS NOT A RELEASE. The append is retried against a moving head and
+// exhaustion is its own arm; nothing here reports a return of capacity it did not observe.
+type ComputeRelease
+  = ComputeReleased { partition: PartitionId, reference: NonEmptyStr, reason: NonEmptyStr }
+  | ComputeReleaseRefused { detail: String }
+
+fn compute_release(reservation: ComputeReservation, reason: NonEmptyStr) -> ComputeRelease {
+  match reservation {
+    ComputeCapacityFull { wire: w } => ComputeReleaseRefused { detail: join(["nothing to release: ", w], "") }
+    ComputeHostBelowFloor { requested: _, available: _ } => ComputeReleaseRefused { detail: "nothing to release: the host was below its live memory floor" }
+    ComputeReservationRefused { detail: d } => ComputeReleaseRefused { detail: join(["nothing to release: ", d], "") }
+    ComputeReserved { grant: g, partition: p, amount: _, store: store } =>
+      match now_epoch_seconds() {
+        Absent => ComputeReleaseRefused { detail: "the clock could not be read as epoch seconds" }
+        Present { value: now } =>
+          match fabric_pool_event_append(
+            store: store, partition: p, actor: g.reference, at: now,
+            payload: PoolReleased { reference: g.reference, reason: reason }, attempts: compute_seat_attempts,
+          ) {
+            PoolEventAppended { id: _ } => ComputeReleased { partition: p, reference: g.reference, reason: reason }
+            other => ComputeReleaseRefused { detail: pool_event_append_wire(a: other) }
+          }
+      }
+  }
+}
+
+// ── WHAT THE HOST IS CARRYING, WITHOUT TAKING FROM IT ──────────────────────────────────────────
+//
+// THE AGGREGATE READING A RECEIPT CARRIES: what the ledger says is committed on this host, beside
+// what the machine says is free. The two are independent measurements of one quantity and a
+// receipt that carried only the first would be a ledger agreeing with itself (DESIGN 5: a
+// measurement copied from the same tree is not an oracle). Their DISAGREEMENT is the signal --
+// committed far above the machine's own shortfall means the pool is over-reserving each class, and
+// the reverse means work is running outside the pool.
+type ComputeCapacityStanding
+  = ComputeCapacityStandingRead { committed: Kibibyte, ceiling: Kibibyte, headroom: Nat, observed_available: Kibibyte, observed_total: Kibibyte }
+  | ComputeCapacityStandingUnread { detail: String }
+
+fn compute_capacity_standing(instance: HostDashboardInstance) -> ComputeCapacityStanding {
+  compute_capacity_standing_on(subject: compute_capacity_subject(instance: instance))
+}
+
+fn compute_capacity_standing_on(subject: ComputeCapacitySubject) -> ComputeCapacityStanding {
+  match observe_host_memory() {
+    HostMemoryUnobserved { detail: d } => ComputeCapacityStandingUnread { detail: d }
+    HostMemoryObserved { total: total, available: available } =>
+      match now_epoch_seconds() {
+        Absent => ComputeCapacityStandingUnread { detail: "the clock could not be read as epoch seconds" }
+        Present { value: now } =>
+          match fabric_seat_observe(
+            store: compute_capacity_store(subject: subject),
+            partition: subject.partition,
+            root: compute_memory_root_pool(subject: subject),
+            at: now,
+            budget: compute_partition_read_budget,
+          ) {
+            SeatRoomObserved { headroom: h, generation: _ } =>
+              ComputeCapacityStandingRead {
+                committed: kibibyte(count: kibibyte_count(k: subject.appropriation) - h),
+                ceiling: subject.appropriation,
+                headroom: h,
+                observed_available: available,
+                observed_total: total,
+              }
+            SeatFullObserved { generation: _ } =>
+              ComputeCapacityStandingRead {
+                committed: subject.appropriation,
+                ceiling: subject.appropriation,
+                headroom: 0,
+                observed_available: available,
+                observed_total: total,
+              }
+            SeatStandingUnobserved { step: s, reason: why } => ComputeCapacityStandingUnread { detail: join(["the capacity ledger could not be read at ", s, ": ", why], "") }
+            SeatStandingStoreRefused { cause: _ } => ComputeCapacityStandingUnread { detail: "the capacity ledger refused the read" }
+          }
+      }
+  }
+}
+
+fn compute_reservation_wire(r: ComputeReservation) -> String {
+  match r {
+    ComputeReserved { grant: g, partition: p, amount: a, store: _ } =>
+      join(["reserved ", to_string(value: kibibyte_count(k: a)), " KiB on ", p as String, " as ", g.reference as String, " fence=", g.fence.grant as String, " expires_at=", to_string(value: g.expires_at)], "")
+    ComputeCapacityFull { wire: w } => join(["capacity full: ", w], "")
+    ComputeHostBelowFloor { requested: rq, available: av } =>
+      join(["host below floor: ", to_string(value: kibibyte_count(k: rq)), " KiB requested, ", to_string(value: kibibyte_count(k: av)), " KiB available"], "")
+    ComputeReservationRefused { detail: d } => join(["refused: ", d], "")
+  }
+}
+
+fn compute_capacity_standing_wire(s: ComputeCapacityStanding) -> String {
+  match s {
+    ComputeCapacityStandingRead { committed: c, ceiling: cl, headroom: h, observed_available: av, observed_total: tt } =>
+      join([
+        "committed ", to_string(value: kibibyte_count(k: c)), " KiB of ", to_string(value: kibibyte_count(k: cl)),
+        " KiB (headroom ", to_string(value: h), " KiB); host reports ", to_string(value: kibibyte_count(k: av)),
+        " KiB available of ", to_string(value: kibibyte_count(k: tt)), " KiB installed",
+      ], "")
+    ComputeCapacityStandingUnread { detail: d } => join(["unread: ", d], "")
+  }
+}

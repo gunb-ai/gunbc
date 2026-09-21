@@ -328,6 +328,16 @@ fn kibibyte_to_byte_size(k: Kibibyte) -> ByteSize {
   byte_size(count: kibibyte_count(k) * kibi_factor())
 }
 
+// THE INVERSE OF kibibyte_to_byte_size, FLOORING. A byte count that is not a whole number of
+// kibibytes has no exact kibibyte reading, and the floor is the only rounding a CAPACITY may take:
+// rounding up would report a ceiling the host does not have, and a reservation admitted against it
+// would be admitted against memory that is not there. Named _floor for the same reason
+// measure_scale_fraction_floor is -- the direction is part of what the caller is asking for, not an
+// implementation detail it may discover later.
+fn kibibyte_from_byte_size_floor(b: ByteSize) -> Kibibyte {
+  kibibyte(count: byte_size_count(b: b) / kibi_factor())
+}
+
 fn mebibyte_to_byte_size(m: Mebibyte) -> ByteSize {
   byte_size(count: mebibyte_count(m) * mebibyte_scale_factor_bytes())
 }

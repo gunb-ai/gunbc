@@ -134,12 +134,22 @@ type WorkOutcome
   | WorkOutputMismatch { identity: String, detail: String }
 
 // Infrastructure refusals are typed and counted, never a widen: a producer already holds the lease
-// (the caller attaches later, it does not start a second build), the host is at its cold-build cap,
-// the checkout or the store could not be prepared, or a dependency of this operation (the build the
-// compile consumes) did not succeed.
+// (the caller attaches later, it does not start a second build), the host cannot back the memory
+// this class reserves, the checkout or the store could not be prepared, or a dependency of this
+// operation (the build the compile consumes) did not succeed.
+//
+// THREE CAPACITY ARMS WHERE THERE USED TO BE ONE COUNT. HostAtColdBuildCap { in_flight, cap } is
+// DELETED, and its disposition is that the fact it reported -- this host is already carrying as
+// much as it may -- is now HostComputeCapacityFull, measured in the memory the pool actually
+// appropriates rather than in producers. The other two are facts the count could not express at
+// all and that a caller must not confuse with it: the machine's LIVE availability being below what
+// this class needs is somebody else's memory, not this pool's commitments, and an unreadable
+// ledger is a store repair. One arm for three remedies is the conflation DESIGN 5 forbids.
 type WorkInfrastructureRefusal
   = ProducerInFlight { lease_path: String }
-  | HostAtColdBuildCap { in_flight: Int, cap: Int }
+  | HostComputeCapacityFull { wire: String }
+  | HostBelowMemoryFloor { requested_kib: Int, available_kib: Int }
+  | ComputeCapacityLedgerUnavailable { detail: String }
   | CheckoutUnavailable { detail: String }
   | StoreUnavailable { detail: String }
   | ToolchainUnobserved { detail: String }
@@ -169,7 +179,9 @@ fn work_outcome_ending(o: WorkOutcome) -> String {
 fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
   match r {
     ProducerInFlight { lease_path } => join(["a producer already holds the lease at ", lease_path, "; attach later, do not start a second one"], "")
-    HostAtColdBuildCap { in_flight, cap } => join([to_string(value: in_flight), " producers in flight on this host, cap ", to_string(value: cap)], "")
+    HostComputeCapacityFull { wire } => join(["this host's compute memory pool has no room for another reservation: ", wire], "")
+    HostBelowMemoryFloor { requested_kib, available_kib } => join(["this class reserves ", to_string(value: requested_kib), " KiB and the host reports only ", to_string(value: available_kib), " KiB available, so the reservation would not have been backed by the machine"], "")
+    ComputeCapacityLedgerUnavailable { detail } => join(["the host's compute capacity ledger could not be transacted: ", detail], "")
     CheckoutUnavailable { detail } => join(["checkout unavailable: ", detail], "")
     StoreUnavailable { detail } => join(["store unavailable: ", detail], "")
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")

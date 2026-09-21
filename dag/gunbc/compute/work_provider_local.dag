@@ -20,30 +20,39 @@ import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap_execution_contract {
   ExecutionCapability, GitWorkspaceCapability, CargoCapability, RustcCapability, AttemptStateDirectoryCapability,
 }
+import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size }
+import gunbc.compute.host_capacity {
+  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
+  ComputeRelease, ComputeReleased, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire,
+  ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
+}
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
-  WorkInfrastructureRefusal, ProducerInFlight, HostAtColdBuildCap, CheckoutUnavailable, StoreUnavailable,
+  WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
+  CheckoutUnavailable, StoreUnavailable,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved,
   work_outcome_wire, work_outcome_ending, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
 
 // THE LOCAL PROVIDER: one of N behind the exact work contract, serving the host it runs on. It is a
 // realization and knows nothing the contract does not: it resolves the subject, observes the
-// toolchain, takes a lease, checks the commit out, runs the operation inside a transient user unit
-// with a memory bound, returns declared outputs by content into a store, and writes the outcome
-// beside them. A second caller with the same identity attaches to the stored outcome and runs
+// toolchain, takes a producer lease, RESERVES THE MEMORY THE WORK WILL USE out of the host's
+// compute pool, checks the commit out, runs the operation inside a transient user unit capped at
+// exactly that reservation, returns declared outputs by content into a store, writes the outcome
+// beside them, and releases the reservation on every ending. A second caller with the same identity attaches to the stored outcome and runs
 // nothing (compute-deduplication-and-admission's first slice: two callers, one build). Placement
 // across the fabric is the next slice; this provider's boundary is the host.
 
-// HOW MANY COLD BUILDS THIS HOST CARRIES AT ONCE. A policy budget, not a measurement: each producer
-// runs under the instance's worker memory ceiling, and two of them fit beside the serve and belt
-// units on the smaller build host (srv2, 125 GiB) without the page-cache eviction that hung srv1 in
-// August. The dedup row's red control is that a caller refused for capacity is told so and counted;
-// it is, as HostAtColdBuildCap.
-data compute_cold_build_cap: Int = 2
+// HOW LONG A COMPUTE RESERVATION DECLARES IT WILL HOLD. Two hours covers the cold release build
+// this provider's heaviest class runs, and it is a DECLARATION rather than a deadline anything
+// enforces: the pool's release law for a compute seat is quiescence-required
+// (gunbc.compute.host_capacity), so a term that runs out frees nothing and the seat comes back only
+// by an explicit release. Saying so here rather than leaving the reader to infer a reclaim that
+// does not happen.
+data compute_reservation_term_seconds: Int = 7200
 
 type ComputeLayout {
   root: String
@@ -134,10 +143,6 @@ fn compute_ensure_dir(instance: HostDashboardInstance, path: String) -> Bool {
   }
 }
 
-fn compute_count_lines(text: String) -> Int {
-  count(filter(text.split(sep: "\n"), l => trim(s: l) != ""))
-}
-
 // What a provide returns: a fresh run's outcome, or an attachment to a stored one (no run).
 type ProvideResult
   = ProvideFresh { outcome: WorkOutcome, document: String }
@@ -199,9 +204,11 @@ fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
   join(["gunbc-compute-", identity_hex], "") as NonEmptyStr
 }
 
-// Run the operation as a transient user unit and wait for it: the unit carries the memory ceiling,
-// the checkout as working directory, the shared per-host target directory and the sccache wrapper.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>) -> ComputeExec {
+// Run the operation as a transient user unit and wait for it: the unit carries THE MEMORY THE POOL
+// GRANTED -- not a ceiling read independently from the instance, which would let the reservation and
+// the enforcement drift apart -- the checkout as working directory, the shared per-host target
+// directory and the sccache wrapper.
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, granted: Kibibyte) -> ComputeExec {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeExecFailed { exit_code: 127, stdout: "", stderr: "this instance's toolchain declares no systemd-run; the local provider runs only under systemd" }
@@ -212,7 +219,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       args: systemd_run_user_wait_arguments(
         unit: compute_unit_name(identity_hex: identity_hex),
         properties: [
-          systemd_run_property(name: "MemoryMax", value: to_string(value: byte_size_count(b: instance.dispatch_worker_memory_max))),
+          systemd_run_property(name: "MemoryMax", value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted)))),
           systemd_run_property(name: "WorkingDirectory", value: layout.checkout),
         ],
         setenv_bindings: [
@@ -283,26 +290,98 @@ fn compute_provide_leaf(
   } else if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.store_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir)) {
     compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["could not create the compute directories under ", layout.root], "") } }, subject: subject, op: op)
   } else {
-    let leases = Filesystem.List(path: layout.leases_dir)
-    let in_flight = if leases.success { compute_count_lines(text: leases.entries) } else { 0 }
-    if in_flight >= compute_cold_build_cap {
-      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: HostAtColdBuildCap { in_flight: in_flight, cap: compute_cold_build_cap } }, subject: subject, op: op)
+    // THE PRODUCER LEASE AND THE CAPACITY RESERVATION ARE TWO FACTS AND ARE TAKEN IN THIS ORDER.
+    // The lease excludes a SECOND PRODUCER OF THIS IDENTITY and is a name, so O_EXCL settles it; the
+    // reservation is a QUANTITY on the host and no exclusive name can settle that. Taking the lease
+    // first means a request that then loses on capacity releases a name it holds rather than
+    // reserving memory it may never use, and it is the cheaper of the two to undo.
+    let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
+    if !lease.success {
+      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: layout.lease_path } }, subject: subject, op: op)
     } else {
-      let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
-      if !lease.success {
-        compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: layout.lease_path } }, subject: subject, op: op)
-      } else {
-        let outcome = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store)
-        let document = work_outcome_wire(o: outcome, subject: subject, op: op)
-        let written = Filesystem.Write(path: layout.outcome_path, content: document)
-        let released = Filesystem.Delete(path: layout.lease_path)
-        if written.success && released.success {
-          ProvideFresh { outcome: outcome, document: document }
-        } else {
-          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["outcome written: ", if written.success { "yes" } else { written.error }, "; lease released: ", if released.success { "yes" } else { released.error }], "") } }, subject: subject, op: op)
+      let reservation = compute_reserve(instance: instance, reference: identity as NonEmptyStr, term_seconds: compute_reservation_term_seconds)
+      match reservation {
+        ComputeCapacityFull { wire: w } =>
+          compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostComputeCapacityFull { wire: w })
+        ComputeHostBelowFloor { requested: rq, available: av } =>
+          compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostBelowMemoryFloor { requested_kib: kibibyte_count(k: rq), available_kib: kibibyte_count(k: av) })
+        ComputeReservationRefused { detail: d } =>
+          compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: ComputeCapacityLedgerUnavailable { detail: d })
+        ComputeReserved { grant: _, partition: _, amount: granted, store: _ } => {
+          // THE WORK RUNS UNDER THE GRANT: the unit's MemoryMax is the amount the pool reserved, so
+          // the ledger's arithmetic is the enforcement rather than a parallel description of it.
+          let outcome = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store, granted: granted)
+          // AGGREGATE CONSUMPTION IS READ WHILE THE GRANT IS STILL HELD, which is the only instant
+          // at which the ledger's committed total and the machine's own availability describe the
+          // same population; after the release the reservation is gone from one side and the
+          // memory may not yet be gone from the other.
+          let standing = compute_capacity_standing(instance: instance)
+          // COMPLETION AND CANCELLATION RELEASE THE SAME WAY. Every ending of compute_run_leased --
+          // succeeded, failed, output-mismatch, refused by infrastructure -- reaches here, so there
+          // is no ending on which the seat stays held.
+          let returned = compute_release(reservation: reservation, reason: join(["work ", work_outcome_ending(o: outcome)], "") as NonEmptyStr)
+          let document = work_outcome_wire(o: outcome, subject: subject, op: op)
+          let written = Filesystem.Write(path: layout.outcome_path, content: join([document, "\n", compute_capacity_standing_wire(s: standing), "\n"], ""))
+          let released = Filesystem.Delete(path: layout.lease_path)
+          if written.success && released.success && compute_release_landed(r: returned) {
+            ProvideFresh { outcome: outcome, document: document }
+          } else {
+            compute_fresh(
+              outcome: WorkRefusedByInfrastructure {
+                identity: identity,
+                cause: StoreUnavailable {
+                  detail: join([
+                    "outcome written: ", if written.success { "yes" } else { written.error },
+                    "; lease released: ", if released.success { "yes" } else { released.error },
+                    "; reservation released: ", compute_release_wire(r: returned),
+                    "; work ended ", work_outcome_ending(o: outcome),
+                  ], ""),
+                },
+              },
+              subject: subject, op: op)
+          }
         }
       }
     }
+  }
+}
+
+// A REQUEST REFUSED FOR CAPACITY HOLDS NOTHING. The producer lease is dropped on the way out, so a
+// host that is full does not accumulate names that would refuse the next attempt for the wrong
+// reason -- a capacity refusal reported as a producer already in flight is the state conflation
+// this provider's refusal vocabulary exists to prevent.
+fn compute_refused_unreserved(
+  instance: HostDashboardInstance,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  layout: ComputeLayout,
+  cause: WorkInfrastructureRefusal,
+) -> ProvideResult {
+  let dropped = Filesystem.Delete(path: layout.lease_path)
+  if dropped.success {
+    compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: cause }, subject: subject, op: op)
+  } else {
+    compute_fresh(
+      outcome: WorkRefusedByInfrastructure {
+        identity: identity,
+        cause: StoreUnavailable { detail: join(["a capacity refusal could not drop its producer lease at ", layout.lease_path, ": ", dropped.error], "") },
+      },
+      subject: subject, op: op)
+  }
+}
+
+fn compute_release_landed(r: ComputeRelease) -> Bool {
+  match r {
+    ComputeReleased { partition: _, reference: _, reason: _ } => true
+    ComputeReleaseRefused { detail: _ } => false
+  }
+}
+
+fn compute_release_wire(r: ComputeRelease) -> String {
+  match r {
+    ComputeReleased { partition: _, reference: ref_, reason: why } => join(["released ", ref_ as String, " (", why as String, ")"], "")
+    ComputeReleaseRefused { detail: d } => join(["NOT released: ", d], "")
   }
 }
 
@@ -317,6 +396,7 @@ fn compute_run_leased(
   identity: String,
   op: WorkOperation,
   dependency_store: String,
+  granted: Kibibyte,
 ) -> WorkOutcome {
   let existing = Filesystem.List(path: layout.checkout)
   let checkout = if existing.success {
@@ -332,7 +412,7 @@ fn compute_run_leased(
     ComputeExecFailed { exit_code, stdout: _, stderr } =>
       WorkRefusedByInfrastructure { identity: identity, cause: CheckoutUnavailable { detail: join(["git worktree add exited ", to_string(value: exit_code), ": ", stderr], "") } }
     ComputeExecOk { stdout: _, stderr: _ } => {
-      let run = compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store))
+      let run = compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store), granted: granted)
       let log = Filesystem.Write(path: layout.log_path, content: match run {
         ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
         ComputeExecFailed { exit_code: _, stdout, stderr } => join([stdout, stderr], "")

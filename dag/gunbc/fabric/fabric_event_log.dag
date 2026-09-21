@@ -249,7 +249,7 @@ type SeatStandingObservation
   | SeatStandingUnobserved { step: String, reason: String }
   | SeatStandingStoreRefused { cause: EventLogRefusal }
 
-fn fabric_seat_observe(store: FabricStorageBinding, partition: PartitionId, root: Pool<Count, One>, at: EpochSecs, budget: Nat) -> SeatStandingObservation {
+fn fabric_seat_observe<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, at: EpochSecs, budget: Nat) -> SeatStandingObservation {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => SeatStandingStoreRefused { cause: c }
     PartitionReadOk { head: _, walk: walk } =>
@@ -275,7 +275,7 @@ fn fabric_seat_observe(store: FabricStorageBinding, partition: PartitionId, root
   }
 }
 
-fn seat_attempt(store: FabricStorageBinding, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, budget: Nat, attempt: Nat) -> SeatAcquisition? {
+fn seat_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, budget: Nat, attempt: Nat) -> SeatAcquisition? {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => Present { value: SeatStoreRefused { cause: c, attempts_used: attempt } }
     PartitionReadOk { head: head, walk: walk } =>
@@ -313,7 +313,7 @@ fn seat_attempt(store: FabricStorageBinding, partition: PartitionId, root: Pool<
 // and the drift is invisible because each side is internally consistent. A mismatch is refused before
 // anything is appended rather than resolved in favour of either side: neither is authoritative over
 // the other, and picking one silently would be the same fail-open in a different costume.
-fn fabric_seat_acquire(store: FabricStorageBinding, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
+fn fabric_seat_acquire<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
   if !release_law_eq(left: root.release_law, right: policy.release_law) {
     SeatAcquireRefused {
       step: "release-law",
@@ -334,6 +334,71 @@ fn fabric_seat_acquire(store: FabricStorageBinding, partition: PartitionId, root
     Present { value: d } => d
     Absent => SeatContended { attempts: attempts }
   }
+  }
+}
+
+// APPENDING A POOL EVENT THAT IS NOT AN ACQUISITION -- a settlement or a release -- against the
+// partition's current head, re-observing and retrying while the head moves under it.
+//
+// WHY IT IS HERE AND NOT AT EACH CALLER. Acquisition already lived here because it has to fold the
+// pool to decide; settlement and release decide nothing, so each caller wrote its own
+// observe/append/retry loop and gunbc.fabric_quota had the only copy. A second consumer
+// (gunbc.compute.host_capacity, releasing a compute reservation) would have made it two spellings
+// of one transaction, free to disagree about how many times a contended head is retried -- so the
+// loop moves to the carrier that owns partition appends and both consumers call it.
+//
+// A RELEASE THAT LOSES ITS RACE IS RETRIED, NEVER ASSUMED. Nothing here reports a success it did
+// not observe: exhausting the attempts is its own arm, and a caller holding it still holds the
+// reservation.
+type PoolEventAppend
+  = PoolEventAppended { id: EventId }
+  | PoolEventContended { attempts: Nat }
+  | PoolEventAppendRefused { detail: String }
+
+type PoolEventAttemptState {
+  done: PoolEventAppend?
+}
+
+fn pool_event_append_attempt(store: FabricStorageBinding, partition: PartitionId, actor: NonEmptyStr, at: EpochSecs, payload: PoolEvent) -> PoolEventAppend? {
+  match event_log_observe_head(store: store, partition: partition) {
+    HeadObservationRefused { cause: c } => Present { value: PoolEventAppendRefused { detail: event_log_refusal_wire(cause: c) } }
+    HeadObserved { head: head } =>
+      match event_log_append(
+        store: store,
+        partition: partition,
+        event: ChainEvent {
+          partition: partition,
+          parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+          recorded_at: at,
+          actor: actor,
+          payload: payload,
+        },
+        expected: head,
+      ) {
+        EventAppended { id: h } => Present { value: PoolEventAppended { id: h } }
+        EventAppendStale { expected: _, observed: _ } => none
+        EventAppendRefused { cause: c } => Present { value: PoolEventAppendRefused { detail: event_log_refusal_wire(cause: c) } }
+      }
+  }
+}
+
+fn fabric_pool_event_append(store: FabricStorageBinding, partition: PartitionId, actor: NonEmptyStr, at: EpochSecs, payload: PoolEvent, attempts: Nat) -> PoolEventAppend {
+  let st = fold(nat_range_inclusive(lo: 1, hi: attempts), init: PoolEventAttemptState { done: none }, f: (acc, _i) =>
+    match acc.done {
+      Present { value: _ } => acc
+      Absent => PoolEventAttemptState { done: pool_event_append_attempt(store: store, partition: partition, actor: actor, at: at, payload: payload) }
+    })
+  match st.done {
+    Present { value: d } => d
+    Absent => PoolEventContended { attempts: attempts }
+  }
+}
+
+fn pool_event_append_wire(a: PoolEventAppend) -> String {
+  match a {
+    PoolEventAppended { id: h } => join(["appended ", h as String], "")
+    PoolEventContended { attempts: n } => join(["contended after ", to_string(n), " attempts"], "")
+    PoolEventAppendRefused { detail: d } => join(["refused ", d], "")
   }
 }
 
