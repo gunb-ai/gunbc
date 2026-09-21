@@ -88,7 +88,7 @@ fn approval_push_custom_keys(h: ApprovalPushHint) -> List<ApnsCustomKey> {
 // THE FETCH RETURNS BEARER CAPABILITIES, so it is authenticated, not merely hidden behind an opaque
 // push. The app proves it is the enrolled app instance with an App Attest assertion (no Face ID --
 // reading is not deciding) over a framed read request naming the path, the enrolment and the app's
-// claimed time; the server admits it only inside a short skew window and only for an ACTIVE iOS
+// claimed time, carried in the POST body as ReadAuthentication; the server admits it only inside a short skew window and only for an ACTIVE iOS
 // enrolment. Residual, stated: the counter is not stored (see PlatformRedemptionProof), so a
 // captured read request replays inside its window -- over the tailnet's TLS -- and would disclose a
 // capability that, until cutover, the legacy bearer route still honours. Cutover closes it.
@@ -789,12 +789,59 @@ fn redemption_response_json(r: RedemptionResponse) -> String {
   ]))
 }
 
-// ── Headers, paths and the two further routes ────────────────────────────────────────────────
-// The three headers an authenticated GET or PUT carries: the enrolment it speaks for, the app's
-// claimed time, and the App Attest assertion over the route's framed client data.
-data approval_device_enrollment_header: NonEmptyStr = "X-Approval-Enrollment" as NonEmptyStr
-data approval_device_requested_at_header: NonEmptyStr = "X-Approval-Requested-At" as NonEmptyStr
-data approval_device_assertion_header: NonEmptyStr = "X-Approval-Assertion" as NonEmptyStr
+// ── Read authentication, paths and the two further routes ────────────────────────────────────
+// EVERY DEVICE OPERATION IS A POST WHOSE BODY CARRIES ITS AUTHENTICATION (decision msg_5b415336,
+// 2026-09-21). An earlier cut carried the enrolment id, the app's claimed time and the App Attest
+// assertion as three request headers; `gunbc serve` hands a route exactly one header
+// (Tailscale-User-Login) and the v1 seed's purpose standing refuses growing it for the approval
+// product, so a header the handler cannot read is a wall that does not exist. The body carrier is
+// the SAME framing the assertion covers -- device_read_client_data over the route's path, the
+// enrolment and the time -- so moving it off the headers changed no signed byte.
+type ReadAuthentication {
+  enrollment_id: NonEmptyStr
+  requested_at: Timestamp
+  assertion_b64: NonEmptyStr
+}
+
+fn read_authentication_json_value(a: ReadAuthentication) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "enrollment_id", value: json_string(s: a.enrollment_id as String)),
+    json_kv(key: "requested_at", value: json_string(s: a.requested_at)),
+    json_kv(key: "assertion_b64", value: json_string(s: a.assertion_b64 as String)),
+  ])
+}
+
+fn read_authentication_json(a: ReadAuthentication) -> String {
+  serialize_json(v: read_authentication_json_value(a: a))
+}
+
+fn decode_read_authentication(v: JsonValue) -> WireDecode<ReadAuthentication> {
+  match wire_object(v: v, at: "auth", allowed: ["enrollment_id", "requested_at", "assertion_b64"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match wire_string(obj: o, key: "enrollment_id") {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: enrollment_id } =>
+          match wire_string(obj: o, key: "requested_at") {
+            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+            WireDecoded { value: requested_at } =>
+              match wire_string(obj: o, key: "assertion_b64") {
+                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                WireDecoded { value: assertion_b64 } =>
+                  WireDecoded { value: ReadAuthentication { enrollment_id: enrollment_id, requested_at: requested_at as Timestamp, assertion_b64: assertion_b64 } }
+              }
+          }
+      }
+  }
+}
+
+// The body of the three authenticated reads (pending, one request, enrolment readback).
+fn decode_read_request(text: String) -> WireDecode<ReadAuthentication> {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => WireRefused { at: "$", cause: json_document_gap_text(gap: g) as NonEmptyStr }
+    JsonDocumentParsed { value: v } => decode_read_authentication(v: v)
+  }
+}
 
 // THE ENROLMENT ID IS DERIVED FROM THE CODE, so the app knows the id of the enrolment its code
 // produced even when the POST's answer was lost -- the readback needs nothing the operator must type.
@@ -807,14 +854,50 @@ fn enrollment_id_for_code(code: NonEmptyStr) -> NonEmptyStr {
 // key it just attested, which the server holds only if the enrolment committed.
 data approval_device_enrollment_path_prefix: NonEmptyStr = "/approve/device/enrollments/" as NonEmptyStr
 
-// PUSH UPDATE: APNs rotates tokens; the app re-registers on every launch and PUTs the token here,
+// PUSH UPDATE: APNs rotates tokens; the app re-registers on every launch and POSTs the token here,
 // without a new enrolment. The token is inside the assertion's client data, so an assertion made
-// for one token cannot carry another.
+// for one token cannot carry another. The body is { auth, push }: the same read authentication
+// beside the registration the client data framed.
 data approval_device_push_path: NonEmptyStr = "/approve/device/push" as NonEmptyStr
 data approval_device_push_protocol: NonEmptyStr = "gunbc.approval-device-push.v1" as NonEmptyStr
 
 fn device_push_update_client_data(enrollment_id: NonEmptyStr, requested_at: Timestamp, push: PushRegistration) -> NonEmptyStr {
   framed(fields: [approval_device_push_protocol as String, approval_device_push_path as String, enrollment_id as String, requested_at, push_update_json(p: push)])
+}
+
+type PushUpdateRequest {
+  auth: ReadAuthentication
+  push: PushRegistration
+}
+
+fn push_update_request_json(r: PushUpdateRequest) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "auth", value: read_authentication_json_value(a: r.auth)),
+    json_kv(key: "push", value: push_registration_json(p: r.push)),
+  ]))
+}
+
+fn decode_push_update_request(text: String) -> WireDecode<PushUpdateRequest> {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => WireRefused { at: "$", cause: json_document_gap_text(gap: g) as NonEmptyStr }
+    JsonDocumentParsed { value: v } =>
+      match wire_object(v: v, at: "$", allowed: ["auth", "push"]) {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: o } =>
+          match wire_member(obj: o, key: "auth") {
+            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+            WireDecoded { value: av } =>
+              match decode_read_authentication(v: av) {
+                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                WireDecoded { value: auth } =>
+                  match decode_push_registration_in(o: o, key: "push") {
+                    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                    WireDecoded { value: push } => WireDecoded { value: PushUpdateRequest { auth: auth, push: push } }
+                  }
+              }
+          }
+      }
+  }
 }
 
 // A PATH SEGMENT IS "id-" + base64url(UTF-8(identity)), TOTAL AND INJECTIVE, and never refused: every

@@ -26,6 +26,8 @@ import gunbc.auth.approval_writer_authority {
 import gunbc.auth.approval_broker_marker {
   ApprovalBrokerMarker, approval_broker_marked_body,
   ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
+  DeviceEnrolHandlerObserved, DeviceRedeemHandlerObserved, DevicePendingHandlerObserved,
+  DeviceRequestHandlerObserved, DeviceEnrollmentReadbackHandlerObserved, DevicePushUpdateHandlerObserved,
   BrokerNoRouteMatched, BrokerMethodNotAllowed, BrokerAdapterRefused, BrokerStaticRouteServed,
 }
 import gunbc.auth.approval_broker_endpoint {
@@ -34,7 +36,15 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_submit_path,
   approval_broker_status_path_template,
   approval_broker_confirm_path_prefix,
+  approval_device_request_path_template,
+  approval_device_enrollment_path_template,
 }
+import gunbc.auth.approval_device_wire { approval_device_enrol_path, approval_device_redeem_path, approval_device_pending_path, approval_device_push_path }
+import gunbc.auth.approval_device_routes {
+  DeviceRouteResponse,
+  device_enrol_response, device_redeem_response, device_pending_response, device_request_response, device_enrollment_readback_response, device_push_update_response,
+}
+import extdeps.http.server { application_json_utf8 }
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment, attr }
@@ -99,6 +109,12 @@ type ApprovalBrokerHandler
   | ApprovalDecideHandler
   | ApprovalSubmitHandler
   | ApprovalStatusHandler
+  | DeviceEnrolHandler
+  | DeviceRedeemHandler
+  | DevicePendingHandler
+  | DeviceRequestHandler
+  | DeviceEnrollmentReadbackHandler
+  | DevicePushUpdateHandler
 
 // THE APPROVAL PAIR IS TWO ROUTES ON PURPOSE. The operator's tap is a GET, and a GET must not
 // spend the decision -- link previews, mail scanners, chat unfurlers and browser prefetch all
@@ -117,11 +133,27 @@ fn approval_broker_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>>
     ServedRouteSpec { method: POST, raw: approval_broker_decide_path_template as String, handler: ApprovalDecideHandler },
     ServedRouteSpec { method: POST, raw: approval_broker_submit_path as String, handler: ApprovalSubmitHandler },
     ServedRouteSpec { method: GET, raw: approval_broker_status_path_template as String, handler: ApprovalStatusHandler },
+    ServedRouteSpec { method: POST, raw: approval_device_enrol_path as String, handler: DeviceEnrolHandler },
+    ServedRouteSpec { method: POST, raw: approval_device_redeem_path as String, handler: DeviceRedeemHandler },
+    ServedRouteSpec { method: POST, raw: approval_device_pending_path as String, handler: DevicePendingHandler },
+    ServedRouteSpec { method: POST, raw: approval_device_request_path_template as String, handler: DeviceRequestHandler },
+    ServedRouteSpec { method: POST, raw: approval_device_enrollment_path_template as String, handler: DeviceEnrollmentReadbackHandler },
+    ServedRouteSpec { method: POST, raw: approval_device_push_path as String, handler: DevicePushUpdateHandler },
   ]
 }
 
 fn approval_broker_route_table_build() -> ServedRouteTableBuild<ApprovalBrokerHandler> {
   serve_build_route_table(specs: approval_broker_route_specs())
+}
+
+// ── THE SIX DEVICE ROUTES ────────────────────────────────────────────────────────────────────
+// The phone's routes (gunbc.auth.approval_device_wire), every one a POST whose body carries its
+// authentication, each answered by the fold of the same name in gunbc.auth.approval_device_routes
+// and marked with its own token. The two that mutate the store and the push registration take the
+// serving process, because the writer gate is consulted inside them; the three reads do not. The
+// instant is probed inside each fold, once per request.
+fn device_route_response(marker: ApprovalBrokerMarker, process: ApprovalServingProcess, r: DeviceRouteResponse) -> ServeHttpResponse {
+  broker_text_response(status: r.status, content_type: application_json_utf8, body: r.body, marker: marker, process: process)
 }
 
 // EVERY RESPONSE EITHER SERVING PROCESS EMITS FROM THESE FOLDS PASSES THROUGH HERE, which is why
@@ -460,6 +492,12 @@ fn approval_broker_invoke(
     ApprovalDecideHandler => approval_decide_response(request: request, params: params, process: process)
     ApprovalSubmitHandler => approval_submit_response(request: request, process: process)
     ApprovalStatusHandler => approval_status_response(params: params, process: process)
+    DeviceEnrolHandler => device_route_response(marker: DeviceEnrolHandlerObserved, process: process, r: device_enrol_response(body: request.body, process: process))
+    DeviceRedeemHandler => device_route_response(marker: DeviceRedeemHandlerObserved, process: process, r: device_redeem_response(body: request.body, process: process))
+    DevicePendingHandler => device_route_response(marker: DevicePendingHandlerObserved, process: process, r: device_pending_response(body: request.body))
+    DeviceRequestHandler => device_route_response(marker: DeviceRequestHandlerObserved, process: process, r: device_request_response(body: request.body, segment: path_param_value(params: params, name: "segment")))
+    DeviceEnrollmentReadbackHandler => device_route_response(marker: DeviceEnrollmentReadbackHandlerObserved, process: process, r: device_enrollment_readback_response(body: request.body, segment: path_param_value(params: params, name: "segment")))
+    DevicePushUpdateHandler => device_route_response(marker: DevicePushUpdateHandlerObserved, process: process, r: device_push_update_response(body: request.body, process: process))
   }
 }
 

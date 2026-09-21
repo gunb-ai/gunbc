@@ -8,6 +8,7 @@ import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, Cite
 import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.serve_liveness { serve_liveness_path }
+import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix }
 
 // ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────
 // ONE FACT, FOUR READERS. The four approval paths are read by the broker's route table
@@ -34,6 +35,12 @@ data approval_broker_decide_path_template: NonEmptyStr = approval_broker_confirm
 data approval_broker_submit_path: NonEmptyStr = "/approvals"
 
 data approval_broker_status_path_template: NonEmptyStr = "/approvals/\{escalation_id\}"
+
+// THE SIX DEVICE ROUTES' TEMPLATES, spelled from gunbc.auth.approval_device_wire's paths (the app's
+// authority) rather than re-typed here: the two suffixed routes take one ParamToken segment, the
+// four fixed routes are the wire's literals. Every device operation is a POST.
+data approval_device_request_path_template: NonEmptyStr = join([approval_device_request_path_prefix as String, "\{segment\}"], "") as NonEmptyStr
+data approval_device_enrollment_path_template: NonEmptyStr = join([approval_device_enrollment_path_prefix as String, "\{segment\}"], "") as NonEmptyStr
 
 // ── The broker's own listener ────────────────────────────────────────────────────────────────
 // A SEPARATE PORT IS WHAT MAKES THE SEPARATE PROCESS OBSERVABLE. Two units with two MainPIDs that

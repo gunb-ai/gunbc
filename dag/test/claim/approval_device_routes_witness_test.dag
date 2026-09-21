@@ -1,0 +1,109 @@
+module test.claim.approval_device_routes_witness_test
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Timestamp }
+import gunbc.auth.approval_writer_authority { BrokerProcess, RoadmapProcess, ApprovalWriteAdmitted, ApprovalWriteRefused, approval_write_admission }
+import gunbc.auth.approval_device_routes {
+  DeviceRouteResponse,
+  device_enrol_response_at, device_redeem_response_at, device_pending_response_at, device_request_response_at, device_enrollment_readback_response_at, device_push_update_response_at,
+  redemption_status, requested_at_within_skew,
+}
+import gunbc.auth.approval_device_redemption { DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused }
+import gunbc.auth.approval_device_wire { ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json, ApnsRegistration, path_segment }
+import extdeps.apple.apns { ApnsProduction }
+import gunbc.auth.approval_app_attest_config { approval_app_attest_verifier, AppAttestVerifierAwaitingOperator, AppAttestVerifierConfigured }
+import gunbc.roadmap_serve { roadmap_mounts_during_cutover }
+import gunbc.auth.approval_broker_serve { DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler }
+
+// THE ROUTE FOLDS AT A SUPPLIED INSTANT, on the arms that decide before any store or verifier is
+// reached: wire refusals, the writer gate, the segment rule, the enrolment-identity check, and the
+// verifier's unconfigured refusal. Every arm past those needs the operator's App ID prefix
+// (gunbc.auth.approval_app_attest_config) and a live store; they are the declared frontier the
+// configuration row names, and a claim that greened them from designed bytes would assert a
+// route nothing can reach.
+
+data fx_now: Timestamp = "2026-09-21T12:00:00Z"
+data fx_auth: ReadAuthentication = ReadAuthentication { enrollment_id: "enr-482913", requested_at: "2026-09-21T12:00:30Z", assertion_b64: "omlzaWduYXR1cmU" }
+
+fn non_writer() -> Bool {
+  match approval_write_admission(asker: BrokerProcess) {
+    ApprovalWriteAdmitted { writer: _ } => false
+    ApprovalWriteRefused { holder: _, asker: _ } => true
+  }
+}
+
+fn device_route_refused_with(r: DeviceRouteResponse, status: Int, fragment: String) -> Bool {
+  r.status == status && string_contains(s: r.body, pattern: "\"refused\":") && string_contains(s: r.body, pattern: fragment)
+}
+
+// A body that is not the wire's shape refuses 400 naming where, on every one of the six routes.
+test fn malformed_bodies_refuse_400_on_every_route() -> Bool {
+  device_route_refused_with(r: device_enrol_response_at(body: "{", process: BrokerProcess, observed_at: fx_now), status: 400, fragment: "enrolment request refused at")
+    && device_route_refused_with(r: device_redeem_response_at(body: "[]", process: BrokerProcess, observed_at: fx_now), status: 400, fragment: "redemption refused at")
+    && device_route_refused_with(r: device_pending_response_at(body: "{\"enrollment_id\":\"e\"}", observed_at: fx_now), status: 400, fragment: "read refused at")
+    && device_route_refused_with(r: device_request_response_at(body: "{}", segment: path_segment(s: "esc-1") as String, observed_at: fx_now), status: 400, fragment: "read refused at")
+    && device_route_refused_with(r: device_enrollment_readback_response_at(body: "{}", segment: path_segment(s: "enr-1") as String, observed_at: fx_now), status: 400, fragment: "read refused at")
+    && device_route_refused_with(r: device_push_update_response_at(body: "{\"auth\":{}}", process: BrokerProcess, observed_at: fx_now), status: 400, fragment: "push update refused at")
+}
+
+// A malformed or non-canonical path segment refuses 400 before the body is read.
+test fn a_bad_segment_refuses_400() -> Bool {
+  device_route_refused_with(r: device_request_response_at(body: "", segment: "esc-1", observed_at: fx_now), status: 400, fragment: "request path")
+    && device_route_refused_with(r: device_enrollment_readback_response_at(body: "", segment: "id-", observed_at: fx_now), status: 400, fragment: "enrollment path")
+}
+
+// A readback whose body speaks for another enrolment than the path names refuses 403 before any
+// verification.
+test fn a_readback_for_another_enrolment_refuses_403() -> Bool {
+  device_route_refused_with(r: device_enrollment_readback_response_at(body: read_authentication_json(a: fx_auth), segment: path_segment(s: "enr-other") as String, observed_at: fx_now), status: 403, fragment: "another enrolment")
+}
+
+// THE WRITER GATE IS ON THE PATH of the three mutating routes: from the process that does not
+// hold writer authority, a well-formed enrol / redeem / push-update body is refused 503 with the
+// writer reason and nothing is read or verified. (Which process holds it is the cutover posture's
+// fact; the claim names the non-holder by asking the gate.)
+test fn the_non_writer_process_is_refused_on_the_mutating_routes() -> Bool {
+  let asker = if non_writer() { BrokerProcess } else { RoadmapProcess }
+  let push = push_update_request_json(r: PushUpdateRequest { auth: fx_auth, push: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "a1b2" } })
+  device_route_refused_with(r: device_push_update_response_at(body: push, process: asker, observed_at: fx_now), status: 503, fragment: "writer authority")
+}
+
+// UNTIL THE OPERATOR SUPPLIES THE APP ID PREFIX, every authenticated read refuses 503 naming what
+// is missing -- the row is the one place that changes, and this claim reads the row's own arm so
+// it flips to the configured path the day the row does.
+test fn reads_refuse_unconfigured_until_the_operator_supplies_the_prefix() -> Bool {
+  match approval_app_attest_verifier {
+    AppAttestVerifierAwaitingOperator { missing: _ } =>
+      device_route_refused_with(r: device_pending_response_at(body: read_authentication_json(a: fx_auth), observed_at: fx_now), status: 503, fragment: "not configured")
+    AppAttestVerifierConfigured { app_id_prefix: _, bundle_id: _, environment: _, admitted_validation_categories: _, expected_bundle_version: _ } =>
+      !device_route_refused_with(r: device_pending_response_at(body: read_authentication_json(a: fx_auth), observed_at: fx_now), status: 503, fragment: "not configured")
+  }
+}
+
+// The skew window is closed below and open above: 60 s before is inside, 61 s before is not; 59 s
+// after is inside, 60 s after is not; a non-canonical claimed time is never inside. The bounds are
+// Clock.TimestampAdd's (the same resource gunbc.auth.approval_gate approval_expires_at uses), which
+// the hermetic route has no arm for, so this claim executes on the wet route (claim_batch --wet).
+test fn the_read_skew_window_brackets_sixty_seconds() -> Bool {
+  requested_at_within_skew(requested_at: "2026-09-21T11:59:00Z", observed_at: fx_now)
+    && !requested_at_within_skew(requested_at: "2026-09-21T11:58:59Z", observed_at: fx_now)
+    && requested_at_within_skew(requested_at: "2026-09-21T12:00:59Z", observed_at: fx_now)
+    && !requested_at_within_skew(requested_at: "2026-09-21T12:01:00Z", observed_at: fx_now)
+    && !requested_at_within_skew(requested_at: "not-a-time", observed_at: fx_now)
+}
+
+// The redemption outcome's status map on the arms the app branches on.
+test fn redemption_outcomes_map_to_their_statuses() -> Bool {
+  redemption_status(o: DeviceLostTheRace) == 409
+    && redemption_status(o: DeviceEnrollmentUnknown) == 404
+    && redemption_status(o: DeviceChallengeNotIssuedHere) == 403
+    && redemption_status(o: DeviceCommitRefused { detail: "x" }) == 503
+}
+
+// THE ROADMAP NEVER MOUNTS A DEVICE ROUTE, during the cutover or after: the total match in
+// gunbc.roadmap.roadmap_serve classifies all six as the broker's alone.
+test fn the_roadmap_mounts_no_device_route() -> Bool {
+  !roadmap_mounts_during_cutover(h: DeviceEnrolHandler) && !roadmap_mounts_during_cutover(h: DeviceRedeemHandler)
+    && !roadmap_mounts_during_cutover(h: DevicePendingHandler) && !roadmap_mounts_during_cutover(h: DeviceRequestHandler)
+    && !roadmap_mounts_during_cutover(h: DeviceEnrollmentReadbackHandler) && !roadmap_mounts_during_cutover(h: DevicePushUpdateHandler)
+}

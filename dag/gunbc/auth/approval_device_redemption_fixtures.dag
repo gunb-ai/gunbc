@@ -13,7 +13,7 @@ import gunbc.auth.approval_device_wire {
   enrolment_request_json, signed_redemption_json, push_update_json, enrolment_grant_json, pending_list_json,
   fetched_request_json, enrolment_readback_json, redemption_response_json, device_push_update_client_data,
   device_request_path, device_enrollment_path, enrollment_id_for_code, path_segment,
-  approval_device_enrollment_header, approval_device_requested_at_header, approval_device_assertion_header,
+  ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json,
   approval_device_enrol_path, approval_device_redeem_path, approval_device_enrollment_path_prefix, approval_device_push_path,
 }
 import extdeps.crypto.signature { SignatureBytes, P1363FixedWidth }
@@ -118,7 +118,7 @@ fn enrolment_vector_json(v: EnrolmentVector) -> JsonValue {
   ])
 }
 
-// The read transcript an App Attest assertion covers on the two authenticated GETs.
+// The read transcript an App Attest assertion covers on the three authenticated reads (POSTs).
 type ReadVector {
   name: NonEmptyStr
   path: NonEmptyStr
@@ -149,6 +149,7 @@ fn read_vector_json(v: ReadVector) -> JsonValue {
 // requests and must produce these bytes; it decodes the responses and must read these values.
 data fx_point: NonEmptyStr = "BHt2Zm9vYmFyYmF6cXV4"
 data fx_push: PushRegistration = ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "a1b2c3d4e5f6" }
+data fx_read_auth: ReadAuthentication = ReadAuthentication { enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp, assertion_b64: "omlzaWduYXR1cmU" }
 
 fn fx_signing_input() -> DeviceRedemptionSigningInput {
   match first(redemption_vectors) { Present { value: v } => v.input  Absent => redemption_vector(name: "approve-plain", decision: ProposeApprove, stored_request_text: "{}").input }
@@ -172,6 +173,8 @@ data envelope_vectors: List<EnvelopeVector> = [
     platform_proof: IosAppAttestAssertion { assertion_b64: "omlzaWduYXR1cmU" },
   }) },
   EnvelopeVector { name: "push_update", body: push_update_json(p: fx_push) },
+  EnvelopeVector { name: "read_authentication", body: read_authentication_json(a: fx_read_auth) },
+  EnvelopeVector { name: "push_update_request", body: push_update_request_json(r: PushUpdateRequest { auth: fx_read_auth, push: fx_push }) },
   EnvelopeVector { name: "enrolment_grant", body: enrolment_grant_json(g: EnrolmentGrant { enrollment_id: "enr-482913" }) },
   EnvelopeVector { name: "pending_list", body: pending_list_json(rows: [PendingApproval { escalation_id: "esc-mtc1-boot-1", request_revision: "sha256:abab" }]) },
   EnvelopeVector { name: "fetched_request", body: fetched_request_json(f: FetchedRequest {
@@ -201,17 +204,16 @@ fn envelope_vector_json(v: EnvelopeVector) -> JsonValue {
 
 // ── The HTTP surface ─────────────────────────────────────────────────────────────────────────
 // EVERY NAME THE APP SENDS OR ADDRESSES, from the wire's own rows, so Wire.swift restates none of
-// them: the three authenticated-request headers, every fixed route and route prefix, and the path
-// segment encoding over specimens of each character class it must handle.
+// them: the one method every device operation uses (authentication rides in the body, never in a
+// header), every fixed route and route prefix, and the path segment encoding over specimens of
+// each character class it must handle.
 type SurfaceVector {
   name: NonEmptyStr
   value: NonEmptyStr
 }
 
 data surface_vectors: List<SurfaceVector> = [
-  SurfaceVector { name: "header_enrollment", value: approval_device_enrollment_header },
-  SurfaceVector { name: "header_requested_at", value: approval_device_requested_at_header },
-  SurfaceVector { name: "header_assertion", value: approval_device_assertion_header },
+  SurfaceVector { name: "method_every_device_operation", value: "POST" },
   SurfaceVector { name: "route_enrol", value: approval_device_enrol_path },
   SurfaceVector { name: "route_pending", value: approval_device_pending_path },
   SurfaceVector { name: "route_request_prefix", value: approval_device_request_path_prefix },

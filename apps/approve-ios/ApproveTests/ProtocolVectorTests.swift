@@ -73,7 +73,7 @@ struct Vectors: Decodable {
     var envelope: [Envelope]
     /// path_segment: input -> encoded, emitted by the .dag path_segment fold.
     var path_segment: [PathSegment]
-    /// surface: the header names and route paths, by name.
+    /// surface: the one method, and the route paths, by name.
     var surface: [Surface]
     /// stored_request: the store's own rendering, so the detail screen's reader is joined to it.
     /// Optional in the Codable so that a fixture predating the section (it is emitted by
@@ -178,6 +178,18 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertEqual(WireEncode.pushUpdate(try WireDecode.pushUpdate(Data(body.utf8))), body)
     }
 
+    /// The read-authentication body and the push-update envelope { auth, push } are ENCODED only by
+    /// the app (the server decodes them), so they are checked against the fixture bytes directly
+    /// from the fixture's own field values.
+    func testReadAuthenticationEncodesToTheFixtureBytes() throws {
+        let body = try envelope("read_authentication")
+        let auth = ReadAuth(enrollmentId: "enr-482913", requestedAt: "2026-09-18T12:00:30Z", assertionB64: "omlzaWduYXR1cmU")
+        XCTAssertEqual(WireEncode.readRequest(auth), body)
+        let pushBody = try envelope("push_update")
+        let push = try WireDecode.pushUpdate(Data(pushBody.utf8))
+        XCTAssertEqual(WireEncode.pushUpdateRequest(auth, push), try envelope("push_update_request"))
+    }
+
     /// Every response body decodes strictly, with its declared members present and non-empty.
     func testResponsesDecode() throws {
         XCTAssertFalse(try WireDecode.enrolmentGrant(Data(try envelope("enrolment_grant").utf8)).enrollment_id.isEmpty)
@@ -250,14 +262,12 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertEqual(got, Data(try envelope("push_update_client_data").utf8))
     }
 
-    /// Every header name and route the app spells is the fixture's; a missing surface row FAILS, so
+    /// The method and every route the app spells is the fixture's; a missing surface row FAILS, so
     /// a route the wire adds and the app does not spell is caught, not silently absent.
     func testSurfaceMatchesTheFixture() throws {
         let rows = Dictionary(uniqueKeysWithValues: try load().surface.map { ($0.name, $0.value) })
         func surface(_ name: String) throws -> String { try XCTUnwrap(rows[name], "surface row \(name) missing") }
-        XCTAssertEqual(ReadHeader.enrollment, try surface("header_enrollment"))
-        XCTAssertEqual(ReadHeader.requestedAt, try surface("header_requested_at"))
-        XCTAssertEqual(ReadHeader.assertion, try surface("header_assertion"))
+        XCTAssertEqual("POST", try surface("method_every_device_operation"))
         XCTAssertEqual(Route.enrol, try surface("route_enrol"))
         XCTAssertEqual(Route.pending, try surface("route_pending"))
         XCTAssertEqual(Route.requestPrefix, try surface("route_request_prefix"))

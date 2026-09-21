@@ -16,7 +16,7 @@ import gunbc.auth.approval_broker_marker {
   approval_broker_served_token, approval_serving_process_token,
 }
 import gunbc.auth.approval_broker_serve {
-  ApprovalBrokerHandler,
+  ApprovalBrokerHandler, DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler,
   ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
   approval_broker_route_specs,
   approval_broker_route_table_build,
@@ -74,13 +74,30 @@ test fn approval_broker_table_selects_the_four_routes() -> Bool {
     && broker_selects(method: GET, path: "/approvals/esc-1", want: ApprovalStatusHandler)
 }
 
-// THE TABLE IS EXACTLY THE FOUR. A fifth row is not a neutral addition: every route this process
-// serves is one more thing whose demand shares the broker's slice, and the split exists because
-// co-tenancy is what made an approval poll depend on a dashboard render.
+// THE SIX DEVICE ROUTES ARE ANSWERED HERE AND ONLY AS POSTS (gunbc.auth.approval_device_wire:
+// every device operation is a POST whose body carries its authentication). The two suffixed
+// routes bind one segment; a GET on any of them is 405, not a read.
+test fn approval_broker_table_selects_the_six_device_routes_as_posts() -> Bool {
+  broker_selects(method: POST, path: "/approve/device/enrol", want: DeviceEnrolHandler)
+    && broker_selects(method: POST, path: "/approve/device/redeem", want: DeviceRedeemHandler)
+    && broker_selects(method: POST, path: "/approve/device/pending", want: DevicePendingHandler)
+    && broker_selects(method: POST, path: "/approve/device/requests/id-ZXNj", want: DeviceRequestHandler)
+    && broker_selects(method: POST, path: "/approve/device/enrollments/id-ZW5y", want: DeviceEnrollmentReadbackHandler)
+    && broker_selects(method: POST, path: "/approve/device/push", want: DevicePushUpdateHandler)
+    && match serve_select_route(table: broker_table_or_empty(), method: GET, path: "/approve/device/pending") {
+      MethodNotAllowed { allowed: ms } => count(ms) == 1
+      _ => false
+    }
+}
+
+// THE TABLE IS EXACTLY THE TEN: the four approval routes and the six device routes. An eleventh
+// row is not a neutral addition: every route this process serves is one more thing whose demand
+// shares the broker's slice, and the split exists because co-tenancy is what made an approval
+// poll depend on a dashboard render.
 test fn approval_broker_table_carries_no_other_route() -> Bool {
-  count(approval_broker_route_specs()) == 4
+  count(approval_broker_route_specs()) == 10
     && match approval_broker_route_table_build() {
-      ServedRouteTableBuilt { table: t } => count(t.routes) == 4
+      ServedRouteTableBuilt { table: t } => count(t.routes) == 10
       ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
     }
 }

@@ -14,7 +14,7 @@ import gunbc.auth.approval_device_wire {
   approval_device_audience, MobileIos, MobileAndroid, device_read_client_data,
   EnrolmentRequest, IosAppAttestAttestation, ApnsRegistration, SignedRedemption, IosAppAttestAssertion, PushRegistration,
   WireDecoded, WireRefused, enrolment_request_json, decode_enrolment_request, signed_redemption_json, decode_signed_redemption,
-  push_update_json, decode_push_update, path_segment, device_request_path, device_push_update_client_data, decode_path_segment, PathSegmentDecoded, PathSegmentMalformed,
+  push_update_json, decode_push_update, ReadAuthentication, read_authentication_json, decode_read_request, PushUpdateRequest, push_update_request_json, decode_push_update_request, path_segment, device_request_path, device_push_update_client_data, decode_path_segment, PathSegmentDecoded, PathSegmentMalformed,
 }
 import extdeps.apple.apns { ApnsProduction }
 
@@ -159,6 +159,43 @@ test fn witness_push_update_round_trips() -> Bool {
   match decode_push_update(text: push_update_json(p: fx_push)) {
     WireDecoded { value: p } => push_update_json(p: p) == push_update_json(p: fx_push)
     WireRefused { at: _, cause: _ } => false
+  }
+}
+
+data fx_read_auth: ReadAuthentication = ReadAuthentication { enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z", assertion_b64: "omlzaWduYXR1cmU" }
+
+// THE READ AUTHENTICATION BODY (every device operation is a POST; the assertion rides here, never
+// in a header) round-trips, and the push-update envelope { auth, push } round-trips with it.
+test fn witness_read_authentication_round_trips() -> Bool {
+  match decode_read_request(text: read_authentication_json(a: fx_read_auth)) {
+    WireDecoded { value: a } => a.enrollment_id == fx_read_auth.enrollment_id && a.requested_at == fx_read_auth.requested_at && a.assertion_b64 == fx_read_auth.assertion_b64
+    WireRefused { at: _, cause: _ } => false
+  }
+}
+
+test fn witness_push_update_request_round_trips() -> Bool {
+  let r = PushUpdateRequest { auth: fx_read_auth, push: fx_push }
+  match decode_push_update_request(text: push_update_request_json(r: r)) {
+    WireDecoded { value: d } => push_update_request_json(r: d) == push_update_request_json(r: r)
+    WireRefused { at: _, cause: _ } => false
+  }
+}
+
+// A read body with an unknown member refuses at "auth"; an empty assertion refuses at its key; a
+// push-update envelope missing "push" refuses at "push".
+test fn witness_read_authentication_refuses_strictly() -> Bool {
+  match decode_read_request(text: "{\"enrollment_id\":\"e\",\"requested_at\":\"t\",\"assertion_b64\":\"a\",\"extra\":1}") {
+    WireRefused { at: a, cause: _ } =>
+      (a as String) == "auth"
+        && match decode_read_request(text: "{\"enrollment_id\":\"e\",\"requested_at\":\"t\",\"assertion_b64\":\"\"}") {
+          WireRefused { at: a2, cause: _ } => (a2 as String) == "assertion_b64"
+          WireDecoded { value: _ } => false
+        }
+        && match decode_push_update_request(text: "{\"auth\":{\"enrollment_id\":\"e\",\"requested_at\":\"t\",\"assertion_b64\":\"a\"}}") {
+          WireRefused { at: a3, cause: _ } => (a3 as String) == "push"
+          WireDecoded { value: _ } => false
+        }
+    WireDecoded { value: _ } => false
   }
 }
 

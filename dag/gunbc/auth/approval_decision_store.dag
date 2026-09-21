@@ -31,6 +31,7 @@ import gunbc.durable_cas_file_store {
   DerivedPayloadKeyNotSlotAddressable,
   file_compare_and_set,
   observe_cas_slot_state,
+  CasSlotKeys, CasSlotKeysListed, CasSlotKeysListingRefused, cas_slot_keys,
 }
 import std.durable_compare_and_set {
   cas_unreadable_slot_detail,
@@ -798,3 +799,35 @@ data approval_keyring_materialization_frontier: DissolutionCondition = unbound_d
   description: "a fleet-converge step that reads approval_mac_key_secret_ref and approval_submission_mac_key_secret_ref through the WIF-backed convergence account and writes approval_mac_key_path and approval_submission_mac_key_path (0640 root:<roadmap unit user>) on the host that serves /approve and /approvals, over the fleet SSH administrator edge rather than a job-user sudo -- SUFFICIENT FOR both keyrings to read ApprovalKeyLoaded on that host; lands as gunbc.auth.approval_keyring_converge (#11484)",
 )
 
+
+
+// ── The pending escalations ──────────────────────────────────────────────────────────────────
+// WHAT THE PHONE LISTS ON OPEN: every filed escalation whose slot stands EscalationPending. The
+// keys come from the store's own listing (gunbc.durable_cas_file_store cas_slot_keys, the inverse
+// of the layout it writes), and each standing is read through observe_escalation exactly as a
+// single read would be -- the listing decides which slots exist, never what they hold. A slot
+// that cannot be read is carried as a refusal beside the rows, not dropped: a pending approval
+// the phone cannot see is a decision that never happens.
+type PendingEscalations
+  = PendingEscalationsListed { pending: List<StoredApprovalRequest>, unreadable: List<NonEmptyStr> }
+  | PendingEscalationsRefused { detail: String }
+
+type PendingFold {
+  pending: List<StoredApprovalRequest>
+  unreadable: List<NonEmptyStr>
+}
+
+fn pending_escalations(root: NonEmptyStr) -> PendingEscalations {
+  match cas_slot_keys(root: root) {
+    CasSlotKeysListingRefused { root: _, detail: d } => PendingEscalationsRefused { detail: d }
+    CasSlotKeysListed { keys: keys } => {
+      let f = fold(keys, init: PendingFold { pending: [], unreadable: [] }, f: (acc, k) => match observe_escalation(root: root, escalation_id: k) {
+        EscalationPending { request: r } => PendingFold { pending: acc.pending |> list_push(r), unreadable: acc.unreadable }
+        EscalationUnreadable { detail: _ } => PendingFold { pending: acc.pending, unreadable: acc.unreadable |> list_push(k) }
+        EscalationDecided { decision: _ } => acc
+        EscalationNotFiled => acc
+      })
+      PendingEscalationsListed { pending: f.pending, unreadable: f.unreadable }
+    }
+  }
+}
