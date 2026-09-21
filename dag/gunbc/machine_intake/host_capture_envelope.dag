@@ -332,8 +332,19 @@ type BoundHostCaptureEnvelope {
   sections: List<HostCaptureBoundSection>
 }
 
+// FOUR BINDINGS, NOT TWO. NotBegun is its own constructor because "the capture has not begun" is
+// the one unbound state a poller must wait on, and a consumer that re-derived it from the
+// reason's wording would be re-discriminating a fact from a display string (review 69622). An envelope that has begun for this machine and run and has not yet
+// closed is OPEN: its sections that already carry their EXIT line are complete observations of that
+// run (the stream is append-only and a later BEGIN is another run), and a verdict may REFUSE on one
+// of them before the envelope closes. It may never ACCEPT on an open envelope: acceptance is the
+// program's own statement that it wrote everything, which is the END marker. Boot 23 attempt 3
+// (run 35612872611) observed nproc 80 and a failed workload write eight minutes before its deadline
+// and reported a timeout, because the only two bindings were closed-and-readable or unreadable.
 type HostCaptureBinding
   = HostCaptureBound { envelope: BoundHostCaptureEnvelope }
+  | HostCaptureOpen { envelope: BoundHostCaptureEnvelope }
+  | HostCaptureNotBegun
   | HostCaptureUnbound { reason: String }
 
 // TWO RUN IDENTITIES ARE THE SAME RUN ONLY IF THEY ARE THE SAME KIND OF IDENTITY. Comparing the
@@ -364,6 +375,7 @@ fn host_capture_marker_matches(a: HostCaptureMarker, machine: NonEmptyStr, run: 
 type HostCaptureScan {
   begun: Bool
   closed: Bool
+  restarted: Bool
   machine: NonEmptyStr
   run: HostCaptureRunIdentity
   body: List<String>
@@ -372,23 +384,30 @@ type HostCaptureScan {
 // The first begin for the machine opens the envelope; the first end for the SAME machine and run
 // closes it. Lines before the begin and after the end are other runs' and are not read. An end that
 // precedes the begin is never reached, so a reversed pair leaves the envelope unclosed.
+// A SECOND BEGIN FOR THIS MACHINE WHILE THE ENVELOPE IS OPEN IS A RESTART, AND IT REFUSES. The
+// first run never closed, so which run the sections after the second begin belong to is not a
+// fact; appending them to the first run's body would let run B's observations refuse run A once an
+// open envelope became readable (review 5269655400). The scan stops collecting at that begin and
+// the binding reports it.
 fn host_capture_scan_line(acc: HostCaptureScan, line: String, machine: NonEmptyStr) -> HostCaptureScan {
-  if acc.closed {
+  if acc.closed || acc.restarted {
     acc
   } else {
     match host_capture_marker_of(line: line) {
-      Absent => if acc.begun { HostCaptureScan { begun: true, closed: false, machine: acc.machine, run: acc.run, body: append(acc.body, items: [line]) } } else { acc }
+      Absent => if acc.begun { HostCaptureScan { begun: true, closed: false, restarted: false, machine: acc.machine, run: acc.run, body: append(acc.body, items: [line]) } } else { acc }
       Present { value: m } =>
         match m.kind {
           HostCaptureBegin =>
-            if acc.begun == false && (m.machine as String) == (machine as String) {
-              HostCaptureScan { begun: true, closed: false, machine: m.machine, run: m.run, body: [] }
-            } else {
+            if (m.machine as String) != (machine as String) {
               acc
+            } else if acc.begun == false {
+              HostCaptureScan { begun: true, closed: false, restarted: false, machine: m.machine, run: m.run, body: [] }
+            } else {
+              HostCaptureScan { begun: true, closed: false, restarted: true, machine: acc.machine, run: acc.run, body: acc.body }
             }
           HostCaptureEnd =>
             if acc.begun && host_capture_marker_matches(a: m, machine: acc.machine, run: acc.run) {
-              HostCaptureScan { begun: true, closed: true, machine: acc.machine, run: acc.run, body: acc.body }
+              HostCaptureScan { begun: true, closed: true, restarted: false, machine: acc.machine, run: acc.run, body: acc.body }
             } else {
               acc
             }
@@ -449,19 +468,29 @@ fn host_capture_section_scan_line(acc: HostCaptureSectionScan, line: String) -> 
   }
 }
 
+// ONLY NEWLINE-TERMINATED LINES ARE EVIDENCE. The capture is read while the host is still writing
+// it, so its final fragment may be half a line: "workload-write-rc=" or "workload-write-rc=1"
+// with the newline not yet arrived. The fragment is dropped before the scan, so nothing -- not a
+// marker, not a section opener, not a refusing statement -- is read before the program finished
+// writing it (review 5269655400).
+fn host_capture_terminated_lines(capture: String) -> List<String> {
+  let parts = split(s: capture, delimiter: "\n")
+  if ends_with(s: capture, suffix: "\n") { parts } else { parts.take(n: count(parts) - 1) }
+}
+
 fn host_capture_bind(capture: String, machine: NonEmptyStr) -> HostCaptureBinding {
   let scan = fold(
-    split(s: capture, delimiter: "\n"),
-    init: HostCaptureScan { begun: false, closed: false, machine: machine, run: KernelBootId { boot_id: "unbound" }, body: [] },
+    host_capture_terminated_lines(capture: capture),
+    init: HostCaptureScan { begun: false, closed: false, restarted: false, machine: machine, run: KernelBootId { boot_id: "unbound" }, body: [] },
     f: (acc, line) => host_capture_scan_line(acc: acc, line: line, machine: machine),
   )
   if scan.begun == false {
-    HostCaptureUnbound { reason: concat("no begin marker for ", machine as String) }
-  } else if scan.closed == false {
+    HostCaptureNotBegun
+  } else if scan.restarted {
     HostCaptureUnbound {
       reason: concat(
-        "the envelope for ", machine as String, " run ", host_capture_run_identity_value(run: scan.run),
-        " was opened and never closed by an end marker for that same run",
+        "a second begin marker for ", machine as String, " opened while the envelope for run ",
+        host_capture_run_identity_value(run: scan.run), " was still open; which run the sections belong to is not a fact",
       )
     }
   } else {
@@ -475,15 +504,102 @@ fn host_capture_bind(capture: String, machine: NonEmptyStr) -> HostCaptureBindin
         reason: concat("a section name opens twice inside the envelope for ", machine as String, "; which one the verdict would read is not a fact")
       }
     } else {
-      HostCaptureBound {
-        envelope: BoundHostCaptureEnvelope {
-          machine: scan.machine,
-          run: scan.run,
-          sections: host_capture_close_open_section(acc: sections),
+      let envelope = BoundHostCaptureEnvelope {
+        machine: scan.machine,
+        run: scan.run,
+        sections: host_capture_close_open_section(acc: sections),
+      }
+      if scan.closed { HostCaptureBound { envelope: envelope } } else { HostCaptureOpen { envelope: envelope } }
+    }
+  }
+}
+
+// ── typed section readings, for a verdict that must say WHICH observation refused ─────────────
+//
+// A section is COMPLETE when its body carries its own EXIT line; until then it is still being
+// written (an open envelope's last section) and reads as pending. The exit code is the text after
+// `----EXIT <name>: `; the output is the lines after the ARGV line up to the EXIT line, and nothing
+// before the ARGV line is output or exit -- the program's echo of its own command is never read as
+// a result, structurally. A pending
+// section still exposes the output written so far: a whole-line statement the program has already
+// printed (workload-write-rc=1) is a complete fact about that run even while the section continues.
+type HostCaptureSectionReading
+  = SectionAbsent
+  | SectionPending { output: List<String> }
+  | SectionComplete { exit_code: String, output: List<String> }
+  | SectionMalformed { reason: String }
+
+fn host_capture_section_reading(envelope: BoundHostCaptureEnvelope, name: String) -> HostCaptureSectionReading {
+  match host_capture_bound_section(envelope: envelope, name: name) {
+    Absent => SectionAbsent
+    Present { value: s } => {
+      let exit_prefix = concat(host_capture_exit_open, name, ": ")
+      let argv_prefix = concat(host_capture_argv_open, name, ": ")
+      let lines = split(s: s.body, delimiter: "\n")
+      let scan = fold(
+        lines,
+        init: HostCaptureSectionLineScan { after_argv: false, output: [], exit_code: none, duplicate_argv: false },
+        f: (acc, line) => host_capture_section_line_scan(acc: acc, line: line, argv_prefix: argv_prefix, exit_prefix: exit_prefix),
+      )
+      if scan.duplicate_argv {
+        SectionMalformed { reason: concat("section ", name, " carries two ARGV boundaries; which output the exit belongs to is not a fact") }
+      } else {
+        match scan.exit_code {
+          Absent => SectionPending { output: scan.output }
+          Present { value: code } => SectionComplete { exit_code: code, output: scan.output }
         }
       }
     }
   }
+}
+
+type HostCaptureSectionLineScan {
+  after_argv: Bool
+  output: List<String>
+  exit_code: String?
+  duplicate_argv: Bool
+}
+
+// opener -> exactly one ARGV -> output -> EXIT. Text before the ARGV line is not output and an EXIT
+// before the ARGV line completes nothing: the program prints them in that order and only in that
+// order, so a section without that shape was not written by the program. A SECOND ARGV is
+// malformed, never a reset: resetting would choose the other candidate boundary while claiming
+// there was exactly one (review 5270388845).
+fn host_capture_section_line_scan(acc: HostCaptureSectionLineScan, line: String, argv_prefix: String, exit_prefix: String) -> HostCaptureSectionLineScan {
+  match acc.exit_code {
+    Present { value: _ } => acc
+    Absent =>
+      if acc.duplicate_argv {
+        acc
+      } else if starts_with(s: line, prefix: argv_prefix) {
+        if acc.after_argv {
+          HostCaptureSectionLineScan { after_argv: true, output: acc.output, exit_code: none, duplicate_argv: true }
+        } else {
+          HostCaptureSectionLineScan { after_argv: true, output: [], exit_code: none, duplicate_argv: false }
+        }
+      } else if acc.after_argv == false {
+        acc
+      } else if starts_with(s: line, prefix: exit_prefix) {
+        HostCaptureSectionLineScan { after_argv: true, output: acc.output, exit_code: Present { value: substring(s: line, start: exit_prefix.length(), end: line.length()) }, duplicate_argv: false }
+      } else if starts_with(s: line, prefix: host_capture_section_open) {
+        acc
+      } else {
+        HostCaptureSectionLineScan { after_argv: true, output: append(acc.output, items: [line]), exit_code: none, duplicate_argv: false }
+      }
+  }
+}
+
+// The value of one `<key>value` output line, as the workload prints `workload-write-rc=<n>`.
+fn host_capture_output_value_after(output: List<String>, token: String) -> String? {
+  fold(output, init: none, f: (acc, line) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => if starts_with(s: line, prefix: token) { Present { value: substring(s: line, start: token.length(), end: line.length()) } } else { none }
+    })
+}
+
+fn host_capture_output_has_line(output: List<String>, line: String) -> Bool {
+  any(output, l => l == line)
 }
 
 fn host_capture_bound_section(envelope: BoundHostCaptureEnvelope, name: String) -> HostCaptureBoundSection? {
