@@ -424,11 +424,18 @@ fn pool_event_append_wire(a: PoolEventAppend) -> String {
 // fold it, PROPOSE the release against the folded pool, and append only what the pool admits. A
 // reference the pool is not holding is a typed refusal that writes nothing.
 //
-// ITS CONSUMER IS THE RECOVERY ROUTE A HELD SEAT NEEDS (gunbc.compute.host_capacity
-// compute_release_reference, reached from the operator CLI compute_release_cli). Under
-// QuiescenceRequired a term never frees capacity, so an explicit release is the ONLY way a seat
-// comes back, and a module claiming that route owes one that executes (review 69595 on gunbc#11962,
-// DESIGN 3c).
+// ITS CONSUMER IS gunbc.compute.host_capacity compute_release_on, which every compute settlement
+// reaches when a run ends and its unit is proven gone. Under QuiescenceRequired a term never frees
+// capacity, so an explicit release is the ONLY way a seat comes back.
+//
+// AN OPERATOR-FACING RECOVERY DOOR IS NOT AMONG ITS CONSUMERS, and this annotation said it was
+// until review 69645 caught the citation naming two symbols that do not exist -- they were removed
+// when the compute lifecycle was split out, and the comment was not. A citation that does not
+// resolve is a citation defect (DESIGN 3), and worse here because host_capacity's own annotation
+// states the opposite. Discharging a seat whose release did not land is the capability named by
+// gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge; when it lands it
+// will reach this same function, which is why the check below is built to serve a caller that did
+// not take the reservation.
 type SeatRelease
   = SeatReleased { reference: NonEmptyStr, id: EventId }
   | SeatNotHeld { reference: NonEmptyStr, wire: String }

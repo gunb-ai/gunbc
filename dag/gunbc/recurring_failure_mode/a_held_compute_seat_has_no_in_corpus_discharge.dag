@@ -16,6 +16,8 @@ data a_held_compute_seat_has_no_in_corpus_discharge: RecurringFailureMode = Recu
 
     "SPECIMEN, EXECUTED ON srv1 (2026-09-21, gunbc#11962): a real release build was started under a grant of 27262976 KiB and the gunbc driver was SIGKILLed mid-run. The unit stayed active, the partition carried the acquire and no release, and the producer lease stayed held -- the commitment correctly stayed charged, and nothing in the corpus could return it.",
 
+    "THERE IS NO SAFE MANUAL DISCHARGE UNDER LIVE ADMISSION, and saying so is part of the row rather than a caveat on it. Clearing the capacity partition by hand while this host is admitting work removes the very record the admission arithmetic folds, so the next requests are admitted against memory the stuck grant still holds -- trading a host that under-admits for one that over-promises, which is the direction this whole change exists to prevent. Any manual intervention requires compute admission STOPPED on the host and every gunbc-compute unit PROVEN gone, in that order.",
+
     "RUNG FOUND AT: mitigatable. The state is reachable, its harm is bounded to one host's compute appropriation, it is visible in the outcome document and in the partition, and it never over-promises.",
 
     "CEILING: mechanically preventable. A discharge route exists to be built -- the evidence needed is a termination decision bound to the unit plus a settled lifecycle state that a retry consumes -- so this is not a class that must stay a ratchet.",
@@ -29,6 +31,6 @@ data a_held_compute_seat_has_no_in_corpus_discharge: RecurringFailureMode = Recu
     decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_stuck_reservation_remedy"),
     decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "unit_termination_frees_capacity"),
     decl_ref(module_path: "gunbc.compute.host_capacity", decl_name: "compute_release"),
-    decl_ref(module_path: "test.claim.compute.work_request_witness", decl_name: "only_proven_absence_or_an_empty_cgroup_frees_a_seat"),
+    decl_ref(module_path: "test.claim.compute.work_request_witness", decl_name: "only_proven_absence_or_an_ended_cgroup_frees_a_seat"),
   ],
 }

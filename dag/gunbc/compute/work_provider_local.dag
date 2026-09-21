@@ -240,39 +240,49 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
   }
 }
 
-// ── WHETHER THE UNIT IS STILL USING THE MEMORY ────────────────────────────────────────────────
+// ── WHETHER THE ATTEMPT HAS ENDED AND ITS UNIT IS GONE ────────────────────────────────────────
 //
 // THE RELEASE LAW SAID "QUIESCENCE REQUIRED" AND NOTHING OBSERVED QUIESCENCE. compute_release ran
-// on whatever compute_run_leased returned, and what it returns is the exit of `systemd-run --wait`,
-// which is NOT the unit. systemd-run is a launcher, not the unit's parent -- the transient service
-// is owned by the manager -- so a launcher killed, timed out, or disconnected from the bus yields
-// ComputeExecFailed WHILE THE UNIT KEEPS RUNNING, and the seat's memory would be handed to the next
-// arrival on top of a live cargo. product.capacity.lease already models this (QuiescenceFact) and
-// this provider was not consulting it.
+// on whatever compute_run_leased returned, and that is the exit of `systemd-run --wait`, which is
+// NOT the unit: systemd-run is a launcher, the transient service is owned by the manager, and a
+// launcher killed or disconnected yields a failure WHILE THE UNIT KEEPS RUNNING.
 //
-// ActiveState ALONE IS NOT THE EVIDENCE, AND THE FIRST FIX OF THIS THOUGHT IT WAS. Two arms it
-// treated as free are not (side-chat review of gunbc#11962 at 9172cf7):
+// TWO EARLIER SHAPES OF THIS FOLD WERE WRONG, AND BOTH WERE WRONG IN THE SAME DIRECTION -- they
+// found a way to say "gone" from evidence that does not establish it.
 //
-//   `failed` CAN COEXIST WITH LIVE PROCESSES. A unit whose stop reaches the SIGKILL timeout is
-//   reported failed while its processes are still being killed, and a task wedged in
-//   uninterruptible sleep outlives the state word entirely.
+//   ActiveState ALONE (first shape): `failed` coexists with live processes while a unit's stop
+//   reaches its SIGKILL timeout, and an empty ActiveState is the manager declining to answer.
 //
-//   AN EMPTY ActiveState IS NOT AUTHORITATIVE ABSENCE. It is the manager declining to answer in a
-//   form this provider cannot distinguish from a unit it has never heard of. The repo's own
-//   systemctl authority already names the observation that proves absence, and it is LoadState:
-//   `systemctl show` exits 0 for a unit the manager has never heard of and prints not-found, so a
-//   nonzero exit means the MANAGER was unreadable, which is a different refusal from an absent unit
-//   and must not be folded into it.
+//   AN EMPTY ControlGroup (second shape, side-chat review at 5ee0cce): it was read as observed
+//   termination without reading any cgroup at all, and it is not. systemd realizes the cgroup AT
+//   SPAWN, so an empty ControlGroup equally describes a unit whose start is still PENDING -- which
+//   makes a whole unbacked launch reachable: reserve, the start is pending, the launcher is lost
+//   while this driver lives on, settlement sees the empty property, releases, and THEN the job
+//   starts against memory nobody holds. An empty required property is now never promoted to a
+//   conclusion; it is UNAVAILABLE, like every other absence of evidence.
 //
-// SO THE DECISION IS FOUR-VALUED AND ONLY THE FIRST TWO FREE CAPACITY. Authoritative absence, from
-// the one wire value that proves it. Observed termination, from the cgroup this unit owns reporting
-// no processes -- the kernel's own answer to "is anything still running here", which is the question
-// the memory is actually about. Populated keeps the charge. And UNAVAILABLE keeps it too, which is
-// the arm that matters most: "I could not ask" is what a lost launcher, an unreadable manager and a
-// missing cgroup all look like, and reading any of them as permission to take the memory back is the
-// absorbing fallback DESIGN 5 forbids.
+// SO CAPACITY IS FREED ON TWO FACTS AND NO OTHERS, both of which establish that the attempt ENDED
+// rather than that it looks quiet:
+//
+//   THE ATTEMPT COMPLETED. `systemd-run --wait` returned success, which it does only after the
+//   unit it started ran to completion. A lost launcher does not return success, and a pending job
+//   has not returned at all.
+//
+//   THE MANAGER HAS NO RECORD OF THE UNIT. LoadState=not-found is the wire value this corpus reads
+//   positively, and a transient --wait unit reaches it once it has run and been collected.
+//
+// A REALIZED CGROUP REPORTING populated 0 IS THE THIRD, AND IT IS EVIDENCE RATHER THAN A GUESS,
+// which is why it survives where the empty property did not: the cgroup exists only from spawn
+// onward, so a NON-EMPTY ControlGroup whose cgroup reports no processes cannot be a pending start.
+// It spawned, and everything in it exited.
+//
+// EVERYTHING ELSE KEEPS THE CHARGE: populated, an unreadable manager, an unreadable cgroup, an
+// undecodable body, a property that came back empty. "I could not establish it" is what a lost
+// launcher, a pending job and a broken bus all look like, and reading any of them as permission to
+// take the memory back is the absorbing fallback DESIGN 5 forbids.
 type UnitTermination
-  = UnitAbsentAuthoritatively { detail: String }
+  = UnitAttemptCompleted { detail: String }
+  | UnitAbsentAuthoritatively { detail: String }
   | UnitTerminatedObserved { detail: String }
   | UnitPopulated { detail: String }
   | UnitTerminationUnavailable { detail: String }
@@ -281,53 +291,90 @@ data unit_load_state_property: NonEmptyStr = "LoadState" as NonEmptyStr
 data unit_control_group_property: NonEmptyStr = "ControlGroup" as NonEmptyStr
 data unit_load_state_absent_wire: String = "not-found"
 
-// THE USER MANAGER IS ASKED, NOT THE SYSTEM ONE. systemctl_show_load_state_argv exists and is
-// system-scope; these are transient --user units, so asking the system manager would answer
-// not-found for EVERY one of them -- a fabricated authoritative absence, which is the single worst
-// answer this fold can produce. The property goes through the user-scope show operation for that
-// reason and no other.
-fn observe_unit_termination(identity_hex: String) -> UnitTermination {
-  let unit = compute_unit_name(identity_hex: identity_hex)
-  let load = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_load_state_property)
-  if !load.success {
-    UnitTerminationUnavailable { detail: join(["the user manager could not be read for ", unit as String], "") }
-  } else if trim(s: load.value) == unit_load_state_absent_wire {
-    UnitAbsentAuthoritatively { detail: join([unit as String, " LoadState=", unit_load_state_absent_wire], "") }
-  } else {
-    observe_unit_cgroup(unit: unit, load_state: trim(s: load.value))
-  }
+// ONE PROPERTY READ, AS READ. success is the query's, value is the manager's answer; the two are
+// separate because a successful query that answers nothing is a different fact from a query that
+// failed, and the fold below must be able to tell them apart without re-deriving either.
+type UnitPropertyReading {
+  queried: Bool
+  value: String
 }
 
-// THE UNIT EXISTS, SO THE QUESTION IS WHETHER ANYTHING IS STILL RUNNING IN IT, and the kernel
-// answers that directly. ControlGroup is empty for a unit that is loaded and holds no processes --
-// systemd removes the cgroup when the last one exits -- so an empty value here is observed
-// termination rather than a failed read, and it is the ordinary answer after a clean run.
-fn observe_unit_cgroup(unit: NonEmptyStr, load_state: String) -> UnitTermination {
-  let cg = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_control_group_property)
-  if !cg.success {
-    UnitTerminationUnavailable { detail: join(["the control group of ", unit as String, " could not be read"], "") }
-  } else if trim(s: cg.value) == "" {
-    UnitTerminatedObserved { detail: join([unit as String, " LoadState=", load_state, " holds no control group, so no process of this unit survives"], "") }
+// THE RAW OBSERVATIONS THE DECISION IS MADE FROM, carried as a value so the decision is a fold over
+// supplied readings rather than a fold over live service calls. That is what lets the controls
+// drive the OBSERVATION-TO-DECISION boundary -- a failed query whose text looks like an answer, a
+// property that came back empty, a pending start -- instead of only the variant-to-release mapping,
+// which cannot see any of those (side-chat review at 5ee0cce).
+type UnitObservations {
+  attempt_completed: Bool
+  load_state: UnitPropertyReading
+  control_group: UnitPropertyReading
+  events: UnitPropertyReading
+}
+
+// A FAILED QUERY IS UNAVAILABLE WHATEVER IT PRINTED. systemctl writes diagnostics that read like
+// answers -- "Failed to connect to bus", "not-found" inside a sentence -- so the exit status
+// decides first and the text is never consulted on a failed query.
+fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
+  if o.attempt_completed {
+    UnitAttemptCompleted { detail: "systemd-run --wait returned success, so the unit it started ran to completion" }
+  } else if !o.load_state.queried {
+    UnitTerminationUnavailable { detail: "the user manager could not be queried for this unit, so nothing about it is established" }
+  } else if trim(s: o.load_state.value) == unit_load_state_absent_wire {
+    UnitAbsentAuthoritatively { detail: join(["LoadState=", unit_load_state_absent_wire], "") }
+  } else if trim(s: o.load_state.value) == "" {
+    UnitTerminationUnavailable { detail: "the manager answered the LoadState query with nothing, which establishes neither presence nor absence" }
+  } else if !o.control_group.queried {
+    UnitTerminationUnavailable { detail: join(["LoadState=", trim(s: o.load_state.value), " but the control group could not be queried"], "") }
+  } else if trim(s: o.control_group.value) == "" {
+    UnitTerminationUnavailable {
+      detail: join([
+        "LoadState=", trim(s: o.load_state.value),
+        " and the unit holds no control group, which is EITHER a unit that has finished OR a start that is still pending -- the cgroup is realized at spawn -- so it establishes neither",
+      ], ""),
+    }
+  } else if !o.events.queried {
+    UnitTerminationUnavailable { detail: join(["the cgroup events of ", trim(s: o.control_group.value), " could not be read"], "") }
   } else {
-    let events = linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: join([cgroup_v2_mount_point as String, trim(s: cg.value)], "") as NonEmptyStr))
-    if !events.success {
-      UnitTerminationUnavailable { detail: join(["the cgroup events of ", unit as String, " could not be read at ", trim(s: cg.value)], "") }
-    } else {
-      match decode_cgroup_events_populated(body: events.value) {
-        CgroupEventsUnparseable { cause: c } => UnitTerminationUnavailable { detail: join(["the cgroup events of ", unit as String, " could not be decoded: ", c], "") }
-        CgroupEventsDecoded { populated: p } =>
-          if p {
-            UnitPopulated { detail: join([unit as String, " still has processes in ", trim(s: cg.value)], "") }
-          } else {
-            UnitTerminatedObserved { detail: join([unit as String, " cgroup ", trim(s: cg.value), " reports populated 0"], "") }
-          }
-      }
+    match decode_cgroup_events_populated(body: o.events.value) {
+      CgroupEventsUnparseable { cause: c } => UnitTerminationUnavailable { detail: join(["the cgroup events of ", trim(s: o.control_group.value), " could not be decoded: ", c], "") }
+      CgroupEventsDecoded { populated: p } =>
+        if p {
+          UnitPopulated { detail: join(["processes remain in ", trim(s: o.control_group.value)], "") }
+        } else {
+          UnitTerminatedObserved { detail: join(["the realized cgroup ", trim(s: o.control_group.value), " reports populated 0, so it spawned and everything in it exited"], "") }
+        }
     }
   }
 }
 
+// THE USER MANAGER IS ASKED, NOT THE SYSTEM ONE. systemctl_show_load_state_argv exists and is
+// system-scope; these are transient --user units, so asking the system manager would answer
+// not-found for EVERY one of them -- a fabricated authoritative absence, the worst answer this fold
+// can produce. The property goes through the user-scope show operation for that reason and no other.
+//
+// THE READS ARE TAKEN UNCONDITIONALLY AND THE FOLD DECIDES. Short-circuiting them here would put
+// half the decision in this function and half in the fold, which is the split that let an empty
+// property become a conclusion in the first place.
+fn observe_unit_termination(identity_hex: String, attempt_completed: Bool) -> UnitTermination {
+  let unit = compute_unit_name(identity_hex: identity_hex)
+  let load = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_load_state_property)
+  let cg = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_control_group_property)
+  let events = if cg.success && trim(s: cg.value) != "" {
+    linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: join([cgroup_v2_mount_point as String, trim(s: cg.value)], "") as NonEmptyStr))
+  } else {
+    linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: cgroup_v2_mount_point))
+  }
+  unit_termination_decide(o: UnitObservations {
+    attempt_completed: attempt_completed,
+    load_state: UnitPropertyReading { queried: load.success, value: load.value },
+    control_group: UnitPropertyReading { queried: cg.success, value: cg.value },
+    events: UnitPropertyReading { queried: events.success, value: events.value },
+  })
+}
+
 fn unit_termination_frees_capacity(t: UnitTermination) -> Bool {
   match t {
+    UnitAttemptCompleted { detail: _ } => true
     UnitAbsentAuthoritatively { detail: _ } => true
     UnitTerminatedObserved { detail: _ } => true
     UnitPopulated { detail: _ } => false
@@ -337,10 +384,11 @@ fn unit_termination_frees_capacity(t: UnitTermination) -> Bool {
 
 fn unit_termination_wire(t: UnitTermination) -> String {
   match t {
+    UnitAttemptCompleted { detail: d } => join(["attempt completed (", d, ")"], "")
     UnitAbsentAuthoritatively { detail: d } => join(["absent (", d, ")"], "")
     UnitTerminatedObserved { detail: d } => join(["terminated (", d, ")"], "")
     UnitPopulated { detail: d } => join(["STILL POPULATED (", d, "), so the seat stays charged"], "")
-    UnitTerminationUnavailable { detail: d } => join(["termination UNAVAILABLE (", d, "), so the seat stays charged"], "")
+    UnitTerminationUnavailable { detail: d } => join(["termination UNESTABLISHED (", d, "), so the seat stays charged"], "")
   }
 }
 
@@ -411,6 +459,21 @@ fn compute_basename(path: String) -> String {
 // outcome and the obligation were written, so a second producer could take the lease and start
 // against a work directory whose record was still being published -- the exclusion held for the
 // name and not for the publication it exists to protect.
+// THE ATTEMPT'S OWN COMPLETION IS A SEPARATE FACT FROM THE WORK'S ENDING, and only the first one
+// licenses a release. A WorkFailed says the unit exited nonzero OR that the launcher never got an
+// answer; a successful `systemd-run --wait` says the unit ran to completion, which is the fact the
+// termination decision needs. So the ending is what the caller is told and this is what the seat is
+// decided on; they are not the same question and were conflated before.
+fn compute_attempt_completed(outcome: WorkOutcome) -> Bool {
+  match outcome {
+    WorkSucceeded { identity: _, outputs: _, log_path: _ } => true
+    WorkOutputMismatch { identity: _, detail: _ } => true
+    WorkFailed { identity: _, exit_code: _, log_path: _ } => false
+    WorkRefusedByInfrastructure { identity: _, cause: _ } => false
+    WorkCancelled { identity: _ } => false
+  }
+}
+
 fn compute_run_and_settle(
   instance: HostDashboardInstance,
   commit: String,
@@ -425,7 +488,7 @@ fn compute_run_and_settle(
 ) -> ProvideResult {
   let outcome = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store, granted: granted)
   let standing = compute_capacity_standing(instance: instance)
-  let termination = observe_unit_termination(identity_hex: identity)
+  let termination = observe_unit_termination(identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: outcome))
   let returned = if unit_termination_frees_capacity(t: termination) {
     compute_release(reservation: reservation, reason: join(["work ", work_outcome_ending(o: outcome), ", unit ", unit_termination_wire(t: termination)], "") as NonEmptyStr)
   } else {
@@ -447,7 +510,58 @@ fn compute_run_and_settle(
       "reservation: ", compute_release_wire(r: returned), "\n",
       if dropped.success { "" } else { compute_stale_lease_note(layout: layout, error: dropped.error) },
     ], ""))
-  if measured.success { settled } else { settled }
+  if measured.success {
+    settled
+  } else {
+    compute_host_record_lost(
+      layout: layout, identity: identity, subject: subject, op: op, settled: settled,
+      dropped_ok: dropped.success, dropped_error: dropped.error, error: measured.error)
+  }
+}
+
+// THE HOST RECORD IS THE ONLY DURABLE CARRIER OF THREE FACTS, so losing it stops the line rather
+// than being discarded. The arm used to read `if measured.success { settled } else { settled }` --
+// both arms identical, so a failed write vanished by construction (review 69645), and the
+// COMPOUND case was the sharp one: the producer lease failing to drop AND this write failing left
+// an identity whose lease is permanently held with NO RECORD ANYWHERE that it is stale, while the
+// caller was handed an ordinary success. The module's own prose claimed that stale lease "is
+// recorded as the operational fact it is"; the arm let that recording disappear.
+//
+// WHY THIS DOES NOT REOPEN BLOCKER (7). That blocker was a refusal that DENIED a published
+// success -- the caller was told the run failed while the stored record said it succeeded and the
+// next caller would attach to that success. This refusal denies nothing: it names the run's real
+// ending, says the stored record is published and authoritative, and reports a HOST fault that
+// happened after publication. The two callers still read the same thing about the work; what this
+// one additionally learns is that the host has state no file describes.
+fn compute_host_record_lost(
+  layout: ComputeLayout,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  settled: ProvideResult,
+  dropped_ok: Bool,
+  dropped_error: String,
+  error: String,
+) -> ProvideResult {
+  compute_fresh(
+    outcome: WorkRefusedByInfrastructure {
+      identity: identity,
+      cause: StoreUnavailable {
+        detail: join([
+          "the work's own record is published at ", layout.outcome_path, " and is authoritative -- it ended ",
+          provide_result_ending(r: settled),
+          " and the next caller reads exactly that -- but this host's record at ", layout.consumption_path,
+          " could not be written: ", error,
+          "; so the consumption reading is lost, and ",
+          if dropped_ok {
+            "the producer lease was dropped, so nothing else is outstanding"
+          } else {
+            join(["THE PRODUCER LEASE AT ", layout.lease_path, " IS ALSO STILL HELD (", dropped_error, ") AND NOTHING NOW RECORDS THAT IT IS STALE: an operator must remove the name before this identity can be requested again"], "")
+          },
+        ], ""),
+      },
+    },
+    subject: subject, op: op)
 }
 
 // BLOCKER (7): ONE CONTRACT, AND THE CONTRACT IS THE STORED RECORD. This arm used to hand the
@@ -457,11 +571,18 @@ fn compute_run_and_settle(
 // decides: a published success IS the result, the caller is told the same thing the next caller
 // will read, and the stale lease is recorded as the operational fact it is rather than converted
 // into a verdict about the work. An operator removes the name; nothing about the run changed.
+//
+// AND THE NOTE SAYS WHAT THE NAME ACTUALLY BLOCKS. It used to say the next request would refuse as
+// ProducerInFlight, which contradicts the very contract this block establishes: a caller reaching a
+// published SUCCESS attaches to it, and the attach is decided before the lease is consulted. The
+// stale name only blocks a request that must PRODUCE again.
 fn compute_stale_lease_note(layout: ComputeLayout, error: String) -> String {
   join([
     "STALE PRODUCER LEASE: ", layout.lease_path, " could not be dropped: ", error,
-    "; the record for this identity is published and is authoritative, and the next request will ",
-    "refuse as ProducerInFlight until an operator removes the name\n",
+    "; the record for this identity is published at ", layout.outcome_path, " and is authoritative, ",
+    "and a caller reaching that record ATTACHES to it -- the attach is decided before this name is ",
+    "consulted. The stale name matters only to a request that must PRODUCE again, which it will ",
+    "refuse as ProducerInFlight until an operator removes it\n",
   ], "")
 }
 
@@ -534,7 +655,7 @@ fn compute_unreleased_record(
 // WHAT KEEPS IT FAIL-CLOSED MEANWHILE: every arm that cannot prove the unit is gone keeps the
 // charge, so the host UNDER-admits. Nothing is over-promised; the pool simply shrinks until an
 // operator clears the partition by hand. That is the direction a capacity ledger must fail in.
-data compute_stuck_reservation_remedy: String = "Until the compute lifecycle capability lands (gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge), the only discharge is an operator clearing this host's compute capacity partition by hand; this host will under-admit until then, which is the fail-closed direction."
+data compute_stuck_reservation_remedy: String = "There is NO safe discharge for this seat while this host is admitting work: clearing the capacity partition by hand under live admission removes the record the admission arithmetic is computed from, so the next requests would be admitted against memory this one still holds -- trading a host that under-admits for one that over-promises. The discharge is the compute lifecycle capability (gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge). Any manual intervention before then requires compute admission STOPPED on this host and every gunbc-compute unit PROVEN gone, in that order. Until then this host under-admits, which is the fail-closed direction and is not an incident."
 
 // THE ORDER THE TWO HOLDS ARE TAKEN IN// THE ORDER THE TWO HOLDS ARE TAKEN IN, and they are two facts rather than one. The producer lease
 // excludes a SECOND PRODUCER OF THIS IDENTITY and is a NAME, so an exclusive create settles it; the

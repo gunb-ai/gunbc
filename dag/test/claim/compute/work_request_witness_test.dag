@@ -3,8 +3,9 @@ module test.claim.compute.work_request_witness_test
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.compute.work_provider_local {
-  UnitTermination, UnitAbsentAuthoritatively, UnitTerminatedObserved, UnitPopulated, UnitTerminationUnavailable,
-  unit_termination_frees_capacity, unit_termination_wire,
+  UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitTerminatedObserved, UnitPopulated, UnitTerminationUnavailable,
+  UnitPropertyReading, UnitObservations, unit_termination_decide,
+  unit_termination_frees_capacity, unit_termination_wire, compute_attempt_completed,
 }
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
@@ -79,22 +80,49 @@ test fn the_stored_outcome_round_trips_and_a_broken_one_is_unreadable() -> Bool 
     && (match stored_outcome_decode(text: "not json") { StoredOutcomeUnreadable { reason: _ } => true  StoredOutcomeFound { ending: _, identity: _, document: _ } => false })
 }
 
-// ONLY PROVEN ABSENCE OR AN OBSERVED-EMPTY CGROUP MAY FREE A SEAT, and the two arms this cell
-// exists to pin RED are the ones an earlier revision got wrong: `failed` can coexist with live
-// processes while a unit's stop reaches its SIGKILL timeout, and an empty ActiveState is the
-// manager declining to answer rather than authoritative absence. Neither may free capacity. The
-// unavailable arm is the one that matters most -- it is what a lost launcher, an unreadable manager
-// and a missing cgroup all look like, and reading any of them as permission is the absorbing
-// fallback DESIGN 5 forbids.
-test fn only_proven_absence_or_an_empty_cgroup_frees_a_seat() -> Bool {
-  let absent = UnitAbsentAuthoritatively { detail: "LoadState=not-found" }
-  let terminated = UnitTerminatedObserved { detail: "populated 0" }
-  let populated = UnitPopulated { detail: "populated 1" }
-  let unavailable = UnitTerminationUnavailable { detail: "the manager could not be read" }
-  unit_termination_frees_capacity(t: absent)
-    && unit_termination_frees_capacity(t: terminated)
+// THE CONTROLS SIT AT THE OBSERVATION-TO-DECISION BOUNDARY, not at the variant-to-release mapping,
+// because the mapping cannot see the defects that actually occurred: a failed query whose TEXT
+// looks like an answer, a property that came back EMPTY, and a start that is still PENDING all
+// arrive as readings and are wrong only in how they are read (side-chat review at 5ee0cce).
+//
+// THE PENDING-START ROW IS THE ONE THIS CELL EXISTS FOR. An empty ControlGroup was read as observed
+// termination, and it equally describes a unit whose start has not spawned yet -- systemd realizes
+// the cgroup AT SPAWN. That made a whole unbacked launch reachable: reserve, start pending, the
+// LAUNCHER lost while this driver lives on, settlement sees the empty property, releases, and the
+// job then starts against memory nobody holds. It must establish nothing.
+test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
+  let no_events = UnitPropertyReading { queried: false, value: "" }
+  let completed = unit_termination_decide(o: UnitObservations { attempt_completed: true, load_state: UnitPropertyReading { queried: false, value: "" }, control_group: UnitPropertyReading { queried: false, value: "" }, events: no_events })
+  let absent = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "not-found" }, control_group: UnitPropertyReading { queried: false, value: "" }, events: no_events })
+  let misleading = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: false, value: "Failed to connect to bus: not-found" }, control_group: UnitPropertyReading { queried: false, value: "" }, events: no_events })
+  let empty_load = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "" }, control_group: UnitPropertyReading { queried: true, value: "/x" }, events: UnitPropertyReading { queried: true, value: "populated 0\n" } })
+  let pending = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "loaded" }, control_group: UnitPropertyReading { queried: true, value: "" }, events: no_events })
+  let populated = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "loaded" }, control_group: UnitPropertyReading { queried: true, value: "/x" }, events: UnitPropertyReading { queried: true, value: "populated 1\n" } })
+  let failed_unit = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "failed" }, control_group: UnitPropertyReading { queried: true, value: "/x" }, events: UnitPropertyReading { queried: true, value: "populated 1\n" } })
+  let ended = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "loaded" }, control_group: UnitPropertyReading { queried: true, value: "/x" }, events: UnitPropertyReading { queried: true, value: "populated 0\n" } })
+  let undecodable = unit_termination_decide(o: UnitObservations { attempt_completed: false, load_state: UnitPropertyReading { queried: true, value: "loaded" }, control_group: UnitPropertyReading { queried: true, value: "/x" }, events: UnitPropertyReading { queried: true, value: "garbage\n" } })
+  unit_termination_frees_capacity(t: completed)
+    && unit_termination_frees_capacity(t: absent)
+    && unit_termination_frees_capacity(t: ended)
+    && !unit_termination_frees_capacity(t: misleading)
+    && !unit_termination_frees_capacity(t: empty_load)
+    && !unit_termination_frees_capacity(t: pending)
     && !unit_termination_frees_capacity(t: populated)
-    && !unit_termination_frees_capacity(t: unavailable)
+    && !unit_termination_frees_capacity(t: failed_unit)
+    && !unit_termination_frees_capacity(t: undecodable)
+    && string_contains(s: unit_termination_wire(t: pending), pattern: "pending")
+    && string_contains(s: unit_termination_wire(t: misleading), pattern: "UNESTABLISHED")
     && string_contains(s: unit_termination_wire(t: populated), pattern: "STILL POPULATED")
-    && string_contains(s: unit_termination_wire(t: unavailable), pattern: "UNAVAILABLE")
+}
+
+// A COMPLETED ATTEMPT RELEASES, AND AN ATTEMPT THAT DID NOT COMPLETE DOES NOT RELEASE ON ITS OWN.
+// The work's ENDING and the attempt's COMPLETION are different questions: a WorkFailed says the
+// unit exited nonzero OR that the launcher never got an answer, and only the second is a lost
+// launcher. The ending is what the caller is told; completion is what the seat is decided on.
+test fn the_attempt_completion_fact_is_not_the_works_ending() -> Bool {
+  compute_attempt_completed(outcome: WorkSucceeded { identity: "a", outputs: [], log_path: "/l" })
+    && compute_attempt_completed(outcome: WorkOutputMismatch { identity: "a", detail: "d" })
+    && !compute_attempt_completed(outcome: WorkFailed { identity: "a", exit_code: 1, log_path: "/l" })
+    && !compute_attempt_completed(outcome: WorkCancelled { identity: "a" })
+    && !compute_attempt_completed(outcome: WorkRefusedByInfrastructure { identity: "a", cause: HostComputeCapacityFull { wire: "pool-full" } })
 }
