@@ -361,6 +361,18 @@ test fn operator_line_renders_the_source_occurrence_holds() -> Bool {
   }
 }
 
+// AND THE OCCURRENCE NAMES ITS SYMBOL. The unbound refusal is anchored at the atom
+// `ndp_absent_callee`; the persisted row carried that identity while the text line rendered only
+// the ordinal, so a reader of the line could not tell which reference failed. A locus renderer
+// that dropped the atom reds here.
+test fn operator_line_names_the_refused_symbol_holds() -> Bool {
+  match ndp_unbound_refusal() {
+    Absent => false
+    Present { value: d } =>
+      string_contains(s: lens_verdict_diagnostic_locus_text(d: diagnostics_fatal(d: d)), pattern: "`ndp_absent_callee`")
+  }
+}
+
 // THE DENOMINATOR: a module that resolves. Without it every claim above is satisfied by a route
 // that refuses everything for any reason.
 test fn clean_module_resolves_holds() -> Bool {
