@@ -1,0 +1,83 @@
+module test.claim.spark.v41_index_engram_selection_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.content_hash { Sha256DigestHex }
+import extdeps.safetensors.format {
+  SafetensorsIndexMember, safetensors_index_member,
+  SafetensorsPopulationStanding, PopulationEstablished, PopulationIncomplete, PopulationRefused,
+  MembershipClosure, MembershipClosedAgainstFullIndex, MembershipScopedToReadRows, membership_closure_obligations,
+}
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_engram_index_members, deepseek_v4_1_flash_engram_shard_14_path }
+import gunbc.spark.v41_index_engram_selection {
+  V41IndexScan, V41IndexScanned, V41IndexScanRefused, v41_scan_index_text, v41_index_engram_selector,
+  V41IndexEngramSelectionReading, V41IndexEngramSelectionRead, V41IndexEngramSelectionUnread,
+  v41_engram_population_observed_of, v41_engram_population_observed, v41_index_engram_selection_reading,
+}
+
+// THE INSTRUMENT AND THE READING, AT THEIR OWN INTERFACES. The scan runs over supplied index text in
+// the published shape; the observed population runs over supplied readings, compared by the extdeps
+// fold against the pin. The live reading is the transcription of the instrument's receipt.
+
+data w_text: String = "{\"metadata\": {\"total_size\": 42}, \"weight_map\": {\"layers.0.attn.wq\": \"model-00001-of-00048.safetensors\", \"layers.1.engram.embed.weight\": \"model-00047-of-00048.safetensors\", \"layers.14.engram.q_weight\": \"model-00048-of-00048.safetensors\", \"head.weight\": \"model-00046-of-00048.safetensors\"}}"
+
+// THE SCAN SELECTS EXACTLY THE .engram. NAMES AND COUNTS EVERY NAME.
+test fn the_scan_selects_the_engram_names_and_counts_every_name() -> Bool {
+  match v41_scan_index_text(text: w_text, selector: v41_index_engram_selector) {
+    V41IndexScanned { name_count: n, members: ms } =>
+      n == 4 && length(ms) == 2
+        && any(ms, m => (m.name as String) == "layers.14.engram.q_weight" && (m.shard as String) == "model-00048-of-00048.safetensors")
+    V41IndexScanRefused { cause: _ } => false
+  }
+}
+
+// OUTSIDE ITS ONE SHAPE THE SCAN REFUSES: an escape, a different opening, a value that is not a shard.
+test fn the_scan_refuses_outside_its_shape() -> Bool {
+  let escaped = v41_scan_index_text(text: "{\"metadata\": {\"total_size\": 1}, \"weight_map\": {\"a\\\"b\": \"x.safetensors\"}}", selector: v41_index_engram_selector)
+  let other_head = v41_scan_index_text(text: "{\"weight_map\": {\"a\": \"x.safetensors\"}}", selector: v41_index_engram_selector)
+  let not_shard = v41_scan_index_text(text: "{\"metadata\": {\"total_size\": 1}, \"weight_map\": {\"a\": \"x.bin\"}}", selector: v41_index_engram_selector)
+  (match escaped { V41IndexScanRefused { cause: c } => (c as String).contains("backslash")  V41IndexScanned { name_count: _, members: _ } => false })
+    && (match other_head { V41IndexScanRefused { cause: c } => (c as String).contains("does not open with")  V41IndexScanned { name_count: _, members: _ } => false })
+    && (match not_shard { V41IndexScanRefused { cause: c } => (c as String).contains("not a .safetensors shard")  V41IndexScanned { name_count: _, members: _ } => false })
+}
+
+fn w_reading(hex: String, names: Nat, members: List<SafetensorsIndexMember>) -> V41IndexEngramSelectionReading {
+  V41IndexEngramSelectionRead { index_sha256_hex: hex as Sha256DigestHex, index_bytes: 7470294, name_count: names, members: members, observed: "fixture" as NonEmptyStr }
+}
+
+fn w_closure_of(s: SafetensorsPopulationStanding) -> Nat {
+  match s {
+    PopulationEstablished { population: p } => length(membership_closure_obligations(c: p.closure))
+    PopulationIncomplete { obligation: _, partial_entries: _ } => 99
+    PopulationRefused { defects: _ } => 98
+  }
+}
+
+data w_pin_hex: String = "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8"
+
+// A READING OF THE PINNED FILE OVER ALL ITS NAMES CLOSES; A READING OF ANOTHER FILE, OR OF FEWER NAMES,
+// DOES NOT -- the reading is compared with the pin, not restated as it.
+test fn only_a_reading_of_the_pinned_file_over_every_name_closes() -> Bool {
+  w_closure_of(s: v41_engram_population_observed_of(reading: w_reading(hex: w_pin_hex, names: 96085, members: deepseek_v4_1_flash_engram_index_members))) == 0
+    && w_closure_of(s: v41_engram_population_observed_of(reading: w_reading(hex: "1111111111111111111111111111111111111111111111111111111111111111", names: 96085, members: deepseek_v4_1_flash_engram_index_members))) == 1
+    && w_closure_of(s: v41_engram_population_observed_of(reading: w_reading(hex: w_pin_hex, names: 96084, members: deepseek_v4_1_flash_engram_index_members))) == 1
+    && w_closure_of(s: v41_engram_population_observed_of(reading: V41IndexEngramSelectionUnread { obligation: "fixture" as NonEmptyStr })) == 1
+}
+
+// THE RED: a reading that selected a thirteenth .engram. name refuses the population by that name.
+test fn a_reading_with_a_thirteenth_engram_name_refuses() -> Bool {
+  let thirteen = concat(deepseek_v4_1_flash_engram_index_members, [safetensors_index_member(name: "layers.20.engram.embed.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path)])
+  match v41_engram_population_observed_of(reading: w_reading(hex: w_pin_hex, names: 96085, members: thirteen)) {
+    PopulationRefused { defects: d } => any(d, x => (x as String).contains("layers.20.engram.embed.weight"))
+    PopulationEstablished { population: _ } => false
+    PopulationIncomplete { obligation: _, partial_entries: _ } => false
+  }
+}
+
+// THE LIVE READING IS THE INSTRUMENT'S RECEIPT, and it closes the observed population.
+test fn the_live_reading_closes_the_observed_population() -> Bool {
+  (match v41_index_engram_selection_reading {
+    V41IndexEngramSelectionRead { index_sha256_hex: _, index_bytes: _, name_count: n, members: ms, observed: _ } => n == 96085 && length(ms) == 12
+    V41IndexEngramSelectionUnread { obligation: _ } => false
+  }) && w_closure_of(s: v41_engram_population_observed()) == 0
+}

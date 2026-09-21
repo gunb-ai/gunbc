@@ -11,7 +11,7 @@ import extdeps.safetensors.format {
 }
 import extdeps.deepseek.deepseek_v4_1_flash {
   DeepseekV41PublishedFile, deepseek_v4_1_flash_published_file_row,
-  deepseek_v4_1_flash_engram_index_selection, deepseek_v4_1_flash_index_engram_selection_of,
+  deepseek_v4_1_flash_index_engram_selection_of,
   deepseek_v4_1_flash_engram_membership_closure, deepseek_v4_1_flash_engram_membership_closure_of,
   deepseek_v4_1_flash_safetensors_index_file, deepseek_v4_1_flash_index_tensor_count,
   deepseek_v4_1_flash_engram_index_members, deepseek_v4_1_flash_engram_shard_files,
@@ -19,8 +19,8 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram_shard_14_path,
 }
 
-// THE ENGRAM MEMBERSHIP CLOSES AGAINST THE FULL INDEX, AND WHAT THAT BUYS IS A REFUSAL. Before the
-// selection was carried, a thirteenth `.engram.` tensor at this revision was neither reconciled nor
+// THE ENGRAM MEMBERSHIP CLOSES AGAINST A READING OF THE FULL INDEX, AND WHAT THAT BUYS IS A REFUSAL.
+// Scoped to the rows read, a thirteenth `.engram.` tensor at this revision was neither reconciled nor
 // refused: membership closed against the rows that happened to be read. Now the members ARE the
 // selection over all 96085 names, so a thirteenth is a member the header population must carry.
 
@@ -28,25 +28,21 @@ fn w_closure_obligations(c: MembershipClosure) -> Nat {
   length(membership_closure_obligations(c: c))
 }
 
-// THE LIVE CLOSURE IS CLOSED over the pinned index's full name count, and names the file it read.
-test fn the_live_engram_membership_is_closed_against_the_full_index() -> Bool {
-  (match deepseek_v4_1_flash_engram_membership_closure {
-    MembershipClosedAgainstFullIndex { index_population_count: n, how: h } =>
-      n == 96085 && (h as String).contains("74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8")
+// THE PINNED SELECTION CLOSES. A selection whose file and name count are the pin's closes membership;
+// extdeps itself carries no live reading, so its own closure stays scoped to the rows read.
+test fn a_selection_over_the_pinned_index_closes_and_extdeps_alone_stays_scoped() -> Bool {
+  let pinned = deepseek_v4_1_flash_index_engram_selection_of(index: deepseek_v4_1_flash_safetensors_index_file, name_count: 96085, selector: ".engram." as NonEmptyStr, members: deepseek_v4_1_flash_engram_index_members)
+  (match deepseek_v4_1_flash_engram_membership_closure_of(selection: pinned, index: deepseek_v4_1_flash_safetensors_index_file, index_count: deepseek_v4_1_flash_index_tensor_count) {
+    MembershipClosedAgainstFullIndex { index_population_count: n, how: h } => n == 96085 && (h as String).contains("74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8")
     MembershipScopedToReadRows { read_rows: _, unenumerated: _ } => false
   })
-    && w_closure_obligations(c: deepseek_v4_1_flash_engram_membership_closure) == 0
-    && (match deepseek_v4_1_flash_engram_population {
-      PopulationEstablished { population: p } => w_closure_obligations(c: p.closure) == 0
-      PopulationIncomplete { obligation: _, partial_entries: _ } => false
-      PopulationRefused { defects: _ } => false
-    })
+    && w_closure_obligations(c: deepseek_v4_1_flash_engram_membership_closure) == 1
 }
 
 // THE RED: a thirteenth `.engram.` name in the selection has no header entry, and the population
 // REFUSES naming it -- it is no longer a tensor that passes unreconciled.
 test fn a_thirteenth_engram_tensor_in_the_index_refuses_the_population() -> Bool {
-  let thirteen = concat(deepseek_v4_1_flash_engram_index_selection.members, [safetensors_index_member(name: "layers.20.engram.embed.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path)])
+  let thirteen = concat(deepseek_v4_1_flash_engram_index_members, [safetensors_index_member(name: "layers.20.engram.embed.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path)])
   let selection = deepseek_v4_1_flash_index_engram_selection_of(index: deepseek_v4_1_flash_safetensors_index_file, name_count: deepseek_v4_1_flash_index_tensor_count, selector: ".engram." as NonEmptyStr, members: thirteen)
   match safetensors_population_standing(
     members: selection.members,

@@ -15,6 +15,7 @@ import gunbc.spark.serving_deployment_selection { topology_shape }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity, engram_route_c_identity }
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
 import gunbc.spark.v41_identity_input { V41EngramResidencyPartition }
+import gunbc.spark.v41_index_engram_selection { v41_engram_population_observed }
 import gunbc.spark.v41_runtime_candidate {
   V41EnginePatch, v41_engine_patch, V41PatchPopulation, V41PatchesObserved, V41PatchesAbsentByObservation, V41PatchesUnestablished,
   V41EngramPartitionAuthority, PartitionFixedByPatch, PartitionByLaunchConfiguration,
@@ -278,9 +279,9 @@ test fn the_partition_is_admitted_with_derived_bytes_and_a_malformed_one_refuses
     })
 }
 
-// A MEMBERSHIP SCOPED TO THE ROWS READ STILL CANNOT KEY, AND THE LIVE ONE NOW CAN. The live population
-// closes against the full index (extdeps.deepseek.deepseek_v4_1_flash
-// deepseek_v4_1_flash_engram_index_selection), so with an observed row store the axis keys. The scoped
+// A MEMBERSHIP SCOPED TO THE ROWS READ STILL CANNOT KEY, AND THE OBSERVED ONE CAN. The observed
+// population (gunbc.spark.v41_index_engram_selection) closes against the full index through a
+// transcribed reading of the pinned file, so with an observed row store the axis keys. The scoped
 // standing differs from it in the closure ALONE -- same members, same shards, same reading -- and must
 // stay unestablished, so this pair discriminates the membership closure and nothing else.
 fn w_engram_with(population: SafetensorsPopulationStanding) -> V41CandidateVerdict {
@@ -309,7 +310,7 @@ test fn a_scoped_membership_is_unestablished_and_the_closed_live_population_keys
     V41CandidateUnestablished { obligations: o } => any(o, x => (x as String).contains("membership is reconciled against 12 index rows that were read"))
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
     V41CandidateRefused { defects: _ } => false
-  }) && (match w_engram_with(population: deepseek_v4_1_flash_engram_population).standing {
+  }) && (match w_engram_with(population: v41_engram_population_observed()).standing {
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => true
     V41CandidateUnestablished { obligations: _ } => false
     V41CandidateRefused { defects: _ } => false

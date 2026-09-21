@@ -1,0 +1,185 @@
+module gunbc.spark.v41_index_engram_selection
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { byte_size, byte_size_count }
+import std.content_hash { Sha256DigestHex }
+import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.safetensors.format {
+  SafetensorsIndexMember, safetensors_index_member,
+  SafetensorsPopulationStanding, safetensors_population_standing,
+}
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_published_file_row, deepseek_v4_1_flash_safetensors_index_path,
+  deepseek_v4_1_flash_index_engram_selection_of, deepseek_v4_1_flash_engram_membership_closure_of,
+  deepseek_v4_1_flash_safetensors_index_file, deepseek_v4_1_flash_index_tensor_count,
+  deepseek_v4_1_flash_engram_shard_files, deepseek_v4_1_flash_engram_population_reading,
+  deepseek_v4_1_flash_engram_population,
+}
+
+// ── THE .engram. SELECTION OVER THE PINNED V4.1 INDEX, AS THIS REPOSITORY'S OBSERVATION ────────
+//
+// WHY THIS IS HERE AND NOT IN extdeps. A selection someone ran over a file is an observation, and an
+// observation is a receipt in the observing layer (DESIGN section 3), never a fact the upstream owns.
+// extdeps.deepseek.deepseek_v4_1_flash owns the pin (the index file's sha256 and size, its name count)
+// and the fold that decides whether a selection closes membership; this module owns the reading and
+// the instrument that produces it.
+//
+// THE INSTRUMENT IS A TOKEN SCAN, AND THAT IS A STATED DIVERGENCE FROM extdeps.languages.json. The JSON
+// authority's parse_json_document did not finish this 7.4 MB document in fifteen minutes in the
+// interpreter (measured 2026-09-21), so a general parse cannot be the instrument today. The scan below
+// reads ONE shape and refuses everything else: no backslash anywhere (so no quoted string can hide a
+// quote), the quoted tokens opening exactly `metadata`, `total_size`, `weight_map`, and after them only
+// name/shard pairs whose shard ends `.safetensors`. Within that shape the quoted tokens ARE the keys and
+// values, so the selection is exact rather than heuristic. It dissolves into a fold over
+// parse_json_document once that parser reads a weight_map of this size.
+//
+// WHY THE READING IS TRANSCRIBED. The index is not in this repository, so a data row cannot read it at
+// evaluation. v41_index_engram_selection_read_wet runs the scan over a local copy and prints a receipt;
+// the receipt's own values are transcribed into v41_index_engram_selection_reading. Those values are
+// COMPARED against the pin by the extdeps fold, so a reading of any other file, or over fewer names,
+// does not close membership -- the reading is evidence, not a restatement of the pin.
+
+data v41_index_engram_selector: NonEmptyStr = ".engram." as NonEmptyStr
+
+type V41IndexScan
+  = V41IndexScanned { name_count: Nat, members: List<SafetensorsIndexMember> }
+  | V41IndexScanRefused { cause: NonEmptyStr }
+
+fn v41_quoted_tokens(text: String) -> List<String> {
+  map(filter(enumerate(split(s: text, delimiter: "\"")), p => p.first % 2 == 1), p => p.second)
+}
+
+fn v41_pairs_of(tokens: List<String>) -> List<List<String>> {
+  map(filter(enumerate(tokens), p => p.first % 2 == 0), p => [p.second, match get(xs: tokens, index: p.first + 1) { Present { value: v } => v  Absent => "" }])
+}
+
+fn v41_pair_at(pair: List<String>, i: Nat) -> String {
+  match get(xs: pair, index: i) { Present { value: v } => v  Absent => "" }
+}
+
+fn v41_scan_index_text(text: String, selector: NonEmptyStr) -> V41IndexScan {
+  if text.contains("\\") {
+    V41IndexScanRefused { cause: "the index text carries a backslash, so a quoted token may contain an escaped quote and the token scan cannot read it exactly" as NonEmptyStr }
+  } else {
+    let tokens = v41_quoted_tokens(text: text)
+    let head = map(filter(enumerate(tokens), p => p.first < 3), p => p.second)
+    if head != ["metadata", "total_size", "weight_map"] {
+      V41IndexScanRefused { cause: join(["the index does not open with metadata, total_size, weight_map; it opens with ", join(head, ", ")], "") as NonEmptyStr }
+    } else {
+      let pairs = v41_pairs_of(tokens: map(filter(enumerate(tokens), p => p.first >= 3), p => p.second))
+      let bad = filter(pairs, pr => !v41_pair_at(pair: pr, i: 1).ends_with(".safetensors"))
+      if length(bad) != 0 || length(pairs) == 0 {
+        V41IndexScanRefused { cause: join(["the weight_map carries ", to_string(length(bad)), " entries whose value is not a .safetensors shard (or none at all), so it is not the shape this scan reads"], "") as NonEmptyStr }
+      } else {
+        V41IndexScanned {
+          name_count: length(pairs),
+          members: map(filter(pairs, pr => v41_pair_at(pair: pr, i: 0).contains(selector as String)), pr =>
+            safetensors_index_member(name: v41_pair_at(pair: pr, i: 0) as NonEmptyStr, shard: v41_pair_at(pair: pr, i: 1) as NonEmptyStr)),
+        }
+      }
+    }
+  }
+}
+
+// ── THE INSTRUMENT ─────────────────────────────────────────────────────────────────────────────
+//
+// Run over a local copy of the index (fetched from hub_resolve_url at the pinned revision):
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/spark/v41_index_engram_selection.dag
+//     --function v41_index_engram_selection_read_wet   (path in GUNBC_V41_INDEX_PATH)
+// It writes target/v41-index-engram-selection-receipt.txt: the file's sha256 and size, the scan's name count and every selected member: the fields
+// v41_index_engram_selection_reading carries.
+data v41_index_path_env: String = "GUNBC_V41_INDEX_PATH"
+data v41_index_selection_receipt_path: String = "target/v41-index-engram-selection-receipt.txt"
+
+fn v41_index_engram_selection_read_wet() -> ProcessExit {
+  let path = match shell.Env.Get(name: v41_index_path_env as NonEmptyStr).value { Present { value: v } => v  Absent => "" }
+  if path == "" { exit_failure(reason: join([v41_index_path_env, " is unset: name the local copy of the index to read"], "")) } else {
+    match sha256sum_file_digest_via_shell(path: path as NonEmptyStr) {
+      Sha256FileDigestUnavailable { path: _, reason: r } => exit_failure(reason: join(["the index could not be digested: ", r], ""))
+      Sha256FileDigest { digest: d } => {
+        let read = Filesystem.Read(path: path)
+        if !read.success { exit_failure(reason: join(["the index could not be read: ", read.error], "")) } else {
+          match v41_scan_index_text(text: read.content, selector: v41_index_engram_selector) {
+            V41IndexScanRefused { cause: c } => exit_failure(reason: c as String)
+            V41IndexScanned { name_count: n, members: ms } => {
+              let body = join(concat(
+                [join(["index sha256=", d.hex as String, " bytes=", to_string(read.content.length()), " names=", to_string(n), " selector=", v41_index_engram_selector as String], "")],
+                map(ms, m => join(["member ", m.name as String, " ", m.shard as String], ""))), "\n")
+              let w = Filesystem.Write(path: v41_index_selection_receipt_path, content: join([body, "\n"], ""))
+              if w.success { ExitSuccess } else { exit_failure(reason: join(["the receipt could not be written: ", w.error], "")) }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── THE READING ────────────────────────────────────────────────────────────────────────────────
+//
+// TRANSCRIBED FROM THE INSTRUMENT'S RECEIPT: v41_index_engram_selection_read_wet over the index fetched
+// from hub_resolve_url at dba1be0a, run 2026-09-21 by sleek-bee-348. Every value here is the receipt's,
+// written as a literal and never as the pin's symbol, so the extdeps fold compares an observation
+// against the pin rather than a value against itself.
+type V41IndexEngramSelectionReading
+  = V41IndexEngramSelectionRead {
+      index_sha256_hex: Sha256DigestHex
+      index_bytes: Nat
+      name_count: Nat
+      members: List<SafetensorsIndexMember>
+      observed: NonEmptyStr
+    }
+  | V41IndexEngramSelectionUnread { obligation: NonEmptyStr }
+
+data v41_index_engram_selection_reading: V41IndexEngramSelectionReading = V41IndexEngramSelectionRead {
+  index_sha256_hex: "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8" as Sha256DigestHex,
+  index_bytes: 7470294,
+  name_count: 96085,
+  members: [
+    safetensors_index_member(name: "layers.14.engram.embed.weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.embed.scale" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.q_weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.k_weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.wkv.weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.wkv.scale" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.embed.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.embed.scale" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.q_weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.k_weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.wkv.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.wkv.scale" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+  ],
+  observed: "v41_index_engram_selection_read_wet over model.safetensors.index.json fetched from hub_resolve_url at dba1be0a, 2026-09-21, sleek-bee-348" as NonEmptyStr,
+}
+
+// THE ENGRAM POPULATION THIS REPOSITORY HAS OBSERVED. With no reading it is the extdeps population,
+// scoped to the rows read; with one, the members are the reading's and the closure is the extdeps fold
+// over the reading against the pin -- so a thirteenth selected name has no header entry and refuses.
+fn v41_engram_population_observed_of(reading: V41IndexEngramSelectionReading) -> SafetensorsPopulationStanding {
+  match reading {
+    V41IndexEngramSelectionUnread { obligation: _ } => deepseek_v4_1_flash_engram_population
+    V41IndexEngramSelectionRead { index_sha256_hex: h, index_bytes: b, name_count: n, members: ms, observed: _ } => {
+      let selection = deepseek_v4_1_flash_index_engram_selection_of(
+        index: deepseek_v4_1_flash_published_file_row(path: deepseek_v4_1_flash_safetensors_index_path, file_bytes: byte_size(count: b), sha256_hex: h),
+        name_count: n,
+        selector: v41_index_engram_selector,
+        members: ms,
+      )
+      safetensors_population_standing(
+        members: ms,
+        shards: deepseek_v4_1_flash_engram_shard_files,
+        closure: deepseek_v4_1_flash_engram_membership_closure_of(selection: selection, index: deepseek_v4_1_flash_safetensors_index_file, index_count: deepseek_v4_1_flash_index_tensor_count),
+        reading: deepseek_v4_1_flash_engram_population_reading,
+      )
+    }
+  }
+}
+
+fn v41_engram_population_observed() -> SafetensorsPopulationStanding {
+  v41_engram_population_observed_of(reading: v41_index_engram_selection_reading)
+}
