@@ -82,7 +82,41 @@ fn json_escape_code_point(cp: Int) -> String {
 }
 
 fn escape_json_string(s: String) -> String {
-  fold(chars(s: s), init: "", f: (acc, cp) => concat(acc, json_escape_code_point(cp: cp)))
+  json_emit_finish(acc: fold(
+    chars(s: s),
+    init: JsonEmitAcc { out: "", parts: [] },
+    f: (acc, cp) => json_emit_push(acc: acc, part: json_escape_code_point(cp: cp)),
+  ))
+}
+
+// SERIALIZATION IS CHUNK-FLUSHED, NOT CONCAT-ACCUMULATED (measured 2026-09-21 on the srv2-deploy
+// instance: saving a project envelope -- ~7,050 authored sources, ~140MB of JSON -- never
+// completed, because folding `concat(acc, part)` copies the whole accumulator per element and a
+// whole-corpus document made every save quadratic in its own size; the belt's capture could stage
+// but could never PERSIST). The flush accumulator keeps a small pending list and concatenates it
+// once per granularity window, so the copy work stays proportional to the document size times a
+// small factor instead of to its square. Output bytes are identical; only the building cost
+// changes (DESIGN section 6: a proven cost-shape defect is always fixed).
+data json_emit_flush_granularity: Int = 128
+
+type JsonEmitAcc {
+  out: String
+  parts: List<String>
+}
+
+fn json_emit_push(acc: JsonEmitAcc, part: String) -> JsonEmitAcc {
+  if count(acc.parts) >= json_emit_flush_granularity {
+    JsonEmitAcc {
+      out: concat(acc.out, join(reverse(acc.parts), "")),
+      parts: [part],
+    }
+  } else {
+    JsonEmitAcc { out: acc.out, parts: concat([part], acc.parts) }
+  }
+}
+
+fn json_emit_finish(acc: JsonEmitAcc) -> String {
+  concat(acc.out, join(reverse(acc.parts), ""))
 }
 
 fn quote_json_string(s: String) -> String {
@@ -94,10 +128,19 @@ fn serialize_json_string(s: String) -> String {
 }
 
 fn join_json_values(items: List<JsonValue>) -> String {
-  fold(items, init: "", f: (acc, v) => {
-    let part = serialize_json(v: v)
-    if acc == "" { part } else { concat(acc, concat(", ", part)) }
-  })
+  json_emit_finish(acc: fold(
+    items,
+    init: JsonEmitAcc { out: "", parts: [] },
+    f: (acc, v) =>
+      json_emit_push(
+        acc: acc,
+        part: if count(acc.parts) == 0 && acc.out == "" {
+          serialize_json(v: v)
+        } else {
+          concat(", ", serialize_json(v: v))
+        },
+      ),
+  ))
 }
 
 fn serialize_json_array(elements: List<JsonValue>) -> String {
@@ -105,10 +148,19 @@ fn serialize_json_array(elements: List<JsonValue>) -> String {
 }
 
 fn serialize_json_object_members(members: List<JsonKeyValue>) -> String {
-  fold(members, init: "", f: (acc, kv) => {
-    let part = concat(concat(quote_json_string(s: kv.key), ": "), serialize_json(v: kv.value))
-    if acc == "" { part } else { concat(acc, concat(", ", part)) }
-  })
+  json_emit_finish(acc: fold(
+    members,
+    init: JsonEmitAcc { out: "", parts: [] },
+    f: (acc, kv) =>
+      json_emit_push(
+        acc: acc,
+        part: if count(acc.parts) == 0 && acc.out == "" {
+          concat(concat(quote_json_string(s: kv.key), ": "), serialize_json(v: kv.value))
+        } else {
+          concat(", ", concat(concat(quote_json_string(s: kv.key), ": "), serialize_json(v: kv.value)))
+        },
+      ),
+  ))
 }
 
 // serialize_json_object_prefix is the canonical serialization of an object's OPENING plus its
