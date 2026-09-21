@@ -4,8 +4,7 @@ import std.types { Bool, Int, String }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions { Step, RunStep, UsesStep, Job }
-import gunbc.compiler_gate_workflow { compiler_gate_floor_job, expected_compiler_gate_yml }
-import gunbc.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused }
+import gunbc.compiler_gate_workflow { compiler_gate_floor_job }
 
 // ── THE RECEIPT'S PRODUCER IS BOUND WITH ITS CONSUMER, IN THAT ORDER ─────────────────────────
 //
@@ -24,6 +23,16 @@ import gunbc.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerat
 //
 // The RED was authorable and was the state of main when this file was written: the gate's floor
 // job bound the producer and nothing else.
+//
+// WHY THERE IS NO SECOND CLAIM OVER THE EMITTED YML, and it was written and then deleted rather
+// than never considered. Asserting the same fact on the committed bytes re-renders the whole
+// workflow to read two substrings out of it: measured at 97132 eval steps against the 72300 the
+// new-witness budget allows, while this claim over the job costs 55109. The overrun is the tell,
+// not the rule broken -- the cheap way to keep it was a 4b(3) drop, and buying reach with a debt
+// row is what DESIGN section 3 forbids. It is also redundant (section 2): the drift gate already
+// establishes that the committed yml IS the projection of this authority, and this claim
+// establishes that the authority carries the adjudicator after its producer, so the bytes carry
+// it by composition. Two facts, each with one home, rather than one fact asserted twice.
 
 type StepPositions {
   next: Int
@@ -58,15 +67,4 @@ fn floor_step_positions(job: Job) -> StepPositions {
 test fn w_RED_the_gate_floor_job_adjudicates_the_receipt_it_produces() -> Bool {
   let p = floor_step_positions(job: compiler_gate_floor_job())
   p.producer >= 0 && p.adjudicator >= 0 && p.producer < p.adjudicator
-}
-
-// The emitted file is what the runner executes, so the same fact is asserted on the bytes the
-// gate commits, read through the same producer the drift gate compares against.
-test fn w_the_emitted_gate_yml_carries_the_adjudicator() -> Bool {
-  match expected_compiler_gate_yml() {
-    WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: "--adjudicate-measurement-receipt")
-        && string_contains(s: yml, pattern: "D0-ADJUDICATE: consume the published measurement receipt")
-    WitnessFloorGenerationRefused { reason: _ } => false
-  }
 }
