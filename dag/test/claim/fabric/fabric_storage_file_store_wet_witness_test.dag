@@ -5,7 +5,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, NonEmptyStr, String }
 import std.durable_compare_and_set { cas_generation_count }
 import std.fabric_storage {
-  FabricObject, fabric_object_ref_of, fabric_object_ref_eq, fabric_object_ref_wire,
+  FabricObject, FabricObjectRef, fabric_object_ref_of, fabric_object_ref_eq, fabric_object_ref_wire,
   FabricObjectStored, FabricPutRefused, FabricObjectFetched, FabricObjectGetRefused,
   FabricHeadAbsent, FabricHeadAt, ExpectHeadAbsent, ExpectHeadAt,
   FabricHeadObserved, FabricHeadReadRefused,
@@ -35,10 +35,28 @@ fn fresh_store() -> FabricStorageFileRoot {
   }
 }
 
-fn event(body: NonEmptyStr, parent: FabricObject?) -> FabricObject {
-  match parent {
+// AN EVENT CARRIES ITS OWN REF, BECAUSE THE MINT CAN NOW REFUSE AND EVERY CLAIM HERE NEEDS BOTH.
+//
+// These claims are about the FILE STORE -- put, advance, closure walk, corruption -- and a ref is a
+// supplied value to all of them. fabric_object_ref_of answers an Optional now, so computing the ref
+// at each of the eighteen places one was needed would put the digest's refusal arm into claims that
+// are not about the digest. Pairing the object with its ref once resolves it in one place per event.
+//
+// THE ABSENT ARM ANSWERS false AT EVERY CLAIM, never skips. A fixture that could not be built means
+// the claim did not run, and a claim that did not run must not read as one that held.
+type Ev {
+  object: FabricObject
+  ref: FabricObjectRef
+}
+
+fn event(body: NonEmptyStr, parent: Ev?) -> Ev? {
+  let o = match parent {
     Absent => FabricObject { links: [], body: body }
-    Present { value: p } => FabricObject { links: [fabric_object_ref_of(object: p)], body: body }
+    Present { value: p } => FabricObject { links: [p.ref], body: body }
+  }
+  match fabric_object_ref_of(object: o) {
+    Absent => none
+    Present { value: r } => Present { value: Ev { object: o, ref: r } }
   }
 }
 
@@ -46,85 +64,134 @@ fn event(body: NonEmptyStr, parent: FabricObject?) -> FabricObject {
 // the closure walk, from files, newest first -- the route the P0-B hole broke.
 test fn a_chain_appended_through_the_store_is_read_back_whole_by_the_closure() -> Bool {
   let s = fresh_store()
-  let a = event(body: "a", parent: none)
-  let b = event(body: "b", parent: Present { value: a })
-  let c = event(body: "c", parent: Present { value: b })
-  let put_all = [fabric_storage_file_put(root: s, object: a), fabric_storage_file_put(root: s, object: b), fabric_storage_file_put(root: s, object: c)]
-  let stored = length(filter(put_all, p => match p { FabricObjectStored { object: _ } => true  FabricPutRefused { fault: _ } => false })) == 3
-  let adv1 = fabric_storage_file_advance(root: s, name: "group-a", expected: ExpectHeadAbsent, target: fabric_object_ref_of(object: a))
-  let adv2 = fabric_storage_file_advance(root: s, name: "group-a", expected: ExpectHeadAt { object: fabric_object_ref_of(object: a) }, target: fabric_object_ref_of(object: b))
-  let adv3 = fabric_storage_file_advance(root: s, name: "group-a", expected: ExpectHeadAt { object: fabric_object_ref_of(object: b) }, target: fabric_object_ref_of(object: c))
-  let advanced = match adv3 { FabricHeadAdvanced { object: _, generation: g } => cas_generation_count(g: g) == 3  _ => false }
-  let walked = match fabric_storage_file_closure(root: s, name: "group-a", bound: 16) {
-    FabricClosureRead { reading: _, newest_first: xs } =>
-      length(xs) == 3 && match first(xs) { Present { value: h } => fabric_object_ref_eq(a: h.object, b: fabric_object_ref_of(object: c))  Absent => false }
-    _ => false
+  match event(body: "a", parent: none) {
+    Absent => false
+    Present { value: a } => {
+    match event(body: "b", parent: Present { value: a }) {
+      Absent => false
+      Present { value: b } => {
+      match event(body: "c", parent: Present { value: b }) {
+        Absent => false
+        Present { value: c } => {
+        let put_all = [fabric_storage_file_put(root: s, object: a.object), fabric_storage_file_put(root: s, object: b.object), fabric_storage_file_put(root: s, object: c.object)]
+        let stored = length(filter(put_all, p => match p { FabricObjectStored { object: _ } => true  FabricPutRefused { fault: _ } => false })) == 3
+        let adv1 = fabric_storage_file_advance(root: s, name: "group-a", expected: ExpectHeadAbsent, target: a.ref)
+        let adv2 = fabric_storage_file_advance(root: s, name: "group-a", expected: ExpectHeadAt { object: a.ref }, target: b.ref)
+        let adv3 = fabric_storage_file_advance(root: s, name: "group-a", expected: ExpectHeadAt { object: b.ref }, target: c.ref)
+        let advanced = match adv3 { FabricHeadAdvanced { object: _, generation: g } => cas_generation_count(g: g) == 3  _ => false }
+        let walked = match fabric_storage_file_closure(root: s, name: "group-a", bound: 16) {
+        FabricClosureRead { reading: _, newest_first: xs } =>
+        length(xs) == 3 && match first(xs) { Present { value: h } => fabric_object_ref_eq(a: h.object, b: c.ref)  Absent => false }
+        _ => false
+        }
+        stored && advanced && walked
+        }
+      }
+      }
+    }
+    }
   }
-  stored && advanced && walked
 }
 
 // LOST RACE: a writer expecting the head it built on, after another writer moved it, is answered
 // FabricHeadMoved carrying the head that beat it -- never a store refusal.
 test fn an_advance_against_a_moved_head_is_a_lost_race_naming_the_winner() -> Bool {
   let s = fresh_store()
-  let a = event(body: "a", parent: none)
-  let b = event(body: "b", parent: Present { value: a })
-  let b2 = event(body: "b2", parent: Present { value: a })
-  let _p = [fabric_storage_file_put(root: s, object: a), fabric_storage_file_put(root: s, object: b), fabric_storage_file_put(root: s, object: b2)]
-  let _1 = fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: fabric_object_ref_of(object: a))
-  let _2 = fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAt { object: fabric_object_ref_of(object: a) }, target: fabric_object_ref_of(object: b))
-  match fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAt { object: fabric_object_ref_of(object: a) }, target: fabric_object_ref_of(object: b2)) {
-    FabricHeadMoved { expected: _, observed: o } => match o { FabricHeadAt { object: w, generation: _ } => fabric_object_ref_eq(a: w, b: fabric_object_ref_of(object: b))  FabricHeadAbsent => false }
-    _ => false
+  match event(body: "a", parent: none) {
+    Absent => false
+    Present { value: a } => {
+    match event(body: "b", parent: Present { value: a }) {
+      Absent => false
+      Present { value: b } => {
+      match event(body: "b2", parent: Present { value: a }) {
+        Absent => false
+        Present { value: b2 } => {
+        let _p = [fabric_storage_file_put(root: s, object: a.object), fabric_storage_file_put(root: s, object: b.object), fabric_storage_file_put(root: s, object: b2.object)]
+        let _1 = fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: a.ref)
+        let _2 = fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAt { object: a.ref }, target: b.ref)
+        match fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAt { object: a.ref }, target: b2.ref) {
+        FabricHeadMoved { expected: _, observed: o } => match o { FabricHeadAt { object: w, generation: _ } => fabric_object_ref_eq(a: w, b: b.ref)  FabricHeadAbsent => false }
+        _ => false
+        }
+        }
+      }
+      }
+    }
+    }
   }
 }
 
 // MISSING OBJECT: a head is never pointed at an object the store does not hold.
 test fn an_advance_to_an_unstored_object_is_refused_as_missing_and_the_head_stays_absent() -> Bool {
   let s = fresh_store()
-  let refused = match fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: fabric_object_ref_of(object: event(body: "never-put", parent: none))) {
-    FabricHeadAdvanceRefused { fault: f } => match f { FabricObjectMissing { object: _ } => true  _ => false }
-    _ => false
+  match event(body: "never-put", parent: none) {
+    Absent => false
+    Present { value: e } => {
+      let refused = match fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: e.ref) {
+        FabricHeadAdvanceRefused { fault: f } => match f { FabricObjectMissing { object: _ } => true  _ => false }
+        _ => false
+      }
+      let still_absent = match fabric_storage_file_head(root: s, name: "p") { FabricHeadObserved { reading: FabricHeadAbsent } => true  _ => false }
+      refused && still_absent
+    }
   }
-  let still_absent = match fabric_storage_file_head(root: s, name: "p") { FabricHeadObserved { reading: FabricHeadAbsent } => true  _ => false }
-  refused && still_absent
 }
 
 // A HOLE IN A CHAIN: a head whose parent was never stored is refused by the closure with the
 // missing ref, never returned as a shorter chain.
 test fn a_closure_over_a_hole_refuses_with_the_missing_object() -> Bool {
   let s = fresh_store()
-  let a = event(body: "a", parent: none)
-  let b = event(body: "b", parent: Present { value: a })
-  let _p = fabric_storage_file_put(root: s, object: b)
-  let _1 = fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: fabric_object_ref_of(object: b))
-  match fabric_storage_file_closure(root: s, name: "p", bound: 16) {
-    FabricClosureRefused { fault: f } => match f { FabricObjectMissing { object: m } => fabric_object_ref_eq(a: m, b: fabric_object_ref_of(object: a))  _ => false }
-    _ => false
+  match event(body: "a", parent: none) {
+    Absent => false
+    Present { value: a } => {
+    match event(body: "b", parent: Present { value: a }) {
+      Absent => false
+      Present { value: b } => {
+      let _p = fabric_storage_file_put(root: s, object: b.object)
+      let _1 = fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: b.ref)
+      match fabric_storage_file_closure(root: s, name: "p", bound: 16) {
+      FabricClosureRefused { fault: f } => match f { FabricObjectMissing { object: m } => fabric_object_ref_eq(a: m, b: a.ref)  _ => false }
+      _ => false
+      }
+      }
+    }
+    }
   }
 }
 
 // CORRUPTION: bytes under an object's name that do not hash to it are refused, never served.
 test fn an_object_file_holding_other_bytes_is_refused_as_corrupt() -> Bool {
   let s = fresh_store()
-  let a = event(body: "a", parent: none)
-  let _w = Filesystem.Write(path: fabric_storage_object_path(root: s, object: fabric_object_ref_of(object: a)), content: "fabric_storage.object;B1:z")
-  match fabric_storage_file_get(root: s, object: fabric_object_ref_of(object: a)) {
+  match event(body: "a", parent: none) {
+    Absent => false
+    Present { value: a } => {
+    let _w = Filesystem.Write(path: fabric_storage_object_path(root: s, object: a.ref), content: "fabric_storage.object;B1:z")
+    match fabric_storage_file_get(root: s, object: a.ref) {
     FabricObjectGetRefused { fault: f } => match f { FabricObjectCorrupt { object: _, detail: _ } => true  _ => false }
     FabricObjectFetched { stored: _ } => false
+    }
+    }
   }
 }
 
 // THE BOUND REFUSES RATHER THAN TRUNCATING.
 test fn a_closure_longer_than_its_bound_refuses_rather_than_truncating() -> Bool {
   let s = fresh_store()
-  let a = event(body: "a", parent: none)
-  let b = event(body: "b", parent: Present { value: a })
-  let _p = [fabric_storage_file_put(root: s, object: a), fabric_storage_file_put(root: s, object: b)]
-  let _1 = fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: fabric_object_ref_of(object: b))
-  match fabric_storage_file_closure(root: s, name: "p", bound: 1) {
-    FabricClosureBudgetExhausted { at: _, bound: _ } => true
-    _ => false
+  match event(body: "a", parent: none) {
+    Absent => false
+    Present { value: a } => {
+    match event(body: "b", parent: Present { value: a }) {
+      Absent => false
+      Present { value: b } => {
+      let _p = [fabric_storage_file_put(root: s, object: a.object), fabric_storage_file_put(root: s, object: b.object)]
+      let _1 = fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: b.ref)
+      match fabric_storage_file_closure(root: s, name: "p", bound: 1) {
+      FabricClosureBudgetExhausted { at: _, bound: _ } => true
+      _ => false
+      }
+      }
+    }
+    }
   }
 }
 
@@ -140,10 +207,14 @@ test fn a_head_name_with_a_separator_is_refused() -> Bool {
 // PUT IS IDEMPOTENT: the same object twice is stored once and answered stored both times.
 test fn putting_the_same_object_twice_is_answered_stored_both_times() -> Bool {
   let s = fresh_store()
-  let a = event(body: "a", parent: none)
-  let one = fabric_storage_file_put(root: s, object: a)
-  let two = fabric_storage_file_put(root: s, object: a)
-  match one { FabricObjectStored { object: _ } => match two { FabricObjectStored { object: _ } => true  FabricPutRefused { fault: _ } => false }  FabricPutRefused { fault: _ } => false }
+  match event(body: "a", parent: none) {
+    Absent => false
+    Present { value: a } => {
+    let one = fabric_storage_file_put(root: s, object: a.object)
+    let two = fabric_storage_file_put(root: s, object: a.object)
+    match one { FabricObjectStored { object: _ } => match two { FabricObjectStored { object: _ } => true  FabricPutRefused { fault: _ } => false }  FabricPutRefused { fault: _ } => false }
+    }
+  }
 }
 
 // THE SERVED HANDLER'S STORE SIDE, BY REAL EXECUTION: a request body through fabric_storage_serve's
@@ -152,18 +223,26 @@ test fn putting_the_same_object_twice_is_answered_stored_both_times() -> Bool {
 // itself is not in this claim; its receipt is the live endpoint probe.
 test fn a_lost_race_through_the_served_handler_decodes_as_the_same_lost_race_by_real_execution() -> Bool {
   let s = fresh_store()
-  let a = event(body: "a", parent: none)
-  let b = event(body: "b", parent: Present { value: a })
-  let _p = [fabric_storage_file_put(root: s, object: a), fabric_storage_file_put(root: s, object: b)]
-  let _1 = fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: fabric_object_ref_of(object: a))
-  let reply = fabric_storage_serve_handle_over(root: s, method: "POST", path: "/fabric-storage/advance", body: join(["p absent ", fabric_object_ref_wire(object: fabric_object_ref_of(object: b)) as String], ""), tailscale_identity: "")
-  match served_reply_from(exit_code: 0, stdout: join([reply.body, "\n", to_string(reply.status)], ""), stderr: "") {
-    ServedFault { fault: _ } => false
-    ServedAnswered { body: text } =>
+  match event(body: "a", parent: none) {
+    Absent => false
+    Present { value: a } => {
+    match event(body: "b", parent: Present { value: a }) {
+      Absent => false
+      Present { value: b } => {
+      let _p = [fabric_storage_file_put(root: s, object: a.object), fabric_storage_file_put(root: s, object: b.object)]
+      let _1 = fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: a.ref)
+      let reply = fabric_storage_serve_handle_over(root: s, method: "POST", path: "/fabric-storage/advance", body: join(["p absent ", fabric_object_ref_wire(object: b.ref) as String], ""), tailscale_identity: "")
+      match served_reply_from(exit_code: 0, stdout: join([reply.body, "\n", to_string(reply.status)], ""), stderr: "") {
+      ServedFault { fault: _ } => false
+      ServedAnswered { body: text } =>
       match fabric_storage_unwire_advance(text: text) {
-        FabricHeadMoved { expected: _, observed: o } => match o { FabricHeadAt { object: w, generation: _ } => fabric_object_ref_eq(a: w, b: fabric_object_ref_of(object: a))  FabricHeadAbsent => false }
-        _ => false
+      FabricHeadMoved { expected: _, observed: o } => match o { FabricHeadAt { object: w, generation: _ } => fabric_object_ref_eq(a: w, b: a.ref)  FabricHeadAbsent => false }
+      _ => false
       }
+      }
+      }
+    }
+    }
   }
 }
 

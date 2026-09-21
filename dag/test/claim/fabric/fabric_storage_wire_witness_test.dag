@@ -3,7 +3,7 @@ module test.claim.fabric.fabric_storage_wire_witness
 import std.types { NonEmptyStr, String, Bool }
 import std.durable_compare_and_set { CasSlotObservationRefused, CasUnreadableObservationBoundExceeded, CasGenerationPublicationRefused }
 import std.fabric_storage {
-  FabricObject, fabric_object_ref_of, fabric_object_ref_eq, fabric_object_preimage, FabricStoredObject,
+  FabricObject, FabricObjectRef, fabric_object_ref_of, fabric_object_ref_eq, fabric_object_preimage, FabricStoredObject,
   FabricHeadAbsent, FabricHeadAt, ExpectHeadAt,
   FabricStoreUnreachable, FabricStoreRefused, FabricObjectMissing, FabricReplyUndecodable,
   FabricHeadObserved, FabricHeadReadRefused, FabricHeadMoved, FabricHeadAdvanced, FabricHeadAdvanceRefused,
@@ -21,21 +21,60 @@ import gunbc.fabric_storage_client { served_reply_from, ServedAnswered, ServedFa
 // the same arm by the caller side, and the transport outcome is classified before any reply. Values
 // are supplied; the served route's execution is the live endpoint's receipt.
 
+// ONE FIXTURE, RESOLVED ONCE, BECAUSE THE SUBJECT HERE IS THE CODEC AND NOT THE DIGEST.
+//
+// fabric_object_ref_of answers an Optional now, and threading that through every claim below would
+// put two or three matches in each one for a refusal none of them is about -- these claims ask
+// whether a typed arm survives the hop, and a ref is a SUPPLIED VALUE to them (DESIGN section 3).
+// The carrier is sole_constructor, so the value cannot be supplied literally; resolving it once into
+// a fixture is the nearest honest thing, and it costs each claim exactly one match.
+//
+// THE ABSENT ARM ANSWERS false RATHER THAN SKIPPING. A fixture that could not be built means the
+// claim did not run, and a claim that did not run must never read as one that held -- so the mint
+// failing reds every claim here, loudly, instead of quietly removing the evidence.
+type WireFixture {
+  oa: FabricObject
+  ob: FabricObject
+  ra: FabricObjectRef
+  rb: FabricObjectRef
+}
+
 fn a() -> FabricObject { FabricObject { links: [], body: "a" } }
-fn b() -> FabricObject { FabricObject { links: [fabric_object_ref_of(object: a())], body: "b\nwith a newline" } }
+
+fn fixture() -> WireFixture? {
+  match fabric_object_ref_of(object: a()) {
+    Absent => none
+    Present { value: ra } => {
+      let ob = FabricObject { links: [ra], body: "b\nwith a newline" }
+      match fabric_object_ref_of(object: ob) {
+        Absent => none
+        Present { value: rb } => Present { value: WireFixture { oa: a(), ob: ob, ra: ra, rb: rb } }
+      }
+    }
+  }
+}
 
 test fn a_lost_race_crosses_the_wire_as_a_lost_race_naming_the_winner() -> Bool {
-  let moved = FabricHeadMoved { expected: ExpectHeadAt { object: fabric_object_ref_of(object: a()) }, observed: FabricHeadAt { object: fabric_object_ref_of(object: b()), generation: 2 } }
-  match fabric_storage_unwire_advance(text: fabric_storage_wire_advance(advance: moved)) {
-    FabricHeadMoved { expected: _, observed: o } => match o { FabricHeadAt { object: w, generation: g } => fabric_object_ref_eq(a: w, b: fabric_object_ref_of(object: b())) && g == 2  FabricHeadAbsent => false }
-    _ => false
+  match fixture() {
+    Absent => false
+    Present { value: f } => {
+      let moved = FabricHeadMoved { expected: ExpectHeadAt { object: f.ra }, observed: FabricHeadAt { object: f.rb, generation: 2 } }
+      match fabric_storage_unwire_advance(text: fabric_storage_wire_advance(advance: moved)) {
+        FabricHeadMoved { expected: _, observed: o } => match o { FabricHeadAt { object: w, generation: g } => fabric_object_ref_eq(a: w, b: f.rb) && g == 2  FabricHeadAbsent => false }
+        _ => false
+      }
+    }
   }
 }
 
 test fn a_missing_object_crosses_the_wire_as_missing_not_as_a_store_refusal() -> Bool {
-  match fabric_storage_unwire_advance(text: fabric_storage_wire_advance(advance: FabricHeadAdvanceRefused { fault: FabricObjectMissing { object: fabric_object_ref_of(object: a()) } })) {
-    FabricHeadAdvanceRefused { fault: f } => match f { FabricObjectMissing { object: m } => fabric_object_ref_eq(a: m, b: fabric_object_ref_of(object: a()))  _ => false }
-    _ => false
+  match fixture() {
+    Absent => false
+    Present { value: f } =>
+      match fabric_storage_unwire_advance(text: fabric_storage_wire_advance(advance: FabricHeadAdvanceRefused { fault: FabricObjectMissing { object: f.ra } })) {
+        FabricHeadAdvanceRefused { fault: fl } => match fl { FabricObjectMissing { object: m } => fabric_object_ref_eq(a: m, b: f.ra)  _ => false }
+        _ => false
+      }
   }
 }
 
@@ -51,24 +90,34 @@ test fn a_store_bound_refusal_keeps_its_cause_across_the_wire() -> Bool {
 }
 
 test fn a_closure_whose_bodies_hold_newlines_round_trips_whole() -> Bool {
-  let read = FabricClosureRead {
-    reading: FabricHeadAt { object: fabric_object_ref_of(object: b()), generation: 2 },
-    newest_first: [FabricStoredObject { object: fabric_object_ref_of(object: b()), content: b() }, FabricStoredObject { object: fabric_object_ref_of(object: a()), content: a() }],
-  }
-  match fabric_storage_unwire_closure(text: fabric_storage_wire_closure(read: read)) {
-    FabricClosureRead { reading: _, newest_first: xs } => length(xs) == 2
-    _ => false
+  match fixture() {
+    Absent => false
+    Present { value: f } => {
+      let read = FabricClosureRead {
+        reading: FabricHeadAt { object: f.rb, generation: 2 },
+        newest_first: [FabricStoredObject { object: f.rb, content: f.ob }, FabricStoredObject { object: f.ra, content: f.oa }],
+      }
+      match fabric_storage_unwire_closure(text: fabric_storage_wire_closure(read: read)) {
+        FabricClosureRead { reading: _, newest_first: xs } => length(xs) == 2
+        _ => false
+      }
+    }
   }
 }
 
 test fn a_closure_whose_tip_is_not_the_named_head_is_refused() -> Bool {
+  match fixture() {
+    Absent => false
+    Present { value: f } => {
   let read = FabricClosureRead {
-    reading: FabricHeadAt { object: fabric_object_ref_of(object: b()), generation: 2 },
-    newest_first: [FabricStoredObject { object: fabric_object_ref_of(object: a()), content: a() }],
+    reading: FabricHeadAt { object: f.rb, generation: 2 },
+    newest_first: [FabricStoredObject { object: f.ra, content: f.oa }],
   }
   match fabric_storage_unwire_closure(text: fabric_storage_wire_closure(read: read)) {
-    FabricClosureRefused { fault: f } => match f { FabricReplyUndecodable { detail: _ } => true  _ => false }
+    FabricClosureRefused { fault: fl } => match fl { FabricReplyUndecodable { detail: _ } => true  _ => false }
     _ => false
+  }
+    }
   }
 }
 
