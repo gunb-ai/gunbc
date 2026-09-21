@@ -108,7 +108,7 @@ import gunbc.github_app_acquisition {
   RegistrationMissing,
   InstallationMissing,
   CustodyMissing,
-  adopted_app_key_supply_intervention,
+  app_key_supply_intervention,
 }
 import extdeps.github.app {
   GitHubAppManifestCode,
@@ -1013,7 +1013,7 @@ fn next_acquisition_step(record: GitHubAppAcquisitionRecord, missing: Acquisitio
           join(["NEXT: ", intervention_text(intervention: i)], "")
       }
     CustodyMissing { reason: _ } =>
-      join(["NEXT: ", intervention_text(intervention: adopted_app_key_supply_intervention(identity: census_app_identity))], "")
+      join(["NEXT: ", intervention_text(intervention: app_key_supply_intervention(identity: census_app_identity))], "")
   }
 }
 

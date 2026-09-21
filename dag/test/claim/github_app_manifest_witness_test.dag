@@ -145,7 +145,7 @@ import gunbc.github_app_acquisition {
   reconcile_acquisition_record,
   app_registration_submit_intervention,
   app_registration_capture_intervention,
-  adopted_app_key_supply_intervention,
+  app_key_supply_intervention,
   app_installation_consent_intervention,
   AppInstallationInstruction,
   InstallationInstructionReady,
@@ -1341,7 +1341,7 @@ test fn w_the_human_steps_are_separate_identities_keyed_on_the_app() -> Bool {
     artifact_path: ".gunbc/github-app-gunbc-global-census-register.html",
   )
   let capture = app_registration_capture_intervention(identity: census_app_identity)
-  let supply = adopted_app_key_supply_intervention(identity: census_app_identity)
+  let supply = app_key_supply_intervention(identity: census_app_identity)
   let install = app_installation_consent_intervention(
     identity: census_app_identity,
     install_url: "https://github.com/apps/gunbc-global-census/installations/new",
@@ -1362,7 +1362,7 @@ test fn w_the_human_steps_are_separate_identities_keyed_on_the_app() -> Bool {
 // assertion exists to prevent, and it reds if the instruction is softened back into a limitation.
 test fn w_the_capture_step_declares_itself_a_choice_and_submit_declares_the_consent() -> Bool {
   let capture = app_registration_capture_intervention(identity: census_app_identity)
-  let supply = adopted_app_key_supply_intervention(identity: census_app_identity)
+  let supply = app_key_supply_intervention(identity: census_app_identity)
   let submit = app_registration_submit_intervention(
     identity: census_app_identity,
     artifact_path: ".gunbc/x-register.html",
@@ -1371,6 +1371,24 @@ test fn w_the_capture_step_declares_itself_a_choice_and_submit_declares_the_cons
     && string_contains(s: capture.instruction as String, pattern: "redirect catcher")
     && string_contains(s: submit.instruction as String, pattern: "ownership consent")
     && string_contains(s: supply.instruction as String, pattern: "does not dissolve with browser automation")
+}
+
+// THE SUPPLY STEP MUST NOT ASSERT HOW THE APP CAME TO EXIST. next_acquisition_step reaches it
+// whenever KEY CUSTODY is the missing fact, and the receipt has established no such thing: an App
+// this converge registered whose pem was never stored, or was later cleaned out of .gunbc/, is in
+// exactly the same unrecoverable position as an adopted one. Its text used to open "This App was
+// created outside this converge", which is an inference presented as established -- the first arm of
+// DESIGN 4d, and the precise class this whole PR exists to remove, so it was worth catching inside it
+// (review 69488). The step now states the OBSERVED fact and the upstream rule, and this claim goes
+// red if a provenance premise comes back.
+test fn w_the_key_supply_step_asserts_no_provenance_only_the_observed_absence() -> Bool {
+  let supply = app_key_supply_intervention(identity: census_app_identity)
+  let text = supply.instruction as String
+  !string_contains(s: text, pattern: "created outside this converge")
+    && !string_contains(s: text, pattern: "This App was created")
+    && string_contains(s: text, pattern: "No private key for this App is at its custody path")
+    && string_contains(s: text, pattern: "says nothing about how the App came to exist")
+    && string_contains(s: text, pattern: "does not dissolve with browser automation")
 }
 
 // ----- the handoff paths derive from one declared directory -----

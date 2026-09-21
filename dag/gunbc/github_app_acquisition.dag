@@ -467,8 +467,10 @@ fn reconcile_acquisition_record(
 //             human to type them into a data row is asking them to be the wire. The acquisition
 //             record is now READ from the custody handoff the actuation writes.
 //   SUPPLY  - genuinely permanent, and it is the one step browser automation does not touch. An
-//             ADOPTED App's private key was returned once at its creation and no endpoint reissues
-//             it, so there is nothing to click: only the operator can produce those bytes.
+//             App's private key was returned once at its creation and no endpoint reissues it, so
+//             there is nothing to click: only the operator can produce those bytes. It is reached
+//             whenever custody is the missing fact, for an App this converge registered as much as
+//             for an adopted one, so it asserts nothing about which.
 //
 // AND THE IDENTITY KEYS ON THE APP, NOT THE FLEET. FleetOnce was right for exactly one App and wrong
 // the moment a second exists or an existing hand-made App is adopted, which is a case this fleet
@@ -554,14 +556,14 @@ fn app_registration_capture_intervention(identity: GitHubAppDeclaredIdentity) ->
   }
 }
 
-fn adopted_app_key_supply_intervention(identity: GitHubAppDeclaredIdentity) -> HumanIntervention {
+fn app_key_supply_intervention(identity: GitHubAppDeclaredIdentity) -> HumanIntervention {
   HumanIntervention {
     identity: join(["github-app-supply-pem-", identity.name as String], "") as HumanInterventionIdentity,
     frequency: EveryProvision,
     subject: identity.name,
     instruction: join(
       [
-        "This App was created outside this converge, so its private key was returned once at ITS creation and no endpoint reissues it. Place a pem this fleet holds for it at the custody handoff path, or generate a NEW key in the App's settings and place that. This step does not dissolve with browser automation: there is nothing to click, because the original bytes no longer exist anywhere GitHub will show them.",
+        "No private key for this App is at its custody path. GitHub returns an App private key ONCE, at the App's creation, and exposes no endpoint that reissues it -- so the original bytes are not retrievable now, and this step says nothing about how the App came to exist: it is the same act whether this converge registered it and the key was never stored or was later removed, or it was created by hand before this converge existed. Place a pem this fleet holds for it at the custody handoff path, or generate a NEW key in the App's settings and place that. This step does not dissolve with browser automation: there is nothing to click, because the original bytes no longer exist anywhere GitHub will show them.",
       ],
       "",
     ) as NonEmptyStr,
@@ -597,8 +599,8 @@ data github_app_human_step_frontier_rows: List<FrontierRow> = [
     )
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "adopted_app_key_supply_intervention"),
-    reason: "SUPPLY is PERMANENT under the modeled world and is rostered as such rather than omitted. GitHub returns an App private key once at creation and exposes no endpoint that reissues it, so for an App created outside this converge no capability retrieves the original bytes -- browser automation included, because there is nothing to click",
+    ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "app_key_supply_intervention"),
+    reason: "SUPPLY is PERMANENT under the modeled world and is rostered as such rather than omitted. GitHub returns an App private key once at creation and exposes no endpoint that reissues it, so once those bytes are not held no capability retrieves them -- browser automation included, because there is nothing to click. The row is deliberately NOT scoped to an App created outside this converge: the step is reached from next_acquisition_step whenever custody is the missing fact, and an App this converge registered whose key was never stored or was later removed is in exactly the same unrecoverable position",
     dissolution: unbound_dissolution(
       description: "does NOT dissolve with browser automation and is not awaiting one. The only thing that ends it is generating a NEW key in the App's settings, which is itself the human act this row names, so the row retires only if GitHub begins reissuing existing private keys -- an upstream change, not a capability this fleet can build"
     )
