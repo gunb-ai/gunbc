@@ -1,0 +1,478 @@
+module gunbc.review_sheet_legacy_extent_producer
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+  filesystem_read_outcome,
+}
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParse,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+  JsonValue,
+  JsonFieldRead,
+  FieldAbsent,
+  FieldRead,
+  FieldMalformed,
+  json_field_string,
+}
+import extdeps.transports.rest {
+  RestReadExchange,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  RestExchangeCommitAmbiguous,
+  classify_rest_outcome,
+}
+import extdeps.google.drive
+import gunbc.review_sheet_drive_converge {
+  ReviewSpreadsheetObservation,
+  SheetObservedOne,
+  SheetAbsent,
+  SheetDuplicated,
+  SheetSearchIncomplete,
+  SheetPageIncomplete,
+  SheetSearchUnreadable,
+  spreadsheet_from_file_list,
+  review_sheet_marker_query,
+}
+import gunbc.review_sheet_identity {
+  ReviewSheetIdentitySubject,
+  LegacyFileSelection,
+  LegacyExtentEvidence,
+  LegacyExtentAbsentByOperator,
+  LegacySearchObserved,
+  LegacyExtentUnresolved,
+  LegacySearchVisibilityBasis,
+  PositiveFindEstablishesVisibility,
+  SearchVisibilityUnresolved,
+}
+
+// THE PRODUCERS FOR THE IDENTITY KERNEL, AND THEY DECIDE NOTHING. Each function below turns one
+// reading -- a Drive query against the superseded marker field, or an operator's declaration file
+// -- into a LegacyExtentEvidence value and stops. What that evidence ESTABLISHES is
+// gunbc.review_sheet_identity's answer and only its answer.
+//
+// THAT SEPARATION IS THE WHOLE LESSON OF THE CLOSED gunbc#11596, which bolted a second search and
+// an operator declaration onto the effectful converge and took ten review rounds, nearly all of
+// them one error: a conclusion assigned to a reading that had not established it. The error was
+// possible because the reading and the conclusion were computed in the same place, where no type
+// recorded the difference. Here the type is the boundary: a producer can emit a wrong OBSERVATION
+// and be caught by a readback, and it cannot emit a wrong CONCLUSION at all, because it has no arm
+// that names one.
+
+// ── THE DRIVE SUPERSEDED-MARKER PRODUCER ──────────────────────────────────────────────────────
+
+// THE VISIBILITY BASIS IS DERIVED FROM THE OBSERVATION AND FROM NOTHING ELSE, and there are only
+// two answers because the corpus can make only two. Seeing a file proves this client could see
+// THAT marker on THAT file at THAT moment -- self-proving, scoped to this observation. Every other
+// answer, including a clean 200 with an empty list, leaves visibility unresolved, because
+// appProperties are private to the requesting APPLICATION -- the OAuth client id the access token
+// was obtained with -- and nothing in this corpus observes the application identity of its own
+// token.
+//
+// A SERVICE-ACCOUNT EMAIL IS NOT THAT SUBJECT, so no comparison of principals may appear here in
+// any spelling. An earlier revision of the kernel carried exactly that comparison and it was the
+// wrong identity grain; the kernel's compatible-empty arm was deleted rather than weakened, and a
+// producer that reintroduced the conclusion by choosing a basis it had not observed would put it
+// back with the type system none the wiser. The only honest cause this producer can give is the
+// one below: it names the missing observation rather than standing in for it.
+fn legacy_search_visibility_basis(o: ReviewSpreadsheetObservation) -> LegacySearchVisibilityBasis {
+  match o {
+    SheetObservedOne { file_id: _ } => PositiveFindEstablishesVisibility
+    SheetDuplicated { file_ids: _ } => PositiveFindEstablishesVisibility
+    SheetAbsent =>
+      SearchVisibilityUnresolved {
+        cause: "the superseded-marker search returned no rows, which establishes only that the requesting OAuth application received none; that field is private to the requesting application and nothing in this corpus observes which application this token was obtained for" as NonEmptyStr,
+      }
+    SheetSearchIncomplete =>
+      SearchVisibilityUnresolved {
+        cause: "Drive reported incompleteSearch for the superseded marker, so this client did not finish looking and its visibility was never exercised" as NonEmptyStr,
+      }
+    SheetPageIncomplete { next_page_token: _ } =>
+      SearchVisibilityUnresolved {
+        cause: "the superseded-marker listing is one page of several, so this client has not seen the whole result set" as NonEmptyStr,
+      }
+    SheetSearchUnreadable { reason: r } =>
+      SearchVisibilityUnresolved {
+        cause: join(["the superseded-marker search could not be read: ", r as String], "") as NonEmptyStr,
+      }
+  }
+}
+
+fn legacy_search_evidence(
+  subject: ReviewSheetIdentitySubject,
+  observed: ReviewSpreadsheetObservation,
+) -> LegacyExtentEvidence {
+  LegacySearchObserved {
+    subject: subject,
+    observation: observed,
+    visibility_basis: legacy_search_visibility_basis(o: observed),
+  }
+}
+
+// THE SAME QUERY SHAPE AS THE CURRENT-MARKER READ, ASKED OF THE OTHER FIELD, and the shape comes
+// from the one constructor rather than being spelled here. The response fold is also the same
+// fold: spreadsheet_from_file_list already separates a page from a list, an incomplete search from
+// a complete one and an absent files member from an empty one, and re-deriving any of that for the
+// superseded field would be the divergence where one generation quietly acquires a rule the other
+// lacks.
+fn read_superseded_marker_extent(
+  subject: ReviewSheetIdentitySubject,
+) -> LegacyExtentEvidence uses net: Network {
+  let read = drive.Files.ListFiles(
+    drive_id: subject.drive_id as String,
+    query: review_sheet_marker_query(
+      marker_field: subject.superseded_marker_field,
+      marker_value: subject.marker_value,
+    ),
+  )
+  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
+    RestExchangeSucceeded =>
+      legacy_search_evidence(subject: subject, observed: spreadsheet_from_file_list(list: read.list))
+    RestExchangeStatusRefused { status, body } =>
+      legacy_search_evidence(
+        subject: subject,
+        observed: SheetSearchUnreadable {
+          reason: join(["superseded-marker files.list refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+        },
+      )
+    RestExchangeUnreached { cause } =>
+      legacy_search_evidence(
+        subject: subject,
+        observed: SheetSearchUnreadable {
+          reason: join(["superseded-marker files.list never reached Drive: ", cause as String], "") as NonEmptyStr
+        },
+      )
+    RestExchangeUndecodable { status, cause } =>
+      legacy_search_evidence(
+        subject: subject,
+        observed: SheetSearchUnreadable {
+          reason: join(["superseded-marker files.list answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+        },
+      )
+    RestExchangeCommitAmbiguous { detail } =>
+      legacy_search_evidence(
+        subject: subject,
+        observed: SheetSearchUnreadable {
+          reason: join(["superseded-marker files.list reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+        },
+      )
+  }
+}
+
+// ── THE SUBJECT-BOUND OPERATOR-DECLARATION READER ─────────────────────────────────────────────
+
+// THE DECLARATION CARRIES ITS OWN SUBJECT AND THIS READER DOES NOT CHECK IT. That is deliberate and
+// it is single authority, not an omission: gunbc.review_sheet_identity's join compares the intended
+// subject against the evidence's subject before it reads anything else, and it is the ONLY mint of
+// a standing. A second comparison here would be the same fact decided twice, and the day a sixth
+// field joins the subject the copy that was not edited keeps answering true for two subjects that
+// differ in it -- which is precisely the equality fork the kernel deleted a hand-rolled predicate
+// to avoid.
+//
+// SO THE READER'S JOB IS TRANSCRIPTION, and its refusals are all about the FILE: absent, unreadable,
+// not JSON, missing a member, or declaring something this reader does not admit. A declaration it
+// cannot transcribe yields LegacyExtentUnresolved bound to the INTENDED subject, because there is no
+// declared subject to carry and inventing one would be the fabricated plausible output DESIGN
+// section 5 forbids.
+data review_sheet_legacy_declaration_drive_id_member: String = "drive_id"
+data review_sheet_legacy_declaration_marker_key_member: String = "marker_key"
+data review_sheet_legacy_declaration_marker_value_member: String = "marker_value"
+data review_sheet_legacy_declaration_current_field_member: String = "current_marker_field"
+data review_sheet_legacy_declaration_superseded_field_member: String = "superseded_marker_field"
+data review_sheet_legacy_declaration_extent_member: String = "legacy_extent"
+data review_sheet_legacy_declaration_basis_member: String = "basis"
+
+// THE ONE ADMITTED VALUE OF THE EXTENT MEMBER. A declaration file is a human assertion about the
+// world, and the only assertion this reader admits is the one the kernel has an arm for: that no
+// file carrying the superseded marker exists for this subject. Anything else -- a spelling, a
+// hedge, a future keyword -- refuses rather than being read as the nearest admitted value.
+data review_sheet_legacy_declaration_absent_value: String = "absent"
+
+// THE SECOND ADMITTED VALUE, AND IT IS A DIFFERENT KIND OF STATEMENT FROM THE FIRST. "absent" is a
+// claim about the WORLD -- no superseded-marked file exists here -- and the kernel has an arm for
+// it. "selected" is a claim about the OPERATOR: this is the file I choose. Selecting file A
+// establishes which file the operator selected; it does not establish that an invisible file B does
+// not exist, so it is carried as a LegacyFileSelection and never folded into the extent evidence.
+// An earlier revision of the kernel put the selection inside LegacyExtentEvidence and derived
+// lineage conclusions from it, which is the same defect this lane exists to close arriving through
+// a declaration instead of through an empty search.
+data review_sheet_legacy_declaration_selected_value: String = "selected"
+
+data review_sheet_legacy_declaration_file_id_member: String = "file_id"
+
+type OperatorLegacyDeclaration
+  = OperatorDeclaredLegacyAbsent { subject: ReviewSheetIdentitySubject, basis: NonEmptyStr }
+  | OperatorDeclaredLegacyFileSelected { selection: LegacyFileSelection }
+  | OperatorLegacyDeclarationUnavailable { cause: NonEmptyStr }
+
+fn legacy_declaration_member_text(
+  doc: JsonValue,
+  member: String,
+) -> JsonFieldRead<String> {
+  json_field_string(obj: doc, key: member)
+}
+
+fn legacy_declaration_missing(member: String, detail: String) -> OperatorLegacyDeclaration {
+  OperatorLegacyDeclarationUnavailable {
+    cause: join(["the operator declaration's ", member, " member ", detail], "") as NonEmptyStr,
+  }
+}
+
+// EVERY MEMBER IS REQUIRED AND EACH IS READ SEPARATELY, so a refusal names the member that failed
+// rather than saying the file was bad. An operator repairing a declaration by hand is the whole
+// audience for this text.
+fn legacy_declaration_from_document(doc: JsonValue) -> OperatorLegacyDeclaration {
+  match legacy_declaration_member_text(doc: doc, member: review_sheet_legacy_declaration_extent_member) {
+    FieldAbsent => legacy_declaration_missing(member: review_sheet_legacy_declaration_extent_member, detail: "is absent")
+    FieldMalformed { cause: c } => legacy_declaration_missing(member: review_sheet_legacy_declaration_extent_member, detail: c)
+    FieldRead { value: extent } =>
+      if extent == review_sheet_legacy_declaration_absent_value {
+        legacy_declaration_absent_from_document(doc: doc)
+      } else if extent == review_sheet_legacy_declaration_selected_value {
+        legacy_declaration_selected_from_document(doc: doc)
+      } else {
+        OperatorLegacyDeclarationUnavailable {
+          cause: join(
+            [
+              "the operator declaration states ",
+              review_sheet_legacy_declaration_extent_member,
+              " = \"",
+              extent,
+              "\"; this reader admits only \"",
+              review_sheet_legacy_declaration_absent_value,
+              "\" and \"",
+              review_sheet_legacy_declaration_selected_value,
+              "\", and reading an unadmitted value as the nearest admitted one is how a declaration comes to settle an extent nobody declared settled",
+            ],
+            "",
+          ) as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn legacy_declaration_absent_from_document(doc: JsonValue) -> OperatorLegacyDeclaration {
+  match legacy_declaration_member_text(doc: doc, member: review_sheet_legacy_declaration_basis_member) {
+    FieldAbsent => legacy_declaration_missing(member: review_sheet_legacy_declaration_basis_member, detail: "is absent")
+    FieldMalformed { cause: c } => legacy_declaration_missing(member: review_sheet_legacy_declaration_basis_member, detail: c)
+    FieldRead { value: basis } =>
+      if basis == "" {
+        legacy_declaration_missing(member: review_sheet_legacy_declaration_basis_member, detail: "is empty; a declaration with no stated basis is an assertion with nothing behind it")
+      } else {
+        legacy_declaration_with_basis(doc: doc, basis: basis as NonEmptyStr)
+      }
+  }
+}
+
+fn legacy_declaration_with_basis(doc: JsonValue, basis: NonEmptyStr) -> OperatorLegacyDeclaration {
+  match legacy_declaration_subject(doc: doc) {
+    LegacyDeclaredSubjectUnreadable { cause: c } => OperatorLegacyDeclarationUnavailable { cause: c }
+    LegacyDeclaredSubject { subject: s } =>
+      OperatorDeclaredLegacyAbsent { subject: s, basis: basis }
+  }
+}
+
+// A SELECTION CARRIES THE SAME FIVE SUBJECT MEMBERS AND ONE MORE: the file the operator chose. The
+// subject is transcribed rather than defaulted for the same reason the absence declaration's is --
+// a selection written about another drive or another marker generation must be refusable, and it is
+// the admission that refuses it, not this reader.
+fn legacy_declaration_selected_from_document(doc: JsonValue) -> OperatorLegacyDeclaration {
+  match legacy_declaration_required_nonempty(doc: doc, member: review_sheet_legacy_declaration_file_id_member) {
+    LegacyDeclaredMemberUnreadable { cause: c } => OperatorLegacyDeclarationUnavailable { cause: c }
+    LegacyDeclaredMember { text: file_id } =>
+      match legacy_declaration_required_nonempty(doc: doc, member: review_sheet_legacy_declaration_basis_member) {
+        LegacyDeclaredMemberUnreadable { cause: c } => OperatorLegacyDeclarationUnavailable { cause: c }
+        LegacyDeclaredMember { text: basis } =>
+          match legacy_declaration_subject(doc: doc) {
+            LegacyDeclaredSubjectUnreadable { cause: c } => OperatorLegacyDeclarationUnavailable { cause: c }
+            LegacyDeclaredSubject { subject: s } =>
+              OperatorDeclaredLegacyFileSelected {
+                selection: LegacyFileSelection { subject: s, file_id: file_id, basis: basis }
+              }
+          }
+      }
+  }
+}
+
+type LegacyDeclarationSubjectReading
+  = LegacyDeclaredSubject { subject: ReviewSheetIdentitySubject }
+  | LegacyDeclaredSubjectUnreadable { cause: NonEmptyStr }
+
+// THE FIVE SUBJECT MEMBERS ARE TRANSCRIBED, NEVER DEFAULTED FROM THE INTENDED SUBJECT. Filling a
+// missing member from the subject we are asking about would make every declaration match by
+// construction, which turns the kernel's subject wall into a decoration.
+fn legacy_declaration_subject(doc: JsonValue) -> LegacyDeclarationSubjectReading {
+  match legacy_declaration_required_nonempty(doc: doc, member: review_sheet_legacy_declaration_drive_id_member) {
+    LegacyDeclaredMemberUnreadable { cause: c } => LegacyDeclaredSubjectUnreadable { cause: c }
+    LegacyDeclaredMember { text: drive_id } =>
+      match legacy_declaration_required_nonempty(doc: doc, member: review_sheet_legacy_declaration_marker_key_member) {
+        LegacyDeclaredMemberUnreadable { cause: c } => LegacyDeclaredSubjectUnreadable { cause: c }
+        LegacyDeclaredMember { text: marker_key } =>
+          match legacy_declaration_required_nonempty(doc: doc, member: review_sheet_legacy_declaration_marker_value_member) {
+            LegacyDeclaredMemberUnreadable { cause: c } => LegacyDeclaredSubjectUnreadable { cause: c }
+            LegacyDeclaredMember { text: marker_value } =>
+              match legacy_declaration_required_nonempty(doc: doc, member: review_sheet_legacy_declaration_current_field_member) {
+                LegacyDeclaredMemberUnreadable { cause: c } => LegacyDeclaredSubjectUnreadable { cause: c }
+                LegacyDeclaredMember { text: current_field } =>
+                  match legacy_declaration_required_nonempty(doc: doc, member: review_sheet_legacy_declaration_superseded_field_member) {
+                    LegacyDeclaredMemberUnreadable { cause: c } => LegacyDeclaredSubjectUnreadable { cause: c }
+                    LegacyDeclaredMember { text: superseded_field } =>
+                      LegacyDeclaredSubject {
+                        subject: ReviewSheetIdentitySubject {
+                          drive_id: drive_id,
+                          marker_key: marker_key,
+                          marker_value: marker_value,
+                          current_marker_field: current_field,
+                          superseded_marker_field: superseded_field,
+                        }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+type LegacyDeclarationMemberReading
+  = LegacyDeclaredMember { text: NonEmptyStr }
+  | LegacyDeclaredMemberUnreadable { cause: NonEmptyStr }
+
+fn legacy_declaration_required_nonempty(doc: JsonValue, member: String) -> LegacyDeclarationMemberReading {
+  match legacy_declaration_member_text(doc: doc, member: member) {
+    FieldAbsent =>
+      LegacyDeclaredMemberUnreadable {
+        cause: join(["the operator declaration's ", member, " member is absent"], "") as NonEmptyStr
+      }
+    FieldMalformed { cause: c } =>
+      LegacyDeclaredMemberUnreadable {
+        cause: join(["the operator declaration's ", member, " member ", c], "") as NonEmptyStr
+      }
+    FieldRead { value: text } =>
+      if text == "" {
+        LegacyDeclaredMemberUnreadable {
+          cause: join(["the operator declaration's ", member, " member is empty"], "") as NonEmptyStr
+        }
+      } else {
+        LegacyDeclaredMember { text: text as NonEmptyStr }
+      }
+  }
+}
+
+fn legacy_declaration_from_text(text: String) -> OperatorLegacyDeclaration {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: gap } =>
+      OperatorLegacyDeclarationUnavailable {
+        cause: join(["the operator declaration is ", json_document_gap_text(gap: gap)], "") as NonEmptyStr
+      }
+    JsonDocumentParsed { value: doc } => legacy_declaration_from_document(doc: doc)
+  }
+}
+
+// THE READ ITSELF, AND AN ABSENT FILE IS THE ORDINARY CASE RATHER THAN AN ERROR. Most drives have
+// no declaration, and the honest answer for them is that the extent is unresolved -- which is what
+// the composed producer below turns this into. What must never happen is the opposite reading: a
+// missing declaration folded into "the operator says there is nothing", which would settle the
+// extent by the absence of a human statement.
+fn read_operator_legacy_declaration(
+  path: String,
+) -> OperatorLegacyDeclaration uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } =>
+      OperatorLegacyDeclarationUnavailable {
+        cause: join(["no operator declaration could be read at ", path, ": ", e], "") as NonEmptyStr
+      }
+    FilesystemReadSucceeded { content: text } => legacy_declaration_from_text(text: text)
+  }
+}
+
+// A SELECTION IS NOT EVIDENCE ABOUT THE EXTENT, AND THIS ARM IS WHERE THAT IS ENFORCED RATHER THAN
+// STATED. An operator who selects file A has said which file they chose. They have not said that an
+// invisible file B does not exist, and folding the selection into LegacyExtentAbsentByOperator here
+// would launder the one into the other at the exact seam the kernel deleted its compatible-empty
+// arm to close. So a selection leaves the extent UNRESOLVED, and the admission -- which reconciles
+// it against the standing, a contradicting observation and an exact file-by-id preflight -- is a
+// separate consumer that this function does not stand in for.
+fn operator_declaration_evidence(
+  declaration: OperatorLegacyDeclaration,
+  subject: ReviewSheetIdentitySubject,
+  search_cause: NonEmptyStr,
+) -> LegacyExtentEvidence {
+  match declaration {
+    OperatorDeclaredLegacyAbsent { subject: declared, basis: b } =>
+      LegacyExtentAbsentByOperator { subject: declared, basis: b }
+    OperatorDeclaredLegacyFileSelected { selection: sel } =>
+      LegacyExtentUnresolved {
+        subject: subject,
+        cause: join(
+          [
+            search_cause as String,
+            "; and the operator declaration selects file ",
+            sel.file_id as String,
+            ", and a selection settles no extent -- its consumer is the declared-id admission, not this evidence carrier",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    OperatorLegacyDeclarationUnavailable { cause: c } =>
+      LegacyExtentUnresolved {
+        subject: subject,
+        cause: join([search_cause as String, "; and ", c as String], "") as NonEmptyStr,
+      }
+  }
+}
+
+// ── THE COMPOSED PRODUCER THE CONVERGE CALLS ──────────────────────────────────────────────────
+
+// AN OBSERVATION BEATS A DECLARATION, AND ONLY IN THE DIRECTION AN OBSERVATION CAN WIN. A positive
+// find is self-proving: the file is there, this client saw it, and no human statement that the old
+// generation is empty survives it. The declaration is consulted only where the search established
+// nothing -- which, for this field, is every arm except a find.
+//
+// THE ORDER IS NOT A PREFERENCE, IT IS THE ONLY ORDER THAT CANNOT LAUNDER. Reading the declaration
+// first and skipping the search on it would let a stale "there is nothing here" hide a file the
+// search would have returned, and that file is the one whose loss started this lane.
+// THE DECLARATION IS PASSED IN RATHER THAN READ HERE, AND THAT IS A CONSUMPTION FACT, NOT A STYLE
+// ONE. One converge pass reads the declaration file exactly once and hands the same value to this
+// producer and to the declared-id admission. Reading it twice would be two demands for one semantic
+// fact whose least common ancestor is the converge that owns both -- DESIGN section 2's authored
+// duplication -- and, worse, the two reads could disagree if the operator edits the file between
+// them, which would let the extent and the admission answer about different declarations.
+//
+// AN OBSERVATION BEATS A DECLARATION, AND ONLY IN THE DIRECTION AN OBSERVATION CAN WIN. A positive
+// find is self-proving: the file is there, this client saw it, and no human statement that the old
+// generation is empty survives it. The declaration is consulted only where the search established
+// nothing -- which, for this field, is every arm except a find.
+//
+// THE ORDER IS NOT A PREFERENCE, IT IS THE ONLY ORDER THAT CANNOT LAUNDER. Preferring the
+// declaration and skipping the search would let a stale "there is nothing here" hide a file the
+// search would have returned, and that file is the one whose loss started this lane.
+fn review_sheet_legacy_extent(
+  subject: ReviewSheetIdentitySubject,
+  declaration: OperatorLegacyDeclaration,
+) -> LegacyExtentEvidence uses net: Network {
+  let searched = read_superseded_marker_extent(subject: subject)
+  match searched {
+    LegacyExtentAbsentByOperator { subject: _, basis: _ } => searched
+    LegacyExtentUnresolved { subject: _, cause: _ } => searched
+    LegacySearchObserved { subject: _, observation: o, visibility_basis: v } =>
+      match v {
+        PositiveFindEstablishesVisibility => searched
+        SearchVisibilityUnresolved { cause: c } =>
+          operator_declaration_evidence(
+            declaration: declaration,
+            subject: subject,
+            search_cause: c,
+          )
+      }
+  }
+}
