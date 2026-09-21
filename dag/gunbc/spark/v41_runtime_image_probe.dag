@@ -619,50 +619,64 @@ fn v41_privileged_stdout(run: SparkRemoteRun) -> String {
   }
 }
 
-// PULL, READ THE DIGEST BACK, THEN ASK INSIDE IT. The readback is what makes the reading's subject
-// the bytes rather than the reference: a tag or even a manifest-list digest can resolve to different
+// READ THE DIGEST BACK, THEN ASK INSIDE IT. The readback is what makes the reading's subject the
+// bytes rather than the reference: a tag or even a manifest-list digest can resolve to different
 // content per architecture, and what the probe must name is the image the daemon actually holds.
-fn v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> V41ProbeOutcome
+//
+// WHY THE PULL IS NOT PART OF THIS FOLD. A published image has to be fetched before it can be asked
+// anything; an image this fleet just BUILT is already in the daemon's store and has never been
+// pushed anywhere, so a pull of its tag would either fail or -- worse -- succeed against some
+// registry object that happens to share the name and silently replace the bytes under test. Those
+// are two different preconditions on one question, so the question is one fold and the pull is the
+// published entry's own first leg. The build lane (gunbc.spark.v41_runtime_image_converge) reaches
+// this fold directly with the tag its own readback returned.
+fn v41_probe_image_in_place(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> V41ProbeOutcome
+  uses net: Network
 {
-  match v41_privileged_outcome(step: "image-pull" as NonEmptyStr, run: spark_remote_run(ctx: ctx, argv: v41_probe_pull_argv(image_reference: reference))) {
-    Present { value: refusal } => refusal
-    Absent => {
-      let inspect_run = spark_remote_run(ctx: ctx, argv: v41_probe_config_id_argv(image_reference: reference))
-      match inspect_run {
-        RemoteUnreachable { cause: why } => V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
-        RemoteRan { exit_code: code, stdout: inspect_stdout, stderr: err } =>
-          if code != 0 {
-            if docker_image_inspect_names_no_such_image(stderr: err) {
-              V41ProbeRefused {
-                step: "image-config-id" as NonEmptyStr,
-                cause: "docker image inspect: No such image (the pull reported success and the daemon names no object for this reference)",
-              }
-            } else {
-              V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") }
-            }
-          } else {
-            match docker_image_inspect_id_from_stdout(stdout: inspect_stdout) {
-              DockerImageInspectIdUnreadable { cause: why } =>
-                V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
-              DockerImageInspectId { id: config_id } => {
-                let probe_run = spark_remote_run(ctx: ctx, argv: v41_probe_privileged_argv(image_reference: config_id))
-                match v41_privileged_outcome(step: "probe-run" as NonEmptyStr, run: probe_run) {
-                  Present { value: refusal } => refusal
-                  Absent => {
-                    let out = v41_privileged_stdout(run: probe_run)
-                    V41ProbeRead {
-                      reference: reference,
-                      observed_config_id: config_id,
-                      stdout: out,
-                      readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: v41_probe_label(c: c))),
-                    }
-                  }
+  let inspect_run = spark_remote_run(ctx: ctx, argv: v41_probe_config_id_argv(image_reference: reference))
+  match inspect_run {
+    RemoteUnreachable { cause: why } => V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
+    RemoteRan { exit_code: code, stdout: inspect_stdout, stderr: err } =>
+      if code != 0 {
+        if docker_image_inspect_names_no_such_image(stderr: err) {
+          V41ProbeRefused {
+            step: "image-config-id" as NonEmptyStr,
+            cause: "docker image inspect: No such image (the daemon names no object for this reference)",
+          }
+        } else {
+          V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") }
+        }
+      } else {
+        match docker_image_inspect_id_from_stdout(stdout: inspect_stdout) {
+          DockerImageInspectIdUnreadable { cause: why } =>
+            V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
+          DockerImageInspectId { id: config_id } => {
+            let probe_run = spark_remote_run(ctx: ctx, argv: v41_probe_privileged_argv(image_reference: config_id))
+            match v41_privileged_outcome(step: "probe-run" as NonEmptyStr, run: probe_run) {
+              Present { value: refusal } => refusal
+              Absent => {
+                let out = v41_privileged_stdout(run: probe_run)
+                V41ProbeRead {
+                  reference: reference,
+                  observed_config_id: config_id,
+                  stdout: out,
+                  readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: v41_probe_label(c: c))),
                 }
               }
             }
           }
+        }
       }
-    }
+  }
+}
+
+// PULL FIRST, THEN THE SAME QUESTIONS. A published reference names bytes that may not be on this
+// host at all, so the fetch is this entry's precondition and nothing else's.
+fn v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> V41ProbeOutcome
+{
+  match v41_privileged_outcome(step: "image-pull" as NonEmptyStr, run: spark_remote_run(ctx: ctx, argv: v41_probe_pull_argv(image_reference: reference))) {
+    Present { value: refusal } => refusal
+    Absent => v41_probe_image_in_place(ctx: ctx, reference: reference)
   }
 }
 

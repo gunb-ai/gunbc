@@ -2,7 +2,7 @@ module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { second_count, minute_count }
+import std.measure { second_count, minute_count, hardware_thread_count, hardware_thread_count_value }
 import v2.std.optional { Present }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_approval_window, mtcollins1_boot_poll_cadence, mtcollins1_boot_poll_tick_budget,
@@ -233,6 +233,10 @@ fn is_pending(v: MtCollins1BootTerminalVerdict) -> Bool {
 //     "names X but the medium row names X". The image name derives from the digest, so that
 //     subject cannot come from the constructor: it is a forged or stale signed subject, built
 //     field-for-field in the fold.
+// Review 69667: in a CLOSED envelope a section that opened and never printed its EXIT line is
+// "unterminated", not "absent", and a section whose printed output already refused is not
+// reported a second time -- closed_unterminated_workload yields exactly the write refusal plus the
+// unterminated edac-after, never a third cause about the workload.
 fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium: MtCollins1BootMedium, clean: String, boot23_open: String) -> Bool {
   let begin_a = "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=aaaaaaaa-0000-4000-8000-000000000001 begin 2026-09-21T14:47:00Z=====\n"
   let begin_b = "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=bbbbbbbb-0000-4000-8000-000000000002 begin 2026-09-21T14:52:00Z=====\n"
@@ -243,6 +247,13 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
   let two_argv = concat(begin_a, "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----ARGV nproc: second-boundary\n----EXIT nproc: 0\n")
   let unterminated = concat(begin_a, "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=1")
   let terminated = concat(unterminated, "\n")
+  let closed_unterminated_workload = concat(begin_a,
+    "----SECTION boot-media----\n----ARGV boot-media: blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n",
+    "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+    "----SECTION edac-before----\n----ARGV edac-before: (counters)\n/sys/devices/system/edac/mc/mc0/ce_count == 0\n/sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+    "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=1\n",
+    "----SECTION edac-after----\n----ARGV edac-after: (counters)\n/sys/devices/system/edac/mc/mc0/ce_count == 0\n",
+    "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=aaaaaaaa-0000-4000-8000-000000000001 end 2026-09-21T14:55:00Z=====\n")
   let same_name_other_digest = MtCollins1BootSubject {
     machine: census_subject.machine,
     bmc_host: census_subject.bmc_host,
@@ -262,6 +273,7 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: exit_before_argv, subject: census_subject, medium: census_medium))
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: two_argv, subject: census_subject, medium: census_medium), texts: ["section nproc carries two ARGV boundaries; which output the exit belongs to is not a fact"])
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: unterminated, subject: census_subject, medium: census_medium))
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: closed_unterminated_workload, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", "closed envelope's edac-after section never printed its EXIT line"])
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: terminated, subject: census_subject, medium: census_medium), texts: ["workload write rc=1"])
     && (match mtcollins1_boot_terminal_verdict(capture: clean, subject: same_name_other_digest, medium: census_medium) {
       TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => {
@@ -433,7 +445,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     ),
   )
   let accepted = match mtcollins1_boot_terminal_verdict(capture: clean, subject: census_subject, medium: census_medium) {
-    TerminalAccepted { run: _, threads: t } => t == "160"
+    TerminalAccepted { run: _, threads: t } => hardware_thread_count_value(t: t) == 160
     _ => false
   }
   accepted
@@ -450,7 +462,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_with_spurious_end, subject: census_subject, medium: census_medium))
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: boot23_open, subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160", "workload write rc=1"])
     && review_5269655400_walls(census_subject: census_subject, census_medium: census_medium, clean: clean, boot23_open: boot23_open)
-    && string_contains(s: mtcollins1_boot_terminal_refusal_text(causes: [HardwareThreadCountMismatch { expected: "160", observed: "80" }, WorkloadWriteFailed { rc: "1" }]), pattern: "nproc observed 80, qualification expects 160; workload write rc=1")
+    && string_contains(s: mtcollins1_boot_terminal_refusal_text(causes: [HardwareThreadCountMismatch { expected: hardware_thread_count(count: 160), observed: "80" }, WorkloadWriteFailed { rc: "1" }]), pattern: "nproc observed 80, qualification expects 160; workload write rc=1")
 }
 
 test fn boot_loopback_filing_is_srv1_only() -> Bool {
