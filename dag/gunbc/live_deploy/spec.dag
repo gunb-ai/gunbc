@@ -505,6 +505,7 @@ fn approval_broker_service_config(instance: HostDashboardInstance, port: Port) -
     unit_name: gunbc_approval_broker_unit_name,
     serve_binary: approval_broker_serve_binary_is_per_release_poison as NonEmptyStr,
     serve_entry: approval_broker_serve_entry_file,
+    provider_state_root: dashboard_instance_provider_state_root(instance: instance) as String as NonEmptyStr,
     serve_function: "approval_broker_handle" as NonEmptyStr,
     instance_root: instance.instance_root as String as NonEmptyStr,
     repo_root: srv1_gunbc_approval_broker_root as String as NonEmptyStr,
@@ -1129,6 +1130,11 @@ fn deployment_ensured_steps(target: DeploymentHostTarget) -> List<DeploymentDepe
 //   macbook_local     applies those specs, so the member creates nothing for them yet. The
 //                     provision op may be deleted for an instance only when a production caller
 //                     applies its spec.
+// The approval broker's own service config is a SECOND unit on an instance, not a sixth instance:
+// its provider-state root is that instance's root, from the same projection, so the broker's apply
+// converges the same directory the dashboard's does. That is why the field is not optional for it --
+// an idempotent ensure of the same path is what Ensured means, and a broker-specific path would be
+// a second root for one host's login state.
 fn deployment_provider_state_step(spec: DeploymentSpec) -> DeploymentDependencyStep {
   DeploymentDependencyStep {
     kind: ProviderStateRootDirectory,
