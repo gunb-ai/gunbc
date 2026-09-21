@@ -332,7 +332,8 @@ fn fabric_storage_unwire_identity(text: String) -> FabricIdentityRead {
   match wire_reply(text: text) {
     Absent => FabricIdentityReadRefused { fault: undecodable(line: text) }
     Present { value: r } =>
-      if word_at(ws: r.words, i: 0) != "identity" { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
+      if text != r.line { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
+      else if word_at(ws: r.words, i: 0) != "identity" { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
       else {
         match word_at(ws: r.words, i: 1) {
           "absent" => if length(r.words) == 2 { FabricIdentityPresented { identity: TailnetIdentityAbsent } } else { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
