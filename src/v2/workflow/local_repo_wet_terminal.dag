@@ -7,7 +7,7 @@ import v2.std.integer { Int }
 import v2.std.algebra { Cons, Empty, filter, length }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
-  ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold,
+  ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold, ExpectedRed,
   ClaimTerminalRow, ClaimDisposition, claim_disposition, Passed
 }
 import v2.workflow.wet_evidence {
@@ -242,6 +242,14 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // bin-witness wet class, whose standing excl_bin_wet_reason carries. Measured wet through
 // `gunbc run --claim-run` over this tree before enrollment: all ten held, and every metacharacter
 // probe failed without output rather than running its payload.
+// ONE ROW IS EXPECTED RED, AND THE REASON IS ON MAIN, NOT IN THE ROW. the_rendered_program_runs_and_its_
+// output_parses_by_real_execution renders the census workload and runs it under a real shell; on the
+// runners it observes failed on every main merge-queue run since #11731 landed it (the rendered
+// program's `test -f .../gunbc-mtcollins1-census-...iso` finds no ISO in the ephemeral temp root),
+// which the fail-open floor reported green over. Under the sealed floor (gunbc#11993) the schedule
+// must say what is observed: ExpectedRed here, until the census-image lane gives the rendered program
+// its fixture on the runner -- at which point this row reads ExpectedToHold again and the lane's
+// schedule/terminal disagreement is the tell that flips it.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
@@ -572,7 +580,7 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_rendered_program_runs_and_its_output_parses_by_real_execution" },
       entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
       function: "the_rendered_program_runs_and_its_output_parses_by_real_execution",
-      expectation: ExpectedToHold {}
+      expectation: ExpectedRed {}
     },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "a_removed_image_is_absent_not_diverged_by_real_execution" },
