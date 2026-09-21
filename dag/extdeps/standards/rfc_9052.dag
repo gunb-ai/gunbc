@@ -39,11 +39,18 @@ type CoseLabelLookup
   | CoseLabelDuplicated { label: Int }
   | CoseKeyNotAMap
 
+fn cose_integer_of(v: CborValue) -> Int? {
+  match v {
+    CborUnsigned { value: n } => Present { value: n }
+    CborNegative { value: n } => Present { value: n }
+    _ => none
+  }
+}
+
 fn cose_label_matches(k: CborValue, label: Int) -> Bool {
-  match k {
-    CborUnsigned { value: v } => v == label
-    CborNegative { value: v } => v == label
-    _ => false
+  match cose_integer_of(v: k) {
+    Present { value: n } => n == label
+    Absent => false
   }
 }
 
@@ -65,14 +72,6 @@ fn cose_key_label(key: CborValue, label: Int) -> CoseLabelLookup {
       }
     }
     _ => CoseKeyNotAMap
-  }
-}
-
-fn cose_integer_of(v: CborValue) -> Int? {
-  match v {
-    CborUnsigned { value: n } => Present { value: n }
-    CborNegative { value: n } => Present { value: n }
-    _ => none
   }
 }
 
