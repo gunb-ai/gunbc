@@ -19,7 +19,9 @@ import std.scoped_authorization {
   ClaimHeld, ClaimLost, ClaimUndecided,
 }
 import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim, unterminated_claim_exit }
-import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_medium_readback, mtcollins1_census_readback_refusal }
+import gunbc.machine_intake_mtcollins1_census_medium_readback {
+  mtcollins1_census_medium_readback, mtcollins1_census_readback_refusal_before_filing, mtcollins1_census_readback_refusal_before_attach,
+}
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootGate,
   MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium,
@@ -492,8 +494,8 @@ fn mtcollins1_boot_after_gate(
                         held_at: held_at,
                       )
                     ExitSuccess => {
-                      let issued = match mtcollins1_census_readback_refusal(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
-                        Present { value: why } => exit_failure(reason: concat("after grant, before attach: ", why))
+                      let issued = match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
+                        Present { value: why } => exit_failure(reason: why)
                         Absent =>
                           match mtcollins1_attach_diskless_image(authorization: auth, password_file: password_file, attempt: attempt) {
                             ExitSuccess =>
@@ -629,7 +631,7 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
     Present { value: why } => return exit_failure(reason: why)
     Absent => Unit
   }
-  match mtcollins1_census_readback_refusal(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
+  match mtcollins1_census_readback_refusal_before_filing(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
     Present { value: why } => return exit_failure(reason: why)
     Absent => Unit
   }

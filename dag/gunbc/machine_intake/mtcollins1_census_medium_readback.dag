@@ -2,6 +2,10 @@ module gunbc.machine_intake_mtcollins1_census_medium_readback
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
+import std.content_hash { sha256_hex_digest }
+import extdeps.tools.gnu_coreutils { cat_command }
+import extdeps.crypto.hash { sha256sum_file_command }
+import extdeps.exec.command { argv_words }
 import gunbc.fleet_intent_network { operator_host_srv2 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
@@ -54,24 +58,32 @@ fn mtcollins1_census_build_key() -> NonEmptyStr {
 }
 
 fn mtcollins1_census_record_argv(record_path: NonEmptyStr) -> List<String> {
-  ["cat", record_path as String]
+  argv_words(command: cat_command(path: record_path as String))
 }
 
 fn mtcollins1_census_readback_argv(path: NonEmptyStr) -> List<String> {
-  ["sha256sum", path as String]
+  argv_words(command: sha256sum_file_command(path: path as String))
 }
 
-// A digest is exactly 64 hex characters; anything else is malformed and says nothing about bytes.
-fn hex64_or_none(word: String) -> String? {
-  if word.length() == 64 { Present { value: word } } else { none }
-}
-
-// sha256sum prints "<hex>  <path>"; the record holds "<hex>\n". Both are read as their first
-// whitespace-delimited word.
-fn first_word(text: String) -> String? {
-  match get(xs: split(s: trim(s: text), delimiter: " "), index: 0) {
+// The derivation record IS one digest: resolve_seeded_image trims the whole file and consumes it,
+// so this reader does the same -- a trailing token is a malformed record, never an admitted one.
+// std.content_hash.sha256_hex_digest is the one admission (exact length AND lowercase hex syntax).
+fn record_digest(text: String) -> String? {
+  match sha256_hex_digest(hex: trim(s: text)) {
     Absent => none
-    Present { value: w } => if w == "" { none } else { Present { value: w } }
+    Present { value: d } => Present { value: d.hex as String }
+  }
+}
+
+// sha256sum prints "<hex>  <path>": the first whitespace-delimited field, admitted as a digest.
+fn sha256sum_digest(line: String) -> String? {
+  match get(xs: split(s: trim(s: line), delimiter: " "), index: 0) {
+    Absent => none
+    Present { value: w } =>
+      match sha256_hex_digest(hex: w) {
+        Absent => none
+        Present { value: d } => Present { value: d.hex as String }
+      }
   }
 }
 
@@ -82,52 +94,28 @@ type RemoteAnswer {
   stderr: String
 }
 
-fn mtcollins1_census_medium_readback_from_answers(
-  medium: MtCollins1BootMedium,
-  host: NonEmptyStr,
-  record: RemoteAnswer,
-  measure: RemoteAnswer,
-) -> CensusMediumReadback {
+// STAGE ONE: the record alone. Its signature carries no measurement, which is what makes "an
+// unreadable record refuses before the file is consulted" a fact about the producer's route and not
+// only about a fold: the producer runs sha256sum only inside the admitted arm.
+type CensusRecordStanding
+  = CensusRecordAdmitted { recorded: NonEmptyStr }
+  | CensusRecordRefused { readback: CensusMediumReadback }
+
+fn mtcollins1_census_record_standing(medium: MtCollins1BootMedium, record: RemoteAnswer) -> CensusRecordStanding {
   match medium {
-    MtCollins1StockInstallerMedium => CensusMediumReadbackNotCensus
+    MtCollins1StockInstallerMedium => CensusRecordRefused { readback: CensusMediumReadbackNotCensus }
     MtCollins1CensusMedium { output_digest: selected } => {
       let record_path = mtcollins1_census_record_path()
-      let served_path = mtcollins1_census_medium_served_path(medium: medium)
       if record.exit_code != 0 {
-        CensusMediumReadbackRecordUnreadable { record_path: record_path, reason: concat("exit=", to_string(record.exit_code), " ", trim(s: record.stderr)) }
+        CensusRecordRefused { readback: CensusMediumReadbackRecordUnreadable { record_path: record_path, reason: concat("exit=", to_string(record.exit_code), " ", trim(s: record.stderr)) } }
       } else {
-        match first_word(text: record.stdout) {
-          Absent => CensusMediumReadbackRecordMalformed { record_path: record_path, content: trim(s: record.stdout) }
-          Present { value: rw } =>
-            match hex64_or_none(word: rw) {
-              Absent => CensusMediumReadbackRecordMalformed { record_path: record_path, content: trim(s: record.stdout) }
-              Present { value: recorded } =>
-                if recorded != (selected as String) {
-                  CensusMediumReadbackRecordDisagrees { record_path: record_path, recorded: recorded as NonEmptyStr, selected: selected }
-                } else if measure.exit_code != 0 {
-                  CensusMediumReadbackImageUnreadable { served_path: served_path, reason: concat("exit=", to_string(measure.exit_code), " ", trim(s: measure.stderr)) }
-                } else {
-                  match first_word(text: measure.stdout) {
-                    Absent => CensusMediumReadbackMeasureMalformed { served_path: served_path, content: trim(s: measure.stdout) }
-                    Present { value: mw } =>
-                      match hex64_or_none(word: mw) {
-                        Absent => CensusMediumReadbackMeasureMalformed { served_path: served_path, content: trim(s: measure.stdout) }
-                        Present { value: measured } =>
-                          if measured == recorded {
-                            CensusMediumReadbackAgreed {
-                              host: host,
-                              build_key: mtcollins1_census_build_key(),
-                              recorded_digest: recorded as NonEmptyStr,
-                              image_name: mtcollins1_boot_medium_image_name(medium: medium),
-                              served_path: served_path,
-                              measured_digest: measured as NonEmptyStr,
-                            }
-                          } else {
-                            CensusMediumReadbackDiverged { served_path: served_path, recorded: recorded as NonEmptyStr, measured: measured as NonEmptyStr }
-                          }
-                      }
-                  }
-                }
+        match record_digest(text: record.stdout) {
+          Absent => CensusRecordRefused { readback: CensusMediumReadbackRecordMalformed { record_path: record_path, content: trim(s: record.stdout) } }
+          Present { value: recorded } =>
+            if recorded != (selected as String) {
+              CensusRecordRefused { readback: CensusMediumReadbackRecordDisagrees { record_path: record_path, recorded: recorded as NonEmptyStr, selected: selected } }
+            } else {
+              CensusRecordAdmitted { recorded: recorded as NonEmptyStr }
             }
         }
       }
@@ -135,22 +123,85 @@ fn mtcollins1_census_medium_readback_from_answers(
   }
 }
 
+// STAGE TWO: the measurement, joined with an already-admitted record.
+fn mtcollins1_census_measure_join(
+  medium: MtCollins1BootMedium,
+  host: NonEmptyStr,
+  recorded: NonEmptyStr,
+  measure: RemoteAnswer,
+) -> CensusMediumReadback {
+  let served_path = mtcollins1_census_medium_served_path(medium: medium)
+  if measure.exit_code != 0 {
+    CensusMediumReadbackImageUnreadable { served_path: served_path, reason: concat("exit=", to_string(measure.exit_code), " ", trim(s: measure.stderr)) }
+  } else {
+    match sha256sum_digest(line: measure.stdout) {
+      Absent => CensusMediumReadbackMeasureMalformed { served_path: served_path, content: trim(s: measure.stdout) }
+      Present { value: measured } =>
+        if measured == (recorded as String) {
+          CensusMediumReadbackAgreed {
+            host: host,
+            build_key: mtcollins1_census_build_key(),
+            recorded_digest: recorded,
+            image_name: mtcollins1_boot_medium_image_name(medium: medium),
+            served_path: served_path,
+            measured_digest: measured as NonEmptyStr,
+          }
+        } else {
+          CensusMediumReadbackDiverged { served_path: served_path, recorded: recorded, measured: measured as NonEmptyStr }
+        }
+    }
+  }
+}
+
+// The two stages composed over supplied answers -- the witness's subject.
+fn mtcollins1_census_medium_readback_from_answers(
+  medium: MtCollins1BootMedium,
+  host: NonEmptyStr,
+  record: RemoteAnswer,
+  measure: RemoteAnswer,
+) -> CensusMediumReadback {
+  match mtcollins1_census_record_standing(medium: medium, record: record) {
+    CensusRecordRefused { readback: r } => r
+    CensusRecordAdmitted { recorded: recorded } => mtcollins1_census_measure_join(medium: medium, host: host, recorded: recorded, measure: measure)
+  }
+}
+
+// STAGE-NEUTRAL CAUSE. What the boot has and has not touched differs between the two call sites,
+// so the sentence about that is the caller's wrapper below, never this renderer's.
 fn mtcollins1_census_readback_refusal(readback: CensusMediumReadback) -> String? {
   match readback {
     CensusMediumReadbackAgreed { host: _, build_key: _, recorded_digest: _, image_name: _, served_path: _, measured_digest: _ } => none
     CensusMediumReadbackNotCensus => Present { value: "mtcollins1 boot: the medium is not the census image, so there is no served digest to read back" }
     CensusMediumReadbackRecordUnreadable { record_path: p, reason: why } =>
-      Present { value: concat("mtcollins1 boot: the census derivation record ", p as String, " could not be read on srv2 (", why, "); refusing rather than trusting the publication receipt -- controller untouched") }
+      Present { value: concat("mtcollins1 boot: the census derivation record ", p as String, " could not be read on srv2 (", why, "); refusing rather than trusting the publication receipt") }
     CensusMediumReadbackRecordMalformed { record_path: p, content: c } =>
-      Present { value: concat("mtcollins1 boot: the census derivation record ", p as String, " holds no 64-hex digest (", c, "); refusing -- controller untouched") }
+      Present { value: concat("mtcollins1 boot: the census derivation record ", p as String, " is not exactly one sha256 digest (", c, "); refusing") }
     CensusMediumReadbackRecordDisagrees { record_path: p, recorded: r, selected: sel } =>
-      Present { value: concat("mtcollins1 boot: the census derivation record ", p as String, " names ", r as String, " but the medium row selects ", sel as String, "; the row does not describe the current derivation -- controller untouched") }
+      Present { value: concat("mtcollins1 boot: the census derivation record ", p as String, " names ", r as String, " but the medium row selects ", sel as String, "; the row does not describe the current derivation") }
     CensusMediumReadbackImageUnreadable { served_path: p, reason: why } =>
-      Present { value: concat("mtcollins1 boot: the served census image ", p as String, " could not be re-measured on srv2 (", why, "); refusing rather than trusting the publication receipt -- controller untouched") }
+      Present { value: concat("mtcollins1 boot: the served census image ", p as String, " could not be re-measured on srv2 (", why, "); refusing rather than trusting the publication receipt") }
     CensusMediumReadbackMeasureMalformed { served_path: p, content: c } =>
-      Present { value: concat("mtcollins1 boot: sha256sum over ", p as String, " answered no 64-hex digest (", c, "); refusing -- controller untouched") }
+      Present { value: concat("mtcollins1 boot: sha256sum over ", p as String, " answered no sha256 digest (", c, "); refusing") }
     CensusMediumReadbackDiverged { served_path: p, recorded: r, measured: m } =>
-      Present { value: concat("mtcollins1 boot: the served census image ", p as String, " reads ", m as String, " but its derivation record and the medium row say ", r as String, "; refusing to mint a subject over bytes the row does not describe -- controller untouched") }
+      Present { value: concat("mtcollins1 boot: the served census image ", p as String, " reads ", m as String, " but its derivation record and the medium row say ", r as String, "; refusing to mint a subject over bytes the row does not describe") }
+  }
+}
+
+// Before the approval request is filed nothing has been claimed: the controller is untouched.
+fn mtcollins1_census_readback_refusal_before_filing(readback: CensusMediumReadback) -> String? {
+  match mtcollins1_census_readback_refusal(readback: readback) {
+    Absent => none
+    Present { value: why } => Present { value: concat(why, " -- controller untouched") }
+  }
+}
+
+// After the grant the boot has claimed the capability and acquired the SOL session; only the
+// media attach, boot selection and power are still untouched, and the SOL session follows the
+// existing settle/release path.
+fn mtcollins1_census_readback_refusal_before_attach(readback: CensusMediumReadback) -> String? {
+  match mtcollins1_census_readback_refusal(readback: readback) {
+    Absent => none
+    Present { value: why } => Present { value: concat("after grant, before attach: ", why, " -- media attach, boot selection and power untouched; the SOL session had been acquired and follows the settle/release path") }
   }
 }
 
@@ -170,9 +221,10 @@ fn remote_answer_of(outcome: TypedArgvExecOutcome) -> RemoteAnswer {
   }
 }
 
-// THE ONE PRODUCER: two read-only legs on srv2 as the fleet principal -- cat the derivation record,
-// sha256sum the served image -- joined by the pure fold above. A refused leg is unreadable, never
-// diverged: the bytes were never read.
+// THE ONE PRODUCER: two read-only legs on srv2 as the fleet principal, IN ORDER -- cat the
+// derivation record, and only once it is admitted sha256sum the multi-gigabyte served image. A
+// refused leg is unreadable, never diverged: the bytes were never read. The argv of each leg is the
+// coreutils / crypto authority's own command projected through argv_words, not a local spelling.
 fn mtcollins1_census_medium_readback(medium: MtCollins1BootMedium) -> CensusMediumReadback
   uses net: std.resources.Network
 {
@@ -185,8 +237,13 @@ fn mtcollins1_census_medium_readback(medium: MtCollins1BootMedium) -> CensusMedi
         FleetSshContextReady { context: context, receipt: _ } => {
           let target = mtcollins1_census_readback_target()
           let record = remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: mtcollins1_census_record_argv(record_path: mtcollins1_census_record_path())))
-          let measure = remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: mtcollins1_census_readback_argv(path: mtcollins1_census_medium_served_path(medium: medium))))
-          mtcollins1_census_medium_readback_from_answers(medium: medium, host: operator_host_srv2 as NonEmptyStr, record: record, measure: measure)
+          match mtcollins1_census_record_standing(medium: medium, record: record) {
+            CensusRecordRefused { readback: r } => r
+            CensusRecordAdmitted { recorded: recorded } => {
+              let measure = remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: mtcollins1_census_readback_argv(path: mtcollins1_census_medium_served_path(medium: medium))))
+              mtcollins1_census_measure_join(medium: medium, host: operator_host_srv2 as NonEmptyStr, recorded: recorded, measure: measure)
+            }
+          }
         }
       }
   }
