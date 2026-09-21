@@ -1,0 +1,124 @@
+module test.claim.type_argument_kind_inhabitance_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import std.types { String, Bool, Int }
+
+// THE WALL THAT MAKES A KINDED TYPE PARAMETER MEAN SOMETHING, AND ITS POSITIVE CONTROL.
+// Class rows: gunbc.recurring_failure_mode.single_arm_sum_parses_as_an_alias_and_becomes_unreadable
+// and .type_variable_means_both_declared_generic_and_inference_variable.
+//
+// WHY THIS FILE EXISTS AT ALL. gunbc#11819 recorded three refusals firing with located
+// diagnostics AND the kind's own declared inhabitant refusing alongside them. A wall that refuses
+// everything has meaningless reds, so none of those three were citable -- the PR said so itself.
+// The discriminating pair is therefore the whole point: the same wall must refuse a non-inhabitant
+// and ADMIT the declared one, on one run, or it has established nothing in either direction.
+//
+// THE ORACLE NAMES THE CLASS, NOT THE OUTCOME, for the reason
+// test.claim.optional_at_required_position_witness_test states at its own oracle: a
+// compiles/does-not-compile boolean stays red through ANY refusal, so a RED here would keep
+// reporting this wall while TypeArgumentKindMismatch never fired. Each RED counts blocking rows of
+// the named class; each control asserts ZERO of that class. -1 on the not-runnable arm keeps
+// could-not-measure out of both >= 1 and == 0.
+//
+// THE SOURCES DECLARE THEIR OWN KIND AND DO NOT IMPORT std.machine_constraints. That is
+// deliberate and it is what lets this file run: compile_dag_diagnostic_census resolves synthetic
+// sources against the live checkout, and a module that leans on live-tree CONTENT must declare
+// ReadsLiveTree, which the required floor declines before the fold sees it -- authored evidence
+// rather than enrolled. A self-contained kind tests the MECHANISM (does a kinded position consult
+// the kind's declared arms) rather than one corpus declaration, so it is both stronger evidence
+// and executable. The corpus-level reading -- that std.integer's four live
+// MachineWidth<PointerWidth> sites compile -- is integration evidence reported in the PR, not a
+// second copy of this claim.
+//
+// TWO ARMS, NOT ONE, AND DO NOT SIMPLIFY IT. WidthResolution is a two-arm coproduct here for the
+// same measured reason std.machine_constraints gives: a single-arm `type K = A` parses as a TYPE
+// ALIAS, reaches the check as a bare nominal with no resolved target and no children, and the wall
+// then refuses its own inhabitant with no diagnostic saying why.
+//
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+fn kind_mismatch_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeArgumentKindMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn type_param_value_position_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeParameterInValuePosition")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn kind_named_non_inhabitant_source() -> String {
+  "module kindprobe.neg_named\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\ntype Use = Width<String>\n\n"
+}
+
+// A plain String where the kind admits StaticWidthIndex or PointerWidth.
+test fn a_named_non_inhabitant_at_a_kinded_position_must_refuse() -> Bool {
+  kind_mismatch_blocking_count(source: kind_named_non_inhabitant_source()) >= 1
+}
+
+fn kind_unrelated_type_source() -> String {
+  "module kindprobe.neg_unrelated\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\ntype UnrelatedType\ntype Use = Width<UnrelatedType>\n\n"
+}
+
+// THE RED THAT SEPARATES THIS WALL FROM A SHAPE PROXY. UnrelatedType is bodyless and therefore
+// STRUCTURALLY IDENTICAL to the arms it is being offered against. Only a check consulting the
+// kind's DECLARED arms can refuse it; a check reading variant shape admits it. This is the
+// property five candidate carriers were chasing, and it is the reason the kind is a coproduct.
+test fn a_bodyless_type_of_the_same_shape_as_an_arm_must_still_refuse() -> Bool {
+  kind_mismatch_blocking_count(source: kind_unrelated_type_source()) >= 1
+}
+
+fn type_param_in_value_position_source() -> String {
+  "module kindprobe.neg_valuepos\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\nfn any_param<T>(x: T) -> Int {\n  T\n}\n\n"
+}
+
+// A type parameter is not a value. `T` in the body of `fn any_param<T>(x: T) -> Int` names a
+// TYPE where a value is required, which is a different class from the kind wall and counts its own.
+test fn a_type_parameter_in_value_position_must_refuse() -> Bool {
+  type_param_value_position_blocking_count(source: type_param_in_value_position_source()) >= 1
+}
+
+fn kind_declared_inhabitant_source() -> String {
+  "module kindprobe.pos_inhabitant\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\ntype Use = Width<PointerWidth>\n\n"
+}
+
+// THE POSITIVE CONTROL, AND THE DEFECT gunbc#11819 LEFT OPEN. Until this passes, every red above
+// is meaningless: a wall that refuses its own declared inhabitant refuses everything, and refusing
+// everything is not discrimination. This claim is what makes the other three citable.
+test fn the_kinds_own_declared_inhabitant_must_be_admitted() -> Bool {
+  kind_mismatch_blocking_count(source: kind_declared_inhabitant_source()) == 0
+}
+
+fn kind_second_arm_source() -> String {
+  "module kindprobe.pos_other_arm\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\ntype Use = Width<StaticWidthIndex>\n\n"
+}
+
+// THE SECOND ARM, because admitting exactly ONE name is indistinguishable from a hardcoded
+// special case for that name. Both declared arms being admitted is what shows the check reads the
+// kind's children rather than matching a spelling.
+test fn the_kinds_other_arm_is_admitted_too_so_the_wall_is_not_pinned_to_one_name() -> Bool {
+  kind_mismatch_blocking_count(source: kind_second_arm_source()) == 0
+}
+
+fn generic_fn_positive_source() -> String {
+  "module kindprobe.pos_generic_fn\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\nfn passes_through<T>(x: T) -> T {\n  x\n}\n\n"
+}
+
+// The value-position wall's own control: a generic function that uses T only as a TYPE is
+// ordinary and must not be caught.
+test fn a_generic_function_not_misusing_its_parameter_still_compiles() -> Bool {
+  type_param_value_position_blocking_count(source: generic_fn_positive_source()) == 0
+}
+
