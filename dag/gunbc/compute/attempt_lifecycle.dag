@@ -1,0 +1,397 @@
+module gunbc.compute.attempt_lifecycle
+
+import std.types { String, Bool, Int, NonEmptyStr }
+import std.content_hash { content_hash_of_value }
+import std.durable_compare_and_set {
+  CasAttempt, cas_attempt, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
+  CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
+  CasReadableSlot, CasReadableAbsent, CasReadablePresent,
+  CasGeneration, cas_generation_count, cas_unreadable_slot_detail,
+  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused,
+}
+import gunbc.durable_cas_file_store {
+  CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
+  CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly,
+  observe_cas_slot_state,
+}
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  JsonString, JsonNumber,
+}
+
+// THE ATTEMPT'S OWN RECORD, AND THE ONE PLACE ITS LIFECYCLE IS DECIDED.
+//
+// gunbc#11962 (PR 1) admits a reservation and releases it when the run ends. What it deliberately
+// does NOT have is a way to give a seat back when that release does not land, and it declares that
+// absence as gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge rather
+// than shipping a recovery whose failure modes would FREE SEATS THAT SHOULD STAY HELD. This module
+// is that capability, and every shape in it exists because one of those failure modes is real.
+//
+// WHY A CAS SLOT AND NOT A FILE, A FLAG OR A RE-LISTING. Recovery and the producer are two
+// principals racing over one attempt, and the question "may this attempt still launch" has to be
+// answered in the SAME step that answers "is this attempt terminal". A file the producer checks and
+// then acts on is two steps with a window between them, and the window is exactly where an unbacked
+// launch lives: reserve, recovery sees no unit and releases, producer spawns against memory nobody
+// holds. So the state lives in a compare-and-set slot and every transition names the generation it
+// expects -- the store decides the winner, and the loser is refused by precondition rather than by
+// noticing afterwards.
+//
+// THE SLOT IS KEYED BY THE RESERVATION REFERENCE, which names ONE HOLD (identity plus the instant
+// it was taken). Keying by work identity would make a retry collide with the attempt it is
+// retrying -- the defect PR 1 already paid for once with its obligation files.
+
+// THE UNIT LIFECYCLE, AND IT IS A UNION OF TWO AXES RATHER THAN EITHER ONE OF THEM.
+//
+// Two lists met here and neither was the answer. PR 1's -- attempt-completed, authoritative-absence,
+// populated, unavailable -- is closest to an OBSERVATION axis: what we were able to learn.
+// The lifecycle brief's -- terminated-success, terminated-failure, still-running, unknown -- is an
+// OUTCOME axis: what happened to the attempt. Making either the carrier and deriving the other
+// loses something real (ruling, loyal-swift-608, 2026-09-21):
+//
+//   FOLDING AUTHORITATIVE ABSENCE INTO A FAILURE ARM IS THE LOSS THAT MATTERS. "The manager has no
+//   record of this unit" and "the attempt failed" are different facts with different evidence, and
+//   only the FIRST is safe to free a seat on WITHOUT an attempt record to consult -- absence needs
+//   no record to be conclusive, while a failure verdict is a claim about a run whose record may not
+//   exist. PR 1 landed that distinction and a derivation must not quietly spend it.
+//
+// So the union keeps every distinction either list carries, and the count is a consequence rather
+// than a target. TerminatedCauseUnknown is PR 1's authoritative absence under the name that says
+// what it is: ended, and nothing here knows why.
+type UnitLifecycle
+  = UnitTerminatedSuccess { detail: String }
+  | UnitTerminatedFailure { detail: String }
+  | UnitTerminatedCauseUnknown { detail: String }
+  | UnitStillRunning { detail: String }
+  | UnitLifecycleUnknown { detail: String }
+
+// THE THREE ENDED ARMS FREE CAPACITY AND THE TWO UNENDED ONES DO NOT, which is the same predicate
+// PR 1 enforced -- every arm it refused on still refuses, and that is asserted ARM BY ARM rather
+// than in aggregate, because a derived predicate that is merely green overall is how a refusal
+// disappears in a refactor.
+fn unit_lifecycle_ended(u: UnitLifecycle) -> Bool {
+  match u {
+    UnitTerminatedSuccess { detail: _ } => true
+    UnitTerminatedFailure { detail: _ } => true
+    UnitTerminatedCauseUnknown { detail: _ } => true
+    UnitStillRunning { detail: _ } => false
+    UnitLifecycleUnknown { detail: _ } => false
+  }
+}
+
+fn unit_lifecycle_wire(u: UnitLifecycle) -> String {
+  match u {
+    UnitTerminatedSuccess { detail: d } => join(["terminated-success (", d, ")"], "")
+    UnitTerminatedFailure { detail: d } => join(["terminated-failure (", d, ")"], "")
+    UnitTerminatedCauseUnknown { detail: d } => join(["terminated, cause unknown (", d, ")"], "")
+    UnitStillRunning { detail: d } => join(["STILL RUNNING (", d, "), so the seat stays charged"], "")
+    UnitLifecycleUnknown { detail: d } => join(["UNKNOWN (", d, "), so the seat stays charged"], "")
+  }
+}
+
+// THE LIFECYCLE STATE THE SLOT CARRIES. Reserved is the only state a launch may proceed from and
+// the only state recovery may terminate from without observing the unit -- because in Reserved no
+// unit exists yet, which is the whole reason the two transitions must exclude each other.
+type AttemptState
+  = AttemptReserved
+  | AttemptLaunching
+  | AttemptTerminal { verdict: String, detail: String }
+
+fn attempt_state_wire(s: AttemptState) -> String {
+  match s {
+    AttemptReserved => "reserved"
+    AttemptLaunching => "launching"
+    AttemptTerminal { verdict: v, detail: _ } => join(["terminal:", v], "")
+  }
+}
+
+// THE RECORD RECOVERY READS INSTEAD OF RECONSTRUCTING. The unit name is written here by the attempt
+// that owns it; recovery never derives it from the identity, a path spelling or a directory listing.
+// That is not tidiness: a derived name is a second authority for the binding, and a recovery acting
+// on a name it invented can stop a unit that belongs to a different attempt.
+type AttemptRecord {
+  identity: String
+  reference: String
+  unit: String
+  granted_kib: Int
+  launch_deadline: Int
+  state: AttemptState
+}
+
+fn attempt_record_json(r: AttemptRecord) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "identity", value: json_string(s: r.identity)),
+    json_kv(key: "reference", value: json_string(s: r.reference)),
+    json_kv(key: "unit", value: json_string(s: r.unit)),
+    json_kv(key: "granted_kib", value: json_int(n: r.granted_kib)),
+    json_kv(key: "launch_deadline", value: json_int(n: r.launch_deadline)),
+    json_kv(key: "state", value: json_string(s: attempt_state_wire(s: r.state))),
+    json_kv(key: "detail", value: json_string(s: match r.state { AttemptTerminal { verdict: _, detail: d } => d  AttemptReserved => ""  AttemptLaunching => "" })),
+  ])
+}
+
+fn attempt_record_wire(r: AttemptRecord) -> String {
+  serialize_json(v: attempt_record_json(r: r))
+}
+
+fn attempt_record_with_state(r: AttemptRecord, state: AttemptState) -> AttemptRecord {
+  AttemptRecord { identity: r.identity, reference: r.reference, unit: r.unit, granted_kib: r.granted_kib, launch_deadline: r.launch_deadline, state: state }
+}
+
+// ── READING THE SLOT, AND UNREADABLE IS NEVER ABSENT ──────────────────────────────────────────
+//
+// This is the absorbing fallback in its purest form and DESIGN 5 makes it a hard reject: a slot
+// that could not be READ and a slot that holds NOTHING are opposite facts with opposite remedies,
+// and collapsing them means a recovery creates state on top of one it merely failed to observe, or
+// a producer launches because it could not tell it had been terminated. Every arm below is typed
+// and none of them widens.
+type AttemptSlotReading
+  = AttemptSlotAbsent
+  | AttemptSlotHeld { record: AttemptRecord, generation: CasGeneration }
+  | AttemptSlotUnreadable { detail: String }
+
+fn attempt_member(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value } => match value { JsonString { value: s } => Present { value: s }  _ => none }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn attempt_member_int(doc: JsonValue, key: String) -> Int? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value } => match value { JsonNumber { lexeme: n } => parse_int(s: n as String)  _ => none }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+// A RECORD THAT DOES NOT DECODE IS UNREADABLE, NOT EMPTY, for the same reason the slot is. The
+// state word is reconstructed from the same spelling attempt_state_wire emits, and a word this fold
+// does not know is unreadable rather than defaulted -- a future state must not read as Reserved,
+// because Reserved is the one state a launch may proceed from.
+fn attempt_record_decode(text: String) -> AttemptRecord? {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: doc } =>
+      match attempt_member(doc: doc, key: "identity") {
+        Absent => none
+        Present { value: identity } =>
+          match attempt_member(doc: doc, key: "reference") {
+            Absent => none
+            Present { value: reference } =>
+              match attempt_member(doc: doc, key: "unit") {
+                Absent => none
+                Present { value: unit } =>
+                  match attempt_member_int(doc: doc, key: "granted_kib") {
+                    Absent => none
+                    Present { value: granted } =>
+                      match attempt_member_int(doc: doc, key: "launch_deadline") {
+                        Absent => none
+                        Present { value: deadline } =>
+                          match attempt_member(doc: doc, key: "state") {
+                            Absent => none
+                            Present { value: word } =>
+                              match attempt_state_decode(word: word, detail: match attempt_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" }) {
+                                Absent => none
+                                Present { value: state } =>
+                                  Present { value: AttemptRecord { identity: identity, reference: reference, unit: unit, granted_kib: granted, launch_deadline: deadline, state: state } }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn attempt_state_decode(word: String, detail: String) -> AttemptState? {
+  if word == "reserved" {
+    Present { value: AttemptReserved }
+  } else if word == "launching" {
+    Present { value: AttemptLaunching }
+  } else if starts_with(s: word, prefix: "terminal:") {
+    Present { value: AttemptTerminal { verdict: substring(s: word, start: length("terminal:"), end: length(word)), detail: detail } }
+  } else {
+    none
+  }
+}
+
+fn attempt_slot_read(root: NonEmptyStr, reference: NonEmptyStr) -> AttemptSlotReading {
+  match observe_cas_slot_state(root: root, key: reference) {
+    CasObservedUnreadable { cause: c } => AttemptSlotUnreadable { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
+    CasObservedReadable { readable: r } =>
+      match r {
+        CasReadableAbsent => AttemptSlotAbsent
+        CasReadablePresent { version: v } =>
+          match attempt_record_decode(text: v.value as String) {
+            Absent => AttemptSlotUnreadable { detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], "") }
+            Present { value: rec } => AttemptSlotHeld { record: rec, generation: v.generation }
+          }
+      }
+  }
+}
+
+// ── THE TRANSITIONS, EACH NAMING THE GENERATION IT EXPECTS ────────────────────────────────────
+//
+// THIS IS WHERE CRITERION 3 LIVES AND IT IS ONE STEP, NOT TWO. A producer that is about to spawn
+// advances Reserved -> Launching expecting the generation it read; recovery that wants to end a
+// reserved-but-unlaunched attempt advances Reserved -> Terminal expecting the SAME generation.
+// The store admits exactly one of them. The loser gets CasPreconditionFailed and, crucially, the
+// losing PRODUCER has not spawned anything yet -- the refusal arrives BEFORE the launch, not after
+// it, which is the difference between a gate and a regret.
+type AttemptTransition
+  = AttemptAdvanced { state: AttemptState, generation: CasGeneration }
+  | AttemptLostRace { expected: String, observed: String }
+  | AttemptTransitionRefused { detail: String }
+
+fn attempt_commit(root: NonEmptyStr, record: AttemptRecord, expected: CasExpectation) -> AttemptTransition {
+  let payload = attempt_record_wire(r: record) as NonEmptyStr
+  match admit_cas_attempt(attempt: cas_attempt(
+    key: record.reference as NonEmptyStr,
+    expected: expected,
+    proposed: payload,
+    proposed_content: content_hash_of_value(value: payload),
+  )) {
+    CasAttemptKeyNotSlotAddressable { key: k } => AttemptTransitionRefused { detail: join(["the reservation reference is not slot-addressable: ", k as String], "") }
+    CasAttemptDigestMismatch { claimed: _, actual: _ } => AttemptTransitionRefused { detail: "the attempt record's digest did not match its bytes" }
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } => AttemptTransitionRefused { detail: "the attempt record's digest was incomparable" }
+    CasAttemptAdmitted { verified: v } =>
+      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
+        CasCommitted { committed: c } => AttemptAdvanced { state: record.state, generation: c.generation }
+        CasPreconditionFailed { expected: e, observed: o } =>
+          AttemptLostRace {
+            expected: match e { ExpectSlotGeneration { generation: g } => join(["generation ", to_string(value: cas_generation_count(g: g))], "")  ExpectSlotAbsent => "an absent slot" },
+            observed: match o { CasReadablePresent { version: v2 } => join(["generation ", to_string(value: cas_generation_count(g: v2.generation))], "")  CasReadableAbsent => "an absent slot" },
+          }
+        CasStoreRefused { cause: c } =>
+          AttemptTransitionRefused {
+            detail: match c {
+              CasSlotObservationRefused { cause: u } => join(["the attempt store refused the read: ", cas_unreadable_slot_detail(cause: u)], "")
+              CasGenerationPublicationRefused { detail: d } => join(["the attempt store refused the write: ", d as String], "")
+            },
+          }
+      }
+  }
+}
+
+// OPENING: the attempt declares itself Reserved, and it must be the FIRST writer of this reference.
+// ExpectSlotAbsent is what makes a duplicated reference a refusal rather than a silent overwrite of
+// somebody else's attempt.
+fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
+  attempt_commit(root: root, record: attempt_record_with_state(r: record, state: AttemptReserved), expected: ExpectSlotAbsent)
+}
+
+// THE LAUNCH GATE. Called BEFORE the unit is spawned, never after.
+fn attempt_begin_launch(root: NonEmptyStr, record: AttemptRecord, expected: CasGeneration) -> AttemptTransition {
+  attempt_commit(root: root, record: attempt_record_with_state(r: record, state: AttemptLaunching), expected: ExpectSlotGeneration { generation: expected })
+}
+
+// THE TERMINAL TRANSITION. Carries the verdict AND why, so the generation that records the end also
+// records the reason -- history the next reader can act on rather than a bare flag.
+fn attempt_terminate(root: NonEmptyStr, record: AttemptRecord, expected: CasGeneration, verdict: String, detail: String) -> AttemptTransition {
+  attempt_commit(
+    root: root,
+    record: attempt_record_with_state(r: record, state: AttemptTerminal { verdict: verdict, detail: detail }),
+    expected: ExpectSlotGeneration { generation: expected })
+}
+
+fn attempt_transition_wire(t: AttemptTransition) -> String {
+  match t {
+    AttemptAdvanced { state: s, generation: g } => join(["advanced to ", attempt_state_wire(s: s), " at generation ", to_string(value: cas_generation_count(g: g))], "")
+    AttemptLostRace { expected: e, observed: o } => join(["lost the race: expected ", e, " and the slot holds ", o], "")
+    AttemptTransitionRefused { detail: d } => join(["refused: ", d], "")
+  }
+}
+
+fn attempt_transition_advanced(t: AttemptTransition) -> Bool {
+  match t {
+    AttemptAdvanced { state: _, generation: _ } => true
+    AttemptLostRace { expected: _, observed: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+}
+
+// ── WHAT MAKES RECOVERY DECIDE AN ATTEMPT IS DEAD ─────────────────────────────────────────────
+//
+// THE GATE ALONE IS NOT ENOUGH AND THIS IS THE GAP IT DOES NOT CLOSE. A compare-and-set decides who
+// WINS a race; it says nothing about whether recovery should have entered the race at all. A
+// producer that is alive and simply has not reached its launch CAS yet sits in Reserved -- exactly
+// the state an impatient recovery would terminate -- and the CAS then makes that outcome look
+// CORRECT rather than wrong: the producer's own CAS refuses, it releases, and the system appears to
+// be working while a legitimate attempt was killed by a bystander (ruling, loyal-swift-608).
+//
+// THE TRIGGER THEREFORE SPLITS ON THE STATE, and the reason is structural rather than a policy
+// choice:
+//
+//   IN Reserved THERE IS NO UNIT TO OBSERVE, so observation is INCAPABLE of distinguishing a
+//   pre-launch producer from a dead one -- both present exactly the same absence. An observational
+//   trigger here would read "nothing there" as "dead", which is criterion 4's absorbing fallback
+//   with the stakes reversed. So the trigger is TEMPORAL, and the window is bounded BY THE
+//   ATTEMPT'S OWN DECLARATION: the producer writes launch_deadline when it opens, and recovery may
+//   not terminate a reserved attempt before it. The producer declares what it needs; recovery
+//   respects what was declared; neither guesses.
+//
+//   IN Launching THE UNIT EXISTS, so the trigger is the five-arm observation and criterion 4
+//   applies in full: only the three ENDED arms may terminate, and still-running or unknown keep the
+//   charge. An unreadable observation is never read as dead.
+//
+// WHAT BOUNDS THE PRE-LAUNCH WINDOW, stated because "bounded by construction" is worth nothing if
+// nobody says by what: between opening and launching, the provider resolves a checkout and builds
+// an argv. That is the whole window, it is the producer's own to declare, and a producer that
+// exceeds its declared budget does not get to launch anyway -- its gate CAS expects the generation
+// recovery has by then moved, so it is refused before it spawns. The deadline does not decide the
+// winner; it decides who may enter.
+type RecoveryTrigger
+  = RecoveryMayTerminate { reason: String }
+  | RecoveryTooEarly { deadline: Int, now: Int }
+  | RecoveryUnitNotEnded { lifecycle: UnitLifecycle }
+  | RecoveryStateNotRecoverable { state: String }
+
+fn recovery_trigger(record: AttemptRecord, lifecycle: UnitLifecycle, now: Int) -> RecoveryTrigger {
+  match record.state {
+    AttemptReserved =>
+      if now < record.launch_deadline {
+        RecoveryTooEarly { deadline: record.launch_deadline, now: now }
+      } else {
+        RecoveryMayTerminate {
+          reason: join([
+            "the attempt declared a launch deadline of ", to_string(value: record.launch_deadline),
+            " and it is now ", to_string(value: now),
+            ", so the window the producer asked for has passed without a launch",
+          ], ""),
+        }
+      }
+    AttemptLaunching =>
+      if unit_lifecycle_ended(u: lifecycle) {
+        RecoveryMayTerminate { reason: join(["the unit is ", unit_lifecycle_wire(u: lifecycle)], "") }
+      } else {
+        RecoveryUnitNotEnded { lifecycle: lifecycle }
+      }
+    AttemptTerminal { verdict: v, detail: _ } => RecoveryStateNotRecoverable { state: join(["terminal:", v], "") }
+  }
+}
+
+fn recovery_trigger_fires(t: RecoveryTrigger) -> Bool {
+  match t {
+    RecoveryMayTerminate { reason: _ } => true
+    RecoveryTooEarly { deadline: _, now: _ } => false
+    RecoveryUnitNotEnded { lifecycle: _ } => false
+    RecoveryStateNotRecoverable { state: _ } => false
+  }
+}
+
+fn recovery_trigger_wire(t: RecoveryTrigger) -> String {
+  match t {
+    RecoveryMayTerminate { reason: r } => join(["may terminate: ", r], "")
+    RecoveryTooEarly { deadline: d, now: n } =>
+      join(["TOO EARLY: the attempt declared a launch deadline of ", to_string(value: d), " and it is only ", to_string(value: n), "; a producer inside its own declared window is not dead"], "")
+    RecoveryUnitNotEnded { lifecycle: u } => join(["the unit has not ended: ", unit_lifecycle_wire(u: u)], "")
+    RecoveryStateNotRecoverable { state: s } => join(["the attempt is already ", s, ", so there is nothing to recover"], "")
+  }
+}

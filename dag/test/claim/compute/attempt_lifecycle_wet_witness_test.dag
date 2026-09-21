@@ -1,0 +1,231 @@
+module test.claim.compute.attempt_lifecycle_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { trim }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count }
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal,
+  AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
+  AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+  attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_advanced, attempt_transition_wire,
+  attempt_state_wire, attempt_record_wire, attempt_record_decode,
+  UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
+  UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
+  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryStateNotRecoverable,
+  recovery_trigger, recovery_trigger_fires, recovery_trigger_wire,
+}
+
+// WET CONTROLS FOR THE ATTEMPT LIFECYCLE. Every transition below is a real compare-and-set against
+// a real generation-file store in a real temporary directory. The exclusion being asserted is the
+// one the operating system performs on the write, not one this witness arranges.
+
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_attempt.XXXXXX").path
+}
+
+fn record_for(reference: String) -> AttemptRecord {
+  AttemptRecord {
+    identity: "abcdef0123456789",
+    reference: reference,
+    unit: join(["gunbc-compute-abcdef0123456789-", reference], ""),
+    granted_kib: 27262976,
+    launch_deadline: 2000,
+    state: AttemptReserved,
+  }
+}
+
+fn generation_of(r: AttemptSlotReading) -> Int {
+  match r {
+    AttemptSlotHeld { record: _, generation: g } => cas_generation_count(g: g)
+    AttemptSlotAbsent => 0
+    AttemptSlotUnreadable { detail: _ } => 0 - 1
+  }
+}
+
+fn state_word_of(r: AttemptSlotReading) -> String {
+  match r {
+    AttemptSlotHeld { record: rec, generation: _ } => attempt_state_wire(s: rec.state)
+    AttemptSlotAbsent => "<absent>"
+    AttemptSlotUnreadable { detail: _ } => "<unreadable>"
+  }
+}
+
+fn held_record(r: AttemptSlotReading) -> AttemptRecord {
+  match r {
+    AttemptSlotHeld { record: rec, generation: _ } => rec
+    AttemptSlotAbsent => record_for(reference: "<absent>")
+    AttemptSlotUnreadable { detail: _ } => record_for(reference: "<unreadable>")
+  }
+}
+
+fn lost_race(t: AttemptTransition) -> Bool {
+  match t {
+    AttemptLostRace { expected: _, observed: _ } => true
+    AttemptAdvanced { state: _, generation: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+}
+
+// CRITERION 3, ORDER ONE: THE TERMINAL TRANSITION WINS AND THE LAUNCH IS REFUSED BEFORE IT SPAWNS.
+//
+// This is the interleaving that produces an unbacked launch if the two steps are not one: the
+// attempt reserves, recovery decides it is dead and terminates it, and THEN the producer -- which
+// has been paused somewhere between reserving and spawning -- goes to launch. With a gate, the
+// producer's compare-and-set is refused against a generation that has moved, and it learns this
+// BEFORE it spawns rather than after. The refusal is the store's, not a check this witness wrote.
+test fn a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet() -> Bool {
+  let root = fresh_root() as NonEmptyStr
+  let record = record_for(reference: "attempt-terminate-first")
+  let opened = attempt_open(root: root, record: record)
+  let after_open = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let terminated = attempt_terminate(root: root, record: record, expected: generation_of(r: after_open), verdict: "recovered", detail: "the producer never launched")
+  let after_terminal = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let late_launch = attempt_begin_launch(root: root, record: record, expected: generation_of(r: after_open))
+  let final_read = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  attempt_transition_advanced(t: opened)
+    && generation_of(r: after_open) == 1
+    && state_word_of(r: after_open) == "reserved"
+    && attempt_transition_advanced(t: terminated)
+    && state_word_of(r: after_terminal) == "terminal:recovered"
+    && lost_race(t: late_launch)
+    && state_word_of(r: final_read) == "terminal:recovered"
+    && generation_of(r: final_read) == 2
+}
+
+// CRITERION 3, ORDER TWO: THE LAUNCH WINS AND RECOVERY IS REFUSED.
+//
+// The mirror, and it is the half that keeps the gate from being a one-way wall: a producer that HAS
+// advanced to launching owns the attempt, and a recovery arriving afterwards must not be able to
+// declare it terminal behind its back -- that is how a live unit's memory gets handed away. Same
+// mechanism, opposite winner, and the loser is again refused by precondition rather than by
+// noticing.
+test fn a_launch_that_won_refuses_a_recovery_arriving_behind_it() -> Bool {
+  let root = fresh_root() as NonEmptyStr
+  let record = record_for(reference: "attempt-launch-first")
+  let opened = attempt_open(root: root, record: record)
+  let after_open = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let launched = attempt_begin_launch(root: root, record: record, expected: generation_of(r: after_open))
+  let after_launch = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let late_recovery = attempt_terminate(root: root, record: record, expected: generation_of(r: after_open), verdict: "recovered", detail: "arrived after the launch")
+  let final_read = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  attempt_transition_advanced(t: opened)
+    && attempt_transition_advanced(t: launched)
+    && state_word_of(r: after_launch) == "launching"
+    && lost_race(t: late_recovery)
+    && state_word_of(r: final_read) == "launching"
+    && generation_of(r: final_read) == 2
+}
+
+// CRITERION 2: THE BINDING IS READ, NOT RECONSTRUCTED. The unit name recovery would act on comes
+// out of the record the attempt wrote, and it survives the round trip through the store bytes. A
+// recovery deriving the name from the identity would be a second authority for the binding, and a
+// wrong derivation stops somebody else's unit.
+test fn the_unit_binding_is_read_back_from_the_record_the_attempt_wrote() -> Bool {
+  let root = fresh_root() as NonEmptyStr
+  let record = record_for(reference: "attempt-binding")
+  let opened = attempt_open(root: root, record: record)
+  let read_back = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let recovered = held_record(r: read_back)
+  attempt_transition_advanced(t: opened)
+    && recovered.unit == record.unit
+    && recovered.identity == record.identity
+    && recovered.reference == record.reference
+    && recovered.granted_kib == 27262976
+    && recovered.unit != record.identity
+}
+
+// CRITERION 6: THE TERMINAL GENERATION CARRIES WHY, AND THE EARLIER GENERATIONS STILL EXIST. The
+// store is generation-suffixed and append-only, so settling does not erase what it settled -- a
+// reader can still see the attempt was reserved and launched before it ended. Recovery that
+// overwrote its own evidence would be indistinguishable from an attempt that had never run.
+test fn settling_records_why_and_does_not_erase_what_it_settled() -> Bool {
+  let root = fresh_root() as NonEmptyStr
+  let record = record_for(reference: "attempt-history")
+  let opened = attempt_open(root: root, record: record)
+  let g1 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let launched = attempt_begin_launch(root: root, record: record, expected: generation_of(r: g1))
+  let g2 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let settled = attempt_terminate(root: root, record: record, expected: generation_of(r: g2), verdict: "released", detail: "unit terminated-failure, exit 101")
+  let g3 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let terminal = held_record(r: g3)
+  attempt_transition_advanced(t: opened) && attempt_transition_advanced(t: launched) && attempt_transition_advanced(t: settled)
+    && generation_of(r: g1) == 1 && generation_of(r: g2) == 2 && generation_of(r: g3) == 3
+    && (match terminal.state { AttemptTerminal { verdict: v, detail: d } => v == "released" && string_contains(s: d, pattern: "exit 101")  AttemptReserved => false  AttemptLaunching => false })
+    && Filesystem.Read(path: join([root as String, "/", record.reference, ".1"], "")).success
+    && Filesystem.Read(path: join([root as String, "/", record.reference, ".2"], "")).success
+    && string_contains(s: Filesystem.Read(path: join([root as String, "/", record.reference, ".1"], "")).content, pattern: "reserved")
+    && string_contains(s: Filesystem.Read(path: join([root as String, "/", record.reference, ".2"], "")).content, pattern: "launching")
+}
+
+// CRITERION 1: FOUR STATES, AND THE TWO THAT MUST NEVER FREE CAPACITY ARE SEPARATE ARMS CARRYING
+// WHY. Still-running and unknown are not one "not ended" bucket: one waits, the other is
+// investigated, and a reader told only "could not establish" has nothing to act on.
+test fn the_union_keeps_every_arm_either_list_carried_and_each_refuses_as_before() -> Bool {
+  unit_lifecycle_ended(u: UnitTerminatedSuccess { detail: "exit 0" })
+    && unit_lifecycle_ended(u: UnitTerminatedFailure { detail: "exit 101" })
+    && unit_lifecycle_ended(u: UnitTerminatedCauseUnknown { detail: "LoadState=not-found" })
+    && !unit_lifecycle_ended(u: UnitStillRunning { detail: "populated 1" })
+    && !unit_lifecycle_ended(u: UnitLifecycleUnknown { detail: "the manager could not be read" })
+    && string_contains(s: unit_lifecycle_wire(u: UnitTerminatedCauseUnknown { detail: "LoadState=not-found" }), pattern: "cause unknown")
+    && string_contains(s: unit_lifecycle_wire(u: UnitStillRunning { detail: "populated 1" }), pattern: "STILL RUNNING")
+    && string_contains(s: unit_lifecycle_wire(u: UnitLifecycleUnknown { detail: "the manager could not be read" }), pattern: "the manager could not be read")
+}
+
+// THE RECOVERY TRIGGER, AND THE ROW THAT MATTERS IS THE FIRST ONE. A producer that is alive and has
+// simply not reached its launch CAS yet sits in Reserved -- indistinguishable by OBSERVATION from a
+// dead one, because in Reserved there is no unit to observe. So recovery must not be able to enter
+// the race at all inside the window the producer declared; the gate decides who wins a race, and
+// this decides who may start one. Without it an impatient recovery kills a live attempt and the CAS
+// makes that outcome look correct.
+test fn recovery_cannot_fire_inside_the_window_the_producer_declared() -> Bool {
+  let record = record_for(reference: "attempt-trigger")
+  let unobservable = UnitLifecycleUnknown { detail: "no unit exists yet, which is what pre-launch looks like" }
+  let early = recovery_trigger(record: record, lifecycle: unobservable, now: 1999)
+  let at_deadline = recovery_trigger(record: record, lifecycle: unobservable, now: 2000)
+  let late = recovery_trigger(record: record, lifecycle: unobservable, now: 2001)
+  !recovery_trigger_fires(t: early)
+    && recovery_trigger_fires(t: at_deadline)
+    && recovery_trigger_fires(t: late)
+    && (match early { RecoveryTooEarly { deadline: d, now: n } => d == 2000 && n == 1999  _ => false })
+    && string_contains(s: recovery_trigger_wire(t: early), pattern: "not dead")
+}
+
+// AND ONCE LAUNCHED THE TRIGGER IS THE OBSERVATION, WITH CRITERION 4 IN FULL. Only the three ended
+// arms may terminate a launched attempt; still-running and unknown keep the charge, and unknown is
+// the one that matters because it is what a lost launcher, an unreadable manager and a missing
+// cgroup all look like.
+test fn a_launched_attempt_is_recovered_only_on_an_ended_unit() -> Bool {
+  let launched = AttemptRecord {
+    identity: "abcdef0123456789", reference: "attempt-launched",
+    unit: "gunbc-compute-abcdef0123456789-attempt-launched", granted_kib: 27262976,
+    launch_deadline: 2000, state: AttemptLaunching,
+  }
+  let terminal = AttemptRecord {
+    identity: "abcdef0123456789", reference: "attempt-done",
+    unit: "gunbc-compute-abcdef0123456789-attempt-done", granted_kib: 27262976,
+    launch_deadline: 2000, state: AttemptTerminal { verdict: "released", detail: "done" },
+  }
+  recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999))
+    && recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitTerminatedFailure { detail: "exit 101" }, now: 9999))
+    && recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitTerminatedCauseUnknown { detail: "LoadState=not-found" }, now: 9999))
+    && !recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitStillRunning { detail: "populated 1" }, now: 9999))
+    && !recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitLifecycleUnknown { detail: "the manager could not be read" }, now: 9999))
+    && !recovery_trigger_fires(t: recovery_trigger(record: terminal, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999))
+    && string_contains(s: recovery_trigger_wire(t: recovery_trigger(record: terminal, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999)), pattern: "nothing to recover")
+}
+
+// CRITERION 4: A SLOT THAT CANNOT BE READ IS NOT AN EMPTY SLOT. The distinction has opposite
+// remedies and opposite hazards -- an unreadable slot read as absent lets a producer open a second
+// attempt over a live one, and lets recovery believe there is nothing to terminate.
+test fn an_undecodable_slot_is_unreadable_and_never_absent() -> Bool {
+  let root = fresh_root() as NonEmptyStr
+  let reference = "attempt-corrupt"
+  let planted = Filesystem.Write(path: join([root as String, "/", reference, ".1"], ""), content: "this is not a json document at all")
+  let reading = attempt_slot_read(root: root, reference: reference as NonEmptyStr)
+  let absent_reading = attempt_slot_read(root: root, reference: "attempt-never-written" as NonEmptyStr)
+  planted.success
+    && (match reading { AttemptSlotUnreadable { detail: d } => string_contains(s: d, pattern: "cannot decode")  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotAbsent => false })
+    && (match absent_reading { AttemptSlotAbsent => true  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotUnreadable { detail: _ } => false })
+}
