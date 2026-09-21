@@ -1,10 +1,12 @@
 module v2.test.v2_native_route
 
+
 import extdeps.bazel.label { LabelParsed, LabelRefused, render_label }
 import extdeps.bazel.target_pattern {
   TargetPatternParsed, TargetPatternRefused, parse_target_pattern, target_pattern_matches
 }
 import gunbc.witness_v2_native_route {
+  native_route_admission_with, NativeRouteLivePairStanding, LivePairRequired, LivePairExpectedRed,
   NativeRouteTestIdentity, native_route_identity_qualified, native_route_identities_unique,
   native_route_identity_member,
   native_route_universe_member,
@@ -552,7 +554,7 @@ test fn the_census_counts_every_disposition() -> Bool {
 // ── admission: the green shape ─────────────────────────────────────────────────────────────
 
 test fn a_green_receipt_is_admitted() -> Bool {
-  native_route_admitted(admission: native_route_admission(receipt: green_receipt()))
+  native_route_admitted(admission: native_route_admission_with(live_pair: LivePairRequired, receipt: green_receipt()))
 }
 
 // ── admission: well-formedness clauses ─────────────────────────────────────────────────────
@@ -576,7 +578,7 @@ test fn the_wrong_job_name_is_refused() -> Bool {
     emitted_build: green_receipt().emitted_build
   }
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
     cause_name: "job_name_mismatch"
   )
 }
@@ -600,7 +602,7 @@ test fn an_unrecorded_tested_tree_is_refused() -> Bool {
     emitted_build: green_receipt().emitted_build
   }
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
     cause_name: "tested_tree_unrecorded"
   )
 }
@@ -624,7 +626,7 @@ test fn an_unrecorded_preparation_seed_is_refused() -> Bool {
     emitted_build: green_receipt().emitted_build
   }
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
     cause_name: "preparation_seed_unrecorded"
   )
 }
@@ -648,7 +650,7 @@ test fn an_unrecorded_emitted_closure_is_refused() -> Bool {
     emitted_build: green_receipt().emitted_build
   }
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
     cause_name: "emitted_closure_unrecorded"
   )
 }
@@ -690,11 +692,11 @@ test fn an_unrecorded_route_identity_is_refused() -> Bool {
     emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: no_path),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: no_path),
     cause_name: "route_identity_unrecorded"
   )
   && native_route_admission_refused_with(
-    admission: native_route_admission(receipt: no_identity),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: no_identity),
     cause_name: "route_identity_unrecorded"
   )
 }
@@ -703,7 +705,7 @@ test fn an_unrecorded_route_identity_is_refused() -> Bool {
 
 test fn an_empty_universe_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(universe: [], module_source_index: [], population: [], file_refusals: [])),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(universe: [], module_source_index: [], population: [], file_refusals: [])),
     cause_name: "universe_underived"
   )
 }
@@ -711,7 +713,7 @@ test fn an_empty_universe_is_refused() -> Bool {
 test fn a_duplicated_universe_is_refused() -> Bool {
   let member = test_identity(module: "v2.test.alpha", declaration: "passes")
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [member, member],
       module_source_index: [],
       population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
@@ -723,7 +725,7 @@ test fn a_duplicated_universe_is_refused() -> Bool {
 
 test fn a_foreign_universe_member_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [test_identity(module: "v2.compiler.compile", declaration: "not_a_test")],
       module_source_index: [],
       population: [passed_row(module: "v2.compiler.compile", declaration: "not_a_test")],
@@ -737,7 +739,7 @@ test fn a_foreign_universe_member_is_refused() -> Bool {
 
 test fn a_duplicated_population_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
       module_source_index: [],
       population: [
@@ -752,7 +754,7 @@ test fn a_duplicated_population_is_refused() -> Bool {
 
 test fn a_foreign_population_row_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
       module_source_index: [],
       population: [
@@ -767,7 +769,7 @@ test fn a_foreign_population_row_is_refused() -> Bool {
 
 test fn an_omitted_population_row_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [
         test_identity(module: "v2.test.alpha", declaration: "passes"),
         test_identity(module: "v2.test.beta", declaration: "missing")
@@ -784,7 +786,7 @@ test fn an_omitted_population_row_is_refused() -> Bool {
 
 test fn an_all_refused_population_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [test_identity(module: "v2.test.alpha", declaration: "blocked")],
       module_source_index: [],
       population: [refused_row(
@@ -806,7 +808,7 @@ test fn an_all_refused_population_is_refused() -> Bool {
 // the identity.
 test fn a_regressed_required_native_pass_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [smoke_identity()],
       module_source_index: [smoke_source_row()],
       population: [refused_row(
@@ -826,7 +828,7 @@ test fn a_regressed_required_native_pass_is_refused() -> Bool {
 // only wall, and it reads the roster against the OBSERVED population.
 test fn an_omitted_required_native_pass_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
       module_source_index: [],
       population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
@@ -843,7 +845,7 @@ test fn the_ratchet_roster_is_the_smoke_member_alone_today() -> Bool {
 
 test fn a_divergence_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [test_identity(module: "v2.test.alpha", declaration: "lies")],
       module_source_index: [],
       population: [false_row(module: "v2.test.alpha", declaration: "lies")],
@@ -855,7 +857,7 @@ test fn a_divergence_is_refused() -> Bool {
 
 test fn an_unattributed_exclusion_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [
         test_identity(module: "v2.test.alpha", declaration: "passes"),
         test_identity(module: "v2.test.beta", declaration: "blocked")
@@ -880,7 +882,7 @@ test fn an_unattributed_exclusion_is_refused() -> Bool {
 
 test fn an_unattributed_file_refusal_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
       module_source_index: [],
       population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
@@ -896,7 +898,7 @@ test fn an_unattributed_file_refusal_is_refused() -> Bool {
 
 test fn an_unattributed_head_advisory_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
       module_source_index: [],
       population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
@@ -914,7 +916,7 @@ test fn an_unattributed_head_advisory_is_refused() -> Bool {
 
 test fn a_context_refusal_without_its_file_refusal_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [
         test_identity(module: "v2.test.alpha", declaration: "passes"),
         test_identity(module: "v2.test.beta", declaration: "blocked")
@@ -942,7 +944,7 @@ test fn a_context_refusal_without_its_file_refusal_is_refused() -> Bool {
 // (any file anywhere with the reason) this receipt was admitted.
 test fn a_context_refusal_backed_by_another_modules_file_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [
         test_identity(module: "v2.test.alpha", declaration: "passes"),
         test_identity(module: "v2.test.beta", declaration: "blocked")
@@ -974,7 +976,7 @@ test fn a_context_refusal_backed_by_another_modules_file_is_refused() -> Bool {
 // refusal's path, but the file refused for a different cause than the row carries.
 test fn a_context_refusal_at_its_own_path_with_the_wrong_reason_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_over(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
       universe: [
         test_identity(module: "v2.test.alpha", declaration: "passes"),
         test_identity(module: "v2.test.beta", declaration: "blocked")
@@ -1002,7 +1004,7 @@ test fn a_context_refusal_at_its_own_path_with_the_wrong_reason_is_refused() -> 
 }
 
 test fn a_context_refusal_backed_by_its_file_refusal_is_not_refused_on_that_clause() -> Bool {
-  let admission = native_route_admission(receipt: receipt_over(
+  let admission = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
     universe: [
       test_identity(module: "v2.test.alpha", declaration: "passes"),
       test_identity(module: "v2.test.beta", declaration: "blocked"),
@@ -1058,7 +1060,7 @@ test fn a_missing_false_control_is_refused() -> Bool {
     emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
     cause_name: "false_control_not_observed"
   )
 }
@@ -1083,7 +1085,7 @@ test fn a_passed_false_control_is_refused() -> Bool {
     emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
     cause_name: "false_control_not_observed"
   )
 }
@@ -1108,7 +1110,7 @@ test fn a_missing_true_control_is_refused() -> Bool {
     emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
     cause_name: "true_control_not_observed"
   )
 }
@@ -1133,7 +1135,7 @@ test fn a_falsified_true_control_is_refused() -> Bool {
     emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
     cause_name: "true_control_not_observed"
   )
 }
@@ -1158,7 +1160,7 @@ test fn an_accepted_malformed_specimen_is_refused() -> Bool {
     emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
     cause_name: "malformed_control_accepted_by_route"
   )
 }
@@ -1183,7 +1185,7 @@ test fn an_absent_old_route_control_is_refused() -> Bool {
     emitted_build: base.emitted_build
   }
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
     cause_name: "old_route_control_never_installed"
   )
 }
@@ -1214,7 +1216,7 @@ fn receipt_with_build(build: NativeRouteEmittedBuild) -> NativeRouteReceipt {
 test fn an_unbound_compiler_is_refused() -> Bool {
   let base = clean_emitted_build()
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_with_build(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
       build: NativeRouteEmittedBuild {
         cargo_argv: base.cargo_argv,
         rustflags: base.rustflags,
@@ -1227,14 +1229,14 @@ test fn an_unbound_compiler_is_refused() -> Bool {
     cause_name: "emitted_build_compiler_unbound"
   )
   && !native_route_admission_refused_with(
-    admission: native_route_admission(receipt: green_receipt()),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: green_receipt()),
     cause_name: "emitted_build_compiler_unbound"
   )
 }
 
 test fn an_unrecorded_rustc_identity_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt_with_build(
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
       build: emitted_build_with(rustflags: repo_self_warning_denial_rustflags(), rustc_identity: "", exit_status: 0, warning_count: 0)
     )),
     cause_name: "emitted_build_rustc_unrecorded"
@@ -1245,25 +1247,25 @@ test fn an_unrecorded_rustc_identity_is_refused() -> Bool {
 // denial beside something else are both a different build environment from the one the receipt
 // claims, and both refuse by the same name.
 test fn rustflags_without_the_exact_denial_are_refused() -> Bool {
-  let inherited_none = native_route_admission(receipt: receipt_with_build(
+  let inherited_none = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
     build: emitted_build_with(rustflags: "", rustc_identity: "rustc 1.93.0", exit_status: 0, warning_count: 0)
   ))
-  let widened = native_route_admission(receipt: receipt_with_build(
+  let widened = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
     build: emitted_build_with(rustflags: concat(repo_self_warning_denial_rustflags(), " -C opt-level=3"), rustc_identity: "rustc 1.93.0", exit_status: 0, warning_count: 0)
   ))
   native_route_admission_refused_with(admission: inherited_none, cause_name: "emitted_build_warnings_not_denied")
   && native_route_admission_refused_with(admission: widened, cause_name: "emitted_build_warnings_not_denied")
   && !native_route_admission_refused_with(
-    admission: native_route_admission(receipt: green_receipt()),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: green_receipt()),
     cause_name: "emitted_build_warnings_not_denied"
   )
 }
 
 test fn a_warning_or_a_non_zero_status_on_the_emitted_build_is_refused() -> Bool {
-  let warned = native_route_admission(receipt: receipt_with_build(
+  let warned = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
     build: emitted_build_with(rustflags: repo_self_warning_denial_rustflags(), rustc_identity: "rustc 1.93.0", exit_status: 0, warning_count: 1)
   ))
-  let failed = native_route_admission(receipt: receipt_with_build(
+  let failed = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
     build: emitted_build_with(rustflags: repo_self_warning_denial_rustflags(), rustc_identity: "rustc 1.93.0", exit_status: 101, warning_count: 0)
   ))
   native_route_admission_refused_with(admission: warned, cause_name: "emitted_build_not_clean")
@@ -1273,7 +1275,7 @@ test fn a_warning_or_a_non_zero_status_on_the_emitted_build_is_refused() -> Bool
 // ── admission: the fold collects every violated clause ─────────────────────────────────────
 
 test fn one_red_run_names_every_violated_clause() -> Bool {
-  let admission = native_route_admission(receipt: NativeRouteReceipt {
+  let admission = native_route_admission_with(live_pair: LivePairRequired, receipt: NativeRouteReceipt {
     job: "wrong-job",
     tested_tree: "",
     preparation_seed_identity: "",
@@ -1309,7 +1311,7 @@ test fn one_red_run_names_every_violated_clause() -> Bool {
 }
 
 test fn the_admission_summary_names_every_violated_clause() -> Bool {
-  native_route_admission_summary(admission: native_route_admission(receipt: NativeRouteReceipt {
+  native_route_admission_summary(admission: native_route_admission_with(live_pair: LivePairRequired, receipt: NativeRouteReceipt {
     job: "wrong-job",
     tested_tree: "",
     preparation_seed_identity: "",
@@ -1429,7 +1431,7 @@ test fn an_old_route_absent_for_the_window_closes_the_fallback() -> Bool {
   let receipt = green_receipt_with_old_route_control(
     control: OldRouteNotPresentAtWindow { expected_executable: "target/release/gunbc" }
   )
-  native_route_admitted(admission: native_route_admission(receipt: receipt))
+  native_route_admitted(admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt))
 }
 
 test fn an_absent_old_route_naming_nothing_is_refused() -> Bool {
@@ -1437,7 +1439,7 @@ test fn an_absent_old_route_naming_nothing_is_refused() -> Bool {
     control: OldRouteNotPresentAtWindow { expected_executable: "" }
   )
   native_route_admission_refused_with(
-    admission: native_route_admission(receipt: receipt),
+    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt),
     cause_name: "old_route_control_never_installed"
   )
 }
@@ -1568,4 +1570,85 @@ test fn the_refusal_tally_counts_each_refusal_once_at_fatal_grain() -> Bool {
   (native_route_tally_count_for(rows: rows, cause: ^parse_g0_tokens_remain) == 2)
   && (native_route_tally_count_for(rows: rows, cause: ^resolve_reason_unbound_symbol) == 1)
   && (fold_list(xs: rows, empty: 0, cons: fn(acc, row) { acc + row.file_refusals }) == 3)
+}
+
+// ── the live pair, enrolled expecting-red (manager ruling 2026-09-21) ──
+
+fn refused_control(reason: Symbol, at_prepare: Bool) -> Optional<NativeTestVerdict> {
+  Present {
+    value: refused_verdict(
+      stage: if at_prepare { NativeTestStagePrepare } else { NativeTestStageContext },
+      reason: reason
+    )
+  }
+}
+
+fn receipt_with_controls(false_control: Optional<NativeTestVerdict>, true_control: Optional<NativeTestVerdict>) -> NativeRouteReceipt {
+  let base = green_receipt()
+  NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: base.executable_path,
+    executable_identity: base.executable_identity,
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: false_control,
+    true_control: true_control,
+    malformed_control: base.malformed_control,
+    old_route_control: base.old_route_control,
+    emitted_build: base.emitted_build
+  }
+}
+
+fn pinned() -> NativeRouteLivePairStanding {
+  LivePairExpectedRed { stage: NativeTestStagePrepare, reason: ^resolve_ambiguous_on_global_bare, trigger: "t" }
+}
+
+// Enrolled and holding: both controls refuse at the pinned stage with the pinned reason, and the
+// otherwise-green receipt is admitted. The production standing (the data row) is exercised by the
+// same receipt through `native_route_admission`, so a data row pinned to anything else reds here.
+test fn an_enrolled_live_pair_holds_only_at_its_pinned_refusal() -> Bool {
+  let r = receipt_with_controls(
+    false_control: refused_control(reason: ^resolve_ambiguous_on_global_bare, at_prepare: true),
+    true_control: refused_control(reason: ^resolve_ambiguous_on_global_bare, at_prepare: true)
+  )
+  native_route_admitted(admission: native_route_admission_with(receipt: r, live_pair: pinned()))
+  && native_route_admitted(admission: native_route_admission(receipt: r))
+  && !native_route_admitted(admission: native_route_admission_with(receipt: r, live_pair: LivePairRequired))
+}
+
+// The flip signal: an observed control while enrolled refuses by its own name.
+test fn an_observed_live_pair_while_enrolled_demands_the_flip() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(receipt: green_receipt(), live_pair: pinned()),
+    cause_name: "live_pair_observed_while_enrolled_red"
+  )
+}
+
+// A moved wall: a different reason, or a different stage, is not the enrollment.
+test fn a_live_pair_refused_for_another_cause_is_not_the_enrollment() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission_with(
+      receipt: receipt_with_controls(
+        false_control: refused_control(reason: ^resolve_reason_unbound_symbol, at_prepare: true),
+        true_control: refused_control(reason: ^resolve_ambiguous_on_global_bare, at_prepare: true)
+      ),
+      live_pair: pinned()
+    ),
+    cause_name: "false_control_not_observed"
+  )
+  && native_route_admission_refused_with(
+    admission: native_route_admission_with(
+      receipt: receipt_with_controls(
+        false_control: refused_control(reason: ^resolve_ambiguous_on_global_bare, at_prepare: true),
+        true_control: refused_control(reason: ^resolve_ambiguous_on_global_bare, at_prepare: false)
+      ),
+      live_pair: pinned()
+    ),
+    cause_name: "true_control_not_observed"
+  )
 }
