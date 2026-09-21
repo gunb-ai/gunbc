@@ -10,7 +10,7 @@ import extdeps.uri { Uri, Https }
 
 // RFC 7468, Textual Encodings of PKIX, PKCS, and CMS Structures: §2 (the general encapsulation:
 // a "-----BEGIN <label>-----" line, base64 body lines, "-----END <label>-----"), §5.1 (the
-// CERTIFICATE label). One block per text; a text that is not exactly one labelled block refuses.
+// CERTIFICATE label). One block per text, enforced by pem_decode below.
 data rfc_7468_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -25,6 +25,9 @@ data pem_certificate_label: String = "CERTIFICATE"
 type PemRefusal
   = PemBeginLineAbsent { expected_label: String }
   | PemEndLineAbsent { expected_label: String }
+  | PemMoreThanOneBlock { begin_lines: Int, end_lines: Int }
+  | PemEndBeforeBegin
+  | PemTextOutsideTheBlock { line: Int }
   | PemBodyNotBase64
 
 type PemDecode
@@ -39,21 +42,66 @@ fn pem_end_line(label: String) -> String {
   "-----END " + label + "-----"
 }
 
-fn pem_is_body_line(line: String, label: String) -> Bool {
-  line != "" && line != pem_begin_line(label: label) && line != pem_end_line(label: label)
+// Indices of the lines equal to `needle`, in order.
+type PemLineScan {
+  index: Int
+  hits: List<Int>
 }
 
-// The base64 body is the lines strictly between the BEGIN and END lines, joined without the line
-// breaks (§2: whitespace is not part of the encoding).
+fn pem_line_indices(lines: List<String>, needle: String) -> List<Int> {
+  fold(lines, init: PemLineScan { index: 0, hits: [] }, f: (acc, l) =>
+    PemLineScan { index: acc.index + 1, hits: if l == needle { acc.hits |> list_push(acc.index) } else { acc.hits } }
+  ).hits
+}
+
+// The first line outside [begin, end] that is not blank, if any.
+fn pem_first_line_outside(lines: List<String>, begin: Int, end: Int) -> Int? {
+  pem_first_index(hits: fold(lines, init: PemLineScan { index: 0, hits: [] }, f: (acc, l) =>
+    PemLineScan {
+      index: acc.index + 1,
+      hits: if (acc.index < begin || acc.index > end) && l != "" && count(acc.hits) == 0 { acc.hits |> list_push(acc.index) } else { acc.hits },
+    }
+  ).hits)
+}
+
+fn pem_first_index(hits: List<Int>) -> Int? {
+  match hits |> get(0) {
+    null => none
+    i => Present { value: i }
+  }
+}
+
+// EXACTLY ONE BLOCK AND NOTHING ELSE (review 69597 of gunbc#11975): one BEGIN line, one END line
+// after it, the base64 body strictly between them, and no non-blank line outside them -- a second
+// block, a preamble or a trailer refuses rather than being spliced into the trust anchor's DER.
 fn pem_decode(text: String, label: String) -> PemDecode {
   let lines = text.split(delimiter: "\n") |> map(l => trim(s: l))
-  if !any(lines, l => l == pem_begin_line(label: label)) { PemRefused { cause: PemBeginLineAbsent { expected_label: label } } }
-  else if !any(lines, l => l == pem_end_line(label: label)) { PemRefused { cause: PemEndLineAbsent { expected_label: label } } }
+  let begins = pem_line_indices(lines: lines, needle: pem_begin_line(label: label))
+  let ends = pem_line_indices(lines: lines, needle: pem_end_line(label: label))
+  if count(begins) == 0 { PemRefused { cause: PemBeginLineAbsent { expected_label: label } } }
+  else if count(ends) == 0 { PemRefused { cause: PemEndLineAbsent { expected_label: label } } }
+  else if count(begins) != 1 || count(ends) != 1 { PemRefused { cause: PemMoreThanOneBlock { begin_lines: count(begins), end_lines: count(ends) } } }
   else {
-    let body = join(filter(lines, l => pem_is_body_line(line: l, label: label)), "")
-    match base64_decode(s: body, variant: Standard) {
-      Absent => PemRefused { cause: PemBodyNotBase64 }
-      Present { value: der } => PemDecoded { der: der }
+    let begin = match begins |> get(0) {
+      null => 0
+      i => i
+    }
+    let end = match ends |> get(0) {
+      null => 0
+      i => i
+    }
+    if end <= begin { PemRefused { cause: PemEndBeforeBegin } }
+    else {
+      match pem_first_line_outside(lines: lines, begin: begin, end: end) {
+        Present { value: i } => PemRefused { cause: PemTextOutsideTheBlock { line: i } }
+        Absent => {
+          let body = join(lines |> skip(begin + 1) |> take(end - begin - 1), "")
+          match base64_decode(s: body, variant: Standard) {
+            Absent => PemRefused { cause: PemBodyNotBase64 }
+            Present { value: der } => PemDecoded { der: der }
+          }
+        }
+      }
     }
   }
 }

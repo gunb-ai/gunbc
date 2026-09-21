@@ -471,7 +471,7 @@ fn bundle_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> Atte
   }
 }
 
-fn first_refusal(rs: List<AttestationRefusal?>) -> AttestationRefusal? {
+fn first_attestation_refusal(rs: List<AttestationRefusal?>) -> AttestationRefusal? {
   fold(rs, init: none, f: (acc, r) => match acc {
     Present { value: a } => Present { value: a }
     Absent => r
@@ -495,7 +495,7 @@ fn attestation_structural_refusal(parts: AttestationParts, leaf: X509Certificate
   let client_data_hash = sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.client_data as String)))
   let nonce = sha256(message: concat(parts.auth_data, client_data_hash))
   let credential = auth.attested_credential
-  first_refusal(rs: [
+  first_attestation_refusal(rs: [
     if count(key_id_octets) != 32 { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } } else { none },
     match credential_certificate_nonce(leaf: leaf) {
       Absent => Present { value: AttestationNonceMismatch }
@@ -540,7 +540,7 @@ fn attestation_refusal(object: List<UInt8>, e: AttestationExpectation) -> Attest
                       match attestation_structural_refusal(parts: parts, leaf: leaf, ca: ca, root: root, auth: auth, e: e) {
                         Present { value: r } => Present { value: r }
                         Absent =>
-                          first_refusal(rs: [
+                          first_attestation_refusal(rs: [
                             chain_link_refusal(subject: leaf, issuer: ca, which: "credential certificate"),
                             chain_link_refusal(subject: ca, issuer: root, which: "intermediate"),
                           ])
@@ -691,9 +691,13 @@ fn assertion_refusal(object: List<UInt8>, e: AssertionExpectation) -> AssertionR
 }
 
 // Steps 1-3 alone: nonce = SHA-256(authenticatorData || SHA-256(clientData)), and the DER
-// signature verifies for it under the stored P-256 key. Its own producer so it can be claimed
-// over real bytes independently of the structural steps (the sample assertion predates the
-// extensions steps 7 and 8 read, so the whole fold refuses on it before this runs).
+// signature verifies for it under the stored P-256 key. THE NONCE IS THE SIGNED MESSAGE, NOT THE
+// DIGEST: Apple's "signature is valid for nonce" is an ECDSA-with-SHA256 signature over the
+// 32-octet nonce, so the curve verifier receives SHA-256(nonce). Established on the sample by
+// execution -- the fold first supplied the nonce as the digest and Apple's real signature refused,
+// while openssl `dgst -sha256 -verify` over the nonce bytes accepted it. Its own producer so it
+// can be claimed over real bytes independently of the structural steps (the sample assertion
+// predates the extensions steps 7 and 8 read, so the whole fold refuses on it before this runs).
 fn assertion_signature_verifies(parts: AssertionParts, e: AssertionExpectation) -> Bool? {
   let client_data_hash = sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.client_data as String)))
   let nonce = sha256(message: concat(parts.auth_octets, client_data_hash))
@@ -701,7 +705,7 @@ fn assertion_signature_verifies(parts: AssertionParts, e: AssertionExpectation) 
     Absent => none
     Present { value: key } =>
       match ecdsa_sig_value(octets: parts.signature, width: 32) {
-        EcdsaSigValueRead { r_s_fixed: rs } => curve_ecdsa_verify_octets(c: p256_curve, key: key, signature: rs, digest: nonce)
+        EcdsaSigValueRead { r_s_fixed: rs } => curve_ecdsa_verify_octets(c: p256_curve, key: key, signature: rs, digest: sha256(message: nonce))
         _ => none
       }
   }

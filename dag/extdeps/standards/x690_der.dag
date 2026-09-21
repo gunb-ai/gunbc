@@ -284,8 +284,13 @@ type DerOidFold {
   malformed: Bool
 }
 
+// §8.19.2: each subidentifier is encoded in the fewest octets, so its first octet is never 0x80
+// -- a leading continuation octet carrying zero would give one value two encodings, which is
+// exactly what DER forbids (review 69597 of gunbc#11975). Refused at the octet, before it folds.
 fn der_oid_step(f: DerOidFold, o: Int) -> DerOidFold {
-  if f.malformed { f } else {
+  if f.malformed { f }
+  else if !f.in_progress && o == 128 { DerOidFold { components: f.components, pending: 0, in_progress: false, first: f.first, malformed: true } }
+  else {
     let value = f.pending * 128 + (o % 128)
     if o >= 128 {
       DerOidFold { components: f.components, pending: value, in_progress: true, first: f.first, malformed: false }

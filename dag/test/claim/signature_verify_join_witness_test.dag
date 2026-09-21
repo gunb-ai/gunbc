@@ -1,0 +1,48 @@
+module test.claim.signature_verify_join_witness_test
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import std.measure { byte_size_count }
+import extdeps.crypto.signature {
+  VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth,
+  SignatureVerified, SignatureInvalid, SignatureMalformed, VerifyingKeyMalformed, verify_signature,
+}
+
+// THE JOIN between the wire carriers and the .dag curve verifier, claimed on RFC 6979 §A.2.5's
+// P-256 / SHA-256 key and "sample" signature as base64url carriers -- the same vectors
+// test.claim.p256_dag_ecdsa_witness_test verifies as octets, here reaching the seam through
+// verify_signature. The two verification claims are one interpreted P-256 verify each
+// (gunbc#11645's cost shape); the malformed-carrier claims refuse before any arithmetic.
+
+data rfc6979_key_wire: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BGD-1LolWp0xyWHrdMY1bWjASbiSO2H6bOZpYi5g8p-2eQP-EAi4vJmkGunpVii8ZPLxsgwtfp9Rd6PClNRGIpk=" }
+data rfc6979_sample_sig_wire: SignatureBytes = SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "79SLKqy2qP0RQN2c1F6B1p0sh3tWqvmRw00OqE6vNxb3yxyULWV8QdQ2x6G24p9l8-kA27mv9AZNxKsvhDrNqA==" }
+
+// A 33-octet key presents to the seam as malformed by size, named against the suite's 65; a
+// carrier that is not base64 presents as size 0.
+test fn malformed_carriers_refuse_before_the_curve() -> Bool {
+  match verify_signature(key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "AwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIj" }, signature: rfc6979_sample_sig_wire, message: "sample") {
+    VerifyingKeyMalformed { declared: d, expected: e } =>
+      byte_size_count(b: d) == 33 && byte_size_count(b: e) == 65
+        && match verify_signature(key: rfc6979_key_wire, signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "not*base64" }, message: "sample") {
+          SignatureMalformed { declared: d2, expected: e2 } => byte_size_count(b: d2) == 0 && byte_size_count(b: e2) == 64
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// The verified value carries the message and the key it was verified over.
+test fn the_rfc6979_sample_verifies_through_the_seam() -> Bool {
+  match verify_signature(key: rfc6979_key_wire, signature: rfc6979_sample_sig_wire, message: "sample") {
+    SignatureVerified { verified: v } => v.message == "sample" && v.key.point_b64url == rfc6979_key_wire.point_b64url
+    _ => false
+  }
+}
+
+// The same signature over "test" is SignatureInvalid, not a refusal of the carriers.
+test fn the_rfc6979_sample_is_invalid_over_another_message() -> Bool {
+  match verify_signature(key: rfc6979_key_wire, signature: rfc6979_sample_sig_wire, message: "test") {
+    SignatureInvalid { suite: EcdsaP256Sha256 } => true
+    _ => false
+  }
+}

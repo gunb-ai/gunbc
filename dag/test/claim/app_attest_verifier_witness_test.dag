@@ -38,7 +38,7 @@ fn sample_expectation() -> AttestationExpectation {
   }
 }
 
-fn refusal_of(e: AttestationExpectation) -> String {
+fn sample_attestation_refusal_of(e: AttestationExpectation) -> String {
   match verify_attestation(object: sample_attestation_octets, e: e) {
     AttestationVerified { verified: _ } => "verified"
     AttestationRefused { cause: c } => match c {
@@ -60,18 +60,18 @@ fn refusal_of(e: AttestationExpectation) -> String {
 // Steps 2-8 and the chain's names and validity pass on the real object; the first refusal is
 // step 9's absence, which the 2021 sample cannot satisfy.
 test fn the_sample_passes_every_step_before_the_extension_steps() -> Bool {
-  refusal_of(e: sample_expectation()) == "category-absent"
+  sample_attestation_refusal_of(e: sample_expectation()) == "category-absent"
 }
 
 // Each earlier step reds by name when its expectation is wrong: client data (nonce), key id,
 // App ID, environment; and observing it in 2026 finds the credential certificate expired.
 test fn each_expectation_reds_its_own_step() -> Bool {
   let e = sample_expectation()
-  refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "nonce"
-    && refusal_of(e: AttestationExpectation { key_id: "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3Q=" as AttestKeyId, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "key-id"
-    && refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: "6MURL8TA57.de.vincent-haupert.other" as NonEmptyStr, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "app-id"
-    && refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: AppAttestProduction, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "environment"
-    && refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: "2026-09-21T00:00:00Z", admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "chain:credential certificate expired at 2021-01-25T12:13:35Z"
+  sample_attestation_refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "nonce"
+    && sample_attestation_refusal_of(e: AttestationExpectation { key_id: "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3Q=" as AttestKeyId, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "key-id"
+    && sample_attestation_refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: "6MURL8TA57.de.vincent-haupert.other" as NonEmptyStr, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "app-id"
+    && sample_attestation_refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: AppAttestProduction, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "environment"
+    && sample_attestation_refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: "2026-09-21T00:00:00Z", admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "chain:credential certificate expired at 2021-01-25T12:13:35Z"
 }
 
 // The object with one octet of "apple-appattest" changed refuses as a format it does not know;

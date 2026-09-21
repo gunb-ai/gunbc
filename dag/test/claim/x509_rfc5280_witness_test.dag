@@ -11,7 +11,7 @@ import extdeps.standards.rfc_8949 {
 }
 import extdeps.standards.x690_der {
   DerElement, DerRefusal, DerElementRead, DerRefused, der_read_element, der_read_document, DerDocumentRead, DerDocumentRefused,
-  der_children, DerChildrenRead, DerChildrenRefused, der_child_at, der_object_identifier, DerOidRead, DerOidRefused, der_value,
+  der_children, DerChildrenRead, DerChildrenRefused, der_child_at, der_object_identifier, DerOidRead, DerOidRefused, DerObjectIdentifierMalformed, der_value,
   DerIndefiniteLengthRefused, DerLengthNotMinimal, DerHighTagNumberRefused, DerTruncated, DerTrailingOctets, DerBitStringUnusedBitsRefused,
   der_bit_string_octets, DerBitsRead, DerBitsRefused, der_unsigned_integer, DerUnsignedRead, DerUnsignedRefused, DerIntegerMalformed, DerContextSpecific,
   der_expect_sequence, der_expect, der_tag_octet_string,
@@ -22,7 +22,7 @@ import extdeps.standards.rfc_5280 {
   ecdsa_sig_value, EcdsaSigValueRead, EcdsaSigValueRefused, EcdsaSigValueTooWide,
   oid_ecdsa_with_sha256, oid_ecdsa_with_sha384, oid_id_ec_public_key, oid_prime256v1, oid_secp384r1,
 }
-import extdeps.standards.rfc_7468 { pem_decode, PemDecoded, PemRefused, PemBeginLineAbsent, pem_certificate_label }
+import extdeps.standards.rfc_7468 { pem_decode, PemDecoded, PemRefused, PemBeginLineAbsent, PemMoreThanOneBlock, PemTextOutsideTheBlock, PemEndBeforeBegin, pem_certificate_label }
 import extdeps.standards.rfc_9052 { CoseEc2P256KeyRead, CoseEc2P256KeyRefused, cose_ec2_p256_key }
 import extdeps.standards.webauthn_authenticator_data { AuthenticatorDataDecoded, AuthenticatorDataRefused, decode_authenticator_data }
 import extdeps.apple.app_attest { apple_app_attestation_root_ca_pem, app_attest_nonce_extension_oid, app_attest_nonce_extension_context_tag }
@@ -288,13 +288,23 @@ test fn der_walls_refuse_by_name() -> Bool {
   indefinite && not_minimal && high_tag && unused_bits && leading_zero && negative
 }
 
-// The OID decoder on Apple's nonce OID as DER (06 09 2a 86 48 86 f7 63 64 08 02), and on a
-// long-form 0x80-padded value (0x80 0x01 is not minimal base-128) refusing.
-test fn oid_decoding_renders_dotted() -> Bool {
+// The OID decoder on Apple's nonce OID as DER (06 09 2a 86 48 86 f7 63 64 08 02); the same OID
+// with its 0x86 0x48 subidentifier padded to 0x80 0x86 0x48 (one value, a second encoding,
+// X.690 §8.19.2) REFUSES as malformed rather than decoding to the same dotted string.
+test fn oid_decoding_renders_dotted_and_refuses_a_padded_subidentifier() -> Bool {
   let octets = [6, 9, 42, 134, 72, 134, 247, 99, 100, 8, 2]
+  let padded = [6, 10, 42, 128, 134, 72, 134, 247, 99, 100, 8, 2]
   match der_read_element(octets: octets, at: 0) {
     DerElementRead { element: e } => match der_object_identifier(octets: octets, e: e) {
-      DerOidRead { dotted: d } => d == "1.2.840.113635.100.8.2"
+      DerOidRead { dotted: d } =>
+        d == "1.2.840.113635.100.8.2"
+          && match der_read_element(octets: padded, at: 0) {
+            DerElementRead { element: pe } => match der_object_identifier(octets: padded, e: pe) {
+              DerOidRefused { cause: DerObjectIdentifierMalformed { at: 2 } } => true
+              _ => false
+            }
+            _ => false
+          }
       _ => false
     }
     _ => false
@@ -326,10 +336,25 @@ test fn an_outer_algorithm_disagreeing_with_the_tbs_refuses() -> Bool {
   }
 }
 
-// The PEM reader refuses a text without the BEGIN line.
-test fn pem_without_a_begin_line_refuses() -> Bool {
+// The PEM reader refuses a text without the BEGIN line; two concatenated certificate blocks; a
+// private-key block before the certificate (text outside the block, at its line); and an END
+// before its BEGIN.
+test fn pem_refuses_anything_but_exactly_one_block() -> Bool {
+  let root = apple_app_attestation_root_ca_pem()
   match pem_decode(text: "MIIC\n-----END CERTIFICATE-----\n", label: pem_certificate_label) {
-    PemRefused { cause: PemBeginLineAbsent { expected_label: "CERTIFICATE" } } => true
+    PemRefused { cause: PemBeginLineAbsent { expected_label: "CERTIFICATE" } } =>
+      match pem_decode(text: root + "\n" + root, label: pem_certificate_label) {
+        PemRefused { cause: PemMoreThanOneBlock { begin_lines: 2, end_lines: 2 } } =>
+          match pem_decode(text: "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n" + root, label: pem_certificate_label) {
+            PemRefused { cause: PemTextOutsideTheBlock { line: 0 } } =>
+              match pem_decode(text: "-----END CERTIFICATE-----\nAAAA\n-----BEGIN CERTIFICATE-----\n", label: pem_certificate_label) {
+                PemRefused { cause: PemEndBeforeBegin } => true
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
     _ => false
   }
 }

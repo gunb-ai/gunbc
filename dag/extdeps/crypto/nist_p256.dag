@@ -16,24 +16,10 @@ import extdeps.uri { Uri, Https }
 // module is P-256's parameter row and the SHA-256-bound verifier the approval device signature
 // uses (extdeps.apple.secure_enclave: the enclave signs P-256 over SHA-256 and nothing else).
 //
-// WHO CONSUMES THIS TODAY, STATED AS THE FRONTIER IT IS (DESIGN 3c; review 69091 of gunbc#11645).
-// NOTHING IN PRODUCTION DOES. The only importers of this module are the witness files under
-// dag/test/claim. An earlier version of this header said it was "the producer behind
-// extdeps.crypto.signature p256_ecdsa_verify" in the PRESENT TENSE -- and that module declares no
-// such name. extdeps.crypto.signature is real and owns the suite, the encodings and the refusal
-// vocabulary (SignatureSuite, SignatureVerification, signature_verification_from_implementation),
-// but p256_ecdsa_verify does not exist in it or anywhere else outside this module and its tests.
-//
-// THAT IS THE CLASS THIS REPOSITORY ALREADY ROSTERS AS
-// gunbc.recurring_failure_mode unlanded_citation_indistinguishable_at_the_citing_end, and this
-// PR's own failure-mode receipts flag their unlanded names scrupulously ("UNLANDED NAMES, read as
-// such") while this header -- the one sentence a reader consults to learn who consumes the module
-// -- did not. A citation is not made true by being the plan.
-//
-// DECLARED FRONTIER WITH ITS TRIGGER: extdeps.crypto.signature gains p256_ecdsa_verify, binding
-// p256_ecdsa_verify_octets below through signature_verification_from_implementation with the
-// decoded octet lengths. Until that declaration exists, this module's consumers are its witnesses
-// and nothing else, and no reader should infer otherwise from this comment.
+// WHO CONSUMES THIS: extdeps.crypto.signature verify_signature binds p256_ecdsa_verify_octets
+// through signature_verification_from_implementation with the decoded octet sizes -- the join
+// the earlier header of this module declared as its frontier -- and extdeps.apple.app_attest
+// verifies assertion signatures and P-256-issued chain links over the family fold directly.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

@@ -1,8 +1,12 @@
 module extdeps.crypto.signature
 
-import std.types { NonEmptyStr, String, Int }
+import std.types { NonEmptyStr, String, Int, List }
 import std.logic { Bool }
+import std.integer { UInt8 }
 import std.measure { ByteSize, byte_size, byte_size_count }
+import std.encoding { base64_decode, UrlSafe }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.nist_p256 { p256_ecdsa_verify_octets }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -84,11 +88,13 @@ type SignatureVerification
   | VerifyingKeyMalformed { declared: ByteSize, expected: ByteSize }
   | SignatureSuiteMismatch { key_suite: SignatureSuite, signature_suite: SignatureSuite }
 
-// NO BOUND IMPLEMENTATION YET, and that is declared rather than papered: extdeps.crypto.mac binds
-// RustCrypto's hmac through a host primitive; the ECDSA twin (RustCrypto p256 VerifyingKey::verify)
-// has no host primitive in this tree. The consumer that needs it is the /approve route's device
-// signature check (gunbc.auth.approval_device_redemption); until the primitive lands no route may mint
-// SignatureVerified from anything, so no redemption can claim a device.
+// THE BOUND IMPLEMENTATION IS extdeps.crypto.nist_p256 p256_ecdsa_verify_octets, IN .dag: the
+// host-Rust primitive this note once named as missing was refused by the operator (gunbc#11588/
+// #11592), and verify_signature below is the join. The consumer is the /approve device route's
+// signature check (gunbc.auth.approval_device_redemption); what that route still lacks is an
+// execution route in usable time -- one interpreted verification is minutes and gigabytes
+// (gunbc#11645) -- which is the declared frontier gunbc.auth.approval_device_redemption
+// ecdsa_verification_realization_frontier names, not a missing binding.
 //
 // ── The realization seam ─────────────────────────────────────────────────────────────────────
 // Same boundary as mac_verification_from_implementation, stated the same way: evidence cannot exist
@@ -115,4 +121,36 @@ fn signature_verification_from_implementation(
   } else {
     SignatureInvalid { suite: signature.suite }
   }
+}
+
+// ── The join ─────────────────────────────────────────────────────────────────────────────────
+// Decodes the wire carriers, hands their measured sizes to the seam (which refuses a wrong size
+// before any arithmetic), and supplies the curve verifier's answer as the implementation verdict.
+// The message is signed as its UTF-8 octets, hashed by the suite (CryptoKit hashes the data it is
+// given; extdeps.apple.secure_enclave fixes that spelling). A carrier that does not base64-decode
+// is presented to the seam with size zero, so it refuses as malformed by name; a key of the right
+// size that is not an admitted point (off the curve, coordinate ≥ p) is answered SignatureInvalid
+// -- typed, located at the suite, and never a verification.
+fn decoded_or_empty(b64url: NonEmptyStr) -> List<UInt8> {
+  match base64_decode(s: b64url as String, variant: UrlSafe) {
+    Present { value: o } => o
+    Absent => []
+  }
+}
+
+fn verify_signature(key: VerifyingKey, signature: SignatureBytes, message: NonEmptyStr) -> SignatureVerification {
+  let key_octets = decoded_or_empty(b64url: key.point_b64url)
+  let signature_octets = decoded_or_empty(b64url: signature.b64url)
+  let implementation_verified = match key.suite {
+    EcdsaP256Sha256 =>
+      match p256_ecdsa_verify_octets(key: key_octets, signature: signature_octets, message: bytes_octets(b: utf8_encode_bytes(s: message as String))) {
+        Present { value: v } => v
+        Absent => false
+      }
+  }
+  signature_verification_from_implementation(
+    key: key, key_size: byte_size(count: count(key_octets)),
+    signature: signature, signature_size: byte_size(count: count(signature_octets)),
+    message: message, implementation_verified: implementation_verified,
+  )
 }
