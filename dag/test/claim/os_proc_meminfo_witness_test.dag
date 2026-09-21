@@ -30,15 +30,25 @@ test fn proc_meminfo_witnesses() -> Bool {
 // available, and an admission would refuse forever for the wrong reason), and a line whose value is
 // not a decimal count may not contribute a metric. Both are asserted against the same text with one
 // line changed, so the assertion discriminates the parse rather than the fixture.
+//
+// EVERY FIELD CARRIES A DISTINCT VALUE AND EVERY FIELD IS ASSERTED, because with seven lookups
+// written by hand a name paired with the WRONG field is the one defect the absence arms cannot
+// catch. And a field missing from the MIDDLE of the file names itself: that arm used to be
+// unreachable only by an invariant held between two lists, and is now unreachable by construction
+// -- there is no fallback left that could answer 0 KiB for it (review 69561 on gunbc#11962).
 test fn parsing_meminfo_reads_the_named_fields_and_refuses_a_missing_one() -> Bool {
-  let text = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    8388608 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\nHugePages_Total:       0\n"
+  let text = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    8388608 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:       2097152 kB\nSwapFree:         524288 kB\nHugePages_Total:       0\n"
   let without_available = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n"
   let unparseable = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    not-a-number kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n"
   (match parse_proc_meminfo(text: text) {
      MeminfoParsed { meminfo: m } =>
        kibibyte_count(k: m.mem_total) == 16777216
+         && kibibyte_count(k: m.mem_free) == 1048576
          && kibibyte_count(k: m.mem_available) == 8388608
-         && kibibyte_count(k: m.swap_total) == 0
+         && kibibyte_count(k: m.buffers) == 65536
+         && kibibyte_count(k: m.cached) == 4194304
+         && kibibyte_count(k: m.swap_total) == 2097152
+         && kibibyte_count(k: m.swap_free) == 524288
          && count(m.all_metrics) == 8
      MeminfoFieldAbsent { field: _ } => false
    })
@@ -52,6 +62,13 @@ test fn parsing_meminfo_reads_the_named_fields_and_refuses_a_missing_one() -> Bo
         })
     && (match parse_proc_meminfo(text: "") {
           MeminfoFieldAbsent { field: f } => (f as String) == "MemTotal"
+          MeminfoParsed { meminfo: _ } => false
+        })
+    && (match parse_proc_meminfo(text: join([
+          "MemTotal:       16777216 kB\n", "MemFree:         1048576 kB\n", "MemAvailable:    8388608 kB\n",
+          "Buffers:           65536 kB\n", "Cached:          4194304 kB\n", "SwapFree:         524288 kB\n",
+        ], "")) {
+          MeminfoFieldAbsent { field: f } => (f as String) == "SwapTotal"
           MeminfoParsed { meminfo: _ } => false
         })
 }

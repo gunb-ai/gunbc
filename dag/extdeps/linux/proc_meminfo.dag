@@ -91,33 +91,71 @@ fn meminfo_metric_named(metrics: List<MemoryMetric>, name: NonEmptyStr) -> Kibib
   }
 }
 
-// THE SEVEN NAMED FIELDS ARE REQUIRED TOGETHER, in the order meminfo_field_names declares them, so
-// the roster above is the authority for what this parse demands rather than a second list here.
+// EVERY NAMED FIELD IS RESOLVED BY THE SAME LOOKUP THAT PROVES IT PRESENT, and that is the whole
+// shape of this fold rather than a stylistic preference.
+//
+// IT WAS WRITTEN THE OTHER WAY FIRST AND THE OTHER WAY WAS WRONG (review 69561 on gunbc#11962). A
+// presence pass walked meminfo_field_names and refused the first name it could not find; the record
+// was then built from a SECOND spelling of those names, each one falling back to
+// `kibibyte(count: 0)` on an absence the presence pass had supposedly ruled out. Two lists for one
+// concept is DESIGN 3's nicknaming, and here the fork was load-bearing rather than cosmetic: the
+// zero's unreachability was an invariant maintained AT A DISTANCE between the roster and the record,
+// so renaming or dropping a roster entry made mem_total and mem_available read 0 KiB -- which a
+// compute admission (gunbc.compute.host_capacity compute_reserve_on) turns into a permanent
+// below-floor or appropriation-exceeds-total refusal ATTRIBUTED TO THE MACHINE rather than to the
+// parse. A fabricated plausible output (DESIGN 5) behind a guard that looked like a wall.
+//
+// So the guard is deleted rather than strengthened. Each field is matched once, its absence names
+// ITSELF, and its value is the one the match just bound: `meminfo_required` and its zero are gone,
+// and the fabricated reading has no constructor left to be written in (DESIGN 4b, structurally
+// impossible rather than validated). meminfo_field_names is consequently NOT this fold's authority
+// and no longer claims to be -- it is the roster of fields this module models, read by consumers
+// that want the names; what this parse demands is exactly what ProcMeminfo has fields for, which is
+// a fact the record already carries and cannot drift from itself.
+//
+// The nesting is flat in meaning and deep in shape on purpose: there is no total lookup over seven
+// independent optionals that does not either lose which one was missing or introduce a positional
+// list, and a positional list would be the same fork one representation over.
 fn parse_proc_meminfo(text: String) -> MeminfoRead {
   let metrics = meminfo_metrics(text: text)
-  match first(filter(meminfo_field_names, f => match meminfo_metric_named(metrics: metrics, name: f) { Absent => true  Present { value: _ } => false })) {
-    Present { value: missing } => MeminfoFieldAbsent { field: missing }
-    Absent =>
-      MeminfoParsed {
-        meminfo: ProcMeminfo {
-          mem_total: meminfo_required(metrics: metrics, name: "MemTotal" as NonEmptyStr),
-          mem_free: meminfo_required(metrics: metrics, name: "MemFree" as NonEmptyStr),
-          mem_available: meminfo_required(metrics: metrics, name: "MemAvailable" as NonEmptyStr),
-          buffers: meminfo_required(metrics: metrics, name: "Buffers" as NonEmptyStr),
-          cached: meminfo_required(metrics: metrics, name: "Cached" as NonEmptyStr),
-          swap_total: meminfo_required(metrics: metrics, name: "SwapTotal" as NonEmptyStr),
-          swap_free: meminfo_required(metrics: metrics, name: "SwapFree" as NonEmptyStr),
-          all_metrics: metrics,
-        },
+  match meminfo_metric_named(metrics: metrics, name: "MemTotal" as NonEmptyStr) {
+    Absent => MeminfoFieldAbsent { field: "MemTotal" as NonEmptyStr }
+    Present { value: mem_total } =>
+      match meminfo_metric_named(metrics: metrics, name: "MemFree" as NonEmptyStr) {
+        Absent => MeminfoFieldAbsent { field: "MemFree" as NonEmptyStr }
+        Present { value: mem_free } =>
+          match meminfo_metric_named(metrics: metrics, name: "MemAvailable" as NonEmptyStr) {
+            Absent => MeminfoFieldAbsent { field: "MemAvailable" as NonEmptyStr }
+            Present { value: mem_available } =>
+              match meminfo_metric_named(metrics: metrics, name: "Buffers" as NonEmptyStr) {
+                Absent => MeminfoFieldAbsent { field: "Buffers" as NonEmptyStr }
+                Present { value: buffers } =>
+                  match meminfo_metric_named(metrics: metrics, name: "Cached" as NonEmptyStr) {
+                    Absent => MeminfoFieldAbsent { field: "Cached" as NonEmptyStr }
+                    Present { value: cached } =>
+                      match meminfo_metric_named(metrics: metrics, name: "SwapTotal" as NonEmptyStr) {
+                        Absent => MeminfoFieldAbsent { field: "SwapTotal" as NonEmptyStr }
+                        Present { value: swap_total } =>
+                          match meminfo_metric_named(metrics: metrics, name: "SwapFree" as NonEmptyStr) {
+                            Absent => MeminfoFieldAbsent { field: "SwapFree" as NonEmptyStr }
+                            Present { value: swap_free } =>
+                              MeminfoParsed {
+                                meminfo: ProcMeminfo {
+                                  mem_total: mem_total,
+                                  mem_free: mem_free,
+                                  mem_available: mem_available,
+                                  buffers: buffers,
+                                  cached: cached,
+                                  swap_total: swap_total,
+                                  swap_free: swap_free,
+                                  all_metrics: metrics,
+                                },
+                              }
+                          }
+                      }
+                  }
+              }
+          }
       }
-  }
-}
-
-// Reached only under the absence check above, which is why it can answer at all; the zero is the
-// unreachable arm of an optional, not a fabricated reading.
-fn meminfo_required(metrics: List<MemoryMetric>, name: NonEmptyStr) -> Kibibyte {
-  match meminfo_metric_named(metrics: metrics, name: name) {
-    Present { value: k } => k
-    Absent => kibibyte(count: 0)
   }
 }
