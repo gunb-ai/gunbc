@@ -195,6 +195,12 @@ fn posix_command_v_check_argv(command: NonEmptyStr) -> List<String> {
   ["sh", "-c", "command -v \"$1\"", "sh", command as String]
 }
 
+// IsSticky IS POSIX `test -k`, AND ITS RATIONALE SITS HERE because only module-item grain is
+// modeled (DESIGN section 4c) -- an operation lives inside this service's body, so the reason for
+// one attaches to the declaration that contains it. On a directory the sticky bit is the rule that
+// stops a principal renaming or removing an entry it does not own, which is the whole reason a
+// shared temporary directory is safe to allocate in at all. It is a different question from the
+// mode digits and gets its own operation rather than being parsed out of them.
 service shell.Test {
   operation IsExecutable {
     input { path: FilePath }
@@ -237,6 +243,17 @@ service shell.Test {
     exit {
       0 => Unit "Path is a directory"
       1 => Unit "Path is missing or not a directory"
+    }
+  }
+
+  operation IsSticky {
+    input { path: FilePath }
+    output { is_sticky: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-k", "{path}"] }
+    exit {
+      0 => Unit "The sticky bit is set on the path"
+      1 => Unit "The path is missing or its sticky bit is not set"
     }
   }
 
@@ -375,7 +392,27 @@ service shell.Remove {
 // WHY IT IS `readonly` AND WHY THAT IS TRUE. It opens nothing for write and creates nothing; unlike
 // git.Inspect.ReadTreeIntoIndex, which was declared readonly while writing the file GIT_INDEX_FILE
 // names, this one genuinely only reads inode metadata.
+// ModeOf RETURNS THE OCTAL PERMISSION DIGITS AS `stat` RENDERS THEM -- "700", "1777" -- and its
+// rationale sits above the service for the module-item-grain reason the Test service records. The
+// consumer compares the WHOLE STRING against declared spellings; nothing extracts a digit, because
+// the substrate has no string indexing and a hand-rolled scan would be a parser standing where a
+// comparison was available.
 service shell.Stat {
+  operation ModeOf {
+    input { path: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["stat", "-c", "%a", "--", "{path}"] }
+    exit {
+      0 => Unit "the path exists and its octal mode is on stdout"
+      nonzero => String "stat could not read the path"
+    }
+  }
+
   operation OwnerOf {
     input { path: FilePath }
     output {
@@ -422,6 +459,16 @@ service shell.Chmod {
     exit {
       0 => Unit
       nonzero => String "chmod 0700 failed"
+    }
+  }
+
+  operation WorldWritableDirectory {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "0777", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 0777 failed"
     }
   }
 

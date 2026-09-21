@@ -547,12 +547,28 @@ fn capture_source_snapshot(
 // a check and a construction: the attacker's precondition is WRITE ACCESS TO THE PARENT, and there
 // is now no parent a caller can choose.
 //
+// AND THE PARENT IS ADMITTED, BECAUSE DELETING THE PARAMETER DID NOT DELETE THE CHOICE. The first
+// repair allocated with a bare `mktemp -d`, which honours TMPDIR -- so the parent was still
+// selectable, through the environment instead of through an argument, and under a shared writable
+// non-sticky TMPDIR a DIFFERENT uid can rename the workspace out from under the route. The side
+// chat reproduced that with two non-root uids. This module claimed at that moment that no actor
+// but the owner could substitute anything, and the claim was FALSE: it silently depended on a
+// property of whatever directory TMPDIR happened to name. A guarantee that rests on an unexamined
+// environment variable is not a guarantee, and asserting it was the DESIGN section 4d
+// over-assertion this corpus is supposed to catch.
+//
+// So the candidate parent is OBSERVED and ADMITTED before anything is created in it:
+// `admit_provider_root` requires a directory that is either STICKY -- the rule that stops a
+// principal renaming an entry it does not own, which is what makes a shared temporary directory
+// safe to allocate in -- or OWNER-ONLY, which no other principal can even traverse. Anything else
+// refuses, and the allocation does not happen.
+//
 // WHAT THAT CLOSES, AND WHAT IT DOES NOT, stated at its real strength because the neighbouring
-// claim would be inflation. An actor that is NOT the owning uid cannot substitute anything on this
-// route: the workspace is mode 0700, so it cannot write inside it, and the workspace itself sits in
-// the system temporary directory, whose sticky bit is exactly the rule that stops a non-owner
-// renaming an entry it does not own. That is the untrusted-actor case, and it is closed by
-// construction rather than by a check.
+// claim would be inflation. Given an admitted parent, an actor that is NOT the owning uid cannot
+// substitute anything on this route: it cannot rename the workspace, because the parent is sticky
+// or closed to it, and it cannot write inside the workspace, which is mode 0700. That is the
+// untrusted-actor case, and it is closed by an admitted precondition plus construction rather than
+// by hope about the environment.
 //
 // AN ACTOR RUNNING AS THE OWNING UID IS NOT CLOSED, AND NO PATHNAME-ADDRESSED DESIGN CLOSES IT.
 // Every operation available here -- `mkdir`, `mktemp`, `Filesystem.WriteCreateNew` -- takes a path
@@ -569,7 +585,7 @@ fn capture_source_snapshot(
 // DIRECTORY component the route already created, never of the file itself.
 //
 // WHAT STAYS OPEN, IN ONE SENTENCE SO IT CANNOT BE READ PAST: ANCESTRY SUBSTITUTION BY THE OWNING
-// UID. An actor holding the uid this process runs as can rename a directory component of the
+// UID, GIVEN AN ADMITTED ALLOCATION ROOT. An actor holding the uid this process runs as can rename a directory component of the
 // destination between two of this route's operations and leave a symlink in its place, and the
 // remaining writes follow it. Nothing narrower is open -- not the file, which `O_CREAT|O_EXCL`
 // refuses to redirect; not any other principal, which the 0700 workspace excludes; and not the
@@ -606,14 +622,96 @@ type ProviderWorkspaceAllocation
   = ProviderWorkspaceAllocated { workspace: ProviderWorkspace }
   | ProviderWorkspaceRefused { detail: String }
 
+type ProviderRootAdmission
+  = ProviderRootAdmitted { root: NonEmptyStr }
+  | ProviderRootRefused { root: String, cause: String }
+
+// THE TWO SAFE SHAPES, AND WHY THE SECOND IS AN ALLOWLIST OF SPELLINGS RATHER THAN A BIT TEST.
+// A parent is safe when another principal cannot rename our entry inside it. Sticky says that
+// directly. Owner-only says it a different way: a directory no other principal may traverse or
+// write has no other principal able to rename anything in it. The mode is compared as a WHOLE
+// STRING because the substrate has no string indexing, so extracting the group and other digits
+// would mean hand-rolling a scan -- a parser standing where a comparison was available.
+//
+// THE COST OF THAT CHOICE IS OVER-REFUSAL AND IT IS STATED RATHER THAN HIDDEN (DESIGN section 4d:
+// a mechanism that forbids more than the evidence supports costs real opportunities, and the cost
+// is the thing you never did). A 0755 parent is genuinely safe against a non-owner rename and is
+// refused here anyway. That direction is deliberate -- a refused allocation is a diagnostic with an
+// obvious remedy, while an admitted unsafe parent is the defect this admission exists for -- and
+// widening it is a matter of adding spellings, not of loosening the rule.
+data provider_root_owner_only_modes: List<String> = ["700", "0700"]
+
+fn admit_provider_root(candidate: String) -> ProviderRootAdmission {
+  if candidate == "" {
+    ProviderRootRefused { root: candidate, cause: "the candidate parent is empty" }
+  } else if !shell.Test.IsDirectory(path: candidate as FilePath).is_directory {
+    ProviderRootRefused { root: candidate, cause: "the candidate parent is not a directory" }
+  } else if shell.Test.IsSticky(path: candidate as FilePath).is_sticky {
+    ProviderRootAdmitted { root: candidate as NonEmptyStr }
+  } else {
+    let observed = shell.Stat.ModeOf(path: candidate as FilePath)
+    if !observed.success {
+      ProviderRootRefused {
+        root: candidate,
+        cause: join(["the candidate parent's mode could not be observed: ", observed.stderr], ""),
+      }
+    } else if any(provider_root_owner_only_modes, m => m == trim(s: observed.stdout)) {
+      ProviderRootAdmitted { root: candidate as NonEmptyStr }
+    } else {
+      ProviderRootRefused {
+        root: candidate,
+        cause: join([
+          "the candidate parent is neither sticky nor owner-only (mode ",
+          trim(s: observed.stdout),
+          "), so another principal could rename the workspace inside it",
+        ], ""),
+      }
+    }
+  }
+}
+
+// WHERE THE CANDIDATE COMES FROM, NAMED RATHER THAN INHERITED. `mktemp -d` with no template reads
+// TMPDIR and says nothing about it; reading it here makes the choice visible and, more to the
+// point, makes it ADMISSIBLE. An unset TMPDIR falls to the POSIX default, which is a declared
+// constant rather than a silent one.
+data provider_root_default: NonEmptyStr = "/tmp" as NonEmptyStr
+
+fn provider_root_candidate() -> String {
+  match shell.Env.Get(name: "TMPDIR" as NonEmptyStr).value {
+    Absent => provider_root_default as String
+    Present { value: v } =>
+      let named = trim(s: v)
+      if named == "" { provider_root_default as String } else { named }
+  }
+}
+
 // THE MODE IS ASSERTED, NOT INHERITED. `mktemp -d` creates at 0700 on every implementation this
 // runs on, and that is exactly the kind of fact that is true until it is not: the protection this
 // carrier rests on is the permission bits, so they are set rather than assumed, and a chmod that
 // fails refuses the allocation instead of handing back a workspace whose protection is unknown.
 fn allocate_provider_workspace() -> ProviderWorkspaceAllocation {
-  let made = shell.Mktemp.Dir()
+  match admit_provider_root(candidate: provider_root_candidate()) {
+    ProviderRootRefused { root: r, cause: c } =>
+      ProviderWorkspaceRefused {
+        detail: join(["the allocation root ", r, " is inadmissible: ", c], ""),
+      }
+    ProviderRootAdmitted { root: admitted } =>
+      allocate_under_admitted_root(root: admitted)
+  }
+}
+
+// THE TEMPLATE IS EXPLICIT SO THE ADMITTED ROOT IS THE ONE USED. `mktemp -d` with no argument would
+// re-read TMPDIR and could land somewhere other than the directory just admitted -- the admission
+// and the creation would then be about two different places, which is the check-and-use gap in its
+// most avoidable form.
+fn allocate_under_admitted_root(root: NonEmptyStr) -> ProviderWorkspaceAllocation {
+  let made = shell.Mktemp.DirWithTemplate(
+    template: join([root as String, "/gunbc-provider-XXXXXX"], "") as FilePath,
+  )
   if !made.success {
-    ProviderWorkspaceRefused { detail: "no temporary directory could be created" }
+    ProviderWorkspaceRefused {
+      detail: join(["no workspace could be created under ", root as String], ""),
+    }
   } else {
     let root = trim(s: made.path as String)
     if !shell.Chmod.OwnerOnlyDirectory(path: root as FilePath).success {

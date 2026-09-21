@@ -71,6 +71,14 @@ import gunbc.fabric_source_snapshot {
   SnapshotCapture,
   SnapshotCaptured,
   SnapshotCaptureRefused,
+  SnapshotCaptureRefusal,
+  SnapshotFileUnreadable,
+  SnapshotFileAbsent,
+  SnapshotFileEmpty,
+  SnapshotPathOutsideComposition,
+  SnapshotPathNotRelative,
+  SnapshotStoreRefusedObject,
+  SnapshotManifestNotStored,
   SnapshotMaterialization,
   SnapshotMaterialized,
   SnapshotMaterializeRefused,
@@ -87,6 +95,10 @@ import gunbc.fabric_source_snapshot {
   ProviderWorkspaceAllocation,
   ProviderWorkspaceAllocated,
   ProviderWorkspaceRefused,
+  ProviderRootAdmission,
+  ProviderRootAdmitted,
+  ProviderRootRefused,
+  admit_provider_root,
   allocate_provider_workspace,
   release_provider_workspace,
   provider_workspace_root,
@@ -188,6 +200,7 @@ type SnapshotScenario
   | CompositionMismatchScenario
   | EscapingPathScenario
   | DuplicatePathScenario
+  | UnsafeAllocationRootScenario
 
 fn snapshot_scenario_name(scenario: SnapshotScenario) -> String {
   match scenario {
@@ -197,6 +210,7 @@ fn snapshot_scenario_name(scenario: SnapshotScenario) -> String {
     CompositionMismatchScenario => "composition-mismatch"
     EscapingPathScenario => "escaping-path"
     DuplicatePathScenario => "duplicate-path"
+    UnsafeAllocationRootScenario => "unsafe-allocation-root"
   }
 }
 
@@ -208,6 +222,7 @@ fn snapshot_scenarios() -> List<SnapshotScenario> {
     CompositionMismatchScenario,
     EscapingPathScenario,
     DuplicatePathScenario,
+    UnsafeAllocationRootScenario,
   ]
 }
 
@@ -385,6 +400,35 @@ type CapturedSnapshot
   = SnapshotReady { manifest: FabricObjectRef, files: Int }
   | SnapshotNotReady { detail: String }
 
+// THE CAPTURE FAMILY IS DISCRIMINATED HERE, AND ITS ABSENCE WAS THE CONFLATION THIS MODULE'S OWN
+// AUTHORITY ARGUES AGAINST. gunbc.fabric_source_snapshot keeps seven capture refusals apart
+// precisely so that "the file is not there", "the file is empty", "this path is not under a root
+// you declared" and "the store would not take it" do not arrive at one place -- and the only
+// consumer in the corpus answered all seven with the constant "the capture refused", naming neither
+// the file nor which of four unrelated defects had occurred. A located family whose sole reader
+// flattens it is worse than no family: it costs the authoring and review of seven arms and delivers
+// the diagnostic of one. Caught by review 69627 on gunbc#11960; the sibling wire for the
+// materialize family was already right, which is what makes the omission a slip rather than a
+// disagreement about the rule.
+fn capture_refusal_wire(cause: SnapshotCaptureRefusal) -> String {
+  match cause {
+    SnapshotFileUnreadable { path: p, detail: d } =>
+      join(["capture: ", p, " is unreadable: ", d], "")
+    SnapshotFileAbsent { path: p } =>
+      join(["capture: ", p, " is not there"], "")
+    SnapshotFileEmpty { path: p } =>
+      join(["capture: ", p, " is empty, and an empty object has no constructor"], "")
+    SnapshotPathOutsideComposition { path: p, composition: c } =>
+      join(["capture: ", p, " is under no root of ", c], "")
+    SnapshotPathNotRelative { path: p, cause: why } =>
+      join(["capture: ", p, " is not an admissible relative path: ", why], "")
+    SnapshotStoreRefusedObject { path: p, fault: f } =>
+      join(["capture: the store refused the object for ", p, ": ", f], "")
+    SnapshotManifestNotStored { fault: f } =>
+      join(["capture: the store refused the manifest: ", f], "")
+  }
+}
+
 fn capture_for_scenario(workspace: SnapshotWorkspace) -> CapturedSnapshot {
   match author_snapshot_source(workspace: workspace) {
     SourceNotAuthored { path: p, detail: d } =>
@@ -395,8 +439,8 @@ fn capture_for_scenario(workspace: SnapshotWorkspace) -> CapturedSnapshot {
         composition: snapshot_handoff_composition(),
         inclusions: inclusions,
       ) {
-        SnapshotCaptureRefused { cause: _ } =>
-          SnapshotNotReady { detail: "the capture refused" }
+        SnapshotCaptureRefused { cause: c } =>
+          SnapshotNotReady { detail: capture_refusal_wire(cause: c) }
         SnapshotCaptured { manifest: m, files: f, composition: _ } =>
           SnapshotReady { manifest: m, files: f }
       }
@@ -647,7 +691,7 @@ fn escaping_entry_manifest(workspace: SnapshotWorkspace) -> FabricObjectRef? {
             object: snapshot_entry_object(
               name: name_ref,
               content: content_ref,
-              directory: "public/.." as NonEmptyStr,
+              directory: "public/../.." as NonEmptyStr,
             ),
           ) {
             FabricPutRefused { fault: _ } => none
@@ -667,10 +711,14 @@ fn escaping_entry_manifest(workspace: SnapshotWorkspace) -> FabricObjectRef? {
   }
 }
 
-// THE REFUSAL MUST PRECEDE THE WRITE, NOT FOLLOW IT. `public/..` resolves to the snapshot
-// directory's own parent -- the provider workspace -- so the file this entry describes would have
-// landed beside the snapshot rather than inside it. Asserting only the refusal arm would pass for
-// an implementation that wrote the file and then complained about it.
+// THE REFUSAL MUST PRECEDE THE WRITE, NOT FOLLOW IT, AND THE ASSERTION MUST LOOK WHERE THE WRITE
+// WOULD HAVE LANDED. The snapshot directory is `<provider workspace>/gunbc-snapshot-XXXXXX`, so
+// `public/../..` from inside it resolves to the provider workspace itself -- which is the path this
+// scenario then checks. An earlier revision weakened the fixture to `public/..` while leaving the
+// check where it was: that lands INSIDE the snapshot directory, so the fixture had stopped being an
+// escape at all and the second half of the control was asserting about a location the fixture would
+// never have written to. Green, and vacuous. Caught by the side-chat review of gunbc#11960; the
+// lesson is that a control has two halves and moving one of them is moving the claim.
 fn run_escaping_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
   match escaping_entry_manifest(workspace: workspace) {
     Absent =>
@@ -799,6 +847,113 @@ fn run_duplicate_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenario
   }
 }
 
+// THE ALLOCATION-ROOT CONTROL, AND WHY IT IS THE CROSS-UID CASE EVEN THOUGH IT RUNS AS ONE UID.
+//
+// The threat is a second principal renaming the provider workspace out from under a materialization
+// in flight. What makes that possible is not the other principal's cleverness, it is the PARENT: a
+// shared, writable, non-sticky directory lets anyone rename anyone's entry. So the discriminating
+// question is whether the route will allocate in such a parent at all, and that is decidable here
+// without a second uid -- which is the point, because a control that needed one could not run in
+// this harness and would not run anywhere.
+//
+// THREE SHAPES, AND THE ADMITTED ONES MATTER AS MUCH AS THE REFUSED ONE. A world-writable
+// non-sticky directory is exactly the unsafe TMPDIR the side chat reproduced against, and it must
+// refuse. A sticky directory and an owner-only directory are the two safe shapes, and they must be
+// ADMITTED -- without them this control would pass for an admission that refuses everything, which
+// is a wall-shaped hole in the capability rather than a wall.
+fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
+  let unsafe_root = join([workspace.root, "/unsafe-parent"], "")
+  let owner_only_root = join([workspace.root, "/owner-only-parent"], "")
+  if !shell.Mkdir.Parents(path: unsafe_root as FilePath).success
+    || !shell.Mkdir.Parents(path: owner_only_root as FilePath).success {
+    SnapshotScenarioFailed {
+      scenario: "unsafe-allocation-root",
+      step: "author-parents",
+      detail: "the candidate parents could not be created",
+    }
+  } else if !shell.Chmod.WorldWritableDirectory(path: unsafe_root as FilePath).success {
+    SnapshotScenarioFailed {
+      scenario: "unsafe-allocation-root",
+      step: "author-parents",
+      detail: "the unsafe parent could not be made world-writable",
+    }
+  } else if !shell.Chmod.OwnerOnlyDirectory(path: owner_only_root as FilePath).success {
+    SnapshotScenarioFailed {
+      scenario: "unsafe-allocation-root",
+      step: "author-parents",
+      detail: "the owner-only parent could not be made owner-only",
+    }
+  } else {
+    match admit_provider_root(candidate: unsafe_root) {
+      ProviderRootAdmitted { root: _ } =>
+        SnapshotScenarioFailed {
+          scenario: "unsafe-allocation-root",
+          step: "admit",
+          detail: "a world-writable non-sticky parent was admitted as an allocation root",
+        }
+      ProviderRootRefused { root: _, cause: why } =>
+        match admit_provider_root(candidate: owner_only_root) {
+          ProviderRootRefused { root: _, cause: c } =>
+            SnapshotScenarioFailed {
+              scenario: "unsafe-allocation-root",
+              step: "admit",
+              detail: join(["an owner-only parent was refused: ", c], ""),
+            }
+          ProviderRootAdmitted { root: _ } =>
+            match admit_provider_root(candidate: "/tmp") {
+              ProviderRootRefused { root: _, cause: c } =>
+                SnapshotScenarioFailed {
+                  scenario: "unsafe-allocation-root",
+                  step: "admit",
+                  detail: join(["a sticky parent was refused: ", c], ""),
+                }
+              ProviderRootAdmitted { root: _ } =>
+                SnapshotScenarioPassed {
+                  scenario: "unsafe-allocation-root",
+                  detail: join(["refused the unsafe parent: ", why], ""),
+                }
+            }
+        }
+    }
+  }
+}
+
+// A LEAK IS A FAILURE, AND DISCARDING THE RELEASE RESULT MADE IT INVISIBLE. `release_provider_
+// workspace` answers whether the provider workspace actually went away, and an earlier revision
+// bound it to `_released` and threw it away -- so a scenario that leaked a workspace, with the
+// executor's whole materialized tree in it, still reported PASS. Both cleanups are consumed here,
+// and both name their own step, because "the provider workspace survived" and "the scenario's own
+// directory survived" are different leaks with different owners. A passing scenario that leaked is
+// reported as a failure rather than as a pass with a footnote; a scenario that had already failed
+// keeps its original finding, because a cleanup failure must not overwrite the verdict that
+// explains why the run stopped.
+fn finalize_scenario(
+  outcome: SnapshotScenarioOutcome,
+  released: Bool,
+  cleaned: Bool,
+) -> SnapshotScenarioOutcome {
+  match outcome {
+    SnapshotScenarioFailed { scenario: s, step: st, detail: d } =>
+      SnapshotScenarioFailed { scenario: s, step: st, detail: d }
+    SnapshotScenarioPassed { scenario: s, detail: detail } =>
+      if !released {
+        SnapshotScenarioFailed {
+          scenario: s,
+          step: "release-provider-workspace",
+          detail: "the scenario passed but its provider workspace could not be released",
+        }
+      } else if !cleaned {
+        SnapshotScenarioFailed {
+          scenario: s,
+          step: "cleanup",
+          detail: "the scenario passed but its own workspace could not be removed",
+        }
+      } else {
+        SnapshotScenarioPassed { scenario: s, detail: detail }
+      }
+  }
+}
+
 // EACH SCENARIO GETS ITS OWN WORKSPACE, so a control that mutates or removes a store object cannot
 // leave the next scenario's store damaged and turn one finding into four.
 fn run_snapshot_scenario(scenario: SnapshotScenario, binary: ScmAcceptanceBinary) -> SnapshotScenarioOutcome {
@@ -817,23 +972,11 @@ fn run_snapshot_scenario(scenario: SnapshotScenario, binary: ScmAcceptanceBinary
         CompositionMismatchScenario => run_composition_mismatch_scenario(workspace: workspace, binary: binary)
         EscapingPathScenario => run_escaping_path_scenario(workspace: workspace)
         DuplicatePathScenario => run_duplicate_path_scenario(workspace: workspace)
+        UnsafeAllocationRootScenario => run_unsafe_allocation_root_scenario(workspace: workspace)
       }
-      let _released = release_provider_workspace(workspace: workspace.provider)
+      let released = release_provider_workspace(workspace: workspace.provider)
       let cleaned = shell.Remove.RecursiveForce(path: workspace.root as FilePath)
-      if cleaned.success {
-        outcome
-      } else {
-        match outcome {
-          SnapshotScenarioFailed { scenario: s, step: st, detail: d } =>
-            SnapshotScenarioFailed { scenario: s, step: st, detail: d }
-          SnapshotScenarioPassed { scenario: s, detail: _ } =>
-            SnapshotScenarioFailed {
-              scenario: s,
-              step: "cleanup",
-              detail: "the scenario passed but its workspace could not be removed",
-            }
-        }
-      }
+      finalize_scenario(outcome: outcome, released: released, cleaned: cleaned.success)
   }
 }
 
