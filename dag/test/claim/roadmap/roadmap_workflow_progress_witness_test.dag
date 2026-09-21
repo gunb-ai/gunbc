@@ -1,6 +1,7 @@
 module test.claim.roadmap_workflow_progress_witness_test
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
 import gunbc.roadmap.roadmap_review_function { review_report_absent, review_plan, review_aggregate, review_subject_id, ReviewSubject, ReviewObservation }
 import gunbc.roadmap.roadmap_review_role { ReviewReceiptAbsent, ReviewReceiptPresent, CriterionReviewEvidence }
@@ -149,6 +150,7 @@ fn fixture_evidence(
     publication_source: ReceiptSourceAbsent,
     review: review_report_absent(reason: "fixture"),
     submission_capture: CaptureAbsent,
+    integration: IntegrationReceiptAbsent,
     goal_audit: [],
   }
 }
@@ -403,6 +405,7 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     publication_source: base.publication_source,
     review: base.review,
     submission_capture: CaptureAbsent,
+    integration: IntegrationReceiptAbsent,
     goal_audit: base.goal_audit,
   }
   let progress = workflow_attempt_progress(evidence: forged)
@@ -436,6 +439,7 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     publication_source: base.publication_source,
     review: base.review,
     submission_capture: CaptureAbsent,
+    integration: IntegrationReceiptAbsent,
     goal_audit: base.goal_audit,
   })
   match progress.provider {
@@ -484,6 +488,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     publication_source: ReceiptSourceAbsent,
     review: review_report_absent(reason: "fixture"),
     submission_capture: CaptureAbsent,
+    integration: IntegrationReceiptAbsent,
     goal_audit: [],
   })
   match progress.provider {
@@ -523,6 +528,7 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     publication_source: base.publication_source,
     review: base.review,
     submission_capture: CaptureAbsent,
+    integration: IntegrationReceiptAbsent,
     goal_audit: base.goal_audit,
   })
   match progress.provider {
@@ -663,6 +669,7 @@ fn publication_segment_of(
     publication_source: source,
     review: review_report_absent(reason: "fixture"),
     submission_capture: CaptureAbsent,
+    integration: IntegrationReceiptAbsent,
     goal_audit: [],
   })
   fold(progress.segments, init: WorkflowSegment {

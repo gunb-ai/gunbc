@@ -3,7 +3,14 @@ module gunbc.roadmap.roadmap_fanin
 import std.types { String, List }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.manifest_merge { ManifestPathConflict }
-import gunbc.scm.repository_envelope { RepositoryEnvelope }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  MergeBaseRefusal,
+  MergeBaseSourceIsAncestorOfTarget,
+  MergeBaseSourceAlreadyConsumed,
+  MergeBaseHistoryUnwalkable,
+  MergeBaseHistoriesDisjoint,
+}
 import gunbc.scm.squash_merge {
   SquashMergeOutcome,
   SquashMerged,
@@ -17,6 +24,13 @@ import gunbc.scm.squash_merge {
   SquashMergeAllocatorInvalid,
   squash_merge,
 }
+
+import std.types { Int, NonEmptyStr }
+import extdeps.languages.json.emit { JsonValue, json_string, json_int, json_object, json_kv, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+}
+import gunbc.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
 
 // THE FANIN SEAM (docs/plans/harness-work-lifecycle.md, delivery structure): verified candidates of
 // one project's nodes merge into the project's ONE integration head, and a standalone task is the
@@ -32,9 +46,16 @@ import gunbc.scm.squash_merge {
 // is likewise typed: re-merging an integrated candidate is a workflow defect, not a conflict.
 type FaninOutcome
   = FaninIntegrated { repository: RepositoryEnvelope, head: RepositoryCommitRef }
+  | FaninAlreadyIntegrated { head: RepositoryCommitRef }
   | FaninConflicted { conflicts: List<ManifestPathConflict> }
   | FaninRefused { detail: String }
 
+// ALREADY-CONSUMED IS ITS OWN ARM, NOT A REFUSAL DETAIL. The belt's integrate pass runs every tick
+// over every verified candidate, so re-integrating is the COMMON case, and it must read as the
+// idempotent no-op it is -- the integration head already carries this candidate -- rather than as
+// damage. squash_merge records the consumption (`SquashIntegrated` on the merge commit) and
+// merge_base derives the refusal from that record; this arm carries the derivation through
+// unchanged, which is what lets a restart continue without any belt-side bookkeeping.
 fn fanin_integrate_candidate(
   repository: RepositoryEnvelope,
   integration_head: RepositoryCommitRef,
@@ -50,9 +71,20 @@ fn fanin_integrate_candidate(
     SquashMerged { repository: advanced, reference } =>
       FaninIntegrated { repository: advanced, head: reference }
     SquashMergeConflicted { conflicts } => FaninConflicted { conflicts: conflicts }
-    SquashMergeBaseRefused { refusal: _ } =>
-      FaninRefused {
-        detail: "the candidate's base could not be derived against the integration head (already integrated, disjoint histories, or unwalkable ancestry) -- the merge law's own refusal carries the case",
+    SquashMergeBaseRefused { refusal } =>
+      match refusal {
+        MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } =>
+          FaninAlreadyIntegrated { head: integration_head }
+        MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } =>
+          FaninAlreadyIntegrated { head: integration_head }
+        MergeBaseHistoryUnwalkable { side: _, walk: _ } =>
+          FaninRefused {
+            detail: "the candidate's or the integration head's ancestry is unwalkable, which is envelope damage",
+          }
+        MergeBaseHistoriesDisjoint { target: _, source: _ } =>
+          FaninRefused {
+            detail: "the candidate and the integration head share no base: the envelope was not seeded with the intake base before the candidate was captured",
+          }
       }
     SquashMergeRootMissing { side: _, root: _ } =>
       FaninRefused { detail: "a merge side names a manifest the store cannot produce, which is store damage" }
@@ -68,3 +100,121 @@ fn fanin_integrate_candidate(
       FaninRefused { detail: "the project envelope's commit allocator is invalid, which is envelope damage" }
   }
 }
+
+// ------------------------------------------------------------------------------------------------
+// THE PER-CANDIDATE INTEGRATION RECEIPT: the small, dashboard-readable record of where one
+// candidate stands against its project's integration head. The envelope is the authority (a
+// consumed source IS integrated, derivable from the merge commits' SquashIntegrated records);
+// this receipt is the belt-written projection of that fact at attempt grain, so the read path
+// never loads a whole envelope to paint one row. BlockedOnIntegration carries the complete
+// conflict population's paths -- the other candidates are unaffected, and the conflicting
+// candidate stays verified-but-unintegrated until a revised candidate resolves it.
+// ------------------------------------------------------------------------------------------------
+
+
+data integration_receipt_schema: NonEmptyStr = "roadmap-integration-receipt/v1" as NonEmptyStr
+
+type IntegrationReceiptState
+  = IntegrationIntegrated
+  | IntegrationBlocked { detail: String }
+
+type IntegrationReceipt {
+  head_sha: String
+  project: String
+  scm_commit_ordinal: Int
+  state: IntegrationReceiptState
+}
+
+fn integration_receipt_json(receipt: IntegrationReceipt) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: integration_receipt_schema as String)),
+    json_kv(key: "head_sha", value: json_string(s: receipt.head_sha)),
+    json_kv(key: "project", value: json_string(s: receipt.project)),
+    json_kv(key: "scm_commit_ordinal", value: json_int(n: receipt.scm_commit_ordinal)),
+    json_kv(key: "state", value: json_string(s: match receipt.state {
+      IntegrationIntegrated => "integrated"
+      IntegrationBlocked { detail: _ } => "blocked"
+    })),
+    json_kv(key: "detail", value: json_string(s: match receipt.state {
+      IntegrationIntegrated => ""
+      IntegrationBlocked { detail } => detail
+    })),
+  ])
+}
+
+fn integration_receipt_text(receipt: IntegrationReceipt) -> String {
+  serialize_json(v: integration_receipt_json(receipt: receipt))
+}
+
+type IntegrationReceiptDecode
+  = IntegrationReceiptDecoded { receipt: IntegrationReceipt }
+  | IntegrationReceiptNotDecodable { reason: String }
+
+fn integration_receipt_decode_document(doc: JsonValue) -> IntegrationReceiptDecode {
+  match publication_receipt_member(doc: doc, key: "schema") {
+    ReceiptMemberUnreadable { reason: r } => IntegrationReceiptNotDecodable { reason: r }
+    ReceiptMemberRead { value: schema } =>
+      if schema != (integration_receipt_schema as String) {
+        IntegrationReceiptNotDecodable {
+          reason: join(["integration receipt schema is ", schema, ", not ", integration_receipt_schema as String], ""),
+        }
+      } else {
+        match publication_receipt_member(doc: doc, key: "head_sha") {
+          ReceiptMemberUnreadable { reason: r } => IntegrationReceiptNotDecodable { reason: r }
+          ReceiptMemberRead { value: head_sha } =>
+            match publication_receipt_member(doc: doc, key: "project") {
+              ReceiptMemberUnreadable { reason: r } => IntegrationReceiptNotDecodable { reason: r }
+              ReceiptMemberRead { value: project } =>
+                match publication_receipt_int_member(doc: doc, key: "scm_commit_ordinal") {
+                  Absent =>
+                    IntegrationReceiptNotDecodable { reason: "integration receipt scm_commit_ordinal member is absent, duplicated or not an integer" }
+                  Present { value: scm_commit_ordinal } =>
+                    match publication_receipt_member(doc: doc, key: "state") {
+                      ReceiptMemberUnreadable { reason: r } => IntegrationReceiptNotDecodable { reason: r }
+                      ReceiptMemberRead { value: state } =>
+                        match publication_receipt_member(doc: doc, key: "detail") {
+                          ReceiptMemberUnreadable { reason: r } => IntegrationReceiptNotDecodable { reason: r }
+                          ReceiptMemberRead { value: detail } =>
+                            if state == "integrated" {
+                              IntegrationReceiptDecoded {
+                                receipt: IntegrationReceipt {
+                                  head_sha: head_sha, project: project,
+                                  scm_commit_ordinal: scm_commit_ordinal, state: IntegrationIntegrated,
+                                },
+                              }
+                            } else if state == "blocked" {
+                              IntegrationReceiptDecoded {
+                                receipt: IntegrationReceipt {
+                                  head_sha: head_sha, project: project,
+                                  scm_commit_ordinal: scm_commit_ordinal, state: IntegrationBlocked { detail: detail },
+                                },
+                              }
+                            } else {
+                              IntegrationReceiptNotDecodable {
+                                reason: join(["integration receipt state is ", state, ", which is not integrated or blocked"], ""),
+                              }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn integration_receipt_decode(text: String) -> IntegrationReceiptDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } =>
+      IntegrationReceiptNotDecodable {
+        reason: concat("the integration receipt is ", json_document_gap_text(gap: gap)),
+      }
+    JsonDocumentParsed { value: doc } => integration_receipt_decode_document(doc: doc)
+  }
+}
+
+// WHAT THE READ PATH OBSERVED at one attempt's integration address for one head.
+type IntegrationReceiptObservation
+  = IntegrationReceiptForHead { receipt: IntegrationReceipt }
+  | IntegrationReceiptAbsent
+  | IntegrationReceiptUnreadable { reason: String }

@@ -22,9 +22,10 @@ import gunbc.roadmap.roadmap_submission {
   CandidateDecision, CandidateFresh, CandidateCheckpoint, submission_candidate_decision,
   CandidateHandoffState,
   HandoffAwaitingWorker, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
-  HandoffSubmitted, HandoffVerificationFailed, HandoffPublicationOwed,
+  HandoffSubmitted, HandoffVerificationFailed, HandoffAwaitingIntegration, HandoffBlockedOnIntegration, HandoffPublicationOwed,
   HandoffBlockedOnPublication, HandoffPublished,
   HandoffVerificationStanding, VerificationOutstanding, VerificationPassed, VerificationDidNotPass, VerificationStandingRefused,
+  HandoffIntegrationStanding, IntegrationOutstanding, IntegrationComplete, IntegrationBlockedStanding,
   HandoffPublicationStanding, PublicationReceiptOwed, PublicationReceiptBound, PublicationReceiptRefused,
   candidate_handoff_state,
 }
@@ -36,10 +37,18 @@ import gunbc.roadmap_publish_observe { CredentialSourceAbsent }
 import gunbc.roadmap_publish { PublicationOutcome, PublicationBound }
 import gunbc.scm.worktree_inventory { worktree_inventory_parse }
 import gunbc.roadmap.roadmap_fanin {
-  FaninOutcome, FaninIntegrated, FaninConflicted, FaninRefused, fanin_integrate_candidate,
+  FaninOutcome, FaninIntegrated, FaninAlreadyIntegrated, FaninConflicted, FaninRefused, fanin_integrate_candidate,
+  IntegrationReceipt, IntegrationIntegrated, IntegrationBlocked,
+  integration_receipt_text, integration_receipt_decode,
+  IntegrationReceiptDecoded, IntegrationReceiptNotDecodable,
 }
+import gunbc.roadmap.roadmap_project {
+  ProjectMembership, MembershipStandalone, MembershipMember, MembershipAmbiguous,
+  node_project_membership, project_key_for_node, project_member_ids,
+}
+import gunbc.roadmap_model { RoadmapEdge, RoadmapNodeId }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, commit_at_reference }
-import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
 import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
 import test.fixture.scm_repository_builder {
   MbBuild, MbBuilt, MbSetupFailed,
@@ -166,6 +175,7 @@ test fn a_running_worker_has_no_handoff_state() -> Bool {
     provider: ProviderRunning { activity: "working" },
     capture: CaptureAbsent,
     verification: VerificationOutstanding,
+    integration: IntegrationOutstanding,
     publication: PublicationReceiptOwed,
   ) {
     HandoffAwaitingWorker => true
@@ -178,6 +188,7 @@ test fn terminal_without_a_capture_is_yielded_not_ready() -> Bool {
     provider: ProviderBudgetSpent { activity: "stopped", detail: "round budget" },
     capture: CaptureAbsent,
     verification: VerificationOutstanding,
+    integration: IntegrationOutstanding,
     publication: PublicationReceiptOwed,
   ) {
     HandoffYielded { reason } => reason != ""
@@ -185,13 +196,14 @@ test fn terminal_without_a_capture_is_yielded_not_ready() -> Bool {
   }
 }
 
+// The old head's capture and verdict exist; the CURRENT head has no capture, so it is yielded
+// no matter what the old head established -- the evidence is preserved, not inherited.
 test fn a_later_head_inherits_no_prior_heads_evidence() -> Bool {
-  // The old head's capture and verdict exist; the CURRENT head has no capture, so it is yielded
-  // no matter what the old head established -- the evidence is preserved, not inherited.
   match candidate_handoff_state(
     provider: ProviderCompleted { activity: "done" },
     capture: CaptureAbsent,
     verification: VerificationPassed,
+    integration: IntegrationComplete,
     publication: PublicationReceiptOwed,
   ) {
     HandoffYielded { reason: _ } => true
@@ -204,6 +216,7 @@ test fn a_capture_awaiting_verification_is_submitted() -> Bool {
     provider: ProviderCompleted { activity: "done" },
     capture: CaptureForHead { capture: capture_at(head: "cccccccccccccccccccccccccccccccccccccccc", submission: ready_submission()) },
     verification: VerificationOutstanding,
+    integration: IntegrationOutstanding,
     publication: PublicationReceiptOwed,
   ) {
     HandoffSubmitted { head_sha } => head_sha == "cccccccccccccccccccccccccccccccccccccccc"
@@ -211,13 +224,14 @@ test fn a_capture_awaiting_verification_is_submitted() -> Bool {
   }
 }
 
+// The state vocabulary has no arm for "waits on a human to ask": pass moves the candidate to
+// PublicationOwed directly, and the obligation stands until an observed receipt discharges it.
 test fn a_passed_candidate_is_publication_owed_with_no_discretionary_ask() -> Bool {
-  // The state vocabulary has no arm for "waits on a human to ask": pass moves the candidate to
-  // PublicationOwed directly, and the obligation stands until an observed receipt discharges it.
   match candidate_handoff_state(
     provider: ProviderCompleted { activity: "done" },
     capture: CaptureForHead { capture: capture_at(head: "cccccccccccccccccccccccccccccccccccccccc", submission: ready_submission()) },
     verification: VerificationPassed,
+    integration: IntegrationComplete,
     publication: PublicationReceiptOwed,
   ) {
     HandoffPublicationOwed { head_sha } => head_sha == "cccccccccccccccccccccccccccccccccccccccc"
@@ -231,6 +245,7 @@ test fn a_publication_refusal_is_blocked_on_publication_naming_the_cause() -> Bo
     provider: ProviderCompleted { activity: "done" },
     capture: CaptureForHead { capture: capture_at(head: "cccccccccccccccccccccccccccccccccccccccc", submission: ready_submission()) },
     verification: VerificationPassed,
+    integration: IntegrationComplete,
     publication: PublicationReceiptRefused { cause: "no credential is configured to publish it" },
   ) {
     HandoffBlockedOnPublication { head_sha, cause } =>
@@ -244,6 +259,7 @@ test fn an_observed_pr_receipt_discharges_the_obligation() -> Bool {
     provider: ProviderCompleted { activity: "done" },
     capture: CaptureForHead { capture: capture_at(head: "cccccccccccccccccccccccccccccccccccccccc", submission: ready_submission()) },
     verification: VerificationPassed,
+    integration: IntegrationComplete,
     publication: PublicationReceiptBound { pr_number: 41, url: "https://example/pr/41" },
   ) {
     HandoffPublished { head_sha, pr_number, url } =>
@@ -262,6 +278,7 @@ test fn a_blocked_declaration_binds_but_does_not_advance() -> Bool {
     provider: ProviderCompleted { activity: "done" },
     capture: CaptureForHead { capture: capture_at(head: "dddddddddddddddddddddddddddddddddddddddd", submission: blocked) },
     verification: VerificationOutstanding,
+    integration: IntegrationOutstanding,
     publication: PublicationReceiptOwed,
   ) {
     HandoffDeclaredBlocked { head_sha, readiness, explanation } =>
@@ -413,10 +430,12 @@ test fn two_candidates_fan_in_to_one_integration_head_carrying_both() -> Bool {
           match fanin_integrate_candidate(repository: repo, integration_head: base, candidate: first, message: "integrate one") {
             FaninConflicted { conflicts: _ } => false
             FaninRefused { detail: _ } => false
+            FaninAlreadyIntegrated { head: _ } => false
             FaninIntegrated { repository: repo1, head: h1 } =>
               match fanin_integrate_candidate(repository: repo1, integration_head: h1, candidate: second, message: "integrate two") {
                 FaninConflicted { conflicts: _ } => false
                 FaninRefused { detail: _ } => false
+                FaninAlreadyIntegrated { head: _ } => false
                 FaninIntegrated { repository: repo2, head: h2 } => {
                   let paths = paths_at(repository: repo2, at: h2)
                   holds_path(paths: paths, path: "a")
@@ -439,15 +458,178 @@ test fn a_conflicting_pair_yields_the_typed_conflict_and_mints_no_head() -> Bool
           match fanin_integrate_candidate(repository: repo, integration_head: base, candidate: first, message: "integrate one") {
             FaninConflicted { conflicts: _ } => false
             FaninRefused { detail: _ } => false
+            FaninAlreadyIntegrated { head: _ } => false
             FaninIntegrated { repository: repo1, head: h1 } => {
               let commits_before = count(repo1.commits)
               match fanin_integrate_candidate(repository: repo1, integration_head: h1, candidate: second, message: "integrate two") {
                 FaninIntegrated { repository: _, head: _ } => false
                 FaninRefused { detail: _ } => false
+                FaninAlreadyIntegrated { head: _ } => false
                 FaninConflicted { conflicts } =>
                   count(conflicts) == 1
                     && (conflicts |> map(c => c.path as String)) == ["a"]
                     && count(repo1.commits) == commits_before
+              }
+            }
+          }
+      }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Integration states of the handoff fold.
+// ------------------------------------------------------------------------------------------------
+
+test fn a_verified_candidate_awaits_integration_before_publication_is_owed() -> Bool {
+  match candidate_handoff_state(
+    provider: ProviderCompleted { activity: "done" },
+    capture: CaptureForHead { capture: capture_at(head: "cccccccccccccccccccccccccccccccccccccccc", submission: ready_submission()) },
+    verification: VerificationPassed,
+    integration: IntegrationOutstanding,
+    publication: PublicationReceiptOwed,
+  ) {
+    HandoffAwaitingIntegration { head_sha } => head_sha == "cccccccccccccccccccccccccccccccccccccccc"
+    HandoffPublicationOwed { head_sha: _ } => false
+    _ => false
+  }
+}
+
+test fn an_integration_conflict_is_blocked_on_integration_naming_the_population() -> Bool {
+  match candidate_handoff_state(
+    provider: ProviderCompleted { activity: "done" },
+    capture: CaptureForHead { capture: capture_at(head: "cccccccccccccccccccccccccccccccccccccccc", submission: ready_submission()) },
+    verification: VerificationPassed,
+    integration: IntegrationBlockedStanding { cause: "1 conflicting path(s): dag/a.dag" },
+    publication: PublicationReceiptOwed,
+  ) {
+    HandoffBlockedOnIntegration { head_sha, cause } =>
+      head_sha == "cccccccccccccccccccccccccccccccccccccccc" && cause == "1 conflicting path(s): dag/a.dag"
+    _ => false
+  }
+}
+
+test fn an_integrated_candidate_is_publication_owed() -> Bool {
+  match candidate_handoff_state(
+    provider: ProviderCompleted { activity: "done" },
+    capture: CaptureForHead { capture: capture_at(head: "cccccccccccccccccccccccccccccccccccccccc", submission: ready_submission()) },
+    verification: VerificationPassed,
+    integration: IntegrationComplete,
+    publication: PublicationReceiptOwed,
+  ) {
+    HandoffPublicationOwed { head_sha } => head_sha == "cccccccccccccccccccccccccccccccccccccccc"
+    _ => false
+  }
+}
+
+test fn the_integration_receipt_codec_round_trips_both_states() -> Bool {
+  let integrated = IntegrationReceipt {
+    head_sha: "hhhh", project: "arc", scm_commit_ordinal: 7, state: IntegrationIntegrated,
+  }
+  let blocked = IntegrationReceipt {
+    head_sha: "hhhh", project: "arc", scm_commit_ordinal: 7,
+    state: IntegrationBlocked { detail: "1 conflicting path(s): dag/a.dag" },
+  }
+  match integration_receipt_decode(text: integration_receipt_text(receipt: integrated)) {
+    IntegrationReceiptNotDecodable { reason: _ } => false
+    IntegrationReceiptDecoded { receipt: r1 } =>
+      match r1.state {
+        IntegrationIntegrated =>
+          match integration_receipt_decode(text: integration_receipt_text(receipt: blocked)) {
+            IntegrationReceiptNotDecodable { reason: _ } => false
+            IntegrationReceiptDecoded { receipt: r2 } =>
+              match r2.state {
+                IntegrationBlocked { detail } =>
+                  detail == "1 conflicting path(s): dag/a.dag"
+                    && r2.scm_commit_ordinal == 7
+                    && r2.project == "arc"
+                IntegrationIntegrated => false
+              }
+          }
+        _ => false
+      }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Membership derivation (owner ruling: derived from the dependency edges, never rostered).
+// ------------------------------------------------------------------------------------------------
+
+fn batch_edges() -> List<RoadmapEdge> {
+  [
+    RoadmapEdge { child: "shell-arc" as RoadmapNodeId, parent: "task-one" as RoadmapNodeId },
+    RoadmapEdge { child: "shell-arc" as RoadmapNodeId, parent: "task-two" as RoadmapNodeId },
+  ]
+}
+
+test fn a_node_the_arc_depends_on_is_a_member_keyed_by_the_arc() -> Bool {
+  match node_project_membership(node_id: "task-one", edges: batch_edges()) {
+    MembershipMember { arc } => arc == "shell-arc"
+    _ => false
+  }
+    && match project_key_for_node(node_id: "task-one", edges: batch_edges()) {
+      Present { value: key } => key == "shell-arc"
+      Absent => false
+    }
+}
+
+test fn a_node_with_no_dependent_arc_is_a_project_of_one_keyed_by_itself() -> Bool {
+  match node_project_membership(node_id: "shell-arc", edges: batch_edges()) {
+    MembershipStandalone => true
+    _ => false
+  }
+    && match project_key_for_node(node_id: "shell-arc", edges: batch_edges()) {
+      Present { value: key } => key == "shell-arc"
+      Absent => false
+    }
+}
+
+test fn two_arcs_over_one_node_is_a_typed_ambiguity_not_a_default() -> Bool {
+  let edges = concat(batch_edges(), [
+    RoadmapEdge { child: "other-arc" as RoadmapNodeId, parent: "task-one" as RoadmapNodeId },
+  ])
+  match node_project_membership(node_id: "task-one", edges: edges) {
+    MembershipAmbiguous { arcs } => count(arcs) == 2
+    _ => false
+  }
+    && match project_key_for_node(node_id: "task-one", edges: edges) {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+test fn the_project_membership_is_the_arcs_parents_in_declared_order() -> Bool {
+  let members = project_member_ids(arc: "shell-arc", edges: batch_edges())
+  count(members) == 2
+    && fold(members, init: true, f: fn(ok, m) {
+      ok && (m == "task-one" || m == "task-two")
+    })
+}
+
+// ------------------------------------------------------------------------------------------------
+// Fanin, continued: re-integration is the restart-safe no-op, and the base finder names the one
+// root a candidate must descend from.
+// ------------------------------------------------------------------------------------------------
+
+test fn re_integrating_a_consumed_candidate_is_a_typed_noop_not_a_second_merge() -> Bool {
+  match fanin_scene() {
+    FaninSceneUnavailable => false
+    FaninScene { build: _, base, first, second: _ } =>
+      match fanin_scene_repository(s: fanin_scene()) {
+        Absent => false
+        Present { value: repo } =>
+          match fanin_integrate_candidate(repository: repo, integration_head: base, candidate: first, message: "integrate one") {
+            FaninConflicted { conflicts: _ } => false
+            FaninRefused { detail: _ } => false
+            FaninAlreadyIntegrated { head: _ } => false
+            FaninIntegrated { repository: repo1, head: h1 } => {
+              let commits_before = count(repo1.commits)
+              match fanin_integrate_candidate(repository: repo1, integration_head: h1, candidate: first, message: "integrate one again") {
+                FaninIntegrated { repository: _, head: _ } => false
+                FaninConflicted { conflicts: _ } => false
+                FaninRefused { detail: _ } => false
+                FaninAlreadyIntegrated { head } =>
+                  count(repo1.commits) == commits_before
+                    && repository_commit_ref_eq(left: head, right: h1)
               }
             }
           }

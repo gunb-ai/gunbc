@@ -256,6 +256,7 @@ import gunbc.roadmap_publish {
   PublicationSubjectObservation,
   PublicationSubjectObserved, PublicationSubjectUnobserved,
   PublicationReceipt,
+  publication_receipt_member, ReceiptMemberRead, ReceiptMemberUnreadable,
   PublicationEvidence, EvidenceForSubject, EvidenceAbsent,
   EvidenceUnreadable, EvidenceForAnotherSubject,
   publication_evidence_for,
@@ -397,6 +398,13 @@ import gunbc.scm.object_store {
   store_corpus_manifest, CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
 }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository }
+import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
+import gunbc.scm.checkout {
+  checkout_repository_at,
+  RepositoryCheckedOut, CheckoutReferenceUnresolved,
+  CheckoutSnapshotMissingFromStore, CheckoutSnapshotIsAuthoredSource, CheckoutSnapshotIsSemanticNode,
+  CheckoutCorpusUnrecoverable, CheckoutWouldDiscardStagedWork, CheckoutCandidateUnreadable,
+}
 import gunbc.scm.write_spine {
   commit_staged,
   StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
@@ -407,8 +415,22 @@ import gunbc.scm.repository_save {
   save_repository,
   RepositorySaved, RepositorySaveRefusedByCodec, RepositoryFileUnwritable, RepositoryWriteByteCountUnrepresentable,
 }
-import gunbc.scm.worktree_inventory { worktree_inventory_args, worktree_inventory_parse }
-import std.minted_identity { minted_id_ordinal }
+import gunbc.scm.worktree_inventory { worktree_inventory_args, worktree_inventory_parse, worktree_base_file_args }
+import std.minted_identity { MintedId, minted_id_ordinal }
+import gunbc.roadmap.roadmap_project {
+  ProjectMembership, MembershipStandalone, MembershipMember, MembershipAmbiguous,
+  node_project_membership, project_key_for_node, project_member_ids,
+}
+import gunbc.roadmap.roadmap_fanin {
+  FaninOutcome, FaninIntegrated, FaninAlreadyIntegrated, FaninConflicted, FaninRefused,
+  fanin_integrate_candidate,
+  IntegrationReceipt, IntegrationReceiptState, IntegrationIntegrated, IntegrationBlocked,
+  integration_receipt_text, integration_receipt_decode,
+  IntegrationReceiptDecoded, IntegrationReceiptNotDecodable,
+  IntegrationReceiptObservation,
+  IntegrationReceiptForHead, IntegrationReceiptAbsent, IntegrationReceiptUnreadable,
+}
+import gunbc.roadmap_authority { declared_roadmap_edges }
 import gunbc.roadmap.roadmap_submission {
   WorkerSubmission, SubmissionCapture,
   SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
@@ -4326,6 +4348,9 @@ fn belt_workflow_progress_for_attempt_ref(
       submission_capture: CaptureUnreadable {
         reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
       },
+      integration: IntegrationReceiptUnreadable {
+        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
+      },
       review: review_report_absent(reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established"),
       goal_audit: [],
     })
@@ -4452,6 +4477,23 @@ fn belt_workflow_progress_for_attempt_ref(
           head_sha: revision as String,
         )
     }
+    let integration_receipt = match head {
+      WorktreeHeadUnobserved { reason } =>
+        IntegrationReceiptUnreadable {
+          reason: join(["the attempt head is unobserved, so no integration receipt lookup names it: ", reason], ""),
+        }
+      WorktreeHeadObserved { revision } =>
+        belt_integration_receipt_observe(
+          instance: instance,
+          worktree: worktree,
+          dir: belt_attempt_integration_dir_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: current_key,
+          ),
+          head_sha: revision as String,
+        )
+    }
     workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
       node_id: attempt.node_id,
       attempt_key: current_key,
@@ -4493,6 +4535,7 @@ fn belt_workflow_progress_for_attempt_ref(
       publication_subject: publication_subject,
       publication_source: publication_receipt,
       submission_capture: submission_capture,
+      integration: integration_receipt,
       review: review_evidence,
       goal_audit: audit_evidence,
     })
@@ -4908,30 +4951,214 @@ fn belt_scm_stage_tree(worktree: String, store: ObjectStore, paths: List<NonEmpt
   )
 }
 
-// NOTHING-TO-FREEZE IS A RESUME, NOT A FAILURE. If an earlier tick minted the SCM capture and then
-// failed before writing the capture record (the git commit failed, or the process died), the tree
-// being captured now freezes to the manifest the envelope already selects -- so the selected commit
-// IS this tree's capture, and re-binding to it is the correct resumption, never a second mint.
-fn belt_scm_capture_from_selection(envelope: RepositoryEnvelope, path: String) -> BeltScmCapture {
-  match envelope.checked_out {
-    Present { value: reference } =>
-      ScmCandidateCaptured {
-        repository_path: path,
-        commit_ordinal: minted_id_ordinal(id: reference.identity),
-      }
-    Absent =>
-      ScmCaptureRefused {
-        detail: "the capture froze nothing and the envelope selects no commit, so no capture identity exists to bind",
-      }
+// THE INTAKE BASE IS THE SPAWN ORIGIN'S RECORDED SHA, never a moving ref. The dispatch writes the
+// origin (base_ref + base_sha) before the worker starts; a project envelope's base commit freezes
+// exactly that tree, read back through the declared git bridge one path at a time.
+type BeltBaseSha
+  = BaseShaObserved { base_sha: String }
+  | BaseShaUnobserved { reason: String }
+
+fn belt_scm_base_sha_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> BeltBaseSha {
+  let path = dispatch_attempt_spawn_origin_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+  )
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    BaseShaUnobserved {
+      reason: join([
+        "the attempt's spawn origin could not be read, so the intake base is unknown: ",
+        path, " (", read.error, ") — the project base must freeze the recorded dispatch base",
+      ], ""),
+    }
+  } else {
+    match parse_json_document(s: read.content) {
+      JsonDocumentUnreadable { gap: _ } =>
+        BaseShaUnobserved { reason: join(["the spawn origin at ", path, " is not JSON"], "") }
+      JsonDocumentParsed { value: doc } =>
+        match publication_receipt_member(doc: doc, key: "base_sha") {
+          ReceiptMemberUnreadable { reason: r } => BaseShaUnobserved { reason: r }
+          ReceiptMemberRead { value: base_sha } =>
+            if trim(base_sha) == "" {
+              BaseShaUnobserved { reason: "the spawn origin records an empty base sha" }
+            } else {
+              BaseShaObserved { base_sha: trim(base_sha) }
+            }
+        }
+    }
   }
 }
 
+// THE BASE TREE IS READ THROUGH THE BRIDGE, one `git show <sha>:<path>` per tracked path, and
+// staged into the object store exactly as worktree bytes are. One-time per project envelope; an
+// unreadable base file stops the seed -- a partial base would make every later merge answer about
+// a tree the intake never was.
+fn belt_scm_stage_base_tree(
+  instance: HostDashboardInstance,
+  worktree: String,
+  store: ObjectStore,
+  paths: List<NonEmptyStr>,
+  base_sha: String,
+) -> BeltManifestBuild {
+  fold(
+    paths,
+    init: ManifestEntriesBuilt { store: store, entries: [] },
+    f: (acc, path) =>
+      match acc {
+        ManifestBuildRefused { detail: _ } => acc
+        ManifestEntriesBuilt { store, entries } =>
+          match belt_commit_git(
+            instance: instance,
+            worktree: worktree,
+            args: worktree_base_file_args(base_sha: base_sha, path: path as String),
+          ) {
+            ExecFailed { program, exit_code, stderr } =>
+              ManifestBuildRefused {
+                detail: belt_commit_exec_detail(
+                  step: join(["base-file ", path as String], ""),
+                  outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+                ),
+              }
+            ExecRefused { program, reason } =>
+              ManifestBuildRefused {
+                detail: belt_commit_exec_detail(
+                  step: join(["base-file ", path as String], ""),
+                  outcome: ExecRefused { program: program, reason: reason },
+                ),
+              }
+            ExecOk { stdout } =>
+              match store_authored_source(store: store, text: stdout) {
+                SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+                  ManifestBuildRefused {
+                    detail: join([
+                      "the object store refuses base path ", path as String,
+                      ": a different source already holds its content identity, which is store damage",
+                    ], ""),
+                  }
+                SourceStored { store: next, source } =>
+                  ManifestEntriesBuilt {
+                    store: next,
+                    entries: concat(
+                      [CorpusManifestEntry { path: path, source: authored_source_target_of(reference: source) }],
+                      entries,
+                    ),
+                  }
+              }
+          }
+      },
+  )
+}
+
+type BeltSeedOutcome
+  = SeedReady { envelope: RepositoryEnvelope }
+  | SeedRefused { detail: String }
+
+// SEED ONCE. The envelope holding any commit at all is already seeded -- the second candidate of a
+// project must never re-read the base tree. The seed is saved before the candidate work begins, so
+// a crash after seeding does not re-seed either.
+fn belt_scm_envelope_seeded(
+  instance: HostDashboardInstance,
+  worktree: String,
+  envelope: RepositoryEnvelope,
+  path: String,
+  paths: List<NonEmptyStr>,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> BeltSeedOutcome {
+  if count(envelope.commits) > 0 {
+    SeedReady { envelope: envelope }
+  } else {
+    match belt_scm_base_sha_observe(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+      BaseShaUnobserved { reason } => SeedRefused { detail: reason }
+      BaseShaObserved { base_sha } =>
+        match belt_scm_stage_base_tree(
+          instance: instance,
+          worktree: worktree,
+          store: envelope.store,
+          paths: paths,
+          base_sha: base_sha,
+        ) {
+          ManifestBuildRefused { detail } => SeedRefused { detail: detail }
+          ManifestEntriesBuilt { store, entries } =>
+            match store_corpus_manifest(store: store, entries: entries) {
+              CorpusManifestDuplicatePath { path: p } =>
+                SeedRefused { detail: join(["the inventory named ", p as String, " twice"], "") }
+              CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
+                SeedRefused { detail: "the object store refuses the base manifest: a different manifest already holds its identity, which is store damage" }
+              CorpusManifestStored { store: with_manifest, manifest } =>
+                match commit_staged(
+                  repository: RepositoryEnvelope {
+                    store: with_manifest,
+                    commits: envelope.commits,
+                    commit_allocator: envelope.commit_allocator,
+                    checked_out: envelope.checked_out,
+                    staged: Present { value: manifest },
+                  },
+                  message: join(["project base: ", base_sha], ""),
+                ) {
+                  StagedCommitCandidateRefused { cause: _ } =>
+                    SeedRefused { detail: "the base stage could not be compared against its base" }
+                  StagedCommitNothingToFreeze =>
+                    SeedRefused { detail: "the intake base froze nothing, so the project has no base to merge against" }
+                  StagedCommitAllocatorInvalid { next_ordinal } =>
+                    SeedRefused {
+                      detail: join(["the envelope's commit allocator is invalid (next ordinal ", to_string(next_ordinal), ")"], ""),
+                    }
+                  StagedCommitSourceUnrecoverable { cause: _ } =>
+                    SeedRefused { detail: "a staged base path's source is unrecoverable from the object store" }
+                  StagedCommitMinted { repository: seeded, reference: _ } =>
+                    match save_repository(path: path, repo: seeded) {
+                      RepositorySaved { path: _, written: _ } => SeedReady { envelope: seeded }
+                      RepositorySaveRefusedByCodec { path: _, cause: _ } =>
+                        SeedRefused { detail: "the base commit was minted but the envelope could not be encoded for persistence" }
+                      RepositoryFileUnwritable { path: p, error } =>
+                        SeedRefused { detail: join(["the base commit was minted but the envelope could not be written to ", p, " (", error, ")"], "") }
+                      RepositoryWriteByteCountUnrepresentable { path: _, reported } =>
+                        SeedRefused { detail: join(["the envelope write reported a nonsensical byte count (", to_string(reported), ")"], "") }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+// THE ROOT COMMIT IS THE MERGE BASE EVERY CANDIDATE DESCENDS FROM. In a seeded envelope it is the
+// intake-base commit; in a pre-seeding envelope from the first capture design it is the first
+// (root) candidate, and later candidates chain from it -- both are one RootCommit-ancestry commit,
+// and more than one is envelope damage this derivation refuses to choose among.
+fn belt_scm_root_commit_ref(envelope: RepositoryEnvelope) -> RepositoryCommitRef? {
+  (envelope.commits
+    |> filter(c => match c.ancestry {
+      RootCommit => true
+      DescendsFrom { parent: _ } => false
+    })
+    |> map(c => c.reference)).first()
+}
+
+fn belt_scm_checkout_refusal_detail(side: String) -> String {
+  join(["the ", side, " could not be checked out inside the project envelope, which is envelope damage, not a capture"], "")
+}
+
+// THE CAPTURE, WHOLE. Seed-once (an envelope holding any commit is already seeded), then the
+// candidate is staged from the worktree and minted DESCENDING FROM THE SHARED BASE: the selection
+// is moved to the base for the mint and restored afterwards, so between belt operations
+// checked_out IS the integration head and restart recovery is a pure derivation from the
+// envelope. A candidate identical to the intake base is refused -- there is no change to deliver.
 fn belt_scm_capture_candidate_tree(
   instance: HostDashboardInstance,
   worktree: String,
-  project_key: String,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
   message: String,
 ) -> BeltScmCapture {
+  match project_key_for_node(node_id: node_id as String, edges: declared_roadmap_edges()) {
+    Absent =>
+      ScmCaptureRefused {
+        detail: "two or more arcs depend on this node, so its project cannot be derived from the dependency edges: the authority must name one owning arc before a candidate can be captured",
+      }
+    Present { value: project_key } =>
   let projects_dir = belt_scm_projects_dir(instance: instance)
   match belt_exec(
     cmd: host_exec_argv(
@@ -4982,7 +5209,41 @@ fn belt_scm_capture_candidate_tree(
                   detail: "the worktree tracks zero files, so capturing it would mint an empty tree as the worker's deliverable",
                 }
               } else {
-                match belt_scm_stage_tree(worktree: worktree, store: envelope.store, paths: paths) {
+                match belt_scm_envelope_seeded(
+                  instance: instance,
+                  worktree: worktree,
+                  envelope: envelope,
+                  path: path,
+                  paths: paths,
+                  node_id: node_id,
+                  attempt_key: attempt_key,
+                ) {
+                  SeedRefused { detail } => ScmCaptureRefused { detail: detail }
+                  SeedReady { envelope: seeded } =>
+                    match belt_scm_root_commit_ref(envelope: seeded) {
+                      Absent =>
+                        ScmCaptureRefused {
+                          detail: "the project envelope holds commits but no root commit, so no candidate can descend from a shared base: envelope damage",
+                        }
+                      Present { value: base_ref } => {
+                        let head_ref = seeded.checked_out
+                        match checkout_repository_at(repo: seeded, reference: base_ref) {
+                          CheckoutReferenceUnresolved { reference: _ } =>
+                            ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "project base") }
+                          CheckoutSnapshotMissingFromStore { reference: _, root: _ } =>
+                            ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "project base") }
+                          CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } =>
+                            ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "project base") }
+                          CheckoutSnapshotIsSemanticNode { reference: _, root: _ } =>
+                            ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "project base") }
+                          CheckoutCorpusUnrecoverable { reference: _, cause: _ } =>
+                            ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "project base") }
+                          CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } =>
+                            ScmCaptureRefused { detail: "the envelope carries uncommitted staged work, so moving the selection to the project base would discard it: unexplained state" }
+                          CheckoutCandidateUnreadable { reference: _, cause: _ } =>
+                            ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "project base") }
+                          RepositoryCheckedOut { repository: at_base, corpus: _ } =>
+                match belt_scm_stage_tree(worktree: worktree, store: at_base.store, paths: paths) {
                   ManifestBuildRefused { detail } => ScmCaptureRefused { detail: detail }
                   ManifestEntriesBuilt { store, entries } =>
                     match store_corpus_manifest(store: store, entries: entries) {
@@ -4998,9 +5259,9 @@ fn belt_scm_capture_candidate_tree(
                         match commit_staged(
                           repository: RepositoryEnvelope {
                             store: with_manifest,
-                            commits: envelope.commits,
-                            commit_allocator: envelope.commit_allocator,
-                            checked_out: envelope.checked_out,
+                            commits: at_base.commits,
+                            commit_allocator: at_base.commit_allocator,
+                            checked_out: at_base.checked_out,
                             staged: Present { value: manifest },
                           },
                           message: message,
@@ -5010,7 +5271,9 @@ fn belt_scm_capture_candidate_tree(
                               detail: "the SCM stage could not be compared against its base, so the capture was not minted",
                             }
                           StagedCommitNothingToFreeze =>
-                            belt_scm_capture_from_selection(envelope: envelope, path: path)
+                            ScmCaptureRefused {
+                              detail: "the declared candidate is identical to the intake base: there is no change to deliver, so there is no candidate to bind",
+                            }
                           StagedCommitAllocatorInvalid { next_ordinal } =>
                             ScmCaptureRefused {
                               detail: join([
@@ -5022,8 +5285,28 @@ fn belt_scm_capture_candidate_tree(
                             ScmCaptureRefused {
                               detail: "a staged path's source is unrecoverable from the object store, so the candidate must not be published into history",
                             }
-                          StagedCommitMinted { repository: advanced, reference } =>
-                            match save_repository(path: path, repo: advanced) {
+                          StagedCommitMinted { repository: with_candidate, reference } => {
+                            let restore_ref = match head_ref {
+                              Present { value: h } => h
+                              Absent => base_ref
+                            }
+                            match checkout_repository_at(repo: with_candidate, reference: restore_ref) {
+                              CheckoutReferenceUnresolved { reference: _ } =>
+                                ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "integration head") }
+                              CheckoutSnapshotMissingFromStore { reference: _, root: _ } =>
+                                ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "integration head") }
+                              CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } =>
+                                ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "integration head") }
+                              CheckoutSnapshotIsSemanticNode { reference: _, root: _ } =>
+                                ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "integration head") }
+                              CheckoutCorpusUnrecoverable { reference: _, cause: _ } =>
+                                ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "integration head") }
+                              CheckoutWouldDiscardStagedWork { reference: _, candidate: _, committed: _ } =>
+                                ScmCaptureRefused { detail: "the envelope carries uncommitted staged work after a candidate mint, which is unexplained state" }
+                              CheckoutCandidateUnreadable { reference: _, cause: _ } =>
+                                ScmCaptureRefused { detail: belt_scm_checkout_refusal_detail(side: "integration head") }
+                              RepositoryCheckedOut { repository: restored, corpus: _ } =>
+                            match save_repository(path: path, repo: restored) {
                               RepositorySaved { path: _, written: _ } =>
                                 ScmCandidateCaptured {
                                   repository_path: path,
@@ -5048,8 +5331,12 @@ fn belt_scm_capture_candidate_tree(
                                   ], ""),
                                 }
                             }
+                            }
+                          }
                         }
-                    }
+                }
+                        }
+                      }
                 }
               }
             }
@@ -5057,16 +5344,20 @@ fn belt_scm_capture_candidate_tree(
       }
     }
   }
+  }
+  }
+  }
 }
 
 // THE CANDIDATE CAPTURE SEQUENCE. The SCM capture comes FIRST: the candidate's authoritative
-// identity is minted into the project's envelope from the tree as it stands THEN, and only after
-// that binding exists does the belt create the git commit that realizes the same tree at the edge
-// (verification checkout and, later, the publication push). A failure anywhere is not swallowed
-// into a checkpoint -- a git commit with no SCM binding, or an SCM commit with no capture record,
-// is a defect to stop on, typed, never a silent unbound candidate. Because the SCM capture precedes
-// the git commit, a failure after it leaves the tree dirty, so the next tick re-attempts the whole
-// sequence and the nothing-to-freeze resume above keeps it idempotent.
+// identity is minted into the project's envelope from the tree as it stands THEN, descending from
+// the seeded intake base, and only after that binding exists does the belt create the git commit
+// that realizes the same tree at the edge (verification checkout and, later, the publication
+// push). A failure anywhere is not swallowed into a checkpoint -- a git commit with no SCM
+// binding, or an SCM commit with no capture record, is a defect to stop on, typed, never a silent
+// unbound candidate. Because the SCM capture precedes the git commit and nothing is persisted
+// mid-sequence until the final save, a failure leaves the tree dirty and the envelope without the
+// candidate, so the next tick re-attempts the whole sequence cleanly.
 fn belt_commit_capture_candidate(
   instance: HostDashboardInstance,
   worktree: String,
@@ -5079,7 +5370,8 @@ fn belt_commit_capture_candidate(
   match belt_scm_capture_candidate_tree(
     instance: instance,
     worktree: worktree,
-    project_key: node_id,
+    node_id: node_id as RoadmapNodeId,
+    attempt_key: attempt_key,
     message: message as String,
   ) {
     ScmCaptureRefused { detail } => CommitFailed { node_id: node_id, detail: detail }
@@ -7999,7 +8291,495 @@ fn belt_review_outcome_json(o: BeltReviewOutcome) -> JsonValue {
   }
 }
 
+// ------------------------------------------------------------------------------------------------
+// THE INTEGRATION STEP (owner ruling 2026-09-20: the batch integrates via native SCM fanin).
+// It runs inside the publish pass because publication is the obligation integration feeds: a
+// verified candidate is first merged into its project's integration head, and only a project
+// whose membership is fully integrated has anything to publish. Idempotence is derived, not
+// tracked: squash_merge's consumed-source record makes re-integration a typed no-op, so a
+// restart continues from the envelope with no belt-side bookkeeping.
+// ------------------------------------------------------------------------------------------------
+
+fn belt_attempt_integration_dir_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    "/integration",
+  ], "")
+}
+
+fn belt_integration_receipt_observe(
+  instance: HostDashboardInstance,
+  worktree: String,
+  dir: String,
+  head_sha: String,
+) -> IntegrationReceiptObservation {
+  match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
+    ExecFailed { program, exit_code, stderr } =>
+      IntegrationReceiptUnreadable {
+        reason: belt_commit_exec_detail(
+          step: "integration-directory",
+          outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+        ),
+      }
+    ExecRefused { program, reason } =>
+      IntegrationReceiptUnreadable {
+        reason: belt_commit_exec_detail(step: "integration-directory", outcome: ExecRefused { program: program, reason: reason }),
+      }
+    ExecOk { stdout: _ } => {
+      let listing = Filesystem.List(path: dir)
+      if !listing.success {
+        IntegrationReceiptUnreadable {
+          reason: join(["the integration receipt directory could not be listed: ", dir, " (", listing.error, ")"], ""),
+        }
+      } else if !filesystem_listing_names_entry(listing: listing.entries, name: join([head_sha, ".json"], "")) {
+        IntegrationReceiptAbsent
+      } else {
+        let read = Filesystem.Read(path: join([dir, "/", head_sha, ".json"], ""))
+        if !read.success {
+          IntegrationReceiptUnreadable {
+            reason: join(["the integration receipt for this head was listed and then could not be read: ", read.error], ""),
+          }
+        } else {
+          match integration_receipt_decode(text: read.content) {
+            IntegrationReceiptNotDecodable { reason } =>
+              IntegrationReceiptUnreadable {
+                reason: join(["the integration receipt at this head's own address does not decode: ", reason], ""),
+              }
+            IntegrationReceiptDecoded { receipt } =>
+              if receipt.head_sha != head_sha {
+                IntegrationReceiptUnreadable {
+                  reason: "the integration receipt at this head's own address names a different head, which is unexplained state",
+                }
+              } else {
+                IntegrationReceiptForHead { receipt: receipt }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+type BeltIntegrationReceiptWrite
+  = IntegrationReceiptRecorded
+  | IntegrationReceiptRecordFailed { detail: String }
+
+fn belt_integration_receipt_record(
+  instance: HostDashboardInstance,
+  worktree: String,
+  dir: String,
+  receipt: IntegrationReceipt,
+) -> BeltIntegrationReceiptWrite {
+  match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
+    ExecFailed { program, exit_code, stderr } =>
+      IntegrationReceiptRecordFailed {
+        detail: belt_commit_exec_detail(
+          step: "integration-directory",
+          outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+        ),
+      }
+    ExecRefused { program, reason } =>
+      IntegrationReceiptRecordFailed {
+        detail: belt_commit_exec_detail(step: "integration-directory", outcome: ExecRefused { program: program, reason: reason }),
+      }
+    ExecOk { stdout: _ } => {
+      let write = Filesystem.Write(
+        path: join([dir, "/", receipt.head_sha, ".json"], ""),
+        content: integration_receipt_text(receipt: receipt),
+      )
+      if write.success {
+        IntegrationReceiptRecorded
+      } else {
+        IntegrationReceiptRecordFailed {
+          detail: join(["the integration receipt could not be written, so the judgment was reached and then lost: ", write.error], ""),
+        }
+      }
+    }
+  }
+}
+
+// VERIFICATION-PASSED, READ EXACTLY AS THE PUBLISH ADMISSION READS IT. The integration step must
+// answer the same question with the same evidence: the current selection for this head, its
+// receipt file, and the subject the node and attempt pin.
+type BeltCandidateVerdict
+  = VerificationPassedConfirmed
+  | VerificationNotPassed { reason: String }
+  | VerificationUnreadable { reason: String }
+
+fn belt_candidate_verification_passed(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  head_sha: String,
+) -> BeltCandidateVerdict {
+  match belt_lookup_node(node_id: node_id) {
+    AuthorityProjectionRefused { detail } =>
+      VerificationUnreadable { reason: concat("roadmap authority projection refused: ", detail) }
+    NodeMissing =>
+      VerificationUnreadable { reason: "the roadmap authority declares no node with this id" }
+    NodeFound { node } => {
+      let selection = belt_verification_selection_observe(
+        instance: instance,
+        node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+        attempt_key: attempt_key,
+        head_sha: head_sha,
+      )
+      let source = belt_verification_receipt_source(
+        instance: instance,
+        node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+        attempt_key: attempt_key,
+        selection: selection,
+      )
+      match belt_verification_subject_from_selection(
+        node: node,
+        attempt_key: attempt_key,
+        branch: dispatch_branch_name(
+          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+          attempt_key: attempt_key,
+        ),
+        head: head_sha as CommitSha,
+        selection: selection,
+      ) {
+        VerificationSubjectUnobserved { reason } =>
+          VerificationUnreadable { reason: reason }
+        VerificationSubjectObserved { subject } =>
+          match verification_file_evidence_for(expected: subject, source: source) {
+            VerificationFileAbsent =>
+              VerificationNotPassed { reason: "no verification receipt exists for this head yet" }
+            VerificationFileUnreadable { reason } =>
+              VerificationUnreadable { reason: reason }
+            VerificationFileDecoded { evidence } =>
+              if verification_evidence_moves_lamp(evidence: evidence) {
+                VerificationPassedConfirmed
+              } else {
+                VerificationNotPassed { reason: "the verification verdict for this head is not passed, so there is no verified candidate to integrate" }
+              }
+          }
+      }
+    }
+  }
+}
+
+type BeltEnvelopeIntegration
+  = EnvelopeIntegrated
+  | EnvelopeIntegrationBlocked { detail: String }
+  | EnvelopeIntegrationUnreadable { detail: String }
+
+fn belt_integration_receipt_record_state(
+  instance: HostDashboardInstance,
+  worktree: String,
+  dir: String,
+  capture: SubmissionCapture,
+  project_key: String,
+  state: IntegrationReceiptState,
+) -> BeltIntegrationReceiptWrite {
+  belt_integration_receipt_record(
+    instance: instance,
+    worktree: worktree,
+    dir: dir,
+    receipt: IntegrationReceipt {
+      head_sha: capture.head_sha,
+      project: project_key,
+      scm_commit_ordinal: capture.scm_commit_ordinal,
+      state: state,
+    },
+  )
+}
+
+fn belt_integrate_into_envelope(
+  instance: HostDashboardInstance,
+  worktree: String,
+  capture: SubmissionCapture,
+  project_key: String,
+  dir: String,
+) -> BeltEnvelopeIntegration {
+  match load_repository(path: capture.scm_repository) {
+    RepositoryLoadRefused { cause } =>
+      EnvelopeIntegrationUnreadable { detail: belt_scm_load_refusal_detail(cause: cause) }
+    RepositoryLoaded { path: _, envelope } => {
+      let candidate = RepositoryCommitRef { identity: MintedId { ordinal: capture.scm_commit_ordinal } }
+      match envelope.checked_out {
+        Absent =>
+          EnvelopeIntegrationUnreadable {
+            detail: "the project envelope selects no integration head, so there is nothing to merge the candidate into",
+          }
+        Present { value: head } =>
+          if repository_commit_ref_eq(left: head, right: candidate) {
+            match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
+              IntegrationReceiptRecorded => EnvelopeIntegrated
+              IntegrationReceiptRecordFailed { detail } => EnvelopeIntegrationUnreadable { detail: detail }
+            }
+          } else {
+            match fanin_integrate_candidate(
+              repository: envelope,
+              integration_head: head,
+              candidate: candidate,
+              message: join(["integrate ", capture.head_sha, " into ", project_key], ""),
+            ) {
+              FaninAlreadyIntegrated { head: _ } =>
+                match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
+                  IntegrationReceiptRecorded => EnvelopeIntegrated
+                  IntegrationReceiptRecordFailed { detail } => EnvelopeIntegrationUnreadable { detail: detail }
+                }
+              FaninIntegrated { repository: advanced, head: new_head } => {
+                let moved = RepositoryEnvelope {
+                  store: advanced.store,
+                  commits: advanced.commits,
+                  commit_allocator: advanced.commit_allocator,
+                  checked_out: Present { value: new_head },
+                  staged: advanced.staged,
+                }
+                match save_repository(path: capture.scm_repository, repo: moved) {
+                  RepositorySaved { path: _, written: _ } =>
+                    match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
+                      IntegrationReceiptRecorded => EnvelopeIntegrated
+                      IntegrationReceiptRecordFailed { detail } => EnvelopeIntegrationUnreadable { detail: detail }
+                    }
+                  RepositorySaveRefusedByCodec { path: _, cause: _ } =>
+                    EnvelopeIntegrationUnreadable {
+                      detail: "the candidate was merged but the envelope could not be encoded for persistence; the merge must be re-derived on the next tick",
+                    }
+                  RepositoryFileUnwritable { path: p, error } =>
+                    EnvelopeIntegrationUnreadable {
+                      detail: join(["the candidate was merged but the envelope could not be written to ", p, " (", error, ")"], ""),
+                    }
+                  RepositoryWriteByteCountUnrepresentable { path: _, reported } =>
+                    EnvelopeIntegrationUnreadable {
+                      detail: join(["the envelope write reported a nonsensical byte count (", to_string(reported), ")"], ""),
+                    }
+                }
+              }
+              FaninConflicted { conflicts } => {
+                let detail = join([
+                  to_string(count(conflicts)), " conflicting path(s): ",
+                  join(map(conflicts, c => c.path as String), ", "),
+                ], "")
+                match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
+                  IntegrationReceiptRecorded => EnvelopeIntegrationBlocked { detail: detail }
+                  IntegrationReceiptRecordFailed { detail: d } => EnvelopeIntegrationUnreadable { detail: d }
+                }
+              }
+              FaninRefused { detail } => EnvelopeIntegrationUnreadable { detail: detail }
+            }
+          }
+      }
+    }
+  }
+}
+
+type BeltIntegrationStep
+  = IntegrationStepDeferred { reason: String }
+  | IntegrationStepUnreadable { detail: String }
+  | IntegrationStepBlocked { detail: String }
+  | IntegrationStepReady { project_key: String, integrated: Int, members: Int }
+
+fn belt_integrate_candidate_for_instance(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+) -> BeltIntegrationStep {
+  let worktree = dispatch_worktree_path_for_instance(
+    instance: instance,
+    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+    attempt_key: attempt_key,
+  )
+  match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+    WorktreeHeadUnobserved { reason } => IntegrationStepDeferred { reason: reason }
+    WorktreeHeadObserved { revision } =>
+      match belt_submission_capture_for_head(
+        instance: instance,
+        worktree: worktree,
+        dir: belt_attempt_submission_dir_for_instance(
+          instance: instance,
+          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+          attempt_key: attempt_key,
+        ),
+        head_sha: revision as String,
+      ) {
+        CaptureAbsent =>
+          IntegrationStepDeferred { reason: "no submission capture binds this head, so there is no candidate to integrate" }
+        CaptureUnreadable { reason } => IntegrationStepUnreadable { detail: reason }
+        CaptureForHead { capture } =>
+          match belt_candidate_verification_passed(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: attempt_key,
+            head_sha: revision as String,
+          ) {
+            VerificationNotPassed { reason } => IntegrationStepDeferred { reason: reason }
+            VerificationUnreadable { reason } => IntegrationStepUnreadable { detail: reason }
+            VerificationPassedConfirmed => {
+              let edges = declared_roadmap_edges()
+              match node_project_membership(node_id: node_id, edges: edges) {
+                MembershipAmbiguous { arcs: _ } =>
+                  IntegrationStepUnreadable {
+                    detail: "two or more arcs depend on this node, so its project cannot be derived from the dependency edges",
+                  }
+                membership => {
+                  let project_key = match membership {
+                    MembershipStandalone => node_id
+                    MembershipMember { arc } => arc
+                    MembershipAmbiguous { arcs: _ } => node_id
+                  }
+                  let members = match membership {
+                    MembershipStandalone => [node_id]
+                    MembershipMember { arc } => project_member_ids(arc: arc, edges: edges)
+                    MembershipAmbiguous { arcs: _ } => [node_id]
+                  }
+                  match belt_integrate_into_envelope(
+                    instance: instance,
+                    worktree: worktree,
+                    capture: capture,
+                    project_key: project_key,
+                    dir: belt_attempt_integration_dir_for_instance(
+                      instance: instance,
+                      node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+                      attempt_key: attempt_key,
+                    ),
+                  ) {
+                    EnvelopeIntegrationUnreadable { detail } => IntegrationStepUnreadable { detail: detail }
+                    EnvelopeIntegrationBlocked { detail } => IntegrationStepBlocked { detail: detail }
+                    EnvelopeIntegrated =>
+                      match belt_integration_census(instance: instance, member_ids: members) {
+                        CensusUnreadable { detail } => IntegrationStepUnreadable { detail: detail }
+                        CensusCounted { integrated, blocked: _ } =>
+                          IntegrationStepReady {
+                            project_key: project_key,
+                            integrated: integrated,
+                            members: count(members),
+                          }
+                      }
+                  }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE k-OF-n CENSUS, derived from the per-attempt integration receipts: a member counts as
+// integrated when its CURRENT attempt's head carries an integrated receipt. Cheap to read, and a
+// restart changes nothing because the receipts are the record.
+type BeltIntegrationCensus
+  = CensusCounted { integrated: Int, blocked: List<String> }
+  | CensusUnreadable { detail: String }
+
+fn belt_integration_census(instance: HostDashboardInstance, member_ids: List<String>) -> BeltIntegrationCensus {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      CensusUnreadable { detail: join(["the attempts ledger is unobservable, so the project's integration standing is unknown: ", reason], "") }
+    WorkflowAttemptsObserved { attempts } => {
+      let states = map(member_ids, member => {
+        let progresses = attempts |> filter(p => p.node_id == member)
+        match progresses.first() {
+          Absent => MemberCensusPending { node_id: member }
+          Present { value: progress } =>
+            match belt_worktree_head_observe(
+              instance: instance,
+              worktree: dispatch_worktree_path_for_instance(
+                instance: instance,
+                node_id: member as gunbc.roadmap_model.RoadmapNodeId,
+                attempt_key: progress.attempt_key,
+              ),
+            ) {
+              WorktreeHeadUnobserved { reason: _ } => MemberCensusPending { node_id: member }
+              WorktreeHeadObserved { revision } =>
+                match belt_integration_receipt_observe(
+                  instance: instance,
+                  worktree: dispatch_worktree_path_for_instance(
+                    instance: instance,
+                    node_id: member as gunbc.roadmap_model.RoadmapNodeId,
+                    attempt_key: progress.attempt_key,
+                  ),
+                  dir: belt_attempt_integration_dir_for_instance(
+                    instance: instance,
+                    node_id: member as gunbc.roadmap_model.RoadmapNodeId,
+                    attempt_key: progress.attempt_key,
+                  ),
+                  head_sha: revision as String,
+                ) {
+                  IntegrationReceiptAbsent => MemberCensusPending { node_id: member }
+                  IntegrationReceiptUnreadable { reason: _ } => MemberCensusPending { node_id: member }
+                  IntegrationReceiptForHead { receipt } =>
+                    match receipt.state {
+                      IntegrationIntegrated => MemberCensusIntegrated { node_id: member }
+                      IntegrationBlocked { detail: _ } => MemberCensusBlocked { node_id: member }
+                    }
+                }
+            }
+        }
+      })
+      CensusCounted {
+        integrated: count(states |> filter(s => match s {
+          MemberCensusIntegrated { node_id: _ } => true
+          MemberCensusPending { node_id: _ } => false
+          MemberCensusBlocked { node_id: _ } => false
+        })),
+        blocked: states |> flat_map(s => match s {
+          MemberCensusBlocked { node_id } => [node_id]
+          MemberCensusIntegrated { node_id: _ } => []
+          MemberCensusPending { node_id: _ } => []
+        }),
+      }
+    }
+  }
+}
+
+type MemberCensus
+  = MemberCensusIntegrated { node_id: String }
+  | MemberCensusPending { node_id: String }
+  | MemberCensusBlocked { node_id: String }
+
+// INTEGRATION PRECEDES PUBLICATION, and the obligation belongs to the project. A member attempt
+// of a multi-member project never publishes alone: it defers, naming the standing, until the
+// membership is fully integrated -- and then the PROJECT publishes (one integration head, one
+// PR), through belt_publish_project_for_instance. A standalone task is the degenerate project
+// of one and flows into the per-attempt adjudication unchanged. The capture mint moved the
+// envelope selection to the base only so the candidate could descend from the shared base and
+// then restored it: between belt operations checked_out IS the integration head, which is what
+// makes restart recovery a pure derivation from the envelope.
 fn belt_publish_attempt_for_instance(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+) -> BeltPublishOutcome {
+  match belt_integrate_candidate_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    IntegrationStepDeferred { reason } => PublishDeferred { node_id: node_id, reason: reason }
+    IntegrationStepUnreadable { detail } => PublishEvidenceUnreadable { node_id: node_id, detail: detail }
+    IntegrationStepBlocked { detail } =>
+      PublishDeferred { node_id: node_id, reason: join(["blocked on integration: ", detail], "") }
+    IntegrationStepReady { project_key, integrated, members } =>
+      if integrated < members {
+        PublishDeferred {
+          node_id: node_id,
+          reason: join([
+            "the publication obligation belongs to the project ", project_key, ": ",
+            to_string(integrated), " of ", to_string(members), " members integrated",
+          ], ""),
+        }
+      } else {
+        match node_project_membership(node_id: node_id, edges: declared_roadmap_edges()) {
+          MembershipMember { arc } =>
+            PublishDeferred {
+              node_id: node_id,
+              reason: join([
+                "the project ", arc,
+                " is fully integrated; its publication edge (materialize the integration head to a git branch, one PR per project) lands with the publish-edge change",
+              ], ""),
+            }
+          _ => belt_publish_attempt_adjudicate(instance: instance, node_id: node_id, attempt_key: attempt_key)
+        }
+      }
+  }
+}
+
+
+fn belt_publish_attempt_adjudicate(
   instance: HostDashboardInstance,
   node_id: String,
   attempt_key: String,

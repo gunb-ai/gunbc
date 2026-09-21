@@ -1,0 +1,59 @@
+module gunbc.roadmap.roadmap_project
+
+import std.types { String, List }
+import gunbc.roadmap_model { RoadmapEdge }
+
+// PROJECT MEMBERSHIP IS DERIVED FROM THE DEPENDENCY EDGES, NEVER ROSTERED (owner ruling
+// 2026-09-20: the 10-task batch integrates via native gunbc SCM fanin). The roadmap authority
+// already declares the only parent relationship it has: edge(child: arc, parent: task) means the
+// arc depends on the task -- the task is a prerequisite of the arc. So a node's project is the arc
+// that depends on it, and a node no arc depends on is a project of one, which is the degenerate
+// delivery case docs/plans/harness-work-lifecycle.md declares, not a special case.
+//
+// A HAND-MAINTAINED ROSTER BESIDE THIS DERIVATION IS THE FORK THIS MODULE EXISTS TO REFUSE: the
+// edges are the authority, so adding an eleventh node to a batch is an edge edit and nothing else.
+// AMBIGUOUS IS A TYPED STATE, NOT A DEFAULT. Two arcs depending on one node would put its candidate
+// in two projects' integration heads -- the fanin cannot choose, and choosing (first declared,
+// lexicographically least) would be a heuristic standing in for an observation. The state refuses:
+// the authority must say which arc owns the delivery.
+type ProjectMembership
+  = MembershipStandalone
+  | MembershipMember { arc: String }
+  | MembershipAmbiguous { arcs: List<String> }
+
+fn node_project_membership(node_id: String, edges: List<RoadmapEdge>) -> ProjectMembership {
+  let arcs = edges
+    |> filter(e => (e.parent as String) == node_id)
+    |> map(e => e.child as String)
+  if count(arcs) == 0 {
+    MembershipStandalone
+  } else if count(arcs) == 1 {
+    match arcs.first() {
+      Present { value: arc } => MembershipMember { arc: arc }
+      Absent => MembershipAmbiguous { arcs: [] }
+    }
+  } else {
+    MembershipAmbiguous { arcs: arcs }
+  }
+}
+
+// THE ENVELOPE KEY: the arc's id for a member, the node's own id for a standalone task. One
+// project, one envelope, one integration head -- and the key is derived by the same rule every
+// consumer uses, so capture, fanin and publication cannot disagree about which envelope a
+// candidate belongs to. Ambiguous membership has no key: there is no honest envelope to name.
+fn project_key_for_node(node_id: String, edges: List<RoadmapEdge>) -> String? {
+  match node_project_membership(node_id: node_id, edges: edges) {
+    MembershipStandalone => Present { value: node_id }
+    MembershipMember { arc } => Present { value: arc }
+    MembershipAmbiguous { arcs: _ } => none
+  }
+}
+
+// THE MEMBERSHIP OF A PROJECT, for the k-of-n integration standing: every node the arc depends
+// on, in declared order. The arc itself is NOT a member -- it is the delivery, and it has its own
+// project-of-one unless a further arc depends on it.
+fn project_member_ids(arc: String, edges: List<RoadmapEdge>) -> List<String> {
+  edges
+    |> filter(e => (e.child as String) == arc)
+    |> map(e => e.parent as String)
+}

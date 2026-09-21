@@ -344,6 +344,8 @@ type CandidateHandoffState
   | HandoffDeclaredBlocked { head_sha: String, readiness: SubmissionReadiness, explanation: String }
   | HandoffSubmitted { head_sha: String }
   | HandoffVerificationFailed { head_sha: String, verdict_key: String }
+  | HandoffAwaitingIntegration { head_sha: String }
+  | HandoffBlockedOnIntegration { head_sha: String, cause: String }
   | HandoffPublicationOwed { head_sha: String }
   | HandoffBlockedOnPublication { head_sha: String, cause: String }
   | HandoffPublished { head_sha: String, pr_number: Int, url: String }
@@ -362,10 +364,21 @@ type HandoffPublicationStanding
   | PublicationReceiptBound { pr_number: Int, url: String }
   | PublicationReceiptRefused { cause: String }
 
+// INTEGRATION SITS BETWEEN VERIFIED AND PUBLISHED (owner ruling 2026-09-20: native SCM fanin). A
+// passed candidate is not yet publication-owed: it must first be merged into its project's
+// integration head, and a conflict there is its own typed state -- BlockedOnIntegration -- never
+// a merge failure and never a silent retry. For a standalone task the integration is the same
+// step with a membership of one, so the states never fork between batch and solo delivery.
+type HandoffIntegrationStanding
+  = IntegrationOutstanding
+  | IntegrationComplete
+  | IntegrationBlockedStanding { cause: String }
+
 fn candidate_handoff_state(
   provider: ProviderExecutionState,
   capture: SubmissionCaptureObservation,
   verification: HandoffVerificationStanding,
+  integration: HandoffIntegrationStanding,
   publication: HandoffPublicationStanding,
 ) -> CandidateHandoffState {
   match provider {
@@ -374,17 +387,18 @@ fn candidate_handoff_state(
     ProviderRunning { activity: _ } => HandoffAwaitingWorker
     ProviderEventsRefused { activity: _, detail: _ } => HandoffAwaitingWorker
     ProviderCompleted { activity: _ } =>
-      candidate_handoff_state_for_terminal(capture: capture, verification: verification, publication: publication)
+      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
     ProviderFailed { activity: _, detail: _ } =>
-      candidate_handoff_state_for_terminal(capture: capture, verification: verification, publication: publication)
+      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
     ProviderBudgetSpent { activity: _, detail: _ } =>
-      candidate_handoff_state_for_terminal(capture: capture, verification: verification, publication: publication)
+      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
   }
 }
 
 fn candidate_handoff_state_for_terminal(
   capture: SubmissionCaptureObservation,
   verification: HandoffVerificationStanding,
+  integration: HandoffIntegrationStanding,
   publication: HandoffPublicationStanding,
 ) -> CandidateHandoffState {
   match capture {
@@ -418,13 +432,20 @@ fn candidate_handoff_state_for_terminal(
         VerificationDidNotPass { verdict_key } =>
           HandoffVerificationFailed { head_sha: c.head_sha, verdict_key: verdict_key }
         VerificationPassed =>
-          match publication {
-            PublicationReceiptBound { pr_number, url } =>
-              HandoffPublished { head_sha: c.head_sha, pr_number: pr_number, url: url }
-            PublicationReceiptRefused { cause } =>
-              HandoffBlockedOnPublication { head_sha: c.head_sha, cause: cause }
-            PublicationReceiptOwed =>
-              HandoffPublicationOwed { head_sha: c.head_sha }
+          match integration {
+            IntegrationBlockedStanding { cause } =>
+              HandoffBlockedOnIntegration { head_sha: c.head_sha, cause: cause }
+            IntegrationOutstanding =>
+              HandoffAwaitingIntegration { head_sha: c.head_sha }
+            IntegrationComplete =>
+              match publication {
+                PublicationReceiptBound { pr_number, url } =>
+                  HandoffPublished { head_sha: c.head_sha, pr_number: pr_number, url: url }
+                PublicationReceiptRefused { cause } =>
+                  HandoffBlockedOnPublication { head_sha: c.head_sha, cause: cause }
+                PublicationReceiptOwed =>
+                  HandoffPublicationOwed { head_sha: c.head_sha }
+              }
           }
       }
       }
@@ -440,6 +461,8 @@ fn candidate_handoff_state_key(state: CandidateHandoffState) -> String {
       join(["declared-", submission_readiness_key(r: readiness)], "")
     HandoffSubmitted { head_sha: _ } => "submitted"
     HandoffVerificationFailed { head_sha: _, verdict_key: _ } => "verification-failed"
+    HandoffAwaitingIntegration { head_sha: _ } => "awaiting-integration"
+    HandoffBlockedOnIntegration { head_sha: _, cause: _ } => "blocked-on-integration"
     HandoffPublicationOwed { head_sha: _ } => "publication-owed"
     HandoffBlockedOnPublication { head_sha: _, cause: _ } => "blocked-on-publication"
     HandoffPublished { head_sha: _, pr_number: _, url: _ } => "published"

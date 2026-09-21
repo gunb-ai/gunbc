@@ -24,6 +24,15 @@ import std.types { String, NonEmptyStr, List }
 // paths would mint an empty tree as the worker's deliverable.
 data worktree_inventory_args: List<String> = ["ls-files", "-z"]
 
+// THE SECOND HALF OF THE DECLARED BRIDGE: ONE FILE OF THE INTAKE BASE, AT THE RECORDED SHA. A
+// project envelope's base commit must freeze the tree the attempts were dispatched FROM -- the
+// spawn origin's recorded base sha, never a moving ref -- and while the worktree is git, that
+// tree's bytes are answered by `git show <sha>:<path>`. Same discipline as the inventory: one
+// argv spelling here, everything above it an SCM verb.
+fn worktree_base_file_args(base_sha: String, path: String) -> List<String> {
+  ["show", join([base_sha, ":", path], "")]
+}
+
 // The trailing NUL yields one empty final row; every other row is a tracked path verbatim.
 // Mid-stream empty rows cannot occur in ls-files output, and filtering them rather than refusing
 // is safe only because an empty path names no file -- it cannot be mistaken for content.

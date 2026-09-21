@@ -1,6 +1,7 @@
 module test.claim.roadmap_belt_actuate_witness
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
@@ -1092,6 +1093,7 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     publication_source: ReceiptSourceAbsent,
     review: review_report_absent(reason: "fixture"),
     submission_capture: CaptureAbsent,
+    integration: IntegrationReceiptAbsent,
     goal_audit: [],
   })
 }
@@ -1178,6 +1180,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       publication_source: ReceiptSourceAbsent,
       review: review_report_absent(reason: "fixture"),
       submission_capture: CaptureAbsent,
+      integration: IntegrationReceiptAbsent,
       goal_audit: [],
     }),
   ) {

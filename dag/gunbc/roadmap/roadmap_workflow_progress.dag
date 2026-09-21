@@ -147,6 +147,10 @@ import gunbc.roadmap.roadmap_submission {
   VerificationPassed,
   VerificationDidNotPass,
   VerificationStandingRefused,
+  HandoffIntegrationStanding,
+  IntegrationOutstanding,
+  IntegrationComplete,
+  IntegrationBlockedStanding,
   HandoffPublicationStanding,
   PublicationReceiptOwed,
   PublicationReceiptBound,
@@ -158,11 +162,21 @@ import gunbc.roadmap.roadmap_submission {
   HandoffDeclaredBlocked,
   HandoffSubmitted,
   HandoffVerificationFailed,
+  HandoffAwaitingIntegration,
+  HandoffBlockedOnIntegration,
   HandoffPublicationOwed,
   HandoffBlockedOnPublication,
   HandoffPublished,
   candidate_handoff_state,
   submission_readiness_key,
+}
+import gunbc.roadmap.roadmap_fanin {
+  IntegrationReceiptObservation,
+  IntegrationReceiptForHead,
+  IntegrationReceiptAbsent,
+  IntegrationReceiptUnreadable,
+  IntegrationIntegrated,
+  IntegrationBlocked,
 }
 import gunbc.roadmap_workflow_command {
   legacy_attempt_supersedable_label,
@@ -189,6 +203,7 @@ type WorkflowAttemptEvidence {
   publication_subject: PublicationSubjectObservation
   publication_source: PublicationReceiptSource
   submission_capture: SubmissionCaptureObservation
+  integration: IntegrationReceiptObservation
   review: ReviewReport
   goal_audit: List<CriterionReviewEvidence>
 }
@@ -709,6 +724,14 @@ fn submission_segment(
   provider: ProviderExecutionState,
   evidence: WorkflowAttemptEvidence,
 ) -> WorkflowSegment {
+  match evidence.integration {
+    IntegrationReceiptUnreadable { reason } =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: join(["the integration receipt for this head cannot be established: ", reason], ""),
+      }
+    _ =>
   let state = candidate_handoff_state(
     provider: provider,
     capture: evidence.submission_capture,
@@ -716,6 +739,15 @@ fn submission_segment(
       verification_subject: evidence.verification_subject,
       verification_source: evidence.verification_source,
     ),
+    integration: match evidence.integration {
+      IntegrationReceiptAbsent => IntegrationOutstanding
+      IntegrationReceiptUnreadable { reason: _ } => IntegrationOutstanding
+      IntegrationReceiptForHead { receipt } =>
+        match receipt.state {
+          IntegrationIntegrated => IntegrationComplete
+          IntegrationBlocked { detail } => IntegrationBlockedStanding { cause: detail }
+        }
+    },
     publication: handoff_publication_standing(
       publication_subject: evidence.publication_subject,
       publication_source: evidence.publication_source,
@@ -793,6 +825,22 @@ fn submission_segment(
           " is on offer as pull request #", to_string(pr_number), ": ", url,
         ], ""),
       }
+    HandoffAwaitingIntegration { head_sha } =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentComplete,
+        detail: join([
+          "verified: ", head_sha,
+          " passed authoritative verification; awaiting integration into the project's integration head",
+        ], ""),
+      }
+    HandoffBlockedOnIntegration { head_sha, cause } =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentComplete,
+        detail: join(["blocked on integration for ", head_sha, ": ", cause], ""),
+      }
+  }
   }
 }
 
