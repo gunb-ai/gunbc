@@ -1,0 +1,28 @@
+module gunbc.seeded_install_media_policy
+
+import std.types { NonEmptyStr }
+import extdeps.provisioning.ubuntu_seeded_install_media { SeededInstallMediaPinnedDates }
+
+// WHICH INSTANT A DERIVED IMAGE CLAIMS, shared by every seeded image this fleet builds. A fixed value
+// is what a reproducible build needs (whether it is SUFFICIENT is the bet typed on
+// SeededInstallMediaPinnedDates); this one is the 24.04.3 arm64 live-server medium's own volume
+// date, read off its blkid UUID ("2025-08-06-15-52-50-00") in the boot-media section of
+// artifacts/bmc/mtcollins1-host-capture.txt, so a derived image reports the date of the release it
+// was derived from rather than a date that means nothing. It is policy, not an upstream fact: the
+// derived image's label, not its date, is what distinguishes it from stock on the booted host.
+data seeded_install_media_pinned_dates: SeededInstallMediaPinnedDates = SeededInstallMediaPinnedDates {
+  volume_uuid: "2025080615525000",
+  file_date: "2025.08.06.155250",
+}
+
+// THE BUILDER'S REVISION IN THE DERIVATION KEY. Bump it in the same change as any edit to
+// extdeps.provisioning.ubuntu_seeded_install_media_remaster or the xorriso replay operation that can
+// change output bytes, so a derivation record written by the old builder cannot answer for the new
+// one. A bump costs one rebuild per image. A MISSED bump is not caught by anything downstream: the
+// old record and the old image still agree with each other, so re-measurement passes and consumers
+// keep receiving the previous builder's output under the same key. That is why the bump is owed at
+// the edit rather than left to a later check -- and why this row is a declared below-ceiling class,
+// gunbc.recurring_failure_mode.a_hand_bumped_builder_revision_keys_a_derivation, not a wall. NEXT-RUNG
+// TRIGGER: an evaluation-time content hash of a named declaration closure, at which point this row
+// is deleted and the key reads the builder closure's hash instead.
+data seeded_install_media_builder_revision: NonEmptyStr = "xorriso-replay-pinned-dates/1"

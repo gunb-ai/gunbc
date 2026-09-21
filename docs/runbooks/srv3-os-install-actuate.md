@@ -26,9 +26,13 @@ what was deleted.
    `/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-arm64.iso` (grounded on Ubuntu 24.04.3 point release + cited
    sha256 from [cdimage SHA256SUMS](https://cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS)). Do not hand-fetch;
    the fetch receipt is the prereq read-back.
-2. **Seeded ISO remaster before serve** — step 0b produces the actuator virtual-media path
-   (`gunbc.srv3_os_install_actuate_scope.srv3_actuator_virtual_media_iso_install_path` →
-   `.../ubuntu-24.04.3-live-server-srv3-seeded.iso`). `srv3_nbd_proxy_serve` binds this authority, not the stock path.
+2. **Seeded ISO remaster before serve** — step 0b builds and publishes the seeded image from
+   `gunbc.srv3_seeded_install_media_artifact` `srv3_seeded_install_media_input` (via
+   `gunbc.seeded_install_media_publish` `publish_seeded_image`). The image is named by the sha256 of its built bytes
+   (`.../ubuntu-24.04.3-live-server-srv3-seeded-<first 16 hex of that digest>.iso`) and a derivation record beside it
+   maps the build inputs to that digest. `srv3_nbd_proxy_serve` resolves the path through that record
+   (`srv3_seeded_install_media_resolve`), re-measuring the file first, and **refuses** to serve if the image is not
+   built, its bytes disagree with the record, or it cannot be read. It never serves the stock path.
 3. **`srv3_nbd_proxy_serve` is a held session** — one-shot `host_effect_apply` reconciles `Srv3NbdProxyServe` via
    systemd transient units (nbdkit + websocat). Units keep serving after the command returns; stop them when install
    completes. Open a second terminal for boot-once.
@@ -88,8 +92,8 @@ gunbc run --source-root dag \
 ```
 
 Expected stdout includes `InstallMediaRemasterToolchainReceipt: outcome=Present` or `outcome=Installed`, then
-`InstallMediaRemasterReceipt:` with seeded ISO path
-`/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded.iso`.
+`install-media-remaster: built and published at` (or `already published at`) the seeded ISO path
+`/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-<digest prefix>.iso` with its sha256.
 
 ## Runnable prep (no BMC side effects except login)
 

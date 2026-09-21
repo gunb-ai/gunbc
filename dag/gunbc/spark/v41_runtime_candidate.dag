@@ -29,7 +29,10 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   DeepseekV41EngramTables, deepseek_v4_1_flash_engram,
 }
 import gunbc.spark.vllm_runtime_image_build {
-  vllm_image_build_key_inputs, v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
+  v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
+}
+import gunbc.spark.vllm_image_identity {
+  vllm_image_build_key_inputs,
 }
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
 import gunbc.spark.serving_deployment_selection { TopologyShape, topology_shape }

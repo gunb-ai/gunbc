@@ -180,7 +180,7 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // too-small host produces an OOM kill and not a verdict -- which is `SelectedButNotExecuted`,
 // carrying no evidence in either direction.
 //
-// FIFTEEN FABRIC DB MEMBERS (test.claim.fabric.fabric_db_file_store_wet_witness,
+// FIFTEEN FABRIC DB MEMBERS (test.claim.fabric.fabric_storage_file_store_wet_witness,
 // test.claim.fabric.fabric_event_log_wet_witness and
 // test.claim.fabric.fabric_partition_read_wet_witness). Their effects are a temp directory and files
 // created inside it -- the fabric DB's object and head areas -- with no network and nothing outside
@@ -353,6 +353,48 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness_test", function: "an_assembled_looking_arm_with_adrift_ranks_refuses" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_assembled_looking_arm_with_adrift_ranks_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness_test", function: "a_roster_that_could_not_be_read_refuses" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "a_roster_that_could_not_be_read_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness_test", function: "a_fully_attached_roster_passes_the_gate_and_reaches_the_configuration_check" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "a_fully_attached_roster_passes_the_gate_and_reaches_the_configuration_check",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness_test", function: "an_earlier_epochs_attached_reading_does_not_clear_a_later_incarnation" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_earlier_epochs_attached_reading_does_not_clear_a_later_incarnation",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness_test", function: "an_earlier_epochs_detached_reading_is_not_a_diagnosis_of_a_later_incarnation" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "an_earlier_epochs_detached_reading_is_not_a_diagnosis_of_a_later_incarnation",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness_test", function: "a_same_epoch_attached_reading_admits_on_the_production_route" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "a_same_epoch_attached_reading_admits_on_the_production_route",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness_test", function: "a_reading_from_another_head_is_another_epoch" },
+      entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
+      function: "a_reading_from_another_head_is_another_epoch",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.spark_serving_offer_route_witness_test", function: "a_different_reported_path_does_not_bind_an_offer" },
       entry: "dag/test/claim/spark/spark_serving_offer_route_witness_test.dag",
       function: "a_different_reported_path_does_not_bind_an_offer",
@@ -506,6 +548,48 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.srv3_install_media_fetch_real_execution", function: "observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution" },
       entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag",
       function: "observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_attempt_three_capture_binds_and_reads_by_real_execution" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
+      function: "the_attempt_three_capture_binds_and_reads_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_committed_capture_matches_its_recorded_identity_by_real_execution" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
+      function: "the_committed_capture_matches_its_recorded_identity_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_historical_binding_holds_against_the_committed_capture_by_real_execution" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
+      function: "the_historical_binding_holds_against_the_committed_capture_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_rendered_program_runs_and_its_output_parses_by_real_execution" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
+      function: "the_rendered_program_runs_and_its_output_parses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "a_removed_image_is_absent_not_diverged_by_real_execution" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
+      function: "a_removed_image_is_absent_not_diverged_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
+      function: "the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
+      function: "a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -767,56 +851,56 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_db_file_store_wet_witness", function: "a_chain_appended_through_the_store_is_read_back_whole_by_the_closure" },
-      entry: "dag/test/claim/fabric/fabric_db_file_store_wet_witness_test.dag",
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_chain_appended_through_the_store_is_read_back_whole_by_the_closure" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "a_chain_appended_through_the_store_is_read_back_whole_by_the_closure",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_db_file_store_wet_witness", function: "an_advance_against_a_moved_head_is_a_lost_race_naming_the_winner" },
-      entry: "dag/test/claim/fabric/fabric_db_file_store_wet_witness_test.dag",
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "an_advance_against_a_moved_head_is_a_lost_race_naming_the_winner" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "an_advance_against_a_moved_head_is_a_lost_race_naming_the_winner",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_db_file_store_wet_witness", function: "an_advance_to_an_unstored_object_is_refused_as_missing_and_the_head_stays_absent" },
-      entry: "dag/test/claim/fabric/fabric_db_file_store_wet_witness_test.dag",
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "an_advance_to_an_unstored_object_is_refused_as_missing_and_the_head_stays_absent" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "an_advance_to_an_unstored_object_is_refused_as_missing_and_the_head_stays_absent",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_db_file_store_wet_witness", function: "a_closure_over_a_hole_refuses_with_the_missing_object" },
-      entry: "dag/test/claim/fabric/fabric_db_file_store_wet_witness_test.dag",
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_closure_over_a_hole_refuses_with_the_missing_object" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "a_closure_over_a_hole_refuses_with_the_missing_object",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_db_file_store_wet_witness", function: "an_object_file_holding_other_bytes_is_refused_as_corrupt" },
-      entry: "dag/test/claim/fabric/fabric_db_file_store_wet_witness_test.dag",
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "an_object_file_holding_other_bytes_is_refused_as_corrupt" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "an_object_file_holding_other_bytes_is_refused_as_corrupt",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_db_file_store_wet_witness", function: "a_closure_longer_than_its_bound_refuses_rather_than_truncating" },
-      entry: "dag/test/claim/fabric/fabric_db_file_store_wet_witness_test.dag",
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_closure_longer_than_its_bound_refuses_rather_than_truncating" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "a_closure_longer_than_its_bound_refuses_rather_than_truncating",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_db_file_store_wet_witness", function: "a_head_name_with_a_separator_is_refused" },
-      entry: "dag/test/claim/fabric/fabric_db_file_store_wet_witness_test.dag",
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_head_name_with_a_separator_is_refused" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "a_head_name_with_a_separator_is_refused",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_db_file_store_wet_witness", function: "putting_the_same_object_twice_is_answered_stored_both_times" },
-      entry: "dag/test/claim/fabric/fabric_db_file_store_wet_witness_test.dag",
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "putting_the_same_object_twice_is_answered_stored_both_times" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "putting_the_same_object_twice_is_answered_stored_both_times",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_db_file_store_wet_witness", function: "a_lost_race_through_the_served_handler_decodes_as_the_same_lost_race_by_real_execution" },
-      entry: "dag/test/claim/fabric/fabric_db_file_store_wet_witness_test.dag",
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_lost_race_through_the_served_handler_decodes_as_the_same_lost_race_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "a_lost_race_through_the_served_handler_decodes_as_the_same_lost_race_by_real_execution",
       expectation: ExpectedToHold {}
     },

@@ -15,7 +15,10 @@ import gunbc.runner_slot_allocation {
   CpuQuotaResolved,
   SlotCpuQuotaUnbounded,
   gunbc_runner_slot_desired,
-  gunbc_runner_slots_per_host,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
+  gunbc_runner_slice_cap_for_width,
 }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
@@ -25,8 +28,8 @@ import gunbc.session_reservation_policy {
 import gunbc.session_admission_policy {
   gunbc_session_admission_policy, SessionAdmissionDeclared, SessionAdmissionUnestablished,
 }
+import gunbc.live_deploy.served_slice_charge { host_served_deployment_claim }
 import gunbc.fleet_host_budget {
-  gunbc_runner_pool_budget_for,
   host_allocation_verdict,
   HostAllocationVerdict,
   HostAllocationConserves,
@@ -227,6 +230,7 @@ type HostRunnerDeploymentRefusal
   | HostAllocationOversubscribedOnHost { cause: String }
   | HostAllocationUnchargeableOnHost { cause: String }
   | ZeroRunnerWidth
+  | CommittedWidthUnresolved { cause: String }
   | JobserverCitationAbsent { cause: String }
   | HostCpuAllocationUnchargeable { cause: String }
   | HostNotEnrolledInFleet
@@ -334,11 +338,16 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
 // derivation is the one that survives, because it is the one that charges memory: a purely
 // core-shaped count admits more concurrent rustc than RAM can hold, which is the class the daemon's
 // own header records as the reason the memory bound exists.
-fn conservation_host_deployment(offer: ComputeOffer, build_tokens: HardwareThreadCount, cpu_boundary: RunnerCpuBoundary) -> RunnerHostDeployment {
+// THE WIDTH IS SUPPLIED, NOT RE-READ. Both fields below are functions of one width, and this
+// function used to read it twice by two names -- gunbc_runner_slots_per_host for the count and
+// gunbc_runner_pool_budget_for for the cap it implies -- so a host whose width does not resolve
+// could not be refused from here at all: each read would have had to answer something. The width
+// is resolved once by the caller, which is also the only place a refusal can be constructed.
+fn conservation_host_deployment(offer: ComputeOffer, slots: Int, build_tokens: HardwareThreadCount, cpu_boundary: RunnerCpuBoundary) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
-    runner_count: gunbc_runner_slots_per_host(host: offer.supply.physical.identity),
-    runner_slice_cap: gunbc_runner_pool_budget_for(host: offer.supply.physical.identity),
+    runner_count: slots,
+    runner_slice_cap: gunbc_runner_slice_cap_for_width(slots: slots),
     per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
     per_runner_memory_swap_cap: gunbc_runner_slot_desired().memory_swap_max,
     per_runner_memory_high_cap: gunbc_runner_slot_desired().memory_high,
@@ -522,6 +531,7 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
     HostAllocationOversubscribedOnHost { cause: t } => concat("host_allocation_oversubscribed ", t)
     HostAllocationUnchargeableOnHost { cause: t } => concat("host_allocation_unchargeable ", t)
     ZeroRunnerWidth => "zero_runner_width"
+    CommittedWidthUnresolved { cause: t } => concat("committed_width_unresolved ", t)
     JobserverCitationAbsent { cause: t } => concat("jobserver_citation_absent ", t)
     HostCpuAllocationUnchargeable { cause: t } => concat("host_cpu_allocation_unchargeable ", t)
     HostNotEnrolledInFleet => "host_not_enrolled_in_fleet"
@@ -568,8 +578,45 @@ fn host_deployment_standing(offer: ComputeOffer, control_plane_placement: Fabric
   }
 }
 
+// THE WIDTH IS RESOLVED BEFORE THE CONSERVATION WALL AND AFTER THE SESSION SLICE, AND BOTH HALVES
+// OF THAT ORDER ARE DELIBERATE. Before the wall, because the runner pool it checks IS slots x
+// MemoryMax: an unresolved width charged the wall a zero pool, a zero charge always conserves, and
+// the wall therefore returned HostAllocationConserves for exactly the hosts it could say least
+// about. After the session slice, because on this fleet an unestablished session reservation is
+// what makes a width unresolvable -- resolving width first would refuse srv2 with the derived cause
+// and leave SessionReservationUnestablished with no production producer, replacing a specific
+// refusal with a general one and killing an arm that names the actual root.
 fn host_standing_with_session_slice(
   offer: ComputeOffer,
+  cpu: CpuFacts,
+  host_id: HostIdentity,
+  host_ram: ByteSize,
+  headroom: ByteSize,
+  session_pool: ByteSize,
+  control_plane_placement: FabricControlPlanePlacement
+) -> HostRunnerDeploymentStanding {
+  match gunbc_runner_committed_width(host: host_id) {
+    RunnerWidthUnresolved { cause: wc } =>
+      refuse_host(host: host_id, cause: CommittedWidthUnresolved {
+        cause: runner_width_unresolved_cause_text(cause: wc)
+      })
+    RunnerWidthDerived { slots: slots } =>
+      host_standing_at_width(
+        offer: offer,
+        slots: slots,
+        cpu: cpu,
+        host_id: host_id,
+        host_ram: host_ram,
+        headroom: headroom,
+        session_pool: session_pool,
+        control_plane_placement: control_plane_placement,
+      )
+  }
+}
+
+fn host_standing_at_width(
+  offer: ComputeOffer,
+  slots: Int,
   cpu: CpuFacts,
   host_id: HostIdentity,
   host_ram: ByteSize,
@@ -594,14 +641,15 @@ fn host_standing_with_session_slice(
             host: host_ram,
             overhead: overhead,
             headroom: headroom,
-            runner_pool: gunbc_runner_pool_budget_for(host: host_id),
+            runner_pool: gunbc_runner_slice_cap_for_width(slots: slots),
             session_pool: session_pool,
             compile_pool: compile_pool,
-            control_plane: host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement)
+            control_plane: host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement),
+            served_deployment: host_served_deployment_claim(host: host_id)
           ) {
             HostAllocationOversubscribed =>
               refuse_host(host: host_id, cause: HostAllocationOversubscribedOnHost {
-                cause: concat("host allocation over-committed (runner_pool + session_pool + compile_pool + overhead + headroom exceeds host RAM): ", host_id)
+                cause: concat("host allocation over-committed (runner_pool + session_pool + compile_pool + served_deployment_pool + overhead + headroom exceeds host RAM): ", host_id)
               })
             HostAllocationUnchargeable { cause: c } =>
               refuse_host(host: host_id, cause: HostAllocationUnchargeableOnHost {
@@ -624,6 +672,7 @@ fn host_standing_with_session_slice(
                       admit_or_refuse_zero_width(
                         dep: conservation_host_deployment(
                           offer: offer,
+                          slots: slots,
                           build_tokens: derive_jobserver_tokens(
                             nproc: cpu_facts_threads(cpu: cpu),
                             mem_total: host_ram,

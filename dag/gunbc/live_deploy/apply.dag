@@ -54,6 +54,7 @@ import gunbc.host_effect {
   ShellEffectApplied,
   LiveDeployApply,
   LiveDeployRetract,
+  LiveDeployApprovalBrokerDarkInstall,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
   DeployAccessPreflight,
@@ -61,11 +62,26 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply_gated }
 import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
+import gunbc.auth.approval_broker_cutover {
+  CutoverAdmission, StageAdmitted, StageRefused,
+  dark_install_release_discharged, cutover_refusal_reason,
+  BrokerTreeReceiptRead, observe_broker_tree_receipt,
+}
 import gunbc.live_deploy.readiness {
   live_deploy_poll_until_service_ready_for_deploy, live_deploy_healthz_get_for_port, running_release_unidentified_detail,
+  live_deploy_liveness_get_local,
   ServiceReadiness,
   service_readiness_reason,
 }
+import gunbc.live_deploy.service_ready {
+  approval_broker_expected_startup,
+  live_deploy_service_ready_poll_bound_margin_factor,
+  live_deploy_service_ready_poll_cadence,
+}
+import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
+import gunbc.live_deploy.emit { approval_broker_tree_receipt_path_for, RevisionBoundAtEmission }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import std.measure { Second, second, second_count }
 import gunbc.readiness { Ready, Pending, Refused }
 import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -596,6 +612,188 @@ fn live_deploy_retract_wet_with_access(spec: DeploymentSpec, access: DeployAcces
       r: live_deploy_retract_with_access(spec: spec, access: access)
     )
   }
+}
+
+// ── STAGE 1 OF THE APPROVAL-BROKER CUTOVER, AS A DEPLOY RATHER THAN AS A TERMINAL SESSION ───
+// IT RUNS THE SAME PREFLIGHT AND THE SAME MUTATION GATE as every other deploy on this spine, which
+// is the point: an additive install is still a privileged host mutation, and giving it its own path
+// around the gate would be the escape hatch DESIGN section 5 forbids at exactly the boundary the
+// gate exists to hold.
+//
+// WHAT IT DOES NOT DO is restart gunbc-roadmap.service or write anything that deployment owns
+// (operator directive 2026-09-19: roadmap redeploys are frozen at the current release until the
+// cutover completes). That is a property of the EFFECT, not of this wrapper -- the arm's script
+// writes the broker's two files and starts one unit -- so a later edit cannot quietly widen it here
+// without widening the emitter the byte oracles pin.
+//
+// IT OBSERVES A CANDIDATE because the unit it writes names a release in its ExecStart, and a broker
+// whose launch identity is not a revision must never be started: the cutover's next stage reads that
+// identity back, and every reading after it would otherwise be about an unknown build.
+fn approval_broker_dark_install_wet_with_access(
+  spec: DeploymentSpec,
+  access: DeployAccess,
+) -> ProcessExit {
+  match observe_candidate_release() {
+    CandidateUnobservable { cause: why } =>
+      exit_failure(reason: candidate_unobservable_detail(cause: why))
+    CandidateObserved { candidate: candidate } => {
+      let preflight = live_deploy_access_preflight_for(access: access)
+      if !reconciliation_converged(r: preflight) {
+        live_deploy_reconciliation_exit(r: preflight)
+      } else {
+        let mutation = live_deploy_fold(
+          spec: spec,
+          effect: LiveDeployApprovalBrokerDarkInstall { spec: spec, candidate: candidate },
+          transport: access.transport,
+          access: access,
+          fixture_actor: Absent,
+          fixture_host: Absent,
+        )
+        if !reconciliation_converged(r: mutation) {
+          live_deploy_reconciliation_exit(r: mutation)
+        } else {
+          approval_broker_dark_install_readback_exit(spec: spec, candidate: candidate)
+        }
+      }
+    }
+  }
+}
+
+// THE INSTALL IS NOT THE POINT; THE READBACK IS. A converged mutation says the unit files were
+// written and systemd was asked to start one -- it says nothing about whether a process came up,
+// bound the port, or is the release this deploy just named. Stage 2 of the cutover is exactly that
+// question, and this is where it is asked, so the plan has a production consumer rather than being
+// an authority nobody calls (review 68050: an inert lens is a lie, DESIGN section 4b).
+//
+// THE PORT IS THE SPEC'S, which gunbc.live_deploy.spec derives from the cutover switch -- so the
+// probe reaches the process this deploy actually placed, and cannot drift to the serving port while
+// the roadmap is still a writer.
+//
+// THE ADMITTING ARM CARRIES NO MESSAGE because ProcessExit's success arm has no field to carry one;
+// what the probe said reaches an operator through the refusal path, where it is needed, and through
+// the journal of the unit that answered.
+//
+// IT EXITS ON THE STAGE BEING DISCHARGED, NOT ON BEING ADMITTED TO IT, and the difference is the
+// defect review 68058 found in the first cut of this function: admission for ProveRelease asks
+// whether the readback MAY BE ATTEMPTED and was a constant pass from here, so a broker that never
+// bound its port still exited success while this annotation claimed the opposite.
+//
+// What goes red now: an unanswered probe, non-JSON bytes, a JSON value that is not an object, a
+// missing or duplicated revision member, a non-string revision, a revision that is not 40 lowercase
+// hex, AND -- the case the cutover HOLD's item 4 named -- a well-formed revision that is not THIS
+// DEPLOY'S CANDIDATE. That last one is the stale-broker case: the unit was written and something is
+// answering, but the service did not restart or came back on an older admitted release, and until
+// this comparison existed it passed the stage whose whole purpose is to say which build is
+// listening. The candidate comes from the deploy that just installed it, never from the process
+// being interrogated.
+// ── THE READBACK POLLS, BECAUSE A RESTART DOES NOT BIND INSTANTLY ───────────────────────────
+// THE STAGE-A RUN FAILED HERE ON A SINGLE GET. The step sequence is systemctl restart then probe,
+// and a process that has not finished binding refuses the connection IMMEDIATELY -- curl's deadline
+// does not help, because connection-refused is an answer rather than a timeout. So the one shot
+// landed in the gap between restart and bind and the stage refused a broker that was about to come
+// up perfectly.
+//
+// IT RETRIES ONLY ON Unreachable, WHICH IS THE WHOLE DESIGN. Every other ServeLivenessRead arm is a
+// process that ANSWERED -- unparseable bytes, a missing revision member, a revision that is not
+// this candidate -- and those are settled facts, not transient states. Retrying them would burn the
+// bound and then report "unreachable at the bound" as the cause when the real cause was observed on
+// the first attempt and is something else entirely. That distinction is the not-met versus
+// cannot-tell split this module keeps everywhere else.
+//
+// THE BOUND IS THE BROKER'S OWN, and it is a declared policy budget with an unmeasured subject
+// rather than a derivation -- said plainly because DESIGN section 4d forbids dressing an inference
+// as a deduction. The roadmap's 240 s expected startup is not the broker's: the broker compiles and
+// serves four routes that consult no roadmap, no plan, no site bundle. What supports 60 s is that
+// qualitative fact, not a measurement, and stage C is what replaces it with one. The cadence and
+// the margin factor are the roadmap's own declarations rather than new numbers, because the
+// uncertainty they encode is a property of polling a restarting unit, not of which unit it is.
+fn approval_broker_readback_poll_attempts() -> Int {
+  second_count(s: approval_broker_expected_startup) * live_deploy_service_ready_poll_bound_margin_factor
+}
+
+fn approval_broker_liveness_poll(
+  spec: DeploymentSpec,
+  port: Port,
+  attempt: Int,
+  last: ServeLivenessRead,
+) -> ServeLivenessRead {
+  if attempt >= approval_broker_readback_poll_attempts() {
+    last
+  } else {
+    let read = live_deploy_liveness_get_local(port: port, spec: spec)
+    match read {
+      ServeLivenessUnreachable { detail: _ } => {
+        let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence)
+        if delay {
+          approval_broker_liveness_poll(spec: spec, port: port, attempt: attempt + 1, last: read)
+        } else {
+          ServeLivenessUnreachable {
+            detail: "sleep between broker liveness probes failed, so the poll cannot distinguish a slow bind from a dead unit" as NonEmptyStr
+          }
+        }
+      }
+      _ => read
+    }
+  }
+}
+
+fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: CandidateRelease) -> ProcessExit {
+  let port = spec.approval_broker.listen.port
+  let read = approval_broker_liveness_poll(
+    spec: spec,
+    port: port,
+    attempt: 0,
+    last: ServeLivenessUnreachable {
+      detail: "the broker liveness endpoint was never reached within the poll bound after the unit was restarted" as NonEmptyStr
+    },
+  )
+  let receipt_path = approval_broker_tree_receipt_path_for(
+    root: spec.approval_broker.repo_root as String,
+    revision: RevisionBoundAtEmission { revision: candidate.revision },
+  )
+  let receipt_read = Filesystem.Read(path: receipt_path)
+  let tree_receipt = observe_broker_tree_receipt(
+    success: receipt_read.success,
+    body: receipt_read.content,
+    error: join(["reading ", receipt_path, ": ", receipt_read.error], "") as NonEmptyStr,
+  )
+  match dark_install_release_discharged(
+    listening_port: port,
+    read: read,
+    tree_receipt: tree_receipt,
+    expected_release: candidate.revision as String as NonEmptyStr,
+  ) {
+    StageAdmitted { stage: _ } => ExitSuccess
+    StageRefused { stage: _, cause: c } =>
+      exit_failure(reason: join([
+        "approval broker dark install: the unit was written but stage 2 (prove-release) refuses: ",
+        cutover_refusal_reason(c: c) as String,
+      ], ""))
+  }
+}
+
+// THERE IS NO OPERATOR-LOCAL TWIN OF THE FOLD BELOW, and its absence is the point rather than an
+// omission (review 68991). One existed: approval_broker_dark_install_srv1_operator_local_wet, same
+// body with ci_deploy_srv1_operator_local_access substituted. Nothing called it and nothing routed
+// it -- gunbc.apply apply_dispatch routes only the ghrunner variant -- so it was a dangling
+// declaration, and a privileged host-mutation entry at that.
+//
+// IT ALSO CONTRADICTED THIS CHANGE'S OWN ARGUMENT. gunbc.ci_spec says of the principal refusal that
+// sent the dark install to a runner-executed route: "That refusal is the access model working, not
+// an obstacle to route around -- so the install reaches srv1 the way every other host mutation
+// does, as a dispatched job on the host-pinned runner, rather than by relaxing the expected
+// principal." An unrouted operator-local twin IS that relaxation, sitting in the tree for the next
+// person under time pressure to reach for. Deleted rather than routed, because routing it would
+// contradict the reasoning that put the ghrunner route there in the first place.
+//
+// The roadmap's live_deploy_apply_srv1_operator_local_wet is NOT this case and stays: it has a real
+// consumer in gunbc.fleet.fleet_converge_plan_cli, so it is a routed entry rather than a dormant
+// second door.
+fn approval_broker_dark_install_srv1_wet() -> ProcessExit {
+  approval_broker_dark_install_wet_with_access(
+    spec: deployment_spec_srv1(),
+    access: ci_deploy_srv1_access,
+  )
 }
 
 fn live_deploy_apply_srv1_wet() -> ProcessExit {

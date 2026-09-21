@@ -1,0 +1,455 @@
+module test.claim.ci_app_key_rotation_witness
+
+import std.types { String, NonEmptyStr, Bool, Int, List, Bytes }
+import std.bytes { utf8_encode_bytes }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.cloud.gcp.secret_manager {
+  GcpSecretVersion,
+  SmVersionState, SmEnabled, SmDisabled,
+  SmResolvedVersionIdentity,
+  SmAccessVersionWireDecoded,
+  decode_sm_access_version_wire_response,
+  sm_version_id_is_number,
+}
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
+import gunbc.auth.secret_rotation {
+  SecretRotationIntent,
+  ReceivedOutOfBand,
+  GeneratedInWorkflow,
+  DisableOnly,
+  DisableThenDestroy,
+  ExactVersion,
+  AliasLatest,
+  ConsumerVerificationRequirement,
+  ConsumerVersionEvidence,
+  ResolvedVersionObserved,
+  ConsumerUnreachable,
+  ConsumerReportedSuccessOnly,
+  ConsumerObservationFailed,
+  ConsumerProofRefusal,
+  VersionInventory,
+  InventoryComplete,
+  PayloadMatchesWritten,
+  PayloadDiffersFromWritten,
+  ReadBackOutcome,
+  ReadBackConfirmed,
+  ReadBackRefused,
+  ReadBackIdentityMismatch,
+  ReadBackPayloadMismatch,
+  verify_read_back,
+  RotationRefusal,
+  ReadBackFailed,
+  RetirementNotAuthorized,
+  RetirementRefusal,
+  RetirementCensusReachedNoOne,
+  ConsumerNotProvenOnAddedVersion,
+  CensusReachedNoOne,
+  RotationRetirementPlan,
+  RetirePriorVersions,
+  RotationRetirementRefused,
+  plan_rotation_retirement,
+  RotationDeadlineAhead,
+  RotationDeadlinePassed,
+  RotationDeadlineUndecidable,
+  rotation_deadline_standing,
+}
+import gunbc.auth.ci_app_key_rotation {
+  ci_app_key_contract,
+  ci_app_key_consumer_id,
+  ci_app_key_rotation_intent,
+  AppKeyVersionSelectorAdmission,
+  AppKeyVersionAdmitted,
+  AppKeyVersionSelectorRefused,
+  AppKeyVersionRefusal,
+  AppKeyVersionSelectorMissing,
+  AppKeyVersionSelectorIsAlias,
+  AppKeyVersionSelectorNotANumber,
+  AppKeyMintObservationAbsent,
+  AppKeyVersionUnreadable,
+  AppKeyResolvedVersionUndecodable,
+  AppKeyResolvedVersionDiffers,
+  AppKeyInstallationTokenUnobserved,
+  AppKeyInstallationTokenRefused,
+  AppKeyVersionVerdict,
+  AppKeyVersionMints,
+  AppKeyVersionRefused,
+  AppKeyMintObservation,
+  admit_app_key_version_selector,
+  decode_app_key_mint_record,
+  verify_app_key_version,
+  app_key_verdict_evidence,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Resource names are authored here as literals, in the PROJECT-NUMBER spelling Secret Manager
+// actually answers with, so the verifier's request/response join is exercised against the form a
+// real response carries rather than the form the request was built in.
+data app_key_v6_name: String = "projects/582015116396/secrets/ci-github-app-private-key/versions/6"
+data app_key_v7_name: String = "projects/582015116396/secrets/ci-github-app-private-key/versions/7"
+
+fn v6() -> SmResolvedVersionIdentity { app_key_v6_name as SmResolvedVersionIdentity }
+fn v7() -> SmResolvedVersionIdentity { app_key_v7_name as SmResolvedVersionIdentity }
+
+fn row(identity: SmResolvedVersionIdentity, state: SmVersionState) -> GcpSecretVersion {
+  GcpSecretVersion {
+    name: identity,
+    state: state,
+    create_time: "2026-09-19T00:00:00Z",
+    etag: Present { value: concat("etag-", identity as String) },
+    destroy_time: none,
+  }
+}
+
+fn both_enabled() -> VersionInventory {
+  InventoryComplete { versions: [row(identity: v6(), state: SmEnabled), row(identity: v7(), state: SmEnabled)] }
+}
+
+fn intent_for_v7() -> SecretRotationIntent {
+  ci_app_key_rotation_intent(intent_id: "c9b-witness" as NonEmptyStr, prior_version: v6(), new_version: "7" as NonEmptyStr)
+}
+
+// A read-back of version 7 that decoded, joined against the identity the add produced. The payload
+// verdict is supplied, since what is under test here is the plan's ordering over it.
+fn read_back_v7(payload_matches: Bool) -> ReadBackOutcome {
+  verify_read_back(
+    decoded: SmAccessVersionWireDecoded { identity: v7(), payload: utf8_bytes_of(s: "k") },
+    expected: v7(),
+    payload: if payload_matches { PayloadMatchesWritten } else { PayloadDiffersFromWritten },
+  )
+}
+
+fn utf8_bytes_of(s: String) -> Bytes {
+  utf8_encode_bytes(s: s)
+}
+
+fn minted_record() -> String {
+  join([
+    "key_http_status 200",
+    concat("resolved_name ", app_key_v7_name),
+    "token_status_line HTTP/2 201",
+    ""
+  ], "\n")
+}
+
+fn record_with_token_line(line: String) -> String {
+  join([
+    "key_http_status 200",
+    concat("resolved_name ", app_key_v7_name),
+    concat("token_status_line ", line),
+    ""
+  ], "\n")
+}
+
+fn verify_v7(record: String) -> AppKeyVersionVerdict {
+  verify_app_key_version(
+    secret: gunbai_ci_app_pem_secret,
+    version: "7" as NonEmptyStr,
+    observation: decode_app_key_mint_record(record: record),
+  )
+}
+
+// ---------------------------------------------------------------------------
+// The subject binding
+// ---------------------------------------------------------------------------
+
+// The intent is the honest one for this subject: received out of band (GitHub mints App keys only in
+// settings), DisableOnly, and a NON-EMPTY roster whose one consumer is pinned to the exact new
+// version rather than the alias.
+test fn the_app_key_intent_is_out_of_band_disable_only_and_pinned_to_the_exact_version() -> Bool {
+  let intent = intent_for_v7()
+  let out_of_band = match intent.replacement {
+    ReceivedOutOfBand { channel: _ } => true
+    GeneratedInWorkflow { generator: _, entropy_bits: _ } => false
+  }
+  let disable_only = match intent.retirement {
+    DisableOnly => true
+    DisableThenDestroy => false
+  }
+  let pinned = (intent.verification.consumers |> count) == 1
+    && match intent.verification.consumers.first() {
+      Present { value: c } =>
+        (c.id as String) == (ci_app_key_consumer_id as String)
+          && match c.selector {
+            ExactVersion { number: n } => (n as String) == "7"
+            AliasLatest => false
+          }
+      Absent => false
+    }
+  out_of_band && disable_only && pinned
+    && (intent.subject.secret as String) == "ci-github-app-private-key"
+}
+
+// ---------------------------------------------------------------------------
+// The retirement plan: the four discriminating reds and the positive control
+// ---------------------------------------------------------------------------
+
+// POSITIVE CONTROL: the verifier minted on version 7, the read-back confirmed version 7, the store
+// lists both enabled. The plan retires exactly version 6, and does not permit destroy.
+test fn a_verified_mint_on_the_exact_new_version_retires_only_the_prior() -> Bool {
+  match plan_rotation_retirement(
+    intent: intent_for_v7(),
+    read_back: read_back_v7(payload_matches: true),
+    evidence: [app_key_verdict_evidence(verdict: verify_v7(record: minted_record()))],
+    inventory: both_enabled(),
+  ) {
+    RetirePriorVersions { added: a, targets: t, destroy_permitted: d } =>
+      (a as String) == app_key_v7_name
+        && (t |> count) == 1
+        && match t.first() {
+          Present { value: target } => (target.identity as String) == app_key_v6_name
+          Absent => false
+        }
+        && !d
+    RotationRetirementRefused { cause: _ } => false
+  }
+}
+
+// RED 1: the mint on version 7 is refused by GitHub (401). The rotation refuses with the cause
+// carried through, and there are no targets — the prior version stays enabled.
+test fn a_mint_that_401s_refuses_the_rotation_and_leaves_the_prior_enabled() -> Bool {
+  let verdict = verify_v7(record: record_with_token_line(line: "HTTP/2 401"))
+  match plan_rotation_retirement(
+    intent: intent_for_v7(),
+    read_back: read_back_v7(payload_matches: true),
+    evidence: [app_key_verdict_evidence(verdict: verdict)],
+    inventory: both_enabled(),
+  ) {
+    RotationRetirementRefused { cause: c } =>
+      match c {
+        RetirementNotAuthorized { cause: r } =>
+          match r {
+            ConsumerNotProvenOnAddedVersion { cause: p } =>
+              match p {
+                ConsumerObservationFailed { consumer: who, cause: why } =>
+                  (who as String) == (ci_app_key_consumer_id as String)
+                    && string_contains(s: why as String, pattern: "AppKeyInstallationTokenRefused")
+                    && string_contains(s: why as String, pattern: "401")
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    RetirePriorVersions { added: _, targets: _, destroy_permitted: _ } => false
+  }
+}
+
+// RED 2: the read-back answered about a different version than the one added.
+test fn a_read_back_of_another_version_refuses_before_any_consumer_is_consulted() -> Bool {
+  match plan_rotation_retirement(
+    intent: intent_for_v7(),
+    read_back: verify_read_back(
+      decoded: SmAccessVersionWireDecoded { identity: v6(), payload: utf8_bytes_of(s: "k") },
+      expected: v7(),
+      payload: PayloadMatchesWritten,
+    ),
+    evidence: [app_key_verdict_evidence(verdict: verify_v7(record: minted_record()))],
+    inventory: both_enabled(),
+  ) {
+    RotationRetirementRefused { cause: c } =>
+      match c {
+        ReadBackFailed { cause: r } =>
+          match r {
+            ReadBackIdentityMismatch { observed: o, expected: e } => o == app_key_v6_name && e == app_key_v7_name
+            _ => false
+          }
+        _ => false
+      }
+    RetirePriorVersions { added: _, targets: _, destroy_permitted: _ } => false
+  }
+}
+
+// RED 3: the read-back's payload is not the one written.
+test fn a_payload_mismatch_refuses_the_rotation() -> Bool {
+  match plan_rotation_retirement(
+    intent: intent_for_v7(),
+    read_back: read_back_v7(payload_matches: false),
+    evidence: [app_key_verdict_evidence(verdict: verify_v7(record: minted_record()))],
+    inventory: both_enabled(),
+  ) {
+    RotationRetirementRefused { cause: c } =>
+      match c {
+        ReadBackFailed { cause: r } =>
+          match r {
+            ReadBackPayloadMismatch => true
+            _ => false
+          }
+        _ => false
+      }
+    RetirePriorVersions { added: _, targets: _, destroy_permitted: _ } => false
+  }
+}
+
+// RED 4, and it is a KERNEL red: an empty roster under DisableOnly used to authorize disabling every
+// prior version, because the census over zero names is vacuously complete. It now refuses as
+// CensusReachedNoOne at retirement, not only at destroy.
+test fn an_empty_roster_refuses_retirement_as_census_reached_no_one() -> Bool {
+  let base = intent_for_v7()
+  let empty = SecretRotationIntent {
+    intent_id: base.intent_id,
+    subject: base.subject,
+    prior_version: base.prior_version,
+    replacement: base.replacement,
+    verification: ConsumerVerificationRequirement { consumers: [] },
+    retirement: DisableOnly,
+  }
+  match plan_rotation_retirement(
+    intent: empty,
+    read_back: read_back_v7(payload_matches: true),
+    evidence: [],
+    inventory: both_enabled(),
+  ) {
+    RotationRetirementRefused { cause: c } =>
+      match c {
+        RetirementNotAuthorized { cause: r } =>
+          match r {
+            RetirementCensusReachedNoOne { obstacle: o } =>
+              match o {
+                CensusReachedNoOne { roster_size: n } => n == 0
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    RetirePriorVersions { added: _, targets: _, destroy_permitted: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The verifier
+// ---------------------------------------------------------------------------
+
+test fn the_alias_is_refused_rather_than_resolved() -> Bool {
+  match admit_app_key_version_selector(requested: "latest") {
+    AppKeyVersionSelectorRefused { cause: c } =>
+      match c {
+        AppKeyVersionSelectorIsAlias => true
+        _ => false
+      }
+    AppKeyVersionAdmitted { version: _ } => false
+  }
+}
+
+test fn a_selector_that_is_not_a_version_number_is_refused() -> Bool {
+  let not_number = match admit_app_key_version_selector(requested: "7;rm") {
+    AppKeyVersionSelectorRefused { cause: c } =>
+      match c {
+        AppKeyVersionSelectorNotANumber { supplied: s } => s == "7;rm"
+        _ => false
+      }
+    AppKeyVersionAdmitted { version: _ } => false
+  }
+  let missing = match admit_app_key_version_selector(requested: "") {
+    AppKeyVersionSelectorRefused { cause: c } =>
+      match c {
+        AppKeyVersionSelectorMissing => true
+        _ => false
+      }
+    AppKeyVersionAdmitted { version: _ } => false
+  }
+  let admitted = match admit_app_key_version_selector(requested: "12") {
+    AppKeyVersionAdmitted { version: v } => (v as String) == "12"
+    AppKeyVersionSelectorRefused { cause: _ } => false
+  }
+  not_number && missing && admitted && !sm_version_id_is_number(version: "07")
+}
+
+// The positive route: a 201 over the exact version, answered in project-NUMBER spelling, mints, and
+// becomes ResolvedVersionObserved on that identity — never success-only.
+test fn a_201_on_the_exact_version_mints_and_is_observed_evidence() -> Bool {
+  let verdict = verify_v7(record: minted_record())
+  let mints = match verdict {
+    AppKeyVersionMints { version: v } => (v as String) == app_key_v7_name
+    AppKeyVersionRefused { cause: _ } => false
+  }
+  mints && match app_key_verdict_evidence(verdict: verdict) {
+    ResolvedVersionObserved { consumer: _, resolved: r } => (r as String) == app_key_v7_name
+    ConsumerReportedSuccessOnly { consumer: _ } => false
+    ConsumerUnreachable { consumer: _, cause: _ } => false
+  }
+}
+
+test fn a_version_whose_key_cannot_be_read_is_refused_with_the_status() -> Bool {
+  match verify_v7(record: "key_http_status 404\n") {
+    AppKeyVersionRefused { cause: c } =>
+      match c {
+        AppKeyVersionUnreadable { http_status: s } => s == "404"
+        _ => false
+      }
+    AppKeyVersionMints { version: _ } => false
+  }
+}
+
+test fn a_mint_that_401s_is_refused_with_the_cause() -> Bool {
+  match verify_v7(record: record_with_token_line(line: "HTTP/2 401")) {
+    AppKeyVersionRefused { cause: c } =>
+      match c {
+        AppKeyInstallationTokenRefused { status_line: l } => l == "HTTP/2 401"
+        _ => false
+      }
+    AppKeyVersionMints { version: _ } => false
+  }
+}
+
+test fn a_response_about_another_version_is_refused_not_minted() -> Bool {
+  let record = join([
+    "key_http_status 200",
+    concat("resolved_name ", app_key_v6_name),
+    "token_status_line HTTP/2 201",
+    ""
+  ], "\n")
+  match verify_v7(record: record) {
+    AppKeyVersionRefused { cause: c } =>
+      match c {
+        AppKeyResolvedVersionDiffers { requested: _, resolved: r } => r == app_key_v6_name
+        _ => false
+      }
+    AppKeyVersionMints { version: _ } => false
+  }
+}
+
+// A record with no token line is unobserved, not a pass: `unverified therefore fine` is the arm
+// this verifier exists to refuse.
+test fn a_missing_token_observation_is_refused_not_passed() -> Bool {
+  let record = join(["key_http_status 200", concat("resolved_name ", app_key_v7_name), ""], "\n")
+  match verify_v7(record: record) {
+    AppKeyVersionRefused { cause: c } =>
+      match c {
+        AppKeyInstallationTokenUnobserved => true
+        _ => false
+      }
+    AppKeyVersionMints { version: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The contract is read
+// ---------------------------------------------------------------------------
+
+test fn the_rotation_deadline_is_read_against_the_clock() -> Bool {
+  let before = match rotation_deadline_standing(contract: ci_app_key_contract, now: "2026-09-19T00:00:00Z" as Rfc3339Timestamp) {
+    RotationDeadlineAhead { rotate_by: _ } => true
+    _ => false
+  }
+  let after = match rotation_deadline_standing(contract: ci_app_key_contract, now: "2027-01-01T00:00:00Z" as Rfc3339Timestamp) {
+    RotationDeadlinePassed { rotate_by: _, observed_at: _ } => true
+    _ => false
+  }
+  let unreadable = match rotation_deadline_standing(contract: ci_app_key_contract, now: "clock-unreadable" as Rfc3339Timestamp) {
+    RotationDeadlineUndecidable { cause: _ } => true
+    _ => false
+  }
+  before && after && unreadable
+}
+
+// The contract attaches to the real subject, and its restore test IS the rostered consumer.
+test fn the_contract_is_bound_to_the_app_key_and_its_restore_test_is_the_roster() -> Bool {
+  (ci_app_key_contract.subject.secret as String) == "ci-github-app-private-key"
+    && match intent_for_v7().verification.consumers.first() {
+      Present { value: c } => (ci_app_key_contract.restore_test.consumer as String) == (c.id as String)
+      Absent => false
+    }
+}
