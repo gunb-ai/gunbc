@@ -2,6 +2,7 @@ module gunbc.fabric_quota
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
+import std.measure { Measure }
 import extdeps.api_rate_limit { UpstreamRateLimit, upstream_rate_limit_key }
 import product.capacity.quota { quota_partition, quota_root_pool }
 import product.capacity.event_chain { PartitionId }
@@ -42,7 +43,7 @@ fn fabric_quota_lease(short_hostname: String, limit: UpstreamRateLimit, amount: 
           let partition = quota_partition(limit: limit)
           match fabric_seat_acquire(
             store: store, partition: partition, root: quota_root_pool(limit: limit), actor: actor,
-            request: SeatRequest { reference: join([actor as String, "@", to_string(now)], "") as NonEmptyStr, amount: amount, at: now, term_seconds: term_seconds },
+            request: SeatRequest { reference: join([actor as String, "@", to_string(now)], "") as NonEmptyStr, amount: Measure { count: amount }, at: now, term_seconds: term_seconds },
             policy: quota_policy(term_seconds: term_seconds), attempts: 3, budget: 4096,
           ) {
             SeatGranted { grant: g, generation: _, attempts_used: _ } => QuotaLeased { grant: g, partition: partition, store: store }

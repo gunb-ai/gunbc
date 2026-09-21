@@ -1225,7 +1225,7 @@ fn harness_acquire_under_authority(candidate: HarnessCandidate, class: ServingCo
         HeadObserved { head: h } => {
       let request = SeatRequest {
         reference: harness_seat_reference(attempt: attempt, offer_key: candidate.key, now: now, round: round, head: harness_head_word(head: h)),
-        amount: 1,
+        amount: Measure { count: 1 },
         at: now,
         term_seconds: policy.maximum_duration_seconds,
       }

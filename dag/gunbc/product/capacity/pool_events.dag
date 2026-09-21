@@ -2,7 +2,7 @@ module product.capacity.pool_events
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
-import std.measure { Measure }
+import std.measure { Measure, measure_count }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int }
 import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_nonempty, member_nat }
 import product.capacity.pool {
@@ -175,9 +175,27 @@ fn pool_fold<Q, S>(root: Pool<Q, S>, oldest_first: List<ChainEnvelope<PoolEvent>
 // event with the head it was decided against. The carrier performs the compare-and-set; a stale
 // answer sends the caller back through this function with the new head. A full pool is a typed
 // refusal, never a queue.
-type SeatRequest {
+// THE REQUESTED AMOUNT CARRIES ITS DIMENSION, and this is the same repair SeatStandingObservation
+// took for the same reason. A bare Nat was right while every pool reachable through this fold was
+// Pool<Count, One>: seats are dimensionless and the field meant seats. Generalizing the carrier to
+// Pool<Q, S> made the same field mean KiB for a memory pool and seats for a seat pool, with nothing
+// in the type to say which -- so gunbc.compute.host_capacity had to call kibibyte_count to STRIP its
+// Kibibyte on the way in, which is precisely the tell this change diagnoses one boundary over
+// (review 69724 on gunbc#11962).
+//
+// WHERE THE STRIP LEGITIMATELY HAPPENS IS HERE, one layer down, and the difference is not cosmetic:
+// propose_acquire holds the POOL, so the pool's own type parameters prove the request's dimension
+// matches the appropriation it is being adjudicated against. A consumer stripping the carrier is
+// asserting that match; this fold checks it.
+//
+// THE PERSISTED EVENT KEEPS A BARE Nat AND THAT IS NOT THE SAME DEFECT. PoolAcquired is a WIRE
+// RECORD: its dimension is the partition's, and it is restored at both ends from the pool's own
+// parameters -- minted here from a Measure the pool typed, and re-minted at replay by
+// pool_apply_event into the Pool<Q, S> being folded. A JSON integer carrying a magnitude whose unit
+// the surrounding type fixes is a serialization, not a second model of the unit.
+type SeatRequest<Q, S> {
   reference: NonEmptyStr
-  amount: Nat
+  amount: Measure<Q, S, Nat>
   at: EpochSecs
   term_seconds: Nat
 }
@@ -213,8 +231,8 @@ fn seat_refusal_wire<Q, S>(r: PoolRefusal<Q, S>) -> String {
   }
 }
 
-fn propose_acquire<Q, S>(pool: Pool<Q, S>, generation: Nat, head: HeadExpectation, partition: PartitionId, actor: NonEmptyStr, request: SeatRequest) -> SeatProposal {
-  match pool_acquire(pool: pool, reference: request.reference, amount: Measure { count: request.amount }, at: request.at, term_seconds: request.term_seconds) {
+fn propose_acquire<Q, S>(pool: Pool<Q, S>, generation: Nat, head: HeadExpectation, partition: PartitionId, actor: NonEmptyStr, request: SeatRequest<Q, S>) -> SeatProposal {
+  match pool_acquire(pool: pool, reference: request.reference, amount: request.amount, at: request.at, term_seconds: request.term_seconds) {
     PoolRefused { refusal: r } => SeatRefused { wire: seat_refusal_wire(r: r) }
     PoolAdvanced { pool: _ } => SeatProposed {
       event: ChainEvent {
@@ -222,7 +240,7 @@ fn propose_acquire<Q, S>(pool: Pool<Q, S>, generation: Nat, head: HeadExpectatio
         parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
         recorded_at: request.at,
         actor: actor,
-        payload: PoolAcquired { reference: request.reference, amount: request.amount, term_seconds: request.term_seconds },
+        payload: PoolAcquired { reference: request.reference, amount: measure_count(request.amount), term_seconds: request.term_seconds },
       },
       expected_head: head,
     }
@@ -231,7 +249,7 @@ fn propose_acquire<Q, S>(pool: Pool<Q, S>, generation: Nat, head: HeadExpectatio
 
 // THE GRANT IS MINTED FROM THE ADMISSION, never from the proposal: a proposal that lost the
 // compare-and-set mints nothing.
-fn grant_from_admission(request: SeatRequest, admission: AppendDecision, policy: LeasePolicy) -> LeaseGrant? {
+fn grant_from_admission<Q, S>(request: SeatRequest<Q, S>, admission: AppendDecision, policy: LeasePolicy) -> LeaseGrant? {
   match admission {
     AppendStale { expected: _, observed: _ } => none
     AppendAdmitted { new_head: h, generation: g } =>

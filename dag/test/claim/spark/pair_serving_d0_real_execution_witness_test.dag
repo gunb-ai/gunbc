@@ -3,7 +3,7 @@ module test.claim.spark.pair_serving_d0_real_execution
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, FilePath, List, Int }
 import v2.std.optional { Present, Absent }
-import std.measure { second, measure_count }
+import std.measure { second, measure_count, Measure }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, serialize_content_hash, content_hash_equal }
@@ -383,7 +383,7 @@ test fn a_seat_granted_after_the_suspension_landed_is_released_by_real_execution
                   AuthorityTransitionAppended { id: _, generation: g1, next: _ } => g1 == 1
                   _ => false
                 })
-            && (match fabric_seat_acquire(store: store, partition: partition, root: root, actor: "witness" as NonEmptyStr, request: SeatRequest { reference: "witness-seat-1" as NonEmptyStr, amount: 1, at: 1001, term_seconds: 300 }, policy: policy, attempts: 3, budget: 64) {
+            && (match fabric_seat_acquire(store: store, partition: partition, root: root, actor: "witness" as NonEmptyStr, request: SeatRequest { reference: "witness-seat-1" as NonEmptyStr, amount: Measure { count: 1 }, at: 1001, term_seconds: 300 }, policy: policy, attempts: 3, budget: 64) {
                   SeatGranted { grant: g, generation: _, attempts_used: _ } =>
                     (match harness_seat_after_grant_authority(store: store, group: FabricGroupA, partition: partition, ceiling: ceiling, grant: g, now: 1001) {
                        SeatReleasedAuthorityMoved { cause: _ } => true

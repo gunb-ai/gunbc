@@ -283,7 +283,7 @@ fn fabric_seat_observe<Q, S>(store: FabricStorageBinding, partition: PartitionId
   }
 }
 
-fn seat_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, budget: Nat, attempt: Nat) -> SeatAcquisition? {
+fn seat_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest<Q, S>, policy: LeasePolicy, budget: Nat, attempt: Nat) -> SeatAcquisition? {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => Present { value: SeatStoreRefused { cause: c, attempts_used: attempt } }
     PartitionReadOk { head: head, walk: walk } =>
@@ -321,7 +321,7 @@ fn seat_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root:
 // and the drift is invisible because each side is internally consistent. A mismatch is refused before
 // anything is appended rather than resolved in favour of either side: neither is authoritative over
 // the other, and picking one silently would be the same fail-open in a different costume.
-fn fabric_seat_acquire<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
+fn fabric_seat_acquire<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest<Q, S>, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
   if !release_law_eq(left: root.release_law, right: policy.release_law) {
     SeatAcquireRefused {
       step: "release-law",

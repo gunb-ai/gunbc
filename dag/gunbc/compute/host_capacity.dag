@@ -340,7 +340,7 @@ fn compute_seat(subject: ComputeCapacitySubject, reference: NonEmptyStr, now: Ep
     partition: subject.partition,
     root: compute_memory_root_pool(subject: subject, ceiling: ceiling),
     actor: reference,
-    request: SeatRequest { reference: reference, amount: kibibyte_count(k: subject.request), at: now, term_seconds: term_seconds },
+    request: SeatRequest { reference: reference, amount: subject.request, at: now, term_seconds: term_seconds },
     policy: compute_lease_policy(term_seconds: term_seconds),
     attempts: compute_seat_attempts,
     budget: compute_partition_read_budget,
