@@ -136,7 +136,8 @@ import std.measure {
   rpm_count,
   second_count,
 }
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.string_type { String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
