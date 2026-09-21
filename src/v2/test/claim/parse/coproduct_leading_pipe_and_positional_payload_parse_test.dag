@@ -1,0 +1,93 @@
+module v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Subject: two rows of the ONE dag grammar (v2.extdeps.languages.dag) that the native front end
+// lacked and v1.compiler.parse admits -- dag_grammar_type_alias_rhs_after_eq_expr (a coproduct
+// opening with `|`) and dag_grammar_positional_variant_payload_expr (`Name(T)`). Both first
+// refused std.content_hash (`type HashFamily =` / `| Fnv1a64(Fnv1a64Structural)`), the module
+// the native adjudicate of //v2/test/parse:expression_bodied_fn_decl_parse stopped on. The
+// boundary is the prepared-grammar parse the native route runs, then normalize; the refusing
+// controls pin that each row admits only the seed's spelling.
+
+fn cp_parse(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: ^coproduct_parse_probe, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn cp_parses(text: String) -> Bool {
+  match cp_parse(text: text) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cp_normalizes(text: String) -> Bool {
+  match cp_parse(text: text) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn leading_pipe_multiline_coproduct_parses_and_normalizes_holds() -> Bool {
+  cp_normalizes(text: "module m.t\n\ntype H =\n  | A\n  | B\n")
+}
+
+test fn leading_pipe_single_line_coproduct_parses_holds() -> Bool {
+  cp_parses(text: "module m.t\n\ntype H = | A | B\n")
+}
+
+test fn bare_leading_pipe_without_variant_refuses_holds() -> Bool {
+  match cp_parses(text: "module m.t\n\ntype H =\n  |\n") {
+    true => false
+    false => true
+  }
+}
+
+test fn positional_payload_variants_parse_and_normalize_holds() -> Bool {
+  cp_normalizes(text: "module m.t\n\ntype C =\n  | A(X)\n  | B { n: Int }\n  | D\n")
+}
+
+test fn positional_payload_with_two_types_refuses_as_in_v1_holds() -> Bool {
+  match cp_parses(text: "module m.t\n\ntype C = A(X, Z) | B\n") {
+    true => false
+    false => true
+  }
+}
+
+test fn positional_payload_is_not_a_type_decl_body_holds() -> Bool {
+  match cp_parses(text: "module m.t\n\ntype R(X)\n") {
+    true => false
+    false => true
+  }
+}
