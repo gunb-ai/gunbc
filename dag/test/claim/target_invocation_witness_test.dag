@@ -32,6 +32,12 @@ import gunbc.target_binding {
   HeadsReadingDifferentialRefused,
   HeadsReadingDifferentialObservation,
   DifferentialSourceRootAbsent, DifferentialReadingExecutionRefused,
+  BareReferenceChannelOutcomeProducer,
+  BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
+  BareReferenceChannelEntryReading,
+  BareReferenceChannelStanding, BareReferenceChannelRead,
+  BareReferenceChannelSubjectUnreached, BareChannelFixtureRootAbsent,
+  BareChannelEntryAbsent, BareChannelIndexRefused,
 }
 import gunbc.target_invocation {
   TargetInvocationRoute, TargetInvocationRouted, TargetInvocationRouteRefused,
@@ -61,6 +67,13 @@ import gunbc.instrument_targets {
   invoke_target,
   heads_reading_differential_termination,
   heads_reading_differential_standing_rendered,
+  bare_reference_channel_outcome_label,
+  bare_reference_channel_expectations,
+  bare_reference_channel_holds,
+  bare_reference_channel_termination,
+  bare_channel_reading_rendered,
+  bare_reference_channel_standing_rendered,
+  bare_reference_channel_source_roots,
 }
 import gunbc.build_target {
   BuildTarget, TestRule,
@@ -663,4 +676,197 @@ test fn the_required_lane_resolution_census_operand_routes_to_its_own_producer()
         && !(b.producer == PrimitiveEgressCensusV2Producer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE BARE-REFERENCE CHANNEL'S OWN CLASSIFIER, EXERCISED ON ITS OWN VOCABULARY
+// ---------------------------------------------------------------------------------------------
+
+// THE READINGS ARE SUPPLIED, NOT COMPUTED, AND THAT IS THE POINT (DESIGN section 3, a witness
+// discriminates at one interface). The subject here is the CLASSIFIER -- given readings, does it
+// decide held versus did-not-hold -- so running the loader to produce them would re-execute a
+// different interface once per claim. The pairing obligation is discharged by the REAL producer:
+// `gunbc test //gunbc/instruments:bare-reference-channel-outcome` runs
+// `v1_compiler.cli_run` `bare_reference_channel_readings` against the fixture root, so the
+// inhabitance of this shape by the live loader is established by execution and not by this file.
+fn brc_reading(
+  module_path: NonEmptyStr,
+  eligibility: BareChannelEligibility,
+  pulled_modules: List<String>
+) -> BareReferenceChannelEntryReading {
+  BareReferenceChannelEntryReading {
+    module_path: module_path
+    eligibility: eligibility
+    pulled_modules: pulled_modules
+  }
+}
+
+// THE READINGS THE UNPERTURBED LOADER PRODUCES, transcribed from the four expectation rows -- the
+// one arrangement that must hold.
+fn brc_agreeing_readings() -> List<BareReferenceChannelEntryReading> {
+  [
+    brc_reading(module_path: "probe.brc.bare_record_consumer" as NonEmptyStr, eligibility: BareChannelRuns {}, pulled_modules: ["probe.brc.record_home"]),
+    brc_reading(module_path: "probe.brc.bare_alias_consumer" as NonEmptyStr, eligibility: BareChannelRuns {}, pulled_modules: []),
+    brc_reading(module_path: "probe.brc.imported_record_consumer" as NonEmptyStr, eligibility: BareChannelDisabledByImportLine {}, pulled_modules: []),
+    brc_reading(module_path: "probe.brc.transitive_alias_consumer" as NonEmptyStr, eligibility: BareChannelRuns {}, pulled_modules: ["probe.brc.alias_home", "probe.brc.passenger_home"]),
+  ]
+}
+
+// Replace one entry's reading, keeping the other three -- the shape a single moved gate produces.
+fn brc_readings_with(
+  module_path: NonEmptyStr,
+  eligibility: BareChannelEligibility,
+  pulled_modules: List<String>
+) -> List<BareReferenceChannelEntryReading> {
+  (brc_agreeing_readings() |> filter(r => !(r.module_path == module_path)))
+    .append(brc_reading(module_path: module_path, eligibility: eligibility, pulled_modules: pulled_modules))
+}
+
+// EACH GATE GETS ITS OWN RED, AND THE TWO ARE DIFFERENT FACTS. The first is the perturbation that
+// widens `pullable` (the alias entry acquires a pull); the second is the one that removes gate one
+// (the imported entry's channel starts running). An implementation that compared only the pull
+// sets passes the second arm and fails nothing, which is why eligibility is its own field.
+test fn a_moved_bare_channel_gate_does_not_hold() -> Bool {
+  let agreeing = bare_reference_channel_holds(readings: brc_agreeing_readings())
+  let pullable_widened = bare_reference_channel_holds(
+    readings: brc_readings_with(
+      module_path: "probe.brc.bare_alias_consumer" as NonEmptyStr,
+      eligibility: BareChannelRuns {},
+      pulled_modules: ["probe.brc.alias_home"]
+    )
+  )
+  let gate_one_removed = bare_reference_channel_holds(
+    readings: brc_readings_with(
+      module_path: "probe.brc.imported_record_consumer" as NonEmptyStr,
+      eligibility: BareChannelRuns {},
+      pulled_modules: ["probe.brc.record_home"]
+    )
+  )
+  agreeing && !pullable_widened && !gate_one_removed
+}
+
+// A PULL THAT MOVED TO ANOTHER MODULE IS NOT A SATISFIED ROW, and a missing entry is not a
+// satisfied one either. The first arm is what a count-equality comparison would admit; the second
+// is the silent-decline shape one layer up -- an expectation nothing answered.
+test fn the_bare_channel_join_is_at_identity_grain_and_total() -> Bool {
+  let swapped_pull = bare_reference_channel_holds(
+    readings: brc_readings_with(
+      module_path: "probe.brc.bare_record_consumer" as NonEmptyStr,
+      eligibility: BareChannelRuns {},
+      pulled_modules: ["probe.brc.alias_home"]
+    )
+  )
+  let entry_missing = bare_reference_channel_holds(
+    readings: brc_agreeing_readings() |> filter(r => !(r.module_path == ("probe.brc.bare_alias_consumer" as NonEmptyStr)))
+  )
+  (!swapped_pull) && (!entry_missing)
+    && ((bare_reference_channel_expectations() |> count) == 4)
+}
+
+// AN ABSENT FIXTURE ROOT OBSERVED NOTHING, and the exit statuses keep that separate from a moved
+// gate: 2 is no observation, 1 is an observation that did not hold. Conflating them would announce
+// a moved loader gate on a checkout that never had the fixtures.
+test fn an_absent_bare_channel_fixture_root_is_not_a_moved_gate() -> Bool {
+  let unreached = bare_reference_channel_termination(
+    s: BareReferenceChannelSubjectUnreached {
+      cause: BareChannelFixtureRootAbsent { root: "fixtures/bare_reference_channel" }
+    }
+  )
+  let moved = bare_reference_channel_termination(
+    s: BareReferenceChannelRead {
+      readings: brc_readings_with(
+        module_path: "probe.brc.bare_alias_consumer" as NonEmptyStr,
+        eligibility: BareChannelRuns {},
+        pulled_modules: ["probe.brc.alias_home"]
+      )
+    }
+  )
+  let held = bare_reference_channel_termination(
+    s: BareReferenceChannelRead { readings: brc_agreeing_readings() }
+  )
+  (unreached == InvocationSubjectUnreached {})
+    && (invocation_exit_status(t: unreached) == 2)
+    && (moved == InvocationObservationDidNotHold {})
+    && (invocation_exit_status(t: moved) == 1)
+    && (held == InvocationObservationHeld {})
+    && (invocation_exit_status(t: held) == 0)
+}
+
+// THE RENDERING CARRIES BOTH GATES' ANSWERS, so a reader of the output can tell a channel that
+// never ran from one whose every arm declined -- the distinction the whole fixture set exists for.
+test fn the_bare_channel_rendering_names_the_channel_and_the_pull_set() -> Bool {
+  (bare_channel_reading_rendered(
+     r: brc_reading(module_path: "probe.brc.imported_record_consumer" as NonEmptyStr, eligibility: BareChannelDisabledByImportLine {}, pulled_modules: [])
+   ) == "bare-reference-channel-outcome: probe.brc.imported_record_consumer channel=DISABLED pulled=[]")
+  && (bare_channel_reading_rendered(
+        r: brc_reading(module_path: "probe.brc.bare_record_consumer" as NonEmptyStr, eligibility: BareChannelRuns {}, pulled_modules: ["probe.brc.record_home"])
+      ) == "bare-reference-channel-outcome: probe.brc.bare_record_consumer channel=RUNS pulled=[probe.brc.record_home]")
+}
+
+// THE ROW IS REAL ON THE SAME SEAM ITS SIBLINGS USE: the label is canonical and the registry the
+// production entry builds admits it, so a binding that never reached `instrument_bindings()` reds
+// here rather than being discovered at the first invocation.
+test fn the_bare_channel_instrument_is_a_real_row_on_the_shared_registry() -> Bool {
+  let label = bare_reference_channel_outcome_label()
+  (match label_canonicality(label: label) {
+     LabelCanonical => true
+     LabelNonCanonical { cause: _ } => false
+   })
+  && (render_label(l: label) == "//gunbc/instruments:bare-reference-channel-outcome")
+  && (match invoke_target(operand: render_label(l: label)) {
+        TargetInvocationRouted { binding: b } =>
+          (b.producer == BareReferenceChannelOutcomeProducer {})
+            && label_eq(a: b.target, b: label)
+        TargetInvocationRouteRefused { cause: _ } => false
+      })
+  // THE SUBJECT IS THE FIXTURE ROOT AND NOTHING ELSE, which is what makes this instrument's
+  // reading stable: a corpus-wide change cannot move it, so a moved reading means a moved gate.
+  // An invocation that reached `dag` would be measuring a different population under this
+  // target's name.
+  && (bare_reference_channel_source_roots() == ["fixtures/bare_reference_channel"])
+}
+
+// AN UNREACHED SUBJECT RENDERS ITS LOCATED CAUSE AND REPORTS NO COUNTS, and both halves are
+// asserted. A renderer that dropped the payload would answer "fixture source root absent" without
+// saying WHICH, which is a located cause rendering as an unlocated sentence; and one that printed
+// `unmet=0` for a run that observed nothing would read as a clean result, which is the conflation
+// the three exit statuses exist to prevent.
+test fn the_bare_channel_standing_rendering_locates_an_unreached_subject() -> Bool {
+  let root_absent = bare_reference_channel_standing_rendered(
+    s: BareReferenceChannelSubjectUnreached {
+      cause: BareChannelFixtureRootAbsent { root: "fixtures/bare_reference_channel" }
+    }
+  )
+  let entry_absent = bare_reference_channel_standing_rendered(
+    s: BareReferenceChannelSubjectUnreached {
+      cause: BareChannelEntryAbsent { module_path: "probe.brc.bare_alias_consumer" }
+    }
+  )
+  let index_refused = bare_reference_channel_standing_rendered(
+    s: BareReferenceChannelSubjectUnreached {
+      cause: BareChannelIndexRefused { detail: "pulled file has no module in the index" }
+    }
+  )
+  (root_absent == "bare-reference-channel-outcome: subject unreached: fixture source root absent: fixtures/bare_reference_channel")
+    && (entry_absent == "bare-reference-channel-outcome: subject unreached: fixture entry absent from the module index: probe.brc.bare_alias_consumer")
+    && (index_refused == "bare-reference-channel-outcome: subject unreached: module index refused: pulled file has no module in the index")
+    && !string_contains(s: root_absent, pattern: "unmet=")
+}
+
+// A READ STANDING REPORTS BOTH POPULATIONS, and the unmet count is DERIVED from the readings by
+// the same fold the verdict uses -- so a rendering that disagreed with the termination would be
+// two authorities for one answer.
+test fn the_bare_channel_standing_rendering_reports_the_read_populations() -> Bool {
+  (bare_reference_channel_standing_rendered(
+     s: BareReferenceChannelRead { readings: brc_agreeing_readings() }
+   ) == "bare-reference-channel-outcome: entries=4 unmet=0")
+  && (bare_reference_channel_standing_rendered(
+        s: BareReferenceChannelRead {
+          readings: brc_readings_with(
+            module_path: "probe.brc.bare_alias_consumer" as NonEmptyStr,
+            eligibility: BareChannelRuns {},
+            pulled_modules: ["probe.brc.alias_home"]
+          )
+        }
+      ) == "bare-reference-channel-outcome: entries=4 unmet=1")
 }
