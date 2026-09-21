@@ -1,0 +1,275 @@
+module gunbc.spark.host_effect_quiescence
+
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import v2.std.optional { Present, Absent }
+import std.algebra { trim }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import product.capacity.event_chain { EventId }
+import extdeps.exec.command { argv_words }
+import extdeps.procps.pgrep { PgrepMatched, PgrepNoMatch, PgrepScanFailed, pgrep_match_full_command_line_argv, pgrep_scan_outcome }
+import extdeps.docker.cli { DockerPsFilter, DockerPsByName, DockerPsByAncestor, docker_ps_filter_wire, docker_ps_running_command }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int }
+import product.capacity.event_json { member_nonempty, member_nat }
+
+// ── A HOST EFFECT IS RELEASED BY EVIDENCE THAT NOTHING OF IT REMAINS, NEVER BY ITS RETURN ──────
+//
+// A build, a probe or a source acquisition returns; whether the host is QUIET with respect to it
+// is a different fact. A leg can exit non-zero while a build client or a started container
+// remains, and a crashed lane never returns at all. So the fact that clears a host-effect fence is
+// an OBSERVATION taken on the host after the effect: the effect declares, when it is admitted,
+// what its residue would look like (a process command-line pattern, and the container it starts,
+// if any), and the release carries the reading that found neither. That reading is
+// sole-constructed here -- only the observer mints it, from an executed scan -- so a release
+// cannot be written from a return code, an elapsed term or prose. THE EVIDENCE NAMES THE CLAIM IT
+// WAS TAKEN FOR and the instant it was taken: a quiet reading of the same host and residue made
+// for an earlier claim, or before this claim was admitted, is not evidence that THIS effect is
+// gone, and the fold refuses it (release_admission in the authority log).
+//
+// WHAT THE READING IS: pgrep over the full command line for the pattern (the same leg the serving
+// incarnation observer uses; exit 1 is "no match", any other non-zero is a scan that did not
+// reach a verdict) and, when a container is declared, `docker ps` under that filter (empty output
+// is "not running"). A scan that could not run, or docker that could not be asked, is UNREAD --
+// the claim stays live -- never quiet. The pattern is pgrep's extended regular expression, so a
+// path or an image reference in it matches slightly more than itself (`.` is any character); that
+// direction is the safe one, since a wider match reports residue and refuses the release.
+type HostEffectResidueSpec {
+  process_pattern: NonEmptyStr
+  container: DockerPsFilter?
+}
+
+type HostQuiescenceEvidence sole_constructor {
+  claim: EventId
+  host: HostIdentity
+  process_pattern: NonEmptyStr
+  container: DockerPsFilter?
+  observer: NonEmptyStr
+  observed_at: EpochSecs
+}
+
+// ── WHY A RELEASE IS ADMITTED: THE CLAIMANT'S STANDING ─────────────────────────────────────────
+//
+// Quiet is one fact; that the claimant will do nothing further on the host is another. The normal
+// terminal has it by construction: the claimant itself observes after its body returned and
+// releases its own claim. A crashed or cancelled lane cannot say so, and a quiet reading taken
+// while a live lane is between two legs is not that fact either. So a recovery release carries a
+// typed operator disposition BOUND TO THE EXACT CLAIM -- the claimant is terminated (its process
+// or run is known ended) or abandoned (its holder has surrendered it) -- with the receipt that
+// established it. That fact lies outside what the log can observe (DESIGN §4b: outside the modeled
+// guarantee), so it enters at this declared boundary as a typed value, never as prose on a String
+// receipt, and the fold refuses a recovery provenance naming another claim.
+type ClaimantStanding
+  = ClaimantTerminated
+  | ClaimantAbandoned
+
+type ReleaseProvenance
+  = ClaimantTerminal { claim: EventId, claimant_executor: NonEmptyStr }
+  | RecoveryAuthorized { claim: EventId, claimant: ClaimantStanding, authorized_by: NonEmptyStr, receipt: NonEmptyStr }
+
+fn parse_claimant_standing(wire: String) -> ClaimantStanding? {
+  if wire == "terminated" { Present { value: ClaimantTerminated } }
+  else if wire == "abandoned" { Present { value: ClaimantAbandoned } }
+  else { none }
+}
+
+fn claimant_standing_wire(c: ClaimantStanding) -> String {
+  match c { ClaimantTerminated => "terminated"  ClaimantAbandoned => "abandoned" }
+}
+
+fn release_provenance_members(p: ReleaseProvenance) -> List<JsonKeyValue> {
+  match p {
+    ClaimantTerminal { claim: c, claimant_executor: x } => [json_kv(key: "provenance", value: json_string(s: "claimant-terminal")), json_kv(key: "terminal_claim", value: json_string(s: c as String)), json_kv(key: "terminal_claimant", value: json_string(s: x as String))]
+    RecoveryAuthorized { claim: c, claimant: st, authorized_by: by, receipt: r } => [
+      json_kv(key: "provenance", value: json_string(s: "recovery")),
+      json_kv(key: "recovery_claim", value: json_string(s: c as String)),
+      json_kv(key: "recovery_claimant", value: json_string(s: claimant_standing_wire(c: st))),
+      json_kv(key: "recovery_authorized_by", value: json_string(s: by as String)),
+      json_kv(key: "recovery_receipt", value: json_string(s: r as String)),
+    ]
+  }
+}
+
+fn release_provenance_decode(doc: JsonValue) -> ReleaseProvenance? {
+  match member_nonempty(doc: doc, key: "provenance") {
+    Absent => none
+    Present { value: w } =>
+      if (w as String) == "claimant-terminal" {
+        match member_nonempty(doc: doc, key: "terminal_claim") {
+          Absent => none
+          Present { value: c } =>
+            match member_nonempty(doc: doc, key: "terminal_claimant") {
+              Absent => none
+              Present { value: x } => Present { value: ClaimantTerminal { claim: (c as String) as EventId, claimant_executor: x } }
+            }
+        }
+      }
+      else if (w as String) != "recovery" { none }
+      else {
+        match member_nonempty(doc: doc, key: "recovery_claim") {
+          Absent => none
+          Present { value: c } =>
+            match member_nonempty(doc: doc, key: "recovery_claimant") {
+              Absent => none
+              Present { value: st } =>
+                match parse_claimant_standing(wire: st as String) {
+                  Absent => none
+                  Present { value: standing } =>
+                    match member_nonempty(doc: doc, key: "recovery_authorized_by") {
+                      Absent => none
+                      Present { value: by } =>
+                        match member_nonempty(doc: doc, key: "recovery_receipt") {
+                          Absent => none
+                          Present { value: r } => Present { value: RecoveryAuthorized { claim: (c as String) as EventId, claimant: standing, authorized_by: by, receipt: r } }
+                        }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// A provenance is for a claim when it is the claimant's own terminal -- naming this claim and its
+// claimant, and WRITTEN BY that claimant (the event's actor) -- or a recovery naming this claim.
+fn release_provenance_covers(p: ReleaseProvenance, claim: EventId, claimant: NonEmptyStr, actor: NonEmptyStr) -> Bool {
+  match p {
+    ClaimantTerminal { claim: c, claimant_executor: x } => (c as String) == (claim as String) && (x as String) == (claimant as String) && (actor as String) == (claimant as String)
+    RecoveryAuthorized { claim: c, claimant: _, authorized_by: _, receipt: _ } => (c as String) == (claim as String)
+  }
+}
+
+type HostQuiescence
+  = HostQuiet { evidence: HostQuiescenceEvidence }
+  | HostResidue { host: HostIdentity, detail: String }
+  | HostQuiescenceUnread { host: HostIdentity, cause: String }
+
+// THE LEG IS SUPPLIED: production hands the fleet-ssh typed-argv leg to the host, a witness hands a
+// local one. The observer decides from exit codes and stdout only.
+type ArgvRun
+  = ArgvRan { exit_code: Int, stdout: String, stderr: String }
+  | ArgvLegDidNotRun { cause: String }
+
+fn observe_host_effect_quiescence(run: fn(List<String>) -> ArgvRun, claim: EventId, host: HostIdentity, spec: HostEffectResidueSpec, observer: NonEmptyStr, at: EpochSecs) -> HostQuiescence {
+  match run(pgrep_match_full_command_line_argv(pattern: spec.process_pattern)) {
+    ArgvLegDidNotRun { cause: c } => HostQuiescenceUnread { host: host, cause: join(["the process scan did not run: ", c], "") }
+    ArgvRan { exit_code: code, stdout: out, stderr: err } =>
+      match pgrep_scan_outcome(exit_code: code, stdout: out, stderr: err) {
+        PgrepScanFailed { exit_code: c2, stderr: e2 } => HostQuiescenceUnread { host: host, cause: join(["the process scan failed (exit ", to_string(c2), "): ", e2], "") }
+        PgrepMatched { listing: l } => HostResidue { host: host, detail: join(["a process matching `", spec.process_pattern as String, "` is running: ", trim(s: l)], "") }
+        PgrepNoMatch =>
+          match spec.container {
+            Absent => HostQuiet { evidence: HostQuiescenceEvidence { claim: claim, host: host, process_pattern: spec.process_pattern, container: none, observer: observer, observed_at: at } }
+            Present { value: f } =>
+              match run(argv_words(command: docker_ps_running_command(filter: f))) {
+                ArgvLegDidNotRun { cause: c } => HostQuiescenceUnread { host: host, cause: join(["docker ps did not run: ", c], "") }
+                ArgvRan { exit_code: code2, stdout: out2, stderr: err2 } =>
+                  if code2 != 0 {
+                    HostQuiescenceUnread { host: host, cause: join(["docker ps exited ", to_string(code2), ": ", trim(s: err2)], "") }
+                  } else {
+                    if trim(s: out2) != "" {
+                      HostResidue { host: host, detail: join(["a container under `", docker_ps_filter_wire(f: f), "` is running: ", trim(s: out2)], "") }
+                    } else {
+                      HostQuiet { evidence: HostQuiescenceEvidence { claim: claim, host: host, process_pattern: spec.process_pattern, container: Present { value: f }, observer: observer, observed_at: at } }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn container_filter_eq(a: DockerPsFilter?, b: DockerPsFilter?) -> Bool {
+  match a {
+    Absent => match b { Absent => true  Present { value: _ } => false }
+    Present { value: x } => match b { Absent => false  Present { value: y } => docker_ps_filter_wire(f: x) == docker_ps_filter_wire(f: y) }
+  }
+}
+
+// Evidence is FOR a claim only when it names that claim, its host and its own residue spec, and
+// was taken no earlier than the claim was admitted: a quiet reading for another claim, of another
+// host or pattern, or from before the admission, releases nothing.
+fn quiescence_evidence_covers(e: HostQuiescenceEvidence, claim: EventId, admitted_at: EpochSecs, host: HostIdentity, spec: HostEffectResidueSpec) -> Bool {
+  (e.claim as String) == (claim as String)
+    && e.observed_at >= admitted_at
+    && host_identity_eq(a: e.host, b: host)
+    && (e.process_pattern as String) == (spec.process_pattern as String)
+    && container_filter_eq(a: e.container, b: spec.container)
+}
+
+// ── THE WIRE ───────────────────────────────────────────────────────────────────────────────────
+//
+// Emitted and decoded here because the evidence is sole-constructed: the event log's codec
+// consumes these fns rather than constructing the evidence itself, so a decoded event's evidence
+// is exactly what an observer once wrote (the codec is total over the wire and refuses a document
+// that does not carry every member).
+fn container_filter_members(prefix: String, f: DockerPsFilter?) -> List<JsonKeyValue> {
+  match f {
+    Absent => [] as List<JsonKeyValue>
+    Present { value: DockerPsByName { name: n } } => [json_kv(key: join([prefix, "container_name"], ""), value: json_string(s: n as String))]
+    Present { value: DockerPsByAncestor { image: i } } => [json_kv(key: join([prefix, "container_image"], ""), value: json_string(s: i as String))]
+  }
+}
+
+type ContainerFilterMember
+  = ContainerFilterAbsent
+  | ContainerFilterPresent { filter: DockerPsFilter }
+  | ContainerFilterIncoherent
+
+fn container_filter_decode(doc: JsonValue, prefix: String) -> ContainerFilterMember {
+  let by_name = member_nonempty(doc: doc, key: join([prefix, "container_name"], ""))
+  let by_image = member_nonempty(doc: doc, key: join([prefix, "container_image"], ""))
+  match by_name {
+    Present { value: n } => match by_image { Absent => ContainerFilterPresent { filter: DockerPsByName { name: n } }  Present { value: _ } => ContainerFilterIncoherent }
+    Absent => match by_image { Absent => ContainerFilterAbsent  Present { value: i } => ContainerFilterPresent { filter: DockerPsByAncestor { image: i } } }
+  }
+}
+
+fn residue_spec_members(prefix: String, s: HostEffectResidueSpec) -> List<JsonKeyValue> {
+  concat([json_kv(key: join([prefix, "process_pattern"], ""), value: json_string(s: s.process_pattern as String))], container_filter_members(prefix: prefix, f: s.container))
+}
+
+fn residue_spec_decode(doc: JsonValue, prefix: String) -> HostEffectResidueSpec? {
+  match member_nonempty(doc: doc, key: join([prefix, "process_pattern"], "")) {
+    Absent => none
+    Present { value: p } =>
+      match container_filter_decode(doc: doc, prefix: prefix) {
+        ContainerFilterIncoherent => none
+        ContainerFilterAbsent => Present { value: HostEffectResidueSpec { process_pattern: p, container: none } }
+        ContainerFilterPresent { filter: f } => Present { value: HostEffectResidueSpec { process_pattern: p, container: Present { value: f } } }
+      }
+  }
+}
+
+fn quiescence_evidence_members(e: HostQuiescenceEvidence) -> List<JsonKeyValue> {
+  concat(
+    [
+      json_kv(key: "evidence_claim", value: json_string(s: e.claim as String)),
+      json_kv(key: "evidence_host", value: json_string(s: e.host as String)),
+      json_kv(key: "evidence_observer", value: json_string(s: e.observer as String)),
+      json_kv(key: "evidence_observed_at", value: json_int(n: e.observed_at)),
+    ],
+    residue_spec_members(prefix: "evidence_", s: HostEffectResidueSpec { process_pattern: e.process_pattern, container: e.container }),
+  )
+}
+
+fn quiescence_evidence_decode(doc: JsonValue) -> HostQuiescenceEvidence? {
+  match member_nonempty(doc: doc, key: "evidence_claim") {
+    Absent => none
+    Present { value: c } =>
+  match member_nonempty(doc: doc, key: "evidence_host") {
+    Absent => none
+    Present { value: h } =>
+      match member_nonempty(doc: doc, key: "evidence_observer") {
+        Absent => none
+        Present { value: o } =>
+          match member_nat(doc: doc, key: "evidence_observed_at") {
+            Absent => none
+            Present { value: at } =>
+              match residue_spec_decode(doc: doc, prefix: "evidence_") {
+                Absent => none
+                Present { value: spec } => Present { value: HostQuiescenceEvidence { claim: (c as String) as EventId, host: (h as String) as HostIdentity, process_pattern: spec.process_pattern, container: spec.container, observer: o, observed_at: at } }
+              }
+          }
+      }
+  }
+  }
+}

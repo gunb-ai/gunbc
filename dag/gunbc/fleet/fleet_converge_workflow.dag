@@ -14,8 +14,8 @@ import gunbc.action_use_admission {
   checkout_action, download_artifact_action, upload_artifact_action,
   admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
 }
-import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
-import gunbc.fleet.org_actions_converge { org_actions_validation_receipt_path }
+import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
+import gunbc.fleet.org_actions_inspection { org_actions_validation_receipt_path }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
@@ -84,8 +84,8 @@ import gunbc.ci_spec {
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
-  gunbc_ci_org_actions_converge_invoke,
-  gunbc_ci_app_control_plane_converge_invoke,
+  gunbc_ci_org_actions_inspect_invoke,
+  gunbc_ci_app_control_plane_inspect_invoke,
   gunbc_ci_app_key_version_verify_mint_script,
   gunbc_ci_app_key_version_verify_verdict_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
@@ -1352,7 +1352,7 @@ fn fleet_converge_org_actions_step() -> Step {
   RunStep {
     name: Present { value: "Org Actions credential validation + read-only settings diff" },
     id: Present { value: "org_actions_observe" },
-    run: gunbc_ci_org_actions_converge_invoke(),
+    run: gunbc_ci_org_actions_inspect_invoke(),
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -1408,7 +1408,7 @@ fn fleet_converge_app_control_plane_step() -> Step {
   RunStep {
     name: Present { value: "GitHub App control plane: registration + webhook config observation" },
     id: Present { value: "app_control_plane_observe" },
-    run: gunbc_ci_app_control_plane_converge_invoke(),
+    run: gunbc_ci_app_control_plane_inspect_invoke(),
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
