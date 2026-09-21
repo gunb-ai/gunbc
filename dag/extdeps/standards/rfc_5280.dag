@@ -135,8 +135,10 @@ fn ascii_of(octets: List<UInt8>) -> String {
 // Time ::= CHOICE { utcTime UTCTime, generalTime GeneralizedTime }: THE CHOICE IS CARRIED (review
 // 69660 of gunbc#11975 -- a bare String lost the arm, and the two arms read their year differently:
 // UTCTime's YY is 1950..2049 by §4.1.2.5.1, GeneralizedTime is four-digit). The contents stay the
-// ASCII the certificate carries ("210122121335Z", "20300313000000Z"); the conversion to an instant
-// is x509_time_rfc3339 below, which reads the arm rather than guessing from the length.
+// ASCII the certificate carries ("210122121335Z", "20300313000000Z"). This module carries the arm
+// and does not interpret it; the conversion to an instant and the validity check at an observed
+// instant land with the verifier that needs them (gunbc#11989, this module's validity fold), a
+// consumer named here rather than a function this diff does not contain (review 69723).
 type X509Time
   = UtcTime { text: String }
   | GeneralizedTime { text: String }

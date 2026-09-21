@@ -193,7 +193,7 @@ test fn the_sample_auth_data_reds_when_cut_or_extended() -> Bool {
     AuthenticatorDataDecoded { data: _ } => false
     AuthenticatorDataRefused { cause: _ } =>
       match decode_authenticator_data(octets: extended) {
-        AuthenticatorDataRefused { cause: AuthenticatorDataTrailingOctets { consumed: 164, total: 165 } } => true
+        AuthenticatorDataRefused { cause: AuthenticatorDataTrailingOctets { consumed: c, total: t } } => byte_size_count(b: c) == 164 && byte_size_count(b: t) == 165
         _ => false
       }
   }
