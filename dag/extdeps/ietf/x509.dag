@@ -1,6 +1,7 @@
 module extdeps.ietf.x509
 
 import std.integer { UInt8 }
+import std.types { EpochSecs }
 import std.octet_span { OctetSpan, octet_span_octets, octet_span_length, octet_span_equals, octet_at, octet_in_span, octet_bit_is_set }
 import extdeps.itu.der {
   DerElement, DerRefusal, DerRead, DerReadReady, DerReadRefused, DerChildren, DerChildrenReady, DerChildrenRefused,
@@ -67,8 +68,8 @@ type X509Certificate {
   signature_algorithm: List<Int>
   issuer: OctetSpan
   subject: OctetSpan
-  not_before: Int
-  not_after: Int
+  not_before: EpochSecs
+  not_after: EpochSecs
   public_key: X509PublicKey
   extensions: List<X509Extension>
   signature: OctetSpan
@@ -84,8 +85,8 @@ type X509Refusal
   | X509DuplicateExtension { oid: List<Int> }
   | X509UnhandledCriticalExtension { oid: List<Int> }
   | X509IssuerNameMismatch { depth: Int }
-  | X509NotYetValid { depth: Int, not_before: Int }
-  | X509Expired { depth: Int, not_after: Int }
+  | X509NotYetValid { depth: Int, not_before: EpochSecs }
+  | X509Expired { depth: Int, not_after: EpochSecs }
   | X509IssuerNotCa { depth: Int }
   | X509IssuerLacksKeyCertSign { depth: Int }
   | X509PathLengthExceeded { depth: Int, limit: Int }
@@ -206,7 +207,7 @@ fn x509_ends_in_z(input: List<UInt8>, element: DerElement) -> Bool {
   }
 }
 
-fn x509_time(input: List<UInt8>, element: DerElement) -> Int? {
+fn x509_time(input: List<UInt8>, element: DerElement) -> EpochSecs? {
   let start = element.content.start
   let length = octet_span_length(span: element.content)
   let civil = if der_is(element: element, class: DerUniversal, tag: der_tag_utc_time) && length == 13 && x509_ends_in_z(input: input, element: element) {
@@ -378,8 +379,8 @@ type X509Tbs {
   signature_algorithm: List<Int>
   issuer: OctetSpan
   subject: OctetSpan
-  not_before: Int
-  not_after: Int
+  not_before: EpochSecs
+  not_after: EpochSecs
   public_key: X509PublicKey
   extensions: List<X509Extension>
 }
@@ -673,7 +674,7 @@ type X509ChainCheck
   = X509ChainStructurallyValid
   | X509ChainRefused { cause: X509Refusal }
 
-fn x509_check_validity(cert: X509Certificate, depth: Int, now: Int) -> X509Refusal? {
+fn x509_check_validity(cert: X509Certificate, depth: Int, now: EpochSecs) -> X509Refusal? {
   if now < cert.not_before {
     Present { value: X509NotYetValid { depth: depth, not_before: cert.not_before } }
   } else if now > cert.not_after {
@@ -719,7 +720,7 @@ fn x509_check_issuer(input: List<UInt8>, cert: X509Certificate, depth: Int, inte
 }
 
 // One certificate's own checks: validity at `now`, and no critical extension outside `handled`.
-fn x509_check_certificate(cert: X509Certificate, depth: Int, now: Int, handled: List<List<Int>>) -> X509Refusal? {
+fn x509_check_certificate(cert: X509Certificate, depth: Int, now: EpochSecs, handled: List<List<Int>>) -> X509Refusal? {
   match x509_check_validity(cert: cert, depth: depth, now: now) {
     Present { value: r } => Present { value: r }
     Absent =>
@@ -752,7 +753,7 @@ fn x509_issuer_link(chain: List<X509Link>, anchor: X509Link, depth: Int) -> X509
   }
 }
 
-fn x509_chain_step(chain: List<X509Link>, anchor: X509Link, depth: Int, now: Int, leaf_handled: List<List<Int>>) -> X509ChainCheck {
+fn x509_chain_step(chain: List<X509Link>, anchor: X509Link, depth: Int, now: EpochSecs, leaf_handled: List<List<Int>>) -> X509ChainCheck {
   match chain |> get(depth) {
     Absent => X509ChainStructurallyValid
     Present { value: link } => {
@@ -781,7 +782,7 @@ fn x509_chain_step(chain: List<X509Link>, anchor: X509Link, depth: Int, now: Int
 
 // The anchor itself is trusted by pinning (RFC 5280 6.1.1(d)): its own validity and constraints are
 // not path inputs. It must still be an issuing certificate for the chain's last element.
-fn x509_chain_structure(chain: List<X509Link>, anchor: X509Link, now: Int, leaf_handled: List<List<Int>>) -> X509ChainCheck {
+fn x509_chain_structure(chain: List<X509Link>, anchor: X509Link, now: EpochSecs, leaf_handled: List<List<Int>>) -> X509ChainCheck {
   match x509_check_issuer(input: anchor.input, cert: anchor.certificate, depth: count(chain), intermediates_below: count(chain) - 1) {
     Present { value: r } => X509ChainRefused { cause: r }
     Absent => x509_chain_step(chain: chain, anchor: anchor, depth: 0, now: now, leaf_handled: leaf_handled)

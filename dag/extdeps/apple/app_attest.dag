@@ -1,6 +1,6 @@
 module extdeps.apple.app_attest
 
-import std.types { NonEmptyStr, String, Int }
+import std.types { NonEmptyStr, String, Int, EpochSecs }
 import std.integer { UInt8 }
 import std.encoding { base64_decode, base64_encode, Standard, UrlSafe }
 import std.octet_span {
@@ -603,7 +603,7 @@ fn app_attest_decidable_steps(
   key_id: AttestKeyId,
   policy: AppAttestLaunchExtensionPolicy,
   admitted_categories: List<Int>,
-  now_epoch: Int,
+  now_epoch: EpochSecs,
 ) -> AttestationRefusal {
   match x509_chain_structure(chain: links, anchor: anchor, now: now_epoch, leaf_handled: []) {
     X509ChainRefused { cause: c } => AttestationChainUntrusted { cause: c }
@@ -649,7 +649,7 @@ fn app_attest_verify(
   admitted_categories: List<Int>,
   attestation_b64: NonEmptyStr,
   key_id: AttestKeyId,
-  now_epoch: Int,
+  now_epoch: EpochSecs,
 ) -> AttestationVerification {
   match base64_decode(s: attestation_b64 as String, variant: Standard) {
     Absent => AttestationRefused { cause: AttestationMalformed { cause: AppAttestBase64Invalid } }
@@ -667,7 +667,7 @@ fn app_attest_verify_octets(
   admitted_categories: List<Int>,
   decoded: List<UInt8>,
   key_id: AttestKeyId,
-  now_epoch: Int,
+  now_epoch: EpochSecs,
 ) -> AttestationVerification {
       match app_attest_attestation_object(input: decoded) {
         AppAttestAttestationRefused { cause: c } => AttestationRefused { cause: c }

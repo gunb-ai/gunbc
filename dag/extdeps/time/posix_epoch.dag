@@ -1,5 +1,6 @@
 module extdeps.time.posix_epoch
 
+import std.types { EpochSecs }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -66,7 +67,7 @@ fn days_from_civil(year: Int, month: Int, day: Int) -> Int {
   era * 146097 + doe - 719468
 }
 
-fn civil_epoch_seconds(t: CivilDateTime) -> Int? {
+fn civil_epoch_seconds(t: CivilDateTime) -> EpochSecs? {
   if civil_is_valid(t: t) {
     Present { value: days_from_civil(year: t.year, month: t.month, day: t.day) * 86400 + t.hour * 3600 + t.minute * 60 + t.second }
   } else {
