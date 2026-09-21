@@ -546,6 +546,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/cloudflare/client_v4.dag",
   "dag/extdeps/cloudflare/account_api_tokens.dag",
   "dag/extdeps/cloudflare/r2.dag",
+  "dag/extdeps/cloudflare/r2_buckets.dag",
   "dag/extdeps/deepseek/deepseek_v4_1_flash.dag",
   "dag/extdeps/zhipu/glm_5_3.dag",
   "dag/extdeps/radixark/glm_5_3_nvfp4.dag",

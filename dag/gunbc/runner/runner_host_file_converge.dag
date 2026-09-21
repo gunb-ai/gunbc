@@ -29,6 +29,13 @@ import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.stat { stat_file_type_command }
+import gunbc.host_effect { FleetSsh }
+import gunbc.live_deploy.member_observe {
+  EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate,
+  ObservationArm, OverTransport, entry_presence,
+}
 import gunbc.typed_remote_file_write {
   RemoteFileMode,
   RemoteFileModeOwnerReadWriteWorldRead,
@@ -97,7 +104,8 @@ import gunbc.runner_slot_retirement {
   CgroupEventsBatchRead,
   CgroupEventsBatchUnread,
 }
-import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_grantee }
+import gunbc.runner_host_grants {  bootstrap_principal_is_not_the_grantee }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 
 // THE HOST FILES A RUNNER HOST MUST CARRY FOR ITS SLOTS TO BE TORN DOWN WHOLE, CONVERGED OVER THE
 // FLEET EDGE AS THE HOST'S ADMINISTRATOR.
@@ -124,7 +132,7 @@ import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_princi
 // and needrestart `eval`s its conf.d snippet as Perl. A sudo grant letting the fleet-converge job user
 // install them would let every CI job on the host, pull requests included, stage its own content and
 // become root. So the writes run over the fleet SSH edge as the declared administrator principal
-// (gunbc.runner_host_grants executor_bootstrap_principal), and the job user gains no grant.
+// (gunbc.fleet_bootstrap_principal executor_bootstrap_principal), and the job user gains no grant.
 //
 // NOTHING HERE RESTARTS A SLOT. The drop-in takes effect at daemon-reload for every loaded unit, and a
 // running job keeps running; the next stop of that slot, from any source, reaches the whole cgroup.
@@ -336,6 +344,18 @@ fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmissio
 // this change removes everywhere else, surviving in the one module that decides teardown. The
 // refusal arm already exists here, so the obligation joins the other two conditions this
 // constructor refuses on.
+// WHO WE REACH A RUNNER HOST AS, in one place. The endpoint comes from the fleet reach authority and
+// the principal is the declared administrator; neither depends on the deploy row, so a converge that
+// resolves its subject some other way -- gunbc.microvm_controller_app_key_converge resolves custody
+// from the host SPEC, because the App key does not depend on slot width -- consumes this rather than
+// spelling the pair again (DESIGN §3).
+fn administrator_ssh_target(host: HostIdentity) -> SshTarget {
+  SshTarget {
+    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+    principal: executor_bootstrap_principal.login,
+  }
+}
+
 fn runner_host_file_subject_over_obligation(
   host: HostIdentity,
   units: List<NonEmptyStr>,
@@ -354,10 +374,7 @@ fn runner_host_file_subject_over_obligation(
       RunnerHostFileSubjectAdmitted {
         subject: RunnerHostFileSubject {
           host: host,
-          target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-            principal: executor_bootstrap_principal.login,
-          },
+          target: administrator_ssh_target(host: host),
           desired_units: units,
           retired_units: retired,
         },
@@ -373,15 +390,72 @@ type RunnerHostFileStanding
   | HostFileAbsent
   | HostFileUnobservable { reason: String }
 
-// `test -e` answers 0 or 1 and nothing else on its own; any other exit means the test did not run.
-fn classify_host_file_presence(exit_code: Int, stderr: String) -> RunnerHostFileStanding? {
+// THE PROBE READS METADATA; IT DOES NOT ANSWER PRESENCE. This was `test -e`, whose exit 1 was read
+// here as HostFileAbsent -- and GNU `test -e` is stat(path) == 0, so ENOENT, EACCES on an ancestor
+// directory, ELOOP, ENOTDIR and EIO all answer 1 with an empty stderr. "The file is not there" and
+// "I could not look" arrived as one value, and they license opposite actions: the absent arm walks
+// into the write-admission and comparison path for a file this module exists to keep root-owned and
+// non-injectable. `extdeps.tools.stat` `stat.File.FileType` states that defect as the whole reason
+// it exists and reports the GNU file-type word on success, saying only that the metadata read
+// FAILED otherwise -- so the read has two honest outcomes here and absence is not one of them.
+type RunnerHostFileMetadataReading
+  = HostFileMetadataRead { file_type: String }
+  | HostFileMetadataUnread { cause: String }
+
+// A COMPLETED READ THAT PRINTED NOTHING IS NOT A TYPE. Exit success is a fact about the CALL, never
+// about whether the output carrying the answer arrived, so an empty `%F` is unread rather than a
+// nameless kind -- the same separation gunbc.fabric.fabric_cell_acquire draws over this operation.
+fn classify_host_file_metadata(exit_code: Int, stdout: String, stderr: String) -> RunnerHostFileMetadataReading {
   if exit_code == 0 {
-    none
-  } else if exit_code == 1 {
-    Present { value: HostFileAbsent }
+    let w = trim(s: stdout)
+    if w == "" {
+      HostFileMetadataUnread { cause: "the metadata read exited successfully and printed no file type, so the path kind is unanswered" }
+    } else {
+      HostFileMetadataRead { file_type: w }
+    }
   } else {
-    Present { value: HostFileUnobservable { reason: join(["presence test exit=", to_string(exit_code), " ", trim(s: stderr)], "") } }
+    HostFileMetadataUnread { cause: join(["stat could not read the path's metadata; exit=", to_string(exit_code), " ", trim(s: stderr)], "") }
   }
+}
+
+// THE THREE OUTCOMES THE PROBE OWES, WITH ABSENCE ESTABLISHED BY THE PARENT AND NEVER BY THE PROBE'S
+// SILENCE. The read decides presence; when it failed, what the containing directory already said
+// about this entry decides whether nothing is there or nobody could look. The parent standing is
+// gunbc.live_deploy.member_observe `entry_presence`, the landed authority for that rule over a
+// transport, consumed rather than restated (DESIGN section 3).
+type RunnerHostFilePathStanding
+  = HostFilePathPresent { file_type: String }
+  | HostFilePathAbsent
+  | HostFilePathUnreadable { cause: String }
+
+fn classify_host_file_path(reading: RunnerHostFileMetadataReading, parent: EntryPresence) -> RunnerHostFilePathStanding {
+  match reading {
+    HostFileMetadataRead { file_type: t } => HostFilePathPresent { file_type: t }
+    HostFileMetadataUnread { cause: c } =>
+      match parent {
+        EntryAbsent => HostFilePathAbsent
+        EntryPresent =>
+          HostFilePathUnreadable { cause: join(["the containing directory holds this entry and ", c], "") }
+        EntryPresenceIndeterminate { cause: pc } =>
+          HostFilePathUnreadable { cause: join([c, "; and the containing directory could not establish absence: ", pc], "") }
+      }
+  }
+}
+
+// THE SETTLED ARM, AT THE STANDING'S OWN GRAIN. A path that was read continues into the byte
+// comparison and is not settled here, so this answers `none` for it; absence and unreadability are
+// settled, and they land on DIFFERENT standings -- which is the whole repair, because `test -e`
+// sent both to HostFileAbsent and HostFileAbsent plans a write.
+fn runner_host_file_settled_standing(st: RunnerHostFilePathStanding) -> RunnerHostFileStanding? {
+  match st {
+    HostFilePathPresent { file_type: _ } => none
+    HostFilePathAbsent => Present { value: HostFileAbsent }
+    HostFilePathUnreadable { cause: c } => Present { value: HostFileUnobservable { reason: c } }
+  }
+}
+
+fn runner_host_file_metadata_probe_argv(path: String) -> List<String> {
+  argv_words(command: stat_file_type_command(path: path))
 }
 
 // WHO CAN CHANGE A FILE IS PART OF WHAT THE FILE IS, when root evaluates it. A byte-exact needrestart
@@ -759,6 +833,33 @@ fn runner_host_file_standing_of_report(report: RemoteFileComparisonReport) -> Ru
   }
 }
 
+// THE PARENT IS ENUMERATED ONLY WHEN THE READ FAILED, because that is the only outcome whose
+// meaning the parent decides. `entry_presence` is a remote leg -- `ls -1 -A --` of the parent over
+// the same transport, recursing up the ancestor chain when a listing refuses -- so asking it beside
+// a read that already answered buys a standing the classifier discards (DESIGN section 2, and
+// section 6's bare minimum cost). Both of the classifier's parent-dependent outcomes stay inhabited
+// by production, because this arm is the only route that can reach them (DESIGN section 3c).
+fn observe_runner_host_file_path(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  path: String,
+  reading: RunnerHostFileMetadataReading,
+) -> RunnerHostFilePathStanding
+  uses net: Network
+{
+  match reading {
+    HostFileMetadataRead { file_type: t } => HostFilePathPresent { file_type: t }
+    HostFileMetadataUnread { cause: _ } =>
+      classify_host_file_path(
+        reading: reading,
+        parent: entry_presence(
+          arm: OverTransport { transport: FleetSsh { target: subject.target, context: context } },
+          path: path,
+        ),
+      )
+  }
+}
+
 // THE PLAN'S "IDENTICAL" AND THE APPLY'S "CONVERGED" ARE ONE JUDGMENT OVER ONE LEG. The comparison is
 // typed_remote_file_write's own far-side `cmp -s -` with the declared bytes on stdin, classified by
 // its own exit vocabulary, so an observation cannot call a file converged that the write's read-back
@@ -769,10 +870,15 @@ fn observe_runner_host_file_content(
   file: RunnerHostFileDesired,
 ) -> RunnerHostFileStanding
 {
-  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: ["test", "-e", file.path as String]) {
+  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: runner_host_file_metadata_probe_argv(path: file.path as String)) {
     TypedArgvExecRefused { reason: why } => HostFileUnobservable { reason: why }
-    TypedArgvExecConverged { result: presence } =>
-      match classify_host_file_presence(exit_code: presence.exit_code, stderr: presence.stderr) {
+    TypedArgvExecConverged { result: metadata } =>
+      match runner_host_file_settled_standing(st: observe_runner_host_file_path(
+        subject: subject,
+        context: context,
+        path: file.path as String,
+        reading: classify_host_file_metadata(exit_code: metadata.exit_code, stdout: metadata.stdout, stderr: metadata.stderr),
+      )) {
         Present { value: settled } => settled
         Absent =>
           match runner_host_file_write_admission(file: file) {

@@ -198,6 +198,19 @@ fn r2_bucket_item_write_permission_group() -> PermissionGroupRef {
   PermissionGroupRef { id: cloudflare_r2_bucket_item_write_observed_permission_group_id }
 }
 
+// THE BUCKET-MANAGEMENT GRANT, OBSERVED IN THE SAME LISTING. Creating a bucket and reading its
+// metadata are ACCOUNT operations, so neither bucket-item group can carry them; of the observed
+// account-scoped R2 groups, Storage Read cannot create and Storage Write is the least that can. This
+// is the grant the bucket-admin token (gunbc.cloudflare.r2_token_mint R2 bucket-admin shape) holds,
+// so the bootstrap token -- which mints and nothing else -- is never widened to sign bucket calls
+// (operator ruling, 2026-09-19). Minimality is relative to THIS LISTING's recorded rows: a narrower
+// account group, if Cloudflare publishes one, would be a new observation replacing this constant.
+data cloudflare_r2_storage_write_observed_permission_group_id: NonEmptyStr = "bf7481a1826f439697cb59a20b22293e"
+
+fn r2_storage_write_permission_group() -> PermissionGroupRef {
+  PermissionGroupRef { id: cloudflare_r2_storage_write_observed_permission_group_id }
+}
+
 // THE OBSERVATION ROWS ARE A DECLARED FRONTIER, AND SAYING SO IS THE POINT RATHER THAN AN APOLOGY.
 // One of them is genuinely consumed: observed_permission_group_by_id is joined against
 // extdeps.cloudflare.r2's PINNED read id, which is a cross-authority check -- the pin and the

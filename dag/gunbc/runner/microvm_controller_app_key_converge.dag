@@ -11,7 +11,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
 import gunbc.auth.access_token_source { WorkloadIdentityToken }
@@ -45,11 +45,12 @@ import gunbc.typed_remote_file_write {
   remote_file_privileged_argv,
   converge_typed_remote_file,
 }
+import gunbc.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
+import gunbc.runner_host_grants { bootstrap_principal_is_not_the_job_user }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.live_deploy.member_observe { path_parent, path_basename, parent_listing_argv, listing_contains_entry }
 import gunbc.runner_host_file_converge {
-  RunnerHostFileSubject,
-  RunnerHostFileSubjectAdmitted,
-  RunnerHostFileSubjectRefused,
-  runner_host_file_subject,
+  administrator_ssh_target,
   RunnerHostFileStanding,
   HostFileIdentical,
   HostFileDiffers,
@@ -115,9 +116,12 @@ import gunbc.runner_host_file_converge {
 // PLAINTEXT STAGING. The only staging is the far-side sibling <path>.gunbc-staging that
 // converge_typed_remote_file writes, modes and renames. It lives inside the root-only directory,
 // which is verified BEFORE the stage leg runs, so even the moment between `dd` and `chmod 400` is not
-// observable by a non-root uid. It is removed after every run whether or not a write was attempted,
-// and its absence is READ BACK; a failed removal or a surviving sibling refuses the run (the
-// cleanup-is-part-of-the-mint rule of gunbc.secret_provision_actuator).
+// observable by a non-root uid. It is removed after every attempt WHOSE ANCESTOR AND
+// PARENT-DIRECTORY AUTHORITY HAS BEEN ESTABLISHED -- whether or not a write was attempted, but never
+// beneath a path the route declined to trust, because `rm` is a root mutation through that same path
+// (see StagingCleanupAuthorization). Its absence is READ BACK; a failed removal, a surviving sibling,
+// or a withheld cleanup refuses the run (the cleanup-is-part-of-the-mint rule of
+// gunbc.secret_provision_actuator).
 
 // ── Placement (pure) ─────────────────────────────────────────────────────────────────────────────
 
@@ -240,20 +244,96 @@ fn key_dir_metadata_wire(m: KeyDirMetadata) -> String {
   }
 }
 
-// The staging sibling's presence: `test -e` answers 0 (present) or 1 (absent); anything else means the
-// test did not run, which is neither answer.
+// THE STAGING SIBLING'S ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING OF ITS PARENT, never by a
+// failed read of the child. This was `test -e`, whose exit 1 was read here as StagingAbsent -- and
+// GNU `test -e` is stat(path) == 0, so ENOENT, EACCES on an ancestor, ELOOP, ENOTDIR and EIO all
+// answer 1 with an empty stderr. "The staging file is gone" and "I could not look" arrived as one
+// value, and this one feeds ControllerAppKeyHeld: a metadata failure would have been reported as
+// custody held with no residue. A successful preceding `rm -f` is not proof of the later
+// observation, because the two are different reads of a host that can change between them.
+//
+// THE RULE IS gunbc.live_deploy.member_observe's, APPLIED OVER AN ELEVATED LEG, and the departure
+// is stated rather than silent (DESIGN §3b). entry_presence is the landed authority for
+// establishing absence from a parent listing over a transport, but it reaches the far side as the
+// bootstrap principal, and this parent is the key directory: root:root 0700. An unelevated listing
+// of it can only ever refuse, so entry_presence would answer Indeterminate for every host whether
+// or not the residue exists -- fail-closed and empty of information. So the listing runs through
+// this module's own elevated leg and the membership question is the same one.
 type StagingResidue
   = StagingAbsent
   | StagingResiduePresent { path: String }
   | StagingUnobservable { reason: String }
 
-fn classify_staging_residue(path: String, exit_code: Int, stderr: String) -> StagingResidue {
-  if exit_code == 1 {
-    StagingAbsent
-  } else if exit_code == 0 {
+// CLEANUP IS A ROOT MUTATION, so it is entitled to the same path authority the WRITE is. The
+// earlier revision ran `rm -f --` beneath the very ancestors controller_app_key_action had just
+// declined to trust: the non-write arms of that match produced `none` and then fell through to an
+// unconditional clear_staging. A group- or other-writable upper ancestor made this representable --
+// PathsNotRootOnly, directory only observed, action refused, no key content written, and an
+// ELEVATED rm still executing through a path component a non-root principal can replace with a
+// directory or a symlink between the observation and the leg. That is not residue; it is a root
+// mutation through the exact containment the route declined to trust.
+//
+// The gate is PATH AUTHORITY and deliberately not the whole action: a content or file-metadata
+// observation may be unobservable while the path is safely root-contained, and cleanup is still
+// desirable there. So the seal joins three facts and nothing else -- upper ancestors PathsRootOnly,
+// the key directory KeyDirRootOnly, and the staging path's parent being that admitted directory.
+// sole_constructor makes the bad state UNWRITABLE rather than merely unreached (DESIGN §4b rung 4):
+// clear_staging accepts the sealed authorization and DERIVES every value the leg uses from it --
+// subject, parent, path and the residue predicate's key -- so there is no way to spell a cleanup leg,
+// or a residue reading over one, that no admission fold produced.
+type StagingCleanupAuthorization sole_constructor {
+  subject: ControllerKeyHost
+  parent: String
+  staging: String
+}
+
+type StagingCleanupAdmission
+  = StagingCleanupAuthorized { authorization: StagingCleanupAuthorization }
+  | StagingCleanupWithheld { reason: String }
+
+// THE ONLY MINT. PURE, over readings the caller already has: no leg runs here.
+fn admit_staging_cleanup(
+  subject: ControllerKeyHost,
+  upper_ancestors: RunnerHostPathMetadata,
+  dir: KeyDirMetadata,
+  key_dir: String,
+  staging: String,
+) -> StagingCleanupAdmission {
+  match upper_ancestors {
+    PathsRootOnly =>
+      match dir {
+        KeyDirRootOnly =>
+          if path_parent(path: staging) != key_dir {
+            StagingCleanupWithheld { reason: join(["staging parent ", path_parent(path: staging), " is not the admitted key directory ", key_dir], "") }
+          } else {
+            StagingCleanupAuthorized {
+              authorization: StagingCleanupAuthorization { subject: subject, parent: key_dir, staging: staging },
+            }
+          }
+        _ => StagingCleanupWithheld { reason: concat("key directory is not root-only: ", key_dir_metadata_wire(m: dir)) }
+      }
+    _ => StagingCleanupWithheld { reason: concat("an ancestor directory is not root-only: ", runner_host_path_metadata_wire(m: upper_ancestors)) }
+  }
+}
+
+// THE PREFIX, not the whole reason. admit_staging_cleanup has already computed WHICH of the three
+// joined facts failed, and the withheld arm carries that cause through rather than flattening it:
+// a receipt saying only "authority was not established" cannot tell an operator whether to fix an
+// ancestor, the directory, or a staging path pointing outside it (DESIGN 5 -- a typed, LOCATED
+// diagnostic).
+data staging_cleanup_withheld_reason: String = "staging cleanup withheld because root-only path authority was not established"
+
+// PURE, over a listing that SUCCEEDED. The caller reaches this only on a successful leg, so every
+// arm here is a reading of what the parent contains -- there is no exit code to misread. The argv
+// and the membership read are member_observe's (parent_listing_argv, listing_contains_entry): only
+// the TRANSPORT differs here, so only the transport is this module's. An earlier revision spelled
+// both again and the copies had already drifted -- this one trimmed each line and the original did
+// not, which is two sources answering one question differently (DESIGN §2).
+fn classify_staging_residue(path: String, name: String, stdout: String) -> StagingResidue {
+  if listing_contains_entry(stdout: stdout, name: name) {
     StagingResiduePresent { path: path }
   } else {
-    StagingUnobservable { reason: join(["staging presence test exit=", to_string(exit_code), " ", trim(s: stderr)], "") }
+    StagingAbsent
   }
 }
 
@@ -386,8 +466,56 @@ type ElevatedLeg
 
 // Every leg is elevated: the directory is root-only, so an unprivileged find or test inside it would
 // report the permission boundary as an answer.
+// THE SUBJECT OF A CUSTODY CONVERGE IS A HOST, NOT A SLOT POPULATION. This resolved through
+// gunbc.runner_host_file_converge runner_host_file_subject, which requires an admitted
+// RunnerHostDeploy -- a spec plus an admitted WIDTH -- and refuses a host whose width is
+// unresolved. srv2 has no deploy row for that reason, so the mode terminated on srv2 while
+// describing itself as covering srv1 and srv2. But the App key's location, its administrator
+// target and its custody do not depend on how many runner slots a host admits: the key is root's,
+// in root's directory, outside every slot and jail root. runner_host_spec_for names srv2's address
+// and principals independently of width, so custody is resolved from the SPEC.
+//
+// THE PRIVILEGE LAW IS NOT DROPPED WITH THE DEPLOY ROW. The writer may not be the account CI jobs
+// run as, and that comparison keeps its one authority in gunbc.runner_host_grants -- asked here
+// over the spec's job_user rather than re-spelled (DESIGN §3).
+//
+// WHAT IS DELIBERATELY NOT CARRIED: desired and retired unit populations. This module verifies no
+// teardown and names no unit, so a subject carrying empty unit lists would be a value whose fields
+// lie about what was established.
+type ControllerKeyHost {
+  host: HostIdentity
+  target: SshTarget
+}
+
+type ControllerKeyHostAdmission
+  = ControllerKeyHostAdmitted { subject: ControllerKeyHost }
+  | ControllerKeyHostRefused { cause: String }
+
+fn controller_key_host(host: HostIdentity) -> ControllerKeyHostAdmission {
+  match runner_host_spec_for(host: host) {
+    RunnerHostSpecAbsent { host: h } =>
+      ControllerKeyHostRefused {
+        cause: join(["microvm_controller_app_key_converge: ", h as String, " has no runner host spec, so it is not a runner host"], ""),
+      }
+    RunnerHostSpecFound { spec: spec } =>
+      if !bootstrap_principal_is_not_the_job_user(bootstrap: executor_bootstrap_principal, job_user: spec.job_user) {
+        ControllerKeyHostRefused {
+          cause: join([
+            "microvm_controller_app_key_converge: the administrator principal ", executor_bootstrap_principal.login as String,
+            " is the job user on ", host as String,
+            ", so the account that places a root-only key would be the one CI jobs run as",
+          ], ""),
+        }
+      } else {
+        ControllerKeyHostAdmitted {
+          subject: ControllerKeyHost { host: host, target: administrator_ssh_target(host: host) },
+        }
+      }
+  }
+}
+
 fn run_elevated_leg(
-  subject: RunnerHostFileSubject,
+  subject: ControllerKeyHost,
   context: FleetSshExecutionContext,
   argv: List<String>,
   stdin_payload: String,
@@ -417,7 +545,7 @@ fn classify_find_answer(path: String, exit_code: Int, stdout: String, stderr: St
 }
 
 fn find_answer(
-  subject: RunnerHostFileSubject,
+  subject: ControllerKeyHost,
   context: FleetSshExecutionContext,
   path: String,
   kind: String,
@@ -445,7 +573,7 @@ type KeyPathObservation
   | KeyPathUnobservable { reason: String }
 
 fn observe_key_path(
-  subject: RunnerHostFileSubject,
+  subject: ControllerKeyHost,
   context: FleetSshExecutionContext,
   path: String,
   kind: String,
@@ -484,7 +612,7 @@ fn observe_key_path(
   }
 }
 
-fn observe_key_file(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, path: String) -> KeyFileMetadata
+fn observe_key_file(subject: ControllerKeyHost, context: FleetSshExecutionContext, path: String) -> KeyFileMetadata
   uses net: Network
 {
   match observe_key_path(subject: subject, context: context, path: path, kind: "f") {
@@ -494,7 +622,7 @@ fn observe_key_file(subject: RunnerHostFileSubject, context: FleetSshExecutionCo
   }
 }
 
-fn observe_key_dir(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, path: String) -> KeyDirMetadata
+fn observe_key_dir(subject: ControllerKeyHost, context: FleetSshExecutionContext, path: String) -> KeyDirMetadata
   uses net: Network
 {
   match observe_key_path(subject: subject, context: context, path: path, kind: "d") {
@@ -504,7 +632,7 @@ fn observe_key_dir(subject: RunnerHostFileSubject, context: FleetSshExecutionCon
   }
 }
 
-fn observe_upper_ancestors(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, paths: List<String>) -> RunnerHostPathMetadata
+fn observe_upper_ancestors(subject: ControllerKeyHost, context: FleetSshExecutionContext, paths: List<String>) -> RunnerHostPathMetadata
   uses net: Network
 {
   match run_elevated_leg(subject: subject, context: context, argv: runner_host_root_only_find_argv(paths: paths, kind: "d"), stdin_payload: "") {
@@ -515,7 +643,7 @@ fn observe_upper_ancestors(subject: RunnerHostFileSubject, context: FleetSshExec
 
 // The same far-side `cmp -s -` judgment converge_typed_remote_file mints from, run elevated with the
 // fetched version's bytes on stdin, so observation and apply cannot disagree about "identical".
-fn observe_key_content(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, write: TypedRemoteFileWrite) -> RunnerHostFileStanding
+fn observe_key_content(subject: ControllerKeyHost, context: FleetSshExecutionContext, write: TypedRemoteFileWrite) -> RunnerHostFileStanding
   uses net: Network
 {
   match run_elevated_leg(subject: subject, context: context, argv: ["test", "-e", write.path as String], stdin_payload: "") {
@@ -538,18 +666,37 @@ fn observe_key_content(subject: RunnerHostFileSubject, context: FleetSshExecutio
 // REMOVE, THEN READ THE ABSENCE BACK. `rm -f` exits 0 on an absent path, so its exit alone cannot
 // distinguish "removed" from "never there" -- which is fine -- nor "there and still there", which is
 // not; the presence test is what answers that.
-fn clear_staging(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, staging: String) -> StagingResidue
+fn clear_staging(
+  authorization: StagingCleanupAuthorization,
+  context: FleetSshExecutionContext,
+) -> StagingResidue
   uses net: Network
 {
+  let subject = authorization.subject
+  let staging = authorization.staging
+  let staging_parent = authorization.parent
+  // THE RESIDUE PREDICATE'S KEY IS DERIVED FROM THE SEAL, never supplied beside it. As a parameter
+  // it was the one value of the three a caller could still spell freely, and it is exactly what
+  // classify_staging_residue keys on: a name that does not match authorization.staging reads a
+  // listing CONTAINING the residue as StagingAbsent, and that absence feeds ControllerAppKeyHeld --
+  // the same false-absence class the parent-listing repair above exists to close. Deriving it here
+  // is what makes the sole_constructor claim true of every input the leg uses rather than of two of
+  // the three (DESIGN 4b meta-obligation 1; 5, construction over validation).
+  let staging_name = path_basename(path: staging)
   match run_elevated_leg(subject: subject, context: context, argv: staging_remove_argv(staging: staging), stdin_payload: "") {
     ElevatedLegRefused { reason: r } => StagingUnobservable { reason: concat("staging removal not run: ", r) }
     ElevatedLegRan { exit_code: rc, stdout: _, stderr: re } =>
       if rc != 0 {
         StagingUnobservable { reason: join(["staging removal exit=", to_string(rc), " ", trim(s: re)], "") }
       } else {
-        match run_elevated_leg(subject: subject, context: context, argv: ["test", "-e", staging], stdin_payload: "") {
-          ElevatedLegRefused { reason: r } => StagingUnobservable { reason: r }
-          ElevatedLegRan { exit_code: c, stdout: _, stderr: e } => classify_staging_residue(path: staging, exit_code: c, stderr: e)
+        match run_elevated_leg(subject: subject, context: context, argv: parent_listing_argv(parent: staging_parent), stdin_payload: "") {
+          ElevatedLegRefused { reason: r } => StagingUnobservable { reason: concat("staging parent not listed: ", r) }
+          ElevatedLegRan { exit_code: c, stdout: o, stderr: e } =>
+            if c != 0 {
+              StagingUnobservable { reason: join(["staging parent listing exit=", to_string(c), " ", trim(s: e)], "") }
+            } else {
+              classify_staging_residue(path: staging, name: staging_name, stdout: o)
+            }
         }
       }
   }
@@ -566,7 +713,7 @@ type ControllerAppKeyRun {
   readback: ControllerAppKeyReadback
 }
 
-fn ensure_key_dir(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, dir: String) -> KeyDirMetadata
+fn ensure_key_dir(subject: ControllerKeyHost, context: FleetSshExecutionContext, dir: String) -> KeyDirMetadata
   uses net: Network
 {
   match observe_key_dir(subject: subject, context: context, path: dir) {
@@ -585,8 +732,21 @@ fn ensure_key_dir(subject: RunnerHostFileSubject, context: FleetSshExecutionCont
   }
 }
 
+// THE ANCESTORS ARE OBSERVED BEFORE ANY MUTATION, and that ordering is the point rather than a
+// style. ensure_key_dir CREATES (install -d) and then observes, so calling it first ran a host
+// mutation ahead of the observation entitled to refuse the whole converge -- on a host whose /etc
+// or /etc/gunbc is group-writable the directory was created and only then was the ancestor read.
+// No key was ever written, because controller_app_key_action decides after every observation, so
+// the residue was an empty root-owned directory rather than a custody hole. But the module claimed
+// observe -> decide -> mutate and did not implement it, and the witnesses over the pure decision
+// could not see the difference: that is a comment and an evidence population asserting a property
+// the production route did not have.
+//
+// So the create is now gated on the ancestor reading. On the refusing arm the directory is only
+// OBSERVED, which is a read, and the same pure controller_app_key_action still decides -- the
+// decision keeps its single authority and only the order of the effects changed.
 fn converge_controller_app_key(
-  subject: RunnerHostFileSubject,
+  subject: ControllerKeyHost,
   context: FleetSshExecutionContext,
   placed_path: NonEmptyStr,
   key_dir: NonEmptyStr,
@@ -597,8 +757,11 @@ fn converge_controller_app_key(
   uses net: Network
 {
   let staging = typed_remote_file_staging_path(write: write)
-  let dir_before = ensure_key_dir(subject: subject, context: context, dir: key_dir as String)
   let ancestors_before = observe_upper_ancestors(subject: subject, context: context, paths: upper_ancestors)
+  let dir_before = match ancestors_before {
+    PathsRootOnly => ensure_key_dir(subject: subject, context: context, dir: key_dir as String)
+    _ => observe_key_dir(subject: subject, context: context, path: key_dir as String)
+  }
   let content_before = observe_key_content(subject: subject, context: context, write: write)
   let file_before = observe_key_file(subject: subject, context: context, path: placed_path as String)
   let action = controller_app_key_action(dir: dir_before, upper_ancestors: ancestors_before, content: content_before, file: file_before)
@@ -616,7 +779,18 @@ fn converge_controller_app_key(
       }
     _ => none
   }
-  let staging_after = clear_staging(subject: subject, context: context, staging: staging)
+  let cleanup_admission = admit_staging_cleanup(
+    subject: subject,
+    upper_ancestors: ancestors_before,
+    dir: dir_before,
+    key_dir: key_dir as String,
+    staging: staging,
+  )
+  let staging_after = match cleanup_admission {
+    StagingCleanupAuthorized { authorization: z } =>
+      clear_staging(authorization: z, context: context)
+    StagingCleanupWithheld { reason: r } => StagingUnobservable { reason: join([staging_cleanup_withheld_reason, ": ", r], "") }
+  }
   ControllerAppKeyRun {
     host: subject.host,
     key_path: placed_path,
@@ -693,10 +867,9 @@ fn write_receipt_then_exit(body: String, ok: Bool) -> ProcessExit {
 }
 
 // ONE HOST PER RUN, NAMED BY THE DISPATCH, exactly as gunbc.runner_password_session_tool_converge:
-// the fleet-converge job is pinned to a runner on the named host, and the subject (the administrator
-// target, refusing a host with no runner deploy row or whose administrator is the job user) is
-// gunbc.runner_host_file_converge runner_host_file_subject rather than a second resolution. The
-// receipt is written on the failing path too.
+// the fleet-converge job is pinned to a runner on the named host, and the subject -- the
+// administrator target, refusing a host with no runner host spec or whose administrator is the job
+// user -- is controller_key_host above. The receipt is written on the failing path too.
 fn microvm_controller_app_key_converge_ci_wet() -> ProcessExit
   uses net: Network
 {
@@ -705,9 +878,9 @@ fn microvm_controller_app_key_converge_ci_wet() -> ProcessExit
     ActionsVariableAbsent { variable: v, detail: d } =>
       write_receipt_then_exit(body: join(["microvm_controller_app_key_converge: ", v, " ", d, "; one host per run, named by the dispatch\n"], ""), ok: false)
     ActionsVariablePresent { value: raw_host } =>
-      match runner_host_file_subject(host: raw_host as HostIdentity) {
-        RunnerHostFileSubjectRefused { cause: c } => write_receipt_then_exit(body: concat(c, "\n"), ok: false)
-        RunnerHostFileSubjectAdmitted { subject: subject } =>
+      match controller_key_host(host: raw_host as HostIdentity) {
+        ControllerKeyHostRefused { cause: c } => write_receipt_then_exit(body: concat(c, "\n"), ok: false)
+        ControllerKeyHostAdmitted { subject: subject } =>
           match controller_app_key_placement(key_path: signing_key_file_path(key: lifecycle_controller_app_key)) {
             ControllerAppKeyPlacementRefused { cause: c } => write_receipt_then_exit(body: concat(c as String, "\n"), ok: false)
             ControllerAppKeyPlaced { key_path: kp, key_dir: kd, upper_ancestors: ua } =>
