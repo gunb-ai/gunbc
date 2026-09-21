@@ -3,6 +3,8 @@ module extdeps.standards.rfc_9052
 import std.types { Int, List }
 import std.logic { Bool }
 import std.integer { UInt8 }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import extdeps.crypto.signature { EcdsaP256Sha256, signature_suite_public_key_size }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.standards.rfc_8949 { CborValue, CborUnsigned, CborNegative, CborByteString, CborMap, CborEntry }
@@ -29,7 +31,13 @@ data cose_ec2_label_y: Int = 0 - 3
 data cose_kty_ec2: Int = 2
 data cose_crv_p256: Int = 1
 data cose_alg_es256: Int = 0 - 7
-data cose_p256_coordinate_octets: Int = 32
+// THE COORDINATE WIDTH IS DERIVED FROM extdeps.crypto.signature's public-key size, the one
+// authority for the SEC 1 uncompressed point this key renders to (review 69598 of gunbc#11970: a
+// second literal for 32 would let 65 = 1 + 2·32 drift in two places). One prefix octet, then x
+// and y of equal width.
+fn cose_p256_coordinate_size() -> ByteSize {
+  byte_size(count: (byte_size_count(b: signature_suite_public_key_size(s: EcdsaP256Sha256)) - 1) / 2)
+}
 
 // Each label is an integer key; a map may carry a label at most once (RFC 9052 §7: "keys in the
 // map MUST be unique"), so a duplicated label is refused rather than first- or last-wins.
@@ -80,7 +88,7 @@ type CoseKeyRefusal
   | CoseKeyTypeUnexpected { kty: Int }
   | CoseKeyCurveUnexpected { crv: Int }
   | CoseKeyAlgorithmUnexpected { alg: Int }
-  | CoseKeyCoordinateMalformed { label: Int, octets: Int }
+  | CoseKeyCoordinateMalformed { label: Int, declared: ByteSize, expected: ByteSize }
   | CoseKeyLabelNotAnInteger { label: Int }
 
 // The one key shape read here: EC2 over P-256 with ES256, x and y each exactly 32 octets. The
@@ -121,9 +129,9 @@ fn cose_coordinate(key: CborValue, label: Int) -> CoseCoordinate {
     CoseLabelFound { value: v } =>
       match v {
         CborByteString { octets: o } =>
-          if count(o) == cose_p256_coordinate_octets { CoseCoordinateRead { octets: o } }
-          else { CoseCoordinateRefused { cause: CoseKeyCoordinateMalformed { label: label, octets: count(o) } } }
-        _ => CoseCoordinateRefused { cause: CoseKeyCoordinateMalformed { label: label, octets: 0 } }
+          if count(o) == byte_size_count(b: cose_p256_coordinate_size()) { CoseCoordinateRead { octets: o } }
+          else { CoseCoordinateRefused { cause: CoseKeyCoordinateMalformed { label: label, declared: byte_size(count: count(o)), expected: cose_p256_coordinate_size() } } }
+        _ => CoseCoordinateRefused { cause: CoseKeyCoordinateMalformed { label: label, declared: byte_size(count: 0), expected: cose_p256_coordinate_size() } }
       }
     other => CoseCoordinateRefused { cause: CoseKeyLabelRefused { lookup: other } }
   }

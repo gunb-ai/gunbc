@@ -90,14 +90,21 @@ fn cbor_argument_octet_count(info: Int) -> Int {
   if info == 24 { 1 } else if info == 25 { 2 } else if info == 26 { 4 } else { 8 }
 }
 
-// Accumulates big-endian while the next octet keeps the value under the exact bound; `none` is
-// "beyond exact", decided BEFORE the multiply so a 64-bit host Int is never asked to overflow.
-fn cbor_big_endian_value(octets: List<UInt8>, at: Int, n: Int, acc: Int) -> Int? {
-  if n <= 0 { Present { value: acc } } else {
+type CborArgument
+  = CborArgumentRead { value: Int }
+  | CborArgumentBeyondExact
+  | CborArgumentTruncated { at: Int }
+
+// Accumulates big-endian while the next octet keeps the value under the exact bound, decided
+// BEFORE the multiply so a 64-bit host Int is never asked to overflow. A missing octet is a
+// located refusal, never a shorter value read as the argument (review 69598 of gunbc#11970): the
+// caller's length guard makes it unreachable today, and a guard is not what keeps an arm honest.
+fn cbor_big_endian_value(octets: List<UInt8>, at: Int, n: Int, acc: Int) -> CborArgument {
+  if n <= 0 { CborArgumentRead { value: acc } } else {
     match cbor_octet_at(octets: octets, at: at) {
-      Absent => Present { value: acc }
+      Absent => CborArgumentTruncated { at: at }
       Present { value: o } =>
-        if acc >= cbor_exact_integer_bound / 256 { none }
+        if acc >= cbor_exact_integer_bound / 256 { CborArgumentBeyondExact }
         else { cbor_big_endian_value(octets: octets, at: at + 1, n: n - 1, acc: acc * 256 + o) }
     }
   }
@@ -124,8 +131,9 @@ fn cbor_read_head(octets: List<UInt8>, at: Int) -> CborHead {
           CborHeadRefused { cause: CborTruncated { at: at + 1, needed: n, available: available } }
         } else {
           match cbor_big_endian_value(octets: octets, at: at + 1, n: n, acc: 0) {
-            Absent => CborHeadRefused { cause: CborIntegerBeyondExact { at: at } }
-            Present { value: v } => CborHeadRead { major: major, argument: v, next: at + 1 + n }
+            CborArgumentBeyondExact => CborHeadRefused { cause: CborIntegerBeyondExact { at: at } }
+            CborArgumentTruncated { at: t } => CborHeadRefused { cause: CborTruncated { at: t, needed: 1, available: 0 } }
+            CborArgumentRead { value: v } => CborHeadRead { major: major, argument: v, next: at + 1 + n }
           }
         }
       }
