@@ -3,6 +3,7 @@ module test.claim.spark.v41_index_engram_selection_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.content_hash { Sha256DigestHex }
+import std.measure { byte_size }
 import extdeps.safetensors.format {
   SafetensorsIndexMember, safetensors_index_member,
   SafetensorsPopulationStanding, PopulationEstablished, PopulationIncomplete, PopulationRefused,
@@ -42,7 +43,7 @@ test fn the_scan_refuses_outside_its_shape() -> Bool {
 }
 
 fn w_reading(hex: String, names: Nat, members: List<SafetensorsIndexMember>) -> V41IndexEngramSelectionReading {
-  V41IndexEngramSelectionRead { index_sha256_hex: hex as Sha256DigestHex, index_bytes: 7470294, name_count: names, members: members, observed: "fixture" as NonEmptyStr }
+  V41IndexEngramSelectionRead { index_sha256_hex: hex as Sha256DigestHex, index_bytes: byte_size(count: 7470294), name_count: names, members: members, observed: "fixture" as NonEmptyStr }
 }
 
 fn w_closure_of(s: SafetensorsPopulationStanding) -> Nat {
@@ -74,10 +75,11 @@ test fn a_reading_with_a_thirteenth_engram_name_refuses() -> Bool {
   }
 }
 
-// THE LIVE READING IS THE INSTRUMENT'S RECEIPT, and it closes the observed population.
-test fn the_live_reading_closes_the_observed_population() -> Bool {
+// THE LIVE READING IS UNREAD UNTIL AN ENROLLED ROUTE'S RECEIPT LANDS, and the observed population is
+// then the extdeps one, scoped to the rows read -- a diagnostic run of the scan does not close it.
+test fn the_live_reading_is_unread_and_the_observed_population_stays_scoped() -> Bool {
   (match v41_index_engram_selection_reading {
-    V41IndexEngramSelectionRead { index_sha256_hex: _, index_bytes: _, name_count: n, members: ms, observed: _ } => n == 96085 && length(ms) == 12
-    V41IndexEngramSelectionUnread { obligation: _ } => false
-  }) && w_closure_of(s: v41_engram_population_observed()) == 0
+    V41IndexEngramSelectionRead { index_sha256_hex: _, index_bytes: _, name_count: _, members: _, observed: _ } => false
+    V41IndexEngramSelectionUnread { obligation: o } => (o as String).contains("spark_v41_checkpoint_materialize")
+  }) && w_closure_of(s: v41_engram_population_observed()) == 1
 }

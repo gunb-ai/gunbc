@@ -3,7 +3,7 @@ module gunbc.spark.v41_index_engram_selection
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash { Sha256DigestHex }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -38,11 +38,10 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 // values, so the selection is exact rather than heuristic. It dissolves into a fold over
 // parse_json_document once that parser reads a weight_map of this size.
 //
-// WHY THE READING IS TRANSCRIBED. The index is not in this repository, so a data row cannot read it at
-// evaluation. v41_index_engram_selection_read_wet runs the scan over a local copy and prints a receipt;
-// the receipt's own values are transcribed into v41_index_engram_selection_reading. Those values are
-// COMPARED against the pin by the extdeps fold, so a reading of any other file, or over fewer names,
-// does not close membership -- the reading is evidence, not a restatement of the pin.
+// WHERE THE READING COMES FROM. The index is not in this repository, so a data row cannot read it at
+// evaluation; the reading is the receipt of the enrolled route that reads it on a Spark (below). Its
+// values are COMPARED against the pin by the extdeps fold, so a reading of any other file, or over
+// fewer names, does not close membership.
 
 data v41_index_engram_selector: NonEmptyStr = ".engram." as NonEmptyStr
 
@@ -86,9 +85,9 @@ fn v41_scan_index_text(text: String, selector: NonEmptyStr) -> V41IndexScan {
   }
 }
 
-// ── THE INSTRUMENT ─────────────────────────────────────────────────────────────────────────────
+// ── A LOCAL DIAGNOSTIC OF THE SAME SCAN ────────────────────────────────────────────────────────
 //
-// Run over a local copy of the index (fetched from hub_resolve_url at the pinned revision):
+// Not a producer of the reading (see below). Run over a local copy of the index (fetched from hub_resolve_url at the pinned revision):
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/spark/v41_index_engram_selection.dag
 //     --function v41_index_engram_selection_read_wet   (path in GUNBC_V41_INDEX_PATH)
 // It writes target/v41-index-engram-selection-receipt.txt: the file's sha256 and size, the scan's name count and every selected member: the fields
@@ -122,39 +121,26 @@ fn v41_index_engram_selection_read_wet() -> ProcessExit {
 
 // ── THE READING ────────────────────────────────────────────────────────────────────────────────
 //
-// TRANSCRIBED FROM THE INSTRUMENT'S RECEIPT: v41_index_engram_selection_read_wet over the index fetched
-// from hub_resolve_url at dba1be0a, run 2026-09-21 by sleek-bee-348. Every value here is the receipt's,
-// written as a literal and never as the pin's symbol, so the extdeps fold compares an observation
-// against the pin rather than a value against itself.
+// A READING IS A RECEIPT OF AN ENROLLED ROUTE, AND ONLY THAT. The route is the fleet-converge mode
+// spark_v41_checkpoint_materialize: after the index verifies against its manifest row on the Spark, the
+// mode reads the file back, digests it and runs v41_scan_index_text over its bytes, and its receipt
+// carries the `index-selection` lines this row is transcribed from, with the host and run it names --
+// the same standing as gunbc.spark.v41_engram_row_store v41_published_span_readings. A run of the scan
+// anywhere else is a diagnostic and does not land here. Until a dispatched run's receipt is transcribed
+// the reading is Unread, the observed population is the extdeps one scoped to the rows read, and the
+// candidate's Engram axis stays unestablished.
 type V41IndexEngramSelectionReading
   = V41IndexEngramSelectionRead {
       index_sha256_hex: Sha256DigestHex
-      index_bytes: Nat
+      index_bytes: ByteSize
       name_count: Nat
       members: List<SafetensorsIndexMember>
       observed: NonEmptyStr
     }
   | V41IndexEngramSelectionUnread { obligation: NonEmptyStr }
 
-data v41_index_engram_selection_reading: V41IndexEngramSelectionReading = V41IndexEngramSelectionRead {
-  index_sha256_hex: "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8" as Sha256DigestHex,
-  index_bytes: 7470294,
-  name_count: 96085,
-  members: [
-    safetensors_index_member(name: "layers.14.engram.embed.weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
-    safetensors_index_member(name: "layers.14.engram.embed.scale" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
-    safetensors_index_member(name: "layers.14.engram.q_weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
-    safetensors_index_member(name: "layers.14.engram.k_weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
-    safetensors_index_member(name: "layers.14.engram.wkv.weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
-    safetensors_index_member(name: "layers.14.engram.wkv.scale" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
-    safetensors_index_member(name: "layers.1.engram.embed.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
-    safetensors_index_member(name: "layers.1.engram.embed.scale" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
-    safetensors_index_member(name: "layers.1.engram.q_weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
-    safetensors_index_member(name: "layers.1.engram.k_weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
-    safetensors_index_member(name: "layers.1.engram.wkv.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
-    safetensors_index_member(name: "layers.1.engram.wkv.scale" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
-  ],
-  observed: "v41_index_engram_selection_read_wet over model.safetensors.index.json fetched from hub_resolve_url at dba1be0a, 2026-09-21, sleek-bee-348" as NonEmptyStr,
+data v41_index_engram_selection_reading: V41IndexEngramSelectionReading = V41IndexEngramSelectionUnread {
+  obligation: "the .engram. selection over the full index has not been read by an enrolled route: spark_v41_checkpoint_materialize scans the verified index on the Spark, and its index-selection receipt lines are transcribed into gunbc.spark.v41_index_engram_selection v41_index_engram_selection_reading" as NonEmptyStr,
 }
 
 // THE ENGRAM POPULATION THIS REPOSITORY HAS OBSERVED. With no reading it is the extdeps population,
@@ -165,7 +151,7 @@ fn v41_engram_population_observed_of(reading: V41IndexEngramSelectionReading) ->
     V41IndexEngramSelectionUnread { obligation: _ } => deepseek_v4_1_flash_engram_population
     V41IndexEngramSelectionRead { index_sha256_hex: h, index_bytes: b, name_count: n, members: ms, observed: _ } => {
       let selection = deepseek_v4_1_flash_index_engram_selection_of(
-        index: deepseek_v4_1_flash_published_file_row(path: deepseek_v4_1_flash_safetensors_index_path, file_bytes: byte_size(count: b), sha256_hex: h),
+        index: deepseek_v4_1_flash_published_file_row(path: deepseek_v4_1_flash_safetensors_index_path, file_bytes: b, sha256_hex: h),
         name_count: n,
         selector: v41_index_engram_selector,
         members: ms,

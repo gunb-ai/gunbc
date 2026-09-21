@@ -46,6 +46,8 @@ import gunbc.spark.v41_engram_row_store {
   V41PublishedSpanDigest, v41_published_span_plan,
 }
 import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import gunbc.spark.v41_index_engram_selection { V41IndexScan, V41IndexScanned, V41IndexScanRefused, v41_scan_index_text, v41_index_engram_selector }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_safetensors_index_path }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject }
@@ -535,7 +537,7 @@ fn v41_file_line(r: V41FileReceipt) -> String {
 
 type V41MaterializeRun
   = V41MaterializeRefusedBeforeFetch { cause: NonEmptyStr, disk: V41DiskReading }
-  | V41MaterializeRan { disk: V41DiskReading, files: List<V41FileReceipt>, spans: List<V41SpanReadOutcome> }
+  | V41MaterializeRan { disk: V41DiskReading, files: List<V41FileReceipt>, spans: List<V41SpanReadOutcome>, index_selection: V41IndexSelectionOutcome }
 
 fn v41_materialize_checkpoint(ctx: SparkMaterializeContext) -> V41MaterializeRun {
   match v41_checkpoint_population() {
@@ -550,7 +552,7 @@ fn v41_materialize_checkpoint(ctx: SparkMaterializeContext) -> V41MaterializeRun
             V41MaterializeRefusedBeforeFetch { cause: join(["the checkpoint needs ", to_string(r), " more bytes under ", v41_checkpoint_directory as String, " and the filesystem has ", to_string(a), " available, so nothing was fetched"], "") as NonEmptyStr, disk: disk }
           } else {
             let receipts = map(files, f => V41FileReceipt { path: f.path, outcome: acquire_artifact(subject: v41_checkpoint_subject(file: f), handler: v41_checkpoint_handler(ctx: ctx)) })
-            V41MaterializeRan { disk: disk, files: receipts, spans: v41_spans_after(ctx: ctx, receipts: receipts) }
+            V41MaterializeRan { disk: disk, files: receipts, spans: v41_spans_after(ctx: ctx, receipts: receipts), index_selection: v41_index_selection_after(ctx: ctx, receipts: receipts) }
           }
       }
     }
@@ -572,19 +574,70 @@ fn v41_spans_after(ctx: SparkMaterializeContext, receipts: List<V41FileReceipt>)
   }
 }
 
+// THE .engram. SELECTION OVER THE INDEX THIS RUN VERIFIED (gunbc.spark.v41_index_engram_selection): the
+// file's digest and size are read back on the host, its bytes are fetched, and the scan runs over them
+// here. The `index-selection` lines are what v41_index_engram_selection_reading is transcribed from.
+type V41IndexSelectionOutcome
+  = V41IndexSelectionRead { sha256_hex: String, bytes: String, scan: V41IndexScan }
+  | V41IndexSelectionUnread { cause: NonEmptyStr }
+
+fn v41_index_selection_after(ctx: SparkMaterializeContext, receipts: List<V41FileReceipt>) -> V41IndexSelectionOutcome {
+  let path = v41_install_path(path: deepseek_v4_1_flash_safetensors_index_path)
+  if !any(receipts, r => (r.path as String) == (deepseek_v4_1_flash_safetensors_index_path as String) && acquisition_succeeded(outcome: r.outcome)) {
+    V41IndexSelectionUnread { cause: "the index was not verified by this run, so it is not scanned" as NonEmptyStr }
+  } else {
+    match v41_read_file_digest(ctx: ctx, path: path) {
+      V41FileDigestUnread { cause: c } => V41IndexSelectionUnread { cause: c }
+      V41FileDigestRead { hex: h } =>
+        match spark_remote_run(ctx: ctx, argv: ["wc", "--bytes", path as String]) {
+          RemoteUnreachable { cause: c } => V41IndexSelectionUnread { cause: join(["the size read did not run: ", c], "") as NonEmptyStr }
+          RemoteRan { exit_code: e, stdout: out, stderr: _ } =>
+            if e != 0 { V41IndexSelectionUnread { cause: join(["wc exited ", to_string(e)], "") as NonEmptyStr } } else {
+              match spark_remote_run(ctx: ctx, argv: ["cat", "--", path as String]) {
+                RemoteUnreachable { cause: c } => V41IndexSelectionUnread { cause: join(["the index read did not run: ", c], "") as NonEmptyStr }
+                RemoteRan { exit_code: e2, stdout: text, stderr: _ } =>
+                  if e2 != 0 { V41IndexSelectionUnread { cause: join(["cat exited ", to_string(e2)], "") as NonEmptyStr } } else {
+                    V41IndexSelectionRead { sha256_hex: h, bytes: match first(split(s: trim(s: out), delimiter: " ")) { Present { value: n } => n  Absent => "" }, scan: v41_scan_index_text(text: text, selector: v41_index_engram_selector) }
+                  }
+              }
+            }
+        }
+    }
+  }
+}
+
+fn v41_index_selection_is_read(o: V41IndexSelectionOutcome) -> Bool {
+  match o {
+    V41IndexSelectionRead { sha256_hex: _, bytes: _, scan: sc } => match sc { V41IndexScanned { name_count: _, members: _ } => true  V41IndexScanRefused { cause: _ } => false }
+    V41IndexSelectionUnread { cause: _ } => false
+  }
+}
+
+fn v41_index_selection_lines(o: V41IndexSelectionOutcome) -> String {
+  match o {
+    V41IndexSelectionUnread { cause: c } => join(["index-selection unread: ", c as String, "\n"], "")
+    V41IndexSelectionRead { sha256_hex: h, bytes: b, scan: sc } => match sc {
+      V41IndexScanRefused { cause: c } => join(["index-selection refused sha256=", h, ": ", c as String, "\n"], "")
+      V41IndexScanned { name_count: n, members: ms } =>
+        join(concat([join(["index-selection sha256=", h, " bytes=", b, " names=", to_string(n), " selector=", v41_index_engram_selector as String, "\n"], "")],
+          map(ms, m => join(["index-selection member ", m.name as String, " ", m.shard as String, "\n"], ""))), "")
+    }
+  }
+}
+
 fn v41_run_succeeded(run: V41MaterializeRun) -> Bool {
   match run {
     V41MaterializeRefusedBeforeFetch { cause: _, disk: _ } => false
-    V41MaterializeRan { disk: _, files: fs, spans: sps } =>
-      all(fs, r => acquisition_succeeded(outcome: r.outcome)) && length(sps) > 0 && all(sps, s => v41_span_is_read(o: s))
+    V41MaterializeRan { disk: _, files: fs, spans: sps, index_selection: ix } =>
+      v41_index_selection_is_read(o: ix) && all(fs, r => acquisition_succeeded(outcome: r.outcome)) && length(sps) > 0 && all(sps, s => v41_span_is_read(o: s))
   }
 }
 
 fn v41_run_body(run: V41MaterializeRun) -> String {
   match run {
     V41MaterializeRefusedBeforeFetch { cause: c, disk: d } => join([v41_disk_line(d: d), "refused-before-fetch: ", c as String, "\n"], "")
-    V41MaterializeRan { disk: d, files: fs, spans: sps } =>
-      join(concat(concat([v41_disk_line(d: d)], map(fs, r => v41_file_line(r: r))), map(sps, s => v41_span_line(o: s))), "")
+    V41MaterializeRan { disk: d, files: fs, spans: sps, index_selection: ix } =>
+      join(concat(concat(concat([v41_disk_line(d: d)], map(fs, r => v41_file_line(r: r))), map(sps, s => v41_span_line(o: s))), [v41_index_selection_lines(o: ix)]), "")
   }
 }
 
