@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.a_declaration_the_interpreter_runs_emits_rust_that_does_not_compile
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_declaration_the_interpreter_runs_emits_rust_that_does_not_compile: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_declaration_the_interpreter_runs_emits_rust_that_does_not_compile" as NonEmptyStr,
+
+  receipts: [
+    "a declaration the interpreter runs emits Rust that does not compile: a module is admitted by every executing check -- it parses, it typechecks, its witnesses evaluate -- because every one of those checks runs it under the SEED INTERPRETER. Its emitted Rust is never produced by anything on the merge path, so a declaration whose EMISSION is ill-typed, or whose operator has no host realization, lands clean and breaks the ability to build the v2 compiler at all. The invalid state is a corpus that passes every gate while `gunbc test //gunbc/instruments:self-host` refuses.",
+
+    "OBSERVED, 2026-09-20/21. At main 87c6658641e the self-host instrument refused with `EmittedCompilerBuildFailed status=101`. Emission itself completed; cargo then reported three errors in `src/std_integer.rs`, the file emitted from `dag/std/integer.dag`: two `E0308 expected PhantomData<(i64, std_machine_constraints::MachineWidth<()>)>, found i64` (at the `value:` field of a constructor and at a `qualified_octets` argument), and one `compile_error!(\"operator realization: host operator `+` on structural operand std.integer.UInt8 -- the declaration has no host realization and declares no operator\")`. The same tree emitted cleanly two commits earlier in the run recorded at 31bbd220f9d.",
+
+    "THE DIFFERENTIAL, which is what attributes it. `git log 31bbd220f9d..87c6658641e -- dag/std/integer.dag` names exactly one commit, 6bb950a5589 (#11643, NUMERIC-BIT-0), which ADDED 146 lines declaring `UInt8Result`, `uint8_of_int` and octet constructors over `UInt8 = Compose<UInt, MachineWidth<8>>`. The three errors are in code emitted from those additions.",
+
+    "PROPOSED CAUSE, HELD SEPARATE FROM THE OBSERVATION because it is not established here: the added declarations construct and perform arithmetic on a width-composed integer whose emitted representation carries the width as a phantom parameter, and the emitter has no host realization for `+` on that operand. What is observed is the three errors and the differential. Whether the defect is owned by the emitter's operator realization, by the width composition's emitted representation, or by the added declarations is a reading of `v1.compiler.emit_rust` that this row does not make. The next reader owes that chain (DESIGN section 6b) rather than a patch at whichever link the error printed.",
+
+    "WHY NO GATE SAW IT, which is the class rather than the instance. The required check at that revision built the seed and ran a floor that concludes success while refusing (see required_floor_passes_with_a_failed_phase). But even a FLOOR IN FULL WORKING ORDER would not have caught this one: every floor route runs declarations under the interpreter, where `UInt8` arithmetic evaluates without ever being emitted. The only executing consumer of the emission is the self-host instrument, and `gunbc.instrument_targets` binds twelve labels of which NO CI STEP INVOKES ANY. So the emission path has no executing consumer on the merge path at all.",
+
+    "THE STANDING WAS INFLATED WHILE IT WAS BROKEN. `gunbc.compiler_frontend_program_status` reports `SelfHostCorpusEmitsCleanly` as Clear, derived from the latest validated whole-corpus compile-phase receipt. Nothing refreshes that receipt on a cadence, so the carrier reported a capability that three independent defects had taken down within one day. That is DESIGN section 4b(1) rung inflation stated exactly: the reported rung exceeded the rung established by executed evidence, and an inflated class never ranks for climbing.",
+
+    "RUNG FOUND AT: mitigatable, and only by hand -- the refusal is typed and located when someone runs the instrument, and nobody runs it. ATTAINABLE CEILING: mechanically preventable. The emission is decidable and its consumer is an existing modeled instrument, so a route that emits the retained closure and builds it, on a cadence or at the merge boundary, blocks the class. It does not reach structural impossibility: whether arbitrary emitted Rust typechecks is rustc's judgment, which sits in DESIGN section 4b's outside-the-modeled-guarantee column, so the honest ceiling is an executing check rather than an unwritable state.",
+
+    "NEXT-RUNG TRIGGER, at capability grain rather than artifact grain: an executing consumer of the EMISSION of the retained closure, whose refusal reaches a process exit a human or a lane reads. It is not satisfied by adding a receipt row, by refreshing the standing by hand, or by any check that runs declarations under the interpreter -- those establish a different fact about the same modules.",
+
+    "RECOGNITION RULE. The tell is a green corpus and a refusing emission: witnesses pass, the floor is clean, and `gunbc test //gunbc/instruments:self-host` reports EmittedCompilerBuildFailed or EmissionRefused. Suspect it whenever a change introduces a new structural type parameter, a new operator over a composed primitive, or a new host-realized operation -- the three shapes whose meaning differs between evaluating a declaration and emitting it. The confirming move is the differential: emit at the last known-good revision and at head, and read which file the errors name.",
+  ],
+
+  evidence: [],
+}
