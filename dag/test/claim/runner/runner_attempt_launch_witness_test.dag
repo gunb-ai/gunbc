@@ -29,13 +29,17 @@ import gunbc.runner_microvm_network {
 }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, OutsideTheLadder, StructurallyGuaranteed, StructurallyImpossible }
+import extdeps.tools.stat { StatFieldRead, StatFieldUnread }
+import extdeps.posix.test_utility { PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable }
 import gunbc.runner_attempt_launch {
   AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedUnauthorized,
   LaunchRefusedJitCredential, LaunchRefusedPriorResources,
   AttemptGround, GroundClear, GroundOccupied,
   JitDeviceRefusal, JitMintNotReceived, JitCredentialNotDelivered,
   JitCredentialBoundToDifferentAttempt, JitCredentialBelowFloor, JitCredentialAboveCeiling,
-  jit_device_readback, JitDeviceStagingRefused, JitDeviceReadbackStep, StatRead, StatUnread, JitDeviceStagingOutcome,
+  jit_device_readback, JitDeviceStagingRefused, JitDeviceReadbackStep, JitDeviceStagingOutcome,
+  JailMaterialStaging, JailMaterialStanding, JailMaterialReady, JailMaterialStepFailed,
+  JailMaterialMissing, JailMaterialUnobservable, jail_material_step_label, StagingRefusedJailMaterial,
   plan_attempt_launch, planned_jailer_launches,
   attempt_jail_chroot_root, workspace_drive_path_on_host,
   work_standing_from_vmm_exit, WorkNotEstablished,
@@ -50,7 +54,7 @@ import gunbc.runner_attempt_launch {
   attempt_staging_verdict, runner_attempt_workspace_bytes,
   StagingRefusedJitDevice, StagingRefusedForeignJitDevice,
   JitDeviceStaged, JitDeviceStagingOutcome, JitDeviceStagingRefused, JitDeviceCreateStep,
-  workspace_readback_command, workspace_staging_consumer_frontier,
+  workspace_readback_command,
 }
 import extdeps.github.actions_jit_runner {
   EncodedJitConfig, JitConfigMinted, jit_config_mint_outcome,
@@ -467,14 +471,14 @@ fn readback_refused(r: JitDeviceStagingOutcome?) -> Bool {
 test fn staging_readback_refuses_each_wrong_fact_and_admits_the_right_one() -> Bool {
   let content = jit_drive_content(encoded_jit_config: doubled(s: "A", k: 10) as NonEmptyStr)
   let size = to_string(byte_size_count(b: jit_drive_utf8_size(text: content)))
-  readback_refused(r: jit_device_readback(uid: StatRead { value: "0" }, mode: StatRead { value: "400" }, size: StatRead { value: size }, content: content))
-    && readback_refused(r: jit_device_readback(uid: StatRead { value: "1000" }, mode: StatRead { value: "440" }, size: StatRead { value: size }, content: content))
-    && readback_refused(r: jit_device_readback(uid: StatRead { value: "1000" }, mode: StatRead { value: "400" }, size: StatRead { value: "65536" }, content: content))
-    && match jit_device_readback(uid: StatUnread { detail: "stat exit 1: No such file" }, mode: StatRead { value: "400" }, size: StatRead { value: size }, content: content) {
+  readback_refused(r: jit_device_readback(uid: StatFieldRead { value: "0" }, mode: StatFieldRead { value: "400" }, size: StatFieldRead { value: size }, content: content))
+    && readback_refused(r: jit_device_readback(uid: StatFieldRead { value: "1000" }, mode: StatFieldRead { value: "440" }, size: StatFieldRead { value: size }, content: content))
+    && readback_refused(r: jit_device_readback(uid: StatFieldRead { value: "1000" }, mode: StatFieldRead { value: "400" }, size: StatFieldRead { value: "65536" }, content: content))
+    && match jit_device_readback(uid: StatFieldUnread { detail: "stat exit 1: No such file" }, mode: StatFieldRead { value: "400" }, size: StatFieldRead { value: size }, content: content) {
       Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: d } } => starts_with(s: d, prefix: "owner uid unread")
       _ => false
     }
-    && match jit_device_readback(uid: StatRead { value: "1000" }, mode: StatRead { value: "400" }, size: StatRead { value: size }, content: content) {
+    && match jit_device_readback(uid: StatFieldRead { value: "1000" }, mode: StatFieldRead { value: "400" }, size: StatFieldRead { value: size }, content: content) {
       Absent => true
       Present { value: _ } => false
     }
@@ -504,6 +508,12 @@ fn staging_label(v: AttemptStagingVerdict) -> String {
     StagingNotAuthorized => "unauthorized"
     StagingRefusedJitDevice { outcome: _ } => "jit-device"
     StagingRefusedForeignJitDevice { staged_path: _, planned_path: _ } => "foreign-jit-device"
+    StagingRefusedJailMaterial { standing: m } => match m {
+      JailMaterialReady => "ready-refused-jail"
+      JailMaterialStepFailed { step: st, exit: _ } => join(["step-failed:", jail_material_step_label(step: st)], "")
+      JailMaterialMissing { step: st } => join(["missing:", jail_material_step_label(step: st)], "")
+      JailMaterialUnobservable { step: st, reason: _ } => join(["unobservable:", jail_material_step_label(step: st)], "")
+    }
     StagingRefusedWorkspace { standing: s } => match s {
       WorkspaceReady => "ready-refused"
       WorkspaceCreateFailed { exit: _ } => "create"
@@ -538,8 +548,59 @@ fn staging_with(jit_of: Bool, obs: WorkspaceStagingObservation, ground: AttemptG
           let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: ground)
           staging_label(v: attempt_staging_verdict(
             plan: plan,
+            jail: staged_jail_material(),
             jit: if jit_of { staged_device_of(plan: plan) } else { jit },
             workspace: obs,
+          ))
+        }
+        Empty {} => "no-attempt"
+      }
+    Empty {} => "no-grant"
+  }
+}
+
+// A JAIL WHOSE MATERIAL STAGED, supplied so the claims above are about the gate they name. The
+// jail-material reds below supply the failing shapes instead.
+fn staged_jail_material() -> JailMaterialStaging {
+  JailMaterialStaging {
+    jail_root_exit: 0,
+    kernel_exit: 0,
+    rootfs_exit: 0,
+    kernel: PathPresent,
+    rootfs: PathPresent,
+  }
+}
+
+// THE JAIL'S MATERIAL GATES THE JAILER TOO, and it did not before: stage_jail_root, stage_kernel and
+// stage_rootfs ran with their exits discarded, so a copy that failed still minted the receipt and
+// released the jailer onto a chroot with no kernel in it (review 69084). Each arm is asserted
+// separately, and the exits are checked in causal order: a jail root that was not created makes the
+// copies meaningless.
+//
+// THE READBACK ARMS ARE THE POINT OF THE PAIR. `cp` exiting zero is the tool's word; the file being
+// where the jailer will open it is the host's, and the two are separated by a full disk. A gate that
+// read only the exits would pass the first three reds and fail these two.
+test fn a_failed_or_missing_jail_material_does_not_admit_the_jailer() -> Bool {
+  jail_label(m: JailMaterialStaging { jail_root_exit: 1, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent }) == "step-failed:jail root"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 1, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent }) == "step-failed:kernel"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 2, kernel: PathPresent, rootfs: PathPresent }) == "step-failed:rootfs"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathAbsentOrUnstattable, rootfs: PathPresent }) == "missing:kernel"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathAbsentOrUnstattable }) == "missing:rootfs"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathExistenceUnreadable { reason: "test -e exited 126" as NonEmptyStr } }) == "unobservable:rootfs"
+    && jail_label(m: staged_jail_material()) == "admit"
+}
+
+fn jail_label(m: JailMaterialStaging) -> String {
+  match issued_pairs() {
+    Cons { head: pair, tail: _ } =>
+      match accepted_attempt(i: 2, id: "ws1") {
+        Cons { head: a, tail: _ } => {
+          let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: GroundClear)
+          staging_label(v: attempt_staging_verdict(
+            plan: plan,
+            jail: m,
+            jit: staged_device_of(plan: plan),
+            workspace: good_workspace(),
           ))
         }
         Empty {} => "no-attempt"
@@ -587,7 +648,7 @@ fn admitted_receipt_names_this_attempts_paths() -> Bool {
       match accepted_attempt(i: 2, id: "ws1") {
         Cons { head: a, tail: _ } => {
           let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: GroundClear)
-          match attempt_staging_verdict(plan: plan, jit: staged_device_of(plan: plan), workspace: good_workspace()) {
+          match attempt_staging_verdict(plan: plan, jail: staged_jail_material(), jit: staged_device_of(plan: plan), workspace: good_workspace()) {
             StagingAdmitsJailer { receipt: r } =>
               r.jit_device_path == concat(attempt_jail_chroot_root(attempt: a, firecracker_binary: "/bin/firecracker"), jail_jit_path as String)
                 && r.workspace_path == planned_ws_path()
@@ -630,14 +691,21 @@ test fn a_good_workspace_does_not_admit_a_refused_plan() -> Bool {
   staging_for(obs: good_workspace(), ground: GroundOccupied) == "unauthorized"
 }
 
-// THE READBACK READS THE PLANNED IMAGE'S SUPERBLOCK, AND ITS CONSUMER IS STILL A FRONTIER. The red
-// for the first half is a readback of any path but the one the plan formatted.
-test fn the_workspace_readback_reads_the_planned_image_and_its_consumer_is_a_frontier() -> Bool {
+// THE READBACK READS THE PLANNED IMAGE'S SUPERBLOCK. The red is a readback of any path but the one
+// the plan formatted.
+//
+// THE FRONTIER HALF OF THIS CLAIM IS GONE BECAUSE THE FRONTIER IS. workspace_staging_consumer_frontier
+// asserted that its own row still stood, and that row named this file's staging step as its consumer
+// with the trigger "that step executes workspace_create and workspace_format, executes
+// stage_jit_device and reaches the jailer only through attempt_staging_verdict". gunbc.runner_microvm
+// _lifecycle_realize stage_attempt is that step and does exactly those three things, so the row is
+// discharged and deleted in the same change (review 69117: a row whose trigger the author says is met,
+// kept standing, is the roster ceasing to mean what it says). What retires with it is the assertion
+// that it was UNBOUND -- which could only ever be true while the consumer was missing -- not the argv
+// assertion beside it, which is evidence about the command and survives (DESIGN 4b(4): a climb deletes
+// the obsolete production machinery, never the discriminating evidence).
+test fn the_workspace_readback_reads_the_planned_image() -> Bool {
   argv_words(command: workspace_readback_command(workspace_path: "/jail/work.img")) == ["dumpe2fs", "-h", "/jail/work.img"]
-    && match workspace_staging_consumer_frontier {
-      UnboundDissolution { description: _ } => true
-      BoundDissolution { trigger: _ } => false
-    }
 }
 
 // ANOTHER IMAGE'S READBACK DOES NOT AUTHORIZE THIS PLAN. A clean ext superblock of the right size, read
