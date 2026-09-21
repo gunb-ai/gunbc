@@ -277,8 +277,9 @@ type StagingResidue
 // desirable there. So the seal joins three facts and nothing else -- upper ancestors PathsRootOnly,
 // the key directory KeyDirRootOnly, and the staging path's parent being that admitted directory.
 // sole_constructor makes the bad state UNWRITABLE rather than merely unreached (DESIGN §4b rung 4):
-// clear_staging accepts the sealed authorization, so there is no way to spell a cleanup leg over a
-// subject and a bare path that no admission fold produced.
+// clear_staging accepts the sealed authorization and DERIVES every value the leg uses from it --
+// subject, parent, path and the residue predicate's key -- so there is no way to spell a cleanup leg,
+// or a residue reading over one, that no admission fold produced.
 type StagingCleanupAuthorization sole_constructor {
   subject: ControllerKeyHost
   parent: String
@@ -669,13 +670,20 @@ fn observe_key_content(subject: ControllerKeyHost, context: FleetSshExecutionCon
 fn clear_staging(
   authorization: StagingCleanupAuthorization,
   context: FleetSshExecutionContext,
-  staging_name: String,
 ) -> StagingResidue
   uses net: Network
 {
   let subject = authorization.subject
   let staging = authorization.staging
   let staging_parent = authorization.parent
+  // THE RESIDUE PREDICATE'S KEY IS DERIVED FROM THE SEAL, never supplied beside it. As a parameter
+  // it was the one value of the three a caller could still spell freely, and it is exactly what
+  // classify_staging_residue keys on: a name that does not match authorization.staging reads a
+  // listing CONTAINING the residue as StagingAbsent, and that absence feeds ControllerAppKeyHeld --
+  // the same false-absence class the parent-listing repair above exists to close. Deriving it here
+  // is what makes the sole_constructor claim true of every input the leg uses rather than of two of
+  // the three (DESIGN 4b meta-obligation 1; 5, construction over validation).
+  let staging_name = path_basename(path: staging)
   match run_elevated_leg(subject: subject, context: context, argv: staging_remove_argv(staging: staging), stdin_payload: "") {
     ElevatedLegRefused { reason: r } => StagingUnobservable { reason: concat("staging removal not run: ", r) }
     ElevatedLegRan { exit_code: rc, stdout: _, stderr: re } =>
@@ -781,7 +789,7 @@ fn converge_controller_app_key(
   )
   let staging_after = match cleanup_admission {
     StagingCleanupAuthorized { authorization: z } =>
-      clear_staging(authorization: z, context: context, staging_name: path_basename(path: staging))
+      clear_staging(authorization: z, context: context)
     StagingCleanupWithheld { reason: _ } => StagingUnobservable { reason: staging_cleanup_withheld_reason }
   }
   ControllerAppKeyRun {
