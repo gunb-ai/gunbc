@@ -169,12 +169,25 @@ fn selection_against_standing(
   }
 }
 
-// ONE LINEAGE WAS OBSERVED, SO A SELECTION EITHER AGREES WITH IT OR CONTRADICTS IT. Agreement is
-// admitted and is a no-op in substance -- the converge would have adopted that file anyway -- and
-// the arm exists so an operator who declares the id they can see is not refused for saying
-// something true. Disagreement refuses: the declaration names a file the observation did not
-// return, and preferring the declaration there is exactly how a converge comes to act on a file
-// nobody looked at.
+// ONE LINEAGE WAS OBSERVED, SO A SELECTION EITHER AGREES WITH IT OR CONTRADICTS IT. Disagreement
+// refuses: the declaration names a file the observation did not return, and preferring the
+// declaration there is exactly how a converge comes to act on a file nobody looked at.
+//
+// AGREEMENT IS ADMITTED, AND WHAT THAT BUYS IS NOT THE SAME ON THE TWO ARMS IT SERVES -- which is
+// worth spelling, because an earlier revision of this annotation said it was. On
+// ReviewSheetSingleLineage the admission changes nothing the converge would not have done:
+// ensure_review_spreadsheet_on_identity answers Noop for that disposition, so the file is adopted
+// either way and the declaration only spares an operator a refusal for saying something true.
+//
+// ON ReviewSheetLegacyOnlyLineage IT IS A REAL ADJUDICATION, because the ensure REFUSES there. The
+// file carries only the superseded marker, no current-marker query can reach it, and stamping the
+// current marker onto it is the separately roadmapped write cut -- so without a declaration the
+// converge stops. A declaration admits it, and the admission is narrow rather than a widening of
+// that refusal: the extent is SETTLED on this arm (a legacy-only lineage is reached only through a
+// positive find, which is self-proving), the id is one that observation returned, and the
+// file-by-id preflight confirms the selected id names a readable spreadsheet before anything acts
+// on it. What it authorizes is an ADOPTION -- a read and a format -- never a create beside the
+// file and never a write to it, so the duplicate this lane exists to prevent stays impossible.
 fn selection_against_sole_observed_file(
   selection: LegacyFileSelection,
   observed: NonEmptyStr,

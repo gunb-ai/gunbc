@@ -17,7 +17,13 @@ import gunbc.review_sheet_identity {
   LegacyExtentFound,
   LegacyExtentUnsettled,
 }
-import gunbc.review_sheet_identity_converge { review_sheet_identity_subject }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure { EnsurePolicy, EnsureMayApply }
+import gunbc.review_sheet_drive_converge { SpreadsheetCreatePlan }
+import gunbc.review_sheet_identity_converge {
+  review_sheet_identity_subject,
+  ensure_review_spreadsheet_on_identity,
+}
 import gunbc.review_sheet_legacy_extent_producer {
   OperatorLegacyDeclaration,
   OperatorDeclaredLegacyAbsent,
@@ -189,6 +195,57 @@ test fn a_selection_agreeing_with_the_only_observed_sheet_stands() -> Bool {
     SelectionRejected { cause: _ } => false
     SelectionNotOffered => false
   }
+}
+
+// THE ASYMMETRY BETWEEN THE TWO SOLE-LINEAGE ARMS, MADE EXECUTABLE. A reviewer had to derive this
+// from reading two modules, which is the tell that it was carried in prose and nowhere else: on
+// ReviewSheetSingleLineage a declared selection changes nothing, because the ensure already
+// answers Noop; on ReviewSheetLegacyOnlyLineage the ensure REFUSES and the declaration is what
+// moves it. Both halves are asserted here so an edit that collapsed the two arms -- in either
+// direction -- goes red rather than quietly changing what an operator declaration is worth.
+fn ensure_over(disposition: ReviewSheetIdentityDisposition) -> UpsertDecision<SpreadsheetCreatePlan> {
+  ensure_review_spreadsheet_on_identity(
+    policy: EnsureMayApply,
+    disposition: disposition,
+    drive_id: "drive-1" as NonEmptyStr,
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  )
+}
+
+test fn a_legacy_only_selection_adjudicates_a_refusal_a_single_lineage_one_does_not() -> Bool {
+  let legacy_only = ReviewSheetLegacyOnlyLineage { file_id: "legacy-A" as NonEmptyStr }
+  let single = ReviewSheetSingleLineage { file_id: "current-A" as NonEmptyStr }
+  let ensure_refuses_legacy_only = match ensure_over(disposition: legacy_only) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "superseded marker field")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+  let ensure_adopts_single = match ensure_over(disposition: single) {
+    Noop => true
+    Refuse { reason: _ } => false
+    Apply { plan: _ } => false
+  }
+  let selection_stands_on_legacy_only = match candidacy(
+    disposition: legacy_only,
+    declaration: w_selection(subject: w_subject(), file_id: "legacy-A"),
+  ) {
+    SelectionStandsForAdjudication { file_id: _ } => true
+    SelectionRejected { cause: _ } => false
+    SelectionNotOffered => false
+  }
+  let selection_stands_on_single = match candidacy(
+    disposition: single,
+    declaration: w_selection(subject: w_subject(), file_id: "current-A"),
+  ) {
+    SelectionStandsForAdjudication { file_id: _ } => true
+    SelectionRejected { cause: _ } => false
+    SelectionNotOffered => false
+  }
+  ensure_refuses_legacy_only
+    && ensure_adopts_single
+    && selection_stands_on_legacy_only
+    && selection_stands_on_single
 }
 
 // A SETTLED-EMPTY IDENTITY AND A SELECTION CONTRADICT EACH OTHER OUTRIGHT, and a declaration does
