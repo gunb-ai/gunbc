@@ -19,6 +19,7 @@ import gunbc.fleet.org_actions_converge { org_actions_validation_receipt_path }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite,
 }
@@ -52,6 +53,7 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_aux_step_timeout_minutes,
   gunbc_ci_fleet_converge_plan_step_timeout_minutes,
   gunbc_ci_runner_guest_image_step_timeout_minutes,
+  gunbc_ci_mtcollins1_census_image_step_timeout_minutes,
   gunbc_ci_runner_host_file_step_timeout_minutes,
   gunbc_ci_spark_serving_step_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes,
@@ -87,6 +89,7 @@ import gunbc.ci_spec {
   gunbc_ci_app_key_version_verify_mint_script,
   gunbc_ci_app_key_version_verify_verdict_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
+  gunbc_ci_mtcollins1_census_image_publish_invoke,
   gunbc_ci_r2_mint_preflight_invoke,
   gunbc_ci_r2_object_write_mint_invoke,
   gunbc_ci_approval_keyring_converge_invoke,
@@ -219,6 +222,7 @@ type FleetConvergeWorkflowMode
   | ApprovalKeyringConverge
   | MtCollins1Boot
   | MtCollins1FanObserve
+  | MtCollins1CensusImagePublish
   | OrgRunnerRosterObserve
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
@@ -255,6 +259,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     ApprovalKeyringConverge => "approval_keyring_converge"
     MtCollins1Boot => "mtcollins1_boot"
     MtCollins1FanObserve => "mtcollins1_fan_observe"
+    MtCollins1CensusImagePublish => "mtcollins1_census_image_publish"
     OrgRunnerRosterObserve => "org_runner_roster_observe"
   }
 }
@@ -280,7 +285,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MicrovmControllerAppKeyConverge, AppKeyVersionVerify]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, MicrovmControllerAppKeyConverge, AppKeyVersionVerify]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -336,6 +341,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     ApprovalKeyringConverge => none
     MtCollins1Boot => none
     MtCollins1FanObserve => none
+    MtCollins1CensusImagePublish => none
     OrgRunnerRosterObserve => none
   }
 }
@@ -358,6 +364,33 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 // the status quo rather than a finding that it needs it; a mode added AFTER it has no prior standing
 // to keep, so its arm is derived from its operation route (the approval keyring converge executes
 // over fleet SSH to srv1 and consumes it).
+//
+// THE ENUMERATION BEHIND THAT SENTENCE, kept because the route is the whole argument and the
+// sentence above only names it. Every transport the closure of mtcollins1_boot_wet reaches, with the
+// credential each presents, read at REACHED-SYMBOL grain rather than from the module import closure
+// (which is a superset and does contain ssh-reaching modules this entry never calls into -- reading
+// it at module grain is what made this arm look undecidable):
+//   - extdeps.filesystem.filesystem_io Filesystem.Read/Write/WriteOwnerOnly/WriteCreateNew/Delete --
+//     local files on the srv1-pinned runner, no credential;
+//   - extdeps.http.client Client.GetLocalhostBounded and Client.PostJsonFromFile -- curl to the
+//     approvals server over HTTP loopback, authorized by the approval submission MAC key the step's
+//     own prelude fetches from its pinned Secret Manager version;
+//   - extdeps.bmc.megarac Media.OpenSession/GetRemoteConfigurations/GetRemoteImages/StartMedia/
+//     CloseSession/ProbeSessionOnMediaRoute -- curl over HTTPS to the BMC, authorized by the pinned
+//     mtcollins1 BMC credential file (gunbc.secret_provision mtcollins1_bmc_gunbc_secret_ref);
+//   - extdeps.bmc.ipmi Tool.ChassisBootDevWithOptions/ChassisBootParamGet/ChassisPowerControl/
+//     SolDeactivate and gunbc.machine_intake.sol_hold ActivateHeld -- ipmitool -I lanplus against the
+//     BMC, authorized by that same credential file via -f. THE SOL SESSION IS CARRIED BY IPMI TO THE
+//     BMC, not by an ssh channel to the host, so it presents the BMC credential and never an
+//     identity from the agent;
+//   - extdeps.tools.env shell.Env.Get, extdeps.tools.sleep Delay.Seconds, extdeps.clock Clock.Now --
+//     no credential.
+// No reached symbol resolves fleet_ssh_locus, constructs an SshTarget, or calls typed_argv_exec over
+// fleet SSH, on the first attempt or on any retry or fallback arm; gunbc.remote_shell_command,
+// gunbc.fleet_ssh_access and gunbc.fleet_reach are outside the reached set entirely. The two imports
+// that could suggest otherwise take one inert symbol each: gunbc.host_reset_return_run contributes
+// host_reset_bmc_credential_path_env (an environment-variable NAME) and gunbc.fleet_intent_network
+// contributes operator_host_srv1 (a host record), neither of which opens a session.
 type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
 
 fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> FleetSshKeyDemand {
@@ -395,6 +428,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     ApprovalKeyringConverge => FleetSshKeyConsumed
     MtCollins1Boot => FleetSshKeyNotConsumed
     MtCollins1FanObserve => FleetSshKeyNotConsumed
+    MtCollins1CensusImagePublish => FleetSshKeyNotConsumed
   }
 }
 
@@ -1593,6 +1627,47 @@ fn fleet_converge_mtcollins1_fan_observe_receipt_upload_step() -> Step {
   }
 }
 
+// THE CENSUS IMAGE IS BUILT WHERE IT IS SERVED (census stage 0B/0C). The mode runs on srv2, reads the
+// stock medium already verified into /srv/bmc, writes the derived image beside it under its digest
+// name, create-only, and uploads the receipt naming that image and digest -- the fact stage 0D binds
+// the boot subject to. No credential prelude: the build touches no controller and reaches no host
+// but the runner's own.
+data fleet_converge_mtcollins1_census_image_publish_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1CensusImagePublish)
+
+fn fleet_converge_mtcollins1_census_image_publish_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins census image: build the seeded live-server image in /srv/bmc and publish it create-only under its digest name" },
+    id: Present { value: "mtcollins1_census_image_publish" },
+    run: gunbc_ci_mtcollins1_census_image_publish_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_census_image_publish_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_mtcollins1_census_image_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_mtcollins1_census_image_publish_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload Mt. Collins census image receipt" },
+    id: Present { value: "mtcollins1_census_image_publish_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "mtcollins1-census-image")),
+      kv(key: "path", value: yaml_string(s: mtcollins1_census_image_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_census_image_publish_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_r2_mint_preflight_step() -> Step {
   RunStep {
     name: Present { value: "R2 mint preflight: bootstrap read + account permission-group listing (reachability, no mutation)" },
@@ -2184,6 +2259,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_app_key_version_verify_receipt_upload_step(),
         fleet_converge_mtcollins1_fan_observe_step(),
         fleet_converge_mtcollins1_fan_observe_receipt_upload_step(),
+        fleet_converge_mtcollins1_census_image_publish_step(),
+        fleet_converge_mtcollins1_census_image_publish_receipt_upload_step(),
         fleet_converge_r2_mint_preflight_step(),
         fleet_converge_r2_mint_preflight_receipt_upload_step(),
         fleet_converge_r2_object_write_mint_step(),

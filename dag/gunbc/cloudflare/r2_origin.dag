@@ -236,11 +236,17 @@ data fabric_durable_origin_read_secret_version: NonEmptyStr = "1"
 // and a rotation changes this row and the version together.
 data fabric_durable_origin_read_access_key_id: NonEmptyStr = "3f43e1c7f8fbcfc97139cb5d9dc4e984"
 
-// THE WRITE CREDENTIAL'S CUSTODY LOCUS, NAMED BEFORE IT IS MINTED so the mint entry stores into the
-// container this declaration will read from, and so that the two cannot be spelled differently.
-// There is no version and no access key id here yet: those are answers the executed mint gives, and
-// they land as the OriginCredentialPinned arm of fabric_durable_origin_standing's write_credential.
+// THE WRITE CREDENTIAL'S CUSTODY LOCUS, named before it was minted so the mint entry stores into the
+// container this declaration reads from, and so that the two cannot be spelled differently.
 data fabric_durable_origin_write_secret_id: NonEmptyStr = "cloudflare-r2-origin-write-token"
+
+// THE STORED WRITE MINT, pinned from what run_object_write's receipt reported when it executed
+// (2026-09-19). Like the read pins above, the instrument that re-derives the token id is the
+// account's token listing (gunbc.cloudflare.r2_token_mint_run list_account_tokens_for_reconcile),
+// and a rotation changes both rows together.
+data fabric_durable_origin_write_secret_version: NonEmptyStr = "1"
+
+data fabric_durable_origin_write_access_key_id: NonEmptyStr = "f70d656b5e9d20044c3c16ff4d75736e"
 
 // AN UNALLOCATED PURPOSE HAS NO BUCKET, AND THAT IS AN ARM RATHER THAN A DEFAULT. Reconstructing a
 // name at this seam is the derivation the roster exists to forbid, and returning an empty one would
@@ -268,10 +274,11 @@ fn fabric_durable_origin_standing() -> R2OriginStanding {
               version: fabric_durable_origin_read_secret_version,
             ),
           },
-          write_credential: OriginCredentialUnminted {
-            mint_entry: decl_ref(
-              module_path: "gunbc.cloudflare.r2_token_mint_run",
-              decl_name: "run_object_write",
+          write_credential: OriginCredentialPinned {
+            access_key_id: fabric_durable_origin_write_access_key_id,
+            token_value: secret_ref_pin_version(
+              ref: fleet_secret_ref(secret_id: fabric_durable_origin_write_secret_id),
+              version: fabric_durable_origin_write_secret_version,
             ),
           },
         }
