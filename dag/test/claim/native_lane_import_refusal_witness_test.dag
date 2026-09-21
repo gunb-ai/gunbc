@@ -421,3 +421,57 @@ test fn the_facts_taking_entry_keeps_the_malformed_import_refusal() -> Bool {
 test fn the_facts_taking_entry_keeps_the_bare_import_refusal() -> Bool {
   carried_at_default(ingest: bare_import_ingest)
 }
+
+// ── discovery is walked where it is consulted, and nowhere else ────────────────────────────────
+//
+// THE ARM THAT MAKES THE SCOPING OBSERVABLE RATHER THAN ASSERTED. The refusal arms above cannot
+// see it: they check what the derivation ANSWERS, and scoping discovery changes what it SPENDS.
+// Both fixtures are accepted either way, so a set that only read verdicts would stay green if the
+// walk were restored to every file.
+//
+// The two reads differ in ONE thing -- the declared namespace, `v2.test.` versus `v2.testing.` --
+// and both carry `test fn` declarations that discovery would enrol. So rows on the inside read and
+// no rows on the outside read is the scoping itself, at the one place it is decidable: the outside
+// module is never consulted by `native_lane_label_universe` (its own universe-member guard) nor by
+// `native_lane_unowned_row_path` (it declares a module), and the corpus-wide finalize that was its
+// only other reader is repository hygiene the required floor owns.
+//
+// REMOVING THE SCOPING TURNS THIS RED, which is what distinguishes it from a restatement of the
+// fixtures: the outside read would enrol its declaration and the second assertion would fail.
+
+// A read with NO `module` header: the one shape whose discovery rows the unowned-row refusal
+// reads, and therefore the one that must keep its walk regardless of membership.
+data unowned_row_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium {
+    carried: "test fn orphan_probe() -> Bool { true }\n",
+    fidelity: Lossless
+  },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^unowned_row_artifact,
+    file_path: "src/v2/test/unowned_row_test.dag"
+  },
+  compilation_unit: symbol_intern_lexeme(lexeme: "src/v2/test/unowned_row_test.dag"),
+  source_root: v2.std.cross_tree.import_model.V2Tree
+}
+
+data unowned_row_ingest: SourceRootIngest = [unowned_row_read]
+
+fn discovery_row_count(ingest: SourceRootIngest) -> Int {
+  fold_list(
+    xs: native_lane_source_facts(ingest: ingest),
+    empty: 0,
+    cons: fn(acc, f) { acc + length(xs: f.discovery.rows) }
+  )
+}
+
+test fn a_universe_member_is_walked_and_an_outsider_is_not() -> Bool {
+  (discovery_row_count(ingest: selection_inside_ingest) == 2)
+    && (discovery_row_count(ingest: selection_outside_ingest) == 0)
+}
+
+// A module-less file keeps its walk, because the unowned-row refusal reads exactly those rows --
+// scoping on membership must not reach the arm that has no membership to test.
+test fn a_source_declaring_no_module_is_still_walked() -> Bool {
+  discovery_row_count(ingest: unowned_row_ingest) > 0
+}

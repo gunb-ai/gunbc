@@ -24,7 +24,8 @@ import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryRefused,
   FloorDiscoveryWalkState,
   discover_floor_rows_for_source,
-  floor_discovery_finalize_source_outcomes
+  floor_discovery_finalize_source_outcomes,
+  floor_discovery_walk_state_zero
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import extdeps.bazel.label { Label, LabelParsed, LabelRefused, render_package }
@@ -1780,18 +1781,71 @@ fn native_lane_source_facts(ingest: SourceRootIngest) -> List<NativeLaneSourceFa
     xs: ingest,
     empty: [],
     cons: fn(acc, read) {
+      let declared = native_lane_declared_module_name(content: read.source.carried)
       list_snoc_item(xs: acc, item: NativeLaneSourceFacts {
-        module: native_lane_declared_module_name(content: read.source.carried),
+        module: declared,
         path: read.compilation_unit,
         imports: native_lane_declared_imports(content: read.source.carried),
         malformed_import: native_lane_first_malformed_import(content: read.source.carried),
-        discovery: discover_floor_rows_for_source(
-          repo_path: symbol_lexeme(sym: read.compilation_unit),
-          content: read.source.carried
-        )
+        discovery: native_lane_discovery_for(declared: declared, read: read)
       })
     }
   )
+}
+
+// DISCOVERY IS RUN WHERE IT IS CONSULTED, AND ITS THREE CONSUMERS DO NOT WANT THE WHOLE CORPUS.
+//
+// `discover_floor_rows_for_source` is the expensive half of this fold -- a walk of the file's whole
+// content producing rows, sidecar violations and dispositions, against three line scans for the
+// other three fields. It was run for every read. Its consumers, read one at a time:
+//
+//   1. `native_lane_label_universe` reads `f.discovery.rows`, and does so INSIDE its own
+//      `if !native_route_universe_member(module_qn: declared) { acc }` guard. Non-members never
+//      reach it.
+//   2. `native_lane_unowned_row_path` reads `length(xs: f.discovery.rows)` only in its
+//      `f.module` Absent arm -- a file that declares no module yet enrolled rows.
+//   3. `floor_discovery_finalize_source_outcomes` folds EVERY state, and refuses on walk failures,
+//      disposition refusals and sidecar violations ANYWHERE in the corpus.
+//
+// Only (3) wants the corpus, and (3) is REPOSITORY HYGIENE, not this lane's question. Whether some
+// unrelated module places a sidecar correctly is not part of "are the requested tests complete",
+// and the lane asserting it makes a focused `gunbc test` pay a whole-corpus walk to answer a
+// question about one package. MEASURED: universe members are 935 of 6484 corpus files (14.4%), so
+// (1) consulted one file in seven while all seven were walked.
+//
+// THE GUARANTEE IS PRESERVED AT ITS PROPER CONSUMER, WHICH IS WHY THIS IS DE-DUPLICATION AND NOT A
+// RUNG DROP. The required floor runs this same producer independently over its own prepared
+// sources and adjudicates the same finalize -- `required_floor_runner` reaches it through
+// `parse_floor_discovery_producer_result`. So the corpus-wide refusal still exists and still
+// blocks a landing; what is removed is a SECOND authority asserting it from a consumer whose
+// subject is a selected test population (DESIGN section 2, and section 3 on one fact one home).
+//
+// WHAT IS DELIBERATELY KEPT CORPUS-WIDE, because the distinction is the whole point: the import
+// scans stay. `malformed_import` and `imports` protect THIS LANE'S OWN COMPLETENESS -- a malformed
+// import line in any module the closure walk reaches would silently NARROW the closure, which is
+// the arm `native_lane_import_refusal` exists to refuse, and the closure can reach any module in
+// the corpus rather than only universe members. They are also three line scans rather than a walk.
+// Selected-test completeness is kept; repository hygiene is handed back.
+fn native_lane_discovery_for(
+  declared: Optional<String>,
+  read: DagSourceReadWitness
+) -> FloorDiscoveryWalkState {
+  match declared {
+    Absent =>
+      discover_floor_rows_for_source(
+        repo_path: symbol_lexeme(sym: read.compilation_unit),
+        content: read.source.carried
+      )
+    Present { value: qn } =>
+      if native_route_universe_member(module_qn: qn) {
+        discover_floor_rows_for_source(
+          repo_path: symbol_lexeme(sym: read.compilation_unit),
+          content: read.source.carried
+        )
+      } else {
+        floor_discovery_walk_state_zero()
+      }
+  }
 }
 
 // ONE UNIVERSE MEMBER'S MODULE: the identities discovery enrolled for it, and the path they were
