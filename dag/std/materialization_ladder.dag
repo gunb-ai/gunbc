@@ -730,6 +730,44 @@ fn ladder_verdict_prescribes(v: LadderVerdict) -> Materialization {
   }
 }
 
+// A consumer that must ACT on the ladder needs its own verdict, and until now the only
+// accessors were per-arm predicates (verdict_is_discharged_by and friends), which answer
+// "is it this one" rather than "which one is mine". A consumer forced to ask fourteen
+// yes/no questions reconstructs the coproduct at the call site, so the prescription was
+// instead being hand-copied as a literal beside the ladder -- one fact with two authorities
+// (DESIGN section 3). These two total folds are that missing accessor: every verdict carries
+// its identity, so selecting by identity is a read of the arm, not a second classification.
+fn verdict_identity(v: LadderVerdict) -> String {
+  match v {
+    RefusedNatureConflict { identity: i } => i
+    AuthoredDuplication { identity: i, lca: _, site_count: _ } => i
+    DeadComputation { identity: i } => i
+    AcceptedEffectIsTheUse { identity: i } => i
+    Discharged { identity: i, lca: _, provider_id: _ } => i
+    RefusedNoProvider { identity: i, lca: _ } => i
+    RefusedScopeTooNarrow { identity: i, lca: _, provider_id: _ } => i
+    RefusedExistenceKeyed { identity: i, lca: _, provider_id: _ } => i
+    RefusedRetentionUnbounded { identity: i, lca: _, provider_id: _ } => i
+    RefusedRetentionUnobserved { identity: i, lca: _, provider_id: _ } => i
+    RefusedUnmodeledWorldRead { identity: i, lca: _ } => i
+    ExemptFreshEffect { identity: i } => i
+    AcceptedBelowCostFloor { identity: i } => i
+    AcceptedSingleRecompute { identity: i } => i
+  }
+}
+
+// Absent means NO VERDICT WAS PRODUCED FOR THIS IDENTITY -- the demand was never declared, so
+// the ladder never ruled on it. That is not the same as a verdict that prescribes Recompute,
+// and the distinction is the consumer's to make: this fold reports the gap rather than
+// substituting the permissive answer for it (DESIGN section 5, a failure arm must refuse).
+fn ladder_prescription_for(verdicts: List<LadderVerdict>, identity: String) -> Materialization? {
+  let mine = verdicts |> filter(v => verdict_identity(v: v) == identity)
+  match mine.first() {
+    Absent => Absent
+    Present { value: chosen } => Present { value: ladder_verdict_prescribes(v: chosen) }
+  }
+}
+
 fn materialization_ladder_holds(
   demands: List<FrameDemand>,
   providers: List<CacheProvider>,

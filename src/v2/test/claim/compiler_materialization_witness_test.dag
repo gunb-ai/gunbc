@@ -1,13 +1,14 @@
 module v2.test.claim.compiler_materialization_witness
 
-import std.realization { LocalInProcess }
+import std.realization { LocalInProcess, Memoize, Recompute }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Green-by-execution receipt that v2 ParseTable and cached_stage memoization flows through the
-// governed carrier door (Memoize verdict consumed; non-Memoize refuses store). Ladder + catalog
-// projection witnesses unchanged. RED: plural RefusedScopeTooNarrow / RefusedNoProvider;
-// governed-store refusal when Recompute; bypass insert on non-Memoize carrier.
+// governed carrier door, and that the materialization each door consumes is the one the ladder
+// ADMITTED for that demand's identity rather than a literal standing beside it. RED: plural
+// RefusedScopeTooNarrow / RefusedNoProvider; governed-store refusal when Recompute; bypass
+// insert on non-Memoize carrier; an identity with no verdict permitting the store.
 // reconcile-as-lookup-path is the next increment.
 
 test fn compiler_materialization_ladder_holds() -> Bool {
@@ -31,11 +32,15 @@ test fn parse_table_carrier_inhabits_realization() -> Bool {
     && (parse_table_memo_materialization() == Memoize)
 }
 
+// Recompute, not Memoize, and the change is a correction rather than a regression: the
+// compile-stage lookup is resolve_cache_miss, which returns Miss unconditionally, so the
+// governed door has been taking the recompute path on every compile regardless of what the
+// literal said. The literal was the only thing claiming otherwise.
 test fn compile_stage_carrier_inhabits_realization() -> Bool {
   let step = compile_stage_realized_step()
-  (step.materialization == Memoize)
+  (step.materialization == Recompute)
     && (step.placement == LocalInProcess)
-    && (compile_stage_memo_materialization() == Memoize)
+    && (compile_stage_memo_materialization() == Recompute)
     && (cached_stage_realization().provider_id == compile_stage_memo_id)
 }
 
@@ -43,9 +48,18 @@ test fn parse_table_empty_uses_catalog_identity() -> Bool {
   parse_table_carrier_grounded_on_catalog()
 }
 
-test fn single_site_demands_are_accepted_single_recompute() -> Bool {
-  parse_table_memo_verdict_is_single_recompute()
-    && compile_stage_memo_verdict_is_single_recompute()
+test fn parse_table_demand_is_discharged_by_its_catalog_provider() -> Bool {
+  parse_table_memo_verdict_is_discharged()
+}
+
+test fn compile_stage_demand_is_accepted_single_recompute() -> Bool {
+  compile_stage_memo_verdict_is_single_recompute()
+}
+
+// The fail-closed arm, by execution: an identity carrying no verdict yields no admitted
+// decision, and the door refuses the store instead of defaulting to permit.
+test fn an_unruled_identity_refuses_the_store() -> Bool {
+  unruled_identity_refuses_store()
 }
 
 test fn parse_table_memo_plural_reds_without_provider() -> Bool {

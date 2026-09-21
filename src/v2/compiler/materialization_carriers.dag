@@ -14,13 +14,15 @@ import std.measure { Nano }
 import std.realization_schedule { cost_account_predicted_zero }
 import std.effects { ReadEffect }
 import std.materialization_ladder {
-  Frame, FrameKind, SharedStateFrame, IsolatedChildrenFrame,
+  Frame, FrameKind, SharedStateFrame, IsolatedChildrenFrame, UnboundedSiblingsFrame,
   FrameDemand, DemandNature, PureComputation,
   CacheProvider, CoversAllComputations,
   LadderVerdict,
   materialization_ladder, materialization_ladder_holds,
+  ladder_prescription_for,
   empty_frame_path, no_cost_floor_exemptions, no_cache_providers,
   verdict_is_accepted_single_recompute,
+  verdict_is_discharged_by,
   verdict_is_refused_no_provider,
   verdict_is_refused_scope_too_narrow,
 }
@@ -63,10 +65,27 @@ fn v2_compile_process_site() -> List<std.materialization_ladder.Frame> {
 data parse_table_memo_demand_identity: String = "parse-nonterminal-memo"
 data compile_stage_memo_demand_identity: String = "compile-pipeline-stage"
 
+// The repeat count of a (nonterminal, position) parse is a function of the GRAMMAR and the
+// INPUT, not of how many times an author wrote the call: one authored recursive descent
+// expands into as many expansions as the token stream admits. That is the definition of
+// UnboundedSiblingsFrame, and stating it is what separates this demand from authored
+// duplication -- the row that said the site was the process frame alone described a single
+// undeclared pure demand, which the ladder correctly rules needs no cache at all.
+fn parse_nonterminal_expansion_frame() -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame {
+    name: "parse-nonterminal-expansion",
+    kind: UnboundedSiblingsFrame
+  }
+}
+
+fn parse_table_memo_site() -> List<std.materialization_ladder.Frame> {
+  [v2_compile_process_frame(), parse_nonterminal_expansion_frame()]
+}
+
 fn parse_table_memo_demand() -> FrameDemand {
   FrameDemand {
     identity: parse_table_memo_demand_identity,
-    site: v2_compile_process_site(),
+    site: parse_table_memo_site(),
     nature: PureComputation
   }
 }
@@ -131,12 +150,29 @@ fn v2_compiler_materialization_ladder_holds() -> Bool {
   )
 }
 
+// DERIVED, NOT DECLARED. These two returned the literal Memoize while the ladder standing
+// beside them in this same module ruled on the same two identities, and nothing compared the
+// two answers -- one witness pinned the literal, another pinned the verdict, and both were
+// green while they disagreed. That is the fork this module exists to prevent (DESIGN section
+// 3), so the prescription is now read from the verdict for this demand's own identity.
+//
+// Absent -- no verdict for this identity -- is the fail-closed arm: a demand the ladder never
+// ruled on has no admission to consume, so the store is not permitted. It is deliberately NOT
+// the same answer as a ruled Recompute, which is why ladder_prescription_for reports the gap
+// instead of flattening it.
+fn prescription_or_recompute(identity: String) -> Materialization {
+  match ladder_prescription_for(verdicts: v2_compiler_materialization_verdicts(), identity: identity) {
+    Present { value: prescribed } => prescribed
+    Absent => Recompute
+  }
+}
+
 fn parse_table_memo_materialization() -> Materialization {
-  Memoize
+  prescription_or_recompute(identity: parse_table_memo_demand_identity)
 }
 
 fn compile_stage_memo_materialization() -> Materialization {
-  Memoize
+  prescription_or_recompute(identity: compile_stage_memo_demand_identity)
 }
 
 type CachedStageRealization {
@@ -195,11 +231,39 @@ fn compile_stage_memo_retention_preserved() -> Bool {
   compile_stage_memo_provider().retention == compile_stage_memo_facts.placement.retention
 }
 
-fn parse_table_memo_verdict_is_single_recompute() -> Bool {
+// Was verdict_is_single_recompute. The demand row it was reading described a single
+// non-emergent pure demand, so AcceptedSingleRecompute was the correct verdict FOR THAT ROW --
+// and its prescription is Recompute, which the production parser was not doing. Correcting the
+// site to name the grammar-emergent expansion moves the same demand onto the discharge path,
+// where the in-process provider that already exists in the catalog answers for it.
+fn parse_table_memo_verdict_is_discharged() -> Bool {
   v2_compiler_materialization_verdicts()
     |> fold(init: false, f: (acc, v) =>
-      acc || verdict_is_accepted_single_recompute(v: v, identity: parse_table_memo_demand_identity)
+      acc || verdict_is_discharged_by(
+        v: v,
+        identity: parse_table_memo_demand_identity,
+        provider_id: extdeps.realization.parse_table_memo.parse_table_memo_id
+      )
     )
+}
+
+// The discriminating RED for the fail-closed arm: an identity the ladder never ruled on has no
+// admitted decision, so the door must refuse the store rather than inherit the permissive
+// answer. Deleting the Absent arm of prescription_or_recompute makes this return Memoize.
+data unruled_demand_identity: String = "identity-the-ladder-never-ruled-on"
+
+fn unruled_identity_prescription() -> Materialization {
+  match ladder_prescription_for(
+    verdicts: v2_compiler_materialization_verdicts(),
+    identity: unruled_demand_identity
+  ) {
+    Present { value: prescribed } => prescribed
+    Absent => Recompute
+  }
+}
+
+fn unruled_identity_refuses_store() -> Bool {
+  !materialization_allows_memo_store(m: unruled_identity_prescription())
 }
 
 fn compile_stage_memo_verdict_is_single_recompute() -> Bool {
