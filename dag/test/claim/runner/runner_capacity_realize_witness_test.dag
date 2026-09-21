@@ -24,6 +24,7 @@ import gunbc.runner_capacity_realize {
 import gunbc.runner_slot_allocation {
   committed_slot_identities,
   CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
+  fabric_second_slot_index,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -38,6 +39,17 @@ fn derived_members_of(host: HostIdentity) -> List<RunnerSlotIdentity> {
     CommittedPopulationDerived { members: m } => m
     CommittedPopulationWidthUnresolved { host: _, cause: _ } => []
   }
+}
+
+// THE SEAM'S REQUESTED WIDTH IS READ FROM THE CARVE, AND THE TWO ROWS BELOW USED TO WRITE SIX. Six
+// was the committed width on 2026-08-17; it is 17 on both managed hosts today, so the literal had
+// stopped naming the thing its rows called it. What these rows actually need is a request that
+// reaches a GitHub slot BEYOND the fabric members, because a seam with no additions to apply does
+// not exercise the apply path at all -- which is exactly how the disk row below went quiet. The
+// authority for the last fabric index is gunbc.runner_slot_allocation fabric_second_slot_index, and
+// this is one above it, so the width follows the carve instead of being re-typed after it moves.
+fn first_width_above_the_fabric_carve() -> Int {
+  fabric_second_slot_index + 1
 }
 
 // THIS ASKED FOR TWO ADDITIONS PER HOST AT REQUESTED 7 AND WAS THE THIRD COPY OF ONE FALSE CLAIM.
@@ -72,35 +84,58 @@ fn derived_members_of(host: HostIdentity) -> List<RunnerSlotIdentity> {
 // test.claim.runner_capacity_plan_witness the_whole_org_corpus_is_refused_while_srv2_holds_unaccounted_registrations
 // is the claim that runs the real producer and asserts that. This row's subject is the seam on the
 // managed pair; the slice carries the same holes and nothing about srv2.
+//
+// THE HOSTS NO LONGER DISAGREE AND THE ROW NO LONGER CLAIMS THEY DO. The paragraph above says srv4
+// "contributes the addition (slot 06, no fabric slot)" while srv3 contributes none -- true until
+// gunbc#11625 gave the fabric a second execution host, after which srv4 carries srv4-06 and srv4-07
+// and the pair is symmetric. That change re-derived the allocation, provision and retirement
+// witnesses and never reached this file. At the first width above the carve both hosts plan the same
+// two additions, 03 from the roster's hole and 08 from the widening, so the seam is exercised with
+// real work on both sides; the DISAGREEING pair the paragraph wanted is asserted by
+// apply_seam_preserves_sibling_host_receipt_when_one_refuses below, which still has one.
 test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() -> Bool {
+  let width = first_width_above_the_fabric_carve()
   let plan = runner_capacity_plan(
-    srv3_width: 6,
-    srv4_width: 6,
+    srv3_width: width,
+    srv4_width: width,
     roster: incident_2026_08_06_managed_roster_fixture(),
   )
   match plan {
     PlanReady { hosts: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 1
+      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 2
         && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 2
     PlanRefused { reason: _ } => false
   }
 }
 
-// RETARGETED FROM srv3 TO srv4, AND THE REASON IS STRUCTURAL RATHER THAN COSMETIC. This exercised
-// the disk preflight, which runs only on a host that has ADD actions to apply. srv3 can no longer
-// have any: its GitHub population is 5, it is already at 5, and its sixth slot is the compute-fabric
-// slot withheld from this plan. So srv3 reaches HostApplySucceeded with zero adds and the preflight
-// it was written to exercise never executes. srv4 has no fabric slot, gains slot 06 at the committed
-// width, and is the host whose disk is gated at apply time in the first place.
+// RETARGETED FROM srv3 TO srv4, AND THE REASON IS STRUCTURAL RATHER THAN COSMETIC. This exercises
+// the disk preflight, which runs only on a host that has ADD actions to apply -- so the row's
+// requested width is load-bearing in a way a width usually is not: at a width that yields no
+// additions the seam reaches HostApplySucceeded and the refusal this row is named for never
+// executes. A green here would then mean nothing at all.
 //
-// THE WIDTH IN THE ASSERTION MOVED FROM 7 TO 6 FOR THE SAME REASON EVERYTHING ELSE DID. The refusal
-// names the width it refused at; 7 is no longer a width any host is admitted to carry. The
-// "not width 5" clause is the original point of the row and is untouched: the refusal must name the
-// real requested width rather than silently reporting the retired srv4 five-slot disk row-pin.
+// THAT IS PRECISELY HOW IT BROKE, AND THE RETARGETING ARGUMENT ABOVE IS THE PART THAT DIED.
+// It said srv4 "has no fabric slot, gains slot 06 at the committed width". gunbc#11625 gave the
+// fabric a second execution host: srv4-06 and srv4-07 are fabric members, so at a request of six
+// srv4's desired GitHub population is {01..05}, the materialized-online roster already holds all
+// five, and srv4 plans ZERO additions -- the host was chosen for a property it had stopped having,
+// and the row went red asserting a refusal that could no longer be reached.
+//
+// THE WIDTH NOW COMES FROM THE CARVE RATHER THAN FROM A LITERAL, which fixes the mechanism and not
+// just this instance. One above the last fabric index is the smallest request that reaches a GitHub
+// slot the roster does not hold, so srv4 plans exactly one addition (slot 08), the preflight runs,
+// and the row keeps executing its refusal wherever the carve is moved to next. Measured on this
+// tree: one addition on srv4 against this roster at that width.
+//
+// The "not width 5" clause is the original point of the row and is untouched: the refusal must name
+// the real requested width rather than silently reporting the retired srv4 five-slot disk row-pin.
+// The width it must name is now read from the same authority the request was built from, so the two
+// cannot drift apart the way a hand-written pair of numbers can.
 test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
+  let width = first_width_above_the_fabric_carve()
   let plan = runner_capacity_plan(
-    srv3_width: 6,
-    srv4_width: 6,
+    srv3_width: width,
+    srv4_width: width,
     roster: organization_runner_roster_materialized_slots_online_evidence(),
   )
   match runner_capacity_apply_plan(plan: plan) {
@@ -113,7 +148,7 @@ test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
           match r.outcome {
             HostApplyRefused { reason: reason } =>
               string_contains(s: reason, pattern: "disk unobservable")
-                && string_contains(s: reason, pattern: "6")
+                && string_contains(s: reason, pattern: to_string(width))
                 && string_contains(s: reason, pattern: "srv4")
                 && (string_contains(s: reason, pattern: "width 5") == false)
             HostApplySucceeded { add_actions_executed: _ } => false
