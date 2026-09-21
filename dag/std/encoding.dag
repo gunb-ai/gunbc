@@ -2,7 +2,7 @@ module std.encoding
 
 import std.algebra { BoundedLattice }
 import std.types { Bytes }
-import std.integer { UInt8, UInt8Result, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints, uint8_int_value, qualified_octet_members }
+import std.integer { UInt8, UInt8Result, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints, qualified_octet_members }
 import std.machine_word { Word, Width8, Width32, WordResult, WordReady, WordRefused, WordValueOutOfRange, OctetsResult, OctetsReady, OctetsRefused, word_of_int, word_from_octets, word_to_octets, word_shift_left, word_shift_right, word_and, word_or, octet_int_values }
 import extdeps.toolchain.architecture_profile { BigEndian }
 import std.bytes { pure_dag_seam_unreachable, pure_dag_seam_unreachable_string }
@@ -217,7 +217,7 @@ fn base64_sextet_char_at(alphabet: String, group: Word, offset: Int) -> String? 
 }
 
 fn base64_group_of_octets(x: UInt8, y: UInt8, z: UInt8) -> WordResult {
-  match uint8_octets_of_ints(values: [0, uint8_int_value(v: x), uint8_int_value(v: y), uint8_int_value(v: z)]) {
+  match uint8_octets_of_ints(values: [0, x, y, z]) {
     QualifiedOctetsRefused { observed: o } => WordRefused { cause: WordValueOutOfRange { width: Width8, value: o } }
     QualifiedOctetsReady { value: q } => base64_group_word(octets: q)
   }
@@ -614,7 +614,7 @@ fn utf8_step(d: Utf8DecodeState, o: Int) -> Utf8DecodeState {
 // other malformed input, so no new refusal vocabulary is minted for a case the model already had a
 // word for.
 fn utf8_admit_octet(d: Utf8DecodeState, b: UInt8) -> Utf8DecodeState {
-  match word_of_int(width: Width8, value: uint8_int_value(v: b)) {
+  match word_of_int(width: Width8, value: b) {
     WordRefused { cause: _ } => Utf8Refused
     WordReady { word: w } => utf8_step(d: d, o: w.value)
   }

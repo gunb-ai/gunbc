@@ -5,7 +5,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.measure { bits_per_byte, BitWidth, bit_width, bit_width_count }
-import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int, uint8_int_value, QualifiedOctets, QualifiedOctetsResult, qualified_octets, qualified_octet_members }
+import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, qualified_octets, qualified_octet_members }
 import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
 
 // THE FIXED-WIDTH MACHINE WORD, AND WHY IT IS A VALUE-LEVEL WIDTH.
@@ -687,7 +687,7 @@ fn octets_big_endian_value(octets: List<UInt8>, radix: Int, acc: Int) -> Int {
   match octets.first() {
     Absent => acc
     Present { value: head } =>
-      octets_big_endian_value(octets: octets.skip(n: 1), radix: radix, acc: acc * radix + uint8_int_value(v: head))
+      octets_big_endian_value(octets: octets.skip(n: 1), radix: radix, acc: acc * radix + head)
   }
 }
 
@@ -702,9 +702,12 @@ fn octets_big_endian_value(octets: List<UInt8>, radix: Int, acc: Int) -> Int {
 // two different fabricated answers to the same malformed input. It is the ONLY check left here:
 // the per-octet width check this sentence used to describe is gone with the List<Word> parameter.
 // MEASURE FIRST, THEN CLAIM, AND THE MEASUREMENT SPLITS THE CLAIM IN TWO. An earlier cut said the
-// element type makes the bad call fail to typecheck. At a SCALAR parameter that is true and shown:
-// `uint8_int_value(v: Word { ... })` refuses with "expected Node(UInt8<Primitive(UInt),
-// Primitive(MachineWidth)>), got Product(Word)". INSIDE List<...> IT IS FALSE: `fn f(w: List<Word>)
+// element type makes the bad call fail to typecheck. At a SCALAR parameter that was true and was
+// shown: `uint8_int_value(v: Word { ... })` refused with "expected Node(UInt8<Primitive(UInt),
+// Primitive(MachineWidth)>), got Product(Word)". THAT RECEIPT IS HISTORICAL AND ITS SUBJECT IS
+// DELETED: `uint8_int_value` was an identity add (`v + 0`) over a carrier with no inhabitant, and
+// the scalar-formal refusal it demonstrated was a property of the UInt8 SPELLING rather than of any
+// value, which is why removing the spelling costs no wall. INSIDE List<...> THE CLAIM IS FALSE: `fn f(w: List<Word>)
 // -> WordResult { word_from_octets(width: Width32, octets: w, ...) }` COMPILES, and a call with
 // four Width16 Words dies at RUNTIME with an untyped interpreter `TypeError: cannot apply Add to
 // Record and Int` -- loud, so nothing is fabricated, but not a typed located refusal.
@@ -781,7 +784,7 @@ fn word_from_octets(width: WordWidth, octets: QualifiedOctets, endianness: Endia
 // in-type value like a bare 256 -- are mitigation, stated at their homes rather than re-argued
 // here, and neither is closed by this signature.
 fn octet_int_values(octets: QualifiedOctets) -> List<Int> {
-  qualified_octet_members(q: octets) |> map(o => uint8_int_value(v: o))
+  qualified_octet_members(q: octets)
 }
 
 // THE DECLARATIONS THIS MODULE LANDS AHEAD OF THEIR CONSUMERS, AS ROWS RATHER THAN AS PROSE.
