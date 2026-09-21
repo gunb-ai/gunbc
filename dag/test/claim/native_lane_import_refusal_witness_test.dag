@@ -138,6 +138,39 @@ data selection_outside_read: DagSourceReadWitness = DagSourceReadWitness {
   source_root: v2.std.cross_tree.import_model.V2Tree
 }
 
+// A DECLARATION NO LABEL CAN NAME: `all` is a pattern word, so `//pkg:all` never denotes it. Once
+// outside the universe (must not refuse the lane) and once inside (must refuse it, typed).
+data unlabelable_outside_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium {
+    carried: "module v2.testing.unlabelable_probe\n\ntest fn all() -> Bool { true }\n",
+    fidelity: Lossless
+  },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^unlabelable_outside_artifact,
+    file_path: "src/v2/testing/unlabelable_outside_test.dag"
+  },
+  compilation_unit: symbol_intern_lexeme(lexeme: "src/v2/testing/unlabelable_outside_test.dag"),
+  source_root: v2.std.cross_tree.import_model.V2Tree
+}
+
+data unlabelable_inside_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium {
+    carried: "module v2.test.unlabelable_probe\n\ntest fn all() -> Bool { true }\n",
+    fidelity: Lossless
+  },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^unlabelable_inside_artifact,
+    file_path: "src/v2/test/unlabelable_inside_test.dag"
+  },
+  compilation_unit: symbol_intern_lexeme(lexeme: "src/v2/test/unlabelable_inside_test.dag"),
+  source_root: v2.std.cross_tree.import_model.V2Tree
+}
+
+data unlabelable_outside_ingest: SourceRootIngest = [selection_inside_read, unlabelable_outside_read]
+data unlabelable_inside_ingest: SourceRootIngest = [selection_inside_read, unlabelable_inside_read]
+
 data selection_inside_ingest: SourceRootIngest = [selection_inside_read]
 data selection_outside_ingest: SourceRootIngest = [selection_outside_read]
 data selection_combined_ingest: SourceRootIngest = [selection_inside_read, selection_outside_read]
@@ -293,4 +326,18 @@ test fn a_pattern_selecting_nothing_is_accepted_empty_not_refused() -> Bool {
 
 test fn a_corpus_refusal_outside_the_pattern_still_refuses() -> Bool {
   !selected_accepted(ingest: malformed_import_ingest, text: "//elsewhere/...")
+}
+
+// THE LABEL REFUSAL IS SCOPED TO THE UNIVERSE (review 69555). Outside it, an unlabelable
+// declaration is not the lane's population and the derivation is accepted with the in-universe
+// member intact; inside it, the same declaration refuses the derivation with its typed cause.
+test fn an_unlabelable_declaration_outside_the_universe_does_not_refuse() -> Bool {
+  universe_admits(ingest: unlabelable_outside_ingest, qualified: "v2.test.selection_probe.probe_one")
+}
+
+test fn an_unlabelable_declaration_inside_the_universe_refuses_typed() -> Bool {
+  match native_lane_universe(ingest: unlabelable_inside_ingest) {
+    Rejected { diagnostics: d } => d.head.reason == ^native_lane_identity_label_refused
+    Accepted { value: _, diagnostics: _ } => false
+  }
 }

@@ -1790,7 +1790,9 @@ type NativeLaneUniverse {
 //
 // A MODULE WITH NO ADMITTED DECLARATION IS NOT IN THE UNIVERSE, which is why the emptiness check
 // sits BELOW the filter: a module outside the pattern and a module whose declarations a narrower
-// pattern excluded reach the same arm. An identity whose label REFUSES never reaches this filter:
+// pattern excluded reach the same arm. The label refusal is SCOPED TO THE UNIVERSE (review 69555):
+// a module outside it is not the lane's population, so a declaration there that no label can name
+// -- `test fn all` -- is not the lane's defect either. An identity whose label REFUSES never reaches this filter:
 // `native_lane_refused_identity_label` refuses the whole derivation first, so the `LabelRefused`
 // arm of `native_lane_identity_admitted` is not an exclusion anyone can observe.
 //
@@ -1818,6 +1820,9 @@ fn native_lane_refused_identity_label(facts: List<NativeLaneSourceFacts>) -> Opt
           match f.module {
             Absent => acc
             Present { value: declared } =>
+              if !native_route_universe_member(module_qn: declared) {
+                acc
+              } else {
               fold_list(
                 xs: f.discovery.rows,
                 empty: acc,
@@ -1833,6 +1838,7 @@ fn native_lane_refused_identity_label(facts: List<NativeLaneSourceFacts>) -> Opt
                   }
                 }
               )
+              }
           }
       }
     }
