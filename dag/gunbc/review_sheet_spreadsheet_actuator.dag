@@ -1,7 +1,6 @@
 module gunbc.review_sheet_spreadsheet_actuator
 
 import std.types { NonEmptyStr, String, Bool }
-import std.resources { Network }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy }
 import extdeps.transports.rest {
@@ -208,7 +207,7 @@ fn converge_review_spreadsheet(
   sheet_name: NonEmptyStr,
   marker_value: NonEmptyStr,
   policy: EnsurePolicy,
-) -> SpreadsheetConvergeOutcome uses net: Network, fs: std.resources.Filesystem {
+) -> SpreadsheetConvergeOutcome {
   let subject = review_sheet_identity_subject(drive_id: drive_id, marker_value: marker_value)
   let declaration = read_operator_legacy_declaration(
     path: review_sheet_legacy_declaration_path as String,
