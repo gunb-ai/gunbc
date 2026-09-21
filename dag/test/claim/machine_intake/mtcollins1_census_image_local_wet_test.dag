@@ -233,6 +233,12 @@ test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_ex
   workload_emitted_the_token(o: complete) && complete.exit_code == 0
 }
 
+// (Hoisted to module grain from the body of the item below: a source annotation inside a
+// declaration body is not modeled and refuses to parse.)
+// ABSENCE IS ASSERTED AS A SUBSTRING, not as a whole line: substring-absence is the STRONGER
+// claim -- it also rules out the token appearing with anything appended -- and a RED may not be
+// weakened to share a helper with the positive case.
+//
 // THE THREE REDS. Each would be called STABLE by a body that only compares the two manifests: both
 // empty agree, both partial agree, and the disagreeing case is the ordinary instability. None may
 // emit the token, and each must leave the stage nonzero.

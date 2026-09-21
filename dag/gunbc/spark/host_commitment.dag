@@ -1,6 +1,6 @@
 module gunbc.spark.host_commitment
 
-import std.types { Bool, List, String, NonEmptyStr }
+import std.types { Bool, List, String, NonEmptyStr, EpochSecs }
 import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
 import v2.std.optional { Present, Absent }
 import std.decl_ref { declaration_ref_display_key }
@@ -16,8 +16,31 @@ import gunbc.spark.cell_role {
   spark_cell_role_in,
   spark_cell_role_assignments,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts, fabric_group_wire }
-import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_commits_hosts, pair_serving_authority_group }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_wire, fabric_group_of_host }
+import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_commits_hosts, pair_serving_authority_group, pair_serving_committed_hosts, pair_serving_authority_for }
+import gunbc.spark.pair_serving_authority_log {
+  CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities, current_pair_serving_authority,
+  HostEffectClaim, HostEffectClaimed, HostEffectClaimRefused, HostEffectRelease, HostEffectReleasedAt, HostEffectReleaseRefused,
+  HostEffectRecord, host_effect_admit, host_effect_release,
+  PlacementRead, PlacementReadAt, PlacementUnread, placement_read,
+  LiveClaimLookup, LiveClaimFound, LiveClaimAbsent, LiveClaimUnread, live_claim_on,
+  GroupPartitionRead, GroupPartitionAt, GroupPartitionUnread, read_group_partition, AuthorityFold, AuthorityFolded, AuthorityUnestablished, AuthorityFoldRefused, fold_refusal_text, current_authority_over, GroupSnapshot, placement_read_over, placement_fold_read,
+}
+import gunbc.spark.host_effect_quiescence {
+  HostEffectResidueSpec, HostQuiescenceEvidence, HostQuiescence, HostQuiet, HostResidue, HostQuiescenceUnread, ArgvRun, ArgvRan, ArgvLegDidNotRun, observe_host_effect_quiescence,
+  ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, parse_claimant_standing,
+}
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host }
+import product.capacity.event_chain { EventId, PartitionId }
+import std.measure { Second, second_count }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_undischarged_peer_reservation_hosts }
 import gunbc.spark.serving_arm_placement { ServingArmHostClaim, spark_serving_arm_host_claims }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
@@ -65,7 +88,7 @@ import gunbc.spark.serving_subject {
 // The container build and the published-image probe ask it, and the answer reads only OBSERVED
 // causes -- a role, a claimed group, a placed arm, a held reservation -- because those are the facts
 // that something is already running or reserved on the machine. Its projection is
-// `spark_unplaced_hosts` and its admission seam is `admit_unplaced_host`.
+// `spark_unplaced_hosts` and its admission seam is `admit_unplaced_host_live` (an effect reads the current authority first; `admit_unplaced_host` is the pure projection over the source rows).
 //
 // The second is ADMISSIBILITY TO A SERVING SUBJECT: which units a particular deployment may use. A
 // host is admissible to subject S iff EVERY commitment cause on it is held by S. That reading is
@@ -173,6 +196,7 @@ type SparkHostAuthorityCommitment
   | MemberOfClaimedServingGroup { group: FabricGroup }
   | OccupiedByServingArm { claim: ServingArmHostClaim }
   | HoldsUndischargedRpcReservation
+  | OccupiedByHostEffect { purpose: NonEmptyStr, executor: NonEmptyStr }
   | CellRoleUndecidable { assignments: List<SparkCellRoleAssignment> }
 
 // THE ONE RULING-DERIVED CAUSE, AND ITS BASIS IS A CITATION RATHER THAN A SENTENCE. gunbc.spark.serving_subject
@@ -216,6 +240,7 @@ fn spark_host_commitments_in(
   arm_claims: List<ServingArmHostClaim>,
   held_reservation_hosts: List<HostIdentity>,
   serving_reservations: List<SparkServingReservation>,
+  host_effects: List<HostEffectRecord>,
   host: HostIdentity,
 ) -> FreeMonoid<SparkHostCommitment> {
   let ruled =
@@ -226,11 +251,17 @@ fn spark_host_commitments_in(
         Cons { head: RulingDerivedCommitment { cause: ReservedForServingSubject { subject: r.subject, basis: r.basis } }, tail: acc }
       },
     )
+  let effected =
+    fold(
+      filter(host_effects, r => !r.released && host_identity_eq(a: r.host, b: host)),
+      init: ruled,
+      f: fn(acc, r) { Cons { head: AuthorityHeldCommitment { cause: OccupiedByHostEffect { purpose: r.purpose, executor: r.executor } }, tail: acc } },
+    )
   let reserved =
     if any(held_reservation_hosts, h => host_identity_eq(a: h, b: host)) {
-      Cons { head: AuthorityHeldCommitment { cause: HoldsUndischargedRpcReservation }, tail: ruled }
+      Cons { head: AuthorityHeldCommitment { cause: HoldsUndischargedRpcReservation }, tail: effected }
     } else {
-      ruled
+      effected
     }
   let armed =
     fold(
@@ -295,6 +326,7 @@ fn spark_host_standings_in(
   arm_claims: List<ServingArmHostClaim>,
   held_reservation_hosts: List<HostIdentity>,
   serving_reservations: List<SparkServingReservation>,
+  host_effects: List<HostEffectRecord>,
 ) -> List<SparkHostStanding> {
   map(units, h => match spark_host_commitments_in(
     assignments: assignments,
@@ -302,6 +334,7 @@ fn spark_host_standings_in(
     arm_claims: arm_claims,
     held_reservation_hosts: held_reservation_hosts,
     serving_reservations: serving_reservations,
+    host_effects: host_effects,
     host: h,
   ) {
     Empty => SparkHostUncommitted { host: h }
@@ -320,6 +353,7 @@ fn spark_host_standing_in(
   arm_claims: List<ServingArmHostClaim>,
   held_reservation_hosts: List<HostIdentity>,
   serving_reservations: List<SparkServingReservation>,
+  host_effects: List<HostEffectRecord>,
   host: HostIdentity,
 ) -> SparkHostStanding? {
   spark_standing_of(
@@ -330,6 +364,7 @@ fn spark_host_standing_in(
       arm_claims: arm_claims,
       held_reservation_hosts: held_reservation_hosts,
       serving_reservations: serving_reservations,
+      host_effects: host_effects,
     ),
     host: host,
   )
@@ -415,6 +450,7 @@ fn serving_subject_claims_host(subject: ServingSubject, siblings: FreeSemigroup<
         OccupiedByServingArm { claim: cl } => serving_subject_eq(a: subject, b: PlacedServingArm { arm: cl.arm })
         CommittedToCellRole { role: _ } => false
         HoldsUndischargedRpcReservation => false
+        OccupiedByHostEffect { purpose: _, executor: _ } => false
         CellRoleUndecidable { assignments: _ } => false
       }
     RulingDerivedCommitment { cause: d } =>
@@ -436,6 +472,7 @@ fn spark_commitment_held_by(c: SparkHostCommitment, siblings: FreeSemigroup<Spar
         MemberOfClaimedServingGroup { group: g } => serving_subject_eq(a: subject, b: PairServingUnitOn { group: g })
         OccupiedByServingArm { claim: cl } => serving_subject_eq(a: subject, b: PlacedServingArm { arm: cl.arm })
         HoldsUndischargedRpcReservation => false
+        OccupiedByHostEffect { purpose: _, executor: _ } => false
         CellRoleUndecidable { assignments: _ } => false
       }
     RulingDerivedCommitment { cause: d } =>
@@ -500,12 +537,15 @@ fn spark_admissible_hosts_to(standings: List<SparkHostStanding>, subject: Servin
 // still commits its four hosts, so nothing reads the pause as free capacity and lands a build or a
 // second lane on a host we are holding. gunbc.spark.pair_serving_authority pair_serving_commits_hosts
 // is where that answer lives, and ReleasedToFleet is the only arm that drops the commitment.
+// WHICH hosts is the authority's own answer (pair_serving_committed_hosts): a transaction's states
+// carry the exact population they were authorized over, so a roster that moves mid-transaction
+// changes nothing here until the transaction ends.
 fn spark_claimed_members_under(authorities: List<PairServingGroupAuthority>) -> List<ClaimedServingGroupMember> {
   flat_map(
     filter(authorities, a => pair_serving_commits_hosts(a: a)),
     a => {
       let g = pair_serving_authority_group(a: a)
-      map(fabric_group_hosts(g: g), h => ClaimedServingGroupMember { group: g, host: h })
+      map(pair_serving_committed_hosts(a: a), h => ClaimedServingGroupMember { group: g, host: h })
     })
 }
 
@@ -517,16 +557,113 @@ fn spark_claimed_serving_group_hosts() -> List<HostIdentity> {
   map(spark_claimed_serving_group_members(), m => m.host)
 }
 
-data spark_host_standings: List<SparkHostStanding> = spark_host_standings_in(
-  units: dgx_spark_reserved_identities(),
-  assignments: spark_cell_role_assignments,
-  claimed_group_members: spark_claimed_serving_group_members(),
-  arm_claims: spark_serving_arm_host_claims,
-  held_reservation_hosts: llama_cpp_rpc_undischarged_peer_reservation_hosts(),
-  serving_reservations: spark_serving_reservations,
-)
+// THE STANDINGS OVER SUPPLIED AUTHORITIES. The resting projection below hands in the source rows
+// (pure, the population every pure consumer reads); the effectful admission seams hand in the
+// CURRENT authorities read from the event log (spark_host_standings_current), so an effect that
+// runs while a transaction is open commits the hosts the transaction froze, not the roster.
+fn spark_host_standings_under(authorities: List<PairServingGroupAuthority>, host_effects: List<HostEffectRecord>) -> List<SparkHostStanding> {
+  spark_host_standings_in(
+    units: dgx_spark_reserved_identities(),
+    assignments: spark_cell_role_assignments,
+    claimed_group_members: spark_claimed_members_under(authorities: authorities),
+    arm_claims: spark_serving_arm_host_claims,
+    held_reservation_hosts: llama_cpp_rpc_undischarged_peer_reservation_hosts(),
+    serving_reservations: spark_serving_reservations,
+    host_effects: host_effects,
+  )
+}
+
+data spark_host_standings: List<SparkHostStanding> = spark_host_standings_under(authorities: spark_pair_serving_authorities, host_effects: [] as List<HostEffectRecord>)
 
 data spark_unplaced_hosts: List<HostIdentity> = spark_unplaced_hosts_of(standings: spark_host_standings)
+
+// ── THE CURRENT STANDINGS, FOR AN EFFECT ───────────────────────────────────────────────────────
+//
+// An effect that places work on a Spark host (a build, a probe, a source acquisition) may run
+// while a pair-serving transaction is open, and then the resting row is not the authority: the
+// event log is (gunbc.spark.pair_serving_authority_log). So the admission an effect asks is over
+// the CURRENT authorities of every claimed group, read on the executor's store, and refuses when
+// any of them could not be read -- an unread authority is not an empty commitment.
+type CurrentStandings
+  = CurrentStandingsRead { standings: List<SparkHostStanding> }
+  | CurrentStandingsUnread { cause: NonEmptyStr }
+
+// THE LIVE HOST EFFECTS ARE COMMITMENTS TOO: they are supplied by the caller, who read the one
+// placement partition (spark_host_standings_over). An effect that is live -- unreleased, however
+// old -- commits its host until its release lands with quiescence evidence.
+fn spark_host_standings_current(current: List<CurrentAuthority>, host_claims: List<HostEffectRecord>) -> CurrentStandings {
+  let unread = flat_map(current, c => match c {
+    CurrentAuthorityUnread { group: g, step: st, reason: why } => [join([fabric_group_wire(g: g) as String, " at ", st, ": ", why], "")]
+    CurrentAuthorityRead { authority: _ } => [] as List<String>
+  })
+  if length(unread) != 0 {
+    CurrentStandingsUnread { cause: join(["the current pair-serving authority could not be read for every claimed group, so host commitment cannot be derived: ", join(unread, "; ")], "") as NonEmptyStr }
+  } else {
+    CurrentStandingsRead { standings: spark_host_standings_under(authorities: flat_map(current, c => match c { CurrentAuthorityRead { authority: a } => [a]  CurrentAuthorityUnread { group: _, step: _, reason: _ } => [] as List<PairServingGroupAuthority> }), host_effects: host_claims) }
+  }
+}
+
+// THE CURRENT STANDINGS OVER THE LOG. Each group partition is read by the one authority fold from
+// its durable genesis: an established group contributes its current authority; a group that is
+// unestablished AND undeclared in the source roster contributes nothing; a group the source
+// roster declares but the log has not established is UNREAD -- the desired row has not been
+// actuated (pair_serving_authority_establish_wet), and until it is, nothing may treat its hosts
+// as free. The live host effects come from the one placement partition. Any unread partition is
+// the whole reading unread.
+type GroupStanding
+  = GroupStandingEstablished { current: CurrentAuthority }
+  | GroupStandingUnclaimed
+  | GroupStandingUnread { cause: String }
+
+fn group_standing_over(group: FabricGroup, partition: GroupPartitionRead, placement: PlacementRead, at: EpochSecs) -> GroupStanding {
+  match partition {
+    GroupPartitionUnread { step: st, reason: why } => GroupStandingUnread { cause: join([fabric_group_wire(g: group) as String, " at ", st, ": ", why], "") }
+    GroupPartitionAt { head: _, fold: f } =>
+      match f {
+        AuthorityFoldRefused { at_event: e, reason: why } => GroupStandingUnread { cause: join([fabric_group_wire(g: group) as String, ": ", fold_refusal_text(at_event: e, reason: why)], "") }
+        AuthorityUnestablished { cancelled: _ } =>
+          match pair_serving_authority_for(group: group) {
+            Absent => GroupStandingUnclaimed
+            Present { value: _ } => GroupStandingUnread { cause: join([fabric_group_wire(g: group) as String, ": the source roster declares an authority that has not been established on the log (pair_serving_authority_establish_wet)"], "") }
+          }
+        AuthorityFolded { current: _ } => GroupStandingEstablished { current: current_authority_over(group: group, partition: partition, placement: placement, at: at) }
+      }
+  }
+}
+
+// ONE READ PER PARTITION: the placement fold and each group's partition are read once, and every
+// standing and the joined placement are decided over that one snapshot -- never over independent
+// re-reads of a live store that could disagree with each other.
+fn spark_host_standings_over(store: FabricStorageBinding, at: EpochSecs) -> CurrentStandings {
+  let placement = placement_fold_read(store: store)
+  let groups = map([FabricGroupA, FabricGroupB], g => GroupSnapshot { group: g, partition: read_group_partition(store: store, group: g) })
+  let standings = map(groups, gs => group_standing_over(group: gs.group, partition: gs.partition, placement: placement, at: at))
+  let unread = flat_map(standings, st => match st { GroupStandingUnread { cause: c } => [c]  _ => [] as List<String> })
+  if length(unread) != 0 {
+    CurrentStandingsUnread { cause: join(["a group partition could not be read, so host commitment cannot be derived: ", join(unread, "; ")], "") as NonEmptyStr }
+  } else {
+    let current = flat_map(standings, st => match st { GroupStandingEstablished { current: c } => [c]  _ => [] as List<CurrentAuthority> })
+    match placement_read_over(placement: placement, groups: groups) {
+      PlacementUnread { step: st, reason: why } => CurrentStandingsUnread { cause: join(["the host-placement partition could not be read at ", st, ", so host commitment cannot be derived: ", why], "") as NonEmptyStr }
+      PlacementReadAt { head: _, effects: effs, preparations: _ } => spark_host_standings_current(current: current, host_claims: effs)
+    }
+  }
+}
+
+fn spark_host_standings_live() -> CurrentStandings {
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => CurrentStandingsUnread { cause: join(["the executor could not be identified, so the current authority cannot be read: ", c], "") as NonEmptyStr }
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match now_epoch_seconds() {
+        Absent => CurrentStandingsUnread { cause: "the clock could not be read as epoch seconds, so the lease standing of the current authority cannot be derived" as NonEmptyStr }
+        Present { value: at } =>
+          match event_log_store_for_host(short_hostname: executor) {
+            HostStoreRefused { detail: d } => CurrentStandingsUnread { cause: d as NonEmptyStr }
+            HostStoreResolved { store: store, executor: _ } => spark_host_standings_over(store: store, at: at)
+          }
+      }
+  }
+}
 
 fn spark_host_is_unplaced(host: HostIdentity) -> Bool {
   any(spark_unplaced_hosts, h => host_identity_eq(a: h, b: host))
@@ -617,6 +754,7 @@ fn spark_authority_commitment_wire(c: SparkHostAuthorityCommitment) -> NonEmptyS
     MemberOfClaimedServingGroup { group: g } => join(["a member of a serving group this repository claims (", fabric_group_wire(g: g) as String, ")"], "") as NonEmptyStr
     OccupiedByServingArm { claim: c2 } => join(["a serving arm is placed on it (", declaration_ref_display_key(ref: c2.arm), ")"], "") as NonEmptyStr
     HoldsUndischargedRpcReservation => "holding an undischarged llama.cpp RPC peer reservation" as NonEmptyStr
+    OccupiedByHostEffect { purpose: p, executor: x } => join(["held by a live host effect (", p as String, " by ", x as String, ") until it is released"], "") as NonEmptyStr
     CellRoleUndecidable { assignments: _ } => "carrying more than one cell role row, so its commitment cannot be decided" as NonEmptyStr
   }
 }
@@ -667,19 +805,35 @@ fn spark_host_commitment_wire(c: SparkHostCommitment) -> NonEmptyStr {
 //   unplaced-set observation     -> candidate ELIGIBILITY only
 //   target-host claim acquired   -> PERMISSION to mutate
 //   terminal release receipt     -> host becomes claimable again
-// This module answers the first and nothing else. TRIGGER for the second: the fabric/capacity lease
-// authority (product.capacity.lease LeaseGrant, gunbc.fabric_event_log fabric_seat_acquire) gaining a
-// subject shaped like a whole Spark host rather than a serving seat, at which point admission becomes
-// acquire-and-hold and this function's refusal arm becomes the lease's. SUFFICIENT FOR: two
-// concurrent runs against one target, dispatched through different executors, cannot both be
-// admitted. Until then an admitted answer means "nothing has placed work on it as of this read", and
-// the name says so rather than implying a hold.
+// This function answers the first and nothing else. THE SECOND AND THIRD NOW EXIST FOR AN EFFECT:
+// admit_unplaced_host_over lands a host-effect claim on the fabric event log's host-placement
+// partition against the head it read, so two concurrent runs against one
+// target, dispatched through different executors, cannot both be admitted -- the second's claim
+// is stale or held; and release_host_effect_live is the terminal that observes the host quiet and
+// releases, which makes the host claimable again. This pure projection over the resting rows
+// still holds no claim, and its name says so.
+// AN ADMITTED HOST CARRIES THE CLAIM THAT FENCES IT. The admission is a claim event on the one
+// host-placement partition (gunbc.spark.pair_serving_authority_log), appended against the head the
+// admission read -- the same head every authority commitment is appended against, which is what
+// makes it a fence and not a check. The handle carries what the release must observe: the host
+// and the residue the effect declared. The resting projection admits with no claim (it places
+// nothing).
+type HostEffectHandle {
+  host: HostIdentity
+  residue: HostEffectResidueSpec
+  claim: EventId
+}
+
 type SparkHostAdmission
-  = SparkHostAdmitted { host: HostIdentity }
+  = SparkHostAdmitted { host: HostIdentity, claim: HostEffectHandle? }
   | SparkHostRefused { cause: NonEmptyStr }
 
 fn spark_authority_held_causes_wire(host: HostIdentity) -> NonEmptyStr {
-  match spark_host_standing(host: host) {
+  spark_authority_held_causes_in(standings: spark_host_standings, host: host)
+}
+
+fn spark_authority_held_causes_in(standings: List<SparkHostStanding>, host: HostIdentity) -> NonEmptyStr {
+  match spark_standing_of(standings: standings, host: host) {
     Absent => "that host is not a DGX Spark unit in gunbc.spark.dgx_procurement, so this fleet has no standing for it" as NonEmptyStr
     Present { value: standing } =>
       match standing {
@@ -712,10 +866,195 @@ fn admit_unplaced_host_among(raw: String, purpose: NonEmptyStr, unplaced: List<H
       ], "") as NonEmptyStr,
     }
   } else {
-    SparkHostAdmitted { host: host }
+    SparkHostAdmitted { host: host, claim: none }
   }
 }
 
+// The same decision over a whole standings population: the unplaced set and the causes are both
+// projections of it, so a caller with standings (the current-authority route) supplies one value.
+fn admit_unplaced_host_in(raw: String, purpose: NonEmptyStr, standings: List<SparkHostStanding>) -> SparkHostAdmission {
+  admit_unplaced_host_among(raw: raw, purpose: purpose, unplaced: spark_unplaced_hosts_of(standings: standings), held_causes: fn(h) { spark_authority_held_causes_in(standings: standings, host: h) as String })
+}
+
+
+
+// THE EFFECT'S ADMISSION IS A CLAIM, NOT A READ. The current standings admit, then the claim lands
+// on the host-placement partition against the head that was read: stale when the partition moved
+// in between, committed when a live authority commitment holds the host, held when another live
+// effect has it. Every admitted host carries its claim; the effect releases it at its terminal
+// with the observation that the host is quiet. `term` is the effect's own stated bound: past it
+// the claim reads OVERDUE, and it still holds until released. `residue` is what the release must
+// find absent -- the effect declares it here because only the effect knows what it leaves.
+fn admit_unplaced_host_over(raw: String, purpose: NonEmptyStr, term: Second, residue: HostEffectResidueSpec, store: FabricStorageBinding, executor: NonEmptyStr, at: EpochSecs) -> SparkHostAdmission {
+  match spark_host_standings_over(store: store, at: at) {
+    CurrentStandingsUnread { cause: c } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": ", c as String], "") as NonEmptyStr }
+    CurrentStandingsRead { standings: st } =>
+      match admit_unplaced_host_in(raw: raw, purpose: purpose, standings: st) {
+        SparkHostRefused { cause: c } => SparkHostRefused { cause: c }
+        SparkHostAdmitted { host: host, claim: _ } => {
+          match host_effect_admit(store: store, host: host, purpose: purpose, executor: executor, term: term, residue: residue, at: at) {
+            HostEffectClaimed { id: id } =>
+              SparkHostAdmitted { host: host, claim: Present { value: HostEffectHandle { host: host, residue: residue, claim: id } } }
+            HostEffectClaimRefused { partition: pt, step: st2, reason: why } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": the host-effect claim did not land on ", pt as String, " at ", st2, ": ", why], "") as NonEmptyStr }
+          }
+        }
+      }
+  }
+}
+
+fn admit_unplaced_host_live(raw: String, purpose: NonEmptyStr, term: Second, residue: HostEffectResidueSpec) -> SparkHostAdmission {
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": the executor could not be identified: ", c], "") as NonEmptyStr }
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match event_log_store_for_host(short_hostname: executor) {
+        HostStoreRefused { detail: d } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": ", d], "") as NonEmptyStr }
+        HostStoreResolved { store: store, executor: _ } =>
+          match now_epoch_seconds() {
+            Absent => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": the clock could not be read as epoch seconds"], "") as NonEmptyStr }
+            Present { value: at } => admit_unplaced_host_over(raw: raw, purpose: purpose, term: term, residue: residue, store: store, executor: executor as NonEmptyStr, at: at)
+          }
+      }
+  }
+}
+
+// THE RELEASE IS THE EVIDENCE LANDING: given a quiescence reading of the claim's host, append the
+// release. A release that did not land is returned as its cause, never hidden -- the host stays
+// held until one lands.
+fn release_host_effect_over(handle: HostEffectHandle, evidence: HostQuiescenceEvidence, provenance: ReleaseProvenance, store: FabricStorageBinding, executor: NonEmptyStr, at: EpochSecs) -> String? {
+  match host_effect_release(store: store, claim: handle.claim, evidence: evidence, provenance: provenance, executor: executor, at: at) {
+    HostEffectReleasedAt { id: _ } => none
+    HostEffectReleaseRefused { partition: pt, step: st, reason: why } => Present { value: join(["the host-effect claim ", handle.claim as String, " was not released on ", pt as String, " at ", st, ": ", why, "; the host stays held until a release with quiescence evidence lands"], "") }
+  }
+}
+
+// THE OBSERVATION LEG TO A SPARK: the fleet automation principal over the runner's agent-held key,
+// the same route the build seams take. A leg that could not be prepared, or that was refused
+// before it ran, is a leg that did not run -- the observer reads that as UNREAD, never as quiet.
+data host_effect_release_attempt_raw: String = "host-effect-release"
+
+fn fleet_argv_run(context: FleetSshExecutionContext, host: HostIdentity, argv: List<String>) -> ArgvRun {
+  match typed_argv_exec_over_fleet_ssh(target: fleet_locus_ssh_target(host: host), context: context, argv: argv) {
+    TypedArgvExecRefused { reason: why } => ArgvLegDidNotRun { cause: why }
+    TypedArgvExecConverged { result: r } => ArgvRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+  }
+}
+
+// OBSERVE, THEN RELEASE. The observation is taken on the host after the effect's body returned,
+// whatever it returned: a quiet host releases the claim; residue or an unread scan leaves the
+// claim live and says so on the exit. Nothing here reads the exit as evidence.
+type HostEffectSettlement
+  = HostEffectSettled
+  | HostEffectStillHeld { cause: String }
+
+fn settle_host_effect_over(handle: HostEffectHandle, provenance: ReleaseProvenance, run: fn(List<String>) -> ArgvRun, store: FabricStorageBinding, executor: NonEmptyStr, at: EpochSecs) -> HostEffectSettlement {
+  match observe_host_effect_quiescence(run: run, claim: handle.claim, host: handle.host, spec: handle.residue, observer: executor, at: at) {
+    HostQuiescenceUnread { host: h, cause: c } => HostEffectStillHeld { cause: join([h as String, " could not be read for quiescence, so the host-effect claim ", handle.claim as String, " stays live: ", c], "") }
+    HostResidue { host: h, detail: d } => HostEffectStillHeld { cause: join([h as String, " still carries the effect, so the host-effect claim ", handle.claim as String, " stays live: ", d], "") }
+    HostQuiet { evidence: ev } =>
+      match release_host_effect_over(handle: handle, evidence: ev, provenance: provenance, store: store, executor: executor, at: at) {
+        Absent => HostEffectSettled
+        Present { value: why } => HostEffectStillHeld { cause: why }
+      }
+  }
+}
+
+fn settle_host_effect_live(handle: HostEffectHandle) -> HostEffectSettlement {
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => HostEffectStillHeld { cause: join(["the executor could not be identified for the release: ", c], "") }
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match event_log_store_for_host(short_hostname: executor) {
+        HostStoreRefused { detail: d } => HostEffectStillHeld { cause: d }
+        HostStoreResolved { store: store, executor: _ } =>
+          match now_epoch_seconds() {
+            Absent => HostEffectStillHeld { cause: "the clock could not be read as epoch seconds for the release" }
+            Present { value: at } =>
+              match prepare_fleet_ssh_agent_context(attempt_raw: host_effect_release_attempt_raw) {
+                FleetSshContextRefused { cause: c } => HostEffectStillHeld { cause: join(["the host could not be reached to observe quiescence, so the host-effect claim ", handle.claim as String, " stays live: ", c], "") }
+                FleetSshContextReady { context: context, receipt: _ } =>
+                  settle_host_effect_over(handle: handle, provenance: ClaimantTerminal { claim: handle.claim, claimant_executor: executor as NonEmptyStr }, run: fn(argv) { fleet_argv_run(context: context, host: handle.host, argv: argv) }, store: store, executor: executor as NonEmptyStr, at: at)
+              }
+          }
+      }
+  }
+}
+
+fn release_host_effect_live(handle: HostEffectHandle?, exit: ProcessExit) -> ProcessExit {
+  match handle {
+    Absent => exit
+    Present { value: h } =>
+      match settle_host_effect_live(handle: h) {
+        HostEffectSettled => exit
+        HostEffectStillHeld { cause: why } =>
+          match exit {
+            ExitSuccess => exit_failure(reason: why)
+            ExitFailure { code: _, reason: r } => exit_failure(reason: join([r, "\n", why], ""))
+          }
+      }
+  }
+}
+
+// ── RECOVERING A CRASHED LANE'S CLAIM ──────────────────────────────────────────────────────────
+//
+// A lane that died between its claim and its release left the claim live, and nothing releases
+// it on a clock. This entry is the authorized route, and it consumes TWO facts the normal
+// terminal has by construction: the exact claim (never "whatever is live on the host"), and the
+// claimant's standing -- terminated or abandoned -- as a typed operator disposition with the
+// receipt that established it (a cancelled run's id, a dead process's last observation). A quiet
+// host alone is not enough: a live lane between two legs is quiet too, and releasing it would
+// admit another placement under it. The observation is then taken against THAT claim's residue,
+// and the release lands only when the host is quiet.
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/spark/host_commitment.dag
+//     --function host_effect_recover_wet --arg host=<identity> --arg claim=<event id>
+//     --arg claimant=terminated|abandoned --arg receipt=<how that was established>
+fn host_effect_recover_wet(host: String, claim: String, claimant: String, receipt: String) -> ProcessExit
+  uses net: Network
+{
+  if host == "" || claim == "" {
+    exit_failure(reason: "a host and the exact claim (event id) are required; this entry does not pick a claim by host")
+  } else if receipt == "" {
+    exit_failure(reason: "a receipt establishing the claimant's standing is required (what showed the lane terminated or abandoned)")
+  } else {
+    match parse_claimant_standing(wire: claimant) {
+      Absent => exit_failure(reason: join(["`", claimant, "` is not a claimant standing; say terminated or abandoned"], ""))
+      Present { value: standing } => {
+        let h = host as HostIdentity
+        let c = (claim as NonEmptyStr) as EventId
+        match observe_executor_reach() {
+          ExecutorReachUnknown { cause: cause } => exit_failure(reason: join(["the executor could not be identified: ", cause], ""))
+          ExecutorReachKnown { short_hostname: executor, path: _ } =>
+            match event_log_store_for_host(short_hostname: executor) {
+              HostStoreRefused { detail: d } => exit_failure(reason: d)
+              HostStoreResolved { store: store, executor: _ } =>
+                match now_epoch_seconds() {
+                  Absent => exit_failure(reason: "the clock could not be read as epoch seconds")
+                  Present { value: at } => {
+                    let provenance = RecoveryAuthorized { claim: c, claimant: standing, authorized_by: executor as NonEmptyStr, receipt: receipt as NonEmptyStr }
+                    match live_claim_on(store: store, host: h, claim: c) {
+                      LiveClaimUnread { step: st, reason: why } => exit_failure(reason: join(["the host-placement partition could not be read at ", st, ": ", why], ""))
+                      LiveClaimAbsent => exit_failure(reason: join(["no live host-effect claim ", claim, " on ", host, "; nothing to recover"], ""))
+                      LiveClaimFound { record: r } =>
+                        match prepare_fleet_ssh_agent_context(attempt_raw: host_effect_release_attempt_raw) {
+                          FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+                          FleetSshContextReady { context: context, receipt: _ } => {
+                            let handle = HostEffectHandle { host: h, residue: r.residue, claim: r.id }
+                            match settle_host_effect_over(handle: handle, provenance: provenance, run: fn(argv) { fleet_argv_run(context: context, host: h, argv: argv) }, store: store, executor: executor as NonEmptyStr, at: at) {
+                              HostEffectSettled => ExitSuccess
+                              HostEffectStillHeld { cause: why } => exit_failure(reason: why)
+                            }
+                          }
+                        }
+                    }
+                  }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+// The admission over the RESTING rows -- the pure projection, for consumers with no effect to
+// admit. An effect asks admit_unplaced_host_live, which reads the current authority and claims.
 fn admit_unplaced_host(raw: String, purpose: NonEmptyStr) -> SparkHostAdmission {
   admit_unplaced_host_among(
     raw: raw,

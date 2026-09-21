@@ -33,7 +33,7 @@ Six pull requests were CLEAN with every check green, waiting on an operator merg
 | #11678 | C9a.1 | GCP Secret IAM: read the policy back **independently** after the write |
 | #11676 | C7 | provider-state root as a `live_deploy` ensured member, read back — **now DIRTY** |
 | #11689 | C11 | GitHub reads rebound onto the canonical join — **parked, see below** |
-| #11732 | C9b | App-key rotation: exact-version verifier, contract, `DisableOnly` — **parked green** |
+| #11732 | C9b | App-key rotation: exact-version verifier, contract, `DisableOnly` — **MERGED** |
 | #11795 | — | `RungDropAmendment` carrier, so a later ruling on a standing drop has a home |
 | #11828 | — | `mtcollins1_boot` narrowed to `FleetSshKeyNotConsumed` |
 
@@ -53,14 +53,9 @@ restore test and no rehearsed compromise answer on main, and nothing in the corp
 "does the key in version N actually work."** That key is the root of trust for every org-admin
 action CI takes.
 
-**#11676 was deliberately not rebuilt.** It is approved and green at `c153cfa519`, but main moved
-27 commits and edited five of its seven files, so resolving is content work rather than a
-projection drop. Its only consumer is C8, which is held indefinitely, so rebuilding would deliver a
-member nothing consumes at the cost of a full review and CI cycle — and it would rot again the next
-time anyone touches `live_deploy`. The PR is left open rather than closed: the review history and
-its annotations are worth more there than in a closed tab. The colliding files are
-`live_deploy/emit.dag`, `live_deploy/spec.dag`, `roadmap/roadmap_dashboard_instance.dag`,
-`test/claim/live_deploy/emit_test.dag` and `test/claim/live_deploy_unit_emission_oracle_witness_test.dag`.
+**#11676 (C7) MERGED.** The provider-state root is an ensured member derived from the spec, so the emitted ensure and the read-back member come from one function and cannot diverge; absent, duplicated, wrong-owner and not-a-directory have no constructor, so the first cut's refusal arms were deleted rather than left permanently green.
+
+**The launcher deletion is the next cut, and its census is already on main** as an annotation on `deployment_provider_state_step`. For `srv1_live` the provision plan's `DashboardEnsureProviderStateRoot` is now REDUNDANT — that is the op the deletion may remove. For `srv1_lab`, `srv2_lab`, `srv2_deploy` and `macbook_local` it remains the ONLY creator: their specs carry the member, but no production caller applies those specs, so the member creates nothing for them yet. The op may be deleted for an instance only when a production caller applies its spec; deleting it sooner is the serve-binary deadlock again.
 
 **#11828 must not merge on checks alone.** Its acceptance is a wet dispatch of
 `fleet-converge mode=mtcollins1_boot`: if that mode does need the fleet key, it fails at the
@@ -77,6 +72,29 @@ mutation. If it refuses with an absent mint observation on a version that plainl
 the record wire before the mint. Its actuation half (add-version, disable-prior) is blocked on
 `gunbc.github_actions_wif` being absent from main: on a runner there is no federated identity for a
 Secret Manager write, so the only honest route today is an operator workstation.
+
+## Two operator acts C9b left open, one of them dated
+
+**`rotate_by` on main is `2026-12-18`, and it is a placeholder a lane chose rather than policy.**
+The verifier reads it on every run and refuses once it passes. So if nobody sets it, the first
+thing that happens on that date is that a green verify run turns red with a deadline-passed
+refusal. That is the honest behaviour, and it is also a trap for whoever meets it first: **the fix
+is a policy decision and a rotation, not a code change.**
+
+**Nothing in that cut has run against the live surface.** Every witness supplies its own
+observation record. The first dispatch of `app_key_version_verify` against the currently enabled
+version *is* the inhabitance claim for the whole thing, and it is cheap and safe — read-only, one
+installation-token mint. Three shapes are readings of upstream rather than observations, so that is
+where a first-dispatch failure will be: that the Secret Manager response carries the resolved
+version in its name field, that `curl -D` writes a status line whose second word is the code, and
+that the mint's refusal arms leave their record line before exiting. A refusal reporting an absent
+mint observation on a version that plainly exists means the record wire, not the mint.
+
+**The actuation half is blocked on identity, not on design.** Add-version and disable-prior with
+independent readback need a federated identity for a Secret Manager *write*, and
+`gunbc.github_actions_wif` is still absent from main — so a runner has none, and the only honest
+route today is an operator workstation. Reaching for a print-token on a runner fails at runtime
+rather than degrading, which is why the lane did not.
 
 ## Still held, and on what
 

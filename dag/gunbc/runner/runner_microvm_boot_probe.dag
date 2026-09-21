@@ -251,6 +251,12 @@ fn executor_home_wet() -> String? {
   }
 }
 
+// (Hoisted to module grain from the body of the item below: a source annotation inside a
+// declaration body is not modeled and refuses to parse.)
+// THE LOGIN COMES FROM THE HOST'S ROSTER ROW, because the standing now carries the executor's
+// group enrolment and that is a fact about a named account. A probe on a host with no roster
+// row has no executor to ask about, which is a BootNotAttempted cause like any other.
+//
 // THE HOST STANDING IS CHECKED FIRST AND ITS REFUSAL IS CARRIED FORWARD WHOLE. A host with no
 // writable /dev/kvm or no Firecracker cannot boot anything, and a probe that discovered that by
 // failing to produce a console would report an IMAGE verdict for a HOST fact -- sending a reader to

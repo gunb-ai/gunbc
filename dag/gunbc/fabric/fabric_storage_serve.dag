@@ -10,7 +10,8 @@ import std.fabric_storage {
 import gunbc.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
-import gunbc.fabric_storage_wire { fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure }
+import gunbc.fabric_storage_wire { fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
+import extdeps.tailscale.identity { tailnet_identity_of }
 import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_route_prefix }
 
 // THE FABRIC DB ENDPOINT: the store side of the served handler bound to std.fabric_storage. One
@@ -34,6 +35,14 @@ import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStorageP
 // login is not yet joined to a writer roster, because no roster of fabric writers is modeled.
 // This is a declared rung drop, rostered as gunbc.rung_drop.fabric_storage_append_principal_unrefused, whose
 // restoration trigger is an observed fabric writer principal roster this handler refuses outside of.
+// THE OBSERVATION THAT TRIGGER NAMES IS TAKEN THROUGH THIS DOOR: the `identity` operation echoes
+// the login the proxy presented for the request, so each fleet writer reads the principal it
+// presents from the one place the roster will be consulted (gunbc.fabric_writer_identity_observe).
+// It writes nothing and reads no head. WHAT A ROSTER HERE CAN AND CANNOT WALL: the login is the
+// tailnet USER behind the request, so the roster admits a user identity, not an exact node; and
+// the placed host's own writes never arrive here (FabricStorageLocalFiles runs the file store in
+// process), so this door's roster is the wall over SERVED writers only -- the drop row carries the
+// local population as its second half.
 //
 // EVERY TYPED OUTCOME IS HTTP 200. The status says the protocol was answered; the arm is in the
 // body. A non-200 means the request itself was not this protocol (unknown operation, malformed
@@ -74,9 +83,11 @@ fn malformed(detail: String) -> ServeWireResponse {
 //   closure   <name> <bound>
 //   put       <canonical preimage>
 //   advance   <name> absent <target>   |   <name> at <expected-ref> <target>
-fn fabric_storage_respond(root: FabricStorageFileRoot, operation: String, body: String) -> ServeWireResponse {
+//   identity  (no body)
+fn fabric_storage_respond(root: FabricStorageFileRoot, operation: String, body: String, tailscale_identity: String) -> ServeWireResponse {
   let ws = words(text: body)
   match operation {
+    "identity" => ok(body: fabric_storage_wire_identity(identity: tailnet_identity_of(header_value: tailscale_identity)))
     "head" =>
       match head_name(w: word(ws: ws, i: 0)) {
         Absent => malformed(detail: "head names no head")
@@ -142,13 +153,13 @@ fn fabric_storage_operation_of(path: String) -> String? {
   if starts_with(s: path, prefix: prefix) { Present { value: substring(s: path, start: length(prefix), end: length(path)) } } else { none }
 }
 
-fn fabric_storage_serve_handle_over(root: FabricStorageFileRoot, method: String, path: String, body: String) -> ServeWireResponse {
+fn fabric_storage_serve_handle_over(root: FabricStorageFileRoot, method: String, path: String, body: String, tailscale_identity: String) -> ServeWireResponse {
   if method != "POST" {
     text_response(status: 405, body: "fabric_storage/1 only POST is admitted\n")
   } else {
     match fabric_storage_operation_of(path: path) {
       Absent => text_response(status: 404, body: join(["fabric_storage/1 no route ", path, "\n"], ""))
-      Present { value: op } => fabric_storage_respond(root: root, operation: op, body: body)
+      Present { value: op } => fabric_storage_respond(root: root, operation: op, body: body, tailscale_identity: tailscale_identity)
     }
   }
 }
@@ -159,6 +170,6 @@ fn fabric_storage_serve_handle_over(root: FabricStorageFileRoot, method: String,
 fn fabric_storage_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha) -> ServeWireResponse {
   match fabric_storage_placement() {
     FabricStorageUnplaced => text_response(status: 503, body: "fabric_storage/1 the fabric DB is unplaced\n")
-    FabricStoragePlaced { host: _, store_root: r, endpoint: _ } => fabric_storage_serve_handle_over(root: fabric_storage_file_root(root: r), method: method, path: path, body: body)
+    FabricStoragePlaced { host: _, store_root: r, endpoint: _ } => fabric_storage_serve_handle_over(root: fabric_storage_file_root(root: r), method: method, path: path, body: body, tailscale_identity: tailscale_identity)
   }
 }
