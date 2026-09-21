@@ -849,6 +849,96 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
     active(
+      identity: "rn_QZ9ZDGZNGDNJ8CT6JVZM9CZE5H",
+      id: "auth-token-source-follow-up-sites",
+      owner: "fleet",
+      path: "docs/plans/auth-and-r2-lane-wind-down-2026-09-20.md",
+      t: fields(
+        headline: "The privileged call sites that still take their credential from outside the procedure",
+        boundary: "The census rosters them in order in gunbc.auth.privileged_effect_census follow_up_sites, which lands with gunbc#11734 and does not resolve before it -- read the population from that roster rather than from a count quoted here. Most are one seam each: the call-site GcloudPrintToken / read_supplied_access_token binding becomes gunbc.auth.access_token_source resolve_access_token. The two that are not (an org-wide estate read, a legacy eager credential) need their pattern decided first.",
+        displaced_cost: "Every one of them is a site where a human pastes or a process assumes a credential, which is the class the census exists to retire; left alone the roster ages into a list nobody believes.",
+        first_slice: "Migrate the one-seam sites the roster names, each leaving the roster in the same change.",
+        red_control: "A migrated site removed from the code but left on the roster, or left on the code and removed from the roster, makes the census's roster-join witness (unreasoned_divergences_join_the_follow_up_roster_exactly, landing with gunbc#11734) go red in both directions.",
+        out_of_scope: "The approval authority adapter, and the two sites whose pattern is not yet decided.",
+        handback: "The migrated sites, the roster shrunk by exactly those, and the witness green."
+      )
+    ),
+    active(
+      identity: "rn_1HQ7K4NV481XB1D2Y1MEHEW4FV",
+      id: "auth-approval-authority-adapter",
+      owner: "fleet",
+      path: "docs/plans/auth-and-r2-lane-wind-down-2026-09-20.md",
+      t: fields(
+        headline: "A tapped approval can authorize a cloud effect, not just a boot",
+        boundary: "An adapter that executes an effect under a redeemed approval capability: Cloudflare AccountTokens.Create for one-off mints, and GCP IAM / Secret Manager control-plane calls (getIamPolicy, setIamPolicy, create, addVersion) for the accessor cells. It is what retires the two UNBOUND DivergenceReason rows the census carries once gunbc#11734 lands.",
+        displaced_cost: "Until it exists the only way to perform a one-off privileged effect is the operator's own token in the operator's own session, and the failure mode that produced this lane -- a token pasted into chat and relayed between sessions -- stays one tired evening away.",
+        first_slice: "One effect end to end: a request filed, tapped, redeemed, and the Cloudflare mint performed under that capability with its receipt.",
+        red_control: "An effect attempted without a redeemed capability refuses; a capability redeemed for one effect cannot perform another; an expired capability refuses rather than proceeding.",
+        out_of_scope: "Widening the bootstrap credential, and any escape hatch that lets a pasted token stand in for a capability.",
+        handback: "The adapter, one executed effect with its receipt, and the two DivergenceReason rows retired."
+      )
+    ),
+    active(
+      identity: "rn_6JME2H4MKKXAT3019M43Q283J3",
+      id: "fleet-secret-accessor-cells-converged",
+      owner: "fleet",
+      path: "docs/plans/auth-and-r2-lane-wind-down-2026-09-20.md",
+      t: fields(
+        headline: "The fleet principal can actually reach the secrets its runs need",
+        boundary: "The Secret Manager IAM cells declared in gunbc.cloudflare.r2_mint_secret_access (and the bucket-admin cells landing with gunbc#11721) are unconverged -- read the population from those declarations rather than from a count quoted here. Their converge entries shell out to gcloud, which no reachable host carries today.",
+        displaced_cost: "A declared grant nothing applied is a grant that will be discovered missing by a run that needed it, at the moment it needed it; and a fleet-principal run of the write path cannot reach those secrets until they are applied.",
+        first_slice: "Get gcloud onto a host the fleet can run from, then converge the declared cells and record the receipts.",
+        red_control: "A run as the fleet principal reaches the write secret after convergence and refuses before it, so the cells are shown to be load-bearing rather than assumed.",
+        out_of_scope: "Any per-identity widening: the least privilege available today is per-secret, and the dedicated service account is its own next rung.",
+        handback: "The declared cells converged with receipts, and the host that can run them named."
+      )
+    ),
+    active(
+      identity: "rn_Y2TRQ9X0N9N1BYJY0GR63EH3RF",
+      id: "census-characteristics-derived",
+      owner: "fleet",
+      path: "docs/plans/auth-and-r2-lane-wind-down-2026-09-20.md",
+      t: fields(
+        headline: "A census row cannot be made to conform by editing its own inputs",
+        boundary: "Once gunbc#11734 lands, the characteristics each privileged-effect row is classified on -- frequency, reversibility, minted reach -- are authored beside the row rather than derived from the effect's own declarations, so the answer the selection gives can be moved by editing the question.",
+        displaced_cost: "A derived verdict over authored inputs is only as honest as the inputs; the census claims its verdicts are computed, and this is the seam where that claim is weaker than it reads.",
+        first_slice: "Name the derivation as the roster preamble's next-rung trigger, then derive one characteristic for one class of effect.",
+        red_control: "A row whose authored characteristic disagrees with the effect's declarations is caught rather than classified.",
+        out_of_scope: "Deriving every characteristic for every row at once.",
+        handback: "The trigger stated on the roster, and the first derived characteristic executing."
+      )
+    ),
+    active(
+      identity: "rn_0Q225ZGYNQPFKDKJR30VX1GZ6N",
+      id: "generated-artifact-staleness-gate",
+      owner: "generated-artifact",
+      path: "docs/plans/auth-and-r2-lane-wind-down-2026-09-20.md",
+      t: fields(
+        headline: "A stale generated file fails a gate instead of passing every one",
+        boundary: "fleet-converge.yml lost its new modes to the ours side of a merge. The model was correct, the projection was stale, every required check was green, and two reviewers caught it by reading the file. No lane regenerates it and none fails on it. Regeneration also needs a host with the admitted memory budget, which session containers and the remote runners both refuse.",
+        displaced_cost: "A generated artefact that can disagree with its authority while CI is green is a second authority with a green light on it, and the next one may be a workflow that actuates rather than a list of modes.",
+        first_slice: "Fail a required lane when a committed generated artefact disagrees with what its authority emits, for the artefacts whose regeneration fits the lane's budget.",
+        red_control: "A committed artefact edited by hand, or left behind by a merge, is refused with the path and the regenerating entry named.",
+        out_of_scope: "Regenerating every artefact on every run, and any repair that writes the file without saying it did.",
+        handback: "The gate, one red control from a deliberately stale artefact, and a statement of which artefacts are out of budget and why."
+      )
+    ),
+    active(
+      identity: "rn_7D9C98GA09F1YQJRMF9SP5BTT1",
+      id: "downstream-wall-admission-runway",
+      owner: "language-integrity",
+      path: "docs/plans/auth-and-r2-lane-wind-down-2026-09-20.md",
+      t: fields(
+        headline: "A new wall does not red every downstream corpus the moment it lands",
+        boundary: "TestCodeReferenced admits exceptions only through a ledger in the public repository keyed by module name, so a downstream corpus compiled by the same binary cannot be admitted without publishing its private names. Two walls landing on one day left the private corpus with 274 blocking errors and no runway; it dissolved every reference immediately, which was right and was affordable, but was not chosen.",
+        displaced_cost: "The next wall is written by someone who cannot see the downstream corpus, and the cost lands on whoever is mid-flight there -- silently, in one merge.",
+        first_slice: "Decide between a per-source-root admission surface owned by the root that carries the source, and a declared notice period before such a wall lands.",
+        red_control: "A wall landing with a downstream corpus mid-flight produces a stated, bounded window rather than an immediate stop, or refuses to land until the downstream is clear.",
+        out_of_scope: "Weakening any wall itself, or an escape hatch that makes an exemption easier to keep than to remove.",
+        handback: "The decision recorded on the rule's own authority, and the mechanism it implies."
+      )
+    ),
+    active(
       identity: "rn_GPNBAHVJ425GYW8DEWBD26144B",
       id: "ci-cost-floor-memory-term-attribution",
       owner: "ci-cost",
