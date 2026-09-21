@@ -8,7 +8,7 @@ import gunbc.auth.approval_device_routes {
   device_enrol_response_at, device_redeem_response_at, device_pending_response_at, device_request_response_at, device_enrollment_readback_response_at, device_push_update_response_at,
   redemption_status, requested_at_within_skew,
 }
-import gunbc.auth.approval_device_redemption { DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused }
+import gunbc.auth.approval_device_redemption { DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused, DevicePlatformUnrealized, DeviceCapabilityTagMalformed }
 import gunbc.auth.approval_device_wire { ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json, ApnsRegistration, path_segment }
 import extdeps.apple.apns { ApnsProduction }
 import gunbc.auth.approval_app_attest_config { approval_app_attest_verifier, AppAttestVerifierAwaitingOperator, AppAttestVerifierConfigured }
@@ -92,12 +92,16 @@ test fn the_read_skew_window_brackets_sixty_seconds() -> Bool {
     && !requested_at_within_skew(requested_at: "not-a-time", observed_at: fx_now)
 }
 
-// The redemption outcome's status map on the arms the app branches on.
+// The redemption outcome's status map, exhaustive over the closed outcome: the arms the app
+// branches on, plus the two that answer neither 403 nor a store status (a malformed tag is the
+// caller's 400; an unrealized platform is 501).
 test fn redemption_outcomes_map_to_their_statuses() -> Bool {
   redemption_status(o: DeviceLostTheRace) == 409
     && redemption_status(o: DeviceEnrollmentUnknown) == 404
     && redemption_status(o: DeviceChallengeNotIssuedHere) == 403
     && redemption_status(o: DeviceCommitRefused { detail: "x" }) == 503
+    && redemption_status(o: DeviceCapabilityTagMalformed) == 400
+    && redemption_status(o: DevicePlatformUnrealized) == 501
 }
 
 // THE ROADMAP NEVER MOUNTS A DEVICE ROUTE, during the cutover or after: the total match in

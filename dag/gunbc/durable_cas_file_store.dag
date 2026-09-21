@@ -2,6 +2,8 @@ module gunbc.durable_cas_file_store
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import std.algebra { trim }
+import std.decimal { decimal_digits_only }
+import std.list { distinct_by_key }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
 import extdeps.filesystem.filesystem_io {
@@ -704,16 +706,8 @@ type CasSlotKeys
   = CasSlotKeysListed { keys: List<NonEmptyStr> }
   | CasSlotKeysListingRefused { root: NonEmptyStr, detail: String }
 
-fn cas_digit_char(ch: String) -> Bool {
-  ch == "0" || ch == "1" || ch == "2" || ch == "3" || ch == "4" || ch == "5" || ch == "6" || ch == "7" || ch == "8" || ch == "9"
-}
-
-fn cas_digits_from(s: String, i: Int) -> Bool {
-  if i >= string_length(s: s) { true } else { cas_digit_char(ch: char_at(s: s, pos: i)) && cas_digits_from(s: s, i: i + 1) }
-}
-
 fn cas_name_is_digits(s: String) -> Bool {
-  s != "" && cas_digits_from(s: s, i: 0)
+  s != "" && decimal_digits_only(s: s)
 }
 
 // "<key>.<n>" -> key, or none for a name that is not a slot file.
@@ -735,9 +729,10 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
   let listing = Filesystem.List(path: root as String)
   if !listing.success { CasSlotKeysListingRefused { root: root, detail: listing.error } } else {
     let names = filter(listing.entries.split(delimiter: "\n"), n => trim(s: n) != "")
-    CasSlotKeysListed { keys: fold(names, init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
+    let keys = fold(names, init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
       Absent => acc
-      Present { value: k } => if any(acc, x => x == k) { acc } else { acc |> list_push(k) }
-    }) }
+      Present { value: k } => acc |> list_push(k)
+    })
+    CasSlotKeysListed { keys: distinct_by_key(xs: keys, key: fn(k) { k as String }) }
   }
 }

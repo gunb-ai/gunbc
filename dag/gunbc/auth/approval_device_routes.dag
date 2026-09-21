@@ -5,6 +5,7 @@ import std.logic { Bool }
 import std.integer { UInt8 }
 import std.measure { Second, second, second_count, byte_size_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.encoding { base64_decode, Standard, UrlSafe }
 import std.algebra { trim }
 import extdeps.clock { Clock }
@@ -56,6 +57,8 @@ import gunbc.auth.approval_device_redemption {
   DeviceStoreWrite, DeviceStoreWritten, DeviceStoreSlotOccupied, DeviceStoreRefused,
   redeem_device_over_store, DeviceRedemptionOutcome, redemption_response_of, DeviceRedeemed, DeviceAlreadyDecided, DeviceLostTheRace,
   DeviceEnrollmentUnknown, DeviceEnrollmentRevoked, DeviceEscalationNotFiled, DeviceStoreUnreadable, DeviceKeyringUnavailable, DeviceCommitRefused,
+  DeviceEnrollmentForAnotherOperator, DeviceSignedForAnotherRequest, DeviceChallengeExpired, DeviceChallengeNotIssuedHere, DeviceCapabilityTagMalformed,
+  DeviceCapabilityRefused, DeviceSignatureRefused, DevicePlatformProofRefused, DevicePlatformProofForOtherBytes, DevicePlatformProofWrongKey, DevicePlatformUnrealized,
 }
 
 // ── THE SIX DEVICE ROUTES, as folds the broker mounts ────────────────────────────────────────
@@ -291,18 +294,31 @@ fn device_enrol_response_at(body: String, process: ApprovalServingProcess, obser
 }
 
 // ── POST /approve/device/redeem ──────────────────────────────────────────────────────────────
+// EXHAUSTIVE over the closed outcome (review 69672 of gunbc#12000: a wildcard let a new arm inherit
+// 403 silently and made the claim over this map non-discriminating). A new outcome is a compile
+// refusal here until someone says what it answers.
 fn redemption_status(o: DeviceRedemptionOutcome) -> HttpStatus {
   match o {
     DeviceRedeemed { decision: _ } => 200
     DeviceAlreadyDecided { decision: _ } => 200
-    DeviceLostTheRace => 409
     DeviceEnrollmentUnknown => 404
     DeviceEnrollmentRevoked { enrollment_id: _ } => 403
+    DeviceEnrollmentForAnotherOperator { enrolled: _, expected: _ } => 403
     DeviceEscalationNotFiled { escalation_id: _ } => 404
     DeviceStoreUnreadable { detail: _ } => 503
     DeviceKeyringUnavailable { cause: _ } => 503
+    DeviceSignedForAnotherRequest { field: _ } => 403
+    DeviceChallengeExpired { expires_at: _, observed_at: _ } => 403
+    DeviceChallengeNotIssuedHere => 403
+    DeviceCapabilityTagMalformed => 400
+    DeviceCapabilityRefused { cause: _ } => 403
+    DeviceSignatureRefused { verification: _ } => 403
+    DevicePlatformProofRefused { cause: _ } => 403
+    DevicePlatformProofForOtherBytes => 403
+    DevicePlatformProofWrongKey => 403
+    DevicePlatformUnrealized => 501
+    DeviceLostTheRace => 409
     DeviceCommitRefused { detail: _ } => 503
-    _ => 403
   }
 }
 
@@ -526,6 +542,18 @@ fn device_push_update_response_at(body: String, process: ApprovalServingProcess,
 // Run over the fleet SSH administrator edge as the owner of approval_device_store_root, never
 // served over HTTP (gunbc.auth.approval_device_redemption: the operator's SSH key is the
 // attribution). Eight hex characters of entropy, ten minutes to spend it, printed once.
+//
+// ITS CONSUMER IS A DECLARED FRONTIER (DESIGN section 3c, with the trigger beside it): in this
+// corpus the SSH administrator edge is realized by a FleetConvergeWorkflowMode running on the host
+// (gunbc.auth.approval_keyring_converge lands that way), and a mode's step output is a workflow
+// log readable by every principal with read access to the repository -- which is the exact
+// property the redemption module refuses for an HTTP issuer, since a readable code lets another
+// principal enrol its own key under the operator's login inside the window. So the verb is not
+// bound to a mode that prints it. TRIGGER: the operator's decision on how the code reaches them
+// and no one else (approval_device_enrolment_code_delivery_frontier below) -- the existing private
+// operator notification channel, or an SSH session of the operator's own -- after which one
+// FleetConvergeWorkflowMode or one documented operator invocation binds this function and
+// the routes gain their admitted entry.
 data approval_enrolment_code_window: Second = second(count: 600)
 data approval_enrolment_code_entropy_octets: Int = 4
 
@@ -535,6 +563,10 @@ fn mint_enrolment_code() -> NonEmptyStr? {
     Present { value: octets } => if count(octets) != approval_enrolment_code_entropy_octets { none } else { Present { value: base16_encode_lower(octets: octets) as NonEmptyStr } }
   }
 }
+
+data approval_device_enrolment_code_delivery_frontier: DissolutionCondition = unbound_dissolution(
+  description: "an operator-decided delivery of the enrolment code that only the operator can read -- the private operator notification channel gunbc.auth.approval_notification publishes to, or an operator-run SSH invocation -- binding issue_device_enrolment_code as one FleetConvergeWorkflowMode step or one documented operator verb, never a workflow log line -- SUFFICIENT FOR the operator to obtain a code that device_enrol_response will consume, with no other principal able to read it",
+)
 
 fn issue_device_enrolment_code() -> CliWireResponse {
   match device_observed_at() {
