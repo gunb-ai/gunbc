@@ -157,7 +157,7 @@ fn utf8_encode_code_points(code_points: List<Int>, acc: List<UInt8>) -> Result<L
     Present { value: cp } =>
       match utf8_encode_code_point(cp: cp) {
         Err { value: e } => Err { value: e }
-        Ok { value: os } => utf8_encode_code_points(code_points: code_points.skip(n: 1), acc: concat(acc, os))
+        Ok { value: os } => utf8_encode_code_points(code_points: code_points.skip(n: 1), acc: fold(os, init: acc, f: (a, o) => a |> list_push(o)))
       }
   }
 }
