@@ -107,22 +107,25 @@ fn posix_group_id_text(group: PosixGroupId) -> String {
   integer_nat_to_decimal_string(value: group.value)
 }
 
+// THE ONE SPELLING OF chown(1)'s OWNER[:GROUP] SEPARATOR. Both forms below -- numeric ids and names
+// -- render through this, so the grammar lives here once whichever form a caller holds.
+fn posix_owner_pair_text(user: String, group: String) -> String {
+  concat(user, concat(":", group))
+}
+
 fn posix_owner_spec_text(spec: PosixOwnerSpec) -> String {
-  concat(
-    posix_user_id_text(user: spec.user),
-    concat(":", posix_group_id_text(group: spec.group)),
-  )
+  posix_owner_pair_text(user: posix_user_id_text(user: spec.user), group: posix_group_id_text(group: spec.group))
 }
 
 // THE NAME FORM OF THE SAME PAIR. chown(1) accepts OWNER[:GROUP] as names or as numeric ids, and the
 // two are different facts (getpwnam maps one to the other on ONE host). A service account's ids are
 // allocated per host, so a consumer that declares principals across hosts can only declare NAMES.
-// The ":" separator is still produced here and nowhere else.
+// It renders through posix_owner_pair_text like the numeric form.
 type PosixOwnerNames {
   user: NonEmptyStr
   group: NonEmptyStr
 }
 
 fn posix_owner_names_text(names: PosixOwnerNames) -> String {
-  concat(names.user as String, concat(":", names.group as String))
+  posix_owner_pair_text(user: names.user as String, group: names.group as String)
 }

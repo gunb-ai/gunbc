@@ -30,12 +30,21 @@ data chown_binary_path: NonEmptyStr = "/usr/bin/chown"
 // THE OWNER ARGUMENT IS A TYPED PAIR, NOT A STRING THE CALLER ASSEMBLED. Callers used to pass an
 // `owner: String` built as uid + ":" + gid at the call site, which put chown's argument grammar in
 // the caller and left every caller free to get it wrong silently. Here the ":" form is produced
-// once, from a PosixOwnerSpec that could only be constructed from decoded ids.
-fn chown_argv(owner: PosixOwnerSpec, path: String) -> List<String> {
-  [chown_binary_path as String, posix_owner_spec_text(spec: owner), path]
+// once (extdeps.posix.identity posix_owner_pair_text), from either a PosixOwnerSpec that could only
+// be constructed from decoded ids, or PosixOwnerNames for principals declared by name because their
+// ids are allocated per host. chown(1) accepts both; one argv serves both.
+type ChownOwner
+  = ChownOwnerIds { spec: PosixOwnerSpec }
+  | ChownOwnerNames { names: PosixOwnerNames }
+
+fn chown_owner_text(owner: ChownOwner) -> String {
+  match owner {
+    ChownOwnerIds { spec: s } => posix_owner_spec_text(spec: s)
+    ChownOwnerNames { names: n } => posix_owner_names_text(names: n)
+  }
 }
 
-// The same argv over the NAME form, for principals declared by name because their ids are per host.
-fn chown_names_argv(owner: PosixOwnerNames, path: String) -> List<String> {
-  [chown_binary_path as String, posix_owner_names_text(names: owner), path]
+fn chown_argv(owner: ChownOwner, path: String) -> List<String> {
+  [chown_binary_path as String, chown_owner_text(owner: owner), path]
 }
+

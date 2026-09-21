@@ -12,6 +12,8 @@ import gunbc.auth.approval_request_submission {
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.sudo.elevation { sudo_elevate }
+import extdeps.tools.chown { chown_argv, ChownOwnerNames }
+import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, actions_variable_trimmed }
 import gunbc.auth.approval_keyring_pins {
@@ -143,8 +145,9 @@ fn claim_store_root_mkdir_argv() -> List<String> {
   ]
 }
 
+// Through extdeps.tools.chown chown_argv's name arm, so the OWNER:GROUP grammar is not spelled here.
 fn keyring_chown_argv(path: NonEmptyStr) -> List<String> {
-  ["chown", concat(fleet_posix_root_user.name as String, concat(":", fleet_posix_operator_user.name as String)), path as String]
+  chown_argv(owner: ChownOwnerNames { names: PosixOwnerNames { user: fleet_posix_root_user.name, group: fleet_posix_operator_user.name } }, path: path as String)
 }
 
 fn ntfy_group_admit_argv() -> List<String> {
