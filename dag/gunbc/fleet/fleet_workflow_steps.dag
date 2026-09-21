@@ -17,6 +17,7 @@ module gunbc.fleet_workflow_steps
 // constructors, because its build is one cargo invocation with no artifact handoff, and reusing
 // a cross-job artifact-transfer vocabulary to express that would be borrowing an architecture it
 // does not have.
+import gunbc.fleet_intent_network { operator_host_srv1 }
 import std.measure { minute_count }
 import std.types { Duration }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
@@ -599,13 +600,10 @@ data fleet_host_mutation_concurrency_group_expression: String = join([fleet_host
 // needed. This row stays the host-domain authority and is unchanged by that.
 data fleet_arm_mutation_group_glm_group_b_native: String = "gunbc-arm-mutation-glm-group-b-native"
 
-// The same shape for Group A: the D0 door runs on the broker host and moves Group A's pair-serving
-// authority and hosts, and the pair-serving apply reaches out from whichever executor was selected
-// and rewrites the group's units -- so both are keyed to the ARM, not the executor, and a D0 and a
-// pair apply queue behind each other whichever hosts they were dispatched on (an apply that read
-// Active before D0's suspension CAS must not execute its plans across it). Belt, not the wall: the
-// wall is the authority log's lease and claim (gunbc.spark.pair_serving_d0).
-data fleet_arm_mutation_group_deepseek_group_a: String = "gunbc-arm-mutation-deepseek-group-a"
+// Group A's arm key IS srv1's host key (gunbc.fleet.fleet_converge_workflow: the D0 door has two
+// domains, the srv1 control plane and Group A, and a job carries one group), so the pair-serving
+// apply keyed here queues behind D0 and behind every srv1 mutation whichever executor it names.
+data fleet_arm_mutation_group_deepseek_group_a: String = join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")
 
 // The Int->Nat crossing is admitted at a function RETURN position (std.checked_arithmetic's own
 // note), so the sum of the positive per-step allowances crosses here and the public fn carries the

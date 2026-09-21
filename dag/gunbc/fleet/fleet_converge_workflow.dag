@@ -941,19 +941,63 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // The wall is the source-level lock: gunbc.spark.native_serving_apply acquires an O_EXCL fence per
 // unit carrying a kernel-UUID transaction identity, and every leg that removes an artifact refuses
 // unless it owns that identity.
-// WHICH DOMAIN A MODE MUTATES is one modeled fact per mode, exhaustive, and the concurrency
-// expression is derived from it: a mode whose subject is an arm names that arm's group; every
-// other mode's subject is its executor.
+// WHICH DOMAIN A MODE MUTATES is one modeled fact per mode, EXHAUSTIVE AND WITHOUT A WILDCARD: a
+// mode added to the vocabulary makes this match non-exhaustive, so its author must say whether it
+// mutates its executor or an arm -- an absorbing default here would hand the next arm-mutating mode
+// executor serialization, the class this projection exists to prevent. The concurrency expression
+// is derived from it.
+//
+// D0 HAS TWO DOMAINS AND ONE KEY. The door runs on srv1 (the broker is loopback there, the placed
+// fabric store is in process) AND moves Group A's authority and hosts; GitHub admits one group per
+// job, so Group A's arm key IS the srv1 host key: D0 keeps serializing with every srv1 control-plane
+// mutation (the fleet apply, the keyring converge, the dashboard deploy, the broker install), and
+// the pair-serving apply -- which rewrites Group A's units from any executor -- joins that same key,
+// so an apply that read Active before D0's suspension CAS cannot execute across it. Belt, not the
+// wall: the wall is the authority log's lease and claim (gunbc.spark.pair_serving_d0).
 type FleetMutationDomain
   = ArmDomain { group: String }
   | ExecutorDomain
 
 fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> FleetMutationDomain {
   match mode {
-    SparkNativeServingApply => ArmDomain { group: fleet_arm_mutation_group_glm_group_b_native }
-    PairServingD0 => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    FullHostPlan => ExecutorDomain
+    LaunchEnvironmentPlan => ExecutorDomain
+    AllocationStorePlan => ExecutorDomain
+    FleetApply => ExecutorDomain
+    OrgActionsObserve => ExecutorDomain
+    AppControlPlaneObserve => ExecutorDomain
+    AppKeyVersionVerify => ExecutorDomain
+    MicrovmHostConverge => ExecutorDomain
+    MicrovmNetworkObserve => ExecutorDomain
+    GuestImageObserve => ExecutorDomain
+    GuestImageConverge => ExecutorDomain
+    MicrovmBootProbe => ExecutorDomain
+    SparkGrants => ExecutorDomain
+    SparkBootstrap => ExecutorDomain
     SparkServingApply => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    _ => ExecutorDomain
+    SparkNativeServingApply => ArmDomain { group: fleet_arm_mutation_group_glm_group_b_native }
+    SparkRuntimeImageProbe => ExecutorDomain
+    DashboardDeploy => ExecutorDomain
+    RlmLaunchDeploymentReceipt => ExecutorDomain
+    HostResetReturn => ExecutorDomain
+    RunnerHostFileObserve => ExecutorDomain
+    ApprovalBrokerDarkInstall => ExecutorDomain
+    RunnerHostFileConverge => ExecutorDomain
+    SitePxeEdgeObserve => ExecutorDomain
+    SitePxeEdgeConverge => ExecutorDomain
+    RunnerPasswordSessionToolConverge => ExecutorDomain
+    MicrovmControllerAppKeyConverge => ExecutorDomain
+    R2MintPreflight => ExecutorDomain
+    R2BucketEnsure => ExecutorDomain
+    R2BucketAdminMint => ExecutorDomain
+    R2ObjectWriteMint => ExecutorDomain
+    ApprovalKeyringConverge => ExecutorDomain
+    MtCollins1Boot => ExecutorDomain
+    PairServingD0 => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    MtCollins1FanObserve => ExecutorDomain
+    FabricWriterIdentityObserve => ExecutorDomain
+    MtCollins1CensusImagePublish => ExecutorDomain
+    OrgRunnerRosterObserve => ExecutorDomain
   }
 }
 

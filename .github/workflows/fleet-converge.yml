@@ -176,7 +176,7 @@ jobs:
       actions: read
       id-token: write
     concurrency:
-      group: ${{ github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-arm-mutation-deepseek-group-a' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-arm-mutation-deepseek-group-a' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
+      group: ${{ github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
       cancel-in-progress: false
     steps:
       - name: Checkout
