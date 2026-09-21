@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
-import extdeps.posix.identity { PosixOwnerSpec, posix_owner_spec_text }
+import extdeps.posix.identity { PosixOwnerSpec, posix_owner_spec_text, PosixOwnerNames, posix_owner_names_text }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -33,4 +33,9 @@ data chown_binary_path: NonEmptyStr = "/usr/bin/chown"
 // once, from a PosixOwnerSpec that could only be constructed from decoded ids.
 fn chown_argv(owner: PosixOwnerSpec, path: String) -> List<String> {
   [chown_binary_path as String, posix_owner_spec_text(spec: owner), path]
+}
+
+// The same argv over the NAME form, for principals declared by name because their ids are per host.
+fn chown_names_argv(owner: PosixOwnerNames, path: String) -> List<String> {
+  [chown_binary_path as String, posix_owner_names_text(names: owner), path]
 }
