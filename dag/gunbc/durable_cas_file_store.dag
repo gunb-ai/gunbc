@@ -377,9 +377,23 @@ fn cas_probe_as_observation(probe: CasSlotProbe) -> CasSlotObservation<NonEmptyS
 // been narrowed out of existence. A caller must not read "the slot holds
 // nothing" from a store that could not tell it anything and then choose the
 // remedy for an empty cell.
+//
+// THE READ VERB ASKS THE SAME SLOT-ADDRESSABILITY QUESTION THE WRITE VERB ASKS (review 69793 of
+// gunbc#12000). cas_file_slot_path interpolates the key on reads exactly as on writes, and the
+// first route to hand a request-supplied identity to a read -- the device routes -- made a key
+// carrying a separator a probe of a path outside the root whose 404/503 answer discriminated
+// existence there. The refusal is the store's, before any filesystem read, so no caller re-argues it
+// and no host detail is minted for a key that never named a slot.
 fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
-  cas_probe_as_observation(probe: cas_observe_slot(root: root, key: key))
+  if !cas_key_is_slot_addressable(key: key) {
+    CasObservedUnreadable { cause: CasUnreadableReadRefused { detail: cas_key_not_slot_addressable_detail } }
+  } else {
+    cas_probe_as_observation(probe: cas_observe_slot(root: root, key: key))
+  }
 }
+
+data cas_key_not_slot_addressable_detail: NonEmptyStr = "key is not slot-addressable: it carries a path separator"
+
 
 // ACCESS MODE AND CONDITIONAL PUBLICATION ARE TWO FACTS, AND THIS STORE HELD THEM AS ONE.
 //

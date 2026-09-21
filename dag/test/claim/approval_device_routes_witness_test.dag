@@ -8,8 +8,9 @@ import gunbc.auth.approval_device_routes {
   device_enrol_response_at, device_redeem_response_at, device_pending_response_at, device_request_response_at, device_enrollment_readback_response_at, device_push_update_response_at,
   redemption_status, requested_at_within_skew,
 }
-import gunbc.auth.approval_device_redemption { DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused, DevicePlatformUnrealized, DeviceCapabilityTagMalformed }
+import gunbc.auth.approval_device_redemption { observe_enrollment, EnrolmentSlotUnreadable, approval_device_store_root, DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused, DevicePlatformUnrealized, DeviceCapabilityTagMalformed }
 import gunbc.auth.approval_device_redemption_fixtures { envelope_vector_body }
+import gunbc.auth.approval_decision_store { observe_escalation, EscalationUnreadable }
 import gunbc.auth.approval_device_wire { ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json, ApnsRegistration, path_segment }
 import extdeps.apple.apns { ApnsProduction }
 import gunbc.auth.approval_app_attest_config { approval_app_attest_verifier, AppAttestVerifierAwaitingOperator, AppAttestVerifierConfigured }
@@ -90,6 +91,21 @@ test fn reads_refuse_unconfigured_until_the_operator_supplies_the_prefix() -> Bo
     AppAttestVerifierConfigured { app_id_prefix: _, bundle_id: _, environment: _, admitted_validation_categories: _, expected_bundle_version: _ } =>
       !device_route_refused_with(r: device_pending_response_at(body: read_authentication_json(a: fx_auth), observed_at: fx_now), status: 503, fragment: "not configured")
   }
+}
+
+// A REQUEST-SUPPLIED IDENTITY NEVER BECOMES NAVIGATION (review 69793 of gunbc#12000): the two
+// observers the device routes hand a body or path-segment identity to answer Unreadable with the
+// store's fixed slot-addressability detail for a separator-carrying key -- the store refuses before
+// any read, so no path outside the root is probed and the detail names no host state.
+test fn a_traversal_identity_is_refused_by_the_store_before_any_read() -> Bool {
+  (match observe_enrollment(root: approval_device_store_root, enrollment_id: "enr-../../../etc/shadow") {
+    EnrolmentSlotUnreadable { detail: d } => string_contains(s: d as String, pattern: "not slot-addressable")
+    _ => false
+  })
+    && (match observe_escalation(root: approval_device_store_root, escalation_id: "../../../etc/shadow") {
+      EscalationUnreadable { detail: d } => string_contains(s: d as String, pattern: "not slot-addressable")
+      _ => false
+    })
 }
 
 // The skew window is closed below and open above: 60 s before is inside, 61 s before is not; 59 s
