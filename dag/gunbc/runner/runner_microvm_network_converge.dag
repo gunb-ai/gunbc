@@ -22,6 +22,7 @@ import extdeps.linux.nf_conntrack {
 import extdeps.tools.uname { uname_release_command }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands, LocalExec }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.shell
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.github.actions_environment { github_run_id_variable_name }
@@ -262,11 +263,12 @@ fn slot_probe_text(r: SlotProbeReading) -> String {
 // THE HOST'S OWN ADDRESS ON THE TAP, AND THE ROUTE THROUGH IT, ARE READ FROM THE KERNEL rather than
 // assumed from the .network file having been installed. `ip -o -4 addr show dev <tap>` prints the
 // configured address; a tap whose networkd file landed but whose link never came up prints nothing.
-fn addr_reading_carries(stdout: String, cidr: String) -> Bool {
-  string_contains(s: stdout, pattern: cidr)
-}
-
-fn route_reading_carries(stdout: String, cidr: String) -> Bool {
+// ONE PREDICATE, NOT TWO. The address reading and the route reading ask the SAME question of
+// their stdout -- does this text carry the CIDR we expect -- so they were one concept under two
+// names (DESIGN 3: a second name for one concept duplicates work at the meaning layer). What
+// differs between the two call sites is the CIDR SUPPLIED, not the test applied, and that
+// difference is already visible where each caller computes its own argument.
+fn reading_carries_cidr(stdout: String, cidr: String) -> Bool {
   string_contains(s: stdout, pattern: cidr)
 }
 
@@ -380,12 +382,35 @@ type HostReading {
   expectations: HelperSurfaceReading
 }
 
+// THE RECEIPT CARRIES THE MATCHED ROUTE, NOT THE WHOLE CAPTURE. `ip -o` guarantees one output line
+// per ROUTE OBJECT, not one per device, so a tap carrying a second route -- an added static route, or
+// the kernel route of a second address -- prints two lines. Putting the raw capture into this field
+// made the slot's record span two wire lines, and `parse_converged_slot_line` then read a trailing
+// line with no `slot=` prefix and a leading one with no `ipv6=`, returning ConvergedSlotNetworkMalformed
+// for a host that was in fact correctly converged. It failed CLOSED, so nothing was fabricated -- but
+// the receipt its named consumer exists to read became unparseable for a LEGAL host state.
+//
+// THIS NARROWS AN EXISTING FALLBACK RATHER THAN ADDING ONE. The whole-capture value was previously
+// used unconditionally; it is now used only when no line carries the expected prefix, which
+// `slot_refusal` has already established cannot happen on any reading that reaches here -- it refuses
+// with SlotRouteNotHeld first. So this is strictly closer to the intended value and never worse.
+fn matched_route_line(stdout: String, prefix: String) -> String {
+  fold(
+    filter(xs: split(s: stdout, delimiter: "\n"), predicate: fn(l) { string_contains(s: l, pattern: prefix) }),
+    init: trim(s: stdout),
+    f: (acc, l) => if acc == trim(s: stdout) { trim(s: l) } else { acc }
+  )
+}
+
 fn converged_slot_of_reading(r: SlotReading) -> ConvergedSlot {
   let net = runner_slot_network(slot: r.slot)
   ConvergedSlot {
     subject: slot_network_subject(slot: r.slot),
     host_address_cidr: runner_slot_host_cidr(net: net) as NonEmptyStr,
-    guest_route: trim(s: slot_probe_text(r: r.route)) as NonEmptyStr,
+    guest_route: matched_route_line(
+      stdout: slot_probe_text(r: r.route),
+      prefix: render_ipv4_prefix(p: runner_slot_subnet(net: net)) as String
+    ) as NonEmptyStr,
     tap_ipv6: r.tap_ipv6,
   }
 }
@@ -403,13 +428,13 @@ fn slot_refusal(r: SlotReading) -> List<ConvergeRefusal> {
       match r.addr {
         SlotProbeUnread { reason: why } => [SlotAddressUnread { slot: r.slot, reason: why }]
         SlotProbeRead { text: addr_text } =>
-          if !addr_reading_carries(stdout: addr_text, cidr: cidr) {
+          if !reading_carries_cidr(stdout: addr_text, cidr: cidr) {
             [SlotAddressNotHeld { slot: r.slot, expected: cidr as NonEmptyStr }]
           } else {
             match r.route {
               SlotProbeUnread { reason: why } => [SlotRouteUnread { slot: r.slot, reason: why }]
               SlotProbeRead { text: route_text } =>
-                if !route_reading_carries(stdout: route_text, cidr: render_ipv4_prefix(p: runner_slot_subnet(net: net)) as String) {
+                if !reading_carries_cidr(stdout: route_text, cidr: render_ipv4_prefix(p: runner_slot_subnet(net: net)) as String) {
                   [SlotRouteNotHeld { slot: r.slot, expected: render_ipv4_prefix(p: runner_slot_subnet(net: net)) }]
                 } else {
                   []

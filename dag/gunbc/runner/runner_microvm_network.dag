@@ -1540,10 +1540,6 @@ fn parse_tap_ipv6_wire(raw: String) -> TapIpv6Standing? {
   }
 }
 
-fn slot_field(parts: List<String>, key: String) -> String? {
-  wire_value(lines: parts, key: key)
-}
-
 // THE SLOT IS FOUND IN THE CANDIDATE ROSTER, NOT MINTED FROM THE TEXT. A receipt naming a slot this
 // host does not have is a receipt about another fleet, and deriving the identity from a parsed index
 // would let the file invent one.
@@ -1558,20 +1554,20 @@ fn candidate_named(candidates: List<RunnerSlotIdentity>, name: String) -> Runner
 
 fn parse_converged_slot_line(line: String, candidates: List<RunnerSlotIdentity>) -> ConvergedSlot? {
   let parts = split(s: trim(s: line), delimiter: "|")
-  match slot_field(parts: parts, key: "slot") {
+  match wire_value(lines: parts, key: "slot") {
     Absent => none
     Present { value: name } =>
       match candidate_named(candidates: candidates, name: name) {
         Absent => none
         Present { value: identity } => {
           let derived = slot_network_subject(slot: identity)
-          match slot_field(parts: parts, key: "tap") {
+          match wire_value(lines: parts, key: "tap") {
             Absent => none
             Present { value: tap } =>
-              match slot_field(parts: parts, key: "guest") {
+              match wire_value(lines: parts, key: "guest") {
                 Absent => none
                 Present { value: guest } =>
-                  match slot_field(parts: parts, key: "mac") {
+                  match wire_value(lines: parts, key: "mac") {
                     Absent => none
                     Present { value: mac } =>
                       if (tap != (derived.tap_device as String))
@@ -1590,13 +1586,13 @@ fn parse_converged_slot_line(line: String, candidates: List<RunnerSlotIdentity>)
 }
 
 fn parse_converged_slot_tail(parts: List<String>, derived: SlotNetworkSubject) -> ConvergedSlot? {
-  match slot_field(parts: parts, key: "host_cidr") {
+  match wire_value(lines: parts, key: "host_cidr") {
     Absent => none
     Present { value: cidr } =>
-      match slot_field(parts: parts, key: "route") {
+      match wire_value(lines: parts, key: "route") {
         Absent => none
         Present { value: route } =>
-          match slot_field(parts: parts, key: "ipv6") {
+          match wire_value(lines: parts, key: "ipv6") {
             Absent => none
             Present { value: v6raw } =>
               match parse_tap_ipv6_wire(raw: v6raw) {
