@@ -1140,13 +1140,13 @@ fn workspace_band(label: String, cls: String, entries: List<WorkBandEntry>, obse
   }
 }
 
-fn workspace_active_band(rows: List<WorkRowView>, observation: ObservationImpactView) -> List<Fragment> {
-  if count(rows) == 0 {
+fn workspace_active_band(entries: List<WorkBandEntry>, observation: ObservationImpactView) -> List<Fragment> {
+  if count(entries) == 0 {
     []
   } else {
     [ el_class("section", "frontier-bucket frontier-active", [
         el("h2", [ txt("Active") ]),
-        workspace_rows_ul(rows: rows, observation: observation),
+        workspace_entries_ul(entries: entries, observation: observation),
       ]) ]
   }
 }
@@ -1164,7 +1164,7 @@ fn workspace_observation_banner(observation: ObservationImpactView) -> List<Frag
 
 fn workspace_markup(ws: DailyWorkspaceView) -> Fragment {
   el_class("section", "roadmap-frontier", concat(
-    workspace_active_band(rows: ws.active, observation: ws.observation),
+    workspace_active_band(entries: ws.active, observation: ws.observation),
     concat(workspace_band(label: "Ready", cls: "ready", entries: ws.ready, observation: ws.observation),
       concat(workspace_band(label: "Upcoming", cls: "upcoming", entries: ws.upcoming, observation: ws.observation),
         concat(workspace_band(label: "Done", cls: "done", entries: ws.done, observation: ws.observation),

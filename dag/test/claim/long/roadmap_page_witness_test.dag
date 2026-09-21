@@ -1303,3 +1303,112 @@ test fn witness_client_paints_hero_face_verbatim() -> Bool {
     && string_contains(s: js, pattern: "av.summary_class")
     && string_contains(s: js, pattern: "activity-throughput")
 }
+
+// ── GROUP-EVERYWHERE (operator feedback 2026-09-21: "I'm not seeing the grouping") ───────────────
+//
+// The amended placement rule, rendered: grouping is the organizing principle in EVERY band —
+// a task row nests under its project row regardless of attempts, keeping its hero treatment in
+// place, and a top-level row joins the Active band when its SUBTREE carries live work. These
+// fixtures drive the real authority's shell graph: one fabricated live attempt on
+// shell-dag-cron-entry-line-builder (the row the live belt happens to be working) pulls the whole
+// collapsed shell project into the Active band, auto-open, with the live task nested under it —
+// and a refused attempt instead rolls the red flag up to the project's bar.
+
+fn fx_shell_live_rows(refused: Bool) -> List<gunbc.roadmap_presentation.WorkRowView> {
+  let doc = gunbc.roadmap_authority.roadmap_authority_for(focus: NoFocus)
+  let nodes = gunbc.roadmap_spawner.doc_all_nodes(doc: doc)
+  let edges = gunbc.roadmap_spawner.doc_all_edges(doc: doc)
+  let ctx = gunbc.roadmap_page.page_launch_context(doc: doc, merged: [], launch: dispatch_doc_standing())
+  map(nodes, rn => {
+    let is_live = (rn.node as String) == "shell-dag-cron-entry-line-builder"
+    gunbc.roadmap_presentation.work_row_view(
+      rn: rn, nodes: nodes, edges: edges, merged: [],
+      activity: if is_live {
+        if refused {
+          gunbc.roadmap_presentation.activity_view_from_parts(
+            segments: [
+              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
+            ],
+            remaining: 5,
+            process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
+            throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+            current_activity: "")
+        } else {
+          gunbc.roadmap_presentation.activity_view_from_parts(
+            segments: [
+              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentActive, detail: "" },
+              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.ReviewWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.GoalAuditWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+            ],
+            remaining: 5,
+            process: gunbc.worker_lifecycle.WorkerProcessRunning { command: "codex exec" },
+            throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+            current_activity: "Agent working · running command")
+        }
+      } else {
+        gunbc.roadmap_presentation.NoActiveWork
+      },
+      rounds: if is_live { hero_rounds_fixture() } else { RoundsUnobserved { reason: "no active attempt" as NonEmptyStr } },
+      worker_alive: is_live,
+      standing: none,
+      attempt_stale: false,
+      launch: ctx)
+  })
+}
+
+fn fx_shell_live_workspace_html(refused: Bool) -> HtmlEmitResult {
+  let doc = gunbc.roadmap_authority.roadmap_authority_for(focus: NoFocus)
+  let edges = gunbc.roadmap_spawner.doc_all_edges(doc: doc)
+  let rows = fx_shell_live_rows(refused: refused)
+  let ws = gunbc.roadmap_presentation.daily_workspace_view(
+    rows: rows, edges: edges, program: none,
+    observation: gunbc.roadmap_presentation.ObservationsNominal, families: [], members: [])
+  try_serialize_html_source(node: gunbc.roadmap_page.workspace_markup(ws: ws))
+}
+
+fn fx_shell_task_ids() -> List<String> {
+  [
+    "shell-dag-cron-entry-line-builder",
+    "shell-dag-floor-peak-calibration-rows",
+    "shell-dag-ci-fmt-gate-line",
+    "shell-dag-ci-deploy-invoke-prelude",
+    "shell-dag-ci-heal-regen-invoke",
+    "shell-dag-compile-pool-slice-install",
+    "shell-dag-slot-population-census-read",
+    "shell-dag-codex-app-server-trip-script",
+    "shell-dag-live-deploy-install-owned",
+    "shell-dag-live-deploy-restart-tailscale",
+  ]
+}
+
+test fn witness_shell_project_groups_in_active_band_with_live_task() -> Bool {
+  match fx_shell_live_workspace_html(refused: false) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let active_parts = split(s: h, delimiter: "frontier-bucket frontier-active")
+      count(active_parts) == 2
+        && string_contains(s: string_at(parts: active_parts, index: 1), pattern: "<li class=\"node node-project node-open\" data-node=\"shell-residue-zero\"")
+        && all(fx_shell_task_ids(), id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
+        && string_contains(s: h, pattern: "<details class=\"project-tasks\" open=\"\">")
+        && string_contains(s: h, pattern: "class=\"stage-strip\"")
+        && string_contains(s: h, pattern: "class=\"stage-segment stage-active stage-live\"")
+        && !string_contains(s: h, pattern: "project-error")
+  }
+}
+
+test fn witness_shell_red_flag_rolls_up_to_project_bar() -> Bool {
+  match fx_shell_live_workspace_html(refused: true) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "frontier-bucket frontier-active")
+        && string_contains(s: h, pattern: "class=\"project-progress project-error\"")
+        && string_contains(s: h, pattern: "class=\"stage-segment stage-refused\"")
+        && string_contains(s: h, pattern: " tasks closed")
+  }
+}

@@ -1454,11 +1454,17 @@ type WorkFamilyView {
 // survives only when both endpoints render" applied to progress). FAMILY-FIRST — a family member
 // never nests and never counts: the closing-contract family is the established presentation
 // authority for generated task rows (typed membership, stated-once claim), and edge-nesting it
-// under its gated node would double-render it. ACTIVE-SURFACES — a row with live work keeps the
-// existing attention law and renders flat in the Active band rather than inside a tree (attention
-// outranks taxonomy, the family rule generalized); it still counts in its project's denominator
-// and still pulses its ancestors' auto-open. PRIMARY-PARENT — a task that is a prerequisite of
-// several rendered projects renders under the FIRST one in edge declaration order (never
+// under its gated node would double-render it. GROUP-EVERYWHERE (operator feedback 2026-09-21,
+// amending ACTIVE-SURFACES: "I'm not seeing the grouping") — grouping is the organizing principle
+// in EVERY band, including the Active band: a task row nests under its project row REGARDLESS of
+// attempts, keeping its full hero treatment (stage strip, live pulse) in its nested position. The
+// flattened first cut pushed every row with a live attempt out of its tree into a flat Active
+// band, which is exactly why the shell→dag batch read as ten loose rows; instead, a top-level row
+// now joins the Active band when its SUBTREE carries live work (itself or any display
+// descendant), so the Active band's top level is projects — auto-open by the live-subtree pulse,
+// red-flagged by subtree_error — plus genuinely projectless rows. Every row still renders exactly
+// once: the nested position is the only position. PRIMARY-PARENT — a task that is a prerequisite
+// of several rendered projects renders under the FIRST one in edge declaration order (never
 // duplicated), while counting toward every project's progress. roadmap_primary_parent was
 // consulted and does NOT fit: it selects a node's own first PREREQUISITE, the opposite direction
 // of the display parent needed here. NOTHING-VANISHES — a row whose display-parent chain does not
@@ -1558,7 +1564,7 @@ fn row_display_parent_id(rows: List<WorkRowView>, edges: List<RoadmapEdge>, memb
         && !((e.child as String) == node_id)
         && any(rows, r =>
           r.node_id == (e.child as String)
-            && row_is_banded(row: r)
+            && row_is_rendered(row: r)
             && !row_is_family_member(members: members, node_id: r.node_id)) {
         Present { value: e.child as String }
       } else {
@@ -1588,7 +1594,7 @@ fn row_is_nested(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: Lis
 }
 
 fn row_is_project(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView) -> Bool {
-  row_is_banded(row: row)
+  row_is_rendered(row: row)
     && !row_is_family_member(members: members, node_id: row.node_id)
     && count(project_task_rows(rows: rows, edges: edges, members: members, node_id: row.node_id)) > 0
 }
@@ -1670,7 +1676,7 @@ fn project_tree_view(row: WorkRowView, rows: List<WorkRowView>, edges: List<Road
     []
   } else {
     tasks |> filter(t =>
-      row_is_banded(row: t)
+      row_is_rendered(row: t)
         && (match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: t.node_id) {
           Present { value: p } => p == end.node_id
           Absent => false
@@ -1724,7 +1730,7 @@ type WorkBandEntry
 type DailyWorkspaceView {
   program: ProgramProgressView?
   observation: ObservationImpactView
-  active: List<WorkRowView>
+  active: List<WorkBandEntry>
   ready: List<WorkBandEntry>
   upcoming: List<WorkBandEntry>
   done: List<WorkBandEntry>
@@ -1742,8 +1748,43 @@ fn row_is_active_work(row: WorkRowView) -> Bool {
   }
 }
 
-fn rows_with_scheduling_key(rows: List<WorkRowView>, key: String) -> List<WorkRowView> {
-  filter(xs: rows, predicate: r => !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == key)
+// ACTIVE-BAND MEMBERSHIP IS ROOT-GRAIN AND SUBTREE-DRIVEN (the GROUP-EVERYWHERE amendment): a
+// top-level (non-nested, non-family) row renders in the Active band when live work exists anywhere
+// in its display subtree — itself or any descendant — so a project whose tasks are being worked
+// surfaces as ONE grouped row at the top, with the live tasks nested inside it. Family members
+// keep their established law: active work leaves the group for the Active band as a flat row.
+fn project_subtree_active(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int) -> Bool {
+  if fuel <= 0 {
+    false
+  } else {
+    any(project_task_rows(rows: rows, edges: edges, members: members, node_id: node_id), r =>
+      row_is_active_work(row: r)
+        || project_subtree_active(rows: rows, edges: edges, members: members, node_id: r.node_id, fuel: fuel - 1))
+  }
+}
+
+fn row_subtree_active(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView) -> Bool {
+  row_is_active_work(row: row)
+    || project_subtree_active(rows: rows, edges: edges, members: members, node_id: row.node_id, fuel: count(rows))
+}
+
+fn row_is_active_root(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView) -> Bool {
+  !row_is_family_member(members: members, node_id: row.node_id)
+    && !row_is_nested(rows: rows, edges: edges, members: members, node_id: row.node_id)
+    && row_subtree_active(rows: rows, edges: edges, members: members, row: row)
+}
+
+fn rows_for_active_band(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>) -> List<WorkRowView> {
+  rows |> filter(r =>
+    (row_is_family_member(members: members, node_id: r.node_id) && row_is_active_work(row: r))
+      || row_is_active_root(rows: rows, edges: edges, members: members, row: r))
+}
+
+fn rows_for_scheduling_band(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, key: String) -> List<WorkRowView> {
+  rows |> filter(r =>
+    work_scheduling_key(s: r.scheduling) == key
+      && !(row_is_family_member(members: members, node_id: r.node_id) && row_is_active_work(row: r))
+      && !row_is_active_root(rows: rows, edges: edges, members: members, row: r))
 }
 
 fn family_member_for(members: List<WorkFamilyMemberFact>, node_id: String) -> WorkFamilyMemberFact? {
@@ -1852,10 +1893,10 @@ fn daily_workspace_view(
   DailyWorkspaceView {
     program: program,
     observation: observation,
-    active: filter(xs: rows, predicate: r => row_is_active_work(row: r)),
-    ready: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "ready"), all_rows: rows, edges: edges, families: families, members: members),
-    upcoming: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "upcoming"), all_rows: rows, edges: edges, families: families, members: members),
-    done: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "done"), all_rows: rows, edges: edges, families: families, members: members),
-    superseded: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "superseded"), all_rows: rows, edges: edges, families: families, members: members),
+    active: band_entries(rows: rows_for_active_band(rows: rows, edges: edges, members: members), all_rows: rows, edges: edges, families: [], members: []),
+    ready: band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "ready"), all_rows: rows, edges: edges, families: families, members: members),
+    upcoming: band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "upcoming"), all_rows: rows, edges: edges, families: families, members: members),
+    done: band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "done"), all_rows: rows, edges: edges, families: families, members: members),
+    superseded: band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "superseded"), all_rows: rows, edges: edges, families: families, members: members),
   }
 }

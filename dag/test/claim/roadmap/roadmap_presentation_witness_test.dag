@@ -574,7 +574,7 @@ test fn witness_daily_workspace_surfaces_active_above_ready() -> Bool {
   let idle_row = fx_row(activity: NoActiveWork)
   let ws = daily_workspace_view(rows: [idle_row, active_row], edges: [], program: none, observation: ObservationsNominal, families: [], members: [])
   count(ws.active) == 1
-    && fold(ws.active, init: true, f: (acc, r) => acc && row_is_active_work(row: r))
+    && band_entry_has_active(entries: ws.active)
     && band_entry_row_count(entries: ws.upcoming) == 1
     && band_entry_row_count(entries: ws.ready) == 0
     && !band_entry_has_active(entries: ws.upcoming)
@@ -668,7 +668,14 @@ test fn witness_active_family_member_leaves_group() -> Bool {
   let ws = daily_workspace_view(rows: [m1, m2], edges: [], program: none, observation: ObservationsNominal,
     families: fx_family_decls(), members: fx_family_members())
   count(ws.active) == 1
-    && (match ws.active.first() { Present { value: r } => r.node_id == "cc-a" Absent => false })
+    && (match ws.active.first() {
+      Present { value: e } => match e {
+        BandRow { row } => row.node_id == "cc-a"
+        BandFamily { family: _ } => false
+        BandProject { project: _ } => false
+      }
+      Absent => false
+    })
     && fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
       BandFamily { family } => count(family.rows) == 1
       BandRow { row: _ } => false
@@ -928,7 +935,7 @@ fn band_entry_ids(entry: WorkBandEntry) -> List<String> {
 
 fn fx_ws_rendered_ids(ws: DailyWorkspaceView) -> List<String> {
   concat(
-    map(ws.active, r => r.node_id),
+    flat_map(ws.active, e => band_entry_ids(entry: e)),
     concat(
       flat_map(ws.ready, e => band_entry_ids(entry: e)),
       concat(
@@ -988,10 +995,11 @@ test fn witness_project_progress_counts_accepted_or_superseded_only() -> Bool {
     && band_entry_row_count(entries: ws.superseded) == 0
 }
 
-// NOTHING VANISHES, NOTHING DUPLICATES, and a live attempt keeps the attention law: the open task
-// with ActiveWork leaves the tree for the Active band (attention outranks taxonomy), still counts
-// in its project's denominator, and every rendered input row appears in the composed workspace
-// exactly once.
+// NOTHING VANISHES, NOTHING DUPLICATES, and GROUP-EVERYWHERE (operator feedback 2026-09-21,
+// amending ACTIVE-SURFACES): the open task with a live attempt NESTS under its project like every
+// other task — the project root joins the Active band because its subtree carries live work,
+// renders there as ONE grouped project row (auto-open by the live-subtree pulse), and every
+// rendered input row appears in the composed workspace exactly once, in its nested position.
 test fn witness_workspace_nesting_loses_no_node_and_duplicates_none() -> Bool {
   let rows = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
   let edges = fx_hier_edges()
@@ -1000,16 +1008,56 @@ test fn witness_workspace_nesting_loses_no_node_and_duplicates_none() -> Bool {
   count(ids) == 5
     && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
     && count(ws.active) == 1
-    && (match ws.active.first() { Present { value: r } => r.node_id == "hier-task-open" Absent => false })
-    && (match ws.upcoming.first() {
+    && (match ws.active.first() {
       Present { value: e } => match e {
         BandProject { project } =>
-          project.total_count == 4
+          project.row.node_id == "hier-project"
+            && project.total_count == 4
             && map(project.entries, ent => fx_entry_id(entry: ent))
-              == ["hier-task-done", "hier-task-superseded", "hier-task-review"]
+              == ["hier-task-done", "hier-task-superseded", "hier-task-review", "hier-task-open"]
             && project.auto_open
         BandRow { row: _ } => false
         BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+    && band_entry_row_count(entries: ws.upcoming) == 0
+    && band_entry_row_count(entries: ws.ready) == 0
+    && band_entry_row_count(entries: ws.done) == 0
+    && band_entry_row_count(entries: ws.superseded) == 0
+}
+
+// A projectless row with a live attempt renders FLAT in the Active band (the band's other top-level
+// shape), while an idle sibling stays in its scheduling band — the band's membership is root-grain:
+// the active row's own position is top-level because nothing nests it, not because it was pulled
+// out of a tree.
+test fn witness_projectless_active_row_renders_flat_in_active() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-solo-active", content: "solo live row"),
+    fx_sized(id: "hier-solo-idle", content: "solo idle row"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(
+    rn: rn, nodes: nodes, edges: [], merged: [],
+    activity: if (rn.node as String) == "hier-solo-active" { fx_specimen_activity() } else { NoActiveWork },
+    standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: [], program: none, observation: ObservationsNominal, families: [], members: [])
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 2
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && count(ws.active) == 1
+    && (match ws.active.first() {
+      Present { value: e } => match e {
+        BandRow { row } => row.node_id == "hier-solo-active"
+        BandFamily { family: _ } => false
+        BandProject { project: _ } => false
+      }
+      Absent => false
+    })
+    && (match ws.ready.first() {
+      Present { value: e } => match e {
+        BandRow { row } => row.node_id == "hier-solo-idle"
+        BandFamily { family: _ } => false
+        BandProject { project: _ } => false
       }
       Absent => false
     })
