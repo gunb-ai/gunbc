@@ -46,7 +46,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.host_cli_dependency { HostCliDependencyAbsence, first_absent_gh_cli_operation_host_cli_dependency, host_dependency_absent_wire }
 import gunbc.runner_slot_allocation { runner_label_sets_equal }
 import gunbc.runner_host_deploy { github_app_runner_org, gunbc_ci_github_app }
-import gunbc.fleet.org_actions_converge {
+import gunbc.fleet.org_actions_inspection {
   org_admin_token_env_name,
   json_member_string,
   json_member_int,
@@ -64,7 +64,7 @@ import gunbc.fleet_runner_connectivity {
 // waiting for: GET /orgs/{org}/actions/runners, read through the gh CLI under the gunbai-ci App
 // installation token that gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude mints in-run into
 // GUNBC_ORG_ADMIN_TOKEN and GH_TOKEN -- the same credential route and custody
-// gunbc.fleet.org_actions_converge already reads runner groups through. Nothing here holds a key,
+// gunbc.fleet.org_actions_inspection already reads runner groups through. Nothing here holds a key,
 // mints a token, or places one on an argv.
 //
 // WITHOUT THAT CREDENTIAL THE ANSWER IS RosterReadUnavailable, NEVER THE PINNED CORPUS. The

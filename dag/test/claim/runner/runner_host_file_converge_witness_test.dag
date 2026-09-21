@@ -11,10 +11,8 @@ import extdeps.needrestart {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved,
-}
-import gunbc.runner_width_transition { required_retirees_for_host }
+import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.runner_width_transition { transition_population_agreement, TransitionPopulationAgrees, TransitionPopulationDisagrees, TransitionPopulationUndecidable }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
@@ -605,29 +603,37 @@ fn srv1_unit_names(slot: Int, limit: Int) -> List<String> {
 // below partition a supplied 21-slot listing into live and masked; where the cut falls is srv1's
 // declared width, which moved once already (12 -> 15) and turned every claim that spelled it as
 // `12`/`13` red for a reason none of them was about (review 68841).
-fn srv1_width() -> Int {
+//
+// The width is a RunnerWidthResolution since #11762, not an Int: a host whose width does not resolve
+// has no live/retiring boundary to state, so every listing below is EMPTY on that arm rather than cut
+// at a fabricated zero. An empty listing must never read as "nothing to check": every claim that
+// consumes one either carries a positive conjunct that no unit can satisfy when the listing is empty
+// (every_unit_holds, population_holds, an effective population) or, where the claim is a pure
+// refusal, a `length(...) > 0` conjunct on the listing -- so an unresolved srv1 width reds each of
+// them instead of passing over an empty roster.
+fn srv1_width() -> Int? {
   match gunbc_runner_committed_width(host: "srv1" as HostIdentity) {
-    RunnerWidthDerived { slots: n } => n
-    RunnerWidthUnresolved { cause: _ } => 0 - 1
+    RunnerWidthUnresolved { cause: _ } => none
+    RunnerWidthDerived { slots: w } => Present { value: w }
   }
 }
 
 fn srv1_live_names() -> List<String> {
-  srv1_unit_names(slot: 1, limit: srv1_width())
+  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: 1, limit: w) }
 }
 
 fn srv1_retiring_names(limit: Int) -> List<String> {
-  srv1_unit_names(slot: srv1_width() + 1, limit: limit)
+  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: w + 1, limit: limit) }
 }
 
 // The last declared-live slot: the one the REDs below mask or lose to show that retirement never
 // excuses a live slot.
 fn srv1_last_live_names() -> List<String> {
-  srv1_unit_names(slot: srv1_width(), limit: srv1_width())
+  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: w, limit: w) }
 }
 
 fn srv1_all_but_last_live_names() -> List<String> {
-  srv1_unit_names(slot: 1, limit: srv1_width() - 1)
+  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: 1, limit: w - 1) }
 }
 
 fn every_unit_holds(pop: RunnerSlotPopulation, units: List<String>, wire: String) -> Bool {
@@ -694,7 +700,8 @@ test fn a_masked_declared_live_slot_is_not_retired_and_refuses() -> Bool {
 test fn a_declared_live_slot_missing_from_the_host_refuses() -> Bool {
   let missing = join(map(srv1_last_live_names(), u => show_block_of(unit: u, load: "not-found")), "\n\n")
   let show = join([srv1_show_reading(live: srv1_all_but_last_live_names(), masked: srv1_retiring_names(limit: 21)), missing], "\n\n")
-  !runner_slot_population_effective(population: srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: show))
+  length(srv1_last_live_names()) > 0
+    && !runner_slot_population_effective(population: srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: show))
 }
 
 // RED: a required retiree that list-units OMITS is still observed. Absence from a listing is not
@@ -744,7 +751,8 @@ test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses
 // retiree with NO reading of its own is unread, and refuses.
 test fn an_unread_omitted_retiree_refuses() -> Bool {
   let unread_pop = srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(), masked: concat(srv1_retiring_names(limit: 20), srv1_unit_names(slot: 22, limit: 50))))
-  population_holds(pop: unread_pop, unit: "actions-runner@srv1-21.service", wire: "unread")
+  length(srv1_live_names()) > 0
+    && population_holds(pop: unread_pop, unit: "actions-runner@srv1-21.service", wire: "unread")
     && !runner_slot_population_effective(population: unread_pop)
 }
 
@@ -916,25 +924,53 @@ test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
 
 // INHABITANCE OF THE REAL ROSTER (DESIGN 3, the pairing obligation). The claims above supply a
 // three-retiree roster; this one asserts the real srv1 subject the production route carries reaches
-// the same functions: the subject's retired roster IS the obligation gunbc.runner_width_transition
-// declares for srv1 (an identity join, not a count -- DESIGN 5: a size literal copied from the
-// current tree is a change detector, and review 68841 found it already stale after srv1's target
-// width moved), it is non-empty, it is DISJOINT from the same subject's desired units, its real
-// ControlGroup paths carry systemd's escape, and one admitted argv still covers all of them.
+// the same functions: its retired roster, with the real ControlGroup paths systemd reports for those
+// units, reaches ONE transport-admitted argv covering all of them. Its red is in this module and in
+// the cgroup read batching and argv transport it composes -- not in the width transition, which the
+// sibling claim below owns.
 //
-// The disjointness is the relation the stale 38 was standing in for. That number went wrong
-// precisely because slots 13-15 were still counted as retirees after the width authority made
-// them desired-live, and a non-empty check cannot see that: it catches an empty roster and not
-// an overlapping one, so the next width move could put a desired slot back into the retiree set
-// with the claim still green. From sharp-dove-876's reading of the same defect.
+// WHAT IS NOT ASSERTED HERE, AND WHY (review 69106). The stale count literal 38 was first replaced by
+// `retired == required_retirees_for_host(host: srv1)`, which is f(x) == f(x): the subject's
+// retired_units IS that call, so the conjunct was green by construction and its red was not
+// authorable (DESIGN 4b: a decoration). A test-side disjointness fold over retired and desired was the
+// same defect: both sets derive from gunbc_runner_slots_per_host, on opposite sides of it, so they are
+// disjoint by derivation and no production edit could make that conjunct red. A mutation run that
+// edits one side of such a comparison flips it and proves nothing about production. Neither is
+// restored, and no assertion whose two sides originate from one production call belongs here: exact
+// manifest correctness is runner_slot_retirement_witness_test's proposition, not this readback claim's.
 test fn the_real_srv1_retiree_roster_reaches_one_admitted_read() -> Bool {
   let retired = srv1_retired()
-  let desired = srv1_desired()
   let argv = argv_or_empty(o: events_read_of(retired: retired, show: blocks_for(units: retired, active: "active", live_cgroup: true)))
   length(retired) > 0
-    && retired == required_retirees_for_host(host: operator_host_srv1)
-    && length(desired) > 0
-    && all(retired, u => !any(desired, d => (d as String) == (u as String)))
     && argv == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
     && (match portable_remote_words(raws: argv) { Absent => false Present { value: _ } => true })
+}
+
+// EVERY IDENTITY THE DEPLOY CURRENTLY DESIRES IS EXCLUDED FROM THE TRANSITION OBLIGATION. This is the
+// one cross-authority relation the stale 38 concealed: that number went wrong because slots 13-15 were
+// still counted as retirees after the width authority made them desired-live. It is NOT a proof that
+// the transition manifest is exact -- that proposition, with its own positive and negative controls
+// over transition_population_agreement, lives in runner_slot_retirement_witness_test.
+//
+// THE RED IS AUTHORABLE IN PRODUCTION because the two sides are independent producers: the desired
+// roster comes from the deploy row's runner_count through desired_runner_slot_members, the obligation
+// from the transition row through transition_required_retirees_at, whose target width is the
+// RunnerWidthDerived { slots } arm of gunbc_runner_committed_width. The whole desired roster is planted
+// beside the real retirees as an observed surplus, and production's own refusal must name exactly the
+// desired roster as the units outside its manifest. Start the obligation's range at `slot: target`
+// instead of `slot: target + 1` in transition_required_retirees_at (the off-by-one that counts a
+// desired-live slot as a retiree) and the top desired unit is absorbed into the manifest,
+// vanishes from `unexpected`, and the exact-list equality fails; a later non-contiguous widening that
+// absorbed any OTHER desired unit fails it the same way, which a single planted unit could not see. An
+// always-Disagrees fold fails it too, because the list must name the desired roster alone and not the
+// retirees beside it.
+test fn every_desired_srv1_unit_is_outside_the_retirement_manifest() -> Bool {
+  let retired = srv1_retired()
+  let desired = srv1_desired()
+  match transition_population_agreement(host: operator_host_srv1, observed_surplus: concat(retired, desired)) {
+    TransitionPopulationAgrees => false
+    TransitionPopulationUndecidable { host: _, cause: _ } => false
+    TransitionPopulationDisagrees { unexpected: u } =>
+      length(desired) > 0 && map(u, x => x as String) == map(desired, x => x as String)
+  }
 }
