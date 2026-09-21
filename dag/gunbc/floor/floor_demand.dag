@@ -328,6 +328,24 @@ fn beat_reclaimable_cache(b: FloorMemoryStatBeat) -> MeasureSubtraction<Memory, 
 // numbered beat before the peak whose stall clause read zero -- the cache the slot still held
 // while it was not thrashing, which the guest's cache allowance is derived from. Both folds refuse
 // (Absent) on an empty or all-stalled list rather than inventing a beat.
+// THE SWAP POLICY A READING WAS TAKEN UNDER, because a held set means DIFFERENT THINGS on each
+// side of it. With swap available, anonymous pages the workload still wants can leave residency
+// without the workload failing, so a held set read while swap-in is rising is a LOWER BOUND on
+// what the run wanted to hold -- censored on the axis reclaim cannot answer, which is exactly how
+// the 2026-09-19 receipt was censored. With swap off, a workload that exceeds its ceiling is
+// killed rather than spilled, so a run that COMPLETES under that policy read its true demand.
+//
+// THE ARM RECORDS HOW THE FIGURE WAS OBTAINED, NOT JUST WHAT IT IS (DESIGN 4d). The heartbeat's
+// cgroup envelope prints max, high, current and peak -- it does NOT print memory.swap.max -- so a
+// receipt taken from a job log CANNOT read the attempt's swap ceiling, only cite the row that
+// declares it. SwapMaxDeclaredUnread is that state and names its declaring authority; SwapMaxRead
+// is for an instrument that reads the file. Conflating them would let a declared row be consumed
+// as a reading, which is the bet-as-fact the corpus refuses.
+type RunSwapPolicy
+  = SwapMaxRead { swap_max: ByteSize }
+  | SwapMaxDeclaredUnread { declared: ByteSize, declaring_authority: NonEmptyStr }
+  | SwapDisabled
+
 type FloorHeldSetReceipt {
   run_id: NonEmptyStr
   runner_unit: NonEmptyStr
@@ -335,6 +353,7 @@ type FloorHeldSetReceipt {
   beats_sampled: Int
   beats: List<FloorMemoryStatBeat>
   run_completed: Bool
+  swap_policy: RunSwapPolicy
 }
 
 // THE PEAK OVER A RUN'S BEATS, AS A COPRODUCT: the beat with the largest held set and that set's
@@ -526,6 +545,420 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
     },
   ],
   run_completed: false,
+  swap_policy: SwapMaxDeclaredUnread {
+    declared: byte_size(34359738368),
+    declaring_authority: "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_swap_max",
+  },
+}
+
+// THE DATED SUCCESSOR, AND THE FIRST RECEIPT THAT CAN NAME THE SEAM ITS PEAK WAS ESTABLISHED IN
+// (this change's own CI run 35652545009, job 106508550698, srv3-01, 2026-09-21, twenty-three beats
+// at sixty seconds, every beat derived from its own `[floor-cgroup] seam= stall_per_min=` line by
+// the instrument rather than joined to a neighbouring line by a reader). It supersedes
+// gunbc_floor_memory_stat_receipt_2026_09_19 as gunbc_floor_held_set_standing's input; that
+// receipt is RETAINED, not deleted, because it is the evidence the 26/25 GiB row was argued from
+// and a superseded reading is history rather than a mistake.
+//
+// WHAT IT SHOWS, AND IT IS NOT WHAT A PEAK SNAPSHOT WOULD HAVE SAID. The peak is beat 18, in
+// claim-evaluation-fold, at 26142809464 bytes held. But preparation alone reaches 23.01 GiB by
+// beat 14 and NEVER RELEASES IT: anon climbs monotonically from 8.35 GiB with no drop, and the
+// fold adds only about 1.3 GiB of working state on top of everything preparation is still
+// holding. So the peak SEAM and the demand's CAUSE are different answers -- the maximum occurs in
+// the fold, and 95% of it was built before the fold began. A reduction aimed at the peak's seam
+// would chase the last 5%; the retained preparation set is the subject.
+//
+// IT IS NOT A CACHE STORY AND THE     FloorMemoryStatBeat {
+      beat: 1, seam: SeamStrictPreparation, charge: byte_size(11185754112),
+      anon: byte_size(8961531904), file: byte_size(2043817984), shmem: byte_size(51085312), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1582592), slab_reclaimable: byte_size(157446672), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(19910656), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 2, seam: SeamStrictPreparation, charge: byte_size(12275265536),
+      anon: byte_size(10043535360), file: byte_size(2043871232), shmem: byte_size(51138560), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1574952), slab_reclaimable: byte_size(157440112), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(22028288), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 3, seam: SeamStrictPreparation, charge: byte_size(13392121856),
+      anon: byte_size(11163262976), file: byte_size(2044014592), shmem: byte_size(51277824), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1583464), slab_reclaimable: byte_size(157441264), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(24211456), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 4, seam: SeamStrictPreparation, charge: byte_size(15344836608),
+      anon: byte_size(13111832576), file: byte_size(2044022784), shmem: byte_size(51286016), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1582832), slab_reclaimable: byte_size(157441264), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(28033024), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 5, seam: SeamStrictPreparation, charge: byte_size(17292402688),
+      anon: byte_size(15055400960), file: byte_size(2044108800), shmem: byte_size(51347456), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1573992), slab_reclaimable: byte_size(157443376), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(31842304), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 6, seam: SeamStrictPreparation, charge: byte_size(18595463168),
+      anon: byte_size(16355950592), file: byte_size(2044157952), shmem: byte_size(51392512), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1573960), slab_reclaimable: byte_size(157438224), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(34381824), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 7, seam: SeamStrictPreparation, charge: byte_size(18599772160),
+      anon: byte_size(16360341504), file: byte_size(2044280832), shmem: byte_size(51515392), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1573776), slab_reclaimable: byte_size(157438248), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(34385920), percpu: byte_size(18720), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 8, seam: SeamStrictPreparation, charge: byte_size(19048484864),
+      anon: byte_size(16803909632), file: byte_size(2044297216), shmem: byte_size(51527680), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1587176), slab_reclaimable: byte_size(157438248), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(35262464), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 9, seam: SeamStrictPreparation, charge: byte_size(20070260736),
+      anon: byte_size(17827561472), file: byte_size(2044411904), shmem: byte_size(51621888), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1577264), slab_reclaimable: byte_size(157438072), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(37261312), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 10, seam: SeamStrictPreparation, charge: byte_size(20550725632),
+      anon: byte_size(18306572288), file: byte_size(2044424192), shmem: byte_size(51630080), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1583520), slab_reclaimable: byte_size(157442568), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(38203392), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 11, seam: SeamStrictPreparation, charge: byte_size(21960060928),
+      anon: byte_size(19708301312), file: byte_size(2044444672), shmem: byte_size(51634176), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1579216), slab_reclaimable: byte_size(157441320), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(40943616), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 12, seam: SeamStrictPreparation, charge: byte_size(23149056000),
+      anon: byte_size(20900843520), file: byte_size(2044465152), shmem: byte_size(51646464), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1574240), slab_reclaimable: byte_size(157424984), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(43278336), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 13, seam: SeamStrictPreparation, charge: byte_size(25035067392),
+      anon: byte_size(22782615552), file: byte_size(2044473344), shmem: byte_size(51654656), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1574240), slab_reclaimable: byte_size(157419320), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(46960640), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 14, seam: SeamStrictPreparation, charge: byte_size(26838876160),
+      anon: byte_size(24602337280), file: byte_size(2024910848), shmem: byte_size(51752960), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1579160), slab_reclaimable: byte_size(156877352), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(50524160), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 15, seam: SeamDiscoveryAuthority, charge: byte_size(26655379456),
+      anon: byte_size(25149386752), file: byte_size(1313783808), shmem: byte_size(51773440), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1570608), slab_reclaimable: byte_size(137433480), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(51597312), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 16, seam: SeamClaimEvaluationFold, charge: byte_size(26436517888),
+      anon: byte_size(25567625216), file: byte_size(692260864), shmem: byte_size(51789824), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1589856), slab_reclaimable: byte_size(120442472), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(52424704), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(249856),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 17, seam: SeamClaimEvaluationFold, charge: byte_size(26437210112),
+      anon: byte_size(25567625216), file: byte_size(692744192), shmem: byte_size(51830784), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1580688), slab_reclaimable: byte_size(120452424), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(52424704), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(16384),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 18, seam: SeamClaimEvaluationFold, charge: byte_size(26592014336),
+      anon: byte_size(26053128192), file: byte_size(343584768), shmem: byte_size(27901952), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(2308664), slab_reclaimable: byte_size(110820952), kernel_stack: byte_size(1785856),
+      pagetables: byte_size(57630720), percpu: byte_size(54080), sock: byte_size(0), file_dirty: byte_size(44122112),
+      stall: events_per_minute(count: 11),
+    },
+    FloorMemoryStatBeat {
+      beat: 19, seam: SeamClaimEvaluationFold, charge: byte_size(26263699456),
+      anon: byte_size(25416802304), file: byte_size(529440768), shmem: byte_size(33964032), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1773232), slab_reclaimable: byte_size(118102616), kernel_stack: byte_size(1245184),
+      pagetables: byte_size(55615488), percpu: byte_size(20800), sock: byte_size(0), file_dirty: byte_size(8871936),
+      stall: events_per_minute(count: 77),
+    },
+    FloorMemoryStatBeat {
+      beat: 20, seam: SeamClaimEvaluationFold, charge: byte_size(26273968128),
+      anon: byte_size(25484472320), file: byte_size(475832320), shmem: byte_size(17645568), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1833776), slab_reclaimable: byte_size(116499168), kernel_stack: byte_size(1261568),
+      pagetables: byte_size(57765888), percpu: byte_size(20800), sock: byte_size(0), file_dirty: byte_size(13905920),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 21, seam: SeamClaimEvaluationFold, charge: byte_size(25807028224),
+      anon: byte_size(24980123648), file: byte_size(505786368), shmem: byte_size(19877888), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1972432), slab_reclaimable: byte_size(117167056), kernel_stack: byte_size(1540096),
+      pagetables: byte_size(64090112), percpu: byte_size(20800), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 22, seam: SeamClaimEvaluationFold, charge: byte_size(22858387456),
+      anon: byte_size(22282010624), file: byte_size(282931200), shmem: byte_size(21065728), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1613672), slab_reclaimable: byte_size(108947520), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(52998144), percpu: byte_size(22880), sock: byte_size(0), file_dirty: byte_size(28672),
+      stall: events_per_minute(count: 3225),
+    },
+    FloorMemoryStatBeat {
+      beat: 23, seam: SeamClaimEvaluationFold, charge: byte_size(22990053376),
+      anon: byte_size(22406950912), file: byte_size(285155328), shmem: byte_size(22683648), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1765224), slab_reclaimable: byte_size(109118600), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(53231616), percpu: byte_size(37440), sock: byte_size(0), file_dirty: byte_size(32768),
+      stall: events_per_minute(count: 251),
+    }, SAY SO DIRECTLY rather than by inference. The file cache
+// sits flat at 1.90 GiB through all fourteen preparation beats and is then SQUEEZED to 0.26 GiB
+// during the fold -- reclaim giving the cache back to make room for anonymous memory, the
+// opposite of cache accumulation.
+//
+// STILL CENSORED, AND THE POLICY IS WHY. This ran at the live 26 GiB / 25 GiB row with swap
+// available, and its own beats record the consequence: the peak beat carries a stall of 11
+// faults/min, beat 19 reads 77, and beat 22 reads 3225 while the run's heartbeat shows host
+// swap-in rising. So 26142809464 is a LOWER BOUND on what the run wanted to hold, for the same
+// reason the 2026-09-19 figure was. A cell whose MemoryHigh sits under the workload cannot
+// produce an uncensored demand reading by construction; only a run with no throttle line and no
+// swap can, which is the shape gunbc.runner_slot_allocation's shakedown slot declares and which
+// nothing can dispatch yet.
+data gunbc_floor_memory_stat_receipt_2026_09_21: FloorHeldSetReceipt = FloorHeldSetReceipt {
+  run_id: "35652545009",
+  runner_unit: "actions-runner@srv3-01.service",
+  beat_cadence: second(count: 60),
+  beats_sampled: 23,
+  beats: [
+    FloorMemoryStatBeat {
+      beat: 1, seam: SeamStrictPreparation, charge: byte_size(11185754112),
+      anon: byte_size(8961531904), file: byte_size(2043817984), shmem: byte_size(51085312), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1582592), slab_reclaimable: byte_size(157446672), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(19910656), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 2, seam: SeamStrictPreparation, charge: byte_size(12275265536),
+      anon: byte_size(10043535360), file: byte_size(2043871232), shmem: byte_size(51138560), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1574952), slab_reclaimable: byte_size(157440112), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(22028288), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 3, seam: SeamStrictPreparation, charge: byte_size(13392121856),
+      anon: byte_size(11163262976), file: byte_size(2044014592), shmem: byte_size(51277824), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1583464), slab_reclaimable: byte_size(157441264), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(24211456), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 4, seam: SeamStrictPreparation, charge: byte_size(15344836608),
+      anon: byte_size(13111832576), file: byte_size(2044022784), shmem: byte_size(51286016), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1582832), slab_reclaimable: byte_size(157441264), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(28033024), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 5, seam: SeamStrictPreparation, charge: byte_size(17292402688),
+      anon: byte_size(15055400960), file: byte_size(2044108800), shmem: byte_size(51347456), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1573992), slab_reclaimable: byte_size(157443376), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(31842304), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 6, seam: SeamStrictPreparation, charge: byte_size(18595463168),
+      anon: byte_size(16355950592), file: byte_size(2044157952), shmem: byte_size(51392512), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1573960), slab_reclaimable: byte_size(157438224), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(34381824), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 7, seam: SeamStrictPreparation, charge: byte_size(18599772160),
+      anon: byte_size(16360341504), file: byte_size(2044280832), shmem: byte_size(51515392), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1573776), slab_reclaimable: byte_size(157438248), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(34385920), percpu: byte_size(18720), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 8, seam: SeamStrictPreparation, charge: byte_size(19048484864),
+      anon: byte_size(16803909632), file: byte_size(2044297216), shmem: byte_size(51527680), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1587176), slab_reclaimable: byte_size(157438248), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(35262464), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 9, seam: SeamStrictPreparation, charge: byte_size(20070260736),
+      anon: byte_size(17827561472), file: byte_size(2044411904), shmem: byte_size(51621888), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1577264), slab_reclaimable: byte_size(157438072), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(37261312), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 10, seam: SeamStrictPreparation, charge: byte_size(20550725632),
+      anon: byte_size(18306572288), file: byte_size(2044424192), shmem: byte_size(51630080), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1583520), slab_reclaimable: byte_size(157442568), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(38203392), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 11, seam: SeamStrictPreparation, charge: byte_size(21960060928),
+      anon: byte_size(19708301312), file: byte_size(2044444672), shmem: byte_size(51634176), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1579216), slab_reclaimable: byte_size(157441320), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(40943616), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 12, seam: SeamStrictPreparation, charge: byte_size(23149056000),
+      anon: byte_size(20900843520), file: byte_size(2044465152), shmem: byte_size(51646464), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1574240), slab_reclaimable: byte_size(157424984), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(43278336), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 13, seam: SeamStrictPreparation, charge: byte_size(25035067392),
+      anon: byte_size(22782615552), file: byte_size(2044473344), shmem: byte_size(51654656), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1574240), slab_reclaimable: byte_size(157419320), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(46960640), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 14, seam: SeamStrictPreparation, charge: byte_size(26838876160),
+      anon: byte_size(24602337280), file: byte_size(2024910848), shmem: byte_size(51752960), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1579160), slab_reclaimable: byte_size(156877352), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(50524160), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 15, seam: SeamDiscoveryAuthority, charge: byte_size(26655379456),
+      anon: byte_size(25149386752), file: byte_size(1313783808), shmem: byte_size(51773440), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1570608), slab_reclaimable: byte_size(137433480), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(51597312), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 16, seam: SeamClaimEvaluationFold, charge: byte_size(26436517888),
+      anon: byte_size(25567625216), file: byte_size(692260864), shmem: byte_size(51789824), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1589856), slab_reclaimable: byte_size(120442472), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(52424704), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(249856),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 17, seam: SeamClaimEvaluationFold, charge: byte_size(26437210112),
+      anon: byte_size(25567625216), file: byte_size(692744192), shmem: byte_size(51830784), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1580688), slab_reclaimable: byte_size(120452424), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(52424704), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(16384),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 18, seam: SeamClaimEvaluationFold, charge: byte_size(26592014336),
+      anon: byte_size(26053128192), file: byte_size(343584768), shmem: byte_size(27901952), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(2308664), slab_reclaimable: byte_size(110820952), kernel_stack: byte_size(1785856),
+      pagetables: byte_size(57630720), percpu: byte_size(54080), sock: byte_size(0), file_dirty: byte_size(44122112),
+      stall: events_per_minute(count: 11),
+    },
+    FloorMemoryStatBeat {
+      beat: 19, seam: SeamClaimEvaluationFold, charge: byte_size(26263699456),
+      anon: byte_size(25416802304), file: byte_size(529440768), shmem: byte_size(33964032), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1773232), slab_reclaimable: byte_size(118102616), kernel_stack: byte_size(1245184),
+      pagetables: byte_size(55615488), percpu: byte_size(20800), sock: byte_size(0), file_dirty: byte_size(8871936),
+      stall: events_per_minute(count: 77),
+    },
+    FloorMemoryStatBeat {
+      beat: 20, seam: SeamClaimEvaluationFold, charge: byte_size(26273968128),
+      anon: byte_size(25484472320), file: byte_size(475832320), shmem: byte_size(17645568), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1833776), slab_reclaimable: byte_size(116499168), kernel_stack: byte_size(1261568),
+      pagetables: byte_size(57765888), percpu: byte_size(20800), sock: byte_size(0), file_dirty: byte_size(13905920),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 21, seam: SeamClaimEvaluationFold, charge: byte_size(25807028224),
+      anon: byte_size(24980123648), file: byte_size(505786368), shmem: byte_size(19877888), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1972432), slab_reclaimable: byte_size(117167056), kernel_stack: byte_size(1540096),
+      pagetables: byte_size(64090112), percpu: byte_size(20800), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 22, seam: SeamClaimEvaluationFold, charge: byte_size(22858387456),
+      anon: byte_size(22282010624), file: byte_size(282931200), shmem: byte_size(21065728), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1613672), slab_reclaimable: byte_size(108947520), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(52998144), percpu: byte_size(22880), sock: byte_size(0), file_dirty: byte_size(28672),
+      stall: events_per_minute(count: 3225),
+    },
+    FloorMemoryStatBeat {
+      beat: 23, seam: SeamClaimEvaluationFold, charge: byte_size(22990053376),
+      anon: byte_size(22406950912), file: byte_size(285155328), shmem: byte_size(22683648), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1765224), slab_reclaimable: byte_size(109118600), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(53231616), percpu: byte_size(37440), sock: byte_size(0), file_dirty: byte_size(32768),
+      stall: events_per_minute(count: 251),
+    },
+  ],
+  run_completed: false,
+  swap_policy: SwapMaxDeclaredUnread {
+    declared: byte_size(34359738368),
+    declaring_authority: "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_swap_max",
+  },
+}
+
+// MAY THIS RECEIPT'S PEAK BE READ AS A DEMAND, OR ONLY AS A LOWER BOUND? This is the question
+// the swap policy exists to answer, and the reason the policy is carried on the receipt rather
+// than described beside it. The rule the corpus already applies to a CHARGE at its throttle line
+// -- a pinned reading says "at least this much" and nothing about how far past it the workload
+// wanted to go -- applies to a HELD SET on the swap axis for the same reason, and neither the
+// 2026-09-19 nor the 2026-09-21 receipt escapes it.
+//
+// THE ORDER IS SEVERITY, NOT CONVENIENCE, and the first matching cause is the one reported: a run
+// that did not finish never reached whatever it would have held later; a peak beat already
+// stalling was being held by reclaim when it was sampled; and swap merely AVAILABLE is enough to
+// censor, because anonymous pages the workload still wants can leave residency without the
+// workload failing. Only a completed run, whose peak beat was not stalling, under a policy that
+// cannot spill, reads a demand.
+type PeakLowerBoundCause
+  = RunDidNotComplete
+  | PeakBeatWasStalling { beat: Int, stall: EventsPerMinute }
+  | SwapCouldAbsorbAnonymousPages { declared_swap_max: ByteSize }
+  | SwapPolicyIsRead { swap_max: ByteSize }
+
+type PeakReadingStanding
+  = PeakIsDemand
+  | PeakIsLowerBound { cause: PeakLowerBoundCause }
+  | PeakUnreadable { cause: PeakUnattributableCause }
+
+fn receipt_peak_reading_standing(r: FloorHeldSetReceipt) -> PeakReadingStanding {
+  match receipt_peak_beat(r: r) {
+    Absent => PeakUnreadable { cause: ReceiptHasNoBeats }
+    Present { value: b } =>
+      if !r.run_completed {
+        PeakIsLowerBound { cause: RunDidNotComplete }
+      } else {
+        if events_per_minute_count(r: b.stall) > 0 {
+          PeakIsLowerBound { cause: PeakBeatWasStalling { beat: b.beat, stall: b.stall } }
+        } else {
+          match r.swap_policy {
+            SwapDisabled => PeakIsDemand
+            SwapMaxRead { swap_max: m } =>
+              if byte_size_count(b: m) == 0 { PeakIsDemand } else { PeakIsLowerBound { cause: SwapPolicyIsRead { swap_max: m } } }
+            SwapMaxDeclaredUnread { declared: d, declaring_authority: _ } =>
+              PeakIsLowerBound { cause: SwapCouldAbsorbAnonymousPages { declared_swap_max: d } }
+          }
+        }
+      }
+  }
 }
 
 // THE WORK STATES WHAT IT MUST HOLD AND NOTHING MORE. The cache a guest is granted above this is a
@@ -548,7 +981,7 @@ fn floor_memory_requirement_of(standing: FloorHeldSetStanding) -> MemoryRequirem
 data gunbc_floor_held_set_instrument: NonEmptyStr = "the required-witnesses-floor job's [floor-cgroup] stat_level= seam= stall_per_min= memory_stat= heartbeat lines on the host slot, raw beats transcribed, the held set derived by beat_held_set and its maximum taken over the run's beats, and the peak's seam read from the same line by receipt_peak_seam"
 
 fn gunbc_floor_held_set_standing() -> FloorHeldSetStanding {
-  held_set_standing_of(receipt: gunbc_floor_memory_stat_receipt_2026_09_19, instrument: gunbc_floor_held_set_instrument)
+  held_set_standing_of(receipt: gunbc_floor_memory_stat_receipt_2026_09_21, instrument: gunbc_floor_held_set_instrument)
 }
 
 fn floor_memory_requirement() -> MemoryRequirement? {

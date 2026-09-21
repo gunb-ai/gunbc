@@ -21,6 +21,10 @@ import gunbc.floor_demand {
   FloorSeam, SeamStrictPreparation, SeamClaimEvaluationFold, SeamNotYetEntered, SeamUnrecorded,
   receipt_peak_seam, PeakAttributedTo, PeakSeamUnattributable,
   PeakUnattributableCause, PeakBeatSampledBeforeAnySeam, PeakBeatSeamUnrecorded, ReceiptHasNoBeats, ReceiptTorn,
+  gunbc_floor_memory_stat_receipt_2026_09_21, receipt_peak_reading_standing, PeakReadingStanding,
+  PeakIsDemand, PeakIsLowerBound, PeakUnreadable, PeakLowerBoundCause, RunDidNotComplete,
+  PeakBeatWasStalling, SwapCouldAbsorbAnonymousPages, SwapPolicyIsRead,
+  RunSwapPolicy, SwapMaxRead, SwapMaxDeclaredUnread, SwapDisabled,
 }
 import gunbc.fabric_witness_run { floor_execution_requirements }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
@@ -144,6 +148,7 @@ fn fixture_receipt() -> FloorHeldSetReceipt {
       beat(n: 3, anon: 850, file: 120, shmem: 90, unevictable: 30, stall: 4),
     ],
     run_completed: true,
+    swap_policy: SwapDisabled,
   }
 }
 
@@ -181,7 +186,7 @@ test fn a_beat_whose_held_set_cannot_be_represented_makes_the_receipt_torn() -> 
   }
   let receipt = FloorHeldSetReceipt {
     run_id: "torn", runner_unit: "torn", beat_cadence: second(count: 60), beats_sampled: 2,
-    beats: [beat(n: 0, anon: 5, file: 5, shmem: 1, unevictable: 0, stall: 0), torn], run_completed: false,
+    beats: [beat(n: 0, anon: 5, file: 5, shmem: 1, unevictable: 0, stall: 0), torn], run_completed: false, swap_policy: SwapDisabled,
   }
   let standing_is_torn = match held_set_standing_of(receipt: receipt, instrument: "fixture") {
     HeldSetReceiptUnrepresentable { cause: _ } => true
@@ -218,7 +223,7 @@ test fn the_peak_and_last_unstalled_beats_are_derived_from_the_raw_beats() -> Bo
   }
   let empty = FloorHeldSetReceipt {
     run_id: "empty", runner_unit: "empty", beat_cadence: second(count: 60), beats_sampled: 0,
-    beats: [] as List<FloorMemoryStatBeat>, run_completed: false,
+    beats: [] as List<FloorMemoryStatBeat>, run_completed: false, swap_policy: SwapDisabled,
   }
   let none_on_empty = match receipt_peak_beat(r: empty) {
     Absent => true
@@ -345,6 +350,7 @@ test fn the_peak_seam_names_the_beat_that_established_the_peak_not_the_largest_c
       seamed_beat(n: 3, seam: SeamStrictPreparation, anon: 850, file: 9000, shmem: 90, unevictable: 0, stall: 4),
     ],
     run_completed: true,
+    swap_policy: SwapDisabled,
   }
   match receipt_peak_seam(r: r) {
     PeakAttributedTo { seam: s, beat: b, bytes: _ } =>
@@ -365,15 +371,17 @@ test fn a_peak_beat_without_a_seam_refuses_rather_than_naming_a_phase() -> Bool 
     run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
     beats: [seamed_beat(n: 1, seam: SeamUnrecorded, anon: 900, file: 100, shmem: 90, unevictable: 0, stall: 0)],
     run_completed: true,
+    swap_policy: SwapDisabled,
   }
   let not_yet = FloorHeldSetReceipt {
     run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
     beats: [seamed_beat(n: 1, seam: SeamNotYetEntered, anon: 900, file: 100, shmem: 90, unevictable: 0, stall: 0)],
     run_completed: true,
+    swap_policy: SwapDisabled,
   }
   let no_beats = FloorHeldSetReceipt {
     run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 0,
-    beats: [], run_completed: true,
+    beats: [], run_completed: true, swap_policy: SwapDisabled,
   }
   // EACH ARM IS ASSERTED BY IDENTITY, not merely "it refused". The three receipts fail for three
   // different reasons and an earlier revision of this witness greened on any refusal at all, so a
@@ -395,24 +403,70 @@ test fn a_peak_beat_without_a_seam_refuses_rather_than_naming_a_phase() -> Bool 
   a && b2 && c
 }
 
-// THE INHABITANCE CLAIM, OVER THE DECLARED RECEIPT THE FLEET ACTUALLY SIZES FROM. The two claims
-// above supply their beats; this one runs the real receipt, and what it establishes is the state
-// that motivates the whole change: the receipt every consumer derives the floor's memory demand
-// from CANNOT SAY WHICH PHASE ESTABLISHED THAT DEMAND, because it was transcribed from lines
-// printed before the instrument carried a seam.
+// THE FLIP HAS HAPPENED, AND THIS IS THE REGRESSION CONTROL IT BECAME (DESIGN 4b(4)). This claim
+// was written expecting RED: it asserted that the standing receipt could NOT attribute its peak,
+// because every beat of the 2026-09-19 receipt was transcribed from a line printed before the
+// instrument carried a seam. Its stated trigger was a dated successor taken under the
+// seam-carrying instrument replacing it as gunbc_floor_held_set_standing's input. That successor
+// is gunbc_floor_memory_stat_receipt_2026_09_21, and it landed, so the claim does not retire --
+// it changes polarity and now asserts that the standing receipt IS attributable.
 //
-// IT IS EXPECTED TO FLIP, AND ITS TRIGGER IS NAMED (DESIGN 4b(4)): when a dated successor receipt
-// taken under the seam-carrying instrument replaces this one as gunbc_floor_held_set_standing's
-// input, this claim reds and becomes the regression control that the standing receipt IS
-// attributable. It does not retire; it changes polarity, and the successor's landing is what
-// changes it.
-test fn the_standing_receipt_cannot_attribute_its_peak_because_it_predates_the_seam() -> Bool {
-  // NAMES THE ARM: the standing receipt's peak is un-attributable because it was transcribed from
-  // a pre-instrument line, NOT because the run had not yet entered a seam. Those are different
-  // facts with different remedies -- a new run versus a later beat -- and asserting the wrong one
-  // would still have greened under a cause-agnostic match.
+// WHAT MOVED, cited on the flip as 4b(4) requires: the standing's input, from the 2026-09-19
+// receipt to the 2026-09-21 one, taken on CI run 35652545009.
+test fn the_standing_receipt_attributes_its_peak_to_a_named_seam() -> Bool {
+  match receipt_peak_seam(r: gunbc_floor_memory_stat_receipt_2026_09_21) {
+    PeakAttributedTo { seam: s, beat: b, bytes: _ } =>
+      b == 18 && match s {
+        SeamClaimEvaluationFold => true
+        _ => false
+      }
+    PeakSeamUnattributable { cause: _ } => false
+  }
+}
+
+// THE SUPERSEDED RECEIPT STILL REFUSES, AND KEEPING THIS IS THE POINT OF RETAINING IT. The flip
+// above would otherwise leave SeamUnrecorded with no executed red anywhere: the arm would still
+// exist, still be reachable in principle, and nothing would run it. This claim is that execution,
+// over the real 2026-09-19 rows rather than a fixture, which is what makes it evidence that a
+// pre-instrument receipt cannot be read as attributed.
+test fn the_superseded_2026_09_19_receipt_still_cannot_attribute_its_peak() -> Bool {
   match receipt_peak_seam(r: gunbc_floor_memory_stat_receipt_2026_09_19) {
     PeakSeamUnattributable { cause: PeakBeatSeamUnrecorded { beat: _ } } => true
+    _ => false
+  }
+}
+
+// NEITHER RECEIPT READS A DEMAND, AND THE STANDING SAYS WHICH REASON APPLIES TO WHICH. The
+// 2026-09-19 run refused in preparation and never completed; the 2026-09-21 run completed its
+// fold but its PEAK BEAT was already stalling at 11 faults/min. Two different censoring
+// mechanisms, reported as two different causes, over the two real receipts -- so a reader who
+// wants an uncensored figure is told what would have to change to get one rather than handed a
+// number that looks like a demand.
+test fn neither_standing_receipt_reads_an_uncensored_demand() -> Bool {
+  let old_one = match receipt_peak_reading_standing(r: gunbc_floor_memory_stat_receipt_2026_09_19) {
+    PeakIsLowerBound { cause: RunDidNotComplete } => true
+    _ => false
+  }
+  let new_one = match receipt_peak_reading_standing(r: gunbc_floor_memory_stat_receipt_2026_09_21) {
+    PeakIsLowerBound { cause: PeakBeatWasStalling { beat: b, stall: _ } } => b == 18
+    _ => false
+  }
+  old_one && new_one
+}
+
+// THE POSITIVE CONTROL FOR PeakIsDemand, so the arm that would let a figure SIZE something is not
+// a permanently unreachable decoration. A completed run whose peak beat did not stall, under a
+// policy that cannot spill, reads a demand -- and no receipt in this corpus satisfies that today,
+// which is precisely why the arm needs a supplied-input control to prove it is inhabitable.
+test fn a_completed_unstalled_run_without_swap_reads_a_demand() -> Bool {
+  let clean = FloorHeldSetReceipt {
+    run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
+    beats: [seamed_beat(n: 1, seam: SeamClaimEvaluationFold, anon: 900, file: 100, shmem: 90, unevictable: 0, stall: 0)],
+    run_completed: true,
+    swap_policy: SwapDisabled,
+  }
+  match receipt_peak_reading_standing(r: clean) {
+    PeakIsDemand => true
     _ => false
   }
 }
