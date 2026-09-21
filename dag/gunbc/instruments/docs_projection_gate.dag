@@ -30,6 +30,7 @@ import gunbc.generated_artifact {
   Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact,
   Stage0ExecutableAssemblyGeneratedDagArtifact,
+  Stage0LinkedPartitionCratesArtifact,
   SeedRetentionFrontierGeneratedRsArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
   EvaluationBudgetConsequenceGeneratedRsArtifact,
@@ -95,6 +96,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     Stage0CrateLayoutGeneratedRsArtifact => Absent
     Stage0CratePartitionGeneratedDagArtifact => Absent
     Stage0ExecutableAssemblyGeneratedDagArtifact => Absent
+    Stage0LinkedPartitionCratesArtifact => Absent
     SeedRetentionFrontierGeneratedRsArtifact => Absent
     V1InterpreterDispatchGeneratedRsArtifact => Absent
     EvaluationBudgetConsequenceGeneratedRsArtifact => Absent

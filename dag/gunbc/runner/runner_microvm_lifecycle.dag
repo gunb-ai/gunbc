@@ -220,8 +220,18 @@ fn advance_bring_up(live: AttemptIdentity, at: BringUpPhase, event: BringUpEvent
 // outcome -- which is why RunnerExited carries its exit code and the code goes nowhere: a job that
 // succeeded and left a background process is a dirty cell, and there is no parameter downstream
 // through which "succeeded" could say otherwise.
+// AN EXIT STATUS THAT COULD NOT BE READ IS ITS OWN ARM, NOT A NUMBER THAT LOOKS LIKE ONE. A
+// controller reading ExecMainStatus off a unit systemd has already unloaded gets nothing, and the
+// first cut of the realization answered -1 for that -- a value waitpid-adjacent enough to read as a
+// real status, in the one field an operator consults to find out why a cell was quarantined. That is
+// the fabricated cause this module forbids two paragraphs down, so the reading gets the arm instead
+// (review 69084).
+type UnitExitStatusReading
+  = ExitStatusRead { exit_code: Int }
+  | ExitStatusUnread { reason: NonEmptyStr }
+
 type TerminalTrigger
-  = VmmExited { exit_code: Int }
+  = VmmExited { status: UnitExitStatusReading }
   | RunnerExited { exit_code: Int }
   | DeadlineReached
   | StopRequested
@@ -247,13 +257,39 @@ fn stop_request_admission(live: AttemptIdentity, requested: AttemptIdentity) -> 
 }
 
 // THE STOP IS GRACEFUL, THEN FORCED, AND THE FORCE IS BOUNDED. What the controller observes is
-// which of the three happened; a task that survives the bounded force-stop (uninterruptible sleep
-// survives SIGKILL) is not "still stopping", it is a surviving process, and the cell quarantines on
-// it whatever the cgroup readback says afterwards.
+// which of these happened; a task that survives the bounded force-stop (uninterruptible sleep, or a
+// frozen cgroup, survives SIGKILL) is not "still stopping", it is a surviving process, and the cell
+// quarantines on it whatever the cgroup readback says afterwards.
+//
+// SIX ARMS, AND THE THREE ADDED SINCE THE FIRST CUT EACH REMOVED A CLAIM THE CODE HAD NOT ESTABLISHED.
+//
+// StopFoundAlreadyQuiescent: the stop was asked of a cell that was ALREADY empty. Reporting that as
+// StoppedGracefully claims a tenant was asked and complied when nothing was running to ask; reporting
+// it as StoppedByForce claims a kill ended something. It is neither, and it is the ordinary state of a
+// cell whose VMM exited on its own before the controller got there.
+//
+// ForceNotAsked: the force could not be REQUESTED -- the write to the cgroup's kill file did not land.
+// It is kept apart from ForceStopOutcomeUnobservable because the consequences differ: a force that
+// was never asked leaves the CGROUP evidence intact and an empty subtree still establishes that no
+// process survived, while a subtree that could not be READ establishes nothing at all. Folding them
+// would throw away a confirmable fact in the first case and fabricate one in the second.
+//
+// A FORCE WHOSE RESULT COULD NOT BE READ IS ITS OWN ARM, AND ADDING IT REMOVED A FABRICATED CAUSE.
+// There used to be three arms, and a controller whose cgroup readback FAILED after the force had
+// only ForceStopBoundExceeded to report -- with an empty survivor list, because there were no pids to
+// name. The cell still quarantined, so nothing was released; but the receipt read
+// "pids  survived the bounded force-stop", which sends an operator to hunt processes when what
+// actually happened is that the instrument could not see. The verdict was right and the CAUSE was
+// invented, which is the class this whole program exists to remove, so the state gets the arm it
+// always needed (vivid-stag-809's review on gunbc#11803). FactUnobservable was already the honest
+// destination; nothing could reach it from here.
 type TeardownStop
   = StoppedGracefully
   | StoppedByForce
+  | StopFoundAlreadyQuiescent
   | ForceStopBoundExceeded { survivors: List<Int> }
+  | ForceNotAsked { reason: NonEmptyStr }
+  | ForceStopOutcomeUnobservable { reason: NonEmptyStr }
 
 // THE CGROUP READBACK IS RECURSIVE, AND A FAILED READ IS ITS OWN ARM. cgroup.procs of the slot's
 // cgroup alone misses every process in a child cgroup -- a double-forked daemon moved one level
@@ -287,7 +323,26 @@ type ResourceReadback
 // readback is what ObservedTeardown carries, its slot is one of the subjects
 // attempt_teardown_readback joins against the attempt, and only a readback that survived that join
 // is mapped onto SlotNetworkQuiescent.
-type ObservedStop { unit: NonEmptyStr, invocation_id: NonEmptyStr, outcome: TeardownStop }
+// WHAT THE UNIT SAID ITS ATTEMPT WAS, OR WHY IT SAID NOTHING -- THREE STATES, NOT A STRING.
+//
+// The controller reads this off the unit rather than copying it from the request, so it is an
+// OBSERVATION and it can fail to be taken: systemd unloads a unit the moment it is collected, and
+// this lane's own receipts produce "Unit ... not loaded" routinely. A reading that folded that into
+// the empty string would make "the unit named a different attempt" and "the unit could not be asked"
+// one value, and those have opposite remedies -- the first is a stale incarnation and the teardown
+// must not proceed, the second is an instrument that did not answer and the cell must not be
+// released. This is the same split CgroupSubtreeReadFailed and ResourceUnreadable already make one
+// subject over.
+//
+// AND IT IS WHY THE FIELD IS NOT A NonEmptyStr. Crossing a possibly-empty String into NonEmptyStr in
+// a record-field position is the defect this module's sibling store codec already documents for
+// `as Nat`: it typechecks and is decided only when it EVALUATES, so the designed empty case never
+// reaches the refusal it was written for (review 69057). The arm replaces the cast.
+type UnitInvocationReading
+  = UnitInvocationRead { invocation_id: NonEmptyStr }
+  | UnitInvocationUnread { reason: NonEmptyStr }
+
+type ObservedStop { unit: NonEmptyStr, invocation_id: UnitInvocationReading, outcome: TeardownStop }
 
 type ObservedCgroup { root: NonEmptyStr, readback: CgroupSubtreeReadback }
 
@@ -320,9 +375,15 @@ type AttemptTeardownReadback sole_constructor {
   observed: ObservedTeardown
 }
 
+// A SUBJECT THAT COULD NOT BE OBSERVED IS ITS OWN ARM, NOT A FOREIGN ONE. Both refuse the readback
+// and neither releases the cell, so the disposition is the same -- what differs is the remedy an
+// operator is sent to. A foreign subject says this readback describes another incarnation; an
+// unobservable one says the instrument did not answer, and reporting the second as the first sends
+// someone to hunt a stale attempt that does not exist.
 type TeardownReadbackBinding
   = TeardownReadbackBound { readback: AttemptTeardownReadback }
   | TeardownReadbackForeignSubject { subject: TeardownSubject, expected: String, observed: String }
+  | TeardownReadbackSubjectUnobservable { subject: TeardownSubject, reason: NonEmptyStr }
 
 type SubjectPair { subject: TeardownSubject, expected: String, observed: String }
 
@@ -332,7 +393,6 @@ fn teardown_subject_pairs(bound: CellBoundAttempt, o: ObservedTeardown) -> List<
     SubjectPair { subject: SubjectHost, expected: a.slot.host as String, observed: o.host },
     SubjectPair { subject: SubjectGeneration, expected: to_string(bound.generation), observed: to_string(o.generation) },
     SubjectPair { subject: SubjectVmmUnit, expected: in_flight_attempt_unit(attempt: bound.attempt) as String, observed: o.stop.unit as String },
-    SubjectPair { subject: SubjectInvocation, expected: bound.attempt.invocation_id as String, observed: o.stop.invocation_id as String },
     SubjectPair { subject: SubjectCgroupRoot, expected: fabric_cell_slice_name(slot: a.slot), observed: o.cgroup.root as String },
     SubjectPair { subject: SubjectJailRoot, expected: runner_microvm_attempt_jail_base(attempt: a), observed: o.mounts.path },
     SubjectPair { subject: SubjectAttemptDirectory, expected: runner_microvm_attempt_dir(attempt: a), observed: o.attempt_storage.path },
@@ -359,7 +419,29 @@ fn attempt_teardown_readback(bound: CellBoundAttempt, observed: ObservedTeardown
       observed: runner_slot_instance_name(slot: bound_slot_network_readback_slot(b: observed.network)),
     }
   } else {
-    attempt_teardown_readback_after_network(bound: bound, observed: observed)
+    attempt_teardown_readback_after_invocation(bound: bound, observed: observed)
+  }
+}
+
+// THE INVOCATION IS CHECKED BESIDE THE STRING-RENDERED SUBJECTS RATHER THAN INSIDE THEM, for the
+// same reason the slot network is: it is the one subject whose reading has three states, and a pair
+// of strings can only carry two. It is also the only subject in the list that is an OBSERVATION
+// rather than a derivation from the attempt, which is what makes the join a wall instead of a
+// comparison of one value with itself.
+fn attempt_teardown_readback_after_invocation(bound: CellBoundAttempt, observed: ObservedTeardown) -> TeardownReadbackBinding {
+  match observed.stop.invocation_id {
+    UnitInvocationUnread { reason: r } =>
+      TeardownReadbackSubjectUnobservable { subject: SubjectInvocation, reason: r }
+    UnitInvocationRead { invocation_id: seen } =>
+      if (seen as String) != (bound.attempt.invocation_id as String) {
+        TeardownReadbackForeignSubject {
+          subject: SubjectInvocation,
+          expected: bound.attempt.invocation_id as String,
+          observed: seen as String,
+        }
+      } else {
+        attempt_teardown_readback_after_network(bound: bound, observed: observed)
+      }
   }
 }
 
@@ -414,12 +496,36 @@ fn cgroup_observation(readback: CgroupSubtreeReadback) -> SanitationObservation 
 // NO SURVIVING PROCESS NEEDS BOTH HOST FACTS: the stop did not exceed its bound, AND the subtree
 // holds no pid. Either one alone is refuted by a case the other misses -- the unkillable task
 // that later leaves the cgroup listing, and the double-forked daemon the stop never waited for.
+// WHICH ARMS DEFER TO THE CGROUP AND WHICH OVERRIDE IT, AND THE SPLIT IS NOT ARBITRARY.
+//
+// The fact is about PROCESSES, so an empty subtree establishes it whenever the subtree could actually
+// be read -- including when the force was never asked, which is why ForceNotAsked defers rather than
+// refusing. What overrides the cgroup is a fact the cgroup cannot see: a task that outlived the
+// bounded force refutes even if the listing later reads empty, because the listing is a later instant.
+// And a subtree that could not be READ establishes nothing, so that one is unobservable whatever the
+// stop did.
 fn surviving_process_observation(stop: TeardownStop, cgroup: CgroupSubtreeReadback) -> SanitationObservation {
   match stop {
     ForceStopBoundExceeded { survivors: s } =>
-      FactRefuted { fact: NoSurvivingProcesses, detail: join(["pids ", pid_list_text(pids: s), " survived the bounded force-stop"], "") as NonEmptyStr }
+      FactRefuted { fact: NoSurvivingProcesses, detail: force_stop_survivor_detail(survivors: s) }
+    ForceStopOutcomeUnobservable { reason: r } => FactUnobservable { fact: NoSurvivingProcesses, reason: r }
+    ForceNotAsked { reason: _ } => process_observation_of_cgroup(cgroup: cgroup)
+    StopFoundAlreadyQuiescent => process_observation_of_cgroup(cgroup: cgroup)
     StoppedGracefully => process_observation_of_cgroup(cgroup: cgroup)
     StoppedByForce => process_observation_of_cgroup(cgroup: cgroup)
+  }
+}
+
+// THE DETAIL SAYS WHAT WAS ESTABLISHED AND NOT MORE. The cgroup's own `populated` key can say the
+// subtree holds live processes while no pid is nameable -- a process that exits between the two
+// reads, or a walk that ran out of depth -- and "pids  survived" reads as a rendering bug in the one
+// place an operator is looking for a pid. The verdict is identical either way; only the sentence
+// differs, and the sentence is the whole remedy.
+fn force_stop_survivor_detail(survivors: List<Int>) -> NonEmptyStr {
+  if (survivors |> count) == 0 {
+    "the cell's cgroup subtree still reports live processes after the bounded force-stop, and none could be named" as NonEmptyStr
+  } else {
+    join(["pids ", pid_list_text(pids: survivors), " survived the bounded force-stop"], "") as NonEmptyStr
   }
 }
 
