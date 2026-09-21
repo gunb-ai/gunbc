@@ -51,6 +51,8 @@ import gunbc.cloudflare.r2_origin {
   fabric_durable_origin_read_secret_version,
   fabric_durable_origin_read_access_key_id,
   fabric_durable_origin_write_secret_id,
+  fabric_durable_origin_write_secret_version,
+  fabric_durable_origin_write_access_key_id,
   cloudflare_bootstrap_custody_secret_id,
   FabricCommitManifestsAndContentAddressedOutputs,
   DigestKeyedBootArtifacts,
@@ -360,22 +362,26 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
   }
 }
 
-// THE WRITE CREDENTIAL IS UNMINTED AND SAYS WHICH ENTRY MINTS IT. This is the state the origin is
-// declared in until run_object_write has executed; the test pins the arm AND the entry it names,
-// so a pin that lands later must retire this test deliberately (turning it into the write twin of
-// the read test above) rather than leaving a stale expectation green.
-test fn r2_origin_bucket_write_credential_is_unminted_and_names_its_mint_entry() -> Bool {
+// THE WRITE CREDENTIAL IS THE MINTED CONTAINER -- the write twin of the read test above, into which
+// the unminted-write test was retired when run_object_write executed and its version was pinned
+// (2026-09-19). Same join: the secret the mint stores into, this project, an exact non-latest
+// version, and the access key id the mint's receipt reported.
+test fn r2_origin_bucket_write_credential_is_the_minted_container() -> Bool {
   match fabric_durable_origin_standing() {
     R2OriginUnallocated { purpose: _ } => false
     R2OriginAllocated { bucket: bucket } =>
       match bucket.write_credential {
-        OriginCredentialPinned { access_key_id: _, token_value: _ } => false
+        OriginCredentialUnminted { mint_entry: _ } => false
         OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
-        OriginCredentialUnminted { mint_entry: entry } =>
-          (entry.module_path as String) == "gunbc.cloudflare.r2_token_mint_run"
-            && (entry.decl_name as String) == "run_object_write"
+        OriginCredentialPinned { access_key_id: access_key_id, token_value: locus } =>
+          (locus.secret as String) == (fabric_durable_origin_write_secret_id as String)
+            && (locus.project as String) == (fleet_secrets_gcp_project as String)
+            && (locus.version as String) == (fabric_durable_origin_write_secret_version as String)
+            && (locus.version as String) != "latest"
+            && (access_key_id as String) == (fabric_durable_origin_write_access_key_id as String)
+            && (access_key_id as String) != (fabric_durable_origin_read_access_key_id as String)
       }
-        && !origin_credential_pin_is_exact(credential: bucket.write_credential)
+        && origin_credential_pin_is_exact(credential: bucket.write_credential)
   }
 }
 

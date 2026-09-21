@@ -224,7 +224,8 @@ fn r2_storage_write_permission_group() -> PermissionGroupRef {
 //
 // WHAT WOULD MAKE THEM CONSUMED IS NAMED, NOT WAITED FOR. The write grant is now a modeled
 // CloudflarePermissionGrant (extdeps.cloudflare.r2 r2_object_write_grant, fed from this module) with
-// a mint entry, and its row stays only until that mint has executed; the bootstrap id becomes an
+// a mint entry, and its row retired when that mint executed (2026-09-19; the write credential is pinned
+// in gunbc.cloudflare.r2_origin); the bootstrap id becomes an
 // input to a check that the credential in custody actually holds the grant its shape declares --
 // which needs a token-verify read this repository does not model yet.
 // THIS ROW'S OLD REASON WAS FALSIFIED BY THE CHANGE THAT ADDED THE CALLER, and repointing it
@@ -240,13 +241,6 @@ fn r2_storage_write_permission_group() -> PermissionGroupRef {
 // it, is exactly the instrument-versus-transcription split DESIGN section 6 names -- and it is a
 // narrower, truer frontier than the one this row carried before.
 data cloudflare_permission_group_observation_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "cloudflare_r2_bucket_item_write_observed_permission_group_id"),
-    reason: "the observed write group id now inhabits extdeps.cloudflare.r2 r2_object_write_grant through r2_bucket_item_write_permission_group, and gunbc.cloudflare.r2_token_mint_run run_object_write is the entry that mints a token carrying it; that Create has not yet executed against the account, so the origin cannot PUT yet",
-    dissolution: unbound_dissolution(
-      description: "dissolves when gunbc.cloudflare.r2_token_mint_run run_object_write has executed AccountTokens.Create carrying this grant with ExitSuccess and gunbc.cloudflare.r2_origin pins the stored write token as OriginCredentialPinned, at which point the durable origin can PUT; a witness that the grant is declared or that the entry exists does not fire this"
-    )
-  ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "cloudflare_fleet_bootstrap_observed_permission_group_id"),
     reason: "the bootstrap group id is recorded but nothing verifies the credential in custody holds it",
