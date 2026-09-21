@@ -1,6 +1,7 @@
 module v2.workflow.emitted_closure_crate_partition
 
 import std.types { List, String, Bool, Int }
+import v2.std.algebra { any }
 import v2.lens.module_graph {
   ModuleDeclarationFact,
   ModuleDependencyEdge,
@@ -66,56 +67,105 @@ fn emitted_closure_module_at(by_path: Map<String, String>, path: String) -> Opti
   }
 }
 
-// The pure derivation: a module is a node iff its declaring path is in the entry's closure, and an
-// edge is kept iff its importer is a node and its target is declared. The closure is transitive, so
-// a declared target of an in-closure importer is itself in the closure; a target whose module name
-// is not among the nodes (declared under another root) is dropped by the lookup rather than
-// fabricated into a node.
+// A DERIVED DAG IS EITHER THE WHOLE CLOSURE OR A REFUSAL. A dependency an in-closure module
+// requires but the pool does not declare is not an edge to drop: dropping it yields a SMALLER
+// graph that partitions cleanly and reads as a completed closure, which is the absorbing fallback
+// DESIGN section 5 forbids. So the entry must be declared, and every dependency reached from it
+// must resolve to a declared module in the closure; the first that does not is refused with its
+// importer and target. Modules of the pool the entry does not reach are never inspected.
+type ModuleDagDerivationRefusal
+  = ClosureEntryUndeclared { entry_path: String }
+  | ClosureDependencyUnresolved { importer_path: String, target_module: String }
+
+type ModuleDagDerivation
+  = ModuleDagDerived { module_dag: ModuleDag }
+  | ModuleDagDerivationRefused { cause: ModuleDagDerivationRefusal }
+
+type ClosureEdgeFold {
+  edges: List<ModuleDagEdge>
+  refusal: Optional<ModuleDagDerivationRefusal>
+}
+
+fn closure_entry_declared(entry_path: String, declarations: List<ModuleDeclarationFact>) -> Bool {
+  declarations |> any(decl => decl.path == entry_path)
+}
+
+fn closure_edge_step(
+  acc: ClosureEdgeFold,
+  edge: ModuleDependencyEdge,
+  by_path: Map<String, String>,
+  module_set: Map<String, Bool>
+) -> ClosureEdgeFold {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match emitted_closure_module_at(by_path: by_path, path: edge.path) {
+        Absent => acc
+        Present { value: importer } => {
+          let unresolved = ClosureEdgeFold {
+            edges: acc.edges,
+            refusal: Present { value: ClosureDependencyUnresolved { importer_path: edge.path, target_module: edge.target_module } }
+          }
+          if !edge.target_declared {
+            unresolved
+          } else {
+            match map_get(module_set, edge.target_module) {
+              Accepted { value: Present { value: _ }, diagnostics: _ } =>
+                if importer == edge.target_module {
+                  acc
+                } else {
+                  ClosureEdgeFold {
+                    edges: acc.edges |> list_push(ModuleDagEdge { from: importer as ModuleId, to: edge.target_module as ModuleId }),
+                    refusal: Absent
+                  }
+                }
+              Accepted { value: Absent, diagnostics: _ } => unresolved
+              Rejected { diagnostics: _ } => unresolved
+            }
+          }
+        }
+      }
+  }
+}
+
 fn module_dag_from_dependency_facts(
   entry_path: String,
   edges: List<ModuleDependencyEdge>,
   declarations: List<ModuleDeclarationFact>
-) -> ModuleDag {
-  let closure = emitted_closure_path_set(
-    paths: dependency_closure(entry_path: entry_path, edges: edges, nodes: declarations)
-  )
-  let by_path = emitted_closure_module_by_path(declarations: declarations, closure: closure)
-  let modules = declarations |> fold(init: [], f: fn(acc, decl) {
-    match emitted_closure_module_at(by_path: by_path, path: decl.path) {
-      Present { value: module_id } => acc |> list_push(module_id as ModuleId)
-      Absent => acc
-    }
-  })
-  let module_set = modules |> fold(init: empty_map(), f: fn(acc, module_id) { map_insert(acc, module_id as String, true) })
-  let dag_edges = edges |> fold(init: [], f: fn(acc, edge) {
-    if !edge.target_declared {
-      acc
-    } else {
-      match emitted_closure_module_at(by_path: by_path, path: edge.path) {
-        Present { value: importer } =>
-          match map_get(module_set, edge.target_module) {
-            Accepted { value: Present { value: _ }, diagnostics: _ } =>
-              if importer == edge.target_module {
-                acc
-              } else {
-                acc |> list_push(ModuleDagEdge { from: importer as ModuleId, to: edge.target_module as ModuleId })
-              }
-            Accepted { value: Absent, diagnostics: _ } => acc
-            Rejected { diagnostics: _ } => acc
-          }
+) -> ModuleDagDerivation {
+  if !closure_entry_declared(entry_path: entry_path, declarations: declarations) {
+    ModuleDagDerivationRefused { cause: ClosureEntryUndeclared { entry_path: entry_path } }
+  } else {
+    let closure = emitted_closure_path_set(
+      paths: dependency_closure(entry_path: entry_path, edges: edges, nodes: declarations)
+    )
+    let by_path = emitted_closure_module_by_path(declarations: declarations, closure: closure)
+    let modules = declarations |> fold(init: [], f: fn(acc, decl) {
+      match emitted_closure_module_at(by_path: by_path, path: decl.path) {
+        Present { value: module_id } => acc |> list_push(module_id as ModuleId)
         Absent => acc
       }
+    })
+    let module_set = modules |> fold(init: empty_map(), f: fn(acc, module_id) { map_insert(acc, module_id as String, true) })
+    let folded = edges |> fold(init: ClosureEdgeFold { edges: [], refusal: Absent }, f: fn(acc, edge) {
+      closure_edge_step(acc: acc, edge: edge, by_path: by_path, module_set: module_set)
+    })
+    match folded.refusal {
+      Present { value: cause } => ModuleDagDerivationRefused { cause: cause }
+      Absent =>
+        ModuleDagDerived {
+          module_dag: ModuleDag {
+            modules: modules,
+            edges: folded.edges,
+            exports: empty_map(),
+            type_definitions: empty_map(),
+          }
+        }
     }
-  })
-  ModuleDag {
-    modules: modules,
-    edges: dag_edges,
-    exports: empty_map(),
-    type_definitions: empty_map(),
   }
 }
 
-fn emitted_compiler_closure_module_dag() -> ModuleDag {
+fn emitted_compiler_closure_module_dag() -> ModuleDagDerivation {
   let roots = emitted_compiler_closure_pool_roots
   module_dag_from_dependency_facts(
     entry_path: emitted_compiler_closure_entry,
@@ -131,11 +181,23 @@ fn emitted_compiler_closure_module_dag() -> ModuleDag {
 // is the emitted-crate rendering package (Pkg7d), and that is this declaration's declared frontier
 // and its trigger. Until then its executing consumer is the inhabitance claim in
 // v2.test.claim.emitted_closure_crate_partition, which runs the same route over fixture source trees.
-fn emitted_compiler_closure_policy_partition() -> ResolvePartitionOutcome {
-  resolve_partition_outcome(
-    parameter: PolicyPartitionParam {
-      policy: PartitionPolicy { target_crate_count: rust_crate_partition_declared_core_target }
-    },
-    module_dag: emitted_compiler_closure_module_dag()
+type EmittedClosurePartitionOutcome
+  = EmittedClosureDagRefused { cause: ModuleDagDerivationRefusal }
+  | EmittedClosureResolved { outcome: ResolvePartitionOutcome }
+
+fn derived_policy_partition(derivation: ModuleDagDerivation, policy: PartitionPolicy) -> EmittedClosurePartitionOutcome {
+  match derivation {
+    ModuleDagDerivationRefused { cause: cause } => EmittedClosureDagRefused { cause: cause }
+    ModuleDagDerived { module_dag: module_dag } =>
+      EmittedClosureResolved {
+        outcome: resolve_partition_outcome(parameter: PolicyPartitionParam { policy: policy }, module_dag: module_dag)
+      }
+  }
+}
+
+fn emitted_compiler_closure_policy_partition() -> EmittedClosurePartitionOutcome {
+  derived_policy_partition(
+    derivation: emitted_compiler_closure_module_dag(),
+    policy: PartitionPolicy { target_crate_count: rust_crate_partition_declared_core_target }
   )
 }

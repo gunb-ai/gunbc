@@ -1,6 +1,5 @@
 module test.fixture.emitted_closure_partition.mutated.sink
 
-import std.types { Int }
 
 fn mutated_sink_value() -> Int {
   1

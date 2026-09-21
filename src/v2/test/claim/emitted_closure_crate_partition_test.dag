@@ -8,18 +8,22 @@ import v2.std.optional { Absent, Present }
 import v2.std.compilers.compilation_unit {
   CompilationUnitId,
   HandExplicit,
-  ModuleDag,
   ModuleId,
   PolicyDerived
 }
-import v2.workflow.emitted_closure_crate_partition { module_dag_from_dependency_facts }
+import v2.workflow.emitted_closure_crate_partition {
+  ClosureDependencyUnresolved,
+  ClosureEntryUndeclared,
+  EmittedClosureDagRefused,
+  EmittedClosurePartitionOutcome,
+  EmittedClosureResolved,
+  derived_policy_partition,
+  module_dag_from_dependency_facts
+}
 import v2.workflow.rust_crate_partition {
   PartitionPolicy,
-  PolicyPartitionParam,
   ResolvePartitionOk,
-  ResolvePartitionOutcome,
-  ResolvePartitionRefused,
-  resolve_partition_outcome
+  ResolvePartitionRefused
 }
 
 // THE INHABITANCE CLAIM FOR THE DERIVED CRATE PARTITION: the real fact producers, the real DAG
@@ -28,27 +32,27 @@ import v2.workflow.rust_crate_partition {
 // v2.test.claim.rust_crate_partition_witness; this is the claim that keeps the route from source
 // imports to an assignment executing, and it asserts the ROUTE (PolicyDerived) with the answer.
 //
-// Two fixture trees that differ by ONE import. base: entry imports left and right, both import
-// sink, and stray imports sink but nothing imports stray. mutated: the same, plus entry imports
-// stray. Pointing the whole-tree producers at the live corpus instead is the measurement
+// Three fixture trees. base: entry imports left and right, both import sink, and stray imports
+// sink but nothing imports stray. mutated: the same, plus entry imports stray. missing: entry
+// imports left, and left imports a sink the tree does not declare. Each pool is its fixture
+// directory alone and is complete by construction: the fixtures import nothing outside it
+// (Int is a builtin), so an undeclared target in these trees is the defect under test and never
+// an artifact of a narrow pool. Pointing the whole-tree producers at the live corpus instead is the measurement
 // emitted_compiler_closure_policy_partition exists for, and at minutes of evaluation it is not a
 // floor claim.
 
 data base_root: String = "dag/test/fixture/emitted_closure_partition/base"
 data mutated_root: String = "dag/test/fixture/emitted_closure_partition/mutated"
+data missing_root: String = "dag/test/fixture/emitted_closure_partition/missing"
 
-fn fixture_dag(root: String) -> ModuleDag {
-  module_dag_from_dependency_facts(
-    entry_path: root + "/entry.dag",
-    edges: dependency_resolution_facts_live(pool_roots: [root], importer_roots: [root], exclude_substrings: []),
-    declarations: module_declaration_facts_live(pool_roots: [root])
-  )
-}
-
-fn fixture_partition(root: String) -> ResolvePartitionOutcome {
-  resolve_partition_outcome(
-    parameter: PolicyPartitionParam { policy: PartitionPolicy { target_crate_count: 2 } },
-    module_dag: fixture_dag(root: root)
+fn fixture_partition_at(root: String, entry: String) -> EmittedClosurePartitionOutcome {
+  derived_policy_partition(
+    derivation: module_dag_from_dependency_facts(
+      entry_path: root + "/" + entry,
+      edges: dependency_resolution_facts_live(pool_roots: [root], importer_roots: [root], exclude_substrings: []),
+      declarations: module_declaration_facts_live(pool_roots: [root])
+    ),
+    policy: PartitionPolicy { target_crate_count: 2 }
   )
 }
 
@@ -66,16 +70,17 @@ fn owner_of(assignment: Map<ModuleId, CompilationUnitId>, module_id: String) -> 
 // components out dependencies first, so sink precedes everything and entry follows everything.
 test fn a_source_tree_resolves_to_a_policy_derived_partition_of_its_closure() -> Bool {
   let p = "test.fixture.emitted_closure_partition.base."
-  match fixture_partition(root: base_root) {
-    ResolvePartitionOk { assignment: assignment, provenance: PolicyDerived { policy: _ } } =>
+  match fixture_partition_at(root: base_root, entry: "entry.dag") {
+    EmittedClosureResolved { outcome: ResolvePartitionOk { assignment: assignment, provenance: PolicyDerived { policy: _ } } } =>
       (map_keys(assignment) |> count) == 4
         && owner_of(assignment: assignment, module_id: p + "sink") == "policy-unit-0"
         && owner_of(assignment: assignment, module_id: p + "entry") == "policy-unit-1"
         && owner_of(assignment: assignment, module_id: p + "left") != "unowned"
         && owner_of(assignment: assignment, module_id: p + "right") != "unowned"
         && owner_of(assignment: assignment, module_id: p + "stray") == "unowned"
-    ResolvePartitionOk { assignment: _, provenance: HandExplicit } => false
-    ResolvePartitionRefused { cause: _ } => false
+    EmittedClosureResolved { outcome: ResolvePartitionOk { assignment: _, provenance: HandExplicit } } => false
+    EmittedClosureResolved { outcome: ResolvePartitionRefused { cause: _ } } => false
+    EmittedClosureDagRefused { cause: _ } => false
   }
 }
 
@@ -84,13 +89,36 @@ test fn a_source_tree_resolves_to_a_policy_derived_partition_of_its_closure() ->
 // an edge source that ignored this file -- stray would stay unowned exactly as in the base tree.
 test fn one_added_import_changes_the_derived_assignment() -> Bool {
   let p = "test.fixture.emitted_closure_partition.mutated."
-  match fixture_partition(root: mutated_root) {
-    ResolvePartitionOk { assignment: assignment, provenance: PolicyDerived { policy: _ } } =>
+  match fixture_partition_at(root: mutated_root, entry: "entry.dag") {
+    EmittedClosureResolved { outcome: ResolvePartitionOk { assignment: assignment, provenance: PolicyDerived { policy: _ } } } =>
       (map_keys(assignment) |> count) == 5
         && owner_of(assignment: assignment, module_id: p + "stray") != "unowned"
         && owner_of(assignment: assignment, module_id: p + "sink") == "policy-unit-0"
         && owner_of(assignment: assignment, module_id: p + "entry") == "policy-unit-1"
-    ResolvePartitionOk { assignment: _, provenance: HandExplicit } => false
-    ResolvePartitionRefused { cause: _ } => false
+    EmittedClosureResolved { outcome: ResolvePartitionOk { assignment: _, provenance: HandExplicit } } => false
+    EmittedClosureResolved { outcome: ResolvePartitionRefused { cause: _ } } => false
+    EmittedClosureDagRefused { cause: _ } => false
+  }
+}
+
+// (a) A required dependency the pool does not declare refuses at the facts-to-DAG boundary, naming
+// the importer and the target -- it does not become a smaller closure that partitions cleanly.
+// Restoring it is the base tree, where the same shape resolves with the dependency owned.
+test fn an_unresolved_required_dependency_refuses_rather_than_shrinking_the_closure() -> Bool {
+  match fixture_partition_at(root: missing_root, entry: "entry.dag") {
+    EmittedClosureDagRefused { cause: ClosureDependencyUnresolved { importer_path: importer, target_module: target } } =>
+      importer == missing_root + "/left.dag"
+        && target == "test.fixture.emitted_closure_partition.missing.sink"
+    EmittedClosureDagRefused { cause: ClosureEntryUndeclared { entry_path: _ } } => false
+    EmittedClosureResolved { outcome: _ } => false
+  }
+}
+
+// (c) An entry the pool does not declare is refused by name, never an accepted empty partition.
+test fn an_undeclared_entry_refuses_rather_than_resolving_an_empty_closure() -> Bool {
+  match fixture_partition_at(root: base_root, entry: "absent.dag") {
+    EmittedClosureDagRefused { cause: ClosureEntryUndeclared { entry_path: path } } => path == base_root + "/absent.dag"
+    EmittedClosureDagRefused { cause: ClosureDependencyUnresolved { importer_path: _, target_module: _ } } => false
+    EmittedClosureResolved { outcome: _ } => false
   }
 }

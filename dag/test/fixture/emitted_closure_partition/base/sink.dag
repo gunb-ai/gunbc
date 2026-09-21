@@ -1,6 +1,5 @@
 module test.fixture.emitted_closure_partition.base.sink
 
-import std.types { Int }
 
 fn base_sink_value() -> Int {
   1

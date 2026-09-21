@@ -1,6 +1,5 @@
 module test.fixture.emitted_closure_partition.mutated.stray
 
-import std.types { Int }
 import test.fixture.emitted_closure_partition.mutated.sink { mutated_sink_value }
 
 fn mutated_stray_value() -> Int {

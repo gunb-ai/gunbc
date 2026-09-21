@@ -1,6 +1,5 @@
 module test.fixture.emitted_closure_partition.base.stray
 
-import std.types { Int }
 import test.fixture.emitted_closure_partition.base.sink { base_sink_value }
 
 fn base_stray_value() -> Int {
