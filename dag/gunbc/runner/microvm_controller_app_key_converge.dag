@@ -315,14 +315,12 @@ fn admit_staging_cleanup(
   }
 }
 
+// THE PREFIX, not the whole reason. admit_staging_cleanup has already computed WHICH of the three
+// joined facts failed, and the withheld arm carries that cause through rather than flattening it:
+// a receipt saying only "authority was not established" cannot tell an operator whether to fix an
+// ancestor, the directory, or a staging path pointing outside it (DESIGN 5 -- a typed, LOCATED
+// diagnostic).
 data staging_cleanup_withheld_reason: String = "staging cleanup withheld because root-only path authority was not established"
-
-fn staging_cleanup_admission_wire(a: StagingCleanupAdmission) -> String {
-  match a {
-    StagingCleanupAuthorized { authorization: z } => concat("authorized ", z.staging)
-    StagingCleanupWithheld { reason: r } => concat("WITHHELD ", r)
-  }
-}
 
 // PURE, over a listing that SUCCEEDED. The caller reaches this only on a successful leg, so every
 // arm here is a reading of what the parent contains -- there is no exit code to misread. The argv
@@ -790,7 +788,7 @@ fn converge_controller_app_key(
   let staging_after = match cleanup_admission {
     StagingCleanupAuthorized { authorization: z } =>
       clear_staging(authorization: z, context: context)
-    StagingCleanupWithheld { reason: _ } => StagingUnobservable { reason: staging_cleanup_withheld_reason }
+    StagingCleanupWithheld { reason: r } => StagingUnobservable { reason: join([staging_cleanup_withheld_reason, ": ", r], "") }
   }
   ControllerAppKeyRun {
     host: subject.host,

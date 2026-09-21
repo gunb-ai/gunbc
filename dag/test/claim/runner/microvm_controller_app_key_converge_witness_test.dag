@@ -390,3 +390,29 @@ test fn root_only_ancestors_and_directory_authorize_the_exact_staging_path() -> 
       }
   }
 }
+
+// THE THREE WITHHELD CAUSES ARE DISTINCT, which is what makes the diagnostic LOCATED rather than
+// merely typed. An earlier revision discarded admit_staging_cleanup's computed cause at the call
+// site and substituted one constant, so a receipt said "root-only path authority was not
+// established" without saying whether an operator should fix an ancestor, the directory, or a
+// staging path pointing outside it. This reddens if the three are ever flattened back together.
+test fn the_three_withheld_causes_name_which_fact_failed() -> Bool {
+  match controller_key_host(host: operator_host_srv2) {
+    ControllerKeyHostRefused { cause: _ } => false
+    ControllerKeyHostAdmitted { subject: s } => {
+      let ancestor_cause = match admit_staging_cleanup(subject: s, upper_ancestors: PathsNotRootOnly { paths: ["/etc/gunbc"], detail: "" }, dir: KeyDirRootOnly, key_dir: cleanup_key_dir, staging: staging_path) {
+        StagingCleanupWithheld { reason: r } => r
+        StagingCleanupAuthorized { authorization: _ } => ""
+      }
+      let dir_cause = match admit_staging_cleanup(subject: s, upper_ancestors: PathsRootOnly, dir: KeyDirGroupOrOtherAccess, key_dir: cleanup_key_dir, staging: staging_path) {
+        StagingCleanupWithheld { reason: r } => r
+        StagingCleanupAuthorized { authorization: _ } => ""
+      }
+      let path_cause = match admit_staging_cleanup(subject: s, upper_ancestors: PathsRootOnly, dir: KeyDirRootOnly, key_dir: cleanup_key_dir, staging: "/tmp/app.pem.gunbc-staging") {
+        StagingCleanupWithheld { reason: r } => r
+        StagingCleanupAuthorized { authorization: _ } => ""
+      }
+      ancestor_cause != "" && ancestor_cause != dir_cause && dir_cause != path_cause && ancestor_cause != path_cause
+    }
+  }
+}
