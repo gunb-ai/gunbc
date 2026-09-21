@@ -1,0 +1,66 @@
+module test.claim.spark.pair_serving_d0_authorization_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List, Timestamp }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, serialize_content_hash }
+import std.scoped_authorization { AuthorizationRequest, AuthorizationGranted }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, PollExpired, PollUnreadable, PollDenied, PollApproved }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import std.measure { second }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+import gunbc.spark.released_baseline { QuiescentReservedBaseline }
+import gunbc.spark.pair_serving_d0 { D0Subject, d0_request }
+import gunbc.spark.pair_serving_d0_authorization {
+  D0SubjectFor, D0SubjectUnestablished, d0_live_subject,
+  D0GateAdmitted, D0GatePending, D0GateNotFiled, D0GateDenied, D0GateExpired, D0GateIntentMismatch, D0GateStoreUnreadable, D0GateAuthorizeRefused,
+  d0_gate_from_poll, d0_gate_text,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn w_sha(hex: String) -> ContentHash? {
+  match sha256_hex_digest(hex: hex) { Absent => none  Present { value: d } => Present { value: Sha256Hash(d) } }
+}
+
+fn w_request(intent: ContentHash) -> AuthorizationRequest<D0Subject> {
+  d0_request(escalation_id: "d0-esc-1" as NonEmptyStr, subject: D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: intent, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }, transaction: "tx-1" as NonEmptyStr, intent: intent)
+}
+
+// THE LIVE SUBJECT FOLLOWS THE CANDIDATE: while gunbc.spark.v41_runtime_candidate leaves an axis
+// unestablished there is no subject and the obligations are the candidate's own (the row-store
+// digest, at this writing); a keyed candidate is the successor. The claim is exhaustive over
+// both so it flips, rather than rots, when Cut 0 completes.
+test fn the_live_subject_exists_exactly_when_the_candidate_is_keyed() -> Bool {
+  match d0_live_subject(group: FabricGroupA) {
+    D0SubjectUnestablished { obligations: o } => length(o) >= 1 && any(o, x => (x as String).contains("row-store"))
+    D0SubjectFor { subject: s } => length(s.hosts) == 4
+  }
+}
+
+// THE GATE OVER EVERY POLL ARM. Approved over this request's revision admits; approved or denied
+// over another revision is an intent mismatch (the operator decided something else); denied,
+// expired, not filed, pending and unreadable are each their own standing and none admits.
+test fn the_gate_admits_only_an_approval_over_this_requests_revision() -> Bool {
+  match w_sha(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
+    Absent => false
+    Present { value: intent } => {
+      let req = w_request(intent: intent)
+      let rev = request_revision_of(request: req)
+      let at = "2026-09-21T02:00:00Z" as Timestamp
+      let until = "2026-09-21T03:00:00Z" as Timestamp
+      (match d0_gate_from_poll(poll: PollApproved { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, request: req, observed_at: at) { D0GateAdmitted { authorization: AuthorizationGranted { grant: g, claim: _ } } => (g.escalation_id as String) == "d0-esc-1" && (g.granted_by as String) == "operator"  _ => false })
+        && (match d0_gate_from_poll(poll: PollApproved { revision: "sha256:0000" as NonEmptyStr, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, request: req, observed_at: at) { D0GateIntentMismatch { requested_revision: a, decided_revision: b } => (a as String) == (rev as String) && (b as String) == "sha256:0000"  _ => false })
+        && (match d0_gate_from_poll(poll: PollApproved { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, execute_by: until }, request: req, observed_at: "2026-09-21T04:00:00Z" as Timestamp) { D0GateAuthorizeRefused { detail: _ } => true  _ => false })
+        && (match d0_gate_from_poll(poll: PollDenied { revision: rev, decided_by: "operator" as NonEmptyStr, decided_at: at, reason: "not now" as NonEmptyStr }, request: req, observed_at: at) { D0GateDenied { reason: r } => (r as String) == "not now"  _ => false })
+        && (match d0_gate_from_poll(poll: PollDenied { revision: "sha256:0000" as NonEmptyStr, decided_by: "operator" as NonEmptyStr, decided_at: at, reason: "not now" as NonEmptyStr }, request: req, observed_at: at) { D0GateIntentMismatch { requested_revision: _, decided_revision: _ } => true  _ => false })
+        && (match d0_gate_from_poll(poll: PollStillPending, request: req, observed_at: at) { D0GatePending { escalation_id: e } => (e as String) == "d0-esc-1"  _ => false })
+        && (match d0_gate_from_poll(poll: PollNotFiled, request: req, observed_at: at) { D0GateNotFiled { escalation_id: _ } => true  _ => false })
+        && (match d0_gate_from_poll(poll: PollExpired, request: req, observed_at: at) { D0GateExpired => true  _ => false })
+        && (match d0_gate_from_poll(poll: PollUnreadable { detail: "store" as NonEmptyStr }, request: req, observed_at: at) { D0GateStoreUnreadable { detail: _ } => true  _ => false })
+        && d0_gate_text(g: D0GateExpired).contains("expired")
+    }
+  }
+}

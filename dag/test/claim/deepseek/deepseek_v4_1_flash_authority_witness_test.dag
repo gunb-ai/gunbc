@@ -12,6 +12,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_display_
 import extdeps.huggingface.hub { hub_blob_url, hub_repo_tree_api_url, hub_repo_https_uri }
 import extdeps.uri { uri_wire }
 import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_weight_manifest, deepseek_v4_1_flash_weight_manifest_agrees_with_tree, deepseek_v4_1_flash_published_file,
+  deepseek_v4_1_flash_engram_shard_1, deepseek_v4_1_flash_engram_shard_14, deepseek_v4_1_flash_tokenizer_files,
+  deepseek_v4_1_flash_published_manifest_text, deepseek_v4_1_flash_weight_manifest_text, deepseek_v4_1_flash_tokenizer_manifest_text,
   deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision,
   deepseek_v4_1_flash_encoder_path, deepseek_v4_1_flash_config_path,
   deepseek_v4_1_flash_license_path, deepseek_v4_1_flash_license_spdx,
@@ -205,4 +208,19 @@ test fn dsml_block_name_is_the_encoder_leading_space_not_v4_tool_calls() -> Bool
   (deepseek_v4_1_flash_dsml_tool_calls_block_name as String).starts_with(" ")
     && !(deepseek_v4_1_flash_dsml_tool_calls_block_name as String).contains("tool_calls")
     && string_contains(s: deepseek_v4_1_flash_dsml_tool_calls_open(), pattern: deepseek_v4_1_flash_dsml_token as String)
+}
+
+// THE WEIGHT MANIFEST IS THE TREE, BY FOLD: 48 rows whose sizes sum to the tree total the module
+// carries; the two Engram shards in it are the rows their owners declare (one source for path,
+// size and digest); the canonical text is one serialization shared with the tokenizer manifest,
+// and the two manifests are distinct texts.
+test fn the_weight_manifest_reconciles_with_the_tree_and_owns_each_shard_once() -> Bool {
+  deepseek_v4_1_flash_weight_manifest_agrees_with_tree()
+    && length(deepseek_v4_1_flash_weight_manifest) == 48
+    && (match deepseek_v4_1_flash_published_file(path: deepseek_v4_1_flash_engram_shard_1.file.path) { Present { value: f } => (f.sha256.hex as String) == (deepseek_v4_1_flash_engram_shard_1.sha256.hex as String)  Absent => false })
+    && (match deepseek_v4_1_flash_published_file(path: deepseek_v4_1_flash_engram_shard_14.file.path) { Present { value: f } => (f.sha256.hex as String) == (deepseek_v4_1_flash_engram_shard_14.sha256.hex as String)  Absent => false })
+    && (match deepseek_v4_1_flash_published_file(path: "model-00049-of-00048.safetensors" as NonEmptyStr) { Absent => true  Present { value: _ } => false })
+    && deepseek_v4_1_flash_weight_manifest_text() == deepseek_v4_1_flash_published_manifest_text(rows: deepseek_v4_1_flash_weight_manifest)
+    && deepseek_v4_1_flash_weight_manifest_text() != deepseek_v4_1_flash_tokenizer_manifest_text()
+    && length(deepseek_v4_1_flash_tokenizer_files) == 2
 }

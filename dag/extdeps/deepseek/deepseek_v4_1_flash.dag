@@ -644,92 +644,118 @@ data deepseek_v4_1_flash_engram_shards: List<DeepseekV41EngramShard> = [
 
 // THE WEIGHT MANIFEST: every safetensors shard at this revision with the publisher's sha256 (the
 // LFS object id) and whole-file size, read from `hub_repo_tree_api_url` at dba1be0a on 2026-09-21
-// (48 files, 510296708312 bytes -- the same total deepseek_v4_1_flash_safetensors_tree_file_bytes
-// carries, and shards 47 and 48 agree with the two Engram rows above, which were read earlier by
-// a different route). These are the publisher's DECLARED digests, cited to the tree API at the
+// (48 files; deepseek_v4_1_flash_weight_manifest_agrees_with_tree folds their sizes against
+// deepseek_v4_1_flash_safetensors_tree_file_bytes, and the two Engram shard rows are DERIVED from
+// deepseek_v4_1_flash_engram_shard_1 / _14, the rows that own them, rather than declared twice). These are the publisher's DECLARED digests, cited to the tree API at the
 // revision; a fleet-side reading over bytes present on a Spark is the same declared frontier as
 // the Engram rows (DSV41-10). The manifest is what the V4.1 candidate's weights axis is keyed by:
 // gunbc.spark.v41_runtime_candidate digests its canonical text.
-type DeepseekV41ShardDigest sole_constructor {
+// A PUBLISHED FILE AT THIS REVISION: its path, whole-file size and the publisher's sha256. One
+// record for every file the candidate is keyed by -- the weight shards and the tokenizer files --
+// and one canonical serialization (deepseek_v4_1_flash_published_manifest_text) for both lists.
+type DeepseekV41PublishedFile sole_constructor {
   path: NonEmptyStr
   file_bytes: ByteSize
   sha256: Sha256Digest
 }
 
-data deepseek_v4_1_flash_weight_manifest: List<DeepseekV41ShardDigest> = [
-  DeepseekV41ShardDigest { path: "model-00001-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 970533624), sha256: Sha256Digest { hex: "886aebdafa08cc27bbae2165ed35bdfe0de9370bf88c1411283c155c6ae4ff89" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00002-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 1323858272), sha256: Sha256Digest { hex: "4320066fc6958e5bc01d8c3feba79b7454b59f0f4b7299ab7145ed44bbf4ecec" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00003-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "e1281f85d0ce4a3dfb63d41926fc4a47fa71f36ba20992e3597e702ead49d4c9" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00004-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "79456c9db0cda3b8115fe1c726fe3db1a34b434584a3991917088a0ab56a39de" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00005-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7405953784), sha256: Sha256Digest { hex: "4a42dc78698bee6b1a821aa01c9650749ef1f716143751f1cdb815c6400280a9" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00006-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "020a6df51a2853452561d91268a65481f7a7d7954ed47f8e6c9ce69a4a134f77" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00007-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "40f8b52f763f6380d41257e1af04eee3aad300af6a418c38e49ff99e3604163a" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00008-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "d62cca4e698f030d4b96ec624c08bed7ad604cec13077da6d6b06669281c4650" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00009-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "1ca62e4c294df31aee69a782974cb14269264fdc08465ab4835760258f05d6ef" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00010-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "dd33c9750a40cbfcdfb19cd8335d955f533e3a18b790c0ee43d1e5d77911595c" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00011-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7405953784), sha256: Sha256Digest { hex: "a9b309f90e0d1e2252a224ed6b057b9c82c27d3a49cff64bfbfef12efd067f7c" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00012-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "b359227eceb3f839c80de19dddf946648ca89425d9b719ff44702cf5e8cfbe0e" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00013-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "41d87a4c81fec1550f9cb975db05598a18ee0161c2664e8e1a0c7b60742755a6" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00014-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "e7ca4a12688a5819829ead3a03282aedb380e438bc41a00e969f70952c6d0eb9" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00015-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "fa9d49314bbb25118b3d52c573ed66a4d0acfb01dcb26d8367f43c66a52f46c4" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00016-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "07d08bce9d73d416eaca0f42843440a8c45c5f939eff1a3690fb460d8dd7f623" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00017-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7405956128), sha256: Sha256Digest { hex: "3d35e330a6c28cd59a06a1caab8b0048f7e12cc037d728736f74431c4c0a1a4c" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00018-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "48bd0c28b7f441f131f562cb664366d7726447a3698da3dd56ebbfeb1b916c75" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00019-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "b7a25cb64a959ca5e5a99e239bb1ba2092b9bcf022bec4ba71f7441334107bd1" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00020-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "8aea8c4026ba4b93e82b4ed1b6b4620d02b6aaac88d211aaf577acea443aff84" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00021-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "4cb6558dedfdc75a6be472e27bc3e830d8443a3371854e61dc54454a1b5b18f7" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00022-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "81031b68c967539a7c51d1b12d37d18de926ca3045ec554ccdd49a83b4dc0084" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00023-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7400713088), sha256: Sha256Digest { hex: "096723fc8afa9886b976fb63aabef159406dc483e6f2a41e3fe386435b0436cc" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00024-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "c9438ff607bd902fdeb38267d36239ccf60d38595988364562b862791841da75" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00025-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "4227ef9fe34d10de584d67250845fab905cbd8462fd84d9da24d772f223db6b4" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00026-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "0af8c8f1b96b502eda652a0549cf55cd8a4d472a34d27ef9bf1c1d7c4567ca3f" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00027-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7395337384), sha256: Sha256Digest { hex: "3066bd03043726d2400302cb9af759ec4e3957a935d56e241b83b52870322e28" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00028-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "9bc915075568b75e2aec9c645cc0fece6287f115c32031a52ab4f9ba9d12fde6" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00029-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "d153dd9cde7c4aa7ea9896cf7aa25b49447af573f90ad14cfaaa532fbbd19434" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00030-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "3c9ccd96e908e00f02a70930b0821a6c53e5301376a261284a092e1aea7bb5da" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00031-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7395337384), sha256: Sha256Digest { hex: "0de7b6d7142df18ad45a215e9c0ef004f78cdbfefd59cc16345b2bc004047343" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00032-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "6a5aaa73c6f97294bd079914ba44209ecf3d0491c8b95ef9995655511e35aee6" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00033-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "386e3e91f7f02f7e2c25f398b3a63379051c2077839b3081f7556e18c29a69c9" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00034-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "9deab3c4f27c956f91cd989d9a1f6cf4bbb91858ce3f7164caa5ae61125c943f" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00035-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7395337384), sha256: Sha256Digest { hex: "226573bc07f35091b0ec27b0056ab3059f9bc1c0afd0bc104c93c86dd029cad2" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00036-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "90d6a85c1eb0cae68c6c7bffa11b60654ea00353d27a0ae17701b72e239894cd" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00037-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "207aef18f995fdfe7506175aabd700aa62dcf6f488c7cc375e9de06f56891b83" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00038-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "cbbaa0b0807311807a696efec09f9b5a5d63bdf68b82378e1fc7402a2533c627" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00039-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7395337384), sha256: Sha256Digest { hex: "f4cf191547b50efbc35c4ed1f36cfb26043d94f987c49d54b15ef2d632a14a77" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00040-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "e991bfc416055c45ddb89f1447eae1e67dba2816e7580044ffff3db7e2af27a3" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00041-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "48a1c08afadf4e73223c587f9c6ad6f32aef57c01342ae75e96b07a001711d42" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00042-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "e1a4d5d30ae51bafda75078d49b05a585c924b0af9b3481c075b04341507c2ef" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00043-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 1323837624), sha256: Sha256Digest { hex: "d762b688f138e00a24eac96f27b842715bb4b534ecc9ca39076bed2b8c33201e" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00044-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 2652728736), sha256: Sha256Digest { hex: "9a6b39fb88a2510487a8efaef77aa7864e8061f6b62c95a0f010e9dd538f3b05" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00045-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 2573998176), sha256: Sha256Digest { hex: "0cc9d5f6ca3a2158ccc63ce2c70c76aeda8177d54913340481af566680329eb5" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00046-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 2706402896), sha256: Sha256Digest { hex: "e625902027b9d23d416f8818c665fab4704e0b96dc1bc778321601b700475a9d" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00047-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 101535150936), sha256: Sha256Digest { hex: "824db4881320407ac340736d14dcee5ecd748c27d0f5836b8127ecc2e3781b0f" as Sha256DigestHex } },
-  DeepseekV41ShardDigest { path: "model-00048-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 101537926640), sha256: Sha256Digest { hex: "976330f4954338e1ad8b508c32aa912032c7ad908959fd53c8307650fe4520ed" as Sha256DigestHex } },
+// The two Engram shards are the rows deepseek_v4_1_flash_engram_shard_1 / _14 already own (path,
+// size, digest, plus the header bytes only they carry); the manifest takes them from there.
+fn deepseek_v4_1_flash_published_file_of_engram(shard: DeepseekV41EngramShard) -> DeepseekV41PublishedFile {
+  DeepseekV41PublishedFile { path: shard.file.path, file_bytes: shard.file.file_bytes, sha256: shard.sha256 }
+}
+
+data deepseek_v4_1_flash_weight_manifest_backbone_rows: List<DeepseekV41PublishedFile> = [
+  DeepseekV41PublishedFile { path: "model-00001-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 970533624), sha256: Sha256Digest { hex: "886aebdafa08cc27bbae2165ed35bdfe0de9370bf88c1411283c155c6ae4ff89" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00002-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 1323858272), sha256: Sha256Digest { hex: "4320066fc6958e5bc01d8c3feba79b7454b59f0f4b7299ab7145ed44bbf4ecec" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00003-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "e1281f85d0ce4a3dfb63d41926fc4a47fa71f36ba20992e3597e702ead49d4c9" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00004-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "79456c9db0cda3b8115fe1c726fe3db1a34b434584a3991917088a0ab56a39de" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00005-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7405953784), sha256: Sha256Digest { hex: "4a42dc78698bee6b1a821aa01c9650749ef1f716143751f1cdb815c6400280a9" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00006-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "020a6df51a2853452561d91268a65481f7a7d7954ed47f8e6c9ce69a4a134f77" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00007-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "40f8b52f763f6380d41257e1af04eee3aad300af6a418c38e49ff99e3604163a" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00008-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "d62cca4e698f030d4b96ec624c08bed7ad604cec13077da6d6b06669281c4650" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00009-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "1ca62e4c294df31aee69a782974cb14269264fdc08465ab4835760258f05d6ef" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00010-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "dd33c9750a40cbfcdfb19cd8335d955f533e3a18b790c0ee43d1e5d77911595c" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00011-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7405953784), sha256: Sha256Digest { hex: "a9b309f90e0d1e2252a224ed6b057b9c82c27d3a49cff64bfbfef12efd067f7c" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00012-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389759032), sha256: Sha256Digest { hex: "b359227eceb3f839c80de19dddf946648ca89425d9b719ff44702cf5e8cfbe0e" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00013-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "41d87a4c81fec1550f9cb975db05598a18ee0161c2664e8e1a0c7b60742755a6" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00014-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "e7ca4a12688a5819829ead3a03282aedb380e438bc41a00e969f70952c6d0eb9" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00015-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "fa9d49314bbb25118b3d52c573ed66a4d0acfb01dcb26d8367f43c66a52f46c4" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00016-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "07d08bce9d73d416eaca0f42843440a8c45c5f939eff1a3690fb460d8dd7f623" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00017-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7405956128), sha256: Sha256Digest { hex: "3d35e330a6c28cd59a06a1caab8b0048f7e12cc037d728736f74431c4c0a1a4c" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00018-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "48bd0c28b7f441f131f562cb664366d7726447a3698da3dd56ebbfeb1b916c75" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00019-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "b7a25cb64a959ca5e5a99e239bb1ba2092b9bcf022bec4ba71f7441334107bd1" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00020-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "8aea8c4026ba4b93e82b4ed1b6b4620d02b6aaac88d211aaf577acea443aff84" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00021-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "4cb6558dedfdc75a6be472e27bc3e830d8443a3371854e61dc54454a1b5b18f7" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00022-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "81031b68c967539a7c51d1b12d37d18de926ca3045ec554ccdd49a83b4dc0084" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00023-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7400713088), sha256: Sha256Digest { hex: "096723fc8afa9886b976fb63aabef159406dc483e6f2a41e3fe386435b0436cc" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00024-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "c9438ff607bd902fdeb38267d36239ccf60d38595988364562b862791841da75" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00025-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "4227ef9fe34d10de584d67250845fab905cbd8462fd84d9da24d772f223db6b4" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00026-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "0af8c8f1b96b502eda652a0549cf55cd8a4d472a34d27ef9bf1c1d7c4567ca3f" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00027-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7395337384), sha256: Sha256Digest { hex: "3066bd03043726d2400302cb9af759ec4e3957a935d56e241b83b52870322e28" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00028-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "9bc915075568b75e2aec9c645cc0fece6287f115c32031a52ab4f9ba9d12fde6" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00029-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "d153dd9cde7c4aa7ea9896cf7aa25b49447af573f90ad14cfaaa532fbbd19434" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00030-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "3c9ccd96e908e00f02a70930b0821a6c53e5301376a261284a092e1aea7bb5da" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00031-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7395337384), sha256: Sha256Digest { hex: "0de7b6d7142df18ad45a215e9c0ef004f78cdbfefd59cc16345b2bc004047343" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00032-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "6a5aaa73c6f97294bd079914ba44209ecf3d0491c8b95ef9995655511e35aee6" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00033-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "386e3e91f7f02f7e2c25f398b3a63379051c2077839b3081f7556e18c29a69c9" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00034-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "9deab3c4f27c956f91cd989d9a1f6cf4bbb91858ce3f7164caa5ae61125c943f" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00035-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7395337384), sha256: Sha256Digest { hex: "226573bc07f35091b0ec27b0056ab3059f9bc1c0afd0bc104c93c86dd029cad2" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00036-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "90d6a85c1eb0cae68c6c7bffa11b60654ea00353d27a0ae17701b72e239894cd" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00037-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "207aef18f995fdfe7506175aabd700aa62dcf6f488c7cc375e9de06f56891b83" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00038-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "cbbaa0b0807311807a696efec09f9b5a5d63bdf68b82378e1fc7402a2533c627" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00039-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7395337384), sha256: Sha256Digest { hex: "f4cf191547b50efbc35c4ed1f36cfb26043d94f987c49d54b15ef2d632a14a77" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00040-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "e991bfc416055c45ddb89f1447eae1e67dba2816e7580044ffff3db7e2af27a3" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00041-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "48a1c08afadf4e73223c587f9c6ad6f32aef57c01342ae75e96b07a001711d42" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00042-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 7389761368), sha256: Sha256Digest { hex: "e1a4d5d30ae51bafda75078d49b05a585c924b0af9b3481c075b04341507c2ef" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00043-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 1323837624), sha256: Sha256Digest { hex: "d762b688f138e00a24eac96f27b842715bb4b534ecc9ca39076bed2b8c33201e" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00044-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 2652728736), sha256: Sha256Digest { hex: "9a6b39fb88a2510487a8efaef77aa7864e8061f6b62c95a0f010e9dd538f3b05" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00045-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 2573998176), sha256: Sha256Digest { hex: "0cc9d5f6ca3a2158ccc63ce2c70c76aeda8177d54913340481af566680329eb5" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "model-00046-of-00048.safetensors" as NonEmptyStr, file_bytes: byte_size(count: 2706402896), sha256: Sha256Digest { hex: "e625902027b9d23d416f8818c665fab4704e0b96dc1bc778321601b700475a9d" as Sha256DigestHex } },
 ]
 
-// One line per shard, path then digest then size, in path order: the canonical text of the
-// manifest, so its digest is a function of exactly these rows.
+data deepseek_v4_1_flash_weight_manifest: List<DeepseekV41PublishedFile> = concat(
+  deepseek_v4_1_flash_weight_manifest_backbone_rows,
+  map(deepseek_v4_1_flash_engram_shards, s => deepseek_v4_1_flash_published_file_of_engram(shard: s)),
+)
+
+// One line per file, path then digest then size, in list order: the canonical text of a
+// manifest, so its digest is a function of exactly its rows.
+fn deepseek_v4_1_flash_published_manifest_text(rows: List<DeepseekV41PublishedFile>) -> String {
+  join(map(rows, r => join([r.path as String, " ", r.sha256.hex as String, " ", to_string(byte_size_count(b: r.file_bytes))], "")), "\n")
+}
+
 fn deepseek_v4_1_flash_weight_manifest_text() -> String {
-  join(map(deepseek_v4_1_flash_weight_manifest, r => join([r.path as String, " ", r.sha256.hex as String, " ", to_string(byte_size_count(b: r.file_bytes))], "")), "\n")
+  deepseek_v4_1_flash_published_manifest_text(rows: deepseek_v4_1_flash_weight_manifest)
+}
+
+// THE MANIFEST RECONCILES AGAINST THE TREE'S TOTAL BY A FOLD, not by a sentence: the 48 rows'
+// sizes sum to deepseek_v4_1_flash_safetensors_tree_file_bytes, or the manifest is not the tree.
+fn deepseek_v4_1_flash_weight_manifest_bytes() -> ByteSize {
+  byte_size(count: fold(deepseek_v4_1_flash_weight_manifest, init: 0, f: (acc, r) => acc + byte_size_count(b: r.file_bytes)))
+}
+
+fn deepseek_v4_1_flash_weight_manifest_agrees_with_tree() -> Bool {
+  byte_size_count(b: deepseek_v4_1_flash_weight_manifest_bytes()) == byte_size_count(b: deepseek_v4_1_flash_safetensors_tree_file_bytes)
+    && length(deepseek_v4_1_flash_weight_manifest) == deepseek_v4_1_flash_safetensors_shard_count
+}
+
+// A PUBLISHED FILE BY PATH, from the manifest: the one read the Engram shard rows derive from.
+fn deepseek_v4_1_flash_published_file(path: NonEmptyStr) -> DeepseekV41PublishedFile? {
+  first(filter(deepseek_v4_1_flash_weight_manifest, r => (r.path as String) == (path as String)))
 }
 
 // THE TOKENIZER FILES at this revision, digested over the bytes the Hub served for
 // `hub_resolve_url` at dba1be0a on 2026-09-21 (they are not LFS objects, so the tree API carries
 // only their git blob id; the sha256 was taken over the resolved bytes). Same standing as the
 // weight manifest: declared here, verified fleet-side.
-type DeepseekV41TokenizerFile sole_constructor {
-  path: NonEmptyStr
-  file_bytes: ByteSize
-  sha256: Sha256Digest
-}
-
-data deepseek_v4_1_flash_tokenizer_files: List<DeepseekV41TokenizerFile> = [
-  DeepseekV41TokenizerFile { path: "tokenizer.json" as NonEmptyStr, file_bytes: byte_size(count: 6367257), sha256: Sha256Digest { hex: "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b" as Sha256DigestHex } },
-  DeepseekV41TokenizerFile { path: "tokenizer_config.json" as NonEmptyStr, file_bytes: byte_size(count: 801), sha256: Sha256Digest { hex: "6ac8c8dc065ed118161d02dd532749ae3f52c243deac27872134fae2f50d8547" as Sha256DigestHex } },
+data deepseek_v4_1_flash_tokenizer_files: List<DeepseekV41PublishedFile> = [
+  DeepseekV41PublishedFile { path: "tokenizer.json" as NonEmptyStr, file_bytes: byte_size(count: 6367257), sha256: Sha256Digest { hex: "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b" as Sha256DigestHex } },
+  DeepseekV41PublishedFile { path: "tokenizer_config.json" as NonEmptyStr, file_bytes: byte_size(count: 801), sha256: Sha256Digest { hex: "6ac8c8dc065ed118161d02dd532749ae3f52c243deac27872134fae2f50d8547" as Sha256DigestHex } },
 ]
 
 fn deepseek_v4_1_flash_tokenizer_manifest_text() -> String {
-  join(map(deepseek_v4_1_flash_tokenizer_files, r => join([r.path as String, " ", r.sha256.hex as String, " ", to_string(byte_size_count(b: r.file_bytes))], "")), "\n")
+  deepseek_v4_1_flash_published_manifest_text(rows: deepseek_v4_1_flash_tokenizer_files)
 }
 
 // THE SHARD FILES REACH THE POPULATION FOLD, so the tensor extents are bounded by the payload each

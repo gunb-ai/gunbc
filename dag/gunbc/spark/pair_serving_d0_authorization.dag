@@ -1,0 +1,112 @@
+module gunbc.spark.pair_serving_d0_authorization
+
+import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp }
+import std.measure { Second, second, second_count }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash }
+import std.scoped_authorization {
+  AttemptIdentity, AuthorizationRequest, ScopedAuthorization, authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
+}
+import gunbc.auth.approval_decision_store { grant_from_approved_decision, GrantDerived, GrantForAnotherIntent, request_revision_of }
+import gunbc.auth.approval_request_client {
+  ApprovalPollStanding, PollApproved, PollDenied, PollExpired, PollStillPending, PollNotFiled, PollUnreadable,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, fabric_group_hosts }
+import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline }
+import gunbc.spark.v41_runtime_candidate { v41_candidate, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused }
+import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_hash }
+
+// ── THE ESCALATION → AUTHORIZATION PRODUCER FOR D0 (Cut D, the gate Cut 0 opens) ─────────────
+//
+// An operator's consent to D0 is an approval decision over ONE exact request: the group, its
+// current host population, the KEYED successor candidate, the cleanup baseline, the lease term
+// and the transaction word, digested into the intent the decision's revision names. This module
+// produces that request from the live authorities and turns a poll of the approval broker into
+// a ScopedAuthorization<D0Subject> -- the same route gunbc.machine_intake_mtcollins1_boot_authorization
+// takes for the Mt. Collins boot, over D0's subject. It is pure over supplied readings: the poll
+// and the filing are the door's effects (gunbc.spark.pair_serving_d0 pair_serving_d0_wet).
+
+// THE SUCCESSOR IS THE KEYED CANDIDATE, OR THERE IS NO SUBJECT. Identity is not permission, but
+// a consent over an unkeyed successor would authorize whatever bytes turned up: the subject
+// refuses to exist until gunbc.spark.v41_runtime_candidate keys the candidate (Cut 0).
+type D0SubjectStanding
+  = D0SubjectFor { subject: D0Subject }
+  | D0SubjectUnestablished { obligations: List<NonEmptyStr> }
+
+// The lease term the consent is asked for: the bounded window in which D0 reads the fleet and
+// settles. Declared here as the one term every D0 consent names.
+data d0_consent_term: Second = second(count: 3600)
+
+fn d0_live_subject(group: FabricGroup) -> D0SubjectStanding {
+  match v41_candidate().standing {
+    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: c, authorization_obligation: _ } =>
+      D0SubjectFor { subject: D0Subject { group: group, hosts: fabric_group_hosts(g: group), successor: c, cleanup: QuiescentReservedBaseline, term: d0_consent_term } }
+    V41CandidateUnestablished { obligations: o } => D0SubjectUnestablished { obligations: o }
+    V41CandidateRefused { defects: d } => D0SubjectUnestablished { obligations: d }
+  }
+}
+
+// THE REQUEST, with the intent over the exact operation (sha256 through the realization; an
+// unavailable digest is no request, never a structural substitute).
+type D0RequestStanding
+  = D0RequestFor { request: AuthorizationRequest<D0Subject> }
+  | D0RequestUnestablished { obligations: List<NonEmptyStr> }
+
+fn d0_authorization_request(group: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr) -> D0RequestStanding {
+  match d0_live_subject(group: group) {
+    D0SubjectUnestablished { obligations: o } => D0RequestUnestablished { obligations: o }
+    D0SubjectFor { subject: s } =>
+      match d0_intent_hash(subject: s, group: group, transaction: transaction) {
+        Absent => D0RequestUnestablished { obligations: ["the intent over the exact operation could not be digested (sha256sum unavailable)" as NonEmptyStr] }
+        Present { value: i } => D0RequestFor { request: d0_request(escalation_id: escalation_id, subject: s, transaction: transaction, intent: i) }
+      }
+  }
+}
+
+// THE GATE OVER A POLL: approved for THIS request's revision → the grant, authorized against the
+// request at the observed instant; anything else is a typed standing that names what the
+// operator or the run must do. Denied and expired are final; pending and not-filed are not.
+type D0AuthorizationGate
+  = D0GateAdmitted { authorization: ScopedAuthorization<D0Subject> }
+  | D0GatePending { escalation_id: NonEmptyStr }
+  | D0GateNotFiled { escalation_id: NonEmptyStr }
+  | D0GateDenied { reason: NonEmptyStr }
+  | D0GateExpired
+  | D0GateIntentMismatch { requested_revision: NonEmptyStr, decided_revision: NonEmptyStr }
+  | D0GateStoreUnreadable { detail: NonEmptyStr }
+  | D0GateAuthorizeRefused { detail: NonEmptyStr }
+
+fn d0_gate_from_poll(poll: ApprovalPollStanding, request: AuthorizationRequest<D0Subject>, observed_at: Timestamp) -> D0AuthorizationGate {
+  match poll {
+    PollStillPending => D0GatePending { escalation_id: request.escalation_id }
+    PollNotFiled => D0GateNotFiled { escalation_id: request.escalation_id }
+    PollExpired => D0GateExpired
+    PollUnreadable { detail: d } => D0GateStoreUnreadable { detail: d }
+    PollDenied { revision: r, decided_by: _, decided_at: _, reason: why } =>
+      if r != request_revision_of(request: request) { D0GateIntentMismatch { requested_revision: request_revision_of(request: request), decided_revision: r } }
+      else { D0GateDenied { reason: why } }
+    PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+      match grant_from_approved_decision(request: request, revision: r, decided_by: by, decided_at: at, execute_by: until) {
+        GrantForAnotherIntent { requested_revision: a, decided_revision: b } => D0GateIntentMismatch { requested_revision: a, decided_revision: b }
+        GrantDerived { authorization: auth } =>
+          match authorize(authorization: auth, request: request, observed_at: observed_at) {
+            AuthorizationPermitted { grant: _ } => D0GateAdmitted { authorization: auth }
+            AuthorizationRefused { cause: c } => D0GateAuthorizeRefused { detail: join(["scoped authorization refused the approved grant for this request: ", authorization_refusal_reason(cause: c)], "") as NonEmptyStr }
+          }
+        _ => D0GateStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr }
+      }
+  }
+}
+
+fn d0_gate_text(g: D0AuthorizationGate) -> String {
+  match g {
+    D0GateAdmitted { authorization: _ } => "admitted"
+    D0GatePending { escalation_id: e } => join(["escalation ", e as String, " is still pending the operator's decision"], "")
+    D0GateNotFiled { escalation_id: e } => join(["escalation ", e as String, " is not filed with the approval broker"], "")
+    D0GateDenied { reason: r } => join(["the operator denied the consent: ", r as String], "")
+    D0GateExpired => "the approval window expired before a decision"
+    D0GateIntentMismatch { requested_revision: a, decided_revision: b } => join(["the decision is over another intent (requested ", a as String, ", decided ", b as String, "): the group, hosts, successor, cleanup, term or transaction changed since the escalation was filed"], "")
+    D0GateStoreUnreadable { detail: d } => join(["the approval store could not be read: ", d as String], "")
+    D0GateAuthorizeRefused { detail: d } => d as String
+  }
+}
