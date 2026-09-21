@@ -1,5 +1,27 @@
 module test.claim.code_change_workflow_witness_test
 
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha, Timestamp }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.process_algebra { ProcessNodeId }
+import gunbc.review_verdict { MergeReadinessTally }
+import gunbc.pr_digests { MergeReadinessVerdict, Ready, NotReady }
+import extdeps.github.github { GitHubUser }
+import extdeps.github.pulls { PullRequest, PullRequestRef, PullRequestState, Open, Closed }
+import gunbc.code_change_workflow {
+  CodeChangeActiveStage, ChangeOpen, ChangeUnderReview, ChangeMergeReady,
+  CodeChangeTerminalStage, ChangeMerged, ChangeClosed,
+  CodeChangeStage, CodeChangeActive, CodeChangeTerminal,
+  CodeChangeBinding, CodeChangeFacts, CodeChangeGithubPrContext,
+  CodeChangeEventTag, MarkReadyForReview, RecordMergeReady, RecordMerged, RecordClosed,
+  CodeChangeTransitionRequest, CodeChangeDecision, CanTransition, TransitionRefused,
+  CodeChangeRefusal, CodeChangeAlreadyTerminal, ChangeNotOpen, ChangeDraftBlocksReview,
+  CodeChangeInvalidSuccessor, CodeChangeMissingHeadSha, CodeChangeHeadShaMismatch,
+  CodeChangeMissingReviewTally, CodeChangeMissingDigestVerdict, CodeChangeDigestNotReady,
+  CodeChangeTallyRequestChanges, CodeChangeTallyBlockingFindings, CodeChangeNotMergeableClean,
+  CodeChangePolicyNotPermitted,
+  decide_code_change_transition, classify_github_pr_terminal_anchor,
+}
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
