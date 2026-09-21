@@ -1167,11 +1167,20 @@ fn run_verb(
     // roots are named relative to the directory it starts in has stated its own base; only one
     // that has not falls through to discovery, and a run with neither refuses with a located cause
     // instead of aborting inside a helper thirty frames down.
-    if let Err(cause) = cli_run::bind_process_workspace_root(source_roots) {
-        return Verdict {
-            status: 2,
-            message: Some(format!("error: {cause}")),
-        };
+    // THE CHOICE IS REPORTED, NOT INFERRED. Two rules can name the base and they key the module
+    // graph differently, so which one answered is a fact the operator of a run is entitled to see
+    // without reconstructing it from their own cwd. A selection nobody can observe is how a
+    // fall-through becomes indistinguishable from a silent widen.
+    match cli_run::bind_process_workspace_root(source_roots) {
+        Ok((root, basis)) => {
+            eprintln!("[workspace-root] {} {}", basis.wire(), root.display());
+        }
+        Err(cause) => {
+            return Verdict {
+                status: 2,
+                message: Some(format!("error: {cause}")),
+            };
+        }
     }
 
     // Refuse a malformed --arg BEFORE the compile, so the diagnostic is the first thing

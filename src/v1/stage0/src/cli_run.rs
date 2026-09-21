@@ -2091,29 +2091,39 @@ fn process_workspace_root() -> PathBuf {
 
 static PROCESS_WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
 
-/// Why a request may NAME its workspace root instead of the process discovering one.
+/// Why a request may NAME its workspace root, and why discovery is asked FIRST.
 ///
-/// `resolve_process_workspace_root` below answers "which tree am I in" by asking git for a
-/// checkout carrying Cargo.toml beside dag/. That is a proxy, and it is wrong exactly where the
-/// tree is not a checkout -- which is not an exotic case: it is an executor handed an immutable
-/// source snapshot by content identity (`gunbc.fabric_source_snapshot`), the whole point of which
-/// is that no repository travelled with the bytes. Discovery answers that invocation with a panic
-/// before a single module is read, so "source without a repository" was unrunnable rather than
-/// unsupported.
+/// `resolve_process_workspace_root` answers "which tree am I in" by asking git for a checkout
+/// carrying Cargo.toml beside dag/. That is a proxy, correct inside a checkout and unable to say
+/// anything at all outside one -- which is not an exotic case: it is an executor handed an
+/// immutable source snapshot by content identity (`gunbc.fabric_source_snapshot`), the whole point
+/// of which is that no repository travelled with the bytes. Discovery answered that invocation with
+/// a PANIC before a single module was read, so "source without a repository" was unrunnable rather
+/// than unsupported.
 ///
-/// WHAT THE ROOT ACTUALLY ESTABLISHES, which is what the rule is derived from: a base such that
-/// every source root and module file has a stable repo-relative spelling, so module-graph facts and
-/// module-content indices key alike across processes. A RELATIVE `--source-root` spelling is
-/// already relative to the process's cwd -- that is what the spelling MEANS -- so when every
-/// declared root resolves under cwd, the invocation has named its own base and nothing needs to be
-/// discovered. This is not a second authority over the same population: it is the declared answer
-/// for invocations that declare one, and discovery keeps the population that does not.
+/// WHAT THE ROOT ESTABLISHES, which is what the rule is derived from: a base such that every source
+/// root and module file has a stable repo-relative spelling, so module-graph facts and
+/// module-content indices key alike across processes.
 ///
-/// THE CONSERVATIVE CLAUSE IS LOAD-BEARING. A declared root that does NOT resolve under cwd leaves
-/// this rule with nothing to say, and it falls through to discovery rather than refusing -- an
-/// invocation run from a subdirectory of a checkout works today and must keep working. So no
-/// invocation that succeeds now changes its keys: where the declared base applies, cwd and the
-/// discovered root are the same directory.
+/// DISCOVERY IS ASKED FIRST BECAUSE IT IS THE INCUMBENT AUTHORITY, AND THE FIRST WRITING OF THIS
+/// FUNCTION HAD IT THE OTHER WAY ROUND ON A FALSE PREMISE. That premise was that a relative
+/// `--source-root` spelling is relative to cwd. It is not: `anchor_source_root` anchors a relative
+/// root against the WORKSPACE ROOT, so `--source-root dag` names `<workspace>/dag` wherever the
+/// process stands. Preferring a cwd-derived base would therefore have re-keyed invocations that
+/// work today whenever cwd is a subdirectory that happens to contain a same-named root -- the same
+/// run, the same answer, different index keys, with nothing to notice it. Measured while checking
+/// this: from `src/` with `--source-root ../dag`, the cwd-first rule accepted `src` as the base and
+/// the claims PASSED, spelling every key against `src/` where the discovered root would have
+/// spelled them against the repository. Correct answer, divergent keys, no diagnostic.
+///
+/// SO THE TWO RULES PARTITION A POPULATION RATHER THAN RETRY ONE QUESTION. Where a checkout exists,
+/// it is the base, exactly as before this change -- no invocation that succeeds today resolves any
+/// differently. Where NONE exists, discovery has no answer to widen from, and the only party that
+/// can name a base is the request: every declared root must then be a relative path of ordinary
+/// components resolving under cwd, and a root that escapes cwd or is absolute disqualifies the rule
+/// rather than being reinterpreted. When neither rule applies the bind REFUSES, so the failure arm
+/// is a refusal and not a widen (DESIGN section 5). Which rule answered is returned and reported by
+/// the caller, because a selection nobody can observe is indistinguishable from a silent one.
 pub(crate) fn declared_workspace_root(source_roots: &[String]) -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok()?;
     if source_roots.is_empty() {
@@ -2122,6 +2132,19 @@ pub(crate) fn declared_workspace_root(source_roots: &[String]) -> Option<PathBuf
     for root in source_roots {
         let spelled = Path::new(root);
         if spelled.is_absolute() {
+            return None;
+        }
+        // A ROOT THAT ESCAPES cwd MEANS cwd IS NOT THE BASE, and this clause is here because the
+        // rule without it was wrong in a way that still passed: run from `src/` with
+        // `--source-root ../dag`, and `src/../dag` is a directory, so cwd was accepted as the base
+        // and every module key was then spelled against `src/` -- `../dag/test/...` where the
+        // discovered root would have said `dag/test/...`. The run answered correctly and keyed
+        // differently, which is the silent divergence this whole derivation exists to prevent. A
+        // relative spelling names cwd as the base only when it stays inside it.
+        if spelled
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+        {
             return None;
         }
         if !cwd.join(spelled).is_dir() {
@@ -2137,20 +2160,39 @@ pub(crate) fn declared_workspace_root(source_roots: &[String]) -> Option<PathBuf
 /// the state `resolve_process_workspace_root` answers with a panic. A panic is not a refusal: it
 /// carries no exit contract and prints no diagnostic a caller can act on, which is precisely what
 /// DESIGN section 5 forbids at a boundary whose job is to refuse precisely.
-pub fn bind_process_workspace_root(source_roots: &[String]) -> Result<PathBuf, String> {
+/// Which of the two rules named the base, so the choice is reported rather than inferred.
+pub enum WorkspaceRootBasis {
+    /// The request named it: every `--source-root` is relative and resolves under cwd.
+    Declared,
+    /// The request named no base, so the checkout walk answered.
+    Discovered,
+}
+
+impl WorkspaceRootBasis {
+    pub fn wire(&self) -> &'static str {
+        match self {
+            WorkspaceRootBasis::Declared => "declared",
+            WorkspaceRootBasis::Discovered => "discovered",
+        }
+    }
+}
+
+pub fn bind_process_workspace_root(
+    source_roots: &[String],
+) -> Result<(PathBuf, WorkspaceRootBasis), String> {
     if let Some(root) = PROCESS_WORKSPACE_ROOT.get() {
-        return Ok(root.clone());
+        return Ok((root.clone(), WorkspaceRootBasis::Declared));
     }
-    if let Some(declared) = declared_workspace_root(source_roots) {
-        let _ = PROCESS_WORKSPACE_ROOT.set(declared.clone());
-        bind_checkout_root(declared.clone());
-        return Ok(declared);
+    if let Some(discovered) = try_resolve_process_workspace_root() {
+        let _ = PROCESS_WORKSPACE_ROOT.set(discovered.clone());
+        bind_checkout_root(discovered.clone());
+        return Ok((discovered, WorkspaceRootBasis::Discovered));
     }
-    match try_resolve_process_workspace_root() {
-        Some(discovered) => {
-            let _ = PROCESS_WORKSPACE_ROOT.set(discovered.clone());
-            bind_checkout_root(discovered.clone());
-            Ok(discovered)
+    match declared_workspace_root(source_roots) {
+        Some(declared) => {
+            let _ = PROCESS_WORKSPACE_ROOT.set(declared.clone());
+            bind_checkout_root(declared.clone());
+            Ok((declared, WorkspaceRootBasis::Declared))
         }
         None => Err(format!(
             "no workspace root: every --source-root would have to resolve under the current \
