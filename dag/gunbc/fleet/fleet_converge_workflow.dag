@@ -364,9 +364,8 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 // inherit the fleet key by omission. The fleet-converge job materializes the fleet key only for a
 // dispatch whose mode consumes it: an API-only read (the org credential observe and the org runner
 // roster read, both of which reach GitHub over gh and open no host session) must not hold host SSH
-// authority it never uses. Five modes are established as not consuming it: the two API-only reads;
-// the Mt. Collins boot, whose route is BMC/IPMI, SOL and HTTP approval submission with no fleet
-// SSH operation; and the two R2 modes, whose route is api.cloudflare.com and
+// authority it never uses. Four modes are established as not consuming it: the two API-only reads,
+// and the two R2 modes, whose route is api.cloudflare.com and
 // secretmanager.googleapis.com over HTTPS as the run's own federated identity, opening no host
 // session either. Every mode that predates this declaration keeps the key it held before, which is
 // the status quo rather than a finding that it needs it; a mode added AFTER it has no prior standing
@@ -393,12 +392,13 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 //     identity from the agent;
 //   - extdeps.tools.env shell.Env.Get, extdeps.tools.sleep Delay.Seconds, extdeps.clock Clock.Now --
 //     no credential.
-// No reached symbol resolves fleet_ssh_locus, constructs an SshTarget, or calls typed_argv_exec over
-// fleet SSH, on the first attempt or on any retry or fallback arm; gunbc.remote_shell_command,
-// gunbc.fleet_ssh_access and gunbc.fleet_reach are outside the reached set entirely. The two imports
-// that could suggest otherwise take one inert symbol each: gunbc.host_reset_return_run contributes
-// host_reset_bmc_credential_path_env (an environment-variable NAME) and gunbc.fleet_intent_network
-// contributes operator_host_srv1 (a host record), neither of which opens a session.
+//   - AND, SINCE CENSUS STAGE 0D, gunbc.machine_intake_mtcollins1_census_medium_readback
+//     mtcollins1_census_medium_readback -- sha256sum over the served census image on srv2 through
+//     typed_argv_exec_over_fleet_ssh as the fleet principal, before the signed subject is minted.
+//     That one leg is why the Mt. Collins boot CONSUMES the fleet key: the publication receipt in
+//     the medium row is publication-time evidence, and the bytes the BMC will mount over NFS are
+//     re-measured on the host that serves them. The enumeration above was exact until this leg was
+//     added and is kept because the route is still the argument.
 type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
 
 // THE TWO MODES ADDED BY gunbc#11484 REACHED THIS MATCH LAST, AND ARE REPAIRED HERE RATHER THAN
@@ -450,7 +450,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
     ApprovalKeyringConverge => FleetSshKeyConsumed
-    MtCollins1Boot => FleetSshKeyNotConsumed
+    MtCollins1Boot => FleetSshKeyConsumed
     MtCollins1FanObserve => FleetSshKeyNotConsumed
     MtCollins1CensusImagePublish => FleetSshKeyNotConsumed
   }
