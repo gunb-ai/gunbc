@@ -126,6 +126,11 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
     },
     DeclarationRef {
       module_path: "v1_compiler.target_invocation_host",
+      decl_name: "label_refusal_text",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
       decl_name: "parse_pattern_package",
       field: WholeDeclaration
     },

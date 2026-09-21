@@ -975,3 +975,16 @@ test fn the_bare_channel_standing_rendering_reports_the_read_populations() -> Bo
         }
       ) == "bare-reference-channel-outcome: entries=4 unmet=1")
 }
+
+// THE LABEL GRAMMAR'S LOCATED CAUSE REACHES THE PERSON (review 69617). A single target the label
+// grammar refuses renders the pattern layer's sentence AND the label layer's located cause, so a
+// renderer that dropped the inner cause reds here even though the typed arm above still holds.
+test fn a_refused_single_target_renders_the_label_grammars_located_cause() -> Bool {
+  match admit_test_operand(operand: "//dag/test/claim:bad/name") {
+    TestOperandRefused { operand: o, cause: c } =>
+      string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "label grammar refuses")
+        && string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "contains `/`")
+        && string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "bad/name")
+    _ => false
+  }
+}

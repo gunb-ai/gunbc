@@ -18,7 +18,7 @@
 //
 // WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit pattern -> a single target
 // builds the registry, exact lookup, invoke the bound producer, render its native standing; a
-// set form runs the witness machinery in `.dag`. No per-instrument arm on that route, and none
+// set form is refused with status 2 until the native test route executes it. No per-instrument arm on that route, and none
 // may be added; a second instrument is a row in `instrument_registry` plus one `Producer` arm in
 // `run_producer` — the peripheral realization dispatch DESIGN section 3 keeps out of the
 // interface. Deliberately NOT here: any consultation of `//:required` aggregate policy or the
@@ -145,17 +145,45 @@ pub enum TargetPatternRefusal {
 }
 
 /// `target_pattern_refusal_text`, mirrored.
+/// Mirrors `extdeps.bazel.label` `label_refusal_text`: each refusal renders its located cause.
+fn label_refusal_text(cause: &LabelRefusal) -> String {
+    match cause {
+        LabelRefusal::RepositoryQualifiedLabel(t) => {
+            format!("repository-qualified labels are outside the admitted subset: {t}")
+        }
+        LabelRefusal::MissingRepositoryRootPrefix(t) => {
+            format!("label is not absolute (expected a leading `//`): {t}")
+        }
+        LabelRefusal::MultipleColonSeparators(t) => {
+            format!("label carries more than one `:` separator: {t}")
+        }
+        LabelRefusal::EmptyTargetName(t) => format!("label names no target: {t}"),
+        LabelRefusal::EmptyPackageSegment(t) => {
+            format!("label carries an empty package segment: {t}")
+        }
+        LabelRefusal::DotSegment(s) => format!("label carries a dot package segment: {s}"),
+        LabelRefusal::TargetPattern(p) => {
+            format!("`{p}` is a target PATTERN where a single target was expected")
+        }
+        LabelRefusal::TargetNameContainsSlash(n) => {
+            format!("target name contains `/`, which this subset does not admit: {n}")
+        }
+    }
+}
+
 fn target_pattern_refusal_text(cause: &TargetPatternRefusal) -> String {
     match cause {
         TargetPatternRefusal::PatternNotAbsolute(t) => {
             format!("target pattern is not absolute (must start with //): {t}")
         }
-        TargetPatternRefusal::PatternPackageRefused(_) => {
-            "target pattern names a package the label grammar refuses".to_string()
-        }
-        TargetPatternRefusal::PatternLabelRefused(_) => {
-            "target pattern names a single target the label grammar refuses".to_string()
-        }
+        TargetPatternRefusal::PatternPackageRefused(c) => format!(
+            "target pattern names a package the label grammar refuses: {}",
+            label_refusal_text(c)
+        ),
+        TargetPatternRefusal::PatternLabelRefused(c) => format!(
+            "target pattern names a single target the label grammar refuses: {}",
+            label_refusal_text(c)
+        ),
         TargetPatternRefusal::PatternAllTargetsUnsupported(t) => {
             format!(":all-targets has no meaning over a corpus of test modules: {t}")
         }

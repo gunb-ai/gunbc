@@ -270,7 +270,8 @@ fn test_verb_rows() -> List<CliSubcommandRow> {
 // conjunct is the load-bearing one: it is what would go red if the interface were respelled as
 // `gunbc test --target //...` because the row carrier happened to have an option list ready. The
 // operand's authority is the pattern grammar, not the label grammar alone: the verb admits the
-// set forms (`:all`, `:*`, `/...`) and routes them to the witness machinery, while the
+// set forms (`:all`, `:*`, `/...`) -- which the route then refuses with status 2 until the native
+// test route executes them -- while the
 // single-target form still delegates to the label grammar inside that authority.
 test fn the_test_verb_declares_one_target_pattern_operand_and_no_options() -> Bool {
   test_verb_rows() |> all(sub =>
