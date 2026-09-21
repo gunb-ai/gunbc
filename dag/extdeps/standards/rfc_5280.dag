@@ -577,10 +577,11 @@ fn x509_time_rfc3339(t: X509Time) -> Timestamp? {
   }
 }
 
-// Valid at an instant when notBefore <= observed < notAfter (§4.1.2.5: the interval is inclusive
-// at both ends in the profile; the strict upper bound here follows the corpus's own expiry rule
-// -- gunbc.auth.approval_capability capability_live_at -- that the boundary instant belongs to
-// the refusal). `none` when either time does not decode.
+// Valid at an instant when notBefore <= observed <= notAfter: RFC 5280 §4.1.2.5's interval,
+// inclusive at both ends, answered as the profile states it (review 69725 of gunbc#11989: an
+// earlier cut applied the corpus's strict-upper-bound expiry rule here, which is a consumer's
+// policy and not the specification's -- a consumer that wants the boundary instant to refuse
+// tightens it at its own layer). `X509ValidityUndecodable` when either time does not decode.
 type X509ValidityStanding
   = X509ValidAt
   | X509NotYetValid { not_before: Timestamp, observed_at: Timestamp }
@@ -595,7 +596,7 @@ fn x509_validity_at(cert: X509Certificate, observed_at: Timestamp) -> X509Validi
         Absent => X509ValidityUndecodable { text: x509_time_text(t: cert.tbs.not_after) }
         Present { value: na } =>
           if observed_at < nb { X509NotYetValid { not_before: nb, observed_at: observed_at } }
-          else if !(observed_at < na) { X509Expired { not_after: na, observed_at: observed_at } }
+          else if na < observed_at { X509Expired { not_after: na, observed_at: observed_at } }
           else { X509ValidAt }
       }
   }
