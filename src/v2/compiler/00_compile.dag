@@ -12,11 +12,13 @@ import gunbc.witness_v2_native_route {
   native_route_live_control_false_declaration,
   native_route_live_control_module,
   native_route_live_control_true_declaration,
-  native_route_identity_label,
+  native_route_label_in_package,
+  native_route_module_package_text,
   native_route_default_pattern,
   native_route_universe_member,
   required_v2_native_job_name
 }
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryAccepted,
   FloorDiscoveryRefused,
@@ -25,7 +27,7 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_finalize_source_outcomes
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
-import extdeps.bazel.label { LabelParsed, LabelRefused }
+import extdeps.bazel.label { Label, LabelParsed, LabelRefused }
 import extdeps.bazel.target_pattern { TargetPattern, target_pattern_matches }
 import v2.std.logic { Bool }
 import v2.std.integer { integer_int_to_decimal_string }
@@ -1777,67 +1779,97 @@ type NativeLaneUniverse {
   module_sources: List<NativeRouteModuleSource>
 }
 
-// THE POPULATION IS A SELECTION: EVERY DISCOVERED IDENTITY IS A LABEL, AND THE PATTERN DECIDES.
-// Each (declared module, declaration) is spelled as a `Label` by
-// gunbc.witness_v2_native_route `native_route_identity_label` and admitted by
-// `extdeps.bazel.target_pattern` `target_pattern_matches` -- the one matcher, not a second one
-// beside it -- within the floor's universe. `the_default_pattern_admits_every_universe_member`
-// pins that the default narrows nothing.
+// THE POPULATION IS A SELECTION: EVERY UNIVERSE IDENTITY IS A LABEL, AND THE PATTERN DECIDES.
+// `native_lane_label_universe` spells each identity of every universe member as a `Label` ONCE --
+// the module's package text once per module, `parse_label` once per declaration -- and carries the
+// parsed label forward; `native_lane_universe_module_for_source` then admits by
+// `extdeps.bazel.target_pattern` `target_pattern_matches` over the CARRIED label, the one matcher,
+// within the floor's universe. There is one decision site for a refused label and one parse per
+// identity (review 69565: the earlier pre-pass and filter each re-derived every label).
+// `the_default_pattern_admits_every_universe_member` pins that the default narrows nothing.
+//
+// THE UNIVERSE AND THE SELECTION ARE TWO AUTHORITIES. The universe is the floor's
+// (`native_route_universe_member`, the required gate's own prefix): only its members are labeled at
+// all, so a module outside it -- including a declaration no label can name, `test fn all` -- is
+// neither the lane's population nor the lane's defect (review 69555). The pattern only narrows
+// WITHIN the universe; a pattern reaching outside it selects nothing rather than widening the lane.
 //
 // PER IDENTITY IS THE GRAIN THE SINGLE-TARGET FORM NEEDS: `//pkg:name` names a declaration, not a
-// module. The two set forms ignore the target name, so at the default this reduces exactly to the
-// module test it replaced.
-//
-// A MODULE WITH NO ADMITTED DECLARATION IS NOT IN THE UNIVERSE, which is why the emptiness check
-// sits BELOW the filter: a module outside the pattern and a module whose declarations a narrower
-// pattern excluded reach the same arm. The label refusal is SCOPED TO THE UNIVERSE (review 69555):
-// a module outside it is not the lane's population, so a declaration there that no label can name
-// -- `test fn all` -- is not the lane's defect either. An identity whose label REFUSES never reaches this filter:
-// `native_lane_refused_identity_label` refuses the whole derivation first, so the `LabelRefused`
-// arm of `native_lane_identity_admitted` is not an exclusion anyone can observe.
-//
-// THE UNIVERSE AND THE SELECTION ARE TWO AUTHORITIES, AND THE ADMISSION IS THEIR CONJUNCTION. The
-// universe is the floor's (`native_route_universe_member`, the required gate's own prefix); the
-// pattern only narrows WITHIN it. A pattern reaching outside the universe -- `//v2/testing/...`, or
-// the `v2.test` package module a subtree pattern includes and the gate prefix does not -- selects
-// nothing rather than widening the lane past the population the floor gates.
-fn native_lane_identity_admitted(pattern: TargetPattern, module_qn: String, declaration: String) -> Bool {
-  native_route_universe_member(module_qn: module_qn)
-    && match native_route_identity_label(module_qn: module_qn, declaration: declaration) {
-         LabelParsed { label: label } => target_pattern_matches(pattern: pattern, target: label)
-         LabelRefused { cause: _ } => false
-       }
+// module. A MODULE WITH NO ADMITTED DECLARATION IS NOT IN THE UNIVERSE, so the emptiness check
+// sits below the filter.
+type NativeLaneLabeledIdentity {
+  declaration: String
+  label: Label
 }
 
-fn native_lane_refused_identity_label(facts: List<NativeLaneSourceFacts>) -> Optional<String> {
+type NativeLaneLabeledSource {
+  module: String
+  path: Symbol
+  identities: List<NativeLaneLabeledIdentity>
+}
+
+type NativeLaneSourceLabels
+  = NativeLaneSourceLabeled { identities: List<NativeLaneLabeledIdentity> }
+  | NativeLaneSourceLabelRefused { identity: String }
+
+type NativeLaneLabeling
+  = NativeLaneLabeled { sources: List<NativeLaneLabeledSource> }
+  | NativeLaneLabelRefused { identity: String }
+
+// ONE PACKAGE TEXT PER MODULE, ONE PARSE PER DECLARATION. The first refused declaration absorbs:
+// it is the located cause, and a later row cannot repair it.
+fn native_lane_label_rows(declared: String, rows: List<FloorDiscoveryRow>) -> NativeLaneSourceLabels {
+  let package_text = native_route_module_package_text(module_qn: declared)
+  fold_list(
+    xs: rows,
+    empty: NativeLaneSourceLabeled { identities: [] },
+    cons: fn(state, row) {
+      match state {
+        NativeLaneSourceLabelRefused { identity: _ } => state
+        NativeLaneSourceLabeled { identities: identities } =>
+          match native_route_label_in_package(package_text: package_text, declaration: row.function) {
+            LabelRefused { cause: _ } =>
+              NativeLaneSourceLabelRefused { identity: concat(concat(declared, "."), row.function) }
+            LabelParsed { label: label } =>
+              NativeLaneSourceLabeled {
+                identities: list_snoc_item(
+                  xs: identities,
+                  item: NativeLaneLabeledIdentity { declaration: row.function, label: label }
+                )
+              }
+          }
+      }
+    }
+  )
+}
+
+// ONLY UNIVERSE MEMBERS ARE LABELED. A source with no declared module never reaches here (the
+// unowned-row refusal runs first), and a module outside the floor's universe is skipped whole.
+fn native_lane_label_universe(facts: List<NativeLaneSourceFacts>) -> NativeLaneLabeling {
   fold_list(
     xs: facts,
-    empty: optional_absent(),
+    empty: NativeLaneLabeled { sources: [] },
     cons: fn(acc, f) {
       match acc {
-        Present { value: _ } => acc
-        Absent =>
+        NativeLaneLabelRefused { identity: _ } => acc
+        NativeLaneLabeled { sources: sources } =>
           match f.module {
             Absent => acc
             Present { value: declared } =>
               if !native_route_universe_member(module_qn: declared) {
                 acc
               } else {
-              fold_list(
-                xs: f.discovery.rows,
-                empty: acc,
-                cons: fn(inner, row) {
-                  match inner {
-                    Present { value: _ } => inner
-                    Absent =>
-                      match native_route_identity_label(module_qn: declared, declaration: row.function) {
-                        LabelParsed { label: _ } => inner
-                        LabelRefused { cause: _ } =>
-                          optional_present(value: concat(concat(declared, "."), row.function))
-                      }
-                  }
+                match native_lane_label_rows(declared: declared, rows: f.discovery.rows) {
+                  NativeLaneSourceLabelRefused { identity: identity } =>
+                    NativeLaneLabelRefused { identity: identity }
+                  NativeLaneSourceLabeled { identities: identities } =>
+                    NativeLaneLabeled {
+                      sources: list_snoc_item(
+                        xs: sources,
+                        item: NativeLaneLabeledSource { module: declared, path: f.path, identities: identities }
+                      )
+                    }
                 }
-              )
               }
           }
       }
@@ -1847,38 +1879,26 @@ fn native_lane_refused_identity_label(facts: List<NativeLaneSourceFacts>) -> Opt
 
 fn native_lane_universe_module_for_source(
   pattern: TargetPattern,
-  facts: NativeLaneSourceFacts
+  source: NativeLaneLabeledSource
 ) -> List<NativeLaneUniverseModule> {
-  match facts.module {
-    Absent => []
-    Present { value: declared } => {
-      let declarations = fold_list(
-        xs: facts.discovery.rows,
-        empty: [],
-        cons: fn(acc, row) {
-          if native_lane_identity_admitted(
-            pattern: pattern,
-            module_qn: declared,
-            declaration: row.function
-          ) {
-            list_snoc_item(xs: acc, item: row.function)
-          } else {
-            acc
-          }
-        }
-      )
-      if length(xs: declarations) == 0 {
-        []
+  let declarations = fold_list(
+    xs: source.identities,
+    empty: [],
+    cons: fn(acc, identity) {
+      if target_pattern_matches(pattern: pattern, target: identity.label) {
+        list_snoc_item(xs: acc, item: identity.declaration)
       } else {
-        [NativeLaneUniverseModule {
-          module: declared,
-          path: facts.path,
-          declarations: declarations
-        }]
+        acc
       }
     }
+  )
+  if length(xs: declarations) == 0 {
+    []
+  } else {
+    [NativeLaneUniverseModule { module: source.module, path: source.path, declarations: declarations }]
   }
 }
+
 
 // THE DERIVATION IS THE FLOOR'S OWN PRODUCER, FINALIZED THE FLOOR'S OWN WAY. The per-source
 // states are handed to floor_discovery_finalize_source_outcomes untouched — so a walk failure, a
@@ -1936,11 +1956,11 @@ fn native_lane_universe_selected(ingest: SourceRootIngest, pattern: TargetPatter
             detail: symbol_lexeme(sym: unowned)
           )
         Absent =>
-          match native_lane_refused_identity_label(facts: facts) {
-            Present { value: identity } =>
+          match native_lane_label_universe(facts: facts) {
+            NativeLaneLabelRefused { identity: identity } =>
               native_lane_refused(reason: ^native_lane_identity_label_refused, detail: identity)
-            Absent =>
-              native_lane_universe_after_ownership(pattern: pattern, facts: facts)
+            NativeLaneLabeled { sources: sources } =>
+              native_lane_universe_after_ownership(pattern: pattern, facts: facts, sources: sources)
           }
       }
   }
@@ -1952,7 +1972,8 @@ fn native_lane_universe_selected(ingest: SourceRootIngest, pattern: TargetPatter
 // the entire derivation inside a match arm. Consumer: native_lane_universe, the only caller.
 fn native_lane_universe_after_ownership(
   pattern: TargetPattern,
-  facts: List<NativeLaneSourceFacts>
+  facts: List<NativeLaneSourceFacts>,
+  sources: List<NativeLaneLabeledSource>
 ) -> Outcome<NativeLaneUniverse> {
   match floor_discovery_finalize_source_outcomes(
     outcomes: fold_list(xs: facts, empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: f.discovery) })
@@ -1961,11 +1982,11 @@ fn native_lane_universe_after_ownership(
       native_lane_refused(reason: ^native_lane_universe_derivation_refused, detail: reason)
     FloorDiscoveryAccepted { rows: _ } => {
       let modules = fold_list(
-        xs: facts,
+        xs: sources,
         empty: [],
-        cons: fn(acc, f) {
+        cons: fn(acc, source) {
           fold_list(
-            xs: native_lane_universe_module_for_source(pattern: pattern, facts: f),
+            xs: native_lane_universe_module_for_source(pattern: pattern, source: source),
             empty: acc,
             cons: fn(inner, m) { list_snoc_item(xs: inner, item: m) }
           )

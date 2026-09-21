@@ -85,19 +85,28 @@ fn native_route_universe_member(module_qn: String) -> Bool {
 // upstream's own `parse_label`: its segment and target-name refusals apply to an identity exactly
 // as they apply to an operator's label, and no second parser decides what a well-formed package
 // is. A refused identity label is a typed refusal of the universe, never a silent exclusion.
-fn native_route_identity_label_text(module_qn: String, declaration: String) -> String {
-  let package = fold_list(
+// ONE PACKAGE TEXT PER MODULE: the namespace segments joined with the upstream's separator.
+// The producer computes it once per module and parses each declaration against it, so a module's
+// namespace is folded once, not once per declaration.
+fn native_route_module_package_text(module_qn: String) -> String {
+  fold_list(
     xs: split(s: module_qn, delimiter: "."),
     empty: "",
     cons: fn(acc, segment) {
       if acc == "" { concat("", segment) } else { concat(concat(acc, "/"), segment) }
     }
   )
-  concat(concat(concat("//", package), ":"), declaration)
+}
+
+fn native_route_label_in_package(package_text: String, declaration: String) -> LabelParse {
+  parse_label(text: concat(concat(concat("//", package_text), ":"), declaration))
 }
 
 fn native_route_identity_label(module_qn: String, declaration: String) -> LabelParse {
-  parse_label(text: native_route_identity_label_text(module_qn: module_qn, declaration: declaration))
+  native_route_label_in_package(
+    package_text: native_route_module_package_text(module_qn: module_qn),
+    declaration: declaration
+  )
 }
 
 // THE DEFAULT PATTERN IS `//v2/test/...`, AND IT NARROWS NOTHING. The universe stays the floor's
