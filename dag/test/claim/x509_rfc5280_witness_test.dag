@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { Int, String, List, NonEmptyStr }
 import std.integer { UInt8 }
 import std.encoding { base64_decode, Standard }
-import extdeps.crypto.sha2 { sha256 }
+import extdeps.crypto.sha2 { sha256, sha256_hex }
 import extdeps.standards.rfc_8949 {
   CborValue, CborSimple, CborDocumentDecoded, CborDocumentRefused, cbor_decode_document,
   CborMemberFound, cbor_map_unique_text_member, cbor_byte_string_octets, cbor_array_items,
@@ -18,6 +18,7 @@ import extdeps.standards.x690_der {
 }
 import extdeps.standards.rfc_5280 {
   X509Certificate, X509Decoded, X509Refused, decode_certificate, X509Refusal, X509DerRefused, X509SignatureAlgorithmMismatch, X509ExtensionDefaultEncoded,
+  X509Time, UtcTime, GeneralizedTime,
   x509_extension, X509ExtensionFound, X509ExtensionAbsent, X509ExtensionDuplicated,
   ecdsa_sig_value, EcdsaSigValueRead, EcdsaSigValueRefused, EcdsaSigValueTooWide,
   oid_ecdsa_with_sha256, oid_ecdsa_with_sha384, oid_id_ec_public_key, oid_prime256v1, oid_secp384r1,
@@ -25,7 +26,7 @@ import extdeps.standards.rfc_5280 {
 import extdeps.standards.rfc_7468 { pem_decode, PemDecoded, PemRefused, PemBeginLineAbsent, PemMoreThanOneBlock, PemTextOutsideTheBlock, PemEndBeforeBegin, pem_certificate_label }
 import extdeps.standards.rfc_9052 { CoseEc2P256KeyRead, CoseEc2P256KeyRefused, cose_ec2_p256_key }
 import extdeps.standards.webauthn_authenticator_data { AuthenticatorDataDecoded, AuthenticatorDataRefused, decode_authenticator_data }
-import extdeps.apple.app_attest { apple_app_attestation_root_ca_pem, app_attest_nonce_extension_oid, app_attest_nonce_extension_context_tag }
+import extdeps.apple.app_attest { apple_app_attestation_root_ca_pem, apple_app_attestation_root_ca_sha256_hex, app_attest_nonce_extension_oid, app_attest_nonce_extension_context_tag }
 import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets, sample_assertion_octets, sample_client_data_hash_b64 }
 
 // THE X.509 READER'S INHABITANCE CLAIMS run over the two certificates inside Apple's real
@@ -118,7 +119,14 @@ test fn the_sample_leaf_reads_as_openssl_reads_it() -> Bool {
           Absent => false
         }
         && leaf.tbs.serial == [1, 119, 47, 41, 247, 72]
-        && leaf.tbs.not_before == "210122121335Z" && leaf.tbs.not_after == "210125121335Z"
+        && match leaf.tbs.not_before {
+          UtcTime { text: t } => t == "210122121335Z"
+          GeneralizedTime { text: _ } => false
+        }
+        && match leaf.tbs.not_after {
+          UtcTime { text: t } => t == "210125121335Z"
+          GeneralizedTime { text: _ } => false
+        }
         && count(leaf.tbs.spki_public_key) == 65 && count(credential_point) == 65 && leaf.tbs.spki_public_key == credential_point
         && count(leaf.tbs.extensions) == 5
     }
@@ -184,8 +192,9 @@ test fn the_sample_ca_chains_from_the_leaf() -> Bool {
 }
 
 // The pinned root decodes from its PEM: self-signed (subject == issuer), serial
-// 0bf3be0ef1cdd2e0fb8c6e721f621798, secp384r1, ecdsa-with-SHA384, notAfter 450315000000Z --
-// and it is the CA's issuer, which is what step 1's chain terminates on.
+// 0bf3be0ef1cdd2e0fb8c6e721f621798, secp384r1, ecdsa-with-SHA384, notAfter 450315000000Z -- a
+// UTCTime whose YY=45 reads 2045 under §4.1.2.5.1, which the carried arm makes checkable rather
+// than guessed -- and it is the CA's issuer, which is what step 1's chain terminates on.
 test fn the_pinned_root_is_the_sample_cas_issuer() -> Bool {
   match sample_root() {
     Absent => false
@@ -200,9 +209,34 @@ test fn the_pinned_root_is_the_sample_cas_issuer() -> Bool {
               Present { value: c } => c == oid_secp384r1
               Absent => false
             }
-            && root.tbs.not_after == "450315000000Z"
+            && match root.tbs.not_after {
+              UtcTime { text: t } => t == "450315000000Z"
+              GeneralizedTime { text: _ } => false
+            }
             && root.tbs.subject_octets == ca.tbs.issuer_octets
       }
+  }
+}
+
+// THE PINNED ROOT'S IDENTITY IS COMPUTED, NOT READ FROM PROSE: SHA-256 over the DER the PEM rows
+// decode to equals the digest row beside them, so an edited row reds here.
+test fn the_pinned_root_der_hashes_to_its_digest_row() -> Bool {
+  match pem_decode(text: apple_app_attestation_root_ca_pem(), label: pem_certificate_label) {
+    PemRefused { cause: _ } => false
+    PemDecoded { der: der } => sha256_hex(message: der) == (apple_app_attestation_root_ca_sha256_hex as String)
+  }
+}
+
+// A Certificate SEQUENCE with a fourth child (the real leaf's three plus a NULL appended inside
+// the outer length), and an AlgorithmIdentifier with a third child, refuse rather than being read
+// positionally: the outer length octets are 0x82 0x02 0xf5 = 757, rewritten to 759 for the two
+// appended octets.
+test fn extra_children_refuse() -> Bool {
+  let leaf = sample_x5c(i: 0)
+  let with_null = concat(concat(leaf |> take(2), [2, 247]), concat(leaf |> skip(4), [5, 0]))
+  match decode_certificate(octets: with_null) {
+    X509Refused { cause: X509DerRefused { cause: DerTrailingOctets { consumed: 3, total: 4 } } } => true
+    _ => false
   }
 }
 
