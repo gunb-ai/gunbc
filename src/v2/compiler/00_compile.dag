@@ -36,7 +36,9 @@ import v2.compiler.name_resolve {
   resolve_with_admission_context_policy,
   resolve_with_admission
 }
+import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial }
 import v2.compiler.program_assembly {
+  program_assembly_read_to_normalized_root_seeded,
   assemble_program_from_ingest,
   program_assembly_fold_ingest,
   program_assembly_read_to_normalized_root_prepared,
@@ -1228,10 +1230,22 @@ type NativeTestPreparedModule {
   inferred: InferredTree
 }
 
+// `alloc` IS THE OCCURRENCE-ID MARK THIS FOLD HAS REACHED, and it is here for the reason
+// `std.occurrence_identity` `occurrence_identity_scope_law` gives: this fold walks a whole ingest,
+// so it IS "a production source graph", and such a graph "threads one allocator across every parsed
+// source" -- module-local allocator reset is a FORBIDDEN identity input. Before this field each
+// read restarted at #0, so the roots this state accumulates carried ids that collided across files
+// and the NativeTestContext could not tell two files' occurrence #3 apart.
+//
+// THAT IS NOT A LATENT PROBLEM HERE, IT IS A CONSUMED ONE: the SourceRootEval census
+// (`gunbc.compiler_frontend_program_status`) joins this route's refusals "to occurrence identity
+// where an id is minted", which is an occurrence-keyed join over a key that was not unique in the
+// scope it was joined across -- a silent wrong answer rather than a missing one (DESIGN section 5).
 type NativeTestContextFoldState {
   roots: FreeMonoid<NormalizedTree>
   index: SourceRootIndex
   file_refusals: FreeMonoid<NativeTestFileRefusal>
+  alloc: OccurrenceIdAllocator
 }
 
 // The LAST diagnostic is the cause that actually refused the file; the head is the advisory
@@ -1250,10 +1264,15 @@ fn native_test_file_refusal(path: Symbol, d: NonEmptyDiagnostics) -> NativeTestF
 // front end was entered -- as one composed call (native_test_context_from_ingest below) or phase
 // by phase with a clock between them (std.compiler_entry.SourceRootEvalDriver). Neither caller
 // changes what is absorbed.
+// THE MARK ADVANCES ON EVERY ARM, INCLUDING THE REFUSING ONES. A read that refused still consumed
+// the ids it minted before it stopped, so carrying the incoming mark forward regardless of outcome
+// is what keeps the next file from reusing them -- rolling back to the pre-read mark on a refusal
+// would reintroduce exactly the collision this field exists to prevent, one file later.
 fn native_test_context_absorb(
   state: NativeTestContextFoldState,
   read: DagSourceReadWitness,
-  root_outcome: Outcome<NormalizedTree>
+  root_outcome: Outcome<NormalizedTree>,
+  alloc: OccurrenceIdAllocator
 ) -> NativeTestContextFoldState {
   match root_outcome {
     Rejected { diagnostics: d } =>
@@ -1263,7 +1282,8 @@ fn native_test_context_absorb(
         file_refusals: list_snoc_item(
           xs: state.file_refusals,
           item: native_test_file_refusal(path: read.compilation_unit, d: d)
-        )
+        ),
+        alloc: alloc
       }
     Accepted { value: root, diagnostics: _ } =>
       match qualified_name_from_module_node(root: root.root) {
@@ -1274,13 +1294,15 @@ fn native_test_context_absorb(
             file_refusals: list_snoc_item(
               xs: state.file_refusals,
               item: native_test_file_refusal(path: read.compilation_unit, d: d)
-            )
+            ),
+            alloc: alloc
           }
         Accepted { value: qn, diagnostics: _ } =>
           NativeTestContextFoldState {
             roots: list_snoc_item(xs: state.roots, item: root),
             index: source_root_index_insert(index: state.index, module: qn, root: read.source_root),
-            file_refusals: state.file_refusals
+            file_refusals: state.file_refusals,
+            alloc: alloc
           }
       }
   }
@@ -1293,15 +1315,18 @@ fn native_test_context_fold_step(
   prepared: PreparedGrammar,
   residue: Diagnostics
 ) -> NativeTestContextFoldState {
+  let result = program_assembly_read_to_normalized_root_seeded(
+    read: read,
+    lm: lm,
+    prepared: prepared,
+    residue: residue,
+    seed: state.alloc
+  )
   native_test_context_absorb(
     state: state,
     read: read,
-    root_outcome: program_assembly_read_to_normalized_root_prepared(
-      read: read,
-      lm: lm,
-      prepared: prepared,
-      residue: residue
-    )
+    root_outcome: result.produced,
+    alloc: result.alloc
   )
 }
 
@@ -1338,7 +1363,8 @@ fn native_test_context_state_empty() -> NativeTestContextFoldState {
   NativeTestContextFoldState {
     roots: Empty,
     index: source_root_index_empty(),
-    file_refusals: Empty
+    file_refusals: Empty,
+    alloc: occurrence_id_allocator_initial()
   }
 }
 

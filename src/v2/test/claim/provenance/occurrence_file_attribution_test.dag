@@ -1,6 +1,7 @@
 module v2.test.provenance.occurrence_file_attribution
 
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.compile { native_test_context_from_ingest }
 import v2.compiler.program_assembly {
   IngestAssembly,
   LocatedIngestRoots,
@@ -28,8 +29,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.compiler.normalized_tree { NormalizedTree }
-import std.algebra { FreeMonoid }
-import v2.std.diagnostic { Outcome }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex, span_index_textual_locus_optional }
 import v2.std.text { String }
@@ -382,4 +383,55 @@ test fn refused_assembly_still_locates_the_files_it_parsed_holds() -> Bool {
 // fold parses reads in order, so it belongs to file A by construction rather than by a search.
 fn attribution_first_recorded_file(index: SpanIndex) -> Optional<Symbol> {
   attribution_file_of_id(index: index, id: OccurrenceId { value: 0 })
+}
+
+// THE SECOND INGEST FOLD, WHICH HAD THE SAME DEFECT AND NO CLAIM (review 69644).
+// `native_test_context_from_ingest` walks a whole ingest and so IS "a production source graph" in
+// the sense `occurrence_identity_scope_law` uses, but it called the UNSEEDED per-file door, so every
+// read restarted at #0 and the roots it accumulated carried ids that collided across files. The
+// route now threads the mark; this is the claim that says so, because a fix to a second fold with
+// evidence only over the first is a fix nobody can tell was made.
+//
+// THE SAME TWO IDENTICAL-SHAPE FIXTURES ARE REUSED ON PURPOSE: they mint the same ordinals as each
+// other under a per-file reset, so distinct root occurrences here can only come from threading.
+fn native_route_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  match native_test_context_from_ingest(
+    ingest: [attribution_read_a(), attribution_read_b()]
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: context, diagnostics: _ } =>
+      match context.resolution {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: ctx, diagnostics: _ } => outcome_accepted(value: ctx.roots.roots)
+      }
+  }
+}
+
+test fn native_route_threads_the_occurrence_mark_across_files_holds() -> Bool {
+  match native_route_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      (length(xs: roots) == 2) && native_route_roots_have_distinct_occurrences(roots: roots)
+  }
+}
+
+// Compared pairwise by identity rather than by counting distinct values: two roots is the whole
+// population here, and asserting they differ is the fact under test stated directly.
+fn native_route_roots_have_distinct_occurrences(roots: FreeMonoid<NormalizedTree>) -> Bool {
+  match roots {
+    Empty => false
+    Cons { head: first, tail: rest } =>
+      match rest {
+        Empty => false
+        Cons { head: second, tail: _ } =>
+          match attribution_id_of(node: first.root) {
+            Absent => false
+            Present { value: id_a } =>
+              match attribution_id_of(node: second.root) {
+                Absent => false
+                Present { value: id_b } => !(id_a == id_b)
+              }
+          }
+      }
+  }
 }

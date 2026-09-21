@@ -179,7 +179,19 @@ type ParseProvenanceState {
 //
 // A STANDALONE PARSE IS STILL AN ISOLATED SCOPE, which the same law admits: the unseeded entry
 // points below are projections that pass `occurrence_id_allocator_initial()`, so a caller that
-// parses one file alone is unchanged, and only a caller assembling a source GRAPH threads the mark.
+// parses one file alone is unchanged.
+//
+// WHAT THAT DOES NOT SAY, DELIBERATELY, IS THAT EVERY UNSEEDED CALLER PARSES ONE FILE. The door
+// cannot enforce its own precondition: an unseeded call states "this is a fresh scope", and whether
+// that is TRUE is a fact about the caller, not about this declaration. An earlier revision of this
+// annotation claimed the corpus had no multi-file unseeded caller, and the corpus did have one
+// (review 69644) -- prose asserting a property of code it cannot see, which is the same class as
+// review 69607 against this branch. The obligation belongs to each fold that walks an ingest, and
+// the two that do -- `v2.compiler.program_assembly` `program_assembly_fold_step` and
+// `v2.compiler.00_compile` `native_test_context_fold_step` -- both thread the mark. A NEW ingest
+// fold that calls the unseeded door is a defect this annotation cannot catch; making that
+// structurally unwritable would mean a carrier that distinguishes "a scope" from "a file", which is
+// a modeling change larger than this one and is not claimed here.
 type ParseArtifact {
   tree: ParseTree
   span_index: v2.std.provenance.SpanIndex

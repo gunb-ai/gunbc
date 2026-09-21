@@ -575,7 +575,38 @@ import v2.std.collection { List }
 // THE CLI TRAILING-TOKEN PROBE ROW: v2.test.cli.v2_native_cli drives v2_cli_run over a two-file
 // supplied ingest whose second file refuses at parse; two claims read one field each of the
 // CliRunOutcome. Stored value is a refused outcome (a Symbol and a String), portable.
+// THE OCCURRENCE-ATTRIBUTION ROWS ARE THE SAME GROUND A FIFTH TIME, AND THE LEDGER NAMED THE ROW.
+// v2.test.provenance.occurrence_file_attribution establishes that an occurrence resolves to a file
+// and byte range; its seven claims each inspect ONE field of a value produced by driving the whole
+// front end over a supplied two-file ingest -- which is DESIGN section 3's "a claim whose evaluation
+// is dominated by ONE call whose RESULT SHAPE is all it inspects", and section 2's several demands
+// for one computation identity with a shared ancestor. The front end each claim rebuilt is work no
+// row is about.
+//
+// THE INSTRUMENT DECIDED THIS ROW RATHER THAN A PREFERENCE: the required floor on gunbc#11985 head
+// 97675ab2281 refused
+// `refused_assembly_still_locates_the_files_it_parsed_holds` ENROLMENT-MARGIN-REFUSED at
+// observed_cpu_ms=344 against the 302ms margin, and COMPLETED-OVER-COST-REQUIREMENT at 129385
+// evaluator steps against the 72300-step new-witness budget. The lane's own guidance was checked
+// before reducing anything: the cause is not a nested membership scan and not contention at
+// constant eval steps -- it is one front end per claim, so the share point is the producer.
+//
+// THE STORED VALUES ARE PORTABLE, which is the publication rule this roster enforces. None carries
+// a ResolutionContext or a closure: `attribution_roots` and `native_route_roots` carry normalized
+// trees plus a SpanIndex (a Map of OccurrenceId to OriginEvent -- loci, symbols and nodes),
+// `attribution_refused_assembly` carries a SpanIndex and an Outcome<Node>, and
+// `door_probe_cli_detail` carries a String. `native_route_roots` deliberately publishes
+// `ctx.roots.roots` and NOT the NativeTestContext it came from, for the reason census_probe_outcomes
+// gives: the context is the origin-bound shape this roster refuses.
+//
+// WARM, NEVER CLAIM-FORCED, by the same ceiling arithmetic as every row above: the fill is a front
+// end over two files, which is more than one claim's budget on this lane, so an in-fold first touch
+// would die mid-flight and be abandoned un-stored exactly as prepare_grammar's did.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.provenance.occurrence_file_attribution.attribution_roots",
+  "v2.test.provenance.occurrence_file_attribution.attribution_refused_assembly",
+  "v2.test.provenance.occurrence_file_attribution.door_probe_cli_detail",
+  "v2.test.provenance.occurrence_file_attribution.native_route_roots",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
