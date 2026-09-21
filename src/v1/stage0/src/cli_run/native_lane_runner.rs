@@ -1301,9 +1301,17 @@ pub struct V2NativeCliHeld {
 /// would report a working door as an unparseable one. Two drivers, two stdout contracts; sharing
 /// the reader would be a fork of the contract, not a saving.
 ///
-/// STDOUT IS CHECKED UTF-8 AND NOT LOSSY, on the rule `run_native_binary` already states: a lossy
-/// decode substitutes U+FFFD and would let this harness assert about bytes the child did not
-/// write. Stderr is lossy-decoded because it is diagnostic relay rather than a subject.
+/// BOTH STREAMS ARE CHECKED UTF-8, on the rule `run_native_binary` already states: a lossy decode
+/// substitutes U+FFFD and would let this harness assert about bytes the child did not write.
+///
+/// AN EARLIER VERSION OF THIS PARAGRAPH SAID STDERR WAS "diagnostic relay rather than a subject"
+/// AND DECODED IT LOSSILY. That is false about which stream carries the claim: both door arms read
+/// their ENTIRE verdict out of stderr -- the located chain, the determining reason, the no-entry
+/// frame. The safety consequence was small (U+FFFD cannot fabricate the pinned ASCII, so a mangled
+/// stream would refuse rather than pass) but the stated REASON was wrong about the subject, in a
+/// change whose whole business is retracting annotations that describe what the code does not do
+/// (review 69687). Corrected by making the DECODE match the claim, not by rewriting the sentence:
+/// the sibling's own words are "a receipt surface cannot transform its own subject".
 fn run_cli_door(binary: &Path, args: &[String]) -> Result<CliDoorRun, String> {
     let output = Command::new(binary).args(args).output().map_err(|e| {
         format!(
@@ -1318,10 +1326,22 @@ fn run_cli_door(binary: &Path, args: &[String]) -> Result<CliDoorRun, String> {
             output.stdout.len()
         )
     })?;
+    // STDERR IS CHECKED TOO, BECAUSE STDERR IS THIS DOOR'S SUBJECT. Both arms read their entire
+    // verdict out of it -- `cli_refusal_determining_reason` decodes the located chain from it and
+    // `cli_no_entry_refusal_framed` reads its frame -- so `run_native_binary`'s rule applies here
+    // verbatim, and a lossy decode would substitute U+FFFD into the very bytes those functions
+    // adjudicate.
+    let stderr = String::from_utf8(output.stderr.clone()).map_err(|cause| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorStderrNotUtf8 — {} {args:?} wrote {} stderr byte(s) that are not valid UTF-8: {cause}",
+            binary.display(),
+            output.stderr.len()
+        )
+    })?;
     Ok(CliDoorRun {
         status: output.status.code(),
         stdout,
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        stderr,
     })
 }
 
