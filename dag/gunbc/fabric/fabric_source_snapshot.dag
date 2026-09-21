@@ -66,6 +66,8 @@ import std.fabric_storage {
   fabric_object_ref_wire,
   fabric_storage_fault_wire,
 }
+import extdeps.git.plumbing
+import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt }
 import gunbc.fabric_storage_file_store {
   FabricStorageFileRoot,
   fabric_storage_file_get,
@@ -651,5 +653,74 @@ fn materialize_source_snapshot(
             }
         }
       }
+  }
+}
+
+
+// ── WHAT THE EXECUTOR'S CLI DEMANDS OF A TREE, WHICH IS NOT WHAT THE HANDOFF DELIVERS ────────
+//
+// A MATERIALIZED SNAPSHOT IS NOT YET A TREE THE SEED CLI WILL RUN IN, and that is a fact about the
+// CLI rather than about the snapshot. v1_compiler.cli_run process_workspace_root locates the
+// workspace by asking `git rev-parse` for a tree carrying Cargo.toml beside dag/, and PANICS when
+// no ancestor of the process's cwd answers -- so a directory holding nothing but source refuses
+// before a single module is read, with a panic rather than a diagnostic. Measured directly: a
+// destination holding the three modules and nothing else exits 101 at process_workspace_root; the
+// same destination carrying an empty repository and a workspace manifest runs the request and
+// exits 0.
+//
+// SO THESE TWO MARKERS ARE THE EXECUTOR'S PRECONDITION AND ARE DELIBERATELY NOT SNAPSHOT ENTRIES.
+// Putting them in the manifest would make them SOURCE, and they are not: they carry no program, the
+// executor's composition does not name them, and a snapshot that shipped its host's workspace
+// markers would be a snapshot of the wrong thing. They are established at the destination, by the
+// party preparing the executor, and they are named here because an unnamed precondition is how a
+// route acquires a dependency nobody can see.
+//
+// AND THE REPOSITORY IS THE EXECUTOR'S OWN, EMPTY, AND NEVER THE CALLER'S. `git init` at the
+// destination creates an object store holding nothing and an index referring to nothing; no object
+// is fetched, no remote is named, no path of the caller's repository is read or written. That is
+// the distinction the whole route turns on: git is not how the source travelled, and could not be
+// -- what travelled is a digest and the bytes it names. If the marker requirement dissolves, this
+// function deletes and the handoff is unchanged, which is the test that it is a precondition and
+// not a transport.
+type ExecutorTreeStanding
+  = ExecutorTreeReady
+  | ExecutorTreeRepositoryRefused { detail: String }
+  | ExecutorTreeManifestRefused { detail: String }
+
+data executor_workspace_manifest: NonEmptyStr = "[workspace]\nmembers = []\n" as NonEmptyStr
+
+// THE FRONTIER IS ON THE SEED, NOT ON THIS FUNCTION, because this function is a consequence and the
+// scaffold is the cause. gunbc.cli_run_workspace_root_scaffold already declares the .git-ancestor
+// walk a seed-retained hand-Rust scaffold with its own dissolution; what was missing is a consumer
+// stating what that scaffold COSTS -- and the cost is that an executor which has source and no
+// repository cannot run at all, which is precisely the executor a source snapshot exists to serve.
+data executor_tree_requires_repository_marker_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(
+    module_path: "gunbc.cli_run_workspace_root_scaffold",
+    decl_name: "cli_run_workspace_root_discovery_scaffold",
+  ),
+  reason: "the seed CLI locates its workspace through a git rev-parse for a Cargo.toml-beside-dag tree, so a destination holding only source panics at process_workspace_root; prepare_executor_tree establishes those markers at the executor and nowhere else",
+  dissolution: unbound_dissolution(
+    description: "the workspace root reaches the CLI from the invocation -- a source-root-derived or explicitly named root -- rather than from a VCS marker discovered by walking cwd's ancestors, at which point prepare_executor_tree deletes and a materialized snapshot is directly runnable. Not satisfied by the panic becoming a typed refusal, which would refuse the same population more politely" as NonEmptyStr,
+  ),
+)
+
+fn prepare_executor_tree(destination: NonEmptyStr) -> ExecutorTreeStanding {
+  let initialized = git.Plumbing.InitAt(
+    address: GitWorktreeAt { path: destination as FilePath },
+    path: destination as FilePath,
+  )
+  if initialized.exit_code != 0 {
+    ExecutorTreeRepositoryRefused { detail: initialized.stderr }
+  } else {
+    let written = Filesystem.Write(
+      path: join([destination as String, "/Cargo.toml"], ""),
+      content: executor_workspace_manifest as String,
+    )
+    if written.success {
+      ExecutorTreeReady
+    } else {
+      ExecutorTreeManifestRefused { detail: written.error }
+    }
   }
 }

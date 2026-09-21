@@ -27,6 +27,18 @@ module tools.source_snapshot_handoff
 // because no remote one ran. The fabric's transport is gunbc.fabric_storage_client's served store,
 // and binding this route to it is the next step, not this one.
 
+// THE INSTRUMENT IS NAMED RATHER THAN ITS OUTPUT TRANSCRIBED (DESIGN section 6). Re-derive every
+// figure this module produces with:
+//
+//   CTRL_BUILD_MODE=local gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/source_snapshot_handoff.dag --function source_snapshot_handoff
+//
+// CTRL_BUILD_MODE IS PART OF THE COMMAND AND NOT ENVIRONMENT TRIVIA, for the reason
+// gunbc.scm.scm_wet_execution_receipt records about its own driver: this instrument BUILDS the
+// binary it spends, PATH cargo in a session container is a shim that dispatches to a remote
+// amd64 builder, and an unforced run produces a binary this host cannot execute. Measured here:
+// the first attempt refused with `build refused for gunbc: ctrl-build: dispatching remote build
+// via BuildBuddy`, which is the located refusal doing its job rather than a flake.
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.gunbc
@@ -65,7 +77,13 @@ import gunbc.fabric_source_snapshot {
   materialize_source_snapshot,
   snapshot_leaf_object,
   source_composition_wire,
+  ExecutorTreeStanding,
+  ExecutorTreeReady,
+  ExecutorTreeRepositoryRefused,
+  ExecutorTreeManifestRefused,
+  prepare_executor_tree,
 }
+import gunbc.ensure { EnsurePolicy, EnsureObserveOnly }
 import gunbc.roadmap_execution_contract {
   ValidationOperation,
   GunbcClaimValidation,
@@ -76,8 +94,6 @@ import gunbc.roadmap_execution_contract {
   CapabilityRealization,
   DispatchHostEnvironment,
   ModeledValidationCommand,
-  EnsurePolicy,
-  EnsureAbsent,
   validation_operation_command,
 }
 import tools.scm_acceptance_binary {
@@ -309,7 +325,7 @@ fn snapshot_request_environment(binary: ScmAcceptanceBinary) -> DispatchHostEnvi
         executable: scm_acceptance_binary_executable(binary: binary) as FilePath,
         identity_args: ["--version"],
         identity_contains: "gunbc" as NonEmptyStr,
-        ensure_policy: EnsureAbsent,
+        ensure_policy: EnsureObserveOnly,
       },
     ],
   }
@@ -411,6 +427,20 @@ fn run_executed_request_scenario(workspace: SnapshotWorkspace, binary: ScmAccept
               detail: "the destination holds a git directory",
             }
           } else {
+            match prepare_executor_tree(destination: workspace.destination as NonEmptyStr) {
+              ExecutorTreeRepositoryRefused { detail: d } =>
+                SnapshotScenarioFailed {
+                  scenario: "executed-request",
+                  step: "executor-tree",
+                  detail: join(["the executor repository marker refused: ", d], ""),
+                }
+              ExecutorTreeManifestRefused { detail: d } =>
+                SnapshotScenarioFailed {
+                  scenario: "executed-request",
+                  step: "executor-tree",
+                  detail: join(["the executor workspace manifest refused: ", d], ""),
+                }
+              ExecutorTreeReady =>
             match run_snapshot_request(workspace: workspace, binary: binary) {
               RequestUnspellable =>
                 SnapshotScenarioFailed {
@@ -437,6 +467,7 @@ fn run_executed_request_scenario(workspace: SnapshotWorkspace, binary: ScmAccept
                     detail: join(["exit ", to_string(code), ": ", err], ""),
                   }
                 }
+            }
             }
           }
       }
@@ -614,7 +645,8 @@ fn run_snapshot_scenario(scenario: SnapshotScenario, binary: ScmAcceptanceBinary
 fn binary_refusal_detail(acquisition: ScmAcceptanceBinaryAcquisition) -> String {
   match acquisition {
     ScmAcceptanceBinaryReady { binary: _ } => ""
-    ScmAcceptanceBinaryBuildRefused { detail: d } => join(["build refused: ", d], "")
+    ScmAcceptanceBinaryBuildRefused { target_name: t, stderr: e } =>
+      join(["build refused for ", t, ": ", e], "")
     ScmAcceptanceBinarySelectionRefused { selection: s } =>
       join(["selection refused: ", cargo_selection_detail(selection: s)], "")
     ScmAcceptanceBinaryDigestRefused { detail: d } => join(["digest refused: ", d], "")
@@ -631,22 +663,23 @@ fn source_snapshot_handoff() -> ProcessExit {
   match acquisition {
     ScmAcceptanceBinaryReady { binary: binary } =>
       let outcomes = map(snapshot_scenarios(), s => run_snapshot_scenario(scenario: s, binary: binary))
+      let _emitted = map(outcomes, o => trace_mark(label: snapshot_outcome_line(outcome: o)))
       let _released = release_scm_acceptance_binary(binary: binary)
       let report = join(map(outcomes, o => snapshot_outcome_line(outcome: o)), "\n")
       if all(outcomes, o => snapshot_outcome_passed(outcome: o)) {
-        ExitSuccess { message: report }
+        ExitSuccess
       } else {
-        exit_failure(message: report)
+        exit_failure(reason: report)
       }
-    ScmAcceptanceBinaryBuildRefused { detail: _ } =>
-      exit_failure(message: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
+    ScmAcceptanceBinaryBuildRefused { target_name: _, stderr: _ } =>
+      exit_failure(reason: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
     ScmAcceptanceBinarySelectionRefused { selection: _ } =>
-      exit_failure(message: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
+      exit_failure(reason: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
     ScmAcceptanceBinaryDigestRefused { detail: _ } =>
-      exit_failure(message: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
+      exit_failure(reason: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
     ScmAcceptanceBinaryRetentionRefused { detail: _ } =>
-      exit_failure(message: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
+      exit_failure(reason: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
     ScmAcceptanceBinaryNotRunnableHere { detail: _ } =>
-      exit_failure(message: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
+      exit_failure(reason: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
   }
 }
