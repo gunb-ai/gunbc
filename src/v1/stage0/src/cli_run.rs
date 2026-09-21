@@ -2140,14 +2140,6 @@ static PROCESS_WORKSPACE_ROOT: OnceLock<(PathBuf, WorkspaceRootBasis)> = OnceLoc
 /// rather than being reinterpreted. When neither rule applies the bind REFUSES, so the failure arm
 /// is a refusal and not a widen (DESIGN section 5). Which rule answered is returned and reported by
 /// the caller, because a selection nobody can observe is indistinguishable from a silent one.
-pub(crate) fn declared_workspace_root(source_roots: &[String]) -> Option<PathBuf> {
-    let cwd = std::env::current_dir().ok()?;
-    match declared_workspace_root_from(&cwd, source_roots) {
-        DeclaredBase::Named(root) => Some(root),
-        DeclaredBase::NotNamed | DeclaredBase::RootAbsent { .. } => None,
-    }
-}
-
 /// THE TWO WAYS THE REQUEST CAN FAIL TO NAME A BASE ARE DIFFERENT FACTS AND SEND A CALLER TO
 /// DIFFERENT PLACES. "You named no base" is a property of the SPELLINGS -- an absolute root, or one
 /// that escapes cwd, leaves nothing for this rule to read. "A root you named is not there" is a
@@ -2161,11 +2153,15 @@ pub(crate) enum DeclaredBase {
     RootAbsent { root: String },
 }
 
-/// The rule itself, over an explicit base. `declared_workspace_root` memoizes nothing and adds
-/// only the ambient read, so this is where the decision lives and where it is measured -- the same
-/// split `workspace_root` / `workspace_root_from` already uses, and for the same reason: the tests
-/// in this lane may not chdir (the concurrent-cwd gate above), so a rule that could only be
-/// exercised by moving the process could not be exercised at all.
+/// The rule itself, over an EXPLICIT base, which is the only form there is.
+///
+/// A cwd-reading wrapper stood here and was deleted: once `bind_process_workspace_root` read the
+/// working directory itself -- it needs it for the refusal text either way -- the wrapper had no
+/// call site, and an uncalled `pub(crate)` item is what `dead_code` fires on in a required lane.
+/// It is also the shape DESIGN section 3c names: a declaration whose consumers are a doc comment.
+/// Taking the base as a parameter is what lets this rule be measured at all, since the tests in
+/// this lane may not chdir (the concurrent-cwd gate above), so a rule that could only be exercised
+/// by moving the process could not be exercised.
 pub(crate) fn declared_workspace_root_from(cwd: &Path, source_roots: &[String]) -> DeclaredBase {
     if source_roots.is_empty() {
         return DeclaredBase::NotNamed;

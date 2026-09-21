@@ -528,6 +528,90 @@ fn capture_source_snapshot(
   }
 }
 
+// ── WHERE A MATERIALIZATION IS ALLOWED TO LAND ───────────────────────────────────────────────
+//
+// A FREE-FORM DESTINATION IS A PATHNAME, AND A PATHNAME IS RE-RESOLVED ON EVERY CALL. The first
+// writing of this module took the parent as a String and created its own child inside it with
+// `mktemp -d`, which made the tree's CONTENTS exact and left its LOCATION addressed by name: every
+// later `mkdir -p` and every file write walks that name again from the root. An actor able to write
+// in the parent can rename the child between two of those calls and leave a symlink in its place,
+// and the rest of the materialization then lands wherever the link points -- while
+// `SnapshotMaterialized` is still returned, naming a path whose contents are somebody else's.
+// Reproduced at the filesystem level by the side-chat review of gunbc#11960 and again here before
+// this carrier was written; it is not a hypothesis.
+//
+// SO THE PARENT IS NOT A PARAMETER ANY MORE. `ProviderWorkspace` is sole-constructed behind
+// `allocate_provider_workspace`, which creates it through `mktemp -d` -- no caller-chosen location,
+// mode 0700 asserted rather than assumed -- and `materialize_source_snapshot` accepts only that
+// carrier. A caller cannot name a directory it merely knows about, which is the difference between
+// a check and a construction: the attacker's precondition is WRITE ACCESS TO THE PARENT, and there
+// is now no parent a caller can choose.
+//
+// WHAT THAT CLOSES, AND WHAT IT DOES NOT, stated at its real strength because the neighbouring
+// claim would be inflation. An actor that is NOT the owning uid cannot substitute anything on this
+// route: the workspace is mode 0700, so it cannot write inside it, and the workspace itself sits in
+// the system temporary directory, whose sticky bit is exactly the rule that stops a non-owner
+// renaming an entry it does not own. That is the untrusted-actor case, and it is closed by
+// construction rather than by a check.
+//
+// AN ACTOR RUNNING AS THE OWNING UID IS NOT CLOSED, AND NO PATHNAME-ADDRESSED DESIGN CLOSES IT.
+// Every operation available here -- `mkdir`, `mktemp`, `Filesystem.WriteCreateNew` -- takes a path
+// and re-resolves its ancestry at the moment of the call, so between any two of them the ancestry
+// can change. A one-time `lstat` or canonicalization before the writes would not close it either:
+// it would move the window, not remove it, and citing it as coverage is worse than not having it
+// (DESIGN section 4b -- ask whether the check's red is authorable before writing the check). The
+// state is genuinely OUTSIDE the modeled guarantee for that principal, and it is named rather than
+// papered over.
+//
+// ONE THING IS ALREADY STRUCTURAL AND IS WORTH RECORDING because it bounds the residual: a file
+// lands through `Filesystem.WriteCreateNew`, whose `O_CREAT|O_EXCL` REFUSES a symlinked final
+// component. Measured alongside the reproduction above. So the residual is substitution of a
+// DIRECTORY component the route already created, never of the file itself.
+//
+// NEXT-RUNG TRIGGER, NAMING THE CAPABILITY RATHER THAN AN ARTIFACT: directory-anchored filesystem
+// operations reachable from `.dag` -- an opened directory handle plus `openat`/`mkdirat` with
+// `O_NOFOLLOW`, so a path is resolved once and every later operation is relative to the handle that
+// resolution produced. No primitive in this repository provides one today: `extdeps.shell` and
+// `extdeps.filesystem.filesystem_io` are path-addressed without exception, so this is a missing
+// host capability and not an unwritten check. When it lands, `ProviderWorkspace` carries the handle
+// instead of the path and the residual above closes for every principal.
+type ProviderWorkspace sole_constructor {
+  root: NonEmptyStr
+}
+
+fn provider_workspace_root(workspace: ProviderWorkspace) -> NonEmptyStr {
+  workspace.root
+}
+
+type ProviderWorkspaceAllocation
+  = ProviderWorkspaceAllocated { workspace: ProviderWorkspace }
+  | ProviderWorkspaceRefused { detail: String }
+
+// THE MODE IS ASSERTED, NOT INHERITED. `mktemp -d` creates at 0700 on every implementation this
+// runs on, and that is exactly the kind of fact that is true until it is not: the protection this
+// carrier rests on is the permission bits, so they are set rather than assumed, and a chmod that
+// fails refuses the allocation instead of handing back a workspace whose protection is unknown.
+fn allocate_provider_workspace() -> ProviderWorkspaceAllocation {
+  let made = shell.Mktemp.Dir()
+  if !made.success {
+    ProviderWorkspaceRefused { detail: "no temporary directory could be created" }
+  } else {
+    let root = trim(s: made.path as String)
+    if !shell.Chmod.OwnerOnlyDirectory(path: root as FilePath).success {
+      ProviderWorkspaceRefused { detail: join(["the workspace could not be made owner-only: ", root], "") }
+    } else {
+      ProviderWorkspaceAllocated { workspace: ProviderWorkspace { root: root as NonEmptyStr } }
+    }
+  }
+}
+
+// RELEASING IT IS THE CALLER'S, AND IT IS A SEPARATE VERB BECAUSE THE SNAPSHOT OUTLIVES THE CALL.
+// A materialization hands back a tree an executor is about to run in, so the workspace cannot be
+// removed when the fold returns; whoever allocated it decides when the run is over.
+fn release_provider_workspace(workspace: ProviderWorkspace) -> Bool {
+  shell.Remove.RecursiveForce(path: provider_workspace_root(workspace: workspace) as FilePath).success
+}
+
 // ── MATERIALIZE ─────────────────────────────────────────────────────────────────────────────
 
 type SnapshotMaterializeAcc {
@@ -759,7 +843,7 @@ fn snapshot_materialize_step(
 fn materialize_source_snapshot(
   store: FabricStorageFileRoot,
   manifest: FabricObjectRef,
-  destination_parent: NonEmptyStr,
+  workspace: ProviderWorkspace,
   expected: SourceComposition,
 ) -> SnapshotMaterialization {
   match fabric_storage_file_get(root: store, object: manifest) {
@@ -781,11 +865,16 @@ fn materialize_source_snapshot(
         }
       } else {
         let made = shell.Mktemp.DirWithTemplate(
-          template: join([destination_parent as String, "/gunbc-snapshot-XXXXXX"], "") as FilePath,
+          template: join([
+            provider_workspace_root(workspace: workspace) as String,
+            "/gunbc-snapshot-XXXXXX",
+          ], "") as FilePath,
         )
         if !made.success {
           SnapshotMaterializeRefused {
-            cause: SnapshotDestinationNotCreated { parent: destination_parent as String },
+            cause: SnapshotDestinationNotCreated {
+              parent: provider_workspace_root(workspace: workspace) as String,
+            },
           }
         } else {
           let destination = trim(s: made.path as String) as NonEmptyStr

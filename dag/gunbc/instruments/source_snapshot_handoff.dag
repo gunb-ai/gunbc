@@ -83,6 +83,13 @@ import gunbc.fabric_source_snapshot {
   SnapshotEntryPathNotRelative,
   SnapshotDuplicatePath,
   SnapshotDestinationNotCreated,
+  ProviderWorkspace,
+  ProviderWorkspaceAllocation,
+  ProviderWorkspaceAllocated,
+  ProviderWorkspaceRefused,
+  allocate_provider_workspace,
+  release_provider_workspace,
+  provider_workspace_root,
   SnapshotDirectoryNotCreated,
   SnapshotFileNotWritten,
   snapshot_entry_object,
@@ -238,13 +245,17 @@ type SnapshotWorkspace sole_constructor {
   root: String
   authoring: String
   store: FabricStorageFileRoot
-  destination: String
+  provider: ProviderWorkspace
 }
 
 type SnapshotWorkspaceStanding
   = SnapshotWorkspaceReady { workspace: SnapshotWorkspace }
   | SnapshotWorkspaceUnavailable { detail: String }
 
+// THE EXECUTOR'S TREE IS ALLOCATED BY THE PROVIDER, NOT BY THIS DRIVER. A scenario cannot hand the
+// materializer a directory of its own choosing, because there is no longer a parameter for one --
+// which is the whole content of the destination repair, so the instrument has to obtain a workspace
+// the same way any other caller does.
 fn prepare_snapshot_workspace() -> SnapshotWorkspaceStanding {
   let made = shell.Mktemp.Dir()
   if !made.success {
@@ -257,18 +268,18 @@ fn prepare_snapshot_workspace() -> SnapshotWorkspaceStanding {
         SnapshotWorkspaceUnavailable { detail: join(["store ", a, ": ", d], "") }
       FabricStorageRootReady =>
         let authoring = join([root, "/authored"], "")
-        let destination = join([root, "/executor"], "")
-        if !shell.Mkdir.Parents(path: destination as FilePath).success {
-          SnapshotWorkspaceUnavailable { detail: "no destination directory" }
-        } else {
-          SnapshotWorkspaceReady {
-            workspace: SnapshotWorkspace {
-              root: root,
-              authoring: authoring,
-              store: store,
-              destination: destination,
-            },
-          }
+        match allocate_provider_workspace() {
+          ProviderWorkspaceRefused { detail: d } =>
+            SnapshotWorkspaceUnavailable { detail: d }
+          ProviderWorkspaceAllocated { workspace: provider } =>
+            SnapshotWorkspaceReady {
+              workspace: SnapshotWorkspace {
+                root: root,
+                authoring: authoring,
+                store: store,
+                provider: provider,
+              },
+            }
         }
     }
   }
@@ -433,7 +444,7 @@ fn run_executed_request_scenario(workspace: SnapshotWorkspace, binary: ScmAccept
       match materialize_source_snapshot(
         store: workspace.store,
         manifest: manifest,
-        destination_parent: workspace.destination as NonEmptyStr,
+        workspace: workspace.provider,
         expected: snapshot_handoff_composition(),
       ) {
         SnapshotMaterializeRefused { cause: c } =>
@@ -498,7 +509,7 @@ fn run_corrupted_bytes_scenario(workspace: SnapshotWorkspace, binary: ScmAccepta
         match materialize_source_snapshot(
           store: workspace.store,
           manifest: manifest,
-          destination_parent: workspace.destination as NonEmptyStr,
+          workspace: workspace.provider,
           expected: snapshot_handoff_composition(),
         ) {
           SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
@@ -542,7 +553,7 @@ fn run_missing_object_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptan
         match materialize_source_snapshot(
           store: workspace.store,
           manifest: manifest,
-          destination_parent: workspace.destination as NonEmptyStr,
+          workspace: workspace.provider,
           expected: snapshot_handoff_composition(),
         ) {
           SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
@@ -570,6 +581,10 @@ fn run_missing_object_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptan
 // THE COMPOSITION CONTROL, AND IT CHECKS THAT NOTHING WAS WRITTEN. A refusal that arrives after the
 // private bytes are already on the executor's disk has refused the report and not the transfer,
 // which is the whole reason the admission sits before the fold rather than inside it.
+// THE WHOLE PROVIDER WORKSPACE MUST STILL BE EMPTY. The destination is created by the
+// materialization itself, so a refusal that fires before creation leaves the workspace with no
+// snapshot directory in it at all -- a stronger fact than "the private root is absent", and one
+// that cannot be satisfied by a partial tree under another name.
 fn run_composition_mismatch_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptanceBinary) -> SnapshotScenarioOutcome {
   match capture_for_scenario(workspace: workspace) {
     SnapshotNotReady { detail: d } =>
@@ -578,7 +593,7 @@ fn run_composition_mismatch_scenario(workspace: SnapshotWorkspace, binary: ScmAc
       match materialize_source_snapshot(
         store: workspace.store,
         manifest: manifest,
-        destination_parent: workspace.destination as NonEmptyStr,
+        workspace: workspace.provider,
         expected: PublicOnlyComposition { public_root: snapshot_public_prefix },
       ) {
         SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
@@ -590,11 +605,7 @@ fn run_composition_mismatch_scenario(workspace: SnapshotWorkspace, binary: ScmAc
         SnapshotMaterializeRefused { cause: c } =>
           match c {
             SnapshotCompositionMismatch { expected: e, found: f } =>
-              // THE WHOLE PARENT MUST STILL BE EMPTY. The destination is created by the
-              // materialization itself, so a refusal that fires before creation leaves the parent
-              // with no snapshot directory in it at all -- a stronger fact than "the private root
-              // is absent", and one that cannot be satisfied by a partial tree under another name.
-              if length(Filesystem.List(path: workspace.destination).entries) != 0 {
+              if length(Filesystem.List(path: provider_workspace_root(workspace: workspace.provider) as String).entries) != 0 {
                 SnapshotScenarioFailed {
                   scenario: "composition-mismatch",
                   step: "materialize",
@@ -636,7 +647,7 @@ fn escaping_entry_manifest(workspace: SnapshotWorkspace) -> FabricObjectRef? {
             object: snapshot_entry_object(
               name: name_ref,
               content: content_ref,
-              directory: "public/../.." as NonEmptyStr,
+              directory: "public/.." as NonEmptyStr,
             ),
           ) {
             FabricPutRefused { fault: _ } => none
@@ -656,6 +667,10 @@ fn escaping_entry_manifest(workspace: SnapshotWorkspace) -> FabricObjectRef? {
   }
 }
 
+// THE REFUSAL MUST PRECEDE THE WRITE, NOT FOLLOW IT. `public/..` resolves to the snapshot
+// directory's own parent -- the provider workspace -- so the file this entry describes would have
+// landed beside the snapshot rather than inside it. Asserting only the refusal arm would pass for
+// an implementation that wrote the file and then complained about it.
 fn run_escaping_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
   match escaping_entry_manifest(workspace: workspace) {
     Absent =>
@@ -668,7 +683,7 @@ fn run_escaping_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioO
       match materialize_source_snapshot(
         store: workspace.store,
         manifest: manifest,
-        destination_parent: workspace.destination as NonEmptyStr,
+        workspace: workspace.provider,
         expected: snapshot_handoff_composition(),
       ) {
         SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
@@ -680,11 +695,9 @@ fn run_escaping_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioO
         SnapshotMaterializeRefused { cause: c } =>
           match c {
             SnapshotEntryPathNotRelative { path: p, cause: why } =>
-              // THE REFUSAL MUST PRECEDE THE WRITE, NOT FOLLOW IT. `public/../..` resolves to the
-              // parent of the parent, so the file this entry describes would have landed beside the
-              // workspace rather than inside the snapshot. Asserting only the refusal arm would pass
-              // for an implementation that wrote the file and then complained.
-              if shell.Test.IsFile(path: join([workspace.root, "/outside.dag"], "") as FilePath).is_file {
+              if shell.Test.IsFile(
+                path: join([provider_workspace_root(workspace: workspace.provider) as String, "/outside.dag"], "") as FilePath
+              ).is_file {
                 SnapshotScenarioFailed {
                   scenario: "escaping-path",
                   step: "materialize",
@@ -762,7 +775,7 @@ fn run_duplicate_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenario
       match materialize_source_snapshot(
         store: workspace.store,
         manifest: manifest,
-        destination_parent: workspace.destination as NonEmptyStr,
+        workspace: workspace.provider,
         expected: snapshot_handoff_composition(),
       ) {
         SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
@@ -805,6 +818,7 @@ fn run_snapshot_scenario(scenario: SnapshotScenario, binary: ScmAcceptanceBinary
         EscapingPathScenario => run_escaping_path_scenario(workspace: workspace)
         DuplicatePathScenario => run_duplicate_path_scenario(workspace: workspace)
       }
+      let _released = release_provider_workspace(workspace: workspace.provider)
       let cleaned = shell.Remove.RecursiveForce(path: workspace.root as FilePath)
       if cleaned.success {
         outcome

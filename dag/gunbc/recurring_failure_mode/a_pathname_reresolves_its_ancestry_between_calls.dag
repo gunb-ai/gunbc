@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.a_pathname_reresolves_its_ancestry_between_calls
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_pathname_reresolves_its_ancestry_between_calls: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_pathname_reresolves_its_ancestry_between_calls" as NonEmptyStr,
+
+  receipts: [
+    "a pathname re-resolves its ancestry between calls: a producer creates a directory, keeps its PATH, and addresses it again in every later operation. Each of those operations walks the name from the root afresh, so whatever the ancestry means at that instant is what it writes into. An actor able to modify any ancestor -- rename the directory and leave a symlink in its place is the cheap form -- redirects every subsequent write, and the producer returns its ordinary success value naming a path whose contents are now somebody else's. Nothing refuses, because nothing asked a second time; the check that would have asked cannot help either, since a check is itself a path resolution and the state can change between it and the use.",
+
+    "SPECIMEN, found 2026-09-21 by the side-chat review of gunbc#11960 and reproduced at the filesystem level before the repair was written. gunbc.fabric_source_snapshot materialize_source_snapshot took a destination PARENT as a String, created its own child inside it with mktemp -d, and then addressed that child by name once per directory (shell.Mkdir.Parents) and once per file (Filesystem.WriteCreateNew). Reproduction: create the child, rename it aside, symlink the name at an attacker-owned directory, then run the remaining operations -- the whole snapshot lands in the attacker's tree and SnapshotMaterialized is still returned, naming the substituted path. The bytes were never in question: every object hashed to the ref that named it and the store verified all of them. CONTENT INTEGRITY AND DESTINATION INTEGRITY ARE DIFFERENT FACTS, and a content-addressed store that addresses its output by name has only the first.",
+
+    "WHAT IS ALREADY STRUCTURAL, because it bounds the class rather than closing it. Filesystem.WriteCreateNew opens with O_CREAT|O_EXCL, which REFUSES a symlinked FINAL component (measured alongside the reproduction). So a planted link cannot redirect the FILE; only a DIRECTORY component the producer already created can be substituted. That is why the class is about ancestry and not about the leaf.",
+
+    "THE REPAIR AT THIS SPECIMEN IS A CARRIER, NOT A CHECK. The free-form parent is deleted: ProviderWorkspace is sole-constructed behind allocate_provider_workspace, which creates the workspace with mktemp -d and asserts mode 0700, and the materializer accepts only that carrier. The attacker's precondition was write access to a parent the caller named, and there is no longer a parent a caller can name. That closes the class for every principal EXCEPT the owning uid, whose access to its own 0700 workspace is exactly the permission the protection rests on.",
+
+    "THE RESIDUAL IS HONEST AND IS NOT A WEAK CHECK. A one-time lstat or canonicalize before the writes MOVES the window rather than removing it, and citing it as coverage would be worse than not having it -- the DESIGN section 4b question of whether the check's red is authorable, answered in the direction that says do not write the check. So for an actor running as the owning uid the state is outside the modeled guarantee, declared rather than papered over.",
+
+    "ATTAINABLE CEILING: structurally impossible, and the capability that reaches it is named. Directory-anchored filesystem operations reachable from .dag -- an opened directory handle plus openat/mkdirat with O_NOFOLLOW, so a path is resolved ONCE and every later operation is relative to the handle that resolution produced. Under that interface the substitution has no effect on an in-flight materialization: the handle still refers to the original directory whatever its name now means, so the producer stays bound rather than merely noticing. The state stops being writable, which is why this is a ceiling of 4 and not of 2.",
+
+    "NEXT-RUNG TRIGGER, at capability grain rather than artifact grain: a host primitive that returns a directory handle and a family of operations relative to it. No primitive in this repository provides one today -- extdeps.shell and extdeps.filesystem.filesystem_io are path-addressed without exception -- so this is a missing host capability and not an unwritten check, and it is NOT satisfied by adding a pre-flight lstat, by canonicalizing the path, or by re-checking the destination after the writes.",
+
+    "RECOGNITION RULE: a producer that creates a location and then keeps a STRING for it. The tell is a second operation that takes the same path -- mkdir -p here, a write there -- with nothing between them that could have noticed the name being repointed. It is easy to miss precisely because the happy path is correct and the receipt is truthful about everything except where the bytes went; the cheap discriminator is to rename the created directory aside and symlink its name elsewhere between two of the producer's operations, which is a four-line shell reproduction.",
+  ],
+
+  evidence: [],
+}

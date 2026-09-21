@@ -1159,14 +1159,15 @@ fn run_verb(
         };
     }
 
-    // THE WORKSPACE ROOT IS BOUND FROM THE REQUEST, AND IT IS BOUND FIRST.
+    // THE WORKSPACE ROOT IS BOUND HERE, AND IT IS BOUND FIRST.
     //
     // Everything downstream keys module-graph facts and content indices against it, so it must be
     // decided before the first read rather than discovered on first use -- and it is decided HERE
-    // because this is the only place that holds the request's source roots. An invocation whose
-    // roots are named relative to the directory it starts in has stated its own base; only one
-    // that has not falls through to discovery, and a run with neither refuses with a located cause
-    // instead of aborting inside a helper thirty frames down.
+    // because this is the only place that holds the request's source roots. Discovery is the
+    // incumbent authority and is asked first, so a run inside a checkout resolves exactly as it
+    // always did; the request names the base only where there is no checkout to discover one from,
+    // and a run that can name no base at all refuses with a located cause instead of aborting
+    // inside a helper thirty frames down.
     // THE CHOICE IS REPORTED, NOT INFERRED. Two rules can name the base and they key the module
     // graph differently, so which one answered is a fact the operator of a run is entitled to see
     // without reconstructing it from their own cwd. A selection nobody can observe is how a
