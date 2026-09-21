@@ -3169,19 +3169,11 @@ fn body_lower_subtree_names_non_wildcard(n: Node) -> Bool {
       }
     Absent =>
       fold(n.children, init: false, f: fn(found, e) {
-        found || (!body_lower_is_production_identity_edge(e: e) && body_lower_subtree_names_non_wildcard(n: e.target))
+        found || (!body_lower_is_identity_projection_edge(edge: e) && body_lower_subtree_names_non_wildcard(n: e.target))
       })
   }
 }
 
-// A production shell names its production on an identity-projection edge; that atom is parse
-// machinery, never a name the pattern binds.
-fn body_lower_is_production_identity_edge(e: Edge) -> Bool {
-  match e.label {
-    Named { name: sym } => sym == ^grammar_production_identity_node_projection
-    Positional => false
-  }
-}
 
 type PositionalBinderScan {
   after_lparen: Bool

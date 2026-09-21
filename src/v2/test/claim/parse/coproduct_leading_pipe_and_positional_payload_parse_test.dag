@@ -14,7 +14,7 @@ import v2.std.node { Node, canonicalize_node_strip_provenance }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Subject: two rows of the ONE dag grammar (v2.extdeps.languages.dag) that the native front end
-// lacked and v1.compiler.parse admits -- dag_grammar_type_alias_rhs_after_eq_expr (a coproduct
+// lacked and v1.compiler.parse admits -- dag_grammar_type_alias_rhs_lead_expr (a coproduct
 // opening with `|`) and dag_grammar_positional_variant_payload_expr (`Name(T)`). Both first
 // refused std.content_hash (`type HashFamily =` / `| Fnv1a64(Fnv1a64Structural)`), the module
 // the native adjudicate of //v2/test/parse:expression_bodied_fn_decl_parse stopped on. The
