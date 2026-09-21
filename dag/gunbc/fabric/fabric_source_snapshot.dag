@@ -1,0 +1,655 @@
+module gunbc.fabric_source_snapshot
+
+// CAPTURING SOURCE INTO THE FABRIC OBJECT STORE, AND MATERIALIZING IT SOMEWHERE ELSE.
+//
+// std.fabric_storage already owns immutable content-addressed objects, and
+// gunbc.fabric_storage_file_store already realizes them over a directory. product.fabric.work
+// already rules that a Work consumes a SOURCE MANIFEST rather than a tree digest, and that a Git
+// tree id is one BINDING-LEVEL realization of that manifest and not the fabric's source type. What
+// no module did was JOIN those two facts: nothing put a source tree into that store, and nothing
+// rebuilt one out of it. This module is that join, and it is the whole of it.
+//
+// WHY IT MAY NOT REACH FOR GIT, stated as a property of the consumer rather than a preference. The
+// executor this serves does not hold the caller's object store: it is a different checkout, and in
+// the fabric it is a different machine under a different trust domain. `git archive`, `git
+// worktree add` and `git stash` all answer by reading objects the caller holds, so each of them
+// makes the executor a second reader of the caller's repository -- and two of them WRITE, to the
+// index or to .git/worktrees, which makes preparing a request mutate the tree the author is still
+// editing. A content-addressed object store answers the same question with neither property: the
+// bytes travel, the caller's repository is untouched, and what the executor consumed is a digest
+// rather than a promise.
+//
+// AND THAT IS WHY AN INCLUSION IS EXPLICIT RATHER THAN A WALK. A tracked-file enumeration is a git
+// question wearing a filesystem costume -- it answers with what the index knows, so a file the
+// author created and has not added is INVISIBLE to it, which is exactly the file a build request
+// most often needs. There is no directory walk here for the reason gunbc.scm.write_spine_ingress
+// gives for its own absence: a recursive acquisition needs a modeled traversal with its own
+// refusals -- symlinks, cycles, unreadable subtrees, binary content -- and inventing one inside a
+// capture would be the second path beside an existing modeled route that DESIGN section 6 names.
+// Every file in a snapshot is named by its requester, so a new file and a tracked file enter by one
+// route and neither is privileged.
+//
+// WHAT IS NOT MODELLED HERE, named so it is not mistaken for covered. File MODE (an executable
+// bit), symlinks, submodules and non-text content are all part of the source-manifest contract
+// product.fabric.work declares, and none of them is carried: a captured file is text at a path.
+// A request whose correctness depends on any of them is NOT served by this route, and the honest
+// consequence is that it must not be routed here rather than that it degrades quietly.
+// dissolve-on: a modeled file-mode and link-kind carrier reaching the inclusion, at which point the
+// entry object gains those facts and this paragraph names what it covers instead.
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemExactRead,
+  FilesystemExactPathRead,
+  FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable,
+  FilesystemExactPathKindUnrecognized,
+  filesystem_exact_read,
+  filesystem_failure_kind_name,
+}
+import std.fabric_storage {
+  FabricObject,
+  FabricObjectRef,
+  FabricStoredObject,
+  FabricStorageFault,
+  FabricPut,
+  FabricObjectStored,
+  FabricPutRefused,
+  FabricObjectGet,
+  FabricObjectFetched,
+  FabricObjectGetRefused,
+  fabric_object_ref_wire,
+  fabric_storage_fault_wire,
+}
+import gunbc.fabric_storage_file_store {
+  FabricStorageFileRoot,
+  fabric_storage_file_get,
+  fabric_storage_file_put,
+}
+
+// WHAT THIS DOES AND DOES NOT REPLACE, AND THE SECOND ROUTE IT WOULD OTHERWISE BE.
+//
+// gunbc.roadmap_dispatch_actuator materializes source for a dispatched attempt with
+// `git worktree add`, twice: once for the MUTABLE ATTEMPT TREE the agent edits, and once for the
+// DETACHED VERIFICATION CHECKOUT at an exact head. Those are two different facts wearing one verb,
+// and this module's disposition for them is different.
+//
+// THE ATTEMPT TREE IS NOT REPLACED AND IS NOT A SECOND ROUTE TO THIS FACT. Its subject is a working
+// tree an agent will COMMIT FROM -- it needs branch, index, history and a remote to push to, which
+// are the whole content of "a git worktree" and none of which a source snapshot models or should.
+// A snapshot is immutable by construction, so it cannot be the carrier for a tree whose purpose is
+// to be edited. That is a boundary between subjects rather than a gap.
+//
+// THE VERIFICATION CHECKOUT IS THE SAME FACT, AND IT IS KEPT AS A DECLARED BINDING WITH THE TRIGGER
+// BELOW RATHER THAN QUIETLY DOUBLED. `dispatch_verification_checkout_path_for_instance` asks exactly
+// the question this module answers -- give an executor the exact immutable source at a named
+// identity -- and answers it through the caller's object store. Leaving two answers standing with no
+// statement is the fork DESIGN section 3 forbids, so the statement is here: git remains the binding
+// for that path today because every verification executor is a process on the host that holds the
+// repository, where the caller's object store IS the executor's and the snapshot route buys nothing
+// it does not already have. The moment that stops being true -- a verification executor off that
+// host -- the git binding stops being able to serve it at all, and this route is what replaces it.
+data verification_checkout_git_binding_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(
+    module_path: "gunbc.roadmap_dispatch_actuator",
+    decl_name: "dispatch_verification_checkout_path_for_instance",
+  ),
+  reason: "the detached verification checkout asks this module's question and answers it with git worktree add; both answers stand, and the git one is retained deliberately because its executor shares the caller's object store",
+  dissolution: unbound_dissolution(
+    description: "a verification executor that does not share the caller's repository -- an off-host or differently-trusted process -- is dispatched, at which point git worktree add cannot serve it and dispatch_verification_checkout_path_for_instance is cut over to materialize_source_snapshot against a served store. Not satisfied by this module existing, by the handoff instrument passing, or by a local executor being routed through a snapshot it did not need" as NonEmptyStr,
+  ),
+)
+
+// ── THE COMPOSITION ──────────────────────────────────────────────────────────────────────────
+//
+// A source composition is WHICH ROOTS a snapshot is made of, and it is a closed variant rather than
+// a list of strings because the two arms are two different contracts. A public-only snapshot may be
+// served to any executor; a snapshot carrying a private root may not, and an executor that expects
+// one and is handed the other has been handed a DIFFERENT SUBJECT under the same name -- the
+// meaning fork DESIGN section 3 forbids. With a list, "public + private" and "public" differ by a
+// membership test someone has to remember to perform; with arms, the mismatch is a match arm.
+//
+// THE ROOT NAMES ARE CARRIED RATHER THAN FIXED, because the prefix a snapshot is materialized under
+// is the caller's to choose -- gunbc.roadmap_execution_contract PinnedPublicPlusLocalRoot takes the
+// same prefix as a parameter, and hard-coding one here would fork that decision.
+type SourceComposition
+  = PublicOnlyComposition { public_root: NonEmptyStr }
+  | PublicAndPrivateComposition { public_root: NonEmptyStr, private_root: NonEmptyStr }
+
+// THE WIRE IS THE COMPARISON, AND IT IS ONE STRING ON PURPOSE. The manifest object carries this
+// text as its body, so agreement between what a snapshot IS and what an executor EXPECTS is a
+// string equality over a canonical rendering rather than a structural walk performed twice. The
+// arm tag is inside the text, so PublicOnly named "x" and PublicAndPrivate whose public root is "x"
+// cannot render alike.
+fn source_composition_wire(composition: SourceComposition) -> NonEmptyStr {
+  match composition {
+    PublicOnlyComposition { public_root: p } =>
+      join(["gunbc.fabric_source_snapshot.composition.v1;public=", p as String], "") as NonEmptyStr
+    PublicAndPrivateComposition { public_root: p, private_root: q } =>
+      join([
+        "gunbc.fabric_source_snapshot.composition.v1;public=",
+        p as String,
+        ";private=",
+        q as String,
+      ], "") as NonEmptyStr
+  }
+}
+
+// EVERY ROOT THE COMPOSITION DECLARES, IN THE ORDER A SOURCE-ROOT ARGUMENT LIST NAMES THEM.
+fn source_composition_roots(composition: SourceComposition) -> List<NonEmptyStr> {
+  match composition {
+    PublicOnlyComposition { public_root: p } => [p]
+    PublicAndPrivateComposition { public_root: p, private_root: q } => [p, q]
+  }
+}
+
+// A PATH IS INSIDE THE COMPOSITION ONLY UNDER A DECLARED ROOT'S BOUNDARY. The trailing separator is
+// the whole point: "publicity/x" must not pass as being under "public", and a bare prefix test
+// admits it. The same boundary rule gunbc.roadmap_execution_contract allowed_prefix_boundary
+// applies to an edit scope applies here to a snapshot's contents, for the same reason.
+fn snapshot_root_boundary(root: NonEmptyStr) -> String {
+  join([root as String, "/"], "")
+}
+
+fn snapshot_path_inside_composition(composition: SourceComposition, path: String) -> Bool {
+  any(
+    source_composition_roots(composition: composition),
+    root => starts_with(s: path, prefix: snapshot_root_boundary(root: root)),
+  )
+}
+
+// ── THE OBJECTS ──────────────────────────────────────────────────────────────────────────────
+//
+// THREE KINDS, AND NOT ONE DOCUMENT, BECAUSE NOTHING HERE MAY PARSE. A manifest encoded as one
+// document would need a decoder, and a decoder is a second authority over what a snapshot means
+// that can drift from the encoder -- and there is no split or line-scan primitive to write one with
+// honestly, so the tempting spelling would be a hand-rolled scan whose failure arms are guesses.
+// So the structure is carried by LINKS, which std.fabric_storage already walks and verifies:
+//
+//   content object   links: []                          body: the file's bytes
+//   entry object     links: [name object, content]      body: the directory, relative to the root
+//   manifest object  links: [entry, entry, ...]         body: the composition wire
+//
+// Every one of them is content-addressed by the same rule, so a mutated byte anywhere changes the
+// ref that names it and the store's own verification refuses -- this module writes no second
+// integrity check, because writing one would be the re-statement DESIGN section 5 rejects.
+fn snapshot_leaf_object(body: NonEmptyStr) -> FabricObject {
+  FabricObject { links: [] as List<FabricObjectRef>, body: body }
+}
+
+fn snapshot_entry_object(name: FabricObjectRef, content: FabricObjectRef, directory: NonEmptyStr) -> FabricObject {
+  FabricObject { links: [name, content], body: directory }
+}
+
+fn snapshot_manifest_object(entries: List<FabricObjectRef>, composition: SourceComposition) -> FabricObject {
+  FabricObject { links: entries, body: source_composition_wire(composition: composition) }
+}
+
+// ── WHAT A CAPTURE IS ASKED FOR ──────────────────────────────────────────────────────────────
+//
+// THE SOURCE AND THE DESTINATION ARE TWO FACTS, and fusing them was the first cut's defect. A file
+// is READ from wherever it is now -- a checkout, a scratch directory, a path an agent just wrote --
+// and LANDS at a path relative to the snapshot's roots. A single path field would silently require
+// the requester's layout to equal the executor's, which is exactly the property a snapshot exists
+// not to need.
+type SnapshotInclusion {
+  source_path: NonEmptyStr
+  directory: NonEmptyStr
+  name: NonEmptyStr
+}
+
+fn snapshot_inclusion_relative_path(inclusion: SnapshotInclusion) -> String {
+  join([inclusion.directory as String, "/", inclusion.name as String], "")
+}
+
+// ── REFUSALS ────────────────────────────────────────────────────────────────────────────────
+//
+// EVERY ARM NAMES ITS SUBJECT AND WHAT WENT WRONG WITH IT. A capture that answered one
+// SnapshotCaptureRefused would send "the file is not there", "the file is empty", "this path is not
+// under a root you declared" and "the store would not take it" to one place, and three of those are
+// the requester's defect while the fourth is the store's.
+type SnapshotCaptureRefusal
+  = SnapshotFileUnreadable { path: String, detail: String }
+  | SnapshotFileAbsent { path: String }
+  | SnapshotFileEmpty { path: String }
+  | SnapshotPathOutsideComposition { path: String, composition: String }
+  | SnapshotStoreRefusedObject { path: String, fault: String }
+  | SnapshotManifestNotStored { fault: String }
+
+type SnapshotCapture
+  = SnapshotCaptured { manifest: FabricObjectRef, files: Int, composition: String }
+  | SnapshotCaptureRefused { cause: SnapshotCaptureRefusal }
+
+// THE MATERIALIZATION REFUSALS ARE A DIFFERENT FAMILY FROM THE CAPTURE'S, and deliberately so: a
+// capture's failures are about a tree that exists and a store that would not take it, while these
+// are about a store that cannot answer for what it was asked -- which is the whole class this route
+// exists to make loud. Two of them are answered by std.fabric_storage rather than derived here:
+// a missing object is FabricObjectMissing and a byte that moved is FabricObjectCorrupt, both
+// carried through in `fault` rather than re-decided.
+type SnapshotMaterializeRefusal
+  = SnapshotManifestUnavailable { manifest: String, fault: String }
+  | SnapshotCompositionMismatch { expected: String, found: String }
+  | SnapshotEntryUnavailable { manifest: String, fault: String }
+  | SnapshotEntryMalformed { detail: String }
+  | SnapshotEntryOutsideComposition { path: String, composition: String }
+  | SnapshotDirectoryNotCreated { directory: String }
+  | SnapshotFileNotWritten { path: String, detail: String }
+
+// THE RESULT NAMES THE SOURCE IT CONSUMED. A materialization that answered only "ok" would leave
+// its consumer -- the thing about to RUN against these bytes -- with no way to say what it ran
+// against, and a receipt naming the destination directory says where the bytes landed rather than
+// which bytes they were. The manifest ref is the source's identity, so it is what travels into the
+// executed request's own result.
+type SnapshotMaterialization
+  = SnapshotMaterialized { manifest: FabricObjectRef, destination: NonEmptyStr, files: Int, composition: String }
+  | SnapshotMaterializeRefused { cause: SnapshotMaterializeRefusal }
+
+fn snapshot_materialized_manifest_wire(materialization: SnapshotMaterialization) -> String {
+  match materialization {
+    SnapshotMaterialized { manifest: m, destination: _, files: _, composition: _ } =>
+      fabric_object_ref_wire(object: m) as String
+    SnapshotMaterializeRefused { cause: _ } => ""
+  }
+}
+
+// ── CAPTURE ─────────────────────────────────────────────────────────────────────────────────
+
+type SnapshotCaptureAcc {
+  entries: List<FabricObjectRef>
+  files: Int
+  refusal: SnapshotCaptureRefusal?
+}
+
+// THE READ IS THE EXACT-PATH ONE, so "absent" and "unreadable" stay apart: a capture that treated an
+// unreadable file as an absent one would let a permissions fault look like a requester's typo.
+fn snapshot_read_source(path: NonEmptyStr) -> FilesystemExactRead {
+  let read = Filesystem.Read(path: path as String)
+  filesystem_exact_read(
+    path: path as String,
+    content: read.content,
+    success: read.success,
+    error: read.error,
+    error_kind: read.error_kind,
+  )
+}
+
+fn snapshot_capture_refuse(acc: SnapshotCaptureAcc, cause: SnapshotCaptureRefusal) -> SnapshotCaptureAcc {
+  SnapshotCaptureAcc { entries: acc.entries, files: acc.files, refusal: Present { value: cause } }
+}
+
+// STORING ONE FILE IS THREE PUTS AND THE ORDER IS NOT INCIDENTAL: the name and the content are
+// stored before the entry that links them, so the store never holds an entry pointing at an object
+// it does not have. That is the same discipline gunbc.scm.object_store store_node applies to a
+// node's children, for the same reason -- a reachable hole is the state a closure walk exists to
+// refuse, and publishing one is how it gets created.
+fn snapshot_store_inclusion(
+  root: FabricStorageFileRoot,
+  acc: SnapshotCaptureAcc,
+  inclusion: SnapshotInclusion,
+  content: NonEmptyStr,
+) -> SnapshotCaptureAcc {
+  match fabric_storage_file_put(root: root, object: snapshot_leaf_object(body: inclusion.name)) {
+    FabricPutRefused { fault: f } =>
+      snapshot_capture_refuse(acc: acc, cause: SnapshotStoreRefusedObject {
+        path: snapshot_inclusion_relative_path(inclusion: inclusion),
+        fault: fabric_storage_fault_wire(fault: f),
+      })
+    FabricObjectStored { object: name_ref } =>
+      match fabric_storage_file_put(root: root, object: snapshot_leaf_object(body: content)) {
+        FabricPutRefused { fault: f } =>
+          snapshot_capture_refuse(acc: acc, cause: SnapshotStoreRefusedObject {
+            path: snapshot_inclusion_relative_path(inclusion: inclusion),
+            fault: fabric_storage_fault_wire(fault: f),
+          })
+        FabricObjectStored { object: content_ref } =>
+          match fabric_storage_file_put(
+            root: root,
+            object: snapshot_entry_object(
+              name: name_ref,
+              content: content_ref,
+              directory: inclusion.directory,
+            ),
+          ) {
+            FabricPutRefused { fault: f } =>
+              snapshot_capture_refuse(acc: acc, cause: SnapshotStoreRefusedObject {
+                path: snapshot_inclusion_relative_path(inclusion: inclusion),
+                fault: fabric_storage_fault_wire(fault: f),
+              })
+            FabricObjectStored { object: entry_ref } =>
+              SnapshotCaptureAcc {
+                entries: concat(acc.entries, [entry_ref]),
+                files: acc.files + 1,
+                refusal: acc.refusal,
+              }
+          }
+      }
+  }
+}
+
+// THE COMPOSITION IS CHECKED BEFORE THE BYTES ARE STORED, not after. A path outside every declared
+// root is a requester defect, and storing its content first would leave the object in the store
+// with nothing referring to it -- harmless to the store and misleading to anyone reading it.
+fn snapshot_capture_step(
+  root: FabricStorageFileRoot,
+  composition: SourceComposition,
+  acc: SnapshotCaptureAcc,
+  inclusion: SnapshotInclusion,
+) -> SnapshotCaptureAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      let relative = snapshot_inclusion_relative_path(inclusion: inclusion)
+      if !snapshot_path_inside_composition(composition: composition, path: relative) {
+        snapshot_capture_refuse(acc: acc, cause: SnapshotPathOutsideComposition {
+          path: relative,
+          composition: source_composition_wire(composition: composition) as String,
+        })
+      } else {
+        match snapshot_read_source(path: inclusion.source_path) {
+          FilesystemExactPathAbsent { path: p } =>
+            snapshot_capture_refuse(acc: acc, cause: SnapshotFileAbsent { path: p })
+          FilesystemExactPathUnreadable { path: p, kind: k, error: _ } =>
+            snapshot_capture_refuse(acc: acc, cause: SnapshotFileUnreadable {
+              path: p,
+              detail: filesystem_failure_kind_name(kind: k),
+            })
+          FilesystemExactPathKindUnrecognized { path: p, observed: o, error: _ } =>
+            snapshot_capture_refuse(acc: acc, cause: SnapshotFileUnreadable { path: p, detail: o })
+          FilesystemExactPathRead { path: p, content: c } =>
+            if c == "" {
+              snapshot_capture_refuse(acc: acc, cause: SnapshotFileEmpty { path: p })
+            } else {
+              snapshot_store_inclusion(
+                root: root,
+                acc: acc,
+                inclusion: inclusion,
+                content: c as NonEmptyStr,
+              )
+            }
+        }
+      }
+  }
+}
+
+// THE MANIFEST IS PUBLISHED LAST AND ONLY IF EVERY FILE LANDED. A manifest published over a refused
+// capture would name a snapshot whose contents were never stored -- the reachable hole again, and
+// this time at the root, where a materialization would find it and refuse one entry at a time
+// instead of refusing the request.
+fn capture_source_snapshot(
+  root: FabricStorageFileRoot,
+  composition: SourceComposition,
+  inclusions: List<SnapshotInclusion>,
+) -> SnapshotCapture {
+  match fold(
+    inclusions,
+    init: SnapshotCaptureAcc { entries: [] as List<FabricObjectRef>, files: 0, refusal: none },
+    f: fn(acc, inclusion) {
+      snapshot_capture_step(root: root, composition: composition, acc: acc, inclusion: inclusion)
+    },
+  ) {
+    SnapshotCaptureAcc { entries: entries, files: files, refusal: refusal } =>
+      match refusal {
+        Present { value: cause } => SnapshotCaptureRefused { cause: cause }
+        Absent =>
+          match fabric_storage_file_put(
+            root: root,
+            object: snapshot_manifest_object(entries: entries, composition: composition),
+          ) {
+            FabricPutRefused { fault: f } =>
+              SnapshotCaptureRefused {
+                cause: SnapshotManifestNotStored { fault: fabric_storage_fault_wire(fault: f) },
+              }
+            FabricObjectStored { object: manifest } =>
+              SnapshotCaptured {
+                manifest: manifest,
+                files: files,
+                composition: source_composition_wire(composition: composition) as String,
+              }
+          }
+      }
+  }
+}
+
+// ── MATERIALIZE ─────────────────────────────────────────────────────────────────────────────
+
+type SnapshotMaterializeAcc {
+  files: Int
+  refusal: SnapshotMaterializeRefusal?
+}
+
+fn snapshot_materialize_refuse(acc: SnapshotMaterializeAcc, cause: SnapshotMaterializeRefusal) -> SnapshotMaterializeAcc {
+  SnapshotMaterializeAcc { files: acc.files, refusal: Present { value: cause } }
+}
+
+// WRITING ONE FILE IS A DIRECTORY AND THEN A FILE, and both outcomes are read. `Filesystem.Write`
+// into a directory that does not exist fails, so a materialization that skipped the mkdir would
+// report a write failure whose cause is a missing parent -- a located diagnostic naming the wrong
+// subject.
+fn snapshot_write_file(
+  destination: NonEmptyStr,
+  acc: SnapshotMaterializeAcc,
+  relative_directory: NonEmptyStr,
+  name: NonEmptyStr,
+  content: NonEmptyStr,
+) -> SnapshotMaterializeAcc {
+  let directory = join([destination as String, "/", relative_directory as String], "")
+  let made = shell.Mkdir.Parents(path: directory as FilePath)
+  if !made.success {
+    snapshot_materialize_refuse(acc: acc, cause: SnapshotDirectoryNotCreated { directory: directory })
+  } else {
+    let path = join([directory, "/", name as String], "")
+    let written = Filesystem.Write(path: path, content: content as String)
+    if written.success {
+      SnapshotMaterializeAcc { files: acc.files + 1, refusal: acc.refusal }
+    } else {
+      snapshot_materialize_refuse(acc: acc, cause: SnapshotFileNotWritten { path: path, detail: written.error })
+    }
+  }
+}
+
+// AN ENTRY IS EXACTLY TWO LINKS AND A DIRECTORY, AND ANYTHING ELSE IS MALFORMED RATHER THAN
+// INTERPRETED. The store verified the entry's bytes against the ref that named it, so an entry with
+// the wrong link count is not corruption -- it is an object of another kind under a manifest link,
+// and reading the first two links of it anyway is how a snapshot quietly materializes something
+// else's data.
+fn snapshot_materialize_entry_content(
+  destination: NonEmptyStr,
+  composition: SourceComposition,
+  acc: SnapshotMaterializeAcc,
+  directory: NonEmptyStr,
+  name: NonEmptyStr,
+  content: NonEmptyStr,
+) -> SnapshotMaterializeAcc {
+  let relative = join([directory as String, "/", name as String], "")
+  if !snapshot_path_inside_composition(composition: composition, path: relative) {
+    snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryOutsideComposition {
+      path: relative,
+      composition: source_composition_wire(composition: composition) as String,
+    })
+  } else {
+    snapshot_write_file(
+      destination: destination,
+      acc: acc,
+      relative_directory: directory,
+      name: name,
+      content: content,
+    )
+  }
+}
+
+fn snapshot_materialize_entry_links(
+  store: FabricStorageFileRoot,
+  destination: NonEmptyStr,
+  composition: SourceComposition,
+  acc: SnapshotMaterializeAcc,
+  directory: NonEmptyStr,
+  name_ref: FabricObjectRef,
+  content_ref: FabricObjectRef,
+) -> SnapshotMaterializeAcc {
+  match fabric_storage_file_get(root: store, object: name_ref) {
+    FabricObjectGetRefused { fault: f } =>
+      snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryUnavailable {
+        manifest: fabric_object_ref_wire(object: name_ref) as String,
+        fault: fabric_storage_fault_wire(fault: f),
+      })
+    FabricObjectFetched { stored: name } =>
+      match fabric_storage_file_get(root: store, object: content_ref) {
+        FabricObjectGetRefused { fault: f } =>
+          snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryUnavailable {
+            manifest: fabric_object_ref_wire(object: content_ref) as String,
+            fault: fabric_storage_fault_wire(fault: f),
+          })
+        FabricObjectFetched { stored: content } =>
+          snapshot_materialize_entry_content(
+            destination: destination,
+            composition: composition,
+            acc: acc,
+            directory: directory,
+            name: name.content.body,
+            content: content.content.body,
+          )
+      }
+  }
+}
+
+// AN ENTRY IS EXACTLY TWO LINKS AND A DIRECTORY, AND ANYTHING ELSE IS MALFORMED RATHER THAN
+// INTERPRETED. The store verified the entry's bytes against the ref that named it, so an entry with
+// the wrong link count is not corruption -- it is an object of another kind under a manifest link,
+// and reading its first two links anyway is how a snapshot quietly materializes something else's
+// data. The count is checked before either link is taken, so the optional arms below cannot be
+// reached by a short list and are not a second, silent membership rule.
+fn snapshot_materialize_entry(
+  store: FabricStorageFileRoot,
+  destination: NonEmptyStr,
+  composition: SourceComposition,
+  acc: SnapshotMaterializeAcc,
+  entry_ref: FabricObjectRef,
+  entry: FabricStoredObject,
+) -> SnapshotMaterializeAcc {
+  if length(entry.content.links) != 2 {
+    snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryMalformed {
+      detail: join([
+        "entry ",
+        fabric_object_ref_wire(object: entry_ref) as String,
+        " carries ",
+        to_string(length(entry.content.links)),
+        " links where a name and a content object are required",
+      ], ""),
+    })
+  } else {
+    match get(entry.content.links, 0) {
+      Absent =>
+        snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryMalformed {
+          detail: join(["entry ", fabric_object_ref_wire(object: entry_ref) as String, " has no name link"], ""),
+        })
+      Present { value: name_ref } =>
+        match get(entry.content.links, 1) {
+          Absent =>
+            snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryMalformed {
+              detail: join(["entry ", fabric_object_ref_wire(object: entry_ref) as String, " has no content link"], ""),
+            })
+          Present { value: content_ref } =>
+            snapshot_materialize_entry_links(
+              store: store,
+              destination: destination,
+              composition: composition,
+              acc: acc,
+              directory: entry.content.body,
+              name_ref: name_ref,
+              content_ref: content_ref,
+            )
+        }
+    }
+  }
+}
+
+fn snapshot_materialize_step(
+  store: FabricStorageFileRoot,
+  destination: NonEmptyStr,
+  composition: SourceComposition,
+  acc: SnapshotMaterializeAcc,
+  entry_ref: FabricObjectRef,
+) -> SnapshotMaterializeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match fabric_storage_file_get(root: store, object: entry_ref) {
+        FabricObjectGetRefused { fault: f } =>
+          snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryUnavailable {
+            manifest: fabric_object_ref_wire(object: entry_ref) as String,
+            fault: fabric_storage_fault_wire(fault: f),
+          })
+        FabricObjectFetched { stored: entry } =>
+          snapshot_materialize_entry(
+            store: store,
+            destination: destination,
+            composition: composition,
+            acc: acc,
+            entry_ref: entry_ref,
+            entry: entry,
+          )
+      }
+  }
+}
+
+// THE COMPOSITION IS ADMITTED BEFORE ANY BYTE IS WRITTEN, and that ordering is the contract rather
+// than an optimization. An executor that expected a public-only snapshot and was handed one
+// carrying a private root must not end up with the private bytes on its disk and a refusal in its
+// log; the refusal has to happen while the only thing that has moved is a digest.
+fn materialize_source_snapshot(
+  store: FabricStorageFileRoot,
+  manifest: FabricObjectRef,
+  destination: NonEmptyStr,
+  expected: SourceComposition,
+) -> SnapshotMaterialization {
+  match fabric_storage_file_get(root: store, object: manifest) {
+    FabricObjectGetRefused { fault: f } =>
+      SnapshotMaterializeRefused {
+        cause: SnapshotManifestUnavailable {
+          manifest: fabric_object_ref_wire(object: manifest) as String,
+          fault: fabric_storage_fault_wire(fault: f),
+        },
+      }
+    FabricObjectFetched { stored: found } =>
+      let wire = source_composition_wire(composition: expected)
+      if (found.content.body as String) != (wire as String) {
+        SnapshotMaterializeRefused {
+          cause: SnapshotCompositionMismatch {
+            expected: wire as String,
+            found: found.content.body as String,
+          },
+        }
+      } else {
+        match fold(
+          found.content.links,
+          init: SnapshotMaterializeAcc { files: 0, refusal: none },
+          f: fn(acc, entry_ref) {
+            snapshot_materialize_step(
+              store: store,
+              destination: destination,
+              composition: expected,
+              acc: acc,
+              entry_ref: entry_ref,
+            )
+          },
+        ) {
+          SnapshotMaterializeAcc { files: files, refusal: refusal } =>
+            match refusal {
+              Present { value: cause } => SnapshotMaterializeRefused { cause: cause }
+              Absent =>
+                SnapshotMaterialized {
+                  manifest: manifest,
+                  destination: destination,
+                  files: files,
+                  composition: wire as String,
+                }
+            }
+        }
+      }
+  }
+}
