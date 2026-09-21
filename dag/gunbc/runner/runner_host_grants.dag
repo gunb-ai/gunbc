@@ -7,6 +7,7 @@ module gunbc.runner_host_grants
 // cycle -- and acyclicity is the one structural law the import graph has (DESIGN §3). Operations
 // know nothing about hosts; this module joins the two.
 
+import gunbc.fleet_bootstrap_principal { ExecutorBootstrapPrincipal, executor_bootstrap_principal }
 import std.types { String, NonEmptyStr, List, list_length }
 import extdeps.virtualization.firecracker { kvm_device_group }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
@@ -413,40 +414,6 @@ fn runner_host_sudoers_content(deploy: RunnerHostDeploy, artifact_path: String) 
   ], "")
 }
 
-// THE BOOTSTRAP PRINCIPAL, RECORDED BECAUSE IT WAS DISCOVERED THE EXPENSIVE WAY. A grantee cannot
-// install its own sudoers grant -- the subject receiving authority cannot be the sole source of the
-// authority that grants it -- so the first install on any host is performed by a DIFFERENT principal.
-// On the executor fleet that principal is NOT the deploy row's ssh_target.
-//
-// MEASURED ON srv3, 2026-08-25, with the fleet key (extdeps secret fleet-automation-ssh-key,
-// fingerprint SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ):
-//   briansrls        Permission denied (publickey)  -- the deploy row's ssh_target does NOT accept it
-//   fleet-automation Permission denied (publickey)
-//   root             Permission denied (publickey)
-//   ghrunner         authenticates, then nologin     -- the GRANTEE, a service account
-//   ubuntu           full shell, (ALL) NOPASSWD: ALL -- THE BOOTSTRAP PRINCIPAL
-//
-// WHY THIS ROW EXISTS RATHER THAN A COMMENT IN A RUNBOOK: the operator did not know the briansrls
-// password and reasonably believed the fleet credential already carried sudo. It does -- under
-// ubuntu, not under the ssh_target the deploy row names. That single fact was the whole blocker, it
-// is not derivable from any other row in this repository, and it was recovered by probing five
-// accounts against a live host. Left in prose it would be lost by the next session.
-type ExecutorBootstrapPrincipal {
-  login: NonEmptyStr
-  reachable_with_secret: NonEmptyStr
-}
-
-// ONE ROW FOR THE FLEET, NOT ONE PER HOST, AND WHAT IS MEASURED IS STATED SEPARATELY FROM WHAT IS
-// DECLARED. It was named for srv3 because srv3 is where the probe above ran. Two further facts arrived
-// later and neither is a measurement of reach: srv1 carries an `ubuntu` account with a NOPASSWD sudoers
-// file (read on srv1, 2026-09-11), and srv1-srv4 were imaged the same way. So the row is the DECLARED
-// administrator for every runner host, measured only on srv3; gunbc.runner_host_file_converge probes
-// `sudo -n` as this principal on every run and refuses by name on a host where the declaration is
-// false, before any write. Per-host rows would be the right shape only once a host is known to differ.
-data executor_bootstrap_principal: ExecutorBootstrapPrincipal = ExecutorBootstrapPrincipal {
-  login: "ubuntu" as NonEmptyStr,
-  reachable_with_secret: "fleet-automation-ssh-key" as NonEmptyStr,
-}
 
 // THE GRANTEE IS NEVER THE BOOTSTRAP PRINCIPAL. This is the privilege law stated as a predicate so a
 // future edit that points both at one account fails a witness rather than silently creating an
@@ -455,5 +422,17 @@ fn bootstrap_principal_is_not_the_grantee(
   bootstrap: ExecutorBootstrapPrincipal,
   deploy: RunnerHostDeploy,
 ) -> Bool {
-  bootstrap.login != deploy.job_user
+  bootstrap_principal_is_not_the_job_user(bootstrap: bootstrap, job_user: deploy.job_user)
+}
+
+// THE SAME LAW OVER THE JOB USER ALONE. A deploy row is a spec plus an ADMITTED WIDTH, and the
+// privilege law does not depend on the width: whether the writer is the account CI jobs run as is a
+// fact about the two principals, not about how many slots a host admits. A custody converge that
+// resolves its host from runner_host_spec_for asks this directly rather than re-spelling the
+// comparison, so the law has one authority and the deploy arm above is one caller of it.
+fn bootstrap_principal_is_not_the_job_user(
+  bootstrap: ExecutorBootstrapPrincipal,
+  job_user: NonEmptyStr,
+) -> Bool {
+  bootstrap.login != job_user
 }

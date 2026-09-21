@@ -1367,6 +1367,51 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The per-phase receipt on the required run, and the first phase attribution read from it."
       )
     ),
+    active(
+      identity: "rn_5NTJP2XWCB7QVK0HDRM8FZ4136",
+      id: "boot-probe-must-not-read-a-bare-124-as-a-deadline",
+      owner: "fleet",
+      path: "dag/gunbc/runner/runner_microvm.dag",
+      t: fields(
+        headline: "A micro-VM boot that exits 124 for its own reasons must not be reported as a deadline that fired",
+        boundary: "gunbc.runner_microvm_boot_probe boot_probe_verdict reads a bare exit status and returns BootExceededHostDeadline, and boot_probe_verdict_text renders a deadline sentence with a duration nobody observed, discarding the cause BootVmmFailed exists to carry. The repair is the capability the landed failure-mode row declares as its trigger: a typed execution-bound observation emitted at the deadline-enforcement decision and carried to the classifier.",
+        displaced_cost: "The two events are indistinguishable by exit status alone, and the pair is re-derived by running `timeout --kill-after=1s 5s sh -c 'exit 124'` (forwarded child status, no expiry) beside `timeout --kill-after=1s 0.1s sleep 2` (expiry) and comparing their statuses, which agree. The discriminating facts and this pair are carried by the failure-mode row gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event, which is the authority for this class. Contained today only because boot_probe_admitted refuses both verdicts, so the defect is a wrong explanation rather than a silenced failure; that containment belongs to this consumer and evaporates under any consumer that exempts a timeout from blocking.",
+        first_slice: "The observation emitted where the bound is imposed, for one bounded invocation.",
+        red_control: "A child exiting 124 without the bound firing is not reported as a deadline; a real expiry still is.",
+        out_of_scope: "No 124 arm keyed on the bare exit status anywhere, and no wall-clock reading substituted for the observation; the withdrawn floor classifier must not be re-attempted (the floor path has no GNU timeout producer, so its only reachable 124 is a subject's own).",
+        handback: "The typed observation reaching the verdict, with the two 124 events distinguished by it."
+      )
+    ),
+    active(
+      identity: "rn_9HVXR4CBM0KT2WPND7FJ3QZY85",
+      id: "claim-entry-resolution-population",
+      owner: "ci-control",
+      path: "src/v2/workflow/required_floor.dag",
+      t: fields(
+        headline: "Count and close the claim entries that cannot execute under any driver",
+        boundary: "Two populations, reported separately because they have different owners: entries whose closure is incomplete (registry rows absent), and entries that do not typecheck at all. A census over dag/test/claim under claim_batch, at identity grain, with member lists.",
+        displaced_cost: "The populations are produced by running `claim_batch --entry <entry>` over every entry under dag/test/claim and partitioning the failures on whether the run reports registry-row-absent causes; a partial run in that shape found members of both, the second including production modules such as dag/std/algebra.dag and dag/std/effect_axes.dag. The counts belong to the run that produces them and are not restated here, because a partial scan in sorted path order is a lower bound rather than a rate. The required floor is green over all of them, because an entry that fails to resolve is indistinguishable at the floor from one never selected.",
+        first_slice: "The complete census with both member lists and both counts.",
+        red_control: "An entry that cannot resolve is reported as unexecuted rather than passing silently; a production module that does not typecheck is named.",
+        out_of_scope: "No weakening or deletion of any claim to make it resolve; the import-binding repair is its own row.",
+        handback: "Both counts, both member lists, and the disposition of each population."
+      )
+    ),
+    active(
+      identity: "rn_6BFLC3WQZ8NKX1VTDR5HJMP902",
+      id: "compiler-import-list-binds",
+      owner: "namespace",
+      path: "src/v2/compiler/03_name_resolve.dag",
+      t: fields(
+        headline: "Decide whether a .dag import list binds, and make the answer enforceable",
+        boundary: "Name resolution builds its symbol index from a tree-wide census, while the compiled population is the declared-import closure. Their reconciliation (the bare-reference pull) is short-circuited for any file that declares at least one import, so such a file silently gets no bare edges. Two candidate repairs: make the import list BIND and refuse a name resolving outside it, or complete the reconciliation for every file.",
+        displaced_cost: "The discriminating experiment is a flip control: rebuild the host with source_declares_import_lines removed at both call sites, then run `claim_batch --entry dag/test/claim/ci/ci_failure_class_witness_test.dag` against it and against an unmodified build, and compare whether the entry resolves at all. The cost of the alternative is read the same way, by comparing closure membership per entry across the two builds rather than by citing a remembered total; it charges every already-correct entry, not only the failing ones. The transition scope of the binding repair is the population of files that resolve a name outside their declared imports, which the same instrument enumerates.",
+        first_slice: "The operator decision between the two repairs, then the chosen one behind a declared bounded transition.",
+        red_control: "The control is conditional on the policy chosen, because the decision is the operator's and a control that names one answer takes it. Under strict-import binding, a reference resolving outside the declared import closure refuses with its file and name located. Under complete reconciliation, a permitted bare dependency enters the compiled population and participates in the existing effect-summary checks. NEITHER policy may accept a resolved dependency that is absent from the population actually compiled -- that agreement is the invariant both answers owe. Retain the flip control as the instrument that distinguishes them.",
+        out_of_scope: "No witness edits to route around the loader; the effect-summary join that currently notices this is CORRECT and must not be made quieter.",
+        handback: "The chosen repair with its transition population named, and the flip control retained as the regression probe."
+      )
+    ),
     superseded(
       identity: "rn_8QK2M5F7V3N9P1R4T6W0X2Y5Z8A",
       id: "five-minute-ci-gate",
@@ -2489,6 +2534,36 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_7CMXV1QBZ4KTPN9HDRJF08SW6",
+      id: "fleet-assessment-build-provenance-join",
+      owner: "fleet",
+      path: "dag/gunbc/runner/runner_slot_retirement.dag",
+      t: fields(
+        headline: "Bind the binary that ran a retirement assessment to the revision the assessment claims",
+        boundary: "The assessment already corroborates the checked-out revision and refuses on disagreement; what is missing is that the EXECUTABLE which evaluated it was built from that revision. The join reads the running image's own reported build identity and admits it only through the trusted delivery route (the fleet-converge retire job taking release-bins from the build job), never from a self-report alone. It resumes when the retirement route lands; its consumers are that route's blockers, terminal and receipt.",
+        displaced_cost: "Without it the assessment carries a named unresolved blocker and cannot complete the convergence package, so srv2 cannot be declared converged even after its registrations are removed.",
+        first_slice: "The four-arm join (joined, mismatch, dirty, unobserved) consumed as a blocker by the assessment verdict.",
+        red_control: "A checkout at R with a binary built from S refuses; an unreadable identity refuses as unobserved; a matching report from outside the admitted delivery route refuses.",
+        out_of_scope: "No signing infrastructure; a --version string is not provenance on its own.",
+        handback: "The join consumed by the assessment, with the delivery premise bound to the real steps rather than their names."
+      )
+    ),
+    active(
+      identity: "rn_3WZQ8WHXK5CVTB1NDRM7FJ204P",
+      id: "fleet-srv2-retirement-completion",
+      owner: "fleet",
+      path: "dag/gunbc/runner/runner_slot_retirement.dag",
+      t: fields(
+        headline: "Finish retiring srv2, from an executor that is not srv2, with a readback that proves it",
+        boundary: "srv2's retirement as an explicit obligation over its host spec and its owned identities. TWO POPULATIONS, NEITHER DERIVED FROM THE OTHER: seven local slot trees (01-05, 11, 12) and FOUR captured registration bindings (srv2-02 id 251463, srv2-05 id 251484, srv2-11 id 91529, srv2-12 id 91513). 11 and 12 have directories but NO systemd unit, so anything enumerating by unit misses them. Of the four, the 2026-09-19 per-ID reads found 251463 and 251484 PRESENT on the organization and 91529 and 91513 ABSENT, so two need an authorized removal and two need no DELETE and no receipt claiming one. Also in scope: the runner trees and the ctrl-runner-reclaim timer's disposition, which is undecided pending whether it serves anything beyond the retired trees. The assessment route landed; what remains is plan and apply reaching the target over SSH rather than reading it locally, graceful retirement, and the authorized removal with its postcondition.",
+        displaced_cost: "srv2 was hand-converged to zero workers on 2026-09-18 and the model could not describe that state: the assessment refuses today on an ungrounded local population and an unread roster, and the capacity plan refuses for every host while srv2's registrations are unaccounted for. Until the route can act, every convergence is hand SSH and the next one repeats it.",
+        first_slice: "Clear the three named blockers the closure already refuses on -- LocalPopulationUnavailable (no census is admitted into srv2_host_retirement; the model carries the census date in its cause), RosterReadUnavailable (the route holds no organization credential, so remote ownership cannot be established), and the unresolved build provenance -- and the plan/apply spine reaching a target that is not the executor. Those three blockers are typed and visible on every receipt, so they are the work list.",
+        red_control: "Retiring srv2 must not require a runnable srv2 runner; a registration whose ownership is not established by the host capture refuses rather than being deleted; an unobserved roster refuses rather than reading as empty.",
+        out_of_scope: "No second actuator beside the reviewed plan/apply spine; no deletion authorized by a name prefix; GracefulRetirement stays MethodUnavailable until implemented rather than being discovered as a surprise. srv2 has NO RunnerHostDeploy row at all -- its width is a typed refusal -- so nothing downstream may assume a deploy exists, and a capacity refusal is never a deletion instruction. One realization precondition, measured 2026-09-19: masking a unit whose fragment lives in /etc/systemd/system REFUSES until the fragment is moved (srv2's timer and service fragments were moved to /var/lib/gunbc-retired/20260919/ before both masked at 15:06:30Z); the retirement operation must handle that rather than fail on it, and BOTH the timer and its service must be masked, since an inactive service is not an inhibited one.",
+        handback: "One transaction at one revision: plan artifact, authorized apply receipts, independent readback, and a second assessment with nothing remaining."
+      )
+    ),
+    active(
       identity: "rn_0J26ACBBJP5AD79QB78HAYGVQM",
       id: "fleet-mtcollins1-first-host",
       owner: "fleet",
@@ -3018,6 +3093,66 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A 0640 token for a service group needs a directory that group can traverse, so a row whose directory mode refuses every group bit must fail; the exact-mode and forbidden-bits legs are derived from the mode arm, never taken as a caller octal.",
         out_of_scope: "This does NOT retire gunbc.rung_drop approval_store_single_writer_by_agreement. A find-metadata readback establishes which principals HOLD PERMISSION BITS and not that a non-writer cannot open the store; that trigger needs an execution-as-another-user leg, and its row already names a permission-bits readback among the things that do not retire it.",
         handback: "The custody authority with the controller key and the ntfy token as rows, and the HumanIntervention deleted rather than left beside it."
+      )
+    ),
+    active(
+      identity: "rn_6ZFZPYVBX39088FFTWTNF3SCXJ",
+      id: "self-host-service-family-on-literal-terminal",
+      owner: "self-host",
+      path: "docs/plans/namespace-cut-replacement-plan.md",
+      t: updated(t: fields(
+        headline: "Admit the service declaration family without taxing every identifier",
+        boundary: "The G0 service family parses through a grammar terminal that matches one exact word, so the marker words stay ordinary identifiers everywhere else. The parse-door refusals the family needs - missing name, missing brace, volatile, exit-without-arrow, mock-without-expression - keep their separate meanings rather than collapsing into one refusal later in the pipeline.",
+        displaced_cost: "Giving each marker word its own token class was measured as a corpus-wide cost defect: every plain-name slot became a thirteen-way choice and the lexer carried twelve more rules, so the cost was paid once per identifier in every parse. Against a fixed baseline a large minority of the shared witness population moved, and every one of them moved upward - a unidirectional shift, which is what distinguishes a real cost change from runner noise. The population and the magnitude are re-derived by joining the required floor's per-claim cost receipt across the two runs: the artifact named required-floor-claim-cost, which the required run uploads and which carries eval_steps per witness identity. The alternative of making the markers ordinary identifiers and refusing later loses five distinct refusals, because a service declaration has no later stage that could tell those five mistakes apart.",
+        first_slice: "Re-express the service family on the exact-word terminal, which is already on the main line: delete the twelve keyword lex rules and the contextual-name machinery, keep the input-and-output field tail scoped to services, and retire the name-usability claim as a climb rather than a loss. The prepared work is on the branch session/calm-eagle-42-service-on-literal at tip 80a560dffb01b6fa2cbf3f7cb710e5d8e7f6dcdc.",
+        red_control: "Two alternatives that differ only in that one word validate as distinct, while the same pair keyed on the token class alone still reports an overlap; a wrong word in the marker position is refused at the parse door; and the matched word is not published as the node's identity, so no caret literal or generic parameter changes what it carries.",
+        out_of_scope: "Not the resolver's treatment of imports, and not the evaluation-step cost of the whole-service witness, which is its own item.",
+        handback: "Return the measurement against the same baseline showing the moved population back at baseline, the refusal controls, and a statement of which service constructs still have no lowering."
+      ), on: "2026-09-20", note: "The prepared branch is on the shared remote so the citation resolves for anyone with the repository, not only for its author. It was cut before the merges of 2026-09-20 that put the exact-word terminal on main, so it needs rebasing onto current main before it can be proposed for landing."),
+    ),
+    active(
+      identity: "rn_4YXQ47680VA8B4GNGGVPV2DQZ8",
+      id: "whole-service-witness-costs-more-than-its-budget",
+      owner: "self-host",
+      path: "docs/plans/floor-cost-distribution-near-the-ceiling.md",
+      t: fields(
+        headline: "Decide what a witness over a whole real service is allowed to cost",
+        boundary: "One witness parses a complete real service declaration end to end, and it is the only claim that runs that path for real. Decide whether it stays whole, and on what basis, rather than deciding by whichever budget happens to refuse it first.",
+        displaced_cost: "It was measured several times over the evaluation-step budget, and separately above the per-subject processor-time line. Both readings are re-derived from the required floor's per-claim cost receipt, the required-floor-claim-cost artifact, read for this witness identity against the budget that v2.workflow.required_floor declares. Its cost was shown to be linear in the content rather than a defect in shape, so shrinking the fixture does not make it cheaper - it makes it stop being the real thing. The two budgets are separate gates and admission against one says nothing about the other, which is easy to miss.",
+        first_slice: "Re-measure after the service family moves onto the exact-word terminal, because the keyword machinery accounted for somewhere between a fifth and two fifths of the cost and the remainder is the service body itself.",
+        red_control: "Whatever is decided, deleting the claim that runs the real path must make a control fail, so the cheap claims cannot stand alone.",
+        out_of_scope: "Not a change to either budget's value, and not a licence to split the witness into pieces that each avoid the line while nothing exercises the whole.",
+        handback: "Return the re-measurement on both gates, the decision with its reason, and - if the witness is admitted over a line - a record that decides on the live reading rather than on a number typed into a row."
+      )
+    ),
+    active(
+      identity: "rn_ARHDM19A4Y5Z6EVGYFAWCJ434C",
+      id: "required-floor-passes-with-a-failed-phase",
+      owner: "ci-control",
+      path: "dag/gunbc/witness/witness_floor_workflow.dag",
+      t: fields(
+        headline: "A required run that had a phase fail must not report success",
+        boundary: "When the required run reports how many phases it ran and how many failed, a nonzero failure count has to reach the verdict and the check result. Today it does not.",
+        displaced_cost: "Observed on a live pull request: the job log recorded two phases run and one failed, with two located findings, while the same run reported a clean verdict and the check concluded success and the branch read as mergeable. A gate that passes while one of its phases failed certifies less than everyone reading it believes, and the belief is the point of having it.",
+        first_slice: "Make the failed-phase count decide the verdict, then confirm on the run that already exhibits it.",
+        red_control: "A run with a deliberately failed phase reports failure; a run with none still reports success, so the change does not simply make the gate refuse everything.",
+        out_of_scope: "Not the content of any particular phase's findings, and not which phases the required run should contain.",
+        handback: "Return the corrected verdict rule, a run showing it refusing, and a run showing it still passing when nothing failed."
+      )
+    ),
+    active(
+      identity: "rn_02PRZ2Q7Q5Q8TJRANYM293HKJD",
+      id: "runner-throughput-witness-imports-absent-members",
+      owner: "language-integrity",
+      path: "dag/test/claim/runner/runner_throughput_qualification_witness_test.dag",
+      t: fields(
+        headline: "Repair a witness that imports two names its source does not declare",
+        boundary: "One witness imports two members from a module that declares neither of them. The declarations phase reports both as absent.",
+        displaced_cost: "The module declares a differently-named member whose spelling contains one of the requested names as a substring, so a casual search appears to confirm the import and does not. The finding is real and sits on the main line, where it was only visible because another change happened to surface the phase's output.",
+        first_slice: "Decide whether the witness wants the member that does exist under its real name, or whether the source should export what the witness asks for.",
+        red_control: "The declarations phase reports no absent member for this file, and a deliberately reintroduced bad import is reported again.",
+        out_of_scope: "Not a rework of the witness's subject, and not the separate question of whether a failed phase should fail the run.",
+        handback: "Return the corrected import and a phase run that reports it clean."
       )
     ),
   ], concat(guarantee_ladder_nodes(), typed_module_store_nodes()))

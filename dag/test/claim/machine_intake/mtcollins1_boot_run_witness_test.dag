@@ -362,22 +362,23 @@ test fn boot_loopback_filing_is_srv1_only() -> Bool {
     && match mtcollins1_boot_refuses_off_srv1(host: operator_host_srv2 as String) { ExitSuccess => false  _ => true }
 }
 
-// THE FLEET KEY IS NOT MATERIALIZED FOR THIS MODE, AND THE CONTROL IS THE MODE BESIDE IT. The
+// THE FLEET KEY IS MATERIALIZED FOR THIS MODE, AND THE CONTROL IS THE MODE BESIDE IT. The
 // fleet-converge key step's condition is derived from the per-mode demand, so this is the executing
-// consumer of MtCollins1Boot => FleetSshKeyNotConsumed rather than a restatement of the arm: flip the
-// arm back and this claim goes red. approval_keyring_converge is asserted PRESENT in the same string
-// because it is a real fleet-SSH demand (its run reaches typed_argv_exec_over_fleet_ssh against
-// srv1), which also keeps the negative from being satisfiable by an empty or absent condition.
+// consumer of MtCollins1Boot => FleetSshKeyConsumed rather than a restatement of the arm.
+// approval_keyring_converge is asserted PRESENT in the same string because it is a real fleet-SSH
+// demand too, which keeps the claim from being satisfiable by a condition that names everything.
 //
-// WHY NotConsumed IS THE HONEST VALUE HERE. Every transport mtcollins1_boot_wet's closure reaches
-// presents a credential that is not the fleet key: local filesystem reads and writes, curl to the
-// approvals server over HTTP loopback under the approval submission MAC key, curl over HTTPS to the
-// MegaRAC BMC and ipmitool -I lanplus to the same BMC -- including the serial-over-LAN session --
-// both under the pinned mtcollins1 BMC credential file. The full enumeration is beside the arm in
-// gunbc.fleet_converge_workflow fleet_converge_mode_fleet_ssh_key_demand.
-test fn mtcollins1_boot_does_not_materialize_the_fleet_key() -> Bool {
+// WHY Consumed IS THE HONEST VALUE SINCE CENSUS STAGE 0D. Every transport mtcollins1_boot_wet's
+// closure reached before 0D presented a credential that is not the fleet key (local files, HTTP
+// loopback under the submission MAC key, HTTPS and ipmitool to the BMC under the pinned BMC
+// credential), and this claim asserted the arm NotConsumed as that route's executing consumer. 0D
+// adds one leg: gunbc.machine_intake_mtcollins1_census_medium_readback re-measures the served census
+// image on srv2 through typed_argv_exec_over_fleet_ssh as the fleet principal before the signed
+// subject is minted -- a genuine fleet-SSH demand, so the arm flips and this claim flips with it.
+// Flip the arm back and the boot job runs without the key its readback needs; this claim goes red.
+test fn mtcollins1_boot_materializes_the_fleet_key_for_the_census_readback() -> Bool {
   let c = fleet_converge_fleet_ssh_key_step_if
-  !string_contains(s: c, pattern: "'mtcollins1_boot'")
+  string_contains(s: c, pattern: "'mtcollins1_boot'")
     && string_contains(s: c, pattern: "'approval_keyring_converge'")
 }
 

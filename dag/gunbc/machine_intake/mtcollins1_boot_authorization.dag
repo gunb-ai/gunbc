@@ -49,7 +49,20 @@ type MtCollins1BootMedium
   = MtCollins1StockInstallerMedium
   | MtCollins1CensusMedium { output_digest: NonEmptyStr }
 
-data mtcollins1_boot_medium: MtCollins1BootMedium = MtCollins1StockInstallerMedium
+// CENSUS STAGE 0D. The digest is the publish receipt of mtcollins1_census_image_publish_wet executed
+// on srv2 (machine-id cf5ea13d79fd4c8fa7e67f3dbbf7c7f2) at 2026-09-21T04:13:45Z-04:16:31Z from exact
+// revision a345a03090cf86bea4e0d262e51f7f917e703653 with the release binaries of run 35554362854
+// (gunbc sha256 5859d0bcaeb21237a8432515aed4a85743000a74931a86ab7e5627be8406466f), receipt sha256
+// f680ea2d7a9803ff969397c700e43c63f616a5463c88ccd1b0784e08bce17ebc: image_name
+// gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso, build_key ad4bf3fd18230604,
+// published_path /srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso. The
+// transport was SSH rather than the fleet-converge job because srv2 hosts no runner slots since
+// 2026-09-19; the modeled entry, its srv2 admission and its receipt were the same. This row is
+// publication-time evidence only: mtcollins1_census_medium_readback re-measures the served path on
+// srv2 before the signed subject is minted, every run.
+data mtcollins1_boot_medium: MtCollins1BootMedium = MtCollins1CensusMedium {
+  output_digest: "6455b3b9ae11214d3800c7a6eaea289e5151c0e145049e45210f9295869b5d8c",
+}
 
 // THE CENSUS ARM AUTHORS ONE FACT, THE MEASURED OUTPUT DIGEST from the publish receipt. The image name
 // derives from that digest through the same build input that owns the census volume id
