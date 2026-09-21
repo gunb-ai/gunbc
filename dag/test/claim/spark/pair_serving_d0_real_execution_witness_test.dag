@@ -51,7 +51,7 @@ import gunbc.spark.pair_serving_d0 {
   AdmittedD0Grant, D0GrantAdmitted, D0GrantClaimLost, D0GrantForAnotherPopulation, admit_d0_grant, resume_d0_grant, d0_intent_hash, d0_authorized_action,
   D0ClaimReading, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable, d0_read_claim, d0_terminate_claim, D0ClaimTerminated,
   D0Recovery, D0RecoverStart, D0RecoverFirstWrite, D0RecoverResume, D0RecoverComplete, D0RecoverAbort, D0RecoveryRefused, d0_recovery,
-  d0_intent_text, d0_freeze_filing, D0FilingFrozen, D0FilingAlreadyHeld, D0FilingFreezeRefused, d0_read_filing, D0FilingAt, D0FilingAbsent, D0FilingUnreadable,
+  d0_intent_text, d0_frozen_filing_text, d0_freeze_filing, D0FilingFrozen, D0FilingAlreadyHeld, D0FilingFreezeRefused, d0_read_filing, D0FilingAt, D0FilingAbsent, D0FilingUnreadable,
   D0GrantRefused,
 }
 import gunbc.spark.pair_serving_d0_authorization { d0_filed_request, D0FiledRequestFor, D0FiledRequestRefused }
@@ -914,19 +914,20 @@ test fn a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_sub
       let text = d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr)
       let esc = "esc-d0-filing" as NonEmptyStr
       let absent_before = match d0_read_filing(store: store, escalation_id: esc) { D0FilingAbsent => true  _ => false }
-      let frozen = match d0_freeze_filing(store: store, escalation_id: esc, intent_text: text) { D0FilingFrozen => true  _ => false }
-      let held = match d0_freeze_filing(store: store, escalation_id: esc, intent_text: join([text, "tampered"], "")) { D0FilingAlreadyHeld { text: t } => t == text  _ => false }
-      let read = match d0_read_filing(store: store, escalation_id: esc) { D0FilingAt { text: t } => t == text  _ => false }
+      let frozen_text = d0_frozen_filing_text(intent_text: text, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr)
+      let frozen = match d0_freeze_filing(store: store, escalation_id: esc, intent_text: text, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0FilingFrozen => true  _ => false }
+      let held = match d0_freeze_filing(store: store, escalation_id: esc, intent_text: join([text, "tampered"], ""), execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0FilingAlreadyHeld { text: t } => t == frozen_text  _ => false }
+      let read = match d0_read_filing(store: store, escalation_id: esc) { D0FilingAt { text: t } => t == frozen_text  _ => false }
       let same_request = match d0r_w_authorization(successor: h, tx: "tx-d0" as NonEmptyStr, escalation: esc) {
         Absent => false
         Present { value: AuthorizationGranted { grant: g, claim: _ } } =>
-          match d0_filed_request(text: text, group: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr) {
+          match d0_filed_request(text: frozen_text, group: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) {
             D0FiledRequestFor { request: r, intent_text: _ } => (request_revision_of(request: r) as String) == (serialize_content_hash(hash: g.intent_hash) as String) && content_hash_equal(left: r.subject.successor, right: h)
             D0FiledRequestRefused { reason: _ } => false
           }
         Present { value: _ } => false
       }
-      let other_tx = match d0_filed_request(text: text, group: FabricGroupA, escalation_id: esc, transaction: "tx-else" as NonEmptyStr) { D0FiledRequestRefused { reason: _ } => true  _ => false }
+      let other_tx = match d0_filed_request(text: frozen_text, group: FabricGroupA, escalation_id: esc, transaction: "tx-else" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0FiledRequestRefused { reason: _ } => true  _ => false }
       absent_before && frozen && held && read && same_request && other_tx
     })
   })
@@ -967,25 +968,26 @@ test fn a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_exec
 // live candidate unkeyed (the row-store digest is still owed) a first run refuses before filing --
 // and freezes nothing; once a filing is frozen under the escalation, the same call is a rerun
 // carrying the frozen request, with no live subject consulted; and the frozen filing under another
-// transaction's name refuses.
+// transaction's name refuses, and so does a rerun executing another revision than the one that filed.
 test fn the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution() -> Bool {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let esc = "esc-d0-door" as NonEmptyStr
-      let first = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr) {
+      let first = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) {
         D0RunRefused { reason: r } => r.contains("row-store") || r.contains("refused")
         D0FirstRun { request: _ } => false
         D0Rerun { request: _ } => false
       }
       let nothing_frozen = match d0_read_filing(store: store, escalation_id: esc) { D0FilingAbsent => true  _ => false }
       let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: h, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
-      let frozen = match d0_freeze_filing(store: store, escalation_id: esc, intent_text: d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr)) { D0FilingFrozen => true  _ => false }
-      let rerun = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr) {
+      let frozen = match d0_freeze_filing(store: store, escalation_id: esc, intent_text: d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr), execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0FilingFrozen => true  _ => false }
+      let other_revision = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as NonEmptyStr) { D0RunRefused { reason: r } => r.contains("filed by revision aaaa")  _ => false }
+      let rerun = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) {
         D0Rerun { request: r } => content_hash_equal(left: r.subject.successor, right: h) && (r.escalation_id as String) == "esc-d0-door"
         _ => false
       }
-      let other = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-else" as NonEmptyStr) { D0RunRefused { reason: r } => r.contains("tx-d0")  _ => false }
-      first && nothing_frozen && frozen && rerun && other
+      let other = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-else" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0RunRefused { reason: r } => r.contains("tx-d0")  _ => false }
+      first && nothing_frozen && frozen && other_revision && rerun && other
     })
   })
 }

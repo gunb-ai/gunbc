@@ -45,6 +45,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   bind_outcome,
+  diagnostics_fatal_reason,
   outcome_accepted
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -89,8 +90,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // translate_projection_absent_bodied_arrow_fold_init (review 46681, review 46766). Synthetic
 // empty-facts trees remain on the named orch-emit frontier until v2-inferred-tree-completeness.
 
+// THE FATAL IS THE GATE'S OWN REASON AND NEVER THE ADVISORY'S. The fatal of a rejection is its last
+// diagnostic (v2.std.diagnostic diagnostics_fatal); infer's frontier rows, when a real infer ran
+// in front of translate, sit before it spelled infer_grounding_not_derived. A gate that refused
+// with the advisory's spelling satisfied the old head-reason check here and left the chain
+// unreadable -- so this asserts both halves: the fatal is translate's, and it is not the advisory.
 fn translate_refused_canonical_grounding(d: NonEmptyDiagnostics) -> Bool {
-  d.head.reason == ^infer_grounding_not_derived
+  diagnostics_fatal_reason(d: d) == ^translate_rejected_grounding_not_derived
+    && diagnostics_fatal_reason(d: d) != ^infer_grounding_not_derived
 }
 
 data translate_underived_value_specimen: Node = Node {

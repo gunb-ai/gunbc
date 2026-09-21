@@ -9,6 +9,7 @@ import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,
   Correction,
+  DeclarationLocus,
   Diagnostic,
   Diagnostics,
   Extent,
@@ -236,6 +237,7 @@ fn locus_evaluation_nodes(at: Locus) -> List<Node> {
     Textual { file: _, extent: _ } => Empty
     SourcePortLocus { anchor: _, file: _, extent: _ } => Empty
     InvariantPortLocus { anchor: _, invariant: _ } => Empty
+    DeclarationLocus { declaration: _ } => Empty
   }
 }
 

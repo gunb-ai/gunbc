@@ -1,20 +1,29 @@
-// THE HOST REALIZATION OF `gunbc test <label>`, AND IT IS A HAND MIRROR OF A `.dag` AUTHORITY.
+// THE HOST REALIZATION OF `gunbc test <target-pattern>`, AND IT IS A HAND MIRROR OF A `.dag`
+// AUTHORITY.
 //
-// The model is `gunbc.target_invocation` (generic route, termination vocabulary),
-// `gunbc.instrument_targets` (live target and binding rows, the differential's classifier and
-// rendering) and `extdeps.bazel.label` (the label grammar mirrored here). None is in the v1
-// seed's emitted closure — `src/gunbc_cli_dispatch_surface.rs` is the only `gunbc.*` mirror the
-// emitter produces — so this file is hand-written beside the carrier, as `required_regen_host.rs`
-// mirrors `v2.workflow.required_regen`. The seam is therefore MITIGATABLE, not structurally
-// guaranteed: the two can drift until the seam is emitted rather than authored. The obligation
-// is enrolled in `gunbc.target_invocation_seed_growth`.
+// The model is `gunbc.target_invocation` (operand admission, generic exact-label route,
+// termination vocabulary), `gunbc.instrument_targets` (live target and binding rows, the
+// differential's classifier and rendering), `extdeps.bazel.label` (the label grammar mirrored
+// here) and `extdeps.bazel.target_pattern` (the pattern grammar mirrored here). The SET forms
+// (`//pkg:all`, `//pkg:*`, `//pkg/...`) this file admits are NOT executed anywhere yet: they are
+// refused with status 2 (`test_operand_set_form_refusal_rendered`, mirroring
+// `gunbc.target_invocation`), because their only admissible executor is the native test route and
+// no interpreter delegation may stand in for it. None of the
+// modeled modules is in the v1 seed's emitted closure — `src/gunbc_cli_dispatch_surface.rs` is
+// the only `gunbc.*` mirror the emitter produces — so this file is hand-written beside the
+// carrier, as `required_regen_host.rs` mirrors `v2.workflow.required_regen`. The seam is
+// therefore MITIGATABLE, not structurally guaranteed: the two can drift until the seam is
+// emitted rather than authored. The obligation is enrolled in
+// `gunbc.target_invocation_seed_growth`.
 //
-// WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit label -> build the registry
-// -> exact lookup -> invoke the bound producer -> render its native standing. No per-instrument
-// arm on that route, and none may be added; a second instrument is a row in `instrument_registry`
-// plus one `Producer` arm in `run_producer` — the peripheral realization dispatch DESIGN section 3
-// keeps out of the interface. Deliberately NOT here: any consultation of `//:required` aggregate
-// policy or the Blaze status export — both refuse instrument producers by design.
+// WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit pattern -> a single target
+// builds the registry, exact lookup, invoke the bound producer, render its native standing; a
+// set form is refused with status 2 until the native test route executes it. No per-instrument arm on that route, and none
+// may be added; a second instrument is a row in `instrument_registry` plus one `Producer` arm in
+// `run_producer` — the peripheral realization dispatch DESIGN section 3 keeps out of the
+// interface. Deliberately NOT here: any consultation of `//:required` aggregate policy or the
+// Blaze status export — both refuse instrument producers by design — and any re-implementation
+// of witness selection, which is `gunbc.compute.test_selection`'s to own.
 
 use crate::cli_run;
 
@@ -33,36 +42,6 @@ pub enum LabelRefusal {
     DotSegment(String),
     TargetPattern(String),
     TargetNameContainsSlash(String),
-}
-
-/// Rendering is a FREE FUNCTION, not an inherent method: `std.decl_ref` `DeclarationRef` names a
-/// declaration or a named field but has no spelling for an impl method, so an inherent method
-/// would be uncitable in the seed-growth roster that must enumerate every item this file adds.
-fn label_refusal_rendered(cause: &LabelRefusal) -> String {
-    {
-        match cause {
-            LabelRefusal::RepositoryQualifiedLabel(t) => {
-                format!("repository-qualified labels are outside the admitted subset: {t}")
-            }
-            LabelRefusal::MissingRepositoryRootPrefix(t) => {
-                format!("label is not absolute (expected a leading `//`): {t}")
-            }
-            LabelRefusal::MultipleColonSeparators(t) => {
-                format!("label carries more than one `:` separator: {t}")
-            }
-            LabelRefusal::EmptyTargetName(t) => format!("label names no target: {t}"),
-            LabelRefusal::EmptyPackageSegment(t) => {
-                format!("label carries an empty package segment: {t}")
-            }
-            LabelRefusal::DotSegment(s) => format!("label carries a dot package segment: {s}"),
-            LabelRefusal::TargetPattern(p) => format!(
-                "`{p}` is a target PATTERN and denotes a set; `gunbc test` names exactly one target"
-            ),
-            LabelRefusal::TargetNameContainsSlash(n) => {
-                format!("target name contains `/`, which this subset does not admit: {n}")
-            }
-        }
-    }
 }
 
 /// A label in the main repository: a package (the root package is its own state, the empty
@@ -143,6 +122,125 @@ pub fn parse_label(text: &str) -> Result<Label, LabelRefusal> {
     })
 }
 
+/// `extdeps.bazel.target_pattern` `TargetPattern`, mirrored: a pattern denotes a SET, a label one
+/// target. The single-target arm delegates to the label grammar above so a target name is spelled
+/// and refused in exactly one place on this side of the seam as well.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetPattern {
+    SingleTarget(Label),
+    PackageTargets(Vec<String>),
+    SubtreeTargets(Vec<String>),
+}
+
+/// `extdeps.bazel.target_pattern` `TargetPatternRefusal`, mirrored arm for arm: the remedies
+/// differ (make it absolute; fix the package the label grammar refuses; fix the single target the
+/// label grammar refuses; `:all-targets` has no meaning over a corpus of test modules), so the
+/// causes are not collapsible into one malformed-operand bit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetPatternRefusal {
+    PatternNotAbsolute(String),
+    PatternPackageRefused(LabelRefusal),
+    PatternLabelRefused(LabelRefusal),
+    PatternAllTargetsUnsupported(String),
+}
+
+/// `target_pattern_refusal_text`, mirrored.
+/// Mirrors `extdeps.bazel.label` `label_refusal_text`: each refusal renders its located cause.
+fn label_refusal_text(cause: &LabelRefusal) -> String {
+    match cause {
+        LabelRefusal::RepositoryQualifiedLabel(t) => {
+            format!("repository-qualified labels are outside the admitted subset: {t}")
+        }
+        LabelRefusal::MissingRepositoryRootPrefix(t) => {
+            format!("label is not absolute (expected a leading `//`): {t}")
+        }
+        LabelRefusal::MultipleColonSeparators(t) => {
+            format!("label carries more than one `:` separator: {t}")
+        }
+        LabelRefusal::EmptyTargetName(t) => format!("label names no target: {t}"),
+        LabelRefusal::EmptyPackageSegment(t) => {
+            format!("label carries an empty package segment: {t}")
+        }
+        LabelRefusal::DotSegment(s) => format!("label carries a dot package segment: {s}"),
+        LabelRefusal::TargetPattern(p) => {
+            format!("`{p}` is a target PATTERN where a single target was expected")
+        }
+        LabelRefusal::TargetNameContainsSlash(n) => {
+            format!("target name contains `/`, which this subset does not admit: {n}")
+        }
+    }
+}
+
+fn target_pattern_refusal_text(cause: &TargetPatternRefusal) -> String {
+    match cause {
+        TargetPatternRefusal::PatternNotAbsolute(t) => {
+            format!("target pattern is not absolute (must start with //): {t}")
+        }
+        TargetPatternRefusal::PatternPackageRefused(c) => format!(
+            "target pattern names a package the label grammar refuses: {}",
+            label_refusal_text(c)
+        ),
+        TargetPatternRefusal::PatternLabelRefused(c) => format!(
+            "target pattern names a single target the label grammar refuses: {}",
+            label_refusal_text(c)
+        ),
+        TargetPatternRefusal::PatternAllTargetsUnsupported(t) => {
+            format!(":all-targets has no meaning over a corpus of test modules: {t}")
+        }
+    }
+}
+
+fn parse_pattern_package(package_text: &str) -> Result<Vec<String>, TargetPatternRefusal> {
+    if package_text.is_empty() {
+        Ok(Vec::new())
+    } else {
+        parse_package_segments(package_text).map_err(TargetPatternRefusal::PatternPackageRefused)
+    }
+}
+
+/// `parse_target_pattern`, mirrored. The branch order is the authority's: absolute prefix, the
+/// `:all-targets` exclusion, the subtree suffixes, the package-wide suffixes, and only then the
+/// single-target delegation — a different order would admit or refuse different texts.
+pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRefusal> {
+    if !text.starts_with("//") {
+        return Err(TargetPatternRefusal::PatternNotAbsolute(text.to_string()));
+    }
+    if text.ends_with(":all-targets") {
+        return Err(TargetPatternRefusal::PatternAllTargetsUnsupported(
+            text.to_string(),
+        ));
+    }
+    let body = &text[2..];
+    let subtree_body = if body.ends_with("/...:all") {
+        Some(&body[..body.len() - ":all".len()])
+    } else if body.ends_with("/...:*") {
+        Some(&body[..body.len() - ":*".len()])
+    } else if body.ends_with("/...") || body == "..." {
+        Some(body)
+    } else if body == "...:all" || body == "...:*" {
+        Some("...")
+    } else {
+        None
+    };
+    if let Some(stripped) = subtree_body {
+        let package_text = if stripped == "..." {
+            ""
+        } else {
+            &stripped[..stripped.len() - "/...".len()]
+        };
+        return parse_pattern_package(package_text).map(TargetPattern::SubtreeTargets);
+    }
+    if let Some(stripped) = body
+        .strip_suffix(":all")
+        .or_else(|| body.strip_suffix(":*"))
+    {
+        return parse_pattern_package(stripped).map(TargetPattern::PackageTargets);
+    }
+    parse_label(text)
+        .map(TargetPattern::SingleTarget)
+        .map_err(TargetPatternRefusal::PatternLabelRefused)
+}
+
 /// `gunbc.target_binding` `TargetProducer`, narrowed to the members this seam realizes today.
 /// Adding one is a row in `instrument_registry` and an arm here; it is not a new route.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,6 +259,7 @@ pub enum TargetProducer {
     PrimitiveEgressCensusDag,
     PrimitiveEgressCensusSeed,
     RequiredLaneResolutionCensus,
+    BareReferenceChannelOutcome,
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -242,6 +341,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("required-lane-resolution-census"),
             TargetProducer::RequiredLaneResolutionCensus,
         ),
+        (
+            instrument_label("bare-reference-channel-outcome"),
+            TargetProducer::BareReferenceChannelOutcome,
+        ),
     ]
 }
 
@@ -252,22 +355,22 @@ fn instrument_label(target: &str) -> Label {
     }
 }
 
-/// `gunbc.target_invocation` `TargetInvocationRefusal`, MINUS ONE ARM, deliberately.
+/// `gunbc.target_invocation` refusal vocabulary AT THIS SEAM, narrowed twice, deliberately.
 ///
 /// The model separates a known target with no bound producer from an unknown target because
 /// `gunbc.target_binding` keeps two lists. Here the registry is a list of PAIRS, so a producer-less
 /// target is unwritable (DESIGN section 4b, structural impossibility) and an unconstructible arm
 /// would be decoration read as coverage. If the host ever takes the two populations separately,
 /// the arm returns with the state that makes it reachable.
+///
+/// `OperandNotALabel` is likewise ABSENT since the operand became a target PATTERN: every label
+/// refusal now arrives inside `parse_target_pattern`'s `PatternLabelRefused`, rendered by
+/// `target_pattern_refusal_text`, so the arm has no constructor left. The modeled
+/// `TargetInvocationRefusal` keeps it — `route_target_invocation` remains the exact-label route
+/// the witness-selection half delegates around.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InvocationRefusal {
-    OperandNotALabel {
-        operand: String,
-        cause: LabelRefusal,
-    },
-    TargetIsUnknown {
-        target: String,
-    },
+    TargetIsUnknown { target: String },
 }
 
 /// THE REFUSAL NAMES WHAT WOULD HAVE WORKED, AND IT IS DERIVED RATHER THAN WRITTEN DOWN.
@@ -289,10 +392,6 @@ fn rostered_targets_rendered() -> String {
 fn invocation_refusal_rendered(refusal: &InvocationRefusal) -> String {
     {
         match refusal {
-            InvocationRefusal::OperandNotALabel { operand, cause } => format!(
-                "gunbc test: operand is not an absolute label: {operand}\n  cause: {}",
-                label_refusal_rendered(cause)
-            ),
             InvocationRefusal::TargetIsUnknown { target } => {
                 format!(
                     "gunbc test: no such target: {target}\n{}",
@@ -414,6 +513,182 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE BARE-REFERENCE CHANNEL'S OUTCOME OVER THE FOUR HERMETIC ENTRIES
+// ---------------------------------------------------------------------------------------------
+
+/// `gunbc.instrument_targets` `bare_reference_channel_source_roots`. The subject is the
+/// instrument's own fact on the rule every sibling here follows, and it is a FIXTURE root rather
+/// than the live corpus: the reading must not move when `dag` does.
+fn bare_reference_channel_source_roots() -> Vec<String> {
+    vec!["fixtures/bare_reference_channel".to_string()]
+}
+
+/// `gunbc.target_binding` `BareChannelEligibility`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BareChannelEligibility {
+    Runs,
+    DisabledByImportLine,
+}
+
+/// `gunbc.instrument_targets` `bare_reference_channel_expectations`, mirrored. Each row states the
+/// OUTCOME the entry's one isolated condition produces, so a gate that moves flips exactly the row
+/// that isolates it.
+struct BareChannelExpectation {
+    module_path: &'static str,
+    isolated_condition: &'static str,
+    eligibility: BareChannelEligibility,
+    pulled_modules: &'static [&'static str],
+}
+
+fn bare_reference_channel_expectations() -> Vec<BareChannelExpectation> {
+    vec![
+        BareChannelExpectation {
+            module_path: "probe.brc.bare_record_consumer",
+            isolated_condition: "no imports; bare reference to a RECORD type -- pullable holds",
+            eligibility: BareChannelEligibility::Runs,
+            pulled_modules: &["probe.brc.record_home"],
+        },
+        BareChannelExpectation {
+            module_path: "probe.brc.bare_alias_consumer",
+            isolated_condition:
+                "no imports; bare reference to a nullary type alias -- every arm of pullable declines",
+            eligibility: BareChannelEligibility::Runs,
+            pulled_modules: &[],
+        },
+        BareChannelExpectation {
+            module_path: "probe.brc.imported_record_consumer",
+            isolated_condition:
+                "the row-one reference plus ONE unrelated import line -- gate one turns the channel off",
+            eligibility: BareChannelEligibility::DisabledByImportLine,
+            pulled_modules: &[],
+        },
+        BareChannelExpectation {
+            module_path: "probe.brc.transitive_alias_consumer",
+            isolated_condition:
+                "no imports; a bare CALL whose callee imports the alias home -- the alias arrives as a passenger",
+            eligibility: BareChannelEligibility::Runs,
+            pulled_modules: &["probe.brc.alias_home", "probe.brc.passenger_home"],
+        },
+    ]
+}
+
+fn bare_channel_eligibility_rendered(e: BareChannelEligibility) -> &'static str {
+    match e {
+        BareChannelEligibility::Runs => "RUNS",
+        BareChannelEligibility::DisabledByImportLine => "DISABLED",
+    }
+}
+
+/// `gunbc.instrument_targets` `bare_reference_channel_holds`, mirrored: set equality at identity
+/// grain, never a count, and eligibility compared as its own field so an ineligible channel and an
+/// eligible one that pulled nothing can never satisfy each other's row.
+fn run_bare_reference_channel_outcome() -> InvocationOutcome {
+    let source_roots = bare_reference_channel_source_roots();
+    let missing: Vec<String> = source_roots
+        .iter()
+        .filter(|r| !std::path::Path::new(r.as_str()).exists())
+        .cloned()
+        .collect();
+    if !missing.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!(
+                "bare-reference-channel-outcome: subject unreached (fixture source root absent): {}",
+                missing.join(", ")
+            ),
+        };
+    }
+    let expectations = bare_reference_channel_expectations();
+    let entries: Vec<String> = expectations
+        .iter()
+        .map(|e| e.module_path.to_string())
+        .collect();
+    let readings = match cli_run::bare_reference_channel_readings(&source_roots, &entries) {
+        Ok(readings) => readings,
+        Err(detail) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "bare-reference-channel-outcome: subject unreached (module index refused): {detail}"
+                ),
+            };
+        }
+    };
+    let mut lines: Vec<String> = Vec::new();
+    let mut unmet: Vec<String> = Vec::new();
+    for expected in expectations.iter() {
+        let matched: Vec<&cli_run::BareReferenceChannelEntryReading> = readings
+            .iter()
+            .filter(|r| r.module_path == expected.module_path)
+            .collect();
+        let [observed] = matched.as_slice() else {
+            unmet.push(format!(
+                "bare-reference-channel-outcome: UNMET {} ({}): expected exactly one reading, got {}",
+                expected.module_path,
+                expected.isolated_condition,
+                matched.len()
+            ));
+            continue;
+        };
+        let observed_eligibility = if observed.bare_channel_eligible {
+            BareChannelEligibility::Runs
+        } else {
+            BareChannelEligibility::DisabledByImportLine
+        };
+        let expected_pulled: Vec<String> = {
+            let mut v: Vec<String> = expected
+                .pulled_modules
+                .iter()
+                .map(|m| (*m).to_string())
+                .collect();
+            v.sort();
+            v
+        };
+        lines.push(format!(
+            "bare-reference-channel-outcome: {} channel={} pulled=[{}]",
+            observed.module_path,
+            bare_channel_eligibility_rendered(observed_eligibility),
+            observed.pulled_modules.join(", ")
+        ));
+        if observed_eligibility != expected.eligibility
+            || observed.pulled_modules != expected_pulled
+        {
+            unmet.push(format!(
+                "bare-reference-channel-outcome: UNMET {} ({}): expected channel={} pulled=[{}], observed channel={} pulled=[{}]",
+                expected.module_path,
+                expected.isolated_condition,
+                bare_channel_eligibility_rendered(expected.eligibility),
+                expected_pulled.join(", "),
+                bare_channel_eligibility_rendered(observed_eligibility),
+                observed.pulled_modules.join(", "),
+            ));
+        }
+    }
+    let mut message = format!(
+        "bare-reference-channel-outcome: entries={} unmet={}",
+        // THE READINGS, NOT THE EXPECTATIONS, because that is what the `.dag` authority renders
+        // (`gunbc.instrument_targets` `bare_reference_channel_standing_rendered` counts the
+        // readings). The two cannot differ today -- one reading is demanded per expectation -- so
+        // this is not a defect being fixed but a drift point being closed, of exactly the kind
+        // `gunbc.bare_reference_channel_outcome_seed_growth` enrolls this mirror for.
+        readings.len(),
+        unmet.len()
+    );
+    for line in lines.iter().chain(unmet.iter()) {
+        message.push('\n');
+        message.push_str(line);
+    }
+    InvocationOutcome {
+        termination: if unmet.is_empty() {
+            Termination::ObservationHeld
+        } else {
+            Termination::ObservationDidNotHold
+        },
+        message,
+    }
+}
+
 /// THE REALIZATION DISPATCH, AND IT IS THE ONLY PLACE A PRODUCER IS NAMED. Selecting a realization
 /// is itself realization (DESIGN section 3): periphery, never the route above or the CLI surface.
 fn run_producer(producer: TargetProducer) -> InvocationOutcome {
@@ -452,6 +727,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive-egress-census-seed",
             "primitive_egress_census_seed_exit",
         ),
+        TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
         TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
             "required-lane-resolution-census",
             "dag/gunbc/required_lane_resolution_census_live.dag",
@@ -871,21 +1147,35 @@ fn behavioral_outcome(
     }
 }
 
-/// THE ONE SEAM: argv operand -> label -> registry -> exact binding -> producer -> native standing.
-///
-/// Lookup is `label_eq` once per row, and EXACT — no prefix, suffix or "did you mean": a near miss
-/// silently running a different target is worse than a refusal naming the one asked for.
+/// THE ONE SEAM: argv operand -> pattern admission -> route. A SINGLE target builds the registry
+/// and looks up EXACTLY — no prefix, suffix or "did you mean": a near miss silently running a
+/// different target is worse than a refusal naming the one asked for. A SET form is ADMITTED by
+/// the grammar and REFUSED by the route (status 2, no observation): its only executor is the
+/// native `gunbc test` route (v2 foundation package 9), and handing it to the interpreter would
+/// let an interpreted run stand in for a native one. Mirrors `gunbc.target_invocation`
+/// `test_operand_set_form_refusal_rendered`.
+fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
+    format!(
+        "gunbc test: {operand} denotes a SET of targets; set forms run only through the native test route, which is not yet available, and are never delegated to the interpreter"
+    )
+}
+
 pub fn test_verb(operand: &str) -> InvocationOutcome {
-    let label = match parse_label(operand) {
-        Ok(l) => l,
-        Err(cause) => {
-            let refusal = InvocationRefusal::OperandNotALabel {
-                operand: operand.to_string(),
-                cause,
-            };
+    let label = match parse_target_pattern(operand) {
+        Ok(TargetPattern::SingleTarget(label)) => label,
+        Ok(TargetPattern::PackageTargets(_)) | Ok(TargetPattern::SubtreeTargets(_)) => {
             return InvocationOutcome {
                 termination: Termination::Refused,
-                message: invocation_refusal_rendered(&refusal),
+                message: test_operand_set_form_refusal_rendered(operand),
+            };
+        }
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "gunbc test: operand is not an admitted target pattern: {operand}\n  cause: {}",
+                    target_pattern_refusal_text(&cause)
+                ),
             };
         }
     };

@@ -1,0 +1,172 @@
+module gunbc.review_sheet_identity_converge
+
+import std.types { NonEmptyStr, String, List }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure { EnsurePolicy, EnsureObserveOnly, EnsureMayApply }
+import gunbc.review_sheet_drive_converge {
+  SpreadsheetCreatePlan,
+  review_sheet_marker_property_key,
+  review_sheet_current_marker_field,
+  review_sheet_superseded_marker_field,
+}
+import gunbc.review_sheet_identity {
+  ReviewSheetIdentitySubject,
+  ReviewSheetIdentityDisposition,
+  ReviewSheetIdentityAbsent,
+  ReviewSheetSingleLineage,
+  ReviewSheetLegacyOnlyLineage,
+  ReviewSheetConflictingLineages,
+  CurrentMarkerObservedLegacyExtentUnresolved,
+  ReviewSheetIdentityUnreadable,
+  LegacyExtentVerdict,
+  LegacyExtentSettledEmpty,
+  LegacyExtentFound,
+  LegacyExtentUnsettled,
+}
+
+// THE CREATE DECISION, TAKEN OVER A STANDING RATHER THAN OVER ONE SEARCH. Until this module the
+// spreadsheet converge decided from a single observation of the CURRENT marker field, and
+// gunbc.review_sheet_identity exists because that observation cannot carry the decision: an empty
+// current-marker search says nothing about a file carrying only the superseded one, and an empty
+// SUPERSEDED-marker search says nothing at all, because appProperties are private to the requesting
+// OAuth application and nothing in this corpus observes the application identity of its own token.
+//
+// WHY THIS IS A THIRD MODULE AND NOT AN EDIT TO EITHER NEIGHBOUR. gunbc.review_sheet_identity
+// imports gunbc.review_sheet_drive_converge for the observation shape, so the converge cannot
+// import the kernel back (DESIGN section 3: the import graph's one structural law is acyclicity).
+// The decision needs both, so it is its own fact with its own home rather than a copy of either.
+//
+// AND IT DECIDES NOTHING THE KERNEL DECIDES. Every arm below reads a disposition the kernel already
+// derived and answers only the question this layer owns -- may a file be created, adopted, or
+// neither. Re-deriving "is the extent settled" here would be the three-sites-one-fact failure the
+// kernel's own annotation records, moved out of the kernel and into its caller.
+
+// THE SUBJECT IS ASSEMBLED FROM THE DECLARED MARKER ROWS, NOT SPELLED AT THE CALL SITE. The kernel
+// refuses evidence whose subject differs from the intended one, which is only a wall if both sides
+// are derived from the same declarations: two hand-written subjects that happen to agree today
+// agree by coincidence, and the day the marker is relocated again they stop agreeing silently on
+// whichever side was edited.
+fn review_sheet_identity_subject(
+  drive_id: NonEmptyStr,
+  marker_value: NonEmptyStr,
+) -> ReviewSheetIdentitySubject {
+  ReviewSheetIdentitySubject {
+    drive_id: drive_id,
+    marker_key: review_sheet_marker_property_key,
+    marker_value: marker_value,
+    current_marker_field: review_sheet_current_marker_field,
+    superseded_marker_field: review_sheet_superseded_marker_field,
+  }
+}
+
+// CREATE IS AUTHORIZED BY EXACTLY ONE DISPOSITION, and every other arm refuses. That is the whole
+// repair: the replaced fold authorized a create from SheetAbsent -- an empty CURRENT-marker search
+// -- which is silent about the superseded generation, and creating on that silence is how the
+// duplicate was minted.
+//
+// CurrentMarkerObservedLegacyExtentUnresolved REFUSES RATHER THAN ADOPTING, and that is the arm
+// worth defending because it changes a path that works today. A current-marked file was found, so
+// adopting it writes nothing and loses nothing directly -- but reporting it as CONVERGED asserts a
+// single lineage that was not established, and the kernel's own annotation names collapsing this
+// arm into ReviewSheetSingleLineage as what "reported success over a drive that held two". The
+// refusal is loud, names the discharge, and is retired by an operator declaration for this exact
+// subject; adopting quietly would be the absorbing fallback DESIGN section 5 refuses, since the
+// deficit -- nothing observes this token's OAuth application identity -- would stop being visible.
+//
+// ReviewSheetLegacyOnlyLineage ALSO REFUSES, and not because the file is wrong. It IS the review
+// sheet; it carries only the superseded marker. Adopting it would report a converged current
+// generation over a file no current-marker query can reach, and creating beside it is the original
+// incident. Stamping the current marker onto it is a WRITE, and the write and its id-bound readback
+// are the separately roadmapped properties-write cut -- so this arm refuses with the file named,
+// which is exactly the input that cut consumes.
+fn ensure_review_spreadsheet_on_identity(
+  policy: EnsurePolicy,
+  disposition: ReviewSheetIdentityDisposition,
+  drive_id: NonEmptyStr,
+  sheet_name: NonEmptyStr,
+  marker_value: NonEmptyStr,
+) -> UpsertDecision<SpreadsheetCreatePlan> {
+  match disposition {
+    ReviewSheetSingleLineage { file_id: _ } => Noop
+    ReviewSheetIdentityUnreadable { cause: r } => Refuse { reason: r }
+    CurrentMarkerObservedLegacyExtentUnresolved { file_id: f, cause: c } =>
+      Refuse {
+        reason: join(
+          [
+            "a file carrying the current marker was found in ",
+            drive_id as String,
+            " (",
+            f as String,
+            ") and the superseded-marker extent is not settled: ",
+            c as String,
+            "; adopting it would report a single lineage that was not established, and an empty search against ",
+            review_sheet_superseded_marker_field as String,
+            " can never settle it, because that field is private to the requesting OAuth application and nothing here observes which application this token belongs to. An operator declaration for this exact subject is what settles it",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    ReviewSheetLegacyOnlyLineage { file_id: f } =>
+      Refuse {
+        reason: join(
+          [
+            "the only review sheet found in ",
+            drive_id as String,
+            " (",
+            f as String,
+            ") carries the superseded marker field ",
+            review_sheet_superseded_marker_field as String,
+            " and not ",
+            review_sheet_current_marker_field as String,
+            "; creating beside it would mint the duplicate again, and stamping the current marker onto it is a write this converge does not perform",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    ReviewSheetConflictingLineages { current_file_ids: current, legacy: legacy } =>
+      Refuse {
+        reason: join(
+          [
+            "more than one review-sheet lineage is present in ",
+            drive_id as String,
+            "; current-marked: [",
+            join(current, ", "),
+            "], superseded: ",
+            legacy_extent_verdict_text(v: legacy),
+            "; only an operator can say which lineage is real",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    ReviewSheetIdentityAbsent =>
+      match policy {
+        EnsureObserveOnly =>
+          Refuse {
+            reason: join(
+              ["no review spreadsheet in ", drive_id as String, " under either marker generation, and policy is observe-only"],
+              "",
+            ) as NonEmptyStr,
+          }
+        EnsureMayApply =>
+          Apply {
+            plan: SpreadsheetCreatePlan {
+              drive_id: drive_id,
+              name: sheet_name,
+              marker_property_value: marker_value,
+            }
+          }
+      }
+  }
+}
+
+// THE OPERATOR TEXT FOR A VERDICT, AND IT KEEPS THE DISTINCTION THE KERNEL BUILT THE VERDICT TO
+// KEEP. "no superseded-marked file exists" and "the superseded extent could not be read" are
+// different sentences here for the same reason they are different arms there: an operator sent to
+// adjudicate a conflict needs to know whether the old generation was ruled out or merely unread.
+fn legacy_extent_verdict_text(v: LegacyExtentVerdict) -> String {
+  match v {
+    LegacyExtentSettledEmpty => "settled empty"
+    LegacyExtentFound { file_ids: ids } => join(["[", join(ids, ", "), "]"], "")
+    LegacyExtentUnsettled { cause: c } => join(["unsettled (", c as String, ")"], "")
+  }
+}

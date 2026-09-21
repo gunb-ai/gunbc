@@ -60,10 +60,34 @@ data review_sheet_marker_property_key: NonEmptyStr = "gunbcReviewSheet"
 // it, so it is stable exactly because it is invisible.
 data ci_prospect_sheet_marker_value: NonEmptyStr = "ci-prospect-sheet"
 
-fn review_sheet_search_query(marker_value: NonEmptyStr) -> String {
+// THE TWO MARKER FIELDS ARE THE SAME FACT AT TWO GENERATIONS, AND BOTH ARE NAMED HERE BECAUSE A
+// QUERY AGAINST EITHER IS THE SAME SHAPE. gunbc#11485 relocated the marker from appProperties to
+// properties, and the relocation is exactly why the superseded field must keep a name: a file
+// carrying only the old field is still the review sheet, and no query built from the new field can
+// reach it. Naming only the live one is what let the next converge search, get a clean empty
+// result, and create a second spreadsheet beside one holding real data.
+//
+// THE VISIBILITY DIFFERENCE BETWEEN THEM IS NOT A SPELLING DIFFERENCE, and it is the reason the
+// superseded field can never be searched for a settled ABSENCE. appProperties are private to the
+// requesting APPLICATION -- the OAuth client id the access token was obtained with -- so an empty
+// answer establishes only that THIS client received no rows. gunbc.review_sheet_identity owns that
+// distinction; this module owns only the two names and the one query shape built from them.
+data review_sheet_current_marker_field: NonEmptyStr = "properties"
+
+data review_sheet_superseded_marker_field: NonEmptyStr = "appProperties"
+
+// ONE QUERY SHAPE, PARAMETERISED BY THE FIELD, AND NOT RE-SPELLED PER CALLER. Two callers now build
+// a marker query -- the current-marker read in gunbc.review_sheet_spreadsheet_actuator and the
+// superseded-marker producer in gunbc.review_sheet_legacy_extent_producer -- and a second spelling
+// of "has { key='K' and value='V' }" is the fork that would let one of them drift into asking a
+// different question while both reported the same fact. The mimeType and trashed clauses belong to
+// the shape rather than to either caller for the same reason: a superseded-marker search that
+// omitted trashed=false would count a file the current-marker search does not.
+fn review_sheet_marker_query(marker_field: NonEmptyStr, marker_value: NonEmptyStr) -> String {
   join(
     [
-      "properties has { key='",
+      marker_field as String,
+      " has { key='",
       review_sheet_marker_property_key as String,
       "' and value='",
       marker_value as String,
@@ -72,6 +96,13 @@ fn review_sheet_search_query(marker_value: NonEmptyStr) -> String {
       "' and trashed=false",
     ],
     "",
+  )
+}
+
+fn review_sheet_search_query(marker_value: NonEmptyStr) -> String {
+  review_sheet_marker_query(
+    marker_field: review_sheet_current_marker_field,
+    marker_value: marker_value,
   )
 }
 
@@ -355,67 +386,5 @@ fn spreadsheet_from_files(files: List<DriveFile>) -> ReviewSpreadsheetObservatio
         Present { value: only } => SheetObservedOne { file_id: only.id as NonEmptyStr }
       }
     }
-  }
-}
-
-fn ensure_review_spreadsheet(
-  policy: EnsurePolicy,
-  observed: ReviewSpreadsheetObservation,
-  drive_id: NonEmptyStr,
-  sheet_name: NonEmptyStr,
-  marker_value: NonEmptyStr,
-) -> UpsertDecision<SpreadsheetCreatePlan> {
-  match observed {
-    SheetObservedOne { file_id: _ } => Noop
-    SheetSearchUnreadable { reason: r } => Refuse { reason: r }
-    SheetPageIncomplete { next_page_token: _ } =>
-      Refuse {
-        reason: join(
-          ["the file listing for ", drive_id as String, " is one page of several; exactly-one on this page does not establish exactly-one in the drive"],
-          "",
-        ) as NonEmptyStr
-      }
-    SheetSearchIncomplete =>
-      Refuse {
-        reason: join(
-          [
-            "Drive reported incompleteSearch for ",
-            drive_id as String,
-            "; an unfinished search that returned nothing is not an observation of absence and may not authorize a create",
-          ],
-          "",
-        ) as NonEmptyStr,
-      }
-    SheetDuplicated { file_ids: ids } =>
-      Refuse {
-        reason: join(
-          [
-            "two or more files carry the review-sheet key in ",
-            drive_id as String,
-            " (",
-            join(ids, ", "),
-            "); a prior create was retried after its answer was lost and only an operator can say which lineage is real",
-          ],
-          "",
-        ) as NonEmptyStr,
-      }
-    SheetAbsent =>
-      match policy {
-        EnsureObserveOnly =>
-          Refuse {
-            reason: join(
-              ["no review spreadsheet in ", drive_id as String, " and policy is observe-only"],
-              "",
-            ) as NonEmptyStr,
-          }
-        EnsureMayApply =>
-          Apply {
-            plan: SpreadsheetCreatePlan {
-              drive_id: drive_id,
-              name: sheet_name,
-              marker_property_value: marker_value,
-            }
-          }
-      }
   }
 }
