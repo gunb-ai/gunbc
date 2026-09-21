@@ -80,6 +80,7 @@ import gunbc.auth.ci_app_key_rotation {
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
 import gunbc.ci_spec {
   site_pxe_edge_converge_receipt_path,
+  runner_microvm_network_receipt_path,
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
@@ -1171,7 +1172,7 @@ fn fleet_converge_microvm_network_observe_receipt_upload_step() -> Step {
     uses: upload_artifact_action,
     with: Present { value: [
       kv(key: "name", value: yaml_string(s: "runner-microvm-network-observe-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/microvm-network-observe.txt")),
+      kv(key: "path", value: yaml_string(s: runner_microvm_network_receipt_path)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },

@@ -854,6 +854,13 @@ data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunSte
 // and imported by the writer and the upload step (the import graph runs converge -> ci_spec, not back).
 data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
 
+// Where gunbc.runner_microvm_network_converge writes its observe receipt: declared here for the same
+// reason as the row above, and imported by the writer and the upload step. It was spelled three times
+// -- here, in the converge module and in the workflow's upload path -- and the upload step sets
+// if-no-files-found: error, so editing one authoring alone turned a green converge into a failed
+// upload (review 69458).
+data runner_microvm_network_receipt_path: String = "target/microvm-network-observe.txt"
+
 data gunbc_ci_site_pxe_edge_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/site_pxe_edge_converge.dag",
   function: "site_pxe_edge_observe_ci_wet",
@@ -2251,7 +2258,7 @@ fn gunbc_ci_runner_microvm_network_observe_invoke() -> String {
     entry: gunbc_ci_runner_microvm_network_observe_target.entry,
     function: gunbc_ci_runner_microvm_network_observe_target.function,
     claim_run: false,
-    receipt_rel: "target/microvm-network-observe.txt"
+    receipt_rel: runner_microvm_network_receipt_path
   )
 }
 

@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
 import std.algebra { trim }
+import gunbc.ci_spec { runner_microvm_network_receipt_path }
 import std.content_hash { Sha256Digest, Sha256DigestHex, sha256_hex_digest }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -668,8 +669,6 @@ fn converge_generation_reading() -> String {
     Absent => ""
   }
 }
-
-data runner_microvm_network_receipt_path: String = "target/microvm-network-observe.txt"
 
 data runner_microvm_network_receipt_dir: String = "target"
 
