@@ -3115,7 +3115,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "self-host-service-family-on-literal-terminal",
       owner: "self-host",
       path: "docs/plans/namespace-cut-replacement-plan.md",
-      t: updated(t: updated(t: fields(
+      t: updated(t: updated(t: updated(t: fields(
         headline: "Admit the service declaration family without taxing every identifier",
         boundary: "The G0 service family parses through a grammar terminal that matches one exact word, so the marker words stay ordinary identifiers everywhere else. The parse-door refusals the family needs - missing name, missing brace, volatile, exit-without-arrow, mock-without-expression - keep their separate meanings rather than collapsing into one refusal later in the pipeline.",
         displaced_cost: "Giving each marker word its own token class was measured as a corpus-wide cost defect: every plain-name slot became a thirteen-way choice and the lexer carried twelve more rules, so the cost was paid once per identifier in every parse. Against a fixed baseline a large minority of the shared witness population moved, and every one of them moved upward - a unidirectional shift, which is what distinguishes a real cost change from runner noise. The population and the magnitude are re-derived by joining the required floor's per-claim cost receipt across the two runs: the artifact named required-floor-claim-cost, which the required run uploads and which carries eval_steps per witness identity. The alternative of making the markers ordinary identifiers and refusing later loses five distinct refusals, because a service declaration has no later stage that could tell those five mistakes apart.",
@@ -3123,7 +3123,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "Two alternatives that differ only in that one word validate as distinct, while the same pair keyed on the token class alone still reports an overlap; a wrong word in the marker position is refused at the parse door; and the matched word is not published as the node's identity, so no caret literal or generic parameter changes what it carries. A source using the marker words as ordinary names still parses, and that fixture is the retained name-usability control - it reds if any later change keywords a spelling again. Each named parse-door refusal asserts its own typed diagnostic and the stage that raised it, never bare non-acceptance: a helper that is the negation of parses folds a tokenize failure and a parse failure into one verdict, so it can pass for a reason the claim is not about.",
         out_of_scope: "Not the resolver's treatment of imports, and not the evaluation-step cost of the whole-service witness, which is its own item.",
         handback: "Return the measurement against the same baseline showing the moved population back at baseline, the refusal controls, and a statement of which service constructs still have no lowering."
-      ), on: "2026-09-20", note: "The prepared branch is on the shared remote so the citation resolves for anyone with the repository, not only for its author. It was cut before the merges of 2026-09-20 that put the exact-word terminal on main, so it needs rebasing onto current main before it can be proposed for landing."), on: "2026-09-21", note: "CORRECTION to this row as first authored: the slice instructed retiring the name-usability claim as a climb, and that instruction was wrong on DESIGN 4b(4), which dissolves lower-rung PRODUCTION machinery and never the evidence. The prepared branch acted on it and its annotation argues the claim's RED is no longer authorable even against a hostile fixture. That is false, and DESIGN 4b decides it in the opposite direction: a state unrepresentable in the accepted corpus may still be representable as SOURCE HANDED TO THE COMPILER BY A FIXTURE, and this claim's fixture is exactly that - one module using from, input and transport as a parameter and a let binding. Deleting the keyword lex rules removes the mechanism that could break name usability today; it is not evidence that a later lexer or grammar change cannot reintroduce one. Re-express the control at the right boundary and consolidate it if it duplicates, but keep the obligation enrolled."),
+      ), on: "2026-09-20", note: "The prepared branch is on the shared remote so the citation resolves for anyone with the repository, not only for its author. It was cut before the merges of 2026-09-20 that put the exact-word terminal on main, so it needs rebasing onto current main before it can be proposed for landing."), on: "2026-09-21", note: "CORRECTION to this row as first authored: the slice instructed retiring the name-usability claim as a climb, and that instruction was wrong on DESIGN 4b(4), which dissolves lower-rung PRODUCTION machinery and never the evidence. The prepared branch acted on it and its annotation argues the claim's RED is no longer authorable even against a hostile fixture. That is false, and DESIGN 4b decides it in the opposite direction: a state unrepresentable in the accepted corpus may still be representable as SOURCE HANDED TO THE COMPILER BY A FIXTURE, and this claim's fixture is exactly that - one module using from, input and transport as a parameter and a let binding. Deleting the keyword lex rules removes the mechanism that could break name usability today; it is not evidence that a later lexer or grammar change cannot reintroduce one. Re-express the control at the right boundary and consolidate it if it duplicates, but keep the obligation enrolled."), on: "2026-09-21", note: "SECOND CORRECTION, and it retracts this row's own citation. The tip cited above as PREPARED WORK does not compile, on its base or on main: dag_grammar_literal_terminal is called twelve times and declared nowhere in it, so resolve refuses with no established callee identity. The earlier claim that it merges current main with zero conflicts is true and was never the question -- a clean merge of source that never compiled is not prepared work, and verifying the merge instead of executing it is the specification-without-execution DESIGN 5 names. What the implementation actually needed, found by running it: the algebra constructor grammar_expr_literal_terminal already exists in v2.std.grammar and only wanted a local wrapper in the file's existing idiom; and seven marker words -- service, operation, input, output, readonly, idempotent, hermetic -- are reserved in the SEED's extdeps.languages.dag.syntax dag_keyword_set, so a caret literal cannot spell them and they are interned from their String spelling by symbol_intern_lexeme, which no keyword rule intercepts. G0 carries no keyword entry for any of them, which is what keeps the name-usability control meaningful rather than vacuous."),
     ),
     active(
       identity: "rn_4YXQ47680VA8B4GNGGVPV2DQZ8",
@@ -3168,6 +3168,81 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "The declarations phase reports no absent member for this file, and a deliberately reintroduced bad import is reported again.",
         out_of_scope: "Not a rework of the witness's subject, and not the separate question of whether a failed phase should fail the run.",
         handback: "Return the corrected import and a phase run that reports it clean."
+      )
+    ),
+    active(
+      identity: "rn_J01EG5E1CAAVTYVJPKPXFXZCGM",
+      id: "action-use-yaml-reader-contract",
+      owner: "generated-artifact",
+      path: "dag/gunbc/action_use_admission.dag",
+      t: fields(
+        headline: "Read a workflow file once, correctly, and delete the second reader",
+        boundary: "extdeps.languages.yaml accepts only the YAML subset it reads with the correct meaning and refuses the rest with a located reason, parser and emitter fixed together, witnessed by comparing decoded structures rather than re-emitted bytes. The action-use census then reads every committed workflow through it, one claim per file joined to the directory listing, and gunbc.action_use_admission's line projection plus its frontier row are deleted.",
+        displaced_cost: "Two readers of one medium disagree eventually, and the cheap one cannot see a flow-style mapping, an escaped key or a complex key at all. Until it is gone, the repository-wide ban on substituted action runtimes rests partly on a scanner that reads lines.",
+        first_slice: "Land the bounded-subset contract and its decoded-structure witnesses; the projection deletes in the same change once the census reads every workflow through the modeled reader.",
+        red_control: "A planted wrong-meaning case per construct turns its own control red, and the census refuses a workflow the projection could not see (flow-style `[\{uses: ...}]`).",
+        out_of_scope: "The interpreter's eager `&&` operand demand, which has its own recurring-failure-mode row.",
+        handback: "Return the contract, the witnesses, the deleted projection and the census cost re-derived by its named instrument."
+      )
+    ),
+    active(
+      identity: "rn_PDMRS0Y8J3EBDYNRPWZFH23C93",
+      id: "required-lane-exit-on-refused-phase",
+      owner: "ci-control",
+      path: "dag/gunbc/witness/witness_floor_workflow.dag",
+      t: fields(
+        headline: "A required lane that refuses a phase must not exit zero",
+        boundary: "When the required-CI lane reports FAILED PHASE and counts phases_failed, the process exits non-zero and the aggregating job cannot read it as green. The refusal itself stays: declining to plan on an unobservable base is correct.",
+        displaced_cost: "Reproduced on two heads (runs 35503853026 and 35510547600): the floor refused with ChangedWitnessObservationFailed, the log carried phases_failed=1, and the step concluded success. Every change touching a file the base reconstruction needs has had its changed-witness observation skipped while CI reported green.",
+        first_slice: "Map a refused phase to a non-zero exit at the one place that owns the lane's status, and audit every other refusal arm in that lane for the same shape.",
+        red_control: "A refused phase that maps to exit 0 reds; a clean lane still exits 0.",
+        out_of_scope: "Widening or narrowing the changed-witness subject to make the refusal disappear.",
+        handback: "Return the exit mapping, the audit of the lane's other arms, the recurring-failure-mode row with both runs as receipts, and how far back the silent skipping reaches."
+      )
+    ),
+    active(
+      identity: "rn_BR2JFR598QVXCXM82STJS2RW4S",
+      id: "workflow-census-claim-budget-margin",
+      owner: "ci-cost",
+      path: "dag/extdeps/languages/yaml/ingest.dag",
+      t: fields(
+        headline: "Cut the reader's per-entry cost so the workflow census is not one edit from red",
+        boundary: "The census claim over the largest committed workflow sits within a couple of percent of the new-witness eval-step budget, and its subject grows from lanes that do not own it. Cut the modeled reader's per-entry path so the margin is structural rather than incidental.",
+        displaced_cost: "A required claim that reds when an unrelated workflow gains lines teaches everyone that the gate is noise, and the tempting repairs are the forbidden ones: a raised budget, a second reader, or a declared drop.",
+        first_slice: "Measure where the per-entry cost lives in the mapping-entry path and cut it there, re-deriving the cost with claim_batch eval_steps over ingest_yaml_source on the largest workflow.",
+        red_control: "The census claim stays inside its budget with the largest committed workflow grown by a realistic increment.",
+        out_of_scope: "Raising the budget, splitting the subject to fit, or reintroducing a line projection.",
+        handback: "Return the cut, the before and after re-derived by the named instrument, and the margin stated against a grown subject."
+      )
+    ),
+    active(
+      identity: "rn_XMKDEM3GM4NYQ4QXPEDVK4H6MB",
+      id: "action-runtime-epoch-observation",
+      owner: "generated-artifact",
+      path: "dag/extdeps/github/action_runtime_policy.dag",
+      t: fields(
+        headline: "Notice when the platform's runtime epoch has moved, and when a runner overrides it",
+        boundary: "The node-runtime policy epoch is dated and cited, but nothing reads that date against a clock and nothing observes the override variable set in a runner HOST's environment rather than in a workflow. Give the epoch a standing that refuses once a newer cited epoch exists, and observe the runner-side override on the fleet's own runner units.",
+        displaced_cost: "The ban on provider-substituted action runtimes holds only while the epoch row is current. When GitHub moves again, the corpus keeps answering Exact until a human notices a warning -- the exact interaction the ban exists to end.",
+        first_slice: "Observe the override variable on the runner units and refuse a workflow admitted under an epoch the fleet's runners no longer match.",
+        red_control: "An epoch row older than an observed platform change refuses; a runner carrying the override refuses.",
+        out_of_scope: "Guessing GitHub's next deprecation date.",
+        handback: "Return the epoch standing, the runner-side observation and both refusals."
+      )
+    ),
+    active(
+      identity: "rn_DRN7QV1SE98SC0CRJEWZKM96VF",
+      id: "namespace-relocation-batch-grain",
+      owner: "namespace",
+      path: "docs/plans/namespace-resolution-design.md",
+      t: fields(
+        headline: "Admit one declaration relocation, not one file per consumer",
+        boundary: "The namespace wall admits a binding transition at the enclosing-declaration grain, so moving one declaration's home costs one admission file per consuming declaration. Add an exact relocation subject -- from and to declaration references -- whose derived delta population must equal the observed one in both directions, and keep the per-consumer reporting.",
+        displaced_cost: "Moving seven selection rows to their new home authored forty near-identical admission files. The cost falls on the author of any correct relocation, so the wall prices the move rather than the mistake.",
+        first_slice: "Derive the expected binding-delta population for an exact from/to pair from the base graph, and require observed and derived to match both ways.",
+        red_control: "A batch that admits a transition outside its declared relocation reds, as does a relocation whose derived population is incomplete.",
+        out_of_scope: "A module-wide wildcard, a permissive predicate, or aliases left behind at the old home -- each lowers the wall instead of moving its grain.",
+        handback: "Return the relocation subject, its derivation, the both-ways equality and the collapsed file count for a real relocation."
       )
     ),
   ], concat(guarantee_ladder_nodes(), typed_module_store_nodes()))
