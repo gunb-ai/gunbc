@@ -62,6 +62,17 @@ test fn an_unruled_identity_refuses_the_store() -> Bool {
   unruled_identity_refuses_store()
 }
 
+// Review 69770's finding, as a discriminating pair. A REFUSED identity must not permit the
+// store: ladder_verdict_prescribes answers Memoize for five of the six Refused arms, so a door
+// that read the bare prescription would take an unmet obligation as permission. The negative
+// is RefusedScopeTooNarrow against the very provider that discharges the single-site demand,
+// and the positive is that same provider still admitting that same demand -- so the negative
+// cannot pass by the admission having been broken for everything.
+test fn a_refused_identity_refuses_the_store() -> Bool {
+  refused_scope_refuses_store()
+    && discharged_scope_admits_store()
+}
+
 test fn parse_table_memo_plural_reds_without_provider() -> Bool {
   !parse_table_memo_plural_holds_with_provider()
     && (parse_table_memo_plural_scope_too_narrow_count() == 1)
