@@ -527,6 +527,7 @@ type HostCaptureSectionReading
   = SectionAbsent
   | SectionPending { output: List<String> }
   | SectionComplete { exit_code: String, output: List<String> }
+  | SectionMalformed { reason: String }
 
 fn host_capture_section_reading(envelope: BoundHostCaptureEnvelope, name: String) -> HostCaptureSectionReading {
   match host_capture_bound_section(envelope: envelope, name: name) {
@@ -537,12 +538,16 @@ fn host_capture_section_reading(envelope: BoundHostCaptureEnvelope, name: String
       let lines = split(s: s.body, delimiter: "\n")
       let scan = fold(
         lines,
-        init: HostCaptureSectionLineScan { after_argv: false, output: [], exit_code: none },
+        init: HostCaptureSectionLineScan { after_argv: false, output: [], exit_code: none, duplicate_argv: false },
         f: (acc, line) => host_capture_section_line_scan(acc: acc, line: line, argv_prefix: argv_prefix, exit_prefix: exit_prefix),
       )
-      match scan.exit_code {
-        Absent => SectionPending { output: scan.output }
-        Present { value: code } => SectionComplete { exit_code: code, output: scan.output }
+      if scan.duplicate_argv {
+        SectionMalformed { reason: concat("section ", name, " carries two ARGV boundaries; which output the exit belongs to is not a fact") }
+      } else {
+        match scan.exit_code {
+          Absent => SectionPending { output: scan.output }
+          Present { value: code } => SectionComplete { exit_code: code, output: scan.output }
+        }
       }
     }
   }
@@ -552,25 +557,34 @@ type HostCaptureSectionLineScan {
   after_argv: Bool
   output: List<String>
   exit_code: String?
+  duplicate_argv: Bool
 }
 
 // opener -> exactly one ARGV -> output -> EXIT. Text before the ARGV line is not output and an EXIT
 // before the ARGV line completes nothing: the program prints them in that order and only in that
-// order, so a section without that shape was not written by the program.
+// order, so a section without that shape was not written by the program. A SECOND ARGV is
+// malformed, never a reset: resetting would choose the other candidate boundary while claiming
+// there was exactly one (review 5270388845).
 fn host_capture_section_line_scan(acc: HostCaptureSectionLineScan, line: String, argv_prefix: String, exit_prefix: String) -> HostCaptureSectionLineScan {
   match acc.exit_code {
     Present { value: _ } => acc
     Absent =>
-      if starts_with(s: line, prefix: argv_prefix) {
-        if acc.after_argv { acc } else { HostCaptureSectionLineScan { after_argv: true, output: [], exit_code: none } }
+      if acc.duplicate_argv {
+        acc
+      } else if starts_with(s: line, prefix: argv_prefix) {
+        if acc.after_argv {
+          HostCaptureSectionLineScan { after_argv: true, output: acc.output, exit_code: none, duplicate_argv: true }
+        } else {
+          HostCaptureSectionLineScan { after_argv: true, output: [], exit_code: none, duplicate_argv: false }
+        }
       } else if acc.after_argv == false {
         acc
       } else if starts_with(s: line, prefix: exit_prefix) {
-        HostCaptureSectionLineScan { after_argv: true, output: acc.output, exit_code: Present { value: substring(s: line, start: exit_prefix.length(), end: line.length()) } }
+        HostCaptureSectionLineScan { after_argv: true, output: acc.output, exit_code: Present { value: substring(s: line, start: exit_prefix.length(), end: line.length()) }, duplicate_argv: false }
       } else if starts_with(s: line, prefix: host_capture_section_open) {
         acc
       } else {
-        HostCaptureSectionLineScan { after_argv: true, output: append(acc.output, items: [line]), exit_code: none }
+        HostCaptureSectionLineScan { after_argv: true, output: append(acc.output, items: [line]), exit_code: none, duplicate_argv: false }
       }
   }
 }

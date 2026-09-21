@@ -225,11 +225,14 @@ fn is_pending(v: MtCollins1BootTerminalVerdict) -> Bool {
 // (1) a second begin for the machine while the envelope is open refuses -- run B's refusing
 //     section may not inhabit run A's open envelope;
 // (2) a section without its ARGV line never completes -- text before ARGV is not output and an
-//     EXIT before ARGV mints nothing;
+//     EXIT before ARGV mints nothing; and a SECOND ARGV is malformed, never a reset (review
+//     5270388845) -- the one-ARGV a_only fixture beside it is the positive control;
 // (3) an unterminated final fragment is not evidence -- "workload-write-rc=1" without its newline
 //     is Pending, with it Refused;
 // (4) a same-name / different-digest subject-medium disagreement renders the digests, never
-//     "names X but the medium row names X".
+//     "names X but the medium row names X". The image name derives from the digest, so that
+//     subject cannot come from the constructor: it is a forged or stale signed subject, built
+//     field-for-field in the fold.
 fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium: MtCollins1BootMedium, clean: String, boot23_open: String) -> Bool {
   let begin_a = "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=aaaaaaaa-0000-4000-8000-000000000001 begin 2026-09-21T14:47:00Z=====\n"
   let begin_b = "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=bbbbbbbb-0000-4000-8000-000000000002 begin 2026-09-21T14:52:00Z=====\n"
@@ -237,10 +240,9 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
   let restarted = concat(begin_a, begin_b, refusing_nproc)
   let no_argv = concat(begin_a, "----SECTION nproc----\n80\n----EXIT nproc: 0\n")
   let exit_before_argv = concat(begin_a, "----SECTION nproc----\n----EXIT nproc: 0\n----ARGV nproc: nproc\n80\n")
+  let two_argv = concat(begin_a, "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----ARGV nproc: second-boundary\n----EXIT nproc: 0\n")
   let unterminated = concat(begin_a, "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=1")
   let terminated = concat(unterminated, "\n")
-  // The image name derives from the digest, so a same-name / different-digest subject cannot come
-  // from the constructor: it is a forged or stale signed subject, built field-for-field here.
   let same_name_other_digest = MtCollins1BootSubject {
     machine: census_subject.machine,
     bmc_host: census_subject.bmc_host,
@@ -258,6 +260,7 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: concat(begin_a, refusing_nproc), subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160"])
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: no_argv, subject: census_subject, medium: census_medium))
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: exit_before_argv, subject: census_subject, medium: census_medium))
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: two_argv, subject: census_subject, medium: census_medium), texts: ["section nproc carries two ARGV boundaries; which output the exit belongs to is not a fact"])
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: unterminated, subject: census_subject, medium: census_medium))
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: terminated, subject: census_subject, medium: census_medium), texts: ["workload write rc=1"])
     && (match mtcollins1_boot_terminal_verdict(capture: clean, subject: same_name_other_digest, medium: census_medium) {

@@ -40,7 +40,7 @@ import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcoll
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound, BoundHostCaptureEnvelope, HostCaptureRunIdentity,
-  SectionAbsent, SectionPending, SectionComplete,
+  SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
   host_capture_bind, host_capture_section_reading, host_capture_output_value_after, host_capture_output_has_line,
   host_capture_mc0_counter, host_capture_workload_write_rc_token, host_capture_workload_stable_token,
 }
@@ -355,6 +355,7 @@ type MtCollins1BootTerminalCause
   | TerminalCaptureUnbound { reason: String }
   | TerminalSectionAbsent { name: String }
   | TerminalSectionFailed { name: String, exit_code: String }
+  | TerminalSectionMalformed { name: String, reason: String }
   | HardwareThreadCountMismatch { expected: String, observed: String }
   | BootMediaLabelAbsent { label: NonEmptyStr }
   | EdacCountersNotClean { name: String }
@@ -389,6 +390,7 @@ fn nproc_qualification(envelope: BoundHostCaptureEnvelope, expected: String) -> 
   match host_capture_section_reading(envelope: envelope, name: "nproc") {
     SectionAbsent => QualificationPending
     SectionPending { output: _ } => QualificationPending
+    SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: "nproc", reason: r } }
     SectionComplete { exit_code: code, output: out } => qualification_judged(name: "nproc", exit_code: code, cause: nproc_judge(expected: expected, out: out))
   }
 }
@@ -397,6 +399,7 @@ fn boot_media_qualification(envelope: BoundHostCaptureEnvelope, label: NonEmptyS
   match host_capture_section_reading(envelope: envelope, name: "boot-media") {
     SectionAbsent => QualificationPending
     SectionPending { output: _ } => QualificationPending
+    SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: "boot-media", reason: r } }
     SectionComplete { exit_code: code, output: out } => qualification_judged(name: "boot-media", exit_code: code, cause: boot_media_judge(label: label, out: out))
   }
 }
@@ -405,6 +408,7 @@ fn edac_qualification(envelope: BoundHostCaptureEnvelope, name: String) -> Termi
   match host_capture_section_reading(envelope: envelope, name: name) {
     SectionAbsent => QualificationPending
     SectionPending { output: _ } => QualificationPending
+    SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: name, reason: r } }
     SectionComplete { exit_code: code, output: out } => qualification_judged(name: name, exit_code: code, cause: edac_judge(name: name, out: out))
   }
 }
@@ -451,6 +455,7 @@ fn workload_judge(out: List<String>) -> MtCollins1BootTerminalCause? {
 fn workload_qualification(envelope: BoundHostCaptureEnvelope) -> TerminalQualification {
   match host_capture_section_reading(envelope: envelope, name: "workload") {
     SectionAbsent => QualificationPending
+    SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: "workload", reason: r } }
     SectionPending { output: out } =>
       match host_capture_output_value_after(output: out, token: host_capture_workload_write_rc_token) {
         Absent => QualificationPending
@@ -496,7 +501,7 @@ fn mtcollins1_boot_qualifications(envelope: BoundHostCaptureEnvelope, threads: S
 fn terminal_over_closed(envelope: BoundHostCaptureEnvelope, threads: String, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
   let f = mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label)
   let absent = filter(["nproc", "boot-media", "edac-before", "workload", "edac-after"], n =>
-    match host_capture_section_reading(envelope: envelope, name: n) { SectionComplete { exit_code: _, output: _ } => false  SectionAbsent => true  SectionPending { output: _ } => true })
+    match host_capture_section_reading(envelope: envelope, name: n) { SectionComplete { exit_code: _, output: _ } => false  SectionMalformed { reason: _ } => false  SectionAbsent => true  SectionPending { output: _ } => true })
   let causes = concat(f.causes, map(absent, n => TerminalSectionAbsent { name: n }))
   if count(causes) == 0 { TerminalAccepted { run: envelope.run, threads: threads } } else { TerminalRefused { causes: causes } }
 }
@@ -535,6 +540,7 @@ fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> St
     TerminalCaptureUnbound { reason: r } => concat("capture does not bind: ", r)
     TerminalSectionAbsent { name: n } => concat("closed envelope carries no ", n, " section")
     TerminalSectionFailed { name: n, exit_code: c } => concat(n, " exited ", c)
+    TerminalSectionMalformed { name: _, reason: r } => r
     HardwareThreadCountMismatch { expected: e, observed: o } => concat("nproc observed ", o, ", qualification expects ", e)
     BootMediaLabelAbsent { label: l } => concat("boot-media does not name the census volume ", l as String)
     EdacCountersNotClean { name: n } => concat(n, ": mc0 ce_count/ue_count not both 0")
