@@ -1,9 +1,14 @@
 module v2.test.v2_native_route
 
+import extdeps.bazel.label { LabelParsed, LabelRefused, render_label }
+import extdeps.bazel.target_pattern {
+  TargetPatternParsed, TargetPatternRefused, parse_target_pattern, target_pattern_matches
+}
 import gunbc.witness_v2_native_route {
   NativeRouteTestIdentity, native_route_identity_qualified, native_route_identities_unique,
   native_route_identity_member,
   native_route_universe_member,
+  native_route_identity_label, native_route_default_pattern,
   NativeRouteReference, FloorExpectedPass, FloorExpectedRed, FloorRouteGapRefusal,
   native_route_reference_for,
   NativeRouteMemberRow,
@@ -49,13 +54,13 @@ import v2.workflow.floor_discovery_source_authority {
 import v2.std.live_tree { SubstrateInputsOnly }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
-  NativeTestRefused,
+  native_test_refused_located,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry,
   NativeTestStageEval,
   NativeTestFileRefusal
 }
 import v2.std.optional { Absent, Optional, Present, optional_present }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, invariant_port_locus }
 import v2.std.collection { List }
 import v2.std.algebra { fold_list, length }
 import v2.std.logic { Bool }
@@ -88,6 +93,19 @@ fn false_row(module: String, declaration: String) -> NativeRouteMemberRow {
   }
 }
 
+// A SUPPLIED REFUSAL FOR THE AUTHORITY'S CLAUSES. These claims discriminate the admission
+// authority over supplied rows (DESIGN section 3: the boundary is the clause, its inputs are
+// values); the located diagnostics a real route carries are exercised by the inhabitance
+// claims in v2.test.claim.native_route.native_refusal_detail_test, so here the locus is the
+// supplied-input port and only the stage and the fatal reason are the claim's subject.
+fn refused_verdict(stage: NativeTestStage, reason: Symbol) -> NativeTestVerdict {
+  native_test_refused_located(
+    stage: stage,
+    reason: reason,
+    at: invariant_port_locus(port: ^v2_native_route_test_supplied_verdict, invariant: reason)
+  )
+}
+
 fn refused_row(
   module: String,
   declaration: String,
@@ -96,7 +114,7 @@ fn refused_row(
 ) -> NativeRouteMemberRow {
   NativeRouteMemberRow {
     identity: test_identity(module: module, declaration: declaration),
-    verdict: NativeTestRefused { stage: stage, reason: reason }
+    verdict: refused_verdict(stage: stage, reason: reason)
   }
 }
 
@@ -208,6 +226,81 @@ test fn the_universe_is_the_prefix_and_nothing_else() -> Bool {
   && !native_route_universe_member(module_qn: "v2.compiler.compile")
   && !native_route_universe_member(module_qn: "v2.test")
   && !native_route_universe_member(module_qn: "dag.test.claim")
+}
+
+// ── a target pattern selects through the cited matcher ──
+
+// An identity's label, admitted by the one matcher, from the pattern's TEXT: the same parse an
+// operator's argument takes. A pattern that fails to parse or an identity whose label refuses is
+// `false` here, and each arm below also asserts the positive side, so neither refusal can hold one
+// of these arms green.
+fn pattern_admits(text: String, module_qn: String, declaration: String) -> Bool {
+  match parse_target_pattern(text: text) {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_route_identity_label(module_qn: module_qn, declaration: declaration) {
+        LabelRefused { cause: _ } => false
+        LabelParsed { label: label } => target_pattern_matches(pattern: pattern, target: label)
+      }
+  }
+}
+
+// THE LAW THAT KEEPS THE DEFAULT HONEST: it narrows nothing. Every universe member's label is
+// admitted by the default pattern, so the lane at its default runs the floor's whole population.
+// The last conjunct is the one real difference, pinned so it stays deliberate: the subtree form
+// includes the `v2.test` package module the gate prefix excludes, and the producer's conjunction
+// with universe membership is what keeps that difference from reaching the lane.
+fn default_admits(module_qn: String) -> Bool {
+  match native_route_identity_label(module_qn: module_qn, declaration: "any_declaration") {
+    LabelRefused { cause: _ } => false
+    LabelParsed { label: label } =>
+      target_pattern_matches(pattern: native_route_default_pattern(), target: label)
+  }
+}
+
+test fn the_default_pattern_admits_every_universe_member() -> Bool {
+  default_admits(module_qn: "v2.test.v2_native_route")
+  && default_admits(module_qn: "v2.test.parse.alias_decl_parse")
+  && !default_admits(module_qn: "v2.compiler.compile")
+  && !default_admits(module_qn: "v2.testing.y")
+  && (default_admits(module_qn: "v2.test") && !native_route_universe_member(module_qn: "v2.test"))
+}
+
+// THE CORRESPONDENCE IS THE ONE FACT THIS MODULE OWNS: namespace segments are package segments and
+// the declaration is the target name.
+test fn an_identity_label_is_its_namespace_as_a_package() -> Bool {
+  match native_route_identity_label(module_qn: "v2.test.parse", declaration: "a_parse_holds") {
+    LabelRefused { cause: _ } => false
+    LabelParsed { label: label } =>
+      render_label(l: label) == "//v2/test/parse:a_parse_holds"
+  }
+}
+
+// `//v2/test/...` reaches a module nested below it and not `v2.testing.*`: the boundary is a
+// segment edge, never a character position.
+test fn a_subtree_pattern_stops_at_the_namespace_edge() -> Bool {
+  pattern_admits(text: "//v2/test/...", module_qn: "v2.test.parse.alias_decl_parse", declaration: "d")
+  && !pattern_admits(text: "//v2/test/...", module_qn: "v2.testing.y", declaration: "d")
+}
+
+test fn the_root_subtree_pattern_selects_every_module() -> Bool {
+  pattern_admits(text: "//...", module_qn: "anything.at.all", declaration: "d")
+}
+
+// `//v2/test/parse:all` selects that module and not the ones nested beneath it.
+test fn a_package_pattern_selects_one_module_and_not_its_subtree() -> Bool {
+  pattern_admits(text: "//v2/test/parse:all", module_qn: "v2.test.parse", declaration: "d")
+  && !pattern_admits(text: "//v2/test/parse:all", module_qn: "v2.test.parse.alias_decl_parse", declaration: "d")
+}
+
+// The single-target form is the only one that reads the declaration.
+test fn a_single_target_pattern_selects_one_declaration() -> Bool {
+  pattern_admits(text: "//v2/test/parse:a_parse_holds", module_qn: "v2.test.parse", declaration: "a_parse_holds")
+  && !pattern_admits(
+    text: "//v2/test/parse:a_parse_holds",
+    module_qn: "v2.test.parse",
+    declaration: "a_different_declaration"
+  )
 }
 
 test fn identity_qualification_derives_the_dotted_spelling() -> Bool {
@@ -404,7 +497,7 @@ test fn a_reached_verdict_on_a_route_gap_identity_is_a_divergence() -> Bool {
 
 test fn the_route_gap_agrees_only_with_the_hermetic_boundary_refusal() -> Bool {
   match native_route_disposition(
-    verdict: NativeTestRefused { stage: NativeTestStageEval, reason: ^eval_rejected_effect_io_unbound },
+    verdict: refused_verdict(stage: NativeTestStageEval, reason: ^eval_rejected_effect_io_unbound),
     reference: FloorRouteGapRefusal
   ) {
     NativeAgreementRouteGap => true
@@ -414,14 +507,14 @@ test fn the_route_gap_agrees_only_with_the_hermetic_boundary_refusal() -> Bool {
 
 test fn a_route_gap_refusal_off_the_boundary_is_an_exclusion() -> Bool {
   match native_route_disposition(
-    verdict: NativeTestRefused { stage: NativeTestStageEval, reason: ^some_unowned_cause },
+    verdict: refused_verdict(stage: NativeTestStageEval, reason: ^some_unowned_cause),
     reference: FloorRouteGapRefusal
   ) {
     NativeExclusion { cause: UnattributedRefusal { reason: r } } => r == ^some_unowned_cause
     _ => false
   }
   && match native_route_disposition(
-    verdict: NativeTestRefused { stage: NativeTestStagePrepare, reason: ^parse_g0_tokens_remain },
+    verdict: refused_verdict(stage: NativeTestStagePrepare, reason: ^parse_g0_tokens_remain),
     reference: FloorRouteGapRefusal
   ) {
     NativeExclusion { cause: CompilerFrontierAttributed { reason: r } } => r == ^parse_g0_tokens_remain

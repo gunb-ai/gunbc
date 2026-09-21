@@ -38,7 +38,6 @@ import v2.compiler.infer {
   InferredTree,
   algebra_ref_is_grounded,
   canonical_grounding_for_node,
-  canonical_grounding_from_inferred_facts,
   inferred_facts_grounding_derived,
   inferred_facts_witness_for_node
 }
@@ -282,9 +281,10 @@ type TokenSequenceItemKind
 
 type GroundingGatePassed {}
 
-// Refuse only recorded GroundingNotDerived on the Holds arm, routing that variant through
-// canonical_grounding_from_inferred_facts so the typed ^infer_grounding_not_derived diagnostic
-// propagates (review 46789). DerivedGrounding on Holds accepts without re-running canonical
+// Refuse only recorded GroundingNotDerived on the Holds arm, with the gate's own fatal
+// ^translate_rejected_grounding_not_derived located at the node (review 46789 routed it through
+// canonical_grounding_from_inferred_facts and inherited the advisory's spelling; see the
+// diagnostic's note below). DerivedGrounding on Holds accepts without re-running canonical
 // admission. infer_facts_lookup_miss (Violates) is the compatibility class for trees with no infer
 // judgment at a node: emit_orchestration's synthetic InferredTree (`orch_emit_facts_lookup`) and
 // test-only shape-frontier carriers carry an empty facts map by construction, so lookup miss means
@@ -306,15 +306,31 @@ type GroundingGatePassed {}
 // is an unresolved compile error. Callers bind with bind_outcome(fn(_) => ...) and never read the
 // payload; the signal is Accepted vs Rejected disposition only.
 
+// THE GATE'S REFUSAL HAS ITS OWN NAME, AND UNTIL 2026-09-21 IT DID NOT. Review 46789 routed this
+// arm through canonical_grounding_from_inferred_facts "so the typed ^infer_grounding_not_derived
+// diagnostic propagates" -- and it did, as the FATAL, spelled identically to the ADVISORY infer
+// carries on its Accepted path for the same node. One symbol, two contracts (DESIGN section 3, a
+// meaning fork): a rejection chain read as `infer_grounding_not_derived x35` where thirty-four
+// links were infer's frontier rows riding along and the last was THIS gate refusing to emit, and
+// no reader could tell which. Measured on the built native CLI at gunbc#11965's specimen
+// (7d3a2578). eval's gate already draws the line -- `eval_rejected_grounding_not_derived` is its
+// fatal, distinct from the advisory -- so this is the same precedent applied to translate. The
+// refusal is located at the node whose grounding emission needed; the frontier row for that same
+// node sits in front of it in the chain, and now the two say different things.
+fn translate_grounding_not_derived_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_rejected_grounding_not_derived,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn translate_grounding_derived_gate(tree: InferredTree, node: Node) -> Outcome<GroundingGatePassed> {
   match inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: _ } =>
-          match canonical_grounding_from_inferred_facts(node: node, facts: facts) {
-            Accepted { value: _, diagnostics: _ } => outcome_accepted(GroundingGatePassed {})
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          }
+        GroundingNotDerived { node: n } =>
+          outcome_rejected(d: translate_grounding_not_derived_diagnostic(node: n))
         DerivedGrounding { grounding: _ } =>
           outcome_accepted(GroundingGatePassed {})
       }
