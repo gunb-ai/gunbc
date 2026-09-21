@@ -20,7 +20,7 @@ import gunbc.auth.approval_decision_store { grant_from_approved_decision, GrantD
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.auth.approval_request_client {
   sign_stored_request, approval_submit_url, approval_status_url, approval_poll_standing,
-  SubmissionMacReady, SubmissionMacKeyNotHex, SubmissionMacComputationRefused,
+  SubmissionMacReady, SubmissionMacKeyNotHex,
   ApprovalPollStanding, PollApproved, PollDenied, PollExpired, PollStillPending, PollNotFiled, PollUnreadable,
 }
 import gunbc.auth.approval_request_submission { submission_envelope_json }
@@ -257,7 +257,6 @@ fn approval_file_stored_request(stored: StoredApprovalRequest, body_file_name: S
     } else {
       match sign_stored_request(key_material: trim(s: key_read.content), request: stored) {
         SubmissionMacKeyNotHex { key_id: k } => ApprovalFilingRefused { reason: join(["submission MAC key is not hex: ", k as String], "") }
-        SubmissionMacComputationRefused { key_id: k, cause: _ } => ApprovalFilingRefused { reason: join(["submission MAC could not be computed for key ", k as String], "") }
         SubmissionMacReady { tag_hex: tag } => {
           let tmp = actions_variable_trimmed(name: github_runner_temp_variable_name as NonEmptyStr)
           if tmp == "" {

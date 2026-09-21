@@ -13,9 +13,7 @@ import extdeps.apple.apns {
 import extdeps.apple.app_attest {
   AttestKeyId, AttestationVerification, AttestationVerified, AttestationRefused, AttestationRefusal,
   AssertionVerification, AssertionAuthentic, AssertionRefused, AssertionRefusal,
-  AppAttestEnvironment, AppAttestLaunchExtensionPolicy, app_attest_verify,
 }
-import extdeps.time.rfc3339 { rfc3339_epoch_seconds }
 import extdeps.apple.secure_enclave { EnclaveKeyAccessPolicy, BiometryCurrentSet }
 import extdeps.crypto.mac { MacKey, MacVerified, mac_verify }
 import gunbc.auth.approval_capability {
@@ -130,7 +128,6 @@ type EnrolmentRefusal
   | EnrolmentAttestationRefused { cause: AttestationRefusal }
   | EnrolmentAttestationForOtherBytes
   | EnrolmentAndroidUnrealized
-  | EnrolmentObservationTimeUnreadable { observed_at: Timestamp }
 
 type EnrolmentAdmission
   = EnrolmentAdmitted { enrollment: VerifiedDeviceEnrollment }
@@ -178,40 +175,6 @@ fn enrolment_admission(
             }
         }
       }
-  }
-}
-
-// THE iOS ENROLMENT ROUTE'S PARSE STAGE (ENCODING-0, gunbc#11629). The attestation arrives as the
-// app's base64 bytes and is decoded and checked in .dag by extdeps.apple.app_attest app_attest_verify
-// -- CBOR, the DER certificate chain under the pinned Apple root, the authenticator data -- rather
-// than by a host parser. Its `now` is the same instant as observed_at, read through
-// extdeps.time.rfc3339, so certificate validity and code expiry are judged at one time. Until ECDSA
-// is realized (ecdsa_verification_realization_frontier) every genuine attestation ends in
-// AttestationVerificationUnrealized, which enrolment_admission refuses like any other refusal: this
-// route never admits an enrolment its evidence did not verify.
-fn ios_enrolment_admission(
-  slot: EnrolmentSlotStanding,
-  decision_key: VerifyingKey,
-  attestation_b64: NonEmptyStr,
-  key_id: AttestKeyId,
-  environment: AppAttestEnvironment,
-  policy: AppAttestLaunchExtensionPolicy,
-  admitted_categories: List<Int>,
-  observed_at: Timestamp,
-) -> EnrolmentAdmission {
-  match rfc3339_epoch_seconds(value: observed_at) {
-    Absent => EnrolmentRefused { cause: EnrolmentObservationTimeUnreadable { observed_at: observed_at } }
-    Present { value: now_epoch } =>
-      enrolment_admission(
-        slot: slot,
-        platform: MobileIos,
-        decision_key: decision_key,
-        attestation: app_attest_verify(
-          environment: environment, policy: policy, admitted_categories: admitted_categories,
-          attestation_b64: attestation_b64, key_id: key_id, now_epoch: now_epoch,
-        ),
-        observed_at: observed_at,
-      )
   }
 }
 
@@ -797,7 +760,7 @@ data approval_device_routes_frontier: DissolutionCondition = unbound_dissolution
 )
 
 data ecdsa_verification_realization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "a realization of ECDSA verification (P-256 and P-384 over SHA-256/SHA-384) behind extdeps.crypto.signature signature_verification_from_implementation, consumed by extdeps.apple.app_attest app_attest_verify and app_attest_verify_assertion for the steps they report today as AppAttestEcdsaSignatureVerification, and the assertion verifier receiving the clientData whose SHA-256 (realized: extdeps.crypto.sha2 sha256) binds the nonce it reports today as AppAttestClientDataNonceBinding (the certificate-chain signatures under the pinned Apple root, the nonce, the key id and the App ID RP ID hash) -- SUFFICIENT FOR the device routes to mint SignatureVerified, AttestationVerified and AssertionAuthentic from real bytes. The App Attest WIRE DECODING this row once also named -- CBOR, the DER/X.509 chain, authenticator data and the structural RFC 5280 path checks -- is realized in .dag (extdeps.ietf.cbor, extdeps.itu.der, extdeps.ietf.x509, gunbc#11629) and is no longer part of this frontier",
+  description: "host primitives binding RustCrypto p256 ECDSA verification behind extdeps.crypto.signature signature_verification_from_implementation, and an App Attest attestation and assertion verifier (CBOR decode, X.509 chain to the pinned Apple App Attestation Root CA, App ID prefix RP ID, validation category and bundle version) behind extdeps.apple.app_attest attestation_verification_from_implementation and assertion_verification_from_implementation -- SUFFICIENT FOR the device routes to mint SignatureVerified, AttestationVerified and AssertionAuthentic from real bytes",
 )
 
 data ios_realization_frontier: DissolutionCondition = unbound_dissolution(

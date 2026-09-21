@@ -3,6 +3,7 @@ module gunbc.auth.approval_mac_key_provision
 import std.types { Bool, Int, List, NonEmptyStr, String, Secret }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.resources { Network }
 import std.encoding { base64_decode, Standard }
 import std.algebra { trim }
 import extdeps.numeric.base16 { base16_encode_lower }
@@ -46,7 +47,7 @@ import gunbc.auth.approval_request_submission { approval_submission_mac_key_secr
 // nothing here runs past one.
 //
 // THE MATERIAL IS 32 OCTETS FROM /dev/urandom RENDERED AS 64 LOWER HEX -- the spelling
-// extdeps.crypto.mac mac_sign takes as key material -- and it never reaches argv or a log:
+// extdeps.crypto.mac hmac_sha256_hex takes as key material -- and it never reaches argv or a log:
 // the actuator's snapshot writes it 0600 into a run-owned directory, digests the FILE, and the
 // version is verified by reading back the store. What this run prints is the version and the
 // digest prefix, which is what the SecretRef rows pin.
@@ -126,6 +127,7 @@ type PinnedVersionStanding
   | RefUnpinned
 
 fn pinned_version_standing(ref: SecretRef, token: Secret) -> PinnedVersionStanding
+  uses net: Network
 {
   if ref.version == "pending" || ref.version == "latest" {
     RefUnpinned
@@ -154,6 +156,7 @@ fn standing_of_addition(secret_id: NonEmptyStr, added: VersionAdditionOutcome) -
 // MINT, SNAPSHOT, ADD, VERIFY -- for a container that exists and holds no enabled version, or one
 // this run just created.
 fn add_first_version(secret_id: NonEmptyStr, container: ObservedSecretContainer?, token: Secret) -> KeyProvisionStanding
+  uses net: Network
 {
   match mint_key_material() {
     KeyMaterialRefused { cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: c }
@@ -181,6 +184,7 @@ fn add_first_version(secret_id: NonEmptyStr, container: ObservedSecretContainer?
 }
 
 fn provision_one(ref: SecretRef, token: Secret) -> KeyProvisionStanding
+  uses net: Network
 {
   let secret_id = ref.secret
   match observe_secret_container(project: fleet_secrets_gcp_project, secret_id: secret_id, token: token) {
@@ -204,6 +208,7 @@ type GrantStanding
   | GrantRefused { secret_id: NonEmptyStr, reason: String }
 
 fn ensure_grant(row: FleetAccessorGrantRow, token: Secret) -> GrantStanding
+  uses net: Network
 {
   match secret_access_ensure_for(grant: fleet_accessor_grant(row: row), token_source: OperatorSuppliedToken { token: token }) {
     ExitSuccess => GrantConverged { secret_id: row.target.secret }
@@ -228,6 +233,7 @@ fn grant_ok(g: GrantStanding) -> Bool {
 // THE VERDICT IS FOLDED FROM THE TYPED STANDINGS, and the report is one rendering of them; the
 // exit code never re-reads the report (review 67090).
 fn provision_approval_mac_keys() -> CliWireResponse
+  uses net: Network
 {
   match read_supplied_access_token() {
     SuppliedTokenUnavailable { cause: c } => CliWirePrintable { bytes: concat("NO TOKEN: ", c as String), exit: exit_failure(reason: c as String) }

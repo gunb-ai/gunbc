@@ -3,7 +3,6 @@ module extdeps.time.rfc3339
 import std.types { Bool, String, NonEmptyStr }
 import std.algebra { Less, Equal, Greater }
 import std.string_type { string_lex_compare }
-import extdeps.time.posix_epoch { CivilDateTime, civil_epoch_seconds }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -89,49 +88,5 @@ fn rfc3339_compare(left: Rfc3339Timestamp, right: Rfc3339Timestamp) -> Rfc3339Co
       Greater => Rfc3339Follows
       Equal => Rfc3339Simultaneous
     }
-  }
-}
-
-// THE REAL PARSE the comparator above tells callers to supply, for the one spelling it admits
-// without fractional seconds: YYYY-MM-DDTHH:MM:SSZ, exactly twenty characters, uppercase T and Z.
-// It yields POSIX epoch seconds through extdeps.time.posix_epoch, so an RFC 3339 instant and an
-// X.509 validity time are compared on one scale. Any other spelling is absent, never approximated.
-fn rfc3339_digit_at(value: String, at: Int) -> Int? {
-  let cp = code_point(substring(s: value, start: at, end: at + 1))
-  if cp >= 48 && cp <= 57 { Present { value: cp - 48 } } else { none }
-}
-
-fn rfc3339_number_at(value: String, at: Int, digits: Int, acc: Int) -> Int? {
-  if digits == 0 {
-    Present { value: acc }
-  } else {
-    match rfc3339_digit_at(value: value, at: at) {
-      Absent => none
-      Present { value: d } => rfc3339_number_at(value: value, at: at + 1, digits: digits - 1, acc: acc * 10 + d)
-    }
-  }
-}
-
-fn rfc3339_separators_hold(value: String) -> Bool {
-  substring(s: value, start: 4, end: 5) == "-"
-    && substring(s: value, start: 7, end: 8) == "-"
-    && substring(s: value, start: 10, end: 11) == rfc3339_date_time_separator
-    && substring(s: value, start: 13, end: 14) == ":"
-    && substring(s: value, start: 16, end: 17) == ":"
-    && substring(s: value, start: 19, end: 20) == rfc3339_utc_designator
-}
-
-fn rfc3339_epoch_seconds(value: String) -> Int? {
-  if string_length(s: value) != 20 || !rfc3339_separators_hold(value: value) {
-    none
-  } else {
-    match rfc3339_number_at(value: value, at: 0, digits: 4, acc: 0) { Absent => none Present { value: year } =>
-    match rfc3339_number_at(value: value, at: 5, digits: 2, acc: 0) { Absent => none Present { value: month } =>
-    match rfc3339_number_at(value: value, at: 8, digits: 2, acc: 0) { Absent => none Present { value: day } =>
-    match rfc3339_number_at(value: value, at: 11, digits: 2, acc: 0) { Absent => none Present { value: hour } =>
-    match rfc3339_number_at(value: value, at: 14, digits: 2, acc: 0) { Absent => none Present { value: minute } =>
-    match rfc3339_number_at(value: value, at: 17, digits: 2, acc: 0) { Absent => none Present { value: second } =>
-      civil_epoch_seconds(t: CivilDateTime { year: year, month: month, day: day, hour: hour, minute: minute, second: second })
-    } } } } } }
   }
 }

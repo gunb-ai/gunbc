@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, String, Timestamp, POST, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest, AuthorizationGranted, AuthorizationDenied, AuthorizationPending }
-import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, MacKeyMaterialNotHex, MacComputationRefused }
+import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, MacKeyMaterialNotHex }
 import extdeps.tailscale.identity { tailnet_identity_of }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_broker { BrokerApproved, BrokerDenied }
@@ -184,7 +184,6 @@ fn probe_request_other_bytes() -> StoredApprovalRequest {
 fn probe_submit(root: NonEmptyStr, signer: MacKey, request: StoredApprovalRequest) -> ProbeSubmitStanding {
   match sign_submission(key: signer, request: request) {
     MacKeyMaterialNotHex { key_id: _ } => ProbeOther { reason: "unsigned" }
-    MacComputationRefused { key_id: _, cause: _ } => ProbeOther { reason: "signing computation refused" }
     MacSigned { tag: t } => {
       let outcome = submit_parsed_submission(
         root: root,
