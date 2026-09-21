@@ -12,11 +12,14 @@ import std.realization { Placement, LocalFilesystem, RemoteNetwork, LocalInProce
 import v2.std.optional { Present, Absent }
 import gunbc.spark.v41_runtime_candidate {
   V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
+  V41RuntimeArtifactInputs,
+  V41IdentityKeyed, V41IdentityUnestablished, V41IdentityRefused, v41_runtime_artifact_key,
 }
-import gunbc.spark.v41_identity_input { v41_input }
-import gunbc.spark.v41_source_patch_converge { V41ObservedSourceIdentity }
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition, v41_input }
+import gunbc.spark.v41_source_patch_converge { V41ObservedSourceIdentity, v41_patched_image_build_key }
 import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
 import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
+import gunbc.spark.vllm_image_identity { vllm_image_tag_for_key }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncoding, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
   v41_rank_digest_of,
@@ -88,6 +91,141 @@ fn v41_realized_runtime(
           ]),
         }
     }
+  }
+}
+
+// ── PRODUCED IS A THIRD GRAIN, AND COLLAPSING IT INTO EITHER NEIGHBOUR LOSES A DISTINCTION ─────
+//
+// THREE QUESTIONS, THREE ANSWERS, AND THIS MODULE NOW CARRIES THE MIDDLE ONE.
+//
+//   KEYED     gunbc.spark.v41_runtime_candidate v41_candidate -- what WOULD be built: a recipe, a
+//             wheel population, a patch population. No bytes exist. Keyable today.
+//   PRODUCED  this section -- bytes that EXIST on a host, whose build key recomputes from the
+//             candidate's own recipe and the tree the build actually observed. Identified by the
+//             image's local configuration digest, which is what a daemon holding an unpushed image
+//             can answer; a manifest digest is a publication, and no publication happened.
+//   REALIZED  v41_realized_runtime above -- the full Cut-D realization: an OCI-identified image
+//             joined to a rank-local row store. Strictly more than produced, and it stays that way.
+//
+// WHY PRODUCED MAY NOT JUST MINT REALIZED. V41RuntimeRealized takes a V41OciImageDigest carrying BOTH
+// a manifest and a configuration digest, and a locally built image has no manifest digest to give --
+// `docker image inspect` answers the config digest and nothing else for an image that was never
+// pushed. Filling the manifest field with the config digest would be the fabricated-plausible-output
+// failure in its purest form: two different content addresses under one name, indistinguishable
+// downstream. So produced does not mint realized, and the frontier is stated rather than papered
+// over: DECLARED FRONTIER -- when the produced image is pushed and a registry answers with its
+// manifest digest, that publication is what joins this standing to v41_realized_runtime.
+//
+// AND PRODUCED MINTS NO KEY OF ITS OWN. The whole content of this standing is a CORRESPONDENCE: the
+// specification's runtime key on one side, an image's configuration digest on the other, and the
+// recomputation that says the second was built from the inputs that mint the first. A fresh
+// `produced_runtime_key` beside those would be a third identity for a fact neither side needs
+// hashed, and DESIGN section 3 calls that what it is.
+type V41ProducedRuntimeImage sole_constructor {
+  tag: NonEmptyStr
+  local_config_digest: OciContentDigest
+  build_key: ContentHash
+  observed: V41ObservedSourceIdentity
+  provenance: VllmImageProvenance
+}
+
+fn v41_produced_runtime_image(
+  tag: NonEmptyStr,
+  local_config_digest: OciContentDigest,
+  build_key: ContentHash,
+  observed: V41ObservedSourceIdentity,
+  provenance: VllmImageProvenance,
+) -> V41ProducedRuntimeImage {
+  V41ProducedRuntimeImage {
+    tag: tag,
+    local_config_digest: local_config_digest,
+    build_key: build_key,
+    observed: observed,
+    provenance: provenance,
+  }
+}
+
+type V41ProducedRuntimeStanding
+  = V41RuntimeProduced { specification_runtime_key: ContentHash, image: V41ProducedRuntimeImage }
+  | V41RuntimeProductionUnestablished { obligations: List<NonEmptyStr> }
+  | V41RuntimeProductionRefused { defects: List<NonEmptyStr> }
+
+// THE DISCRIMINATOR, AND IT IS A RECOMPUTATION RATHER THAN A COMPARISON OF TWO TRANSCRIBED HASHES.
+// The caller hands over what the build read back -- a tag, a configuration digest, the key the build
+// was run under, and the source tree the build observed. This fold takes the CANDIDATE's recipe,
+// re-derives the key that tree would have to produce, and requires the build's key and tag to be
+// exactly those. An image built from another revision, another arch list, another patch set or
+// another worktree therefore refuses by arithmetic rather than by anyone remembering to check, and
+// the failure names which of the three it was.
+fn v41_produced_key_defects(inputs: V41RuntimeArtifactInputs, image: V41ProducedRuntimeImage) -> List<NonEmptyStr> {
+  let expected_key = v41_patched_image_build_key(r: inputs.recipe, observed: image.observed)
+  let expected_tag = vllm_image_tag_for_key(r: inputs.recipe, key: expected_key)
+  concat(concat(
+    if (image.observed.revision_head as String) == (inputs.recipe.source.full_revision as String) { [] as List<NonEmptyStr> } else {
+      [join(["the produced image was built from a tree at ", image.observed.revision_head as String, ", and this candidate's recipe names ", inputs.recipe.source.full_revision as String], "") as NonEmptyStr]
+    },
+    if (serialize_content_hash(hash: image.build_key) as String) == (serialize_content_hash(hash: expected_key) as String) { [] as List<NonEmptyStr> } else {
+      [join(["the produced image carries build key ", serialize_content_hash(hash: image.build_key) as String,
+        ", and this candidate's recipe over the observed tree mints ", serialize_content_hash(hash: expected_key) as String,
+        "; a digest that does not recompute from the recipe and the patched tree is not this candidate's runtime"], "") as NonEmptyStr]
+    }),
+    if (image.tag as String) == (expected_tag as String) { [] as List<NonEmptyStr> } else {
+      [join(["the produced image wears the tag ", image.tag as String, ", and this candidate's key derives ", expected_tag as String], "") as NonEmptyStr]
+    })
+}
+
+// A NAME IS NOT PRODUCTION, and the same refusal the realized fold makes applies one grain earlier:
+// an image found already carrying the expected tag has a real digest and an UNESTABLISHED relation to
+// the recipe beside it, so it may not stand as bytes this build produced. The produced standing is
+// the one place that distinction is cheap to enforce, because the build hands its own provenance over.
+fn v41_admit_produced_runtime(
+  inputs: V41RuntimeArtifactInputs,
+  partition: V41EngramResidencyPartition,
+  image: V41ProducedRuntimeImage,
+) -> V41ProducedRuntimeStanding {
+  let provenance_defects = match image.provenance {
+    BuiltByThisRun => [] as List<NonEmptyStr>
+    AdoptedUnderExpectedTag =>
+      ["an image found under the expected tag is not bytes this run produced; its source equality is unestablished and a produced standing may not be minted from a name" as NonEmptyStr]
+  }
+  let defects = concat(provenance_defects, v41_produced_key_defects(inputs: inputs, image: image))
+  match v41_runtime_artifact_key(i: inputs, partition: partition) {
+    V41IdentityRefused { defects: d } => V41RuntimeProductionRefused { defects: concat(d, defects) }
+    V41IdentityUnestablished { obligations: o } =>
+      if length(defects) != 0 { V41RuntimeProductionRefused { defects: defects } } else { V41RuntimeProductionUnestablished { obligations: o } }
+    V41IdentityKeyed { key: spec } =>
+      if length(defects) != 0 {
+        V41RuntimeProductionRefused { defects: defects }
+      } else {
+        V41RuntimeProduced { specification_runtime_key: spec, image: image }
+      }
+  }
+}
+
+fn v41_produced_runtime_line(s: V41ProducedRuntimeStanding) -> String {
+  match s {
+    V41RuntimeProduced { specification_runtime_key: spec, image: i } =>
+      join([
+        "produced runtime tag=", i.tag as String,
+        " config_digest=", render_oci_content_digest_wire(d: i.local_config_digest),
+        " build_key=", serialize_content_hash(hash: i.build_key) as String,
+        " specification_runtime_key=", serialize_content_hash(hash: spec) as String,
+        " source_head=", i.observed.revision_head as String,
+        " worktree_diff_sha256=", i.observed.worktree_diff_sha256.hex as String,
+        "\n",
+      ], "")
+    V41RuntimeProductionUnestablished { obligations: o } =>
+      join(["produced runtime UNESTABLISHED: ", join(map(o, x => x as String), "; "), "\n"], "")
+    V41RuntimeProductionRefused { defects: d } =>
+      join(["produced runtime REFUSED: ", join(map(d, x => x as String), "; "), "\n"], "")
+  }
+}
+
+fn v41_runtime_was_produced(s: V41ProducedRuntimeStanding) -> Bool {
+  match s {
+    V41RuntimeProduced { specification_runtime_key: _, image: _ } => true
+    V41RuntimeProductionUnestablished { obligations: _ } => false
+    V41RuntimeProductionRefused { defects: _ } => false
   }
 }
 

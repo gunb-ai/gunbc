@@ -1,0 +1,7 @@
+module test.fixture.emitted_closure_partition.missing.entry
+
+import test.fixture.emitted_closure_partition.missing.left { missing_left_value }
+
+fn missing_entry_value() -> Int {
+  missing_left_value()
+}
