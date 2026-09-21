@@ -34,7 +34,9 @@ import v2.workflow.rust_crate_partition {
 //
 // Three fixture trees. base: entry imports left and right, both import sink, and stray imports
 // sink but nothing imports stray. mutated: the same, plus entry imports stray. missing: entry
-// imports left, and left imports a sink the tree does not declare. Each pool is its fixture
+// imports left, and left imports a sink the tree does not declare. missing lives under the
+// top-level fixtures/ rather than dag/, because the required lane compiles dag/ corpus-wide and a
+// deliberately unresolved import there refuses the floor. Each pool is its fixture
 // directory alone and is complete by construction: the fixtures import nothing outside it
 // (Int is a builtin), so an undeclared target in these trees is the defect under test and never
 // an artifact of a narrow pool. Pointing the whole-tree producers at the live corpus instead is the measurement
@@ -43,7 +45,7 @@ import v2.workflow.rust_crate_partition {
 
 data base_root: String = "dag/test/fixture/emitted_closure_partition/base"
 data mutated_root: String = "dag/test/fixture/emitted_closure_partition/mutated"
-data missing_root: String = "dag/test/fixture/emitted_closure_partition/missing"
+data missing_root: String = "fixtures/emitted_closure_partition_missing"
 
 fn fixture_partition_at(root: String, entry: String) -> EmittedClosurePartitionOutcome {
   derived_policy_partition(
