@@ -20,7 +20,7 @@ import extdeps.apple.app_attest {
   AppAttestAttestationObject, AppAttestAuthData, app_attest_category_check, app_attest_wire_validation_category,
   AssertionVerification, AssertionRefused, AssertionMalformed, AssertionVerificationUnrealized,
   AppAttestCborRefused, AppAttestUnknownField, AppAttestBase64Invalid,
-  AppAttestEcdsaSignatureVerification, AppAttestSha256Digest,
+  AppAttestEcdsaSignatureVerification, AppAttestClientDataNonceBinding,
   LaunchExtensionsRequired, LaunchExtensionsOptional, AppAttestLaunchExtensionPolicy,
   AppAttestAttestationReady, AppAttestAttestationRefused, AppAttestEnvironment,
   app_attest_attestation_object, app_attest_verify, app_attest_verify_assertion, app_attest_environment_of,
@@ -294,9 +294,9 @@ test fn text_that_is_not_base64_is_refused() -> Bool {
 
 // ── Assertions ───────────────────────────────────────────────────────────────────────────────
 
-test fn the_genuine_assertion_decodes_and_refuses_at_the_sha256_frontier() -> Bool {
+test fn the_genuine_assertion_decodes_and_refuses_at_the_client_data_nonce_frontier() -> Bool {
   match app_attest_verify_assertion(assertion_b64: genuine_assertion) {
-    AssertionRefused { cause: AssertionVerificationUnrealized { capability: AppAttestSha256Digest } } => true
+    AssertionRefused { cause: AssertionVerificationUnrealized { capability: AppAttestClientDataNonceBinding } } => true
     _ => false
   }
 }

@@ -109,12 +109,17 @@ type AppAttestField
   | AppAttestFieldAuthenticatorData
   | AppAttestFieldExtensions
 
-// The checks that need a cryptographic realization this corpus does not yet have. Each is a typed
-// frontier, reported rather than skipped: ECDSA is gunbc.auth.approval_device_redemption
-// ecdsa_verification_realization_frontier; SHA-256 is CRYPTO-0 (gunbc#11628).
+// The checks this verifier cannot yet perform, each a typed frontier reported rather than skipped.
+// ECDSA has no realization (gunbc.auth.approval_device_redemption
+// ecdsa_verification_realization_frontier). The second arm is NOT a missing digest: SHA-256 is
+// realized and consumed in this closure (extdeps.crypto.sha2 sha256, review 69486). What is missing
+// is the INPUT the digest steps take -- the assertion's clientData, whose SHA-256 is hashed with the
+// authenticator data into the nonce the signature is over -- because app_attest_verify_assertion
+// receives the assertion bytes alone. Until the client data reaches this boundary the nonce cannot
+// be bound, so the arm names that binding, and dissolves when the verifier's interface carries it.
 type AppAttestUnrealizedCapability
   = AppAttestEcdsaSignatureVerification
-  | AppAttestSha256Digest
+  | AppAttestClientDataNonceBinding
 
 
 data app_attest_nonce_extension_oid: NonEmptyStr = "1.2.840.113635.100.8.2"
@@ -717,7 +722,7 @@ fn app_attest_verify_assertion(assertion_b64: NonEmptyStr) -> AssertionVerificat
     Present { value: decoded } =>
       match app_attest_assertion_object(input: decoded) {
         AppAttestAssertionRefused { cause: c } => AssertionRefused { cause: AssertionMalformed { cause: c } }
-        AppAttestAssertionReady { value: _ } => AssertionRefused { cause: AssertionVerificationUnrealized { capability: AppAttestSha256Digest } }
+        AppAttestAssertionReady { value: _ } => AssertionRefused { cause: AssertionVerificationUnrealized { capability: AppAttestClientDataNonceBinding } }
       }
   }
 }
