@@ -29,10 +29,10 @@ import extdeps.bazel.target_pattern {
 // operand's authority; this function is where that authority's answer becomes the verb's route.
 // A SINGLE target folds to the label the grammar already spelled, and the exact-label route below
 // answers it unchanged -- registry lookup, bound producer, native standing. A SET form
-// (`PackageTargets`, `SubtreeTargets`) denotes a population of witness modules, and its selection
-// and execution are owned by `gunbc.compute.test_run`; nothing here re-decides either grammar --
-// no prefix check, no suffix list -- so the CLI cannot grow a second, weaker pattern grammar that
-// drifts from the one the worker process is keyed on.
+// (`PackageTargets`, `SubtreeTargets`) denotes a population; it is admitted here as
+// `TestOperandSetForm` and REFUSED by the route (`test_operand_set_form_refusal_rendered`, below,
+// carries the ruling and its retirement trigger). Nothing here re-decides the grammar -- no prefix
+// check, no suffix list -- so the CLI cannot grow a second, weaker pattern grammar.
 //
 // THE REFUSAL IS THE AUTHORITY'S OWN CAUSE, CARRIED TYPED. `PatternNotAbsolute` and
 // `PatternAllTargetsUnsupported` have different remedies from each other and from every
@@ -40,7 +40,7 @@ import extdeps.bazel.target_pattern {
 // the state-space conflation this repository keeps finding.
 type TestOperandAdmission
   = TestOperandExactTarget { label: Label }
-  | TestOperandWitnessSelection { pattern: TargetPattern }
+  | TestOperandSetForm { pattern: TargetPattern }
   | TestOperandRefused { operand: String, cause: TargetPatternRefusal }
 
 fn admit_test_operand(operand: String) -> TestOperandAdmission {
@@ -49,8 +49,8 @@ fn admit_test_operand(operand: String) -> TestOperandAdmission {
     TargetPatternParsed { pattern: p } =>
       match p {
         SingleTarget { label: l } => TestOperandExactTarget { label: l }
-        PackageTargets { package: _ } => TestOperandWitnessSelection { pattern: p }
-        SubtreeTargets { package: _ } => TestOperandWitnessSelection { pattern: p }
+        PackageTargets { package: _ } => TestOperandSetForm { pattern: p }
+        SubtreeTargets { package: _ } => TestOperandSetForm { pattern: p }
       }
   }
 }

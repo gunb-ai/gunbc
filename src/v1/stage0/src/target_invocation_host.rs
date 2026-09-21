@@ -5,9 +5,10 @@
 // termination vocabulary), `gunbc.instrument_targets` (live target and binding rows, the
 // differential's classifier and rendering), `extdeps.bazel.label` (the label grammar mirrored
 // here) and `extdeps.bazel.target_pattern` (the pattern grammar mirrored here). The SET forms
-// (`//pkg:all`, `//pkg:*`, `//pkg/...`) this file admits are NOT executed here: they delegate to
-// the `.dag` authority `gunbc.compute.test_run` `test_verb_pattern_cli` through the interpreter,
-// so witness selection and execution stay modeled and this file stays a mirror. None of the
+// (`//pkg:all`, `//pkg:*`, `//pkg/...`) this file admits are NOT executed anywhere yet: they are
+// refused with status 2 (`test_operand_set_form_refusal_rendered`, mirroring
+// `gunbc.target_invocation`), because their only admissible executor is the native test route and
+// no interpreter delegation may stand in for it. None of the
 // modeled modules is in the v1 seed's emitted closure — `src/gunbc_cli_dispatch_surface.rs` is
 // the only `gunbc.*` mirror the emitter produces — so this file is hand-written beside the
 // carrier, as `required_regen_host.rs` mirrors `v2.workflow.required_regen`. The seam is

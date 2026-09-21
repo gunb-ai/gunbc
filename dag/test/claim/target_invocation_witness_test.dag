@@ -49,7 +49,7 @@ import gunbc.target_invocation {
   InvocationObservationHeld, InvocationObservationDidNotHold,
   InvocationSubjectUnreached, InvocationRefused,
   route_target_invocation, route_target_invocation_in, invocation_exit_status,
-  TestOperandExactTarget, TestOperandWitnessSelection, TestOperandRefused,
+  TestOperandExactTarget, TestOperandSetForm, TestOperandRefused,
   admit_test_operand, test_operand_refusal_rendered, test_operand_set_form_refusal_rendered,
 }
 import extdeps.bazel.target_pattern {
@@ -694,17 +694,17 @@ test fn an_exact_label_is_admitted_as_the_single_target_and_still_routes() -> Bo
             b.producer == HeadsReadingDifferentialProducer {}
           TargetInvocationRouteRefused { cause: _ } => false
         })
-    TestOperandWitnessSelection { pattern: _ } => false
+    TestOperandSetForm { pattern: _ } => false
     TestOperandRefused { operand: _, cause: _ } => false
   }
 }
 
-// A SUBTREE PATTERN IS A WITNESS SELECTION, RENDERED BACK AS ITSELF. Asserting the render —
+// A SUBTREE PATTERN IS ADMITTED AS A SET FORM, RENDERED BACK AS ITSELF. Asserting the render —
 // not merely the arm — is what discriminates against an admission that parsed `//pkg/...` as a
 // package-wide pattern: the two arms render differently.
-test fn a_subtree_pattern_is_admitted_as_a_witness_selection() -> Bool {
+test fn a_subtree_pattern_is_admitted_as_a_set_form() -> Bool {
   match admit_test_operand(operand: "//dag/test/claim/compute/...") {
-    TestOperandWitnessSelection { pattern: p } =>
+    TestOperandSetForm { pattern: p } =>
       render_target_pattern(pattern: p) == "//dag/test/claim/compute/..."
     TestOperandExactTarget { label: _ } => false
     TestOperandRefused { operand: _, cause: _ } => false
@@ -714,14 +714,14 @@ test fn a_subtree_pattern_is_admitted_as_a_witness_selection() -> Bool {
 // A PACKAGE-WIDE PATTERN IS THE SAME ROUTE, AND `:*` RENDERS CANONICALLY AS `:all` — the cited
 // authority treats them alike, so the admission must not invent a third arm for the second
 // spelling.
-test fn package_patterns_are_admitted_as_witness_selections() -> Bool {
+test fn package_patterns_are_admitted_as_set_forms() -> Bool {
   match admit_test_operand(operand: "//dag/test/claim/compute:all") {
-    TestOperandWitnessSelection { pattern: p } =>
+    TestOperandSetForm { pattern: p } =>
       render_target_pattern(pattern: p) == "//dag/test/claim/compute:all"
     TestOperandExactTarget { label: _ } => false
     TestOperandRefused { operand: _, cause: _ } => false
   } && match admit_test_operand(operand: "//dag/test/claim/compute:*") {
-    TestOperandWitnessSelection { pattern: p } =>
+    TestOperandSetForm { pattern: p } =>
       render_target_pattern(pattern: p) == "//dag/test/claim/compute:all"
     TestOperandExactTarget { label: _ } => false
     TestOperandRefused { operand: _, cause: _ } => false

@@ -780,8 +780,8 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // decided by the registry in `target_invocation_host`, mirroring
         // `gunbc.instrument_targets`, and the realization is selected one level below. A second
         // instrument adds a row there and nothing here. A set PATTERN (`//pkg:all`, `//pkg/...`)
-        // is admitted by the same host's `parse_target_pattern` mirror and delegated to the
-        // `.dag` authority `gunbc.compute.test_run` — no witness selection is re-decided here.
+        // is admitted by the same host's `parse_target_pattern` mirror and refused with status 2
+        // until the native test route executes it — never delegated to the interpreter.
         //
         // The status is the producer's own termination, not an aggregate verdict: 0 the reading
         // held, 1 it did not, 2 no reading was taken. `gunbc.build_target`'s
