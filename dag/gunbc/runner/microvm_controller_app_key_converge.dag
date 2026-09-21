@@ -48,6 +48,8 @@ import gunbc.typed_remote_file_write {
 import gunbc.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
 import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_job_user }
 import gunbc.live_deploy.member_observe { path_parent, path_basename, parent_listing_argv, listing_contains_entry }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.stat { stat_file_type_command }
 import gunbc.runner_host_file_converge {
   administrator_ssh_target,
   RunnerHostFileStanding,
@@ -55,7 +57,10 @@ import gunbc.runner_host_file_converge {
   HostFileDiffers,
   HostFileAbsent,
   HostFileUnobservable,
-  classify_host_file_presence,
+  classify_host_file_metadata,
+  RunnerHostFileMetadataReading,
+  HostFileMetadataRead,
+  HostFileMetadataUnread,
   runner_host_file_standing_of_report,
   RunnerHostPathMetadata,
   PathsRootOnly,
@@ -640,15 +645,55 @@ fn observe_upper_ancestors(subject: ControllerKeyHost, context: FleetSshExecutio
   }
 }
 
+// ABSENCE IS ESTABLISHED BY THE PARENT LISTING, NEVER BY THE PROBE'S SILENCE. This leg was
+// `test -e`, whose exit 1 was read as HostFileAbsent -- and GNU `test -e` is stat(path) == 0, so
+// ENOENT, EACCES on an ancestor, ELOOP, ENOTDIR and EIO all answer 1 with an empty stderr. That is
+// the false-absence class gunbc.runner_host_file_converge closed when it deleted
+// classify_host_file_presence, and this module still called it, so main carried a stranded import
+// across two merges. The rule is consumed here rather than restated: the metadata read decides
+// presence, and when it FAILED, what the containing directory says about this entry decides whether
+// nothing is there or nobody could look.
+//
+// A settled standing is returned as Present; Absent means "the path is there, go compare content",
+// which is the same Optional protocol the deleted function used, so the call site is unchanged.
+fn key_content_path_standing(
+  subject: ControllerKeyHost,
+  context: FleetSshExecutionContext,
+  path: String,
+  reading: RunnerHostFileMetadataReading,
+) -> RunnerHostFileStanding?
+  uses net: Network
+{
+  match reading {
+    HostFileMetadataRead { file_type: _ } => none
+    HostFileMetadataUnread { cause: c } =>
+      match run_elevated_leg(subject: subject, context: context, argv: parent_listing_argv(parent: path_parent(path: path)), stdin_payload: "") {
+        ElevatedLegRefused { reason: r } =>
+          Present { value: HostFileUnobservable { reason: join([c, "; and the containing directory could not be listed: ", r], "") } }
+        ElevatedLegRan { exit_code: lc, stdout: lo, stderr: le } =>
+          if lc != 0 {
+            Present { value: HostFileUnobservable { reason: join([c, "; and the containing directory listing failed: ", trim(s: le)], "") } }
+          } else {
+            if listing_contains_entry(stdout: lo, name: path_basename(path: path)) {
+              Present { value: HostFileUnobservable { reason: join(["the containing directory holds this entry and ", c], "") } }
+            } else {
+              Present { value: HostFileAbsent }
+            }
+          }
+      }
+  }
+}
+
+
 // The same far-side `cmp -s -` judgment converge_typed_remote_file mints from, run elevated with the
 // fetched version's bytes on stdin, so observation and apply cannot disagree about "identical".
 fn observe_key_content(subject: ControllerKeyHost, context: FleetSshExecutionContext, write: TypedRemoteFileWrite) -> RunnerHostFileStanding
   uses net: Network
 {
-  match run_elevated_leg(subject: subject, context: context, argv: ["test", "-e", write.path as String], stdin_payload: "") {
+  match run_elevated_leg(subject: subject, context: context, argv: argv_words(command: stat_file_type_command(path: write.path as String)), stdin_payload: "") {
     ElevatedLegRefused { reason: r } => HostFileUnobservable { reason: r }
-    ElevatedLegRan { exit_code: pc, stdout: _, stderr: pe } =>
-      match classify_host_file_presence(exit_code: pc, stderr: pe) {
+    ElevatedLegRan { exit_code: pc, stdout: po, stderr: pe } =>
+      match key_content_path_standing(subject: subject, context: context, path: write.path as String, reading: classify_host_file_metadata(exit_code: pc, stdout: po, stderr: pe)) {
         Present { value: settled } => settled
         Absent =>
           match run_elevated_leg(subject: subject, context: context, argv: typed_remote_file_compare_argv(write: write), stdin_payload: write.content) {
@@ -662,6 +707,14 @@ fn observe_key_content(subject: ControllerKeyHost, context: FleetSshExecutionCon
   }
 }
 
+// THE RESIDUE PREDICATE'S KEY IS DERIVED FROM THE SEAL, never supplied beside it. As a parameter
+// it was the one value of the three a caller could still spell freely, and it is exactly what
+// classify_staging_residue keys on: a name that does not match authorization.staging reads a
+// listing CONTAINING the residue as StagingAbsent, and that absence feeds ControllerAppKeyHeld --
+// the same false-absence class the parent-listing repair above exists to close. Deriving it here
+// is what makes the sole_constructor claim true of every input the leg uses rather than of two of
+// the three (DESIGN 4b meta-obligation 1; 5, construction over validation).
+//
 // REMOVE, THEN READ THE ABSENCE BACK. `rm -f` exits 0 on an absent path, so its exit alone cannot
 // distinguish "removed" from "never there" -- which is fine -- nor "there and still there", which is
 // not; the presence test is what answers that.
@@ -674,13 +727,6 @@ fn clear_staging(
   let subject = authorization.subject
   let staging = authorization.staging
   let staging_parent = authorization.parent
-  // THE RESIDUE PREDICATE'S KEY IS DERIVED FROM THE SEAL, never supplied beside it. As a parameter
-  // it was the one value of the three a caller could still spell freely, and it is exactly what
-  // classify_staging_residue keys on: a name that does not match authorization.staging reads a
-  // listing CONTAINING the residue as StagingAbsent, and that absence feeds ControllerAppKeyHeld --
-  // the same false-absence class the parent-listing repair above exists to close. Deriving it here
-  // is what makes the sole_constructor claim true of every input the leg uses rather than of two of
-  // the three (DESIGN 4b meta-obligation 1; 5, construction over validation).
   let staging_name = path_basename(path: staging)
   match run_elevated_leg(subject: subject, context: context, argv: staging_remove_argv(staging: staging), stdin_payload: "") {
     ElevatedLegRefused { reason: r } => StagingUnobservable { reason: concat("staging removal not run: ", r) }
