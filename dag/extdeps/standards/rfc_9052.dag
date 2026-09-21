@@ -109,14 +109,12 @@ fn cose_required_integer(key: CborValue, label: Int) -> CoseKeyRefusal? {
   }
 }
 
-fn cose_integer_at(key: CborValue, label: Int) -> Int {
+// The integer at a label, or none: never a fabricated 0 (review 69674 of gunbc#11970 -- the
+// caller's presence check made the 0 unreachable, and a guard is not what keeps an arm honest).
+fn cose_integer_at(key: CborValue, label: Int) -> Int? {
   match cose_key_label(key: key, label: label) {
-    CoseLabelFound { value: v } =>
-      match cose_integer_of(v: v) {
-        Present { value: n } => n
-        Absent => 0
-      }
-    _ => 0
+    CoseLabelFound { value: v } => cose_integer_of(v: v)
+    _ => none
   }
 }
 
@@ -151,10 +149,16 @@ fn cose_ec2_p256_key(key: CborValue) -> CoseEc2P256Key {
     cose_required_integer(key: key, label: cose_ec2_label_crv),
   ]) {
     Present { value: c } => CoseEc2P256KeyRefused { cause: c }
-    Absent => {
-      let kty = cose_integer_at(key: key, label: cose_key_label_kty)
-      let alg = cose_integer_at(key: key, label: cose_key_label_alg)
-      let crv = cose_integer_at(key: key, label: cose_ec2_label_crv)
+    Absent =>
+      match cose_integer_at(key: key, label: cose_key_label_kty) {
+        Absent => CoseEc2P256KeyRefused { cause: CoseKeyLabelNotAnInteger { label: cose_key_label_kty } }
+        Present { value: kty } =>
+      match cose_integer_at(key: key, label: cose_key_label_alg) {
+        Absent => CoseEc2P256KeyRefused { cause: CoseKeyLabelNotAnInteger { label: cose_key_label_alg } }
+        Present { value: alg } =>
+      match cose_integer_at(key: key, label: cose_ec2_label_crv) {
+        Absent => CoseEc2P256KeyRefused { cause: CoseKeyLabelNotAnInteger { label: cose_ec2_label_crv } }
+        Present { value: crv } =>
       if kty != cose_kty_ec2 { CoseEc2P256KeyRefused { cause: CoseKeyTypeUnexpected { kty: kty } } }
       else if alg != cose_alg_es256 { CoseEc2P256KeyRefused { cause: CoseKeyAlgorithmUnexpected { alg: alg } } }
       else if crv != cose_crv_p256 { CoseEc2P256KeyRefused { cause: CoseKeyCurveUnexpected { crv: crv } } }
@@ -169,6 +173,8 @@ fn cose_ec2_p256_key(key: CborValue) -> CoseEc2P256Key {
             }
         }
       }
-    }
+      }
+      }
+      }
   }
 }
