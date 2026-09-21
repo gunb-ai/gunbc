@@ -168,7 +168,7 @@ test fn the_held_set_rule_counts_disjoint_terms_only() -> Bool {
 // HeldSetReceiptUnrepresentable rather than as a small demand.
 test fn a_beat_whose_held_set_cannot_be_represented_makes_the_receipt_torn() -> Bool {
   let torn = FloorMemoryStatBeat {
-    beat: 1, charge: byte_size(0),
+    beat: 1, seam: SeamUnrecorded, charge: byte_size(0),
     anon: byte_size(int_inclusive_max()), file: byte_size(0), shmem: byte_size(1), unevictable: byte_size(0),
     slab_unreclaimable: byte_size(0), slab_reclaimable: byte_size(0), kernel_stack: byte_size(0),
     pagetables: byte_size(0), percpu: byte_size(0), sock: byte_size(0), file_dirty: byte_size(0),
