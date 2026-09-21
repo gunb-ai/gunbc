@@ -1575,6 +1575,12 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
 // door sees. Reads only; the receipt is the roster's ground. Dispatched once per fleet host.
 data fleet_converge_fabric_writer_identity_observe_step_if: String = fleet_converge_mode_step_if(mode: FabricWriterIdentityObserve)
 
+// THE RECEIPT IS UPLOADED WHETHER OR NOT THE OBSERVATION SUCCEEDED. The observer writes its
+// receipt and then exits failure for an unproxied or unread reading -- the placed host's own
+// reading is exactly that -- and a step condition with no status function is implicitly
+// success(), which would skip the upload on the one run whose receipt matters most.
+data fleet_converge_fabric_writer_identity_observe_receipt_if: String = join(["always() && ", fleet_converge_mode_step_if(mode: FabricWriterIdentityObserve)], "")
+
 fn fleet_converge_fabric_writer_identity_observe_step() -> Step {
   RunStep {
     name: Present { value: "Fabric writer identity: the login this host presents at the fabric DB's served door (reads only)" },
@@ -1597,7 +1603,7 @@ fn fleet_converge_fabric_writer_identity_observe_receipt_upload_step() -> Step {
     name: "Upload fabric writer identity receipt",
     artifact: "fabric-writer-identity",
     path: fabric_writer_identity_receipt_path,
-    if_condition: fleet_converge_fabric_writer_identity_observe_step_if
+    if_condition: fleet_converge_fabric_writer_identity_observe_receipt_if
   )
 }
 

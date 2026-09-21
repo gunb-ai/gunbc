@@ -8,6 +8,7 @@ import gunbc.fleet_converge_plan {
 }
 import v2.std.collection { Present, Absent }
 import gunbc.fleet_converge_workflow {
+  fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
   fleet_converge_mode_step_if, fleet_converge_mode_scope,
   ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
@@ -471,4 +472,14 @@ test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> 
     m => match fleet_converge_mode_scope(mode: m) { Present { value: _ } => true  Absent => false },
   )
   deploy_live && plans_present
+}
+
+// THE IDENTITY RECEIPT IS UPLOADED ON A FAILED OBSERVATION TOO: a step condition with no status
+// function is implicitly success(), and the observer exits failure for exactly the reading whose
+// receipt matters most (the placed host's unproxied one), so the upload's condition carries
+// always() beside the mode test, while the observation step's own condition is the bare mode test.
+test fn the_fabric_writer_identity_receipt_upload_survives_a_failed_observation() -> Bool {
+  fleet_converge_fabric_writer_identity_observe_receipt_if.starts_with("always() && ")
+    && fleet_converge_fabric_writer_identity_observe_receipt_if.contains("github.event.inputs.mode == 'fabric_writer_identity_observe'")
+    && !fleet_converge_fabric_writer_identity_observe_step_if.contains("always()")
 }

@@ -578,7 +578,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 0
-        if: github.event.inputs.mode == 'fabric_writer_identity_observe'
+        if: always() && github.event.inputs.mode == 'fabric_writer_identity_observe'
         timeout-minutes: 10
       - name: "Mt. Collins census image: build the seeded live-server image in /srv/bmc and publish it create-only under its digest name"
         id: mtcollins1_census_image_publish

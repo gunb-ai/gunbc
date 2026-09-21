@@ -38,7 +38,11 @@ import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStorageP
 // THE OBSERVATION THAT TRIGGER NAMES IS TAKEN THROUGH THIS DOOR: the `identity` operation echoes
 // the login the proxy presented for the request, so each fleet writer reads the principal it
 // presents from the one place the roster will be consulted (gunbc.fabric_writer_identity_observe).
-// It writes nothing and reads no head.
+// It writes nothing and reads no head. WHAT A ROSTER HERE CAN AND CANNOT WALL: the login is the
+// tailnet USER behind the request, so the roster admits a user identity, not an exact node; and
+// the placed host's own writes never arrive here (FabricStorageLocalFiles runs the file store in
+// process), so this door's roster is the wall over SERVED writers only -- the drop row carries the
+// local population as its second half.
 //
 // EVERY TYPED OUTCOME IS HTTP 200. The status says the protocol was answered; the arm is in the
 // body. A non-200 means the request itself was not this protocol (unknown operation, malformed

@@ -11,6 +11,7 @@ import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnprox
 import gunbc.fabric_writer_identity_observe {
   FabricWriterIdentityReceipt, fabric_writer_identity_receipt_text, fabric_writer_identity_reading_grounds_roster,
   fabric_writer_identity_subject, FabricWriterIdentitySubjectAdmitted, FabricWriterIdentitySubjectRefused,
+  fabric_writer_identity_ground, WriterUserPrincipalObserved, WriterPrincipalUnavailable, NotAReadingOfTheDoor,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -25,9 +26,10 @@ test fn the_subject_is_admitted_only_when_the_dispatch_names_the_running_host() 
     && (match fabric_writer_identity_subject(dispatched: "srv2", kernel_hostname: "") { FabricWriterIdentitySubjectRefused { reason: _ } => true  _ => false })
 }
 
-// THE RECEIPT NAMES THE BINDING AND THE READING, and only a served reading grounds a roster row:
-// a login and an absent header are both findings about the door; unproxied is not about the door
-// and unread is the transport, so neither is a ground.
+// THE RECEIPT NAMES THE BINDING, THE READING AND ITS GROUND: a login is an observed USER
+// principal (the grain a roster at the door can name); an absent header is a principal deficit
+// that grounds a blocker, never an admitted principal; unproxied is the placed host, whose writes
+// never reach the door; unread is the transport. Only the first two are readings of the door.
 test fn the_receipt_renders_each_reading_and_only_a_served_reading_grounds_the_roster() -> Bool {
   let served = FabricStorageServed { endpoint: "https://srv1.example.ts.net:10000/fabric-storage" as NonEmptyStr }
   let present = FabricWriterIdentityReceipt { host: "srv2" as HostIdentity, binding: served, read: FabricIdentityPresented { identity: TailnetUser { login: "srv2@example.ts.net" as NonEmptyStr } }, observed_at: "2026-09-21T06:00:00Z" as NonEmptyStr }
@@ -39,6 +41,12 @@ test fn the_receipt_renders_each_reading_and_only_a_served_reading_grounds_the_r
     && fabric_writer_identity_receipt_text(r: absent).contains("identity=absent\n")
     && fabric_writer_identity_receipt_text(r: local).contains("binding=local\n") && fabric_writer_identity_receipt_text(r: local).contains("identity=unproxied\n")
     && fabric_writer_identity_receipt_text(r: unread).contains("binding=unplaced\n") && fabric_writer_identity_receipt_text(r: unread).contains("identity=unread ")
+    && (match fabric_writer_identity_ground(read: present.read) { WriterUserPrincipalObserved { login: l } => (l as String) == "srv2@example.ts.net"  _ => false })
+    && (match fabric_writer_identity_ground(read: absent.read) { WriterPrincipalUnavailable { reason: _ } => true  _ => false })
+    && (match fabric_writer_identity_ground(read: local.read) { NotAReadingOfTheDoor { reason: r } => (r as String).contains("placed host")  _ => false })
+    && (match fabric_writer_identity_ground(read: unread.read) { NotAReadingOfTheDoor { reason: _ } => true  _ => false })
+    && t.contains("ground=user-principal-observed srv2@example.ts.net\n")
+    && fabric_writer_identity_receipt_text(r: absent).contains("ground=principal-unavailable ")
     && fabric_writer_identity_reading_grounds_roster(read: present.read)
     && fabric_writer_identity_reading_grounds_roster(read: absent.read)
     && !fabric_writer_identity_reading_grounds_roster(read: local.read)
