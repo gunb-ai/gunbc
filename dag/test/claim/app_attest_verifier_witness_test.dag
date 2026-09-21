@@ -2,8 +2,6 @@ module test.claim.app_attest_verifier_witness_test
 
 import std.logic { Bool }
 import std.types { Int, String, List, NonEmptyStr, Timestamp }
-import std.integer { UInt8 }
-import std.integer { UInt8 }
 import extdeps.apple.app_attest {
   AttestKeyId, AppIdPrefix, AppAttestDevelopment, AppAttestProduction, app_attest_app_id,
   AttestationExpectation, verify_attestation, AttestationVerified, AttestationRefused,
@@ -141,6 +139,17 @@ test fn the_sample_assertion_signature_is_false_for_other_client_data() -> Bool 
   }
 }
 
+
+// A key the caller stored that is not a base64url point is an ENCODING refusal (Absent), never a
+// verdict (review 69773 of gunbc#11989: the mapper carries it as AssertionUndecodable, not as
+// AssertionSignatureInvalid) -- and it is cheap, refusing before any curve arithmetic.
+test fn an_undecodable_stored_key_is_absent_not_a_false_verdict() -> Bool {
+  let e = assertion_expectation()
+  match assertion_signature_verifies_for(object: sample_assertion_octets, e: AssertionExpectation { key_id: e.key_id, public_key_point_b64url: "not*base64url" as NonEmptyStr, client_data: e.client_data, app_id: e.app_id, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
 
 // ── The chain link (Apple's step 1), claimed at its own producer ─────────────────────────────
 fn vf_member(v: CborValue, key: String) -> CborValue {
