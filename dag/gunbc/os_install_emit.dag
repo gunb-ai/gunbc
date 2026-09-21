@@ -8,6 +8,7 @@ import extdeps.os.ubuntu_autoinstall {
   AutoinstallStoragePolicy,
   StoragePolicyAbsent,
   StoragePolicyDirectLayout,
+  UbuntuAutoinstallLiveCommands,
 }
 import extdeps.ssh { SshPublicKey, ssh_public_key_line }
 import extdeps.languages.yaml.types {
@@ -68,6 +69,17 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
 fn autoinstall_user_data(payload: UbuntuAutoinstallPayload) -> String {
   let top = yaml_mapping(entries: [
     kv(key: "autoinstall", value: yaml_mapping(entries: autoinstall_inner_entries(payload: payload))),
+  ])
+  concat("#cloud-config\n", serialize_yaml(v: top))
+}
+
+fn autoinstall_live_commands_user_data(payload: UbuntuAutoinstallLiveCommands) -> String {
+  let top = yaml_mapping(entries: [
+    kv(key: "autoinstall", value: yaml_mapping(entries: [
+      kv(key: "version", value: yaml_int(n: payload.autoinstall_version)),
+      kv(key: "interactive-sections", value: yaml_sequence(elements: [yaml_string(s: "*")])),
+      kv(key: "early-commands", value: yaml_sequence(elements: map(payload.early_commands, c => yaml_string(s: c)))),
+    ])),
   ])
   concat("#cloud-config\n", serialize_yaml(v: top))
 }

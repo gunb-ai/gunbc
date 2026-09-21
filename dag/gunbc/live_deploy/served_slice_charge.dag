@@ -1,0 +1,111 @@
+module gunbc.live_deploy.served_slice_charge
+
+import std.types { String, NonEmptyStr, Bool, Int }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.disposition { Disposition, Terminal }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.live_deploy.slice_bounds {
+  live_deploy_slice_memory_max,
+  approval_broker_slice_memory_max,
+}
+
+data served_slice_charge_authority: Disposition = Terminal {
+  reason: "Single authority for what the deployment's SERVED PROCESSES cost a host's memory budget: the roadmap deployment slice and the approval broker slice. It owns the per-host claim gunbc.fleet_host_budget charges and nothing else -- not the units, not their lifecycle, not what the processes do. It is host-parametric for the reason gunbc.fabric_control_plane_charge is: a hardcoded host is how a placement gets decided by which machine was named first."
+}
+
+// ── THE SLICES WERE UNCHARGED, AND THAT IS A REAL HOLE RATHER THAN A TIDINESS GAP ────────────
+// gunbc.fleet_host_budget host_allocation_tree charges the runner pool, the session pool, the
+// compile pool, the fabric control plane, a fixed overhead and headroom against a host's usable
+// RAM, and concludes whether the host is oversubscribed. The roadmap deployment's slice -- the
+// MemoryMax at gunbc.live_deploy.slice_bounds live_deploy_slice_memory_max, which systemd will
+// actually let the serve, belt, publication and convergence units consume -- appeared in none of
+// those terms. So the conservation verdict was answered for a host on which that allowance had
+// already been written by a different lane, and the sum could conserve while the machine could not.
+//
+// THE SPLIT MAKES IT WORSE BEFORE IT MAKES IT BETTER, which is exactly why the charge lands with
+// it: a second served process is a second slice and a second allowance, and adding an uncharged
+// one to an uncharged one is how an unnoticed hole becomes an incident. Both are charged here.
+//
+// WHY ONE CLAIM FOR TWO SLICES. They are not summed for convenience -- they are the same fact at
+// the same grain: what this deployment's served processes are allowed to hold on the host it is
+// placed on. A consumer asking "how much has the deployment been allowed" wants the total, and a
+// consumer asking which unit holds which share is asking gunbc.live_deploy.emit, where the two
+// bounds are declared with their separate derivations. Two budget children would put the SPLIT into
+// the conservation tree, where it changes no arithmetic and would have to be maintained.
+
+type HostServedDeploymentClaim
+  = ServedDeploymentNotPlaced
+  | ServedDeploymentClaimResolved { memory: ByteSize }
+  | ServedDeploymentClaimUnmeasured { cause: String }
+
+// THE ARMS ARE THE FABRIC CHARGE'S ARMS FOR THE FABRIC CHARGE'S REASON, and the reason survives the
+// change of subject: "not placed on this host" is a genuine zero, "placed here, allowance unknown"
+// must refuse the host plan, and a ByteSize? whose Absent means zero cannot tell them apart. The
+// arm an optional would silently pick is the one that keeps the current plan green, which is a
+// capacity number attached to fabricated output.
+//
+// THERE IS DELIBERATELY NO claim -> ByteSize PROJECTION. A total function out of this coproduct
+// cannot exist honestly, because the unmeasured arm has no bytes to return. With no projection to
+// call, "charge the served slices" has no spelling that skips the refusal.
+
+type ServedDeploymentPlacement
+  = ServedDeploymentUnplaced
+  | ServedDeploymentPinned { host: HostIdentity }
+
+// THE PLACEMENT IS srv1 AND IT IS A LIVE ROW, NOT A PLACEHOLDER. Unlike the fabric control plane,
+// which is genuinely deployed nowhere, this deployment IS running: gunbc-roadmap.service has been
+// serving on srv1 continuously, under the slice whose bound this charge accounts for. Writing Unplaced
+// here to avoid disturbing the conservation arithmetic would author a false row about a machine
+// whose memory is demonstrably committed -- the exact inversion of the reasoning that keeps the
+// fabric row honest at Unplaced.
+data served_deployment_placement: ServedDeploymentPlacement = ServedDeploymentPinned { host: operator_host_srv1 }
+
+// THE ALLOWANCE IS THE DECLARED CAP, NOT THE MEASURED RESIDENT, and the difference is the whole
+// point of charging it. A budget asks what a host may be REQUIRED to provide, and what systemd will
+// let these units hold is MemoryMax: live_deploy_slice_memory_max for the roadmap deployment slice
+// plus approval_broker_slice_memory_max for the broker slice, both from
+// gunbc.live_deploy.slice_bounds and both summed by served_deployment_slice_allowance below.
+//
+// THE SYMBOLS ARE NAMED HERE BECAUSE THE NUMBERS WERE WRONG WHEN THIS LANDED (review 69160). This
+// paragraph read "16 GiB for the roadmap deployment slice plus 6 GiB for the broker slice" while
+// live_deploy_slice_memory_max was already 26 GiB, so the note asserted 22 GiB against a charge
+// this module computes as 32 GiB -- in the one module whose entire job is to say how much of srv1
+// has been committed, where a reader reconciling the conservation verdict would have been ten
+// gibibytes out. DESIGN section 6 names the instrument rather than transcribing its output for
+// exactly this reason, and the transcription here rotted BEFORE IT LANDED: the bound was raised in
+// the same PR that wrote the sentence. Naming the two symbols cannot drift from them.
+//
+// Charging measured residents instead would charge what the processes happen to use
+// today and would conserve on a host that cannot survive them using what they were permitted to --
+// and the roadmap deployment is the receipt for that: its serve process sat near 3.46 GB when the
+// bound was first written and was OOM-killed at a 16 GiB bound on 2026-09-18 with an 8.1 GB
+// resident peak against 9.6 GB of swap. THAT 16 GiB IS HISTORICAL AND CORRECT AS WRITTEN -- it is
+// the bound in force at the kill, which is why the bound was raised afterwards; it is not a claim
+// about what the slice holds today. A budget charging the smaller number would have called that
+// host conservative right up to the kill.
+//
+// MemoryHigh IS NOT CHARGED, deliberately: High throttles and Max kills, so High is a pressure
+// point inside an allowance rather than a second allowance. Summing both would double-count.
+fn served_deployment_slice_allowance() -> ByteSize {
+  byte_size(byte_size_count(b: live_deploy_slice_memory_max) + byte_size_count(b: approval_broker_slice_memory_max))
+}
+
+fn host_served_deployment_claim(host: HostIdentity) -> HostServedDeploymentClaim {
+  host_served_deployment_claim_under(host: host, placement: served_deployment_placement)
+}
+
+fn host_served_deployment_claim_under(
+  host: HostIdentity,
+  placement: ServedDeploymentPlacement,
+) -> HostServedDeploymentClaim {
+  match placement {
+    ServedDeploymentUnplaced => ServedDeploymentNotPlaced
+    ServedDeploymentPinned { host: placed } =>
+      if (placed as String) == (host as String) {
+        ServedDeploymentClaimResolved { memory: served_deployment_slice_allowance() }
+      } else {
+        ServedDeploymentNotPlaced
+      }
+  }
+}

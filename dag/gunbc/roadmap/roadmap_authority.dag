@@ -54,7 +54,7 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_acceptance_history_carrier {
   roadmap_acceptance_event_history_carrier_repo_path,
   load_roadmap_acceptance_event_history,
-  load_roadmap_acceptance_event_history_from_carrier_text,
+  RoadmapAcceptanceEventHistoryLoad,
   RoadmapAcceptanceEventHistoryLoaded,
   RoadmapAcceptanceEventHistoryLoadRefused,
 }
@@ -849,6 +849,66 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
     active(
+      identity: "rn_GPNBAHVJ425GYW8DEWBD26144B",
+      id: "ci-cost-floor-memory-term-attribution",
+      owner: "ci-cost",
+      path: "docs/plans/floor-memory-envelope-2026-09-12.md",
+      t: fields(
+        headline: "Attribute the floor's memory to the terms that hold it, starting with pool_parse",
+        boundary: "Give the existing per-term retention machinery a byte-measuring driver. v1_compiler.cli_run drop_attributable_terms_for_test and drop_private_term_for_test already state that the live-heap release measured across a call is that term's EXCLUSIVE retention, and already enumerate the terms -- pool_parse among them -- with NO driver and a single unit-test caller counting entries. A TIME accumulator for the same term exists in claim_batch's cost partition; only the memory side is missing. Read the term roster from those two declarations rather than from a count quoted here.",
+        displaced_cost: "The floor's largest memory component cannot be named. First-touch attribution puts pool_parse's bytes on gate-closure or the whole-corpus resolve, and pool-root-index-warm reports zero growth because something upstream forced the parse first -- so the one number that would rank the work is the one nobody can produce. A cap or a slot sized without it is sized against an unattributed total.",
+        first_slice: "Wire a driver to the existing terms and report pool_parse. The machinery is three-quarters built; this is a driver, not a model.",
+        red_control: "A term whose retention the driver cannot measure REFUSES rather than reporting zero -- zero and unmeasured are the conflation this lane exists to prevent, and it is the same distinction the landed floor-memory carrier draws between a bound and a demand.",
+        out_of_scope: "Re-measuring the whole-run peak, which the landed instrument already does; and fixing the floor's inability to report its own peak, which is a separate defect recorded below.",
+        handback: "The driver, a pool_parse byte figure re-derivable by naming its producer, and a refusal receipt for a term it cannot measure. RELATED AND DELIBERATELY NOT BUNDLED: floor_cgroup_envelope is documented as emitted at entry AND EXIT and has no exit call, so a run outside the supervisor cannot report its maximum. If that is fixed it must be an RAII GUARD rather than a placed call, and the reason is countable in v1_compiler.cli_run run_required_floor rather than quotable from here: its early-return and propagation sites vastly outnumber its explicit successful returns, so a placed call is unreachable on most paths."
+      )
+    ),
+    active(
+      identity: "rn_K6EVN9SKS7WV617GECTH3N2TPQ",
+      id: "ci-cost-floor-preparation-cut",
+      owner: "ci-cost",
+      path: "docs/design-rung-drops.md",
+      t: fields(
+        headline: "Make the floor affordable enough to be a merge gate again",
+        boundary: "Cut the required fold's PREPARATION cost until the floor fits the fleet, then put it back on the merge path. THE CLAIMS WERE NEVER THE EXPENSE -- claim execution is a small fraction of the floor's wall time while strict-preparation and reach probes dominate it. Re-derive that split from the phase lines a required-witnesses-floor run prints (gunbc.witness_floor_workflow); THAT NO ENTRY POINT RE-DERIVES IT IS PART OF WHAT THIS NODE FIXES, which is why no figure is carried here. The two candidate constructions are reusing resolved-module and reach-probe results across runs, or scoping preparation to a diff's closure.",
+        displaced_cost: "The required gate is currently a compiler build. The witness floor, namespace-wave-admission, generated-artifact, the regen fixed point and the parse sweep all left the merge path, so main can break for any of them while every required check stays green -- which it already has, within three hours of the cut. Every session pays that risk on every change.",
+        first_slice: "Measure where preparation time goes at module grain, then land whichever of the two constructions the measurement supports. Restoring the gate is the second step and not this one.",
+        red_control: "A change that breaks a floor claim is refused on the revision that lands, at a whole-run cost the fleet can carry concurrently with the build lane.",
+        out_of_scope: "Re-emitting witnesses.yml from the old authority without the preparation repair, which restores the cost that caused the cut; and making the floor faster without returning it to the merge path.",
+        handback: "The preparation measurement WITH AN ENTRY POINT THAT RE-DERIVES IT rather than a figure quoted from a log, the landed construction, a required run that planned and executed the enrolled population on a landing revision, and the retirement of gunbc.rung_drop witness_floor_off_the_required_gate."
+      )
+    ),
+    active(
+      identity: "rn_B5WDFV02PYSHAYM68VKGVMGZW2",
+      id: "ci-control-namespace-admission-billing",
+      owner: "ci-control",
+      path: "docs/design-rung-drops.md",
+      t: fields(
+        headline: "Charge a transition-admission row to the change that owns it, and enforce it when the change lands",
+        boundary: "Both halves and no smaller set, as the drop's own trigger states. One: adjudicate a row's consumption and deletion debt on the composition of the change that OWNS the row, so a merge_group run over bystanders cannot refuse on a row it did not touch. Two: run that adjudication on the composition that actually lands, so a base-consumed row is observed then rather than whenever the roster is next touched.",
+        displaced_cost: "Getting the billing wrong in either direction has now been measured twice. Charging bystanders cost a large and recurring share of fleet time per queued pull request before refusal -- the figure and its reading are carried by the operator ruling recorded on gunbc#11774, which priced the gate and deleted it -- with ten open changes each independently deleting one stale row; removing the charge entirely left the wall unable to fire at all, and the wall was then deleted.",
+        first_slice: "The ownership half, since it is what makes the enforcement half safe to run at landing time.",
+        red_control: "A discriminating RED for each half on the real acceptance path: a bystander change is NOT refused by a row it does not own, and a change that consumes a row without deleting it IS refused on the revision that lands.",
+        out_of_scope: "Re-enrolling the phase without the billing repair, which reproduces the cost that caused the deletion.",
+        handback: "Both halves executing with their reds enrolled, the phase re-enrolled, and the retirement of gunbc.rung_drop namespace_wave_admission_wall_removed."
+      )
+    ),
+    active(
+      identity: "rn_P4WR8PZ5D6W4TMR1RZ7G87416F",
+      id: "namespace-reference-derived-producer-bounded",
+      owner: "namespace",
+      path: "docs/plans/namespace-cut-replacement-plan.md",
+      t: fields(
+        headline: "Give the reference-derived graph producer a bounded realization",
+        boundary: "Rewrite the producer so it retains only what its consumers demand. The demand was measured and it is a NAME TABLE, not a syntax population: every lookup the edge fold makes of the index discards the Node, the one genuine Node demand is an equality discriminant in index construction that a per-key digest supplies, and trees is read at one site for the importer's own root.",
+        displaced_cost: "The producer holds the whole corpus in memory to answer questions that need a name table, and it sits upstream of the namespace cut. Its residency is a standing cost on every consumer that resolves through it.",
+        first_slice: "TWO GATES IN ORDER, and the second is easy to miss: gunbc#11683 owns src/v2/lens/module_graph.dag, so racing it produces a conflict someone else pays for; and gunbc#11574 (type and data decls never become Named edges) blocks wiring the derivation to the producer's own declaration, because a TYPE declaration cannot be resolved from a live tree today. The qualification instrument any bounded-realization claim must pass has already landed and is unmintable from a semantic receipt alone.",
+        red_control: "Identical edge projection over the corpus before and after, plus the landed residency qualification passing on the rewritten producer rather than on a semantic receipt.",
+        out_of_scope: "Editing module_graph.dag while gunbc#11683 is open; and claiming bounded realization from the semantic receipt, which the qualification instrument exists to refuse.",
+        handback: "The rewritten producer, the before/after edge-projection equivalence evidence, and the qualification passing by invocation. A FALSIFIABLE PREDICTION IS ON RECORD RATHER THAN A BYTE FIGURE, because none was measured: run the census-resolve contrast of gunbc#11738 against this producer and the gap should be dominated by SymbolIndex.entries and ReferenceDerivedPool.trees rather than by the parse. Test it; do not inherit it."
+      )
+    ),
+    active(
       identity: "rn_44VKSHNX2ZNTDRCPGGNSFJWCWN",
       id: "2-scm-git-upstream-model",
       owner: "source-intent",
@@ -1597,6 +1657,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
+    active(
+      identity: "rn_Z4Z5N3JJ9M8D6XBGHFV5HQHJMY",
+      id: "test-reference-discipline-remainder",
+      owner: "ci-control",
+      path: "src/v1/compile.dag",
+      t: fields(
+        headline: "Finish the test-reference discipline: its own evidence onto the gate, and the ledger to zero",
+        boundary: "The walls themselves are landed -- v1 IDENTIFIES every test reference its typed frontier can see (a call from anywhere including another test, a function value, a parameter default, a named import) and refuses any that the shrink-only debt ledger does not exactly cover -- a reference matching a surviving row is ADMITTED, as a temporary admission awaiting deletion, not permitted; v2 refuses at name resolution. That frontier is not the whole language: out_of_scope names the import-all function value v1 inference cannot see. What remains is around them. THE LEDGER: test_reference_debt carries the surviving corpus rows plus one fixture control, an equality budget at (module, referrer, target) refusing in BOTH directions, so a row is paid down only by deleting the reference and its row together. THE EVIDENCE GAP: the v1 wall's discriminating reds live in test.claim.test_reference_wall_witness, which matches no entry in v2.workflow.required_floor required_gate_prefixes, so they execute nowhere on the merge path while every other gated class runs; the loss is covered generically by gunbc.rung_drop witness_floor_off_the_required_gate rather than specifically. THE V2 WALL'S COVERAGE IS NARROWER THAN ITS NAME: its refusal is established by execution AT THE INTERFACE, on supplied roots plus two route claims, and NO required lane compiles the corpus through v2 name resolution -- so a real test-fn reference in the tree does not red it, which is how one survived until a reviewer read for it. Corpus-wide v2 enforcement waits on the native route. TWO INSTRUMENT GAPS found while landing the four PRs: the warm-roster admission instrument does not execute in the restored floor -- a row naming a declaration that no longer existed passed green, though the roster's own rule says an unresolvable row stops preparation -- and there is no cheap way to read what a producer actually emits, labels included, which is what let a supplied fixture diverge silently until its pairing claim went red.",
+        displaced_cost: "A wall whose own red executes nowhere is the inflation DESIGN 4b(1) names: the class reports mechanically-preventable while nothing would catch its regression. The ledger is that debt in the other direction -- every CorpusDebtRow is a live reference someone must eventually delete, while the FixtureControlRow is not debt at all -- it admits nothing and exists to keep the paid-down arm discriminating, and while rows stand the corpus keeps teaching the pattern the wall exists to end. The instrument gaps are why several of these rounds cost four passes each: an unmeasured cache row and a hand-reconstructed fixture are both cheap to write and expensive to disprove.",
+        first_slice: "One prefix line so the v1 wall's reds execute on the gate, then the rows the landed PRs already made deletable.",
+        red_control: "A test calling a test refuses on the required lane and not only locally; a real source carrying a test-fn reference reaches v2 name resolution through a required corpus route and refuses THERE, not only at the interface; deleting a reference without its ledger row refuses; a ledger row whose module is gone refuses when the census is loaded; and at close, test_reference_debt contains ZERO CorpusDebtRow entries while the FixtureControlRow remains as the discriminating control.",
+        out_of_scope: "No re-enrolment of the cache rows deleted while landing this work without a controlled row-present against row-absent experiment on one host -- portability establishes that a value CAN be served, never that serving beats recomputing. No widening of the wall to shapes v1 inference cannot see: a function value reached through an import-all types as LocalValueBinding, and that is a declared gap rather than a silent one.",
+        handback: "The prefix landed with its reds observed executing on a required run; the v2 corpus route either carrying a refusal for a real test-fn reference or that obligation transferred BY NAME to the node owning the native route; test_reference_debt carrying zero corpus-debt rows, or that remainder transferred BY NAME to a successor node and this node's headline narrowed accordingly; and the two instrument gaps either closed or written down as their own rows."
+      )
+    ),
+
     sign(    with_execution(active(
             identity: "rn_7K3QH2M9XWP4NVB8RD6TSCA5EJ",
             id: "harness-thinking-and-write-briefs",
@@ -1758,6 +1834,119 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The predicate consumed by every repo-lane commit writer, the incident witness pair red then green, and the two writer bindings carried as countable work rows rather than prose."
       )
     ),
+    ticket_row(
+      identity: "rn_Z3FS3HMD5WWH1Z7FGPK1KAWJBM",
+      id: "fleet-health-0-live-receipt",
+      done: false,
+      t: fields(
+        headline: "HEALTH-0 is built and green; it needs one live run under the qualified realization to leave draft",
+        boundary: "gunbc.fleet_health fleet_health_check is an out-of-band, read-only, goal-blind check over fleet_intent_known_hosts: firmware-derived telemetry surface, five sampled fan/temperature windows, an event-log window with wrap/clear continuity, assessment over std.goal_assessment, and a receipt whose first line discloses the evaluation realization. gunbc#11681 carries it with 29 passing witnesses, including a call-reachability wall that no mutation is reachable from the entry. What remains is one live run under GUNBC_EVAL_MEMO=0 whose receipt matches the current code, and attaching it to the PR.",
+        displaced_cost: "Three real conditions were found by the first live run and nothing else in the repository observes them: srv1 FAN4 rotating in 1 of 5 samples and FAN5 in 2 of 5, srv2 FAN5 in 2 of 5, srv3 logging 14 corrected memory errors and DIMM_HOT in a single half-hour window, srv4 DIMM_HOT on two channels. Until the check runs on a cadence those degrade unobserved.",
+        first_slice: "One live fleet_health_check run against srv1-srv4 with an operator access token, its receipt attached to gunbc#11681, and the PR flipped out of draft.",
+        red_control: "The enrolled fixture's bare-call mutations are found by the same reachability derivation that reports the health closure clean; a service-call mutation is asserted INVISIBLE so the claim fails when the instrument gains service-call identity.",
+        out_of_scope: "Admitted baselines (HEALTH-1) and serving admission (HEALTH-2) are their own rows. No in-band fallback for any signal the BMC does not expose.",
+        handback: "A merged gunbc#11681 with a live receipt in its body, and gunbc#11696 landed after it to delete the consumed namespace admission rows."
+      )
+    ),
+
+    ticket_row(
+      identity: "rn_TD7X82087026JR4X3XKSHAT7Z6",
+      id: "fleet-health-1-admitted-baselines",
+      done: false,
+      t: fields(
+        headline: "Health baselines: tell new errors from history without letting a divergent run rebaseline itself",
+        boundary: "product.host_health already takes HostHealthBaselineBasis as an input seam and answers NoPriorBaseline today. This selects the last ADMITTED or explicitly dispositioned receipt, verifies subject, counter epoch and evidence manifest before subtracting, and makes diagnosis or operator disposition the only route to a replacement baseline.",
+        displaced_cost: "Without it every host with any history stays indeterminate forever: srv3 and srv4 carry 1200-entry event logs that can never be dispositioned, so the check can report change but never quiet. The automatic-rebaseline trap is the specific harm: run A sees a new corrected error, run B takes A as its baseline, and the unresolved error disappears after one cycle.",
+        first_slice: "Durable receipt selection plus the refusal that a divergent observation may not mint a baseline, with the four counter-window cases already witnessed re-expressed against a stored receipt.",
+        red_control: "A divergent run cannot produce an admissible baseline; a baseline for another host, another counter epoch or another endpoint set refuses; history that was never dispositioned stays an unknown rather than becoming zero.",
+        out_of_scope: "Serving admission consumption. Any new cache or store beyond the receipt the check already writes.",
+        handback: "A health run that reports new-since-last-admitted for memory counters and event records, with the rebaseline refusal witnessed."
+      )
+    ),
+
+    ticket_row(
+      identity: "rn_YWBBMCMY5FHC2Q5VCX9AA8MA46",
+      id: "fleet-health-2-serving-admission",
+      done: false,
+      t: fields(
+        headline: "A host serves only on a fresh satisfied health receipt",
+        boundary: "Serving admission consumes the health inspection and the convergence standing as a product: same host identity, expected fleet and policy revisions, satisfied assessment, freshness, window continuity, and where required a health window opened after a named apply receipt. Unknown health denies new placement without pretending an emergency shutdown was authorized.",
+        displaced_cost: "Health that nothing consumes is a report nobody is obliged to read. Today a host with a dead fan or new uncorrected errors is as admissible for work as a clean one.",
+        first_slice: "New-host admission requires a fresh satisfied receipt; previously serving hosts with divergence become drain candidates.",
+        red_control: "A stale receipt, a receipt for another host, and an indeterminate assessment each deny admission; a satisfied fresh receipt admits.",
+        out_of_scope: "Automatic workload kill, reboot or repair from the health route.",
+        handback: "Admission consuming health, with the deny arms witnessed."
+      )
+    ),
+
+    ticket_row(
+      identity: "rn_FH7X3QWQJ14MVMN9ES41C4HNZ6",
+      id: "srv1-srv2-bmc-firmware-exposes-memory-errors",
+      done: false,
+      t: fields(
+        headline: "srv1 and srv2 cannot report memory errors out of band on firmware 2.07",
+        boundary: "Both hosts run the ASRock 2.07 image: no MemoryMetrics resource and an empty Redfish event log, so the out-of-band check is structurally unable to see memory errors there. srv3 and srv4 on OpenBMC 3.22 do report them as MemoryECCCorrectable records. The work is the flash and its qualification, not a health-side workaround.",
+        displaced_cost: "srv1 has recorded 255 corrected memory errors in-band since its August boot with all of them unattributed to a DIMM; out of band the health check must report that host unknown on memory indefinitely. Two of four hosts are unobservable on the signal most likely to precede a failure.",
+        first_slice: "Qualify the 3.22 image on one of the two hosts through the existing BMC firmware route, then confirm the health check reports memory events for it.",
+        red_control: "After the flash, a health run reports the host's memory signal as observed rather than not-exposed-out-of-band.",
+        out_of_scope: "Any in-band EDAC read as a substitute. The standing rule is out-of-band only.",
+        handback: "Both hosts on an image whose event log carries memory records, with a health receipt showing the signal observed."
+      )
+    ),
+
+    ticket_row(
+      identity: "rn_W1PKZZXFM2CS3TKAXDG59PD29S",
+      id: "srv3-srv4-fan-threshold-flapping-floods-the-event-log",
+      done: false,
+      t: fields(
+        headline: "Fan threshold flapping overwrites the BMC event log within hours",
+        boundary: "srv3 and srv4 log a FAN threshold assert/deassert pair repeatedly: 982 of srv3's 1200 entries on 2026-09-18 were one fan's deassert, and the log wraps at about 1200, so entries roll off in hours. Either the fan curve or the thresholds are wrong for these chassis. gunbc.bmc_fan_converge already owns fan policy.",
+        displaced_cost: "Event-log continuity is the health check's only out-of-band route to memory errors, and it survives only over windows shorter than the wrap. Every memory record older than a few hours is already lost on those two hosts.",
+        first_slice: "Establish whether the flapping fan is below its own threshold because the threshold is wrong or because the fan is failing, then converge whichever is wrong.",
+        red_control: "After the change, an event log read twice a day apart still contains its earlier newest entry.",
+        out_of_scope: "Raising the health check's sampling rate as a substitute for fixing the flapping.",
+        handback: "A log whose wrap horizon exceeds the health cadence, and a fan policy that stops asserting."
+      )
+    ),
+
+    ticket_row(
+      identity: "rn_H1TH1ZJTFQNC5G2Q7YHJ7RMZZF",
+      id: "dimm-temperature-limits-need-a-citation",
+      done: false,
+      t: fields(
+        headline: "No temperature limit is cited, so every sensor reads unestablished",
+        boundary: "product.host_health carries TemperatureLimit with its authority as a field and refuses to invent one; the fleet goal declares all twenty board sensors with TemperatureLimitUnestablished. The work is citing limits for the DIMM parts and the board sensors that have them, per component grade, so the check can judge a reading rather than only carry the BMC's verdict.",
+        displaced_cost: "srv1 DIMM C1 was read at 99 C with the BMC reporting OK, because the BMC carries only a 105 C critical line and no caution threshold. srv3 and srv4 assert DIMM_HOT. Nothing in the corpus can say whether those readings are acceptable.",
+        first_slice: "Cite the JEDEC or vendor limit for the installed DDR4 parts and bind it to the DIMM sensors, leaving the rest unestablished rather than guessed.",
+        red_control: "A sensor above its cited limit diverges; a sensor whose limit is uncited still cannot produce a green.",
+        out_of_scope: "Fleet-wide default limits. An uncited number is refused by construction.",
+        handback: "Cited limits on the sensors that have them, with the citation on the row."
+      )
+    ),
+
+    ticket_row(
+      identity: "rn_NBX7Z3E7CSV0JBT611DGGXG1AD",
+      id: "eval-memo-admission-rewire-program",
+      done: false,
+      t: updated(
+        t: updated(
+          t: fields(
+        headline: "The seed keys every pure call before admission; the rewires that make retirement landable",
+        boundary: "The seed's eval-frame result memo keys every pure call before any admission decision, so a single-demand call pays full key construction -- and a key over a string argument is O(size), which makes any recursive fold over a document quadratic. The repair is root-first (option A): the demand and materialization judgment is consulted BEFORE result-memo key construction, and the shared producers the memo was concealing are rewired to carry their established value rather than re-derive it. Retirement of the provider is qualified on the repaired corpus as one combined cutover, never landed while the required floor is red.",
+        displaced_cost: "JSON parsing is O(n squared) because every pure call re-hashes its whole string argument, so the cost of parsing a document grows with the square of its size and the same shape taxes every text-processing route under the interpreter. The shape is re-derived by running any large-document parse under the seed with the result memo enabled and again with GUNBC_EVAL_MEMO=0, which is the paired arm that shows the quadratic is the memo key and not the parse; the corpus-wide effect of removing it is re-derived by the required floor run's own per-claim eval-step and completion reporting, which stage 2 gunbc#11835 moved.",
+        first_slice: "Land stages 1 and 2, then stage 3, each with per-claim before/after under both realizations and no claim crossing its ceiling on the memo-on path the floor runs today.",
+        red_control: "A direct-recompute demand reaches neither key construction nor memo storage, with a control that fails when unconditional keying is restored; every stage keeps the floor population and terminal results unchanged.",
+        out_of_scope: "A pointer-hash string cache, a function-name allowlist, a roster memo dressed as declared recurrence, and any global memo-default flip without consumer-wide qualification -- all refused by ruling.",
+        handback: "The shared producers rewired, and retirement re-qualified on the repaired corpus as one combined cutover with the required floor green."
+          ),
+          on: "2026-09-20",
+          note: "Status at wind-down: stage 1 gunbc#11784 (integer decode reads carried tables) and stage 2 gunbc#11835 (grammar backward selection resolves each emitted tree once) are green, approved and awaiting merge; the retirement gunbc#11741 is a held draft carrying its own handback; stage 3 (rust.dag's 64 nullary Node constants as data) is drafted, resolves and passes, and is preserved unopened at origin/session/merry-fox-260-stage3 c1c925060c with its nine-module comparison unfinished. Stage 2 also discharged the docs-regeneration blocker: the real regen route was run end to end on the memo-retired binary and completed with byte-identical projections, which is the check to repeat (the generated-artifact gate's own regen entry point) before the retirement is qualified.",
+        ),
+        on: "2026-09-20",
+        note: "Four readings this lane took, each recorded with the producer that re-derives it rather than with its number, so a successor re-runs the instrument instead of trusting a figure that has rotted. Producer ranking must come from the required floor run's own required_floor_cross_claim_demand.tsv (evals minus claims), never from claim_batch, which installs no cross-claim roster and therefore charges producers the floor serves warm -- the lane's first ranking was wrong for exactly this reason. The diagnostics_merge repeat count that first looked like hot work is memo-hit verification cost instead, and what separates the two is the interpreter's own memo key trace (its keyed-call, distinct-key and duplicated-key counters), which is the instrument to re-run before treating any repeat count as work. The comparison between a bottom-up grammar resolution that matches all productions per node and the asked-lhs top-down form is re-derived by the bounded A/B harness gunbc#11835 carries, which measures both shapes on the memo-on path; the top-down form won. And claim_batch shares one ctx per entry, so a data row's first-touch cost lands on whichever claim runs first, which makes its per-claim comparisons unsound as a cost instrument regardless of what they report.",
+      )
+    ),
+
     active(
       identity: "rn_7VNBH0KXR5ZQWD2PLGT3MJ86CY",
       id: "generated-projection-registry-containment",
@@ -2304,7 +2493,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "fleet-mtcollins1-first-host",
       owner: "fleet",
       path: "dag/gunbc/machine_intake/mtcollins1_expansion_observation.dag",
-      t: fields(
+      t: updated(t: fields(
         headline: "Bring Mt. Collins unit 1 into service as our first owned host, from observation rather than assumption",
         boundary: "Every fact the unit's intake depends on is either bound to a git-tracked observation consumed at mint time, or stays in its typed unobserved arm and refuses. The remaining facts: OCP bay occupancy and riser fitment observed from the unit interior; the bring-up evidence captures bound onto an executing consumer rather than stored beside it; one PCI identity authority with its superseded namespace admissions deleted; pre-OS assessment derived from SEL and captured inventory with its absence and indexed-replay controls executed; live pre-OS acquisition; supervision-to-envelope realization; PCI address cross-rendering equivalence between firmware and kernel renderings; and one meaning for AttachmentVerdict, since mtcollins1_expansion_attachment attachment_against_evidence discards the OCP standing (ocp: _) and so admits installability on the PCIe path but only interface compatibility on the OCP path (either match the OCP standing before the generation comparison with typed occupied and unobserved refusals, or split the verdict). Zero offers, over-reports and populated bays refuse rather than answer.",
         displaced_cost: "Hardware bought against an assumed slot, riser or bay costs a returned part and a lost week; a credential believed rotated but readable on another controller address is a silent exposure.",
@@ -2312,7 +2501,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "An unobserved OCP variant, an unfitted riser, a populated bay, or a credential rotation evidenced on a single controller address refuses rather than reporting an attachment point or a secured controller.",
         out_of_scope: "Not fleet-wide firmware or cooling policy (fleet-bmc-policy-convergence) and not classification of what we manage on machines generally (fleet-state-frontier).",
         handback: "Each fact above is bound to a consumed artifact or refusing in its unobserved arm, and the unit mints a BmcSecureStanding."
-      )
+      ), on: "2026-09-20", note: "WIND-DOWN POSITION 2026-09-20 (operator: all lanes winding down to prioritize v1 performance and v2 migration; recorded here so the program resumes from the record). DONE, on main: the approval-gated boot pipeline (#11483 C, #11484 D, #11768 follow-up) -- operator taps APPROVE on the phone, the run redeems the capability, mints the BMC credential, attaches the ISO over MegaRAC, power-cycles, holds SOL; boot 22 (run 35447067113) booted Ubuntu 24.04.3 on the unit through that path. MegaRAC facts modeled: GET /api/session is not served (404 with a live cookie), release is a present->absent re-observation on the remote-media route, 401/403 after a succeeding probe is absence, sentinel-CSRF refuses. HW1-QUAL landed (#11722): the runner-throughput qualification consumes a selected sanction/offer, seals its run record, joins the subject first; its boot/image/registration/dispatch legs are declared frontiers awaiting authority. PXE 0A-0D landed (#11602 #11603 #11607 #11605) fail-closed: nothing PXE-boots until an iPXE snponly.efi is built at a recorded revision and pinned as SitePxeEdgeChainloaderBuildReceipt on srv4; do not soften the gate. Mt. Jade class facts landed (#11529). REMAINING, in order: (1) boot 23 = the EDAC-pass/nproc-160 census run, blocked on the census ISO (#11731; the side-chat hold 5260468481's three walls -- workload pass-status + full chunk coverage, one bounded same-run envelope, and the claim renamed a compatible replacement producer bound to attempt 3's bytes via HistoricalCaptureIdentity + a 19-stage HistoricalStageDisposition map -- are built as of 2026-09-20; awaiting the exact-head read and merge; publish to srv2 stays a declared frontier, nothing written to hosts). (2) rewire mtcollins1_boot_run's capture parser onto gunbc.machine_intake_host_capture_envelope -- its substring workload match is a FALSE GREEN under the new census program; carry the verdict REDs there; bind the derived media identity (census 0D). (3) approval broker (#11667): split of the approval routes off roadmap_serve onto 127.0.0.1:8085 in its own slice; stage A dark install on srv1 NOT yet run -- dispatch shape: gh workflow run fleet-converge.yml --ref <branch> -f mode=approval_broker_dark_install -f host=srv1 -f expected_revision=<sha>; the job self-adjudicates via /livez + the tree receipt; then stages B-E and the device routes onto the broker route table. (4) approval app P-256 in .dag (#11645): the iOS app landed (#11590); one interpreted verify peaks at 13.5 GiB and 192-734 s, so the floor budget-refuses all 8 real verifications -- decision: a dedicated P-256 gunbc test row over the emitted native build (side-chat ruling 5260787321: a budget row is not evidence, the terminal verdict is). (5) PXE 0B wet half needs the boot-origin DNS zone + FQDN from the operator (bucket-create, custom domain, cache rules). (6) Mt. Jade first contact (#11758 draft, model only, its seven witnesses UNVERIFIED -- claim_batch ended with no verdict lines under memory pressure; re-run before review, command and count assertion at the top of the PR body): BMC on factory static 10.0.7.2/29 gw 10.0.7.1 + link-local 169.254.0.17, MAC 70:e2:84:95:33:6b, same L2 as srv1 (its ARP broadcasts received on enP3p3s0f1); 16 DIMMs installed; nothing has authenticated to the controller yet; remaining steps: decode a Manager response into ManagerIdentityObservation, the converge entry, the arping-no-reply witness, a wet window. (7) fan policy (#11623): product.fan_policy_standing with #11529's Jade fan concepts consolidated onto it in the same PR (mtjade1_fan_standing consumes it, fleet_acoustic_intent and fleet_fan_converge_routes); a fail-open in the chassis power parse (unreadable wording read as POWERED OFF -> FailsafeBeforeHostTelemetry) was found by review 69156 and fixed with a red control before landing. Collins measured (run 35402673990, six read-only rounds through the fleet-converge mode): posted and publishing host thermals, 16 system fans flat at 5552-5802 RPM, 34 fan sensors all RPM and zero duty sensors, so every sample is RpmWithoutDutyTelemetry by construction; whether the controller is commanding a curve needs PWM/duty telemetry (absent on this SDR), a documented MegaRAC fan-mode readback, or a measured duty-to-RPM curve. PSU2_FAN_SPEED read 0 RPM with status ok in all six rounds (second supply unpopulated/not drawing, or a dead tach -- a receipt, not a diagnosis). The Collins fan part is unmodeled (CatalogMaximumUnknown); duty_ceiling_for_fan / fan_policy_against_ceiling have no production consumer (declared frontier: a stated dB(A) ceiling at a named position AND a modeled fan part). (8) MachineWidth<N> compile-time reification (#11819 parked draft; its walls are NOT yet honest: review 69187 found two merge-blocking GateBlocking refusals with no enrolled RED or positive control, and src/v1/04_resolve.dag type_arg_kind_inhabitance declares four admitting arms while the hand-patched seed v1_compiler_infer_resolve.rs carries a different algorithm -- the compiler that refuses p4 is the seed and it does not carry the .dag's logic; next step is a multi_module_compile_fixture witness with two REDs and a control, modeled on dag/test/claim/type_argument_arity_witness_test.dag). (9) approval app server routes: the six device routes (enrol, redeem, two reads, push-update) belong on gunbc.auth.approval_broker_serve as six flat handler arms with per-route markers, paths staying in gunbc.auth.approval_device_wire; blocked on the broker's stage 6. APP ATTEST HAS NO REALIZATION: extdeps.apple.app_attest mints VerifiedAttestation only through attestation_verification_from_implementation, nothing on main supplies it (the host-Rust escape-hatch PRs #11588/#11592 were closed per the operator's refusal), and enrolment_admission matches AttestationVerified -- so device enrolment REFUSES, correctly, until CBOR decode and X.509 parsing exist in .dag; that is the real distance between 'merged' and 'enrol a phone'. (10) floor coverage follow-ups: lift deferred_followup.patch from #11865's body (compiler_gate_workflow disposition-TSV upload step + the rung-drop population/trigger sentence) and regenerate witnesses.yml and docs/design-rung-drops.md; run claim_batch on the three sibling witness modules #11865 repaired without executing (fabric_control_plane, altra_memory_controller, nbd_proxy_virtual_media_install); the declared drop for required lanes not resolving product-layer modules is #11860: gunbc.rung_drop.required_lanes_do_not_resolve_product_layer_modules (LostAsPassenger of the strict preparation #11742 cut; trigger = every admitted module's source reaches compile_to_resolved on every landing revision), with its population by identity from the instrument gunbc test //gunbc/instruments:required-lane-resolution-census (at that head: admitted=6292, reached=2022, unreached=4270, list committed under docs/rung-drops/) and the two instrument failure-mode rows (exit status through a pipe; a red control positioned where it cannot fire); the restoring capability -- a required job resolving every witness root's closure -- needs the operator (job roster closed to growth); the seed defect where adding one import edge to a leaf makes gunbc.harness.harness_backend stop resolving (adhoc-3bd6c9ef-59c; route-around annotated in runner_throughput_qualification) is localized but unfixed: the entry closure is the REFERENCE-PULL closure (cli_run reference_pull_paths_for_source pulls every dotted module path in a file plus its import closure, and build_both_closure_edge_index adds bare-name providers for stripped modules), NOT the ^import BFS -- the edge adds 21 modules (claim_batch --print-entry-closure: 273 vs 294), so 'closure invariant, only edge shape differs' was false; cheapest repro on main = one unused import of gunbc.build_cache_instance in runner_throughput_qualification + entry dag/test/claim/serving/engine_progress_witness_test.dag --function an_idle_engine_is_idle_however_long_its_counter_stands_still (PASS without, the harness_backend:581/585 split/last errors with); the break is v2.std.algebra filter's element type at harness_backend:576 (a pass-through over lines makes it PASS), split/last are only the first bare template calls downstream; the closure-counted uniqueness gates (corpus_item_name_counts_nodes, symbol_index_insert_unique_disj_variant_aliases, symbol_index_track_global_bare) do not flip for any name; the live remaining candidate is schedule_batches_from_edges emitting a cycle residue batch that reconcile_with_typed_cache dispatches in slot order while typecheck_module returns None silently for a not-yet-dispatched import -- the one fail-open found. Next rung, on a quiet host: bisect the 21 modules to the minimal reddening set and check whether the schedule acquires a residue batch containing harness_backend; only then write the mechanism, the discriminating red (the Fixture harness in cli_run closure_edge_demand_tests is the right shape) and the failure-mode row. The route-around annotations on the qualification leaf and gunbc.runner_throughput_selection STAY until then. --print-entry-closure on the full 831-module entry did not finish in 52 min (the whole-pool bare-reference edge index is built lazily with no warm phase); use the 273-module harness. (12) two latent defects on main, written down by the Jade lane: the content_digest carrier fork ('sha256:' vs 'sha256 ' across 13 literals in the Collins/Jade/contract standards -- the fix is typing the field Sha256Digest), and NamespaceStep0CanaryV1HistoricalStanding, a nullary coproduct declaring no constructor that breaks the day anything imports it; also, extdeps service OPERATIONS are invisible to the frontier census (it reads only data and fn declarations), so the roster's silence on the three new BMC/iproute2/arping operations is a census gap, not coverage. (11) approval app operator-owned items, unstarted: Apple team id and bundle id, the .p8 APNs key and key id, Xcode on the MacBook, a phone as an internal TestFlight tester; then xcodegen generate, fill Config/Team.xcconfig, run ApproveTests against the committed vectors (the first execution of any Swift in this project). STANDING RULES LEARNED THIS WEEK, binding on resumption: PR CI green is NOT claim evidence for .dag -- the required lanes resolve only the generated_artifact_gate closure, product-layer modules are reached by strings not imports, and the floor is a nominal one-subject fold (#11607 reached queue position 1 not resolving); every .dag PR carries a local claim_batch receipt at exact head + binary sha + one control that goes red. fleet_converge_mode_fleet_ssh_key_demand is exhaustive by design and bit three mode-adding PRs composed; any new FleetConvergeWorkflowMode owes its arm and the regenerated fleet-converge.yml in the same head. fleet_converge_workflow_modes is a §2 contention surface: four independent lanes appended to it in one day, each collision costing another lane a whole-closure regen (~15 min) plus a CI cycle -- landing decision adopted: enqueue on the first head where the four lanes are green and let the queue prove the composed revision. Local .dag runs in session containers die on restarts and slice contention; BuildBuddy applies the worktree DIFF to its own checkout (not exact-head evidence), pages git diff, and hard-kills at 1h. The witness floor RUNS BUT DOES NOT GATE as of 2026-09-20: claim_executor computes FloorRefused and exits nonzero, the workflow step swallows it under set +e, and the aggregating job reads only needs.floor.result -- so no green check entails that any witness produced a verdict; and the approval-device witnesses match no required_gate_prefixes row, so the round-trip witnesses that are the only wall against the wire decoders' hand-typed allowed rosters drifting are real and unenrolled. Roadmap serve on srv1 must have belt/publication services and timers stopped for a boot window; slice 26 GiB, no swap.")
     ),
     active(
       identity: "rn_PEH90XVR97GYYA5FXGDJXZ70PF",
@@ -2342,6 +2531,36 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "Applying successfully but failing to read the change back is still 'not done'.",
         out_of_scope: "No broad machine takeover before one narrow loop works.",
         handback: "Applying, doing nothing when already correct, undoing, and a failed read-back."
+      )
+    ),
+    active(
+      identity: "rn_2GPKWK8FXAKETC8ATH3MJEXEXC",
+      id: "fleet-convergence-census-closure",
+      owner: "fleet",
+      path: "docs/plans/convergence-one-program.md",
+      t: fields(
+        headline: "Every effect that changes a machine goes through the one checked route",
+        boundary: "The census already lists every effect that changes lasting state. Work through what it lists, one family of effects at a time, and for each one say who chose the desired state, what looked at reality, what compared them, what plan was allowed, what carried it out, and what checked afterwards. Where the honest answer is that it never converged, rename it to what it actually does.",
+        displaced_cost: "Effects that change real machines while calling themselves converged, so nobody can tell which ones were actually checked.",
+        first_slice: "Close one effect family, and let the census say which are left.",
+        red_control: "An effect that reports success from its own write, with nothing reading the result back, must not pass.",
+        out_of_scope: "No new migrations invented here; the census is the list.",
+        handback: "The census, with every family either closed, truthfully renamed, or named as outstanding."
+      )
+    ),
+    active(
+      identity: "rn_W964QANFVKCPEBGKP50F0036KH",
+      id: "fleet-convergence-legacy-deletion",
+      owner: "fleet",
+      path: "docs/plans/convergence-one-program.md",
+      t: fields(
+        headline: "Delete the routes that were replaced, and make them hard to grow back",
+        boundary: "Once the checked route is the real one, the older ways of changing the same machine state are deleted rather than left beside it. A check then refuses a change that adds a new one, by comparing against the list of things that actually produce effects rather than by searching for suspicious names.",
+        displaced_cost: "A replaced route left standing is where the next author looks first, so the old way quietly comes back.",
+        first_slice: "Delete one superseded route whose replacement is executing, and prove what refuses when it is gone.",
+        red_control: "Re-adding a second route for an effect that already has a checked one must fail the check.",
+        out_of_scope: "No behaviour moves here; anything still needing one belongs in the census work.",
+        handback: "Nothing left that changes lasting state outside the checked route, and a check that says so."
       )
     ),
     active(
@@ -2695,7 +2914,140 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the census, the wall or the frozen roster with its dissolution trigger, and both controls."
       )
     ),
-  ], guarantee_ladder_nodes())
+    active(
+      identity: "rn_3GKQ7WVZ4TNXPB8MHCDR5EJYA2",
+      id: "review-sheet-identity-producer-and-admission",
+      owner: "buyer-review",
+      path: "docs/plans/review-sheet-and-census-lane-handoff.md",
+      t: fields(
+        headline: "Give the landed review-sheet identity kernel its producers and its declared-id admission",
+        boundary: "gunbc.review_sheet_identity landed as a pure kernel and is enrolled in the census closure frontier with three consumer rows whose triggers name EXECUTION rather than import. This node is the execution: the shared marker-query constructor, the Drive superseded-marker producer, and the subject-bound operator-declaration reader, each emitting LegacyExtentEvidence into the one complete join; then the declared-id admission that reconciles a LegacyFileSelection against a standing, a contradicting observation, an exact file-by-id preflight and the intended subject. The kernel decides standing and the producers decide none.",
+        displaced_cost: "An empty appProperties search establishes only that the REQUESTING OAUTH CLIENT received no matching rows, never that no legacy-marked file exists, because appProperties are private to the requesting application and nothing in this corpus observes the application identity of its own token. Until a producer carries that distinction into the kernel, the live converge keeps reading an unresolved extent as an absent one, which is how the first duplicate sheet was minted.",
+        first_slice: "The three producers and the complete join, discharging the kernel's enrolled consumer frontier rows; then the admission fold.",
+        red_control: "A selection beside an unresolved extent stays unresolved; a positive find under unresolved visibility does not settle the extent empty; deleting the producer integration makes a control fail rather than leaving the supplied-input claims green.",
+        out_of_scope: "No re-execution of the combined migration route of the closed gunbc#11596, which decided semantics inside effectful routing and is the shape this kernel replaces. No second relocation of the marker before these producers exist.",
+        handback: "The producers, the join, the admission fold, and the frontier rows retired by execution rather than by import."
+      )
+    ),
+    active(
+      identity: "rn_8QF2XJNLD6VKC3ZRW9HTYB4MSP",
+      id: "review-sheet-properties-write-and-legacy-retirement",
+      owner: "buyer-review",
+      path: "docs/plans/review-sheet-and-census-lane-handoff.md",
+      t: fields(
+        headline: "Write the current marker back and retire the legacy generation",
+        boundary: "The UpdateFileProperties PATCH that stamps the current marker, with a readback asserting the PATCHED FILE ID rather than a count, and then the retirement of the legacy marker generation once the extent is settled.",
+        displaced_cost: "Without a readback bound to the file id, a landed write reports as a transport failure and a failed write reports as success; without retirement the two generations both answer for one fact.",
+        first_slice: "The PATCH and its readback.",
+        red_control: "A field mask that does not name every required field of its declared response type decodes short, so fields=id against a DriveFile must refuse rather than report a landed write as a transport failure.",
+        out_of_scope: "No marker relocation.",
+        handback: "The write, the id-bound readback, and the legacy generation retired with its extent settled."
+      )
+    ),
+    active(
+      identity: "rn_9JXQW2VTNB5KZCR7MHPD4GYL60",
+      id: "census-job-level-observation-and-reprojection",
+      owner: "buyer-review",
+      path: "docs/plans/review-sheet-and-census-lane-handoff.md",
+      t: fields(
+        headline: "Derive prospect rows from job-level observation, because the workflow-level scan cannot",
+        boundary: "Read jobs?filter=all across every page AND every attempt, and derive from it the facts the prospect rows actually need: real runner and provider identity, job occupancy, pre-start observation, cancelled occupancy, and provider execution standing. Then reproject those into the private commercial reading and the operator-safe sheet rows. The bounded scan producer landed in gunbc#11656 yields a declared candidate POPULATION and is a prerequisite, not a substitute.",
+        displaced_cost: "The 57 transcribed rows in the sheets-census prototype carry economic readings that were shown not to have the meanings assigned to them, and without this arc there is no route that re-derives them. Until it exists the sheet can be presented and cannot be refreshed, and its numbers cannot be quoted.",
+        first_slice: "The job-level read with attempts and paging, and occupancy derived from it for one known repository, compared against the transcribed row for that same repository.",
+        red_control: "Each of the four invalidated inferences must be refused rather than reproduced: a workflow wall duration offered as summed runner occupancy; a workflow-run admission delay offered as runner queue delay; a provider declaration read as provider execution; provider adoption read as positive spend. A repository whose jobs paginate must not report only its first page.",
+        out_of_scope: "No re-presentation of the prototype totals as current, and no commercial projection over a population the job-level read has not covered.",
+        handback: "The job-level observation carrier, the occupancy derivation, the reprojection, and a statement of which transcribed rows survived re-derivation and which did not."
+      )
+    ),
+    active(
+      identity: "rn_2HKDQZ8WVNX4TBM6RCPJLG0517",
+      id: "census-app-registration-installation-and-custody",
+      owner: "buyer-review",
+      path: "docs/plans/review-sheet-and-census-lane-handoff.md",
+      t: fields(
+        headline: "Actually register, install and take custody of the census App",
+        boundary: "gunbc#11552 landed the acquisition MODEL and its route; it did not achieve acquisition. The step that stalls is real: gunbc.github_app_acquisition tells the operator to paste the manifest into the App-creation form's manifest field, and GitHub exposes no such field -- the manifest protocol requires a form POST carrying a manifest parameter, and a GET renders the blank create page. This node covers manifest submission, installation consent, callback capture and credential custody, and it treats registration and INSTALLATION as the two separate facts they are.",
+        displaced_cost: "gunbc#11677 consumes an App and an installation that have already been admitted; it creates neither. So every downstream census route that depends on an installation token is blocked on a fact no receipt in this corpus currently establishes, while the acquisition model reads as though it were done.",
+        first_slice: "Make the submission step executable, or replace the instruction with one that is. The named dissolution path is browser automation driving the form under an owner session.",
+        red_control: "An instruction a reader cannot execute must refuse rather than render: the step that names a form field GitHub does not expose is the specimen. A stored credential plus a failed live request must not read as an acquired App.",
+        out_of_scope: "No claim that ownership consent can be automated away -- GitHub requires an owner to submit, and that is an honest HumanIntervention until browser automation drives it.",
+        handback: "A receipt naming the registered App, the installation, and the custody location of its key, or a typed refusal saying which of the three is missing."
+      )
+    ),
+    active(
+      identity: "rn_5TBHM9XKCWQ2VLF7NRJD8GYZ3E",
+      id: "census-installation-token-via-app-jws-route",
+      owner: "buyer-review",
+      path: "docs/plans/review-sheet-and-census-lane-handoff.md",
+      t: fields(
+        headline: "Lift the census API budget by reusing the App JWS route rather than building a second signer",
+        boundary: "A second composed performer in gunbc.github_effect_perform consuming the clock/claims/jws/openssl/AppInstallationAccessTokens.Create prefix that gunbc#11677 establishes, factored into one function returning a sole_constructor installation-token carrier that each performer consumes inside its own call. Not a second module and not a second signer.",
+        displaced_cost: "The census reads a public population under an unauthenticated rate limit, so its scans are truncated by budget rather than by the question. The route to fix it already exists; building a parallel one forks the custody authority.",
+        first_slice: "The factored prefix and the composed performer. gunbc#11671, gunbc#11677 and gunbc#11679 are all merged, so the route is available to build against today and nothing external gates this.",
+        red_control: "Run with the personal-access-token route unavailable, so a successful code-search page is attributable only to the token producer rather than proving a token could be rendered.",
+        out_of_scope: "No rs256_sign host primitive: PRIMITIVE-EGRESS-0 admits openssl only as one handler behind a key-custody signer interface over a key reference, and CRYPTO-0 is actively deleting host crypto primitives, so a new one lands against that program. No bare Secret return, and no second environment-variable token that a personal access token could silently satisfy.",
+        handback: "The carrier, the performer, and the live control taken with the fallback route removed."
+      )
+    ),
+    active(
+      identity: "rn_6WDPNLJ4RQKZXC2VTH7BM9SYFG",
+      id: "ntfy-publisher-token-onto-gcp-custody",
+      owner: "buyer-review",
+      path: "docs/plans/review-sheet-and-census-lane-handoff.md",
+      t: fields(
+        headline: "Dissolve the ntfy publisher-token HumanIntervention into the Mt Collins custody pattern",
+        boundary: "Consolidate gunbc.auth.approval_ntfy_deployment approval_ntfy_publisher_token_intervention into the custody authority gunbc#11679 establishes, as ONE fleet-converge mode whose credential is a dispatch choice over a CLOSED ROSTER of custody rows. The controller key becomes that roster's first row rather than a constant. Each row carries a SecretRef, a path, an owner principal, a group principal, a mode ARM, and the directory's own owner, group and mode.",
+        displaced_cost: "The read side is already modeled and only delivery is manual, so every credential rotation spends an operator. One converge mode per credential grows a hand-enumerated roster, and a free-text credential input is a stringly selector; the closed roster is what keeps both out.",
+        first_slice: "The consolidation onto the custody authority gunbc#11679 established, with the controller key as the first roster row. gunbc#11679 is merged, so nothing external gates this.",
+        red_control: "A 0640 token for a service group needs a directory that group can traverse, so a row whose directory mode refuses every group bit must fail; the exact-mode and forbidden-bits legs are derived from the mode arm, never taken as a caller octal.",
+        out_of_scope: "This does NOT retire gunbc.rung_drop approval_store_single_writer_by_agreement. A find-metadata readback establishes which principals HOLD PERMISSION BITS and not that a non-writer cannot open the store; that trigger needs an execution-as-another-user leg, and its row already names a permission-bits readback among the things that do not retire it.",
+        handback: "The custody authority with the controller key and the ntfy token as rows, and the HumanIntervention deleted rather than left beside it."
+      )
+    ),
+  ], concat(guarantee_ladder_nodes(), typed_module_store_nodes()))
+}
+
+// THE TYPED-MODULE STORE LANE, parked at wind-down (2026-09-20) so that what is UNFINISHED about
+// it is a roadmap fact rather than a session's memory. gunbc#11793 landed the provider row
+// (gunbc.floor_materialization host_persisted_typecheck_store) and its realization
+// (v1_compiler.shared_typecheck_store PersistentTypedStore). Two things it did NOT land are
+// below, and the first is the one that decides whether any of it was worth doing.
+//
+// A THIRD NODE WAS WRITTEN HERE AND DELETED IN THE SAME CHANGE (review 69189). It described the
+// review-69138 repairs -- the seed-growth receipt, the grounded lockstep, the two deletions -- and
+// every one of them lands in the diff that authored it. `active` mints a node open and
+// Dispatchable, so it was a brief that would have sent a worker to redo landed work, and the
+// receipt file written beside it already said the opposite. A roadmap node is for what is still
+// OWED; the PR and gunbc.typed_module_store_seed_growth are the record of what was done.
+fn typed_module_store_nodes() -> List<RoadmapNode> {
+  [
+    active(identity: "rn_HPHX9GMDAXMMWWYGB6ZCSCYDWJ", id: "typed-store-cold-warm-measurement",
+      owner: "v1-performance",
+      path: "docs/plans/typed-module-cross-run-materialization.md",
+      t: fields(
+        headline: "Measure the host-persisted typed-module store on the real route, or delete it",
+        boundary: "One cold/warm receipt from the two sibling processes the provider row names -- the nominal witnesses fold and the generated-artifact drift gate, one job, one built binary. Report end-to-end wall, peak RSS, and the fold's subject digest, which must be EQUAL between armed and unarmed: a store that changes a verdict is a defect, not a saving. Read hits, misses, rejections, refusals, throughput and LIVE OCCUPANCY off the [typed-store-persist] line the floor receipt already emits.",
+        displaced_cost: "The store is armed by nothing today, so it displaces nothing until this runs. Until then the tier is implemented and unmeasured, and the design's projected figures (8.3 min -> ~1 min preparation, 32 -> ~20 min per push) are withdrawn rather than carried, because they do not follow from the key the design proposed.",
+        first_slice: "Arm GUNBC_TYPED_STORE_PERSIST on the floor lane for ONE run via gunbc.compiler_gate_workflow, read the receipt, and revert the arming. NOT on a session container (two 20.2 GiB folds under a shared slice) and NOT on BuildBuddy (runners are 6 cores / 7 GiB, which is why two dispatches stalled).",
+        red_control: "An unarmed and an armed run of the same commit must print the SAME subject digest; a difference falsifies the store rather than the measurement. A second armed run over a warm store must show hits, or the store is not being reached and the whole tier is inert.",
+        out_of_scope: "No widening of required_gate_prefixes, no seeding workflow, no scheduled verification job, and no parallelism work.",
+        handback: "The cold/warm receipt with both wall times, both peak RSS figures, the two digests, and the decision it implies: keep and arm, or delete the tier."
+      )
+    ),
+    active(identity: "rn_BJ10YHEPG9ESNJ7YV7VD9KWYTF", id: "compiler-identity-invariant-under-corpus-commit",
+      owner: "v1-performance",
+      path: "docs/plans/typed-module-cross-run-materialization.md",
+      t: fields(
+        headline: "Compiler identity that does not move with the commit SHA, so cross-push reuse becomes reachable",
+        boundary: "std.interface_summary typed_module_key consumes a compiler identity it does not author, and its realization today is resolved_graph_cache transform_content_digest -- the content hash of the RUNNING BINARY. src/v1/stage0/build.rs embeds GUNBC_BUILD_IDENTITY, the checkout's commit, into that binary through cargo:rustc-env, so a rebuild at ANY new commit re-keys every entry, including a corpus-only .dag commit. Derive the identity from what the TYPECHECKER actually is instead.",
+        displaced_cost: "Every cross-push reuse claim in the materialization design depends on this and none of it is reachable without it. The store as landed delivers same-build cross-process reuse only, and that limit is a property of this derivation rather than of the store.",
+        first_slice: "Establish which producers consume the identity (the resolved-graph subject digest and the typed-module key both do), then change the derivation in ONE place and test it through a normal .dag-only rebuild -- an actual changed-commit experiment, not one commit rerun warm.",
+        red_control: "A v1 Rust change to inference must still miss every entry; a corpus-only .dag commit must hit for unaffected modules. Both directions, or the new identity is either unsound or useless.",
+        out_of_scope: "Do not remove build provenance: the SHA stays in the CLI version. Do not run an old compiler to manufacture hits.",
+        handback: "The new derivation, its single consuming authority, and the two-direction experiment."
+      )
+    ),
+  ]
 }
 
 // AN EDGE HOLDS A CHILD UNTIL ITS PARENT HAS AN ACCEPTANCE RECEIPT, so a parent is chosen for what
@@ -2709,6 +3061,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // external review after the edge was added on exactly that reasoning.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    edge(child: "review-sheet-properties-write-and-legacy-retirement", parent: "review-sheet-identity-producer-and-admission"),
+    edge(child: "census-installation-token-via-app-jws-route", parent: "census-app-registration-installation-and-custody"),
+    edge(child: "census-job-level-observation-and-reprojection", parent: "census-installation-token-via-app-jws-route"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
@@ -2826,6 +3181,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fleet-bmc-policy-convergence", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "shell-gate-migration"),
+    edge(child: "fleet-convergence-census-closure", parent: "fleet-closed-loop-converge"),
+    edge(child: "fleet-convergence-legacy-deletion", parent: "fleet-convergence-census-closure"),
     edge(child: "fleet-dashboard-instance-membership", parent: "fleet-state-frontier"),
     edge(child: "roadmap-serve-emitted-realization", parent: "fleet-state-frontier"),
     edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
@@ -3146,9 +3503,9 @@ fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad 
 // git.Core.Show — a changed carrier without valid merge-base parse refuses
 // AcceptanceHistoryIntegrityRefusedPriorHistoryObservation, never prior_history = [].
 
-// The single route from a loaded event history to a receipts projection. Both wrappers below
-// call it, so a loaded-but-unreplayable history cannot fabricate an affirmative empty on one
-// path while the other refuses: there is one arm to get wrong, not two.
+// The single route from a loaded event history to a receipts projection. It is the one arm that
+// can get the replay distinction wrong, so there is exactly one place to get it right: a
+// loaded-but-unreplayable history refuses here and cannot fabricate an affirmative empty.
 fn acceptance_receipts_projection_from_events(
   events: List<RoadmapAcceptanceEvent>,
 ) -> RoadmapAcceptanceReceiptsProjection {
@@ -3162,17 +3519,10 @@ fn acceptance_receipts_projection_from_events(
   }
 }
 
-fn roadmap_acceptance_receipts_from_carrier_text(text: String) -> RoadmapAcceptanceReceiptsProjection {
-  match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      acceptance_receipts_projection_from_events(events: events)
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      RoadmapAcceptanceReceiptsProjectionRefused { detail: detail }
-  }
-}
-
-fn roadmap_acceptance_receipts() -> RoadmapAcceptanceReceiptsProjection {
-  match roadmap_acceptance_event_history_load() {
+// Acquisition stays at callers; both live and fixture projections carry parsed events or the
+// exact load refusal through this pure chain.
+fn roadmap_acceptance_receipts(history: RoadmapAcceptanceEventHistoryLoad) -> RoadmapAcceptanceReceiptsProjection {
+  match history {
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
       acceptance_receipts_projection_from_events(events: events)
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
@@ -3289,58 +3639,55 @@ type FrontierSetsProjection
   = FrontierSetsProjected { accepted: List<RoadmapNodeId>, withheld: List<RoadmapNodeId> }
   | FrontierSetsProjectionRefused { detail: String }
 
-fn frontier_sets_from_events(events: List<RoadmapAcceptanceEvent>) -> FrontierSetsProjection {
-  match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes()) {
-    RemainsSupersededRevocationOnNonSupersededNode { node: node } =>
-      FrontierSetsProjectionRefused {
-        detail: join(["remains-superseded-revocation-on-non-superseded-node:", node as String], ""),
-      }
-    RemainsSupersededRevocationOnUndeclaredNode { node: node } =>
-      FrontierSetsProjectionRefused {
-        detail: join(["remains-superseded-revocation-on-undeclared-node:", node as String], ""),
-      }
-    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: node } =>
-      FrontierSetsProjectionRefused {
-        detail: join(["remains-superseded-revocation-on-ambiguous-declared-node:", node as String], ""),
-      }
-    RemainsSupersededRevocationsJoined =>
-      match replay_acceptance_history(events: events) {
-        Absent =>
-          FrontierSetsProjectionRefused { detail: "acceptance-history-unreplayable" }
-        Present { value: state } =>
-          match live_receipts_join_declared_nodes(receipts: state.live, nodes: declared_roadmap_nodes()) {
-            LiveReceiptJoinsSupersededLine { node: node } =>
-              FrontierSetsProjectionRefused {
-                detail: join(["live-receipt-on-superseded-line:", node as String], ""),
-              }
-            LiveReceiptDoesNotMatchDeclaredNode { node: node } =>
-              FrontierSetsProjectionRefused {
-                detail: join(["live-receipt-does-not-match-declared-node:", node as String], ""),
-              }
-            LiveReceiptJoinsUndeclaredNode { node: node } =>
-              FrontierSetsProjectionRefused {
-                detail: join(["live-receipt-on-undeclared-node:", node as String], ""),
-              }
-            LiveReceiptJoinsAmbiguousDeclaredNode { node: node } =>
-              FrontierSetsProjectionRefused {
-                detail: join(["live-receipt-on-ambiguous-declared-node:", node as String], ""),
-              }
-            LiveReceiptsJoinDeclared =>
-              FrontierSetsProjected {
-                accepted: accepted_node_ids_from_receipts(receipts: state.live),
-                withheld: node_ids_held_off_active_frontier(history: events),
+fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> FrontierSetsProjection {
+  match history {
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+      FrontierSetsProjectionRefused { detail: detail }
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => {
+      match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes()) {
+        RemainsSupersededRevocationOnNonSupersededNode { node: node } =>
+          FrontierSetsProjectionRefused {
+            detail: join(["remains-superseded-revocation-on-non-superseded-node:", node as String], ""),
+          }
+        RemainsSupersededRevocationOnUndeclaredNode { node: node } =>
+          FrontierSetsProjectionRefused {
+            detail: join(["remains-superseded-revocation-on-undeclared-node:", node as String], ""),
+          }
+        RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: node } =>
+          FrontierSetsProjectionRefused {
+            detail: join(["remains-superseded-revocation-on-ambiguous-declared-node:", node as String], ""),
+          }
+        RemainsSupersededRevocationsJoined =>
+          match replay_acceptance_history(events: events) {
+            Absent =>
+              FrontierSetsProjectionRefused { detail: "acceptance-history-unreplayable" }
+            Present { value: state } =>
+              match live_receipts_join_declared_nodes(receipts: state.live, nodes: declared_roadmap_nodes()) {
+                LiveReceiptJoinsSupersededLine { node: node } =>
+                  FrontierSetsProjectionRefused {
+                    detail: join(["live-receipt-on-superseded-line:", node as String], ""),
+                  }
+                LiveReceiptDoesNotMatchDeclaredNode { node: node } =>
+                  FrontierSetsProjectionRefused {
+                    detail: join(["live-receipt-does-not-match-declared-node:", node as String], ""),
+                  }
+                LiveReceiptJoinsUndeclaredNode { node: node } =>
+                  FrontierSetsProjectionRefused {
+                    detail: join(["live-receipt-on-undeclared-node:", node as String], ""),
+                  }
+                LiveReceiptJoinsAmbiguousDeclaredNode { node: node } =>
+                  FrontierSetsProjectionRefused {
+                    detail: join(["live-receipt-on-ambiguous-declared-node:", node as String], ""),
+                  }
+                LiveReceiptsJoinDeclared =>
+                  FrontierSetsProjected {
+                    accepted: accepted_node_ids_from_receipts(receipts: state.live),
+                    withheld: node_ids_held_off_active_frontier(history: events),
+                  }
               }
           }
       }
-  }
-}
-
-fn frontier_sets_from_live_history() -> FrontierSetsProjection {
-  match roadmap_acceptance_event_history_load() {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      FrontierSetsProjectionRefused { detail: detail }
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      frontier_sets_from_events(events: events)
+    }
   }
 }
 
@@ -3348,26 +3695,12 @@ type WithheldNodeIdsProjection
   = WithheldNodeIdsProjected { ids: List<RoadmapNodeId> }
   | WithheldNodeIdsProjectionRefused { detail: String }
 
-fn withheld_node_ids_from_live_history() -> WithheldNodeIdsProjection {
-  match frontier_sets_from_live_history() {
+fn withheld_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> WithheldNodeIdsProjection {
+  match frontier_sets_projection(history: history) {
     FrontierSetsProjected { accepted: _, withheld: withheld } =>
       WithheldNodeIdsProjected { ids: withheld }
     FrontierSetsProjectionRefused { detail: detail } =>
       WithheldNodeIdsProjectionRefused { detail: detail }
-  }
-}
-
-fn withheld_node_ids_from_carrier_text(text: String) -> WithheldNodeIdsProjection {
-  match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      WithheldNodeIdsProjectionRefused { detail: detail }
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      match frontier_sets_from_events(events: events) {
-        FrontierSetsProjected { accepted: _, withheld: withheld } =>
-          WithheldNodeIdsProjected { ids: withheld }
-        FrontierSetsProjectionRefused { detail: detail } =>
-          WithheldNodeIdsProjectionRefused { detail: detail }
-      }
   }
 }
 
@@ -3395,7 +3728,7 @@ type ActiveRoadmapEdgesProjection
   | ActiveRoadmapEdgesProjectionRefused { detail: String }
 
 fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ActiveRoadmapNodesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -3406,7 +3739,7 @@ fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
 }
 
 fn active_roadmap_edges_projection() -> ActiveRoadmapEdgesProjection {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ActiveRoadmapEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -3693,7 +4026,7 @@ fn closing_contract_task_pairs_for_accepted(
 }
 
 fn closing_contract_task_pairs_projection() -> ClosingContractTaskPairsProjection {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ClosingContractTaskPairsProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -3704,7 +4037,7 @@ fn closing_contract_task_pairs_projection() -> ClosingContractTaskPairsProjectio
 }
 
 fn closing_contract_task_edges_projection() -> ClosingContractTaskEdgesProjection {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ClosingContractTaskEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -3724,7 +4057,7 @@ type ProjectedRoadmapDependencyEdgesProjection
 // dependencies that the authority derives from acceptance state.
 
 fn projected_roadmap_dependency_edges_projection() -> ProjectedRoadmapDependencyEdgesProjection {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ProjectedRoadmapDependencyEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -3882,36 +4215,8 @@ fn accepted_node_ids_from_receipts(receipts: List<RoadmapAcceptanceReceipt>) -> 
     |> map(n => n.node)
 }
 
-fn roadmap_authority_projection_from_carrier_text(text: String) -> RoadmapAuthorityProjection {
-  match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      RoadmapAuthorityProjectionRefused { detail: detail }
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      match frontier_sets_from_events(events: events) {
-        FrontierSetsProjectionRefused { detail: detail } =>
-          RoadmapAuthorityProjectionRefused { detail: detail }
-        FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
-          RoadmapAuthorityProjected {
-            doc: RoadmapDocument {
-              preamble: preamble(),
-              lead_lanes: [],
-              sections: [
-                active_section_for_acceptance(
-                  focus: roadmap_focus_selection,
-                  accepted: accepted,
-                  withheld: withheld,
-                ),
-              ],
-            },
-            accepted: accepted,
-            withheld: withheld,
-          }
-      }
-  }
-}
-
-fn roadmap_authority_projection() -> RoadmapAuthorityProjection {
-  match frontier_sets_from_live_history() {
+fn roadmap_authority_projection(history: RoadmapAcceptanceEventHistoryLoad) -> RoadmapAuthorityProjection {
+  match frontier_sets_projection(history: history) {
     FrontierSetsProjectionRefused { detail: detail } =>
       RoadmapAuthorityProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -3952,7 +4257,7 @@ fn roadmap_authority_for(focus: RoadmapFocus) -> RoadmapDocument {
 }
 
 fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
-  match roadmap_authority_projection() {
+  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       RoadmapSection {
         title: "Active deliverables — dependency order",
@@ -4606,7 +4911,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
 }
 
 // Operational consumers (belt, dispatch, forecast, page, spawn) match
-// roadmap_authority_projection() and propagate RoadmapAuthorityProjectionRefused.
+// roadmap_authority_projection and propagate RoadmapAuthorityProjectionRefused.
 // roadmap_authority() is retained for witnesses that run with a loaded carrier; on refusal it
 // returns an explicit unavailable document rather than a silent empty active graph.
 
@@ -4617,7 +4922,7 @@ fn roadmap_authority_refusal_document(detail: String) -> RoadmapDocument {
       ParagraphBlock {
         inlines: [TextInline {
           text: concat(
-            "Acceptance history projection refused; match roadmap_authority_projection() at operational boundaries: ",
+            "Acceptance history projection refused; match roadmap_authority_projection at operational boundaries: ",
             detail,
           ),
         }],
@@ -4629,7 +4934,7 @@ fn roadmap_authority_refusal_document(detail: String) -> RoadmapDocument {
 }
 
 fn roadmap_authority() -> RoadmapDocument {
-  match roadmap_authority_projection() {
+  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => doc
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_authority_refusal_document(detail: detail)
@@ -4653,7 +4958,7 @@ fn expected_roadmap_md_for_projection(proj: RoadmapAuthorityProjection) -> Strin
 }
 
 fn expected_roadmap_md() -> String {
-  expected_roadmap_md_for_projection(proj: roadmap_authority_projection())
+  expected_roadmap_md_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
 }
 
 fn roadmap_drifted(committed: String) -> Bool {

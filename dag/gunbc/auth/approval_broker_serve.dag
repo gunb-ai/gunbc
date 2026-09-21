@@ -1,0 +1,550 @@
+module gunbc.auth.approval_broker_serve
+
+import extdeps.tailscale.identity { tailnet_identity_of, tailnet_identity_login }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_request_submission {
+  admit_parsed_submission, SubmissionVerified, SubmissionNotAdmitted, file_and_notify, submission_outcome_http_body, read_submission_keyring, read_publisher_token, escalation_status,
+  parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
+  SubmissionFiledAndNotified, SubmissionFiledNotNotified, SubmissionFiledPublisherTokenUnavailable, SubmissionFiledLinksNotIssued,
+  SubmissionAlreadyFiled, SubmissionStoreRefused, SubmissionRefused, SubmissionFiledCapabilityKeyUnavailable,
+  SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled, SubmissionAuthorityRefused,
+}
+import gunbc.auth.approval_decision_store {
+  approval_decision_store_root, approval_identity_trust, read_approval_keyring, redeem_over_store, store_redemption_reason,
+  RedeemedApproved, RedeemedDenied, AlreadyDecided, RedemptionSegmentMalformed, RedemptionEscalationNotFiled,
+  RedemptionBrokerRefused, RedemptionLostTheRace, RedemptionStoreUnreadable, RedemptionKeyringUnavailable,
+  RedemptionIdentityUntrusted, RedemptionCommitRefused,
+  IdentityHeaderTrustEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustNotEstablished, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_path,
+  parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
+}
+import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
+import gunbc.auth.approval_writer_authority {
+  ApprovalServingProcess, RoadmapProcess, BrokerProcess,
+  ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
+  approval_write_admission, approval_write_refusal_reason,
+}
+import gunbc.auth.approval_broker_marker {
+  ApprovalBrokerMarker, approval_broker_marked_body,
+  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
+  BrokerNoRouteMatched, BrokerMethodNotAllowed, BrokerAdapterRefused, BrokerStaticRouteServed,
+}
+import gunbc.auth.approval_broker_endpoint {
+  approval_broker_confirm_path_template,
+  approval_broker_decide_path_template,
+  approval_broker_submit_path,
+  approval_broker_status_path_template,
+  approval_broker_confirm_path_prefix,
+}
+import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpMethod, GET, POST, HttpStatus }
+import extdeps.uri_path { PathParamBinding, path_param_value }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { txt, el, el_attrs, page_render_refusal_body }
+import extdeps.http.server {
+  MediaType, text_html_utf8, text_plain_utf8,
+  ServeHttpRequest,
+  ServeHttpResponse,
+  ServeWireResponse, serve_wire_response,
+  ServedRoute, StaticRoute, DynamicRoute,
+  ServedRouteTable,
+  ServedRouteSpec, ServedRouteTableBuild, ServedRouteTableBuilt, ServedRouteTableBuildRefused,
+  serve_build_route_table,
+  RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
+  serve_select_route,
+  HttpMethodParse, KnownMethod, UnknownMethod,
+  parse_http_method_label,
+  http_method_label_join,
+}
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+
+// ── THE APPROVAL BROKER IS ITS OWN SERVED PROCESS ────────────────────────────────────────────
+// WHY THIS MODULE EXISTS AT ALL, stated as the receipt rather than as a preference (side-chat
+// ruling 2026-09-19). Boot 15 refused on an approval status poll. Nothing about the approval loop
+// was wrong: the store was intact, the capability keys were readable, the fold that answers a
+// status poll consults no roadmap and touches no plan. What failed was the PROCESS the four
+// approval routes happened to be served from -- the roadmap server, whose 18 GB heap was swapped
+// and OOM-killed. An approval could not be filed or answered because a dashboard render was
+// expensive.
+//
+// That is an AVAILABILITY DEPENDENCY, and it was created by co-tenancy alone. The four routes sat
+// in the RoadmapServeHandler coproduct and the roadmap's route table while their handlers already
+// called nothing the roadmap owns -- roadmap_serve's own annotation said so ("the approval routes
+// consult no roadmap at all"). So the fault could not be repaired inside the roadmap process: a
+// smaller render, a tighter budget or a better observation would each have made the SAME failure
+// less frequent while leaving it possible, because the shared heap is what couples them.
+//
+// SEPARATE PROCESS IS THE REPAIR, AND IT IS A CONSTRUCTION RATHER THAN A MITIGATION. Two units,
+// two slices, two MainPIDs, two restart lifecycles and two memory bounds mean the roadmap's demand
+// has no route by which it can reach the broker's resident set: the invalid state -- an approval
+// unanswerable because a roadmap page was rendered -- stops being a thing the deployment can enter
+// rather than a thing it enters less often (DESIGN section 4b, construction over mitigation).
+//
+// WHAT WAS EXTRACTED AND WHAT WAS NOT. The four handler folds below and the HTTP adapter around
+// them MOVED here; roadmap_serve no longer declares them, no longer routes to them, and no longer
+// imports the approval store or either keyring.
+//
+// ONE HELPER WAS COPIED AND THE SENTENCE ABOVE ONCE DENIED IT (review 68357). The 405 allow-set
+// join was duplicated out of roadmap_serve into this module, which made a claim of extraction
+// false in the file that made it -- and it was the third spelling of a closed map the corpus
+// already owned in two other places. The map and the join now live once, beside their own inverse,
+// at extdeps.http.server http_method_label / http_method_label_join, and all three consumers read
+// them. Recorded rather than quietly corrected, because "moved, not copied" is the claim this
+// module's whole argument rests on and it was wrong in one place. Two route owners
+// would be the section 3 fork, and two PROCESSES able to open the single-writer 0600 store would be
+// worse than a fork: the store's single-writer discipline is a property of there being one writer.
+// The authority folds -- submission verification, the store, capability redemption, notification,
+// status observation -- were already separate modules under gunbc.auth and were not touched.
+
+type ApprovalBrokerHandler
+  = ApprovalConfirmPageHandler
+  | ApprovalDecideHandler
+  | ApprovalSubmitHandler
+  | ApprovalStatusHandler
+
+// THE APPROVAL PAIR IS TWO ROUTES ON PURPOSE. The operator's tap is a GET, and a GET must not
+// spend the decision -- link previews, mail scanners, chat unfurlers and browser prefetch all
+// fetch URLs nobody has looked at. So the notification's click target is the GET, which renders
+// what is being decided and nothing else; the button on that page POSTs to the same path, and
+// that request is the only one that commits. Same capability in both, different consequence, and
+// the split is what keeps "opened the link" distinguishable from "decided".
+//
+// THE PATH LITERALS ARE NOT SPELLED HERE. gunbc.auth.approval_broker_endpoint owns them, because
+// the same four paths are also what the notification link is built from, what the front door
+// mounts, and what the boot client posts to -- four readers of one fact, and a path that is
+// spelled once per reader agrees until one of them moves.
+fn approval_broker_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
+  [
+    ServedRouteSpec { method: GET, raw: approval_broker_confirm_path_template as String, handler: ApprovalConfirmPageHandler },
+    ServedRouteSpec { method: POST, raw: approval_broker_decide_path_template as String, handler: ApprovalDecideHandler },
+    ServedRouteSpec { method: POST, raw: approval_broker_submit_path as String, handler: ApprovalSubmitHandler },
+    ServedRouteSpec { method: GET, raw: approval_broker_status_path_template as String, handler: ApprovalStatusHandler },
+  ]
+}
+
+fn approval_broker_route_table_build() -> ServedRouteTableBuild<ApprovalBrokerHandler> {
+  serve_build_route_table(specs: approval_broker_route_specs())
+}
+
+// EVERY RESPONSE EITHER SERVING PROCESS EMITS FROM THESE FOLDS PASSES THROUGH HERE, which is why
+// the marker and the process are PARAMETERS of this fold rather than something each handler
+// remembers to append. A caller cannot construct a response without naming which fold produced it
+// AND which process it is running in -- neither is validated afterwards, both are unwritable to
+// omit (DESIGN section 5: construction over validation).
+//
+// THE PROCESS PARAMETER IS NOT REDUNDANT WITH THE MARKER, and an earlier cut that carried only the
+// marker was wrong in exactly the way that matters (review 68539). These folds are mounted by BOTH
+// processes until the last cutover stage -- gunbc.roadmap.roadmap_serve projects its approval rows
+// from approval_broker_route_specs and calls approval_broker_invoke with process: RoadmapProcess --
+// so the fold arm is a fact about WHICH ROUTE MATCHED and never about WHO ANSWERED. With only the
+// fold named, a front-door probe answered by the roadmap agreed with the expected marker and the
+// cutover ADMITTED removing the roadmap's rows on evidence the roadmap produced.
+//
+// WHAT MAKES THE PROCESS TRUSTWORTHY is that it is bound by the serve ENTRY, one entry per process
+// for its life, and is threaded down rather than inferred from the request. A request cannot choose
+// it by matching a route, which is precisely what it could do to the fold arm.
+fn broker_text_response(status: HttpStatus, content_type: MediaType, body: String, marker: ApprovalBrokerMarker, process: ApprovalServingProcess) -> ServeHttpResponse {
+  ServeHttpResponse {
+    status: status,
+    content_type: content_type,
+    body: approval_broker_marked_body(content_type: content_type, body: body, m: marker, process: process),
+  }
+}
+
+// A page render refusal is a TYPED 500 carrying the emitter's reason -- never an empty page and
+// never a dropped route (DESIGN section 5). The refusal BODY is the one gunbc.site.markup
+// already declares: it is a fact about how this corpus reports a rejected HTML emission, not a
+// fact about the roadmap, and a second spelling here would be the fork this extraction exists to
+// avoid rather than one it introduces.
+fn broker_page_response(page: Fragment, marker: ApprovalBrokerMarker, process: ApprovalServingProcess) -> ServeHttpResponse {
+  match try_serialize_html_source(node: page) {
+    EmitOk { html: h } =>
+      broker_text_response(status: 200, content_type: text_html_utf8, body: h, marker: marker, process: process)
+    EmitRejected { reason: r } =>
+      broker_text_response(
+        status: 500,
+        content_type: text_plain_utf8,
+        body: page_render_refusal_body(reason: r),
+        marker: marker,
+        process: process,
+      )
+  }
+}
+
+// ── The approval routes ──────────────────────────────────────────────────────────────────────
+// THE GET RENDERS AND NEVER DECIDES. This is the operator's first sight of the request: what is
+// being asked, for which resource, for how long, and by whom. It is deliberately a plain page with
+// no side effect, because everything that fetches a URL without a person -- previews, scanners,
+// prefetch -- lands here, and landing here must cost nothing.
+//
+// It does not verify the capability either. A confirmation page that refused an unverifiable
+// capability would be an oracle: anyone able to reach the route could learn which capabilities are
+// live by watching which pages render. The page describes the decision the URL claims to carry;
+// the POST is where a claim becomes a fact.
+// IT TAKES THE PROCESS FOR MARKING AND STILL GATES ON NOTHING, and the distinction is the point.
+// Carrying the calling process is not the same as consulting it: this fold renders and writes
+// nothing, so there is no admission to make, and the parameter exists only so the response can say
+// WHICH PROCESS RENDERED IT. Review 68539 established why that is not optional -- the roadmap mounts
+// this very fold until stage 6, so a response that named only the route was emitted identically by
+// both processes and the cutover probe could not tell them apart.
+fn approval_confirm_page_response(
+  request: ServeHttpRequest,
+  params: List<PathParamBinding>,
+  process: ApprovalServingProcess,
+) -> ServeHttpResponse {
+  let segment = path_param_value(params: params, name: "capability")
+  let decision_word = match parse_capability_segment(segment: segment) {
+    CapabilitySegmentParsed { escalation_id: _, decision: ProposeApprove, tag_hex: _ } => "APPROVE"
+    CapabilitySegmentParsed { escalation_id: _, decision: ProposeDeny, tag_hex: _ } => "DENY"
+    CapabilitySegmentMalformed { detail: _ } => "(malformed capability)"
+  }
+  broker_page_response(page: el("html", [
+    el("head", [ el("title", [ txt("gunbc approval") ]), el_attrs("meta", [ attr(name: "name", value: "viewport"), attr(name: "content", value: "width=device-width, initial-scale=1") ], []) ]),
+    el("body", [
+      el("h1", [ txt(join(["Confirm: ", decision_word], "")) ]),
+      el("p", [ txt("This page does not decide anything. Opening a link -- by tapping it, previewing it, or having a scanner fetch it -- must never spend an approval, so this route renders and stops. The button below POSTs to the same path, and that request is the one that commits.") ]),
+      el("p", [ txt(join(["capability: ", segment], "")) ]),
+      el_attrs("form", [ attr(name: "method", value: "post"), attr(name: "action", value: join([approval_broker_confirm_path_prefix as String, segment], "")) ], [
+        el_attrs("button", [ attr(name: "type", value: "submit") ], [ txt(decision_word) ]),
+      ]),
+    ]),
+  ]), marker: ConfirmHandlerObserved, process: process)
+}
+
+// THE POST IS THE ONLY ROUTE THAT COMMITS, and every refusal it can produce is the broker's or
+// the store's rather than this handler's. The handler's whole job is to hand the store's fold the
+// things only the request carries -- the method, the capability segment from the path, the
+// AUTHENTICATED IDENTITY and the clock reading -- and to render whatever comes back.
+//
+// The identity comes from request.identity, which the serve entry populated from the header
+// tailscale serve injects. It is not read from the body, a query parameter, or a cookie: those are
+// all supplied by whoever is making the request, and an identity the caller supplies is not an
+// identity. And whether that header is evidence at all is the deployment's to establish, not this
+// handler's to assume: gunbc.auth.approval_decision_store approval_identity_trust says NOT
+// ESTABLISHED while the unit binds 0.0.0.0, and redeem_over_store refuses on that row before it
+// reads anything else. So until the deployment earns the trust, this route answers a located
+// refusal naming the blocker -- which is the honest successor to the 501 it used to answer, not a
+// silent 200 and not a decision nobody recorded.
+//
+// A 503 IS THE DEPLOYMENT'S OR THE STORE'S FAULT, never the operator's: it names what to fix
+// before trying again.
+//
+// THE SEGMENT IS PARSED BEFORE ANY HOST READ, AND THE CLOCK AND KEYRING ARE READ ONLY PAST THE
+// TRUST GATE. All three are ordered so that a refusal costs no effect it should have prevented: a
+// segment that is not <escalation>.<decision>.<hex> is 400 with the clock, the keyring and the
+// store untouched -- which is also what keeps the hermetic witness able to reach this handler
+// whether or not the trust standing is established, since Clock.Now has no hermetic arm.
+fn approval_decide_response(
+  request: ServeHttpRequest,
+  params: List<PathParamBinding>,
+  process: ApprovalServingProcess,
+) -> ServeHttpResponse {
+  let segment = path_param_value(params: params, name: "capability")
+  match parse_capability_segment(segment: segment) {
+    CapabilitySegmentMalformed { detail: d } =>
+      broker_text_response(
+        status: 400,
+        content_type: text_plain_utf8,
+        body: join(["approval decision: ", d as String, "\ncapability: ", segment, "\nidentity: ", tailnet_identity_login(i: request.identity), "\n"], ""),
+        marker: DecisionHandlerObserved,
+        process: process,
+      )
+    CapabilitySegmentParsed { escalation_id: _, decision: _, tag_hex: _ } =>
+      match approval_write_admission(asker: process) {
+        ApprovalWriteRefused { holder: h, asker: a } =>
+          broker_text_response(
+            status: 503,
+            content_type: text_plain_utf8,
+            body: join([approval_write_refusal_reason(holder: h, asker: a) as String, "\ncapability: ", segment, "\n"], ""),
+            marker: DecisionHandlerObserved,
+            process: process,
+          )
+        ApprovalWriteAdmitted { writer: _ } =>
+          approval_decide_parsed_response(request: request, segment: segment, process: process)
+      }
+  }
+}
+
+fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String, process: ApprovalServingProcess) -> ServeHttpResponse {
+  let observed_at = match approval_identity_trust {
+    IdentityHeaderTrustNotEstablished { blocker: _ } => ""
+    IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+    IdentityHeaderUnattributed { residual: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+  }
+  let keyring = match approval_identity_trust {
+    IdentityHeaderTrustNotEstablished { blocker: _ } => ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_mac_key_path } }
+    IdentityHeaderTrustEstablished { evidence: _ } => read_approval_keyring()
+    IdentityHeaderUnattributed { residual: _ } => read_approval_keyring()
+  }
+  let outcome = redeem_over_store(
+    root: approval_decision_store_root,
+    trust: approval_identity_trust,
+    keyring: keyring,
+    method: request.method,
+    segment: segment,
+    presented_identity: request.identity,
+    observed_at: observed_at,
+  )
+  let status = match outcome {
+    RedeemedApproved { decision: _ } => 200
+    RedeemedDenied { decision: _ } => 200
+    AlreadyDecided { decision: _ } => 200
+    RedemptionSegmentMalformed { detail: _ } => 400
+    RedemptionEscalationNotFiled { escalation_id: _ } => 404
+    RedemptionBrokerRefused { cause: _ } => 403
+    RedemptionLostTheRace => 409
+    RedemptionStoreUnreadable { detail: _ } => 503
+    RedemptionKeyringUnavailable { cause: _ } => 503
+    RedemptionIdentityUntrusted { blocker: _ } => 503
+    RedemptionCommitRefused { detail: _ } => 503
+  }
+  broker_text_response(
+    status: status,
+    content_type: text_plain_utf8,
+    body: join([
+      "approval decision: ", store_redemption_reason(r: outcome), "\n",
+      "capability: ", segment, "\n",
+      "identity: ", tailnet_identity_login(i: request.identity), "\n",
+      "observed_at: ", observed_at, "\n",
+    ], ""),
+    marker: DecisionHandlerObserved,
+    process: process,
+  )
+}
+
+// THE FILING ROUTE. No identity gate here: the filer is a workflow run on a tagged node with no
+// login to present, and its enrolment is the MAC over the canonical request under the submission
+// key (gunbc.auth.approval_request_submission). Every refusal is the fold's; this handler passes
+// the body and renders the outcome, and the response never carries a link -- links go only to the
+// operator's phone.
+fn approval_submit_response(request: ServeHttpRequest, process: ApprovalServingProcess) -> ServeHttpResponse {
+  match approval_write_admission(asker: process) {
+    ApprovalWriteRefused { holder: h, asker: a } =>
+      broker_text_response(
+        status: 503,
+        content_type: text_plain_utf8,
+        body: join([approval_write_refusal_reason(holder: h, asker: a) as String, "\n"], ""),
+        marker: SubmissionHandlerObserved,
+        process: process,
+      )
+    ApprovalWriteAdmitted { writer: _ } => approval_submit_admitted_response(request: request, process: process)
+  }
+}
+
+// THE GATE IS AHEAD OF THE ENVELOPE PARSE, deliberately. A non-writer that parsed the body first
+// would be doing the filer's work and then discarding it, and a parse refusal from a process with
+// no authority to file would tell the caller its envelope was wrong when the real answer is that it
+// is talking to the wrong process. Refusing first makes the response name the actual condition.
+// THE BODY IS THE SUBMISSION MODULE'S, NOT THIS ADAPTER'S, and that is an EXTRACTION obligation
+// rather than a preference. This fold used to assemble it here --
+// join(["approval submission: ", submission_outcome_reason(o), "\n"]) -- which was a faithful copy
+// of what roadmap_serve did on the day the routes were lifted. Main has since moved that assembly
+// into gunbc.auth.approval_request_submission submission_outcome_http_body, which wraps the reason
+// with submission_filed_text so a POLLER CAN TELL WHETHER TO POLL.
+//
+// Keeping the local spelling through this merge would have made the broker serve a body MISSING
+// that signal, on the very route the boot client polls, at the moment the cutover makes the broker
+// the server for it. Copying a body once is an extraction; keeping the copy while its authority
+// moves is a reimplementation that drifts silently -- and the tell is exactly this, a merge where
+// the other side changed a fold I had duplicated rather than consumed.
+fn approval_submit_admitted_response(request: ServeHttpRequest, process: ApprovalServingProcess) -> ServeHttpResponse {
+  let outcome = match parse_submission_envelope(text: request.body) {
+    SubmissionEnvelopeUnreadable { detail: d } => SubmissionRefused { refusal: SubmissionUnreadable { detail: d } }
+    SubmissionEnvelopeParsed { tag_hex: tag, request: r } =>
+      match admit_parsed_submission(tag_hex: tag, request: r, keyring: read_submission_keyring()) {
+        SubmissionNotAdmitted { refusal: refused } => SubmissionRefused { refusal: refused }
+        SubmissionVerified { request: admitted } =>
+          file_and_notify(
+            root: approval_decision_store_root,
+            capability_keyring: read_approval_keyring(),
+            publisher: read_publisher_token(),
+            request: admitted,
+          )
+      }
+  }
+  let status = match outcome {
+    SubmissionFiledAndNotified { escalation_id: _, message_id: _ } => 201
+    SubmissionFiledNotNotified { escalation_id: _, publish: _ } => 502
+    SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => 503
+    SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => 503
+    SubmissionAlreadyFiled { escalation_id: _ } => 409
+    SubmissionStoreRefused { detail: _ } => 503
+    SubmissionRefused { refusal: v } => match v {
+      SubmissionUnreadable { detail: _ } => 400
+      SubmissionKeyUnavailable { cause: _ } => 503
+      SubmissionNotEnrolled { detail: _ } => 403
+      SubmissionAuthorityRefused { requester: _, authority: _ } => 403
+    }
+    SubmissionFiledCapabilityKeyUnavailable { escalation_id: _, cause: _ } => 503
+  }
+  broker_text_response(
+    status: status,
+    content_type: text_plain_utf8,
+    body: submission_outcome_http_body(o: outcome),
+    marker: SubmissionHandlerObserved,
+    process: process,
+  )
+}
+
+// THE STATUS ROUTE a filing run polls: standing and, once decided, who and when. Nothing here is
+// a secret and nothing here decides, so it takes no identity and performs no write.
+// THE SEGMENT IS NON-EMPTY BY THE ROUTER'S CONSTRUCTION (extdeps.uri_path: a ParamToken binds a
+// non-empty segment and empties never match), so this handler is only ever entered with an id and
+// carries no guard for the state the router already makes unreachable (review 67057).
+fn approval_status_response(params: List<PathParamBinding>, process: ApprovalServingProcess) -> ServeHttpResponse {
+  let standing = escalation_status(root: approval_decision_store_root, escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr)
+  broker_text_response(status: standing.status, content_type: text_plain_utf8, body: standing.body, marker: StatusHandlerObserved, process: process)
+}
+
+// ── The HTTP adapter ─────────────────────────────────────────────────────────────────────────
+// THE ADAPTER TAKES NO PLAN, NO INSTANCE AND NO RELEASE REVISION, and the absence of all three is
+// the extraction's evidence rather than an omission. The roadmap's adapter threads an instance (so
+// a twin serves its own roots), a projected plan (so one response cannot mix two plans) and a
+// release revision (so /healthz can publish the launch identity). None of the four folds below
+// reads any of them: the approval store root is a deployment-wide declaration, the capability and
+// submission keys are read from the keyring, and the release identity is answered OUT OF THE
+// EVALUATOR by the liveness endpoint the seed serves (gunbc.serve_liveness), which both processes
+// get without either route table carrying it.
+//
+// So the broker's request surface is exactly what an approval request carries: a method, a path, a
+// body and the authenticated tailnet login. A parameter this adapter does not take is a way the
+// roadmap's demand cannot reach it.
+
+fn approval_broker_selection_response(
+  sel: RouteSelection<ApprovalBrokerHandler>,
+  request: ServeHttpRequest,
+  process: ApprovalServingProcess,
+) -> ServeHttpResponse {
+  match sel {
+    SelectedDynamic { handler: h, params: ps } =>
+      approval_broker_invoke(handler: h, params: ps, request: request, process: process)
+    SelectedStatic { route: r } =>
+      broker_text_response(
+        status: r.status_on_hit,
+        content_type: r.content_type,
+        body: r.body,
+        marker: BrokerStaticRouteServed,
+        process: process,
+      )
+    MethodNotAllowed { allowed: ms } =>
+      broker_text_response(
+        status: 405,
+        content_type: text_plain_utf8,
+        body: join(["method not allowed; allowed: ", http_method_label_join(methods: ms), "\n"], ""),
+        marker: BrokerMethodNotAllowed,
+        process: process,
+      )
+    NoRouteMatched =>
+      broker_text_response(status: 404, content_type: text_plain_utf8, body: "not found\n", marker: BrokerNoRouteMatched, process: process)
+  }
+}
+
+// THE INVOKE TAKES THE CALLING PROCESS, and that parameter is the whole of item 3 of the cutover
+// HOLD. Both serving processes run these same four folds, so nothing inside them can tell which
+// process it is in; the ENTRY knows, because `gunbc serve --function` binds one entry per process
+// for its life. Threading it here means the two routes that mutate the store consult
+// gunbc.auth.approval_writer_authority before touching it, and the process that is not the declared
+// writer has no spelling that reaches the store -- whether the request arrived through the front
+// door or over loopback from a client that knew the port.
+//
+// THE TWO READ ROUTES DO NOT TAKE IT. The confirmation page renders what a URL claims and writes
+// nothing; the status route observes a standing and writes nothing. Gating a read would refuse a
+// poll that is safe from either process and would say nothing true about single-writer discipline,
+// which is about mutation.
+fn approval_broker_invoke(
+  handler: ApprovalBrokerHandler,
+  params: List<PathParamBinding>,
+  request: ServeHttpRequest,
+  process: ApprovalServingProcess,
+) -> ServeHttpResponse {
+  match handler {
+    ApprovalConfirmPageHandler => approval_confirm_page_response(request: request, params: params, process: process)
+    ApprovalDecideHandler => approval_decide_response(request: request, params: params, process: process)
+    ApprovalSubmitHandler => approval_submit_response(request: request, process: process)
+    ApprovalStatusHandler => approval_status_response(params: params, process: process)
+  }
+}
+
+fn approval_broker_respond(
+  method_label: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+) -> ServeHttpResponse {
+  approval_broker_respond_as(
+    method_label: method_label,
+    path: path,
+    body: body,
+    tailscale_identity: tailscale_identity,
+    process: BrokerProcess,
+  )
+}
+
+// THE PROCESS IDENTITY IS A PARAMETER OF THE ADAPTER, and the broker's own entry supplies
+// BrokerProcess above. It is threaded rather than assumed so that the roadmap's cutover mount
+// reaches these same folds declaring RoadmapProcess, and so a claim can run the real request path
+// under either identity -- which is the only way to establish that the writer gate is ON the path
+// rather than merely declared beside it.
+fn approval_broker_respond_as(
+  method_label: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+  process: ApprovalServingProcess,
+) -> ServeHttpResponse {
+  match parse_http_method_label(label: method_label) {
+    UnknownMethod { label: l } =>
+      broker_text_response(
+        status: 501,
+        content_type: text_plain_utf8,
+        body: join(["unrecognized method: ", l, "\n"], ""),
+        marker: BrokerAdapterRefused,
+        process: process,
+      )
+    KnownMethod { method: m } =>
+      match approval_broker_route_table_build() {
+        ServedRouteTableBuildRefused { raw: r, segment: s, reason: why } =>
+          broker_text_response(
+            status: 500,
+            content_type: text_plain_utf8,
+            body: join([
+              "route table refused: malformed route literal raw=", r,
+              " segment=", s,
+              " reason=", why,
+              " (fail-closed -- fix the literal in gunbc.auth.approval_broker_endpoint)\n",
+            ], ""),
+            marker: BrokerAdapterRefused,
+            process: process,
+          )
+        ServedRouteTableBuilt { table: t } =>
+          approval_broker_selection_response(
+            sel: serve_select_route(table: t, method: m, path: path),
+            process: process,
+            request: ServeHttpRequest {
+              method: m,
+              path: path,
+              body: body,
+              identity: tailnet_identity_of(header_value: tailscale_identity),
+            },
+          )
+      }
+  }
+}
+
+// THE PROCESS ENTRY. `gunbc serve` binds --entry and --function once for the process's life and
+// hands every request the same five arguments; release_revision is one of them and this entry
+// ignores it for the reason the adapter note gives -- the launch identity is answered before the
+// evaluator is entered at all, so a route that re-answered it here would be a second authority for
+// the one fact a caller uses to decide whether this process is the release it deployed.
+fn approval_broker_handle(
+  method: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
+  serve_wire_response(r: approval_broker_respond(
+    method_label: method,
+    path: path,
+    body: body,
+    tailscale_identity: tailscale_identity,
+  ))
+}
