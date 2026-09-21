@@ -60,6 +60,7 @@ import gunbc.review_sheet_drive_actuator {
 import gunbc.review_sheet_spreadsheet_actuator {
   SpreadsheetConvergeOutcome,
   SpreadsheetAdopted,
+  SpreadsheetAdoptedByDeclaredId,
   SpreadsheetCreatedAndVerified,
   SpreadsheetCreateUnverified,
   SpreadsheetConvergeRefused,
@@ -161,7 +162,7 @@ fn converge_review_sheet_all(
   writer: ServiceAccountEmail,
   drive_id: NonEmptyStr,
   policy: EnsurePolicy,
-) -> ReviewSheetConvergeReport uses net: Network {
+) -> ReviewSheetConvergeReport uses net: Network, fs: std.resources.Filesystem {
   ReviewSheetConvergeReport {
     sheets_api: converge_service_enablement(
       token: token,
@@ -229,6 +230,7 @@ fn membership_is_converged(o: MembershipConvergeOutcome) -> Bool {
 fn spreadsheet_is_converged(o: SpreadsheetConvergeOutcome) -> Bool {
   match o {
     SpreadsheetAdopted { file_id: _ } => true
+    SpreadsheetAdoptedByDeclaredId { file_id: _ } => true
     SpreadsheetCreatedAndVerified { file_id: _ } => true
     SpreadsheetCreateUnverified { cause: _ } => false
     SpreadsheetConvergeRefused { cause: _ } => false
@@ -321,7 +323,7 @@ fn converge_drive_half(
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
   policy: EnsurePolicy,
-) -> DriveHalfReport uses net: Network {
+) -> DriveHalfReport uses net: Network, fs: std.resources.Filesystem {
   DriveHalfReport {
     membership: converge_drive_membership(drive_id: drive_id, writer: writer, policy: policy),
     spreadsheet: converge_review_spreadsheet(
@@ -347,7 +349,7 @@ fn drive_half_text(r: DriveHalfReport) -> String {
   )
 }
 
-fn converge_drive_half_cli() -> ProcessExit uses net: Network {
+fn converge_drive_half_cli() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
   match calling_home_resolution() {
     HomeUnresolved { cause: c } => exit_failure(reason: c as String)
     HomeResolved { project_id: _, writer: w } =>
@@ -403,6 +405,7 @@ fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition uses net: 
 fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition uses net: Network {
   match o {
     SpreadsheetAdopted { file_id: id } => format_with_validated_schema(id: id)
+    SpreadsheetAdoptedByDeclaredId { file_id: id } => format_with_validated_schema(id: id)
     SpreadsheetCreatedAndVerified { file_id: id } => format_with_validated_schema(id: id)
     SpreadsheetCreateUnverified { cause: c } => FormatSkipped { cause: c }
     SpreadsheetConvergeRefused { cause: c } => FormatSkipped { cause: c }
@@ -434,7 +437,7 @@ fn format_disposition_is_applied(d: FormatDisposition) -> Bool {
   }
 }
 
-fn drive_half_exit(report: DriveHalfReport) -> ProcessExit uses net: Network {
+fn drive_half_exit(report: DriveHalfReport) -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
   if drive_half_is_converged(r: report) {
     let formatting = format_converged_spreadsheet(o: report.spreadsheet)
     if format_disposition_is_applied(d: formatting) {
