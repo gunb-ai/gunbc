@@ -5,12 +5,14 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.algebra { trim }
 import product.capacity.event_chain { PartitionId }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_compute_root }
+import gunbc.compute.host_capacity { compute_capacity_store }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance, dashboard_instance_compute_root }
 import gunbc.compute.host_capacity {
-  ComputeCapacitySubject, compute_capacity_subject, compute_capacity_root, compute_memory_partition,
+  ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
+  compute_capacity_subject, compute_capacity_root, compute_memory_partition,
   HostMemoryObservation, HostMemoryObserved, HostMemoryUnobserved, observe_host_memory,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
-  compute_reserve_on, compute_release, ComputeRelease, ComputeReleased, ComputeReleaseRefused,
+  compute_reserve_on, compute_release, compute_release_on, ComputeRelease, ComputeReleased, ComputeReleaseRefused,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
 }
 
@@ -153,16 +155,29 @@ test fn an_appropriation_larger_than_the_machine_refuses_rather_than_admitting()
 // deployment join, and what it must establish is the ROUTE and not only the shape: the ledger a
 // live instance reserves against is rooted under THAT INSTANCE'S compute root, and its partition
 // names that instance, so two instances on one machine cannot silently transact on one pool.
-test fn the_deployment_join_roots_the_ledger_under_the_instance_compute_root() -> Bool {
-  let instance = srv1_live_dashboard_instance()
-  let subject = compute_capacity_subject(instance: instance)
-  let compute_root = dashboard_instance_compute_root(instance: instance) as String
-  starts_with(s: subject.root as String, prefix: compute_root)
-    && (subject.root as String) == join([compute_root, "/capacity"], "")
-    && string_contains(s: subject.partition as String, pattern: instance.instance_id as String)
-    && kibibyte_count(k: subject.appropriation) == kibibyte_count(k: subject.request) * 2
-    && kibibyte_count(k: subject.request) > 0
+test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let lab = srv1_lab_dashboard_instance()
+  match compute_capacity_subject(instance: live) {
+    ComputeSubjectHostUnresolved { host: _ } => false
+    ComputeSubjectResolved { subject: a } =>
+      match compute_capacity_subject(instance: lab) {
+        ComputeSubjectHostUnresolved { host: _ } => false
+        ComputeSubjectResolved { subject: b } =>
+          (live.instance_id as String) != (lab.instance_id as String)
+            && (live.instance_root as String) != (lab.instance_root as String)
+            && (live.host_identity as String) == (lab.host_identity as String)
+            && (a.partition as String) == (b.partition as String)
+            && (a.root as String) == (b.root as String)
+            && string_contains(s: a.partition as String, pattern: live.host_identity as String)
+            && !string_contains(s: a.partition as String, pattern: lab.instance_id as String)
+            && (a.root as String) == join([dashboard_instance_compute_root(instance: live) as String, "/capacity"], "")
+            && kibibyte_count(k: a.appropriation) == kibibyte_count(k: a.request) * 2
+            && kibibyte_count(k: a.request) > 0
+      }
+  }
 }
+
 
 // A LEDGER REFUSAL IS NOT A CAPACITY REFUSAL, and this cell exists because the two were conflated in
 // production and the conflation was only visible on a real host. The reservation reference names one
@@ -182,4 +197,58 @@ test fn a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool
     && is_ledger_refusal(r: again)
     && !is_capacity_full(r: again)
     && reserved_amount(r: other) == one_gibibyte_in_kibibytes
+}
+
+// THE DOUBLE PROMISE, AND IT IS THE CELL THE COMPARE-AND-SET COULD NOT SUPPLY. Two requests whose
+// SUM exceeds what the machine says is free, against a pool whose declared appropriation is large
+// enough for both: the first admits, and the second must be refused because the pool's committed
+// total and the host's own reading are adjudicated in ONE step. Before that, each request compared
+// itself alone against the reading, both passed, and both fit the appropriation -- so both admitted
+// and the host was promised memory it does not have. The linearization was never the defect.
+//
+// The appropriation here is deliberately FOUR requests wide, so nothing about the declared share
+// can explain the refusal; only the machine's reading can. The backing ceiling is derived from the
+// live observation, so the fixture states the relation rather than a number: it asks for slightly
+// more than half of what the host reports free, twice.
+test fn two_requests_summing_past_the_observed_headroom_cannot_both_admit() -> Bool {
+  match observe_host_memory() {
+    HostMemoryUnobserved { detail: _ } => false
+    HostMemoryObserved { total: _, available: available } => {
+      let each = kibibyte_count(k: available) / 2 + 1024
+      let subject = subject_at(root: fresh_root(), appropriation_kib: each * 4, request_kib: each)
+      let first = compute_reserve_on(subject: subject, reference: "wet-headroom-a" as NonEmptyStr, term_seconds: 60)
+      let second = compute_reserve_on(subject: subject, reference: "wet-headroom-b" as NonEmptyStr, term_seconds: 60)
+      reserved_amount(r: first) == each
+        && is_capacity_full(r: second)
+        && each * 2 > kibibyte_count(k: available)
+        && each * 4 > each * 2
+    }
+  }
+}
+
+// A WEDGED SEAT CAN ACTUALLY BE RECOVERED, BY REFERENCE, BY SOMEONE WHO NEVER HELD THE RESERVATION.
+// Under QuiescenceRequired a term frees nothing, so this route is the ONLY way capacity returns
+// after a release fails to land -- and until review 69595 the module claimed it in prose while no
+// declaration reached it. The cell holds the whole appropriation, releases it with nothing but the
+// reference (the reservation value is deliberately not used), and shows the capacity is admissible
+// again.
+//
+// AND A REFERENCE THE POOL IS NOT HOLDING WRITES NOTHING. That is the sharper half: an unheld
+// reference appended anyway would not fail at the append, it would fail at every later READ, when
+// the fold hits UnknownEncumbrance and refuses the WHOLE partition. So the refusal is asserted
+// BESIDE a subsequent successful reservation, which is what establishes the ledger is still
+// readable after the bad attempt.
+test fn a_held_seat_is_recoverable_by_reference_and_an_unheld_one_writes_nothing() -> Bool {
+  let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes, request_kib: one_gibibyte_in_kibibytes)
+  let store = compute_capacity_store(subject: subject)
+  let held = compute_reserve_on(subject: subject, reference: "wet-wedged" as NonEmptyStr, term_seconds: 60)
+  let full = compute_reserve_on(subject: subject, reference: "wet-blocked" as NonEmptyStr, term_seconds: 60)
+  let bogus = compute_release_on(store: store, partition: subject.partition, appropriation: subject.appropriation, reference: "wet-never-held" as NonEmptyStr, reason: "operator recovery" as NonEmptyStr)
+  let recovered = compute_release_on(store: store, partition: subject.partition, appropriation: subject.appropriation, reference: "wet-wedged" as NonEmptyStr, reason: "operator recovery" as NonEmptyStr)
+  let readmitted = compute_reserve_on(subject: subject, reference: "wet-after-recovery" as NonEmptyStr, term_seconds: 60)
+  reserved_amount(r: held) == one_gibibyte_in_kibibytes
+    && is_capacity_full(r: full)
+    && !released(r: bogus)
+    && released(r: recovered)
+    && reserved_amount(r: readmitted) == one_gibibyte_in_kibibytes
 }

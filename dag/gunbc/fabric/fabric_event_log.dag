@@ -16,7 +16,7 @@ import std.fabric_storage {
 import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced }
 import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_binding_for, fabric_storage_head, fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady, FabricStorageRootRefused }
-import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
+import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at, PoolOutcome, PoolAdvanced, PoolRefused, pool_release, pool_refusal_wire }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
   event_parent_expectation, AppendDecision, AppendAdmitted, AppendStale, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_from_head,
@@ -25,6 +25,7 @@ import product.capacity.event_chain {
 import product.capacity.pool_events {
   PoolEvent, pool_event_wire_text, pool_event_decode,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold, SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, grant_from_admission,
+  PoolReleased,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, release_law_eq, release_law_wire }
 
@@ -399,6 +400,101 @@ fn pool_event_append_wire(a: PoolEventAppend) -> String {
     PoolEventAppended { id: h } => join(["appended ", h as String], "")
     PoolEventContended { attempts: n } => join(["contended after ", to_string(n), " attempts"], "")
     PoolEventAppendRefused { detail: d } => join(["refused ", d], "")
+  }
+}
+
+// RELEASING A SEAT, AND IT IS CHECKED AGAINST THE FOLDED POOL BEFORE ANYTHING IS APPENDED.
+//
+// fabric_pool_event_append is unchecked by construction -- it writes the event a caller hands it --
+// which is correct for a settlement whose amount the caller already knows and WRONG for a release,
+// because a release names a reference the ledger may not be holding. An unheld reference appended
+// anyway does not fail at the append: it fails at the next READ, when pool_fold reaches the event,
+// gets UnknownEncumbrance, and answers PoolFoldRefused for the WHOLE PARTITION. One mistyped
+// reference in a recovery command would make a host's capacity ledger permanently unreadable, and
+// the damage would surface at an unrelated caller's next acquire.
+//
+// So this is the mirror of fabric_seat_acquire and not of the settlement helper: read the partition,
+// fold it, PROPOSE the release against the folded pool, and append only what the pool admits. A
+// reference the pool is not holding is a typed refusal that writes nothing.
+//
+// ITS CONSUMER IS THE RECOVERY ROUTE A HELD SEAT NEEDS (gunbc.compute.host_capacity
+// compute_release_reference, reached from the operator CLI compute_release_cli). Under
+// QuiescenceRequired a term never frees capacity, so an explicit release is the ONLY way a seat
+// comes back, and a module claiming that route owes one that executes (review 69595 on gunbc#11962,
+// DESIGN 3c).
+type SeatRelease
+  = SeatReleased { reference: NonEmptyStr, id: EventId }
+  | SeatNotHeld { reference: NonEmptyStr, wire: String }
+  | SeatReleaseContended { attempts: Nat }
+  | SeatReleaseRefused { step: String, reason: String }
+
+type SeatReleaseState {
+  done: SeatRelease?
+}
+
+fn seat_release_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, reference: NonEmptyStr, reason: NonEmptyStr, at: EpochSecs, budget: Nat) -> SeatRelease? {
+  match event_log_read_partition(store: store, partition: partition, budget: budget) {
+    PartitionReadRefused { cause: c } => Present { value: SeatReleaseRefused { step: "store", reason: event_log_refusal_wire(cause: c) } }
+    PartitionReadOk { head: head, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } => Present { value: SeatReleaseRefused { step: "chain", reason: join(["partition chain is missing event ", m as String], "") } }
+        ChainBudgetExhausted { at: a } => Present { value: SeatReleaseRefused { step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], "") } }
+        ChainWalked { oldest_first: xs } =>
+          match pool_fold(root: root, oldest_first: xs) {
+            PoolFoldRefused { at_event: e, wire: w } => Present { value: SeatReleaseRefused { step: "fold", reason: join(["event ", e as String, " refused: ", w], "") } }
+            PoolFolded { pool: p, generation: _ } =>
+              match pool_release(pool: p, reference: reference, reason: reason, at: at) {
+                PoolRefused { refusal: r } => Present { value: SeatNotHeld { reference: reference, wire: pool_refusal_wire(r: r) } }
+                PoolAdvanced { pool: _ } =>
+                  match event_log_append(
+                    store: store,
+                    partition: partition,
+                    event: ChainEvent {
+                      partition: partition,
+                      parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+                      recorded_at: at,
+                      actor: reference,
+                      payload: PoolReleased { reference: reference, reason: reason },
+                    },
+                    expected: head,
+                  ) {
+                    EventAppended { id: h } => Present { value: SeatReleased { reference: reference, id: h } }
+                    EventAppendStale { expected: _, observed: _ } => none
+                    EventAppendRefused { cause: c } => Present { value: SeatReleaseRefused { step: "store", reason: event_log_refusal_wire(cause: c) } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn fabric_seat_release<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, reference: NonEmptyStr, reason: NonEmptyStr, at: EpochSecs, attempts: Nat, budget: Nat) -> SeatRelease {
+  let st = fold(nat_range_inclusive(lo: 1, hi: attempts), init: SeatReleaseState { done: none }, f: (acc, _i) =>
+    match acc.done {
+      Present { value: _ } => acc
+      Absent => SeatReleaseState { done: seat_release_attempt(store: store, partition: partition, root: root, reference: reference, reason: reason, at: at, budget: budget) }
+    })
+  match st.done {
+    Present { value: d } => d
+    Absent => SeatReleaseContended { attempts: attempts }
+  }
+}
+
+fn seat_release_wire(r: SeatRelease) -> String {
+  match r {
+    SeatReleased { reference: ref_, id: h } => join(["released ", ref_ as String, " at ", h as String], "")
+    SeatNotHeld { reference: ref_, wire: w } => join(["the pool is not holding ", ref_ as String, ": ", w], "")
+    SeatReleaseContended { attempts: n } => join(["contended after ", to_string(n), " attempts"], "")
+    SeatReleaseRefused { step: s, reason: why } => join(["refused at ", s, ": ", why], "")
+  }
+}
+
+fn seat_release_landed(r: SeatRelease) -> Bool {
+  match r {
+    SeatReleased { reference: _, id: _ } => true
+    SeatNotHeld { reference: _, wire: _ } => false
+    SeatReleaseContended { attempts: _ } => false
+    SeatReleaseRefused { step: _, reason: _ } => false
   }
 }
 

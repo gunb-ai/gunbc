@@ -245,6 +245,18 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "a_held_seat_is_recoverable_by_reference_and_an_unheld_one_writes_nothing" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "a_held_seat_is_recoverable_by_reference_and_an_unheld_one_writes_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "two_requests_summing_past_the_observed_headroom_cannot_both_admit" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "two_requests_summing_past_the_observed_headroom_cannot_both_admit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool" },
       entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
       function: "a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool",
@@ -269,9 +281,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "the_deployment_join_roots_the_ledger_under_the_instance_compute_root" },
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "two_instances_on_one_host_resolve_to_one_pool_at_one_root" },
       entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
-      function: "the_deployment_join_roots_the_ledger_under_the_instance_compute_root",
+      function: "two_instances_on_one_host_resolve_to_one_pool_at_one_root",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

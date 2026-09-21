@@ -15,10 +15,14 @@ import gunbc.fabric_event_log {
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused,
   fabric_seat_acquire, seat_acquisition_wire,
   SeatStandingObservation, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved, SeatStandingStoreRefused, fabric_seat_observe,
+  SeatRelease, SeatReleased, SeatNotHeld, SeatReleaseContended, SeatReleaseRefused, fabric_seat_release, seat_release_wire,
   PoolEventAppend, PoolEventAppended, PoolEventContended, PoolEventAppendRefused, fabric_pool_event_append, pool_event_append_wire,
 }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_compute_root }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance, dashboard_instance_compute_root,
+  DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host,
+}
 
 // THE HOST'S COMPUTE MEMORY IS A POOL, AND A WORK REQUEST TAKES A SEAT IN IT BEFORE IT RUNS.
 //
@@ -72,21 +76,47 @@ type ComputeCapacitySubject {
   request: Kibibyte
 }
 
-fn compute_capacity_root(instance: HostDashboardInstance) -> NonEmptyStr {
-  join([dashboard_instance_compute_root(instance: instance) as String, "/capacity"], "") as NonEmptyStr
+// THE POOL IS A HOST'S, AND KEYING IT BY THE INSTANCE WAS A MIS-KEYING (side-chat review of
+// gunbc#11962 at dd240f0d, 2026-09-21). srv1 declares TWO dashboard instances -- srv1-live and
+// srv1-lab -- with different ids and different instance roots, and the memory they would spend is
+// ONE machine's. An instance-keyed partition gives each of them its own appropriation and its own
+// ledger, so two pools each promise the same bytes and neither can see the other: the exclusion the
+// compare-and-set provides is perfect and is about the wrong subject.
+//
+// So both halves are keyed by the HOST. The partition names the host identity, and the ledger is
+// rooted under the instance THAT HOST resolves to -- gunbc.roadmap_dashboard_instance
+// dashboard_instance_for_host, the same host-to-instance authority the fabric event log already
+// uses to decide where a host's log lives. Two instances on one host therefore resolve to one
+// partition at one root, which is the single host-scoped authority this fact needs; inventing a new
+// host-scoped path would have been a second one.
+//
+// A HOST THAT AUTHORITY CANNOT RESOLVE RESERVES NOTHING. It is not defaulted to the calling
+// instance: that is exactly the fork this fix removes, re-entering through a fallback.
+type ComputeSubjectResolution
+  = ComputeSubjectResolved { subject: ComputeCapacitySubject }
+  | ComputeSubjectHostUnresolved { host: NonEmptyStr }
+
+fn compute_capacity_root(host_instance: HostDashboardInstance) -> NonEmptyStr {
+  join([dashboard_instance_compute_root(instance: host_instance) as String, "/capacity"], "") as NonEmptyStr
 }
 
-fn compute_memory_partition(instance: HostDashboardInstance) -> PartitionId {
-  join(["compute-memory-", instance.instance_id as String], "") as PartitionId
+fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {
+  join(["compute-memory-", host as String], "") as PartitionId
 }
 
 // THE JOIN WITH THE DEPLOYMENT, and the only function in this module that knows what an instance is.
-fn compute_capacity_subject(instance: HostDashboardInstance) -> ComputeCapacitySubject {
-  ComputeCapacitySubject {
-    root: compute_capacity_root(instance: instance),
-    partition: compute_memory_partition(instance: instance),
-    appropriation: compute_memory_appropriation(instance: instance),
-    request: compute_request_memory(instance: instance),
+fn compute_capacity_subject(instance: HostDashboardInstance) -> ComputeSubjectResolution {
+  match dashboard_instance_for_host(host: instance.host_identity as String) {
+    DashboardInstanceHostUnknown { host: h } => ComputeSubjectHostUnresolved { host: h as NonEmptyStr }
+    DashboardInstanceForHost { instance: host_instance } =>
+      ComputeSubjectResolved {
+        subject: ComputeCapacitySubject {
+          root: compute_capacity_root(host_instance: host_instance),
+          partition: compute_memory_partition(host: instance.host_identity),
+          appropriation: compute_memory_appropriation(instance: host_instance),
+          request: compute_request_memory(instance: instance),
+        },
+      }
   }
 }
 
@@ -170,10 +200,45 @@ fn compute_lease_policy(term_seconds: Nat) -> LeasePolicy {
   LeasePolicy { maximum_duration_seconds: term_seconds, release_law: QuiescenceRequired }
 }
 
-fn compute_memory_root_pool(subject: ComputeCapacitySubject) -> Pool<Memory, Kibi> {
+// THE BACKING RELATION, AND IT IS THE WHOLE REASON THE TWO OBSERVATIONS ARE NOT INDEPENDENT CHECKS.
+//
+// The first revision compared the pool's committed total against the appropriation in one place and
+// the machine's live availability against ONE request in another. Both checks passed and the pair
+// still double-promised (side-chat review of gunbc#11962 at dd240f0d, 2026-09-21): with a 52 GiB
+// appropriation, 30 GiB available and two 26 GiB requests, each request sees 26 <= 30 and each fits
+// the appropriation, so BOTH admit -- because neither sees the other's granted-but-not-yet-consumed
+// memory. The compare-and-set was doing its job perfectly on a question that was missing a term.
+//
+// The fix is not a third check. The pool already computes the committed total INSIDE the linearized
+// fold, so the machine's reading belongs in the SAME comparison: the ceiling this attempt is
+// adjudicated against is the smaller of the declared appropriation and what the host says is free.
+// Then "everything this pool has promised, plus what I am asking for, must fit in what the machine
+// actually has" is one predicate evaluated in one CAS'd step, and the second 26 GiB request is
+// refused as a full pool because 26 + 26 > 30.
+//
+// WORST-CASE-SOUND, AND CONSERVATIVE, AND SAYING SO. MemAvailable already excludes whatever the
+// pool's outstanding grants have actually touched, so a grant that is fully resident is counted
+// twice -- once in the machine's reading and once in the committed total. That errs toward refusing
+// work the host could have run, which is the direction a safety admission must err in when the term
+// it needs is unobserved. The exact relation needs the RESIDENT share of outstanding grants, which
+// is observable -- each grant runs in a named transient unit with its own cgroup -- and is not
+// observed here. DECLARED FRONTIER (DESIGN 3c), trigger: a per-host read of the compute units'
+// current usage, whose first consumer is this fold; until it lands the conservative bound stands
+// and the cost is stated rather than hidden.
+//
+// A CEILING THAT MOVES BETWEEN ATTEMPTS IS SAFE BY CONSTRUCTION HERE, which is why this is a ceiling
+// and not a pre-check. product.capacity.pool ruled that replay does not adjudicate the ceiling --
+// an event's admission happened when it was written -- so a dip in availability cannot make a
+// historical acquire refuse the fold and poison the partition. It makes the pool over-committed,
+// which refuses new acquires until it drains. That is the correct consequence of a reduction.
+fn compute_backing_ceiling(subject: ComputeCapacitySubject, available: Kibibyte) -> Kibibyte {
+  if kibibyte_count(k: available) < kibibyte_count(k: subject.appropriation) { available } else { subject.appropriation }
+}
+
+fn compute_memory_root_pool(subject: ComputeCapacitySubject, ceiling: Kibibyte) -> Pool<Memory, Kibi> {
   pool_of(
     identity: subject.partition as String as NonEmptyStr,
-    ceiling: subject.appropriation,
+    ceiling: ceiling,
     replenishment: NoReplenishment,
     release_law: QuiescenceRequired,
   )
@@ -198,7 +263,11 @@ data compute_partition_read_budget: Nat = 4096
 // the declared share is a configuration error that would otherwise present as an OOM kill during a
 // build, which is the same information arriving hours later and destructively.
 fn compute_reserve(instance: HostDashboardInstance, reference: NonEmptyStr, term_seconds: Nat) -> ComputeReservation {
-  compute_reserve_on(subject: compute_capacity_subject(instance: instance), reference: reference, term_seconds: term_seconds)
+  match compute_capacity_subject(instance: instance) {
+    ComputeSubjectHostUnresolved { host: h } =>
+      ComputeReservationRefused { detail: join(["no dashboard instance is declared for host ", h as String, ", so this host has no compute capacity authority to reserve against"], "") }
+    ComputeSubjectResolved { subject: subject } => compute_reserve_on(subject: subject, reference: reference, term_seconds: term_seconds)
+  }
 }
 
 fn compute_reserve_on(subject: ComputeCapacitySubject, reference: NonEmptyStr, term_seconds: Nat) -> ComputeReservation {
@@ -221,7 +290,7 @@ fn compute_reserve_on(subject: ComputeCapacitySubject, reference: NonEmptyStr, t
           FabricStorageRootReady =>
             match now_epoch_seconds() {
               Absent => ComputeReservationRefused { detail: "the clock could not be read as epoch seconds" }
-              Present { value: now } => compute_seat(subject: subject, reference: reference, now: now, term_seconds: term_seconds)
+              Present { value: now } => compute_seat(subject: subject, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(subject: subject, available: available))
             }
         }
       }
@@ -233,12 +302,12 @@ fn compute_reserve_on(subject: ComputeCapacitySubject, reference: NonEmptyStr, t
 // an operator looking for a busy host while srv1 had 400 GiB free (2026-09-21). The marker is read
 // from the authority that writes it (product.capacity.pool_events pool_full_wire), never re-spelled
 // here, and anything else is a ledger refusal with its text carried through.
-fn compute_seat(subject: ComputeCapacitySubject, reference: NonEmptyStr, now: EpochSecs, term_seconds: Nat) -> ComputeReservation {
+fn compute_seat(subject: ComputeCapacitySubject, reference: NonEmptyStr, now: EpochSecs, term_seconds: Nat, ceiling: Kibibyte) -> ComputeReservation {
   let store = compute_capacity_store(subject: subject)
   match fabric_seat_acquire(
     store: store,
     partition: subject.partition,
-    root: compute_memory_root_pool(subject: subject),
+    root: compute_memory_root_pool(subject: subject, ceiling: ceiling),
     actor: reference,
     request: SeatRequest { reference: reference, amount: kibibyte_count(k: subject.request), at: now, term_seconds: term_seconds },
     policy: compute_lease_policy(term_seconds: term_seconds),
@@ -275,16 +344,78 @@ fn compute_release(reservation: ComputeReservation, reason: NonEmptyStr) -> Comp
     ComputeHostBelowFloor { requested: _, available: _ } => ComputeReleaseRefused { detail: "nothing to release: the host was below its live memory floor" }
     ComputeReservationRefused { detail: d } => ComputeReleaseRefused { detail: join(["nothing to release: ", d], "") }
     ComputeReserved { grant: g, partition: p, amount: _, store: store } =>
-      match now_epoch_seconds() {
-        Absent => ComputeReleaseRefused { detail: "the clock could not be read as epoch seconds" }
-        Present { value: now } =>
-          match fabric_pool_event_append(
-            store: store, partition: p, actor: g.reference, at: now,
-            payload: PoolReleased { reference: g.reference, reason: reason }, attempts: compute_seat_attempts,
-          ) {
-            PoolEventAppended { id: _ } => ComputeReleased { partition: p, reference: g.reference, reason: reason }
-            other => ComputeReleaseRefused { detail: pool_event_append_wire(a: other) }
-          }
+      compute_release_on(store: store, partition: p, appropriation: kibibyte(count: 0), reference: g.reference, reason: reason)
+  }
+}
+
+// THE RECOVERY ROUTE, AND IT EXISTS BECAUSE THE MODULE CLAIMED IT (review 69595 on gunbc#11962).
+//
+// The prose above says a wedged seat is recovered by an explicit release naming why. Until this
+// function that was FALSE: compute_release took a ComputeReservation, whose only constructor is
+// compute_reserve_on, whose result lives and dies inside one compute_provide_leaf invocation. So a
+// release that failed to land left an encumbrance that -- under QuiescenceRequired, which by design
+// never lapses -- nothing in the corpus could ever discharge. Two of those consume the whole host
+// appropriation, and every later request then gets a CAPACITY refusal on a host with its memory
+// free: the exact conflation this change added a witness to prevent, arriving through a different
+// door. A claimed route that no declaration reaches is the dangling consumption DESIGN 3c refuses.
+//
+// IT TAKES A REFERENCE, because that is all a recovering operator has: the reservation value is
+// gone with the process that held it, and the reference is what the ledger and the obligation file
+// both name. It is CHECKED against the folded pool before anything is appended -- a reference the
+// pool is not holding writes nothing and refuses by name, because appending a release for an unheld
+// reference would make the partition unfoldable for every later reader.
+fn compute_release_reference(instance: HostDashboardInstance, reference: NonEmptyStr, reason: NonEmptyStr) -> ComputeRelease {
+  match compute_capacity_subject(instance: instance) {
+    ComputeSubjectHostUnresolved { host: h } =>
+      ComputeReleaseRefused { detail: join(["no dashboard instance is declared for host ", h as String], "") }
+    ComputeSubjectResolved { subject: subject } =>
+      compute_release_on(
+        store: compute_capacity_store(subject: subject),
+        partition: subject.partition,
+        appropriation: subject.appropriation,
+        reference: reference,
+        reason: reason,
+      )
+  }
+}
+
+// ONE RELEASE PATH FOR BOTH DOORS. The provider's own completion and the operator's recovery append
+// the same event against the same check; a second spelling of "give the seat back" is the fork this
+// module would otherwise grow the moment recovery existed.
+//
+// THE APPROPRIATION PASSED HERE IS NOT LOAD-BEARING AND THE ZERO IS NOT A FABRICATED READING. product.capacity.pool
+// ruled that replay never adjudicates the ceiling, so a release is decided by whether the ledger
+// HOLDS the reference and by nothing about capacity; a reservation released from its own provider
+// carries no subject to read an appropriation from, and inventing one for it would be a number with
+// no consequence. Where a subject is at hand it is passed; where none is, zero is passed, and zero
+// cannot admit anything -- which is the right direction for a value nothing should be deciding on.
+fn compute_release_on(
+  store: FabricStorageBinding,
+  partition: PartitionId,
+  appropriation: Kibibyte,
+  reference: NonEmptyStr,
+  reason: NonEmptyStr,
+) -> ComputeRelease {
+  match now_epoch_seconds() {
+    Absent => ComputeReleaseRefused { detail: "the clock could not be read as epoch seconds" }
+    Present { value: now } =>
+      match fabric_seat_release(
+        store: store,
+        partition: partition,
+        root: pool_of(
+          identity: partition as String as NonEmptyStr,
+          ceiling: appropriation,
+          replenishment: NoReplenishment,
+          release_law: QuiescenceRequired,
+        ),
+        reference: reference,
+        reason: reason,
+        at: now,
+        attempts: compute_seat_attempts,
+        budget: compute_partition_read_budget,
+      ) {
+        SeatReleased { reference: r, id: _ } => ComputeReleased { partition: partition, reference: r, reason: reason }
+        other => ComputeReleaseRefused { detail: seat_release_wire(r: other) }
       }
   }
 }
@@ -302,7 +433,10 @@ type ComputeCapacityStanding
   | ComputeCapacityStandingUnread { detail: String }
 
 fn compute_capacity_standing(instance: HostDashboardInstance) -> ComputeCapacityStanding {
-  compute_capacity_standing_on(subject: compute_capacity_subject(instance: instance))
+  match compute_capacity_subject(instance: instance) {
+    ComputeSubjectHostUnresolved { host: h } => ComputeCapacityStandingUnread { detail: join(["no dashboard instance is declared for host ", h as String], "") }
+    ComputeSubjectResolved { subject: subject } => compute_capacity_standing_on(subject: subject)
+  }
 }
 
 fn compute_capacity_standing_on(subject: ComputeCapacitySubject) -> ComputeCapacityStanding {
@@ -315,7 +449,7 @@ fn compute_capacity_standing_on(subject: ComputeCapacitySubject) -> ComputeCapac
           match fabric_seat_observe(
             store: compute_capacity_store(subject: subject),
             partition: subject.partition,
-            root: compute_memory_root_pool(subject: subject),
+            root: compute_memory_root_pool(subject: subject, ceiling: subject.appropriation),
             at: now,
             budget: compute_partition_read_budget,
           ) {

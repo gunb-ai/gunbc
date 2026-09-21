@@ -23,7 +23,7 @@ import gunbc.roadmap_execution_contract {
 import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size }
 import gunbc.compute.host_capacity {
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
-  ComputeRelease, ComputeReleased, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire,
+  ComputeRelease, ComputeReleased, ComputeReleaseRefused, compute_reserve, compute_release, compute_release_reference, compute_reservation_wire,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
 }
 import gunbc.compute.work_request {
@@ -66,6 +66,7 @@ type ComputeLayout {
   log_path: String
   outcome_path: String
   consumption_path: String
+  obligation_path: String
 }
 
 fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
@@ -83,6 +84,7 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
     log_path: join([work_dir, "/log"], ""),
     outcome_path: join([work_dir, "/outcome.json"], ""),
     consumption_path: join([work_dir, "/consumption"], ""),
+    obligation_path: join([work_dir, "/unreleased-reservation"], ""),
   }
 }
 
@@ -272,6 +274,127 @@ fn compute_basename(path: String) -> String {
 // makes the retry cheap; what must never happen is a caller attaching to a failure it did not ask for); refuse at the cap or behind a lease; take the lease; check out;
 // run; return outputs; write the outcome; release the lease. A refusal before the lease leaves no
 // state; a refusal after it leaves the lease released and the outcome written.
+// SETTLING A RUN THAT HAS FINISHED, AND THE ONE RULE THAT GOVERNS IT: THE DURABLE RECORD AND THE
+// CALLER MUST AGREE ABOUT WHAT HAPPENED.
+//
+// They did not. The outcome document was written unconditionally, so a run whose work SUCCEEDED but
+// whose reservation failed to release wrote WorkSucceeded to outcome.json and handed its caller a
+// WorkRefusedByInfrastructure -- and the next caller of that identity ATTACHED to the stored
+// success, which is the contract behaving correctly on a record that had quietly become a lie about
+// the infrastructure's state. The leaked seat then had no consumer that would ever look for it
+// (side-chat review of gunbc#11962 at dd240f0d, 2026-09-21).
+//
+// THE RESOLUTION IS NOT TO SUPPRESS THE SUCCESS. The work really did succeed and its outputs really
+// are in the store; deleting that fact would make every later caller rebuild and would be a second
+// lie in the other direction. The run's ending and the infrastructure's unresolved obligation are
+// TWO FACTS, so they are recorded as two: the obligation is written as its own durable file, and
+// the outcome document carries the refusal the caller is given -- so a later caller attaches to
+// EXACTLY what this caller was told, and neither of them attaches to a success whose reservation is
+// still outstanding. The run's own ending is never lost: it is named in the obligation and in the
+// refusal, and the outputs stay in the store under their content identity.
+//
+// THE SEAT STAYS HELD, AND THAT IS THE SAFE DIRECTION rather than an omission. The pool's release
+// law for a compute seat is quiescence-required precisely because nothing here can prove a unit
+// stopped using memory; a release that did not land leaves the capacity encumbered, so the host
+// under-admits until the obligation is discharged rather than handing the same bytes to the next
+// arrival. Discharging it is an explicit release naming why -- the same entry completion and
+// cancellation take.
+fn compute_run_and_settle(
+  instance: HostDashboardInstance,
+  commit: String,
+  layout: ComputeLayout,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  dependency_store: String,
+  granted: Kibibyte,
+  reservation: ComputeReservation,
+) -> ProvideResult {
+  let outcome = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store, granted: granted)
+  let standing = compute_capacity_standing(instance: instance)
+  let returned = compute_release(reservation: reservation, reason: join(["work ", work_outcome_ending(o: outcome)], "") as NonEmptyStr)
+  let measured = Filesystem.Write(path: layout.consumption_path, content: join([compute_capacity_standing_wire(s: standing), "\n"], ""))
+  let released = Filesystem.Delete(path: layout.lease_path)
+  let notes = join([
+    "; producer lease released: ", if released.success { "yes" } else { released.error },
+    "; consumption recorded: ", if measured.success { "yes" } else { measured.error },
+  ], "")
+  if compute_release_landed(r: returned) {
+    compute_settled_record(
+      layout: layout, identity: identity, subject: subject, op: op, outcome: outcome,
+      lease_released: released.success, notes: notes)
+  } else {
+    compute_unreleased_record(
+      layout: layout, identity: identity, subject: subject, op: op, outcome: outcome,
+      reservation: reservation, returned: returned, notes: notes)
+  }
+}
+
+// THE ORDINARY ENDING: the reservation came back, so the record is the run's own ending and the
+// caller is told the same thing.
+fn compute_settled_record(
+  layout: ComputeLayout,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  outcome: WorkOutcome,
+  lease_released: Bool,
+  notes: String,
+) -> ProvideResult {
+  let document = work_outcome_wire(o: outcome, subject: subject, op: op)
+  let written = Filesystem.Write(path: layout.outcome_path, content: document)
+  if written.success && lease_released {
+    ProvideFresh { outcome: outcome, document: document }
+  } else {
+    compute_fresh(
+      outcome: WorkRefusedByInfrastructure {
+        identity: identity,
+        cause: StoreUnavailable {
+          detail: join([
+            "the work ended ", work_outcome_ending(o: outcome),
+            " and its reservation was released, but the record could not be completed -- outcome written: ",
+            if written.success { "yes" } else { written.error }, notes,
+          ], ""),
+        },
+      },
+      subject: subject, op: op)
+  }
+}
+
+// THE ENDING WITH AN OUTSTANDING OBLIGATION: one document, written once, given to this caller and
+// read by the next one.
+fn compute_unreleased_record(
+  layout: ComputeLayout,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  outcome: WorkOutcome,
+  reservation: ComputeReservation,
+  returned: ComputeRelease,
+  notes: String,
+) -> ProvideResult {
+  let obligation = join([
+    "unreleased reservation: ", compute_reservation_wire(r: reservation),
+    "; release attempt: ", compute_release_wire(r: returned),
+    "; the work itself ended ", work_outcome_ending(o: outcome),
+    " and any declared outputs are in the store; the seat stays held until an explicit release ",
+    "discharges it, so this host under-admits rather than promising the same memory twice",
+  ], "")
+  let recorded = Filesystem.Write(path: layout.obligation_path, content: join([obligation, "\n"], ""))
+  let cause = ComputeCapacityLedgerUnavailable {
+    detail: join([
+      obligation, "; obligation recorded: ", if recorded.success { layout.obligation_path } else { recorded.error }, notes,
+    ], ""),
+  }
+  let document = work_outcome_wire(o: WorkRefusedByInfrastructure { identity: identity, cause: cause }, subject: subject, op: op)
+  let written = Filesystem.Write(path: layout.outcome_path, content: document)
+  if written.success {
+    ProvideFresh { outcome: WorkRefusedByInfrastructure { identity: identity, cause: cause }, document: document }
+  } else {
+    compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: cause }, subject: subject, op: op)
+  }
+}
+
 // THE ORDER THE TWO HOLDS ARE TAKEN IN, and they are two facts rather than one. The producer lease
 // excludes a SECOND PRODUCER OF THIS IDENTITY and is a NAME, so an exclusive create settles it; the
 // reservation is a QUANTITY on the host, and no exclusive create of any name settles that. The
@@ -327,33 +450,10 @@ fn compute_provide_leaf(
           compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostBelowMemoryFloor { requested_kib: kibibyte_count(k: rq), available_kib: kibibyte_count(k: av) })
         ComputeReservationRefused { detail: d } =>
           compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: ComputeCapacityLedgerUnavailable { detail: d })
-        ComputeReserved { grant: _, partition: _, amount: granted, store: _ } => {
-          let outcome = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store, granted: granted)
-          let standing = compute_capacity_standing(instance: instance)
-          let returned = compute_release(reservation: reservation, reason: join(["work ", work_outcome_ending(o: outcome)], "") as NonEmptyStr)
-          let document = work_outcome_wire(o: outcome, subject: subject, op: op)
-          let measured = Filesystem.Write(path: layout.consumption_path, content: join([compute_capacity_standing_wire(s: standing), "\n"], ""))
-          let written = Filesystem.Write(path: layout.outcome_path, content: document)
-          let released = Filesystem.Delete(path: layout.lease_path)
-          if written.success && released.success && compute_release_landed(r: returned) {
-            ProvideFresh { outcome: outcome, document: document }
-          } else {
-            compute_fresh(
-              outcome: WorkRefusedByInfrastructure {
-                identity: identity,
-                cause: StoreUnavailable {
-                  detail: join([
-                    "outcome written: ", if written.success { "yes" } else { written.error },
-                    "; lease released: ", if released.success { "yes" } else { released.error },
-                    "; reservation released: ", compute_release_wire(r: returned),
-                    "; consumption recorded: ", if measured.success { "yes" } else { measured.error },
-                    "; work ended ", work_outcome_ending(o: outcome),
-                  ], ""),
-                },
-              },
-              subject: subject, op: op)
-          }
-        }
+        ComputeReserved { grant: _, partition: _, amount: granted, store: _ } =>
+          compute_run_and_settle(
+            instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
+            dependency_store: dependency_store, granted: granted, reservation: reservation)
       }
     }
   }
@@ -526,6 +626,43 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
           }
         }
       }
+  }
+}
+
+// THE OPERATOR'S RECOVERY DOOR, and the executing consumer of compute_release_reference. A
+// reservation whose release did not land leaves its reference in
+// <work_dir>/unreleased-reservation and in the partition; this is how it is given back. It is a
+// verb on the same CLI rather than a script, so the refusal vocabulary is the module's: a reference
+// the pool is not holding writes nothing and exits non-zero saying so, which is the answer a
+// mistyped reference must get -- appending a release for an unheld reference would make the
+// partition unfoldable for every later reader.
+fn compute_release_cli(repo_root: String, reference: String, reason: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: 2, reason: join(["compute: no dashboard instance is rooted at ", r], "") }
+    DashboardInstanceResolved { instance } =>
+      if reference == "" || reason == "" {
+        ExitFailure { code: 2, reason: "compute: release needs a non-empty reference and a reason naming why the seat is being given back" }
+      } else {
+        let released = compute_release_reference(instance: instance, reference: reference as NonEmptyStr, reason: reason as NonEmptyStr)
+        let wire = compute_release_cli_wire(r: released)
+        let receipt = Filesystem.Write(path: receipt_path, content: join([wire, "\n"], ""))
+        if !receipt.success {
+          ExitFailure { code: 2, reason: join(["compute: receipt could not be written to ", receipt_path, ": ", receipt.error, "; release was ", wire], "") }
+        } else {
+          match released {
+            ComputeReleased { partition: _, reference: _, reason: _ } => ExitSuccess
+            ComputeReleaseRefused { detail: _ } => ExitFailure { code: 1, reason: join(["compute release refused: ", wire], "") }
+          }
+        }
+      }
+  }
+}
+
+fn compute_release_cli_wire(r: ComputeRelease) -> String {
+  match r {
+    ComputeReleased { partition: p, reference: ref_, reason: why } =>
+      join(["released ", ref_ as String, " on ", p as String, " (", why as String, ")"], "")
+    ComputeReleaseRefused { detail: d } => join(["refused: ", d], "")
   }
 }
 
