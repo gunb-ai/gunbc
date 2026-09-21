@@ -527,6 +527,40 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
 /// Single authority for workspace-root discovery (.git ancestor walk).
 /// `workspace_root()` memoizes from the process cwd; tests pass an explicit start path.
 pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
+    workspace_root_resolve(spawn_workspace_root_env().as_deref(), start_cwd)
+}
+
+/// THE CHECKOUT ROOT RECEIVED AT SPAWN, the dissolution this scaffold named from the start
+/// (`release bins receive checkout-root at spawn (env/argv)`), landed for the one population that
+/// needs it: a release locus (`gunbc.live_deploy.emit` `release_locus_install_steps` — the approval
+/// broker's and the microVM slot controller's) is dag/ + src/v2 + the binary + a tree receipt and
+/// is NOT a git checkout, so the walk below refused it and neither unit could start (parent ruling
+/// 2026-09-21, measured on srv1: `gunbc-microvm-slot@srv1-13` exit 101, `gunbc-approval-broker`
+/// dead). Authority for the name and the marker: `gunbc.cli_run_workspace_root_scaffold`
+/// `gunbc_workspace_root_env_name` / `release_locus_tree_receipt_name`; the seed transcribes both.
+///
+/// ONE ENV, READ AT ONE SITE, CONSUMED BY BOTH ROOTS: `workspace_root()` and
+/// `process_workspace_root()` are the only readers, through this function, and no caller re-reads
+/// it. WHEN SET IT IS THE AUTHORITY: the git / Cargo.toml walk is not consulted, and a value that
+/// does not name a locus (no `dag/`, or no tree receipt) refuses naming the path and the missing
+/// member rather than falling back to the walk — a wrong root silently replaced by a walked one is
+/// the class the walk itself was written against. WHEN UNSET nothing changes.
+pub(crate) const GUNBC_WORKSPACE_ROOT_ENV: &str = "GUNBC_WORKSPACE_ROOT";
+pub(crate) const RELEASE_LOCUS_TREE_RECEIPT_NAME: &str = ".gunbc-tree-receipt";
+
+fn spawn_workspace_root_env() -> Option<String> {
+    std::env::var(GUNBC_WORKSPACE_ROOT_ENV)
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+}
+
+/// The resolver over supplied values, so a test can drive the env arm without touching the
+/// process environment: `spawn` set → the locus or a refusal, never the walk; `spawn` unset → the
+/// `.git`-ancestor walk exactly as before.
+pub(crate) fn workspace_root_resolve(spawn: Option<&str>, start_cwd: &Path) -> PathBuf {
+    if let Some(named) = spawn {
+        return spawn_workspace_root_admitted(Path::new(named));
+    }
     for dir in start_cwd.ancestors() {
         if dir.join(".git").exists() {
             return dir.to_path_buf();
@@ -539,6 +573,27 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
          path is not a runtime fact)",
         start_cwd.display()
     )
+}
+
+fn spawn_workspace_root_admitted(named: &Path) -> PathBuf {
+    if !named.join("dag").is_dir() {
+        panic!(
+            "workspace_root: {}={} names no release locus: missing member dag/ (the walk is not \
+             consulted when the root is received at spawn)",
+            GUNBC_WORKSPACE_ROOT_ENV,
+            named.display()
+        );
+    }
+    if !named.join(RELEASE_LOCUS_TREE_RECEIPT_NAME).is_file() {
+        panic!(
+            "workspace_root: {}={} names no release locus: missing member {} (the tree receipt \
+             the locus install writes last; a locus without one was interrupted)",
+            GUNBC_WORKSPACE_ROOT_ENV,
+            named.display(),
+            RELEASE_LOCUS_TREE_RECEIPT_NAME
+        );
+    }
+    named.to_path_buf()
 }
 
 /// Temporary TOML realization for `gunbc.stage0_cargo_manifest.CargoManifestBinParse`.
@@ -2074,6 +2129,9 @@ fn process_workspace_root() -> PathBuf {
 }
 
 fn resolve_process_workspace_root() -> PathBuf {
+    if let Some(named) = spawn_workspace_root_env() {
+        return spawn_workspace_root_admitted(Path::new(&named));
+    }
     if let Ok(output) = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()
@@ -2780,6 +2838,50 @@ mod workspace_root_discovery_tests {
         assert!(sub.is_dir(), "dag/ must exist under checkout");
         let got = workspace_root_from(&sub);
         assert_eq!(canonical(&got), canonical(&top));
+    }
+
+    /// THE ROOT RECEIVED AT SPAWN IS THE AUTHORITY AND THE WALK IS NOT REACHED: the start path
+    /// is a real checkout subdirectory the walk would resolve, and the answer is the locus anyway.
+    #[test]
+    fn spawn_root_is_authority_and_the_walk_is_not_consulted() {
+        let top = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .expect("git rev-parse");
+        assert!(top.status.success(), "must run inside a git checkout");
+        let top = PathBuf::from(String::from_utf8(top.stdout).unwrap().trim());
+        let locus = fixture_root("locus");
+        std::fs::create_dir_all(locus.join("dag")).expect("dag dir");
+        std::fs::write(
+            locus.join(super::RELEASE_LOCUS_TREE_RECEIPT_NAME),
+            "candidate_revision=x\n",
+        )
+        .expect("receipt");
+        let got = super::workspace_root_resolve(Some(locus.to_str().unwrap()), &top.join("dag"));
+        let _ = std::fs::remove_dir_all(&locus);
+        assert_eq!(canonical(&got), canonical(&locus));
+        assert_ne!(canonical(&got), canonical(&top));
+    }
+
+    /// A SPAWN ROOT THAT IS NOT A LOCUS REFUSES NAMING THE MISSING MEMBER, and does not fall back
+    /// to the walk even though the start path is inside a checkout.
+    #[test]
+    fn spawn_root_without_receipt_refuses_instead_of_walking() {
+        let top = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .expect("git rev-parse");
+        let top = PathBuf::from(String::from_utf8(top.stdout).unwrap().trim());
+        let locus = fixture_root("locus-no-receipt");
+        std::fs::create_dir_all(locus.join("dag")).expect("dag dir");
+        let result = std::panic::catch_unwind(|| {
+            super::workspace_root_resolve(Some(locus.to_str().unwrap()), &top.join("dag"))
+        });
+        let _ = std::fs::remove_dir_all(&locus);
+        assert!(
+            result.is_err(),
+            "a spawn root without the tree receipt must refuse, not walk"
+        );
     }
 
     /// Fail-closed: Cargo.toml+dag/ without a `.git` ancestor is not a checkout root.

@@ -71,10 +71,11 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.exec.command { argv_words }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name, release_locus_tree_receipt_name }
 import gunbc.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_owner, microvm_controller_firecracker_release,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
-  microvm_slot_unit_template_name, microvm_slot_unit_path, microvm_slot_unit_text,
+  microvm_slot_unit_template_name, microvm_slot_unit_path, microvm_slot_unit_file,
   microvm_slot_unit_timeout_stop_sec,
 }
 import extdeps.tools.findutils { find_program, xargs_program }
@@ -641,6 +642,7 @@ fn live_deploy_approval_broker_unit_file_on(
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
       WorkingDirectory { path: release_dir as NonEmptyStr },
+      release_locus_workspace_root_environment(release_dir: release_dir),
       ExecStart { command: join([
         approval_broker_release_binary_path(root: svc.repo_root as String, revision: revision),
         " serve --source-root dag --source-root src/v2",
@@ -1679,7 +1681,16 @@ fn approval_broker_release_binary_path(root: String, revision: ReleaseRevisionBi
 }
 
 fn approval_broker_tree_receipt_path_for(root: String, revision: ReleaseRevisionBinding) -> String {
-  join([approval_broker_release_dir(root: root, revision: revision), "/.gunbc-tree-receipt"], "")
+  join([approval_broker_release_dir(root: root, revision: revision), "/", release_locus_tree_receipt_name], "")
+}
+
+// EVERY UNIT THAT EXECS A gunbc BINARY FROM A RELEASE LOCUS SETS THE CHECKOUT ROOT AT SPAWN
+// (gunbc.cli_run_workspace_root_scaffold gunbc_workspace_root_env_name): the seed refuses to run
+// from a directory that is not a git checkout, and a locus is not one -- measured on srv1
+// 2026-09-21, where both the broker's serve unit and the microVM slot unit exited 101 in
+// workspace_root before any stage ran. One row feeds both units.
+fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServiceDirective {
+  Environment { assignment: join([gunbc_workspace_root_env_name, "=", release_dir], "") as NonEmptyStr }
 }
 
 data approval_broker_tree_subdirs: List<String> = ["dag", "src/v2"]
@@ -1994,14 +2005,28 @@ fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> Lis
   ]
 }
 
+// THE SLOT UNIT IS RENDERED HERE WITH THE SPAWN ROOT ADDED, because the env row and the locus
+// belong to this module while the unit's shape belongs to gunbc.runner_microvm_slot_unit: the
+// service section is that module's list plus one directive, inserted rather than re-authored.
+fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUnitFile {
+  match microvm_slot_unit_file(release_dir: release_dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()) {
+    ServiceUnitFile { unit: u, service: s, install: i } =>
+      ServiceUnitFile {
+        unit: u,
+        service: concat([release_locus_workspace_root_environment(release_dir: release_dir)], s),
+        install: i,
+      }
+    other => other
+  }
+}
+
 fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   [
     deploy_raw(command: deploy_stage_write_command(
       stage_name: microvm_slot_unit_template_name as String,
-      content: microvm_slot_unit_text(
+      content: serialize_systemd_unit_file(file: microvm_slot_unit_file_with_workspace_root(
         release_dir: microvm_controller_release_dir(revision: revision),
-        timeout_stop_sec: microvm_slot_unit_timeout_stop_sec(),
-      ),
+      )),
     )),
     deploy_raw(command: deploy_stage_install_command(
       stage_name: microvm_slot_unit_template_name as String,

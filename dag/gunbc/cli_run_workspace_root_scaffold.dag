@@ -1,5 +1,6 @@
 module gunbc.cli_run_workspace_root_scaffold
 
+import std.types { String, Int }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 
@@ -13,6 +14,24 @@ data cli_run_workspace_root_discovery_scaffold: Disposition = Scaffold {
 }
 
 data cli_run_workspace_root_discovery_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: workspace_root_from — runtime workspace-root discovery in HAND-Rust (#6484 .git-ancestor kernel); DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md → GENERATED workflow host-effect apply) OR ROADMAP 5-dissolve-patches cli_run.rs shrink retires HAND path-dependent root entirely")
+
+// THE CHECKOUT ROOT RECEIVED AT SPAWN, the dissolution the scaffold above names, landed for the
+// release-locus population (parent ruling 2026-09-21): the seed reads ONE environment name at one
+// site (workspace_root_resolve, consumed by workspace_root and process_workspace_root), treats it as
+// the authority when set -- no walk, a typed refusal naming the path and the missing member when it
+// holds no dag/ or no tree receipt -- and walks exactly as before when unset. Both unit emitters
+// (gunbc.live_deploy.emit: the approval broker's serve unit and the microVM slot unit) set it from
+// THIS row; the seed transcribes both spellings beside its GUNBC_WORKSPACE_ROOT_ENV and
+// RELEASE_LOCUS_TREE_RECEIPT_NAME constants, and the discriminators below name the executed
+// controls. v1 admission (gunbc.v1_maintenance_standing): this serves the emitted-binary door the
+// seed already scaffolded -- a release binary running from its own locus -- and grows v1 nothing.
+data gunbc_workspace_root_env_name: String = "GUNBC_WORKSPACE_ROOT"
+
+data release_locus_tree_receipt_name: String = ".gunbc-tree-receipt"
+
+data cli_run_workspace_root_spawn_test_discriminator_authority: String = "spawn_root_is_authority_and_the_walk_is_not_consulted"
+
+data cli_run_workspace_root_spawn_test_discriminator_refusal: String = "spawn_root_without_receipt_refuses_instead_of_walking"
 
 data cli_run_workspace_root_hand_rust_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
 

@@ -33,6 +33,9 @@ import gunbc.runner_microvm_slot_unit {
   microvm_slot_controller_entry_function,
 }
 import gunbc.runner_microvm_slot_controller { slot_of_instance }
+import gunbc.live_deploy.emit { microvm_slot_unit_file_with_workspace_root }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
+import extdeps.systemd.unit_file { Environment }
 
 // THE SLOT CONTROLLER'S PURE FOLDS, CLAIMED WITHOUT A HOST. The composition itself is wet -- it
 // reads the environment, the CAS, the readiness store and the locus -- and its inhabitance is the
@@ -79,6 +82,23 @@ test fn the_slot_unit_execs_the_controller_entry_as_main_pid_with_the_declared_t
     && has_exec_mode(f: rendered())
     && has_teardown_intent(f: rendered())
     && !microvm_slot_unit_execs_controller(file: launcher_unit())
+}
+
+// THE INSTALLED UNIT CARRIES THE CHECKOUT ROOT AT SPAWN, or the seed refuses to run from the locus
+// (srv1, 2026-09-21: exit 101 in workspace_root). The bare render from the slot-unit module does
+// not carry it -- the row is the deploy's -- which is the control.
+fn carries_spawn_root(f: SystemdUnitFile, release_dir: String) -> Bool {
+  fold(service_directives(f: f), init: false, f: (acc, d) => acc || match d {
+    Environment { assignment: a } => (a as String) == join([gunbc_workspace_root_env_name, "=", release_dir], "")
+    _ => false
+  })
+}
+
+test fn the_installed_unit_sets_the_checkout_root_at_spawn_and_the_bare_render_does_not() -> Bool {
+  let dir = "/opt/gunbc/microvm-controller/releases/abc"
+  carries_spawn_root(f: microvm_slot_unit_file_with_workspace_root(release_dir: dir), release_dir: dir)
+    && !carries_spawn_root(f: rendered(), release_dir: dir)
+    && microvm_slot_unit_execs_controller(file: microvm_slot_unit_file_with_workspace_root(release_dir: dir))
 }
 
 // THE STOP TIMEOUT EXCEEDS THE VMM DEADLINE, so systemd cannot SIGKILL the controller before its
