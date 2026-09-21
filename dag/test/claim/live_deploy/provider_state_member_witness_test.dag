@@ -1,0 +1,81 @@
+module test.claim.live_deploy.provider_state_member_witness_test
+
+import std.types { Bool, String }
+import gunbc.live_deploy.spec { gunbc_service_user, deployment_provider_state_path }
+import gunbc.live_deploy.desired { deployment_spec_srv1, spec_owned_identities }
+import gunbc.live_deploy.emit {
+  install_d_owned_for_user, provider_state_ensure_steps, deploy_apply_preamble_steps,
+}
+import gunbc.ci_deploy_access { ci_deploy_srv1_access_or_refusal, DeployAccessReady, DeployAccessJobPrincipalRefused }
+import gunbc.live_deploy.member_identity { DirectoryRoot }
+import gunbc.live_deploy.member_observe { deployment_member_roster }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_provider_state_root }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
+
+// THE PROVIDER-STATE ROOT IS CREATED ON THE PRODUCTION ROUTE AND READ BACK AS A MEMBER
+// (CONVERGENCE-ONE C7). The expected path and owner come from the model -- the instance's own
+// provider-state projection and the service principal -- so these claims follow the model rather
+// than pinning a spelling.
+//
+// WHAT IS NOT CLAIMED HERE, AND WHY. An earlier revision carried two refusal claims: an apply whose
+// spec omitted the member, and one that carried it twice. Both states are now unwritable --
+// gunbc.live_deploy.spec deployment_provider_state_step is a function of the spec, so no spec can
+// omit the member, duplicate it, give it an owner other than the service principal, or name a
+// package instead of a directory. A claim over a state with no constructor is permanently green by
+// construction and would stand as false coverage (DESIGN 4b). What replaces those reds is
+// structural: deleting the ensure from the preamble, or the member from the roster, reds the claims
+// below, and nothing else creates that directory.
+
+fn srv1_provider_state_root() -> String {
+  dashboard_instance_provider_state_root(instance: srv1_live_dashboard_instance()) as String
+}
+
+fn expected_install_command() -> String {
+  install_d_owned_for_user(user: gunbc_service_user, path: srv1_provider_state_root())
+}
+
+// THE PATH THE SPEC DERIVES IS THE INSTANCE'S OWN PROJECTION, not a value the deployment invented.
+// This is the join between the two authorities: if DeploymentServiceConfig were populated from
+// anything but dashboard_instance_provider_state_root, the deploy would create a directory the
+// provider preflight does not read.
+test fn the_spec_derives_the_instance_provider_state_path() -> Bool {
+  (deployment_provider_state_path(spec: deployment_spec_srv1()) as String) == srv1_provider_state_root()
+}
+
+// PRESENCE IN THE EMITTED SET, at the producer: the ensure lowers to the owned install command for
+// the model's path and owner.
+test fn the_provider_state_ensure_emits_the_owned_install() -> Bool {
+  string_contains(
+    s: pipeline_steps_text(steps: provider_state_ensure_steps(spec: deployment_spec_srv1())),
+    pattern: expected_install_command(),
+  )
+}
+
+// INHABITANCE: that producer is reached by the production apply. The preamble is what every apply
+// emits before any member effect, so this asserts the ROUTE and not only the command text --
+// deleting the call from deploy_apply_preamble_steps reds this while the claim above stays green.
+test fn the_production_apply_preamble_carries_the_provider_state_ensure() -> Bool {
+  let spec = deployment_spec_srv1()
+  match ci_deploy_srv1_access_or_refusal() {
+    DeployAccessReady { access: access } =>
+      string_contains(
+        s: pipeline_steps_text(steps: deploy_apply_preamble_steps(access: access, spec: spec)),
+        pattern: expected_install_command(),
+      )
+    DeployAccessJobPrincipalRefused { refusal: _ } => false
+  }
+}
+
+// The same directory is read back as a member, so a host whose provider login has nowhere to write
+// reports a member to create rather than a converged host.
+test fn the_provider_state_root_is_a_read_back_directory_member() -> Bool {
+  any(deployment_member_roster(spec: deployment_spec_srv1()), m => match m {
+    DirectoryRoot { path } => (path as String) == srv1_provider_state_root()
+    _ => false
+  })
+}
+
+// Ensured, not owned: retract never tears down the provider login.
+test fn retract_never_owns_the_provider_state_root() -> Bool {
+  !any(spec_owned_identities(spec: deployment_spec_srv1()), id => string_contains(s: id, pattern: srv1_provider_state_root()))
+}

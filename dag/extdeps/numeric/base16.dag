@@ -158,3 +158,31 @@ fn base16_decode_lower(hex: String) -> List<UInt8>? {
     base16_decode_lower_from(hex: hex, i: 0, len: len, acc: [])
   }
 }
+
+// A DIGIT'S VALUE IN EITHER CASE, over the same rows: the consumers below read fields the kernel
+// prints in uppercase (/proc/net/tcp) or a wire that admits either spelling, and refuse a code
+// point that is in neither column.
+fn base16_digit_value_at(cp: Int) -> Int? {
+  fold(base16_digit_rows, init: none, f: (acc, row) =>
+    if code_point(row.lower) == cp || code_point(row.upper) == cp { Present { value: row.value } } else { acc })
+}
+
+// A BOUNDED HEXADECIMAL WORD AS ONE INTEGER: one to `max_digits` digits in either case, most
+// significant first, refused when empty, longer than the bound, or holding a non-digit. The bound
+// is the consumer's field width -- four digits for a 16-bit port, six for a 24-bit run id -- and
+// is capped at fifteen so the value stays inside Int; a consumer that needs a wider field is a
+// different operation (base16_decode_lower yields octets).
+fn base16_word_value(word: String, max_digits: Int) -> Int? {
+  let cps = word |> chars
+  if length(cps) == 0 || length(cps) > max_digits || max_digits > 15 { none } else {
+    fold(cps, init: Present { value: 0 }, f: (acc, cp) =>
+      match acc {
+        Absent => none
+        Present { value: v } =>
+          match base16_digit_value_at(cp: cp) {
+            Absent => none
+            Present { value: d } => Present { value: v * 16 + d }
+          }
+      })
+  }
+}

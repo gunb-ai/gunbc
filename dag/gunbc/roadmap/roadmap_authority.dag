@@ -2534,6 +2534,36 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_2GPKWK8FXAKETC8ATH3MJEXEXC",
+      id: "fleet-convergence-census-closure",
+      owner: "fleet",
+      path: "docs/plans/convergence-one-program.md",
+      t: fields(
+        headline: "Every effect that changes a machine goes through the one checked route",
+        boundary: "The census already lists every effect that changes lasting state. Work through what it lists, one family of effects at a time, and for each one say who chose the desired state, what looked at reality, what compared them, what plan was allowed, what carried it out, and what checked afterwards. Where the honest answer is that it never converged, rename it to what it actually does.",
+        displaced_cost: "Effects that change real machines while calling themselves converged, so nobody can tell which ones were actually checked.",
+        first_slice: "Close one effect family, and let the census say which are left.",
+        red_control: "An effect that reports success from its own write, with nothing reading the result back, must not pass.",
+        out_of_scope: "No new migrations invented here; the census is the list.",
+        handback: "The census, with every family either closed, truthfully renamed, or named as outstanding."
+      )
+    ),
+    active(
+      identity: "rn_W964QANFVKCPEBGKP50F0036KH",
+      id: "fleet-convergence-legacy-deletion",
+      owner: "fleet",
+      path: "docs/plans/convergence-one-program.md",
+      t: fields(
+        headline: "Delete the routes that were replaced, and make them hard to grow back",
+        boundary: "Once the checked route is the real one, the older ways of changing the same machine state are deleted rather than left beside it. A check then refuses a change that adds a new one, by comparing against the list of things that actually produce effects rather than by searching for suspicious names.",
+        displaced_cost: "A replaced route left standing is where the next author looks first, so the old way quietly comes back.",
+        first_slice: "Delete one superseded route whose replacement is executing, and prove what refuses when it is gone.",
+        red_control: "Re-adding a second route for an effect that already has a checked one must fail the check.",
+        out_of_scope: "No behaviour moves here; anything still needing one belongs in the census work.",
+        handback: "Nothing left that changes lasting state outside the checked route, and a check that says so."
+      )
+    ),
+    active(
       identity: "rn_Y33HNQA0BZ3S6FGMNT96M526MM",
       id: "fleet-dashboard-instance-membership",
       owner: "fleet",
@@ -2719,6 +2749,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "No key is minted for an unestablished axis, and the keyed verdict is sealed so a caller cannot write one with arbitrary hashes. A patch authored against another revision refuses. A wheel population missing a package, carrying two variants of one, or taken from a neighbouring release refuses. A route reference differing in module or field is not the admitted route. Reordering set-like populations does not change the identity; patch application order does. A candidate that has not been authorized may not displace a serving group.",
         out_of_scope: "No capacity calibration before the first bounded request succeeds. No claim that the engine independently hashed accelerator-resident tensors. No eight-host topology and no relabelling of a provisional experimental route as a selected one. Group B and its own program stay untouched.",
         handback: "Either the exact ranks agree on one runtime and one source, the engine answers a semantic request, the launch provenance binds the running incarnation, and a second convergence mutates nothing — or the candidate field is refused for the exact subject, with the reason carried rather than the attempt repeated."
+      )
+    ),
+
+    active(
+      identity: "rn_CUTD0TRANSACTION2026091DS41",
+      id: "serving-v41-cut-d-d0-transaction",
+      owner: "fleet",
+      path: "docs/plans/dsv41-cut-d-redesign.md",
+      t: fields(
+        headline: "Cut D D0: suspend Group A under an exact operator consent, read the fleet inside it, settle to one typed terminal, and never free a host early",
+        boundary: "gunbc.spark.pair_serving_d0 over gunbc.spark.pair_serving_authority_log on the fabric DB: one durable genesis per group partition, the host-placement partition as the linearization point, prepare -> append-claim -> authority -> finalize as one saga bound by a typed AuthorityWriteIntent, consumed/cancelled exclusivity, claim-bound quiescence evidence, total crash recovery by lifecycle identity, the operator consent slot as a fabric-DB head (gunbc.durable_cas_fabric_storage, generation-bearing objects), and a wet door that refuses while the store's write walls are missing. STATE (2026-09-20, wound down under operator direction to re-prioritize v1 performance and v2 migration): the whole stack is one branch, plan/dsv41-cut-d-2b, re-rooted onto the rewritten main and source-approved through twenty-one review rounds; the operator ruled it may land under the widened fabric-DB principal drop. Its stacked follow-up branch, plan/dsv41-cut-d-2b-admission-cleanup, deletes the twenty transition-admission rows the stack consumed and carries the detached-process wet-lane admission row.",
+        displaced_cost: "Without D0 the V4.1 cut over Group A has no transaction: no consent that is spent exactly once across executors, no state in which the group is neither serving nor being mutated by two writers, and no receipt of the fleet as it was read before the authority moved -- the prior state, in which membership and placement were roster words and a crashed lane left no recoverable trace.",
+        first_slice: "LANDED ON THE BRANCH: the authority log and its folds, the saga and both joined reads, D0 recovery, the fabric-DB CAS, the quiescence observer, the front-door and head-host absence readings, 32 hermetic + 9 wet authority-log claims, 21 hermetic + 13 wet + 6 front-door D0 claims, 2 CAS wet claims, host-commitment and seat gates over the current authority. REMAINING, IN ORDER: (1) land plan/dsv41-cut-d-2b, then its admission-cleanup follow-up (operator merge). (2) The fabric-DB write walls: retire gunbc.rung_drop fabric_storage_append_principal_unrefused by its trigger (observed writer-principal roster in fabric_storage_serve) AND restore gunbc.spark.pair_serving_d0 d0_store_operation_wall (per-operation D0 authorization verified at the store) -- the wet door consumes both and refuses until both stand. (3) Cut 0 keys the V4.1 candidate and the escalation -> ScopedAuthorization<D0Subject> producer lands, so resolve_d0_authorization can admit; only then is a fleet run of D0 possible. (4) D1 converger: freeze the host population on PairServingActive (retires the one lane-roster dependence stated on authority_fold) and consume released_baseline_retains_reservation. (5) Retire the detached-process wet-lane row (gunbc.ci_layer_roots excl_local_repo_wet_detached_process_reason): a modeled process/listener fixture and mock_response seams for python.Interpreter.RunFile, the pgrep leg, http.Client.StatusWithin and /proc/net/tcp. (6) A v1 resolver defect found and reproduced on the way (a braced import of extdeps.http.client, or v2.std.algebra { filter }, makes the builtins split/last unresolvable inside a match-arm block; minimal fixture recorded on the branch's pull request, round 18) -- owned by the seed lane, avoided here by homing the curl exit codes with extdeps.tools.curl.",
+        red_control: "A stranger's abort of a prepared or claimed preparation refuses with nothing written; a cancelled preparation cannot be consumed and a consumed one cannot be cancelled; an authority event that is not the exact write its append claim named is unread on every join; a cycled CAS value does not let a stale writer advance at fabric_storage_advance; the wet door refuses while either store wall is missing; a 401/500 front door is an answer and a failed connect is absence only when the head host is quiet.",
+        out_of_scope: "Cut 0 candidate keying and the authorization producer; the fabric-DB principal and per-operation walls (fabric-DB lane); D1 convergence; P1 Cut 3 held-seat invalidation; any fleet mutation before the walls stand.",
+        handback: "Group A suspended under an exact consent with the fleet reading recorded on the log, settled to Suspended / restored Active / FencedRefusal, the consent spent once, every host fence released only by observed quiescence, and the placement finalized -- by execution against the fleet, which no branch has yet done.",
       )
     ),
 
@@ -3151,6 +3197,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fleet-bmc-policy-convergence", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "shell-gate-migration"),
+    edge(child: "fleet-convergence-census-closure", parent: "fleet-closed-loop-converge"),
+    edge(child: "fleet-convergence-legacy-deletion", parent: "fleet-convergence-census-closure"),
     edge(child: "fleet-dashboard-instance-membership", parent: "fleet-state-frontier"),
     edge(child: "roadmap-serve-emitted-realization", parent: "fleet-state-frontier"),
     edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
@@ -3176,6 +3224,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "serving-liveness-route-withdrawal", parent: "fleet-spark-inference-serving"),
     edge(child: "serving-v41-first-party-runtime", parent: "fleet-spark-inference-serving"),
     edge(child: "serving-v41-first-party-runtime", parent: "serving-liveness-route-withdrawal"),
+    edge(child: "serving-v41-cut-d-d0-transaction", parent: "serving-v41-first-party-runtime"),
 
     edge(child: "toolchain-single-resolver", parent: "toolchain-pin-model"),
     edge(child: "toolchain-rust-hermetic", parent: "toolchain-single-resolver"),

@@ -79,6 +79,7 @@ import gunbc.live_deploy.spec {
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, ensured_subject_identity,
+  deployment_provider_state_step,
   DeploymentArtifactStep,
   ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
   deployment_belt_service_unit_name,
@@ -1377,11 +1378,28 @@ fn deploy_publication_principal_ensure_command(spec: DeploymentSpec) -> String {
   })
 }
 
+// THE PROVIDER-STATE ENSURE RIDES THE PREAMBLE, DERIVED FROM THE SPEC RATHER THAN FOUND IN ITS STEP
+// LIST (C7). Every apply emits it because gunbc.live_deploy.spec deployment_provider_state_step is a
+// function of the spec, not a row an author may forget: there is no spec for which it returns
+// nothing, so there is no state in which the deploy silently stops creating the directory the
+// provider login writes into. That is the construction the earlier refusal arm was standing in for.
+//
+// Ensured means converged on every apply and never torn down, so it emits unconditionally rather
+// than gated on a plan mutation: `install -d` is idempotent, and a converged host re-running it is
+// what the category means. The read-back member reports the directory's OWNER; it does not decide
+// whether the directory is created.
+fn provider_state_ensure_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  ensure_dependency_steps(dep: deployment_provider_state_step(spec: spec), privileged: true)
+}
+
 fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> List<PipelineStep> {
-  [
-    deploy_raw(command: deploy_sudoers_install_shell(access: access)),
-    deploy_raw(command: deploy_publication_principal_ensure_command(spec: spec)),
-  ]
+  concat(
+    [
+      deploy_raw(command: deploy_sudoers_install_shell(access: access)),
+      deploy_raw(command: deploy_publication_principal_ensure_command(spec: spec)),
+    ],
+    provider_state_ensure_steps(spec: spec),
+  )
 }
 
 // THE CAP APPLY CONSUMES RETIREMENT AUTHORIZATION, AND WITHOUT ONE IT REFUSES.

@@ -20,9 +20,10 @@ import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, 
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
   event_parent_expectation, AppendDecision, AppendAdmitted, AppendStale, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_from_head,
+  EventDecode, EventDecoded, EventUndecodable,
 }
 import product.capacity.pool_events {
-  PoolEvent, pool_event_wire_text, pool_event_decode, PoolEventDecode, PoolEventDecoded, PoolEventUndecodable,
+  PoolEvent, pool_event_wire_text, pool_event_decode,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold, SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, grant_from_admission,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, release_law_eq, release_law_wire }
@@ -78,8 +79,8 @@ type EventObject
   = EventObjectBuilt { object: FabricObject }
   | EventObjectRefused { cause: EventLogRefusal }
 
-fn event_object(event: ChainEvent<PoolEvent>) -> EventObject {
-  let body = pool_event_wire_text(event: event)
+fn event_object<P>(event: ChainEvent<P>, encode: fn(ChainEvent<P>) -> String) -> EventObject {
+  let body = encode(event)
   if body == "" {
     EventObjectRefused { cause: EventLogEventEmpty }
   } else {
@@ -122,39 +123,54 @@ fn event_log_observe_head(store: FabricStorageBinding, partition: PartitionId) -
 
 // READING A PARTITION: one closure from the head, each held object decoded as an event, and the
 // collected envelopes handed to the pure walk so the chain's shape is decided by one authority.
-type PartitionRead
-  = PartitionReadOk { head: HeadExpectation, walk: ChainWalk<PoolEvent> }
+// THE ONE READ BUDGET FOR A PARTITION CLOSURE: how many events a single read of any partition may
+// walk before it refuses as ChainBudgetExhausted. Owned here, beside the read it bounds, and
+// consumed by every reader of the log (the seat and quota transactions through the pool-event
+// read, the pair-serving authority and host-placement folds, the partition-read instrument), so a
+// bound that moves moves once.
+fn event_log_read_budget() -> Nat { 4096 }
+
+// THE LOG IS ONE CARRIER FOR EVERY PARTITION KIND. A partition's payload type and its codec are
+// the partition owner's (pool events here; the pair-serving authority and host placement in
+// gunbc.spark.pair_serving_authority_log), so the read and the append take the codec as a value:
+// one store walk, one put-and-advance, N payload types -- never a second log per kind.
+type PartitionRead<P>
+  = PartitionReadOk { head: HeadExpectation, walk: ChainWalk<P> }
   | PartitionReadRefused { cause: EventLogRefusal }
 
-type DecodeState {
-  envs: List<ChainEnvelope<PoolEvent>>
+type DecodeState<P> {
+  envs: List<ChainEnvelope<P>>
   refused: EventLogRefusal?
 }
 
-fn decode_envelopes(objects: List<FabricStoredObject>) -> DecodeState {
-  fold(objects, init: DecodeState { envs: [], refused: none }, f: (acc, s) =>
+fn decode_envelopes<P>(objects: List<FabricStoredObject>, decode: fn(String) -> EventDecode<P>) -> DecodeState<P> {
+  fold(objects, init: DecodeState { envs: [] as List<ChainEnvelope<P>>, refused: none }, f: (acc, s) =>
     match acc.refused {
       Present { value: _ } => acc
       Absent =>
-        match pool_event_decode(text: s.content.body as String) {
-          PoolEventUndecodable { reason: why } => DecodeState { envs: acc.envs, refused: Present { value: EventLogEventUndecodable { id: event_id_of(object: s.object), reason: why } } }
-          PoolEventDecoded { event: e } => DecodeState { envs: concat(acc.envs, [ChainEnvelope { id: event_id_of(object: s.object), event: e }]), refused: none }
+        match decode(s.content.body as String) {
+          EventUndecodable { reason: why } => DecodeState { envs: acc.envs, refused: Present { value: EventLogEventUndecodable { id: event_id_of(object: s.object), reason: why } } }
+          EventDecoded { event: e } => DecodeState { envs: concat(acc.envs, [ChainEnvelope { id: event_id_of(object: s.object), event: e }]), refused: none }
         }
     })
 }
 
-fn event_log_read_partition(store: FabricStorageBinding, partition: PartitionId, budget: Nat) -> PartitionRead {
+fn event_log_read_partition_with<P>(store: FabricStorageBinding, partition: PartitionId, budget: Nat, decode: fn(String) -> EventDecode<P>) -> PartitionRead<P> {
   match fabric_storage_closure(binding: store, name: partition as String as NonEmptyStr, bound: budget) {
     FabricClosureRefused { fault: f } => PartitionReadRefused { cause: EventLogStoreFault { fault: f } }
     FabricClosureBudgetExhausted { at: a, bound: _ } => PartitionReadOk { head: HeadAt { id: event_id_of(object: a) }, walk: ChainBudgetExhausted { at: event_id_of(object: a) } }
     FabricClosureRead { reading: r, newest_first: xs } => {
-      let d = decode_envelopes(objects: xs)
+      let d = decode_envelopes(objects: xs, decode: decode)
       match d.refused {
         Present { value: c } => PartitionReadRefused { cause: c }
         Absent => PartitionReadOk { head: log_head(reading: r), walk: chain_from_head(envs: d.envs, head: log_head(reading: r), budget: budget) }
       }
     }
   }
+}
+
+fn event_log_read_partition(store: FabricStorageBinding, partition: PartitionId, budget: Nat) -> PartitionRead<PoolEvent> {
+  event_log_read_partition_with(store: store, partition: partition, budget: budget, decode: fn(t) { pool_event_decode(text: t) })
 }
 
 // APPEND: put the event's object, then advance the partition head from the expected one. The store
@@ -167,11 +183,11 @@ type EventAppend
   | EventAppendStale { expected: HeadExpectation, observed: HeadExpectation }
   | EventAppendRefused { cause: EventLogRefusal }
 
-fn event_log_append(store: FabricStorageBinding, partition: PartitionId, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> EventAppend {
+fn event_log_append_with<P>(store: FabricStorageBinding, partition: PartitionId, event: ChainEvent<P>, expected: HeadExpectation, encode: fn(ChainEvent<P>) -> String) -> EventAppend {
   if !head_expectation_eq(a: event_parent_expectation(e: event), b: expected) {
     EventAppendRefused { cause: EventLogParentMismatch }
   } else {
-    match event_object(event: event) {
+    match event_object(event: event, encode: encode) {
       EventObjectRefused { cause: c } => EventAppendRefused { cause: c }
       EventObjectBuilt { object: object } =>
         match store_expectation(expected: expected) {
@@ -189,6 +205,10 @@ fn event_log_append(store: FabricStorageBinding, partition: PartitionId, event: 
         }
     }
   }
+}
+
+fn event_log_append(store: FabricStorageBinding, partition: PartitionId, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> EventAppend {
+  event_log_append_with(store: store, partition: partition, event: event, expected: expected, encode: fn(e) { pool_event_wire_text(event: e) })
 }
 
 // THE SEAT TRANSACTION, WET AND BOUNDED: read, fold, propose, append; a stale append re-reads and
