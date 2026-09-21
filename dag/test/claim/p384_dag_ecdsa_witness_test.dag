@@ -85,7 +85,7 @@ test fn apples_ca_and_root_keys_are_on_p384() -> Bool {
     Present { value: ca } =>
       match p384_root() {
         Absent => false
-        Present { value: root } => p384_point_octets_on_curve(point: ca.spki_public_key) && p384_point_octets_on_curve(point: root.spki_public_key)
+        Present { value: root } => p384_point_octets_on_curve(point: ca.tbs.spki_public_key) && p384_point_octets_on_curve(point: root.tbs.spki_public_key)
       }
   }
 }
@@ -101,7 +101,7 @@ test fn the_sample_leaf_verifies_under_ca_1_with_sha256() -> Bool {
         Present { value: ca } =>
           match ecdsa_sig_value(octets: leaf.signature_octets, width: 48) {
             EcdsaSigValueRead { r_s_fixed: rs } =>
-              match p384_ecdsa_verify_octets(key: ca.spki_public_key, signature: rs, digest: sha256(message: leaf.tbs_octets)) {
+              match p384_ecdsa_verify_octets(key: ca.tbs.spki_public_key, signature: rs, digest: sha256(message: leaf.tbs.tbs_octets)) {
                 Present { value: v } => v
                 Absent => false
               }
@@ -121,7 +121,7 @@ test fn the_sample_ca_verifies_under_the_pinned_root_with_sha384() -> Bool {
         Present { value: root } =>
           match ecdsa_sig_value(octets: ca.signature_octets, width: 48) {
             EcdsaSigValueRead { r_s_fixed: rs } =>
-              match p384_ecdsa_verify_octets(key: root.spki_public_key, signature: rs, digest: sha384(message: ca.tbs_octets)) {
+              match p384_ecdsa_verify_octets(key: root.tbs.spki_public_key, signature: rs, digest: sha384(message: ca.tbs.tbs_octets)) {
                 Present { value: v } => v
                 Absent => false
               }
@@ -141,7 +141,7 @@ test fn the_sample_leaf_signature_is_false_over_other_bytes() -> Bool {
         Present { value: ca } =>
           match ecdsa_sig_value(octets: leaf.signature_octets, width: 48) {
             EcdsaSigValueRead { r_s_fixed: rs } =>
-              match p384_ecdsa_verify_octets(key: ca.spki_public_key, signature: rs, digest: sha256(message: leaf.tbs_octets |> list_push(0))) {
+              match p384_ecdsa_verify_octets(key: ca.tbs.spki_public_key, signature: rs, digest: sha256(message: leaf.tbs.tbs_octets |> list_push(0))) {
                 Present { value: v } => !v
                 Absent => false
               }
