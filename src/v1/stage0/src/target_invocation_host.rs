@@ -160,6 +160,7 @@ pub enum TargetProducer {
     PrimitiveEgressCensusV2,
     PrimitiveEgressCensusDag,
     PrimitiveEgressCensusSeed,
+    RequiredLaneResolutionCensus,
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -236,6 +237,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("primitive-egress-census-seed"),
             TargetProducer::PrimitiveEgressCensusSeed,
+        ),
+        (
+            instrument_label("required-lane-resolution-census"),
+            TargetProducer::RequiredLaneResolutionCensus,
         ),
     ]
 }
@@ -447,6 +452,11 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive-egress-census-seed",
             "primitive_egress_census_seed_exit",
         ),
+        TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
+            "required-lane-resolution-census",
+            "dag/gunbc/required_lane_resolution_census_live.dag",
+            "required_lane_resolution_census_exit",
+        ),
     }
 }
 
@@ -465,7 +475,23 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
 /// names (`gunbc.primitive_egress.census_live` `census_wire(scope:)` decides what it walks), so a
 /// bounded projection is a label of its own and not a flag on the full one.
 fn run_primitive_egress_census(label: &'static str, function: &'static str) -> InvocationOutcome {
-    const ENTRY: &str = "dag/gunbc/primitive_egress/census_live.dag";
+    run_cli_wire_census(
+        label,
+        "dag/gunbc/primitive_egress/census_live.dag",
+        function,
+    )
+}
+
+/// ONE RUNNER FOR EVERY INSTRUMENT WHOSE `.dag` ENTRY ANSWERS A `CliWireResponse`: resolve the
+/// entry, evaluate the named function, print the wire bytes on every termination, and map the
+/// wire exit to a Termination through the one classifier in `cli_run`. The primitive egress
+/// census labels and the required-lane resolution census share it; a new instrument of that
+/// shape is a label row plus one arm naming its entry and function, never a second runner.
+fn run_cli_wire_census(
+    label: &'static str,
+    entry: &'static str,
+    function: &'static str,
+) -> InvocationOutcome {
     let label_name = label;
     let function_name = function;
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
@@ -475,12 +501,12 @@ fn run_primitive_egress_census(label: &'static str, function: &'static str) -> I
         };
     }
     let roots = cli_run::default_source_roots();
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, entry) {
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::SubjectUnreached,
-                message: format!("{label_name}: resolve failed for {ENTRY}: {cause}"),
+                message: format!("{label_name}: resolve failed for {entry}: {cause}"),
             };
         }
     };
@@ -491,7 +517,7 @@ fn run_primitive_egress_census(label: &'static str, function: &'static str) -> I
         return InvocationOutcome {
             termination: Termination::Refused,
             message: format!(
-                "{label_name}: {ENTRY} has blocking diagnostics: {}",
+                "{label_name}: {entry} has blocking diagnostics: {}",
                 blocking.iter().cloned().collect::<Vec<_>>().join("; ")
             ),
         };

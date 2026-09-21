@@ -33,6 +33,7 @@ type TargetProducer
   | PrimitiveEgressCensusDagProducer
   | PrimitiveEgressCensusSeedProducer
   | FloorMemoryQualificationProducer
+  | RequiredLaneResolutionCensusProducer
 
 type TargetBinding {
   target: Label
