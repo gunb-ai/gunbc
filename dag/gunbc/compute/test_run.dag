@@ -19,7 +19,7 @@ import gunbc.roadmap_execution_contract { GitWorkspaceCapability }
 import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry }
 import gunbc.compute.work_provider_local {
   ProvideResult, ProvideFresh, ProvideAttached, compute_provide, provide_result_succeeded, provide_result_ending, provide_result_identity, provide_result_document,
-  HostRecordStatus, HostRecordWritten, HostRecordLost, provide_result_host_record, host_record_wire, host_record_was_written,
+  HostRecordStatus, HostRecordWritten, HostRecordLost, provide_result_host_record, host_record_wire, host_record_was_written, compute_write_host_record_note,
 }
 import gunbc.compute.test_selection {
   SelectedFile, select_witness_files, classify_witness_module, planned_functions_joined,
@@ -274,11 +274,12 @@ fn compile_entry_cli(repo_root: String, worktree: String, entry: String, receipt
           SnapshotResolved { commit } => {
             let result = compute_provide(instance: instance, commit: commit, op: CompileEntry { entry: entry as FilePath })
             let record = provide_result_host_record(r: result)
-            let receipt = Filesystem.Write(path: receipt_path, content: join([provide_result_document(r: result), host_record_wire(h: record)], ""))
+            let receipt = Filesystem.Write(path: receipt_path, content: provide_result_document(r: result))
+            let record_note = compute_write_host_record_note(receipt_path: receipt_path, record: record)
             if !receipt.success {
               ExitFailure { code: 2, reason: join(["gunbc compile: receipt could not be written to ", receipt_path, ": ", receipt.error, "; outcome was ", provide_result_document(r: result)], "") }
             } else if !host_record_was_written(h: record) {
-              ExitFailure { code: 1, reason: join(["gunbc compile: the work ended ", provide_result_ending(r: result), " and its stored record is authoritative, but ", host_record_wire(h: record)], "") }
+              ExitFailure { code: 1, reason: join(["gunbc compile: the work ended ", provide_result_ending(r: result), " and its stored record is authoritative, but ", host_record_wire(h: record), "; ", record_note], "") }
             } else if provide_result_succeeded(r: result) {
               ExitSuccess
             } else {

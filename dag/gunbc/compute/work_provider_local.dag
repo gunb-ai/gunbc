@@ -1007,7 +1007,8 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
         Present { value: op } => {
           let result = compute_provide(instance: instance, commit: commit, op: op)
           let record = provide_result_host_record(r: result)
-          let receipt = Filesystem.Write(path: receipt_path, content: join([provide_result_document(r: result), host_record_wire(h: record), "\n"], ""))
+          let receipt = Filesystem.Write(path: receipt_path, content: join([provide_result_document(r: result), "\n"], ""))
+          let record_note = compute_write_host_record_note(receipt_path: receipt_path, record: record)
           if !receipt.success {
             ExitFailure { code: 2, reason: join(["compute: receipt could not be written to ", receipt_path, ": ", receipt.error, "; outcome was ", provide_result_document(r: result)], "") }
           } else if !host_record_was_written(h: record) {
@@ -1016,7 +1017,7 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
               reason: join([
                 "compute: the work ended ", provide_result_ending(r: result),
                 " and its record at the store is authoritative -- a later request for this identity reads exactly that -- but ",
-                host_record_wire(h: record),
+                host_record_wire(h: record), "; ", record_note,
               ], ""),
             }
           } else if provide_result_succeeded(r: result) {
@@ -1026,6 +1027,26 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
           }
         }
       }
+  }
+}
+
+// THE RECEIPT STAYS THE DOCUMENT, AND THE HOST-RECORD FACT GETS ITS OWN FILE BESIDE IT.
+//
+// The first version of this appended the host-record sentence to the receipt, and the srv1
+// fault-injection run is what caught it: the receipt stopped being parseable JSON, so a consumer
+// reading it back got "Extra data" instead of an outcome. That is the SAME defect as the
+// consumption line once appended to outcome.json, committed a second time one file along -- a
+// realization's side fact changing the shape of a document some consumer parses. The rule has to be
+// the same in both places: a document a consumer parses carries exactly what its contract says, and
+// everything else lives beside it.
+fn compute_write_host_record_note(receipt_path: String, record: HostRecordStatus) -> String {
+  match record {
+    HostRecordWritten => "no host-record note was needed"
+    HostRecordLost { detail: d } => {
+      let path = join([receipt_path, ".host-record"], "")
+      let written = Filesystem.Write(path: path, content: join([d, "\n"], ""))
+      if written.success { join(["the loss is recorded at ", path], "") } else { join(["and the note could not be written to ", path, " either: ", written.error], "") }
+    }
   }
 }
 
