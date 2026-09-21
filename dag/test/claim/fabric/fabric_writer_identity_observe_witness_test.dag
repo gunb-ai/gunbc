@@ -1,0 +1,46 @@
+module test.claim.fabric.fabric_writer_identity_observe_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.fabric_storage { FabricStoreUnreachable }
+import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
+import product.placement_supply { HostIdentity }
+import gunbc.fabric_storage_client { FabricStorageServed, FabricStorageLocalFiles, FabricStorageBindingUnplaced }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused }
+import gunbc.fabric_writer_identity_observe {
+  FabricWriterIdentityReceipt, fabric_writer_identity_receipt_text, fabric_writer_identity_reading_grounds_roster,
+  fabric_writer_identity_subject, FabricWriterIdentitySubjectAdmitted, FabricWriterIdentitySubjectRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE HOST THE JOB RUNS ON, OR NOTHING: the dispatch's host must equal the kernel
+// hostname; an empty dispatch, an unreadable hostname and a disagreement each refuse with the
+// reason named, so a receipt is never labelled with a host it was not taken on.
+test fn the_subject_is_admitted_only_when_the_dispatch_names_the_running_host() -> Bool {
+  (match fabric_writer_identity_subject(dispatched: "srv2", kernel_hostname: "srv2") { FabricWriterIdentitySubjectAdmitted { host: h } => (h as String) == "srv2"  _ => false })
+    && (match fabric_writer_identity_subject(dispatched: "srv2", kernel_hostname: "srv3") { FabricWriterIdentitySubjectRefused { reason: r } => r.contains("srv2") && r.contains("srv3")  _ => false })
+    && (match fabric_writer_identity_subject(dispatched: "", kernel_hostname: "srv2") { FabricWriterIdentitySubjectRefused { reason: _ } => true  _ => false })
+    && (match fabric_writer_identity_subject(dispatched: "srv2", kernel_hostname: "") { FabricWriterIdentitySubjectRefused { reason: _ } => true  _ => false })
+}
+
+// THE RECEIPT NAMES THE BINDING AND THE READING, and only a served reading grounds a roster row:
+// a login and an absent header are both findings about the door; unproxied is not about the door
+// and unread is the transport, so neither is a ground.
+test fn the_receipt_renders_each_reading_and_only_a_served_reading_grounds_the_roster() -> Bool {
+  let served = FabricStorageServed { endpoint: "https://srv1.example.ts.net:10000/fabric-storage" as NonEmptyStr }
+  let present = FabricWriterIdentityReceipt { host: "srv2" as HostIdentity, binding: served, read: FabricIdentityPresented { identity: TailnetUser { login: "srv2@example.ts.net" as NonEmptyStr } }, observed_at: "2026-09-21T06:00:00Z" as NonEmptyStr }
+  let absent = FabricWriterIdentityReceipt { host: "srv3" as HostIdentity, binding: served, read: FabricIdentityPresented { identity: TailnetIdentityAbsent }, observed_at: "2026-09-21T06:00:00Z" as NonEmptyStr }
+  let local = FabricWriterIdentityReceipt { host: "srv1" as HostIdentity, binding: FabricStorageLocalFiles { root: fabric_storage_file_root(root: "/var/lib/gunbc/fabric" as NonEmptyStr) }, read: FabricIdentityUnproxied, observed_at: "2026-09-21T06:00:00Z" as NonEmptyStr }
+  let unread = FabricWriterIdentityReceipt { host: "srv4" as HostIdentity, binding: FabricStorageBindingUnplaced, read: FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: "the fabric DB is unplaced" as NonEmptyStr } }, observed_at: "2026-09-21T06:00:00Z" as NonEmptyStr }
+  let t = fabric_writer_identity_receipt_text(r: present)
+  t.contains("fabric_writer_identity host=srv2\n") && t.contains("binding=served https://srv1.example.ts.net:10000/fabric-storage\n") && t.contains("identity=present srv2@example.ts.net\n")
+    && fabric_writer_identity_receipt_text(r: absent).contains("identity=absent\n")
+    && fabric_writer_identity_receipt_text(r: local).contains("binding=local\n") && fabric_writer_identity_receipt_text(r: local).contains("identity=unproxied\n")
+    && fabric_writer_identity_receipt_text(r: unread).contains("binding=unplaced\n") && fabric_writer_identity_receipt_text(r: unread).contains("identity=unread ")
+    && fabric_writer_identity_reading_grounds_roster(read: present.read)
+    && fabric_writer_identity_reading_grounds_roster(read: absent.read)
+    && !fabric_writer_identity_reading_grounds_roster(read: local.read)
+    && !fabric_writer_identity_reading_grounds_roster(read: unread.read)
+}
