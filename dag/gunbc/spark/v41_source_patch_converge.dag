@@ -3,7 +3,7 @@ module gunbc.spark.v41_source_patch_converge
 import std.algebra { trim }
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.resources { Network }
-import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.content_hash { ContentHash, Sha256Digest, sha256_hex_digest }
 import std.artifact_store { ArtifactRealizationInput }
 import v2.std.optional { Present, Absent }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
@@ -440,35 +440,53 @@ fn converge_vllm_source_with_patches(
   }
 }
 
-// §3c DECLARED FRONTIER, not a silent extra path. This change's executing consumer is
-// v41_patched_source_acquire_wet → converge_vllm_source_with_patches. The keyed image from the
-// observed patched tree is the next desired component, and its consumer is a patched sibling of
-// vllm_runtime_image_build_ci_wet: that vanilla entry still calls converge_vllm_runtime_image
-// (clean checkout, recipe key) and must not grow P. TRIGGER: that sibling entry exists and is the
-// only production call of this fold (fleet-converge / administrator credential, same transport
-// dissolve-on as vllm_runtime_image_build_ci_wet). SUFFICIENT FOR: an image whose key includes
-// source_head and worktree_diff_sha256 is minted only through this fold, never by treating the
-// intended patch list as identity. This cut does not add that entry — a hours-long docker build
-// behind the source-acquire door would smuggle Cut-D cost into Cuts B+C.
+// THE PATCHED IMAGE CARRIES THE TREE IT WAS BUILT FROM, because a caller that must decide whether
+// the produced bytes ARE the candidate's runtime cannot do it from the image alone. VllmImageBuild
+// answers "did an image land under this tag with this key"; what the produced-runtime admission
+// (gunbc.spark.v41_runtime_realized v41_admit_produced_runtime) additionally needs is the observed
+// source identity the key was minted over, so it can recompute that key from the CANDIDATE's own
+// recipe and refuse an image whose key came from somewhere else. Returning the build alone would
+// have made that recomputation impossible and left the join to a transcribed hash.
+//
+// §3c CONSUMER, LANDED. This fold's executing consumer is
+// gunbc.spark.v41_runtime_image_converge converge_v41_produced_runtime_image, reached from the
+// fleet-converge mode spark_v41_runtime_image_build -- the patched sibling of
+// vllm_runtime_image_build_ci_wet the earlier frontier row named. That vanilla entry still calls
+// converge_vllm_runtime_image (clean checkout, recipe key) and does not grow P.
+type V41PatchedImageBuild
+  = V41PatchedImageBuilt { build: VllmImageBuild, observed: V41ObservedSourceIdentity }
+  | V41PatchedImageRefused { step: NonEmptyStr, cause: String }
+
 fn converge_vllm_runtime_image_with_patches(
   target: SshTarget,
   context: FleetSshExecutionContext,
   ctx: SparkMaterializeContext,
   r: VllmContainerBuildRecipe,
   patches: List<V41EnginePatch>,
-) -> VllmImageBuild
+) -> V41PatchedImageBuild
   uses net: Network
 {
   match converge_vllm_source_with_patches(target: target, context: context, r: r, patches: patches) {
-    V41PatchedSourceRefused { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
+    V41PatchedSourceRefused { step: st, cause: why } => V41PatchedImageRefused { step: st, cause: why }
     V41PatchedSourceConverged { patches_already_on_tree: _, observed: obs } =>
-      converge_vllm_image_keyed(
-        ctx: ctx,
-        r: r,
-        key: vllm_image_build_key_with_observed_tree(r: r, extras: [
-          v41_input(identity: "source_head", value: obs.revision_head as String),
-          v41_input(identity: "worktree_diff_sha256", value: obs.worktree_diff_sha256.hex as String),
-        ]),
-      )
+      V41PatchedImageBuilt {
+        build: converge_vllm_image_keyed(
+          ctx: ctx,
+          r: r,
+          key: v41_patched_image_build_key(r: r, observed: obs),
+        ),
+        observed: obs,
+      }
   }
+}
+
+// THE KEY THE PATCHED IMAGE IS BUILT UNDER, AS ONE FUNCTION RATHER THAN AN INLINE EXPRESSION. The
+// produced-runtime admission recomputes it from the candidate's recipe and the observed tree; if the
+// two sides spelled the extras independently, a rename on one side would make every produced image
+// refuse and the refusal would read as a build defect. One authority, two callers.
+fn v41_patched_image_build_key(r: VllmContainerBuildRecipe, observed: V41ObservedSourceIdentity) -> ContentHash {
+  vllm_image_build_key_with_observed_tree(r: r, extras: [
+    v41_input(identity: "source_head", value: observed.revision_head as String),
+    v41_input(identity: "worktree_diff_sha256", value: observed.worktree_diff_sha256.hex as String),
+  ])
 }

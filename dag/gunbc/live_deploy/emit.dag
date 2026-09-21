@@ -1858,6 +1858,9 @@ fn privileged_tree_files_install_command(src_sub: String, root: String, owner: N
   ], "")
 }
 
+// THE PRIVILEGED BINARY SOURCE IS RELATIVE TO THE JOB'S WORKING DIRECTORY, not "$PWD": the argv
+// renderer single-quotes every word, so a variable there is a literal (run 35657588530: install
+// cannot stat '"$PWD"/target/release/gunbc').
 fn release_locus_binary_install_step(copy: ReleaseLocusCopy, root: String) -> PipelineStep {
   match copy {
     LocusCopiedByJobUser => deploy_raw(command: approval_broker_binary_install_command(release_dir: root))
@@ -1866,7 +1869,7 @@ fn release_locus_binary_install_step(copy: ReleaseLocusCopy, root: String) -> Pi
         mode: install_executable_shared_mode,
         owner: o,
         group: o,
-        source: join(["\"$PWD\"/target/release/", gunbc_release_bin_name], ""),
+        source: join(["target/release/", gunbc_release_bin_name], ""),
         dest: join([root, "/", gunbc_release_bin_name], ""),
       ))
   }
