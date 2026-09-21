@@ -13,6 +13,7 @@ import std.types { List, Bool }
 import v2.std.algebra { fold_list }
 import gunbc.guarantee_stall { GuaranteeStall }
 import gunbc.guarantee_stall.pci_address_rendering_equivalence_stall { pci_address_rendering_equivalence_stall }
+import gunbc.guarantee_stall.fabric_purpose_handover_registration_unobserved_stall { fabric_purpose_handover_registration_unobserved_stall }
 import gunbc.guarantee_stall.emission_provenance_missing_consumer { emission_provenance_missing_consumer }
 import gunbc.guarantee_stall.emit_returns_medium_not_contribution_stall { emit_returns_medium_not_contribution_stall }
 import gunbc.guarantee_stall.emission_apply_generic_r_uninstantiated_stall { emission_apply_generic_r_uninstantiated_stall }

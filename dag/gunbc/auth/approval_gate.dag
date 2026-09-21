@@ -137,13 +137,6 @@ fn approval_refusal_text(cause: ApprovalGateRefusal) -> String {
   }
 }
 
-fn approval_gate_text<Subject>(g: ApprovalGate<Subject>) -> String {
-  match g {
-    GateAdmitted { authorization: _ } => "admitted"
-    GateRefused { cause: c } => approval_refusal_text(cause: c)
-  }
-}
-
 // ── THE INSTANT ──────────────────────────────────────────────────────────────────────────────
 // A clock probe is admitted as an instant only when it is canonical UTC; the probe's own
 // "clock-unreadable" rendering and any other non-instant refuse, so no String reaches a

@@ -218,6 +218,7 @@ test fn dsml_block_name_is_the_encoder_leading_space_not_v4_tool_calls() -> Bool
 // rows 3 and 4 have the same size: drop row 4 and repeat row 3 -- count 48, total unchanged.
 // THE INDEX JOIN HAS ITS OWN RED: the same 48 files against an index whose weight_map names one
 // shard fewer, and against one naming a 49th, refuse on the index arm alone.
+//
 // THE WEIGHT MANIFEST IS ADMITTED AS AN EXACT POPULATION, NOT COUNTED: the declared 48 rows admit
 // (every generated path once, the index's shard set equal to the files', the tree total); the two
 // Engram shards in it are the rows their owners declare (one source for path, size and digest).
@@ -226,6 +227,9 @@ test fn dsml_block_name_is_the_encoder_leading_space_not_v4_tool_calls() -> Bool
 // (duplicate AND absent, named); a foreign path refuses; and the admitted canonical text is
 // order-free -- the same rows reversed key identically -- while a path, a size or a digest that
 // changes changes it.
+// THE INDEX JOIN HAS ITS OWN RED: the same 48 files against an index whose weight_map names one
+// shard fewer, and against one naming a 49th, refuse on the index arm alone.
+// rows 3 and 4 have the same size: drop row 4 and repeat row 3 -- count 48, total unchanged.
 test fn the_weight_manifest_admits_exactly_the_48_shards_and_refuses_a_same_size_duplicate() -> Bool {
   let rows = deepseek_v4_1_flash_weight_manifest
   let admitted = match deepseek_v4_1_flash_weight_manifest_standing() {
