@@ -683,6 +683,9 @@ fn builtin_registry_surface_names() -> List<String> {
     "type_ref_hit_ne_bind_measure_active",
     "builtin_function_registry_keys",
     "compile_dag_primitive_call_edges",
+    "source_root_ingest_module_identities",
+    "required_floor_nominal_subject_module_identities",
+    "entry_closure_module_identities",
   ]
 }
 

@@ -13786,6 +13786,30 @@ fn primitive_callee_identity_value(
     }
 }
 
+/// `gunbc.required_lane_resolution_census` `ModuleIdentityPopulation`, lifted from the host's
+/// carrier. Two arms and nothing else: an observed identity list, or the typed cause the
+/// population could not be established -- never an empty list standing for a refusal.
+fn module_identity_population_value(
+    population: crate::cli_run::ModuleIdentityPopulation,
+    ctx: &InterpContext,
+) -> Value {
+    match population {
+        crate::cli_run::ModuleIdentityPopulation::Refused { cause } => Value::Variant {
+            type_name: ctx.sym("ModuleIdentityPopulation"),
+            variant_name: ctx.sym("ModuleIdentityPopulationRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+        crate::cli_run::ModuleIdentityPopulation::Observed { modules } => Value::Variant {
+            type_name: ctx.sym("ModuleIdentityPopulation"),
+            variant_name: ctx.sym("ModuleIdentityPopulationObserved"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("modules"),
+                list_value(modules.into_iter().map(str_value).collect::<Vec<_>>()),
+            )])),
+        },
+    }
+}
+
 fn primitive_call_edge_census_value(
     census: crate::cli_run::PrimitiveCallEdgeCensus,
     ctx: &InterpContext,
@@ -20946,6 +20970,31 @@ macro_rules! v1_builtin_arms {
                 let entry_prefixes = expect_str_list($positional.get(2).copied(), $name)?;
                 Ok(Some(primitive_call_edge_census_value(
                     crate::cli_run::compile_dag_primitive_call_edges(&exclude_substrings, &pool_roots, &entry_prefixes),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.source_root_ingest_module_identities" { "source_root_ingest_module_identities" } => {
+                let source_roots = expect_str_list($positional.first().copied(), $name)?;
+                Ok(Some(module_identity_population_value(
+                    crate::cli_run::source_root_ingest_module_identities(&source_roots),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.required_floor_nominal_subject_module_identities" { "required_floor_nominal_subject_module_identities" } => {
+                let source_roots = expect_str_list($positional.first().copied(), $name)?;
+                Ok(Some(module_identity_population_value(
+                    crate::cli_run::required_floor_nominal_subject_module_identities(&source_roots),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.entry_closure_module_identities" { "entry_closure_module_identities" } => {
+                let source_roots = expect_str_list($positional.first().copied(), $name)?;
+                let entry_path = expect_str($positional.get(1).copied(), $name)?;
+                Ok(Some(module_identity_population_value(
+                    crate::cli_run::entry_closure_module_identities(&source_roots, &entry_path),
                     $ctx,
                 )))
             },

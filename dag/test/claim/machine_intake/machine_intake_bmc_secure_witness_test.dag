@@ -2,7 +2,7 @@ module test.claim.machine_intake_bmc_secure_witness_test
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.content_hash { ContentHash, content_hash_of_value }
+import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types { AccountRoleAdministrator, RedfishAccountRole }
 import extdeps.bmc.ipmi_channel {
@@ -33,7 +33,6 @@ import gunbc.machine_intake_subject {
   MachineIntakeSubject,
   QualificationSubject,
   UnitKey,
-  content_hash_equal,
   qualification_subject_of,
 }
 import gunbc.machine_intake_phase {

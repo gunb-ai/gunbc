@@ -220,7 +220,7 @@ fn r2_bucket_item_write_permission_group() -> PermissionGroupRef {
 // listing now has an executing route -- gunbc.fleet_converge_workflow's r2_mint_preflight mode
 // runs observe_account_permission_groups_wet and folds its standing into a process exit and an
 // uploaded receipt. Half of the original gap therefore closed.
-  //
+//
 // THE HALF THAT REMAINS IS THE ONE THE ROW IS NOW ABOUT: the rows below are still TRANSCRIBED
 // from a run rather than derived by one. An executing caller that discards its own listing into
 // a text artifact, while the ids a consumer actually reads are hand-authored constants beside

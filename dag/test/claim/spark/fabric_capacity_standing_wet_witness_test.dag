@@ -1,0 +1,27 @@
+module test.claim.spark.fabric_capacity_standing_wet_witness
+
+import std.logic { Bool }
+import std.types { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.instruments.fabric_capacity_standing { fabric_capacity_standing }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE LIVE ENTRY, EXECUTED. test.claim.spark.fabric_capacity_standing_witness drives the verdict
+// over a SUPPLIED roster so the real group_report producer and its binding run hermetically; this
+// file is the other half of DESIGN §3's pairing obligation, the one that cannot be hermetic: the
+// entry reads the executor's hostname (shell.Exec.RunArgv, no mock_response), resolves its event
+// log layout and reads every claimed group's authority from the log before any standing is
+// judged. On the wet lane's runner that read does not reach a log -- the runner is no dashboard
+// host, or its remote is unreachable -- so the honest verdict is a refusal that NAMES THE READ:
+// every claimed group is reported "serving authority could not be read at <step>", and no
+// group's capacity is stood for. That is the route: deleting the live binding, or letting an
+// unreadable log fall back to the source row, changes this text.
+test fn the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet() -> Bool {
+  match fabric_capacity_standing() {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: reason } =>
+      string_contains(s: reason, pattern: "group-a: serving authority could not be read at ")
+  }
+}
