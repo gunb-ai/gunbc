@@ -15,7 +15,7 @@ import extdeps.standards.x690_der {
   der_object_identifier, DerOidRead, DerOidRefused, der_bit_string_octets, DerBitsRead, DerBitsRefused,
   der_boolean, DerBoolRead, DerBoolRefused,
   der_tag_integer, der_tag_bit_string, der_tag_octet_string, der_tag_object_identifier, der_tag_boolean, der_tag_utc_time, der_tag_generalized_time, der_tag_sequence,
-  DerElementAbsent,
+  DerElementAbsent, DerTrailingOctets, DerTagUnexpected,
 }
 
 // RFC 5280, Internet X.509 PKI Certificate and CRL Profile, §4.1 (the Certificate, TBSCertificate,
@@ -63,8 +63,8 @@ type X509TbsFields {
   serial: List<UInt8>
   tbs_signature_algorithm: String
   issuer_octets: List<UInt8>
-  not_before: String
-  not_after: String
+  not_before: X509Time
+  not_after: X509Time
   subject_octets: List<UInt8>
   spki_algorithm: String
   spki_named_curve: String?
@@ -102,6 +102,7 @@ fn read_algorithm_identifier(octets: List<UInt8>, e: DerElement) -> AlgorithmIde
   match der_children(octets: octets, parent: e) {
     DerChildrenRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
     DerChildrenRead { elements: kids } =>
+      if count(kids) > 2 { AlgorithmIdentifierRefused { cause: DerTrailingOctets { consumed: 2, total: count(kids) } } } else {
       match typed_child(kids: kids, i: 0, at: e.value_at, tag_number: der_tag_object_identifier, constructed: false) {
         DerRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
         DerElementRead { element: alg } =>
@@ -122,6 +123,7 @@ fn read_algorithm_identifier(octets: List<UInt8>, e: DerElement) -> AlgorithmIde
               }
           }
       }
+      }
   }
 }
 
@@ -129,23 +131,32 @@ fn ascii_of(octets: List<UInt8>) -> String {
   fold(octets, init: "", f: (acc, o) => acc + from_code_point(cp: o))
 }
 
-// Time ::= CHOICE { utcTime UTCTime, generalTime GeneralizedTime }: the contents are kept as the
-// ASCII the certificate carries ("210122121335Z" or "20300313000000Z"); interpretation against a
-// clock is the consumer's.
+// Time ::= CHOICE { utcTime UTCTime, generalTime GeneralizedTime }: THE CHOICE IS CARRIED (review
+// 69660 of gunbc#11975 -- a bare String lost the arm, and the two arms read their year differently:
+// UTCTime's YY is 1950..2049 by §4.1.2.5.1, GeneralizedTime is four-digit). The contents stay the
+// ASCII the certificate carries ("210122121335Z", "20300313000000Z"); the conversion to an instant
+// is x509_time_rfc3339 below, which reads the arm rather than guessing from the length.
 type X509Time
-  = X509TimeRead { text: String }
+  = UtcTime { text: String }
+  | GeneralizedTime { text: String }
+
+type X509TimeRead
+  = X509TimeOk { time: X509Time }
   | X509TimeRefused { cause: X509Refusal }
 
-fn read_time(octets: List<UInt8>, e: DerElement) -> X509Time {
-  let tag = if e.tag_number == der_tag_generalized_time { der_tag_generalized_time } else { der_tag_utc_time }
-  match der_element_expect_universal(e: e, tag_number: tag) {
-    Present { value: _ } => X509TimeRefused { cause: X509TimeTagUnexpected { at: e.header_at, tag: e.tag_number } }
-    Absent => X509TimeRead { text: ascii_of(octets: der_value(octets: octets, e: e)) }
+fn read_time(octets: List<UInt8>, e: DerElement) -> X509TimeRead {
+  match der_element_expect_universal(e: e, tag_number: der_tag_utc_time) {
+    Absent => X509TimeOk { time: UtcTime { text: ascii_of(octets: der_value(octets: octets, e: e)) } }
+    Present { value: _ } =>
+      match der_element_expect_universal(e: e, tag_number: der_tag_generalized_time) {
+        Absent => X509TimeOk { time: GeneralizedTime { text: ascii_of(octets: der_value(octets: octets, e: e)) } }
+        Present { value: _ } => X509TimeRefused { cause: X509TimeTagUnexpected { at: e.header_at, tag: e.tag_number } }
+      }
   }
 }
 
 type X509Validity
-  = X509ValidityRead { not_before: String, not_after: String }
+  = X509ValidityRead { not_before: X509Time, not_after: X509Time }
   | X509ValidityRefused { cause: X509Refusal }
 
 fn read_validity(octets: List<UInt8>, e: DerElement) -> X509Validity {
@@ -160,10 +171,10 @@ fn read_validity(octets: List<UInt8>, e: DerElement) -> X509Validity {
             DerElementRead { element: na } =>
               match read_time(octets: octets, e: nb) {
                 X509TimeRefused { cause: c } => X509ValidityRefused { cause: c }
-                X509TimeRead { text: b } =>
+                X509TimeOk { time: b } =>
                   match read_time(octets: octets, e: na) {
                     X509TimeRefused { cause: c } => X509ValidityRefused { cause: c }
-                    X509TimeRead { text: a } => X509ValidityRead { not_before: b, not_after: a }
+                    X509TimeOk { time: a } => X509ValidityRead { not_before: b, not_after: a }
                   }
               }
           }
@@ -259,15 +270,35 @@ fn tbs_first_index(kids: List<DerElement>) -> Int {
   }
 }
 
-// [3] extensions, wherever it sits after subjectPublicKeyInfo ([1] and [2] unique ids may precede it).
-fn tbs_extensions_element(kids: List<DerElement>, from: Int) -> DerElement? {
-  fold(kids |> skip(from), init: none, f: (acc, e) => match acc {
-    Present { value: found } => Present { value: found }
-    Absent => match e.tag_class {
-      DerContextSpecific => if e.tag_number == 3 { Present { value: e } } else { none }
-      _ => none
-    }
+// WHAT MAY FOLLOW subjectPublicKeyInfo: [1] issuerUniqueID, [2] subjectUniqueID and [3] extensions,
+// each at most once, in that order, and nothing else (§4.1). Anything else after index `from` is
+// refused rather than skipped (review 69660 of gunbc#11975): a reader that ignores a child it did
+// not expect accepts a second encoding of the structure.
+type TbsTail
+  = TbsTailRead { extensions: DerElement? }
+  | TbsTailRefused { cause: DerRefusal }
+
+fn tbs_tail(kids: List<DerElement>, from: Int) -> TbsTail {
+  let rest = kids |> skip(from)
+  let context_tags = map(rest, e => match e.tag_class {
+    DerContextSpecific => e.tag_number
+    _ => 0 - 1
   })
+  let ordered = context_tags == [] || context_tags == [3] || context_tags == [1] || context_tags == [2] || context_tags == [1, 2] || context_tags == [1, 3] || context_tags == [2, 3] || context_tags == [1, 2, 3]
+  if !ordered {
+    match rest |> get(0) {
+      null => TbsTailRefused { cause: DerElementAbsent { at: 0 } }
+      e => TbsTailRefused { cause: DerTagUnexpected { at: e.header_at, expected: 3, found: e.tag_number } }
+    }
+  } else {
+    TbsTailRead { extensions: fold(rest, init: none, f: (acc, e) => match acc {
+      Present { value: found } => Present { value: found }
+      Absent => match e.tag_class {
+        DerContextSpecific => if e.tag_number == 3 { Present { value: e } } else { none }
+        _ => none
+      }
+    }) }
+  }
 }
 
 type SubjectPublicKeyInfo
@@ -353,14 +384,15 @@ fn read_tbs(octets: List<UInt8>, tbs: DerElement) -> TbsRead {
                                           match read_spki(octets: octets, e: spki_e) {
                                             SpkiRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
                                             SpkiRead { algorithm: spki_alg, named_curve: curve, public_key: key } =>
-                                              match tbs_extensions_element(kids: kids, from: i0 + 6) {
-                                                Absent => TbsOk { fields: X509TbsFields {
+                                              match tbs_tail(kids: kids, from: i0 + 6) {
+                                                TbsTailRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                                                TbsTailRead { extensions: Absent } => TbsOk { fields: X509TbsFields {
                                                   tbs_octets: der_tlv(octets: octets, e: tbs), serial: serial, tbs_signature_algorithm: tbs_alg,
                                                   issuer_octets: der_tlv(octets: octets, e: issuer_e), not_before: nb, not_after: na,
                                                   subject_octets: der_tlv(octets: octets, e: subject_e), spki_algorithm: spki_alg, spki_named_curve: curve, spki_public_key: key,
                                                   extensions: [],
                                                 } }
-                                                Present { value: ext_e } =>
+                                                TbsTailRead { extensions: Present { value: ext_e } } =>
                                                   match read_tbs_extensions(octets: octets, wrapper: ext_e) {
                                                     X509ExtensionsRefused { cause: c } => TbsRefused { cause: c }
                                                     X509ExtensionsRead { extensions: exts } => TbsOk { fields: X509TbsFields {
@@ -398,6 +430,7 @@ fn decode_certificate(octets: List<UInt8>) -> X509Decode {
         match der_children(octets: octets, parent: outer) {
           DerChildrenRefused { cause: c } => x509_der(c: c)
           DerChildrenRead { elements: kids } =>
+            if count(kids) != 3 { x509_der(c: DerTrailingOctets { consumed: 3, total: count(kids) }) } else {
             match sequence_child(kids: kids, i: 0, at: outer.value_at) {
               DerRefused { cause: c } => x509_der(c: c)
               DerElementRead { element: tbs } =>
@@ -424,6 +457,7 @@ fn decode_certificate(octets: List<UInt8>) -> X509Decode {
                         }
                     }
                 }
+            }
             }
         }
       }
