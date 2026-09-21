@@ -91,14 +91,14 @@ fn fabric_event_log_probe_step(store: FabricStorageBinding, partition: Partition
                               ChainBudgetExhausted { at: _ } => 6
                               ChainWalked { oldest_first: xs } =>
                                 if !(length(xs) == 2 && (match first(xs) { Present { value: x } => (x.id as String) == (first_id as String)  Absent => false })) { 6 } else {
-                                  match fabric_seat_acquire(store: store, partition: partition, root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-a" as NonEmptyStr, amount: 1, at: 2000, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
+                                  match fabric_seat_acquire(store: store, partition: partition, root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-a" as NonEmptyStr, amount: Measure { count: 1 }, at: 2000, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
                                     SeatFull { wire: _, attempts_used: _ } => 7
                                     SeatContended { attempts: _ } => 7
                                     SeatAcquireRefused { step: _, reason: _, attempts_used: _ } => 7
                                     SeatStoreRefused { cause: _, attempts_used: _ } => 7
                                     SeatGranted { grant: ga, generation: gen_a, attempts_used: _ } =>
                                       if !(gen_a == 3 && ga.expires_at == 2300) { 7 } else {
-                                        match fabric_seat_acquire(store: store, partition: partition, root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-b" as NonEmptyStr, amount: 1, at: 2001, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
+                                        match fabric_seat_acquire(store: store, partition: partition, root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-b" as NonEmptyStr, amount: Measure { count: 1 }, at: 2001, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
                                           SeatGranted { grant: _, generation: _, attempts_used: _ } => 8
                                           SeatContended { attempts: _ } => 8
                                           SeatAcquireRefused { step: _, reason: _, attempts_used: _ } => 8
@@ -109,7 +109,7 @@ fn fabric_event_log_probe_step(store: FabricStorageBinding, partition: Partition
                                                 EventAppendRefused { cause: _ } => 9
                                                 EventAppendStale { expected: _, observed: _ } => 9
                                                 EventAppended { id: _ } =>
-                                                  match fabric_seat_acquire(store: store, partition: partition, root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-c" as NonEmptyStr, amount: 1, at: 2003, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
+                                                  match fabric_seat_acquire(store: store, partition: partition, root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-c" as NonEmptyStr, amount: Measure { count: 1 }, at: 2003, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
                                                     SeatGranted { grant: _, generation: gen_c, attempts_used: _ } => if gen_c == 5 { 0 } else { 9 }
                                                     SeatFull { wire: _, attempts_used: _ } => 9
                                                     SeatContended { attempts: _ } => 9
