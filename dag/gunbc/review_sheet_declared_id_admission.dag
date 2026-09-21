@@ -96,9 +96,19 @@ fn declared_id_candidacy(
   }
 }
 
-// WHICH STANDINGS ADMIT A SELECTION AT ALL. Only one does: two or more lineages were OBSERVED and
-// an operator is choosing between them. Everything else either has nothing to adjudicate or has
-// not established enough for a choice to mean anything.
+// WHICH STANDINGS ADMIT A SELECTION AT ALL. THREE DO, and this sentence used to say one, which was
+// already false when it was written and is corrected here rather than left for the next reader to
+// trip over (side-chat review, 2026-09-21). ReviewSheetConflictingLineages is the adjudication the
+// sentence had in mind -- two or more lineages OBSERVED, an operator choosing between them -- and
+// it is the only arm where a choice is between rivals. ReviewSheetSingleLineage and
+// ReviewSheetLegacyOnlyLineage each admit a selection too, but only a CONFIRMING one: the
+// declaration must name the very file that was observed, and naming any other id is rejected. That
+// is why they route through selection_against_sole_observed_file rather than through the
+// adjudication fold -- there is nothing to choose between, so the declaration can only agree with
+// the observation or be wrong about it.
+//
+// Everything else either has nothing to adjudicate (absent) or has not established enough for a
+// choice to mean anything (unreadable, and a current file beside an unresolved extent).
 fn selection_against_standing(
   selection: LegacyFileSelection,
   disposition: ReviewSheetIdentityDisposition,
