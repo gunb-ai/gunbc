@@ -140,6 +140,13 @@ const CLI_DOOR_REFUSAL_EXIT: i32 = 1;
 /// The rendered main prints `REFUSED: <reason>`; for an emit refusal that reason is
 /// `v2.cli.compile_cli`'s `the closure did not emit; diagnostic chain: <links> | FATAL AT <locus>`.
 const CLI_REFUSAL_PREFIX: &str = "REFUSED: ";
+
+/// THE NO-ENTRY DETAIL'S OTHER TWO PARTS. `v2.cli.compile_cli` `cli_parse_finish` renders
+/// `concat("emit needs the module to resolve as its subject -- ", cli_usage)`, so the record is the
+/// detail, a ` -- ` boundary, and the module's DECLARED usage line -- not the detail alone.
+const CLI_DETAIL_USAGE_BOUNDARY: &str = " -- ";
+const CLI_DOOR_DECLARED_USAGE: &str =
+    "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]...";
 const CLI_EMIT_REFUSAL_HEAD: &str = "the closure did not emit; diagnostic chain: ";
 const CLI_FATAL_AT_MARKER: &str = " | FATAL AT ";
 
@@ -1463,7 +1470,8 @@ fn cli_refusal_determining_reason(stderr: &str) -> Option<CliRefusalRendering> {
     })
 }
 
-/// THE NO-ENTRY ARM VALIDATES ITS OWN FRAME, and deliberately not through the chain decoder.
+/// THE NO-ENTRY ARM VALIDATES ITS OWN COMPLETE RECORD, and deliberately not through the chain
+/// decoder.
 ///
 /// `cli_no_entry` is a PARSE refusal: `v2_cli_run` never runs, so there is no diagnostic chain and
 /// no `FATAL AT` -- the rendering is `REFUSED: <detail>` and nothing else. Routing it through the
@@ -1472,10 +1480,16 @@ fn cli_refusal_determining_reason(stderr: &str) -> Option<CliRefusalRendering> {
 /// longer refusal that failed for another reason. So the prefix must FRAME the line and the detail
 /// must be what that line carries.
 fn cli_no_entry_refusal_framed(stderr: &str) -> bool {
+    // THE COMPLETE RECORD, NOT A PREFIX OF IT. `starts_with(detail)` admitted the detail TRUNCATED
+    // (nothing after it) and the detail followed by ANY continuation -- `<detail>; instead the fatal
+    // is ...` would have passed while describing a different refusal. The rendered line is exactly
+    // the detail, the boundary and the declared usage, so that is what is required.
+    let expected =
+        format!("{CLI_DOOR_REFUSAL_DETAIL}{CLI_DETAIL_USAGE_BOUNDARY}{CLI_DOOR_DECLARED_USAGE}");
     stderr.lines().any(|line| {
         line.trim_start()
             .strip_prefix(CLI_REFUSAL_PREFIX)
-            .is_some_and(|body| body.trim_start().starts_with(CLI_DOOR_REFUSAL_DETAIL))
+            .is_some_and(|body| body.trim() == expected)
     })
 }
 
@@ -2191,19 +2205,36 @@ mod cli_emit_probe_tests {
     /// `FATAL AT`, so routing it through the emit decoder would demand markers its contract lacks.
     #[test]
     fn the_no_entry_refusal_frame_is_required() {
-        // The real rendering: the prefix FRAMES the line and the detail is what that line carries.
-        assert!(cli_no_entry_refusal_framed(&format!(
-            "{CLI_REFUSAL_PREFIX}{CLI_DOOR_REFUSAL_DETAIL} -- usage: <binary> emit --entry ..."
+        let genuine = format!(
+            "{CLI_REFUSAL_PREFIX}{CLI_DOOR_REFUSAL_DETAIL}{CLI_DETAIL_USAGE_BOUNDARY}{CLI_DOOR_DECLARED_USAGE}"
+        );
+        // ACCEPTED: the rendering `cli_parse_finish` actually produces.
+        assert!(cli_no_entry_refusal_framed(&genuine));
+
+        // REFUSED: TRUNCATED AFTER THE DETAIL. `starts_with` accepted this; the declared usage is
+        // part of the record, so a line that stops at the detail is not that record.
+        assert!(!cli_no_entry_refusal_framed(&format!(
+            "{CLI_REFUSAL_PREFIX}{CLI_DOOR_REFUSAL_DETAIL}"
         )));
-        // The detail present but NOT framed -- the shape `contains` accepted.
+
+        // REFUSED: A MISLEADING CONTINUATION beside the genuine opening. The detail is present and
+        // the line begins exactly as the real one does, but it goes on to describe a DIFFERENT
+        // refusal -- which `starts_with` would have read as the one this control asked for.
+        assert!(!cli_no_entry_refusal_framed(&format!(
+            "{CLI_REFUSAL_PREFIX}{CLI_DOOR_REFUSAL_DETAIL}; instead the fatal is cli_unknown_option"
+        )));
+
+        // REFUSED: the detail present but NOT framed -- the shape a `contains` accepted.
         assert!(!cli_no_entry_refusal_framed(&format!(
             "some other refusal mentioning {CLI_DOOR_REFUSAL_DETAIL} in passing"
         )));
-        // A framed line carrying a DIFFERENT cause.
+
+        // REFUSED: a framed line carrying a DIFFERENT cause.
         assert!(!cli_no_entry_refusal_framed(
-            "REFUSED: unknown verb emitx -- usage: <binary> emit --entry ..."
+            "REFUSED: unknown verb emitx -- usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]..."
         ));
-        // No refusal at all.
+
+        // REFUSED: no refusal at all.
         assert!(!cli_no_entry_refusal_framed("thread 'main' panicked"));
     }
 
