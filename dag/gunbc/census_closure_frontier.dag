@@ -2,6 +2,7 @@ module gunbc.census_closure_frontier
 
 import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
+import gunbc.auth.privileged_effect_census { human_intervention_frequency_frontier_rows }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
 import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
 import extdeps.docker.container_inspect {
@@ -110,6 +111,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     modeled_webhook_event_vocabulary_frontier_rows,
     census_app_installation_route_frontier_rows,
     census_app_installation_population_frontier_rows,
+    human_intervention_frequency_frontier_rows,
     census_app_custody_handoff_frontier_rows,
     github_app_human_step_frontier_rows,
     public_workload_census_replay_consumer_frontier_rows,

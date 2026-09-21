@@ -1702,7 +1702,20 @@ data census_app_installation_population_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-type CensusAppAcquisitionReceipt {
+// THE TERMINAL RECEIPT IS SEALED, BECAUSE SEALING ITS INPUT WAS NOT ENOUGH (side-chat review,
+// 2026-09-21). AdmittedCensusInstallation is sole_constructor and can only be minted by the producer
+// that performed the read -- but this record was ORDINARY, so a caller could take an authentic seal
+// for App A, pattern-match it out, and wrap it in a receipt naming App B with an authored slug and
+// authored custody. That bypasses the registration-to-installation app id agreement, the
+// registration judgment, the custody judgment and the earliest-missing-fact ordering all at once,
+// and acquisition_standing_line would render the authored fields as a successful acquisition.
+//
+// THE SHAPE IS THE ONE THIS PR KEEPS MEETING ONE LAYER OUT: an honest factory, a sealed input, and a
+// terminal authority still writable around it. The judgment stays ordinary and witnessable
+// (InstallationAdmissionDisposition, census_app_acquisition_judgment); the RECEIPT is the authority,
+// so it is minted in exactly one place -- census_app_acquisition_standing, after the app id
+// agreement it is the whole point of.
+type CensusAppAcquisitionReceipt sole_constructor {
   app_id: GitHubAppId
   slug: NonEmptyStr
   installation: AdmittedCensusInstallation
