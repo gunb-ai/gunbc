@@ -49,13 +49,13 @@ import v2.workflow.floor_discovery_source_authority {
 import v2.std.live_tree { SubstrateInputsOnly }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
-  NativeTestRefused,
+  native_test_refused_located,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry,
   NativeTestStageEval,
   NativeTestFileRefusal
 }
 import v2.std.optional { Absent, Optional, Present, optional_present }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, invariant_port_locus }
 import v2.std.collection { List }
 import v2.std.algebra { fold_list, length }
 import v2.std.logic { Bool }
@@ -88,6 +88,19 @@ fn false_row(module: String, declaration: String) -> NativeRouteMemberRow {
   }
 }
 
+// A SUPPLIED REFUSAL FOR THE AUTHORITY'S CLAUSES. These claims discriminate the admission
+// authority over supplied rows (DESIGN section 3: the boundary is the clause, its inputs are
+// values); the located diagnostics a real route carries are exercised by the inhabitance
+// claims in v2.test.claim.native_route.native_refusal_detail_test, so here the locus is the
+// supplied-input port and only the stage and the fatal reason are the claim's subject.
+fn refused_verdict(stage: NativeTestStage, reason: Symbol) -> NativeTestVerdict {
+  native_test_refused_located(
+    stage: stage,
+    reason: reason,
+    at: invariant_port_locus(port: ^v2_native_route_test_supplied_verdict, invariant: reason)
+  )
+}
+
 fn refused_row(
   module: String,
   declaration: String,
@@ -96,7 +109,7 @@ fn refused_row(
 ) -> NativeRouteMemberRow {
   NativeRouteMemberRow {
     identity: test_identity(module: module, declaration: declaration),
-    verdict: NativeTestRefused { stage: stage, reason: reason }
+    verdict: refused_verdict(stage: stage, reason: reason)
   }
 }
 
@@ -404,7 +417,7 @@ test fn a_reached_verdict_on_a_route_gap_identity_is_a_divergence() -> Bool {
 
 test fn the_route_gap_agrees_only_with_the_hermetic_boundary_refusal() -> Bool {
   match native_route_disposition(
-    verdict: NativeTestRefused { stage: NativeTestStageEval, reason: ^eval_rejected_effect_io_unbound },
+    verdict: refused_verdict(stage: NativeTestStageEval, reason: ^eval_rejected_effect_io_unbound),
     reference: FloorRouteGapRefusal
   ) {
     NativeAgreementRouteGap => true
@@ -414,14 +427,14 @@ test fn the_route_gap_agrees_only_with_the_hermetic_boundary_refusal() -> Bool {
 
 test fn a_route_gap_refusal_off_the_boundary_is_an_exclusion() -> Bool {
   match native_route_disposition(
-    verdict: NativeTestRefused { stage: NativeTestStageEval, reason: ^some_unowned_cause },
+    verdict: refused_verdict(stage: NativeTestStageEval, reason: ^some_unowned_cause),
     reference: FloorRouteGapRefusal
   ) {
     NativeExclusion { cause: UnattributedRefusal { reason: r } } => r == ^some_unowned_cause
     _ => false
   }
   && match native_route_disposition(
-    verdict: NativeTestRefused { stage: NativeTestStagePrepare, reason: ^parse_g0_tokens_remain },
+    verdict: refused_verdict(stage: NativeTestStagePrepare, reason: ^parse_g0_tokens_remain),
     reference: FloorRouteGapRefusal
   ) {
     NativeExclusion { cause: CompilerFrontierAttributed { reason: r } } => r == ^parse_g0_tokens_remain

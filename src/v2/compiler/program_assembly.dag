@@ -98,7 +98,8 @@ type ProgramAssemblyLocatedFoldState
       spans: SpanIndex
     }
   | ProgramAssemblyLocatedFoldFailed {
-      diagnostics: NonEmptyDiagnostics
+      diagnostics: NonEmptyDiagnostics,
+      spans: SpanIndex
     }
 
 fn program_assembly_empty_roots() -> FreeMonoid<NormalizedTree> {
@@ -113,7 +114,7 @@ fn program_assembly_fold_state_from_located(
   state: ProgramAssemblyLocatedFoldState
 ) -> ProgramAssemblyFoldState {
   match state {
-    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       ProgramAssemblyFoldFailed { diagnostics: d }
     ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: _ } =>
       ProgramAssemblyFoldOk {
@@ -261,40 +262,50 @@ type ProgramAssemblySeededRead {
   spans: SpanIndex
 }
 
+// THE SPANS SURVIVE THIS READ'S OWN REFUSAL, which is the same reason IngestAssembly exists one
+// layer up: a file that PARSED and then failed to normalize or graft has a fully recorded span
+// index, and it is exactly the file whose diagnostic a reader needs located. Returning
+// Outcome<...> alone would discard that index on the arm where it matters most.
+//
+// TOKENIZE OR PARSE REFUSING IS DIFFERENT AND REPORTS AN EMPTY INDEX HONESTLY: no occurrence was
+// minted, so there is nothing to carry. Absence here is an answer, not a dropped value.
+type ProgramAssemblySeededReadResult {
+  alloc: OccurrenceIdAllocator,
+  spans: SpanIndex,
+  produced: Outcome<NormalizedTree>
+}
+
 fn program_assembly_read_to_normalized_root_seeded(
   read: DagSourceReadWitness,
   lm: LanguageModel,
   prepared: PreparedGrammar,
   residue: Diagnostics,
   seed: OccurrenceIdAllocator
-) -> Outcome<ProgramAssemblySeededRead> {
-  bind_outcome(
-    o: bind_outcome(
-      o: program_assembly_phase_tokenize(read: read, lm: lm),
-      f: fn(token_stream) {
-        parse_module_prepared_seeded(
-          tokens: token_stream,
-          prepared: prepared,
-          validation_residue: residue,
-          seed: seed
-        )
-      }
-    ),
-    f: fn(artifact) {
-      bind_outcome(
-        o: normalize(parse_tree: artifact.tree),
-        f: fn(tree) {
-          outcome_accepted(
-            value: ProgramAssemblySeededRead {
-              tree: tree,
-              alloc: artifact.alloc,
-              spans: artifact.span_index
-            }
-          )
-        }
+) -> ProgramAssemblySeededReadResult {
+  match bind_outcome(
+    o: program_assembly_phase_tokenize(read: read, lm: lm),
+    f: fn(token_stream) {
+      parse_module_prepared_seeded(
+        tokens: token_stream,
+        prepared: prepared,
+        validation_residue: residue,
+        seed: seed
       )
     }
-  )
+  ) {
+    Rejected { diagnostics: d } =>
+      ProgramAssemblySeededReadResult {
+        alloc: seed,
+        spans: span_index_empty(),
+        produced: Rejected { diagnostics: d }
+      }
+    Accepted { value: artifact, diagnostics: od } =>
+      ProgramAssemblySeededReadResult {
+        alloc: artifact.alloc,
+        spans: artifact.span_index,
+        produced: bind_outcome_accepted(od: od, inner: normalize(parse_tree: artifact.tree))
+      }
+  }
 }
 
 fn program_assembly_read_to_normalized_root_prepared(
@@ -336,33 +347,39 @@ fn program_assembly_fold_step(
   residue: Diagnostics
 ) -> ProgramAssemblyLocatedFoldState {
   match state {
-    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
-      ProgramAssemblyLocatedFoldFailed { diagnostics: d }
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans } =>
+      ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans }
     ProgramAssemblyLocatedFoldOk { located: acc, index: idx, alloc: seed, spans: spans } =>
-      match program_assembly_read_to_normalized_root_seeded(
+      let result = program_assembly_read_to_normalized_root_seeded(
         read: read,
         lm: lm,
         prepared: prepared,
         residue: residue,
         seed: seed
-      ) {
-        Accepted { value: produced, diagnostics: _ } =>
-          match qualified_name_from_module_node(root: produced.tree.root) {
+      )
+      // THE FAILING READ'S OWN SPANS ARE MERGED IN BEFORE THE REFUSAL IS BUILT, and that is the
+      // whole point of the repair: a file that parsed and then failed to normalize or graft is
+      // exactly the file whose diagnostic needs locating, and its index would otherwise be dropped
+      // one step before the renderer asked for it.
+      let carried = span_index_merge(base: spans, incoming: result.spans)
+      match result.produced {
+        Accepted { value: tree, diagnostics: _ } =>
+          match qualified_name_from_module_node(root: tree.root) {
             Accepted { value: qn, diagnostics: _ } =>
               ProgramAssemblyLocatedFoldOk {
                 located: list_snoc_item(
                   xs: acc,
-                  item: LocatedNormalizedTree { path: read.artifact.file_path, tree: produced.tree }
+                  item: LocatedNormalizedTree { path: read.artifact.file_path, tree: tree }
                 ),
                 index: source_root_index_insert(index: idx, module: qn, root: read.source_root),
-                alloc: produced.alloc,
-                spans: span_index_merge(base: spans, incoming: produced.spans)
+                alloc: result.alloc,
+                spans: carried
               }
             Rejected { diagnostics: d } =>
-              ProgramAssemblyLocatedFoldFailed { diagnostics: d }
+              ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: carried }
           }
         Rejected { diagnostics: d } =>
-          ProgramAssemblyLocatedFoldFailed { diagnostics: d }
+          ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: carried }
       }
   }
 }
@@ -408,7 +425,9 @@ fn program_assembly_fold_ingest_located(
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
         Rejected { diagnostics: d } =>
-          ProgramAssemblyLocatedFoldFailed { diagnostics: d }
+          // An invalid grammar fails the assembly before any module is parsed, so no occurrence was
+          // minted and there is no index to carry. Empty here is the answer, not a drop.
+          ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: span_index_empty() }
         Accepted { value: prepared, diagnostics: residue } =>
           fold_list(
             xs: ingest,
@@ -442,7 +461,7 @@ fn located_module_roots_from_source_root_ingest(
   match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
     ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _ } =>
       outcome_accepted(value: located)
-    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       Rejected { diagnostics: d }
   }
 }
@@ -464,7 +483,7 @@ fn located_roots_and_spans_from_source_root_ingest(
   match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
     ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: spans } =>
       outcome_accepted(value: LocatedIngestRoots { located: located, spans: spans })
-    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       Rejected { diagnostics: d }
   }
 }
@@ -521,8 +540,8 @@ fn assemble_program_from_ingest_located(
   lm: LanguageModel
 ) -> IngestAssembly {
   match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
-    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
-      IngestAssembly { spans: span_index_empty(), program: Rejected { diagnostics: d } }
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans } =>
+      IngestAssembly { spans: spans, program: Rejected { diagnostics: d } }
     ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: spans } =>
       IngestAssembly {
         spans: spans,

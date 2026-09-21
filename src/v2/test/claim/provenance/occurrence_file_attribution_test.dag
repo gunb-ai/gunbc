@@ -4,15 +4,24 @@ import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly {
   IngestAssembly,
   LocatedIngestRoots,
-  LocatedNormalizedTree,
   assemble_program_from_ingest_located,
+  LocatedNormalizedTree,
   located_roots_and_spans_from_source_root_ingest
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { Empty, fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.cli.compile_cli {
+  CliEmitClosure,
+  CliEmitted,
+  CliPlanParsed,
+  CliRunRefused,
+  v2_cli_run
+}
+import v2.std.algebra { list_reverse, list_starts_with }
+import v2.std.text { char_eq }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual, WholeFile }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -69,23 +78,6 @@ fn attribution_read_b() -> DagSourceReadWitness {
     compilation_unit: ^attribution_file_b,
     source_root: DagTree
   }
-}
-
-// THE SUBJECT IS THE ASSEMBLY, ENTERED FOR REAL. The reads are SUPPLIED -- constructing a witness
-// is cheaper and more precise than walking a source root, and the file identity under test is a
-// field of the read, so supplying it is supplying the input rather than designing the answer
-// (DESIGN section 3). What is NOT supplied is anything downstream: tokenize, parse, normalize, the
-// graft and the assembly fold all run, and the span index these claims read is the one that fold
-// actually built.
-fn attribution_assembly() -> IngestAssembly {
-  assemble_program_from_ingest_located(
-    ingest: [attribution_read_a(), attribution_read_b()],
-    admission: Admission {
-      subject: ResolutionSubject { name: [^v2, ^test, ^fixture, ^attribution_a] },
-      imports: Empty
-    },
-    lm: dag_language_model()
-  )
 }
 
 fn attribution_occurrence_file(index: SpanIndex, node: Node) -> Optional<Symbol> {
@@ -243,4 +235,144 @@ test fn attributed_occurrence_carries_a_byte_range_holds() -> Bool {
           }
       }
   }
+}
+
+// THE REAL CONSUMER, ENTERED THROUGH ITS OWN DOOR. The claims above establish that the assembly can
+// attribute an occurrence; this one establishes that the LINE AN OPERATOR READS says so, which is
+// the capability this package exists to close. It calls `v2_cli_run` -- the same fold the emitted
+// native CLI's main calls -- rather than re-deriving the detail string here, because a claim that
+// built the sentence itself would pass while the CLI printed something else.
+//
+// THE COMPILATION UNIT IS INTERNED FROM THE PATH, because that is what the production caller
+// supplies: the emitted main sets `compilation_unit: path.clone()`
+// (v1.compiler.emit_rust emit_source_root_eval_driver_main_rs). A caret literal here would be a
+// different input wearing the specimen's name, and would have reported a mangled symbol while the
+// real path rendered correctly -- so this supplies the value the real walk supplies.
+data door_probe_source: String = "module fixture.native_cli_door.door_probe\n\nimport v2.std.logic { Bool }\n\nfn door_probe_fn() -> Bool { true }\n"
+
+data door_probe_path: String = "fixtures/native_cli_door/door_probe.dag"
+
+fn door_probe_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: door_probe_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^door_probe_read,
+      file_path: door_probe_path
+    },
+    compilation_unit: symbol_intern_lexeme(lexeme: door_probe_path),
+    source_root: DagTree
+  }
+}
+
+fn door_probe_cli_detail() -> String {
+  match v2_cli_run(
+    plan: CliPlanParsed {
+      verb: CliEmitClosure {
+        entry: "fixture.native_cli_door.door_probe",
+        source_roots: Empty
+      }
+    },
+    ingest: [door_probe_read()]
+  ) {
+    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } => ""
+    CliRunRefused { reason: _, detail: detail } => detail
+  }
+}
+
+// THE ASSERTION IS A SUFFIX MATCH, WHICH IS EXACT WITHOUT BEING BRITTLE. `FATAL AT ...` is the last
+// thing the detail says, so comparing the sentence's tail to the expected text is an equality on
+// the part under test -- it cannot be satisfied by a path appearing somewhere else in the chain,
+// and it does not break when the chain ahead of it grows a link. Suffix comparison is prefix
+// comparison on the reversed carriers; a String is a list of Char, so this is the list algebra that
+// already exists rather than a new text primitive.
+//
+// THE EXPECTED TEXT CARRIES THE FILE AND THE BYTES TOGETHER, because they fail separately and a
+// file-only assertion would pass for a renderer that found the index entry and dropped its extent --
+// leaving the operator with the right file and no idea where to look in it.
+fn detail_ends_with(detail: String, expected: String) -> Bool {
+  list_starts_with(
+    xs: list_reverse(xs: detail),
+    prefix: list_reverse(xs: expected),
+    eq: char_eq
+  )
+}
+
+test fn cli_fatal_line_names_the_file_and_bytes_holds() -> Bool {
+  detail_ends_with(
+    detail: door_probe_cli_detail(),
+    expected: "FATAL AT fixtures/native_cli_door/door_probe.dag bytes 0..6"
+  )
+}
+
+// THE NEGATIVE HALF, AND THE SHAPE OF IT IS THE POINT. Every answer
+// `lens_verdict_node_occurrence_text` gives when it cannot resolve is a bracketed placeholder, so
+// every one of them ends in `>`; a resolved locus ends in the last digit of its byte range. Testing
+// the final character therefore covers all three unresolved renderings at once -- including
+// `<node occurrence #N>`, whose N is not known in advance and which a fixed-needle comparison could
+// never match as a suffix. That matters more than brevity: a needle that cannot match is
+// permanently green and carries no information, which DESIGN section 4b calls a decoration and
+// counts as worse than no check, because it would be cited as coverage. This conjunct has an
+// authorable red -- drop the span carry and the line ends in `>` again.
+test fn cli_fatal_line_no_longer_reports_a_bare_occurrence_holds() -> Bool {
+  !detail_ends_with(detail: door_probe_cli_detail(), expected: ">")
+}
+
+// A REFUSED ASSEMBLY STILL LOCATES THE FILES IT GOT THROUGH (review 69607, finding 1). The failed
+// arm of the fold used to return an empty index, so every refusal that happened AFTER a file had
+// parsed -- a normalize or namespace-graft refusal, which is precisely where this PR starts
+// carrying occurrences onto the module spine -- handed the renderer nothing to look up. The
+// annotation claimed otherwise, which is the DESIGN section 4c failure of prose asserting a
+// behavior the code did not have.
+//
+// THE SECOND READ IS UNPARSEABLE ON PURPOSE. It forces the fold to refuse after the FIRST read has
+// already parsed and recorded its spans, which is the exact state the repair is about: the answer
+// must be "file A's occurrences are still resolvable", not "the assembly failed, so nothing is
+// known". Before the repair this claim reds, because the index is empty regardless of how much was
+// recorded before the stop.
+data attribution_unparseable_source: String = "module v2.test.fixture.attribution_bad\n\nfn (((\n"
+
+fn attribution_read_unparseable() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: attribution_unparseable_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^attribution_read_bad,
+      file_path: "src/v2/test/fixture/attribution/attribution_bad.dag"
+    },
+    compilation_unit: ^attribution_file_bad,
+    source_root: DagTree
+  }
+}
+
+fn attribution_refused_assembly() -> IngestAssembly {
+  assemble_program_from_ingest_located(
+    ingest: [attribution_read_a(), attribution_read_unparseable()],
+    admission: Admission {
+      subject: ResolutionSubject { name: [^v2, ^test, ^fixture, ^attribution_a] },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+// BOTH FACTS ARE ASSERTED, because either alone is satisfiable by the wrong program. That the
+// assembly REFUSED is what puts the claim on the arm under test -- if the fixture ever started
+// parsing, a spans-only assertion would keep passing while testing the accepted path instead.
+test fn refused_assembly_still_locates_the_files_it_parsed_holds() -> Bool {
+  let assembled = attribution_refused_assembly()
+  match assembled.program {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } =>
+      match attribution_first_recorded_file(index: assembled.spans) {
+        Absent => false
+        Present { value: file } => file == ^attribution_file_a
+      }
+  }
+}
+
+// The lookup is by the id the FIRST read minted. Occurrence 0 is the ingest's first mint and the
+// fold parses reads in order, so it belongs to file A by construction rather than by a search.
+fn attribution_first_recorded_file(index: SpanIndex) -> Optional<Symbol> {
+  attribution_file_of_id(index: index, id: OccurrenceId { value: 0 })
 }
