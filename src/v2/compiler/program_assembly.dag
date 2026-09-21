@@ -12,6 +12,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse {
   ParseArtifact,
   parse_module_prepared_seeded,
+  parse_module_prepared_measured_seeded,
   ParseProductionMeasured,
   PreparedGrammar,
   parse_memo_stats_empty,
@@ -203,6 +204,64 @@ fn program_assembly_phase_parse_measured(
         outcome: bind_outcome_accepted(od: od, inner: measured.outcome),
         memo: measured.memo
       }
+  }
+}
+
+// THE SEEDED MEASURED PHASE, AND THE MARK READ BACK OUT AS A SCALAR. These two exist for the
+// emitted `SourceRootEvalDriver`, which does not call the composed per-file fold: it open-codes the
+// sequence so a clock can sit between the phases, which is admitted debt filed at
+// `gunbc.recurring_failure_mode` `realization_respells_a_modeled_folds_sequencing_to_instrument_it`.
+// That respelling is exactly why the driver needs its own seam -- it cannot inherit the threading
+// the composition does internally, so the threading has to be reachable phase by phase or the
+// driver silently keeps the per-file reset while the modeled fold no longer has it.
+//
+// THE FALLBACK ON A REFUSAL IS THE SEED ITSELF, NOT ZERO. A refused parse produces no artifact to
+// read a mark from, and the honest answer is the mark the phase was HANDED: nothing after a refusal
+// consumed an id, and returning `occurrence_id_allocator_initial()` there would silently rewind the
+// whole ingest to the start, reintroducing across the refusal the collision this threading exists
+// to prevent.
+fn program_assembly_phase_parse_measured_seeded(
+  tokens: Outcome<TokenStream>,
+  prepared: PreparedGrammar,
+  residue: Diagnostics,
+  seed: OccurrenceIdAllocator
+) -> ParseProductionMeasured {
+  match tokens {
+    Rejected { diagnostics: d } =>
+      ParseProductionMeasured {
+        outcome: Rejected { diagnostics: d },
+        memo: parse_memo_stats_empty()
+      }
+    Accepted { value: token_stream, diagnostics: od } =>
+      let measured = parse_module_prepared_measured_seeded(
+        tokens: token_stream,
+        prepared: prepared,
+        validation_residue: residue,
+        seed: seed
+      )
+      ParseProductionMeasured {
+        outcome: bind_outcome_accepted(od: od, inner: measured.outcome),
+        memo: measured.memo
+      }
+  }
+}
+
+// THE MARK AS A SCALAR, for the same reason the three memo counters above are read out one at a
+// time: the driver prints scalars, and a record does not cross that boundary as one. This is what
+// makes the emitted loop's threading OBSERVABLE from outside the binary -- the per-file line carries
+// the mark it was handed and the mark it reached, so a run over several files shows one sequence
+// continuing rather than a claim that it does.
+fn program_assembly_allocator_next(alloc: OccurrenceIdAllocator) -> Int {
+  alloc.next_id
+}
+
+fn program_assembly_measured_alloc(
+  measured: ParseProductionMeasured,
+  seed: OccurrenceIdAllocator
+) -> OccurrenceIdAllocator {
+  match measured.outcome {
+    Rejected { diagnostics: _ } => seed
+    Accepted { value: artifact, diagnostics: _ } => artifact.alloc
   }
 }
 
