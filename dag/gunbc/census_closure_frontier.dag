@@ -74,6 +74,7 @@ import gunbc.network_boot_manifest_broker { network_boot_manifest_broker_frontie
 import gunbc.github_app_acquisition { github_app_human_step_frontier_rows }
 import gunbc.instruments.github_app_acquire {
   census_app_installation_route_frontier_rows,
+  census_app_installation_population_frontier_rows,
   census_app_custody_handoff_frontier_rows,
 }
 
@@ -106,6 +107,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     create_dispatch_unconsumed_frontier_rows,
     modeled_webhook_event_vocabulary_frontier_rows,
     census_app_installation_route_frontier_rows,
+    census_app_installation_population_frontier_rows,
     census_app_custody_handoff_frontier_rows,
     github_app_human_step_frontier_rows,
     public_workload_census_replay_consumer_frontier_rows,

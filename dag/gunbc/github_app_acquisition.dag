@@ -66,6 +66,9 @@ import extdeps.github.app {
   app_install_url,
   GitHubAppInstallation,
   GitHubAppInstallationId,
+  GitHubAppRepositorySelectionMode,
+  SelectionSelected,
+  repository_selection_wire_name,
   GitHubAppManifestCode,
   GitHubAppManifestState,
   GitHubAppManifestConversion,
@@ -83,6 +86,7 @@ import extdeps.github.app {
   ObservedPermissionKeyUnanswered,
   observed_permissions_from_wire_map,
 }
+import std.page_fold { PageFoldOutcome, PagesClosed, PagesRefused, page_fold_refusal_key }
 import extdeps.transports.rest {
   RestOutcome,
   RestReadExchange,
@@ -1353,8 +1357,10 @@ type RegistrationStanding
   | RegistrationNotEstablished { reason: NonEmptyStr }
 
 type InstallationStanding
-  = InstallationEstablished { installation: GitHubAppInstallation }
+  = InstallationEstablished { admitted: AdmittedCensusInstallation }
   | InstallationNotEstablished { reason: NonEmptyStr }
+  | InstallationInsufficient { reason: NonEmptyStr }
+  | InstallationAmbiguous { reason: NonEmptyStr }
   | InstallationUnreadable { reason: NonEmptyStr }
 
 // REGISTRATION IS ESTABLISHED BY THE DECISION, NOT BY THE RECORD. A record saying an App was acquired
@@ -1384,56 +1390,181 @@ fn registration_standing(
   }
 }
 
-// THE INSTALLATION MUST NAME THE APP REGISTRATION NAMED. Reading installations authenticates as an
-// App, so a reading that arrives under a different App's JWT is a true fact about a different subject;
-// accepting it here would let one App's installation establish another's, which is the cross-fact
-// implication this whole fold exists to refuse.
+// THE INSTALLATION IS ADMITTED AGAINST A SUBJECT, NOT FOUND BY ITS APP ID. An earlier cut filtered
+// the listing by app_id and took the first element, and that was the whole admission: an
+// installation under another account, one with the wrong repository selection, one lacking the
+// permissions the census reads with, and the first of several all satisfied it, and the receipt then
+// said "acquired" over a capability nobody had established (DESIGN 4b(1)). GitHubAppInstallation
+// already carried every fact that tells installations apart; none of them reached the decision.
+//
+// SO THE SUBJECT NAMES EVERY FACT THE HUMAN STEP ASKS FOR. The consent instruction tells the account
+// holder to install for the target account and to choose the repositories the census may read; the
+// subject is that instruction made checkable, plus the manifest's permission set, which the
+// installation must hold at least as strongly as declared. The APP ID comes from registration, so
+// the subject cannot exist before the registration fact does -- no later fact mints an earlier one.
+type CensusAppInstallationSubject {
+  app_id: GitHubAppId
+  expected_account: NonEmptyStr
+  repository_selection: GitHubAppRepositorySelectionMode
+  required_permissions: List<GitHubAppPermission>
+}
+
+// THE ACCOUNT THE CENSUS IS INSTALLED ON IS A DIFFERENT FACT FROM WHERE THE APP IS REGISTERED. The
+// registration target names the account that OWNS the App; an App is installed on any number of
+// accounts, and this row names the one whose consent the census lane is closed against. They hold
+// the same login today and are kept as two rows because they answer two questions.
+data census_app_installation_account: NonEmptyStr = "gunb-ai"
+
+// SELECTED, BECAUSE THAT IS WHAT THE CONSENT STEP ASKS FOR. app_installation_consent_intervention
+// tells the account holder to choose the repositories the census may read; an "all repositories"
+// installation is a broader consent than the one this lane requested, and admitting it would let the
+// receipt certify a grant nobody was asked to make.
+data census_app_installation_selection: GitHubAppRepositorySelectionMode = SelectionSelected
+
+fn census_app_installation_subject(app_id: GitHubAppId) -> CensusAppInstallationSubject {
+  CensusAppInstallationSubject {
+    app_id: app_id,
+    expected_account: census_app_installation_account,
+    repository_selection: census_app_installation_selection,
+    required_permissions: census_app_permissions,
+  }
+}
+
+// THE ADMITTED INSTALLATION HAS ONE WRITER, AND IT IS THE ADMISSION BELOW. InstallationEstablished
+// used to carry a bare GitHubAppInstallation, so any caller could wrap any installation in it and
+// census_app_acquisition_standing would mint a receipt from it. sole_constructor makes the only way
+// to hold one passing the complete subject through admit_census_installation.
+type AdmittedCensusInstallation sole_constructor {
+  subject: CensusAppInstallationSubject
+  installation: GitHubAppInstallation
+}
+
+// THE POPULATION IS READ TO EXHAUSTION OR IT IS UNREADABLE. PopulationWalked carries std.page_fold's
+// outcome, which holds items only when the authority itself closed the listing; a walk that ran out,
+// cycled or hit its budget is PagesRefused and admits nothing. A zero-match answer is therefore an
+// absence only over a closed population -- one page of a longer listing does not establish that the
+// intended installation is not on the next one.
+type InstallationPopulation
+  = PopulationWalked { outcome: PageFoldOutcome<GitHubAppInstallation> }
+  | PopulationUnreadable { reason: NonEmptyStr }
+
+fn first_unmet_permission(
+  required: List<GitHubAppPermission>,
+  observed: List<ObservedGitHubPermission>,
+) -> GitHubAppPermission? {
+  fold(required, init: none, f: fn(found, p) {
+    match found {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        match observed_access_for(perms: observed, axis: p.name) {
+          Absent => Present { value: p }
+          Present { value: held } =>
+            if permission_access_at_least(held: held, requested: p.access) { none } else { Present { value: p } }
+        }
+    }
+  })
+}
+
+fn installation_unattributable(reason: NonEmptyStr) -> InstallationStanding {
+  InstallationNotEstablished {
+    reason: join(["no installation can be attributed to an unregistered App: ", reason as String], "") as NonEmptyStr
+  }
+}
+
+// THE ARMS ARE SEPARATE BECAUSE THEIR REMEDIES ARE. No installation on the account is a missing
+// consent; an installation on the account that grants too little is a consent to WIDEN; two for one
+// account is a reading that contradicts upstream (GitHub installs an App at most once per account),
+// most plausibly an offset walk that shifted under a concurrent change, and it is repaired by reading
+// again -- never by admitting whichever came first.
+fn admit_census_installation(
+  subject: CensusAppInstallationSubject,
+  slug: NonEmptyStr,
+  population: InstallationPopulation,
+) -> InstallationStanding {
+  match population {
+    PopulationUnreadable { reason: r } => InstallationUnreadable { reason: r }
+    PopulationWalked { outcome: outcome } =>
+      match outcome {
+        PagesRefused { refusal: refusal } =>
+          InstallationUnreadable {
+            reason: join([
+              "the installation population was not read to exhaustion (",
+              page_fold_refusal_key(r: refusal) as String,
+              "); an installation later in the listing may exist, so this is neither an absence nor an admission",
+            ], "") as NonEmptyStr
+          }
+        PagesClosed { subject: _, pages_read: _, items: all } => {
+          let of_app = filter(all, i => i.app_id.value == subject.app_id.value)
+          let on_account = filter(of_app, i => i.account.login == (subject.expected_account as String))
+          match first(on_account) {
+            Absent =>
+              InstallationNotEstablished {
+                reason: join([
+                  "census App ", slug as String,
+                  " is registered and the complete installation listing (", to_string(count(all)),
+                  " installation(s), ", to_string(count(of_app)),
+                  " of this App) holds none on account ", subject.expected_account as String,
+                  "; an installation on another account or of another App does not install this one, and registering an App grants it access to nothing, so the account holder must still consent on its install page",
+                ], "") as NonEmptyStr
+              }
+            Present { value: i } =>
+              if count(on_account) > 1 {
+                InstallationAmbiguous {
+                  reason: join([
+                    "the installation listing holds ", to_string(count(on_account)),
+                    " installations of app id ", to_string(subject.app_id.value),
+                    " on account ", subject.expected_account as String,
+                    "; GitHub installs an App once per account, so the reading contradicts itself and none is admitted",
+                  ], "") as NonEmptyStr
+                }
+              } else if i.repository_selection != subject.repository_selection {
+                InstallationInsufficient {
+                  reason: join([
+                    "installation ", to_string(i.installation_id.value),
+                    " on ", subject.expected_account as String,
+                    " has repository selection ", repository_selection_wire_name(mode: i.repository_selection) as String,
+                    " and the census consent is for ", repository_selection_wire_name(mode: subject.repository_selection) as String,
+                  ], "") as NonEmptyStr
+                }
+              } else {
+                match first_unmet_permission(required: subject.required_permissions, observed: i.permissions) {
+                  Present { value: p } =>
+                    InstallationInsufficient {
+                      reason: join([
+                        "installation ", to_string(i.installation_id.value),
+                        " on ", subject.expected_account as String,
+                        " does not hold ", permission_axis_wire_name(axis: p.name) as String,
+                        ":", permission_access_wire_name(access: p.access) as String,
+                        ", which the census manifest declares; the account holder must approve the App's requested permissions on that installation",
+                      ], "") as NonEmptyStr
+                    }
+                  Absent =>
+                    InstallationEstablished {
+                      admitted: AdmittedCensusInstallation { subject: subject, installation: i }
+                    }
+                }
+              }
+          }
+        }
+      }
+  }
+}
+
 fn installation_standing_for(
   registration: RegistrationStanding,
-  installations: List<GitHubAppInstallation>,
+  population: InstallationPopulation,
 ) -> InstallationStanding {
   match registration {
-    RegistrationNotEstablished { reason: r } =>
-      InstallationNotEstablished {
-        reason: join(["no installation can be attributed to an unregistered App: ", r as String], "") as NonEmptyStr
-      }
+    RegistrationNotEstablished { reason: r } => installation_unattributable(reason: r)
     RegistrationEstablished { app_id: id, slug: s } =>
-      match filter(installations, i => i.app_id.value == id.value) |> first {
-        Absent =>
-          if count(installations) == 0 {
-            InstallationNotEstablished {
-              reason: join(
-                [
-                  "census App ",
-                  s as String,
-                  " is registered and has no installations; registering an App grants it access to nothing, so the account holder must still consent on its install page",
-                ],
-                "",
-              ) as NonEmptyStr
-            }
-          } else {
-            InstallationNotEstablished {
-              reason: join(
-                [
-                  "the installations read returned ",
-                  to_string(count(installations)),
-                  " installation(s) and none of them names app id ",
-                  to_string(id.value),
-                  "; an installation of a different App does not install this one",
-                ],
-                "",
-              ) as NonEmptyStr
-            }
-          }
-        Present { value: installation } => InstallationEstablished { installation: installation }
-      }
+      admit_census_installation(subject: census_app_installation_subject(app_id: id), slug: s, population: population)
   }
 }
 
 type CensusAppAcquisitionReceipt {
   app_id: GitHubAppId
   slug: NonEmptyStr
-  installation_id: GitHubAppInstallationId
+  installation: AdmittedCensusInstallation
   key_custody: CustodyAtHandoff
 }
 
@@ -1453,6 +1584,8 @@ type CensusAppAcquisitionReceipt {
 type AcquisitionFactMissing
   = RegistrationMissing { reason: NonEmptyStr }
   | InstallationConsentMissing { reason: NonEmptyStr }
+  | InstallationConsentInsufficient { reason: NonEmptyStr }
+  | InstallationReadingAmbiguous { reason: NonEmptyStr }
   | InstallationReadingUnavailable { reason: NonEmptyStr }
   | CustodyMissing { reason: NonEmptyStr }
 
@@ -1472,9 +1605,13 @@ fn census_app_acquisition_standing(
       match installation {
         InstallationNotEstablished { reason: r } =>
           AcquisitionIncomplete { missing: InstallationConsentMissing { reason: r } }
+        InstallationInsufficient { reason: r } =>
+          AcquisitionIncomplete { missing: InstallationConsentInsufficient { reason: r } }
+        InstallationAmbiguous { reason: r } =>
+          AcquisitionIncomplete { missing: InstallationReadingAmbiguous { reason: r } }
         InstallationUnreadable { reason: r } =>
           AcquisitionIncomplete { missing: InstallationReadingUnavailable { reason: r } }
-        InstallationEstablished { installation: i } =>
+        InstallationEstablished { admitted: i } =>
           match custody {
             CustodyNotEstablished { reason: r } =>
               AcquisitionIncomplete { missing: CustodyMissing { reason: r } }
@@ -1483,7 +1620,7 @@ fn census_app_acquisition_standing(
                 receipt: CensusAppAcquisitionReceipt {
                   app_id: id,
                   slug: slug,
-                  installation_id: i.installation_id,
+                  installation: i,
                   key_custody: c,
                 }
               }
@@ -1503,7 +1640,8 @@ fn acquisition_standing_line(standing: CensusAppAcquisitionStanding) -> String {
         [
           "census App acquired: app_id=", to_string(r.app_id.value),
           " slug=", r.slug as String,
-          " installation_id=", to_string(r.installation_id.value),
+          " installation_id=", to_string(r.installation.installation.installation_id.value),
+          " account=", r.installation.installation.account.login,
           " key at handoff ", r.key_custody.path,
           " destined for secret ", r.key_custody.destination.secret as String,
           " (the second hop into the fleet custody roster is pending; see CustodyStanding)",
@@ -1516,6 +1654,10 @@ fn acquisition_standing_line(standing: CensusAppAcquisitionStanding) -> String {
           join(["census App NOT acquired -- REGISTRATION is missing: ", r as String], "")
         InstallationConsentMissing { reason: r } =>
           join(["census App NOT acquired -- INSTALLATION is missing: ", r as String], "")
+        InstallationConsentInsufficient { reason: r } =>
+          join(["census App NOT acquired -- the INSTALLATION exists and grants less than the census consent: ", r as String], "")
+        InstallationReadingAmbiguous { reason: r } =>
+          join(["census App NOT acquired -- the INSTALLATION reading is ambiguous: ", r as String], "")
         InstallationReadingUnavailable { reason: r } =>
           join(["census App NOT acquired -- the INSTALLATION fact could not be READ, which is not the same as having none: ", r as String], "")
         CustodyMissing { reason: r } =>

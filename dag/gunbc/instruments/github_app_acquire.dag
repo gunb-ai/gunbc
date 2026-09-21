@@ -92,6 +92,8 @@ import gunbc.github_app_acquisition {
   InstallationEstablished,
   InstallationNotEstablished,
   InstallationUnreadable,
+  InstallationPopulation,
+  PopulationUnreadable,
   installation_standing_for,
   CustodyStanding,
   CustodyAtHandoff,
@@ -106,6 +108,8 @@ import gunbc.github_app_acquisition {
   AcquisitionFactMissing,
   RegistrationMissing,
   InstallationConsentMissing,
+  InstallationConsentInsufficient,
+  InstallationReadingAmbiguous,
   InstallationReadingUnavailable,
   CustodyMissing,
   app_key_supply_intervention,
@@ -753,8 +757,16 @@ fn public_app_absence_receipt() -> ProcessExit uses net: Network {
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/github_app_acquire.dag \
 //     --function census_app_installations_receipt
+// THE SUCCESSFUL ARM IS NAMED FOR WHAT IT IS: THE FIRST PAGE. GitHub states whether another page
+// exists only in the RFC 8288 Link response header (extdeps.github.pagination), and the REST
+// transport github.AppInstallations is declared on returns the decoded body and its outcome and
+// no response header at all. So this read cannot know whether the listing continues, and the arm
+// may not be called the population: an earlier cut named it InstallationsRead and the acquisition
+// receipt treated it as the complete set, which let an intended installation on page two read as
+// absent. The report below prints it labelled as a first page; the acquisition refuses it as
+// unreadable (census_app_installation_population_frontier_rows).
 type CensusAppInstallationReading
-  = InstallationsRead { installations: List<GitHubAppInstallation> }
+  = InstallationsFirstPageOnly { installations: List<GitHubAppInstallation> }
   | InstallationsUndecodable { decode: InstallationRecordDecode }
   | InstallationsUnreadable { reason: NonEmptyStr }
 
@@ -789,14 +801,14 @@ fn read_census_app_installations() -> CensusAppInstallationReading uses net: Net
 }
 
 fn decode_installation_records(records: List<GitHubAppInstallationRecord>) -> CensusAppInstallationReading {
-  fold(records, init: InstallationsRead { installations: [] }, f: fn(acc, record) {
+  fold(records, init: InstallationsFirstPageOnly { installations: [] }, f: fn(acc, record) {
     match acc {
       InstallationsUndecodable { decode: d } => InstallationsUndecodable { decode: d }
       InstallationsUnreadable { reason: r } => InstallationsUnreadable { reason: r }
-      InstallationsRead { installations: got } =>
+      InstallationsFirstPageOnly { installations: got } =>
         match installation_from_record(record: record) {
           InstallationDecoded { installation: i } =>
-            InstallationsRead { installations: concat(got, [i]) }
+            InstallationsFirstPageOnly { installations: concat(got, [i]) }
           InstallationSelectionUnreadable { raw: raw } =>
             InstallationsUndecodable { decode: InstallationSelectionUnreadable { raw: raw } }
           InstallationPermissionsUnreadable { decode: d } =>
@@ -833,7 +845,7 @@ fn census_app_installations_receipt() -> ProcessExit uses net: Network, fs: std.
     InstallationsUnreadable { reason: r } => exit_failure(reason: r as String)
     InstallationsUndecodable { decode: _ } =>
       exit_failure(reason: "an installation record did not decode; refusing rather than reporting a partial budget")
-    InstallationsRead { installations: installations } =>
+    InstallationsFirstPageOnly { installations: installations } =>
       installations_read_exit(installations: installations)
   }
 }
@@ -856,7 +868,8 @@ fn installations_report_path() -> String {
 
 fn installations_report(installations: List<GitHubAppInstallation>) -> String {
   join([
-    "installations=", to_string(count(installations)), "\n",
+    "installations_on_first_page=", to_string(count(installations)),
+    " (the listing's continuation is not observable through this transport, so this is not the population)\n",
     join(map(installations, i => installation_token_plan_line(installation: i)), "\n"),
     "\n",
   ], "")
@@ -893,22 +906,50 @@ fn live_installation_standing(registration: RegistrationStanding) -> Installatio
 {
   match registration {
     RegistrationNotEstablished { reason: r } =>
-      installation_standing_for(registration: RegistrationNotEstablished { reason: r }, installations: [])
+      installation_standing_for(
+        registration: RegistrationNotEstablished { reason: r },
+        population: PopulationUnreadable { reason: "the installation population was not read: no App is registered to read it as" as NonEmptyStr },
+      )
     RegistrationEstablished { app_id: id, slug: slug } =>
-      match read_census_app_installations() {
-        InstallationsUnreadable { reason: r } => InstallationUnreadable { reason: r }
-        InstallationsUndecodable { decode: _ } =>
-          InstallationUnreadable {
-            reason: "an installation record did not decode; refusing rather than reading a partial list as an absence" as NonEmptyStr
-          }
-        InstallationsRead { installations: installations } =>
-          installation_standing_for(
-            registration: RegistrationEstablished { app_id: id, slug: slug },
-            installations: installations,
-          )
+      installation_standing_for(
+        registration: RegistrationEstablished { app_id: id, slug: slug },
+        population: live_installation_population(),
+      )
+  }
+}
+
+// EVERY LIVE ARM IS UNREADABLE TODAY, AND THE THIRD ONE IS THE ONE THAT MATTERS. A transport refusal
+// and an undecodable record are unreadable for the reasons they carry; a first page that decoded is
+// unreadable because nothing in it says whether a second page exists, and reading it as the
+// population is the one-page truncation the admission exists to refuse. PopulationWalked, the arm
+// that can admit, is produced by a std.page_fold walk and waits on the transport capability named in
+// census_app_installation_population_frontier_rows.
+fn live_installation_population() -> InstallationPopulation uses net: Network {
+  match read_census_app_installations() {
+    InstallationsUnreadable { reason: r } => PopulationUnreadable { reason: r }
+    InstallationsUndecodable { decode: _ } =>
+      PopulationUnreadable {
+        reason: "an installation record did not decode; refusing rather than reading a partial list as an absence" as NonEmptyStr
+      }
+    InstallationsFirstPageOnly { installations: got } =>
+      PopulationUnreadable {
+        reason: join([
+          "GET /app/installations returned a first page of ", to_string(count(got)),
+          " installation(s), and the transport does not surface the Link response header GitHub states continuation in, so the listing was not read to exhaustion; a first page is not the population",
+        ], "") as NonEmptyStr
       }
   }
 }
+
+data census_app_installation_population_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.instruments.github_app_acquire", decl_name: "live_installation_population"),
+    reason: "the live installation read cannot be walked to exhaustion: github.AppInstallations.ListInstallations is declared on the REST transport, whose result carries the decoded body and a RestOutcome and no response header, and GitHub states whether another page exists only in the RFC 8288 Link header (extdeps.github.pagination). A short or empty page is not closure (std.page_fold PageContinuation), so every live read is refused as unreadable and the acquisition receipt cannot admit an installation until this lands",
+    dissolution: unbound_dissolution(
+      description: "NAMED CAPABILITY: a REST operation result carries the response's Link header field value, so live_installation_population can drive std.page_fold page_fold_live over ListInstallations with github_continuation_from_link_header and return PopulationWalked. SUFFICIENT FOR admitting an installation over a population the authority itself closed. NOT satisfied by a larger per_page, by stopping at a short or empty page, or by routing the read through a CLI whose credential a PAT could satisfy"
+    )
+  )
+]
 
 // CUSTODY IS READ AS AN OBSERVATION OF THE FILE, NOT AS A MEMORY OF HAVING WRITTEN ONE. A converge
 // that persisted the pem in some earlier run and a worktree that never had one are indistinguishable
@@ -1021,8 +1062,12 @@ fn next_acquisition_step(record: GitHubAppAcquisitionRecord, missing: Acquisitio
         InstallationInstructionReady { intervention: i, install_url: _ } =>
           join(["NEXT: ", intervention_text(intervention: i)], "")
       }
+    InstallationConsentInsufficient { reason: r } =>
+      join(["NEXT: the installation exists and grants less than the census consent (", r as String, "). The account holder must open that installation's settings, select the repositories the census may read and approve every permission the App requests, then re-run this receipt. Do not install again: an App is installed once per account."], "")
+    InstallationReadingAmbiguous { reason: r } =>
+      join(["NEXT: re-run this receipt; the installation reading contradicted itself (", r as String, ") and nothing was admitted. Do not install or re-consent on the strength of it."], "")
     InstallationReadingUnavailable { reason: _ } =>
-      "NEXT: mint a fresh App JWT and export it as GITHUB_APP_JWT, then re-run this receipt. DO NOT go and install the App on the strength of this: the installation fact was NOT READ, so it may already be granted, and a consent flow is not what repairs an unreadable credential."
+      "NEXT: if the read was refused, mint a fresh App JWT and export it as GITHUB_APP_JWT, then re-run this receipt; if the listing was not walked to exhaustion, no operator act repairs it until the transport carries the Link header (census_app_installation_population_frontier_rows). DO NOT go and install the App on the strength of this: the installation fact was NOT READ, so it may already be granted, and a consent flow is not what repairs an unreadable reading."
     CustodyMissing { reason: _ } =>
       join(["NEXT: ", intervention_text(intervention: app_key_supply_intervention(identity: census_app_identity))], "")
   }
