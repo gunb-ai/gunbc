@@ -93,7 +93,7 @@ fn fabric_seat_collision_probe(endpoint: NonEmptyStr, partition: NonEmptyStr, re
         partition: (partition as String) as PartitionId,
         root: pool,
         actor: join(["collision-probe:", short], "") as NonEmptyStr,
-        request: SeatRequest { reference: join([short, "@", to_string(now)], "") as NonEmptyStr, amount: 1, at: now, term_seconds: 120 },
+        request: SeatRequest { reference: join([short, "@", to_string(now)], "") as NonEmptyStr, amount: Measure { count: 1 }, at: now, term_seconds: 120 },
         policy: LeasePolicy { maximum_duration_seconds: 120, release_law: QuiescenceRequired },
         attempts: 3,
         budget: 256,
@@ -154,7 +154,7 @@ fn fabric_seat_collision_probe_from(endpoint: NonEmptyStr, partition: NonEmptySt
               match harness_now_epoch() {
                 Absent => exit_failure(reason: "collision-at: clock unreadable")
                 Present { value: now } =>
-                  match propose_acquire(pool: folded, generation: g, head: head, partition: pid, actor: actor, request: SeatRequest { reference: join([short, "@", to_string(now)], "") as NonEmptyStr, amount: 1, at: now, term_seconds: 120 }) {
+                  match propose_acquire(pool: folded, generation: g, head: head, partition: pid, actor: actor, request: SeatRequest { reference: join([short, "@", to_string(now)], "") as NonEmptyStr, amount: Measure { count: 1 }, at: now, term_seconds: 120 }) {
                     SeatRefused { wire: w } => {
                       let w1 = Filesystem.Write(path: receipt as String, content: join(["host=", short, " proposal refused before the race: ", w, "\n"], ""))
                       ExitSuccess
@@ -169,7 +169,7 @@ fn fabric_seat_collision_probe_from(endpoint: NonEmptyStr, partition: NonEmptySt
                         }
                         EventAppendStale { expected: _, observed: _ } => {
                           let after = fabric_seat_acquire(store: store, partition: pid, root: pool, actor: actor,
-                            request: SeatRequest { reference: join([short, "@", to_string(now), "-retry"], "") as NonEmptyStr, amount: 1, at: now, term_seconds: 120 },
+                            request: SeatRequest { reference: join([short, "@", to_string(now), "-retry"], "") as NonEmptyStr, amount: Measure { count: 1 }, at: now, term_seconds: 120 },
                             policy: LeasePolicy { maximum_duration_seconds: 120, release_law: QuiescenceRequired }, attempts: 3, budget: 256)
                           let w3 = Filesystem.Write(path: receipt as String, content: join(["host=", short, " STALE on first push, then ", seat_acquisition_wire(a: after), "\n"], ""))
                           ExitSuccess
