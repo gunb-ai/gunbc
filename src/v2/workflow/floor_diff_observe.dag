@@ -170,13 +170,18 @@ fn floor_observe_diff_window() -> GitDiffWindowObservation? {
 
 fn floor_observe_ci_diff_event() -> CiDiffEvent {
   let event_name = floor_env_override_or(env_name: github_event_name_env, default: "")
+  let override_ref = floor_env_optional(env_name: "GUNBC_CI_DIFF_BASE" as NonEmptyStr)
+  let base_ref = floor_env_optional(env_name: github_base_ref_env)
+  let push_before = floor_observe_push_before_input(event_name: event_name)
+  let head_sha = floor_env_optional(env_name: github_sha_variable_name as NonEmptyStr)
+  let diff_window = floor_observe_diff_window()
   CiDiffEvent {
-    override_ref: floor_env_optional(env_name: "GUNBC_CI_DIFF_BASE" as NonEmptyStr),
+    override_ref: override_ref,
     event_name: event_name,
-    base_ref: floor_env_optional(env_name: github_base_ref_env),
-    push_before: floor_observe_push_before_input(event_name: event_name),
-    head_sha: floor_env_optional(env_name: github_sha_variable_name as NonEmptyStr),
-    diff_window: floor_observe_diff_window()
+    base_ref: base_ref,
+    push_before: push_before,
+    head_sha: head_sha,
+    diff_window: diff_window
   }
 }
 
