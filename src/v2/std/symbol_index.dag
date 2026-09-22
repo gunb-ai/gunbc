@@ -207,7 +207,10 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
 // module, a data row, a fn, an alias is not. Every one of those is stored in `entries` as a Node,
 // and a declared payload, a module container and a declaration parse-rest node are all Conj with
 // Named edges, so the node cannot answer which it is: three shape predicates were tried on the
-// reader (v2.compiler.resolve resolve_pattern_atom_names_constructor) and each admitted a module.
+// reader (v2.compiler.resolve resolve_pattern_atom_names_constructor) and each admitted a module --
+// admitted it as a CLASSIFICATION, which is what makes the predicate wrong; whether a module name
+// ever reaches that classifier is a separate question, and the measurement beside
+// v2.compiler.resolve says it does not, because the fill never gives a module a path to be found at.
 // So the fact is written HERE, keyed by DECLARING path, by the fill arms that know what they are
 // inserting (v2.compiler.symbol_index_fill), and the reader asks this map instead of the node.
 // Keyed by path, not leaf, so two records spelled alike in two modules are two facts.

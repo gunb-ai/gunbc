@@ -1022,9 +1022,19 @@ fn resolve_transform_children(
 // here in turn -- the bare Conj connective, the construct tag with an `Absent => true` default, and
 // declared-field coverage -- and each classified a MODULE container as a constructor, because a
 // declared payload, a module container and a declaration parse-rest node are all Conj with Named
-// edges: the shape does not carry the fact. The specimen was src/v2/std/symbol_index.dag,
-// `Present { value: node } =>` in v2.std.symbol_index, where ascent reaches the MODULE v2.std.node,
-// so the binder got no frame local and the arm body read the module -- Accepted, wrong, silent.
+// edges: the shape does not carry the fact.
+//
+// WHAT THE FILED SPECIMEN CLAIMED, AND WHAT MEASUREMENT SAYS, because this package was filed on a
+// route that does not execute and the correction belongs beside the code rather than in a PR body.
+// The claim was that `Present { value: node } =>` in v2.std.symbol_index reaches the MODULE
+// v2.std.node by lexical ascent and reads it -- Accepted, wrong, silent. Ascent cannot reach a
+// module: v2.compiler.symbol_index_fill symbol_index_fill_containment_node DESCENDS module spine
+// segments (namespace_graft_spine_segment_edge_optional) without inserting a path, so a module name
+// is never an index entry and never a LexicalHit. Measured at fixture scale beside a live control
+// (v2.test.claim.match_arm_binder_frame): the reachable route for that spelling is the global-bare
+// lookup, which answers Ambiguous and REFUSES, located, rather than accepting a wrong value. The
+// specimen itself has not been observed on the native route -- that needs the emitted compiler,
+// which does not build on main -- so this states what the corpus shows and not more.
 //
 // The fact is held by the writers that know what they inserted: v2.compiler.symbol_index_fill marks
 // a variant arm and its unique alias as it inserts them, and marks a record from the carrier
