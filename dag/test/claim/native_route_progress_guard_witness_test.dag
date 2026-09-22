@@ -3,7 +3,7 @@ module test.claim.native_route_progress_guard_witness_test
 import v2.std.algebra { any, count_where, is_empty, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.optional { optional_present, optional_absent }
+import v2.std.optional { Present, Absent, optional_present, optional_absent }
 import v2.compiler.native_test_vocabulary {
   NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval
 }
@@ -15,7 +15,7 @@ import gunbc.witness_v2_native_route {
 }
 import gunbc.native_route_progress_guard {
   NativeRouteAttainment, AttainRefused, AttainDiverged, AttainAgreed,
-  native_attainment_at_least,
+  native_attainment_at_least, native_attainment_rank,
   NativeProgressBaseline, NativeProgressBaselineRow,
   NativeProgressDispositionRow, SubjectDeleted, SubjectRenamed, SubjectLeftTheUniverse,
   NativeProgressObservedRow, NativeProgressObservedReading,
@@ -24,9 +24,9 @@ import gunbc.native_route_progress_guard {
   ProgressPreserved, ProgressLost, ProgressUnobserved,
   NativeRunReach, ReachEmissionAttempted, ReachSourceEmitted, ReachCrateBuilt, ReachExecutableStarted,
   native_run_reach_rank, native_run_reached_the_population,
-  NativeObservationProvenance, LiveRunOnHead, HistoricalAgainstTree,
+  NativeObservationProvenance, MainBaselineObservation, BranchObservation, HistoricalMainObservation,
   native_progress_baseline_advance,
-  BaselineMayAdvance, BaselineAdvanceRefusedHistorical,
+  BaselineMayAdvance, BaselineAdvanceRefusedHistorical, BaselineAdvanceRefusedNeverMain,
   BaselineAdvanceRefusedUnreached, BaselineAdvanceRefusedProgressLost,
   AttainUnreached, SubjectUnreachedEarlierRungFailed,
   NativeProgressFinding,
@@ -93,7 +93,7 @@ fn live_report(
     readings: readings,
     build: build,
     reach: ReachExecutableStarted,
-    provenance: LiveRunOnHead { head: head_sha }
+    provenance: MainBaselineObservation { head: head_sha }
   )
 }
 
@@ -543,7 +543,7 @@ test fn w_RED_a_run_that_died_at_the_emitted_build_is_unobserved_not_lost() -> B
       warning_count: 0
     },
     reach: ReachSourceEmitted,
-    provenance: LiveRunOnHead { head: head_sha }
+    provenance: MainBaselineObservation { head: head_sha }
   )
   match native_progress_verdict(report: report) {
     ProgressUnobserved { reach: r, findings: _ } => native_run_reach_rank(r: r) == native_run_reach_rank(r: ReachSourceEmitted)
@@ -560,7 +560,7 @@ test fn an_unobserved_run_does_not_report_progress_preserved() -> Bool {
     readings: [],
     build: clean_build,
     reach: ReachCrateBuilt,
-    provenance: LiveRunOnHead { head: head_sha }
+    provenance: MainBaselineObservation { head: head_sha }
   )
   match native_progress_verdict(report: report) {
     ProgressPreserved => false
@@ -610,6 +610,7 @@ test fn a_live_run_that_preserved_progress_may_advance_the_baseline() -> Bool {
   match native_progress_baseline_advance(report: report) {
     BaselineMayAdvance { head: h } => h == head_sha
     BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
     BaselineAdvanceRefusedUnreached { reach: _ } => false
     BaselineAdvanceRefusedProgressLost => false
   }
@@ -628,14 +629,15 @@ test fn w_RED_a_historical_measurement_cannot_advance_the_ratchet() -> Bool {
     readings: [observed(identity: subject_a, attained: AttainAgreed)],
     build: clean_build,
     reach: ReachExecutableStarted,
-    provenance: HistoricalAgainstTree {
+    provenance: HistoricalMainObservation {
       tree: "b1f83a32f36",
-      note: "measured against a named stale tree; retained as evidence of where the frontier was"
+      note: "a main observation that has aged; refreshable by re-measuring on today's main"
     }
   )
   match native_progress_baseline_advance(report: report) {
     BaselineAdvanceRefusedHistorical { tree: t } => t == "b1f83a32f36"
     BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
     BaselineAdvanceRefusedUnreached { reach: _ } => false
     BaselineAdvanceRefusedProgressLost => false
   }
@@ -652,7 +654,7 @@ test fn a_historical_measurement_is_still_read_and_reported() -> Bool {
     readings: [observed(identity: subject_a, attained: AttainAgreed)],
     build: clean_build,
     reach: ReachExecutableStarted,
-    provenance: HistoricalAgainstTree { tree: "b1f83a32f36", note: "retained" }
+    provenance: HistoricalMainObservation { tree: "b1f83a32f36", note: "retained" }
   )
   match native_progress_verdict(report: report) {
     ProgressPreserved => true
@@ -667,12 +669,13 @@ test fn w_RED_an_unreached_run_cannot_advance_the_ratchet() -> Bool {
     readings: [],
     build: clean_build,
     reach: ReachSourceEmitted,
-    provenance: LiveRunOnHead { head: head_sha }
+    provenance: MainBaselineObservation { head: head_sha }
   )
   match native_progress_baseline_advance(report: report) {
     BaselineAdvanceRefusedUnreached { reach: _ } => true
     BaselineMayAdvance { head: _ } => false
     BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
     BaselineAdvanceRefusedProgressLost => false
   }
 }
@@ -692,6 +695,7 @@ test fn w_RED_a_run_that_lost_a_position_cannot_advance_the_ratchet() -> Bool {
     BaselineAdvanceRefusedProgressLost => true
     BaselineMayAdvance { head: _ } => false
     BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
     BaselineAdvanceRefusedUnreached { reach: _ } => false
   }
 }
@@ -726,7 +730,7 @@ test fn w_RED_a_run_with_no_binary_reports_every_row_unreached_not_missing() -> 
       warning_count: 0
     },
     reach: ReachSourceEmitted,
-    provenance: LiveRunOnHead { head: head_sha }
+    provenance: MainBaselineObservation { head: head_sha }
   ).findings
   // One per baseline row, plus the artifact-production finding for the failed build. NOT a
   // missing-subject finding among them, which is the whole assertion.
@@ -775,7 +779,151 @@ test fn w_RED_an_unreached_run_emits_no_disposition_side_findings() -> Bool {
     readings: [],
     build: clean_build,
     reach: ReachCrateBuilt,
-    provenance: LiveRunOnHead { head: head_sha }
+    provenance: MainBaselineObservation { head: head_sha }
   ).findings
   is_empty(xs: fs)
+}
+
+// THE SAME MISATTRIBUTION, ONE ARM OVER (review 70018). The direct path was repaired to route an
+// unreached reading to its own finding; the RENAME path was not, and handed its target straight
+// to a comparison that answers `false` for an unreached reading by construction. So a rename whose
+// target nothing could look at was reported as "the rename lowered the bar".
+//
+// `a_rename_that_carries_the_baseline_is_admitted` and
+// `w_RED_a_rename_whose_target_attains_less_reds` both PASSED THROUGHOUT, because neither supplies
+// an unreached target -- the same reason the verdict-level claim could not catch the direct-path
+// version of this bug. The finding kind is the assertion.
+test fn w_RED_a_rename_to_an_unreached_target_reds_as_unreached_not_as_a_lowered_bar() -> Bool {
+  let fs = findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_b, attained: AttainAgreed }],
+      dispositions: [NativeProgressDispositionRow {
+        identity: subject_b,
+        disposition: SubjectRenamed { to: subject_b_renamed, authority: "renamed" }
+      }]
+    ),
+    readings: [observed(identity: subject_b_renamed, attained: AttainUnreached { blocked_at: ReachCrateBuilt })]
+  )
+  length(xs: fs) == 1
+    && any(xs: fs, predicate: fn(f) {
+      match f {
+        // AND IT NAMES THE TARGET, not the original: the target is the identity the run failed to
+        // reach and the one a reader goes looking for.
+        SubjectUnreachedEarlierRungFailed { identity: i, blocked_at: _ } => i.declaration == "still_holds"
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        BaselineMemberMissingUndisposed { identity: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+      }
+    })
+}
+
+// THE PARTIAL RANK IS A PROPERTY OF THE TYPE, NOT OF A PARAGRAPH (review 70018). The annotation
+// claimed `AttainUnreached` had no rank while the function gave it 0 -- colliding exactly with a
+// prepare-stage refusal. Nothing reached the collision, which is what makes it the kind of defect
+// a later refactor inherits as a fact. Now the absence is `Absent` and every caller must say what
+// it does about it.
+test fn an_unreached_reading_has_no_rank_at_all() -> Bool {
+  match native_attainment_rank(a: AttainUnreached { blocked_at: ReachCrateBuilt }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// AND THE RANKED ARMS STILL RANK, so the partiality did not quietly disarm the ladder.
+test fn every_ranked_arm_still_carries_a_rank() -> Bool {
+  match native_attainment_rank(a: AttainRefused { stage: NativeTestStagePrepare }) {
+    Present { value: p } =>
+      match native_attainment_rank(a: AttainAgreed) {
+        Present { value: a } => a > p
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// A BRANCH OBSERVATION IS REAL EVIDENCE AND MAY NEVER RAISE THE FLOOR (manager ruling,
+// 2026-09-22). The reading is otherwise perfect -- it would advance the ratchet if its tree were
+// main -- so nothing but the provenance arm can refuse it, which is the discrimination.
+//
+// FOLDING THIS INTO THE ADMITTED ARM lets one branch enforce a bar no merge candidate ever
+// cleared against every other lane. `session/sharp-bear-756` is exactly this case today:
+// self-host green, capability demonstrated, main unchanged.
+test fn w_RED_a_branch_observation_cannot_raise_the_floor_for_everyone_else() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: BranchObservation { branch: "session/sharp-bear-756", head: "6032d50be7d" }
+  )
+  match native_progress_baseline_advance(report: report) {
+    BaselineAdvanceRefusedNeverMain { branch: b, head: _ } => b == "session/sharp-bear-756"
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// AND IT IS STILL READ, because a branch observation answers a question a baseline cannot: is
+// this capability possible right now. Discarding it would lose a true fact; admitting it would
+// move the floor. The third arm is what lets it be neither.
+test fn a_branch_observation_is_still_read_and_reported() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: BranchObservation { branch: "session/sharp-bear-756", head: "6032d50be7d" }
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => true
+    ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// THE TWO NON-ADVANCING ROLES REFUSE UNDER DIFFERENT NAMES, because their remedies differ and one
+// of them cannot be carried out: a stale main observation is refreshed by re-measuring on today's
+// main, and a branch observation is not refreshable at all -- re-running it produces another
+// branch observation. A single "not admitted" arm would send a reader on an errand that cannot
+// finish.
+test fn a_stale_main_observation_and_a_branch_observation_refuse_differently() -> Bool {
+  let rows = [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }]
+  let readings = [observed(identity: subject_a, attained: AttainAgreed)]
+  let stale = native_progress_report(
+    baseline: baseline_of(rows: rows, dispositions: []),
+    readings: readings, build: clean_build, reach: ReachExecutableStarted,
+    provenance: HistoricalMainObservation { tree: "b1f83a32f36", note: "aged" }
+  )
+  let branch = native_progress_report(
+    baseline: baseline_of(rows: rows, dispositions: []),
+    readings: readings, build: clean_build, reach: ReachExecutableStarted,
+    provenance: BranchObservation { branch: "session/sharp-bear-756", head: "6032d50be7d" }
+  )
+  match native_progress_baseline_advance(report: stale) {
+    BaselineAdvanceRefusedHistorical { tree: _ } =>
+      match native_progress_baseline_advance(report: branch) {
+        BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => true
+        BaselineMayAdvance { head: _ } => false
+        BaselineAdvanceRefusedHistorical { tree: _ } => false
+        BaselineAdvanceRefusedUnreached { reach: _ } => false
+        BaselineAdvanceRefusedProgressLost => false
+      }
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
 }
