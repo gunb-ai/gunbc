@@ -5,13 +5,16 @@ import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject
 }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { assemble_program_from_ingest, dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest
 }
-import v2.extdeps.languages.dag { dag_language_model }
-import std.algebra { Cons, Empty }
+import v2.extdeps.languages.dag { dag_language_model, dag_lex }
+import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
@@ -250,4 +253,40 @@ test fn mab_module_member_test_code_refuses_without_a_binder() -> Bool {
     o: mab_resolved_module_no_binder(),
     reason: ^resolve_reason_test_code_referenced
   )
+}
+
+// WHICH TYPES THE CARRIER CALLS RECORDS, AND WHICH IT MUST NOT (the record-versus-where-alias
+// control). The record half of the declared-payload fact is read before the record rehome by
+// v2.compiler.body_lowering_fold body_lower_type_decl_record_name_optional and carried on
+// NormalizedTree record_declarations. After the rehome a record and a where-alias are the same
+// Conj { N: .. } shape, so nothing downstream could catch this predicate answering Present for a
+// where-alias, or for a coproduct whose variant carries a field block on the parse tree. So the
+// capture itself is asserted, over all four spellings: a record, a nullary record, a where-alias,
+// and a coproduct with a fielded variant -- exactly the two records, in declaration order.
+fn mab_record_declarations(src: String) -> Outcome<FreeMonoid<Symbol>> {
+  match tokenize(text: src, file: ^match_arm_binder_record_probe, rules: dag_lex()) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: tokens, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: prepared, diagnostics: residue } =>
+          match parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: tree, diagnostics: d } =>
+                  Accepted { value: tree.record_declarations, diagnostics: d }
+              }
+          }
+      }
+  }
+}
+
+test fn mab_where_alias_is_not_a_record() -> Bool {
+  match mab_record_declarations(src: "module p\n\ntype R { f: Int }\ntype W = Int where non_empty\ntype C = A { v: Int } | B\ntype U {}\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: names, diagnostics: _ } =>
+      names == Cons { head: ^R, tail: Cons { head: ^U, tail: Empty } }
+  }
 }
