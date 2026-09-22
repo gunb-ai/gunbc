@@ -2,6 +2,7 @@ module gunbc.representation_boundary
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
 import gunbc.derived_obligation_row {
   WitnessSubject,
@@ -195,11 +196,25 @@ type RepresentationBoundary {
   next_trigger: NextRungTrigger
 }
 
-// THE PREMISE THIS ROSTER'S DERIVED STANDING CARRIES, supplied rather than borrowed from the census.
-// gunbc.derived_obligation_row takes the premise as a parameter precisely so each roster counts its
-// unverified-entry debt against its OWN trigger; borrowing the census's would make this roster's debt
-// retire on a capability that was never about these rows.
-data boundary_entry_existence_premise: DeclarationRef = decl_ref(module_path: "gunbc.representation_boundary", decl_name: "boundary_entry_existence_premise")
+// THE TRIGGER THIS ROSTER'S UNVERIFIED-ENTRY DEBT RETIRES ON, AND THE FIRST CUT DID NOT HAVE ONE.
+// gunbc.derived_obligation_row takes the premise as a PARAMETER precisely so each consuming roster
+// supplies the typed DissolutionCondition naming the capability that retires its own debt -- "not a
+// sentence in a comment", in that module's own words. This roster supplied a DeclarationRef POINTING
+// AT ITSELF, which satisfies the type and names nothing: the ExecutedPendingVerification arm every
+// row here takes carried a premise that could never be reported fired, because the declaration it
+// cited was the citation. Review 69971 caught it. The census did this correctly the whole time
+// (gunbc.v2_compile_obligation_census entry_existence_verification_trigger), which is what makes the
+// omission a defect rather than a missing capability.
+//
+// UNBOUND RATHER THAN BOUND, for the reason the census gives for its own: a bound trigger names a
+// declaration whose appearance retires the obligation, and no module declares that reader yet, so a
+// citation to one would refuse at the declarations phase. Binding it to some module that happens to
+// exist would be a checkable trigger impersonating a decision.
+data boundary_entry_existence_verification_trigger: DissolutionCondition = unbound_dissolution(description: "a reader answers, for one representation-boundary row, whether the witness entry it names is still present in the tree at that path -- at which point ExecutedPendingVerification splits into a verified arm and a typed refusal for a moved or deleted entry, and this roster's unverified-entry debt falls to zero by construction rather than by anyone editing this file. THE SIBLING HALF IS A DIFFERENT CAPABILITY AND IS NOT RETIRED BY THIS ONE: whether a row's module_path RESOLVES to a declaring module is a Node-tree read recorded separately in this module's header, and an entry-existence reader that answered nothing about module identity would leave that gap exactly where it is." as NonEmptyStr)
+
+// THE PREMISE THIS ROSTER'S DERIVED STANDING CARRIES, supplied rather than borrowed from the census,
+// and now naming the trigger above rather than naming itself.
+data boundary_entry_existence_premise: DeclarationRef = decl_ref(module_path: "gunbc.representation_boundary", decl_name: "boundary_entry_existence_verification_trigger")
 
 fn boundary_interpreted_standing(b: RepresentationBoundary) -> PathExecution {
   interpreted_standing_of(ws: b.witnesses, unverified_premise: boundary_entry_existence_premise)
@@ -217,7 +232,7 @@ data calls_boundary: RepresentationBoundary = RepresentationBoundary {
   boundary_class: Calls,
   authority: OneAuthority {
     home: HomeAuthority {
-      authority: decl_ref(module_path: "std.primitive_identity", decl_name: "PrimitiveIdentity")
+      authority: decl_ref(module_path: "std.primitive_identity", decl_name: "PrimitiveSurfaceAuthority")
     }
   },
   witnesses: [
@@ -429,7 +444,7 @@ data materialization_boundary: RepresentationBoundary = RepresentationBoundary {
   boundary_class: Materialization,
   authority: OneAuthority {
     home: HomeAuthority {
-      authority: decl_ref(module_path: "std.materialization_ladder", decl_name: "MaterializationLadder")
+      authority: decl_ref(module_path: "std.materialization_ladder", decl_name: "materialization_ladder")
     }
   },
   witnesses: [
