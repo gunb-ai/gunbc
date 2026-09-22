@@ -112,8 +112,54 @@ data floor_eval_step_cost_drop_page_style_rows: List<EvalStepCostDropMeasurement
   },
 ]
 
+
+// FIFTH DROP, SAME MEMBERSHIP TEST: the interpreted-crypto claims of the App Attest path
+// (`gunbc.rung_drop` `app_attest_interpreted_crypto_new_witness_eval_step_cost`). Eight identities:
+// four P-384 point checks over real Apple keys and four SHA-384 FIPS vectors. Each is ONE curve
+// or hash evaluation with no repeated demand to remove -- the cost is 16-limb bignat arithmetic
+// and a 64-bit hash pipeline executed on an interpreter that reifies no machine width, so the
+// budget is exceeded by the primitive's realization and not by the claim's shape. They stay on
+// the floor because they are the only executing evidence that the P-384 parameters and SHA-384
+// are right on the acceptance path; the three P-384 signature VERIFICATIONS of the same witness
+// are not on this list and not on the floor -- they exceed the wall deadline and run on the
+// native row the frontier names.
+data floor_eval_step_cost_drop_interpreted_crypto_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.the_p384_base_point_is_on_the_curve" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.a_point_beside_the_base_point_is_off_the_curve" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.a_point_with_a_coordinate_at_p_is_not_admitted" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.apples_ca_and_root_keys_are_on_p384" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_the_empty_message_is_the_published_value" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_abc_is_the_published_one_block_value" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_the_896_bit_message_is_the_published_two_block_value" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_a_one_octet_change_is_a_different_digest" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+  },
+]
+
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows)
+  concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or
