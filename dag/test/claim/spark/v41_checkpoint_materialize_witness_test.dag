@@ -70,16 +70,34 @@ test fn a_subject_carries_the_rows_digest_and_the_pinned_route() -> Bool {
   }
 }
 
-// THE REQUIREMENT IS THE BYTES NOT ALREADY THERE AT THEIR DECLARED SIZE: nothing present needs all of
-// it, everything present at size needs none, and one file at the wrong size needs exactly that file.
-test fn the_disk_requirement_counts_only_what_is_missing() -> Bool {
+// THE REQUIREMENT IS THE BYTES NOT ALREADY THERE AT THEIR DECLARED SIZE, and the three cases are
+// three witnesses rather than three conjuncts. As one, they forced three independent listings through
+// one budget: the required floor measured 113,763 eval steps against the 72,300 new-witness budget and
+// refused (completed_over_cost_requirement, run 35686204607). Splitting them loses no coverage --
+// nothing here reads another case's value -- and each case now carries its own discriminating red,
+// which the conjunction did not: a regression in the one-short arm read as the same single failure as
+// a regression in the all-present arm.
+test fn the_disk_requirement_is_the_whole_checkpoint_when_nothing_is_present() -> Bool {
+  let fs = w_files()
+  byte_size_count(b: v41_required_bytes(files: fs, listing: [] as List<String>)) == byte_size_count(b: v41_checkpoint_bytes(files: fs))
+}
+
+// EVERYTHING PRESENT AT ITS DECLARED SIZE NEEDS NONE OF IT: the listing is the same population at the
+// same sizes, so the requirement is zero rather than "small".
+test fn the_disk_requirement_is_zero_when_every_file_is_present_at_size() -> Bool {
   let fs = w_files()
   let all_present = map(fs, f => join([to_string(byte_size_count(b: f.file_bytes)), " ", f.path as String], ""))
+  byte_size_count(b: v41_required_bytes(files: fs, listing: all_present)) == 0
+}
+
+// ONE FILE AT THE WRONG SIZE NEEDS EXACTLY THAT FILE, not the whole checkpoint and not nothing: the
+// size is compared, not merely the name. The tok > 0 conjunct is the control -- a fixture whose
+// tokenizer.json were zero bytes would make the assertion true for the wrong reason.
+test fn the_disk_requirement_counts_only_the_file_at_the_wrong_size() -> Bool {
+  let fs = w_files()
   let one_short = map(fs, f => if (f.path as String) == "tokenizer.json" { "1 tokenizer.json" } else { join([to_string(byte_size_count(b: f.file_bytes)), " ", f.path as String], "") })
   let tok = match first(w_file(path: "tokenizer.json")) { Present { value: t } => byte_size_count(b: t.file_bytes)  Absent => 0 }
-  byte_size_count(b: v41_required_bytes(files: fs, listing: [] as List<String>)) == byte_size_count(b: v41_checkpoint_bytes(files: fs))
-    && byte_size_count(b: v41_required_bytes(files: fs, listing: all_present)) == 0
-    && byte_size_count(b: v41_required_bytes(files: fs, listing: one_short)) == tok
+  byte_size_count(b: v41_required_bytes(files: fs, listing: one_short)) == tok
     && tok > 0
 }
 
