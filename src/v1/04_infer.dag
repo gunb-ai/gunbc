@@ -3493,6 +3493,7 @@ type InhabitanceRefusalReason
   | RefusedDistinctProductConstructor
   | RefusedDistinctAppliedTypeArgument
   | RefusedOptionalAtRequired
+  | RefusedCollectionAgainstNonCollectionIdentity
 
 
 type InhabitanceVerdict
@@ -3732,8 +3733,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   } else if declared_realizes_as_kernel_numeric(
       declared: declared, produced: produced, source_indices: source_indices) {
     Inhabits
-  } else if collection_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
-    InhabitanceRefused { reason: RefusedKernelAtStructured }
+  } else if collection_disjoint_from_established_identity(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedCollectionAgainstNonCollectionIdentity }
   } else if record_at_scalar_needs_identity(declared: declared, produced: produced, scope: scope) {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
   } else if coproduct_at_record_declared_type(declared: declared, produced: produced, scope: scope) {
@@ -3797,26 +3798,81 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
     && !direct_call_formal_has_unbound_type_variable(n: declared)
 }
 
-// Collection spelling has a measured representation gap: FreeMonoid<T> can arrive as List<T>,
-// so collection-vs-noncollection is not itself a proof of disjointness. Peel the declared side
-// through the existing nominal-alias authority and refuse only when that established base is a
-// kernel scalar. This catches List<_> at NonEmptyStr (whose base is String) without treating an
-// algebraic collection spelling as a scalar merely because its outer node is not List.
-fn collection_at_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
-  if node_is_collection(n: produced, source_indices: scope.type_env.source_indices) == false {
+// COLLECTION DISJOINTNESS IS A RELATION BETWEEN THE TWO SIDES, NOT A PROPERTY OF ONE. It was
+// "produced is a collection AND declared peels to a kernel scalar", so a List<String> at a
+// declared record, and a record at a declared List<Int>, reached the terminal Inhabits arm by
+// fallthrough: no arm ever judged collection-vs-nominal-product (gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel, specimen three). The judgment now refuses
+// when EXACTLY ONE side is an element/keyed collection and the other is an ESTABLISHED
+// non-generic identity exposing a kernel scalar, a nominal product or a coproduct head.
+// Collection spelling has a measured representation gap: FreeMonoid<T> can arrive as List<T>, and
+// `type Words = List<String>` names a collection by an alias. So collection-ness is read on BOTH
+// the authored node and its peel through the existing nominal-alias authority, and a side whose
+// head is an application (FreeMonoid<T>), opaque, stuck or generic is never the "other" side --
+// only an established kernel/product/coproduct identity is disjoint from a collection.
+//
+// Against a product or coproduct the COLLECTION side must be established too. A builtin
+// whose signature is not modeled can answer a placeholder container with unbound type
+// arguments -- measured: v1.compiler.infer_method types `with(record, {..})` as
+// Map<map_key, map_value>, and reading that placeholder as a collection refused a correct
+// record update in src/v1/05_emit_rust.dag. A kernel scalar is disjoint from ANY collection,
+// so that arm keeps its prior reach; this arm refuses only an established collection.
+fn collection_disjoint_from_established_identity(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let declared_collection = side_is_collection(n: declared, scope: scope)
+  let produced_collection = side_is_collection(n: produced, scope: scope)
+  if declared_collection == produced_collection {
     false
   } else {
-    let peeled = peel_nominal_alias_identity(n: declared, env: scope.type_env, module_name: scope.module_name)
-    let peeled_is_kernel = is_kernel_type(name: authored_name_at(source_indices: scope.type_env.source_indices, node: peeled))
-    let refinement_base_is_kernel = if is_where_refinement_type(ty: declared) {
-      match declared.children |> first {
-        Present { value: base } =>
-          is_kernel_type(name: authored_name_at(source_indices: scope.type_env.source_indices, node: child_type_node(ch: base)))
-        Absent => false
-      }
-    } else { false }
-    peeled_is_kernel || refinement_base_is_kernel
+    let collection_side = if produced_collection { produced } else { declared }
+    let other_side = if produced_collection { declared } else { produced }
+    if side_is_established_non_generic(n: other_side, scope: scope) == false {
+      false
+    } else if side_is_kernel_scalar(n: other_side, scope: scope) {
+      true
+    } else {
+      let exposure = expected_type_head_exposure(formal: other_side, scope: scope)
+      (type_head_exposure_is_product(exposure: exposure) || type_head_exposure_is_coproduct(exposure: exposure))
+        && !direct_call_formal_has_unbound_type_variable(n: collection_side)
+    }
   }
+}
+
+fn side_is_collection(n: Node, scope: InferScope) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  if node_is_element_collection(n: n, source_indices: source_indices)
+      || node_is_keyed_collection(n: n, source_indices: source_indices) {
+    true
+  } else {
+    let peeled = peel_nominal_alias_identity(n: n, env: scope.type_env, module_name: scope.module_name)
+    node_is_element_collection(n: peeled, source_indices: source_indices)
+      || node_is_keyed_collection(n: peeled, source_indices: source_indices)
+  }
+}
+
+fn side_is_established_non_generic(n: Node, scope: InferScope) -> Bool {
+  let is_generic = (n.params |> count) > 0 || match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+  !is_generic
+    && authored_name_at(source_indices: scope.type_env.source_indices, node: n) != ""
+    && !type_node_is_callable(n: n)
+    && !direct_call_formal_has_unbound_type_variable(n: n)
+}
+
+fn side_is_kernel_scalar(n: Node, scope: InferScope) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  let peeled = peel_nominal_alias_identity(n: n, env: scope.type_env, module_name: scope.module_name)
+  let refinement_base_is_kernel = if is_where_refinement_type(ty: n) {
+    match n.children |> first {
+      Present { value: base } =>
+        is_kernel_type(name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: base)))
+      Absent => false
+    }
+  } else { false }
+  is_kernel_type(name: authored_name_at(source_indices: source_indices, node: peeled))
+    || refinement_base_is_kernel
+    || type_head_exposure_is_kernel_scalar(exposure: expected_type_head_exposure(formal: n, scope: scope))
 }
 
 fn record_at_scalar_needs_identity(declared: Node, produced: Node, scope: InferScope) -> Bool {

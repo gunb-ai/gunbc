@@ -474,3 +474,61 @@ test fn w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses() ->
   violation_count(source: disjoint_refinement_at_product_source, wanted: "DeclaredTypeNotInhabited")
     > violation_count(source: disjoint_partner_source, wanted: "DeclaredTypeNotInhabited")
 }
+
+// COLLECTION VS NOMINAL PRODUCT, BOTH DIRECTIONS (gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel, specimen three). Before
+// collection_disjoint_from_established_identity replaced the one-sided
+// collection_at_scalar_declared_type, both REDs below reached the terminal Inhabits arm by
+// fallthrough and the body ran. The first is also the loyal-swift discovery shape: a record
+// mintable only through a quiet builder must not be satisfiable by a smuggled argv list, and it
+// is the DECLARED type that refuses it.
+data collection_at_record_source: String = "module probe_inhabit_list_at_record\nimport std.types { Bool, String, List }\ntype Rec { a: String }\nfn takes_rec(r: Rec) -> Bool { true }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn probe() -> Bool { takes_rec(r: a_list()) }\n"
+
+test fn w_collection_at_a_nominal_product_argument_is_refused() -> Bool {
+  violation_count(source: collection_at_record_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+data argv_list_at_quiet_record_source: String = "module probe_inhabit_argv_at_quiet\nimport std.types { Bool, String, List }\ntype QuietInvocation { argv: List<String> }\nfn run_quiet(invocation: QuietInvocation) -> Bool { true }\nfn smuggled() -> List<String> { [\"--quiet\"] }\nfn probe() -> Bool { run_quiet(invocation: smuggled()) }\n"
+
+test fn w_the_declared_record_refuses_a_smuggled_argv_list() -> Bool {
+  violation_count(source: argv_list_at_quiet_record_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+data record_at_collection_source: String = "module probe_inhabit_record_at_list\nimport std.types { Bool, String, Int, List }\ntype Rec { a: String }\nfn takes_list(xs: List<Int>) -> Bool { true }\nfn a_rec() -> Rec { Rec { a: \"x\" } }\nfn probe() -> Bool { takes_list(xs: a_rec()) }\n"
+
+test fn w_nominal_product_at_a_collection_argument_is_refused() -> Bool {
+  violation_count(source: record_at_collection_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+data collection_and_record_conforming_source: String = "module probe_inhabit_list_record_ok\nimport std.types { Bool, String, List }\ntype Rec { a: String }\nfn takes_rec(r: Rec) -> Bool { true }\nfn takes_words(xs: List<String>) -> Bool { true }\nfn a_list() -> List<String> { [\"x\"] }\nfn a_rec() -> Rec { Rec { a: \"x\" } }\nfn probe() -> Bool { takes_rec(r: a_rec()) && takes_words(xs: a_list()) }\n"
+
+test fn w_conforming_collection_and_record_arguments_are_admitted() -> Bool {
+  violation_count(source: collection_and_record_conforming_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// Guards the peel on both sides: a collection declared through an alias is still a collection.
+data aliased_collection_formal_source: String = "module probe_inhabit_alias_words\nimport std.types { Bool, String, List }\ntype Words = List<String>\nfn takes_words(xs: Words) -> Bool { true }\nfn a_list() -> List<String> { [\"x\"] }\nfn probe() -> Bool { takes_words(xs: a_list()) }\n"
+
+test fn w_list_at_an_aliased_list_formal_is_admitted() -> Bool {
+  violation_count(source: aliased_collection_formal_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// ONE EMITTER SERVES EVERY WIRED POSITION: the same relation fires at a list element with no
+// per-position code. The record-literal field is NOT used here because it has no obligation
+// producer yet (v1.compiler.infer DeclaredTypePosition names it among the nine awaiting one), so
+// a control there would measure the missing producer, not this relation.
+data collection_at_record_list_element_source: String = "module probe_inhabit_list_at_record_elem\nimport std.types { Bool, String, List }\ntype Rec { a: String }\nfn takes_recs(rs: List<Rec>) -> Bool { true }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn probe() -> Bool { takes_recs(rs: [a_list()]) }\n"
+
+test fn w_collection_at_a_list_element_of_record_type_is_refused() -> Bool {
+  violation_count(source: collection_at_record_list_element_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE FALSE REFUSAL THE CENSUS FOUND. `with(record, { .. })` is typed by its builtin signature as a
+// placeholder Map with unbound type arguments; the relation must not read that placeholder as an
+// established collection disjoint from the record it actually is (measured at
+// src/v1/05_emit_rust.dag, a correct record update refused before the establishedness guard).
+data record_update_at_record_source: String = "module probe_inhabit_with_at_record\nimport std.types { Bool, String }\ntype Rec { a: String }\nfn takes_rec(r: Rec) -> Bool { true }\nfn probe() -> Bool {\n  let r = Rec { a: \"x\" }\n  takes_rec(r: with(r, { a: \"y\" }))\n}\n"
+
+test fn w_a_record_update_at_a_record_argument_is_admitted() -> Bool {
+  violation_count(source: record_update_at_record_source, wanted: "DeclaredTypeNotInhabited") == 0
+}

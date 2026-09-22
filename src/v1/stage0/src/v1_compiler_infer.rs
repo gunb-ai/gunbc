@@ -381,6 +381,7 @@ pub struct InferScope {
     pub lambda_param_provenance: Rc<HashMap<String, Rc<SubValueRelation>>>,
     pub caller_decl_name: String,
     pub in_flight_lambda_param_names: Rc<Vec<String>>,
+    pub enclosing_declared_type_param_names: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -5001,6 +5002,7 @@ pub enum InhabitanceRefusalReason {
     RefusedDistinctProductConstructor,
     RefusedDistinctAppliedTypeArgument,
     RefusedOptionalAtRequired,
+    RefusedCollectionAgainstNonCollectionIdentity,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -5262,14 +5264,14 @@ pub fn declared_type_inhabitance(
                             ) {
                                 Rc::new(InhabitanceVerdict::Inhabits)
                             } else {
-                                if collection_at_scalar_declared_type(
+                                if collection_disjoint_from_established_identity(
                                     declared.clone(),
                                     produced.clone(),
                                     scope.clone(),
                                 ) {
                                     Rc::new(InhabitanceVerdict::InhabitanceRefused {
-                                        reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
-                                    })
+    reason: InhabitanceRefusalReason::RefusedCollectionAgainstNonCollectionIdentity,
+})
                                 } else {
                                     if record_at_scalar_needs_identity(
                                         declared.clone(),
@@ -5371,44 +5373,121 @@ pub fn optional_produced_at_required_declared(
     }
 }
 
-pub fn collection_at_scalar_declared_type(
+pub fn collection_disjoint_from_established_identity(
     declared: Rc<Node>,
     produced: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> bool {
-    if (crate::v1_compiler_infer_types::node_is_collection(
-        produced.clone(),
-        scope.type_env.clone().source_indices.clone(),
-    ) == false)
     {
-        false
-    } else {
-        {
-            let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                declared.clone(),
-                scope.type_env.clone(),
-                scope.module_name.clone(),
-            );
-            let peeled_is_kernel =
-                crate::std_types::is_kernel_type(crate::v1_std_core::authored_name_at(
-                    scope.type_env.clone().source_indices.clone(),
-                    peeled.clone(),
-                ));
-            let refinement_base_is_kernel = if is_where_refinement_type(declared.clone()) {
-                match declared.children.clone().first().cloned() {
-                    Some(base) => {
-                        crate::std_types::is_kernel_type(crate::v1_std_core::authored_name_at(
-                            scope.type_env.clone().source_indices.clone(),
-                            crate::v1_compiler_infer_types::child_type_node(base.clone()),
-                        ))
+        let declared_collection = side_is_collection(declared.clone(), scope.clone());
+        let produced_collection = side_is_collection(produced.clone(), scope.clone());
+        if (declared_collection.clone() == produced_collection.clone()) {
+            false
+        } else {
+            {
+                let collection_side = if produced_collection.clone() {
+                    produced.clone()
+                } else {
+                    declared.clone()
+                };
+                let other_side = if produced_collection.clone() {
+                    declared.clone()
+                } else {
+                    produced.clone()
+                };
+                if (side_is_established_non_generic(other_side.clone(), scope.clone()) == false) {
+                    false
+                } else {
+                    if side_is_kernel_scalar(other_side.clone(), scope.clone()) {
+                        true
+                    } else {
+                        {
+                            let exposure =
+                                expected_type_head_exposure(other_side.clone(), scope.clone());
+                            ((crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(exposure.clone()) || crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(exposure.clone())) && !direct_call_formal_has_unbound_type_variable(collection_side.clone()))
+                        }
                     }
-                    std::option::Option::None => false,
                 }
-            } else {
-                false
-            };
-            (peeled_is_kernel.clone() || refinement_base_is_kernel.clone())
+            }
         }
+    }
+}
+
+pub fn side_is_collection(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        if (crate::v1_compiler_infer_types::node_is_element_collection(
+            n.clone(),
+            source_indices.clone(),
+        ) || crate::v1_compiler_infer_types::node_is_keyed_collection(
+            n.clone(),
+            source_indices.clone(),
+        )) {
+            true
+        } else {
+            {
+                let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                    n.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                );
+                (crate::v1_compiler_infer_types::node_is_element_collection(
+                    peeled.clone(),
+                    source_indices.clone(),
+                ) || crate::v1_compiler_infer_types::node_is_keyed_collection(
+                    peeled.clone(),
+                    source_indices.clone(),
+                ))
+            }
+        }
+    }
+}
+
+pub fn side_is_established_non_generic(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let is_generic = (((n.params.clone().len() as i64) > 0)
+            || match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                _ => false,
+            });
+        (((!is_generic.clone()
+            && (crate::v1_std_core::authored_name_at(
+                scope.type_env.clone().source_indices.clone(),
+                n.clone(),
+            ) != "".to_string()))
+            && !type_node_is_callable(n.clone()))
+            && !direct_call_formal_has_unbound_type_variable(n.clone()))
+    }
+}
+
+pub fn side_is_kernel_scalar(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+            n.clone(),
+            scope.type_env.clone(),
+            scope.module_name.clone(),
+        );
+        let refinement_base_is_kernel = if is_where_refinement_type(n.clone()) {
+            match n.children.clone().first().cloned() {
+                Some(base) => {
+                    crate::std_types::is_kernel_type(crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        crate::v1_compiler_infer_types::child_type_node(base.clone()),
+                    ))
+                }
+                std::option::Option::None => false,
+            }
+        } else {
+            false
+        };
+        ((crate::std_types::is_kernel_type(crate::v1_std_core::authored_name_at(
+            source_indices.clone(),
+            peeled.clone(),
+        )) || refinement_base_is_kernel.clone())
+            || crate::v1_compiler_type_head_exposure::type_head_exposure_is_kernel_scalar(
+                expected_type_head_exposure(n.clone(), scope.clone()),
+            ))
     }
 }
 
@@ -8648,6 +8727,7 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
             caller_decl_name: scope.caller_decl_name.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
             in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+            enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names.clone(),
         })
     }
 }
@@ -8697,6 +8777,7 @@ pub fn extend_scope(
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
         in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+        enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names.clone(),
     })
 }
 
@@ -8730,6 +8811,7 @@ pub fn extend_scope_match_bound(
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
         in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+        enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names.clone(),
     })
 }
 
@@ -8765,6 +8847,7 @@ pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) 
             caller_decl_name: scope.caller_decl_name.clone(),
             lambda_param_provenance: scope.lambda_param_provenance.clone(),
             in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+            enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names.clone(),
         })
     }
 }
@@ -9189,6 +9272,7 @@ let fold_scope = Rc::new(InferScope {
     caller_decl_name: scope.caller_decl_name.clone(),
     lambda_param_provenance: prov_map.clone(),
     in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+    enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names.clone(),
 });
 let ar = infer_expr(lam_value.clone(), fold_scope.clone(), Some(fold_callable.clone()));
 Rc::new(ArgInferResult {
@@ -9216,6 +9300,7 @@ let nf_scope = if is_lambda_expr(nf_lam_value.clone()) {
     caller_decl_name: scope.caller_decl_name.clone(),
     lambda_param_provenance: nf_prov_map.clone(),
     in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+    enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names.clone(),
 })
                         } else {
                             scope.clone()
@@ -10123,7 +10208,7 @@ match scope_parent.clone() {
 })), span.clone(), span.clone()),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
 }),
-    std::option::Option::None => if binding_resolves_to_type_parameter(binding.clone()) {
+    std::option::Option::None => if name_is_enclosing_declared_type_parameter(name.clone(), scope.clone()) {
                 Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: std::option::Option::None,
@@ -10189,7 +10274,7 @@ match scope_parent.clone() {
 })), span.clone(), span.clone()),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
 }),
-    std::option::Option::None => if binding_resolves_to_type_parameter(gbinding.clone()) {
+    std::option::Option::None => if name_is_enclosing_declared_type_parameter(name.clone(), scope.clone()) {
                 Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: std::option::Option::None,
@@ -12716,6 +12801,9 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     lam_scope.in_flight_lambda_param_names.clone(),
                     lam_params.clone(),
                 ),
+                enclosing_declared_type_param_names: lam_scope
+                    .enclosing_declared_type_param_names
+                    .clone(),
             });
             let body_result =
                 infer_expr(lam_body.clone(), body_scope.clone(), body_expected.clone());
@@ -20119,6 +20207,11 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         caller_decl_name: fn_decl_name.clone(),
                         lambda_param_provenance: fn_scope.lambda_param_provenance.clone(),
                         in_flight_lambda_param_names: Rc::new(vec![]),
+                        enclosing_declared_type_param_names:
+                            crate::v1_compiler_infer_resolve::fn_type_param_names(
+                                item.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
                     });
                     let fn_return_expected = if (item.inferred.clone() != std::option::Option::None)
                     {
@@ -20545,17 +20638,22 @@ pub fn split_sig_params(
     })
 }
 
-// TRANSIENT BOOTSTRAP PATCH -- replaced by generated bytes on the next regen, and NOT the authority.
-// This seed's own copy of the floor wall keyed on `is_type_variable(binding.resolved.inferred)`,
-// which conflates a DECLARED generic parameter with an UNRESOLVED INFERENCE VARIABLE, so it refused
-// 24 ordinary value binders across 11 corpus modules. That refusal stops the seed compiling the
-// corpus, which stops regen, which is the only thing that can replace this function -- a bootstrap
-// deadlock. Returning false restores main's behaviour for the SEED only, so regen can run and emit
-// the corrected wall from v1.compiler.infer, where the predicate now asks the enclosing
-// declaration's DECLARED type-parameter roster instead. The .dag authority no longer declares this
-// function at all; after the next regen this whole item disappears.
-pub fn binding_resolves_to_type_parameter(_binding: Rc<TypeBinding>) -> bool {
-    false
+pub fn name_is_enclosing_declared_type_parameter(name: String, scope: Rc<InferScope>) -> bool {
+    {
+        let mut __found = false;
+        for tp in scope
+            .enclosing_declared_type_param_names
+            .clone()
+            .iter()
+            .cloned()
+        {
+            if (tp.clone() == name.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
 }
 
 pub fn param_is_generic_decl(
@@ -25849,6 +25947,7 @@ pub fn typecheck_module(
             caller_decl_name: "".to_string(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
             in_flight_lambda_param_names: Rc::new(vec![]),
+            enclosing_declared_type_param_names: Rc::new(vec![]),
         });
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());
         let typed_items = Rc::new({
@@ -27726,6 +27825,8 @@ pub struct RefusedDistinctProductConstructor;
 pub struct RefusedDistinctAppliedTypeArgument;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedOptionalAtRequired;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedCollectionAgainstNonCollectionIdentity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefinementWidensToDeclaredBase;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
