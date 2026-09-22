@@ -379,36 +379,22 @@ fn program_assembly_read_to_normalized_root_seeded(
   }
 }
 
-fn program_assembly_read_to_normalized_root_prepared(
-  read: DagSourceReadWitness,
-  lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
-) -> Outcome<NormalizedTree> {
-  program_assembly_phase_normalize(
-    parsed: program_assembly_phase_parse(
-      tokens: program_assembly_phase_tokenize(read: read, lm: lm),
-      prepared: prepared,
-      residue: residue
-    )
-  )
-}
-
-fn program_assembly_read_to_normalized_root(
-  read: DagSourceReadWitness,
-  lm: LanguageModel
-) -> Outcome<NormalizedTree> {
-  match prepare_grammar(grammar: lm.grammar) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
-      program_assembly_read_to_normalized_root_prepared(
-        read: read,
-        lm: lm,
-        prepared: prepared,
-        residue: residue
-      )
-  }
-}
+// THE UNSEEDED PER-FILE COMPOSITION IS DELETED, NOT RETAINED (review 69837). It was
+// `program_assembly_read_to_normalized_root_prepared` and its nullary sibling
+// `program_assembly_read_to_normalized_root`: a second per-file front-end composition that still
+// performed the per-file allocator reset. This change moved its last real consumer
+// (`v2.compiler.compile` `native_test_context_fold_step`) onto the seeded door, which left the pair
+// reachable from nothing -- DESIGN section 3c's "a pub declaration with no call site in the
+// closure".
+//
+// DELETED RATHER THAN LEFT STANDING, because a surviving unseeded composition is DESIGN section 3's
+// attractor: while it stands, the next fold that needs a per-file front end answers in its
+// vocabulary and silently reintroduces the reset. This module's own annotation on `02_parse`
+// already concedes that hazard is real and that no wall catches it -- "a NEW ingest fold that calls
+// the unseeded door is a defect this annotation cannot catch" -- so the honest move is to remove
+// the door rather than document the trap beside it. The seeded producer above is now the single
+// per-file front end, and a caller that wants an isolated scope seeds it with
+// `occurrence_id_allocator_initial()` explicitly, which is a statement rather than a default.
 
 // THE FAILING READ'S OWN SPANS ARE MERGED IN BEFORE THE REFUSAL IS BUILT (`carried`), and that is
 // the point of the repair review 69607 asked for: a file that parsed and then failed to normalize

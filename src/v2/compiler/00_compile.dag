@@ -51,7 +51,6 @@ import v2.compiler.program_assembly {
   program_assembly_read_to_normalized_root_seeded,
   assemble_program_from_ingest,
   program_assembly_fold_ingest,
-  program_assembly_read_to_normalized_root_prepared,
   ProgramAssemblyFoldState,
   ProgramAssemblyFoldOk,
   ProgramAssemblyFoldFailed
