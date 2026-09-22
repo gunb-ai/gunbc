@@ -129,7 +129,7 @@ data known_frontier_causes: List<CauseOwnership> = [
     cause: ^body_lowering_reason_field_decl_unlowered,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "body-lowering stage frontier on the self-host critical path: a variant or record field declaration the field lowering cannot read (a where clause beside a payload, a field whose type expression the type reader does not lower). Replaces the positional_pattern_binder_unlowered row, whose refusal is retired now that gunbc.rung_drop variant_fields_unlowered_on_the_native_route's lowering half is executed (the row itself stands on its resolver-frame remainder). Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
+    flip_trigger: "body-lowering stage frontier on the self-host critical path: a variant or record field declaration the field lowering cannot read (a where clause beside a payload, a field whose type expression the type reader does not lower). Replaces the positional_pattern_binder_unlowered row, whose refusal is retired now that gunbc.rung_drop variant_fields_unlowered_on_the_native_route's lowering half is executed (the row is retired by both halves of its trigger, lowering and the resolver frame). Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_pattern_unlowered,

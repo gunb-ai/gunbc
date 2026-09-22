@@ -1,7 +1,7 @@
 module gunbc.rung_drop.variant_fields_unlowered_on_the_native_route
 
 import std.types { List, NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { Retired, RungDrop, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-21 (gunbc#11998, side-chat ruling via neat-boar-16). ONE frontier for record
@@ -17,26 +17,32 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // silently lost; that loss is now the typed refusal
 // body_lowering_reason_positional_pattern_binder_unlowered.
 
-// NARROWED 2026-09-22 (gunbc#PR_NUMBER), NOT RETIRED. The lowering half of the trigger is
-// executed: v2.compiler.body_lowering_fold body_lower_type_variant / body_lower_record_type_decl
-// declare the fields (v2.std.node_query DeclaredField, "0" for the positional spelling), the graft
-// skip is deleted, and body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>`
-// to the construct over their binders (Conj { A: Atom(A), 0: Atom(x) }), so the binder reaches
-// the resolver instead of vanishing and the #11998 refusal is retired; evidence
-// v2.test.parse.variant_field_lowering. WHAT STILL STANDS, and why the row does: the resolver
-// scopes no match-arm frame (v2.compiler.resolve resolve_node has no Match arm), so a binder
-// that shadows an outer name still resolves to the outer one -- the silent-shadowing loss the
-// manager ruled this row keeps declaring until that frame lands (Pkg12, witty-cat-84). The
-// population below is that remainder.
+// RETIRED 2026-09-22 (gunbc#PR_NUMBER), BY BOTH HALVES OF THE TRIGGER, EXECUTED. Lowering:
+// v2.compiler.body_lowering_fold body_lower_type_variant / body_lower_record_type_decl declare the
+// fields (v2.std.node_query DeclaredField, "0" for the positional spelling), the graft skip is
+// deleted, and body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>` to the
+// construct over their binders (Conj { A: Atom(A), 0: Atom(x) }), so the #11998 refusal is
+// retired. Binding: v2.compiler.resolve resolve_match_node scopes those binders as the arm's
+// lexical frame, so a binder that shadows an outer name binds the arm's value -- the silent
+// shadowing loss this row declared. Evidence: v2.test.parse.variant_field_lowering and
+// v2.test.claim.match_arm_binder_frame, each with its executed mutation (declaration lowering
+// removed, binders dropped, frame deleted) reddening its rows; the workload adjudicate through
+// the emitted compiler no longer refuses dag/std/content_hash.dag. The population below is what
+// the row covered, kept as the record of what was lost.
 data variant_fields_unlowered_on_the_native_route_population: List<String> = [
-  "v2.compiler.resolve resolve_node -- no scope frame for a match arm's binders: a binder that shadows an outer name binds the outer one",
+  "v2.compiler.namespace_graft namespace_graft_type_decl_is_fielded -- record and positional variants went to residual_units, no field identities (deleted)",
+  "v2.compiler.body_lowering_fold body_lower_is_structure_preserved_emitted -- dag_surface_field_decl_block and dag_surface_positional_variant_payload were preserved unlowered (now lowered by the enclosing variant / type_decl producer)",
+  "v2.compiler.body_lowering_fold body_lower_match_arm_wire_from_sequence -- positional pattern binders refused (body_lowering_reason_positional_pattern_binder_unlowered, deleted)",
+  "v2.compiler.resolve resolve_node -- no scope frame for a match arm's binders (resolve_match_node now scopes them)",
 ]
 
 data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
   identity: "variant_fields_unlowered_on_the_native_route" as NonEmptyStr,
   subject: "native route lowers variant fields, named and positional, into declared field identities and binds pattern binders from them, the way the seed does",
   declared: "2026-09-21",
-  standing: Standing,
+  standing: Retired {
+    trigger_fired: "2026-09-22 (gunbc#PR_NUMBER): a v2 stage (normalize: body_lower_type_variant, body_lower_record_type_decl, body_lower_pattern_lowered) lowers variant fields into declared field identities, named and positional \"0\", and the match-arm path binds a pattern binder, braced or positional, from the field it names -- structurally at normalize and lexically at resolve (resolve_match_node). Executed: v2.test.parse.variant_field_lowering, v2.test.claim.match_arm_binder_frame, their mutations, and the native workload adjudicate on the PR." as NonEmptyStr
+  },
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
