@@ -1,13 +1,17 @@
 module v2.test.claim.compiler_materialization_witness
 
-import std.realization { LocalInProcess }
+import std.realization { LocalInProcess, Memoize, Recompute }
+import v2.std.diagnostic { Accepted, Rejected }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Green-by-execution receipt that v2 ParseTable and cached_stage memoization flows through the
-// governed carrier door (Memoize verdict consumed; non-Memoize refuses store). Ladder + catalog
-// projection witnesses unchanged. RED: plural RefusedScopeTooNarrow / RefusedNoProvider;
-// governed-store refusal when Recompute; bypass insert on non-Memoize carrier.
+// governed carrier door, and that the materialization each door consumes is the one the ladder
+// ADMITTED for that demand's identity rather than a literal standing beside it, and that an
+// admission the ladder did not green is REFUSED rather than re-encoded as an operational
+// materialization. RED: plural RefusedScopeTooNarrow / RefusedNoProvider; governed-store refusal
+// when Recompute; bypass insert on non-Memoize carrier; an identity with no verdict being
+// admitted; a refused admission letting the parse realization be built anyway.
 // reconcile-as-lookup-path is the next increment.
 
 test fn compiler_materialization_ladder_holds() -> Bool {
@@ -24,28 +28,92 @@ test fn compile_stage_memo_provider_preserves_catalog_retention() -> Bool {
     && (compile_stage_memo_provider_id() == compile_stage_memo_id)
 }
 
-test fn parse_table_carrier_inhabits_realization() -> Bool {
-  let step = parse_table_realized_step()
-  (step.materialization == Memoize)
-    && (step.placement == LocalInProcess)
-    && (parse_table_memo_materialization() == Memoize)
+// The parse demand's site is derived from the grammar's recurrence census, so the carrier is
+// asked for a census rather than for one grammar-less answer. The real producer's route -- a real
+// grammar through compute_grammar_first_analysis into the table -- is the inhabitance claim in
+// v2.test.provenance.parse_memo_frame_replay.
+fn recurrent_census() -> ParseMemoRecurrence {
+  ParseMemoRecurrence { discarding_backtrack_sites: 1, nullable_nonterminals: 0 }
 }
 
+fn nullable_only_census() -> ParseMemoRecurrence {
+  ParseMemoRecurrence { discarding_backtrack_sites: 0, nullable_nonterminals: 1 }
+}
+
+test fn parse_table_carrier_inhabits_realization() -> Bool {
+  match parse_table_realized_step(r: recurrent_census()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: step, diagnostics: _ } =>
+      (step.materialization == Memoize)
+        && (step.placement == LocalInProcess)
+        && materialization_admission_admits_store(
+             a: parse_table_memo_materialization_for(r: recurrent_census())
+           )
+        && !materialization_admission_admits_store(
+             a: parse_table_memo_materialization_for(r: parse_memo_no_recurrence)
+           )
+  }
+}
+
+// Recompute, not Memoize, and the change is a correction rather than a regression: the
+// compile-stage lookup is resolve_cache_miss, which returns Miss unconditionally, so the
+// governed door has been taking the recompute path on every compile regardless of what the
+// literal said. The literal was the only thing claiming otherwise.
 test fn compile_stage_carrier_inhabits_realization() -> Bool {
-  let step = compile_stage_realized_step()
-  (step.materialization == Memoize)
-    && (step.placement == LocalInProcess)
-    && (compile_stage_memo_materialization() == Memoize)
-    && (cached_stage_realization().provider_id == compile_stage_memo_id)
+  match compile_stage_realized_step() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: step, diagnostics: _ } =>
+      match cached_stage_realization() {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: realization, diagnostics: _ } =>
+          (step.materialization == Recompute)
+            && (step.placement == LocalInProcess)
+            && (realization.materialization == Recompute)
+            && (realization.provider_id == compile_stage_memo_id)
+      }
+  }
 }
 
 test fn parse_table_empty_uses_catalog_identity() -> Bool {
   parse_table_carrier_grounded_on_catalog()
 }
 
-test fn single_site_demands_are_accepted_single_recompute() -> Bool {
-  parse_table_memo_verdict_is_single_recompute()
-    && compile_stage_memo_verdict_is_single_recompute()
+// Both arms read off the VERDICT: a refusal also prescribes Memoize, so the prescription alone
+// could not tell a discharge from an unmet obligation. The nullable-only census discriminates the
+// second recurrence source -- dropping it from parse_memo_recurrence_is_possible reds here.
+test fn parse_table_demand_is_discharged_by_its_catalog_provider() -> Bool {
+  parse_table_memo_verdict_is_discharged_for(r: recurrent_census())
+    && parse_table_memo_verdict_is_discharged_for(r: nullable_only_census())
+    && !parse_table_memo_verdict_is_discharged_for(r: parse_memo_no_recurrence)
+}
+
+test fn parse_table_demand_without_recurrence_is_accepted_single_recompute() -> Bool {
+  parse_table_memo_verdict_is_single_recompute_for(r: parse_memo_no_recurrence)
+    && !parse_table_memo_verdict_is_single_recompute_for(r: recurrent_census())
+}
+
+test fn compile_stage_demand_is_accepted_single_recompute() -> Bool {
+  compile_stage_memo_verdict_is_single_recompute()
+}
+
+// The fail-closed arm, by execution: an identity carrying no verdict yields no admitted
+// decision, and the door REFUSES rather than handing back an operational materialization.
+test fn an_unruled_identity_is_not_admitted() -> Bool {
+  unruled_identity_is_not_admitted()
+}
+
+// Review 69770's finding, as a discriminating pair. A REFUSED identity must not permit the
+// store: ladder_verdict_prescribes answers Memoize for five of the six Refused arms, so a door
+// that read the bare prescription would take an unmet obligation as permission. The negative
+// is RefusedScopeTooNarrow against the very provider that discharges the single-site demand,
+// and the positive is that same provider still admitting that same demand -- so the negative
+// cannot pass by the admission having been broken for everything.
+// STRENGTHENED past "refuses the store": the previous form asked only whether the store was
+// permitted, which a refusal and an admitted Recompute both answer false, so it could not tell
+// a preserved refusal from one re-encoded as recomputation -- and that was the defect.
+test fn a_refused_identity_is_not_admitted() -> Bool {
+  refused_scope_is_not_admitted()
+    && discharged_scope_admits_store()
 }
 
 test fn parse_table_memo_plural_reds_without_provider() -> Bool {
@@ -53,4 +121,74 @@ test fn parse_table_memo_plural_reds_without_provider() -> Bool {
     && (parse_table_memo_plural_scope_too_narrow_count() == 1)
     && !parse_table_memo_plural_holds_without_provider()
     && (parse_table_memo_plural_refused_without_provider_count() == 1)
+}
+
+// THE CONSUMER-BOUNDARY CONTROL the delta review asked for, and the one the module-level pair
+// above cannot stand in for. Those show the DOOR refuses; this shows the thing that consumes the
+// door refuses WITH it -- that a parse-table realization is not constructed, and the prepare that
+// would have built it hands back the located diagnostic instead. The negative drives
+// prepare_grammar_with_admission, which IS the body prepare_grammar runs, and the refusing
+// admission it supplies is produced by the real door fed the plural verdict list, not by a
+// literal: re-encoding the refusal as Recompute inside admitted_prescription_in makes this parse
+// succeed and the control dies with it.
+fn materialization_control_grammar() -> ParseGrammar {
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: ^mat_control_start,
+      productions: Cons {
+        head: GrammarProduction {
+          name: ^mat_control_start,
+          expression: v2.std.grammar.Terminal { token_class: ^mat_control_tok, stamp: StampClass },
+          emitted: grammar_atom(identity: ^mat_control_start)
+        },
+        tail: std.algebra.Empty
+      },
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+fn materialization_control_prepare_is_refused() -> Bool {
+  match prepare_grammar_with_admission(
+    admit: fn(_) { refused_scope_prescription() },
+    grammar: materialization_control_grammar()
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// The positive control on the same grammar through the REAL door: without it the negative would
+// also pass if prepare_grammar_with_admission simply refused this grammar for any reason.
+//
+// IT ASSERTS THE DERIVED VALUE, NOT MERELY THAT SOMETHING WAS ADMITTED, and the value is
+// Recompute rather than Memoize BECAUSE OF THE DERIVATION: this grammar is one Terminal
+// production, so its recurrence census is zero on both counts, no (nonterminal, position) is
+// asked twice, and the ladder answers AcceptedSingleRecompute. That is the admitted
+// direct-computation arm reaching the real prepare -- a grammar that needs no memo does not get
+// one -- and pinning Memoize here would have pinned a memo the grammar does not demand.
+//
+// WHERE THE OTHER ADMITTED ARM IS EXERCISED, cited because this control no longer carries it.
+// THIS pair drives prepare_grammar to a Recompute admission; the MEMOIZE admission through the
+// same door is driven by v2.test.provenance.parse_memo_frame_replay
+// parse_memo_demand_derived_discharged_when_the_grammar_abandons_a_demand, on a grammar whose
+// census counts a discarding backtrack site. Those two claims are the only place the real
+// prepare produces a store-permitting answer, and their stated subject is REPLAY, so retargeting
+// them for replay reasons would delete this module's Memoize counterpart while every control
+// here stayed green. That is why the citation runs both ways: the replay claims carry a matching
+// note naming this control.
+fn materialization_control_prepare_is_admitted() -> Bool {
+  match prepare_grammar(grammar: materialization_control_grammar()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => false
+        PreparedModeled { modeled: _, materialization: m } => m == Recompute
+      }
+  }
+}
+
+test fn a_refused_admission_refuses_the_parse_realization() -> Bool {
+  materialization_control_prepare_is_refused()
+    && materialization_control_prepare_is_admitted()
 }

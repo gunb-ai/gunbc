@@ -6657,10 +6657,47 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
 
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
 
+        // WHICH OPERANDS ARE EVALUATED IS READ FROM THE DECLARED ROW, NOT DECIDED HERE.
+        //
+        // This arm used to evaluate BOTH operands through `?` and then dispatch, which made the
+        // interpreter strict for every operator while the Rust emitter rendered `&&`, `||` and
+        // `??` as host forms that demand the right operand only conditionally. One accepted
+        // program, two behaviours: `false && Filesystem.Write(..)` wrote the file under this arm
+        // and not under the emitted one, and `n != 0 && (100 / n) > 1` at n = 0 refused here and
+        // returned false there. The class is gunbc.recurring_failure_mode
+        // realization_arms_diverge_on_whether_the_program_refuses, whose next-rung trigger named
+        // the capability this now consumes: std.operator_realization operand_demand, one row that
+        // THIS ARM AND THE RUST EMITTER read -- those two, and not every realization of BinOp. The
+        // Rust emitter derives its rendering from the same fold (v1.compiler.emit_rust
+        // emit_rust_demanded_host_bin_op), so neither of those two arms carries an evaluation-order
+        // decision of its own. The Go, Python and dag emission paths still reach BinOp through
+        // v1.compiler.emit emit_default_bin_op, which consults no demand row; that gap and its
+        // trigger are recorded on the failure-mode row rather than implied away here.
+        //
+        // The row is derived from std.logic, not invented: classical_and is
+        // `match a { False => False  True => b }`, so the right operand is demanded only under one
+        // left value, and the interpreter was the arm disagreeing with the corpus's own logic
+        // authority.
         ExprData::ExprBinOp { op, .. } => {
             let left = eval_expr(&binop_left(node.clone()), env, ctx)?;
-            let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
-            eval_binop(&op, left, right, ctx)
+            match &*crate::std_operator_realization::operand_demand(op.clone()) {
+                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIs {
+                    deciding,
+                } if left.is_truthy() != *deciding => {
+                    // `a && b` with a false, or `a || b` with a true: the result IS the left
+                    // value's truth and the right operand is never asked for.
+                    Ok(Value::Bool(left.is_truthy()))
+                }
+                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent
+                    if !matches!(left, Value::Null) =>
+                {
+                    Ok(left)
+                }
+                _ => {
+                    let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
+                    eval_binop(&op, left, right, ctx)
+                }
+            }
         }
 
         ExprData::ExprUnaryOp { op } => {
