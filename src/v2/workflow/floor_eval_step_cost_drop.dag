@@ -114,8 +114,8 @@ data floor_eval_step_cost_drop_page_style_rows: List<EvalStepCostDropMeasurement
 
 
 // FIFTH DROP, SAME MEMBERSHIP TEST: the interpreted-crypto claims of the App Attest path
-// (`gunbc.rung_drop` `app_attest_interpreted_crypto_new_witness_eval_step_cost`). Nine identities:
-// four P-384 point checks over real Apple keys, two group-law closure checks, and the three published SHA-384 FIPS
+// (`gunbc.rung_drop` `app_attest_interpreted_crypto_new_witness_eval_step_cost`). Ten identities:
+// four P-384 point checks over real Apple keys, one P-256 base-point check, two group-law closure checks, and the three published SHA-384 FIPS
 // vectors, each paired with the mutation that discriminates it (review 69978 and the design ruling
 // that followed): every one measured decisively above the per-subject line on its OWN subject,
 // rather than being folded into one identity whose bill depended on its neighbours. Each is ONE
@@ -145,15 +145,19 @@ data floor_eval_step_cost_drop_interpreted_crypto_rows: List<EvalStepCostDropMea
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.sha384_fips_witness_test.sha384_of_the_empty_message_is_the_published_value_and_one_octet_discriminates" as NonEmptyStr,
-    measured_by: "claim_batch [witness] receipt on session/nimble-eagle-216-step3 for review 69978 and the design ruling that followed it: verdict pass, cpu 664ms, over the new-witness eval-step budget and decisively above the per-subject line. The billed work is two single-block SHA-384 compressions, the published empty message and a one-octet message on an interpreter that reifies no machine width; the published positive and its discriminating mutation are one subject, so the cost is caused by the claim's own boundary and not by neighbouring vectors" as NonEmptyStr,
+    measured_by: "required floor run 35703555837 (gunbc#11981, head 0b0a2dffe), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, over the new-witness eval-step budget and above the per-subject line. The standing figure is whatever this identity's row reads in the artifact named above, never a number copied into this field. The billed work is two single-block SHA-384 compressions, the published empty message and a one-octet message on an interpreter that reifies no machine width; the published positive and its discriminating mutation are one subject, so the cost is caused by the claim's own boundary and not by neighbouring vectors" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.sha384_fips_witness_test.sha384_of_abc_is_the_published_value_and_one_octet_discriminates" as NonEmptyStr,
-    measured_by: "claim_batch [witness] receipt on session/nimble-eagle-216-step3 for review 69978 and the design ruling that followed it: verdict pass, cpu 641ms, over the new-witness eval-step budget and decisively above the per-subject line. The billed work is two single-block SHA-384 compressions, the published abc vector and abd on an interpreter that reifies no machine width; the published positive and its discriminating mutation are one subject, so the cost is caused by the claim's own boundary and not by neighbouring vectors" as NonEmptyStr,
+    measured_by: "required floor run 35703555837 (gunbc#11981, head 0b0a2dffe), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, over the new-witness eval-step budget and above the per-subject line. The standing figure is whatever this identity's row reads in the artifact named above, never a number copied into this field. The billed work is two single-block SHA-384 compressions, the published abc vector and abd on an interpreter that reifies no machine width; the published positive and its discriminating mutation are one subject, so the cost is caused by the claim's own boundary and not by neighbouring vectors" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.sha384_fips_witness_test.sha384_of_the_896_bit_message_is_the_published_two_block_value_and_one_octet_discriminates" as NonEmptyStr,
-    measured_by: "claim_batch [witness] receipt on session/nimble-eagle-216-step3 for review 69978 and the design ruling that followed it: verdict pass, cpu 1156ms, over the new-witness eval-step budget and decisively above the per-subject line. The billed work is four SHA-384 block compressions, the published 896-bit two-block vector and a last-block mutation on an interpreter that reifies no machine width; the published positive and its discriminating mutation are one subject, so the cost is caused by the claim's own boundary and not by neighbouring vectors" as NonEmptyStr,
+    measured_by: "required floor run 35703555837 (gunbc#11981, head 0b0a2dffe), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, over the new-witness eval-step budget and above the per-subject line. The standing figure is whatever this identity's row reads in the artifact named above, never a number copied into this field. The billed work is four SHA-384 block compressions, the published 896-bit two-block vector and a last-block mutation on an interpreter that reifies no machine width; the published positive and its discriminating mutation are one subject, so the cost is caused by the claim's own boundary and not by neighbouring vectors" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.p256_dag_ecdsa_witness_test.the_base_point_is_on_the_curve" as NonEmptyStr,
+    measured_by: "required floor run 35708011844 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, well inside the wall deadline and over the new-witness eval-step budget. The billed work is one P-256 curve equation over the published base point as 11-limb bignat folds on an interpreter that reifies no machine width. It is a MEMBER BECAUSE IT WAS SPLIT OUT of a claim that also asserted n*G = infinity: that conjunction crossed the 8000ms wall deadline and was INTERRUPTED BEFORE ANY VERDICT, so both facts were being lost; the scalar multiplication left the floor for the native row the frontier names, and this cheap half now reaches a verdict. The standing figure is whatever this identity's row reads in the artifact named above, never a number copied into this field" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.p384_dag_ecdsa_witness_test.doubling_and_adding_the_base_point_stay_on_the_curve" as NonEmptyStr,

@@ -70,6 +70,10 @@ fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
     reason: "the seed interpreter evaluates two P-384 curve equations over Apple's real CA and root keys as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
   },
   FloorCostDebtTypedAdmission {
+    identity: "test.claim.p256_dag_ecdsa_witness_test.the_base_point_is_on_the_curve",
+    reason: "the seed interpreter evaluates one P-256 curve equation over the published base point as 11-limb bignat folds; it is the cheap half of a claim whose other half, n*G = infinity, crossed the wall deadline and left the floor for the native row; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
     identity: "test.claim.p384_dag_ecdsa_witness_test.doubling_and_adding_the_base_point_stay_on_the_curve",
     reason: "the seed interpreter evaluates one Jacobian doubling, one addition and two projective curve-equation checks as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
   },
