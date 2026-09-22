@@ -944,6 +944,18 @@ fn resolve_pattern_node_is_constructor(node: Node) -> Bool {
 // resolves to its payload Conj; so does a record type), or when it is a canonical symbol (`true`,
 // `false`). A fn or data declaration of the same name does NOT make it a constructor: the seed
 // binds `x` in `A(x)` even when a fn x exists, and so does this frame.
+//
+// DISSOLVE-ON gunbc#12009 (the namespace candidate rule): the LexicalUnbound -> global-unique
+// branch below is a BRIDGE. Before #12009 an imported variant is not on the lexical chain, so an
+// imported constructor in pattern position is only reachable through the corpus-wide spelling
+// census; after #12009 it IS on the chain and hits lexically, and this branch becomes the last
+// place a corpus-wide spelling decides a MEANING (binder versus constructor). Retire it then:
+// LexicalUnbound => namespace_has_canonical_symbol(..). Its fail-safe direction while it stands:
+// GlobalBareLookupAmbiguous reads as "constructor" (the census already answers Ambiguous for
+// essentially every variant name, containment path plus unique alias), so a fresh binder that
+// happens to spell a variant declared anywhere in the corpus is classified a constructor and then
+// refuses as an unbound reference -- loud, never a silent rebind (witty-cat-84's measurement,
+// 2026-09-22, on the emitted route).
 fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bool {
   match symbol_index_lexical_lookup(
     index: ctx.namespace.symbol_index,
