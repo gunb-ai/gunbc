@@ -370,6 +370,7 @@ fn empty_infer_scope() -> Rc<InferScope> {
         lambda_param_provenance: Rc::new(im::HashMap::new()),
         caller_decl_name: "".to_string(),
         in_flight_lambda_param_names: Rc::new(vec![]),
+        enclosing_declared_type_param_names: Rc::new(vec![]),
     })
 }
 
