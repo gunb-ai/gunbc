@@ -10,15 +10,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the emitted module renders a bare type name it declined to import, which is one module
 // contradicting itself and refuses downstream at rustc with E0425.
 //
-// THE CONDITION IS A CONJUNCTION, measured over four arms on 2026-09-22 (sharp-bear-756) and not
-// derivable from any single one. (1) TWO modules in the compiled closure must declare the short
-// spelling -- std.integer and v2.std.integer both declare UInt8. (2) The declaration the author
-// NAMED must be a non-nominal alias: UInt8 is Compose<UInt, MachineWidth<8>>, a phantom. Drop
-// either condition and the line returns. A nominal record forked the same way keeps its line --
-// std.termination TerminationProof against v2.std.cardinality TerminationProof, two genuinely
-// different records under one spelling, emitted byte-identically with and without the second
-// declarer in the closure -- so the fork alone is not sufficient and the phantom alone is not
-// either.
+// THE CONDITION IS A CONJUNCTION OF THREE TERMS, measured over five arms on 2026-09-22
+// (sharp-bear-756), and no single arm derives it. (1) TWO modules in the compiled closure declare
+// the short spelling -- std.integer and v2.std.integer both declare UInt8. (2) The declaration the
+// author NAMED is a non-nominal alias: UInt8 is Compose<UInt, MachineWidth<8>>, a phantom. (3) The
+// SECOND declarer reaches the closure through a module the consumer DOES NOT IMPORT. Drop any one
+// term and the line returns.
+//
+// THE TWO BOUNDS, because without them the class reads far wider than it is. A NOMINAL record
+// forked the same way keeps its line -- std.termination TerminationProof against
+// v2.std.cardinality TerminationProof, two genuinely different records under one spelling,
+// emitted byte-identically with and without the second declarer in the closure. And a consumer
+// that NAMES BOTH PROVIDERS in its own import list keeps its line, and gets both. So neither "a
+// duplicate short name" nor "two declarers in the closure" is the defect; both would put spellings
+// in the population that the emitter provably handles correctly.
 //
 // WHAT IS DELIBERATELY NOT ASSERTED HERE: which filter decides it. The arms establish the
 // CONDITION, not the mechanism, and writing a claim over a named predicate would assert a
