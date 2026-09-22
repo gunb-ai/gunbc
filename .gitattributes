@@ -56,6 +56,7 @@ src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs merge=generated
 src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs merge=generated-artifact
 src/v1/stage0/src/evaluation_budget_consequence_generated.rs merge=generated-artifact
 src/v1/stage0/src/gunbc_file_transport_generated.rs merge=generated-artifact
+src/v1/stage0/src/release_locus_seed_constants_generated.rs merge=generated-artifact
 src/v1/stage0/src/v1_interpreter_dispatch_generated.rs merge=generated-artifact
 tools/fabric_ci_fci1_bounded_execution_context.env merge=generated-artifact
 tools/whole_corpus_compile_measured_root_demands.json merge=generated-artifact
