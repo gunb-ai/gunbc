@@ -42,6 +42,7 @@ import gunbc.rung_drop.text_boundary_identity_wall { text_boundary_identity_wall
 import gunbc.rung_drop.fabric_evidence_gating { fabric_evidence_gating }
 import gunbc.rung_drop.rust_unit_tests_off_the_merge_path { rust_unit_tests_off_the_merge_path }
 import gunbc.rung_drop.witness_floor_off_the_required_gate { witness_floor_off_the_required_gate }
+import gunbc.rung_drop.the_job_user_holds_a_path_unrestricted_root_grant { the_job_user_holds_a_path_unrestricted_root_grant }
 import gunbc.rung_drop.required_lanes_do_not_resolve_product_layer_modules { required_lanes_do_not_resolve_product_layer_modules }
 import gunbc.rung_drop.emit_copy_qualification_without_a_consumer { emit_copy_qualification_without_a_consumer }
 import gunbc.rung_drop.floor_cost_high_cpu_withheld { floor_cost_high_cpu_withheld }
@@ -84,6 +85,7 @@ import gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost { road
 import gunbc.rung_drop.live_deploy_apply_render_new_witness_eval_step_cost { live_deploy_apply_render_new_witness_eval_step_cost }
 import gunbc.rung_drop.roadmap_live_forecast_new_witness_eval_step_cost { roadmap_live_forecast_new_witness_eval_step_cost }
 import gunbc.rung_drop.roadmap_page_style_new_witness_eval_step_cost { roadmap_page_style_new_witness_eval_step_cost }
+import gunbc.rung_drop.app_attest_interpreted_crypto_new_witness_eval_step_cost { app_attest_interpreted_crypto_new_witness_eval_step_cost }
 import gunbc.rung_drop.seam_monolith_control_unmeasured_derived_root { seam_monolith_control_unmeasured_derived_root }
 import gunbc.rung_drop.typescript_same_language_round_trip_leaves_off_required_floor { typescript_same_language_round_trip_leaves_off_required_floor }
 import gunbc.rung_drop.type_reference_location_fallback_keys_production_realization { type_reference_location_fallback_keys_production_realization }
@@ -118,6 +120,7 @@ data rung_drop_roster: List<RungDrop> = [
   fabric_evidence_gating,
   rust_unit_tests_off_the_merge_path,
   witness_floor_off_the_required_gate,
+  the_job_user_holds_a_path_unrestricted_root_grant,
   required_lanes_do_not_resolve_product_layer_modules,
   emit_copy_qualification_without_a_consumer,
   floor_cost_high_cpu_withheld,
@@ -159,6 +162,7 @@ data rung_drop_roster: List<RungDrop> = [
   live_deploy_apply_render_new_witness_eval_step_cost,
   roadmap_live_forecast_new_witness_eval_step_cost,
   roadmap_page_style_new_witness_eval_step_cost,
+  app_attest_interpreted_crypto_new_witness_eval_step_cost,
   seam_monolith_control_unmeasured_derived_root,
   typescript_same_language_round_trip_leaves_off_required_floor,
   type_reference_location_fallback_keys_production_realization,
