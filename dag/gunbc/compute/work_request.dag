@@ -170,7 +170,7 @@ type WorkInfrastructureRefusal
   | ToolchainUnobserved { detail: String }
   | DependencyNotSucceeded { dependency_identity: String, ending: String }
   | SubjectUnresolved { detail: String }
-  | UnitMemoryGrantExceeded { class: String, granted: Kibibyte, peak: String, grant_was_ceiling: Bool }
+  | UnitMemoryGrantExceeded { class: String, granted: Kibibyte, peak_upper: Kibibyte?, grant_was_ceiling: Bool }
 
 fn work_outcome_identity(o: WorkOutcome) -> String {
   match o {
@@ -203,9 +203,9 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
     DependencyNotSucceeded { dependency_identity, ending } => join(["dependency ", dependency_identity, " ended ", ending], "")
     SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")
-    UnitMemoryGrantExceeded { class, granted, peak, grant_was_ceiling } =>
+    UnitMemoryGrantExceeded { class, granted, peak_upper, grant_was_ceiling } =>
       join(["the unit was OOM-killed at its memory grant: class ", class, " was granted ", to_string(value: kibibyte_count(k: granted)),
-        " KiB and its manager reported a peak of ", peak,
+        " KiB and its manager reported a peak of ", match peak_upper { Present { value: k } => join(["at most ", to_string(value: kibibyte_count(k: k)), " KiB"], "")  Absent => "NOTHING (no Memory peak line was reported)" },
         if grant_was_ceiling { "; the grant was this host's ceiling, so no larger reservation exists to retry under" } else { "; the grant was below the ceiling and the retry at the ceiling was not taken -- the consumption record says why" }], "")
   }
 }

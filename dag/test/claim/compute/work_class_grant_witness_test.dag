@@ -16,8 +16,12 @@ import gunbc.compute.work_class_grant {
   WorkClassGrant, GrantAtCeiling, GrantSized,
   WorkClassCeilingReason, ClassUnmeasured, ClassTooFewSamples, ClassRowsAmbiguous, ClassSizedAtOrAboveCeiling, ClassRetryAfterGrantExceeded,
   work_class_grant, work_class_grant_amount,
+  WorkClassPeakSampleReading, PeakSampleTaken, PeakSampleNotTaken, work_class_peak_sample,
 }
-import gunbc.compute.work_provider_local { ComputeAttempt, compute_attempt_retries_at_ceiling, compute_summary_is_oom_kill }
+import gunbc.compute.work_provider_local {
+  ComputeAttempt, compute_attempt_retries_at_ceiling, compute_summary_is_oom_kill,
+  ComputeListing, GrantExceededCount, GrantExceededCounted, GrantExceededNeverRecorded, GrantExceededUnreadable, grant_exceeded_count_decide,
+}
 
 // ── THE PRODUCER: what systemd-run --wait said about the unit ─────────────────────────────────
 
@@ -131,4 +135,47 @@ test fn only_an_oom_kill_below_the_ceiling_retries_at_the_ceiling() -> Bool {
   compute_attempt_retries_at_ceiling(grant: below, attempt: oom)
     && !compute_attempt_retries_at_ceiling(grant: at, attempt: oom)
     && !compute_attempt_retries_at_ceiling(grant: below, attempt: clean)
+}
+
+// ── THE TYPED SAMPLE ─────────────────────────────────────────────────────────────────────────
+
+// The summary becomes a WorkClassPeakSample carrying the UPPER bound in KiB, rounded up -- not the
+// printed figure, and not prose. 9.7G's byte upper bound 10630044058 is 10380902.4 KiB, so 10380903.
+// No peak line, or no clock, takes no sample.
+test fn a_summary_becomes_a_typed_sample_at_its_upper_bound_or_no_sample() -> Bool {
+  let op = CompileEntry { entry: "src/v2/compiler/compile.dag" }
+  let s = systemd_run_wait_summary(stderr: summary_oom_after_spoof)
+  let taken = work_class_peak_sample(summary: s, work_identity: "abc", op: op, host: "srv1", observed_at: Present { value: 1790000000 })
+  let no_peak = work_class_peak_sample(summary: systemd_run_wait_summary(stderr: "Finished with result: success\n"), work_identity: "abc", op: op, host: "srv1", observed_at: Present { value: 1790000000 })
+  let no_clock = work_class_peak_sample(summary: s, work_identity: "abc", op: op, host: "srv1", observed_at: none)
+  match taken {
+    PeakSampleTaken { class, sample } =>
+      work_class_wire(c: class) == "compile" && kibibyte_count(k: sample.peak_upper) == 10380903
+        && (sample.operation as String) == "compile:src/v2/compiler/compile.dag" && (sample.host as String) == "srv1"
+    PeakSampleNotTaken { reason: _ } => false
+  }
+    && match no_peak { PeakSampleNotTaken { reason: _ } => true  _ => false }
+    && match no_clock { PeakSampleNotTaken { reason: _ } => true  _ => false }
+}
+
+// ── THE COUNTER ──────────────────────────────────────────────────────────────────────────────
+
+fn listed(entries: String) -> ComputeListing { ComputeListing { listed: true, entries: entries, error: "" } }
+fn unlisted(error: String) -> ComputeListing { ComputeListing { listed: false, entries: "", error: error } }
+
+// Zero is established by the level above, at class grain: a class absent from a listed parent is a
+// counted zero even when another class has exceedances; a class present in the parent but unlistable
+// is unreadable; a root listing without the parent is a host that never recorded; an unlistable root
+// is unreadable. None of the failure arms reads as zero.
+test fn the_exceedance_count_is_zero_only_when_absence_is_positively_read() -> Bool {
+  let counted = grant_exceeded_count_decide(root: listed(entries: "grant-exceeded\nwork"), parent: listed(entries: "claims"), class_dir: listed(entries: "r1\nr2\n"), class: WorkClassClaims)
+  let healthy = grant_exceeded_count_decide(root: listed(entries: "grant-exceeded\nwork"), parent: listed(entries: "claims"), class_dir: unlisted(error: "ENOENT"), class: WorkClassCompile)
+  let broken = grant_exceeded_count_decide(root: listed(entries: "grant-exceeded\nwork"), parent: listed(entries: "compile"), class_dir: unlisted(error: "EACCES"), class: WorkClassCompile)
+  let never = grant_exceeded_count_decide(root: listed(entries: "work\nleases"), parent: unlisted(error: "ENOENT"), class_dir: unlisted(error: "ENOENT"), class: WorkClassCompile)
+  let blind = grant_exceeded_count_decide(root: unlisted(error: "EIO"), parent: unlisted(error: "EIO"), class_dir: unlisted(error: "EIO"), class: WorkClassCompile)
+  match counted { GrantExceededCounted { count } => count == 2  _ => false }
+    && match healthy { GrantExceededCounted { count } => count == 0  _ => false }
+    && match broken { GrantExceededUnreadable { detail } => detail == "EACCES"  _ => false }
+    && match never { GrantExceededNeverRecorded => true  _ => false }
+    && match blind { GrantExceededUnreadable { detail: _ } => true  _ => false }
 }

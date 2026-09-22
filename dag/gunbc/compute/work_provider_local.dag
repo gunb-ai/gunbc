@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import std.measure { byte_size_count }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.gunbc
 import extdeps.shell
@@ -24,6 +24,7 @@ import extdeps.linux.cgroup_v2 {
 }
 import extdeps.cache.sccache { sccache_installed_binary_path }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
   dashboard_instance_compute_root,
@@ -36,6 +37,7 @@ import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size, kibibyte, 
 import gunbc.compute.work_class_grant {
   WorkClass, work_class_of, work_class_wire, WorkClassGrant, GrantAtCeiling, GrantSized, ClassRetryAfterGrantExceeded,
   work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_is_ceiling, work_class_grant_wire,
+  work_class_peak_sample, work_class_peak_sample_wire, work_class_summary_peak_upper,
 }
 import gunbc.compute.host_capacity {
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
@@ -50,7 +52,7 @@ import gunbc.compute.work_request {
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
   CheckoutUnavailable, StoreUnavailable,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded,
-  work_outcome_wire, work_outcome_ending, work_operation_canonical, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
+  work_outcome_wire, work_outcome_ending, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
 
 // THE LOCAL PROVIDER: one of N behind the exact work contract, serving the host it runs on. It is a
@@ -629,18 +631,27 @@ fn compute_attempt_completed(outcome: WorkOutcome) -> Bool {
 // attempt ends as the typed UnitMemoryGrantExceeded refusal. And a retry is taken only after the
 // first seat is PROVEN released, by the same termination fact settlement uses; a seat that cannot be
 // proven free is settled as it stands, so the retry can never run beside the attempt it replaces.
-fn compute_grant_exceeded_dir(layout: ComputeLayout, class: WorkClass) -> String {
-  join([layout.root, "/grant-exceeded/", work_class_wire(c: class)], "")
+// ONE AUTHORITY FOR WHERE EXCEEDANCES LIVE. Both the writer and the reader call these two, keyed by
+// the compute root, so the reader cannot list a path nothing writes (review 69829: the reader had
+// re-spelled the join, and a drift would have read as a silent zero).
+data compute_grant_exceeded_dirname: String = "grant-exceeded"
+
+fn compute_grant_exceeded_parent(root: String) -> String {
+  join([root, "/", compute_grant_exceeded_dirname], "")
+}
+
+fn compute_grant_exceeded_dir(root: String, class: WorkClass) -> String {
+  join([compute_grant_exceeded_parent(root: root), "/", work_class_wire(c: class)], "")
 }
 
 fn compute_grant_exceeded_record(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, grant: WorkClassGrant, attempt: ComputeAttempt, reference: NonEmptyStr) -> Bool {
-  let dir = compute_grant_exceeded_dir(layout: layout, class: work_class_of(op: op))
+  let dir = compute_grant_exceeded_dir(root: layout.root, class: work_class_of(op: op))
   if !compute_ensure_dir(instance: instance, path: dir) {
     false
   } else {
     Filesystem.WriteCreateNew(
       path: join([dir, "/", reference as String], ""),
-      content: compute_peak_sample_wire(op: op, grant: grant, summary: attempt.summary),
+      content: compute_peak_sample_wire(instance: instance, identity: work_outcome_identity(o: attempt.outcome), op: op, grant: grant, summary: attempt.summary),
     ).success
   }
 }
@@ -648,21 +659,57 @@ fn compute_grant_exceeded_record(instance: HostDashboardInstance, layout: Comput
 // THE READABLE COUNT: the number of recorded exceedances for a class on this host. An unreadable
 // directory is reported as unreadable and never as zero -- a count that reads 0 when it could not
 // look would be the one falsifier of the budget silently reporting the budget sound.
+//
+// ZERO IS ESTABLISHED BY THE LEVEL ABOVE, AT CLASS GRAIN (review 69829). A class directory exists
+// only once that class has exceeded, and Filesystem.List cannot tell an absent path from an
+// unreadable one, so the class's absence is read positively from its parent's listing: parent listed
+// and the class not in it is a counted zero; parent listed WITH the class in it but the class
+// unlistable is unreadable. The same move one level up distinguishes a host that has never recorded
+// any exceedance from a host whose record cannot be read.
 type GrantExceededCount
   = GrantExceededCounted { count: Int }
   | GrantExceededNeverRecorded
   | GrantExceededUnreadable { detail: String }
 
-fn compute_grant_exceeded_count(instance: HostDashboardInstance, class: WorkClass) -> GrantExceededCount {
-  let dir = join([dashboard_instance_compute_root(instance: instance) as String, "/grant-exceeded/", work_class_wire(c: class)], "")
-  let listed = Filesystem.List(path: dir)
-  if listed.success {
-    GrantExceededCounted { count: length(filter(split(listed.entries, "\n"), n => trim(s: n) != "")) }
-  } else if !Filesystem.List(path: join([dashboard_instance_compute_root(instance: instance) as String, "/grant-exceeded"], "")).success {
+type ComputeListing {
+  listed: Bool
+  entries: String
+  error: String
+}
+
+fn compute_listing_count(entries: String) -> Int {
+  length(filter(split(entries, "\n"), n => trim(s: n) != ""))
+}
+
+fn grant_exceeded_count_decide(root: ComputeListing, parent: ComputeListing, class_dir: ComputeListing, class: WorkClass) -> GrantExceededCount {
+  if class_dir.listed {
+    GrantExceededCounted { count: compute_listing_count(entries: class_dir.entries) }
+  } else if parent.listed {
+    if filesystem_listing_names_entry(listing: parent.entries, name: work_class_wire(c: class)) {
+      GrantExceededUnreadable { detail: class_dir.error }
+    } else {
+      GrantExceededCounted { count: 0 }
+    }
+  } else if root.listed && !filesystem_listing_names_entry(listing: root.entries, name: compute_grant_exceeded_dirname) {
     GrantExceededNeverRecorded
   } else {
-    GrantExceededUnreadable { detail: listed.error }
+    GrantExceededUnreadable { detail: if root.listed { parent.error } else { root.error } }
   }
+}
+
+fn compute_list(path: String) -> ComputeListing {
+  let l = Filesystem.List(path: path)
+  ComputeListing { listed: l.success, entries: l.entries, error: l.error }
+}
+
+fn compute_grant_exceeded_count(instance: HostDashboardInstance, class: WorkClass) -> GrantExceededCount {
+  let root = dashboard_instance_compute_root(instance: instance) as String
+  grant_exceeded_count_decide(
+    root: compute_list(path: root),
+    parent: compute_list(path: compute_grant_exceeded_parent(root: root)),
+    class_dir: compute_list(path: compute_grant_exceeded_dir(root: root, class: class)),
+    class: class,
+  )
 }
 
 fn compute_grant_exceeded_count_wire(instance: HostDashboardInstance, class: WorkClass) -> String {
@@ -757,7 +804,7 @@ fn compute_run_and_settle(
     path: layout.consumption_path,
     content: join([
       compute_capacity_standing_wire(s: standing), "\n",
-      compute_peak_sample_wire(op: op, grant: grant, summary: attempt.summary),
+      compute_peak_sample_wire(instance: instance, identity: identity, op: op, grant: grant, summary: attempt.summary),
       "grant exceeded, this class: ", compute_grant_exceeded_count_wire(instance: instance, class: work_class_of(op: op)), "\n",
       "unit: ", unit_termination_wire(t: termination), "\n",
       "reservation: ", compute_release_wire(r: returned), "\n",
@@ -1076,13 +1123,14 @@ fn compute_summary_result_wire(summary: SystemdRunWaitSummary) -> String {
 // size its class at headroom alone, which is the worst failure this mechanism can have. The sample
 // line carries the class, the operation's canonical text and the unparsed reading, so a later grant
 // row can cite exactly which runs it was sized from.
-fn compute_peak_sample_wire(op: WorkOperation, grant: WorkClassGrant, summary: SystemdRunWaitSummary) -> String {
+fn compute_peak_sample_wire(instance: HostDashboardInstance, identity: String, op: WorkOperation, grant: WorkClassGrant, summary: SystemdRunWaitSummary) -> String {
   join([
     "class: ", work_class_wire(c: work_class_of(op: op)), "\n",
-    "operation: ", work_operation_canonical(op: op), "\n",
     "grant: ", work_class_grant_wire(g: grant), "\n",
     "unit result: ", compute_summary_result_wire(summary: summary), "\n",
-    "unit peak: ", compute_summary_peak_wire(summary: summary), "\n",
+    "unit peak (as printed): ", compute_summary_peak_wire(summary: summary), "\n",
+    "sample: ", work_class_peak_sample_wire(r: work_class_peak_sample(
+      summary: summary, work_identity: identity, op: op, host: instance.host_identity as String, observed_at: now_epoch_seconds())), "\n",
   ], "")
 }
 
@@ -1127,7 +1175,7 @@ fn compute_run_leased(
           ComputeExecFailed { exit_code, stdout: _, stderr: _ } =>
             if compute_summary_is_oom_kill(summary: summary) {
               WorkRefusedByInfrastructure { identity: identity, cause: UnitMemoryGrantExceeded {
-                class: work_class_wire(c: work_class_of(op: op)), granted: granted, peak: compute_summary_peak_wire(summary: summary), grant_was_ceiling: grant_was_ceiling,
+                class: work_class_wire(c: work_class_of(op: op)), granted: granted, peak_upper: work_class_summary_peak_upper(summary: summary), grant_was_ceiling: grant_was_ceiling,
               } }
             } else {
               WorkFailed { identity: identity, exit_code: exit_code, log_path: layout.log_path }

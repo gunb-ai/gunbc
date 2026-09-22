@@ -2,8 +2,11 @@ module gunbc.compute.work_class_grant
 
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
-import std.measure { Kibibyte, kibibyte, kibibyte_count }
-import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, cargo_profile_wire }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, byte_size_count }
+import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, cargo_profile_wire, work_operation_canonical }
+import extdeps.systemd.systemd_run {
+  SystemdRunWaitSummary, SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported, systemd_formatted_bytes_upper,
+}
 
 // A WORK REQUEST RESERVES AN AMOUNT PER CLASS, AND THE AMOUNT IS A GRANT WITH ITS OBSERVATIONS
 // ATTACHED (operator ruling 2026-09-21: do not raise a global ceiling; size a job's reservation per
@@ -59,6 +62,57 @@ type WorkClassPeakSample {
   host: NonEmptyStr
   observed_at: EpochSecs
   peak_upper: Kibibyte
+}
+
+// THE SAMPLE PRODUCER: the launcher's summary to a typed sample (review 69829 -- the upper bound was
+// computed and then written only as prose). The byte upper bound is rounded UP to kibibytes, the
+// direction a capacity reading may round. A summary with no peak, an unparseable peak or an
+// unreadable clock takes NO sample and says which; it never takes a zero.
+fn work_class_summary_peak_upper(summary: SystemdRunWaitSummary) -> Kibibyte? {
+  match summary.memory_peak {
+    MemoryPeakRead { peak: b } => Present { value: kibibyte(count: (byte_size_count(b: systemd_formatted_bytes_upper(b: b)) + 1023) / 1024) }
+    MemoryPeakUnparseable { text: _ } => none
+    MemoryPeakNotReported => none
+  }
+}
+
+type WorkClassPeakSampleReading
+  = PeakSampleTaken { class: WorkClass, sample: WorkClassPeakSample }
+  | PeakSampleNotTaken { reason: String }
+
+fn work_class_peak_sample(summary: SystemdRunWaitSummary, work_identity: String, op: WorkOperation, host: String, observed_at: EpochSecs?) -> WorkClassPeakSampleReading {
+  match work_class_summary_peak_upper(summary: summary) {
+    Absent => PeakSampleNotTaken { reason: match summary.memory_peak {
+      MemoryPeakUnparseable { text } => join(["the Memory peak line did not parse: ", text], "")
+      _ => "no Memory peak line was reported"
+    } }
+    Present { value: upper } =>
+      match observed_at {
+        Absent => PeakSampleNotTaken { reason: "the clock could not be read as epoch seconds" }
+        Present { value: at } =>
+          if work_identity == "" || host == "" {
+            PeakSampleNotTaken { reason: "the attempt carries no work identity or host" }
+          } else {
+            PeakSampleTaken { class: work_class_of(op: op), sample: WorkClassPeakSample {
+              work_identity: work_identity as NonEmptyStr,
+              operation: work_operation_canonical(op: op) as NonEmptyStr,
+              host: host as NonEmptyStr,
+              observed_at: at,
+              peak_upper: upper,
+            } }
+          }
+      }
+  }
+}
+
+fn work_class_peak_sample_wire(r: WorkClassPeakSampleReading) -> String {
+  match r {
+    PeakSampleTaken { class, sample } =>
+      join(["class=", work_class_wire(c: class), " identity=", sample.work_identity as String, " host=", sample.host as String,
+        " observed_at=", to_string(value: sample.observed_at), " peak_upper_kib=", to_string(value: kibibyte_count(k: sample.peak_upper)),
+        " operation=", sample.operation as String], "")
+    PeakSampleNotTaken { reason } => join(["NOT TAKEN (", reason, ")"], "")
+  }
 }
 
 // THE ROW: a policy budget grounded in observations. The headroom is the OPERATOR'S figure and is
