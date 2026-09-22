@@ -1,0 +1,417 @@
+module gunbc.sibling_operand_effect_site_census
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import v2.std.algebra { filter, length }
+
+
+// THE POPULATION AN UNLANDED WALL WOULD REFUSE, COUNTED BEFORE THE WALL EXISTS.
+//
+// The class is gunbc.recurring_failure_mode
+// sibling_operand_effect_order_is_underdetermined_and_unenforced: an accepted program in which two
+// siblings of ONE operand list each reach an observable effect, so its meaning depends on which
+// runs first, while every authority the realizations consult declines to carry that order. The
+// derivation read on that row concluded that the remedy is a REFUSAL rather than a declared order,
+// and the owning lane admitted that refusal only behind this census (snappy-deer-443, 2026-09-22):
+// a refusal enrolled without the count cannot distinguish a wall that fires on nothing from a wall
+// that breaks the corpus, and the count is the only thing that says which.
+//
+// THE PREDICATE CENSUSED, stated once so every row is read against the same proposition: a sibling
+// operand list -- an argument list or a record literal's field list -- more than one of whose
+// DIRECT children is a call to a function DECLARING a `uses` resource requirement. Declared, not
+// reached: a sibling that reaches an effect through a call chain it does not itself declare is
+// OUTSIDE this predicate and outside the narrower wall, which is why that wall is described on the
+// class row as narrower rather than weaker, and why the trigger retiring the row stays named at the
+// call-reachability capability v2.std.effect_reach already carries.
+
+// WHICH SIBLING LIST THE SITE IS, and it is a distinction with a consequence rather than a label.
+// Under v2.std.node connective_edge_discipline a record literal's fields are LabeledEdges, and
+// canonicalize_labeled_for_content_hash sorts labeled children by label before hashing -- so two
+// spellings of a RecordLiteralFields site differing only in field order are THE SAME NODE under
+// content_hash while their effect order differs. Every row in this census is a named-sibling list,
+// so that applies to all of them; the kind is carried because an argument list is the form the
+// authored ruling on gunbc.host_effect_realize srv3_chown_then_read_back was written about, and a
+// reader checking this census against that ruling needs to see which rows it literally covers.
+type SiblingListKind
+  = ArgumentList
+  | RecordLiteralFields
+  | InfixConnectiveOperands
+
+// WHETHER REORDERING THE SIBLINGS WOULD CHANGE WHAT THE PROGRAM MEANS, which is the question the
+// owning lane asked for and is NOT the same question as whether the wall refuses the site. The wall
+// refuses every row here regardless of this field, because the order is undeclared in all of them.
+// This field says what is at stake if a realization reorders them, and the three arms are ordered
+// worst first.
+//
+// OrderObservablyMatters is the arm that makes the class urgent: the siblings touch ONE subject, so
+// a reordering changes the answer the program computes and no row says which answer is right.
+//
+// OrderNotObservableAtTodaysArguments is the arm a reader will want to treat as a pass and must
+// not. The siblings touch disjoint subjects TODAY, so no reordering visible today changes the
+// result -- but that is a property of the arguments this call happens to be given, not a declared
+// fact about the node, and nothing refuses a future caller who makes them overlap. It is the
+// agreement-without-an-authority shape the class row names as the most dangerous, at site grain.
+//
+// PredicateFalsePositive is the honest escape and is load-bearing: a row here means the text sweep
+// found a shape the MODELED predicate would not, and leaving it in the roster rather than deleting
+// it is what lets a reader check the sweep instead of trusting it.
+type SiblingOrderStake
+  = OrderObservablyMatters { shared_subject: NonEmptyStr }
+  | OrderNotObservableAtTodaysArguments { why_disjoint_today: NonEmptyStr }
+  | PredicateFalsePositive { why_the_model_excludes_it: NonEmptyStr }
+
+// ONE DISCOVERED SITE.
+//
+// `effect_reaching_children` and `callees` are two views of one fact and the witness beside this
+// carrier pins them to each other, because a row whose count disagrees with its list is a row a
+// reader cannot check against the source.
+//
+// `callee_resolution_is_unambiguous` is not decoration and it is the one property of this sweep
+// that was MEASURED rather than assumed: every callee name appearing in any row below has EXACTLY
+// ONE function declaration corpus-wide, and that declaration is the uses-declaring one. A text
+// sweep cannot resolve a name, so a homonym would have made the whole census unsound; the
+// uniqueness check is what stands in for resolution here, and a future row whose name is not unique
+// must carry false and be dispositioned rather than counted.
+type SiblingEffectSite {
+  site_module: NonEmptyStr
+  enclosing_declaration: NonEmptyStr
+  list_kind: SiblingListKind
+  parent_construct: NonEmptyStr
+  effect_reaching_children: Int
+  callees: List<NonEmptyStr>
+  callee_resolution_is_unambiguous: Bool
+  stake: SiblingOrderStake
+}
+
+// THE ROSTER. Fourteen sites, all in the product layer under dag/gunbc, all NAMED-sibling lists.
+// The sweep that produced it is named in the annotation below the roster rather than transcribed
+// into it.
+data sibling_operand_effect_sites: List<SiblingEffectSite> = [
+  SiblingEffectSite {
+    site_module: "gunbc.github_app_acquisition" as NonEmptyStr,
+    enclosing_declaration: "census_app_acquisition_standing" as NonEmptyStr,
+    list_kind: ArgumentList,
+    parent_construct: "census_app_acquisition_judgment" as NonEmptyStr,
+    effect_reaching_children: 2,
+    callees: ["live_installation_population" as NonEmptyStr, "live_custody_standing" as NonEmptyStr],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderObservablyMatters {
+      shared_subject: "one GitHub App registration observed over the network twice -- the installation population and the key custody standing are two readings of the same app at two unordered instants, and the judgment folds them as though they were one observation" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.runner_microvm_lifecycle_realize" as NonEmptyStr,
+    enclosing_declaration: "observe_resource_absence" as NonEmptyStr,
+    list_kind: ArgumentList,
+    parent_construct: "contained_existence" as NonEmptyStr,
+    effect_reaching_children: 2,
+    callees: ["observe_path_exists" as NonEmptyStr, "observe_path_exists" as NonEmptyStr],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderObservablyMatters {
+      shared_subject: "a path and its own parent directory, read as two filesystem observations whose whole purpose is to be compared -- the parent reading and the child reading are ordered with respect to each other by nothing, and a containment verdict drawn across two unordered instants is the time-of-check shape" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.runner_attempt_launch" as NonEmptyStr,
+    enclosing_declaration: "stage_jit_device" as NonEmptyStr,
+    list_kind: ArgumentList,
+    parent_construct: "jit_device_readback" as NonEmptyStr,
+    effect_reaching_children: 3,
+    callees: [
+      "run_shell_command_capture" as NonEmptyStr,
+      "run_shell_command_capture" as NonEmptyStr,
+      "run_shell_command_capture" as NonEmptyStr,
+    ],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderObservablyMatters {
+      shared_subject: "three stat readings -- owner uid, mode, size -- of ONE file that the same function has just written, assembled into one readback verdict; the three shell executions are ordered with respect to each other by nothing, and the readback exists precisely to establish a fact about the state the write left" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.instruments.github_app_acquire" as NonEmptyStr,
+    enclosing_declaration: "census_app_acquire_for" as NonEmptyStr,
+    list_kind: ArgumentList,
+    parent_construct: "admit_manifest_code" as NonEmptyStr,
+    effect_reaching_children: 3,
+    callees: [
+      "read_handoff_value" as NonEmptyStr,
+      "read_handoff_value" as NonEmptyStr,
+      "read_handoff_value" as NonEmptyStr,
+    ],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderObservablyMatters {
+      shared_subject: "three handoff files written by one registration flow -- issued state, observed state and code -- read as three unordered filesystem observations and then compared for agreement; the admission REFUSES when the issued and observed states disagree, so the comparison is between readings whose relative instant no row fixes" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.review_sheet_converge_cli" as NonEmptyStr,
+    enclosing_declaration: "converge_review_sheet_all" as NonEmptyStr,
+    list_kind: RecordLiteralFields,
+    parent_construct: "ReviewSheetConvergeReport" as NonEmptyStr,
+    effect_reaching_children: 5,
+    callees: [
+      "converge_service_enablement" as NonEmptyStr,
+      "converge_service_enablement" as NonEmptyStr,
+      "converge_service_account" as NonEmptyStr,
+      "converge_drive_membership" as NonEmptyStr,
+      "converge_review_spreadsheet" as NonEmptyStr,
+    ],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderObservablyMatters {
+      shared_subject: "one Google Cloud project converged five ways in one record literal -- two API enablements, a service account, a drive membership and a spreadsheet -- where the drive and spreadsheet steps depend on the account and the APIs being enabled, so this is a convergence ORDER carried by nothing but the order the fields happen to be written in" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.review_sheet_converge_cli" as NonEmptyStr,
+    enclosing_declaration: "converge_drive_half" as NonEmptyStr,
+    list_kind: RecordLiteralFields,
+    parent_construct: "DriveHalfReport" as NonEmptyStr,
+    effect_reaching_children: 2,
+    callees: ["converge_drive_membership" as NonEmptyStr, "converge_review_spreadsheet" as NonEmptyStr],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderObservablyMatters {
+      shared_subject: "one drive, whose writer membership is converged in one field and whose spreadsheet is created or found in the other; a spreadsheet converged before the writer is a member is a different outcome from one converged after, and the record literal fixes neither" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.review_sheet_format_actuator" as NonEmptyStr,
+    enclosing_declaration: "format_review_sheet" as NonEmptyStr,
+    list_kind: RecordLiteralFields,
+    parent_construct: "FormatReport" as NonEmptyStr,
+    effect_reaching_children: 7,
+    callees: [
+      "freeze_header" as NonEmptyStr,
+      "format_header_band" as NonEmptyStr,
+      "color_standing" as NonEmptyStr,
+      "color_standing" as NonEmptyStr,
+      "color_standing" as NonEmptyStr,
+      "color_standing" as NonEmptyStr,
+      "color_standing" as NonEmptyStr,
+    ],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderNotObservableAtTodaysArguments {
+      why_disjoint_today: "seven network format steps against ONE spreadsheet, and the five color_standing calls address disjoint ranges today so no reordering visible today changes the rendered sheet; the row is carried as the sharpest specimen in the census because the function's own annotation states that the steps are named individually BECAUSE EACH IS AN EFFECT and the report names which one refused -- authored awareness that these are seven effects in a labeled-edge list, with nothing anywhere declaring their order" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.runner_microvm_lifecycle_realize" as NonEmptyStr,
+    enclosing_declaration: "stage_attempt" as NonEmptyStr,
+    list_kind: RecordLiteralFields,
+    parent_construct: "JailMaterialStaging" as NonEmptyStr,
+    effect_reaching_children: 2,
+    callees: ["observe_path_exists" as NonEmptyStr, "observe_path_exists" as NonEmptyStr],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderObservablyMatters {
+      shared_subject: "the jail kernel and rootfs destinations, observed as two filesystem readbacks of the staging the same expression has just performed through its let-sequenced command outcomes; the let sequence above fixes the order of the STAGING and the record literal below fixes nothing about the order of the READBACKS, which is the same expression declaring the order it needs in one half and dropping it in the other" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.fleet_converge_plan_cli" as NonEmptyStr,
+    enclosing_declaration: "observe_fleet_converge_request_wet" as NonEmptyStr,
+    list_kind: RecordLiteralFields,
+    parent_construct: "FullHostConverge" as NonEmptyStr,
+    effect_reaching_children: 3,
+    callees: [
+      "observe_timer_members_wet" as NonEmptyStr,
+      "observe_runner_unit_standings_wet" as NonEmptyStr,
+      "observe_slot_retirement_evidence_wet" as NonEmptyStr,
+    ],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderObservablyMatters {
+      shared_subject: "one host's live systemd state read three ways -- timer members, runner unit standings, slot retirement evidence -- and folded into ONE converge request as though the three readings were simultaneous; a unit that stops between the second and third reading yields a request describing a host state that never existed" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.fleet_converge_plan_cli" as NonEmptyStr,
+    enclosing_declaration: "observe_fleet_converge_request_wet" as NonEmptyStr,
+    list_kind: RecordLiteralFields,
+    parent_construct: "FullHostConverge" as NonEmptyStr,
+    effect_reaching_children: 3,
+    callees: [
+      "observe_timer_members_wet" as NonEmptyStr,
+      "observe_runner_unit_standings_wet" as NonEmptyStr,
+      "observe_slot_retirement_evidence_wet" as NonEmptyStr,
+    ],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderObservablyMatters {
+      shared_subject: "the second arm of the same match in the same function, constructing the same FullHostConverge from the same three live readings; it is rostered as its own site rather than folded into the one above because the census is at SITE grain and a repair applied to one arm does not touch the other -- which is itself the reason the class is worth counting at this grain" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.host_credential_custody_converge" as NonEmptyStr,
+    enclosing_declaration: "converge_host_credential_custody" as NonEmptyStr,
+    list_kind: RecordLiteralFields,
+    parent_construct: "CustodyReadback" as NonEmptyStr,
+    effect_reaching_children: 4,
+    callees: [
+      "observe_custody_path" as NonEmptyStr,
+      "observe_custody_path" as NonEmptyStr,
+      "observe_upper_ancestors" as NonEmptyStr,
+      "observe_custody_content" as NonEmptyStr,
+    ],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderObservablyMatters {
+      shared_subject: "ONE credential's custody, observed four ways -- the key file, its directory, the upper ancestors and the written content -- as the READBACK of a write the same expression carries; this is the census's closest structural match to the authored ruling on gunbc.host_effect_realize srv3_chown_then_read_back, where a privileged mutation passed as an argument was rewritten into a let precisely because argument position is not a sequencing authority" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.roadmap_launch_deployment_cli" as NonEmptyStr,
+    enclosing_declaration: "rlm_run_provenance_fact" as NonEmptyStr,
+    list_kind: RecordLiteralFields,
+    parent_construct: "RunProvenanceObserved" as NonEmptyStr,
+    effect_reaching_children: 3,
+    callees: [
+      "rlm_predecessor_run" as NonEmptyStr,
+      "rlm_predecessor_run" as NonEmptyStr,
+      "rlm_predecessor_run" as NonEmptyStr,
+    ],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderNotObservableAtTodaysArguments {
+      why_disjoint_today: "three network reads of three DISTINCT GitHub Actions run ids -- plan, apply and dashboard -- so no reordering visible today changes the provenance fact; the order is undeclared all the same, and the row is carried rather than dropped because disjointness here is a property of three arguments the caller happens to pass, not of the node" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.roadmap_launch_deployment_cli" as NonEmptyStr,
+    enclosing_declaration: "rlm_launch_deployment_receipt_bound" as NonEmptyStr,
+    list_kind: RecordLiteralFields,
+    parent_construct: "RoadmapLaunchDeploymentFacts" as NonEmptyStr,
+    effect_reaching_children: 3,
+    callees: [
+      "unit_standing_fact" as NonEmptyStr,
+      "window_snapshot" as NonEmptyStr,
+      "rlm_run_provenance_fact" as NonEmptyStr,
+    ],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderObservablyMatters {
+      shared_subject: "one deployment's live state read three ways -- the unit standing, the observation window snapshot and the run provenance -- and bound into ONE receipt; a window snapshot taken before rather than after the unit standing describes a different deployment instant, and the receipt asserts them as one" as NonEmptyStr,
+    },
+  },
+  SiblingEffectSite {
+    site_module: "gunbc.spark.serving_rank_observe" as NonEmptyStr,
+    enclosing_declaration: "observe_rank_gpu_direct_capability" as NonEmptyStr,
+    list_kind: RecordLiteralFields,
+    parent_construct: "RankGpuDirectCapabilityReceipt" as NonEmptyStr,
+    effect_reaching_children: 2,
+    callees: ["observe_rank_cuda_attribute" as NonEmptyStr, "observe_rank_cuda_attribute" as NonEmptyStr],
+    callee_resolution_is_unambiguous: true,
+    stake: OrderObservablyMatters {
+      shared_subject: "two CUDA attributes of ONE device on one rank -- GPUDirect RDMA support and dma-buf support -- probed over the network as two unordered observations and asserted in one capability receipt about one incarnation" as NonEmptyStr,
+    },
+  },
+]
+
+// HOW THE ROSTER WAS PRODUCED, AND WHAT THAT METHOD CANNOT SEE. Naming the instrument rather than
+// transcribing its output (DESIGN section 6) is not available here in its strong form, because the
+// instrument is a source sweep and not an entry point -- so the method is stated in full instead,
+// and the honest consequence is stated with it.
+//
+// THE METHOD. Every .dag file outside .git and target, with whole-line `//` annotations blanked and
+// string literals masked so prose cannot match. First pass: every `fn NAME` declaration whose
+// signature up to the opening brace carries a `uses IDENT:` clause -- 604 distinct names over 606
+// declaration sites, out of 59,712 function declarations. Second pass: every balanced argument list
+// and every balanced record literal, split at top-level commas over round, square and curly
+// delimiters ONLY, with each part tested for a DIRECT call to one of those 604 names -- direct
+// meaning not behind a `=>` and not inside an unclosed nested brace, so a call in a lambda body is
+// excluded because a deferred occurrence is not a sibling demand. A part list with two or more such
+// parts is a site.
+//
+// THE DELIMITER DETAIL IS NOT A DETAIL. An earlier cut of the same sweep counted `<` and `>` as
+// depth and therefore mis-split every list containing a match arm, since `=>` decremented the
+// depth; it reported eight sites, two of which were a single `release_host_effect_live(handle:,
+// exit:)` call whose second argument is a block, split in the middle. Those two dissolved when the
+// delimiter set was corrected, and four of the remaining six survive here. The defect is recorded
+// because it is the shape a reader should assume is present until the instrument is the compiler.
+//
+// WHAT THE SWEEP CANNOT SEE, stated as bounds rather than as an apology, because each is a face of
+// the class whose population is UNMEASURED and must not be read as zero: a sibling that reaches an
+// effect through a call chain without declaring one itself, which is the whole population above the
+// narrower wall; a method-call receiver; a call reached through a value bound elsewhere; and any
+// site in a module the sweep's text pass reads but the compiler would refuse.
+//
+// ONE FACE WAS MEASURED AND IS GENUINELY EMPTY, and it is recorded here rather than omitted because
+// an absence with no positive control is not evidence. INFIX CONNECTIVE OPERANDS: a third pass
+// extracted the two immediate operands of every `&&` and `||` -- the left by walking back over a
+// balanced parenthesised call term and any trailing field accesses, the right by matching a call
+// term forward -- and found 9,705 sites where BOTH operands are direct calls, of which ZERO have
+// even one operand calling a uses-declaring function. The 9,705 is the positive control: the
+// extractor demonstrably fires on the condition being present, so the zero is a reading and not a
+// silence. That face matters independently because .dag `&&` does not short-circuit, so an effect
+// to the right of a false left still runs; it is empty today and nothing keeps it empty.
+//
+// THE UNIQUENESS CHECK THAT STANDS IN FOR RESOLUTION. Each of the 23 distinct callee names appearing
+// in the roster was searched for every `fn` declaration of that name corpus-wide: each has EXACTLY
+// ONE, and that one is uses-declaring. A text sweep cannot resolve a name to a declaration, so a
+// homonym would have made the census unsound in the one direction that matters -- counting a site
+// whose callee is a different, effect-free function of the same spelling. That check is the reason
+// `callee_resolution_is_unambiguous` is a field rather than a sentence: a later row whose name is
+// not unique must carry false and be dispositioned, not counted.
+
+fn site_is_argument_list(s: SiblingEffectSite) -> Bool {
+  match s.list_kind {
+    ArgumentList => true
+    RecordLiteralFields => false
+    InfixConnectiveOperands => false
+  }
+}
+
+fn site_is_record_literal(s: SiblingEffectSite) -> Bool {
+  match s.list_kind {
+    ArgumentList => false
+    RecordLiteralFields => true
+    InfixConnectiveOperands => false
+  }
+}
+
+fn site_is_infix(s: SiblingEffectSite) -> Bool {
+  match s.list_kind {
+    ArgumentList => false
+    RecordLiteralFields => false
+    InfixConnectiveOperands => true
+  }
+}
+
+fn site_order_observably_matters(s: SiblingEffectSite) -> Bool {
+  match s.stake {
+    OrderObservablyMatters { shared_subject: _ } => true
+    OrderNotObservableAtTodaysArguments { why_disjoint_today: _ } => false
+    PredicateFalsePositive { why_the_model_excludes_it: _ } => false
+  }
+}
+
+fn site_is_false_positive(s: SiblingEffectSite) -> Bool {
+  match s.stake {
+    OrderObservablyMatters { shared_subject: _ } => false
+    OrderNotObservableAtTodaysArguments { why_disjoint_today: _ } => false
+    PredicateFalsePositive { why_the_model_excludes_it: _ } => true
+  }
+}
+
+fn sibling_effect_site_count() -> Int {
+  length(sibling_operand_effect_sites)
+}
+
+fn sibling_effect_argument_list_count() -> Int {
+  length(filter(sibling_operand_effect_sites, s => site_is_argument_list(s: s)))
+}
+
+fn sibling_effect_record_literal_count() -> Int {
+  length(filter(sibling_operand_effect_sites, s => site_is_record_literal(s: s)))
+}
+
+fn sibling_effect_infix_count() -> Int {
+  length(filter(sibling_operand_effect_sites, s => site_is_infix(s: s)))
+}
+
+fn sibling_effect_order_matters_count() -> Int {
+  length(filter(sibling_operand_effect_sites, s => site_order_observably_matters(s: s)))
+}
+
+fn sibling_effect_false_positive_count() -> Int {
+  length(filter(sibling_operand_effect_sites, s => site_is_false_positive(s: s)))
+}
+
+// THE NUMBER THE WALL WOULD REFUSE, which is the whole point of the carrier: every rostered site is
+// refused by the narrower wall, including the ones whose order is not observable at today's
+// arguments, because the wall refuses an UNDECLARED order and not an observed race.
+fn sibling_effect_sites_the_wall_would_refuse() -> Int {
+  length(filter(sibling_operand_effect_sites, s => site_is_false_positive(s: s) == false))
+}
