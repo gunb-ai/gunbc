@@ -377,28 +377,14 @@ fn symbol_index_fill_module_declarations(index: SymbolIndex, root: Node) -> Symb
 // PASS B -- WHAT THIS ROOT BINDS FROM ELSEWHERE. Every row here reads ANOTHER root's declarations
 // out of the index, so it can only be run once every root's pass A has been. The two sources of
 // rows differ only in where they SURVIVED: an `alias` decl is grafted into the tree as an ordinary
-// named unit and is still readable from the root, while an import decl was dissolved by the graft
-// and its rows ride on the carrier (v2.compiler.normalized_tree NormalizedTree import_bindings).
-// They are the same kind of row and bind by the same call.
-fn symbol_index_fill_module_bindings(index: SymbolIndex, tree: ModuleBindingSource) -> SymbolIndex {
-  symbol_index_fill_bindings_to_fixed_point(
-    index: index,
-    pending: symbol_index_pending_of_source(tree: tree)
-  )
-}
-
-fn symbol_index_fill_module_tree(index: SymbolIndex, tree: ModuleBindingSource) -> SymbolIndex {
-  symbol_index_fill_module_bindings(
-    index: symbol_index_fill_module_declarations(index: index, root: tree.root),
-    tree: tree
-  )
-}
-
 // THE NODE-ONLY DOOR, AND ITS NAME SAYS WHAT IT CANNOT DO. A caller holding only a grafted Node has
 // no import rows to offer -- the graft dissolved them and they are not recoverable from what is
 // left -- so this fills declarations and the alias rows still present in the tree, and no import
-// bindings. That is a statement about the input, not a default: a caller holding a NormalizedTree
-// goes through symbol_index_fill_module_tree and gets all three.
+// bindings. That is a statement about the input, not a default: a caller holding NormalizedTrees
+// goes through symbol_index_fill_module_roots, which projects them to ModuleBindingSource and gets
+// all three. Single-root and whole-corpus are not symmetric doors here, and deliberately so: a
+// binding row's target may be another root's declaration, so binding ONE root in isolation can only
+// ever see what that root itself declares.
 fn symbol_index_fill_module_root(index: SymbolIndex, root: Node) -> SymbolIndex {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>

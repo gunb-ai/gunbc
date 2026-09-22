@@ -5565,6 +5565,15 @@ fn alias_binding_row_target_from_decl(decl: Node, module_root: Node) -> Outcome<
 // a name added to m.p would silently start binding in S. Zero rows is not a silent drop -- the
 // reference that wanted the name is then off its own chain and refuses, located, at the reference
 // site, which is where section 13 puts the refusal.
+//
+// AN UNUSED IMPORT IS NO LONGER INERT, which is a real consequence of this transmutation and not a
+// side note (review 69789 on gunbc#12009 found a stale one in this same change). Before it, an
+// import block that named something the module never used was bookkeeping; now it MINTS A BINDING
+// at the importing position and is a claimant like any other, so a stale name that collides with
+// something else bound there is an ambiguity the resolver will refuse. That is the ruled model
+// working as intended -- section 13 makes an alias an ordinary binding node and calls an unused one
+// lintable dead code -- but it moves stale imports from harmless to load-bearing, and an author
+// deleting a use must now delete its import row with it.
 // THE IMPORTED MODULE'S PATH, READ IN WHICHEVER FORM THE TREE IS IN. A parsed tree still carries
 // the grammar's capture for the qualified name; a normalized one carries the emitted edge
 // `dag_surface_import_decl_qualified_name` instead. Both are this row's authority for the same fact,
