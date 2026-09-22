@@ -51,8 +51,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // root obtains its resources, consumed by the interpreter's ambient provision and by the emitted
 // realization alike, sufficient that a rendered test root either carries a binding to pass or is
 // refused before the artifact is written. Until then the interpreter and the emitter answer that
-// question differently, which is the same meaning fork the resource-requirement frontier holds as
-// declared debt rather than ratifies.
+// question differently, AND NOTHING IN THIS CHANGE HOLDS THAT DISAGREEMENT AS DECLARED DEBT --
+// an earlier draft of this sentence said the resource-requirement frontier holds it, and that was
+// false in two ways at once (review 69984). The frontier's rows are keyed on a CALLER THAT
+// ESTABLISHES NOTHING; a test root is admitted by a different arm entirely (caller_is_test_root),
+// so no row of that roster could ever name it. And the roster carries no rows yet, so it holds
+// nothing at all. The disagreement is carried HERE, as this trigger, and by nothing else.
 // Interpretation serves resources ambiently and does not consult the caller, so on the
 // source-to-interpretation path the requirement is enforced by this same typecheck and by nothing
 // in the interpreter. The `uses`

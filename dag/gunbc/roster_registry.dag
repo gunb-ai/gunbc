@@ -76,6 +76,14 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
+    roster: roster_decl(module_path: "v1.compiler.infer", decl_name: "resource_requirement_frontier"),
+    unit_kind: "call site that does not establish its callee's `uses` resource, keyed (caller module, caller declaration, callee module, callee declaration, resource)",
+    membership: DeclaredFrontier {
+      reason: "The resource-requirement wall refuses a call whose caller establishes none of the resources its callee declares through `uses`, because the realized call has no binding to pass. These rows are the call sites that PREDATE the wall. They are correct working code under the interpreter, which serves resources ambiently and therefore never required the authored clause, so refusing them would fabricate a refusal over code that runs; admitting them silently would fabricate a success, which is the exact fail-open the wall exists to close. The rows carry the residue as counted ResourceRequirementFrontierAdmitted diagnostics instead. The key is five DECLARATION-IDENTITY facts and contains no module prefix and no file path, because a prefix would admit the next undeclared use in the same module for free — DESIGN section 5's absorbing fallback wearing a roster's clothes. With this key a newly authored undeclared use matches no row and REFUSES, and so does the same caller acquiring a second, different unestablished callee. Admission is at the TYPECHECK only: emission still refuses a rostered site, because there is still nothing to pass.",
+      dissolution: unbound_dissolution(description: "feature:authored-resource-establishment — the corpus carries an authored `uses` clause (or an equivalent single authority for propagating one) on every call site that reaches a resource-requiring declaration, sufficient that the typecheck decides every such call directly and no site needs admitting. Each row also dissolves individually when its own caller authors the clause, at which point the row's occurrence count must be lowered or the row deleted, because the count is an equality and not a ceiling.")
+    }
+  },
+  RosterRegistration {
     roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
     unit_kind: "witness discovery-exclusion path substring",
     membership: DeclaredFrontier {

@@ -11897,9 +11897,12 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
 // So an Accepted program does reach this arm, through exactly that door. compile_error! makes it a
 // target-compiler refusal instead of a runtime panic, which is a real improvement and is NOT a
 // refusal before publishing: the artifact is still written. The remaining gap is the interpreter
-// and the emitter disagreeing about how a test root obtains its resources, which is the same
-// meaning fork the resource-requirement frontier exists to hold as declared debt rather than
-// ratify, and it is named as this component's next-rung trigger rather than papered here.
+// and the emitter disagreeing about how a test root obtains its resources. NOTHING HERE HOLDS THAT
+// GAP AS DECLARED DEBT, and an earlier draft of this note claimed the resource-requirement frontier
+// does (review 69984). It does not and cannot: that roster's rows key on a caller that establishes
+// NOTHING, while a test root is admitted by a separate arm (v1.compiler.infer caller_is_test_root),
+// so no row could name one. The gap is carried as the next-rung trigger on
+// test.claim.resource_requirement_call_admission_witness and by nothing else.
 // emit_func_def names the declaration it renders on the body scope (caller_decl_name) so that read
 // has a subject.
 

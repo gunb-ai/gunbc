@@ -359,6 +359,21 @@ data advisory_class_ceilings: List<AdvisoryClassCeilingRow> = [
     }
   },
   AdvisoryClassCeilingRow {
+    class_name: "ResourceRequirementFrontierAdmitted" as NonEmptyStr,
+    ceiling: DeclaredAdmissionRoster {
+      roster: DeclarationRef {
+        module_path: "v1.compiler.infer",
+        decl_name: "resource_requirement_frontier",
+        field: WholeDeclaration
+      }
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
     class_name: "WhereRefinementUnenforced" as NonEmptyStr,
     ceiling: WallAfterGrounding {
       missing_capability: "refinement evidence at non-literal positions (refinement subtyping / parameter evidence): the check is decidable -- evidence present or not -- but the carrier is not modeled, and hard-refusing every non-literal site was measured to break dag_compile_clean across the Octet/Port/Milliseconds migration surfaces (extdeps.pin pin_refresh_window_positivity_note). Reasons observed: 'non-literal value at refined position' and 'predicate deferred at compile time'. Trigger authority: where_refinement_deferral_reason_scaffold_note (feature:where-refinement-deferral-reason-authority)."
