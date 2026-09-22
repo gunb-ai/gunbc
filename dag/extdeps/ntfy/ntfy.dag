@@ -128,6 +128,16 @@ fn ntfy_publish_outcome_of(rest: RestOutcome, message_id: String) -> NtfyPublish
   }
 }
 
+// The one sentence for a publish outcome, consumed by every operator-facing renderer of it.
+fn ntfy_publish_outcome_sentence(o: NtfyPublishOutcome) -> String {
+  match o {
+    NtfyPublished { message_id: m } => "published as " + (m as String)
+    NtfyPublishRefused { status: s, detail: d } => "refused " + to_string(s) + " " + d
+    NtfyPublishUnreached { cause: c } => "unreached: " + c
+    NtfyPublishUndecodable { status: s, cause: c } => "undecodable " + to_string(s) + ": " + c
+  }
+}
+
 fn ntfy_publish_succeeded(o: NtfyPublishOutcome) -> Bool {
   match o {
     NtfyPublished { message_id: _ } => true

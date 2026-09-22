@@ -20,11 +20,11 @@ import extdeps.apple.app_attest {
   AttestationExpectation, verify_attestation, AssertionExpectation, verify_assertion,
 }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
-import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublished, NtfyPublishRefused, NtfyPublishUnreached, NtfyPublishUndecodable, ntfy_publish_outcome_of, ntfy_priority_wire, ntfy_cache_wire }
+import extdeps.ntfy.ntfy { NtfyMessage, ntfy_publish_outcome_sentence }
 import gunbc.auth.approval_notification { approval_notification }
 import gunbc.auth.approval_ntfy_deployment
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url }
-import gunbc.auth.approval_request_submission { PublisherTokenRead, PublisherTokenLoaded, PublisherTokenUnavailable, read_publisher_token }
+import gunbc.auth.approval_request_submission { PublisherTokenRead, PublisherTokenLoaded, PublisherTokenUnavailable, read_publisher_token, publish_notification, NotificationPublished, NotificationPublisherTokenUnavailable, NotificationNotPublished }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability {
   ProposeApprove, ProposeDeny, utc_instant_is_canonical, utc_instant_before,
@@ -569,7 +569,7 @@ fn mint_enrolment_code() -> NonEmptyStr? {
 fn enrolment_code_notification(code: NonEmptyStr, expires_at: Timestamp) -> NtfyMessage {
   approval_notification(
     title: approval_enrolment_code_notification_title,
-    body: ("Enter this code in Approve within ten minutes: " + (code as String) + " (expires " + expires_at + ")") as NonEmptyStr,
+    body: ("Enter this code in Approve within " + to_string(second_count(s: approval_enrolment_code_window)) + " seconds: " + (code as String) + " (expires " + expires_at + ")") as NonEmptyStr,
     approval_url: approval_broker_base_url(),
   )
 }
@@ -608,26 +608,11 @@ fn issue_and_deliver_enrolment_code_until(root: NonEmptyStr, now: Timestamp, exp
 }
 
 fn deliver_enrolment_code(code: NonEmptyStr, expires_at: Timestamp, publisher: PublisherTokenRead) -> EnrolmentCodeIssuance {
-  match publisher {
-    PublisherTokenUnavailable { path: _, detail: d } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "publisher token unavailable: " + d }
-    PublisherTokenLoaded { token: t } => {
-      let message = enrolment_code_notification(code: code, expires_at: expires_at)
-      let sent = ntfy.Publish.PublishMessage(
-        access_token: t,
-        topic: message.topic,
-        title: message.title,
-        body: message.body,
-        priority: ntfy_priority_wire(p: message.priority),
-        click: message.click,
-        cache: ntfy_cache_wire(c: message.cache),
-      )
-      match ntfy_publish_outcome_of(rest: sent.outcome, message_id: sent.message_id) {
-        NtfyPublished { message_id: m } => EnrolmentCodeDelivered { receipt: EnrolmentCodeDeliveryReceipt { topic: message.topic as NonEmptyStr, message_id: m, expires_at: expires_at } }
-        NtfyPublishRefused { status: st, detail: d } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "ntfy refused " + to_string(st) + ": " + d }
-        NtfyPublishUnreached { cause: c } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "ntfy unreached: " + c }
-        NtfyPublishUndecodable { status: st, cause: c } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "ntfy answer undecodable (" + to_string(st) + "): " + c }
-      }
-    }
+  let message = enrolment_code_notification(code: code, expires_at: expires_at)
+  match publish_notification(message: message, publisher: publisher) {
+    NotificationPublisherTokenUnavailable { detail: d } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "publisher token unavailable: " + d }
+    NotificationPublished { message_id: m } => EnrolmentCodeDelivered { receipt: EnrolmentCodeDeliveryReceipt { topic: message.topic as NonEmptyStr, message_id: m, expires_at: expires_at } }
+    NotificationNotPublished { publish: p } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "ntfy " + ntfy_publish_outcome_sentence(o: p) }
   }
 }
 
