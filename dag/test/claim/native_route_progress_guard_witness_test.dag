@@ -1743,3 +1743,41 @@ test fn a_regression_finding_locates_the_identity_it_is_about() -> Bool {
   string_contains(s: rendered, pattern: "REGRESSED")
     && string_contains(s: rendered, pattern: "v2.test.beta.holds")
 }
+
+// A GENUINE STAGE ADVANCE IS NOT A CAUSE TRANSITION (review 70123). A subject carried from a
+// prepare-stage refusal to an eval-stage one NECESSARILY refuses for a different reason -- it
+// refused somewhere else -- and reporting that as "same stage, same verdict, different
+// diagnostic" is a loud finding whose text is false about the run. The cause coordinate is the
+// question asked of positions the RANK cannot separate; a rank change already has its own
+// accounting.
+test fn w_RED_a_stage_advance_carrying_a_new_cause_is_not_a_cause_transition() -> Bool {
+  is_empty(xs: findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause }
+      }],
+      dispositions: []
+    ),
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStageEval, cause: unbound_cause })]
+  ))
+}
+
+// AND A FALL CARRYING A NEW CAUSE IS STILL SCORED AS A FALL, not silently absorbed by the gate:
+// the rank comparison owns it, and the cause arm must not have taken it away.
+test fn w_RED_a_stage_fall_carrying_a_new_cause_is_still_a_regression() -> Bool {
+  preserved(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStageEval, cause: ambiguous_cause }
+      }],
+      dispositions: []
+    ),
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStagePrepare, cause: unbound_cause })]
+  ) == false
+}

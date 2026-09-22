@@ -1090,6 +1090,33 @@ fn native_accept_to_refuse_for(
   map_lookup(m: rows, key: native_route_identity_qualified(identity: identity))
 }
 
+// THE CAUSE COMPARISON IS GATED ON RANK EQUALITY, WHICH THE ANNOTATION ALREADY CLAIMED AND THE
+// CODE DID NOT DO (review 70123).
+//
+// `native_cause_unchanged` compares causes while discarding the stage, and it was invoked on
+// EVERY non-falling reading rather than only equal-rank ones. So a subject that genuinely
+// ADVANCES -- `BaselineRefused { stage: prepare }` to `AttainRefused { stage: eval }`, which
+// NECESSARILY carries a different cause, because it refused somewhere else -- was reported as
+// `CauseTransitionUndispositioned`, whose rendered line says "same stage, same verdict, different
+// diagnostic". That sentence is FALSE about such a run: the stage moved, which is the one thing
+// the finding denies. Loud, located, and attributing the wrong cause, which is this module's own
+// repeatedly-repaired class showing up as prose-says-X-code-does-Y.
+//
+// It also forced an author to file a `NativeCauseTransitionDisposition` for a pure stage advance,
+// and all three of its arms are framed around a fixed rank -- so the vocabulary had no honest
+// answer to offer.
+//
+// A RANK CHANGE ALREADY HAS ITS OWN ACCOUNTING: an advance is admitted by the rank comparison
+// above, and a fall is a regression or an attributed accept-to-refuse. The cause coordinate is
+// the question asked of positions the rank cannot separate, which is exactly what "at equal rank"
+// meant.
+fn native_rank_is_equal(baseline: NativeBaselineAttainment, seen: NativeRouteAttainment) -> Bool {
+  match native_attainment_rank(a: seen) {
+    Absent => false
+    Present { value: r } => r == native_baseline_rank(b: baseline)
+  }
+}
+
 fn native_cause_transition_findings(
   row: NativeProgressBaselineRow,
   seen: NativeRouteAttainment,
@@ -1121,7 +1148,11 @@ fn native_progress_rank_comparison(
   cause_transitions: Map<String, NativeCauseTransitionDisposition>
 ) -> List<NativeProgressFinding> {
   if native_attainment_at_least(observed: seen, baseline: row.attained) {
-    native_cause_transition_findings(row: row, seen: seen, cause_transitions: cause_transitions)
+    if native_rank_is_equal(baseline: row.attained, seen: seen) {
+      native_cause_transition_findings(row: row, seen: seen, cause_transitions: cause_transitions)
+    } else {
+      []
+    }
   } else if native_fall_is_accept_to_refuse(baseline: row.attained, seen: seen) {
     match native_accept_to_refuse_for(identity: row.identity, rows: accept_to_refuse) {
       Present { value: d } =>
