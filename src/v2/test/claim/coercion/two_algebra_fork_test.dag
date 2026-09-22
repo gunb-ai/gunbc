@@ -1,0 +1,279 @@
+module v2.test.claim.coercion.two_algebra_fork
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE QUESTION -- may this value cross from one model to another -- ANSWERED BY TWO UNRELATED
+// ALGEBRAS, and until this witness nothing joined them.
+//
+//   (a) THE NAME-KEYED ALGEBRA. std.coercion dag_can_cast folds over two authored rosters of
+//       (from_type, to_type) SPELLINGS: dag_cast_rules and grounded_primitive_coproduct_identities.
+//       This side executes and is load-bearing -- v1.compiler.infer consults it at argument-versus-
+//       formal admission, at literal admission, and in the type-relation fold, and
+//       v1.compiler.coercion builds on it.
+//   (b) THE HOMOMORPHISM ALGEBRA. v2.std.coercion coercion_fold asks v2.std.find_witness
+//       find_witness for a structure-preserving witness from the source node into a candidate set,
+//       and returns a CoercionResult carrying a CoercionWitness and a CoercionQuality. This is the
+//       form DESIGN section 4 specifies -- coercion as a homomorphism check, one procedure asked
+//       sideways. It has NO established executing consumer in the corpus today; that blank is a
+//       fact this witness records rather than one it repairs.
+//
+// WHY THIS IS ASKABLE WITH NO NEW CAPABILITY: both are pure folds in the interpreted corpus, so one
+// supplied population of source-and-target pairs reaches both. Nothing is emitted, nothing beneath
+// the two folds is executed to produce the inputs (DESIGN section 3, the witness standing rule).
+//
+// NEITHER FOLD IS THE ORACLE FOR THE OTHER, so each row carries TWO independently specified
+// expectations and the claims below hold each algebra to its OWN contract before the join is read:
+//
+//   expected_name_keyed_admits -- read off the declared rosters in std.coercion. A crossing is
+//       admitted exactly when a row spells it, in dag_cast_rules or in the grounded
+//       primitive-to-coproduct identities. This is a transcription of the DECLARATION, so a roster
+//       edit reds the first claim rather than silently moving the join.
+//   expected_homomorphism_admits -- read off the homomorphism contract as it is realized. The only
+//       preservation rule coercion_fold applies is
+//       preservation_rule_exact_structural_equality_zip_fold, whose predicate holds exactly when
+//       the candidate is structurally equal to the source. So the homomorphism algebra admits a
+//       crossing exactly when source and target are the SAME model, and admits it at quality
+//       Identity. Nothing in that side spells a non-identity crossing at all.
+//
+// A row can therefore report BOTH AGREE AND BOTH ARE WRONG, or either algebra deviating from its
+// own declared contract, rather than only "the two folds match".
+
+type CoercionAdmission
+  = CrossingAdmitted
+  | CrossingRefused
+
+// A ROW CARRIES THE PAIR TWICE, AND THAT IS THE FORK ITSELF MADE VISIBLE. The name-keyed algebra
+// keys on a type-name STRING; the homomorphism algebra keys on an atom's node IDENTITY. There is no
+// conversion between them in the corpus, so a fixture that wanted to supply one pair to both must
+// author both spellings and assert by construction that they denote one model. That missing
+// conversion is not an inconvenience of the witness -- it is the measurement: two authorities for
+// one fact share no key.
+type CoercionForkFixture {
+  label: Symbol
+  source_type: String
+  target_type: String
+  source_name: Symbol
+  target_name: Symbol
+  expected_name_keyed: CoercionAdmission
+  expected_homomorphism: CoercionAdmission
+  expected_algebras_agree: Bool
+}
+
+// THE POPULATION, AND WHY IT IS THE DISCRIMINATING ONE. The two algebras partition the pair space
+// into four cells, and the population inhabits all four -- a witness restricted to the happy path
+// would only ever see the first.
+//
+//   both admit        -- int_to_int, float_to_float: a declared row whose source and target are one
+//                        model, the only shape on which the two algebras can coincide.
+//   both refuse       -- bool_to_float: no declared row and no structural equality.
+//   name-only         -- int_to_float (a declared widening), bool_to_int (a declared crossing with
+//                        no structural relation at all), int_to_nat (a GROUNDED identity that the
+//                        name-keyed side carries in its own second roster). Each is a crossing the
+//                        executing algebra permits and the specified algebra cannot spell.
+//   homomorphism-only -- string_to_string: an IDENTITY crossing, which the name-keyed roster does
+//                        not carry a row for, so the executing side refuses a value crossing to its
+//                        own model while the homomorphism side admits it at quality Identity. This
+//                        is the sharpest cell and it is the one an agreement-only witness would
+//                        never reach.
+data coercion_fork_fixtures: List<CoercionForkFixture> = [
+  {
+    label: ^int_to_int,
+    source_type: "Int",
+    target_type: "Int",
+    source_name: ^Int,
+    target_name: ^Int,
+    expected_name_keyed: CrossingAdmitted,
+    expected_homomorphism: CrossingAdmitted,
+    expected_algebras_agree: true
+  },
+  {
+    label: ^float_to_float,
+    source_type: "Float",
+    target_type: "Float",
+    source_name: ^Float,
+    target_name: ^Float,
+    expected_name_keyed: CrossingAdmitted,
+    expected_homomorphism: CrossingAdmitted,
+    expected_algebras_agree: true
+  },
+  {
+    label: ^int_to_float,
+    source_type: "Int",
+    target_type: "Float",
+    source_name: ^Int,
+    target_name: ^Float,
+    expected_name_keyed: CrossingAdmitted,
+    expected_homomorphism: CrossingRefused,
+    expected_algebras_agree: false
+  },
+  {
+    label: ^bool_to_int,
+    source_type: "Bool",
+    target_type: "Int",
+    source_name: ^Bool,
+    target_name: ^Int,
+    expected_name_keyed: CrossingAdmitted,
+    expected_homomorphism: CrossingRefused,
+    expected_algebras_agree: false
+  },
+  {
+    label: ^int_to_nat,
+    source_type: "Int",
+    target_type: "Nat",
+    source_name: ^Int,
+    target_name: ^Nat,
+    expected_name_keyed: CrossingAdmitted,
+    expected_homomorphism: CrossingRefused,
+    expected_algebras_agree: false
+  },
+  {
+    label: ^string_to_string,
+    source_type: "String",
+    target_type: "String",
+    source_name: ^String,
+    target_name: ^String,
+    expected_name_keyed: CrossingRefused,
+    expected_homomorphism: CrossingAdmitted,
+    expected_algebras_agree: false
+  },
+  {
+    label: ^bool_to_float,
+    source_type: "Bool",
+    target_type: "Float",
+    source_name: ^Bool,
+    target_name: ^Float,
+    expected_name_keyed: CrossingRefused,
+    expected_homomorphism: CrossingRefused,
+    expected_algebras_agree: true
+  }
+]
+
+fn coercion_fork_model_node(name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: name } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn coercion_fork_grounding(name: Symbol) -> CanonicalGrounding {
+  CanonicalGrounding {
+    node: coercion_fork_model_node(name: name),
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: ^coercion_fork_fixture_structural_property,
+        evidence: coercion_fork_model_node(name: name)
+      },
+      closedness: StructuralPropertyWitness {
+        property: ^coercion_fork_fixture_candidate_set_closedness,
+        evidence: coercion_fork_model_node(name: name)
+      }
+    }
+  }
+}
+
+fn coercion_fork_candidate_set(target_name: Symbol) -> CoercionCandidateSet {
+  CoercionCandidateSet {
+    set: CandidateSet {
+      candidates: [coercion_fork_model_node(name: target_name)],
+      closedness: StructuralPropertyWitness {
+        property: ^coercion_fork_fixture_candidate_set_closedness,
+        evidence: coercion_fork_model_node(name: target_name)
+      }
+    }
+  }
+}
+
+// (a) the name-keyed algebra, asked with the pair supplied as the two spellings it keys on.
+fn coercion_fork_name_keyed_admission(row: CoercionForkFixture) -> CoercionAdmission {
+  if dag_can_cast(
+    source_type: row.source_type,
+    target_type: row.target_type
+  ) {
+    CrossingAdmitted
+  } else {
+    CrossingRefused
+  }
+}
+
+// (b) the homomorphism algebra, asked with the same pair supplied as a source model and a
+// one-member candidate set. The declared priority names the sole candidate, so multiplicity policy
+// cannot be what decides the answer.
+fn coercion_fork_homomorphism_outcome(row: CoercionForkFixture) -> Outcome<CoercionResult> {
+  coercion_fold(
+    source: coercion_fork_grounding(name: row.source_name),
+    candidates: coercion_fork_candidate_set(target_name: row.target_name),
+    policy: TargetDeclaredPriority {
+      priority: coercion_fork_model_node(name: row.target_name)
+    }
+  )
+}
+
+fn coercion_fork_homomorphism_admission(row: CoercionForkFixture) -> CoercionAdmission {
+  match coercion_fork_homomorphism_outcome(row: row) {
+    Accepted { value: _, diagnostics: _ } => CrossingAdmitted
+    Rejected { diagnostics: _ } => CrossingRefused
+  }
+}
+
+fn coercion_admission_equal(left: CoercionAdmission, right: CoercionAdmission) -> Bool {
+  match left {
+    CrossingAdmitted => match right {
+      CrossingAdmitted => true
+      CrossingRefused => false
+    }
+    CrossingRefused => match right {
+      CrossingAdmitted => false
+      CrossingRefused => true
+    }
+  }
+}
+
+// The name-keyed algebra against the DECLARED ROSTERS, not against the other algebra.
+test fn name_keyed_coercion_matches_the_declared_cast_rosters_holds() -> Bool {
+  fold(coercion_fork_fixtures, init: true, f: fn(acc, row) {
+    acc && coercion_admission_equal(
+      left: coercion_fork_name_keyed_admission(row: row),
+      right: row.expected_name_keyed
+    )
+  })
+}
+
+// The homomorphism algebra against the HOMOMORPHISM CONTRACT, not against the other algebra.
+test fn homomorphism_coercion_matches_the_structural_preservation_contract_holds() -> Bool {
+  fold(coercion_fork_fixtures, init: true, f: fn(acc, row) {
+    acc && coercion_admission_equal(
+      left: coercion_fork_homomorphism_admission(row: row),
+      right: row.expected_homomorphism
+    )
+  })
+}
+
+// An admitted crossing on the homomorphism side is an IDENTITY and never anything else: the only
+// realized preservation rule is exact structural equality, so no row may come back Exact or Widened.
+// This is what makes the name-only cells a missing SPELLING rather than a stricter policy.
+test fn homomorphism_coercion_admits_only_identity_quality_holds() -> Bool {
+  fold(coercion_fork_fixtures, init: true, f: fn(acc, row) {
+    acc && match coercion_fork_homomorphism_outcome(row: row) {
+      Accepted { value: result, diagnostics: _ } => match result.quality {
+        Identity => true
+        Exact => false
+        Widened => false
+      }
+      Rejected { diagnostics: _ } => true
+    }
+  })
+}
+
+// THE JOIN. This claim pins the CURRENT, MEASURED relation between the two algebras pair by pair,
+// including the four rows on which they disagree. It is green while the fork stands exactly as
+// authored and reds the moment either side's admission set moves -- in either direction, so
+// consolidating the fork reds it too and the consolidator is the one who must restate the row.
+test fn the_two_coercion_algebras_agree_exactly_where_declared_holds() -> Bool {
+  fold(coercion_fork_fixtures, init: true, f: fn(acc, row) {
+    acc && (coercion_admission_equal(
+      left: coercion_fork_name_keyed_admission(row: row),
+      right: coercion_fork_homomorphism_admission(row: row)
+    ) == row.expected_algebras_agree)
+  })
+}

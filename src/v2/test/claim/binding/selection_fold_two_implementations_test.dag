@@ -1,0 +1,194 @@
+module v2.test.claim.binding.selection_fold_two_implementations
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS WITNESS DISCRIMINATES, AND WHAT IT DELIBERATELY DOES NOT.
+//
+// One rule -- a candidate population is answered Unbound at none, Bound at exactly one, Ambiguous
+// at more than one -- has TWO implementations. std.occurrence_binding
+// occurrence_binding_from_candidates reaches it through an explicit
+// FoldZero/FoldOne/FoldMany accumulator; v2.std.symbol_index symbol_index_lexical_selection reaches
+// it through `match length(candidates)`. Nothing joins them, so a divergence would be silent.
+//
+// THE SUBJECT IS THE SELECTION FOLD ON A SUPPLIED POPULATION, and nothing wider. Their agreement on
+// a PRODUCTION SITE is not measurable here and this witness does not claim it: no v2 resolution site
+// is answered by std's fold, and std.occurrence_binding's own staged-adoption note states that
+// LexicalLookup is not an interim consumer because it carries no exact reference-occurrence Node or
+// occurrence containment identity. Binding the two at a production site would fabricate exactly the
+// relation that carrier preserves. What is measurable today is whether the two folds classify one
+// supplied population the same way, which is a different and narrower subject.
+//
+// THE CANDIDATE PRODUCERS ARE NOT COMPARED. std's candidates are supplied by its caller; v2's are
+// produced by symbol_index_lexical_collect walking the containment chain. Those are legitimately
+// layered and are not the fork. symbol_index_lexical_selection exists so the selection boundary can
+// be asked with its inputs supplied (DESIGN section 3, the witness standing rule) rather than by
+// executing the walk beneath it.
+//
+// NEITHER FOLD IS THE ORACLE FOR THE OTHER. Two implementations of one misunderstanding agree
+// perfectly, so agreement alone is a change detector. Each row therefore carries an INDEPENDENTLY
+// SPECIFIED expected class, read off the trichotomy as the modeled contract states it -- over the
+// MULTIPLICITY of the supplied list, not over the cardinality of its distinct members. That is why
+// the duplicate row below expects Ambiguous: neither contract declares a deduplication step, so a
+// population naming one candidate twice is a two-candidate population. The first two claims below
+// hold each fold to that expectation separately, so a row can report BOTH AGREE AND BOTH ARE WRONG;
+// the third claim reports the join.
+
+type BindingSelectionClass
+  = SelectionUnbound
+  | SelectionBound
+  | SelectionAmbiguous
+
+type BindingSelectionFixture {
+  label: Symbol
+  candidate_names: List<Symbol>
+  expected: BindingSelectionClass
+}
+
+// THE POPULATION, AND WHY IT IS THE DISCRIMINATING ONE. Each row sits on a boundary of the
+// trichotomy rather than in the interior of an arm: the empty population (the arm a length-keyed
+// match and an accumulator reach by different routes), the singleton (the only arm that must
+// PRODUCE a candidate rather than classify), the first population above the singleton, the same
+// population spelled with one name repeated (where a deduplicating implementation would answer
+// Bound), and one above the pair (where an accumulator that only tracks first and second could
+// lose a member).
+data binding_selection_fixtures: List<BindingSelectionFixture> = [
+  {
+    label: ^empty_population,
+    candidate_names: [],
+    expected: SelectionUnbound
+  },
+  {
+    label: ^singleton_population,
+    candidate_names: [^alpha],
+    expected: SelectionBound
+  },
+  {
+    label: ^two_distinct_candidates,
+    candidate_names: [^alpha, ^beta],
+    expected: SelectionAmbiguous
+  },
+  {
+    label: ^duplicate_candidate,
+    candidate_names: [^alpha, ^alpha],
+    expected: SelectionAmbiguous
+  },
+  {
+    label: ^three_distinct_candidates,
+    candidate_names: [^alpha, ^beta, ^gamma],
+    expected: SelectionAmbiguous
+  }
+]
+
+fn binding_fixture_occurrence() -> BindingOccurrence<Symbol> {
+  BindingOccurrence {
+    containment: ContainmentPath {
+      ancestors: [^fixture_module],
+      terminal: ^fixture_reference
+    }
+  }
+}
+
+fn binding_fixture_std_candidates(names: List<Symbol>) -> List<BindingCandidate<Symbol>> {
+  map(names, fn(n) {
+    BindingCandidate {
+      containment: ContainmentPath {
+        ancestors: [^fixture_module],
+        terminal: n
+      }
+    }
+  })
+}
+
+fn binding_fixture_node(name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: name } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn binding_fixture_lexical_candidates(names: List<Symbol>) -> List<LexicalBindingCandidate> {
+  map(names, fn(n) {
+    LexicalBindingCandidate {
+      path: qualified_name_snoc(
+        qn: qualified_name_from_dotted_string(dotted: "v2.test.binding_fixture"),
+        segment: n
+      ),
+      node: binding_fixture_node(name: n)
+    }
+  })
+}
+
+fn binding_std_class(names: List<Symbol>) -> BindingSelectionClass {
+  match occurrence_binding_from_candidates(
+    occurrence: binding_fixture_occurrence(),
+    candidates: binding_fixture_std_candidates(names: names)
+  ) {
+    OccurrenceUnbound { occurrence: _ } => SelectionUnbound
+    OccurrenceBound { binding: _ } => SelectionBound
+    OccurrenceAmbiguous { occurrence: _, candidates: _ } => SelectionAmbiguous
+  }
+}
+
+fn binding_lexical_class(names: List<Symbol>) -> BindingSelectionClass {
+  match symbol_index_lexical_selection(
+    candidates: binding_fixture_lexical_candidates(names: names)
+  ) {
+    LexicalUnbound => SelectionUnbound
+    LexicalHit { node: _, path: _ } => SelectionBound
+    LexicalAmbiguous { candidates: _ } => SelectionAmbiguous
+  }
+}
+
+fn binding_selection_class_equal(
+  left: BindingSelectionClass,
+  right: BindingSelectionClass
+) -> Bool {
+  match left {
+    SelectionUnbound => match right {
+      SelectionUnbound => true
+      SelectionBound => false
+      SelectionAmbiguous => false
+    }
+    SelectionBound => match right {
+      SelectionUnbound => false
+      SelectionBound => true
+      SelectionAmbiguous => false
+    }
+    SelectionAmbiguous => match right {
+      SelectionUnbound => false
+      SelectionBound => false
+      SelectionAmbiguous => true
+    }
+  }
+}
+
+// std's fold against the trichotomy, NOT against v2's answer.
+test fn occurrence_binding_fold_matches_the_declared_trichotomy_holds() -> Bool {
+  fold(binding_selection_fixtures, init: true, f: fn(acc, row) {
+    acc && binding_selection_class_equal(
+      left: binding_std_class(names: row.candidate_names),
+      right: row.expected
+    )
+  })
+}
+
+// v2's selection against the same independently specified trichotomy, NOT against std's answer.
+test fn lexical_selection_matches_the_declared_trichotomy_holds() -> Bool {
+  fold(binding_selection_fixtures, init: true, f: fn(acc, row) {
+    acc && binding_selection_class_equal(
+      left: binding_lexical_class(names: row.candidate_names),
+      right: row.expected
+    )
+  })
+}
+
+// The join the corpus does not otherwise carry: one rule, two implementations, one population.
+test fn the_two_selection_folds_agree_on_the_supplied_population_holds() -> Bool {
+  fold(binding_selection_fixtures, init: true, f: fn(acc, row) {
+    acc && binding_selection_class_equal(
+      left: binding_std_class(names: row.candidate_names),
+      right: binding_lexical_class(names: row.candidate_names)
+    )
+  })
+}

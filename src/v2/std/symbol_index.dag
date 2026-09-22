@@ -175,17 +175,17 @@ fn symbol_index_lexical_collect(
   }
 }
 
-fn symbol_index_lexical_lookup(
-  index: SymbolIndex,
-  position: QualifiedName,
-  name: Symbol
+// THE SELECTION STEP, SPLIT FROM ITS PRODUCER SO THE BOUNDARY CAN BE ASKED DIRECTLY.
+// This fold is the none/one/many trichotomy over an ALREADY-COLLECTED candidate population; the
+// chain walk that produces that population is a separate, legitimately layered concern
+// (symbol_index_lexical_collect). They were one function, so the trichotomy could only be reached
+// by executing the walk -- which makes every claim about the SELECTION a claim about the walk too
+// (DESIGN section 3, the witness standing rule: a witness discriminates at ONE interface with its
+// inputs supplied at that boundary). Nothing about the answer changes: symbol_index_lexical_lookup
+// below is the same composition it always was.
+fn symbol_index_lexical_selection(
+  candidates: FreeMonoid<LexicalBindingCandidate>
 ) -> LexicalLookup {
-  let candidates = symbol_index_lexical_collect(
-    index: index,
-    position: position,
-    name: name,
-    acc: Empty
-  )
   match length(xs: candidates) {
     0 => LexicalUnbound
     1 =>
@@ -196,4 +196,19 @@ fn symbol_index_lexical_lookup(
       }
     _ => LexicalAmbiguous { candidates: candidates }
   }
+}
+
+fn symbol_index_lexical_lookup(
+  index: SymbolIndex,
+  position: QualifiedName,
+  name: Symbol
+) -> LexicalLookup {
+  symbol_index_lexical_selection(
+    candidates: symbol_index_lexical_collect(
+      index: index,
+      position: position,
+      name: name,
+      acc: Empty
+    )
+  )
 }
