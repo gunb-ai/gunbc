@@ -53,13 +53,33 @@ fn v41_quoted_tokens(text: String) -> List<String> {
   map(filter(enumerate(split(s: text, delimiter: "\"")), p => p.first % 2 == 1), p => p.second)
 }
 
-fn v41_pairs_of(tokens: List<String>) -> List<List<String>> {
-  map(filter(enumerate(tokens), p => p.first % 2 == 0), p => [p.second, match get(xs: tokens, index: p.first + 1) { Present { value: v } => v  Absent => "" }])
+// ONE TRAVERSAL WITH CONSTANT STATE: each token either opens a pair (it is a name) or closes the open one
+// (it is that name's shard). The fold keeps only the open name, two counts and the SELECTED members, so
+// it never copies an accumulator proportional to the index. A name left open at the end has no shard,
+// which the scan refuses.
+type V41PairScan {
+  pending: String?
+  names: Nat
+  not_shards: Nat
+  members: List<SafetensorsIndexMember>
 }
 
-fn v41_pair_at(pair: List<String>, i: Nat) -> String {
-  match get(xs: pair, index: i) { Present { value: v } => v  Absent => "" }
+fn v41_pair_step(acc: V41PairScan, t: String, selector: NonEmptyStr) -> V41PairScan {
+  match acc.pending {
+    Absent => V41PairScan { pending: Present { value: t }, names: acc.names, not_shards: acc.not_shards, members: acc.members }
+    Present { value: k } => V41PairScan {
+      pending: none,
+      names: acc.names + 1,
+      not_shards: if t.ends_with(".safetensors") { acc.not_shards } else { acc.not_shards + 1 },
+      members: if k.contains(selector as String) { acc.members |> list_push(safetensors_index_member(name: k as NonEmptyStr, shard: t as NonEmptyStr)) } else { acc.members },
+    }
+  }
 }
+
+fn v41_pairs_of(tokens: List<String>, selector: NonEmptyStr) -> V41PairScan {
+  fold(tokens, init: V41PairScan { pending: none, names: 0, not_shards: 0, members: [] as List<SafetensorsIndexMember> }, f: (acc, t) => v41_pair_step(acc: acc, t: t, selector: selector))
+}
+
 
 fn v41_scan_index_text(text: String, selector: NonEmptyStr) -> V41IndexScan {
   if text.contains("\\") {
@@ -70,16 +90,14 @@ fn v41_scan_index_text(text: String, selector: NonEmptyStr) -> V41IndexScan {
     if head != ["metadata", "total_size", "weight_map"] {
       V41IndexScanRefused { cause: join(["the index does not open with metadata, total_size, weight_map; it opens with ", join(head, ", ")], "") as NonEmptyStr }
     } else {
-      let pairs = v41_pairs_of(tokens: map(filter(enumerate(tokens), p => p.first >= 3), p => p.second))
-      let bad = filter(pairs, pr => !v41_pair_at(pair: pr, i: 1).ends_with(".safetensors"))
-      if length(bad) != 0 || length(pairs) == 0 {
-        V41IndexScanRefused { cause: join(["the weight_map carries ", to_string(length(bad)), " entries whose value is not a .safetensors shard (or none at all), so it is not the shape this scan reads"], "") as NonEmptyStr }
+      let scan = v41_pairs_of(tokens: map(filter(enumerate(tokens), p => p.first >= 3), p => p.second), selector: selector)
+      let unpaired = match scan.pending { Present { value: _ } => 1  Absent => 0 }
+      if unpaired != 0 {
+        V41IndexScanRefused { cause: "the weight_map ends on a name with no shard, so it is not the shape this scan reads" as NonEmptyStr }
+      } else if scan.not_shards != 0 || scan.names == 0 {
+        V41IndexScanRefused { cause: join(["the weight_map carries ", to_string(scan.not_shards), " entries whose value is not a .safetensors shard (or none at all), so it is not the shape this scan reads"], "") as NonEmptyStr }
       } else {
-        V41IndexScanned {
-          name_count: length(pairs),
-          members: map(filter(pairs, pr => v41_pair_at(pair: pr, i: 0).contains(selector as String)), pr =>
-            safetensors_index_member(name: v41_pair_at(pair: pr, i: 0) as NonEmptyStr, shard: v41_pair_at(pair: pr, i: 1) as NonEmptyStr)),
-        }
+        V41IndexScanned { name_count: scan.names, members: scan.members }
       }
     }
   }

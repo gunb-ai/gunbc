@@ -36,9 +36,11 @@ test fn the_scan_selects_the_engram_names_and_counts_every_name() -> Bool {
 test fn the_scan_refuses_outside_its_shape() -> Bool {
   let escaped = v41_scan_index_text(text: "{\"metadata\": {\"total_size\": 1}, \"weight_map\": {\"a\\\"b\": \"x.safetensors\"}}", selector: v41_index_engram_selector)
   let other_head = v41_scan_index_text(text: "{\"weight_map\": {\"a\": \"x.safetensors\"}}", selector: v41_index_engram_selector)
+  let unpaired = v41_scan_index_text(text: "{\"metadata\": {\"total_size\": 1}, \"weight_map\": {\"a\": \"x.safetensors\", \"b\"}}", selector: v41_index_engram_selector)
   let not_shard = v41_scan_index_text(text: "{\"metadata\": {\"total_size\": 1}, \"weight_map\": {\"a\": \"x.bin\"}}", selector: v41_index_engram_selector)
   (match escaped { V41IndexScanRefused { cause: c } => (c as String).contains("backslash")  V41IndexScanned { name_count: _, members: _ } => false })
     && (match other_head { V41IndexScanRefused { cause: c } => (c as String).contains("does not open with")  V41IndexScanned { name_count: _, members: _ } => false })
+    && (match unpaired { V41IndexScanRefused { cause: c } => (c as String).contains("no shard")  V41IndexScanned { name_count: _, members: _ } => false })
     && (match not_shard { V41IndexScanRefused { cause: c } => (c as String).contains("not a .safetensors shard")  V41IndexScanned { name_count: _, members: _ } => false })
 }
 

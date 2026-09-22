@@ -573,7 +573,7 @@ fn v41_spans_after(ctx: SparkMaterializeContext, receipts: List<V41FileReceipt>)
 // file's digest and size are read back on the host, its bytes are fetched, and the scan runs over them
 // here. The `index-selection` lines are what v41_index_engram_selection_reading is transcribed from.
 type V41IndexSelectionOutcome
-  = V41IndexSelectionRead { sha256_hex: String, bytes: String, scan: V41IndexScan }
+  = V41IndexSelectionRead { sha256_hex: String, bytes: ByteSize, scan: V41IndexScan }
   | V41IndexSelectionUnread { cause: NonEmptyStr }
 
 fn v41_index_selection_after(ctx: SparkMaterializeContext, receipts: List<V41FileReceipt>) -> V41IndexSelectionOutcome {
@@ -592,11 +592,30 @@ fn v41_index_selection_after(ctx: SparkMaterializeContext, receipts: List<V41Fil
                 RemoteUnreachable { cause: c } => V41IndexSelectionUnread { cause: join(["the index read did not run: ", c], "") as NonEmptyStr }
                 RemoteRan { exit_code: e2, stdout: text, stderr: _ } =>
                   if e2 != 0 { V41IndexSelectionUnread { cause: join(["cat exited ", to_string(e2)], "") as NonEmptyStr } } else {
-                    V41IndexSelectionRead { sha256_hex: h, bytes: match first(split(s: trim(s: out), delimiter: " ")) { Present { value: n } => n  Absent => "" }, scan: v41_scan_index_text(text: text, selector: v41_index_engram_selector) }
+                    match v41_wc_bytes(out: out) {
+                      Absent => V41IndexSelectionUnread { cause: join(["wc answered no byte count: ", out], "") as NonEmptyStr }
+                      Present { value: b } => V41IndexSelectionRead { sha256_hex: h, bytes: b, scan: v41_scan_index_text(text: text, selector: v41_index_engram_selector) }
+                    }
                   }
               }
             }
         }
+    }
+  }
+}
+
+// wc --bytes prints `<count> <path>`; anything else is no size, never an empty one.
+fn v41_wc_bytes(out: String) -> ByteSize? {
+  match first(split(s: trim(s: out), delimiter: " ")) {
+    Absent => none
+    Present { value: w } => match parse_int(s: w) {
+      Absent => none
+      Present { value: n } => if n < 0 { none } else {
+        match checked_int_magnitude(a: n) {
+          CheckedNatOverflow { cause: _ } => none
+          CheckedNatReady { value: v } => Present { value: byte_size(count: v) }
+        }
+      }
     }
   }
 }
@@ -614,7 +633,7 @@ fn v41_index_selection_lines(o: V41IndexSelectionOutcome) -> String {
     V41IndexSelectionRead { sha256_hex: h, bytes: b, scan: sc } => match sc {
       V41IndexScanRefused { cause: c } => join(["index-selection refused sha256=", h, ": ", c as String, "\n"], "")
       V41IndexScanned { name_count: n, members: ms } =>
-        join(concat([join(["index-selection sha256=", h, " bytes=", b, " names=", to_string(n), " selector=", v41_index_engram_selector as String, "\n"], "")],
+        join(concat([join(["index-selection sha256=", h, " bytes=", to_string(byte_size_count(b: b)), " names=", to_string(n), " selector=", v41_index_engram_selector as String, "\n"], "")],
           map(ms, m => join(["index-selection member ", m.name as String, " ", m.shard as String, "\n"], ""))), "")
     }
   }
