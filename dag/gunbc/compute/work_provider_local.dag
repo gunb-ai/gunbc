@@ -344,10 +344,17 @@ fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<Str
 
 // THE UNIT RUN AND ITS SUMMARY ARE ONE RESULT, because the summary may only be read where the
 // INVOCATION is known. extdeps.systemd.systemd_run systemd_run_wait_summary takes a
-// SystemdSummaryPrintingWait, minted only by the builder that omits --quiet, so reading the peak
-// from stderr somewhere further out -- where all that survives is a String -- is no longer
-// expressible. The no-systemd arm reports NOTHING rather than a peak of zero: there was no unit, so
-// there is no unit peak, and no launcher token to read one with.
+// SystemdSummaryPrintingWait, so reading the peak from stderr somewhere further out -- where all
+// that survives is a String -- has nothing to pass and does not typecheck. THAT MUCH HOLDS; WHAT
+// DOES NOT IS THE STRONGER CLAIM THE MINT LOOKS LIKE IT BUYS. The token is minted only by the
+// builder that omits --quiet, which reads as making a quiet launcher unexpressible here. It is not:
+// a List<String> carrying --quiet was ACCEPTED for this record formal on the evaluation path
+// (measured, and scoped by neat-boar-16 on main ff2110b7e to ONE relation -- a collection handed to
+// a nominal product, and its dual -- in v1.compiler.infer declared_type_inhabitance, a third
+// specimen of declared_type_wall_keyed_on_the_value_being_a_kernel, fix lane dispatched). So the
+// wall that actually refuses a quiet launcher is the argv fold inside systemd_run_wait_summary,
+// rung 2, not this type. The no-systemd arm reports NOTHING rather than a peak of zero: there was
+// no unit, so there is no unit peak, and no launcher token to read one with.
 type ComputeUnitRun {
   exec: ComputeExec
   summary: SystemdRunWaitSummary

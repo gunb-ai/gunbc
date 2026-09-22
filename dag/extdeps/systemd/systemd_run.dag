@@ -465,11 +465,23 @@ fn systemd_argv_suppresses_summary(argv: List<String>) -> Bool {
 // printed. A declared record parameter does not refuse a list on this path, so the type alone is a
 // decoration -- DESIGN 4b(1) rung inflation, and it would have been reported as a wall.
 //
+// SCOPED SINCE, AND THE SCOPE MATTERS BECAUSE IT IS NARROW (neat-boar-16, grid on main ff2110b7e).
+// Declared parameter types ARE enforced generally -- Int from String, Int from List<Int>, a record
+// from another record and from an Optional all REFUSE. The hole is ONE relation, a collection
+// handed to a nominal product and its dual, because v1.compiler.infer declared_type_inhabitance
+// only refuses in its collection arm when the declared base is a kernel scalar and otherwise
+// reaches Inhabits by fallthrough. So this is a third specimen of the rostered
+// declared_type_wall_keyed_on_the_value_being_a_kernel and not a new class, and no claim resting on
+// a kernel or record-vs-record formal is affected by it.
+//
 // SO THE HONEST RUNG IS 2, MECHANICALLY PREVENTABLE, NOT 4. The check below is what actually holds:
 // a launcher whose argv carries --quiet reports NOTHING RATHER THAN A PEAK OF ZERO, which is the
 // same fail-closed reading as a manager below v254, and the probe that compiled now goes red
-// through it. Next-rung trigger: parameter-type enforcement for record types on the evaluation
-// path, at which point the mint becomes the wall and this fold retires as its regression control.
+// through it. Next-rung trigger: parameter-type enforcement for the collection-to-nominal relation
+// ON THE EVALUATION PATH, at which point the mint becomes the wall and this fold retires as its
+// regression control. THE PATH IS NAMED DELIBERATELY: DESIGN 4b(1) makes a class's rung the minimum
+// across its in-scope paths, and the EMISSION path has not been measured, so closing the
+// interpreter does not by itself restore a rung claimed source-to-emission.
 fn systemd_run_wait_summary(launcher: SystemdSummaryPrintingWait, stderr: String) -> SystemdRunWaitSummary {
   if systemd_argv_suppresses_summary(argv: systemd_summary_printing_wait_argv(w: launcher)) {
     SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummarySuppressedByQuietLauncher }, memory_peak: MemoryPeakNotReported { absence: SummarySuppressedByQuietLauncher } }

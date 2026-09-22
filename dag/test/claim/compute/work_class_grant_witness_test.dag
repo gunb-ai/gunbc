@@ -28,10 +28,14 @@ import gunbc.compute.work_provider_local {
 // ── THE PRODUCER: what systemd-run --wait said about the unit ─────────────────────────────────
 
 // EVERY FIXTURE BELOW NAMES THE INVOCATION IT IS PRETENDING CAME FROM. systemd_run_wait_summary
-// takes a SystemdSummaryPrintingWait, minted only by the builder that omits --quiet, so a claim
-// cannot read a peak out of stderr that no launcher in this corpus could have printed. Supplying
-// the launcher here is DESIGN 3's supplied input at one interface; the real builder is exercised by
-// the provider's own route (gunbc.compute.work_provider_local compute_run_unit).
+// takes a SystemdSummaryPrintingWait, so a claim must say which launcher its stderr came from
+// rather than reading a peak out of a bare String. IT DOES NOT FOLLOW -- AND THIS ANNOTATION USED
+// TO SAY IT DID -- that a claim cannot read a peak no launcher in this corpus could have printed:
+// the record formal ACCEPTS a List<String> carrying --quiet on the evaluation path, so the mint is
+// not the wall. The argv fold is, at rung 2, and a_quiet_launcher_reports_no_peak... below is its
+// regression control. Supplying the launcher here is DESIGN 3's supplied input at one interface;
+// the real builder is exercised by the provider's own route (gunbc.compute.work_provider_local
+// compute_run_unit).
 data fixture_launcher: SystemdSummaryPrintingWait = systemd_run_user_wait_arguments(unit: "gunbc-fixture", properties: [], setenv_bindings: [], command_argv: ["true"])
 
 // The unit's own stderr precedes the launcher's summary under --pipe, so a command that prints a
