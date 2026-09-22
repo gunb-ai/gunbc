@@ -16,6 +16,7 @@ import gunbc.durable_cas_file_store {
   CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly,
   observe_cas_slot_state,
 }
+import gunbc.compute.work_request { WorkEnding, work_ending_wire, work_ending_decode }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
@@ -107,13 +108,40 @@ fn unit_lifecycle_wire(u: UnitLifecycle) -> String {
 type AttemptState
   = AttemptReserved
   | AttemptLaunching
-  | AttemptTerminal { verdict: String, detail: String }
+  | AttemptTerminal { verdict: AttemptVerdict, detail: String }
+
+// WHO ENDED THE ATTEMPT AND HOW, AS A CLOSED SET. Two writers reach the terminal generation: the
+// producer settling it with the work's own ending, and the recovery door terminating one it found
+// dead. Anything else in that position is not a verdict this store ever wrote, so the decode below
+// refuses it exactly as it refuses an unknown state word -- review 70244 found it accepting any word
+// after "terminal:" while the comment above attempt_record_decode said the opposite.
+type AttemptVerdict
+  = AttemptWorkEnded { ending: WorkEnding }
+  | AttemptRecovered
+
+fn attempt_verdict_wire(v: AttemptVerdict) -> String {
+  match v {
+    AttemptWorkEnded { ending: e } => work_ending_wire(e: e)
+    AttemptRecovered => "recovered"
+  }
+}
+
+fn attempt_verdict_decode(word: String) -> AttemptVerdict? {
+  if word == attempt_verdict_wire(v: AttemptRecovered) {
+    Present { value: AttemptRecovered }
+  } else {
+    match work_ending_decode(word: word) {
+      Present { value: e } => Present { value: AttemptWorkEnded { ending: e } }
+      Absent => none
+    }
+  }
+}
 
 fn attempt_state_wire(s: AttemptState) -> String {
   match s {
     AttemptReserved => "reserved"
     AttemptLaunching => "launching"
-    AttemptTerminal { verdict: v, detail: _ } => join(["terminal:", v], "")
+    AttemptTerminal { verdict: v, detail: _ } => join(["terminal:", attempt_verdict_wire(v: v)], "")
   }
 }
 
@@ -256,7 +284,10 @@ fn attempt_state_decode(word: String, detail: String) -> AttemptState? {
   } else if word == "launching" {
     Present { value: AttemptLaunching }
   } else if starts_with(s: word, prefix: "terminal:") {
-    Present { value: AttemptTerminal { verdict: substring(s: word, start: length("terminal:"), end: length(word)), detail: detail } }
+    match attempt_verdict_decode(word: substring(s: word, start: length("terminal:"), end: length(word))) {
+      Present { value: v } => Present { value: AttemptTerminal { verdict: v, detail: detail } }
+      Absent => none
+    }
   } else {
     none
   }
@@ -377,7 +408,7 @@ fn attempt_begin_launch(root: NonEmptyStr, record: AttemptRecord, expected: CasG
 
 // THE TERMINAL TRANSITION. Carries the verdict AND why, so the generation that records the end also
 // records the reason -- history the next reader can act on rather than a bare flag.
-fn attempt_terminate(root: NonEmptyStr, record: AttemptRecord, expected: CasGeneration, verdict: String, detail: String) -> AttemptTransition {
+fn attempt_terminate(root: NonEmptyStr, record: AttemptRecord, expected: CasGeneration, verdict: AttemptVerdict, detail: String) -> AttemptTransition {
   attempt_commit(
     root: root,
     record: attempt_record_with_state(r: record, state: AttemptTerminal { verdict: verdict, detail: detail }),
@@ -456,7 +487,7 @@ type RecoveryTrigger
   = RecoveryMayTerminate { reason: String }
   | RecoveryTooEarly { deadline: EpochSecs, now: EpochSecs }
   | RecoveryUnitNotEnded { lifecycle: UnitLifecycle }
-  | RecoveryStateNotRecoverable { state: String }
+  | RecoveryStateNotRecoverable { state: AttemptState }
 
 fn recovery_trigger(record: AttemptRecord, lifecycle: UnitLifecycle, now: EpochSecs) -> RecoveryTrigger {
   match record.state {
@@ -478,7 +509,7 @@ fn recovery_trigger(record: AttemptRecord, lifecycle: UnitLifecycle, now: EpochS
       } else {
         RecoveryUnitNotEnded { lifecycle: lifecycle }
       }
-    AttemptTerminal { verdict: v, detail: _ } => RecoveryStateNotRecoverable { state: join(["terminal:", v], "") }
+    AttemptTerminal { verdict: v, detail: d } => RecoveryStateNotRecoverable { state: AttemptTerminal { verdict: v, detail: d } }
   }
 }
 
@@ -497,6 +528,6 @@ fn recovery_trigger_wire(t: RecoveryTrigger) -> String {
     RecoveryTooEarly { deadline: d, now: n } =>
       join(["TOO EARLY: the attempt declared a launch deadline of ", to_string(value: d), " and it is only ", to_string(value: n), "; a producer inside its own declared window is not dead"], "")
     RecoveryUnitNotEnded { lifecycle: u } => join(["the unit has not ended: ", unit_lifecycle_wire(u: u)], "")
-    RecoveryStateNotRecoverable { state: s } => join(["the attempt is already ", s, ", so there is nothing to recover"], "")
+    RecoveryStateNotRecoverable { state: s } => join(["the attempt is already ", attempt_state_wire(s: s), ", so there is nothing to recover"], "")
   }
 }

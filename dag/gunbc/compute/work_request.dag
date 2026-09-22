@@ -181,14 +181,48 @@ fn work_outcome_identity(o: WorkOutcome) -> String {
   }
 }
 
-fn work_outcome_ending(o: WorkOutcome) -> String {
+// HOW A WORK OUTCOME ENDED, WITH ITS PAYLOAD DROPPED. It is the closed set the ending words were
+// always drawn from, typed once so a reader that stores an ending (the attempt slot's terminal
+// generation) decodes against the set rather than accepting any word. work_outcome_ending is its
+// spelling, and work_ending_decode is the inverse of that one spelling, not a second vocabulary.
+type WorkEnding
+  = WorkEndedSucceeded
+  | WorkEndedFailed
+  | WorkEndedRefusedByInfrastructure
+  | WorkEndedCancelled
+  | WorkEndedOutputMismatch
+
+fn work_outcome_ending_of(o: WorkOutcome) -> WorkEnding {
   match o {
-    WorkSucceeded { identity: _, outputs: _, log_path: _ } => "succeeded"
-    WorkFailed { identity: _, exit_code: _, log_path: _ } => "failed"
-    WorkRefusedByInfrastructure { identity: _, cause: _ } => "refused_by_infrastructure"
-    WorkCancelled { identity: _, detail: _ } => "cancelled"
-    WorkOutputMismatch { identity: _, detail: _ } => "output_mismatch"
+    WorkSucceeded { identity: _, outputs: _, log_path: _ } => WorkEndedSucceeded
+    WorkFailed { identity: _, exit_code: _, log_path: _ } => WorkEndedFailed
+    WorkRefusedByInfrastructure { identity: _, cause: _ } => WorkEndedRefusedByInfrastructure
+    WorkCancelled { identity: _, detail: _ } => WorkEndedCancelled
+    WorkOutputMismatch { identity: _, detail: _ } => WorkEndedOutputMismatch
   }
+}
+
+fn work_ending_wire(e: WorkEnding) -> String {
+  match e {
+    WorkEndedSucceeded => "succeeded"
+    WorkEndedFailed => "failed"
+    WorkEndedRefusedByInfrastructure => "refused_by_infrastructure"
+    WorkEndedCancelled => "cancelled"
+    WorkEndedOutputMismatch => "output_mismatch"
+  }
+}
+
+fn work_ending_decode(word: String) -> WorkEnding? {
+  if word == work_ending_wire(e: WorkEndedSucceeded) { Present { value: WorkEndedSucceeded } }
+  else if word == work_ending_wire(e: WorkEndedFailed) { Present { value: WorkEndedFailed } }
+  else if word == work_ending_wire(e: WorkEndedRefusedByInfrastructure) { Present { value: WorkEndedRefusedByInfrastructure } }
+  else if word == work_ending_wire(e: WorkEndedCancelled) { Present { value: WorkEndedCancelled } }
+  else if word == work_ending_wire(e: WorkEndedOutputMismatch) { Present { value: WorkEndedOutputMismatch } }
+  else { none }
+}
+
+fn work_outcome_ending(o: WorkOutcome) -> String {
+  work_ending_wire(e: work_outcome_ending_of(o: o))
 }
 
 fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {

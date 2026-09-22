@@ -21,7 +21,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import gunbc.compute.attempt_lifecycle {
-  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal,
+  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptVerdict, AttemptWorkEnded, AttemptRecovered,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
   UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
   RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryStateNotRecoverable,
@@ -56,7 +56,7 @@ import gunbc.compute.work_request {
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
   CheckoutUnavailable, StoreUnavailable,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved,
-  work_outcome_wire, work_outcome_ending, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
+  work_outcome_wire, work_outcome_ending, work_outcome_ending_of, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
 
 // THE LOCAL PROVIDER: one of N behind the exact work contract, serving the host it runs on. It is a
@@ -823,7 +823,7 @@ type AttemptSettlement
   | AttemptNotSettled { detail: String }
   | AttemptUnsettleable { detail: String }
 
-fn compute_settle_attempt(layout: ComputeLayout, gate: AttemptGate, verdict: String, detail: String) -> AttemptSettlement {
+fn compute_settle_attempt(layout: ComputeLayout, gate: AttemptGate, verdict: AttemptVerdict, detail: String) -> AttemptSettlement {
   match gate {
     AttemptGateRefused { detail: d } => AttemptUnsettleable { detail: d }
     AttemptGateReady { record: rec, generation: g } =>
@@ -942,7 +942,7 @@ fn compute_run_under_grant(
   }
   let closed = compute_settle_attempt(
     layout: layout, gate: launched,
-    verdict: work_outcome_ending(o: outcome),
+    verdict: AttemptWorkEnded { ending: work_outcome_ending_of(o: outcome) },
     detail: join([unit_termination_wire(t: termination), "; ", compute_release_wire(r: returned)], ""))
   let dropped = compute_drop_producer_lease(layout: layout)
   let measured = Filesystem.Write(
@@ -1506,7 +1506,7 @@ fn compute_recover_attempt(instance: HostDashboardInstance, reference: NonEmptyS
             RecoveryUnitNotEnded { lifecycle: u } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }) }
             RecoveryStateNotRecoverable { state: st } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryStateNotRecoverable { state: st }) }
             RecoveryMayTerminate { reason: why } =>
-              match attempt_terminate(root: attempts_root, record: rec, expected: g, verdict: "recovered", detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
+              match attempt_terminate(root: attempts_root, record: rec, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
                 AttemptLostRace { expected: e, observed: o } =>
                   RecoveryRefused { detail: join(["the attempt moved while recovery was deciding: expected ", e, " and the slot holds ", o, "; the observation this recovery would act on is stale, so nothing is released"], "") }
                 AttemptTransitionRefused { detail: d } => RecoveryRefused { detail: join(["the attempt slot would not take the terminal generation: ", d], "") }
