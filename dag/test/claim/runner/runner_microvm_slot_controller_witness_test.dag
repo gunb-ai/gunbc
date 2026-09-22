@@ -173,10 +173,10 @@ test fn the_shakedown_slot_is_charged_its_cell_plus_its_controller_before_the_fl
   let fleet_row = gunbc_runner_slot_memory_max_bytes
   let charge = byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
   charge == byte_size_count(b: gunbc_microvm_shakedown_slot_memory_max) + byte_size_count(b: microvm_controller_slice_memory_max())
-    && memory_admitted_width_of_envelope(envelope_bytes: 15 * fleet_row, carries_shakedown_slot: false) == 15
-    && memory_admitted_width_of_envelope(envelope_bytes: charge + 14 * fleet_row, carries_shakedown_slot: true) == 15
-    && memory_admitted_width_of_envelope(envelope_bytes: charge + 14 * fleet_row - 1, carries_shakedown_slot: true) == 14
-    && memory_admitted_width_of_envelope(envelope_bytes: charge - 1, carries_shakedown_slot: true) == 0
+    && memory_admitted_width_of_envelope(envelope: byte_size(15 * fleet_row), carries_shakedown_slot: false) == 15
+    && memory_admitted_width_of_envelope(envelope: byte_size(charge + 14 * fleet_row), carries_shakedown_slot: true) == 15
+    && memory_admitted_width_of_envelope(envelope: byte_size(charge + 14 * fleet_row - 1), carries_shakedown_slot: true) == 14
+    && memory_admitted_width_of_envelope(envelope: byte_size(charge - 1), carries_shakedown_slot: true) == 0
 }
 
 // THE SHAKEDOWN SLOT'S GUEST SHAPE RESOLVES WHERE THE FLEET ROW'S REFUSES: the same demand
