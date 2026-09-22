@@ -616,6 +616,22 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
 // during the fold -- reclaim giving the cache back to make room for anonymous memory, the
 // opposite of cache accumulation.
 //
+// SWITCHING THE STANDING MOVES TWO DERIVED FIGURES, NOT ONE, and the second is easy to miss
+// because nothing reds when it changes. The demand falls (26725773568 -> 26142809464). The GUEST
+// CACHE ALLOWANCE also moves, because gunbc.runner_microvm gunbc_runner_microvm_guest_cache_allowance
+// is derived from receipt_last_unstalled_beat: on the 2026-09-19 receipt that was beat 13, whose
+// reclaimable cache rounds to 2 GiB; on this one it is beat 17, whose cache rounds to 1 GiB. The
+// allowance HALVES.
+//
+// Both consequences are stated here rather than discovered later, because every claim over them is
+// derivation-relative and therefore stays green through the change -- including the production
+// shape's expecting-red probe, which still refuses: need plus allowance 27216551288 against a
+// remainder of 26843545600, an overshoot of 373005688 bytes where the 2026-09-19 figures
+// overshot by 2029711616. The bytes are given because they are the quantities the fold compares;
+// in binary units that is 356 MiB against 1.89 GiB, and the narrowing is the whole point. A
+// figure that moves a fleet's sizing without reddening anything is exactly the change that lands
+// unnoticed, so it is named at the row that moves it.
+//
 // ITS WORKLOAD RAN TO ITS END, WHICH IS WHY run_completed IS TRUE ON A RUN THAT REFUSED. The
 // floor executed preparation and the whole claim-evaluation fold -- twenty-three beats, the
 // anonymous set rising to its peak and falling again as the fold released scopes -- and the
