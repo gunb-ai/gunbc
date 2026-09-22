@@ -52,8 +52,6 @@ import extdeps.github.app {
   AppPublic,
   GitHubWebhookEvent,
   WebhookInstallationRepositories,
-  webhook_event_wire_name,
-  webhook_event_from_wire,
   GitHubAppRegistrationTarget,
   RegisterUnderOrganization,
   AppManifestSubmissionDocument,
@@ -145,7 +143,11 @@ data census_app_permissions: List<GitHubAppPermission> = [
 // listing them here is refused upstream, and nothing else about this App is worth a webhook.
 // hook_attributes.active is false because no receiver exists yet: the manifest schema REQUIRES a
 // hook URL, so the switch is what carries "nothing listens here" honestly rather than an omitted
-// field.
+// field. CONSEQUENTLY THERE IS NO EVENT-DRIFT GATE ON THE PUBLIC RECORD: an agreement over an empty
+// declared set is green for every observation, and a gate that cannot fire is a decoration (DESIGN
+// 4b), so the AppEventDrift arm and its fold were dissolved with the subscription rather than left
+// standing as coverage. A future non-empty subscription brings its gate back WITH a control that
+// runs the classify route.
 data census_app_default_events: List<GitHubWebhookEvent> = []
 
 // THE NAME IS THE IDENTITY, AND IT IS A CONSTANT. GitHub App names are unique across GitHub, so a
@@ -849,44 +851,9 @@ fn permission_agreement(
   })
 }
 
-type EventAgreement
-  = EventsAgree
-  | EventNotSubscribed { event: GitHubWebhookEvent }
-
-fn event_is_subscribed(observed: List<String>, event: GitHubWebhookEvent) -> Bool {
-  fold(observed, init: false, f: fn(found, raw) {
-    if found {
-      true
-    } else {
-      match webhook_event_from_wire(name: raw) {
-        Absent => false
-        Present { value: e } => e == event
-      }
-    }
-  })
-}
-
-fn event_agreement(
-  declared: List<GitHubWebhookEvent>,
-  observed: List<String>,
-) -> EventAgreement {
-  fold(declared, init: EventsAgree, f: fn(acc, e) {
-    match acc {
-      EventNotSubscribed { event: x } => EventNotSubscribed { event: x }
-      EventsAgree =>
-        if event_is_subscribed(observed: observed, event: e) {
-          EventsAgree
-        } else {
-          EventNotSubscribed { event: e }
-        }
-    }
-  })
-}
-
 type CensusAppAgreement
   = AppAgreesWithManifest
   | AppPermissionDrift { agreement: PermissionAgreement }
-  | AppEventDrift { agreement: EventAgreement }
   | AppPermissionsUnreadable { decode: ObservedPermissionMapDecode }
   | AppIdentityDrift {
       expected_app_id: GitHubAppId
@@ -929,12 +896,7 @@ fn census_app_agreement(
             AppPermissionDrift { agreement: PermissionAxisMissing { axis: a } }
           PermissionAxisWeaker { axis: a, declared: d, observed: o } =>
             AppPermissionDrift { agreement: PermissionAxisWeaker { axis: a, declared: d, observed: o } }
-          PermissionsAgree =>
-            match event_agreement(declared: census_app_default_events, observed: record.events) {
-              EventNotSubscribed { event: e } =>
-                AppEventDrift { agreement: EventNotSubscribed { event: e } }
-              EventsAgree => AppAgreesWithManifest
-            }
+          PermissionsAgree => AppAgreesWithManifest
         }
     }
   }
@@ -1052,11 +1014,6 @@ fn classify_census_app(
                 verdict: Drifted,
                 decision: Refuse { reason: permission_drift_reason(slug: s, agreement: a) },
               }
-            AppEventDrift { agreement: a } =>
-              UpsertClassification {
-                verdict: Drifted,
-                decision: Refuse { reason: event_drift_reason(slug: s, agreement: a) },
-              }
           }
       }
   }
@@ -1093,22 +1050,6 @@ fn permission_drift_reason(slug: NonEmptyStr, agreement: PermissionAgreement) ->
           permission_access_wire_name(access: o) as String,
           " where the manifest declares ",
           permission_access_wire_name(access: d) as String,
-        ],
-        "",
-      ) as NonEmptyStr
-  }
-}
-
-fn event_drift_reason(slug: NonEmptyStr, agreement: EventAgreement) -> NonEmptyStr {
-  match agreement {
-    EventsAgree => join(["census App ", slug as String, " events agree"], "") as NonEmptyStr
-    EventNotSubscribed { event: e } =>
-      join(
-        [
-          "census App ",
-          slug as String,
-          " is not subscribed to declared event ",
-          webhook_event_wire_name(event: e) as String,
         ],
         "",
       ) as NonEmptyStr
@@ -1258,8 +1199,6 @@ fn census_app_readback(
               }
             AppPermissionDrift { agreement: a } =>
               ReadbackDisagrees { agreement: AppPermissionDrift { agreement: a } }
-            AppEventDrift { agreement: a } =>
-              ReadbackDisagrees { agreement: AppEventDrift { agreement: a } }
             AppPermissionsUnreadable { decode: d } =>
               ReadbackDisagrees { agreement: AppPermissionsUnreadable { decode: d } }
           }

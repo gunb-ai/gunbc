@@ -120,16 +120,12 @@ import gunbc.github_app_acquisition {
   classify_census_app,
   AppAgreesWithManifest,
   AppPermissionDrift,
-  AppEventDrift,
   AppPermissionsUnreadable,
   AppIdentityDrift,
   PermissionsAgree,
   PermissionAxisMissing,
   PermissionAxisWeaker,
   permission_agreement,
-  EventsAgree,
-  EventNotSubscribed,
-  event_agreement,
   ExchangeIssued,
   ExchangeCodeNotLive,
   ExchangeRefused,
@@ -1303,21 +1299,6 @@ test fn w_webhook_event_round_trips_and_refuses_an_unmodeled_event() -> Bool {
   }
 }
 
-// THE CENSUS SUBSCRIPTION IS EMPTY, SO ITS AGREEMENT CANNOT DISAGREE; the fold is exercised over a
-// SUPPLIED declared list (DESIGN 3, a witness discriminates at one interface), and the census row
-// is asserted to agree with an empty observation, which is the live shape.
-test fn w_event_agreement_flags_a_missing_subscription() -> Bool {
-  let supplied = match event_agreement(declared: [WebhookPush, WebhookCheckRun], observed: ["push"]) {
-    EventNotSubscribed { event: e } => e == WebhookCheckRun
-    EventsAgree => false
-  }
-  let census = match event_agreement(declared: census_app_default_events, observed: []) {
-    EventNotSubscribed { event: _ } => false
-    EventsAgree => true
-  }
-  supplied && census
-}
-
 test fn w_visibility_folds_to_the_wire_bool_in_both_directions() -> Bool {
   app_visibility_wire_bool(v: AppPublic) && !app_visibility_wire_bool(v: AppPrivateToOwner)
 }
@@ -1654,7 +1635,6 @@ test fn w_a_readback_at_a_different_slug_disagrees() -> Bool {
           (ei.value == 4242) && (oi == 4242) && ((e as String) == "gunbc-global-census") && (o == "someone-elses-app")
         AppAgreesWithManifest => false
         AppPermissionDrift { agreement: _ } => false
-        AppEventDrift { agreement: _ } => false
         AppPermissionsUnreadable { decode: _ } => false
       }
     ReadbackConverged { record: _ } => false
