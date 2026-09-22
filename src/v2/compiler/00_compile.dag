@@ -1810,8 +1810,10 @@ fn native_lane_source_facts(ingest: SourceRootIngest) -> List<NativeLaneSourceFa
 // Only (3) wants the corpus, and (3) is REPOSITORY HYGIENE, not this lane's question. Whether some
 // unrelated module places a sidecar correctly is not part of "are the requested tests complete",
 // and the lane asserting it makes a focused `gunbc test` pay a whole-corpus walk to answer a
-// question about one package. MEASURED: universe members are 935 of 6484 corpus files (14.4%), so
-// (1) consulted one file in seven while all seven were walked.
+// question about one package. THE RATIO IS RE-DERIVED, NOT TRANSCRIBED (DESIGN section 6): the
+// adjudicating driver's own terminal line carries `universe` beside the `[native-cost-partition]`
+// line's `corpus_reads`, so the share of the corpus this lane's universe actually spans is read off
+// one run rather than copied into this sentence, where it would rot as the corpus grows.
 //
 // THE GUARANTEE IS PRESERVED AT ITS PROPER CONSUMER, WHICH IS WHY THIS IS DE-DUPLICATION AND NOT A
 // RUNG DROP. The required floor runs this same producer independently over its own prepared
@@ -2273,12 +2275,17 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
 // incremental reduction with a boundary that is visible on purpose, not the focused path's final
 // shape.
 //
-// MEASURED, on the first native run of a selected pattern (2026-09-21, seven identities of
-// `v2.test.parse.expression_bodied_fn_decl_parse` at `//v2/test/parse/...:all`): the lane's own
-// `[native-cost-partition]` receipt reports `universe_derivation` at 23.35 s of a 121.4 s wall,
-// over `corpus_reads` 6482 while `closure_reads` was 133. That figure is the OLD PHASE COST, not a
-// saving demonstrated by this change: it says the phase did not narrow with the pattern and was
-// entered twice per run. What the saving actually is has to come from an integrated native run.
+// THE INSTRUMENT IS NAMED AND ITS NUMBERS ARE NOT COPIED HERE (DESIGN section 6). The lane's own
+// `[native-cost-partition]` receipt carries the `universe_derivation` span against the driver wall,
+// and `corpus_reads` beside `closure_reads`, on any adjudicating run of a selected pattern -- the
+// producer is `std.compiler_entry` `SourceRootEvalDriver`'s adjudicate mode, so the figures are
+// re-derived by running it rather than read from this comment.
+//
+// WHAT THAT RECEIPT ESTABLISHES, which is a claim about SHAPE and survives without any digit: the
+// `universe_derivation` phase does not narrow with the pattern -- `corpus_reads` stays at corpus
+// scale while `closure_reads` tracks the selection -- and it was entered twice per run. That is the
+// OLD PHASE COST and NOT a saving demonstrated by this change. What the saving actually is has to
+// come from an integrated native run, which this change does not perform.
 //
 // The rendered adjudicate main binds `source_facts` for the closure derivation --
 // `native_lane_closure_modules`, `native_lane_closure_ingest`, `native_lane_ingest_receipt` and
