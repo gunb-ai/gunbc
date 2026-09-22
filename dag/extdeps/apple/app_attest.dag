@@ -32,6 +32,7 @@ import extdeps.standards.rfc_5280 {
   x509_ca_authority, X509CaAuthorized, X509CaRefused,
   X509BasicConstraintsAbsent, X509BasicConstraintsDuplicated, X509BasicConstraintsMalformed, X509NotACa,
   X509PathLengthExceeded, X509KeyUsageDuplicated, X509KeyUsageMalformed, X509KeyCertSignAbsent,
+  X509IntermediatesBelowNegative,
   x509_validity_at, X509ValidAt, X509NotYetValid, X509Expired, X509ValidityUndecodable,
   oid_ecdsa_with_sha256, oid_ecdsa_with_sha384, oid_prime256v1, oid_secp384r1,
 }
@@ -74,8 +75,9 @@ type AppAttestEnvironment
 //
 //   1. x5c chains to the Apple App Attestation Root CA
 //
-// AttestationChainUntrusted is step 1 as RFC 5280 path validation over the one path Apple presents
-// (credential certificate <- intermediate <- pinned root): exactly two certificates, issuer/subject
+// AttestationChainUntrusted is step 1 over the one path Apple presents (credential certificate <-
+// intermediate <- pinned root), checked with the RFC 5280 CA-authority checks modeled here rather
+// than full path validation: exactly two certificates, issuer/subject
 // name joins, validity windows at the expectation's clock, the intermediate's AUTHORITY TO ACT AS
 // A CA (rfc_5280 x509_ca_authority: basicConstraints cA TRUE, pathLenConstraint over zero
 // intermediates below, keyUsage keyCertSign when present), and both ECDSA signatures. NOT modeled,
@@ -471,6 +473,7 @@ fn ca_authority_refusal(ca: X509Certificate) -> AttestationRefusal? {
       X509KeyUsageDuplicated => ca_authority_refused(reason: "keyUsage appears twice")
       X509KeyUsageMalformed { cause: _ } => ca_authority_refused(reason: "keyUsage does not decode")
       X509KeyCertSignAbsent => ca_authority_refused(reason: "keyUsage lacks keyCertSign")
+      X509IntermediatesBelowNegative { intermediates_below: _ } => ca_authority_refused(reason: "the intermediate count below it is negative")
     }
   }
 }

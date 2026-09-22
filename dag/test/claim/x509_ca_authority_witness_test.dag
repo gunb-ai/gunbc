@@ -6,6 +6,7 @@ import std.integer { UInt8 }
 import extdeps.standards.rfc_5280 {
   X509Certificate, X509TbsFields, X509Extension, x509_ca_authority, X509CaStanding, X509CaAuthorized, X509CaRefused,
   X509BasicConstraintsAbsent, X509NotACa, X509PathLengthExceeded, X509KeyCertSignAbsent,
+  X509KeyUsageMalformed, X509IntermediatesBelowNegative,
   oid_basic_constraints, oid_key_usage,
 }
 import extdeps.apple.app_attest { ca_authority_refusal, AttestationChainUntrusted }
@@ -42,6 +43,8 @@ fn cawt_label(s: X509CaStanding) -> String {
       X509NotACa => "not-ca"
       X509PathLengthExceeded { path_len_constraint: _, intermediates_below: _ } => "path-len"
       X509KeyCertSignAbsent => "no-key-cert-sign"
+      X509KeyUsageMalformed { cause: _ } => "ku-malformed"
+      X509IntermediatesBelowNegative { intermediates_below: _ } => "negative-below"
       _ => "other"
     }
   }
@@ -102,6 +105,19 @@ test fn key_usage_absent_or_key_cert_sign_only_is_authorized() -> Bool {
     && cawt_on_intermediate(oid: oid_key_usage, value: Present { value: [3, 2, 2, 4] }, below: 0) == "authorized"
 }
 
+// RED: unused bits = 3 with 0x04 set asserts keyCertSign only from a PADDING bit (bit 5 is at or
+// beyond the 5 meaningful bits). The unused bits are not zero, so the value is malformed -- never
+// authorized.
+test fn key_usage_key_cert_sign_in_a_padding_bit_is_malformed() -> Bool {
+  cawt_on_intermediate(oid: oid_key_usage, value: Present { value: [3, 2, 3, 4] }, below: 0) == "ku-malformed"
+}
+
+// RED: a trailing zero octet breaks the DER named-bit-list form (X.690 §11.2.2), even though bit
+// 5 is set in the first octet.
+test fn key_usage_with_a_trailing_zero_octet_is_malformed() -> Bool {
+  cawt_on_intermediate(oid: oid_key_usage, value: Present { value: [3, 3, 2, 4, 0] }, below: 0) == "ku-malformed"
+}
+
 // pathLenConstraint 0 admits the end-entity directly below and refuses one intermediate below.
 test fn path_len_constraint_zero_bounds_intermediates_below() -> Bool {
   let pl0 = Present { value: [48, 6, 1, 1, 255, 2, 1, 0] }
@@ -123,5 +139,19 @@ test fn attestation_chain_refuses_an_intermediate_without_ca_authority() -> Bool
             _ => false
           }
       }
+  }
+}
+
+// pathLenConstraint is INTEGER (0..MAX): a 9-octet value (2^64) is above the Int carrier, decodes
+// rather than refusing, and is never exceeded.
+test fn path_len_constraint_above_the_carrier_is_never_exceeded() -> Bool {
+  cawt_on_intermediate(oid: oid_basic_constraints, value: Present { value: [48, 14, 1, 1, 255, 2, 9, 1, 0, 0, 0, 0, 0, 0, 0, 0] }, below: 1000000) == "authorized"
+}
+
+// RED: a negative intermediate count is refused, not compared.
+test fn negative_intermediates_below_refuses() -> Bool {
+  match vf_x5c(i: 1) {
+    Absent => false
+    Present { value: ca } => cawt_label(s: x509_ca_authority(cert: ca, intermediates_below: 0 - 1)) == "negative-below"
   }
 }
