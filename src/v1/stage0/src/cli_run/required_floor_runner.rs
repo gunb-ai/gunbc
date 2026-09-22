@@ -1293,7 +1293,9 @@ fn changed_and_enrolled_witness_identities_with_index(
         }
     }
     let dag_path_list: Vec<String> = dag_paths.into_iter().collect();
+    floor_seam("diff-base-decl-census");
     let base_test_decl_names = floor_base_test_decl_census(&dag_path_list)?;
+    floor_seam("diff-edits");
     let edits = floor_diff_edits_from_line_ranges(
         index,
         &line_ranges_by_file,
@@ -1303,6 +1305,7 @@ fn changed_and_enrolled_witness_identities_with_index(
         Some(&base_test_decl_names),
         &rename_from,
     )?;
+    floor_seam("diff-changed-witness-identities");
     let quarantined = quarantine_probe_admitted_pairs();
     let root = process_workspace_root();
     let changed = changed_witness_identities_from_edited_test_fns(
@@ -1322,6 +1325,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // exhaustiveness is real at `gunbc compile` and silent on a required floor that never
     // resolved the file. Seeding the authored module pulls its both-closure into
     // `prepare_repository_closure` (`ResolveTypecheckGate::Strict`), which is the same pass.
+    floor_seam("diff-touched-module-seeds");
     let (touched_modules, touched_outside_floor_roots, seeded_pairs) =
         module_seeds_from_touched_entry_files(&root, &edits.touched_entry_files, source_roots)?;
     // THE ASSEMBLY'S OWN PREDICATE (`prepared_subject_exclusion_row_for`), asked here over the
@@ -4362,11 +4366,12 @@ fn floor_heap_beat(seam: &str) {
         // bookkeeping under the arena locks and changes nothing.
         let mi = unsafe { libc::mallinfo2() };
         eprintln!(
-            "[floor-heap] seam={seam} in_use={} free={} mmapped={} arena={}",
+            "[floor-heap] seam={seam} in_use={} free={} mmapped={} arena={} {}",
             mi.uordblks + mi.hblkhd,
             mi.fordblks,
             mi.hblkhd,
             mi.arena,
+            crate::cli_run::entry_resolve::process_resolve_census(),
         );
     }
     #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
