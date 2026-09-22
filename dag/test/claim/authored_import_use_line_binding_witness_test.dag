@@ -50,6 +50,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // emitter defect with no red at all, which is the state it was in before 2026-09-22 and the
 // reason it survived undiagnosed through several investigations.
 
+// THE DISCRIMINATION IS THE WHOLE CONJUNCTION, AND THAT IS SAID HERE RATHER THAN RE-EXECUTED.
+// An earlier cut carried a `test fn` conjoining all six arms. It asserted nothing the six
+// individually do not -- each already answers its own pole -- while paying every
+// compile_dag_rust_emit_check a second time, twelve production compiles for six facts, at the
+// single most expensive primitive in the corpus (review 70115; DESIGN section 3, "two claims
+// making the same call on the same input where one assertion implies the other, each paying the
+// call in full"). The purpose it served was a READER'S, not a discriminator's: stopping someone
+// from taking the expecting-red arm for a claim that dropping use-lines is correct. That purpose
+// is served by this sentence, which costs nothing to evaluate.
+//
+// SO READ THE ARMS AS A SET: the condition is the THREE-TERM conjunction stated at the top of
+// this module, and no single arm establishes it. Dropping the joined claim also improves
+// diagnosis -- a failure now names WHICH arm moved instead of answering one opaque false.
+
 // THE POSITIVE CONTROL, AND IT IS THE HALF THAT MUST NEVER RED. One declarer of the spelling in
 // the closure, the same phantom alias, the same signature: the use-line is emitted and binds the
 // named provider. If this arm ever goes red, the defect has widened from a conjunction to the
@@ -207,18 +221,3 @@ fn w_nominal_record_alone_keeps_its_use_line() -> Bool {
 test fn a_singly_declared_nominal_record_keeps_its_use_line() -> Bool {
   w_nominal_record_alone_keeps_its_use_line()
 }
-
-// THE DISCRIMINATION IS THE WHOLE CONJUNCTION, AND THAT IS SAID HERE RATHER THAN RE-EXECUTED.
-// An earlier cut carried a `test fn` conjoining all six arms. It asserted nothing the six
-// individually do not -- each already answers its own pole -- while paying every
-// compile_dag_rust_emit_check a second time, twelve production compiles for six facts, at the
-// single most expensive primitive in the corpus (review 70115; DESIGN section 3, "two claims
-// making the same call on the same input where one assertion implies the other, each paying the
-// call in full"). The purpose it served was a READER'S, not a discriminator's: stopping someone
-// from taking the expecting-red arm for a claim that dropping use-lines is correct. That purpose
-// is served by this sentence, which costs nothing to evaluate.
-//
-// SO READ THE ARMS AS A SET: the condition is the THREE-TERM conjunction stated at the top of
-// this module, and no single arm establishes it. Dropping the joined claim also improves
-// diagnosis -- a failure now names WHICH arm moved instead of answering one opaque false.
-
