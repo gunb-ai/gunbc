@@ -411,6 +411,3 @@ fn sha384(message: List<UInt8>) -> List<UInt8> {
   fold([s.a, s.b, s.c, s.d, s.e, s.f], init: [], f: (acc, w) => list_append_octets(left: acc, right: word64_octets(w: w)))
 }
 
-fn sha384_hex(message: List<UInt8>) -> String {
-  base16_encode_lower(octets: sha384(message: message))
-}
