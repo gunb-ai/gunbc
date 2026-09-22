@@ -156,6 +156,21 @@ test fn a_forked_nominal_record_keeps_its_authored_use_line() -> Bool {
 // TERM 1 IS PRESENT IN THE NOMINAL ARM, ASSERTED RATHER THAN DESCRIBED. Without this the arm
 // above is "a module that keeps its use-line", which the baseline also is; the pair only varies
 // term 1 if the second declaration really reaches the crate in one and not the other.
+//
+// THIS COMPILES THE SAME SOURCE AS THE ARM ABOVE AND READS A DIFFERENT EMITTED FILE, which is one
+// compile paid twice and is a real cost defect (review 70115; DESIGN section 2, minimize the
+// demand graph before materializing its answers). It is kept because the primitive takes ONE
+// output path per call, so two readings of one emission cannot be expressed today; the modeled
+// fix is compile_dag_rust_emit_check admitting a path SET, which is a seed change -- builtin
+// registry, interpreter dispatch, host function, mirror -- and a different subject from this
+// change. NAMED HERE so the duplication is a known debt with a stated remedy rather than
+// unnoticed work.
+//
+// THE CHEAPER VERSION WAS TESTED AND REJECTED, because it cannot fail the way this must: folding
+// term 1 into the arm above by also requiring `pub use crate::v2_extdeps_languages_ptx::` in the
+// CONSUMER file costs no extra compile, but if ptx ever stopped importing v2.std.cardinality that
+// check would stay GREEN while the arm silently degraded into the baseline -- green for a reason
+// other than the one claimed, which is the confound this file has already carried once.
 fn w_nominal_arm_really_carries_the_second_declaration() -> Bool {
   compile_dag_rust_emit_check(
     "module aiulb_nominal_indirect\n\nimport std.types { Int, List }\nimport std.termination { TerminationProof }\nimport v2.extdeps.languages.ptx { StateSpace }\n\nfn proof_dimension_count(p: TerminationProof) -> Int {\n  count(p.dimensions)\n}\n\nfn state_space_is_ignored(s: StateSpace) -> Int {\n  0\n}\n",
@@ -185,16 +200,17 @@ test fn a_singly_declared_nominal_record_keeps_its_use_line() -> Bool {
   w_nominal_record_alone_keeps_its_use_line()
 }
 
-// THE DISCRIMINATION IS THE WHOLE CONJUNCTION, not any arm alone, and this states it as one fact
-// so a reader cannot take the expecting-red arm for a claim that dropping use-lines is correct.
-// All six arms are joined: the condition has THREE terms, and a conjunction over a subset would
-// stay green if a term were lost -- which is exactly the state this witness was in twice, once
-// before arm E was measured and once while the nominal arm was confounded with it.
-test fn the_use_line_verdict_turns_on_the_whole_conjunction() -> Bool {
-  w_single_declarer_keeps_the_authored_use_line()
-    && w_second_declarer_drops_the_authored_use_line()
-    && w_consumer_naming_both_providers_keeps_its_use_line()
-    && w_forked_nominal_record_keeps_its_use_line()
-    && w_nominal_record_alone_keeps_its_use_line()
-    && w_nominal_arm_really_carries_the_second_declaration()
-}
+// THE DISCRIMINATION IS THE WHOLE CONJUNCTION, AND THAT IS SAID HERE RATHER THAN RE-EXECUTED.
+// An earlier cut carried a `test fn` conjoining all six arms. It asserted nothing the six
+// individually do not -- each already answers its own pole -- while paying every
+// compile_dag_rust_emit_check a second time, twelve production compiles for six facts, at the
+// single most expensive primitive in the corpus (review 70115; DESIGN section 3, "two claims
+// making the same call on the same input where one assertion implies the other, each paying the
+// call in full"). The purpose it served was a READER'S, not a discriminator's: stopping someone
+// from taking the expecting-red arm for a claim that dropping use-lines is correct. That purpose
+// is served by this sentence, which costs nothing to evaluate.
+//
+// SO READ THE ARMS AS A SET: the condition is the THREE-TERM conjunction stated at the top of
+// this module, and no single arm establishes it. Dropping the joined claim also improves
+// diagnosis -- a failure now names WHICH arm moved instead of answering one opaque false.
+
