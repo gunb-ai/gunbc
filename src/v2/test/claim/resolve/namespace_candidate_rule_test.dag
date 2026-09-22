@@ -423,18 +423,6 @@ type NcrOutcomes
       doubly_declared_leaf_is_ambiguous: Bool
     }
 
-fn ncr_verdicts_for(ingest: SourceRootIngest, module_name: String) -> Optional<NativeCensusModuleOutcome> {
-  match native_test_context_from_ingest(ingest: ingest) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: context, diagnostics: _ } =>
-      ncr_outcome_in(
-        context: context,
-        index: native_lane_file_refusal_index(refusals: context.file_refusals),
-        ingest: ingest,
-        module_name: module_name
-      )
-  }
-}
 
 fn ncr_outcomes() -> NcrOutcomes {
   match native_test_context_from_ingest(ingest: ncr_ingest) {

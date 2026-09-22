@@ -584,7 +584,21 @@ import v2.std.collection { List }
 // no resolution context and no closure, portable for the same reason census_probe_outcomes is. WARM
 // because the fill is two front ends over twelve modules, many times one claim's budget, and the
 // alternative is paying it nine times.
+// THE BODY-LOWERING NORMALIZE ROW IS THE SAME GROUND, FOUND BY BEING EXPOSED RATHER THAN BY BEING
+// NEW. v2.test.manual.body_lowering_normalize_add calls body_lowering_normalized_module() -- one
+// front end over a source literal -- from NINETEEN sites, and the value is an Optional<NormalizedTree>:
+// a root Node, a marker channel and a binding row list, no resolution context and no closure,
+// portable for the same reason ndp_resolutions is.
+//
+// IT WAS ALWAYS THIS EXPENSIVE; what changed is that it became visible. gunbc#12009 altered the
+// arity of admit_normalized_tree, which this file calls, so its identities were read as changed and
+// a withheld cost debt stopped being withheld -- body_lowering_normalized_arrow_root_resolves at
+// 115,051 steps against the 72,300 new-witness budget, the single remaining blocker on that head.
+// The verdict did NOT move: it returns true on origin/main and on that head, same interpreter,
+// sources the only variable. So this is not a regression to revert but a pre-existing recompute the
+// change surfaced, and the honest repair is the one this roster exists for rather than re-hiding it.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_module",
   "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
