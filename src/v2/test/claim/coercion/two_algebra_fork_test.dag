@@ -223,6 +223,23 @@ fn coercion_admission_equal(left: CoercionAdmission, right: CoercionAdmission) -
   }
 }
 
+// WHY THERE IS NO CLAIM COMPARING THE TWO ALGEBRAS TO EACH OTHER, AND NO AUTHORED `AGREE` COLUMN
+// (review 70065). A claim asserting name_keyed_admission(row) == homomorphism_admission(row), read
+// against an authored third column, is ENTAILED by the two claims above: each pins its side to its
+// own independently specified expectation, so the comparison reduces to asking whether that third
+// column contradicts the first two -- a check of the fixture against itself, which reds on no
+// behaviour change the first two do not already catch. DESIGN section 4b rules the check out before
+// it is written, and DESIGN section 2 names the column: a third authored fact fully determined by
+// two others is re-invention, not a reduction.
+//
+// THE MEASUREMENT SURVIVES WITHOUT IT, and this is the point rather than a concession. The
+// agreement relation is DERIVED from the two expectation columns, which sit side by side on every
+// row: four of the seven rows carry expectations that differ, in both directions, and that is the
+// fork stated where a reader meets the population. If either algebra's admission set moves -- in
+// either direction, consolidation included -- the claim that owns that side reds and the author
+// must restate the row. Nothing was lost by deleting the comparison except a second spelling of a
+// fact the table already carries.
+
 // The name-keyed algebra against the DECLARED ROSTERS, not against the other algebra.
 test fn name_keyed_coercion_matches_the_declared_cast_rosters_holds() -> Bool {
   fold(coercion_fork_fixtures, init: true, f: fn(acc, row) {
@@ -258,20 +275,3 @@ test fn homomorphism_coercion_admits_only_identity_quality_holds() -> Bool {
     }
   })
 }
-
-// WHY THERE IS NO CLAIM COMPARING THE TWO ALGEBRAS TO EACH OTHER, AND NO AUTHORED `AGREE` COLUMN
-// (review 70065). A claim asserting name_keyed_admission(row) == homomorphism_admission(row), read
-// against an authored third column, is ENTAILED by the two claims above: each pins its side to its
-// own independently specified expectation, so the comparison reduces to asking whether that third
-// column contradicts the first two -- a check of the fixture against itself, which reds on no
-// behaviour change the first two do not already catch. DESIGN section 4b rules the check out before
-// it is written, and DESIGN section 2 names the column: a third authored fact fully determined by
-// two others is re-invention, not a reduction.
-//
-// THE MEASUREMENT SURVIVES WITHOUT IT, and this is the point rather than a concession. The
-// agreement relation is DERIVED from the two expectation columns, which sit side by side on every
-// row: four of the seven rows carry expectations that differ, in both directions, and that is the
-// fork stated where a reader meets the population. If either algebra's admission set moves -- in
-// either direction, consolidation included -- the claim that owns that side reds and the author
-// must restate the row. Nothing was lost by deleting the comparison except a second spelling of a
-// fact the table already carries.
