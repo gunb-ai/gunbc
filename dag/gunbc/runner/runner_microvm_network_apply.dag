@@ -236,6 +236,23 @@ fn observe_administrator_privilege(
   }
 }
 
+// THE ROOT-ONLY PROBE RUNS ELEVATED, AND THAT IS WHAT ITS SUBJECT REQUIRES RATHER THAN A
+// PRECAUTION. This fold's whole job is to establish that paths inside a 0700 root:root staging
+// directory are root-only BEFORE any byte is installed from them. An unelevated find over exactly
+// those paths CANNOT succeed: the login principal has no search bit on the directory, so every leaf
+// comes back `Permission denied` and classify_root_only_paths reports them unsafe. The check was
+// therefore anti-correlated with the property it checks -- it could only pass while the staging root
+// was traversable by a non-root principal, which is the arrangement the frontier refuses -- and the
+// first real run on srv1 refused with `the staged bytes were not established as root-only`
+// (fleet-converge run 35680600837). gunbc.host_credential_custody_converge already elevates this
+// same argv for the same reason; gunbc.runner_host_file_converge does not, because ITS subjects are
+// world-traversable /etc directories, and copying that call shape onto a root-only subject is what
+// produced the defect. Split out as its own row so a claim can discriminate the sudo prefix without
+// a host.
+fn runner_microvm_root_only_probe_argv(paths: List<String>, kind: String) -> List<String> {
+  elevated_argv(command: runner_host_root_only_find_argv(paths: paths, kind: kind))
+}
+
 fn observe_paths_root_only(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
@@ -244,7 +261,7 @@ fn observe_paths_root_only(
 ) -> RunnerHostPathMetadata
   uses net: Network
 {
-  match run_admin_leg(subject: subject, context: context, argv: runner_host_root_only_find_argv(paths: paths, kind: kind)) {
+  match run_admin_leg(subject: subject, context: context, argv: runner_microvm_root_only_probe_argv(paths: paths, kind: kind)) {
     ApplyLegRefused { reason: why } => PathsUnobservable { reason: why }
     ApplyLegRan { exit_code: c, stdout: o, stderr: e } => classify_root_only_paths(requested: paths, exit_code: c, stdout: o, stderr: e)
   }
