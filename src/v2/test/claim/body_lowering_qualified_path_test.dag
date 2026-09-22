@@ -613,3 +613,41 @@ test fn body_lowering_qualified_value_reaches_arrow_body_whole() -> Bool {
       }
   }
 }
+
+// THE ARM-SEPARATOR FOR THE ZERO-ARG CALL SUFFIX (quick-bat-813, 2026-09-22).
+//
+// body_lowering_real_parser_emits_the_supplied_dotted_shape CONJOINS two facts -- that the PARSED
+// node lowers to a call through its path, and that parsed and supplied agree -- so a FALSE from it
+// cannot say which failed. That distinction is the whole question here: whether the refusal of an
+// absent paren interior (body_lowering_reason_call_args_unlowered) is reachable FROM SOURCE, or
+// only from this file's hand-built `()` shape. This row asserts the FIRST conjunct alone over the
+// real parser's own node for `wall.peer.peer_leaf()`, a zero-argument dotted call.
+//
+// FALSE here means the production route loses a zero-arg call and the refusal is real.
+// TRUE here, with the supplied-shape row red, means this file's fixture does not inhabit the real
+// producer and the repair is to the fixture -- DESIGN section 3's pairing obligation, where a
+// supplied input is a hypothesis and the inhabitance claim is what makes it a reading.
+test fn body_lowering_parsed_zero_arg_call_lowers_through_its_path() -> Bool {
+  match body_lowering_qualified_call_parsed() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match body_lower_find_captured(root: tree, emitted: ^dag_surface_postfix_expr) {
+        ParseSubtreeAbsent => false
+        ParseSubtreeFound { captured: captured } =>
+          body_lowering_door_lowers_to_call_through_path(
+            node: captured,
+            dotted: body_lowering_qualified_path_dotted
+          )
+      }
+  }
+}
+
+// The supplied half of the same pair, alone. Run beside the row above, the two SEPARATE the arms:
+// both TRUE is no defect; parsed TRUE and supplied FALSE is an unfaithful fixture; parsed FALSE is
+// a real loss on the production route whatever the fixture does.
+test fn body_lowering_supplied_zero_arg_call_lowers_through_its_path() -> Bool {
+  body_lowering_door_lowers_to_call_through_path(
+    node: dotted_fixture_qualified_call(),
+    dotted: body_lowering_qualified_path_dotted
+  )
+}
