@@ -295,6 +295,10 @@ type V41ProducedRuntime
     }
   | V41RuntimeProductionStopped { step: NonEmptyStr, cause: String, wheels: V41KernelWheelVerification }
 
+// THE PROBE IS HANDED THE PRODUCED DIGEST, NOT THE TAG (converge_v41_produced_runtime_image): no
+// mutable pointer survives in the readback route, so a tag that moves between the build and the probe
+// cannot redirect what gets described. The V41ProbeIdentityJoin then checks the daemon's own answer,
+// which is the part construction cannot reach.
 fn converge_v41_produced_runtime_image(
   target: SshTarget,
   context: FleetSshExecutionContext,
@@ -334,10 +338,6 @@ fn converge_v41_produced_runtime_image(
                       wheels: wheels,
                     }
                     Present { value: config_digest } => {
-                      // THE PROBE IS HANDED THE PRODUCED DIGEST, NOT THE TAG: no mutable pointer
-                      // survives in the readback route, so a tag that moves between these two legs
-                      // cannot redirect what gets described. The join below then checks the
-                      // daemon's own answer, which is the part construction cannot reach.
                       let probe = v41_probe_image_in_place(ctx: ctx, reference: identity.local_config_digest)
                       V41RuntimeProductionComplete {
                         standing: v41_admit_produced_runtime(
