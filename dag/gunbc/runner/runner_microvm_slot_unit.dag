@@ -100,20 +100,25 @@ data microvm_controller_firecracker_release: FirecrackerRelease = firecracker_re
 // resolves the corpus and then waits, and its charge is host overhead beside the cell, stated here
 // so fleet accounting can see it rather than folded into the attempt's figure.
 //
-// THE FIGURE IS A DECLARED POLICY BUDGET OVER ONE READING, said plainly (DESIGN 4d): the
+// THE FIGURE IS A DECLARED POLICY BUDGET OVER TWO READINGS, said plainly (DESIGN 4d). The
 // instrument is the unit's journal `Consumed ... memory peak` line (systemd unit accounting) for
-// gunbc-microvm-slot@srv1-13.service, which reported 7.0G memory peak for the corpus load on
-// 2026-09-21; 8 GiB max with the throttle line at the ceiling (no MemoryHigh below it, for the same
-// reason the shakedown slot has none) and no swap, so a controller that outgrows it is killed at
-// the boundary on its own lifecycle -- the recovery arm at the next admission, loud and attributed
-// -- never swapped mid-teardown. Re-derive from that journal line, not from this sentence.
+// gunbc-microvm-slot@srv1-13.service: 7.0G peak for the corpus load under no bound (2026-09-21,
+// refused HostBudgetUnreadable), then 7.9G peak and OOM-KILLED at an 8 GiB bound (2026-09-22) --
+// the seed plans its typed-module cache against the observed memory.max and its resident set sits
+// above that plan, which gunbc.host_budget_source's own receipt states for the corpus regen (peak
+// 7.7 GiB, completing under a 10 GiB budget). So the bound is 12 GiB: above the seed's observed
+// resident demand with the headroom that receipt shows it needs, the throttle line at the ceiling
+// (no MemoryHigh below it, for the same reason the shakedown slot has none) and no swap, so a
+// controller that outgrows it is killed at the boundary on its own lifecycle -- the recovery arm
+// at the next admission, loud and attributed -- never swapped mid-teardown. Re-derive from those
+// journal lines, not from this sentence.
 data microvm_controller_slice_unit_name: NonEmptyStr = "gunbc-microvm-controller.slice" as NonEmptyStr
 
 fn microvm_controller_slice_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", microvm_controller_slice_unit_name as String], "") as NonEmptyStr
 }
 
-data microvm_controller_slice_memory_max: ByteSize = byte_size(8589934592)
+data microvm_controller_slice_memory_max: ByteSize = byte_size(12884901888)
 
 fn microvm_controller_slice_unit_file() -> SystemdUnitFile {
   SliceUnitFile {
