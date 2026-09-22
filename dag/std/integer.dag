@@ -101,13 +101,21 @@ type QualifiedOctetsResult
 // already runs this wall and it refuses at resolve, so this is an existing capability being consumed
 // rather than a mechanism invented here.
 //
-// The roster is deliberately TWO, and each entry is a different reason. uint8_octets_of_ints is
+// The roster is deliberately SHORT, and each entry is a different reason. uint8_octets_of_ints is
 // the admission fold: it runs every member through uint8_of_int and mints ONLY from the list it has
 // just proved in full, so an outside caller cannot reach a QualifiedOctets carrying an unadmitted
 // value at all. It used to be an accumulator with a caller-supplied `admitted` prefix in this slot,
 // and that was a proxy in exactly the sense stated below: `admitted: [256], remaining: []` minted a
 // sealed value nothing had checked (side-chat HOLD on e08f937d). The mint now has no formal a caller
 // can pre-load -- the proved list and the minted list are the same value.
+//
+// bytes_qualified_octets is admitted on the SAME reasoning as word_to_octets and is the second
+// instance of that case rather than a new kind of exception: its members come from a Bytes, and a
+// byte is 0..255 by the definition of a byte, so the fold's refusal arm is unreachable for it and
+// requiring the fold would manufacture a branch no input can take. It takes a Bytes, never a
+// member list, so it has no formal a caller can pre-load -- the property this roster's discipline
+// actually turns on. It does not widen the raw-Int route: a caller holding Ints still has only the
+// fold.
 //
 // word_to_octets is admitted because its members are COMPUTED in range -- they are remainders modulo
 // the octet radix, each already through uint8_of_int -- so routing it through the fold would add a
@@ -139,13 +147,17 @@ type QualifiedOctetsResult
 // WHAT admit_callers DOES AND DOES NOT ESTABLISH, stated here because the distinction decides the
 // rung. It constrains the CALL EDGE, not the egress of the returned value: an admitted producer that
 // accepted a caller's list and handed back the sealed value would be a PROXY, and the seal would be
-// worth nothing. Neither admitted caller is one -- the fold mints only the list it has verified in
-// full, and word_to_octets takes a Word and a width rather than a member list. That is the property a reviewer should check when the roster
-// grows, and it is why the roster is two names rather than a convenience.
+// worth nothing. No admitted caller is one -- the fold mints only the list it has verified in
+// full, word_to_octets takes a Word and a width rather than a member list, and
+// bytes_qualified_octets takes a Bytes. NO ADMITTED CALLER HAS A FORMAL A CALLER CAN PRE-LOAD WITH
+// UNPROVED MEMBERS, which is the property this roster actually turns on and the property a reviewer
+// should check when the roster
+// grows, and it is why the roster is a named few rather than a convenience.
 fn qualified_octets(members: List<Int>) -> QualifiedOctets
   admit_callers: [
     decl_ref(module_path: "std.integer", decl_name: "uint8_octets_of_ints"),
-    decl_ref(module_path: "std.machine_word", decl_name: "word_to_octets")
+    decl_ref(module_path: "std.machine_word", decl_name: "word_to_octets"),
+    decl_ref(module_path: "std.bytes", decl_name: "bytes_qualified_octets")
   ]
 {
   QualifiedOctets { members: members }

@@ -1,7 +1,7 @@
 module std.bytes
 
 import std.types { Bytes }
-import std.integer { UInt8 }
+import std.integer { UInt8, QualifiedOctets, qualified_octets }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -49,6 +49,28 @@ fn pure_dag_seam_unreachable_string() -> String {
 
 fn bytes_octets(b: Bytes) -> List<UInt8> {
   [pure_dag_seam_unreachable()]
+}
+
+// THE BYTES MINT FOR QualifiedOctets, AND IT IS A CONSTRUCTOR RATHER THAN A CHECK ON PURPOSE.
+//
+// std.encoding base64_encode declares the SEALED carrier QualifiedOctets -- the proof that every
+// member passed uint8_of_int admission -- and the only general route to one is std.integer's
+// uint8_octets_of_ints fold, which returns a Result. For a value that arrives from BYTES that
+// fold's refusal arm is UNREACHABLE: a byte is 0..255 by the definition of a byte, so the scan can
+// only ever answer Absent, and every caller would be forced to write a refusal branch no input can
+// reach. std.integer names that trap in its own roster annotation -- word_to_octets is admitted to
+// the mint precisely because "routing it through the fold would add a refusal arm no input can
+// reach" -- and DESIGN section 5 names it more generally: a check that restates a constraint the
+// model already carries is validation standing where construction was available.
+//
+// So this is the SECOND instance of the case that roster entry already established, not a new
+// kind of exception. It is admitted on the same reasoning and its shape satisfies the same
+// discipline: the mint must have no formal a caller can pre-load with unproved members. This takes
+// a Bytes -- exactly as word_to_octets takes a Word and a width -- so the proved list and the
+// minted list are the same value, derived here, and no caller can hand in a member list at all.
+// A caller holding raw Ints still has only the fold; nothing here widens that route.
+fn bytes_qualified_octets(b: Bytes) -> QualifiedOctets {
+  qualified_octets(members: bytes_octets(b: b))
 }
 
 fn octets_bytes(o: List<UInt8>) -> Bytes {

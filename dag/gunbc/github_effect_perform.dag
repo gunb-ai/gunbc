@@ -7,7 +7,8 @@ import extdeps.clock {
   clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis,
 }
 import extdeps.auth.jws {
-  jws_rs256_signing_input, jws_compact_serialization, JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused,
+  jws_rs256_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets,
+  JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused,
 }
 import gunbc.jws_signer_realize { jws_rs256_sign }
 import extdeps.auth.jwt { JwtCompactSerialization }
@@ -105,7 +106,15 @@ fn app_jwt_for(dispatch_app_id: Int, key: JwsSigningKeyRef, now_epoch_secs: Epoc
   match jws_rs256_sign(signing_input: signing_input, key: key) {
     JwsSignRefused { detail: d } => AppJwtUnsigned { detail: d }
     JwsSigned { signature: sig } =>
-      AppJwtSigned { jwt: jws_compact_serialization(signing_input: signing_input, signature: sig) }
+      match jws_compact_serialization(signing_input: signing_input, signature: sig) {
+        // The OBSERVED member stays typed on the jws-layer outcome, where
+        // test.claim.github_effect_perform_witness reads it. It is not rendered into this detail
+        // string: std carries no Int renderer, and coining one here to decorate a message would be
+        // a new authority minted for a message rather than for a fact (DESIGN section 3).
+        JwsSignatureNotOctets { observed: _ } =>
+          AppJwtUnsigned { detail: "the signer returned a member outside octet range" }
+        JwsSerialized { jwt: jwt } => AppJwtSigned { jwt: jwt }
+      }
   }
 }
 

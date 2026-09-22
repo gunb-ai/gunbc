@@ -3,7 +3,7 @@ module test.claim.github_effect_perform_witness
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.integer { UInt8 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization }
+import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets }
 import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
 import extdeps.tools.openssl { openssl_signature_of, OpensslSigned, OpensslSignRefused }
 import extdeps.github.actions_jit_runner { JitConfigCreatedBody, JitConfigCreatedRunner }
@@ -36,8 +36,24 @@ test fn witness_jws_signing_input_leads_with_the_rs256_header_unpadded() -> Bool
 // 0xFB 0xFF is "+/8=" in the standard alphabet and "-_8" in base64url: one input that goes red for
 // the wrong alphabet AND for kept padding, which are the two ways a signature segment is mis-encoded.
 test fn witness_jws_signature_segment_is_base64url_without_padding() -> Bool {
-  let compact = jws_compact_serialization(signing_input: "h.p", signature: [251, 255]) as String
-  compact == "h.p.-_8"
+  match jws_compact_serialization(signing_input: "h.p", signature: [251, 255]) {
+    JwsSignatureNotOctets { observed: _ } => false
+    JwsSerialized { jwt: jwt } => (jwt as String) == "h.p.-_8"
+  }
+}
+
+// THE REFUSAL ARM, AND IT IS REACHABLE RATHER THAN DECORATIVE -- which is the whole reason the
+// signature half folds where the UTF-8 half constructs. A signature crosses the key custody
+// boundary from an EXTERNAL signer (a host CLI, an HSM), so nothing in this repository has
+// established that its members are octets, and 256 is a value such a realization can hand back.
+// This arm also CONSUMES the observed member: without it that field would be a declaration no
+// executing consumer reads (DESIGN section 3c), and the refusal would be locatable in principle
+// only.
+test fn witness_a_non_octet_signature_member_refuses_and_names_what_was_observed() -> Bool {
+  match jws_compact_serialization(signing_input: "h.p", signature: [251, 256]) {
+    JwsSerialized { jwt: _ } => false
+    JwsSignatureNotOctets { observed: o } => o == 256
+  }
 }
 
 test fn witness_app_jwt_claims_backdate_iat_bound_exp_and_name_the_app() -> Bool {
