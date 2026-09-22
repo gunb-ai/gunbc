@@ -90,9 +90,9 @@ test fn two_writers_from_one_head_produce_one_admission_one_stale_and_then_a_ful
         PoolFoldRefused { at_event: _, wire: _ } => false
         PoolFolded { pool: p, generation: g } => {
           let a = propose_acquire(pool: p, generation: g, head: head, partition: w_partition(), actor: "srv1-harness" as NonEmptyStr,
-            request: SeatRequest { reference: "srv1-turn-7" as NonEmptyStr, amount: 1, at: 1100, term_seconds: 300 })
+            request: SeatRequest { reference: "srv1-turn-7" as NonEmptyStr, amount: Measure { count: 1 }, at: 1100, term_seconds: 300 })
           let b = propose_acquire(pool: p, generation: g, head: head, partition: w_partition(), actor: "srv2-harness" as NonEmptyStr,
-            request: SeatRequest { reference: "srv2-turn-3" as NonEmptyStr, amount: 1, at: 1100, term_seconds: 300 })
+            request: SeatRequest { reference: "srv2-turn-3" as NonEmptyStr, amount: Measure { count: 1 }, at: 1100, term_seconds: 300 })
           match a {
             SeatRefused { wire: _ } => false
             SeatProposed { event: ea, expected_head: xa } =>
@@ -109,7 +109,7 @@ test fn two_writers_from_one_head_produce_one_admission_one_stale_and_then_a_ful
                              PoolFolded { pool: p2, generation: g2 } =>
                                g2 == 2 && w_headroom(p: p2, at: 1100) == 0
                                  && (match propose_acquire(pool: p2, generation: g2, head: HeadAt { id: w_id(s: "e2") }, partition: w_partition(), actor: "srv2-harness" as NonEmptyStr,
-                                                            request: SeatRequest { reference: "srv2-turn-3" as NonEmptyStr, amount: 1, at: 1101, term_seconds: 300 }) {
+                                                            request: SeatRequest { reference: "srv2-turn-3" as NonEmptyStr, amount: Measure { count: 1 }, at: 1101, term_seconds: 300 }) {
                                       SeatRefused { wire: w } => w == "pool-full"
                                       SeatProposed { event: _, expected_head: _ } => false
                                     })
@@ -147,7 +147,7 @@ test fn the_fence_rejects_obsolete_and_foreign_grants_and_expiry_frees_only_unde
 // THE GRANT IS MINTED FROM THE ADMISSION, never from the proposal: its fence is the admitted event
 // and generation, and its deadline is the declared policy applied at the grant instant.
 test fn a_grant_carries_the_admitted_event_as_its_fence_and_the_declared_deadline() -> Bool {
-  let req = SeatRequest { reference: "srv1-turn-7" as NonEmptyStr, amount: 1, at: 1100, term_seconds: 300 }
+  let req = SeatRequest { reference: "srv1-turn-7" as NonEmptyStr, amount: Measure { count: 1 }, at: 1100, term_seconds: 300 }
   match grant_from_admission(request: req, admission: AppendAdmitted { new_head: w_id(s: "e2"), generation: 2 }, policy: w_policy()) {
     Absent => false
     Present { value: g } =>
@@ -212,7 +212,7 @@ test fn an_over_committed_pool_still_refuses_a_new_acquire() -> Bool {
     PoolFolded { pool: p, generation: g } =>
       match propose_acquire(pool: p, generation: g, head: HeadAt { id: w_id(s: "o4") }, partition: w_partition(),
                             actor: "srv1-harness" as NonEmptyStr,
-                            request: SeatRequest { reference: "seat-5" as NonEmptyStr, amount: 1, at: 1100, term_seconds: 300 }) {
+                            request: SeatRequest { reference: "seat-5" as NonEmptyStr, amount: Measure { count: 1 }, at: 1100, term_seconds: 300 }) {
         SeatProposed { event: _, expected_head: _ } => false
         SeatRefused { wire: w } => w == "pool-full"
       }
@@ -311,7 +311,7 @@ test fn a_lapsed_quiescence_required_partition_still_refuses_the_next_seat() -> 
     PoolFolded { pool: p, generation: g } =>
       match propose_acquire(pool: p, generation: g, head: HeadAt { id: w_id(s: "l2") }, partition: w_partition(),
                             actor: "srv1-harness" as NonEmptyStr,
-                            request: SeatRequest { reference: "seat-arriving" as NonEmptyStr, amount: 1, at: 2001, term_seconds: 300 }) {
+                            request: SeatRequest { reference: "seat-arriving" as NonEmptyStr, amount: Measure { count: 1 }, at: 2001, term_seconds: 300 }) {
         SeatProposed { event: _, expected_head: _ } => false
         SeatRefused { wire: w } => w == "pool-full"
       }
