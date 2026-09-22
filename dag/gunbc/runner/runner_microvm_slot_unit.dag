@@ -13,7 +13,7 @@ import extdeps.systemd.unit_file {
   systemd_instance_name_specifier,
   serialize_systemd_unit_file,
 }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.virtualization.firecracker { FirecrackerRelease, firecracker_release_aarch64 }
 import gunbc.cli_invoke { gunbc_run_invocation_words, invocation_words_bare }
 import gunbc.ci_release_bins { gunbc_release_bin_name }
@@ -120,6 +120,21 @@ fn microvm_controller_slice_unit_path() -> NonEmptyStr {
 
 data microvm_controller_slice_memory_max: ByteSize = byte_size(12884901888)
 
+// THE PLANNING BUDGET IS NARROWER THAN THE ENFORCED BOUND, AND THE TWO ARE DIFFERENT FACTS
+// (gunbc.host_budget_source effective_planning_budget: a request may narrow an observed allowance,
+// never widen it). The seed sizes its typed-module cache from the budget it plans against
+// (gunbc.typed_module_cache_capacity: budget / 3 MiB per entry, clamped to 100..4000 entries), so
+// a process planning against the whole slice fills the slice and is killed at it -- measured on
+// srv1 2026-09-22: 7.9G peak and OOM-killed at an 8 GiB bound, 11.9G peak and OOM-killed at 12 GiB,
+// the cache growing to whatever the bound allowed. So the unit hands the seed a planning request of
+// half the slice (6 GiB, 2048 cache entries), and the slice's memory.max stays the enforcement:
+// the kernel, not the request, is what bounds the process. This is the modeled use of that
+// variable; gunbc.host.memory_stall_refusal's receipts, which retire it as a BOUND on a runner with
+// no cgroup, do not apply to a request beneath an enforced cgroup limit.
+data microvm_controller_planning_budget: ByteSize = byte_size(6442450944)
+
+data gunbc_memory_budget_env_name: String = "GUNBC_MEMORY_BUDGET_BYTES"
+
 fn microvm_controller_slice_unit_file() -> SystemdUnitFile {
   SliceUnitFile {
     unit: [
@@ -225,6 +240,7 @@ fn microvm_slot_unit_file(release_dir: String, timeout_stop_sec: String) -> Syst
         WorkingDirectory { path: release_dir as NonEmptyStr },
         Environment { assignment: join([microvm_slot_env_name, "=", systemd_instance_name_specifier], "") as NonEmptyStr },
         Environment { assignment: join([microvm_release_dir_env_name, "=", release_dir], "") as NonEmptyStr },
+        Environment { assignment: join([gunbc_memory_budget_env_name, "=", to_string(byte_size_count(b: microvm_controller_planning_budget))], "") as NonEmptyStr },
         ExecStart { command: microvm_slot_unit_execstart(release_dir: release_dir) },
         Restart { policy: "no" as NonEmptyStr },
       ],
