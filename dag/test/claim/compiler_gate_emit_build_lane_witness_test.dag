@@ -15,7 +15,8 @@ import gunbc.compiler_gate_workflow {
   compiler_gate_lane_result_expression,
   compiler_gate_aggregate_step_env,
   compiler_gate_aggregate_script_lines,
-  compiler_gate_blocking_rows, compiler_gate_lane_rows
+  compiler_gate_blocking_rows, compiler_gate_lane_rows,
+  compiler_gate_same_repo_expression, compiler_gate_floor_job_condition
 }
 import gunbc.emitted_subject_build_gate {
   emitted_subject_build_rows,
@@ -33,7 +34,7 @@ import v2.std.algebra { length }
 //
 // THE INHABITANCE HALF IS THE LIVE WORKFLOW ITSELF (DESIGN section 3, the pairing obligation):
 // every claim below that supplies a job set or a needs list is paired with one that reads
-// `compiler_gate_aggregate_enrollment_holds` and `compiler_gate_emit_build_job` on the real value,
+// `compiler_gate_lane_standings_hold` and `compiler_gate_emit_build_job` on the real value,
 // so deleting the enrollment from the workflow reddens this file even though the parameterized
 // claims would still pass.
 
@@ -253,4 +254,19 @@ test fn the_unobserved_arm_refuses_every_state_but_success() -> Bool {
   string_contains(s: script, pattern: "\"$COMPILER\" != success")
     && (string_contains(s: script, pattern: "= cancelled") == false)
     && (string_contains(s: script, pattern: "= abandoned") == false)
+}
+
+// THE FORK PREDICATE IS ONE PREDICATE IN TWO TRANSPORTS (review 69999). The floor lane's job `if`
+// takes it bare; the gate's step env takes it interpolated. If those ever became two spellings,
+// the two failure modes are opposite and both silent: the fleet lane skips while the gate refuses
+// (a merge-queue stall on every fork PR), or the gate excuses a skip that was not fork-driven (an
+// unobserved head admitted). The claim asserts CONTAINMENT rather than equality, because the
+// transports legitimately differ by exactly the delimiters.
+test fn the_fork_predicate_has_one_authority_across_both_transports() -> Bool {
+  string_contains(
+    s: compiler_gate_same_repo_expression(),
+    pattern: compiler_gate_floor_job_condition()
+  )
+    && string_contains(s: compiler_gate_same_repo_expression(), pattern: "${{ ")
+    && string_contains(s: compiler_gate_floor_job_condition(), pattern: "github.repository")
 }

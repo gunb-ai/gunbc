@@ -94,7 +94,7 @@ import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_clause }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
 import extdeps.exec.command { shell_command_render }
-import extdeps.github.expressions { interpolate, ContextAccess, Needs }
+import extdeps.github.expressions { interpolate, ContextAccess, Needs, default_expression_spellings }
 import gunbc.emitted_subject_build_gate {
   EmittedSubjectBuildRow,
   emitted_subject_build_rows,
@@ -870,14 +870,37 @@ fn compiler_gate_aggregate_script_lines() -> List<String> {
   )
 }
 
-data compiler_gate_same_repo_expression: String = "${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}"
+// THE FORK PREDICATE HAS ONE AUTHORITY AND THIS IS NOT IT (review 69999). The first cut of the
+// derived gate promoted the inline `${{ ... }}` literal to a `data` row, which looked like
+// consolidation and was the opposite: a verbatim re-spelling of the predicate
+// `compiler_gate_floor_job_condition` already derives one screen up from
+// `gunbc.heal_workflow` `heal_same_repository_clause`, which this module already imports.
+//
+// THE COUPLING IS LOAD-BEARING, NOT COSMETIC, which is why a second spelling is a defect rather
+// than untidiness: the floor lane SKIPS exactly when that condition is false, and the gate's fork
+// carve-out EXCUSES that skip exactly when `$SAME_REPO` is false. Two sources for one predicate
+// and the two failure modes are opposite and both silent -- the fleet lane skips while the gate
+// refuses (a merge-queue stall on every fork PR), or the gate excuses a skip that was not
+// fork-driven (an unobserved head admitted). One authority makes both unwritable.
+//
+// ONLY THE INTERPOLATION DELIMITERS ARE ADDED HERE, and they are read from the expression
+// writer's own spellings rather than typed, for the same reason the lane results are: a job `if`
+// takes a bare expression and a step `env` value takes an interpolated one, which is a difference
+// of TRANSPORT, not of predicate.
+fn compiler_gate_same_repo_expression() -> String {
+  join([
+    default_expression_spellings.interp_open,
+    compiler_gate_floor_job_condition(),
+    default_expression_spellings.interp_close
+  ], "")
+}
 
 fn compiler_gate_aggregate_step_env() -> List<YamlKeyValue> {
   list_append(
     left: list_map(xs: compiler_gate_blocking_rows(), f: fn(row) {
       kv(key: row.var_name, value: yaml_string(s: compiler_gate_lane_result_expression(job_id: row.job_id)))
     }),
-    right: [kv(key: "SAME_REPO", value: yaml_string(s: compiler_gate_same_repo_expression))]
+    right: [kv(key: "SAME_REPO", value: yaml_string(s: compiler_gate_same_repo_expression()))]
   )
 }
 
