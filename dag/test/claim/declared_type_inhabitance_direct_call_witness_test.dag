@@ -542,3 +542,40 @@ data smuggled_argv_at_builder_record_source: String = "module probe_inhabit_smug
 test fn w_a_smuggled_argv_list_at_a_builder_minted_record_is_refused() -> Bool {
   violation_count(source: smuggled_argv_at_builder_record_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
+
+// THE LIVE SPECIMEN, PRESERVED AS AN AUTHORED FIXTURE -- and the reason it is authored is itself
+// the point. This relation's whole-tree census found exactly ONE new refusal in the corpus:
+// extdeps.auth.jws handed a raw List<UInt8> to std.encoding base64_encode, whose formal is the
+// sealed carrier QualifiedOctets. std/integer.dag had documented that exact hole as OPEN --
+// "handing a raw List where the carrier is declared still type-checks ... dies at RUNTIME with
+// TypeError: cannot access field 'members' on List ... a loud untyped abort is rung 1, not rung 3"
+// -- so this relation is what climbs it, and that live site is the receipt.
+//
+// THAT RECEIPT IS BEING REPAIRED, which is why it may not be this wall's only evidence. Once the
+// production site is fixed the corpus supplies NO natural red for this pair, and a wall whose
+// discriminating red has been repaired out of existence is reported at a rung nothing executes --
+// the DESIGN 4b(1) inflation, arriving from the direction where the corpus got healthier rather
+// than where the check got weaker. 4b's top-rung question settles it: ask whether the RED is
+// AUTHORABLE, and a state unrepresentable in the ACCEPTED corpus is still perfectly representable
+// as SOURCE HANDED TO THE COMPILER BY A FIXTURE -- a compiler is precisely a thing whose
+// regression probes are invalid programs. So the specimen moves here and stays here, per 4b(4):
+// a climb deletes the redundant production handling, never the evidence.
+//
+// This fixture uses the REAL std.integer / std.encoding declarations rather than a local imitation
+// of them, so it discriminates over the actual carrier whose seam was open, not over a re-coined
+// shape that could drift away from it.
+data raw_octets_at_qualified_octets_source: String = "module probe_inhabit_raw_octets\nimport std.types { Int, String, List }\nimport std.integer { UInt8 }\nimport std.encoding { base64_encode, UrlSafe }\nfn some_octets() -> List<UInt8> { [] }\nfn probe() -> Int {\n  let encoded: String = base64_encode(octets: some_octets(), variant: UrlSafe)\n  1\n}\n"
+
+test fn w_a_raw_octet_list_at_the_qualified_octets_carrier_is_refused() -> Bool {
+  violation_count(source: raw_octets_at_qualified_octets_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE POSITIVE CONTROL THE ARM ABOVE NEEDS, over the SAME carrier and the SAME callee. A relation
+// that refused every argument to base64_encode would pass the red above while making the encoder
+// uncallable. The admitted route is the one the other nine callers in the corpus already take:
+// mint through the uint8_octets_of_ints fold and pass the sealed value.
+data qualified_octets_at_qualified_octets_source: String = "module probe_inhabit_sealed_octets\nimport std.types { Int, String, List }\nimport std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }\nimport std.encoding { base64_encode, UrlSafe }\nfn probe() -> Int {\n  match uint8_octets_of_ints(values: [1, 2, 3]) {\n    QualifiedOctetsRefused { observed: _ } => 0\n    QualifiedOctetsReady { value: sealed } => {\n      let encoded: String = base64_encode(octets: sealed, variant: UrlSafe)\n      1\n    }\n  }\n}\n"
+
+test fn w_the_sealed_carrier_at_its_own_formal_is_admitted() -> Bool {
+  violation_count(source: qualified_octets_at_qualified_octets_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
