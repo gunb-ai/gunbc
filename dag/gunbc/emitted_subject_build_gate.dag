@@ -100,3 +100,71 @@ fn emitted_subject_build_command(row: EmittedSubjectBuildRow) -> ArgvCommand {
 fn emitted_subject_build_step_name(row: EmittedSubjectBuildRow) -> String {
   join(["emit and build ", emitted_subject_build_label_text(row: row)], "")
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE LANE'S STANDING, AND WHY IT IS A TYPED ROW RATHER THAN A SENTENCE IN A STEP
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// FROM THE MOMENT THIS LANE LANDED, EVERY PULL REQUEST IN THE REPOSITORY RUNS IT -- and while main
+// cannot self-host, every one of them goes RED for a defect the author did not introduce and
+// cannot fix. That is a standing cost this lane imposes on every other lane, and it is paid by
+// whoever clicks the red X expecting to find their own mistake.
+//
+// The manager made exactly that mistake on gunbc#12043 with ONE instance in front of him: he read
+// `mergeStateStatus: UNSTABLE`, took the red as a blocker, and dropped the PR from the merge card.
+// It is now offered to every lane at once.
+//
+// WHY A TYPED STANDING AND NOT PROSE IN THE STEP. A note saying "this red is expected" is TRUE
+// only while it is, and a lane still printing it after main self-hosts would be a lie that nobody
+// owns -- the inert-annotation failure, on the one surface a stranger actually reads. The standing
+// is a row, so retiring it is a visible edit with a name, and `EmitBuildExpectedGreen` makes the
+// reassurance UNPRINTABLE the moment it stops being true.
+//
+// THE DISCRIMINATOR IS THE HALF THAT MATTERS, and the reassurance alone would be worse than
+// nothing. A standing red teaches every lane to ignore this lane, which is how a detector dies
+// without anyone deciding to kill it. So the row carries the KNOWN SIGNATURE and the message tells
+// a reader what would be a genuinely new finding: a different error code, or a different emitted
+// file. Matching red -- noise, do nothing. Different red -- a second defect, report it.
+type NativeEmitBuildStanding
+  = EmitBuildExpectedGreen
+  | EmitBuildExpectedRed {
+      known_signature: String
+      owned_by: String
+      retires_when: String
+    }
+
+// THE ONE ROW TO EDIT WHEN MAIN SELF-HOSTS AGAIN. Flipping it to `EmitBuildExpectedGreen` deletes
+// the notice from every future run; leaving it stale keeps printing a reassurance for a red that
+// is no longer expected, which is why the type has only two arms and no "probably fine" middle.
+data emit_build_standing: NativeEmitBuildStanding = EmitBuildExpectedRed {
+  known_signature: "E0573 PointerWidth at src/std_integer.rs",
+  owned_by: "gunbc#12070",
+  retires_when: "a head of main on which `gunbc test //gunbc/instruments:self-host` and `gunbc test //gunbc/instruments:v2-native-cli` both exit zero"
+}
+
+// THE LINES A LANE READS WHEN IT CLICKS THE RED X. Rendered from the row above, so the reassurance
+// and the discriminator cannot drift apart from the standing they describe.
+fn emit_build_standing_notice() -> List<String> {
+  match emit_build_standing {
+    EmitBuildExpectedGreen => [
+      "emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:",
+      "the required context is `witnesses`, and this job is not an input to it.",
+      "No standing break is declared, so a red here is a REAL FINDING -- most likely yours.",
+    ]
+    EmitBuildExpectedRed { known_signature: sig, owned_by: owner, retires_when: _ } => [
+      "emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:",
+      "the required context is `witnesses`, and this job is not an input to it.",
+      "",
+      join(["A RED IS CURRENTLY EXPECTED. main cannot self-host; the break is owned by ", owner], ""),
+      join(["and its signature is: ", sig], ""),
+      "",
+      "WHAT TO DO: if the failure above matches that signature, this is not your defect and",
+      "there is nothing for you to fix. Do not patch around it in your branch.",
+      "",
+      "WHAT IS A REAL FINDING: a DIFFERENT error code, or a different emitted file. That is a",
+      "second defect this lane just caught, and it should be reported rather than assumed to be",
+      "the known one -- every break at this step shares cause=EmittedCompilerBuildFailed, so the",
+      "cause line does not discriminate and the ERROR CODE is what you compare.",
+    ]
+  }
+}

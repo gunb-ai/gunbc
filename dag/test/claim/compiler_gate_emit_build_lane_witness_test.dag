@@ -16,9 +16,12 @@ import gunbc.compiler_gate_workflow {
   compiler_gate_aggregate_step_env,
   compiler_gate_aggregate_script_lines,
   compiler_gate_blocking_rows, compiler_gate_lane_rows,
-  compiler_gate_same_repo_expression, compiler_gate_floor_job_condition
+  compiler_gate_same_repo_expression, compiler_gate_floor_job_condition,
+  compiler_gate_emit_build_notice_step
 }
 import gunbc.emitted_subject_build_gate {
+  NativeEmitBuildStanding, EmitBuildExpectedGreen, EmitBuildExpectedRed,
+  emit_build_standing, emit_build_standing_notice,
   emitted_subject_build_rows,
   emitted_subject_build_label_text,
   emitted_subject_build_command
@@ -173,8 +176,11 @@ test fn each_subject_is_invoked_through_gunbc_test() -> Bool {
 // steps. A lane that grew a subject without growing a step would run one compilation and report on
 // two.
 test fn the_lane_binds_one_step_per_subject_above_the_prelude() -> Bool {
+  // Five prelude steps, one per subject, and one standing-notice step at the end. The `+ 1` was
+  // added by the change that introduced the notice, and this claim FAILED until it was -- which
+  // is the count doing its job rather than a number kept in step by hand.
   length(xs: compiler_gate_emit_build_bound_steps())
-    == 5 + length(xs: emitted_subject_build_rows())
+    == 5 + length(xs: emitted_subject_build_rows()) + 1
 }
 
 // THE CARGO CONSUMER HAS A PROVIDER ORDERED BEFORE IT. This is the same closure check every other
@@ -269,4 +275,64 @@ test fn the_fork_predicate_has_one_authority_across_both_transports() -> Bool {
   )
     && string_contains(s: compiler_gate_same_repo_expression(), pattern: "${{ ")
     && string_contains(s: compiler_gate_floor_job_condition(), pattern: "github.repository")
+}
+
+// ═══ THE STANDING NOTICE: WHAT A STRANGER READS WHEN THEY CLICK THE RED X ═══
+//
+// From the moment this lane landed, every PR in the repository runs it, and while main cannot
+// self-host every one goes red for a defect its author did not introduce. The manager made
+// exactly that mistake on this PR's own predecessor with ONE instance in front of him.
+
+// THE REASSURANCE ALONE WOULD BE WORSE THAN NOTHING: a standing red teaches every lane to ignore
+// this lane, which is how a detector dies without anyone deciding to kill it. So the notice must
+// carry the DISCRIMINATOR -- what would be a genuinely new finding -- and not only the comfort.
+test fn the_notice_carries_the_discriminator_and_not_only_the_reassurance() -> Bool {
+  let text = join(emit_build_standing_notice(), "\n")
+  string_contains(s: text, pattern: "does NOT block your merge")
+    && string_contains(s: text, pattern: "E0573 PointerWidth at src/std_integer.rs")
+    && string_contains(s: text, pattern: "gunbc#12070")
+    && string_contains(s: text, pattern: "DIFFERENT error code")
+}
+
+// AND IT TELLS A READER WHY THE CAUSE LINE CANNOT BE THE DISCRIMINATOR, because that is the trap:
+// every break at this step shares `cause=EmittedCompilerBuildFailed`, so a reader comparing cause
+// lines concludes "known break" for a defect that is new.
+test fn the_notice_says_the_cause_line_does_not_discriminate() -> Bool {
+  string_contains(s: join(emit_build_standing_notice(), "\n"), pattern: "cause=EmittedCompilerBuildFailed")
+}
+
+// THE REASSURANCE IS UNPRINTABLE ONCE THE STANDING FLIPS, which is why the standing is a typed row
+// and not prose in the step. A notice still saying "a red is currently expected" after main
+// self-hosts is an inert annotation on the one surface a stranger actually reads.
+test fn w_RED_the_green_standing_cannot_print_the_expected_red_reassurance() -> Bool {
+  match emit_build_standing {
+    EmitBuildExpectedRed { known_signature: _, owned_by: _, retires_when: t } =>
+      // The live standing names a CAPABILITY as its retirement condition, not an artifact.
+      string_contains(s: t, pattern: "both exit zero")
+    EmitBuildExpectedGreen => false
+  }
+}
+
+// THE NOTICE RUNS ONLY ON FAILURE. On every passing PR in the repository it must print nothing --
+// a reassurance with no subject is noise charged to every other lane.
+test fn the_notice_step_runs_only_on_failure() -> Bool {
+  match compiler_gate_emit_build_notice_step() {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c {
+        Present { value: cond } => cond == "failure()"
+        Absent => false
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+// AND IT IS THE LAST STEP, so it appears directly beneath the diagnostic a reader is trying to
+// interpret rather than scrolled away above it. Asserted by POSITION rather than by count, because
+// the count is already the claim above and a second copy of it would establish nothing new.
+test fn the_notice_is_the_last_step_in_the_lane() -> Bool {
+  fold(
+    compiler_gate_emit_build_bound_steps(),
+    init: "",
+    f: (acc, b) => b.step_name
+  ) == "Why this lane is red, and what would be a real finding"
 }
