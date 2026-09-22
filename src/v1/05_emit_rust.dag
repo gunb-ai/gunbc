@@ -6626,8 +6626,10 @@ fn import_name_resolves_to_host_realized_kernel_scalar(name: String, module_env:
 // Measured 2026-09-22: `import std.integer { UInt8 }` lost its line whenever v2.std.integer (whose
 // StandardIntegerType carries a `UInt8` variant) reached the closure through a module the consumer
 // did not import; a second ALIAS declarer of the spelling kept the line and a second VARIANT declarer
-// dropped it (test.claim.forked_spelling_mechanism_probe_test), so the discriminating fact is the
-// variant, not the fork (gunbc.recurring_failure_mode an_authored_import_emits_no_use_line_when_its_spelling_is_forked).
+// dropped it (test.claim.authored_import_variant_spelling_witness_test
+// v_same_spelled_variant_keeps_the_use_line, against v_second_alias_declarer_keeps_the_use_line),
+// so the discriminating fact is the variant and not the fork (gunbc.recurring_failure_mode
+// an_authored_import_emits_no_use_line_when_its_spelling_is_forked).
 //
 // So the question is put to the module's own binding: the name is the provider's declaration exactly
 // when the binding the resolver established for it IS the type declaration of that spelling in the
