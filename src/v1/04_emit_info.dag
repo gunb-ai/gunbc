@@ -77,8 +77,17 @@ fn collect_type_node_import_surface_occurrences(n: Node, applied_argument: Bool,
   let is_tv = if peeled.inferred != none { is_type_variable(inferred: peeled.inferred.value) } else { false }
   let own = if name != "" && name != "Dynamic" && !is_tv { [TypeSurfaceOccurrence { name: name, applied_argument: applied_argument }] } else { [] }
   let children_are_applied_arguments = name != "" && peeled.connective == NoConnective && peeled.children |> count > 0
+  // child_type_node swaps a child for its RESOLVED type, and resolution of a nested application
+  // (the MachineWidth<PointerWidth> inside Compose<Int, MachineWidth<PointerWidth>>) keeps the head
+  // and drops the authored argument. The authored child is therefore walked as well: without it the
+  // depth-two argument is never an applied occurrence, the use-line planner does not classify it as a
+  // marker, and the import binds the unit variant's owner while the body renders the marker (E0573).
   let child_names = peeled.children |> flat_map(ch =>
-    collect_type_node_import_surface_occurrences(n: child_type_node(ch: ch), applied_argument: children_are_applied_arguments, source_indices: source_indices)
+    let resolved_names = collect_type_node_import_surface_occurrences(n: child_type_node(ch: ch), applied_argument: children_are_applied_arguments, source_indices: source_indices)
+    let authored_names = if ch.inferred != none {
+      collect_type_node_import_surface_occurrences(n: ch, applied_argument: children_are_applied_arguments, source_indices: source_indices)
+    } else { [] }
+    concat(resolved_names, authored_names)
   )
   let inferred_names = match peeled.inferred {
     Present { value: Resolved { node: rt } } => collect_type_node_import_surface_occurrences(n: rt, applied_argument: applied_argument, source_indices: source_indices)

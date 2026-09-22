@@ -13547,6 +13547,18 @@ pub fn emit_specific_import_block(
             }
             __result
         }));
+        if std::env::var("SFX_DBG").is_ok() && deduped_names.iter().any(|n| n == "PointerWidth") {
+            eprintln!(
+                "SFXDBG mod={} names={:?} typepos={:?} env={} phantom={:?}",
+                mod_name,
+                deduped_names,
+                type_position_names,
+                module_env.is_some(),
+                module_env
+                    .clone()
+                    .map(|e| is_phantom_unit_variant_type_arg(e, "PointerWidth".to_string()))
+            );
+        }
         let marker_type_names = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
             let mut __result = Vec::new();
             for n in deduped_names.iter().cloned() {

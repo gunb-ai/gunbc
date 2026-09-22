@@ -150,11 +150,23 @@ pub fn collect_type_node_import_surface_occurrences(
             let mut __result = Vec::new();
             for ch in peeled.children.clone().iter().cloned() {
                 __result.extend(
-                    (*collect_type_node_import_surface_occurrences(
-                        crate::v1_compiler_infer_types::child_type_node(ch.clone()),
-                        children_are_applied_arguments.clone(),
-                        source_indices.clone(),
-                    ))
+                    (*{
+                        let resolved_names = collect_type_node_import_surface_occurrences(
+                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                            children_are_applied_arguments.clone(),
+                            source_indices.clone(),
+                        );
+                        let authored_names = if (ch.inferred.clone() != std::option::Option::None) {
+                            collect_type_node_import_surface_occurrences(
+                                ch.clone(),
+                                children_are_applied_arguments.clone(),
+                                source_indices.clone(),
+                            )
+                        } else {
+                            Rc::new(vec![])
+                        };
+                        v1_rt::concat(resolved_names.clone(), authored_names.clone())
+                    })
                     .iter()
                     .cloned(),
                 );
