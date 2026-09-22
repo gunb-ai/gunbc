@@ -1,0 +1,27 @@
+module gunbc.ci_diff_policy
+
+import std.types { String }
+import gunbc.repo_identity { gunbc_merge_target_ref }
+
+// THE CI DIFF POLICY IS ITS OWN MODULE BECAUSE ITS CONSUMERS NEED IT AND NOTHING ELSE. Closure is
+// module-grain: a module that reaches one field of gunbc.ci_spec gunbc_ci_spec reaches all of
+// gunbc.ci_spec, and through it the gate roster, the deploy stages and everything they import.
+// The floor's diff observer (v2.workflow.floor_diff_observe) asks only which base, which head and
+// which range form -- and, reaching it through the CI spec, resolved and typechecked a 1,548-module
+// closure the process resolve store then held for the whole floor beside the floor's own prepared
+// subject (the [floor-heap] census on required-floor job 106974738875). The policy is one fact with
+// one home here; gunbc.ci_spec carries it by reference in CiSpec.diff_policy, never a second copy.
+
+type DiffMode = DiffMergeBase | DiffTwoDot
+
+type DiffPolicy {
+  base: String
+  head: String
+  mode: DiffMode
+}
+
+data gunbc_ci_diff_policy: DiffPolicy = {
+  base: gunbc_merge_target_ref as String,
+  head: "HEAD",
+  mode: DiffMergeBase
+}
