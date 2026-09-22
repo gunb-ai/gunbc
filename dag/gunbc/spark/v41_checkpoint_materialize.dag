@@ -39,7 +39,7 @@ import gunbc.spark.model_snapshot_materialize {
   SparkTransferSupervision, SupervisedExitClean, SupervisedExitFailed, SupervisedStillRunning, SupervisedTransferUnitAbsent, SupervisionLost,
   spark_transfer_supervise,
 }
-import gunbc.spark.model_snapshot_acquisition { spark_hub_cache_root }
+import gunbc.spark.model_snapshot_acquisition { spark_hub_cache_root, spark_models_root }
 import gunbc.spark.v41_identity_input { V41EngramResidencyPartition }
 import gunbc.spark.v41_engram_row_store {
   V41PublishedSpan, V41PublishedSpanPlan, V41PublishedSpansPlanned, V41PublishedSpansUnplannable,
@@ -96,10 +96,8 @@ import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, obse
 
 // THE DIRECTORY IS DERIVED FROM THE REPO AND THE PIN, so a revision bump lands in a new directory rather
 // than on top of the old one.
-data v41_checkpoint_models_root: NonEmptyStr = "/home/briansrls/models" as NonEmptyStr
-
 fn v41_checkpoint_repo_directory() -> String {
-  join([v41_checkpoint_models_root as String, "/", hub_repo_cache_directory_name(repo: deepseek_v4_1_flash_hub_repo) as String], "")
+  join([spark_models_root as String, "/", hub_repo_cache_directory_name(repo: deepseek_v4_1_flash_hub_repo) as String], "")
 }
 
 data v41_checkpoint_directory: NonEmptyStr = join([v41_checkpoint_repo_directory(), "/", deepseek_v4_1_flash_revision as String], "") as NonEmptyStr
