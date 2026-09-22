@@ -49,8 +49,23 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // the shape does not carry the distinguishing fact at all; what the classifier needs is what the
 // NAME DENOTES, which v2.compiler.symbol_index_fill knows at insert time. That is this row's
 // restoration trigger and it is filed as its own subject.
+// STILL STANDING AFTER PKG16 (gunbc#12069), AND WHY THAT IS NOT THE TRIGGER BEING IGNORED. Pkg16
+// replaced the shape classifier this row named: v2.compiler.resolve
+// resolve_pattern_atom_names_constructor now asks v2.std.symbol_index
+// symbol_index_denotes_declared_payload, a fact v2.compiler.symbol_index_fill writes at insert
+// time, and the shape predicates are deleted. But the trigger ends "The check is the specimen", and
+// the specimen has not been observed: running it on the native route needs the emitted compiler,
+// and on #12033's head that crate fails to build (a missing `UInt8` import in base16_decode_lower,
+// gunbc#12056's defect). So the trigger is written and unchecked, and retiring on it would be
+// retiring on the author's reading. Two parts of this row are also under measurement and are NOT
+// yet corrected here, because their correction waits on the same specimen run: the ROUTE (a module
+// container is never a symbol-index entry, since the fill descends module spine segments without
+// inserting a path; at fixture size the name reaches the classifier through the global-bare lookup
+// instead) and the HARM (at fixture size that route REFUSES resolve_reason_unbound_symbol, loudly,
+// rather than accepting a wrong value). Receipts: gunbc#12069's census, and
+// v2.test.claim.match_arm_binder_frame mab_binder_spelling_an_ambiguous_global_name_refuses_unbound.
 data variant_fields_unlowered_on_the_native_route_population: List<String> = [
-  "v2.compiler.resolve resolve_pattern_node_is_constructor -- a match-arm binder spelling a name the lexical chain resolves to a MODULE container is classified a constructor by shape, gets no frame local, and resolves to the module; specimen src/v2/std/symbol_index.dag:156, `Present { value: node }` in v2.std.symbol_index, where ascent reaches module v2.std.node",
+  "v2.compiler.resolve resolve_pattern_atom_names_constructor (the shape classifier it once called, resolve_pattern_node_is_constructor, is deleted by gunbc#12069) -- a match-arm binder spelling a name the lexical chain resolves to a MODULE container is classified a constructor by shape, gets no frame local, and resolves to the module; specimen src/v2/std/symbol_index.dag:156, `Present { value: node }` in v2.std.symbol_index, where ascent reaches module v2.std.node",
 ]
 
 data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
@@ -65,6 +80,6 @@ data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
       replacement: "a v2 stage lowers variant fields into declared field identities (named and positional \"0\")"
     },
     population: variant_fields_unlowered_on_the_native_route_population,
-    restoration_trigger: "resolve_pattern_node_is_constructor decides binder-versus-constructor from the DECLARATION KIND the symbol index recorded at insert time -- v2.compiler.symbol_index_fill distinguishes a containment edge from a variant payload from a data row -- rather than from the node's shape, so that a binder spelling a module, data or alias name binds the arm. The check is the specimen: `Present { value: node }` in v2.std.symbol_index binds the arm rather than resolving to module v2.std.node. A fourth shape predicate does NOT satisfy this: three have been tried and each admitted a wider set than intended, which is the evidence that shape is the wrong carrier."
+    restoration_trigger: "v2.compiler.resolve resolve_pattern_atom_names_constructor decides binder-versus-constructor from the DECLARATION KIND the symbol index recorded at insert time -- v2.compiler.symbol_index_fill distinguishes a containment edge from a variant payload from a data row -- rather than from the node's shape, so that a binder spelling a module, data or alias name binds the arm. The check is the specimen: `Present { value: node }` in v2.std.symbol_index binds the arm rather than resolving to module v2.std.node. A fourth shape predicate does NOT satisfy this: three have been tried and each admitted a wider set than intended, which is the evidence that shape is the wrong carrier."
   }
 }
