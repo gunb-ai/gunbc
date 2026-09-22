@@ -14,7 +14,7 @@ import extdeps.systemd.unit_file {
   serialize_systemd_unit_file,
 }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_demand_peak }
+import gunbc.runner_slot_allocation { microvm_controller_slice_memory_max_bytes }
 import extdeps.virtualization.firecracker { FirecrackerRelease, firecracker_release_aarch64 }
 import gunbc.cli_invoke { gunbc_run_invocation_words, invocation_words_bare }
 import gunbc.ci_release_bins { gunbc_release_bin_name }
@@ -115,18 +115,23 @@ data microvm_controller_firecracker_release: FirecrackerRelease = firecracker_re
 // killed at the boundary on its own lifecycle -- the recovery arm at the next admission, loud and
 // attributed -- never swapped mid-teardown. Re-derive from that row and those journal lines, not
 // from this sentence.
+//
+// THIS BOUND IS SIZED TO A SYMPTOM, AND THE SYMPTOM HAS AN OWNER. The 12.7G the controller holds
+// is the seed's retained preparation set -- the same set loyal-ibex-544 attributed on the floor
+// (gunbc.floor_demand: preparation reaches ~23 GiB and never releases it; the fold adds ~5%), whose
+// reduction lane is named by floor_peak_attribution_consumer_frontier there. When that reduction
+// lands, this row's figure falls with the demand row it reads, and the width charge in
+// gunbc.runner_slot_allocation gunbc_microvm_shakedown_slot_charge_bytes falls with it; nothing
+// here should be tuned toward the symptom meanwhile.
 data microvm_controller_slice_unit_name: NonEmptyStr = "gunbc-microvm-controller.slice" as NonEmptyStr
 
 fn microvm_controller_slice_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", microvm_controller_slice_unit_name as String], "") as NonEmptyStr
 }
 
-data microvm_controller_slice_cache_headroom: ByteSize = byte_size(8589934592)
-
-fn microvm_controller_slice_memory_max_bytes() -> Int {
-  byte_size_count(b: whole_corpus_compile_public_root_demand_peak()) + byte_size_count(b: microvm_controller_slice_cache_headroom)
-}
-
+// THE FIGURE ITSELF LIVES IN gunbc.runner_slot_allocation (microvm_controller_slice_memory_max_bytes)
+// beside the shakedown slot row, because the width that charges it is decided there; this module
+// renders it into the slice unit.
 fn microvm_controller_slice_memory_max() -> ByteSize {
   byte_size(microvm_controller_slice_memory_max_bytes())
 }

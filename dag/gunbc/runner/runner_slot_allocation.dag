@@ -9,6 +9,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import extdeps.github.actions { runner_labels_equivalent }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
+import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_demand_peak }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
@@ -553,18 +554,39 @@ fn host_memory_admitted_width(host: HostIdentity) -> Int {
   )
 }
 
-// THE WIDTH COST OF THE 28 GiB SHAKEDOWN SLOT IS DERIVED HERE AND NOWHERE ELSE. The host that
-// carries it spends its envelope on one 28 GiB slot first and divides the remainder by the fleet
-// row, so the cost is whatever the quotient loses -- one fleet slot when the remainder's slack was
-// under two GiB, nothing otherwise -- rather than a number written into the declaration. An envelope
-// that cannot hold the shakedown slot at all admits zero, which gunbc.ci_runner_placement refuses by
-// name exactly as it refuses an unestablished host.
+// THE SHAKEDOWN SLOT'S CHARGE IS THE ATTEMPT'S CEILING PLUS ITS CONTROLLER'S OWN SLICE. The
+// controller runs beside the cell, not inside it (gunbc.runner_microvm_slot_unit
+// microvm_controller_slice_memory_max), and that is host memory charged PER SLOT all the same: a
+// shakedown slot costs ~52 GiB of admitted width today, not 28, and a width that counted only the
+// cell would be wrong by the controller (parent ruling 2026-09-22). The controller's figure is the
+// symptom of the seed's retained preparation set and falls with loyal-ibex-544's reduction; this
+// sum reads the row, so it falls with it.
+// THE CONTROLLER'S OWN CEILING: the measured whole-corpus demand row (the seed's resolve of the
+// controller's closure is the same front half that row measured) plus headroom for the typed-module
+// cache the seed sizes against its budget. gunbc.runner_microvm_slot_unit renders it into
+// gunbc-microvm-controller.slice and carries the srv1 readings behind it.
+data microvm_controller_slice_cache_headroom_bytes: Int = 8589934592
+
+fn microvm_controller_slice_memory_max_bytes() -> Int {
+  byte_size_count(b: whole_corpus_compile_public_root_demand_peak()) + microvm_controller_slice_cache_headroom_bytes
+}
+
+fn gunbc_microvm_shakedown_slot_charge_bytes() -> Int {
+  gunbc_microvm_shakedown_slot_memory_max_bytes + microvm_controller_slice_memory_max_bytes()
+}
+
+// THE WIDTH COST OF THE SHAKEDOWN SLOT IS DERIVED HERE AND NOWHERE ELSE. The host that carries it
+// spends its envelope on the slot's whole charge first -- the 28 GiB cell plus the controller's
+// slice -- and divides the remainder by the fleet row, so the cost is whatever the quotient loses
+// rather than a number written into the declaration. An envelope that cannot hold the charge at
+// all admits zero, which gunbc.ci_runner_placement refuses by name exactly as it refuses an
+// unestablished host.
 fn memory_admitted_width_of_envelope(envelope_bytes: Int, carries_shakedown_slot: Bool) -> Int {
   if carries_shakedown_slot {
-    if envelope_bytes < gunbc_microvm_shakedown_slot_memory_max_bytes {
+    if envelope_bytes < gunbc_microvm_shakedown_slot_charge_bytes() {
       0
     } else {
-      1 + (envelope_bytes - gunbc_microvm_shakedown_slot_memory_max_bytes) / gunbc_runner_slot_memory_max_bytes
+      1 + (envelope_bytes - gunbc_microvm_shakedown_slot_charge_bytes()) / gunbc_runner_slot_memory_max_bytes
     }
   } else {
     envelope_bytes / gunbc_runner_slot_memory_max_bytes
