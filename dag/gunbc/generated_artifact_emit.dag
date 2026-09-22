@@ -264,6 +264,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     Stage0LinkedPartitionCratesArtifact => true
     SeedRetentionFrontierGeneratedRsArtifact => true
     EvaluationBudgetConsequenceGeneratedRsArtifact => true
+    ReleaseLocusSeedConstantsGeneratedRsArtifact => true
     V1InterpreterDispatchGeneratedRsArtifact => match generated {
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
