@@ -418,10 +418,19 @@ fn start_with_invocation(unit: NonEmptyStr, invocation: String, sleep_for: Strin
 // for a reason that was not about it: `systemctl stop` on a retained unit that has exited already
 // unloads it, so the reset that follows reports "not loaded" -- the state the reset was for, reached
 // by the stop. What this needs is that the unit is gone, and Stop establishes that.
+// THE GUARD IS AN `if` AND NOT THE RIGHT OPERAND OF `&&`, because the guard is CONTROL FLOW: the
+// stop must not run when the reading came back empty. `&&` does not express that -- whether its
+// right operand is demanded is undeclared, and the interpreter demands it (gunbc.recurring_failure_mode
+// realization_arms_diverge_on_whether_the_program_refuses), so the earlier spelling stopped the unit
+// on exactly the reading it was written to skip. An `if` means the same thing in both realizations.
 fn stop_incarnation_unit(after: String) -> Bool
   uses net: Network
 {
-  after != "" && systemd.Systemctl.Stop(unit: incarnation_unit()).success
+  if after != "" {
+    systemd.Systemctl.Stop(unit: incarnation_unit()).success
+  } else {
+    false
+  }
 }
 
 // RED 6 -- A JOB THAT EXITS ZERO CAN LEAVE THE CELL'S SUBTREE POPULATED.
