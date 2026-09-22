@@ -3,15 +3,14 @@ module test.claim.native_route_progress_guard_witness_test
 import v2.std.algebra { any, is_empty, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.optional { Optional, optional_present, optional_absent }
+import v2.std.optional { optional_present, optional_absent }
 import v2.compiler.native_test_vocabulary {
   NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval
 }
 import gunbc.witness_v2_native_route {
   NativeRouteTestIdentity,
   NativeAgreementPass, NativeAgreementExpectedRed,
-  NativeExclusion, NativeDivergence,
-  CompilerFrontierAttributed, NativePassedExpectedRed,
+  NativeExclusion, CompilerFrontierAttributed,
   NativeRouteEmittedBuild
 }
 import gunbc.native_route_progress_guard {
@@ -41,10 +40,6 @@ import gunbc.native_route_progress_guard {
 // own; this module's boundary is the ORDER and the JOIN, and re-executing the route to establish
 // them would be the layer reach that section names. What this file must not do -- and does not --
 // is assert the guard is green on the live corpus, because there is no live baseline yet.
-
-fn id(module: String, declaration: String) -> NativeRouteTestIdentity {
-  NativeRouteTestIdentity { module: module, declaration: declaration }
-}
 
 data subject_a: NativeRouteTestIdentity = NativeRouteTestIdentity { module: "v2.test.alpha", declaration: "holds" }
 data subject_b: NativeRouteTestIdentity = NativeRouteTestIdentity { module: "v2.test.beta", declaration: "holds" }

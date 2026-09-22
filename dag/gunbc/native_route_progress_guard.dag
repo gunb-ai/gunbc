@@ -1,7 +1,7 @@
 module gunbc.native_route_progress_guard
 
-import v2.std.algebra { any, count_where, fold_list, is_empty, length, list_append, list_map }
-import v2.std.collection { List }
+import v2.std.algebra { any, count_where, fold_list, is_empty, length, list_append, list_flat_map, list_map }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
@@ -350,70 +350,86 @@ fn native_progress_observed_rows(readings: List<NativeProgressObservedReading>) 
   list_map(xs: readings, f: fn(r) { r.row })
 }
 
+// A CONCATENATION, NOT AN ACCUMULATOR. `list_append(left: acc, right: ...)` inside a fold pays a
+// full O(n) right-fold per step, which is the measured quadratic trap `v2.std.algebra`
+// `list_snoc_item` was introduced for; `list_flat_map` removes the accumulator rather than making
+// its append cheaper, which is the repair one level up.
 fn native_progress_reading_findings(readings: List<NativeProgressObservedReading>) -> List<NativeProgressFinding> {
-  fold_list(xs: readings, empty: [], cons: fn(acc, r) { list_append(left: acc, right: r.findings) })
+  list_flat_map(xs: readings, f: fn(r) { r.findings })
 }
 
-fn native_progress_observed_if_matches(
-  identity: NativeRouteTestIdentity,
-  row: NativeProgressObservedRow
-) -> Optional<NativeRouteAttainment> {
-  if native_route_identity_eq(a: row.identity, b: identity) {
-    optional_present(value: row.attained)
-  } else {
-    optional_absent()
-  }
+// THE JOIN IS KEYED, NOT SCANNED (review 69968).
+//
+// The baseline is one row per member of the DERIVED `v2.test.*` universe, so a linear scan of the
+// observed population once per baseline row is O(n*m) over a population sized by the corpus. DESIGN
+// section 6 fixes a proven cost-shape defect unconditionally -- "'n is small here' is not a
+// time-stable fact (reuse changes n)" -- and this is landing before its first real run, so it is
+// cheapest now and there is no realized n to argue about.
+//
+// THE KEY IS THE EXISTING IDENTITY AUTHORITY, NOT A SECOND ONE. `native_route_identity_qualified`
+// is what the route already keys its subjects on, and it is INJECTIVE over this universe for a
+// reason worth stating rather than assuming: a module qualified name may carry dots but a
+// DECLARATION NAME MAY NOT, so the last dot in the joined form always divides them and no two
+// distinct identities share a key. Minting a second key here would be the fork DESIGN section 3
+// forbids, and a key without a complete canonical preimage is the conformance-identity defect
+// beside it.
+
+fn native_progress_observed_index(
+  observed: List<NativeProgressObservedRow>
+) -> Map<String, NativeRouteAttainment> {
+  fold_list(
+    xs: observed,
+    empty: empty_map(),
+    cons: fn(acc, row) {
+      map_insert(m: acc, key: native_route_identity_qualified(identity: row.identity), value: row.attained)
+    }
+  )
+}
+
+fn native_progress_disposition_index(
+  dispositions: List<NativeProgressDispositionRow>
+) -> Map<String, NativeProgressDisposition> {
+  fold_list(
+    xs: dispositions,
+    empty: empty_map(),
+    cons: fn(acc, row) {
+      map_insert(m: acc, key: native_route_identity_qualified(identity: row.identity), value: row.disposition)
+    }
+  )
+}
+
+fn native_progress_baseline_index(
+  rows: List<NativeProgressBaselineRow>
+) -> Map<String, NativeRouteAttainment> {
+  fold_list(
+    xs: rows,
+    empty: empty_map(),
+    cons: fn(acc, row) {
+      map_insert(m: acc, key: native_route_identity_qualified(identity: row.identity), value: row.attained)
+    }
+  )
 }
 
 fn native_progress_observed_for(
   identity: NativeRouteTestIdentity,
-  observed: List<NativeProgressObservedRow>
+  observed: Map<String, NativeRouteAttainment>
 ) -> Optional<NativeRouteAttainment> {
-  fold_list(
-    xs: observed,
-    empty: Absent,
-    cons: fn(acc, row) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => native_progress_observed_if_matches(identity: identity, row: row)
-      }
-    }
-  )
-}
-
-fn native_progress_disposition_if_matches(
-  identity: NativeRouteTestIdentity,
-  row: NativeProgressDispositionRow
-) -> Optional<NativeProgressDisposition> {
-  if native_route_identity_eq(a: row.identity, b: identity) {
-    optional_present(value: row.disposition)
-  } else {
-    optional_absent()
-  }
+  map_lookup(m: observed, key: native_route_identity_qualified(identity: identity))
 }
 
 fn native_progress_disposition_for(
   identity: NativeRouteTestIdentity,
-  dispositions: List<NativeProgressDispositionRow>
+  dispositions: Map<String, NativeProgressDisposition>
 ) -> Optional<NativeProgressDisposition> {
-  fold_list(
-    xs: dispositions,
-    empty: Absent,
-    cons: fn(acc, row) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => native_progress_disposition_if_matches(identity: identity, row: row)
-      }
-    }
-  )
+  map_lookup(m: dispositions, key: native_route_identity_qualified(identity: identity))
 }
 
 // ONE BASELINE ROW, DECIDED WHOLE. Present in the run: compare attainment. Absent from the run:
 // the row owes a disposition, and the disposition owes a fact the run agrees with.
 fn native_progress_row_findings(
   row: NativeProgressBaselineRow,
-  observed: List<NativeProgressObservedRow>,
-  dispositions: List<NativeProgressDispositionRow>
+  observed: Map<String, NativeRouteAttainment>,
+  dispositions: Map<String, NativeProgressDisposition>
 ) -> List<NativeProgressFinding> {
   match native_progress_observed_for(identity: row.identity, observed: observed) {
     Present { value: seen } =>
@@ -454,26 +470,34 @@ fn native_progress_row_findings(
 // declared a deletion that did not happen, and leaving it standing would pre-authorize a future
 // removal nobody looked at. A disposition for an identity with no baseline row at all is
 // bookkeeping about nothing, and is the shape a disposition list takes as it rots.
+fn native_progress_disposition_row_findings(
+  row: NativeProgressDispositionRow,
+  baseline_index: Map<String, NativeRouteAttainment>,
+  observed: Map<String, NativeRouteAttainment>
+) -> List<NativeProgressFinding> {
+  let key = native_route_identity_qualified(identity: row.identity)
+  let missing_row =
+    match map_lookup(m: baseline_index, key: key) {
+      Present { value: _ } => []
+      Absent => [DisposedSubjectHasNoBaselineRow { identity: row.identity }]
+    }
+  let contradicted =
+    match map_lookup(m: observed, key: key) {
+      Present { value: _ } => [DispositionContradictedByRun { identity: row.identity }]
+      Absent => []
+    }
+  list_append(left: missing_row, right: contradicted)
+}
+
 fn native_progress_disposition_findings(
   baseline: NativeProgressBaseline,
-  observed: List<NativeProgressObservedRow>
+  baseline_index: Map<String, NativeRouteAttainment>,
+  observed: Map<String, NativeRouteAttainment>
 ) -> List<NativeProgressFinding> {
-  fold_list(
+  list_flat_map(
     xs: baseline.dispositions,
-    empty: [],
-    cons: fn(acc, row) {
-      let has_baseline_row = any(
-        xs: list_map(xs: baseline.rows, f: fn(r) { r.identity }),
-        predicate: fn(id) { native_route_identity_eq(a: id, b: row.identity) }
-      )
-      let still_observed =
-        match native_progress_observed_for(identity: row.identity, observed: observed) {
-          Present { value: _ } => true
-          Absent => false
-        }
-      let missing_row = if has_baseline_row { [] } else { [DisposedSubjectHasNoBaselineRow { identity: row.identity }] }
-      let contradicted = if still_observed { [DispositionContradictedByRun { identity: row.identity }] } else { [] }
-      list_append(left: acc, right: list_append(left: missing_row, right: contradicted))
+    f: fn(row) {
+      native_progress_disposition_row_findings(row: row, baseline_index: baseline_index, observed: observed)
     }
   )
 }
@@ -501,33 +525,32 @@ fn native_progress_report(
   readings: List<NativeProgressObservedReading>,
   build: NativeRouteEmittedBuild
 ) -> NativeProgressReport {
-  let observed = native_progress_observed_rows(readings: readings)
-  let row_findings = fold_list(
+  let observed_rows = native_progress_observed_rows(readings: readings)
+  let observed = native_progress_observed_index(observed: observed_rows)
+  let dispositions = native_progress_disposition_index(dispositions: baseline.dispositions)
+  let baseline_index = native_progress_baseline_index(rows: baseline.rows)
+  let row_findings = list_flat_map(
     xs: baseline.rows,
-    empty: [],
-    cons: fn(acc, row) {
-      list_append(left: acc, right: native_progress_row_findings(row: row, observed: observed, dispositions: baseline.dispositions))
-    }
+    f: fn(row) { native_progress_row_findings(row: row, observed: observed, dispositions: dispositions) }
   )
   NativeProgressReport {
     baseline_size: length(xs: baseline.rows),
-    observed_size: length(xs: observed),
-    agreed: count_where(xs: observed, predicate: fn(r) {
+    observed_size: length(xs: observed_rows),
+    agreed: count_where(xs: observed_rows, predicate: fn(r) {
       match r.attained {
         AttainAgreed => true
         AttainDiverged => false
         AttainRefused { stage: _ } => false
       }
     }),
-    findings: list_append(
-      left: native_progress_artifact_findings(build: build),
-      right: list_append(
-        left: native_progress_reading_findings(readings: readings),
-        right: list_append(
-          left: row_findings,
-          right: native_progress_disposition_findings(baseline: baseline, observed: observed)
-        )
-      )
+    findings: list_flat_map(
+      xs: [
+        native_progress_artifact_findings(build: build),
+        native_progress_reading_findings(readings: readings),
+        row_findings,
+        native_progress_disposition_findings(baseline: baseline, baseline_index: baseline_index, observed: observed)
+      ],
+      f: fn(fs) { fs }
     )
   }
 }
