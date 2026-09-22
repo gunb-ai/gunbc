@@ -29,8 +29,19 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // constructor by SHAPE, and a module container is a Conj whose every child is a Named edge, which
 // is also what a declared payload looks like to every shape test tried. So a binder spelling a
 // sibling module name is classified a constructor, gets no frame local, and resolves to the
-// MODULE. In this tree: src/v2/std/symbol_index.dag:156 is `Present { value: node } =>` inside
-// module v2.std.symbol_index, and lexical ascent from that arm reaches the module v2.std.node.
+// WHY THIS SPECIMEN IS CITED BY SYMBOL AND NOT BY LINE, AS A RECEIPT RATHER THAN A PREFERENCE.
+// This row first cited `src/v2/std/symbol_index.dag:156`, and that citation was CORRECT when it
+// was written -- line 156 was the arm, at three successive commits. It was invalidated by one
+// unrelated landing: gunbc#12048, which carries the declaring path to its consumers and took that
+// file from 199 lines to 416. Nobody touched either end of the citation and nobody could have
+// noticed. DESIGN section 3 says an edit ABOVE a cited line silently invalidates it; here that
+// took under a day, across lanes, under somebody else's correct work. So the class is not that a
+// citation was written carelessly -- it is that a position is a SECOND naming scheme for something
+// the containment tree already names, and it decays without either end being edited.
+// MODULE. In this tree the binder is `node`, bound by BOTH `Present { value: node }` arms of
+// v2.std.symbol_index symbol_index_candidates_at -- the unbound-declaring arm that builds a single
+// LexicalBindingCandidate, and the fold arm that snocs one per declaring -- and lexical ascent from
+// either reaches the MODULE v2.std.node.
 // Accepted, wrong value, no diagnostic -- below the ladder, not on it. Found by review 70101 on
 // this PR.
 //
@@ -50,7 +61,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // NAME DENOTES, which v2.compiler.symbol_index_fill knows at insert time. That is this row's
 // restoration trigger and it is filed as its own subject.
 data variant_fields_unlowered_on_the_native_route_population: List<String> = [
-  "v2.compiler.resolve resolve_pattern_node_is_constructor -- a match-arm binder spelling a name the lexical chain resolves to a MODULE container is classified a constructor by shape, gets no frame local, and resolves to the module; specimen src/v2/std/symbol_index.dag:156, `Present { value: node }` in v2.std.symbol_index, where ascent reaches module v2.std.node",
+  "v2.compiler.resolve resolve_pattern_node_is_constructor -- a match-arm binder spelling a name the lexical chain resolves to a MODULE container is classified a constructor by shape, gets no frame local, and resolves to the module; specimen: the two `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at, where lexical ascent from the binder `node` reaches the MODULE v2.std.node",
 ]
 
 data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
@@ -65,6 +76,6 @@ data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
       replacement: "a v2 stage lowers variant fields into declared field identities (named and positional \"0\")"
     },
     population: variant_fields_unlowered_on_the_native_route_population,
-    restoration_trigger: "resolve_pattern_node_is_constructor decides binder-versus-constructor from the DECLARATION KIND the symbol index recorded at insert time -- v2.compiler.symbol_index_fill distinguishes a containment edge from a variant payload from a data row -- rather than from the node's shape, so that a binder spelling a module, data or alias name binds the arm. The check is the specimen: `Present { value: node }` in v2.std.symbol_index binds the arm rather than resolving to module v2.std.node. A fourth shape predicate does NOT satisfy this: three have been tried and each admitted a wider set than intended, which is the evidence that shape is the wrong carrier."
+    restoration_trigger: "resolve_pattern_node_is_constructor decides binder-versus-constructor from the DECLARATION KIND the symbol index recorded at insert time -- v2.compiler.symbol_index_fill distinguishes a containment edge from a variant payload from a data row -- rather than from the node's shape, so that a binder spelling a module, data or alias name binds the arm. The check is the specimen: the binder `node` in v2.std.symbol_index symbol_index_candidates_at binds its arm rather than resolving to the module v2.std.node. A fourth shape predicate does NOT satisfy this: three have been tried and each admitted a wider set than intended, which is the evidence that shape is the wrong carrier."
   }
 }

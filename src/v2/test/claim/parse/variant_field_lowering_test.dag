@@ -28,6 +28,7 @@ import v2.std.node {
   match_arm_pattern,
   node_subtree_nodes
 }
+import std.constructors { Cardinality, Required, Optional }
 import v2.std.node_query {
   DeclaredField,
   construct_field_edges,
@@ -173,7 +174,7 @@ fn vf_type_atom_is(n: Node, lexeme: String) -> Bool {
   }
 }
 
-fn vf_field_is(f: DeclaredField, name: String, type_lexeme: String, required: Bool) -> Bool {
+fn vf_field_is(f: DeclaredField, name: String, type_lexeme: String, required: Cardinality) -> Bool {
   (symbol_lexeme(sym: f.name) == name)
     && vf_type_atom_is(n: f.type_node, lexeme: type_lexeme)
     && (f.required == required)
@@ -193,7 +194,7 @@ test fn vf_positional_variant_declares_one_required_field_zero() -> Bool {
       (vf_field_count(payload: payload) == 1)
         && (match declared_field_named(payload: payload, name: positional_payload_field_name()) {
           Absent => false
-          Present { value: f } => vf_field_is(f: f, name: "0", type_lexeme: "dag_binding_type_int", required: true)
+          Present { value: f } => vf_field_is(f: f, name: "0", type_lexeme: "dag_binding_type_int", required: Required)
         })
   }
 }
@@ -213,7 +214,7 @@ test fn vf_braced_variant_declares_named_field() -> Bool {
       (vf_field_count(payload: payload) == 1)
         && (match declared_field_named(payload: payload, name: ^v) {
           Absent => false
-          Present { value: f } => vf_field_is(f: f, name: "v", type_lexeme: "dag_binding_type_int", required: true)
+          Present { value: f } => vf_field_is(f: f, name: "v", type_lexeme: "dag_binding_type_int", required: Required)
         })
   }
 }
@@ -230,12 +231,12 @@ test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
           (vf_field_count(payload: payload) == 3)
             && (match declared_field_named(payload: payload, name: ^v) {
               Absent => false
-              Present { value: f } => vf_field_is(f: f, name: "v", type_lexeme: "dag_binding_type_int", required: true)
+              Present { value: f } => vf_field_is(f: f, name: "v", type_lexeme: "dag_binding_type_int", required: Required)
             })
             && (match declared_field_named(payload: payload, name: ^w) {
               Absent => false
               Present { value: f } =>
-                (!f.required)
+                (f.required == Optional)
                   && (match f.type_node.kind {
                     TypeNode { connective: Cardinality } =>
                       match list_at_optional(xs: node_positional_child_targets(node: f.type_node), index: 0) {
@@ -484,7 +485,7 @@ test fn vf_content_hash_declarations_and_positional_match_normalize() -> Bool {
           Present { value: payload } =>
             match declared_field_named(payload: payload, name: positional_payload_field_name()) {
               Absent => false
-              Present { value: f } => vf_field_is(f: f, name: "0", type_lexeme: "Fnv1a64Structural", required: true)
+              Present { value: f } => vf_field_is(f: f, name: "0", type_lexeme: "Fnv1a64Structural", required: Required)
             }
         })
   }
