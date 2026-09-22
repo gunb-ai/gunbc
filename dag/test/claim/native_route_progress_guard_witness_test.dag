@@ -1,6 +1,6 @@
 module test.claim.native_route_progress_guard_witness_test
 
-import v2.std.algebra { any, is_empty, length }
+import v2.std.algebra { any, count_where, is_empty, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.optional { optional_present, optional_absent }
@@ -694,4 +694,88 @@ test fn w_RED_a_run_that_lost_a_position_cannot_advance_the_ratchet() -> Bool {
     BaselineAdvanceRefusedHistorical { tree: _ } => false
     BaselineAdvanceRefusedUnreached { reach: _ } => false
   }
+}
+
+// THE RED FOR THE DEFECT THIS MODULE ITSELF HAD, asked for by the reviewer of `5397b6d` and
+// absent until now. Making `ProgressUnobserved` a verdict arm fixed what the LANE reports and left
+// what the FINDINGS say untouched: with an empty population every baseline row still fell down the
+// `Absent` path and came out as "vanished, owing a disposition". The verdict had stopped repeating
+// the misattribution while the findings went on making it.
+//
+// SO THIS CLAIM ASSERTS THE FINDING KIND, NOT THE VERDICT. `w_RED_a_run_that_died_at_the_emitted_
+// build_is_unobserved_not_lost` above already pins the verdict and PASSED THROUGHOUT THE BUG,
+// which is exactly why it could not catch it. It is also the claim a later refactor is most
+// likely to undo, because short-circuiting below the top rung looks like a special case until you
+// remember there is no population to be absent from.
+test fn w_RED_a_run_with_no_binary_reports_every_row_unreached_not_missing() -> Bool {
+  let fs = native_progress_report(
+    baseline: baseline_of(
+      rows: [
+        NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed },
+        NativeProgressBaselineRow { identity: subject_b, attained: AttainRefused { stage: NativeTestStageEntry } }
+      ],
+      dispositions: []
+    ),
+    readings: [],
+    build: NativeRouteEmittedBuild {
+      cargo_argv: ["cargo", "build", "--release"],
+      rustflags: "-D warnings",
+      compiler_path: "/opt/rust/bin/rustc",
+      rustc_identity: "rustc 1.93.0",
+      exit_status: 101,
+      warning_count: 0
+    },
+    reach: ReachSourceEmitted,
+    provenance: LiveRunOnHead { head: head_sha }
+  ).findings
+  // One per baseline row, plus the artifact-production finding for the failed build. NOT a
+  // missing-subject finding among them, which is the whole assertion.
+  length(xs: fs) == 3
+    && (any(xs: fs, predicate: fn(f) {
+      match f {
+        BaselineMemberMissingUndisposed { identity: _ } => true
+        SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+      }
+    }) == false)
+    && count_where(xs: fs, predicate: fn(f) {
+      match f {
+        SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => true
+        BaselineMemberMissingUndisposed { identity: _ } => false
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+      }
+    }) == 2
+}
+
+// AND A RUN THAT NEVER REACHED THE POPULATION EMITS NO DISPOSITION-SIDE FINDINGS EITHER.
+// `DispositionContradictedByRun` asks whether the run still discovered the subject; a run that
+// discovered nothing would answer "uncontradicted" for every disposition, which looks like
+// agreement and is ignorance.
+test fn w_RED_an_unreached_run_emits_no_disposition_side_findings() -> Bool {
+  let fs = native_progress_report(
+    baseline: baseline_of(
+      rows: [],
+      dispositions: [NativeProgressDispositionRow {
+        identity: subject_b,
+        disposition: SubjectDeleted { authority: "no baseline row ever existed" }
+      }]
+    ),
+    readings: [],
+    build: clean_build,
+    reach: ReachCrateBuilt,
+    provenance: LiveRunOnHead { head: head_sha }
+  ).findings
+  is_empty(xs: fs)
 }

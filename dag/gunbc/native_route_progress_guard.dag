@@ -584,13 +584,33 @@ fn native_progress_rank_comparison(
   }
 }
 
+// A RUN THAT NEVER REACHED THE POPULATION OWES NO DISPOSITIONS, AND THIS GUARD IS THE ONE THE
+// THIRD VERDICT DOES NOT REPLACE.
+//
+// Making `ProgressUnobserved` a verdict arm fixed what the LANE reports and left what the FINDINGS
+// say untouched: with an empty population every baseline row still fell down the `Absent` path and
+// came out as `BaselineMemberMissingUndisposed` -- "the subject vanished and owes a disposition" --
+// which is the misattribution this whole section exists to remove, surviving one layer in under a
+// verdict that had stopped repeating it. Found by the reviewer asking whether a red existed for
+// exactly this case; it did not, and the claim that now exists
+// (`w_RED_a_run_with_no_binary_reports_every_row_unreached_not_missing`) asserts the FINDING kind
+// rather than the verdict, because the verdict was already right while the findings lied.
+//
+// The remedy is a short-circuit rather than a wider `Absent` arm: below the top rung there is no
+// population to be absent FROM, so the question "is this subject missing" is not one this run can
+// be asked, and answering it at all is the defect.
+
 // ONE BASELINE ROW, DECIDED WHOLE. Present in the run: compare attainment. Absent from the run:
 // the row owes a disposition, and the disposition owes a fact the run agrees with.
 fn native_progress_row_findings(
   row: NativeProgressBaselineRow,
   observed: Map<String, NativeRouteAttainment>,
-  dispositions: Map<String, NativeProgressDisposition>
+  dispositions: Map<String, NativeProgressDisposition>,
+  reach: NativeRunReach
 ) -> List<NativeProgressFinding> {
+  if native_run_reached_the_population(r: reach) == false {
+    [SubjectUnreachedEarlierRungFailed { identity: row.identity, blocked_at: reach }]
+  } else {
   match native_progress_observed_for(identity: row.identity, observed: observed) {
     Present { value: seen } =>
       match seen {
@@ -625,6 +645,7 @@ fn native_progress_row_findings(
           }
       }
   }
+  }
 }
 
 // A DISPOSITION IS ALSO CHECKED FROM ITS OWN SIDE, in two directions the row fold above cannot
@@ -651,17 +672,29 @@ fn native_progress_disposition_row_findings(
   list_append(left: missing_row, right: contradicted)
 }
 
+// THE DISPOSITION SIDE IS SILENT BELOW THE TOP RUNG FOR THE SAME REASON. `DispositionContradicted
+// ByRun` asks whether the run still discovered the subject; a run that never reached the
+// population discovered nothing, so every disposition would read as uncontradicted -- an answer
+// that looks like agreement and is ignorance. `DisposedSubjectHasNoBaselineRow` is a fact about
+// the roster rather than the run and would be safe to report, but it is withheld too: a run that
+// observed nothing should not emit roster hygiene findings that a reader will read as findings
+// ABOUT THAT RUN.
 fn native_progress_disposition_findings(
   baseline: NativeProgressBaseline,
   baseline_index: Map<String, NativeRouteAttainment>,
-  observed: Map<String, NativeRouteAttainment>
+  observed: Map<String, NativeRouteAttainment>,
+  reach: NativeRunReach
 ) -> List<NativeProgressFinding> {
+  if native_run_reached_the_population(r: reach) == false {
+    []
+  } else {
   list_flat_map(
     xs: baseline.dispositions,
     f: fn(row) {
       native_progress_disposition_row_findings(row: row, baseline_index: baseline_index, observed: observed)
     }
   )
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -697,7 +730,7 @@ fn native_progress_report(
   let baseline_index = native_progress_baseline_index(rows: baseline.rows)
   let row_findings = list_flat_map(
     xs: baseline.rows,
-    f: fn(row) { native_progress_row_findings(row: row, observed: observed, dispositions: dispositions) }
+    f: fn(row) { native_progress_row_findings(row: row, observed: observed, dispositions: dispositions, reach: reach) }
   )
   NativeProgressReport {
     reach: reach,
@@ -717,7 +750,7 @@ fn native_progress_report(
         native_progress_artifact_findings(build: build),
         native_progress_reading_findings(readings: readings),
         row_findings,
-        native_progress_disposition_findings(baseline: baseline, baseline_index: baseline_index, observed: observed)
+        native_progress_disposition_findings(baseline: baseline, baseline_index: baseline_index, observed: observed, reach: reach)
       ],
       f: fn(fs) { fs }
     )
