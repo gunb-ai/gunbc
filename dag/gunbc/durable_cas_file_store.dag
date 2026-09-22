@@ -311,24 +311,6 @@ fn cas_classify_generation_read(generation: CasGeneration, exact: FilesystemExac
   }
 }
 
-// The first read, classified. Generation 1 absent is an empty slot; present starts the gallop.
-fn cas_probe_from_exact(
-  root: NonEmptyStr,
-  key: NonEmptyStr,
-  generation: CasGeneration,
-  previous: NonEmptyStr,
-  exact: FilesystemExactRead,
-) -> CasSlotProbe {
-  match cas_classify_generation_read(generation: generation, exact: exact) {
-    GenerationRefused { probe: p } => p
-    GenerationAbsent =>
-      if cas_generation_count(g: generation) == 1 { ProbedAbsent }
-      else { cas_probe_bisect(root: root, key: key, present: 1, present_value: previous, absent: generation) }
-    GenerationPresent { content: c } =>
-      cas_probe_gallop(root: root, key: key, present: generation, present_value: c, doublings: 0)
-  }
-}
-
 // INVARIANT: `present` was read present. Double until a generation reads absent.
 fn cas_probe_gallop(root: NonEmptyStr, key: NonEmptyStr, present: CasGeneration, present_value: NonEmptyStr, doublings: Int) -> CasSlotProbe {
   if doublings >= cas_max_generation_doublings {
