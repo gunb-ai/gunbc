@@ -44,6 +44,7 @@ import v2.std.node_query {
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.collection { List, list_at_optional }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_projection }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -602,11 +603,11 @@ fn vfs_stream_0() -> TokenStream {
 }
 
 test fn vfs_fidelity_0() -> Bool {
-  match tokenize(text: "module m.t\n\ntype C = A { v: Int } | B\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_0())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A { v: Int } | B\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_0()
+  )
 }
 
 fn vfs_stream_1() -> TokenStream {
@@ -638,11 +639,11 @@ fn vfs_stream_1() -> TokenStream {
 }
 
 test fn vfs_fidelity_1() -> Bool {
-  match tokenize(text: "module m.t\n\ntype R { v: Int, w: Int?, xs: List<Int> }\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_1())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype R { v: Int, w: Int?, xs: List<Int> }\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_1()
+  )
 }
 
 fn vfs_stream_2() -> TokenStream {
@@ -664,11 +665,11 @@ fn vfs_stream_2() -> TokenStream {
 }
 
 test fn vfs_fidelity_2() -> Bool {
-  match tokenize(text: "module m.t\n\ntype F = Bar { n: Int }\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_2())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype F = Bar { n: Int }\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_2()
+  )
 }
 
 fn vfs_stream_3() -> TokenStream {
@@ -685,11 +686,11 @@ fn vfs_stream_3() -> TokenStream {
 }
 
 test fn vfs_fidelity_3() -> Bool {
-  match tokenize(text: "module m.t\n\ntype T = String\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_3())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype T = String\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_3()
+  )
 }
 
 fn vfs_stream_4() -> TokenStream {
@@ -726,11 +727,11 @@ fn vfs_stream_4() -> TokenStream {
 }
 
 test fn vfs_fidelity_4() -> Bool {
-  match tokenize(text: "module m.t\n\ntype C = A(Int) | B\n\nfn wrap(x: Int) -> C {\n  A(x)\n}\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_4())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn wrap(x: Int) -> C {\n  A(x)\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_4()
+  )
 }
 
 fn vfs_stream_5() -> TokenStream {
@@ -767,11 +768,11 @@ fn vfs_stream_5() -> TokenStream {
 }
 
 test fn vfs_fidelity_5() -> Bool {
-  match tokenize(text: "module m.t\n\ntype R { v: Int }\n\nfn mk(x: Int) -> R {\n  R { v: x }\n}\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_5())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype R { v: Int }\n\nfn mk(x: Int) -> R {\n  R { v: x }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_5()
+  )
 }
 
 fn vfs_stream_6() -> TokenStream {
@@ -821,11 +822,11 @@ fn vfs_stream_6() -> TokenStream {
 }
 
 test fn vfs_fidelity_6() -> Bool {
-  match tokenize(text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v: x } => x\n    B => 0\n  }\n}\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_6())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v: x } => x\n    B => 0\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_6()
+  )
 }
 
 fn vfs_stream_7() -> TokenStream {
@@ -873,11 +874,11 @@ fn vfs_stream_7() -> TokenStream {
 }
 
 test fn vfs_fidelity_7() -> Bool {
-  match tokenize(text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v } => v\n    B => 0\n  }\n}\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_7())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v } => v\n    B => 0\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_7()
+  )
 }
 
 fn vfs_stream_8() -> TokenStream {
@@ -923,11 +924,11 @@ fn vfs_stream_8() -> TokenStream {
 }
 
 test fn vfs_fidelity_8() -> Bool {
-  match tokenize(text: "module m.t\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_8())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_8()
+  )
 }
 
 fn vfs_stream_9() -> TokenStream {
@@ -961,11 +962,11 @@ fn vfs_stream_9() -> TokenStream {
 }
 
 test fn vfs_fidelity_9() -> Bool {
-  match tokenize(text: "module m.t\n\ntype C = A(Int) | B\n\nfn one() -> C { A(1) }\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_9())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn one() -> C { A(1) }\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_9()
+  )
 }
 
 fn vfs_stream_10() -> TokenStream {
@@ -999,11 +1000,11 @@ fn vfs_stream_10() -> TokenStream {
 }
 
 test fn vfs_fidelity_10() -> Bool {
-  match tokenize(text: "module m.t\n\ntype C = A(Int) | B\n\nfn one() -> C { A(2) }\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_10())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn one() -> C { A(2) }\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_10()
+  )
 }
 
 fn vfs_stream_11() -> TokenStream {
@@ -1051,11 +1052,11 @@ fn vfs_stream_11() -> TokenStream {
 }
 
 test fn vfs_fidelity_11() -> Bool {
-  match tokenize(text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x, y) => x\n    B => 0\n  }\n}\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_11())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x, y) => x\n    B => 0\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_11()
+  )
 }
 
 fn vfs_stream_12() -> TokenStream {
@@ -1081,11 +1082,11 @@ fn vfs_stream_12() -> TokenStream {
 }
 
 test fn vfs_fidelity_12() -> Bool {
-  match tokenize(text: "module m.t\n\ntype C = A where non_empty { v: Int } | B\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_12())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A where non_empty { v: Int } | B\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_12()
+  )
 }
 
 fn vfs_stream_13() -> TokenStream {
@@ -1107,11 +1108,11 @@ fn vfs_stream_13() -> TokenStream {
 }
 
 test fn vfs_fidelity_13() -> Bool {
-  match tokenize(text: "module m.t\n\ntype C = A(Int) | B\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_13())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_13()
+  )
 }
 
 fn vfs_stream_14() -> TokenStream {
@@ -1157,11 +1158,11 @@ fn vfs_stream_14() -> TokenStream {
 }
 
 test fn vfs_fidelity_14() -> Bool {
-  match tokenize(text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_14())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_14()
+  )
 }
 
 fn vfs_stream_15() -> TokenStream {
@@ -1335,9 +1336,9 @@ fn vfs_stream_15() -> TokenStream {
 }
 
 test fn vfs_fidelity_15() -> Bool {
-  match tokenize(text: "module std.content_hash\n\ntype HashFamily =\n  | Fnv1a64StructuralFamily\n  | Sha256Family\n\ntype Fnv1a64Structural {\n  digest: Fnv1a64StructuralDigestHex\n}\n\ntype Sha256Digest {\n  hex: Sha256DigestHex\n}\n\ntype ContentHash =\n  | Fnv1a64(Fnv1a64Structural)\n  | Sha256Hash(Sha256Digest)\n\nfn structural_content_hash(digest: Fnv1a64StructuralDigestHex) -> Fnv1a64Structural {\n  Fnv1a64Structural { digest: digest }\n}\n\nfn as_content_hash_structural(structural: Fnv1a64Structural) -> ContentHash {\n  Fnv1a64(structural)\n}\n\nfn compare_content_hash(left: ContentHash, right: ContentHash) -> ContentHashComparison {\n  match left {\n    Fnv1a64(left_structural) =>\n      match right {\n        Fnv1a64(right_structural) =>\n          if content_hash_eq_structural(left: left_structural, right: right_structural) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Sha256Hash(_) => ContentHashCrossFamilyIncomparable\n      }\n    Sha256Hash(left_digest) =>\n      match right {\n        Sha256Hash(right_digest) =>\n          if content_hash_eq_cryptographic(left: left_digest, right: right_digest) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Fnv1a64(_) => ContentHashCrossFamilyIncomparable\n      }\n  }\n}\n", file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real) == vf_probe_stream_projection(ts: vfs_stream_15())
-  }
+  supplied_stream_matches_tokenize(
+    text: "module std.content_hash\n\ntype HashFamily =\n  | Fnv1a64StructuralFamily\n  | Sha256Family\n\ntype Fnv1a64Structural {\n  digest: Fnv1a64StructuralDigestHex\n}\n\ntype Sha256Digest {\n  hex: Sha256DigestHex\n}\n\ntype ContentHash =\n  | Fnv1a64(Fnv1a64Structural)\n  | Sha256Hash(Sha256Digest)\n\nfn structural_content_hash(digest: Fnv1a64StructuralDigestHex) -> Fnv1a64Structural {\n  Fnv1a64Structural { digest: digest }\n}\n\nfn as_content_hash_structural(structural: Fnv1a64Structural) -> ContentHash {\n  Fnv1a64(structural)\n}\n\nfn compare_content_hash(left: ContentHash, right: ContentHash) -> ContentHashComparison {\n  match left {\n    Fnv1a64(left_structural) =>\n      match right {\n        Fnv1a64(right_structural) =>\n          if content_hash_eq_structural(left: left_structural, right: right_structural) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Sha256Hash(_) => ContentHashCrossFamilyIncomparable\n      }\n    Sha256Hash(left_digest) =>\n      match right {\n        Sha256Hash(right_digest) =>\n          if content_hash_eq_cryptographic(left: left_digest, right: right_digest) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Fnv1a64(_) => ContentHashCrossFamilyIncomparable\n      }\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_15()
+  )
 }

@@ -3139,6 +3139,14 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
+// THE PAREN-SUFFIX ARM WITH AN UNREADABLE INTERIOR REFUSES, AND IS UNREACHABLE TODAY. A
+// zero-argument call `f()` does NOT arrive there -- it reaches body_lower_call_args_from_capture
+// with an empty conj, which is_empty_conj_root answers Present(Empty); measured by flipping the
+// arm to a refusal and observing the zero-arg specimen lower unchanged, at identical eval steps.
+// So the arm sees only a paren call suffix whose interior is not the expected spine, and an
+// accepted empty argument list there would drop arguments silently. An unreachable refusal costs
+// nothing; an unreachable widen is the one that bites when the grammar moves (DESIGN section 5:
+// refuse, never widen).
 fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Outcome<Optional<List<Node>>> {
   match body_lower_call_suffix_is_paren_list(call_suffix: call_suffix) {
     false => outcome_accepted(value: optional_absent())
@@ -3147,14 +3155,6 @@ fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Outcome<Optional<Li
         Absent => outcome_accepted(value: optional_absent())
         Present { value: pair } =>
           match sugar_sequence_pair_optional(node: pair.right) {
-            // UNREACHABLE TODAY AND REFUSING ANYWAY. A zero-argument call `f()` does NOT arrive
-            // here -- it reaches body_lower_call_args_from_capture with an empty conj, which
-            // is_empty_conj_root answers Present(Empty); measured by flipping this arm to a
-            // refusal and observing the zero-arg specimen lower unchanged, at identical eval
-            // steps. So this arm sees only a paren call suffix whose interior is not the
-            // expected spine, and an accepted empty argument list there would drop arguments
-            // silently. An unreachable refusal costs nothing; an unreachable widen is the one
-            // that bites when the grammar moves (DESIGN section 5: refuse, never widen).
             Absent =>
               outcome_rejected(
                 d: body_lower_diagnostic(reason: ^body_lowering_reason_call_args_unlowered, n: call_suffix)
