@@ -243,13 +243,28 @@ fn attestation_for_request(r: EnrolmentRequest, app_id: NonEmptyStr, config: App
   }
 }
 
+// THE PUSH REGISTRATION HAS ITS OWN ROOT. gunbc.durable_cas_file_store owns both directions of the
+// layout under approval_device_store_root (review 69827 of gunbc#12000), so a record that is not a
+// CAS generation does not live there: it is a last-write-wins owner-only file under a sibling root
+// this module owns, keyed by the server-derived enrolment id (never a request-supplied string --
+// both writers pass the verified enrolment's id).
+data approval_device_push_root: NonEmptyStr = "/var/lib/gunbc/approval-device-push"
+
 fn push_registration_path(enrollment_id: NonEmptyStr) -> String {
-  (approval_device_store_root as String) + "/push-" + (enrollment_id as String) + ".json"
+  (approval_device_push_root as String) + "/" + (enrollment_id as String) + ".json"
 }
 
-// The push registration is a last-write-wins owner-only record beside the enrolment's slot, not a
-// CAS generation: a token rotates on every reinstall and the slot's generation bound is for
-// decisions, not registrations.
+// WRITTEN BY TWO ROUTES, READ BY A CONSUMER THAT DOES NOT EXIST YET, and the frontier is declared
+// beside the write rather than left for the reader to infer (DESIGN section 3c). Nothing in this
+// corpus sends an APNs push: the consumer is the push sender that wakes the phone when a request is
+// filed (gunbc.auth.approval_request_submission notify_filed is where it attaches), loading this
+// record by the pending request's operator enrolment. It cannot land before the operator creates an
+// APNs authentication key (Apple Developer > Keys) and it reaches srv1 as a secret; until then the
+// app polls its pending list on the authenticated read route, which needs no registration.
+data approval_device_push_sender_frontier: DissolutionCondition = unbound_dissolution(
+  description: "an APNs push sender bound at notify_filed that loads the operator's push registration from approval_device_push_root by enrolment id and sends the wakeup with the operator-created APNs key held on srv1 -- SUFFICIENT FOR a filed request to wake the enrolled phone without polling; until it lands the registration is stored and unread, and the app polls",
+)
+
 fn store_push_registration(enrollment_id: NonEmptyStr, push_json: String) -> DeviceRouteResponse? {
   let w = Filesystem.WriteOwnerOnly(path: push_registration_path(enrollment_id: enrollment_id), content: push_json)
   if w.success { none } else { Present { value: device_refused(status: 503, reason: "push registration not stored: " + w.error) } }

@@ -13,7 +13,7 @@ import gunbc.auth.approval_device_redemption_fixtures { envelope_vector_body }
 import gunbc.auth.approval_decision_store { observe_escalation, EscalationUnreadable }
 import gunbc.auth.approval_device_wire { ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json, ApnsRegistration, path_segment }
 import extdeps.apple.apns { ApnsProduction }
-import gunbc.auth.approval_app_attest_config { approval_app_attest_verifier, AppAttestVerifierAwaitingOperator, AppAttestVerifierConfigured }
+import gunbc.auth.approval_app_attest_config { approval_app_attest_verifier, approval_app_attest_app_id, approval_app_bundle_id, AppAttestVerifierAwaitingOperator, AppAttestVerifierConfigured }
 import gunbc.roadmap_serve { roadmap_mounts_during_cutover }
 import gunbc.auth.approval_broker_serve { DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler }
 
@@ -81,15 +81,21 @@ fn gated_route_refused(name: String, asker: ApprovalServingProcess, route: fn(St
   }
 }
 
-// UNTIL THE OPERATOR SUPPLIES THE APP ID PREFIX, every authenticated read refuses 503 naming what
-// is missing -- the row is the one place that changes, and this claim reads the row's own arm so
-// it flips to the configured path the day the row does.
+// THE VERIFIER ROW DECIDES WHETHER READS PROCEED, and this claim reads the row's own arm so it
+// flips with the row: while the row awaits the operator every authenticated read refuses 503
+// naming what is missing; once configured (the operator's Team ID 72HGYAMBVQ, 2026-09-22) the row
+// derives the App ID the verifier expects -- prefix.bundle -- and the read route reaches the store,
+// which the hermetic route cannot follow, so the configured arm asserts the derived expectation.
 test fn reads_refuse_unconfigured_until_the_operator_supplies_the_prefix() -> Bool {
   match approval_app_attest_verifier {
     AppAttestVerifierAwaitingOperator { missing: _ } =>
       device_route_refused_with(r: device_pending_response_at(body: read_authentication_json(a: fx_auth), observed_at: fx_now), status: 503, fragment: "not configured")
-    AppAttestVerifierConfigured { app_id_prefix: _, bundle_id: _, environment: _, admitted_validation_categories: _, expected_bundle_version: _ } =>
-      !device_route_refused_with(r: device_pending_response_at(body: read_authentication_json(a: fx_auth), observed_at: fx_now), status: 503, fragment: "not configured")
+    AppAttestVerifierConfigured { app_id_prefix: p, bundle_id: b, environment: _, admitted_validation_categories: cats, expected_bundle_version: _ } =>
+      (match approval_app_attest_app_id(c: approval_app_attest_verifier) {
+        Absent => false
+        Present { value: app_id } => (app_id as String) == (p as String) + "." + (b as String) && b == approval_app_bundle_id
+      })
+        && any(cats, c => c == 3)
   }
 }
 
