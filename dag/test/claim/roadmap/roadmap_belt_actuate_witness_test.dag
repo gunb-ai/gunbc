@@ -711,7 +711,7 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 22
+  belt_dispatch_label_band_rows().length() == 26
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "dependencies_blocked") == "fail"
     && band_key_for_label(label: "execution_contract_missing") == "fail"
@@ -730,6 +730,11 @@ test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
     && band_key_for_label(label: "disabled") == "fail"
     && band_key_for_label(label: "node_not_found") == "fail"
     && band_key_for_label(label: "already_done_signed_off") == "fail"
+    && band_key_for_label(label: "no_instance") == "fail"
+    && band_key_for_label(label: "centering_absent") == "fail"
+    && band_key_for_label(label: "operator_exclusive") == "fail"
+    && band_key_for_label(label: "external_lead") == "fail"
+    && band_key_for_label(label: "calendar_observation") == "fail"
     && band_key_for_label(label: "observe_refused") == "loud"
     && band_key_for_label(label: "authority_refused") == "loud"
     && band_key_for_label(label: "spawn_failed") == "loud"
@@ -776,6 +781,10 @@ fn d4_wire_contract_labels() -> List<String> {
     "review_required",
     "size_missing",
     "execution_contract_missing",
+    "centering_absent",
+    "operator_exclusive",
+    "external_lead",
+    "calendar_observation",
     "dependencies_blocked",
     "observe_refused",
     "already_live",
