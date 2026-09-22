@@ -119,6 +119,18 @@ data floor_eval_step_cost_drop_page_style_rows: List<EvalStepCostDropMeasurement
 // this list rather than restating it.
 data floor_eval_step_cost_drop_fn_body_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
+    identity: "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.distinct_alternatives_do_not_normalize_to_the_same_tree_holds" as NonEmptyStr,
+    measured_by: "required floor run 35742213666 at dc0d53d7e1f, artifact required-ci-measurement-receipt; planned, verdict pass, cause completed_over_cost_requirement. Added after the first roster because these three measured UNDER the ceiling on a local claim_batch run and over it on the floor -- the floor attributes shared fills separately, so a local figure is a lower bound on what the gate charges and is not a substitute for reading the receipt" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.leading_pipe_normalizes_to_the_same_alternatives_as_without_holds" as NonEmptyStr,
+    measured_by: "required floor run 35742213666 at dc0d53d7e1f, artifact required-ci-measurement-receipt; planned, verdict pass, cause completed_over_cost_requirement. Added after the first roster because these three measured UNDER the ceiling on a local claim_batch run and over it on the floor -- the floor attributes shared fills separately, so a local figure is a lower bound on what the gate charges and is not a substitute for reading the receipt" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.positional_payload_variants_parse_and_normalize_holds" as NonEmptyStr,
+    measured_by: "required floor run 35742213666 at dc0d53d7e1f, artifact required-ci-measurement-receipt; planned, verdict pass, cause completed_over_cost_requirement. Added after the first roster because these three measured UNDER the ceiling on a local claim_batch run and over it on the floor -- the floor attributes shared fills separately, so a local figure is a lower bound on what the gate charges and is not a substitute for reading the receipt" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
     identity: "v2.test.parse.variant_field_lowering.vf_distinct_payloads_normalize_distinct" as NonEmptyStr,
     measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
   },
