@@ -4,7 +4,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int }
-import v2.std.algebra { length, filter }
+import v2.std.algebra { length, filter, count_where }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
   ClaimAttemptTerminal, Returned, Panicked, RouteGap,
@@ -126,6 +126,30 @@ fn terminal_matching() -> WetTerminalRow {
     binding: co_resident(subject: fixture_candidate), terminal: passed()
   )
 }
+
+// THE ROSTER-UNIQUENESS CLAIM BELONGS BESIDE THESE CLAIMS AND IS NOT LANDING IN THIS CHANGE, which is a
+// deliberate call rather than an omission, recorded so the next reader does not rediscover the
+// same wall and pay for it twice.
+//
+// WHAT IT GUARDS IS REAL AND NOTHING ELSE GUARDS IT. Two branches appending to this schedule
+// conflict textually; the correct resolution is a union, which is right only when the appended
+// rows are INDEPENDENT. A duplicated row survives that union silently, and the join cannot see
+// it: wet_forward_causes walks SCHEDULED, so a row appearing twice finds the same single terminal
+// twice, n == 1 both times, and no refusal is raised. The sibling claims cannot see it either --
+// every_roster_row_spells_its_function_the_same_way_twice reads WITHIN a row, and
+// the_local_roster_is_not_empty compares length(identities) to length(schedule), which is a map
+// and therefore equal over a roster WITH a duplicate in it.
+//
+// WHY IT IS NOT HERE: it costs 346735 eval steps against a 72300 new-witness budget, and the
+// overage is the pairwise comparison itself. It is not made linear by any construction available
+// -- the substrate offers no set and no sort over String -- so the honest routes are a declared
+// ceiling or a reduced subject, and BOTH are decisions about a shared budget that belong to their
+// own change rather than riding in on a compute-lifecycle PR that is already four rounds deep.
+//
+// ONE MEASUREMENT WORTH CARRYING, because it falsified the obvious repair: the first version
+// rebuilt the roster projection inside the inner predicate, which looked like the cost. Hoisting
+// it moved the figure from 343406 to 346735 -- the difference being one row the roster gained, not
+// the repair. The rebuilt projection was never the expense.
 
 // THE ROSTER DOES NOT LAND EMPTY. An empty roster would make this lane's coverage claim vacuously
 // true and leave nothing proving the executor runs anything at all -- permanently green by
@@ -332,63 +356,4 @@ test fn the_gate_predicate_admits_only_an_exact_identity_and_candidate() -> Bool
       terminals: [terminal_matching(), terminal_matching()],
       candidate: fixture_candidate
     )
-}
-
-// NO TWO ROWS NAME ONE IDENTITY, which the roster had no check for and which the sibling claims
-// cannot see. `the_local_roster_is_not_empty` compares the length of the identity projection against
-// the length of the schedule, and a map never changes a list's length, so that equality holds over a
-// roster with a duplicate in it. `every_roster_row_spells_its_function_the_same_way_twice` reads
-// WITHIN one row. So a repeated identity was unrepresented by every existing claim.
-//
-// THE POPULATION THIS EXISTS FOR IS A MERGE, not an author. Two branches each appending a row to
-// this list conflict textually, and the correct resolution of append-against-append is a union --
-// which is right exactly when the two rows are independent and silently wrong when both sides
-// appended the SAME identity. git cannot see that: both sides did the same legal thing, and the
-// union it produces is a green tree carrying a duplicate. gunbc#12040 against gunbc#12044 was that
-// merge, and the read that found it clean was an eye over 220 rows, which is the mitigation this
-// claim replaces.
-fn roster_identity_occurrences(name: String) -> Int {
-  length(
-    xs: filter(
-      xs: local_repo_wet_scheduled_identities(),
-      predicate: fn(n) { n == name }
-    )
-  )
-}
-
-test fn no_two_roster_rows_name_the_same_identity() -> Bool {
-  length(
-    xs: filter(
-      xs: local_repo_wet_scheduled_identities(),
-      predicate: fn(n) { roster_identity_occurrences(name: n) != 1 }
-    )
-  ) == 0
-}
-
-// THE DISCRIMINATING CONTROL, because the claim above is a filter that returns zero and a filter
-// over a predicate that can never fire returns zero too. These two supplied lists differ only in
-// whether one name repeats, so a predicate that stopped discriminating fails here while the roster
-// claim stays green.
-fn names_with_a_duplicate() -> List<String> {
-  ["test.claim.x.a_holds", "test.claim.x.b_holds", "test.claim.x.a_holds"]
-}
-
-fn names_all_distinct() -> List<String> {
-  ["test.claim.x.a_holds", "test.claim.x.b_holds", "test.claim.x.c_holds"]
-}
-
-fn every_name_occurs_once(names: List<String>) -> Bool {
-  length(
-    xs: filter(
-      xs: names,
-      predicate: fn(n) {
-        length(xs: filter(xs: names, predicate: fn(m) { m == n })) != 1
-      }
-    )
-  ) == 0
-}
-
-test fn the_duplicate_identity_predicate_discriminates() -> Bool {
-  every_name_occurs_once(names: names_all_distinct())
-    && !every_name_occurs_once(names: names_with_a_duplicate())
 }

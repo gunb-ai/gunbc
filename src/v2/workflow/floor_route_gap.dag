@@ -1537,6 +1537,17 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
 // run that does not touch the file, and this roster plus the wet terminal is what holds for the run
 // that does.
 //
+// THE SEVENTH ROW IS the_loser_of_a_launch_race..., ADDED BY PREDICTION RATHER THAN BY OBSERVATION,
+// which departs from this roster's own rule and is said rather than hidden. The six above were read
+// off a floor run; this one was written after that run, so no run has reported it yet. Its first
+// statement is `let root = fresh_root()`, which is DirWithTemplate unconditionally, so it cannot
+// reach its subject hermetically under any evaluation order. If the floor disagrees it will say so
+// as a STALE-ROUTE-GAP naming this identity -- the same self-correcting report the next paragraph
+// describes -- and the alternative, leaving it out to be observed, spends a cycle learning what the
+// call site already states. THE ROW IS ALSO WHY THIS ROSTER GREW: review 70036 found the claim
+// enrolled NOWHERE, and it is the sole executing control for the AttemptUnsettleable arm, so the
+// fabricated-settlement finding had been answered with a control that does not run.
+//
 // WHAT RE-OBSERVES THIS ROSTER, STATED BECAUSE NOTHING ELSE WOULD SAY IT. A six-row observation can
 // go stale, and the staleness refuses from the other direction, so the obligation is named here
 // rather than left for whoever meets the refusal. It is NARROWER than it first looks and the reason
@@ -1565,8 +1576,10 @@ fn floor_route_gap_expectation_chunk_22() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.settling_records_why_and_does_not_erase_what_it_settled", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.the_unit_binding_is_read_back_from_the_record_the_attempt_wrote", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
-  }  }  }  }  }  }
+  }  }  }  }  }  }  }
 }
 
 // test.claim.compute.manager_unaskable_wet_witness: its first shell operation on the hermetic route
