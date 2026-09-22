@@ -2189,12 +2189,29 @@ fn native_lane_universe_module_for_source(
 }
 
 
-// THE DERIVATION IS THE FLOOR'S OWN PRODUCER, FINALIZED THE FLOOR'S OWN WAY. The per-source
-// states are handed to floor_discovery_finalize_source_outcomes untouched — so a walk failure, a
-// disposition refusal or a sidecar violation ANYWHERE in the inventory refuses the derivation
-// exactly as it refuses the required floor's — and only then are the universe-prefixed modules
-// kept. Filtering first and finalizing the remainder would have made the lane blind to a sidecar
-// violation outside `v2.test.*`, which is a corpus refusal, not a lane exclusion.
+// THE DERIVATION FINALIZES THE FLOOR'S OWN PRODUCER, OVER THE SOURCES IT STILL WALKS. Every state
+// this lane holds is handed to floor_discovery_finalize_source_outcomes unchanged, so a walk
+// failure, a disposition refusal or a sidecar violation in a WALKED source refuses the derivation
+// exactly as it refuses the required floor's, and only then are the universe-prefixed modules
+// kept.
+//
+// WHAT CHANGED, SAID WHERE THE READER MEETS THE FINALIZE RATHER THAN ONLY AT THE SCOPING. The set
+// of walked sources is no longer the whole inventory: native_lane_discovery_for substitutes a zero
+// state for a universe non-member, so a sidecar violation in a module outside `v2.test.*` no
+// longer refuses THIS lane. An earlier revision of this note named that exact narrowing as the
+// thing to avoid. It is now the behaviour, and the argument for it is NOT that the violation
+// stopped mattering -- it is that this lane was the SECOND authority asserting it. The required
+// floor runs the same producer over its own prepared sources and adjudicates the same finalize
+// (required_floor_runner, through parse_floor_discovery_producer_result), so the corpus refusal
+// still exists and still blocks a landing. That is what makes this a de-duplication (DESIGN
+// section 2, one fact one home) rather than a section 4b rung drop.
+//
+// THE NARROWING IS NOT TAKEN ON THIS NOTE'S WORD. Four arms in
+// test.claim.native_lane_import_refusal pin it at the boundary, in refusals rather than row
+// counts: a walked member's violation still refuses here, a non-member's no longer does, the
+// floor's own producer still refuses THAT SAME non-member content, and a module-less source keeps
+// its walk and still refuses. Restore the walk for non-members and the second goes red; disarm
+// the finalize and the other three do.
 // A SOURCE THAT ENROLS ROWS AND DECLARES NO MODULE IS A REFUSAL, NOT A DROP. Discovery reads the
 // path and the bytes, so it can enrol test identities for a file whose own header names no module
 // — and such an identity cannot be routed, because the driver resolves by module. The seed refused
