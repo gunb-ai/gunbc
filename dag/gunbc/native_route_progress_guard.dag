@@ -14,6 +14,10 @@ import gunbc.witness_v2_native_route {
   NativeRouteDisposition,
   NativeAgreementPass, NativeAgreementExpectedRed, NativeAgreementRouteGap,
   NativeExclusion, NativeDivergence,
+  NativeRouteExclusionCause,
+  CompilerFrontierAttributed, NativeEntryResolutionLimit, NativeEvalBoundary, UnattributedRefusal,
+  NativeRouteDivergenceCause,
+  NativePassedExpectedRed, NativeFalseExpectedPass, NativeReturnedOtherVerdict, NativeReachedRouteGap,
   NativeRouteEmittedBuild
 }
 
@@ -423,8 +427,8 @@ type NativeBaselineAdvance
 //                            least prepare" is a question with no honest answer.
 type NativeRouteAttainment
   = AttainUnreached { blocked_at: NativeRunReach }
-  | AttainRefused { stage: NativeTestStage }
-  | AttainDiverged
+  | AttainRefused { stage: NativeTestStage, cause: NativeRouteExclusionCause }
+  | AttainDiverged { cause: NativeRouteDivergenceCause }
   | AttainAgreed
 
 // THE STAGE LADDER, AS A RANK. It is spelled here rather than in the vocabulary module because
@@ -468,14 +472,69 @@ fn native_stage_rank(stage: NativeTestStage) -> Int {
 // the same function answers "can this reading be a bar" and "what rank does this reading have",
 // because they are the same question.
 type NativeBaselineAttainment
-  = BaselineRefused { stage: NativeTestStage }
-  | BaselineDiverged
+  = BaselineRefused { stage: NativeTestStage, cause: NativeRouteExclusionCause }
+  | BaselineDiverged { cause: NativeRouteDivergenceCause }
   | BaselineAgreed
+
+// STAGE RANK AND DIAGNOSTIC CAUSE ARE DIFFERENT COORDINATES, AND THE LADDER ONLY EVER CARRIED THE
+// FIRST (manager requirement, 2026-09-22 -- the third instance of one underlying error, and the
+// subtlest).
+//
+// THE CASE. 47 modules move from `resolve_reason_ambiguous_symbol` to `resolve_reason_unbound_
+// symbol`: same stage, same disposition, same verdict -- and the second cause is TRUE while the
+// first was manufactured by a fallback searching unrelated modules. The consequence is a person's
+// day: an author told to disambiguate names spends it on names, and an author told the provider
+// is missing walks upstream and finds the file that will not parse. A ratchet scoring on
+// attainment alone reports those 47 as NO PROGRESS.
+//
+// WORSE THAN A GAP: THE MODULE WAS DISCARDING A CAUSE IT ALREADY HELD. `native_attainment_of_with_
+// stage` pattern-matched `NativeExclusion { cause: _ }` and `NativeDivergence { cause: _ }` and
+// threw both away. Carrying them is recovery, not new modelling, which is the tell that the
+// coordinate belongs here.
+//
+// THE GENERAL FORM, worth having once rather than three times: COMPARE THE PAYLOAD OF AN OUTCOME
+// AT THE GRAIN THE SUBJECT CLAIMS, NOT ONLY ITS VARIANT. It bit twice in this file at once --
+// `AttainRefused` collapsed every fatal reason, and `AttainDiverged` collapsed all four
+// divergence causes, so a subject moving between two kinds of divergence was invisible too. And
+// it applies recursively: `NativeRouteExclusionCause` is itself a variant whose PAYLOAD is the
+// reason symbol, which is the coordinate the 47 modules actually moved on -- so the comparison
+// keys on variant AND reason, not on variant alone.
+fn native_exclusion_cause_tag(c: NativeRouteExclusionCause) -> String {
+  match c {
+    CompilerFrontierAttributed { reason: _ } => "compiler-frontier"
+    NativeEntryResolutionLimit { reason: _ } => "entry-resolution-limit"
+    NativeEvalBoundary { reason: _ } => "eval-boundary"
+    UnattributedRefusal { reason: _ } => "unattributed"
+  }
+}
+
+fn native_exclusion_cause_reason(c: NativeRouteExclusionCause) -> Symbol {
+  match c {
+    CompilerFrontierAttributed { reason: r } => r
+    NativeEntryResolutionLimit { reason: r } => r
+    NativeEvalBoundary { reason: r } => r
+    UnattributedRefusal { reason: r } => r
+  }
+}
+
+fn native_exclusion_cause_same(a: NativeRouteExclusionCause, b: NativeRouteExclusionCause) -> Bool {
+  native_exclusion_cause_tag(c: a) == native_exclusion_cause_tag(c: b)
+    && native_exclusion_cause_reason(c: a) == native_exclusion_cause_reason(c: b)
+}
+
+fn native_divergence_cause_tag(c: NativeRouteDivergenceCause) -> String {
+  match c {
+    NativePassedExpectedRed => "passed-expected-red"
+    NativeFalseExpectedPass => "false-expected-pass"
+    NativeReturnedOtherVerdict => "returned-other"
+    NativeReachedRouteGap => "reached-route-gap"
+  }
+}
 
 fn native_baseline_rank(b: NativeBaselineAttainment) -> Int {
   match b {
-    BaselineRefused { stage: s } => native_stage_rank(stage: s)
-    BaselineDiverged => 4
+    BaselineRefused { stage: s, cause: _ } => native_stage_rank(stage: s)
+    BaselineDiverged { cause: _ } => 4
     BaselineAgreed => 5
   }
 }
@@ -486,8 +545,8 @@ fn native_baseline_rank(b: NativeBaselineAttainment) -> Int {
 fn native_observed_as_baseline(a: NativeRouteAttainment) -> Optional<NativeBaselineAttainment> {
   match a {
     AttainUnreached { blocked_at: _ } => optional_absent()
-    AttainRefused { stage: s } => optional_present(value: BaselineRefused { stage: s })
-    AttainDiverged => optional_present(value: BaselineDiverged)
+    AttainRefused { stage: s, cause: c } => optional_present(value: BaselineRefused { stage: s, cause: c })
+    AttainDiverged { cause: c } => optional_present(value: BaselineDiverged { cause: c })
     AttainAgreed => optional_present(value: BaselineAgreed)
   }
 }
@@ -584,6 +643,50 @@ type NativeProgressBaselineRow {
 // removal caused the transition and the refusal the subject now reaches, so a reader can ask
 // whether that refusal is really attributed -- and a transition claimed for a subject that did
 // NOT go accept-to-refuse is refused, exactly as a deletion the run contradicts is.
+// A CAUSE TRANSITION AT A FIXED RANK IS A FIRST-CLASS MOVEMENT, NOT A NON-EVENT, and it needs a
+// disposition for the same reason accept-to-refuse does: it can go either way and the ratchet
+// cannot tell which without being told. A cause becoming truthful is among the most valuable
+// things a front-end change produces; the same cause renamed is neutral; and a cause becoming
+// LESS truthful is a regression that moves no stage and would otherwise be invisible.
+//
+// `CauseRegressedUnderANewLabel` IS AN ARM OF THE DISPOSITION RATHER THAN THE ABSENCE OF ONE,
+// which is the part worth noticing: declaring it does not excuse it. The guard reds on it under
+// its own name. An author admitting a cause regression gets a located red; an author saying
+// nothing gets `CauseTransitionUndispositioned`. Neither passes, and the two send a reader
+// somewhere different -- which is the whole reason this is a disposition and not a boolean.
+type NativeCauseTransitionDisposition
+  = CauseNowMoreTruthful { was: String, now: String, why: String }
+  | SameDefectRenamed { was: String, now: String }
+  | CauseRegressedUnderANewLabel { was: String, now: String, why: String }
+
+type NativeCauseTransitionRow {
+  identity: NativeRouteTestIdentity
+  disposition: NativeCauseTransitionDisposition
+}
+
+// THE CAUSE COORDINATE OF A POSITION, COMPARED AT EQUAL RANK. Agreement carries no cause -- there
+// is no diagnostic in a verdict that matched -- so an agreement-to-agreement pair has nothing to
+// compare and is not a transition.
+fn native_cause_unchanged(baseline: NativeBaselineAttainment, seen: NativeRouteAttainment) -> Bool {
+  match baseline {
+    BaselineAgreed => true
+    BaselineRefused { stage: _, cause: bc } =>
+      match seen {
+        AttainRefused { stage: _, cause: sc } => native_exclusion_cause_same(a: bc, b: sc)
+        AttainAgreed => true
+        AttainDiverged { cause: _ } => true
+        AttainUnreached { blocked_at: _ } => true
+      }
+    BaselineDiverged { cause: bc } =>
+      match seen {
+        AttainDiverged { cause: sc } => native_divergence_cause_tag(c: bc) == native_divergence_cause_tag(c: sc)
+        AttainAgreed => true
+        AttainRefused { stage: _, cause: _ } => true
+        AttainUnreached { blocked_at: _ } => true
+      }
+  }
+}
+
 type NativeAcceptToRefuseDisposition
   = PriorAcceptanceDependedOnARemovedFallback { fallback: String, now_refuses_with: String }
   | PriorAcceptanceWasNeverSound { authority: String, now_refuses_with: String }
@@ -610,6 +713,7 @@ type NativeProgressBaseline {
   rows: List<NativeProgressBaselineRow>
   dispositions: List<NativeProgressDispositionRow>
   accept_to_refuse: List<NativeAcceptToRefuseRow>
+  cause_transitions: List<NativeCauseTransitionRow>
   minted_under: NativeVerdictAdjudication
 }
 
@@ -652,6 +756,8 @@ type NativeProgressFinding
       observed: NativeRouteAttainment
     }
   | AcceptToRefuseDispositionContradicted { identity: NativeRouteTestIdentity }
+  | CauseTransitionUndispositioned { identity: NativeRouteTestIdentity }
+  | CauseRegressedAtAFixedRank { identity: NativeRouteTestIdentity, was: String, now: String }
   | SubjectUnreachedEarlierRungFailed {
       identity: NativeRouteTestIdentity
       blocked_at: NativeRunReach
@@ -731,11 +837,11 @@ fn native_attainment_of_with_stage(
     NativeAgreementPass => AttainAgreed
     NativeAgreementExpectedRed => AttainAgreed
     NativeAgreementRouteGap => AttainAgreed
-    NativeDivergence { cause: _ } => AttainDiverged
-    NativeExclusion { cause: _ } =>
+    NativeDivergence { cause: c } => AttainDiverged { cause: c }
+    NativeExclusion { cause: c } =>
       match refused_at {
-        Present { value: s } => AttainRefused { stage: s }
-        Absent => AttainRefused { stage: NativeTestStagePrepare }
+        Present { value: s } => AttainRefused { stage: s, cause: c }
+        Absent => AttainRefused { stage: NativeTestStagePrepare, cause: c }
       }
   }
 }
@@ -809,6 +915,18 @@ fn native_progress_disposition_index(
 ) -> Map<String, NativeProgressDisposition> {
   fold_list(
     xs: dispositions,
+    empty: empty_map(),
+    cons: fn(acc, row) {
+      map_insert(m: acc, key: native_route_identity_qualified(identity: row.identity), value: row.disposition)
+    }
+  )
+}
+
+fn native_cause_transition_index(
+  rows: List<NativeCauseTransitionRow>
+) -> Map<String, NativeCauseTransitionDisposition> {
+  fold_list(
+    xs: rows,
     empty: empty_map(),
     cons: fn(acc, row) {
       map_insert(m: acc, key: native_route_identity_qualified(identity: row.identity), value: row.disposition)
@@ -936,9 +1054,9 @@ fn native_fall_is_accept_to_refuse(
   match baseline {
     BaselineAgreed =>
       match seen {
-        AttainRefused { stage: _ } => true
+        AttainRefused { stage: _, cause: _ } => true
         AttainAgreed => false
-        AttainDiverged => false
+        AttainDiverged { cause: _ } => false
         AttainUnreached { blocked_at: _ } => false
       }
     BaselineDiverged => false
@@ -953,13 +1071,38 @@ fn native_accept_to_refuse_for(
   map_lookup(m: rows, key: native_route_identity_qualified(identity: identity))
 }
 
+fn native_cause_transition_findings(
+  row: NativeProgressBaselineRow,
+  seen: NativeRouteAttainment,
+  cause_transitions: Map<String, NativeCauseTransitionDisposition>
+) -> List<NativeProgressFinding> {
+  if native_cause_unchanged(baseline: row.attained, seen: seen) {
+    []
+  } else {
+    match map_lookup(
+      m: cause_transitions,
+      key: native_route_identity_qualified(identity: row.identity)
+    ) {
+      Absent => [CauseTransitionUndispositioned { identity: row.identity }]
+      Present { value: d } =>
+        match d {
+          CauseNowMoreTruthful { was: _, now: _, why: _ } => []
+          SameDefectRenamed { was: _, now: _ } => []
+          CauseRegressedUnderANewLabel { was: w, now: n, why: _ } =>
+            [CauseRegressedAtAFixedRank { identity: row.identity, was: w, now: n }]
+        }
+    }
+  }
+}
+
 fn native_progress_rank_comparison(
   row: NativeProgressBaselineRow,
   seen: NativeRouteAttainment,
-  accept_to_refuse: Map<String, NativeAcceptToRefuseDisposition>
+  accept_to_refuse: Map<String, NativeAcceptToRefuseDisposition>,
+  cause_transitions: Map<String, NativeCauseTransitionDisposition>
 ) -> List<NativeProgressFinding> {
   if native_attainment_at_least(observed: seen, baseline: row.attained) {
-    []
+    native_cause_transition_findings(row: row, seen: seen, cause_transitions: cause_transitions)
   } else if native_fall_is_accept_to_refuse(baseline: row.attained, seen: seen) {
     match native_accept_to_refuse_for(identity: row.identity, rows: accept_to_refuse) {
       Present { value: _ } => []
@@ -997,6 +1140,7 @@ fn native_progress_row_findings(
   observed: Map<String, NativeRouteAttainment>,
   dispositions: Map<String, NativeProgressDisposition>,
   accept_to_refuse: Map<String, NativeAcceptToRefuseDisposition>,
+  cause_transitions: Map<String, NativeCauseTransitionDisposition>,
   reach: NativeRunReach
 ) -> List<NativeProgressFinding> {
   if native_run_reached_the_population(r: reach) == false {
@@ -1007,9 +1151,9 @@ fn native_progress_row_findings(
       match seen {
         AttainUnreached { blocked_at: r } =>
           [SubjectUnreachedEarlierRungFailed { identity: row.identity, blocked_at: r }]
-        AttainRefused { stage: _ } => native_progress_rank_comparison(row: row, seen: seen, accept_to_refuse: accept_to_refuse)
-        AttainDiverged => native_progress_rank_comparison(row: row, seen: seen, accept_to_refuse: accept_to_refuse)
-        AttainAgreed => native_progress_rank_comparison(row: row, seen: seen, accept_to_refuse: accept_to_refuse)
+        AttainRefused { stage: _, cause: _ } => native_progress_rank_comparison(row: row, seen: seen, accept_to_refuse: accept_to_refuse, cause_transitions: cause_transitions)
+        AttainDiverged { cause: _ } => native_progress_rank_comparison(row: row, seen: seen, accept_to_refuse: accept_to_refuse, cause_transitions: cause_transitions)
+        AttainAgreed => native_progress_rank_comparison(row: row, seen: seen, accept_to_refuse: accept_to_refuse, cause_transitions: cause_transitions)
       }
     Absent =>
       match native_progress_disposition_for(identity: row.identity, dispositions: dispositions) {
@@ -1025,8 +1169,8 @@ fn native_progress_row_findings(
                   match seen {
                     AttainUnreached { blocked_at: r } =>
                       [SubjectUnreachedEarlierRungFailed { identity: target, blocked_at: r }]
-                    AttainRefused { stage: _ } => native_progress_rename_comparison(row: row, target: target, seen: seen)
-                    AttainDiverged => native_progress_rename_comparison(row: row, target: target, seen: seen)
+                    AttainRefused { stage: _, cause: _ } => native_progress_rename_comparison(row: row, target: target, seen: seen)
+                    AttainDiverged { cause: _ } => native_progress_rename_comparison(row: row, target: target, seen: seen)
                     AttainAgreed => native_progress_rename_comparison(row: row, target: target, seen: seen)
                   }
               }
@@ -1125,11 +1269,12 @@ fn native_progress_report(
   let dispositions = native_progress_disposition_index(dispositions: baseline.dispositions)
   let baseline_index = native_progress_baseline_index(rows: baseline.rows)
   let accept_to_refuse = native_accept_to_refuse_index(rows: baseline.accept_to_refuse)
+  let cause_transitions = native_cause_transition_index(rows: baseline.cause_transitions)
   let row_findings =
     if comparable {
       list_flat_map(
         xs: baseline.rows,
-        f: fn(row) { native_progress_row_findings(row: row, observed: observed, dispositions: dispositions, accept_to_refuse: accept_to_refuse, reach: reach) }
+        f: fn(row) { native_progress_row_findings(row: row, observed: observed, dispositions: dispositions, accept_to_refuse: accept_to_refuse, cause_transitions: cause_transitions, reach: reach) }
       )
     } else {
       []
@@ -1152,8 +1297,8 @@ fn native_progress_report(
     agreed: count_where(xs: observed_rows, predicate: fn(r) {
       match r.attained {
         AttainAgreed => true
-        AttainDiverged => false
-        AttainRefused { stage: _ } => false
+        AttainDiverged { cause: _ } => false
+        AttainRefused { stage: _, cause: _ } => false
         AttainUnreached { blocked_at: _ } => false
       }
     }),
@@ -1303,6 +1448,18 @@ fn native_progress_finding_text(f: NativeProgressFinding) -> String {
         "ACCEPT-TO-REFUSE WITHOUT A DISPOSITION (this may be an advance -- a fabricated acceptance ",
         "becoming an attributed refusal is a rung UP -- but it must be enumerated and attributed, ",
         "not assumed either way) ", native_route_identity_qualified(identity: id)
+      ], "")
+    CauseTransitionUndispositioned { identity: id } =>
+      join([
+        "CAUSE CHANGED AT A FIXED RANK WITHOUT A DISPOSITION (same stage, same verdict, different ",
+        "diagnostic -- which may be the most valuable kind of change there is, or a regression that ",
+        "moves nothing; it must be classified, not assumed) ",
+        native_route_identity_qualified(identity: id)
+      ], "")
+    CauseRegressedAtAFixedRank { identity: id, was: w, now: n } =>
+      join([
+        "CAUSE REGRESSED AT A FIXED RANK (declared, and declaring it does not excuse it): '", w,
+        "' -> '", n, "' ", native_route_identity_qualified(identity: id)
       ], "")
     AcceptToRefuseDispositionContradicted { identity: id } =>
       join([
