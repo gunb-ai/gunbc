@@ -21,7 +21,7 @@ import gunbc.compiler_gate_workflow {
 }
 import gunbc.emitted_subject_build_gate {
   NativeEmitBuildStanding, EmitBuildExpectedGreen, EmitBuildExpectedRed,
-  emit_build_standing, emit_build_standing_notice,
+  emit_build_standing_notice, emit_build_standing_notice_for,
   emitted_subject_build_rows,
   emitted_subject_build_label_text,
   emitted_subject_build_command
@@ -317,17 +317,34 @@ test fn the_notice_says_the_cause_line_does_not_discriminate() -> Bool {
   string_contains(s: join(emit_build_standing_notice(), "\n"), pattern: "cause=EmittedCompilerBuildFailed")
 }
 
-// THE LIVE STANDING NAMES A CAPABILITY AS ITS RETIREMENT CONDITION, NOT AN ARTIFACT.
-//
-// THE REASSURANCE IS UNPRINTABLE ONCE THE STANDING FLIPS, which is why the standing is a typed row
-// and not prose in the step. A notice still saying "a red is currently expected" after main
-// self-hosts is an inert annotation on the one surface a stranger actually reads.
+// THE REASSURANCE IS UNPRINTABLE ONCE THE STANDING FLIPS. This renders the Green arm over a
+// SUPPLIED standing, because in production that arm is reachable only by editing the data row --
+// so pasting the reassurance into the Green arm reds here today rather than on the day main
+// self-hosts. The positive half: the same rendering over the Red arm DOES print it, so the claim
+// cannot pass by the renderer printing nothing.
 test fn w_RED_the_green_standing_cannot_print_the_expected_red_reassurance() -> Bool {
-  match emit_build_standing {
-    EmitBuildExpectedRed { known_signature: _, retires_when: t } =>
-      string_contains(s: t, pattern: "both exit zero")
-    EmitBuildExpectedGreen => false
-  }
+  let green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen), "\n")
+  let red = join(emit_build_standing_notice_for(standing: EmitBuildExpectedRed {
+    known_signature: "E9999 Probe at src/probe.rs",
+    retires_when: "probe condition"
+  }), "\n")
+  (string_contains(s: green, pattern: "CURRENTLY EXPECTED") == false)
+    && (string_contains(s: green, pattern: "E9999") == false)
+    && string_contains(s: green, pattern: "REAL FINDING")
+    && string_contains(s: red, pattern: "CURRENTLY EXPECTED")
+    && string_contains(s: red, pattern: "E9999 Probe at src/probe.rs")
+}
+
+// THE RETIREMENT CONDITION IS CONSUMED BY THE NOTICE, AND NAMES A CAPABILITY. A reader who can see
+// main self-host again is told the notice is stale and which row to flip. Nothing flips the row
+// automatically when the condition holds -- that stays review diligence, and this claim does not
+// pretend otherwise; it establishes only that the condition reaches the surface a reader sees.
+test fn the_live_notice_prints_its_retirement_capability() -> Bool {
+  let text = join(emit_build_standing_notice(), "\n")
+  string_contains(s: text, pattern: "THIS STANDING RETIRES WHEN: ")
+    && string_contains(s: text, pattern: "//gunbc/instruments:self-host")
+    && string_contains(s: text, pattern: "//gunbc/instruments:v2-native-cli")
+    && string_contains(s: text, pattern: "both exit zero")
 }
 
 // THE NOTICE RUNS ONLY ON FAILURE. On every passing PR in the repository it must print nothing --

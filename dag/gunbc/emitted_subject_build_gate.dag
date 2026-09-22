@@ -159,15 +159,24 @@ data emit_build_standing: NativeEmitBuildStanding = EmitBuildExpectedRed {
 }
 
 // THE LINES A LANE READS WHEN IT CLICKS THE RED X. Rendered from the row above, so the reassurance
-// and the discriminator cannot drift apart from the standing they describe.
+// and the discriminator cannot drift apart from the standing they describe. The live notice is the
+// rendering of the live row; the rendering is a function over a SUPPLIED standing so that the Green
+// arm -- reachable in production only by editing the row -- can be executed by a claim today.
 fn emit_build_standing_notice() -> List<String> {
-  match emit_build_standing {
+  emit_build_standing_notice_for(standing: emit_build_standing)
+}
+
+// The retirement condition is PRINTED, so a reader who can see main self-host again knows the row
+// is stale and what edit retires it. Nothing mechanically flips the row when the condition holds:
+// that is review diligence, stated here rather than implied by the field's existence.
+fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding) -> List<String> {
+  match standing {
     EmitBuildExpectedGreen => [
       "emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:",
       "the required context is `witnesses`, and this job is not an input to it.",
       "No standing break is declared, so a red here is a REAL FINDING -- most likely yours.",
     ]
-    EmitBuildExpectedRed { known_signature: sig, retires_when: _ } => [
+    EmitBuildExpectedRed { known_signature: sig, retires_when: t } => [
       "emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:",
       "the required context is `witnesses`, and this job is not an input to it.",
       "",
@@ -185,6 +194,9 @@ fn emit_build_standing_notice() -> List<String> {
       "second defect this lane just caught, and it should be reported rather than assumed to be",
       "the known one -- every break at this step shares cause=EmittedCompilerBuildFailed, so the",
       "cause line does not discriminate and the ERROR CODE is what you compare.",
+      "",
+      join(["THIS STANDING RETIRES WHEN: ", t], ""),
+      "If that already holds on main, this notice is stale: flip gunbc.emitted_subject_build_gate emit_build_standing to EmitBuildExpectedGreen.",
     ]
   }
 }
