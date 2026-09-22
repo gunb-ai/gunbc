@@ -19,6 +19,7 @@ import gunbc.live_deploy.emit {
   RevisionBoundAtEmission,
   user_manager_environment_directives,
   belt_tick_cadence,
+  belt_tick_run_bound,
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
@@ -53,6 +54,7 @@ import extdeps.systemd.unit_file {
   ServiceUser,
   ServiceGroup,
   ServiceSlice,
+  TimeoutStartSec,
   SystemdTimerDirective,
   TimerUnit,
   OnBootSec,
@@ -98,6 +100,12 @@ import gunbc.host_layout { belt_spawn_workdir_env_var }
 //   4b7371d1f6 (#10357, 2026-09-04)  belt-service, serve, tree-sync edited; slice row ADDED
 //   75e1cf68b3 (#10446, 2026-09-04)  belt-service edited
 //   6a4ca1c5bc (#10590, 2026-09-05)  belt-service and serve edited (user-manager Environment)
+//   2026-09-21 (this branch, commitfix)  belt-service: TimeoutStartSec=45min ADDED (per-tick
+//                                       watchdog; the 2026-09-21 2.25h wedge froze the cadence
+//                                       invisibly. This row is now an EMITTER-REGRESSION PIN like
+//                                       the serve and tree-sync rows, and the directive-level
+//                                       assertion beside it (watch the Decision, not the bytes)
+//                                       pins the watchdog decision itself.
 //
 // So per row, as of this writing: the_belt_timer_unit_matches_the_deployed_bytes still holds its
 // 2026-08-19 transcription and is the only row carrying an external referent. belt-service, serve
@@ -179,7 +187,27 @@ fn live_revision() -> ReleaseRevisionBinding {
 // when this unit is next applied.
 test fn the_belt_service_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_belt_service_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc roadmap belt tick (one reconcile pass over the ready frontier)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-roadmap.slice\nWorkingDirectory=/opt/gunbc/gunbc\nEnvironment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc\nEnvironment=XDG_RUNTIME_DIR=/run/user/1000\nEnvironment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus\nExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli\n"
+  emitted == "[Unit]\nDescription=gunbc roadmap belt tick (one reconcile pass over the ready frontier)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nTimeoutStartSec=45min\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-roadmap.slice\nWorkingDirectory=/opt/gunbc/gunbc\nEnvironment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc\nEnvironment=XDG_RUNTIME_DIR=/run/user/1000\nEnvironment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus\nExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli\n"
+}
+
+// THE WATCHDOG DECISION, PINNED AT DIRECTIVE LEVEL, because the byte row above is an
+// emitter-regression pin that a hand-edit can satisfy without the decision being made: the belt
+// service must carry a TimeoutStartSec bound (a wedged tick is killed loudly and the cadence
+// resumes) and it must be the ONE bound the emitter names, not a second literal. TimeoutStartSec on
+// a Type=oneshot unit bounds the whole run; when it fires, the unit fails, the journal records the
+// kill, and OnUnitInactiveSec schedules the next tick from that inactivity -- the failure mode the
+// 2026-09-21 wedge demonstrated (hours at 100% CPU, timer frozen, receipt absent) becomes one lost
+// pass plus a loud failure instead.
+test fn the_belt_service_unit_carries_the_per_tick_watchdog_bound() -> Bool {
+  match live_deploy_belt_service_unit_file(spec: live_spec()) {
+    ServiceUnitFile { unit: _, service, install: _ } =>
+      any(service, d => match d {
+        TimeoutStartSec { duration } => duration == belt_tick_run_bound as NonEmptyStr
+        _ => false
+      })
+    TimerUnitFile { unit: _, timer: _, install: _ } => false
+    SliceUnitFile { unit: _, slice: _, install: _ } => false
+  }
 }
 
 // gunbc-roadmap-belt.timer, as deployed on srv1 2026-08-19.
