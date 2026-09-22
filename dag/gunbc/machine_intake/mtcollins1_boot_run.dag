@@ -43,7 +43,13 @@ import gunbc.machine_intake_host_capture_envelope {
   SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
   host_capture_bind, host_capture_section_reading, host_capture_output_value_after, host_capture_output_has_line,
   host_capture_mc0_counter, host_capture_workload_write_rc_token, host_capture_workload_stable_token,
+  HostCaptureLiveStream, host_capture_lines,
 }
+import gunbc.machine_intake_pre_os_bringup_verdict {
+  FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly, FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware,
+  FirmwareStatedLocus, firmware_console_report,
+}
+import extdeps.gnu.grub_console { GrubConsoleReport, GrubNothingStated, GrubBannerOnly, GrubStillTrying, GrubBootFailed, grub_console_report }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
 import v2.std.optional { Present }
@@ -362,6 +368,8 @@ type MtCollins1BootTerminalCause
   | EdacCountersNotClean { name: String }
   | WorkloadWriteFailed { rc: String }
   | WorkloadDigestUnstable
+  | PreOsFirmwareRefusal { statement: NonEmptyStr, locus: FirmwareStatedLocus }
+  | PreOsBootLoaderRefusal { errors: List<NonEmptyStr> }
 
 type MtCollins1BootTerminalVerdict
   = TerminalPending { reason: String }
@@ -535,6 +543,35 @@ fn terminal_over_open(envelope: BoundHostCaptureEnvelope, threads: HardwareThrea
   if count(f.causes) == 0 { TerminalPending { reason: "envelope open; no complete section refuses" } } else { TerminalRefused { causes: f.causes } }
 }
 
+// BEFORE THE ENVELOPE BEGINS, THE CONSOLE CAN STILL SAY THE BOOT IS OVER. Boot 23 attempt 7
+// (run 35669747413) printed GRUB's "Failed to boot both default and fallback entries." and sat at
+// the menu; the firmware's "DDR initialization failure. STOP!" is the same class one layer down.
+// Both end the boot with no kernel and therefore no envelope, and a loop that only waits for a
+// BEGIN marker reports them as a timeout (DESIGN §5: an observation that did not hold is not the
+// absence of an observation). The readers are the owning grammars -- the firmware's in
+// pre_os_bringup_verdict, the loader's in extdeps.gnu.grub_console -- over the same terminated
+// lines the envelope scan reads. An unrecognised firmware ERROR line or a GRUB error while the
+// loader is still trying its fallback is NOT terminal: the boot may yet proceed, so those stay
+// pending and are visible in the preserved capture.
+fn mtcollins1_boot_pre_os_verdict(capture: String) -> MtCollins1BootTerminalVerdict {
+  let lines = host_capture_lines(capture: HostCaptureLiveStream { text: capture })
+  match firmware_console_report(lines: lines) {
+    TrainingRefusedByFirmware { statement: st, locus: locus } => TerminalRefused { causes: [PreOsFirmwareRefusal { statement: st, locus: locus }] }
+    NoTerminalStated => mtcollins1_boot_loader_verdict(lines: lines)
+    UndecodedErrorCodesOnly { err_lines: _ } => mtcollins1_boot_loader_verdict(lines: lines)
+    FirmwareErrorStatementUnrecognized { statement: _ } => mtcollins1_boot_loader_verdict(lines: lines)
+  }
+}
+
+fn mtcollins1_boot_loader_verdict(lines: List<String>) -> MtCollins1BootTerminalVerdict {
+  match grub_console_report(lines: lines) {
+    GrubBootFailed { errors: es } => TerminalRefused { causes: [PreOsBootLoaderRefusal { errors: es }] }
+    GrubStillTrying { errors: _ } => TerminalPending { reason: "boot loader reported an error and is still trying; no begin marker yet" }
+    GrubBannerOnly => TerminalPending { reason: "boot loader menu shown; no begin marker yet" }
+    GrubNothingStated => TerminalPending { reason: "no begin marker for this machine yet" }
+  }
+}
+
 fn mtcollins1_boot_terminal_verdict(capture: String, subject: MtCollins1BootSubject, medium: MtCollins1BootMedium) -> MtCollins1BootTerminalVerdict {
   let threads = mtcollins1_nproc
   let medium_image = mtcollins1_boot_medium_image_name(medium: medium)
@@ -545,7 +582,7 @@ fn mtcollins1_boot_terminal_verdict(capture: String, subject: MtCollins1BootSubj
     Absent => TerminalRefused { causes: [TerminalSubjectMediumDisjoint { subject_image: subject.image_name, subject_sha256: subject.image_sha256, medium_image: medium_image, medium_sha256: medium_sha256 }] }
     Present { value: label } =>
       match host_capture_bind(capture: capture, machine: subject.machine) {
-        HostCaptureNotBegun => TerminalPending { reason: "no begin marker for this machine yet" }
+        HostCaptureNotBegun => mtcollins1_boot_pre_os_verdict(capture: capture)
         HostCaptureUnbound { reason: r } => TerminalRefused { causes: [TerminalCaptureUnbound { reason: r }] }
         HostCaptureOpen { envelope: envelope } => terminal_over_open(envelope: envelope, threads: threads, label: label)
         HostCaptureBound { envelope: envelope } => terminal_over_closed(envelope: envelope, threads: threads, label: label)
@@ -571,6 +608,12 @@ fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> St
     EdacCountersNotClean { name: n } => concat(n, ": mc0 ce_count/ue_count not both 0")
     WorkloadWriteFailed { rc: rc } => concat("workload write rc=", rc)
     WorkloadDigestUnstable => "workload digest not stable across passes"
+    PreOsFirmwareRefusal { statement: st, locus: locus } =>
+      concat("firmware refused before any kernel: ", st as String,
+        (match locus.socket { Present { value: sk } => concat(" [socket ", to_string(sk), "]")  Absent => "" }),
+        (match locus.memory_controller { Present { value: mc } => concat(" [memory controller ", to_string(mc), "]")  Absent => "" }))
+    PreOsBootLoaderRefusal { errors: es } =>
+      concat("boot loader failed both default and fallback entries before any kernel", if count(es) == 0 { "" } else { concat(" (", join(map(es, e => e as String), "; "), ")") })
   }
 }
 

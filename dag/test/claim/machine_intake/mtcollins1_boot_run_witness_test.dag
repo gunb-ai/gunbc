@@ -13,6 +13,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_sol_held_from_observations,
   mtcollins1_sol_observed_from_collector,
   mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_refusal_text, mtcollins1_boot_terminal_cause_text,
+  mtcollins1_boot_pre_os_verdict,
   MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRefused, TerminalPending,
   HardwareThreadCountMismatch, WorkloadWriteFailed,
   mtcollins1_boot_medium_refusal,
@@ -512,4 +513,39 @@ test fn the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label() -
         Present { value: label } => (label as String) == "GUNBC_MTC1_CENSUS_2404_3"
       }
   }
+}
+
+// PRE-OS REFUSALS END THE BOOT BEFORE ANY ENVELOPE. Fixtures are the console lines boot 23
+// attempt 7 (run 35669747413) and the 2026-09-12 DDR-init captures actually printed. A GRUB error
+// while the loader is still trying, and the bare menu banner, stay PENDING: the boot may proceed.
+test fn a_pre_os_refusal_on_the_console_is_a_typed_refusal_not_a_timeout() -> Bool {
+  let grub_failed = concat(
+    "Checkpoint AD\n",
+    "GNU GRUB  version 2.12\n",
+    "      Press enter to boot the selected OS, `e' to edit the commands       \n",
+    "error: you need to load the kernel first.\n",
+    "Press any key to continue...\n",
+    "  Failed to boot both default and fallback entries.\n",
+    "Press any key to continue...\n",
+    "GNU GRUB  version 2.12\n")
+  let grub_trying = "GNU GRUB  version 2.12\nerror: failure reading sector 0xc5130 from `cd0'.\n"
+  let banner_only = "Checkpoint AD\nGNU GRUB  version 2.12\n"
+  let ddr = "NOTICE:  DRAM FW version 210525\nERROR:   SK[1]: 00110010\nERROR:     MC[4]: 00f10081\nERROR:   DDR initialization failure. STOP!\n"
+  let unterminated_failure = "GNU GRUB  version 2.12\n  Failed to boot both default and fallback entries."
+  (match mtcollins1_boot_pre_os_verdict(capture: grub_failed) {
+    TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => {
+      let t = mtcollins1_boot_terminal_cause_text(cause: c)
+      starts_with(s: t, prefix: "boot loader failed both default and fallback entries") && string_contains(s: t, pattern: "you need to load the kernel first")
+    })
+    _ => false })
+    && is_pending(v: mtcollins1_boot_pre_os_verdict(capture: grub_trying))
+    && is_pending(v: mtcollins1_boot_pre_os_verdict(capture: banner_only))
+    && is_pending(v: mtcollins1_boot_pre_os_verdict(capture: ""))
+    && is_pending(v: mtcollins1_boot_pre_os_verdict(capture: unterminated_failure))
+    && (match mtcollins1_boot_pre_os_verdict(capture: ddr) {
+      TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => mtcollins1_boot_terminal_cause_text(cause: c) == "firmware refused before any kernel: ERROR:   DDR initialization failure. STOP! [socket 1] [memory controller 4]")
+      _ => false })
+    && (match mtcollins1_boot_terminal_verdict(capture: grub_failed, subject: mtcollins1_boot_subject_for(medium: MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr), medium: MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }) {
+      TerminalRefused { causes: cs } => count(cs) == 1
+      _ => false })
 }
