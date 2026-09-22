@@ -381,6 +381,28 @@ type RunSwapPolicy
   | SwapMaxDeclaredUnread { declared: ByteSize, declaring_authority: NonEmptyStr }
   | SwapDisabled
 
+// WHAT THE TYPED RECEIPT DOES NOT YET CARRY, NAMED RATHER THAN LEFT SILENT. The brief this
+// receipt was produced under asked for more per-beat facts than the carrier holds, and the gap is
+// stated here because an unstated gap reads as a claim of coverage. Every field below is either
+// PRINTED BY THE INSTRUMENT AND NOT TRANSCRIBED, or not observed at all -- and the difference
+// matters to whoever closes it, so it is recorded per field rather than as a sentence.
+//
+//   PSI pressure        printed by floor_cgroup_envelope, every TENTH beat, not carried
+//   oom_kill            printed by the same envelope line, not carried
+//   process overlap     NOT OBSERVED BY ANYTHING -- no instrument reads it today
+//   wall and result     gunbc_floor_job_wall_receipt exists as its own row and is NOT joined to
+//                       the held-set receipt, so no reader can ask one object for both
+//   cold vs repeated    the receipts do not say which they are, so their accounting can be mixed
+//                       by a reader who does not check the run
+//
+// THE TRIGGER IS CONSUMPTION, NOT CARRIAGE, and that distinction is the whole reason this is a
+// frontier rather than a todo: a field added to FloorMemoryStatBeat that no fold reads would be
+// the dangling declaration DESIGN 3c refuses, and this module already carries one declared
+// frontier for exactly that reason.
+data floor_receipt_uncarried_observation_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: receipt_peak_reading_standing, or the fit fold in gunbc.runner_microvm that judges demand plus allowance against the cell remainder -- whichever of the two is the first to need a fact this receipt cannot currently state. TRIGGER: the field is CARRIED on FloorMemoryStatBeat or FloorHeldSetReceipt and READ by one of those folds, per field; a field carried and unread does not retire its line. SUFFICIENT FOR deleting the corresponding line above, and the row retires when every line has gone. NOT satisfied by printing the value in the job log -- PSI and oom_kill are printed today and that is precisely the state this row records. Process overlap additionally needs an INSTRUMENT before it can be carried: nothing observes it, so its line is a measurement obligation and not a transcription one." as NonEmptyStr,
+)
+
 // run_completed MEANS THE MEASURED WORKLOAD RAN TO ITS END, NOT THAT THE FLOOR RETURNED CLEAN,
 // and the distinction decides a reading. Its consumer is receipt_peak_reading_standing, which asks
 // whether the peak could have been TRUNCATED -- a run that stopped early never reached whatever it
