@@ -431,6 +431,19 @@ type ParseFullRun {
   hits: Int
 }
 
+// THE UNFORCED RUN IS THE DERIVED ONE, so the base table's materialization comes from the real
+// door asked about THIS grammar's census -- not from a literal, which would make the equality
+// claim compare two runs the derivation never chose.
+//
+// A REFUSAL FAILS THE CLAIM RATHER THAN SUBSTITUTING FOR IT. Standing in Recompute on the
+// Rejected arm would be the very move this package exists to remove, one layer down: a refusal
+// replaced by a valid operational value so the caller can proceed. The objection is not about
+// the store -- Recompute does turn it off and the comparison would still run -- it is about this
+// claim's PREMISE. A refused admission means the derived side of the pair does not exist, so the
+// claim would go green having evaluated a state it was never written to evaluate, with nothing
+// saying so. Refusal is owned elsewhere for COVERAGE (refused_scope_is_not_admitted, and the
+// consumer-boundary control over prepare_grammar); it is not owned elsewhere for this claim's
+// honesty. optional_absent() reaches the claim's own Absent arm, which is false.
 fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
   let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^abandoned_path_grammar_contract)
   match grammar_validate_for_parse(root: linear_root(), at: contract_locus) {
@@ -439,20 +452,6 @@ fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
       let tokens = abandoned_path_tokens()
       let root = validated.root
       let analysis = compute_grammar_first_analysis(root: root)
-      // THE UNFORCED RUN IS THE DERIVED ONE, so the base table's materialization comes from the
-      // real door asked about THIS grammar's census -- not from a literal that would make the
-      // equality claim compare two runs the derivation never chose.
-      //
-      // A REFUSAL FAILS THE CLAIM RATHER THAN SUBSTITUTING FOR IT. Standing in Recompute here
-      // would be the very move this package exists to remove, one layer down: a refusal replaced
-      // by a valid operational value so the caller can proceed. The objection is not about the
-      // store -- Recompute would indeed turn it off and the comparison would still run -- it is
-      // about this claim's PREMISE. A refused admission means the derived side of the pair does
-      // not exist, so the claim would go green having evaluated a state it was never written to
-      // evaluate, with nothing saying so. Refusal is owned elsewhere for COVERAGE
-      // (refused_scope_is_not_admitted, and the consumer-boundary control over prepare_grammar);
-      // it is not owned elsewhere for this claim's honesty. Absent propagates to the claim's
-      // Absent arm, which is false.
       match parse_table_memo_materialization_for(r: analysis.memo_recurrence) {
         Rejected { diagnostics: _ } => optional_absent()
         Accepted { value: derived, diagnostics: _ } =>
