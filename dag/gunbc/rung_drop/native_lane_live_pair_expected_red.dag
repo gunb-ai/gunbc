@@ -1,7 +1,7 @@
 module gunbc.rung_drop.native_lane_live_pair_expected_red
 
 import std.types { List, NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-21 (v2 foundation manager ruling, no-regression standard for gunbc#11952; the
@@ -34,7 +34,9 @@ data native_lane_live_pair_expected_red: RungDrop = RungDrop {
 
   declared: "2026-09-21",
 
-  standing: Standing,
+  standing: Retired {
+    trigger_fired: "2026-09-22, gunbc#12009. All three conjuncts executed on the emitted route before the edit: (1) v2.native_lane_fixture.control RESOLVES under the namespace candidate rule -- measured on the real source bytes, not an isomorphic fixture; (2) a run through the emitted binary's native_test_eval_one observed native_lane_false_control = ReturnedFalse AND native_lane_true_control = Passed, the first observation of the pair on any head; (3) gunbc.witness_v2_native_route native_route_live_pair_standing set to LivePairRequired in the same change. The pair is now a permanent regression control (DESIGN 4b(4)), not retired evidence. Receipt -- dag head, emitter source, emitted-closure hash, both verdicts, command -- in gunbc#12009's body." as NonEmptyStr
+  },
 
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
