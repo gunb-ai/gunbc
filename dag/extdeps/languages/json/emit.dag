@@ -69,24 +69,67 @@ fn json_unicode_escape_hex4(cp: Int) -> String {
   else { h }
 }
 
-fn json_escape_code_point(cp: Int) -> String {
-  if cp == 8 { "\\b" }
-  else if cp == 9 { "\\t" }
-  else if cp == 10 { "\\n" }
-  else if cp == 12 { "\\f" }
-  else if cp == 13 { "\\r" }
-  else if cp == 34 { "\\\"" }
-  else if cp == 92 { "\\\\" }
-  else if cp >= 0 && cp <= 31 { concat("\\u", json_unicode_escape_hex4(cp: cp)) }
-  else { from_code_point(cp: cp) }
+fn escape_json_string(s: String) -> String {
+  json_escape_via_passes(s: s)
 }
 
-fn escape_json_string(s: String) -> String {
-  json_emit_finish(acc: fold(
-    chars(s: s),
-    init: JsonEmitAcc { out: "", parts: [] },
-    f: (acc, cp) => json_emit_push(acc: acc, part: json_escape_code_point(cp: cp)),
-  ))
+// JSON ESCAPING AS NATIVE SPLIT/JOIN PASSES, NOT A PER-CHAR INTERPRETED FOLD. The per-char fold
+// (measured 2026-09-21 on the srv2-deploy instance) rendered at roughly a million characters a
+// second, and a whole-corpus envelope -- ~7,050 authored sources, ~140MB of JSON -- never finished
+// serializing: the belt's capture could stage and mint but never PERSIST. The same RFC 8259 §7
+// rules run here as ~32 native passes over the bytes, which finish in seconds. ORDER IS LOAD-
+// BEINGING: the backslash leads so escapes introduced by later passes are never re-escaped, the
+// quote follows, then the five named controls, then the remaining control range as \u00XX -- every
+// code point below 0x20 is covered by construction, and none of the replacement texts contains a
+// code point a later pass splits on, so each original character escapes exactly once. Output bytes
+// are identical to the per-char fold's; only the building cost changes (DESIGN section 6).
+data json_named_escape_code_points: List<Int> = [8, 9, 10, 12, 13]
+
+data json_control_escape_code_points: List<Int> = [
+  0, 1, 2, 3, 4, 5, 6, 7, 11, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+]
+
+fn json_escape_replace(s: String, code_point: Int, replacement: String) -> String {
+  join(split(s: s, delimiter: from_code_point(code_point)), replacement)
+}
+
+fn json_escape_named_replacement(code_point: Int) -> String {
+  if code_point == 8 { "\\b" }
+  else if code_point == 9 { "\\t" }
+  else if code_point == 10 { "\\n" }
+  else if code_point == 12 { "\\f" }
+  else { "\\r" }
+}
+
+fn json_escape_control_replacement(code_point: Int) -> String {
+  concat("\\u", json_unicode_escape_hex4(cp: code_point))
+}
+
+fn json_escape_via_passes(s: String) -> String {
+  let unslashed = json_escape_replace(s: s, code_point: 92, replacement: "\\\\")
+  let quoted = json_escape_replace(s: unslashed, code_point: 34, replacement: "\\\"")
+  let named = fold(
+    json_named_escape_code_points,
+    init: quoted,
+    f: fn(acc, code_point) {
+      json_escape_replace(
+        s: acc,
+        code_point: code_point,
+        replacement: json_escape_named_replacement(code_point: code_point),
+      )
+    },
+  )
+  fold(
+    json_control_escape_code_points,
+    init: named,
+    f: fn(acc, code_point) {
+      json_escape_replace(
+        s: acc,
+        code_point: code_point,
+        replacement: json_escape_control_replacement(code_point: code_point),
+      )
+    },
+  )
 }
 
 // SERIALIZATION IS CHUNK-FLUSHED, NOT CONCAT-ACCUMULATED (measured 2026-09-21 on the srv2-deploy
@@ -99,19 +142,25 @@ fn escape_json_string(s: String) -> String {
 // changes (DESIGN section 6: a proven cost-shape defect is always fixed).
 data json_emit_flush_granularity: Int = 128
 
+// PENDING IS CARRIED AS A COUNT, NOT RE-DERIVED WITH count(parts) PER PUSH: count is a list fold,
+// and at whole-corpus document scale (measured 2026-09-21: a ~140MB envelope render) the re-derivation
+// multiplied every character's cost by the flush window and the render never finished. The two
+// facts are updated in one place, so they cannot drift.
 type JsonEmitAcc {
   out: String
   parts: List<String>
+  pending: Int
 }
 
 fn json_emit_push(acc: JsonEmitAcc, part: String) -> JsonEmitAcc {
-  if count(acc.parts) >= json_emit_flush_granularity {
+  if acc.pending >= json_emit_flush_granularity {
     JsonEmitAcc {
       out: concat(acc.out, join(reverse(acc.parts), "")),
       parts: [part],
+      pending: 1,
     }
   } else {
-    JsonEmitAcc { out: acc.out, parts: concat([part], acc.parts) }
+    JsonEmitAcc { out: acc.out, parts: concat([part], acc.parts), pending: acc.pending + 1 }
   }
 }
 
@@ -130,7 +179,7 @@ fn serialize_json_string(s: String) -> String {
 fn join_json_values(items: List<JsonValue>) -> String {
   json_emit_finish(acc: fold(
     items,
-    init: JsonEmitAcc { out: "", parts: [] },
+    init: JsonEmitAcc { out: "", parts: [], pending: 0 },
     f: (acc, v) =>
       json_emit_push(
         acc: acc,
@@ -150,7 +199,7 @@ fn serialize_json_array(elements: List<JsonValue>) -> String {
 fn serialize_json_object_members(members: List<JsonKeyValue>) -> String {
   json_emit_finish(acc: fold(
     members,
-    init: JsonEmitAcc { out: "", parts: [] },
+    init: JsonEmitAcc { out: "", parts: [], pending: 0 },
     f: (acc, kv) =>
       json_emit_push(
         acc: acc,
