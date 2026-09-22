@@ -146,6 +146,17 @@ fn bignat_is_zero(a: BigNat) -> Bool {
   fold(a.limbs, init: true, f: (acc, x) => acc && x == 0)
 }
 
+// Strict ordering predicates over the same total compare: `a < m`, and `0 < a < m` -- the range
+// checks a modular consumer asks of a residue or a scalar (moved here from extdeps.crypto per
+// review 69917 of gunbc#11981: ordering over BigNat is this layer's fact).
+fn bignat_below(a: BigNat, m: BigNat) -> Bool {
+  bignat_compare(a: a, b: m) < 0
+}
+
+fn bignat_nonzero_below(a: BigNat, m: BigNat) -> Bool {
+  !bignat_is_zero(a: a) && bignat_below(a: a, m: m)
+}
+
 // ── Addition and subtraction ─────────────────────────────────────────────────────────────────
 fn bignat_add(a: BigNat, b: BigNat) -> BigNat {
   BigNat { limbs: bignat_add_limbs(a: a.limbs, b: b.limbs, carry: 0, acc: []) }

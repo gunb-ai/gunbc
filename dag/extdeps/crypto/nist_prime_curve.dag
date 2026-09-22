@@ -3,6 +3,7 @@ module extdeps.crypto.nist_prime_curve
 import std.types { Int, List, Bool }
 import std.integer { UInt8 }
 import std.bignat {
+  bignat_below, bignat_nonzero_below,
   BigNat, MontgomeryModulus, bignat_from_octets, bignat_compare, bignat_is_zero, bignat_bits, bignat_zero_limbs, bignat_one,
   montgomery_modulus, montgomery_mul, montgomery_add, montgomery_sub, montgomery_to, montgomery_from,
   montgomery_inverse_prime, montgomery_reduce_once,
@@ -159,6 +160,28 @@ fn curve_double_scalar(c: PrimeCurve, u1: BigNat, g: JacobianPoint, u2: BigNat, 
   })
 }
 
+// THE GROUP LAW'S OWN EVIDENCE (review 69917 of gunbc#11981): a Jacobian point (X:Y:Z) lies on
+// y^2 = x^3 - 3x + b exactly when Y^2 = X^3 - 3·X·Z^4 + b·Z^6, decided in a handful of field
+// operations and with no inversion, so a doubling or an addition can be checked for closure at a
+// cost near curve_on_curve's. Infinity is on every curve.
+fn curve_jacobian_on_curve(c: PrimeCurve, p: JacobianPoint) -> Bool {
+  if jacobian_is_infinity(p: p) { true } else {
+    let z2 = curve_fsqr(c: c, a: p.z)
+    let z4 = curve_fsqr(c: c, a: z2)
+    let z6 = curve_fmul(c: c, a: z4, b: z2)
+    let x3 = curve_fmul(c: c, a: curve_fsqr(c: c, a: p.x), b: p.x)
+    let xz4 = curve_fmul(c: c, a: p.x, b: z4)
+    let three_xz4 = curve_fadd(c: c, a: curve_fadd(c: c, a: xz4, b: xz4), b: xz4)
+    let bz6 = curve_fmul(c: c, a: montgomery_to(ctx: c.field, a: c.b), b: z6)
+    bignat_compare(a: curve_fsqr(c: c, a: p.y), b: curve_fadd(c: c, a: curve_fsub(c: c, a: x3, b: three_xz4), b: bz6)) == 0
+  }
+}
+
+// The additive inverse of an affine-embedded point: (X : −Y : Z).
+fn curve_negate(c: PrimeCurve, p: JacobianPoint) -> JacobianPoint {
+  JacobianPoint { x: p.x, y: curve_fsub(c: c, a: montgomery_to(ctx: c.field, a: bignat_zero_limbs()), b: p.y), z: p.z }
+}
+
 // ── Public key validation (SP 800-186 §D.1.1 partial validation: on the curve, in range) ─────
 fn curve_on_curve(c: PrimeCurve, x: BigNat, y: BigNat) -> Bool {
   let xm = montgomery_to(ctx: c.field, a: x)
@@ -167,14 +190,6 @@ fn curve_on_curve(c: PrimeCurve, x: BigNat, y: BigNat) -> Bool {
   let x3 = curve_fmul(c: c, a: curve_fsqr(c: c, a: xm), b: xm)
   let three_x = curve_fadd(c: c, a: curve_fadd(c: c, a: xm, b: xm), b: xm)
   bignat_compare(a: curve_fsqr(c: c, a: ym), b: curve_fadd(c: c, a: curve_fsub(c: c, a: x3, b: three_x), b: bm)) == 0
-}
-
-fn bignat_below(a: BigNat, m: BigNat) -> Bool {
-  bignat_compare(a: a, b: m) < 0
-}
-
-fn bignat_nonzero_below(a: BigNat, m: BigNat) -> Bool {
-  !bignat_is_zero(a: a) && bignat_below(a: a, m: m)
 }
 
 // Split a list after `n` elements.
