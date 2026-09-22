@@ -1,7 +1,7 @@
 module gunbc.rung_drop.variant_fields_unlowered_on_the_native_route
 
 import std.types { List, NonEmptyStr }
-import gunbc.rung_drop { Retired, RungDrop, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-21 (gunbc#11998, side-chat ruling via neat-boar-16). ONE frontier for record
@@ -17,32 +17,47 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // silently lost; that loss is now the typed refusal
 // body_lowering_reason_positional_pattern_binder_unlowered.
 
-// RETIRED 2026-09-22 (gunbc#12033), BY BOTH HALVES OF THE TRIGGER, EXECUTED. Lowering:
-// v2.compiler.body_lowering_fold body_lower_type_variant / body_lower_record_type_decl declare the
-// fields (v2.std.node_query DeclaredField, "0" for the positional spelling), the graft skip is
-// deleted, and body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>` to the
-// construct over their binders (Conj { A: Atom(A), 0: Atom(x) }), so the #11998 refusal is
-// retired. Binding: v2.compiler.resolve resolve_match_node scopes those binders as the arm's
-// lexical frame, so a binder that shadows an outer name binds the arm's value -- the silent
-// shadowing loss this row declared. Evidence: v2.test.parse.variant_field_lowering and
-// v2.test.claim.match_arm_binder_frame, each with its executed mutation (declaration lowering
-// removed, binders dropped, frame deleted) reddening its rows; the workload adjudicate through
-// the emitted compiler no longer refuses dag/std/content_hash.dag. The population below is what
-// the row covered, kept as the record of what was lost.
+// NOT RETIRED BY gunbc#12033, AND THE POPULATION IS NARROWED TO WHAT REMAINS. The lowering half
+// of the trigger IS executed: v2.compiler.body_lowering_fold declares the fields, the graft skip
+// is deleted, and body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>`
+// to the construct over their binders, so the #11998 positional-binder refusal is retired. The
+// resolver frame is executed too: v2.compiler.resolve resolve_match_node scopes those binders as
+// the arm's lexical frame. What is NOT established is the sentence this row's trigger requires --
+// that a binder BINDS -- because one reachable class of binder still silently does not.
+//
+// THE RESIDUE, WITH ITS SPECIMEN. resolve_pattern_node_is_constructor decides binder-versus-
+// constructor by SHAPE, and a module container is a Conj whose every child is a Named edge, which
+// is also what a declared payload looks like to every shape test tried. So a binder spelling a
+// sibling module name is classified a constructor, gets no frame local, and resolves to the
+// MODULE. In this tree: src/v2/std/symbol_index.dag:156 is `Present { value: node } =>` inside
+// module v2.std.symbol_index, and lexical ascent from that arm reaches the module v2.std.node.
+// Accepted, wrong value, no diagnostic -- below the ladder, not on it. Found by review 70101 on
+// this PR.
+//
+// AN ABSENCE CLAIM THAT WAS ABOUT WHERE I LOOKED, RECORDED BECAUSE THE NEXT READER MEETS IT HERE.
+// Two commits before this row was narrowed, the annotation beside the classifier stated that this
+// arm had NO corpus specimen, on the strength of two probes that came back green with a live
+// control. Both probes hunted a DATA or ALIAS whose indexed node is a parse-rest node. The
+// reachable shape is a MODULE, so the search was in the wrong place and the absence was a fact
+// about the search rather than about the corpus. gunbc#12057's author pointed one link upstream,
+// at the LOOKUP rather than the node shape, and was closer than either reading.
+//
+// WHY THE REPAIR IS NOT ANOTHER PREDICATE. Three shape discriminators have now been tried on this
+// classifier -- the bare connective, the construct tag, and declared-field coverage -- and each
+// admitted a wider set than its author intended, each looking complete at the time. A declared
+// payload, a module container and a declaration parse-rest node are all Conj with Named edges, so
+// the shape does not carry the distinguishing fact at all; what the classifier needs is what the
+// NAME DENOTES, which v2.compiler.symbol_index_fill knows at insert time. That is this row's
+// restoration trigger and it is filed as its own subject.
 data variant_fields_unlowered_on_the_native_route_population: List<String> = [
-  "v2.compiler.namespace_graft namespace_graft_type_decl_is_fielded -- record and positional variants went to residual_units, no field identities (deleted)",
-  "v2.compiler.body_lowering_fold body_lower_is_structure_preserved_emitted -- dag_surface_field_decl_block and dag_surface_positional_variant_payload were preserved unlowered (now lowered by the enclosing variant / type_decl producer)",
-  "v2.compiler.body_lowering_fold body_lower_match_arm_wire_from_sequence -- positional pattern binders refused (body_lowering_reason_positional_pattern_binder_unlowered, deleted)",
-  "v2.compiler.resolve resolve_node -- no scope frame for a match arm's binders (resolve_match_node now scopes them)",
+  "v2.compiler.resolve resolve_pattern_node_is_constructor -- a match-arm binder spelling a name the lexical chain resolves to a MODULE container is classified a constructor by shape, gets no frame local, and resolves to the module; specimen src/v2/std/symbol_index.dag:156, `Present { value: node }` in v2.std.symbol_index, where ascent reaches module v2.std.node",
 ]
 
 data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
   identity: "variant_fields_unlowered_on_the_native_route" as NonEmptyStr,
   subject: "native route lowers variant fields, named and positional, into declared field identities and binds pattern binders from them, the way the seed does",
   declared: "2026-09-21",
-  standing: Retired {
-    trigger_fired: "2026-09-22 (gunbc#12033): a v2 stage (normalize: body_lower_type_variant, body_lower_record_type_decl, body_lower_pattern_lowered) lowers variant fields into declared field identities, named and positional \"0\", and the match-arm path binds a pattern binder, braced or positional, from the field it names -- structurally at normalize and lexically at resolve (resolve_match_node). Executed: v2.test.parse.variant_field_lowering, v2.test.claim.match_arm_binder_frame, their mutations, and the native workload adjudicate on the PR." as NonEmptyStr
-  },
+  standing: Standing,
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
@@ -50,6 +65,6 @@ data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
       replacement: "a v2 stage lowers variant fields into declared field identities (named and positional \"0\")"
     },
     population: variant_fields_unlowered_on_the_native_route_population,
-    restoration_trigger: "a v2 stage lowers variant fields into declared field identities (named and positional \"0\"), sufficient for the match-arm path to bind a pattern binder, braced or positional, from the field it names. Parsing either spelling without that lowering does not retire this row, and neither does lowering one spelling alone."
+    restoration_trigger: "resolve_pattern_node_is_constructor decides binder-versus-constructor from the DECLARATION KIND the symbol index recorded at insert time -- v2.compiler.symbol_index_fill distinguishes a containment edge from a variant payload from a data row -- rather than from the node's shape, so that a binder spelling a module, data or alias name binds the arm. The check is the specimen: `Present { value: node }` in v2.std.symbol_index binds the arm rather than resolving to module v2.std.node. A fourth shape predicate does NOT satisfy this: three have been tried and each admitted a wider set than intended, which is the evidence that shape is the wrong carrier."
   }
 }

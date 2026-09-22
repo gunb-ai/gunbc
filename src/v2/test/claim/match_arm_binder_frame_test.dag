@@ -94,8 +94,6 @@ fn mab_outcome_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
   }
 }
 
-
-
 fn mab_resolved_0() -> Outcome<Node> {
   mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n")
 }
@@ -189,3 +187,4 @@ test fn mab_nested_braced_and_shorthand_binders_bind() -> Bool {
     && mab_outcome_accepts(o: mab_resolved_8())
     && mab_outcome_accepts(o: mab_resolved_9())
 }
+
