@@ -31,11 +31,7 @@ import gunbc.representation_boundary {
   boundary_is_candidate_fork,
   boundary_is_declared_divergence,
   boundary_has_no_authority,
-  boundary_candidate_names_its_discriminator,
-  boundary_two_authority_states_its_question,
   boundary_authority_and_evidence_are_consistent,
-  every_candidate_fork_names_its_discriminator,
-  every_two_authority_row_states_its_one_question,
   every_boundary_names_a_trigger,
   no_boundary_claims_evidence_without_an_authority,
   boundary_roster_size,
@@ -72,7 +68,7 @@ fn conforming_row() -> RepresentationBoundary {
   }
 }
 
-fn row_with(authority_arm: Int, blank_discriminator: Bool) -> RepresentationBoundary {
+fn row_with(authority_arm: Int) -> RepresentationBoundary {
   RepresentationBoundary {
     identity: "fixture-variable" as NonEmptyStr,
     boundary_class: Bindings,
@@ -91,7 +87,7 @@ fn row_with(authority_arm: Int, blank_discriminator: Bool) -> RepresentationBoun
         standing: ForkCandidate {
           what_was_established: "fixture" as NonEmptyStr,
           what_was_not: "fixture" as NonEmptyStr,
-          discriminator: (if blank_discriminator { "" } else { "fixture discriminator" }) as NonEmptyStr
+          discriminator: "fixture discriminator" as NonEmptyStr
         }
       }
     },
@@ -153,23 +149,21 @@ fn no_authority_row(claims_evidence: Bool) -> RepresentationBoundary {
 // conjuncts below goes false. This is the arm that would catch a later edit "simplifying"
 // ForkStanding back to a Bool.
 test fn representation_boundary_three_standings_are_discriminated_holds() -> Bool {
-  boundary_is_established_fork(b: row_with(authority_arm: 0, blank_discriminator: false))
-    && !boundary_is_candidate_fork(b: row_with(authority_arm: 0, blank_discriminator: false))
-    && boundary_is_candidate_fork(b: row_with(authority_arm: 1, blank_discriminator: false))
-    && !boundary_is_established_fork(b: row_with(authority_arm: 1, blank_discriminator: false))
+  boundary_is_established_fork(b: row_with(authority_arm: 0))
+    && !boundary_is_candidate_fork(b: row_with(authority_arm: 0))
+    && boundary_is_candidate_fork(b: row_with(authority_arm: 1))
+    && !boundary_is_established_fork(b: row_with(authority_arm: 1))
     && boundary_is_declared_divergence(b: declared_divergence_row())
     && !boundary_is_established_fork(b: declared_divergence_row())
     && !boundary_is_candidate_fork(b: declared_divergence_row())
 }
 
-// A CANDIDATE WITH NO DISCRIMINATOR IS AN INSINUATION, AND THIS IS THE RED THAT REFUSES ONE. The
-// positive control beside it is required: a predicate that refused everything would satisfy the
-// first conjunct alone.
-test fn representation_boundary_candidate_without_a_discriminator_is_refused_holds() -> Bool {
-  !boundary_candidate_names_its_discriminator(b: row_with(authority_arm: 1, blank_discriminator: true))
-    && boundary_candidate_names_its_discriminator(b: row_with(authority_arm: 1, blank_discriminator: false))
-    && boundary_candidate_names_its_discriminator(b: conforming_row())
-}
+// NO ARM HERE CHECKS THAT A DISCRIMINATOR OR A SHARED QUESTION IS PRESENT, and that is deliberate
+// rather than an omission. Both fields are NonEmptyStr, so the empty case is refused by the
+// refinement at construction and a fixture cannot build the row such an arm would need -- the
+// "red" would be a refusal, not a false. DESIGN section 4b: a check whose red is unauthorable is a
+// decoration, permanently green and worse than absent because it gets cited as coverage. The rule
+// is held by the type; see the note in gunbc.representation_boundary.
 
 // A ROW WITH NO AUTHORITY MAY NOT CLAIM EVIDENCE. If nothing declares the fact there is nothing for
 // an execution to establish agreement WITH, so such a row would be the unadjudicable divergence
@@ -186,7 +180,7 @@ test fn representation_boundary_no_authority_may_not_claim_evidence_holds() -> B
 // InterpretedOnly with a better adjective, and NoEvidence is not InterpretedOnly with a smaller
 // number -- a fold that treated any two as one would report coverage this roster does not have.
 test fn representation_boundary_evidence_arms_do_not_collapse_holds() -> Bool {
-  boundary_is_interpreted_only(b: row_with(authority_arm: 1, blank_discriminator: false))
+  boundary_is_interpreted_only(b: row_with(authority_arm: 1))
     && !boundary_is_interpreted_only(b: conforming_row())
     && !boundary_is_interpreted_only(b: no_authority_row(claims_evidence: false))
 }
@@ -197,8 +191,6 @@ test fn representation_boundary_evidence_arms_do_not_collapse_holds() -> Bool {
 // makes this go red on the production data.
 test fn representation_boundary_production_roster_satisfies_its_own_walls_holds() -> Bool {
   every_boundary_names_a_trigger()
-    && every_candidate_fork_names_its_discriminator()
-    && every_two_authority_row_states_its_one_question()
     && no_boundary_claims_evidence_without_an_authority()
     && boundary_roster_size() > 0
 }

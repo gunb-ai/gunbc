@@ -135,8 +135,8 @@ type RepresentationBoundary {
   boundary_class: BoundaryClass
   authority: BoundaryAuthority
   witnesses: List<WitnessSubject>
-  supported_scope: NonEmptyStr
-  preservation_obligation: NonEmptyStr
+  supported_scope: String
+  preservation_obligation: String
   crossing_evidence: CrossingEvidence
   next_trigger: NextRungTrigger
 }
@@ -173,8 +173,8 @@ data calls_boundary: RepresentationBoundary = RepresentationBoundary {
       module_path: "test.claim.rt_bridge_registry_witness_test"
     )
   ],
-  supported_scope: "THE JOIN IS DERIVED OVER THE ROW POPULATION AND NOT OVER THE AUTHORITIES, and stating it the other way is the inflation this row exists to refuse. Mutation control is DISCOVERED on AlgebraTemplate, EmitHandler and InterpreterDispatch; it is PARTIAL on BuiltinRegistry and PrimitiveContractRow, which the home counts itself as primitive_d0_parallel_roster_surface_authority_count = 2. A row added to builtin_function_registry alone, or a new *_contract data row alone, does NOT move primitive_surface_census_derived -- only updating the hand roster beside it does. So five surfaces are joined, and three authorities are watched." as NonEmptyStr,
-  preservation_obligation: "One authored spelling resolves to one PrimitiveIdentity on every surface carrying it; the signature grounding agrees across surfaces; a surface naming an identity no definition owns refuses as RealizationNamesUnknownPrimitive; and a spelling reached on the interpreted route computes the same value as the same spelling reached on the emitted route." as NonEmptyStr,
+  supported_scope: "THE JOIN IS DERIVED OVER THE ROW POPULATION AND NOT OVER THE AUTHORITIES, and stating it the other way is the inflation this row exists to refuse. Mutation control is DISCOVERED on AlgebraTemplate, EmitHandler and InterpreterDispatch; it is PARTIAL on BuiltinRegistry and PrimitiveContractRow, which the home counts itself as primitive_d0_parallel_roster_surface_authority_count = 2. A row added to builtin_function_registry alone, or a new *_contract data row alone, does NOT move primitive_surface_census_derived -- only updating the hand roster beside it does. So five surfaces are joined, and three authorities are watched.",
+  preservation_obligation: "One authored spelling resolves to one PrimitiveIdentity on every surface carrying it; the signature grounding agrees across surfaces; a surface naming an identity no definition owns refuses as RealizationNamesUnknownPrimitive; and a spelling reached on the interpreted route computes the same value as the same spelling reached on the emitted route.",
   crossing_evidence: InterpretedOnly {
     what_goes_red: "a PrimitiveJoinViolation fold over primitive_surface_census_derived, on a mutation of any of the three DERIVED surfaces" as NonEmptyStr,
     unobserved: "the last clause of the obligation. Nothing executes one spelling on both routes and compares the values. Two specimens are named by the home itself and were re-verified live rather than read off its annotations: fold / fold_list is a SPELLING FORK where contract and algebra carry fold while interpreter and emit carry fold_list, and fold_list fires on the eval_call native intercept BEFORE eval_builtin_inner so it never reaches builtin_function_registry at all -- a ROUTE fact, not a naming one. lookup is TWO REALIZATIONS UNDER ONE NAME, an eval_method_call short-circuit shadowing the algebra template arm. Both are surfaces that CAN disagree; NEITHER is established to disagree on any input." as NonEmptyStr
@@ -194,8 +194,8 @@ data serialization_boundary: RepresentationBoundary = RepresentationBoundary {
     }
   },
   witnesses: [],
-  supported_scope: "A coproduct whose spelling is named by a CoproductWireContract row keyed on declaration identity, ELSE by its declaring module's wire_contract. A nullary coproduct named by NEITHER is still Accepted and still fails at its first live response -- that is not a gap beside the scope, it IS the scope's edge, and it is what the trigger below names." as NonEmptyStr,
-  preservation_obligation: "Both routes spell one coproduct variant identically on the wire, by the same precedence; a coproduct that cannot be spelled refuses on both; and a response is decoded by its DECLARED OUTPUT TYPE rather than by the shape of the JSON that arrived." as NonEmptyStr,
+  supported_scope: "A coproduct whose spelling is named by a CoproductWireContract row keyed on declaration identity, ELSE by its declaring module's wire_contract. A nullary coproduct named by NEITHER is still Accepted and still fails at its first live response -- that is not a gap beside the scope, it IS the scope's edge, and it is what the trigger below names.",
+  preservation_obligation: "Both routes spell one coproduct variant identically on the wire, by the same precedence; a coproduct that cannot be spelled refuses on both; and a response is decoded by its DECLARED OUTPUT TYPE rather than by the shape of the JSON that arrived.",
   crossing_evidence: AgreesByConstruction {
     how: "the interpreter's decode_json_by_declared_type reads the emitter's own readers -- is_coproduct_wire_contract_row, coproduct_decl_ref_decl_name, coproduct_wire_contract_encoding, naming_policy_node -- in the emitter's own precedence, and spells through its to_snake and to_screaming_snake. The routes cannot disagree on spelling because there is one reader, not two that agree today. THIS IS THE RECEIPT FOR THE THESIS: before that repair the SAME single authority was consumed by the emitter and never read by the interpreter, which decoded type-blind through json_to_value, and the defect was caught by a live response rather than by a gate. UNVERIFIED AND LEFT SO: that every emitter reader is reached by the interpreter path for EVERY encoding arm. What was established is that the repair routes through them." as NonEmptyStr
   },
@@ -226,8 +226,8 @@ data coercions_boundary: RepresentationBoundary = RepresentationBoundary {
       module_path: "test.claim.reference_realization_witness_test"
     )
   ],
-  supported_scope: "The cast side decides on a NAME, and the corpus already knows a name is insufficient: std.nat.Nat and v2.std.nat.Nat share a spelling and must realize differently, so v1.compiler.coercion keys REALIZATION on the declaring module and answers NO realization for an unknown identity rather than guessing. One module therefore carries a name-keyed predicate and an identity-keyed decision side by side, answering adjacent questions at two different grains." as NonEmptyStr,
-  preservation_obligation: "A crossing admitted on one route is admitted on the other and spells the same target type; a crossing that must refuse refuses on both; and an unknown declaring identity never silently realizes structurally." as NonEmptyStr,
+  supported_scope: "The cast side decides on a NAME, and the corpus already knows a name is insufficient: std.nat.Nat and v2.std.nat.Nat share a spelling and must realize differently, so v1.compiler.coercion keys REALIZATION on the declaring module and answers NO realization for an unknown identity rather than guessing. One module therefore carries a name-keyed predicate and an identity-keyed decision side by side, answering adjacent questions at two different grains.",
+  preservation_obligation: "A crossing admitted on one route is admitted on the other and spells the same target type; a crossing that must refuse refuses on both; and an unknown declaring identity never silently realizes structurally.",
   crossing_evidence: InterpretedOnly {
     what_goes_red: "the identity-keyed half is a real climb with a receipt: passing the empty string once meant identity-unknown, and eight reference sites doing so rendered dag/std/integer.dag aliases as crate::std_nat::Nat instead of i64. There is now no empty string to pass -- an absent identity is DeclarationIdentityAbsent, and the degraded answer is stamped GroundedByUnidentifiedBareRow so it stays countable rather than silent." as NonEmptyStr,
     unobserved: "THE FORK ITSELF. No execution joins the cast table to the homomorphism fold, so if they disagreed today nothing would go red. That is the finding, and it is why this row is not recorded as DEFERRED: a fork whose disposition reads as adjudicated is worse than an unrecorded one, and this fork stayed invisible precisely because the census that holds it asked whether the two modules SHARE TYPE NAMES -- see the scope note on gunbc.plans.dag_v2_defork_audit, whose coercion row answers a resolver-collision question and not this one." as NonEmptyStr
@@ -244,8 +244,8 @@ data control_flow_boundary: RepresentationBoundary = RepresentationBoundary {
     what_would_own_it: "NOTHING DECLARES SIBLING EVALUATION ORDER. DESIGN section 4 closes the vocabulary at 6 connectives and 6 behaviors, and none of them carries a sequencing fact between sibling operands -- argument lists, struct fields, let sequences. Two neighbouring sub-boundaries DO have owners and are cited rather than re-derived: operand DEMAND under && and || has one carrier with two consumers named, and match arm lowering is consolidating the emitter's twenty-plus private MatchPattern walks into v1.compiler.infer_patterns. Both are about WHICH operands are demanded and how an arm lowers; neither declares the ORDER siblings are evaluated in." as NonEmptyStr
   },
   witnesses: [],
-  supported_scope: "" as NonEmptyStr,
-  preservation_obligation: "Sibling operands are demanded, and their effects occur, in the same order on the interpreted and the emitted route." as NonEmptyStr,
+  supported_scope: "",
+  preservation_obligation: "Sibling operands are demanded, and their effects occur, in the same order on the interpreted and the emitted route.",
   crossing_evidence: NoEvidence {
     why: "NONE, AND THIS IS CATEGORICALLY DIFFERENT FROM THE INTERPRETED-ONLY ROWS RATHER THAN A WEAKER VERSION OF THEM. There is no declared order for either route to be checked AGAINST, so a differential oracle that caught the two routes disagreeing on order would produce a divergence report NOBODY CAN ADJUDICATE -- neither route could be called wrong. Six rows in this roster need an ORACLE. This one needs an AUTHORITY FIRST, and running the oracle at it before the authority exists is premature rather than partial. The open question underneath is whether sibling order is UNDERIVABLE or merely UNDECLARED: where effects thread a resource, a grant or a handle, dataflow may already sequence them, in which case the real gap is that nothing CHECKS a realization preserves it -- a far smaller repair. Refusing an unordered pair of observable effects as an ill-formed program is a third admissible answer and not a failure to model one." as NonEmptyStr
   },
@@ -255,7 +255,7 @@ data control_flow_boundary: RepresentationBoundary = RepresentationBoundary {
 // EFFECT EXECUTION. THE TEMPLATE. The one row where the execution route is part of the IDENTITY
 // rather than a property compared afterwards.
 data effect_execution_boundary: RepresentationBoundary = RepresentationBoundary {
-  identity: "declared-effect-demand-to-realized-effect-on-a-route" as NonEmptyStr,
+  identity: "declared-effect-demand-to-realized-effect-on-a-route",
   boundary_class: EffectExecution,
   authority: OneAuthority {
     home: HomeAuthority {
@@ -269,8 +269,8 @@ data effect_execution_boundary: RepresentationBoundary = RepresentationBoundary 
       module_path: "v2.test.claim.effect_demand.effect_demand_census_test"
     )
   ],
-  supported_scope: "THE ROUTE IS INSIDE THE KEY. EffectDemandKey carries calling_entry_module, operation as a std.primitive_projection identity, mode as the std.execution_mode axis, and subject -- so the SAME operation reached in two modes is TWO DEMANDS WITH TWO INDEPENDENTLY DECIDABLE ANSWERS rather than one row with a widened claim, and a claim about one route cannot be spent as coverage of the other BY CONSTRUCTION. THE RECEIPT THAT PROVES THE AXIS IS LOAD-BEARING RATHER THAN DECORATIVE: the native claim was once a bare NativeV2 while EffectRealizationKey already carried a runtime_identity, so the unproven-native-claim arm admitted a realization from ANY runtime as proof of a native claim. A demand is satisfied by a realization THE PROGRAM ACTUALLY LINKS, so the linked runtime is now part of the claim. Keying the operation on the primitive projection identity also joins this row to the calls boundary instead of re-spelling it." as NonEmptyStr,
-  preservation_obligation: "The effects a program declares are the effects that occur, on the route the demand names, with the runtime the claim names -- AND IN THE DECLARED ORDER. The order clause is not satisfiable here and is not this row's to close; it is the control-flow row." as NonEmptyStr,
+  supported_scope: "THE ROUTE IS INSIDE THE KEY. EffectDemandKey carries calling_entry_module, operation as a std.primitive_projection identity, mode as the std.execution_mode axis, and subject -- so the SAME operation reached in two modes is TWO DEMANDS WITH TWO INDEPENDENTLY DECIDABLE ANSWERS rather than one row with a widened claim, and a claim about one route cannot be spent as coverage of the other BY CONSTRUCTION. THE RECEIPT THAT PROVES THE AXIS IS LOAD-BEARING RATHER THAN DECORATIVE: the native claim was once a bare NativeV2 while EffectRealizationKey already carried a runtime_identity, so the unproven-native-claim arm admitted a realization from ANY runtime as proof of a native claim. A demand is satisfied by a realization THE PROGRAM ACTUALLY LINKS, so the linked runtime is now part of the claim. Keying the operation on the primitive projection identity also joins this row to the calls boundary instead of re-spelling it.",
+  preservation_obligation: "The effects a program declares are the effects that occur, on the route the demand names, with the runtime the claim names -- AND IN THE DECLARED ORDER. The order clause is not satisfiable here and is not this row's to close; it is the control-flow row.",
   crossing_evidence: InterpretedOnly {
     what_goes_red: "effect_demand_realization_satisfies joins the demand to a realization on the SAME runtime and execution mode, and effect_demand_acceptance_holds folds it; Unrealized is COUNTED DEBT with a reason rather than a refusal arm, on the module's own stated ground that fabricating a plausible realization claim for an unbuilt effect would be rung inflation exactly where the acceptance bar reads." as NonEmptyStr,
     unobserved: "the ORDER clause of the obligation, for the reason the control-flow row gives: no authority declares it, so nothing here can check it." as NonEmptyStr
@@ -308,8 +308,8 @@ data bindings_boundary: RepresentationBoundary = RepresentationBoundary {
       module_path: "test.claim.occurrence_binding_witness_test"
     )
   ],
-  supported_scope: "std.occurrence_binding's fold answers NO v2 SITE TODAY -- its callers are dag/test claims and gunbc.infer_occurrence_binding_scaffold -- so the two rules cannot currently disagree in production about any one reference. THAT IS A SCOPE FACT AND NOT A SAFETY ARGUMENT: it means the divergence is cheap to carry NOW and says nothing about what happens when the v2 resolver adopts the shared result, which is exactly when two implementations of one rule start mattering." as NonEmptyStr,
-  preservation_obligation: "One reference occurrence receives ONE answer from the zero-one-many rule regardless of which implementation answers it: the same occurrence is Unbound under both, Bound-to-the-same-declaration under both, or Ambiguous under both -- and an ambiguity is never silently resolved to a hit by whichever implementation happens to be asked." as NonEmptyStr,
+  supported_scope: "std.occurrence_binding's fold answers NO v2 SITE TODAY -- its callers are dag/test claims and gunbc.infer_occurrence_binding_scaffold -- so the two rules cannot currently disagree in production about any one reference. THAT IS A SCOPE FACT AND NOT A SAFETY ARGUMENT: it means the divergence is cheap to carry NOW and says nothing about what happens when the v2 resolver adopts the shared result, which is exactly when two implementations of one rule start mattering.",
+  preservation_obligation: "One reference occurrence receives ONE answer from the zero-one-many rule regardless of which implementation answers it: the same occurrence is Unbound under both, Bound-to-the-same-declaration under both, or Ambiguous under both -- and an ambiguity is never silently resolved to a hit by whichever implementation happens to be asked.",
   crossing_evidence: InterpretedOnly {
     what_goes_red: "each implementation has its own witnesses over its own side, and std.occurrence_binding's fold is exercised on supplied candidate populations covering all three arms." as NonEmptyStr,
     unobserved: "AGREEMENT BETWEEN THE TWO IMPLEMENTATIONS, and it is UNMEASURABLE TODAY rather than merely unmeasured: no site is answered by both, so there is no input on which they could be compared. This is the one row in the roster whose evidence gap cannot be closed by an oracle at all -- the oracle would have nothing to run on. It closes by DEDUPLICATION, which is what the trigger names." as NonEmptyStr
@@ -334,8 +334,8 @@ data data_layout_boundary: RepresentationBoundary = RepresentationBoundary {
       module_path: "test.claim.self_host_symbol_identity_binding_witness_test"
     )
   ],
-  supported_scope: "SCALAR: extdeps.languages.rust.representation owns it, carries a cited ExternalAuthority, and is consumed by v1.compiler.emit_rust, v1.compiler.coercion, gunbc.rust_source_type_bindings and gunbc.symbol_identity_census. AGGREGATE record and coproduct field layout has a DIFFERENT home -- v1.compiler.emit_rust emit_struct_from_children and emit_struct_field_from_child -- and that home is single and is .dag rather than hand Rust, so the class conforms at both grains. No second authority was found for either half." as NonEmptyStr,
-  preservation_obligation: "A modeled record's fields are present, in the modeled shape, at the target; a modeled scalar realizes as the representation its declaring module binds, never as the representation some other declaration sharing its spelling binds." as NonEmptyStr,
+  supported_scope: "SCALAR: extdeps.languages.rust.representation owns it, carries a cited ExternalAuthority, and is consumed by v1.compiler.emit_rust, v1.compiler.coercion, gunbc.rust_source_type_bindings and gunbc.symbol_identity_census. AGGREGATE record and coproduct field layout has a DIFFERENT home -- v1.compiler.emit_rust emit_struct_from_children and emit_struct_field_from_child -- and that home is single and is .dag rather than hand Rust, so the class conforms at both grains. No second authority was found for either half.",
+  preservation_obligation: "A modeled record's fields are present, in the modeled shape, at the target; a modeled scalar realizes as the representation its declaring module binds, never as the representation some other declaration sharing its spelling binds.",
   crossing_evidence: InterpretedOnly {
     what_goes_red: "the scalar half's exact binding is joined by symbol identity and a mis-bound declaration is a located refusal rather than a silent structural render." as NonEmptyStr,
     unobserved: "that the EMITTED aggregate layout matches the modeled record. Nothing executes the emitted struct and compares its fields to the declaration they came from. The aggregate half of this row was assessed by reading its authority's declarations only: the emitter module is held by three concurrent lanes and was deliberately not opened further." as NonEmptyStr
@@ -354,8 +354,8 @@ data generated_mirrors_boundary: RepresentationBoundary = RepresentationBoundary
     }
   },
   witnesses: [],
-  supported_scope: "THE MIRROR IS WHAT RUNS, NOT THE AUTHORITY. Each committed src/v1/stage0 Rust file declares its own provenance in its first two lines -- generated by the v1 compiler, naming its source module -- and rustc compiles THAT, so every session and every CI job executes the mirror while the .dag remains the authority it was derived from." as NonEmptyStr,
-  preservation_obligation: "The committed mirror bytes equal regeneration from the .dag authority at the same revision." as NonEmptyStr,
+  supported_scope: "THE MIRROR IS WHAT RUNS, NOT THE AUTHORITY. Each committed src/v1/stage0 Rust file declares its own provenance in its first two lines -- generated by the v1 compiler, naming its source module -- and rustc compiles THAT, so every session and every CI job executes the mirror while the .dag remains the authority it was derived from.",
+  preservation_obligation: "The committed mirror bytes equal regeneration from the .dag authority at the same revision.",
   crossing_evidence: CarriedElsewhere {
     carrier: decl_ref(module_path: "gunbc.guarantee_stall.gitattributes_committed_emit_drift_stall", decl_name: "gitattributes_committed_emit_drift_stall")
   },
@@ -380,8 +380,8 @@ data materialization_boundary: RepresentationBoundary = RepresentationBoundary {
       module_path: "test.claim.materialization_ladder_witness"
     )
   ],
-  supported_scope: "CONFORMS. This is a DESIGN section 3b conformance domain with named homes AND a derived reviewer -- gunbc.roadmap.roadmap_review_criteria derives one reviewer per conformance_domains row -- so the boundary is already watched by a standing mechanism this inventory does not improve on." as NonEmptyStr,
-  preservation_obligation: "A materialized value denotes the same fact as the computation it stands for, under a key representing every declared input the result depends on." as NonEmptyStr,
+  supported_scope: "CONFORMS. This is a DESIGN section 3b conformance domain with named homes AND a derived reviewer -- gunbc.roadmap.roadmap_review_criteria derives one reviewer per conformance_domains row -- so the boundary is already watched by a standing mechanism this inventory does not improve on.",
+  preservation_obligation: "A materialized value denotes the same fact as the computation it stands for, under a key representing every declared input the result depends on.",
   crossing_evidence: EvidenceOnBothRoutes {
     what_goes_red: "the ladder's own admission folds refuse authored duplication and admit a cross-frame duplicate only when a covering provider discharges it, which is the discriminating pair rather than a single positive." as NonEmptyStr
   },
@@ -398,8 +398,8 @@ data result_projection_boundary: RepresentationBoundary = RepresentationBoundary
     }
   },
   witnesses: [],
-  supported_scope: "v2.compiler.emit_module builds an EmissionContribution from the real emitter path, but v2.compiler.emit returns Medium<String> and reports no contribution structure, so every declaration's emitted text has unobserved origins and every module and family contribution reads EmissionOriginsIncomplete. The bytes are observed and retained; only their origins are not." as NonEmptyStr,
-  preservation_obligation: "Each emitted fragment is attributable to the declaration it was produced from." as NonEmptyStr,
+  supported_scope: "v2.compiler.emit_module builds an EmissionContribution from the real emitter path, but v2.compiler.emit returns Medium<String> and reports no contribution structure, so every declaration's emitted text has unobserved origins and every module and family contribution reads EmissionOriginsIncomplete. The bytes are observed and retained; only their origins are not.",
+  preservation_obligation: "Each emitted fragment is attributable to the declaration it was produced from.",
   crossing_evidence: CarriedElsewhere {
     carrier: decl_ref(module_path: "gunbc.guarantee_stall.emit_returns_medium_not_contribution_stall", decl_name: "emit_returns_medium_not_contribution_stall")
   },
@@ -424,8 +424,8 @@ data cross_tree_import_boundary: RepresentationBoundary = RepresentationBoundary
       module_path: "v2.test.long.cross_tree_real_ingest_activation"
     )
   ],
-  supported_scope: "The direction of an import edge between the two trees, decided from GROUNDED source-root tags rather than guessed: tree_fundamentality_order is derived, and the QualifiedName-prefix fallback that once stood in for it is deleted. Consumed by v2.compiler.03_name_resolve admit_import_entry." as NonEmptyStr,
-  preservation_obligation: "An edge the model admits resolves, an edge it denies refuses, and the decision depends on the declared source-root tags rather than on how the invocation spelled its paths." as NonEmptyStr,
+  supported_scope: "The direction of an import edge between the two trees, decided from GROUNDED source-root tags rather than guessed: tree_fundamentality_order is derived, and the QualifiedName-prefix fallback that once stood in for it is deleted. Consumed by v2.compiler.03_name_resolve admit_import_entry.",
+  preservation_obligation: "An edge the model admits resolves, an edge it denies refuses, and the decision depends on the declared source-root tags rather than on how the invocation spelled its paths.",
   crossing_evidence: EvidenceOnBothRoutes {
     what_goes_red: "the activation arbiter feeds a host-tagged SourceRootIngest through the REAL grounding machinery and runs the REAL per-edge decision, with a discriminating pair rather than a positive alone: v2 to dag is admitted, and the SAME ingest with its tags reversed is denied. WHAT THE DERIVED STANDING ON THIS ROW ANSWERS, AND IT IS THE REASON THE STANDING IS DERIVED RATHER THAN AUTHORED: this entry sits under a long-running witness path and its module is v2.test.long, so whether the arbiter is reached by an ordinary required run is decided by the live exclusion frontier and gate closure at fold time, NOT by this sentence. A discriminating red that no required run reaches is a weaker fact than it reads as, and the fold is what says which it is." as NonEmptyStr
   },
@@ -558,53 +558,23 @@ fn boundaries_without_an_authority() -> Int {
   list_length(items: filter(representation_boundary_roster, b => boundary_has_no_authority(b: b)))
 }
 
-// THE WALL THAT MAKES THE CANDIDATE RULE ENFORCEABLE RATHER THAN DILIGENT. A candidate with no
-// DISCRIMINATOR is an insinuation: it cannot be settled, so it accretes as suspicion and is cited
-// later as if it had been adjudicated. This refuses one. IT CAN GO RED -- the field is a String and
-// an empty one is authorable -- which is why it is a check here rather than a claim about the type.
-fn boundary_candidate_names_its_discriminator(b: RepresentationBoundary) -> Bool {
-  match b.authority {
-    TwoAuthoritiesAnswerOneQuestion { first: _, second: _, one_question: _, standing: s } =>
-      match s {
-        ForkCandidate { what_was_established: _, what_was_not: _, discriminator: d } =>
-          (d as String) != ""
-        ForkEstablished { how: _ } => true
-        DivergenceDeclaredOnTheCarrier { stated_by: _, what_is_duplicated: _, what_is_legitimately_layered: _ } => true
-      }
-    OneAuthority { home: _ } => true
-    NoAuthorityExists { what_would_own_it: _ } => true
-  }
-}
-
-fn every_candidate_fork_names_its_discriminator() -> Bool {
-  fold(
-    representation_boundary_roster,
-    init: true,
-    f: fn(ok, b) { ok && boundary_candidate_names_its_discriminator(b: b) }
-  )
-}
-
-// A FORK RECORDED WITHOUT THE SHARED QUESTION CANNOT BE ADJUDICATED LATER. Two homes named beside
-// each other, with no statement of what they both answer, is a pair of citations rather than a
-// finding -- and the coercion row shows why it matters: gunbc.plans.dag_v2_defork_audit records the
-// same two modules and answers a DIFFERENT question about them, so naming the question is what keeps
-// one row from being mistaken for the other's disposition.
-fn boundary_two_authority_states_its_question(b: RepresentationBoundary) -> Bool {
-  match b.authority {
-    TwoAuthoritiesAnswerOneQuestion { first: _, second: _, one_question: q, standing: _ } =>
-      (q as String) != ""
-    OneAuthority { home: _ } => true
-    NoAuthorityExists { what_would_own_it: _ } => true
-  }
-}
-
-fn every_two_authority_row_states_its_one_question() -> Bool {
-  fold(
-    representation_boundary_roster,
-    init: true,
-    f: fn(ok, b) { ok && boundary_two_authority_states_its_question(b: b) }
-  )
-}
+// TWO CHECKS THAT BELONG HERE BY INSTINCT ARE DELIBERATELY ABSENT, AND THE ABSENCE IS THE POINT.
+// The obvious walls to write over this roster are "every candidate names a DISCRIMINATOR" and
+// "every two-authority row states its ONE QUESTION". Both were written, and both were DELETED after
+// asking DESIGN section 4b's question BEFORE keeping the check: is the forbidden state AUTHORABLE
+// anywhere the check could run? It is not. NonEmptyStr is `String where non_empty`, so an empty
+// discriminator and an empty shared question are refused by the REFINEMENT at construction --
+// `"" as NonEmptyStr` typechecks and then refuses, so a fixture cannot even build the row a red
+// would need. A fold over those fields would therefore be permanently green BY CONSTRUCTION,
+// carrying no information and worse than absent because it would be cited as coverage of exactly
+// the rule this roster is most often going to be asked about.
+//
+// SO THE RULE IS HELD ONE RUNG HIGHER THAN A CHECK, WHICH IS WHERE DESIGN SECTION 5 WANTS IT: the
+// discriminator and the shared question are structurally impossible to omit, rather than checked
+// for and found present. What remains below are the two walls whose red IS authorable -- a trigger
+// capability is a plain String, so an empty one is writable; and the authority/evidence relation is
+// a pair of coproduct arms either of which is freely constructible. Those two are checks because
+// they have to be. The other two are not checks because they do not.
 
 // DESIGN section 4b(2): a class below its ceiling must NAME its next-rung trigger, so "cannot climb
 // further" stays separable from "unbuilt". An empty capability is the untracked stall that clause
@@ -613,7 +583,7 @@ fn every_boundary_names_a_trigger() -> Bool {
   fold(
     representation_boundary_roster,
     init: true,
-    f: fn(ok, b) { ok && (b.next_trigger.capability as String) != "" }
+    f: fn(ok, b) { ok && b.next_trigger.capability != "" }
   )
 }
 
