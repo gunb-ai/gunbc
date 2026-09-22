@@ -12,6 +12,7 @@ import extdeps.safetensors.format {
   SafetensorsEntry, SafetensorsDtype, SafeF8E4M3, SafeF8E8M0,
   safetensors_dtype_byte_width, safetensors_dtype_token,
   SafetensorsShardedEntry, SafetensorsShardFile, safetensors_entry_span, safetensors_shard_declared_overhead,
+  ShardBoundsResolved, ShardBoundsDuplicated, ShardBoundsAbsent, safetensors_shard_bounds_resolution,
 }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
@@ -763,34 +764,50 @@ type V41PublishedSpanPlan
   = V41PublishedSpansPlanned { spans: List<V41PublishedSpan> }
   | V41PublishedSpansUnplannable { defects: List<NonEmptyStr> }
 
-fn v41_published_span_of(e: SafetensorsShardedEntry, shards: List<SafetensorsShardFile>) -> V41PublishedSpan? {
-  let rows = filter(shards, f => (f.path as String) == (e.shard as String))
-  if length(rows) != 1 { none } else {
-    match first(rows) {
-      Absent => none
-      Present { value: f } => Present { value: V41PublishedSpan {
-        tensor: e.entry.name,
-        shard: e.shard,
-        file_offset: measure_add(a: safetensors_shard_declared_overhead(header_bytes: f.header_bytes), b: byte_size(count: e.entry.begin_offset)),
-        length: safetensors_entry_span(e: e.entry),
-      } }
-    }
+// ONE ENTRY'S SPAN, OR WHY IT HAS NONE. The shard-bounds relation is extdeps.safetensors.format's
+// (safetensors_shard_bounds_resolution), and its three arms are kept apart here: a duplicated bound row
+// is a contradiction in the supplied shard files, an absent one is a thing not yet read. Rendering
+// both as one sentence would erase a distinction the upstream model carries.
+type V41SpanResolution
+  = V41SpanResolved { span: V41PublishedSpan }
+  | V41SpanUnresolved { defect: NonEmptyStr }
+
+fn v41_published_span_of(e: SafetensorsShardedEntry, shards: List<SafetensorsShardFile>) -> V41SpanResolution {
+  match safetensors_shard_bounds_resolution(shards: shards, shard: e.shard) {
+    ShardBoundsResolved { shard: _, file: f } => V41SpanResolved { span: V41PublishedSpan {
+      tensor: e.entry.name,
+      shard: e.shard,
+      file_offset: measure_add(a: safetensors_shard_declared_overhead(header_bytes: f.header_bytes), b: byte_size(count: e.entry.begin_offset)),
+      length: safetensors_entry_span(e: e.entry),
+    } }
+    ShardBoundsDuplicated { shard: sd, rows: n } => V41SpanUnresolved { defect: join([
+      "shard ", sd as String, " of ", e.entry.name as String, " has ", to_string(n),
+      " shard file rows, so it carries that many header lengths and the span's file offset is contradicted",
+    ], "") as NonEmptyStr }
+    ShardBoundsAbsent { shard: sd } => V41SpanUnresolved { defect: join([
+      "shard ", sd as String, " of ", e.entry.name as String,
+      " has no shard file row, so its header length and the span's file offset are unread",
+    ], "") as NonEmptyStr }
   }
 }
 
+// EACH SELECTED ENTRY IS RESOLVED ONCE, and that one list of outcomes is folded into both the defects
+// and the spans (DESIGN section 2: the shared ancestor carries the value rather than re-deriving it).
 fn v41_published_span_plan(partition: V41EngramResidencyPartition, sharded: List<SafetensorsShardedEntry>, shards: List<SafetensorsShardFile>) -> V41PublishedSpanPlan {
   let missing = map(
     filter(partition.storage_backed, n => length(filter(sharded, e => (e.entry.name as String) == (n as String))) != 1),
     n => join(["storage-backed tensor ", n as String, " is not exactly one header row in the published population, so there is no span to read"], "") as NonEmptyStr)
   let selected = filter(sharded, e => any(partition.storage_backed, n => (n as String) == (e.entry.name as String)))
-  let unbound = map(
-    filter(selected, e => match v41_published_span_of(e: e, shards: shards) { Absent => true, Present { value: _ } => false }),
-    e => join(["shard ", e.shard as String, " of ", e.entry.name as String, " is not exactly one shard file row, so its header length and the span's file offset are unknown"], "") as NonEmptyStr)
+  let resolved = map(selected, e => v41_published_span_of(e: e, shards: shards))
+  let unbound = flat_map(resolved, r => match r {
+    V41SpanResolved { span: _ } => [] as List<NonEmptyStr>
+    V41SpanUnresolved { defect: d } => [d]
+  })
   let defects = concat(missing, unbound)
   if length(defects) != 0 { V41PublishedSpansUnplannable { defects: defects } } else {
-    V41PublishedSpansPlanned { spans: flat_map(selected, e => match v41_published_span_of(e: e, shards: shards) {
-      Absent => [] as List<V41PublishedSpan>
-      Present { value: sp } => [sp]
+    V41PublishedSpansPlanned { spans: flat_map(resolved, r => match r {
+      V41SpanResolved { span: sp } => [sp]
+      V41SpanUnresolved { defect: _ } => [] as List<V41PublishedSpan>
     }).sort_by(sp => sp.tensor as String) }
   }
 }
@@ -820,11 +837,18 @@ fn v41_span_eq(a: V41PublishedSpan, b: V41PublishedSpan) -> Bool {
 // exactly once, over exactly its region; a reading of a tensor the plan does not name, or of the right
 // tensor over another region, refuses. That is the RED the brief names: a digest over a different table
 // set cannot key.
+// HOW MANY READINGS A PLANNED SPAN HAS. Counted once per plan row; the unread and twice arms read the count.
+type V41SpanReadCount {
+  span: V41PublishedSpan
+  readings: Nat
+}
+
 fn v41_span_reading_defects(plan: List<V41PublishedSpan>, read: List<V41PublishedSpanDigest>) -> List<NonEmptyStr> {
-  let unread = map(filter(plan, sp => length(filter(read, r => v41_span_eq(a: r.span, b: sp))) == 0),
-    sp => join(["the planned span of ", sp.tensor as String, " (", sp.shard as String, " at ", to_string(byte_size_count(b: sp.file_offset)), " for ", to_string(byte_size_count(b: sp.length)), " bytes) was not read"], "") as NonEmptyStr)
-  let twice = map(filter(plan, sp => length(filter(read, r => v41_span_eq(a: r.span, b: sp))) > 1),
-    sp => join(["the span of ", sp.tensor as String, " was read more than once, so which digest is its reading is undecided"], "") as NonEmptyStr)
+  let counted = map(plan, sp => V41SpanReadCount { span: sp, readings: length(filter(read, r => v41_span_eq(a: r.span, b: sp))) })
+  let unread = map(filter(counted, c => c.readings == 0),
+    c => join(["the planned span of ", c.span.tensor as String, " (", c.span.shard as String, " at ", to_string(byte_size_count(b: c.span.file_offset)), " for ", to_string(byte_size_count(b: c.span.length)), " bytes) was not read"], "") as NonEmptyStr)
+  let twice = map(filter(counted, c => c.readings > 1),
+    c => join(["the span of ", c.span.tensor as String, " was read more than once, so which digest is its reading is undecided"], "") as NonEmptyStr)
   let foreign = map(filter(read, r => !any(plan, sp => v41_span_eq(a: r.span, b: sp))),
     r => join(["a reading of ", r.span.tensor as String, " (", r.span.shard as String, " at ", to_string(byte_size_count(b: r.span.file_offset)), " for ", to_string(byte_size_count(b: r.span.length)), " bytes) is not a span this partition stores"], "") as NonEmptyStr)
   concat(concat(unread, twice), foreign)

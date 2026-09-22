@@ -72,12 +72,16 @@ test fn a_subject_carries_the_rows_digest_and_the_pinned_route() -> Bool {
 
 // THE REQUIREMENT IS THE BYTES NOT ALREADY THERE AT THEIR DECLARED SIZE: nothing present needs all of
 // it, everything present at size needs none, and one file at the wrong size needs exactly that file.
+// The population is SUPPLIED as two admitted rows (read once): the fold's
+// subject is the listing join, and the 52-row population is the previous claim's subject, not this
+// one's (DESIGN section 3: a witness discriminates at one interface).
 test fn the_disk_requirement_counts_only_what_is_missing() -> Bool {
-  let fs = w_files()
+  let fs = filter(w_files(), f => (f.path as String) == "tokenizer.json" || (f.path as String) == "encoding/encoding.py")
   let all_present = map(fs, f => join([to_string(byte_size_count(b: f.file_bytes)), " ", f.path as String], ""))
   let one_short = map(fs, f => if (f.path as String) == "tokenizer.json" { "1 tokenizer.json" } else { join([to_string(byte_size_count(b: f.file_bytes)), " ", f.path as String], "") })
-  let tok = match first(w_file(path: "tokenizer.json")) { Present { value: t } => byte_size_count(b: t.file_bytes)  Absent => 0 }
-  byte_size_count(b: v41_required_bytes(files: fs, listing: [] as List<String>)) == byte_size_count(b: v41_checkpoint_bytes(files: fs))
+  let tok = match first(filter(fs, f => (f.path as String) == "tokenizer.json")) { Present { value: t } => byte_size_count(b: t.file_bytes)  Absent => 0 }
+  length(fs) == 2
+    && byte_size_count(b: v41_required_bytes(files: fs, listing: [] as List<String>)) == byte_size_count(b: v41_checkpoint_bytes(files: fs))
     && byte_size_count(b: v41_required_bytes(files: fs, listing: all_present)) == 0
     && byte_size_count(b: v41_required_bytes(files: fs, listing: one_short)) == tok
     && tok > 0
