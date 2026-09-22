@@ -1,0 +1,127 @@
+module test.claim.x509_ca_authority_witness_test
+
+import std.logic { Bool }
+import std.types { Int, String, List }
+import std.integer { UInt8 }
+import extdeps.standards.rfc_5280 {
+  X509Certificate, X509TbsFields, X509Extension, x509_ca_authority, X509CaStanding, X509CaAuthorized, X509CaRefused,
+  X509BasicConstraintsAbsent, X509NotACa, X509PathLengthExceeded, X509KeyCertSignAbsent,
+  oid_basic_constraints, oid_key_usage,
+}
+import extdeps.apple.app_attest { ca_authority_refusal, AttestationChainUntrusted }
+import test.claim.app_attest_verifier_witness_test { vf_x5c }
+
+// THE SUBJECT IS ONE INTERFACE, rfc_5280 x509_ca_authority (§6.1.4 (k), (m), (n)). The positive
+// control is Apple's real App Attestation intermediate; each RED is that same certificate with ONE
+// extension supplied differently, so the verdict moves for exactly the reason the claim names. The
+// real route -- the intermediate passing this check inside verify_attestation -- is exercised by
+// test.claim.app_attest_verifier_witness_test, whose sample reaches AttestationValidationCategoryAbsent,
+// a step the fold orders AFTER ca_authority_refusal.
+
+fn cawt_with_extensions(cert: X509Certificate, extensions: List<X509Extension>) -> X509Certificate {
+  X509Certificate { tbs: X509TbsFields {
+    tbs_octets: cert.tbs.tbs_octets, serial: cert.tbs.serial, tbs_signature_algorithm: cert.tbs.tbs_signature_algorithm,
+    issuer_octets: cert.tbs.issuer_octets, not_before: cert.tbs.not_before, not_after: cert.tbs.not_after, subject_octets: cert.tbs.subject_octets,
+    spki_algorithm: cert.tbs.spki_algorithm, spki_named_curve: cert.tbs.spki_named_curve, spki_public_key: cert.tbs.spki_public_key, extensions: extensions,
+  }, signature_algorithm: cert.signature_algorithm, signature_octets: cert.signature_octets }
+}
+
+fn cawt_replacing(cert: X509Certificate, oid: String, value: List<UInt8>?) -> X509Certificate {
+  let kept = fold(cert.tbs.extensions, init: [], f: (acc, x) => if x.oid == oid { acc } else { acc |> list_push(x) })
+  match value {
+    Absent => cawt_with_extensions(cert: cert, extensions: kept)
+    Present { value: v } => cawt_with_extensions(cert: cert, extensions: kept |> list_push(X509Extension { oid: oid, critical: true, value: v }))
+  }
+}
+
+fn cawt_label(s: X509CaStanding) -> String {
+  match s {
+    X509CaAuthorized { path_len_constraint: _ } => "authorized"
+    X509CaRefused { cause: c } => match c {
+      X509BasicConstraintsAbsent => "bc-absent"
+      X509NotACa => "not-ca"
+      X509PathLengthExceeded { path_len_constraint: _, intermediates_below: _ } => "path-len"
+      X509KeyCertSignAbsent => "no-key-cert-sign"
+      _ => "other"
+    }
+  }
+}
+
+fn cawt_on_intermediate_without(oid: String) -> String {
+  match vf_x5c(i: 1) {
+    Absent => "undecoded"
+    Present { value: ca } => cawt_label(s: x509_ca_authority(cert: cawt_with_extensions(cert: ca, extensions: fold(ca.tbs.extensions, init: [], f: (acc, x) => if x.oid == oid { acc } else { acc |> list_push(x) })), intermediates_below: 0))
+  }
+}
+
+fn cawt_on_intermediate(oid: String, value: List<UInt8>?, below: Int) -> String {
+  match vf_x5c(i: 1) {
+    Absent => "undecoded"
+    Present { value: ca } => cawt_label(s: x509_ca_authority(cert: cawt_replacing(cert: ca, oid: oid, value: value), intermediates_below: below))
+  }
+}
+
+// POSITIVE CONTROL: Apple's real intermediate, unmodified, is authorized.
+test fn apple_intermediate_is_authorized_to_act_as_a_ca() -> Bool {
+  match vf_x5c(i: 1) {
+    Absent => false
+    Present { value: ca } => cawt_label(s: x509_ca_authority(cert: ca, intermediates_below: 0)) == "authorized"
+  }
+}
+
+// RED on real bytes: the credential (end-entity) certificate may not sign certificates.
+test fn apple_credential_certificate_is_not_a_ca() -> Bool {
+  match vf_x5c(i: 0) {
+    Absent => false
+    Present { value: leaf } => {
+      let l = cawt_label(s: x509_ca_authority(cert: leaf, intermediates_below: 0))
+      l == "not-ca" || l == "bc-absent"
+    }
+  }
+}
+
+// RED: basicConstraints with cA omitted (DER SEQUENCE {}, i.e. cA DEFAULT FALSE) refuses.
+test fn basic_constraints_without_ca_true_refuses() -> Bool {
+  cawt_on_intermediate(oid: oid_basic_constraints, value: Present { value: [48, 0] }, below: 0) == "not-ca"
+}
+
+// RED: basicConstraints absent refuses (§6.1.4 (k) requires it present).
+test fn basic_constraints_absent_refuses() -> Bool {
+  cawt_on_intermediate_without(oid: oid_basic_constraints) == "bc-absent"
+}
+
+// RED: keyUsage present with cRLSign only (bit 6), no keyCertSign (bit 5), refuses.
+test fn key_usage_without_key_cert_sign_refuses() -> Bool {
+  cawt_on_intermediate(oid: oid_key_usage, value: Present { value: [3, 2, 1, 2] }, below: 0) == "no-key-cert-sign"
+}
+
+// §6.1.4 (n) is conditional: an ABSENT keyUsage does not refuse. keyUsage keyCertSign alone
+// (bit 5, 0x04) is authorized.
+test fn key_usage_absent_or_key_cert_sign_only_is_authorized() -> Bool {
+  cawt_on_intermediate_without(oid: oid_key_usage) == "authorized"
+    && cawt_on_intermediate(oid: oid_key_usage, value: Present { value: [3, 2, 2, 4] }, below: 0) == "authorized"
+}
+
+// pathLenConstraint 0 admits the end-entity directly below and refuses one intermediate below.
+test fn path_len_constraint_zero_bounds_intermediates_below() -> Bool {
+  let pl0 = Present { value: [48, 6, 1, 1, 255, 2, 1, 0] }
+  cawt_on_intermediate(oid: oid_basic_constraints, value: pl0, below: 0) == "authorized"
+    && cawt_on_intermediate(oid: oid_basic_constraints, value: pl0, below: 1) == "path-len"
+}
+
+// THE APPLE FOLD CONSUMES IT: ca_authority_refusal passes the real intermediate and refuses the
+// non-CA one as AttestationChainUntrusted.
+test fn attestation_chain_refuses_an_intermediate_without_ca_authority() -> Bool {
+  match vf_x5c(i: 1) {
+    Absent => false
+    Present { value: ca } =>
+      match ca_authority_refusal(ca: ca) {
+        Present { value: _ } => false
+        Absent =>
+          match ca_authority_refusal(ca: cawt_replacing(cert: ca, oid: oid_basic_constraints, value: Present { value: [48, 0] })) {
+            Present { value: AttestationChainUntrusted { detail: d } } => d == "the intermediate is not authorized to act as a CA: basicConstraints cA is not TRUE"
+            _ => false
+          }
+      }
+  }
+}

@@ -29,6 +29,9 @@ import extdeps.standards.rfc_5280 {
   X509Certificate, X509Decoded, X509Refused, decode_certificate,
   x509_extension, X509ExtensionFound, X509ExtensionAbsent, X509ExtensionDuplicated,
   ecdsa_sig_value, EcdsaSigValueRead, EcdsaSigValueRefused, EcdsaSigValueTooWide,
+  x509_ca_authority, X509CaAuthorized, X509CaRefused,
+  X509BasicConstraintsAbsent, X509BasicConstraintsDuplicated, X509BasicConstraintsMalformed, X509NotACa,
+  X509PathLengthExceeded, X509KeyUsageDuplicated, X509KeyUsageMalformed, X509KeyCertSignAbsent,
   x509_validity_at, X509ValidAt, X509NotYetValid, X509Expired, X509ValidityUndecodable,
   oid_ecdsa_with_sha256, oid_ecdsa_with_sha384, oid_prime256v1, oid_secp384r1,
 }
@@ -70,6 +73,14 @@ type AppAttestEnvironment
 // Apple's current procedure; each failure is its own refusal because each is a different incident.
 //
 //   1. x5c chains to the Apple App Attestation Root CA
+//
+// AttestationChainUntrusted is step 1 as RFC 5280 path validation over the one path Apple presents
+// (credential certificate <- intermediate <- pinned root): exactly two certificates, issuer/subject
+// name joins, validity windows at the expectation's clock, the intermediate's AUTHORITY TO ACT AS
+// A CA (rfc_5280 x509_ca_authority: basicConstraints cA TRUE, pathLenConstraint over zero
+// intermediates below, keyUsage keyCertSign when present), and both ECDSA signatures. NOT modeled,
+// and not claimed: revocation (Apple publishes no CRL or OCSP for this chain), certificate
+// policies, name constraints, and the critical-extension-recognition rule of §6.1.4 (o).
 //   2. nonce = SHA256(authData || clientDataHash)
 //   3. nonce equals the credential certificate extension OID 1.2.840.113635.100.8.2
 //   4. SHA256(credential public key) equals the key id
@@ -444,6 +455,26 @@ fn chain_link_refusal(subject: X509Certificate, issuer: X509Certificate, which: 
   }
 }
 
+fn ca_authority_refused(reason: String) -> AttestationRefusal? {
+  Present { value: AttestationChainUntrusted { detail: "the intermediate is not authorized to act as a CA: " + reason } }
+}
+
+fn ca_authority_refusal(ca: X509Certificate) -> AttestationRefusal? {
+  match x509_ca_authority(cert: ca, intermediates_below: 0) {
+    X509CaAuthorized { path_len_constraint: _ } => none
+    X509CaRefused { cause: c } => match c {
+      X509BasicConstraintsAbsent => ca_authority_refused(reason: "basicConstraints is absent")
+      X509BasicConstraintsDuplicated => ca_authority_refused(reason: "basicConstraints appears twice")
+      X509BasicConstraintsMalformed { cause: _ } => ca_authority_refused(reason: "basicConstraints does not decode")
+      X509NotACa => ca_authority_refused(reason: "basicConstraints cA is not TRUE")
+      X509PathLengthExceeded { path_len_constraint: n, intermediates_below: _ } => ca_authority_refused(reason: "pathLenConstraint " + to_string(n) + " is exceeded")
+      X509KeyUsageDuplicated => ca_authority_refused(reason: "keyUsage appears twice")
+      X509KeyUsageMalformed { cause: _ } => ca_authority_refused(reason: "keyUsage does not decode")
+      X509KeyCertSignAbsent => ca_authority_refused(reason: "keyUsage lacks keyCertSign")
+    }
+  }
+}
+
 fn validity_refusal(cert: X509Certificate, observed_at: Timestamp, which: String) -> AttestationRefusal? {
   match x509_validity_at(cert: cert, observed_at: observed_at) {
     X509ValidAt => none
@@ -567,6 +598,7 @@ fn attestation_structural_refusal(parts: AttestationParts, leaf: X509Certificate
     if ca.tbs.issuer_octets == root.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the intermediate's issuer is not the Apple App Attestation Root CA" } } },
     validity_refusal(cert: leaf, observed_at: e.observed_at, which: "credential"),
     validity_refusal(cert: ca, observed_at: e.observed_at, which: "intermediate"),
+    ca_authority_refusal(ca: ca),
     validation_category_refusal(extensions: auth.extensions, admitted: e.admitted_validation_categories),
     bundle_version_refusal(extensions: auth.extensions, expected: e.expected_bundle_version),
   ])
