@@ -4334,6 +4334,12 @@ pub fn floor_seam(name: &str) {
         g.clear();
         g.push_str(name);
     }
+    // EVERY SEAM IS A PHASE BOUNDARY, SO EVERY SEAM CARRIES A BEAT. The sixty-second watchdog
+    // names the minute a phase was in, never where it began or ended, so a phase shorter than a
+    // beat is invisible and a longer one is bounded only to the minute. A reading taken AT the
+    // boundary is what lets gunbc.floor_demand attribute a held-set delta to the phase between two
+    // seams rather than to whichever phase the next tick happened to land in.
+    floor_cgroup_stat_beat(&format!("seam-{name}"));
 }
 
 // THE CONSTRUCTOR A DECODE ACTUALLY OBSERVED, for refusals whose cause is a shape mismatch.
@@ -5579,9 +5585,66 @@ pub(crate) fn floor_cgroup_stat_beat(when: &str) {
             })
             .unwrap_or_else(|| "na".to_string())
     };
-    let current = std::fs::read_to_string(format!("{leaf}/memory.current"))
-        .map(|v| v.trim().to_string())
+    let raw = |name: &str| -> String {
+        std::fs::read_to_string(format!("{leaf}/{name}"))
+            .map(|v| v.split_whitespace().collect::<Vec<_>>().join(","))
+            .unwrap_or_else(|_| "na".to_string())
+    };
+    let current = raw("memory.current");
+    // THE WALL CLOCK, so a beat is placed in time by its own line rather than by the log
+    // prefix the job runner happens to add, and a seam beat and a watchdog beat order by value.
+    let unix_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis().to_string())
         .unwrap_or_else(|_| "na".to_string());
+    let seam = FLOOR_SEAM
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_else(|_| "na".to_string());
+    // SWAP, PSI AND THE LEAF'S OWN EVENTS BESIDE THE COUNTERS, on every beat. The 2026-09-19
+    // receipt is censored on the held-set axis because anonymous pages were going to swap one beat
+    // after its peak, and the swap figure that showed it was the HOST's swap-in, read beside the
+    // leaf -- a different subject. `memory.swap.current` is this leaf's own; `memory.pressure` is
+    // the stall time that says whether reclaim cost the run anything; `memory.events.local`
+    // carries `oom` and `oom_kill` for this leaf alone. Printed raw, as the counters are.
+    //
+    // AND THE PROCESSES CHARGED TO THE LEAF, because a leaf charge is a sum over every process in
+    // it: a floor that shares its slot with a build daemon or a previous step's straggler reads
+    // their pages as its own, and that overlap is a different cause with a different remedy than
+    // retained application state. `pid:comm:rss_kb` per member, read from procfs, nothing summed.
+    let procs = std::fs::read_to_string(format!("{leaf}/cgroup.procs"))
+        .map(|body| {
+            body.lines()
+                .filter_map(|pid| {
+                    let pid = pid.trim();
+                    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+                    let field = |k: &str| {
+                        status.lines().find_map(|l| {
+                            l.strip_prefix(k).map(|r| {
+                                r.trim_start_matches(':')
+                                    .trim()
+                                    .trim_end_matches(" kB")
+                                    .to_string()
+                            })
+                        })
+                    };
+                    Some(format!(
+                        "{pid}:{}:{}",
+                        field("Name").unwrap_or_else(|| "na".to_string()),
+                        field("VmRSS").unwrap_or_else(|| "na".to_string())
+                    ))
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .unwrap_or_else(|_| "na".to_string());
+    eprintln!(
+        "[floor-cgroup] when={when} seam={seam} unix_ms={unix_ms} swap_current={} \
+         events_local=[{}] pressure=[{}] procs=[{procs}]",
+        raw("memory.swap.current"),
+        raw("memory.events.local"),
+        raw("memory.pressure"),
+    );
     eprintln!(
         "[floor-cgroup] when={when} stat_level={leaf} current={current} \
          memory_stat=[anon,{},file,{},shmem,{},unevictable,{},slab_unreclaimable,{},\
@@ -5651,6 +5714,7 @@ pub fn run_required_floor(
     // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
     // policy-closure prepare and the gate-closure prepare alike.
     let gate_entry_index = build_multi_entry_index(source_roots);
+    floor_seam("changed-witness-planning");
     // ONE DERIVATION, CONSUMED FOUR WAYS. The same diff observation supplies changed-witness
     // identities, newly enrolled identities, the compile-subject modules of
     // `touched_entry_files`, and the match-bearing consumers of every coproduct whose arm set
@@ -5856,6 +5920,7 @@ pub fn run_required_floor(
     )
     .chain(arm_set_consumer_seeds.iter().cloned())
     .collect();
+    floor_seam("prepare-closure-resolve");
     let (mut prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
         &floor_prepared_subject_exclusions(),
@@ -5866,6 +5931,7 @@ pub fn run_required_floor(
         )),
     )?;
     drop(gate_entry_index);
+    floor_seam("prepared-subject-warm");
     // THE FULL INDEX THE DISCOVERY AUTHORITY WILL JUDGE, captured here because the prepared
     // graph is intentionally only the required gate closure. Declaration discovery is a
     // corpus-wide question: fold the one modeled producer over every indexed source, finalize
@@ -9709,6 +9775,7 @@ pub fn run_required_floor(
     // candidate-bound rather than carrying a commit-shaped lie. The roster identity is derived
     // inside the module from the identities being published, so no value here can disagree with
     // the population it names.
+    floor_seam("publication");
     {
         let snapshot_wire = if commit == "local" || commit.is_empty() {
             "unpublished"

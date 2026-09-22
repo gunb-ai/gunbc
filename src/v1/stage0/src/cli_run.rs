@@ -102,8 +102,8 @@ pub use native_lane_runner::{
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
-    floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
-    run_claim_measured, run_required_floor,
+    floor_discovery_path_excluded, floor_seam, make_eval_context,
+    make_eval_context_with_runtime_options, run_claim_measured, run_required_floor,
 };
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
