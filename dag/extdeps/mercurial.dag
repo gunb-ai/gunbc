@@ -1,7 +1,7 @@
 module extdeps.mercurial
 
 import std.types { NonEmptyStr, Bytes, Timestamp }
-import std.integer { NonNegativeInt, UInt8 }
+import std.integer { NonNegativeInt, UInt8, qualified_octet_members }
 import std.graph {
   GraphEdge,
   CallGraph,
@@ -9,7 +9,7 @@ import std.graph {
   graph_reverse_reachable_members,
 }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.numeric.base16 { base16_encode_lower, base16_decode_lower }
+import extdeps.numeric.base16 { byte_hex_lower, base16_decode_lower }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -173,10 +173,16 @@ fn mercurial_node_id_octets(
   ]
 }
 
+// PER-OCTET RENDERING THROUGH THE CODEC'S OWN PRIMITIVE. base16_encode_lower now takes the sealed
+// std.integer QualifiedOctets; the twenty fields here are each already declared UInt8, so minting a
+// carrier would re-admit a width the record's own type states. byte_hex_lower is the same authority
+// that encoder folds over, so the alphabet stays single. The UInt8-into-Int formal crossing is the
+// bounded-natural transparency gap, rostered as a named site on
+// gunbc.recurring_failure_mode bounded_natural_arithmetic_evaluated_as_unbounded_int.
 fn mercurial_node_id_text(
   node: MercurialNodeId,
 ) -> String {
-  base16_encode_lower(octets: mercurial_node_id_octets(node: node))
+  map(mercurial_node_id_octets(node: node), octet => byte_hex_lower(v: octet)) |> join(separator: "")
 }
 
 fn mercurial_decode_node_identity(
@@ -206,10 +212,10 @@ fn mercurial_decode_node_identity(
       Absent => MercurialNodeIdentityDecodeRefused {
         cause: MercurialNodeIdentityNonHexadecimal,
       }
-      Present { value: octets } =>
-        if count(octets) == 20 {
+      Present { value: qualified } =>
+        if count(qualified_octet_members(q: qualified)) == 20 {
           MercurialNodeIdentityDecoded {
-            node: mercurial_node_id_from_octets(octets: octets),
+            node: mercurial_node_id_from_octets(octets: qualified_octet_members(q: qualified)),
           }
         } else {
           MercurialNodeIdentityDecodeRefused {

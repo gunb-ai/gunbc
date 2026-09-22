@@ -1,10 +1,10 @@
 module extdeps.network.mac
 
 import std.types { Int, String, Bool, NonEmptyStr, List, list_length }
-import std.integer { UInt8 }
+import std.integer { UInt8, qualified_octet_members }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.numeric.base16 { base16_encode_lower, base16_decode_lower }
+import extdeps.numeric.base16 { byte_hex_lower, base16_decode_lower }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -109,8 +109,17 @@ fn mac_address(
 // Rendering reads the same alphabet the parser does. This spelled the digits as a sixteen-arm match
 // whose default arm totalized every value >= 15 to "f" -- a fifth copy of the alphabet, in the
 // module this cut dissolves, and one that answered for values that are not digits at all.
+// ONE OCTET IS RENDERED BY THE CODEC'S OWN PER-OCTET PRIMITIVE, not by wrapping it in a list for
+// the whole-string encoder. base16_encode_lower now takes std.integer QualifiedOctets, and a
+// six-field address would have to mint one carrier per octet -- six admissions, each with a
+// refusal arm, to render a value whose width the field already declares. byte_hex_lower is the
+// SAME authority the encoder folds over, so this is reuse rather than a second encoder.
+//
+// THE CROSSING IS NAMED RATHER THAN LEFT IMPLICIT: `value` is UInt8 and byte_hex_lower's formal is
+// Int, which is the bounded-natural transparency this substrate does not yet decide -- rostered as
+// a named site on gunbc.recurring_failure_mode bounded_natural_arithmetic_evaluated_as_unbounded_int.
 fn render_mac_octet(value: UInt8) -> String {
-  base16_encode_lower(octets: [value])
+  byte_hex_lower(v: value)
 }
 
 fn render_mac_address(addr: Eui48Address) -> NonEmptyStr {
@@ -185,8 +194,8 @@ fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
       } else {
         match base16_decode_lower(hex: raw) {
           Absent => MacOctetErr { error: MacOctetNotHex { position: position, raw: raw } }
-          Present { value: octets } =>
-            match octets.first() {
+          Present { value: qualified } =>
+            match qualified_octet_members(q: qualified).first() {
               Present { value: octet } => MacOctetOk { value: octet }
               Absent => MacOctetErr { error: MacOctetNotHex { position: position, raw: raw } }
             }
