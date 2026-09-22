@@ -7,6 +7,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash { Sha256DigestHex }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import extdeps.shell
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.safetensors.format {
@@ -30,13 +31,21 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 // the instrument that produces it.
 //
 // THE INSTRUMENT IS A TOKEN SCAN, AND THAT IS A STATED DIVERGENCE FROM extdeps.languages.json. The JSON
-// authority's parse_json_document did not finish this 7.4 MB document in fifteen minutes in the
-// interpreter (measured 2026-09-21), so a general parse cannot be the instrument today. The scan below
+// authority's parse_json_document does not read a document of this size in the interpreter today. THAT
+// CLAIM IS NOT TRANSCRIBED HERE AND MUST NOT BE (DESIGN section 6: name the instrument, never transcribe
+// its output) -- it is re-derived by v41_index_parse_json_probe_wet below, over the same file, whoever
+// asks. A figure copied into this comment would be unreachable from the thing that owns it, and it would
+// be the ONLY way to tell whether the dissolution trigger had fired, which would make the trigger
+// unobservable and this fork permanent in practice. The scan below
 // reads ONE shape and refuses everything else: no backslash anywhere (so no quoted string can hide a
 // quote), the quoted tokens opening exactly `metadata`, `total_size`, `weight_map`, and after them only
 // name/shard pairs whose shard ends `.safetensors`. Within that shape the quoted tokens ARE the keys and
-// values, so the selection is exact rather than heuristic. It dissolves into a fold over
-// parse_json_document once that parser reads a weight_map of this size.
+// values, so the selection is exact rather than heuristic.
+//
+// IT DISSOLVES INTO A FOLD OVER parse_json_document ONCE THAT PARSER READS A weight_map OF THIS SIZE,
+// and that condition is OBSERVABLE rather than asserted: v41_index_parse_json_probe_wet runs
+// parse_json_document over the same index and reports which arm it reached, so the trigger is a run
+// anyone can make rather than a sentence anyone must believe.
 //
 // WHERE THE READING COMES FROM. The index is not in this repository, so a data row cannot read it at
 // evaluation; the reading is the receipt of the enrolled route that reads it on a Spark (below). Its
@@ -133,6 +142,36 @@ fn v41_index_engram_selection_read_wet() -> ProcessExit {
           }
         }
       }
+    }
+  }
+}
+
+// ── THE PARSER PROBE: THE INSTRUMENT BEHIND THE DIVERGENCE ─────────────────────────────────────
+//
+// This is the producer that re-derives the claim the divergence above rests on, and the observation
+// that retires it. Run it over the same local copy of the index:
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/spark/v41_index_engram_selection.dag
+//     --function v41_index_parse_json_probe_wet   (path in GUNBC_V41_INDEX_PATH)
+//
+// It reports which arm extdeps.languages.json parse_json_document reaches over this document, and it
+// is deliberately UNBOUNDED IN TIME: a run that does not return is itself the reading, which is the
+// state the divergence rests on and the one a transcribed duration could only assert. When this exits
+// zero with JsonDocumentParsed, the dissolution condition above has FIRED -- the scan is replaced by a
+// fold over the parsed value, and this probe and the scan go together.
+data v41_index_parse_probe_receipt_path: String = "target/v41-index-parse-json-probe-receipt.txt"
+
+fn v41_index_parse_json_probe_wet() -> ProcessExit {
+  let path = match shell.Env.Get(name: v41_index_path_env as NonEmptyStr).value { Present { value: v } => v  Absent => "" }
+  if path == "" { exit_failure(reason: join([v41_index_path_env, " is unset: name the local copy of the index to parse"], "")) } else {
+    let read = Filesystem.Read(path: path)
+    if !read.success { exit_failure(reason: join(["the index could not be read: ", read.error], "")) } else {
+      let verdict = match parse_json_document(s: read.content) {
+        JsonDocumentParsed { value: _ } => "parsed: parse_json_document READ this document -- the dissolution condition on the token scan has fired"
+        JsonDocumentUnreadable { gap: _ } => "unreadable: parse_json_document returned a gap over this document"
+      }
+      let body = join(["index bytes=", to_string(read.content.length()), " parse=", verdict], "")
+      let w = Filesystem.Write(path: v41_index_parse_probe_receipt_path, content: join([body, "\n"], ""))
+      if w.success { ExitSuccess } else { exit_failure(reason: join(["the receipt could not be written: ", w.error], "")) }
     }
   }
 }
