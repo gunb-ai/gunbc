@@ -203,7 +203,7 @@ test fn parse_table_undefined_nonterminal_morphism_holds() -> Bool {
 
 test fn parse_table_parse_expr_combinator_holds() -> Bool {
   let prov = parse_prov_initial()
-  let table = parse_table_empty()
+  let table = parse_table_empty(materialization: Memoize)
   let root = GrammarRoot {
     start: ^pt_parse_expr_start,
     productions: std.algebra.Empty,

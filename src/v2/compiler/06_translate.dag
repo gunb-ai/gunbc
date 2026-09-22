@@ -134,6 +134,7 @@ import v2.std.compilers.target_model {
   TargetTypeExprArrowLabeledWire,
   TargetTypeExprArrowPositionalWire,
   target_type_expr_atom_emitted,
+  target_type_expr_declaration_reference_emitted,
   target_type_expr_cardinality_emitted,
   target_type_expr_emitted_labeled_slot_edges,
   target_type_expr_emitted_labeled_slot_nodes,
@@ -202,6 +203,7 @@ import v2.std.collection {
   list_at_optional,
   map_get
 }
+import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -1986,12 +1988,34 @@ fn translate_type_expression_arrow_project(
   )
 }
 
+// THE FOLD READS A RESOLVED CORPUS-DECLARATION REFERENCE BEFORE IT READS THE CONNECTIVE. Resolution
+// carries a reference to a declaration as its declaring path (v2.compiler.resolve
+// resolved_reference_node), a qualified-name spine that shares the Conj connective with a record;
+// folded by connective it would become TypeExprTranslateSlots and be emitted as a two-field record
+// of its own segments. So the spine is decided first and emitted through the target's declaration
+// reference form (v2.std.compilers.target_model target_type_expr_declaration_reference_emitted):
+// the derived module-scoped spelling where the target has one, a located refusal where it has none
+// -- never the leaf, which is the collapse resolution refused to make. The spine is DONE at init,
+// so its segment children are never folded as slots.
 fn translate_algebra(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> NodeFold<Outcome<TypeExprTranslateAcc>> {
   NodeFold {
     init: fn(n) {
+      match declaration_reference_path_optional(node: n) {
+        Present { value: path } =>
+          bind_outcome(
+            o: target_type_expr_declaration_reference_emitted(
+              projection: projection,
+              path: path,
+              reference: n
+            ),
+            f: fn(emitted) {
+              Accepted { value: TypeExprTranslateDone { node: emitted }, diagnostics: None }
+            }
+          )
+        Absent =>
       match n.kind {
         TypeNode { connective: connective } =>
           match connective {
@@ -2039,6 +2063,7 @@ fn translate_algebra(
           }
         ComputationNode { behavior: _ } =>
           outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n))
+      }
       }
     },
     step: fn(acc, e, child) {

@@ -639,6 +639,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         caller_decl_name: "".to_string(),
         in_flight_lambda_param_names: Rc::new(vec![]),
+        enclosing_declared_type_param_names: Rc::new(vec![]),
     })
 }
 
@@ -658,6 +659,7 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         caller_decl_name: "".to_string(),
         in_flight_lambda_param_names: Rc::new(vec![]),
+        enclosing_declared_type_param_names: Rc::new(vec![]),
     })
 }
 

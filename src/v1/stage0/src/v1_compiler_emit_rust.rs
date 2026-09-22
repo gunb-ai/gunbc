@@ -3,6 +3,8 @@
 
 use self::AliasDeclArityVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
+use self::FmArmAnalysis::*;
+use self::FmLoweringRefusal::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::WitnessCtorPathVerdict::*;
 pub use crate::extdeps_cargo::CargoFeature;
@@ -58,6 +60,7 @@ pub use crate::gunbc_structural_realization_bindings::{
     structural_connective_rows, structural_ordering_rows,
 };
 pub use crate::std_algebra::AlgebraFieldTemplate;
+pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_algebra::{is_collection_filter_template, trim};
 pub use crate::std_coercion::TypeCheckpoint;
 use crate::std_coercion::TypeDeclarationProvenance::{
@@ -78,6 +81,9 @@ use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_operator_realization::HostRealizationReason::{
     GenericTypeParameter, HostContainer, KernelMintedType, UnnamedSynthesizedType,
 };
+use crate::std_operator_realization::OperandDemand::{
+    DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent,
+};
 use crate::std_operator_realization::OperandRealization::{
     HostNumericOperand, HostRealizedOperand, OperandIdentityUnavailable, StructuralOperand,
 };
@@ -86,11 +92,11 @@ use crate::std_operator_realization::OperatorRealization::{
 };
 use crate::std_operator_realization::OrderingTest::{OrderingIs, OrderingIsNot};
 pub use crate::std_operator_realization::{
-    operator_realization_for, operator_realization_refusal_message,
+    binop_label, operand_demand, operator_realization_for, operator_realization_refusal_message,
 };
 pub use crate::std_operator_realization::{
-    HostRealizationReason, OperandDeclaration, OperandRealization, OperandShapeFacts,
-    OperatorRealization, OrderingTest, StructuralOrderingBinding,
+    HostRealizationReason, OperandDeclaration, OperandDemand, OperandRealization,
+    OperandShapeFacts, OperatorRealization, OrderingTest, StructuralOrderingBinding,
 };
 pub use crate::std_primitive_projection::{
     primitive_identity_runtime_name, primitive_projection_row_for_declaration,
@@ -28688,42 +28694,6 @@ pub fn freemonoid_match_arm_for(arms: Rc<Vec<Rc<Node>>>, variant: String) -> Opt
     .cloned()
 }
 
-pub fn freemonoid_cons_binding(
-    cons_arm: Rc<Node>,
-    field: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    match (*crate::v1_std_core::arm_pattern(cons_arm.clone())).clone() {
-        MatchPattern::VariantPattern {
-            field_bindings: fbs,
-            ..
-        } => match Rc::new({
-            let mut __result = Vec::new();
-            for fb in fbs.iter().cloned() {
-                if (crate::v1_std_core::field_binding_name_at(fb.clone(), source_indices.clone())
-                    == field.clone())
-                {
-                    __result.push(fb);
-                }
-            }
-            __result
-        })
-        .first()
-        .cloned()
-        {
-            Some(fb) => match (*crate::v1_std_core::field_binding_pattern(fb.clone())).clone() {
-                MatchPattern::Bind {
-                    declaration: declaration,
-                    ..
-                } => declaration.name.clone(),
-                _ => "_".to_string(),
-            },
-            std::option::Option::None => "_".to_string(),
-        },
-        _ => "_".to_string(),
-    }
-}
-
 pub fn arm_resolved_parent_enum(
     arm: Rc<Node>,
     scrut_type: String,
@@ -28771,16 +28741,6 @@ pub fn freemonoid_catchall_arm(arms: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
     .cloned()
 }
 
-pub fn freemonoid_catchall_bind_name(arm: Rc<Node>) -> String {
-    match (*crate::v1_std_core::arm_pattern(arm.clone())).clone() {
-        MatchPattern::Bind {
-            declaration: declaration,
-            ..
-        } => declaration.name.clone(),
-        _ => "".to_string(),
-    }
-}
-
 pub fn arms_are_freemonoid_coproduct(
     arms: Rc<Vec<Rc<Node>>>,
     scrut_type: String,
@@ -28822,128 +28782,555 @@ pub fn arms_are_freemonoid_coproduct(
     }
 }
 
-pub fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
-    if (tail_bind.clone() == "_".to_string()) {
-        "".to_string()
-    } else {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FmLoweringRefusal {
+    FmArmCarriesGuard,
+    FmRefutableHeadSubPattern,
+    FmNonListVariant { variant: String },
+    FmLiteralAgainstList,
+    FmSpineDeeperThanFuel,
+    FmNoArmAcceptsUnboundedLength,
+    FmLengthMatchedByNoArm { len: i64 },
+}
+
+pub fn fm_lowering_refusal_message(cause: Rc<FmLoweringRefusal>) -> String {
+    match (*cause.clone()).clone() {
+    FmLoweringRefusal::FmArmCarriesGuard => "a guard on a FreeMonoid match arm".to_string(),
+    FmLoweringRefusal::FmRefutableHeadSubPattern => "a refutable `head` sub-pattern under `Cons`, which discriminates the ELEMENT rather than the list".to_string(),
+    FmLoweringRefusal::FmNonListVariant { variant: v, .. } => v1_rt::concat(v1_rt::concat("the variant `".to_string(), v.clone()), "` in a FreeMonoid pattern".to_string()),
+    FmLoweringRefusal::FmLiteralAgainstList => "a literal pattern against a FreeMonoid".to_string(),
+    FmLoweringRefusal::FmSpineDeeperThanFuel => "a FreeMonoid pattern spine deeper than the emitter's nesting fuel".to_string(),
+    FmLoweringRefusal::FmNoArmAcceptsUnboundedLength => "a FreeMonoid match no arm proves exhaustive: no arm accepts a list of unbounded length".to_string(),
+    FmLoweringRefusal::FmLengthMatchedByNoArm { len: n, .. } => v1_rt::concat(v1_rt::concat("a FreeMonoid match no arm proves exhaustive: a list of length ".to_string(), crate::v1_compiler_emit_core_support::to_string(n.clone())), " is matched by no arm".to_string()),
+}
+}
+
+pub fn fm_located_refusal(cause: Rc<FmLoweringRefusal>, arm: Rc<Node>) -> String {
+    v1_rt::concat(
         v1_rt::concat(
-            v1_rt::concat("let ".to_string(), tail_bind.clone()),
-            ": Rc<Vec<_>> = Rc::new(__fm.skip(1)); ".to_string(),
-        )
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "v1.compiler.emit_rust will not lower ".to_string(),
+                            fm_lowering_refusal_message(cause.clone()),
+                        ),
+                        " at ".to_string(),
+                    ),
+                    arm.span.clone().file.clone(),
+                ),
+                ":".to_string(),
+            ),
+            crate::v1_compiler_emit_core_support::to_string(arm.span.clone().start.clone()),
+        ),
+        " -- the FreeMonoid match lowering refuses this shape rather than dropping the arm"
+            .to_string(),
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FmArmAnalysis {
+    FmSpine {
+        exact: bool,
+        len: i64,
+        head_binds: Rc<Vec<String>>,
+        tail_bind: String,
+    },
+    FmUnsupportedArm {
+        cause: Rc<FmLoweringRefusal>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FmArmPlan {
+    pub arm: Rc<Node>,
+    pub analysis: Rc<FmArmAnalysis>,
+}
+
+pub fn fm_head_bind_name(p: Rc<MatchPattern>) -> Option<String> {
+    match (*p.clone()).clone() {
+        MatchPattern::Wildcard => Some("_".to_string()),
+        MatchPattern::Bind { declaration: d, .. } => Some(d.name.clone()),
+        MatchPattern::LitPattern { value: _, .. } => std::option::Option::None,
+        MatchPattern::VariantPattern { .. } => std::option::Option::None,
     }
 }
 
-pub fn freemonoid_empty_branch_body(
-    empty_arm: Option<Rc<Node>>,
-    catchall: Option<Rc<Node>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
-    depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> String {
-    match empty_arm.clone() {
-        Some(ea) => emit_typed_expr(
-            crate::v1_std_core::arm_body(ea.clone()),
-            registry.clone(),
-            scope.clone(),
-            depth.clone(),
-            shared_types.clone(),
-            emit_info.clone(),
-            1024,
-        ),
-        std::option::Option::None => match catchall.clone() {
-            Some(wa) => {
-                let bn = freemonoid_catchall_bind_name(wa.clone());
-                let bind_let = if (bn.clone() == "".to_string()) {
-                    "".to_string()
-                } else {
-                    v1_rt::concat(
-                        v1_rt::concat("let ".to_string(), bn.clone()),
-                        " = __fm.clone(); ".to_string(),
-                    )
-                };
-                v1_rt::concat(
-                    bind_let.clone(),
-                    emit_typed_expr(
-                        crate::v1_std_core::arm_body(wa.clone()),
-                        registry.clone(),
-                        scope.clone(),
-                        depth.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                        1024,
-                    ),
-                )
+pub fn fm_field_sub_pattern(
+    fbs: Rc<Vec<Rc<Node>>>,
+    field: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<MatchPattern> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for fb in fbs.iter().cloned() {
+            if (crate::v1_std_core::field_binding_name_at(fb.clone(), si.clone()) == field.clone())
+            {
+                __result.push(fb);
             }
-            std::option::Option::None => "".to_string(),
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(fb) => crate::v1_std_core::field_binding_pattern(fb.clone()),
+        std::option::Option::None => Rc::new(MatchPattern::Wildcard),
+    }
+}
+
+pub fn fm_analyze_pattern(
+    pattern: Rc<MatchPattern>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    fuel: i64,
+) -> Rc<FmArmAnalysis> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (fuel.clone() <= 0) {
+            Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                cause: Rc::new(FmLoweringRefusal::FmSpineDeeperThanFuel),
+            })
+        } else {
+            match (*pattern.clone()).clone() {
+                MatchPattern::Wildcard => Rc::new(FmArmAnalysis::FmSpine {
+                    exact: false,
+                    len: 0,
+                    head_binds: Rc::new(vec![]),
+                    tail_bind: "_".to_string(),
+                }),
+                MatchPattern::Bind { declaration: d, .. } => Rc::new(FmArmAnalysis::FmSpine {
+                    exact: false,
+                    len: 0,
+                    head_binds: Rc::new(vec![]),
+                    tail_bind: d.name.clone(),
+                }),
+                MatchPattern::LitPattern { value: _, .. } => {
+                    Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                        cause: Rc::new(FmLoweringRefusal::FmLiteralAgainstList),
+                    })
+                }
+                MatchPattern::VariantPattern {
+                    name: n,
+                    field_bindings: fbs,
+                    ..
+                } => {
+                    let bare = crate::v1_std_core::qualified_last_segment(n.clone());
+                    if (bare.clone() == "Empty".to_string()) {
+                        Rc::new(FmArmAnalysis::FmSpine {
+                            exact: true,
+                            len: 0,
+                            head_binds: Rc::new(vec![]),
+                            tail_bind: "".to_string(),
+                        })
+                    } else {
+                        if (bare.clone() == "Cons".to_string()) {
+                            {
+                                let head_pat = fm_field_sub_pattern(
+                                    fbs.clone(),
+                                    "head".to_string(),
+                                    si.clone(),
+                                );
+                                let tail_pat = fm_field_sub_pattern(
+                                    fbs.clone(),
+                                    "tail".to_string(),
+                                    si.clone(),
+                                );
+                                match fm_head_bind_name(head_pat.clone()) {
+                                    std::option::Option::None => {
+                                        Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                                            cause: Rc::new(
+                                                FmLoweringRefusal::FmRefutableHeadSubPattern,
+                                            ),
+                                        })
+                                    }
+                                    Some(hb) => match (*fm_analyze_pattern(
+                                        tail_pat.clone(),
+                                        si.clone(),
+                                        (fuel.clone() - 1),
+                                    ))
+                                    .clone()
+                                    {
+                                        FmArmAnalysis::FmUnsupportedArm { cause: c, .. } => {
+                                            Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                                                cause: c.clone(),
+                                            })
+                                        }
+                                        FmArmAnalysis::FmSpine {
+                                            exact: e,
+                                            len: l,
+                                            head_binds: hbs,
+                                            tail_bind: tb,
+                                            ..
+                                        } => Rc::new(FmArmAnalysis::FmSpine {
+                                            exact: e.clone(),
+                                            len: (l.clone() + 1),
+                                            head_binds: v1_rt::concat(
+                                                Rc::new(vec![hb.clone()]),
+                                                hbs.clone(),
+                                            ),
+                                            tail_bind: tb.clone(),
+                                        }),
+                                    },
+                                }
+                            }
+                        } else {
+                            Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                                cause: Rc::new(FmLoweringRefusal::FmNonListVariant {
+                                    variant: bare.clone(),
+                                }),
+                            })
+                        }
+                    }
+                }
+            }
+        }
+    })
+}
+
+pub fn fm_arm_plan(arm: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<FmArmPlan> {
+    match crate::v1_std_core::arm_guard(arm.clone()) {
+        Some(_) => Rc::new(FmArmPlan {
+            arm: arm.clone(),
+            analysis: Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                cause: Rc::new(FmLoweringRefusal::FmArmCarriesGuard),
+            }),
+        }),
+        std::option::Option::None => Rc::new(FmArmPlan {
+            arm: arm.clone(),
+            analysis: fm_analyze_pattern(
+                crate::v1_std_core::arm_pattern(arm.clone()),
+                si.clone(),
+                64,
+            ),
+        }),
+    }
+}
+
+pub fn fm_plan_is_exact_at(plan: Rc<FmArmPlan>, k: i64) -> bool {
+    match (*plan.analysis.clone()).clone() {
+        FmArmAnalysis::FmSpine {
+            exact: e, len: l, ..
+        } => (e.clone() && (l.clone() == k.clone())),
+        FmArmAnalysis::FmUnsupportedArm { cause: _, .. } => false,
+    }
+}
+
+pub fn fm_plan_open_len(plan: Rc<FmArmPlan>) -> Option<i64> {
+    match (*plan.analysis.clone()).clone() {
+        FmArmAnalysis::FmSpine {
+            exact: e, len: l, ..
+        } => {
+            if e.clone() {
+                std::option::Option::None
+            } else {
+                Some(l.clone())
+            }
+        }
+        FmArmAnalysis::FmUnsupportedArm { cause: _, .. } => std::option::Option::None,
+    }
+}
+
+pub fn fm_min_open_len(plans: Rc<Vec<Rc<FmArmPlan>>>) -> Option<i64> {
+    plans
+        .iter()
+        .cloned()
+        .fold(
+            std::option::Option::None,
+            |acc: _, p: Rc<FmArmPlan>| match fm_plan_open_len(p.clone()) {
+                std::option::Option::None => acc.clone(),
+                Some(l) => match acc.clone() {
+                    std::option::Option::None => Some(l.clone()),
+                    Some(best) => {
+                        if (l.clone() < best.clone()) {
+                            Some(l.clone())
+                        } else {
+                            acc.clone()
+                        }
+                    }
+                },
+            },
+        )
+}
+
+pub fn fm_first_uncovered_len(
+    mut __tco_loop_plans: Rc<Vec<Rc<FmArmPlan>>>,
+    mut __tco_loop_k: i64,
+    mut __tco_loop_limit: i64,
+    mut __tco_loop_fuel: i64,
+) -> Option<i64> {
+    loop {
+        #[allow(unused_mut)]
+        let mut plans = __tco_loop_plans;
+        #[allow(unused_mut)]
+        let mut k = __tco_loop_k;
+        #[allow(unused_mut)]
+        let mut limit = __tco_loop_limit;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
+        if (k.clone() >= limit.clone()) {
+            break std::option::Option::None;
+        } else {
+            if (fuel.clone() <= 0) {
+                break Some(k.clone());
+            } else {
+                if !{
+                    let mut __found = false;
+                    for p in plans.iter().cloned() {
+                        if fm_plan_is_exact_at(p.clone(), k.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    break Some(k.clone());
+                } else {
+                    {
+                        let __tco_0 = plans;
+                        let __tco_1 = (k + 1);
+                        let __tco_2 = limit;
+                        let __tco_3 = (fuel - 1);
+                        __tco_loop_plans = __tco_0;
+                        __tco_loop_k = __tco_1;
+                        __tco_loop_limit = __tco_2;
+                        __tco_loop_fuel = __tco_3;
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn fm_plans_refusal(plans: Rc<Vec<Rc<FmArmPlan>>>) -> Option<Rc<FmArmPlan>> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for p in plans.iter().cloned() {
+            if match (*p.analysis.clone()).clone() {
+                FmArmAnalysis::FmUnsupportedArm { cause: _, .. } => true,
+                FmArmAnalysis::FmSpine { .. } => false,
+            } {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(bad) => Some(bad.clone()),
+        std::option::Option::None => match fm_min_open_len(plans.clone()) {
+            std::option::Option::None => match plans.clone().first().cloned() {
+                Some(anchor) => Some(Rc::new(FmArmPlan {
+                    arm: anchor.arm.clone(),
+                    analysis: Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                        cause: Rc::new(FmLoweringRefusal::FmNoArmAcceptsUnboundedLength),
+                    }),
+                })),
+                std::option::Option::None => std::option::Option::None,
+            },
+            Some(limit) => {
+                match fm_first_uncovered_len(plans.clone(), 0, limit.clone(), (limit.clone() + 1)) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(missing) => match plans.clone().first().cloned() {
+                        Some(anchor) => Some(Rc::new(FmArmPlan {
+                            arm: anchor.arm.clone(),
+                            analysis: Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                                cause: Rc::new(FmLoweringRefusal::FmLengthMatchedByNoArm {
+                                    len: missing.clone(),
+                                }),
+                            }),
+                        })),
+                        std::option::Option::None => std::option::Option::None,
+                    },
+                }
+            }
         },
     }
 }
 
-pub fn freemonoid_nonempty_branch_body(
-    cons_arm: Option<Rc<Node>>,
-    catchall: Option<Rc<Node>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
-    depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+pub fn fm_plan_refusal_text(plan: Rc<FmArmPlan>) -> String {
+    match (*plan.analysis.clone()).clone() {
+        FmArmAnalysis::FmUnsupportedArm { cause: c, .. } => {
+            fm_located_refusal(c.clone(), plan.arm.clone())
+        }
+        FmArmAnalysis::FmSpine { .. } => {
+            "v1.compiler.emit_rust internal: refusal requested for a supported FreeMonoid arm"
+                .to_string()
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FmChainPiece {
+    pub cond: String,
+    pub binds: String,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FmBindAcc {
+    pub index: i64,
+    pub out: String,
+}
+
+pub fn fm_head_bind_lets(head_binds: Rc<Vec<String>>) -> String {
+    {
+        let folded = head_binds.iter().cloned().fold(
+            Rc::new(FmBindAcc {
+                index: 0,
+                out: "".to_string(),
+            }),
+            |acc: Rc<FmBindAcc>, hb: String| {
+                Rc::new(FmBindAcc {
+                    index: (acc.index.clone() + 1),
+                    out: if (hb.clone() == "_".to_string()) {
+                        acc.out.clone()
+                    } else {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(acc.out.clone(), "let ".to_string()),
+                                        hb.clone(),
+                                    ),
+                                    " = (*__fm)[".to_string(),
+                                ),
+                                crate::v1_compiler_emit_core_support::to_string(acc.index.clone()),
+                            ),
+                            "].clone(); ".to_string(),
+                        )
+                    },
+                })
+            },
+        );
+        folded.out.clone()
+    }
+}
+
+pub fn fm_spine_binds(
+    len: i64,
+    head_binds: Rc<Vec<String>>,
+    tail_bind: String,
+    exact: bool,
 ) -> String {
-    match cons_arm.clone() {
-        Some(ca) => {
-            let head_bind = freemonoid_cons_binding(ca.clone(), "head".to_string(), si.clone());
-            let tail_bind = freemonoid_cons_binding(ca.clone(), "tail".to_string(), si.clone());
-            let head_let = if (head_bind.clone() == "_".to_string()) {
-                "".to_string()
+    {
+        let head_lets = fm_head_bind_lets(head_binds.clone());
+        let tail_let = if ((exact.clone() || (tail_bind.clone() == "_".to_string()))
+            || (tail_bind.clone() == "".to_string()))
+        {
+            "".to_string()
+        } else {
+            if (len.clone() == 0) {
+                v1_rt::concat(
+                    v1_rt::concat("let ".to_string(), tail_bind.clone()),
+                    " = __fm.clone(); ".to_string(),
+                )
             } else {
                 v1_rt::concat(
-                    v1_rt::concat("let ".to_string(), head_bind.clone()),
-                    " = (*__fm)[0].clone(); ".to_string(),
-                )
-            };
-            let tail_let = freemonoid_tail_let_from_fm(tail_bind.clone());
-            v1_rt::concat(
-                v1_rt::concat(head_let.clone(), tail_let.clone()),
-                emit_typed_expr(
-                    crate::v1_std_core::arm_body(ca.clone()),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    1024,
-                ),
-            )
-        }
-        std::option::Option::None => match catchall.clone() {
-            Some(wa) => {
-                let bn = freemonoid_catchall_bind_name(wa.clone());
-                let bind_let = if (bn.clone() == "".to_string()) {
-                    "".to_string()
-                } else {
                     v1_rt::concat(
-                        v1_rt::concat("let ".to_string(), bn.clone()),
-                        " = __fm.clone(); ".to_string(),
-                    )
-                };
-                v1_rt::concat(
-                    bind_let.clone(),
-                    emit_typed_expr(
-                        crate::v1_std_core::arm_body(wa.clone()),
-                        registry.clone(),
-                        scope.clone(),
-                        depth.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                        1024,
+                        v1_rt::concat(
+                            v1_rt::concat("let ".to_string(), tail_bind.clone()),
+                            ": Rc<Vec<_>> = Rc::new(__fm.skip(".to_string(),
+                        ),
+                        crate::v1_compiler_emit_core_support::to_string(len.clone()),
                     ),
+                    ")); ".to_string(),
                 )
             }
-            std::option::Option::None => "".to_string(),
-        },
+        };
+        v1_rt::concat(head_lets.clone(), tail_let.clone())
     }
+}
+
+pub fn fm_spine_condition(len: i64, exact: bool) -> String {
+    if exact.clone() {
+        if (len.clone() == 0) {
+            "__fm.is_empty()".to_string()
+        } else {
+            v1_rt::concat(
+                "__fm.len() == ".to_string(),
+                crate::v1_compiler_emit_core_support::to_string(len.clone()),
+            )
+        }
+    } else {
+        if (len.clone() == 0) {
+            "true".to_string()
+        } else {
+            v1_rt::concat(
+                "__fm.len() >= ".to_string(),
+                crate::v1_compiler_emit_core_support::to_string(len.clone()),
+            )
+        }
+    }
+}
+
+pub fn fm_chain_piece(plan: Rc<FmArmPlan>, body: String) -> Rc<FmChainPiece> {
+    match (*plan.analysis.clone()).clone() {
+        FmArmAnalysis::FmSpine {
+            exact: e,
+            len: l,
+            head_binds: hbs,
+            tail_bind: tb,
+            ..
+        } => Rc::new(FmChainPiece {
+            cond: fm_spine_condition(l.clone(), e.clone()),
+            binds: fm_spine_binds(l.clone(), hbs.clone(), tb.clone(), e.clone()),
+            body: body.clone(),
+        }),
+        FmArmAnalysis::FmUnsupportedArm { cause: c, .. } => Rc::new(FmChainPiece {
+            cond: "true".to_string(),
+            binds: "".to_string(),
+            body: emit_rust_compile_error_expr(fm_located_refusal(c.clone(), plan.arm.clone())),
+        }),
+    }
+}
+
+pub fn fm_chain_from(pieces: Rc<Vec<Rc<FmChainPiece>>>, fuel: i64) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (fuel.clone() <= 0) {
+            emit_rust_compile_error_expr(
+                "a FreeMonoid match with more arms than the emitter's chain fuel".to_string(),
+            )
+        } else {
+            {
+                let __fm = pieces.clone();
+                if __fm.is_empty() {
+                    emit_rust_compile_error_expr("a FreeMonoid match with no arms".to_string())
+                } else {
+                    let p = (*__fm)[0].clone();
+                    let rest: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                    if ((rest.clone().len() as i64) == 0) {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat("{ ".to_string(), p.binds.clone()),
+                                p.body.clone(),
+                            ),
+                            " }".to_string(),
+                        )
+                    } else {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat("if ".to_string(), p.cond.clone()),
+                                            " { ".to_string(),
+                                        ),
+                                        p.binds.clone(),
+                                    ),
+                                    p.body.clone(),
+                                ),
+                                " } else ".to_string(),
+                            ),
+                            fm_chain_from(rest.clone(), (fuel.clone() - 1)),
+                        )
+                    }
+                }
+            }
+        }
+    })
 }
 
 pub fn emit_native_freemonoid_match(
@@ -28957,47 +29344,45 @@ pub fn emit_native_freemonoid_match(
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        let empty_arm = freemonoid_match_arm_for(arms.clone(), "Empty".to_string());
-        let cons_arm = freemonoid_match_arm_for(arms.clone(), "Cons".to_string());
-        let catchall = freemonoid_catchall_arm(arms.clone());
-        let empty_body = freemonoid_empty_branch_body(
-            empty_arm.clone(),
-            catchall.clone(),
-            registry.clone(),
-            scope.clone(),
-            depth.clone(),
-            shared_types.clone(),
-            emit_info.clone(),
-        );
-        let nonempty_body = freemonoid_nonempty_branch_body(
-            cons_arm.clone(),
-            catchall.clone(),
-            si.clone(),
-            registry.clone(),
-            scope.clone(),
-            depth.clone(),
-            shared_types.clone(),
-            emit_info.clone(),
-        );
-        if ((empty_body.clone() == "".to_string()) || (nonempty_body.clone() == "".to_string())) {
-            "".to_string()
-        } else {
-            v1_rt::concat(
+        let plans = Rc::new({
+            let mut __result = Vec::new();
+            for arm in arms.iter().cloned() {
+                __result.push(fm_arm_plan(arm.clone(), si.clone()));
+            }
+            __result
+        });
+        match fm_plans_refusal(plans.clone()) {
+            Some(bad) => emit_rust_compile_error_expr(fm_plan_refusal_text(bad.clone())),
+            std::option::Option::None => {
+                let pieces = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in plans.iter().cloned() {
+                        __result.push(fm_chain_piece(
+                            p.clone(),
+                            emit_typed_expr(
+                                crate::v1_std_core::arm_body(p.arm.clone()),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                                1024,
+                            ),
+                        ));
+                    }
+                    __result
+                });
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("{ let __fm = ".to_string(), scrut_str.clone()),
-                                "; if __fm.is_empty() { ".to_string(),
-                            ),
-                            empty_body.clone(),
+                            v1_rt::concat("{ let __fm = ".to_string(), scrut_str.clone()),
+                            "; ".to_string(),
                         ),
-                        " } else { ".to_string(),
+                        fm_chain_from(pieces.clone(), 256),
                     ),
-                    nonempty_body.clone(),
-                ),
-                " } }".to_string(),
-            )
+                    " }".to_string(),
+                )
+            }
         }
     }
 }
@@ -29601,12 +29986,12 @@ pub fn emit_typed_match(
             }
             _ => "".to_string(),
         };
-        let native_fm = if arms_are_freemonoid_coproduct(
+        if arms_are_freemonoid_coproduct(
             arms.clone(),
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         ) {
-            emit_native_freemonoid_match(
+            return emit_native_freemonoid_match(
                 scrut_str.clone(),
                 arms.clone(),
                 registry.clone(),
@@ -29614,12 +29999,7 @@ pub fn emit_typed_match(
                 depth.clone(),
                 shared_types.clone(),
                 emit_info.clone(),
-            )
-        } else {
-            "".to_string()
-        };
-        if (native_fm.clone() != "".to_string()) {
-            return native_fm.clone();
+            );
         }
         let rc_match = analyze_rc_match(
             scrutinee.clone(),
@@ -32178,7 +32558,7 @@ pub fn emit_typed_bin_op(
                         scope.clone(),
                     )
                 }
-                OperatorRealization::HostOperator => emit_rust_host_bin_op(
+                OperatorRealization::HostOperator => emit_rust_demanded_host_bin_op(
                     op.clone(),
                     algebra_field.clone(),
                     left.clone(),
@@ -32187,6 +32567,108 @@ pub fn emit_typed_bin_op(
                     r_str.clone(),
                     scope.clone(),
                 ),
+            }
+        }
+    }
+}
+
+pub fn rust_host_token_demands_both_operands(op: BinOp) -> bool {
+    match op.clone() {
+        BinOp::And => false,
+        BinOp::Or => false,
+        BinOp::NullCoalesce => false,
+        BinOp::Add => true,
+        BinOp::Sub => true,
+        BinOp::Mul => true,
+        BinOp::Div => true,
+        BinOp::Mod => true,
+        BinOp::Eq => true,
+        BinOp::Ne => true,
+        BinOp::Lt => true,
+        BinOp::Gt => true,
+        BinOp::Le => true,
+        BinOp::Ge => true,
+    }
+}
+
+pub fn emit_rust_demanded_host_bin_op(
+    op: BinOp,
+    algebra_field: Option<AlgebraFieldKind>,
+    left: Rc<Node>,
+    right: Rc<Node>,
+    l_str: String,
+    r_str: String,
+    scope: Rc<InferScope>,
+) -> String {
+    {
+        let token_demands_both = rust_host_token_demands_both_operands(op.clone());
+        match (*crate::std_operator_realization::operand_demand(op.clone())).clone() {
+            OperandDemand::DemandsBothOperands => {
+                if token_demands_both.clone() {
+                    emit_rust_host_bin_op(
+                        op.clone(),
+                        algebra_field.clone(),
+                        left.clone(),
+                        right.clone(),
+                        l_str.clone(),
+                        r_str.clone(),
+                        scope.clone(),
+                    )
+                } else {
+                    {
+                        let op_str = crate::v1_compiler_emit::emit_bin_op_symbol(
+                            op.clone(),
+                            RenderTarget::Rust,
+                            algebra_field.clone(),
+                        );
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "{ let __dag_lhs = ".to_string(),
+                                            l_str.clone(),
+                                        ),
+                                        "; let __dag_rhs = ".to_string(),
+                                    ),
+                                    r_str.clone(),
+                                ),
+                                v1_rt::concat("; __dag_lhs ".to_string(), op_str.clone()),
+                            ),
+                            " __dag_rhs }".to_string(),
+                        )
+                    }
+                }
+            }
+            OperandDemand::DemandsRightOnlyWhenLeftIs { deciding: _, .. } => {
+                if token_demands_both.clone() {
+                    emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("operand demand: `".to_string(), crate::std_operator_realization::binop_label(op.clone())), "` declares its right operand conditional and the Rust token for it evaluates both, so no infix lowering is faithful (std.operator_realization operand_demand)".to_string()))
+                } else {
+                    emit_rust_host_bin_op(
+                        op.clone(),
+                        algebra_field.clone(),
+                        left.clone(),
+                        right.clone(),
+                        l_str.clone(),
+                        r_str.clone(),
+                        scope.clone(),
+                    )
+                }
+            }
+            OperandDemand::DemandsRightOnlyWhenLeftIsAbsent => {
+                if token_demands_both.clone() {
+                    emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("operand demand: `".to_string(), crate::std_operator_realization::binop_label(op.clone())), "` declares its right operand conditional on the left being absent and the Rust token for it evaluates both (std.operator_realization operand_demand)".to_string()))
+                } else {
+                    emit_rust_host_bin_op(
+                        op.clone(),
+                        algebra_field.clone(),
+                        left.clone(),
+                        right.clone(),
+                        l_str.clone(),
+                        r_str.clone(),
+                        scope.clone(),
+                    )
+                }
             }
         }
     }
@@ -33154,127 +33636,6 @@ pub fn emit_rust_tco_if(
     }
 }
 
-pub fn freemonoid_tco_empty_branch_body(
-    empty_arm: Option<Rc<Node>>,
-    catchall: Option<Rc<Node>>,
-    fn_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
-    depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> String {
-    match empty_arm.clone() {
-        Some(ea) => emit_typed_tco_expr(
-            crate::v1_std_core::arm_body(ea.clone()),
-            fn_name.clone(),
-            params.clone(),
-            registry.clone(),
-            scope.clone(),
-            depth.clone(),
-            shared_types.clone(),
-            emit_info.clone(),
-        ),
-        std::option::Option::None => match catchall.clone() {
-            Some(wa) => {
-                let bn = freemonoid_catchall_bind_name(wa.clone());
-                let bind_let = if (bn.clone() == "".to_string()) {
-                    "".to_string()
-                } else {
-                    v1_rt::concat(
-                        v1_rt::concat("let ".to_string(), bn.clone()),
-                        " = __fm.clone(); ".to_string(),
-                    )
-                };
-                v1_rt::concat(
-                    bind_let.clone(),
-                    emit_typed_tco_expr(
-                        crate::v1_std_core::arm_body(wa.clone()),
-                        fn_name.clone(),
-                        params.clone(),
-                        registry.clone(),
-                        scope.clone(),
-                        depth.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                    ),
-                )
-            }
-            std::option::Option::None => "".to_string(),
-        },
-    }
-}
-
-pub fn freemonoid_tco_nonempty_branch_body(
-    cons_arm: Option<Rc<Node>>,
-    catchall: Option<Rc<Node>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    fn_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
-    depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> String {
-    match cons_arm.clone() {
-        Some(ca) => {
-            let head_bind = freemonoid_cons_binding(ca.clone(), "head".to_string(), si.clone());
-            let tail_bind = freemonoid_cons_binding(ca.clone(), "tail".to_string(), si.clone());
-            let head_let = if (head_bind.clone() == "_".to_string()) {
-                "".to_string()
-            } else {
-                v1_rt::concat(
-                    v1_rt::concat("let ".to_string(), head_bind.clone()),
-                    " = (*__fm)[0].clone(); ".to_string(),
-                )
-            };
-            let tail_let = freemonoid_tail_let_from_fm(tail_bind.clone());
-            v1_rt::concat(
-                v1_rt::concat(head_let.clone(), tail_let.clone()),
-                emit_typed_tco_expr(
-                    crate::v1_std_core::arm_body(ca.clone()),
-                    fn_name.clone(),
-                    params.clone(),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                ),
-            )
-        }
-        std::option::Option::None => match catchall.clone() {
-            Some(wa) => {
-                let bn = freemonoid_catchall_bind_name(wa.clone());
-                let bind_let = if (bn.clone() == "".to_string()) {
-                    "".to_string()
-                } else {
-                    v1_rt::concat(
-                        v1_rt::concat("let ".to_string(), bn.clone()),
-                        " = __fm.clone(); ".to_string(),
-                    )
-                };
-                v1_rt::concat(
-                    bind_let.clone(),
-                    emit_typed_tco_expr(
-                        crate::v1_std_core::arm_body(wa.clone()),
-                        fn_name.clone(),
-                        params.clone(),
-                        registry.clone(),
-                        scope.clone(),
-                        depth.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                    ),
-                )
-            }
-            std::option::Option::None => "".to_string(),
-        },
-    }
-}
-
 pub fn emit_native_freemonoid_tco_match(
     scrut_str: String,
     arms: Rc<Vec<Rc<Node>>>,
@@ -33288,51 +33649,46 @@ pub fn emit_native_freemonoid_tco_match(
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        let empty_arm = freemonoid_match_arm_for(arms.clone(), "Empty".to_string());
-        let cons_arm = freemonoid_match_arm_for(arms.clone(), "Cons".to_string());
-        let catchall = freemonoid_catchall_arm(arms.clone());
-        let empty_body = freemonoid_tco_empty_branch_body(
-            empty_arm.clone(),
-            catchall.clone(),
-            fn_name.clone(),
-            params.clone(),
-            registry.clone(),
-            scope.clone(),
-            depth.clone(),
-            shared_types.clone(),
-            emit_info.clone(),
-        );
-        let nonempty_body = freemonoid_tco_nonempty_branch_body(
-            cons_arm.clone(),
-            catchall.clone(),
-            si.clone(),
-            fn_name.clone(),
-            params.clone(),
-            registry.clone(),
-            scope.clone(),
-            depth.clone(),
-            shared_types.clone(),
-            emit_info.clone(),
-        );
-        if ((empty_body.clone() == "".to_string()) || (nonempty_body.clone() == "".to_string())) {
-            "".to_string()
-        } else {
-            v1_rt::concat(
+        let plans = Rc::new({
+            let mut __result = Vec::new();
+            for arm in arms.iter().cloned() {
+                __result.push(fm_arm_plan(arm.clone(), si.clone()));
+            }
+            __result
+        });
+        match fm_plans_refusal(plans.clone()) {
+            Some(bad) => emit_rust_compile_error_expr(fm_plan_refusal_text(bad.clone())),
+            std::option::Option::None => {
+                let pieces = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in plans.iter().cloned() {
+                        __result.push(fm_chain_piece(
+                            p.clone(),
+                            emit_typed_tco_expr(
+                                crate::v1_std_core::arm_body(p.arm.clone()),
+                                fn_name.clone(),
+                                params.clone(),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                            ),
+                        ));
+                    }
+                    __result
+                });
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("{ let __fm = ".to_string(), scrut_str.clone()),
-                                "; if __fm.is_empty() { ".to_string(),
-                            ),
-                            empty_body.clone(),
+                            v1_rt::concat("{ let __fm = ".to_string(), scrut_str.clone()),
+                            "; ".to_string(),
                         ),
-                        " } else { ".to_string(),
+                        fm_chain_from(pieces.clone(), 256),
                     ),
-                    nonempty_body.clone(),
-                ),
-                " } }".to_string(),
-            )
+                    " }".to_string(),
+                )
+            }
         }
     }
 }
@@ -33375,7 +33731,7 @@ pub fn emit_rust_tco_match(
                 }
                 _ => "".to_string(),
             };
-            let native_tco_fm = if arms_are_freemonoid_coproduct(
+            if arms_are_freemonoid_coproduct(
                 arm_list.clone(),
                 tco_scrut_type.clone(),
                 emit_info.type_summaries.clone(),
@@ -33391,11 +33747,6 @@ pub fn emit_rust_tco_match(
                     shared_types.clone(),
                     emit_info.clone(),
                 )
-            } else {
-                "".to_string()
-            };
-            if (native_tco_fm.clone() != "".to_string()) {
-                native_tco_fm.clone()
             } else {
                 {
                     let rc_match = analyze_rc_match(
