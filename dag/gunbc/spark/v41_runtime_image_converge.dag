@@ -25,7 +25,7 @@ import gunbc.fleet_multi_principal_probe {
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
-import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live }
+import gunbc.spark.host_commitment { HostEffectClaimLanded, HostEffectClaimNotLanded, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
 import gunbc.spark.remote_step_sequence {
   run_remote_step_sequence, remote_step_sequence_failed, remote_step_failure_causes_wire,
@@ -361,9 +361,9 @@ fn v41_runtime_image_produce_ci_wet() -> ProcessExit
         Present { value: why } => exit_failure(reason: why)
         Absent =>
           match claim_host_effect_live(host: build_host, term: vllm_build_host_effect_term, purpose: vllm_build_host_purpose, residue: vllm_build_host_residue()) {
-            SparkHostRefused { cause: why } => exit_failure(reason: why as String)
-            SparkHostAdmitted { host: _, claim: claim } =>
-              release_host_effect_live(handle: claim, exit: {
+            HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
+            HostEffectClaimLanded { handle: handle } =>
+              release_host_effect_live(handle: Present { value: handle }, exit: {
                 match with_spark_build_host(
                   host: build_host,
                   attempt_raw: v41_production_attempt_raw,
