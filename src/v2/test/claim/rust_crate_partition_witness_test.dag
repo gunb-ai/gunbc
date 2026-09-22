@@ -1,6 +1,7 @@
 module v2.test.claim.rust_crate_partition_witness
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { BoundDissolution, DissolutionCondition, UnboundDissolution }
 import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
 import std.types { NonEmptyStr }
 import v2.std.collection { Absent, Present, empty_map, map_get, map_insert }
@@ -39,6 +40,7 @@ import v2.workflow.rust_crate_partition {
   rust_crate_partition_module_bearing_unit_target,
   stage0_interim_explicit_assignment,
   stage0_module_dag,
+  stage0_module_dag_interface_grounding_debt_dissolve_on,
   stage0_module_dag_interface_grounding_is_debt,
   stage0_module_interface_grounding_target,
   stage0_module_bearing_unit_count,
@@ -388,6 +390,28 @@ test fn witness_interface_grounding_target_names_the_binding_supply_holds() -> B
   let target = stage0_module_interface_grounding_target()
   ((target.module_path as String) == "v2.compiler.source_authority")
     && ((target.decl_name as String) == "module_storage_bindings_for_source_roots")
+}
+
+// A DECLARATION REF NAMES A DECLARATION AND NOTHING ELSE, so the claim above cannot see the half
+// of the trigger that actually decides whether the debt may retire. DESIGN 4b(3): "The trigger
+// must name the CAPABILITY, not an artifact that would contribute to one... Where a trigger names
+// an artifact, the row must state what that artifact must be SUFFICIENT FOR." A reader who only
+// pins the decl name admits a supply that is host-emitted and still carries nothing but module and
+// path -- which is precisely how the two PREVIOUS targets passed inspection.
+//
+// So this reads the TYPED CARRIER and asserts both halves are named in it. The red is authorable
+// and is the point: deleting either half from the dissolution condition, or moving the sufficiency
+// clause back out into the commentary String, reds this claim. Prose in an annotation could not be
+// checked at all (DESIGN 4c), and the commentary String could be emptied without any claim noticing.
+test fn witness_interface_grounding_trigger_states_both_capability_halves_holds() -> Bool {
+  match stage0_module_dag_interface_grounding_debt_dissolve_on {
+    BoundDissolution { trigger: _ } => false
+    UnboundDissolution { description: description } =>
+      (description as String).contains("HOST-EMITTED")
+        && (description as String).contains("PER-MODULE DECLARATION CONTENTS")
+        && (description as String).contains("SUFFICIENT FOR")
+        && (description as String).contains("EVERY module of the emitted compiler closure")
+  }
 }
 
 
