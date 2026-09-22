@@ -145,9 +145,20 @@ fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayload
 // to field "0" (the seed's infer_variant_constructor_call), both dispatched as the follow-up PR to
 // gunbc#12033 in the native-route program. They are not a second lookup model: that PR reads
 // declared_field_named and refuses on Absent.
+// CARDINALITY IS CARRIED, NOT RE-SNIFFED BY EACH CONSUMER. An Optional field's edge targets a
+// Cardinality node over its type, so exactly ONE reader decodes that -- declared_field_from_edge --
+// and consumers read the decoded field. An earlier revision had every consumer re-derive it from
+// the target's connective, which is DESIGN section 5's validation standing where construction was
+// available: that check was satisfiable by editing the declaration while the realization lied.
+// It is a Bool rather than the std.constructors Cardinality coproduct because this module already
+// imports Cardinality from v2.std.node as the CONNECTIVE and the two names collide here; carrying
+// the decoded fact still beats re-decoding it, and an import that disambiguates the two authorities
+// is what dissolves the weaker spelling. The v1 model this tracks also has a DEFAULT slot, left out
+// deliberately: the dag grammar refuses a default on a general field, so no consumer needs one.
 type DeclaredField {
   name: Symbol
   type_node: Node
+  required: Bool
 }
 
 fn positional_payload_field_name() -> Symbol {
@@ -159,13 +170,10 @@ fn pattern_wildcard_name() -> Symbol {
   symbol_intern_lexeme(lexeme: "_")
 }
 
-// Cardinality is read off the type node's connective, which is v2's authority for it: a Required
-// field targets its type, an Optional field targets a Cardinality node over it. Not the
-// std.constructors coproduct, on purpose: that name is forked against v1.compiler.core's
-// Cardinality in every closure the seed emits (gunbc.cli_dispatch_surface records the measured
-// collision), and a second copy here would be a third.
-fn declared_field_is_required(field: DeclaredField) -> Bool {
-  match field.type_node.kind {
+// THE ONE PLACE THE EDGE'S CARDINALITY IS DECODED. Every consumer reads DeclaredField.required
+// rather than matching the target's connective again.
+fn declared_field_required_from_target(target: Node) -> Bool {
+  match target.kind {
     TypeNode { connective: Cardinality } => false
     _ => true
   }
@@ -177,7 +185,8 @@ fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
       Present {
         value: DeclaredField {
           name: field_name,
-          type_node: e.target
+          type_node: e.target,
+          required: declared_field_required_from_target(target: e.target)
         }
       }
     Positional => Absent
