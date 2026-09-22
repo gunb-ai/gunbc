@@ -12992,7 +12992,17 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
 // The previous lowering asked two questions -- which arm mentions `Empty`, which arm mentions
 // `Cons` -- kept the FIRST answer to each, and emitted `if __fm.is_empty() { A } else { B }`. That
 // is faithful for exactly one shape: each variant appearing once, with irrefutable field
-// sub-patterns. Every other shape was lowered into a program that RUNS AND ANSWERS WRONGLY, which
+// sub-patterns.
+//
+// THE ADMISSION DECIDES, AND THERE IS NO SENTINEL LEFT FOR IT TO DECIDE THROUGH. This lowering
+// used to answer `""` to mean "I decline, use the generic path", and both callers tested
+// `!= ""`. The empty string was doing two jobs at once -- the admission predicate's own verdict
+// and the lowering's -- so a lowering that legitimately produced no text was indistinguishable
+// from one that declined. The refusal is a typed cause now, the lowering ALWAYS answers, and the
+// callers branch on `arms_are_freemonoid_coproduct` directly. Review 69977 caught the residue:
+// the first cut of this change left both `!= ""` tests standing over a function that could no
+// longer return `""`, which is a dead escape hatch on the admission path and an annotation
+// describing a deletion that had not happened. Every other shape was lowered into a program that RUNS AND ANSWERS WRONGLY, which
 // is outside the ladder rather than low on it (DESIGN section 4b, section 5):
 //
 //   - a REFUTABLE field sub-pattern degraded to a wildcard, because the binding reader returned
@@ -13558,10 +13568,9 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
       } else { authored_name_at(source_indices: scope.type_env.source_indices, node: rt) }
     _ => ""
   }
-  let native_fm = if arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
-    emit_native_freemonoid_match(scrut_str: scrut_str, arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  } else { "" }
-  if native_fm != "" { return native_fm }
+  if arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
+    return emit_native_freemonoid_match(scrut_str: scrut_str, arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  }
   let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: scope.type_env.source_indices)
   let match_result_type = match arms |> first {
     Present { value: first_arm } => resolved_type(n: arm_body(n: first_arm))
@@ -14823,10 +14832,9 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
           } else { authored_name_at(source_indices: frame.scope.type_env.source_indices, node: rt) }
         _ => ""
       }
-      let native_tco_fm = if arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries) {
+      if arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries) {
         emit_native_freemonoid_tco_match(scrut_str: scrut_str, arms: arm_list, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
-      } else { "" }
-      if native_tco_fm != "" { native_tco_fm } else {
+      } else {
       let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: frame.scope.type_env.source_indices)
       let arm_strs = arm_list |> map(arm =>
         emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type))

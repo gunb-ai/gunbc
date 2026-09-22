@@ -29984,12 +29984,12 @@ pub fn emit_typed_match(
             }
             _ => "".to_string(),
         };
-        let native_fm = if arms_are_freemonoid_coproduct(
+        if arms_are_freemonoid_coproduct(
             arms.clone(),
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         ) {
-            emit_native_freemonoid_match(
+            return emit_native_freemonoid_match(
                 scrut_str.clone(),
                 arms.clone(),
                 registry.clone(),
@@ -29997,12 +29997,7 @@ pub fn emit_typed_match(
                 depth.clone(),
                 shared_types.clone(),
                 emit_info.clone(),
-            )
-        } else {
-            "".to_string()
-        };
-        if (native_fm.clone() != "".to_string()) {
-            return native_fm.clone();
+            );
         }
         let rc_match = analyze_rc_match(
             scrutinee.clone(),
@@ -33632,7 +33627,7 @@ pub fn emit_rust_tco_match(
                 }
                 _ => "".to_string(),
             };
-            let native_tco_fm = if arms_are_freemonoid_coproduct(
+            if arms_are_freemonoid_coproduct(
                 arm_list.clone(),
                 tco_scrut_type.clone(),
                 emit_info.type_summaries.clone(),
@@ -33648,11 +33643,6 @@ pub fn emit_rust_tco_match(
                     shared_types.clone(),
                     emit_info.clone(),
                 )
-            } else {
-                "".to_string()
-            };
-            if (native_tco_fm.clone() != "".to_string()) {
-                native_tco_fm.clone()
             } else {
                 {
                     let rc_match = analyze_rc_match(
