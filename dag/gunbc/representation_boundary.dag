@@ -30,10 +30,24 @@ import gunbc.derived_obligation_row {
 // response rather than by any gate. Every row below is read against that thesis: a home authority
 // is necessary and is not sufficient, and the field that decides is crossing_evidence.
 //
-// THE MEASUREMENT THIS ROSTER PUBLISHES, so a reader counts it rather than re-reading the rows:
-// SEVEN of the eleven boundaries inventoried have NO executed emission-path oracle. That is
-// interpreted_only_count below, derived from the rows rather than transcribed into this sentence --
-// if a row's arm changes, the number moves and this paragraph does not have to.
+// THE MEASUREMENT THIS ROSTER PUBLISHES, AND IT HAS TWO AXES BECAUSE ONE AXIS IS A COMPLAINT.
+// An earlier cut of this paragraph asserted a single headline count of boundaries with no executed
+// emission-path oracle, and it was WRONG TWICE OVER in the way DESIGN section 6 predicts: the number
+// was transcribed from prose rather than derived, and it was bound to interpreted_only_count, which
+// measures something narrower than the sentence claimed. No literal replaces it. The counts are the
+// folds -- interpreted_only_count, no_evidence_count, unbuilt_but_testable_now_count -- and a reader
+// who wants a number runs them, so a row changing its arm moves the number without anyone editing
+// a sentence.
+//
+// THE SECOND AXIS IS THE ONE THAT PRODUCES A WORK LIST. "This boundary has no executed oracle" is
+// true of most of them and ranks none of them. The question that ranks them is asked per row and
+// answered in unbuilt_but_testable_now: is there a CHEAP INTERPRETED CLAIM that would discriminate
+// THIS BOUNDARY'S OWN SUBJECT today, independent of the missing two-route oracle? For two rows the
+// answer turned out to be yes and neither was obvious: COERCIONS, because both algebras are pure
+// folds the interpreter can run against one supplied population, and BINDINGS, because both
+// selection folds take a candidate list and answer the same trichotomy. Both were written as
+// blocked-on-the-oracle first. Both were wrong, and the coercion one is the highest-value fork in
+// this inventory, so the conflation would have taken it off the climb list.
 //
 // THE STRUCTURAL FINDING, which is a rung fact and not a census entry. Ten of these eleven
 // boundaries treat the execution route as something to be COMPARED AFTER THE FACT by an oracle that
@@ -119,12 +133,31 @@ type BoundaryAuthority
 // seven-row finding: something executes, and what it does NOT observe is named beside it, because
 // "partially covered" without saying which part is the inflation this roster is built to avoid.
 // NoEvidence is NOT InterpretedOnly with a smaller number -- it is the state where no execution
-// bears on the obligation at all. CarriedElsewhere defers to another carrier by reference rather
+// bears on the obligation at all.
+//
+// WHY InterpretedOnly CARRIES TWO GAPS AND NOT ONE, AND IT IS THE SUBJECT CONFLATION THIS ROSTER IS
+// MOST LIKELY TO COMMIT. "No executed emission-path oracle, all evidence is interpreted" is TRUE of
+// the two-route agreement fact and says NOTHING about the boundary's OWN subject, which is often a
+// pure fold an interpreted claim over a fixture can discriminate perfectly well today. Written as
+// one field the sentence silently converts into "nothing here is testable", which reports
+// can-climb-now-but-unbuilt as cannot-climb-further -- and DESIGN section 4b(2) says only the second
+// is permanent, so the misreport takes the row off the climb list entirely. The hard question is
+// then used to excuse not asking the easy one.
+// SO THE TWO ARE SEPARATE FIELDS. blocked_on_a_two_route_oracle is what genuinely waits on the
+// missing oracle. unbuilt_but_testable_now is what a cheap interpreted claim could discriminate at
+// THIS boundary's own subject, and it is a plain String because EMPTY IS THE HONEST AND COMMON
+// ANSWER -- but an empty one now means "asked, and nothing found", which is a different and far
+// more valuable fact than a row that never asked. The two read identically when merged, and are
+// worth very different amounts. CarriedElsewhere defers to another carrier by reference rather
 // than restating its fields, which is what keeps this roster from becoming a second copy of them.
 type CrossingEvidence
   = AgreesByConstruction { how: NonEmptyStr }
   | EvidenceOnBothRoutes { what_goes_red: NonEmptyStr }
-  | InterpretedOnly { what_goes_red: NonEmptyStr, unobserved: NonEmptyStr }
+  | InterpretedOnly {
+      what_goes_red: NonEmptyStr,
+      blocked_on_a_two_route_oracle: NonEmptyStr,
+      unbuilt_but_testable_now: String
+    }
   | NoEvidence { why: NonEmptyStr }
   | CarriedElsewhere { carrier: DeclarationRef }
 
@@ -177,7 +210,8 @@ data calls_boundary: RepresentationBoundary = RepresentationBoundary {
   preservation_obligation: "One authored spelling resolves to one PrimitiveIdentity on every surface carrying it; the signature grounding agrees across surfaces; a surface naming an identity no definition owns refuses as RealizationNamesUnknownPrimitive; and a spelling reached on the interpreted route computes the same value as the same spelling reached on the emitted route.",
   crossing_evidence: InterpretedOnly {
     what_goes_red: "a PrimitiveJoinViolation fold over primitive_surface_census_derived, on a mutation of any of the three DERIVED surfaces" as NonEmptyStr,
-    unobserved: "the last clause of the obligation. Nothing executes one spelling on both routes and compares the values. Two specimens are named by the home itself and were re-verified live rather than read off its annotations: fold / fold_list is a SPELLING FORK where contract and algebra carry fold while interpreter and emit carry fold_list, and fold_list fires on the eval_call native intercept BEFORE eval_builtin_inner so it never reaches builtin_function_registry at all -- a ROUTE fact, not a naming one. lookup is TWO REALIZATIONS UNDER ONE NAME, an eval_method_call short-circuit shadowing the algebra template arm. Both are surfaces that CAN disagree; NEITHER is established to disagree on any input." as NonEmptyStr
+    blocked_on_a_two_route_oracle: "the last clause of the obligation. Nothing executes one spelling on both routes and compares the values. Two specimens are named by the home itself and were re-verified live rather than read off its annotations: fold / fold_list is a SPELLING FORK where contract and algebra carry fold while interpreter and emit carry fold_list, and fold_list fires on the eval_call native intercept BEFORE eval_builtin_inner so it never reaches builtin_function_registry at all -- a ROUTE fact, not a naming one. lookup is TWO REALIZATIONS UNDER ONE NAME, an eval_method_call short-circuit shadowing the algebra template arm. Both are surfaces that CAN disagree; NEITHER is established to disagree on any input." as NonEmptyStr,
+    unbuilt_but_testable_now: "ASKED, AND NOTHING CHEAP FOUND, which is a different answer from not having asked. The join over the three DERIVED surfaces already runs. The two remaining surfaces cannot be folded into it by any claim available today -- no reader reachable from here can walk a Map's keys at fold time -- and the fold_list and lookup specimens are facts about the INTERPRETER'S DISPATCH ORDER in host Rust, which no interpreted claim over the substrate can observe. So this row's gap really is the oracle plus the map-keys reader, and neither is cheap."
   },
   next_trigger: climbs_when(capability: "the BuiltinRegistry and PrimitiveContractRow surface rows are DERIVED from builtin_function_registry and the *_contract rows themselves rather than from a hand roster authored beside them, SUFFICIENT FOR a row added to either primary authority ALONE to move primitive_surface_census_derived and refuse when unjoined. The home states the blocker: no reader available to it can walk a Map's keys at fold time. A change that merely updates the hand roster, or that derives one of the two surfaces while the other stays hand-authored, does not fire this.")
 }
@@ -230,7 +264,8 @@ data coercions_boundary: RepresentationBoundary = RepresentationBoundary {
   preservation_obligation: "A crossing admitted on one route is admitted on the other and spells the same target type; a crossing that must refuse refuses on both; and an unknown declaring identity never silently realizes structurally.",
   crossing_evidence: InterpretedOnly {
     what_goes_red: "the identity-keyed half is a real climb with a receipt: passing the empty string once meant identity-unknown, and eight reference sites doing so rendered dag/std/integer.dag aliases as crate::std_nat::Nat instead of i64. There is now no empty string to pass -- an absent identity is DeclarationIdentityAbsent, and the degraded answer is stamped GroundedByUnidentifiedBareRow so it stays countable rather than silent." as NonEmptyStr,
-    unobserved: "THE FORK ITSELF. No execution joins the cast table to the homomorphism fold, so if they disagreed today nothing would go red. That is the finding, and it is why this row is not recorded as DEFERRED: a fork whose disposition reads as adjudicated is worse than an unrecorded one, and this fork stayed invisible precisely because the census that holds it asked whether the two modules SHARE TYPE NAMES -- see the scope note on gunbc.plans.dag_v2_defork_audit, whose coercion row answers a resolver-collision question and not this one." as NonEmptyStr
+    blocked_on_a_two_route_oracle: "THE FORK ITSELF. No execution joins the cast table to the homomorphism fold, so if they disagreed today nothing would go red. That is the finding, and it is why this row is not recorded as DEFERRED: a fork whose disposition reads as adjudicated is worse than an unrecorded one, and this fork stayed invisible precisely because the census that holds it asked whether the two modules SHARE TYPE NAMES -- see the scope note on gunbc.plans.dag_v2_defork_audit, whose coercion row answers a resolver-collision question and not this one." as NonEmptyStr,
+    unbuilt_but_testable_now: "A GREAT DEAL, AND THIS ROW IS THE REASON THE EVIDENCE FIELD HAD TO BE SPLIT. The two-route sentence is TRUE of this boundary and IRRELEVANT to its own subject: BOTH ALGEBRAS ARE PURE FOLDS IN THE INTERPRETED CORPUS. dag_can_cast is a fold over dag_cast_rules and coercion_fold is a fold over witnesses, so a claim that supplies one fixture population of source-and-target pairs, runs BOTH, and compares their verdicts is an ordinary interpreted witness needing NO oracle, NO emission and NO new capability. It would discriminate the fork directly -- an agreement is a real reading and a disagreement is the defect with a value attached. Nobody has built it. That makes this row CLIMBABLE NOW AND UNBUILT rather than blocked, and reporting it as blocked would have taken the highest-value fork in this inventory off the climb list." as String
   },
   next_trigger: climbs_when(capability: "the coercion question is asked ONCE -- the homomorphism fold answering for the v1 cast sites as well as the v2 sites -- SUFFICIENT FOR dag_can_cast to have NO REMAINING CALLER and be DELETED rather than kept beside the fold. Deleting the caller is the operative half: a change that adds the fold beside the table, or that repoints some callers while others still ask the table, leaves two algebras answering one question and does not fire this.")
 }
@@ -273,7 +308,8 @@ data effect_execution_boundary: RepresentationBoundary = RepresentationBoundary 
   preservation_obligation: "The effects a program declares are the effects that occur, on the route the demand names, with the runtime the claim names -- AND IN THE DECLARED ORDER. The order clause is not satisfiable here and is not this row's to close; it is the control-flow row.",
   crossing_evidence: InterpretedOnly {
     what_goes_red: "effect_demand_realization_satisfies joins the demand to a realization on the SAME runtime and execution mode, and effect_demand_acceptance_holds folds it; Unrealized is COUNTED DEBT with a reason rather than a refusal arm, on the module's own stated ground that fabricating a plausible realization claim for an unbuilt effect would be rung inflation exactly where the acceptance bar reads." as NonEmptyStr,
-    unobserved: "the ORDER clause of the obligation, for the reason the control-flow row gives: no authority declares it, so nothing here can check it." as NonEmptyStr
+    blocked_on_a_two_route_oracle: "the ORDER clause of the obligation, and it is not even blocked on the ORACLE -- it is blocked one step earlier, on the authority the control-flow row names. An oracle cannot check an order nothing declares." as NonEmptyStr,
+    unbuilt_but_testable_now: "ASKED, AND NOTHING FOUND, because the realization-satisfies join over runtime and execution mode already executes and is this row's own subject. What remains is the order clause, which needs a declaration rather than a claim." as String
   },
   next_trigger: climbs_when(capability: "see the control-flow row. The ordering gap is ONE gap shared by two classes and is deliberately not written twice; a trigger restated here would be retired by a change that satisfied the other copy.")
 }
@@ -312,7 +348,8 @@ data bindings_boundary: RepresentationBoundary = RepresentationBoundary {
   preservation_obligation: "One reference occurrence receives ONE answer from the zero-one-many rule regardless of which implementation answers it: the same occurrence is Unbound under both, Bound-to-the-same-declaration under both, or Ambiguous under both -- and an ambiguity is never silently resolved to a hit by whichever implementation happens to be asked.",
   crossing_evidence: InterpretedOnly {
     what_goes_red: "each implementation has its own witnesses over its own side, and std.occurrence_binding's fold is exercised on supplied candidate populations covering all three arms." as NonEmptyStr,
-    unobserved: "AGREEMENT BETWEEN THE TWO IMPLEMENTATIONS, and it is UNMEASURABLE TODAY rather than merely unmeasured: no site is answered by both, so there is no input on which they could be compared. This is the one row in the roster whose evidence gap cannot be closed by an oracle at all -- the oracle would have nothing to run on. It closes by DEDUPLICATION, which is what the trigger names." as NonEmptyStr
+    blocked_on_a_two_route_oracle: "AGREEMENT BETWEEN THE TWO IMPLEMENTATIONS ON A PRODUCTION SITE. No v2 site is answered by std's fold, so there is no PRODUCTION input on which the two are both consulted, and an oracle over real routes would have nothing to run on. That half closes by DEDUPLICATION, which is what the trigger names, and not by any amount of observation." as NonEmptyStr,
+    unbuilt_but_testable_now: "THE AGREEMENT OF THE TWO RULES ON A SUPPLIED POPULATION, which is a DIFFERENT SUBJECT from their agreement on a production site and is testable today. Both selection folds are pure: occurrence_binding_from_candidates and symbol_index_lexical_lookup each take a candidate population and answer none / exactly one / more than one. A claim that supplies ONE candidate population covering all three arms, runs both, and compares is an ordinary supplied-boundary witness -- and its red is real, because two implementations of one rule can disagree on the boundary cases (an empty population, a duplicate candidate) whatever the production wiring is. Not built. Recording this row as unmeasurable, which an earlier cut did, conflated the production-site question with the rule-agreement question and would have excused the cheap claim with the hard one." as String
   },
   next_trigger: climbs_when(capability: "the v2 resolver ADOPTS OccurrenceBindingResult<Node> in place of LexicalLookup and SymbolIndexAtomLookup, SUFFICIENT FOR the zero-one-many rule to have ONE implementation, at which point the two cannot disagree by construction and the divergence declared on std.occurrence_binding's carrier retires by its own dissolve-on row. A change that unifies the RESULT SPELLING while leaving two selection folds does not fire this, and a change that collapses the candidate PRODUCERS is the wrong repair rather than a partial one.")
 }
@@ -338,7 +375,8 @@ data data_layout_boundary: RepresentationBoundary = RepresentationBoundary {
   preservation_obligation: "A modeled record's fields are present, in the modeled shape, at the target; a modeled scalar realizes as the representation its declaring module binds, never as the representation some other declaration sharing its spelling binds.",
   crossing_evidence: InterpretedOnly {
     what_goes_red: "the scalar half's exact binding is joined by symbol identity and a mis-bound declaration is a located refusal rather than a silent structural render." as NonEmptyStr,
-    unobserved: "that the EMITTED aggregate layout matches the modeled record. Nothing executes the emitted struct and compares its fields to the declaration they came from. The aggregate half of this row was assessed by reading its authority's declarations only: the emitter module is held by three concurrent lanes and was deliberately not opened further." as NonEmptyStr
+    blocked_on_a_two_route_oracle: "that the EMITTED aggregate layout matches the modeled record. Nothing executes the emitted struct and compares its fields to the declaration they came from. The aggregate half of this row was assessed by reading its authority's declarations only: the emitter module is held by three concurrent lanes and was deliberately not opened further." as NonEmptyStr,
+    unbuilt_but_testable_now: "ASKED, AND GENUINELY BLOCKED at this row's own subject too, for a reason worth stating rather than assuming: the aggregate question is about BYTES A RUSTC COMPILES AND RUNS, so no interpreted claim over the substrate can observe the answer -- unlike the coercion row, where both sides are folds. The scalar half's own subject already has its executed binding join." as String
   },
   next_trigger: climbs_when(capability: "an executed emission-path oracle that constructs a modeled record, emits it, runs the emitted code and compares the observed field set and values against the declaration, SUFFICIENT FOR a dropped, reordered or retyped field to go red on the emitted route rather than only on the interpreted one.")
 }
@@ -458,7 +496,7 @@ fn boundary_roster_size() -> Int {
 
 fn boundary_is_interpreted_only(b: RepresentationBoundary) -> Bool {
   match b.crossing_evidence {
-    InterpretedOnly { what_goes_red: _, unobserved: _ } => true
+    InterpretedOnly { what_goes_red: _, blocked_on_a_two_route_oracle: _, unbuilt_but_testable_now: _ } => true
     AgreesByConstruction { how: _ } => false
     EvidenceOnBothRoutes { what_goes_red: _ } => false
     NoEvidence { why: _ } => false
@@ -472,10 +510,28 @@ fn interpreted_only_count() -> Int {
   list_length(items: filter(representation_boundary_roster, b => boundary_is_interpreted_only(b: b)))
 }
 
+// THE WORK LIST, DERIVED. A row is on it when it has NAMED a cheap local claim nobody has built.
+// An empty unbuilt_but_testable_now now means "asked, and nothing found" -- which is why this count
+// is meaningful rather than a measure of how much prose each row carries.
+fn boundary_has_unbuilt_local_evidence(b: RepresentationBoundary) -> Bool {
+  match b.crossing_evidence {
+    InterpretedOnly { what_goes_red: _, blocked_on_a_two_route_oracle: _, unbuilt_but_testable_now: u } =>
+      u != ""
+    AgreesByConstruction { how: _ } => false
+    EvidenceOnBothRoutes { what_goes_red: _ } => false
+    NoEvidence { why: _ } => false
+    CarriedElsewhere { carrier: _ } => false
+  }
+}
+
+fn unbuilt_but_testable_now_count() -> Int {
+  list_length(items: filter(representation_boundary_roster, b => boundary_has_unbuilt_local_evidence(b: b)))
+}
+
 fn boundary_has_no_evidence(b: RepresentationBoundary) -> Bool {
   match b.crossing_evidence {
     NoEvidence { why: _ } => true
-    InterpretedOnly { what_goes_red: _, unobserved: _ } => false
+    InterpretedOnly { what_goes_red: _, blocked_on_a_two_route_oracle: _, unbuilt_but_testable_now: _ } => false
     AgreesByConstruction { how: _ } => false
     EvidenceOnBothRoutes { what_goes_red: _ } => false
     CarriedElsewhere { carrier: _ } => false
@@ -597,7 +653,7 @@ fn boundary_authority_and_evidence_are_consistent(b: RepresentationBoundary) -> 
     match b.crossing_evidence {
       NoEvidence { why: _ } => true
       CarriedElsewhere { carrier: _ } => true
-      InterpretedOnly { what_goes_red: _, unobserved: _ } => false
+      InterpretedOnly { what_goes_red: _, blocked_on_a_two_route_oracle: _, unbuilt_but_testable_now: _ } => false
       AgreesByConstruction { how: _ } => false
       EvidenceOnBothRoutes { what_goes_red: _ } => false
     }

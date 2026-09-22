@@ -27,6 +27,8 @@ import gunbc.representation_boundary {
   InterpretedOnly,
   NoEvidence,
   boundary_is_interpreted_only,
+  boundary_has_unbuilt_local_evidence,
+  unbuilt_but_testable_now_count,
   boundary_is_established_fork,
   boundary_is_candidate_fork,
   boundary_is_declared_divergence,
@@ -96,7 +98,25 @@ fn row_with(authority_arm: Int) -> RepresentationBoundary {
     preservation_obligation: "fixture" as NonEmptyStr,
     crossing_evidence: InterpretedOnly {
       what_goes_red: "fixture" as NonEmptyStr,
-      unobserved: "fixture" as NonEmptyStr
+      blocked_on_a_two_route_oracle: "fixture" as NonEmptyStr,
+      unbuilt_but_testable_now: "fixture cheap local claim"
+    },
+    next_trigger: climbs_when(capability: "fixture capability")
+  }
+}
+
+fn row_with_nothing_testable_now() -> RepresentationBoundary {
+  RepresentationBoundary {
+    identity: "fixture-asked-and-found-nothing" as NonEmptyStr,
+    boundary_class: Calls,
+    authority: OneAuthority { home: HomeAuthority { authority: a_home() } },
+    witnesses: [],
+    supported_scope: "fixture",
+    preservation_obligation: "fixture",
+    crossing_evidence: InterpretedOnly {
+      what_goes_red: "fixture" as NonEmptyStr,
+      blocked_on_a_two_route_oracle: "fixture" as NonEmptyStr,
+      unbuilt_but_testable_now: ""
     },
     next_trigger: climbs_when(capability: "fixture capability")
   }
@@ -121,7 +141,8 @@ fn declared_divergence_row() -> RepresentationBoundary {
     preservation_obligation: "fixture" as NonEmptyStr,
     crossing_evidence: InterpretedOnly {
       what_goes_red: "fixture" as NonEmptyStr,
-      unobserved: "fixture" as NonEmptyStr
+      blocked_on_a_two_route_oracle: "fixture" as NonEmptyStr,
+      unbuilt_but_testable_now: ""
     },
     next_trigger: climbs_when(capability: "fixture capability")
   }
@@ -217,6 +238,20 @@ test fn representation_boundary_consumer_standing_is_derived_not_authored_holds(
     || !path_execution_is_executing(p: interpreted_standing_of(ws: [], unverified_premise: a_home()))
 }
 
+// THE TWO EVIDENCE GAPS MUST NOT COLLAPSE INTO ONE, and this is the arm that catches it if they
+// ever do. "No executed oracle" is true of a row that has a cheap local claim available and of a
+// row that has none, and those rank completely differently for work -- reporting the first as the
+// second is can-climb-now-but-unbuilt misreported as cannot-climb-further, which takes the row off
+// the climb list. Both fixtures below are InterpretedOnly and differ ONLY in whether a local claim
+// was found, so a predicate that read the ARM instead of the FIELD fails here.
+test fn representation_boundary_local_evidence_gap_is_separate_from_the_oracle_gap_holds() -> Bool {
+  boundary_is_interpreted_only(b: row_with(authority_arm: 1))
+    && boundary_is_interpreted_only(b: row_with_nothing_testable_now())
+    && boundary_has_unbuilt_local_evidence(b: row_with(authority_arm: 1))
+    && !boundary_has_unbuilt_local_evidence(b: row_with_nothing_testable_now())
+    && !boundary_has_unbuilt_local_evidence(b: conforming_row())
+}
+
 // THE DENOMINATOR IS COUNTED, because every wall above is universally quantified and true on an
 // empty roster. The three standing counts are asserted to be individually well-formed and are
 // deliberately NOT asserted to sum to anything: summing a defect count, an open question and an
@@ -229,4 +264,6 @@ test fn representation_boundary_counts_are_separate_and_bounded_holds() -> Bool 
     && candidate_fork_count() >= 0
     && declared_divergence_count() >= 1
     && boundaries_without_an_authority() >= 1
+    && unbuilt_but_testable_now_count() >= 2
+    && unbuilt_but_testable_now_count() <= interpreted_only_count()
 }
