@@ -385,14 +385,19 @@ fn compute_release(reservation: ComputeReservation, reason: NonEmptyStr) -> Comp
 // append; it would fail at every later READ, when the fold hits UnknownEncumbrance and refuses the
 // WHOLE partition.
 //
-// THE OPERATOR'S RECOVERY DOOR IS NOT HERE, and its absence is declared rather than implied. The
-// discharge of a seat whose release did not land needs a termination decision bound to the unit, an
-// attempt-to-unit binding that cannot release another attempt's live reservation, and a settled
-// state a retry consumes -- see gunbc.recurring_failure_mode
-// a_held_compute_seat_has_no_in_corpus_discharge, whose trigger names that capability. Shipping a
-// recovery route with any of those missing would FREE SEATS THAT SHOULD NOT BE FREED, which is
-// worse than not having one: without it every failure here keeps the charge and the host merely
-// under-admits.
+// THE OPERATOR'S RECOVERY DOOR IS NOT HERE, AND IT IS NO LONGER ABSENT: it is one layer up, at
+// gunbc.compute.work_provider_local compute_recover_cli, and it comes back through THIS function
+// rather than growing a release path of its own. What had to exist before one could ship was named
+// in this annotation and by gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge
+// -- a termination decision bound to the unit, an attempt-to-unit binding that cannot release
+// another attempt's live reservation, and a settled state a retry consumes. All three are now
+// present, and the reason the door is up there rather than here is the same reason this fold takes
+// a store and a partition rather than an instance: the pool knows about encumbrances, and deciding
+// that a particular attempt is dead is not a fact about a pool.
+//
+// WHAT HAS NOT CHANGED is why a recovery may not simply free on doubt. Shipping one with any of
+// those three missing would FREE SEATS THAT SHOULD NOT BE FREED, which is worse than having none:
+// every failure here keeps the charge and the host merely under-admits.
 //
 // THE APPROPRIATION PASSED HERE IS NOT LOAD-BEARING AND THE ZERO IS NOT A FABRICATED READING. product.capacity.pool
 // ruled that replay never adjudicates the ceiling, so a release is decided by whether the ledger

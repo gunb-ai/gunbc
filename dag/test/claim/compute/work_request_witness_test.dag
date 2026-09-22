@@ -10,7 +10,13 @@ import gunbc.compute.work_provider_local {
   provide_result_host_record, provide_result_ending, provide_result_document, host_record_was_written, host_record_wire,
   compute_with_lost_host_record, provide_result_with_host_record, host_record_join,
   ComputeLayout, compute_layout, compute_unit_properties,
+  UnitLifecycleObservations, unit_lifecycle_decide, unit_population,
+  UnitPopulation, PopulationOccupied, PopulationEmpty, PopulationUnknown,
   compute_kill_mode_property, compute_kill_mode_value,
+}
+import gunbc.compute.attempt_lifecycle {
+  UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
+  UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
 }
 import std.measure { kibibyte }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
@@ -238,4 +244,74 @@ test fn a_lost_record_on_a_dependency_survives_a_successful_dependent() -> Bool 
     && host_record_was_written(h: provide_result_host_record(r: clean_child))
     && string_contains(s: host_record_wire(h: both_lost), pattern: "still held")
     && string_contains(s: host_record_wire(h: both_lost), pattern: "lost its reading")
+}
+
+
+fn lifecycle_word(u: UnitLifecycle) -> String {
+  match u {
+    UnitTerminatedSuccess { detail: _ } => "terminated-success"
+    UnitTerminatedFailure { detail: _ } => "terminated-failure"
+    UnitTerminatedCauseUnknown { detail: _ } => "terminated-cause-unknown"
+    UnitStillRunning { detail: _ } => "still-running"
+    UnitLifecycleUnknown { detail: _ } => "unknown"
+  }
+}
+
+data unqueried: UnitPropertyReading = UnitPropertyReading { queried: false, value: "" }
+
+fn lifecycle_of(load: UnitPropertyReading, active: UnitPropertyReading, result: UnitPropertyReading, pop: UnitPopulation) -> UnitLifecycle {
+  unit_lifecycle_decide(o: UnitLifecycleObservations { load_state: load, active_state: active, result: result, population: pop })
+}
+
+// CRITERION 1: FOUR STATES FROM THE MANAGER'S OWN VOCABULARY, AND UNKNOWN IS AN ARM.
+//
+// DISCRIMINATING IN FIVE DIRECTIONS AT ONCE, and the last two are the ones that fail open if the
+// fold is wrong. An occupied cgroup must outrank LoadState=not-found -- the manager forgetting a
+// unit while the kernel still holds processes in its cgroup is precisely the state where freeing
+// the seat hands away live memory. And every reading that fails to ESTABLISH an end must answer
+// unknown rather than picking the plausible neighbour: an inactive unit whose Result could not be
+// read is not a success, and a unit whose Result came back empty is not a verdict.
+//
+// THE UNKNOWN ARMS ASSERT THEIR REASON RATHER THAN THEIR ARM. A negative control satisfied by any
+// unknown would be satisfied by a fold that answered unknown to everything, so each one names the
+// fact it could not establish (a refusal witness must assert the reason).
+test fn the_lifecycle_verdict_has_four_states_and_unknown_carries_why() -> Bool {
+  let empty = PopulationEmpty { detail: "cg reports populated 0" }
+  let occupied = PopulationOccupied { detail: "processes remain in /user.slice/x" }
+  let unknown_pop = PopulationUnknown { detail: "the cgroup events could not be read" }
+
+  let succeeded = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "inactive"), result: reading(queried: true, value: "success"), pop: empty)
+  let failed = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "failed"), result: reading(queried: true, value: "exit-code"), pop: empty)
+  let oom = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "inactive"), result: reading(queried: true, value: "oom-kill"), pop: empty)
+  let running = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "active"), result: reading(queried: true, value: "success"), pop: unknown_pop)
+  let collected = lifecycle_of(load: reading(queried: true, value: "not-found"), active: unqueried, result: unqueried, pop: unknown_pop)
+
+  let occupied_but_forgotten = lifecycle_of(load: reading(queried: true, value: "not-found"), active: unqueried, result: unqueried, pop: occupied)
+  let no_manager = lifecycle_of(load: unqueried, active: unqueried, result: unqueried, pop: unknown_pop)
+  let result_unreadable = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "inactive"), result: unqueried, pop: empty)
+  let result_empty = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "inactive"), result: reading(queried: true, value: ""), pop: empty)
+
+  lifecycle_word(u: succeeded) == "terminated-success"
+    && lifecycle_word(u: failed) == "terminated-failure"
+    && lifecycle_word(u: oom) == "terminated-failure"
+    && string_contains(s: unit_lifecycle_wire(u: oom), pattern: "oom-kill")
+    && lifecycle_word(u: running) == "still-running"
+    && lifecycle_word(u: collected) == "terminated-cause-unknown"
+
+    && lifecycle_word(u: occupied_but_forgotten) == "still-running"
+    && lifecycle_word(u: no_manager) == "unknown"
+    && string_contains(s: unit_lifecycle_wire(u: no_manager), pattern: "load state")
+    && lifecycle_word(u: result_unreadable) == "unknown"
+    && string_contains(s: unit_lifecycle_wire(u: result_unreadable), pattern: "Result could not be read")
+    && lifecycle_word(u: result_empty) == "unknown"
+    && string_contains(s: unit_lifecycle_wire(u: result_empty), pattern: "not a verdict")
+
+    && unit_lifecycle_ended(u: succeeded)
+    && unit_lifecycle_ended(u: failed)
+    && unit_lifecycle_ended(u: collected)
+    && !unit_lifecycle_ended(u: running)
+    && !unit_lifecycle_ended(u: occupied_but_forgotten)
+    && !unit_lifecycle_ended(u: no_manager)
+    && !unit_lifecycle_ended(u: result_unreadable)
+    && !unit_lifecycle_ended(u: result_empty)
 }

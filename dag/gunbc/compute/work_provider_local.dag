@@ -18,6 +18,19 @@ import extdeps.linux.cgroup_v2 {
 }
 import extdeps.cache.sccache { sccache_installed_binary_path }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import extdeps.clock { Clock }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count }
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal,
+  UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
+  UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
+  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryStateNotRecoverable,
+  recovery_trigger, recovery_trigger_fires, recovery_trigger_wire,
+  AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+  AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
+  attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_slot_read,
+  compute_pre_launch_ceiling_seconds,
+}
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
   dashboard_instance_compute_root,
@@ -31,7 +44,10 @@ import gunbc.compute.host_capacity {
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   ComputeRelease, ComputeReleased, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
+  ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
+  compute_capacity_subject, compute_capacity_store, compute_release_on,
 }
+import std.measure { kibibyte }
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
@@ -72,6 +88,7 @@ type ComputeLayout {
   log_path: String
   outcome_path: String
   consumption_path: String
+  attempts_dir: String
 }
 
 fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
@@ -89,6 +106,7 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
     log_path: join([work_dir, "/log"], ""),
     outcome_path: join([work_dir, "/outcome.json"], ""),
     consumption_path: join([work_dir, "/consumption"], ""),
+    attempts_dir: join([root, "/attempts"], ""),
   }
 }
 
@@ -408,21 +426,31 @@ type UnitPopulation
   | PopulationEmpty { detail: String }
   | PopulationUnknown { detail: String }
 
-fn unit_population(o: UnitObservations) -> UnitPopulation {
-  if !o.control_group.queried {
+// IT TAKES THE TWO READINGS IT USES AND NOT THE PRODUCER'S WHOLE OBSERVATION RECORD, and that is
+// a structural fact rather than tidiness. UnitObservations carries `attempt_completed` -- the
+// first-hand fact that only the process which ran `systemd-run --wait` can have. If this fold took
+// that record, RECOVERY WOULD HAVE TO CONSTRUCT ONE, and a caller that must supply a field it
+// cannot observe supplies a fabricated value; the honest-looking `false` is still a value recovery
+// invented. Narrowing the parameters means recovery has no carrier for first-hand completion
+// anywhere in its route -- the distinction is unwritable rather than merely unwritten
+// (ruling, loyal-swift-608, 2026-09-22: make the difference structural or the two folds can come
+// to disagree about the same facts, which is the moment they become two authorities for one
+// question). The kernel-outranks-systemd rule still has exactly ONE authority, and it is this one.
+fn unit_population(control_group: UnitPropertyReading, events: UnitPropertyReading) -> UnitPopulation {
+  if !control_group.queried {
     PopulationUnknown { detail: "the control group could not be queried" }
-  } else if trim(s: o.control_group.value) == "" {
+  } else if trim(s: control_group.value) == "" {
     PopulationUnknown { detail: "the unit holds no control group, which is EITHER a unit that has finished OR a start that is still pending -- the cgroup is realized at spawn" }
-  } else if !o.events.queried {
-    PopulationUnknown { detail: join(["the cgroup events of ", trim(s: o.control_group.value), " could not be read"], "") }
+  } else if !events.queried {
+    PopulationUnknown { detail: join(["the cgroup events of ", trim(s: control_group.value), " could not be read"], "") }
   } else {
-    match decode_cgroup_events_populated(body: o.events.value) {
-      CgroupEventsUnparseable { cause: c } => PopulationUnknown { detail: join(["the cgroup events of ", trim(s: o.control_group.value), " could not be decoded: ", c], "") }
+    match decode_cgroup_events_populated(body: events.value) {
+      CgroupEventsUnparseable { cause: c } => PopulationUnknown { detail: join(["the cgroup events of ", trim(s: control_group.value), " could not be decoded: ", c], "") }
       CgroupEventsDecoded { populated: p } =>
         if p {
-          PopulationOccupied { detail: join(["processes remain in ", trim(s: o.control_group.value)], "") }
+          PopulationOccupied { detail: join(["processes remain in ", trim(s: control_group.value)], "") }
         } else {
-          PopulationEmpty { detail: join([trim(s: o.control_group.value), " reports populated 0"], "") }
+          PopulationEmpty { detail: join([trim(s: control_group.value), " reports populated 0"], "") }
         }
     }
   }
@@ -440,7 +468,7 @@ fn unit_population(o: UnitObservations) -> UnitPopulation {
 // reading serves only to CONFIRM a completion or to REFUSE one. Establishing termination without a
 // completed attempt is the lifecycle capability's job, not this one's.
 fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
-  let population = unit_population(o: o)
+  let population = unit_population(control_group: o.control_group, events: o.events)
   match population {
     PopulationOccupied { detail: d } => UnitPopulated { detail: d }
     _ =>
@@ -473,6 +501,93 @@ fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
         }
       }
   }
+}
+
+// ── THE LIFECYCLE VERDICT, WHICH IS WHAT RECOVERY ASKS AND SETTLEMENT DOES NOT ────────────────
+//
+// THE TWO FOLDS ARE NOT A FORK AND THE DIFFERENCE IS WHAT EACH ONE IS ENTITLED TO ASSUME.
+// unit_termination_decide answers for a producer that JUST RAN `systemd-run --wait` and therefore
+// holds a fact nobody else has -- whether its own attempt completed -- and it is deliberately
+// conservative because its wrong answer frees a live seat. This fold answers for RECOVERY, which
+// holds no such fact and must decide from the manager alone. Merging them would mean giving one of
+// the two callers evidence it does not have: either recovery inherits a completion it never
+// observed, or the producer throws away the one reading that makes its release safe.
+//
+// WHAT THEY DO SHARE IS THE POPULATION READING, and it is shared rather than restated --
+// unit_population is called by both, so the kernel-outranks-systemd rule has ONE authority.
+type UnitLifecycleObservations {
+  load_state: UnitPropertyReading
+  active_state: UnitPropertyReading
+  result: UnitPropertyReading
+  population: UnitPopulation
+}
+
+data unit_active_state_property: NonEmptyStr = "ActiveState" as NonEmptyStr
+data unit_result_property: NonEmptyStr = "Result" as NonEmptyStr
+data unit_active_state_failed_wire: String = "failed"
+data unit_active_state_inactive_wire: String = "inactive"
+data unit_result_success_wire: String = "success"
+
+// FOUR STATES AND UNKNOWN IS AN ARM RATHER THAN A DEFAULT (criterion 1). Every path that cannot
+// establish an end answers UnitLifecycleUnknown CARRYING WHY, and the seat stays charged on it --
+// "I could not tell" is a reading recovery must act on by NOT acting, never a gap a caller fills.
+//
+// THE ORDER IS THE SAFETY PROPERTY AND IT IS PR 1'S ORDER. A positively occupied cgroup refuses
+// first and no manager property overrides it: the kernel saying processes are there outranks
+// systemd's bookkeeping about what it thinks it ran.
+//
+// LoadState=not-found IS AN ENDING AND ITS CAUSE IS GONE WITH IT. These are transient --collect
+// units, so one that ran and finished is REMOVED and the manager truthfully has no record. Calling
+// that success would be fabrication and calling it failure would be pessimism, so it is the third
+// ended arm -- which is exactly PR 1's authoritative absence under the name that says what it is.
+fn unit_lifecycle_decide(o: UnitLifecycleObservations) -> UnitLifecycle {
+  match o.population {
+    PopulationOccupied { detail: d } => UnitStillRunning { detail: d }
+    _ =>
+      if !o.load_state.queried {
+        UnitLifecycleUnknown { detail: "the user manager could not be queried for this unit's load state" }
+      } else if trim(s: o.load_state.value) == unit_load_state_absent_wire {
+        UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit: a transient --collect unit that ran has been removed, and its cause went with it"], "") }
+      } else if !o.active_state.queried {
+        UnitLifecycleUnknown { detail: "the unit is known to the manager but its active state could not be read" }
+      } else if trim(s: o.active_state.value) == unit_active_state_failed_wire {
+        UnitTerminatedFailure { detail: join(["ActiveState=failed, Result=", if o.result.queried { trim(s: o.result.value) } else { "<unreadable>" }], "") }
+      } else if trim(s: o.active_state.value) != unit_active_state_inactive_wire {
+        UnitStillRunning { detail: join(["ActiveState=", trim(s: o.active_state.value)], "") }
+      } else if !o.result.queried {
+        UnitLifecycleUnknown { detail: "the unit is inactive but its Result could not be read, so whether it ended well is not established" }
+      } else if trim(s: o.result.value) == "" {
+        UnitLifecycleUnknown { detail: "the unit is inactive and the manager answered its Result with nothing, which is not a verdict" }
+      } else if trim(s: o.result.value) == unit_result_success_wire {
+        UnitTerminatedSuccess { detail: join(["ActiveState=", unit_active_state_inactive_wire, ", Result=", unit_result_success_wire], "") }
+      } else {
+        UnitTerminatedFailure { detail: join(["ActiveState=", unit_active_state_inactive_wire, ", Result=", trim(s: o.result.value)], "") }
+      }
+  }
+}
+
+// THE UNIT NAME COMES FROM THE ATTEMPT RECORD (criterion 2). This fold takes the name it is given
+// and never rebuilds it from an identity, a path spelling or a listing: a recovery acting on a name
+// it invented can stop a unit belonging to a different attempt, and the record is the only
+// authority for that binding.
+fn observe_unit_lifecycle(unit: NonEmptyStr) -> UnitLifecycle {
+  let load = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_load_state_property)
+  let active = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_active_state_property)
+  let result = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_result_property)
+  let cg = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_control_group_property)
+  let events = if cg.success && trim(s: cg.value) != "" {
+    linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: join([cgroup_v2_mount_point as String, trim(s: cg.value)], "") as NonEmptyStr))
+  } else {
+    linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: cgroup_v2_mount_point))
+  }
+  unit_lifecycle_decide(o: UnitLifecycleObservations {
+    load_state: UnitPropertyReading { queried: load.success, value: load.value },
+    active_state: UnitPropertyReading { queried: active.success, value: active.value },
+    result: UnitPropertyReading { queried: result.success, value: result.value },
+    population: unit_population(
+      control_group: UnitPropertyReading { queried: cg.success, value: cg.value },
+      events: UnitPropertyReading { queried: events.success, value: events.value }),
+  })
 }
 
 // THE USER MANAGER IS ASKED, NOT THE SYSTEM ONE. systemctl_show_load_state_argv exists and is
@@ -600,6 +715,140 @@ fn compute_attempt_completed(outcome: WorkOutcome) -> Bool {
   }
 }
 
+// ── THE ATTEMPT GATE ON THE REAL PROVIDER ROUTE ──────────────────────────────────────────────
+//
+// THIS IS WHERE CRITERION 3 STOPS BEING A CARRIER PROPERTY AND BECOMES A PROPERTY OF THIS
+// PROVIDER. gunbc.compute.attempt_lifecycle can refuse a launch that lost its generation, but a
+// refusal nothing calls stops nothing: until the producer asks the gate in the real order --
+// reserve, open, ASK, spawn -- the module is a wall beside the door rather than in it. So the
+// spawn is downstream of the gate's answer by construction, and every failure arm below returns
+// WITHOUT reaching compute_run_unit.
+//
+// AND THE ASK SITS AFTER THE CHECKOUT, NOT BEFORE IT, because the window the launch deadline
+// protects IS the checkout. Placing the ask before it made the two steps adjacent -- the gate
+// would have been asked microseconds after the open, so the interleaving it exists to refuse could
+// not occur on the real route and the wall would have been a decoration in the DESIGN 4b sense
+// (ask whether the RED is authorable). Reserve, open, check out, ASK, spawn: the ask is the last
+// thing that happens before a unit exists.
+//
+// THE CLOCK IS AN INPUT AND AN UNREADABLE ONE REFUSES. Both bounds the attempt declares -- when it
+// opened and when its pre-launch window closes -- are instants, and a fabricated instant is worse
+// than no attempt: a zero opened_at makes the window look long expired, so recovery would reclaim
+// the seat out from under a producer that is running normally. There is no honest default, so the
+// arm refuses and releases (DESIGN 5: a failure arm refuses, never widens).
+type LeasedRun {
+  outcome: WorkOutcome
+  gate: AttemptGate
+}
+
+type AttemptGate
+  = AttemptGateReady { record: AttemptRecord, generation: CasGeneration }
+  | AttemptGateRefused { detail: String }
+
+// THE WINDOW THE PRODUCER DECLARES, AND IT IS AT THE CEILING RATHER THAN UNDER IT BY ACCIDENT.
+// What it has to cover is one `git worktree add` of this repository plus argv assembly, and the
+// ceiling in attempt_lifecycle is the authority on what is tolerable to the other contenders on
+// this host. Naming the ceiling's own row rather than restating 300 keeps one number: a change
+// there moves this declaration with it instead of silently leaving the producer at a stale bound.
+data compute_launch_window_seconds: Int = compute_pre_launch_ceiling_seconds
+
+fn compute_now_seconds() -> Int? {
+  match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
+    Present { value: n } => if n < 0 { none } else { Present { value: n } }
+    Absent => none
+  }
+}
+
+// THE UNIT NAME IS WRITTEN INTO THE RECORD BY THE ATTEMPT THAT OWNS IT, from the same fold the
+// invocation uses. That is the binding criterion 2 is about: recovery reads this field rather than
+// rebuilding the name from the identity, so a recovery can never act on a unit it named itself.
+fn compute_attempt_record(identity: String, reference: NonEmptyStr, granted: Kibibyte, now: Int) -> AttemptRecord {
+  AttemptRecord {
+    identity: identity,
+    reference: reference as String,
+    unit: compute_unit_name(identity_hex: identity) as String,
+    granted_kib: kibibyte_count(k: granted) as Int,
+    opened_at: now,
+    launch_deadline: now + compute_launch_window_seconds,
+    state: AttemptReserved,
+  }
+}
+
+fn compute_gate_from_transition(t: AttemptTransition, record: AttemptRecord, what: String) -> AttemptGate {
+  match t {
+    AttemptAdvanced { state: _, generation: g } => AttemptGateReady { record: record, generation: g }
+    AttemptLostRace { expected: e, observed: o } =>
+      AttemptGateRefused { detail: join([what, " did not happen: the attempt slot expected ", e, " and holds ", o, ", so this attempt is no longer the one entitled to the seat"], "") }
+    AttemptTransitionRefused { detail: d } => AttemptGateRefused { detail: join([what, " was refused: ", d], "") }
+  }
+}
+
+fn compute_open_attempt(layout: ComputeLayout, identity: String, reference: NonEmptyStr, granted: Kibibyte) -> AttemptGate {
+  match compute_now_seconds() {
+    Absent => AttemptGateRefused { detail: "the host clock could not be read as epoch seconds, and an attempt's opened_at and launch deadline are both instants -- a fabricated one would make this attempt look expired to recovery the moment it is written" }
+    Present { value: now } => {
+      let record = compute_attempt_record(identity: identity, reference: reference, granted: granted, now: now)
+      compute_gate_from_transition(t: attempt_open(root: layout.attempts_dir as NonEmptyStr, record: record), record: record, what: "opening the attempt")
+    }
+  }
+}
+
+// THE ASK, IMMEDIATELY BEFORE THE SPAWN. Reserved -> Launching against the generation the open
+// returned. A terminal transition that got there first moved the generation, so this is refused by
+// the STORE -- one linearized step -- and the producer learns it here rather than discovering it
+// after a unit is already consuming memory nobody holds.
+fn compute_begin_launch(layout: ComputeLayout, gate: AttemptGate) -> AttemptGate {
+  match gate {
+    AttemptGateRefused { detail: d } => AttemptGateRefused { detail: d }
+    AttemptGateReady { record: rec, generation: g } =>
+      compute_gate_from_transition(t: attempt_begin_launch(root: layout.attempts_dir as NonEmptyStr, record: rec, expected: g), record: rec, what: "the launch")
+  }
+}
+
+// SETTLEMENT CLOSES THE SLOT, AND A FAILURE TO CLOSE IT IS A HOST-RECORD LOSS RATHER THAN SILENCE.
+// The terminal generation carries the verdict and why (criterion 6: the obligation is settled and
+// the history is kept), and if the transition does not land the attempt is still open in the store
+// -- which is a fact an operator needs, so it rides out on the same carrier as every other
+// recording failure this provider can suffer.
+fn compute_settle_attempt(layout: ComputeLayout, gate: AttemptGate, verdict: String, detail: String) -> HostRecordStatus {
+  match gate {
+    AttemptGateRefused { detail: _ } => HostRecordWritten
+    AttemptGateReady { record: rec, generation: g } =>
+      match attempt_terminate(root: layout.attempts_dir as NonEmptyStr, record: rec, expected: g, verdict: verdict, detail: detail) {
+        AttemptAdvanced { state: _, generation: _ } => HostRecordWritten
+        AttemptLostRace { expected: e, observed: o } =>
+          HostRecordLost { detail: join(["the attempt slot for ", rec.reference, " could not be closed: expected ", e, " and it holds ", o, "; the attempt stays open in the store and the seat's settlement is recorded only here"], "") }
+        AttemptTransitionRefused { detail: d } =>
+          HostRecordLost { detail: join(["the attempt slot for ", rec.reference, " could not be closed: ", d, "; the attempt stays open in the store"], "") }
+      }
+  }
+}
+
+// A GATE REFUSAL RELEASES THE SEAT IT NEVER USED. Nothing was spawned, so the reservation is
+// returned unconditionally rather than through the unit-termination fold -- there is no unit to
+// observe, and routing an unspawned attempt through a termination decision would make the release
+// depend on evidence that cannot exist.
+fn compute_refused_before_launch(
+  instance: HostDashboardInstance,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  layout: ComputeLayout,
+  reservation: ComputeReservation,
+  detail: String,
+) -> ProvideResult {
+  let returned = compute_release(reservation: reservation, reason: join(["the attempt never launched: ", detail], "") as NonEmptyStr)
+  let dropped = compute_drop_producer_lease(layout: layout)
+  let fresh = compute_fresh(
+    outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join([detail, "; ", compute_release_wire(r: returned)], "") } },
+    subject: subject, op: op)
+  provide_result_with_host_record(
+    r: fresh,
+    carried: host_record_join(
+      a: compute_lease_drop_record(dropped: dropped, layout: layout),
+      b: if compute_release_landed(r: returned) { HostRecordWritten } else { HostRecordLost { detail: join(["the seat for this unlaunched attempt was NOT returned: ", compute_release_wire(r: returned)], "") } }))
+}
+
 fn compute_run_and_settle(
   instance: HostDashboardInstance,
   commit: String,
@@ -612,7 +861,33 @@ fn compute_run_and_settle(
   reference: NonEmptyStr,
   reservation: ComputeReservation,
 ) -> ProvideResult {
-  let outcome = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store, granted: granted)
+  match compute_open_attempt(layout: layout, identity: identity, reference: reference, granted: granted) {
+    AttemptGateRefused { detail: d } =>
+      compute_refused_before_launch(instance: instance, identity: identity, subject: subject, op: op, layout: layout, reservation: reservation, detail: d)
+    AttemptGateReady { record: rec, generation: g } =>
+      compute_run_under_grant(
+        instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
+        dependency_store: dependency_store, granted: granted, reference: reference, reservation: reservation,
+        opened: AttemptGateReady { record: rec, generation: g })
+  }
+}
+
+fn compute_run_under_grant(
+  instance: HostDashboardInstance,
+  commit: String,
+  layout: ComputeLayout,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  dependency_store: String,
+  granted: Kibibyte,
+  reference: NonEmptyStr,
+  reservation: ComputeReservation,
+  opened: AttemptGate,
+) -> ProvideResult {
+  let run = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store, granted: granted, opened: opened)
+  let outcome = run.outcome
+  let launched = run.gate
   let standing = compute_capacity_standing(instance: instance)
   let termination = observe_unit_termination(identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: outcome))
   let returned = if unit_termination_frees_capacity(t: termination) {
@@ -627,6 +902,10 @@ fn compute_run_and_settle(
       layout: layout, identity: identity, subject: subject, op: op, outcome: outcome,
       reservation: reservation, returned: returned, reference: reference, termination: termination)
   }
+  let closed = compute_settle_attempt(
+    layout: layout, gate: launched,
+    verdict: work_outcome_ending(o: outcome),
+    detail: join([unit_termination_wire(t: termination), "; ", compute_release_wire(r: returned)], ""))
   let dropped = compute_drop_producer_lease(layout: layout)
   let measured = Filesystem.Write(
     path: layout.consumption_path,
@@ -634,13 +913,16 @@ fn compute_run_and_settle(
       compute_capacity_standing_wire(s: standing), "\n",
       "unit: ", unit_termination_wire(t: termination), "\n",
       "reservation: ", compute_release_wire(r: returned), "\n",
+      "attempt: ", host_record_wire(h: closed), "\n",
       match dropped { LeaseDropped => ""  LeaseNotDropped { detail: d } => compute_stale_lease_note(layout: layout, error: d) },
     ], ""))
-  if measured.success {
-    settled
-  } else {
-    compute_with_lost_host_record(settled: settled, layout: layout, dropped: dropped, error: measured.error)
-  }
+  provide_result_with_host_record(
+    r: if measured.success {
+      settled
+    } else {
+      compute_with_lost_host_record(settled: settled, layout: layout, dropped: dropped, error: measured.error)
+    },
+    carried: closed)
 }
 
 // THE HOST RECORD IS THE ONLY DURABLE CARRIER OF THREE FACTS, so losing it is reported rather than
@@ -774,7 +1056,7 @@ fn compute_unreleased_record(
 // WHAT KEEPS IT FAIL-CLOSED MEANWHILE: every arm that cannot prove the unit is gone keeps the
 // charge, so the host UNDER-admits. Nothing is over-promised; the pool simply shrinks until an
 // operator clears the partition by hand. That is the direction a capacity ledger must fail in.
-data compute_stuck_reservation_remedy: String = "There is NO safe discharge for this seat while this host is admitting work: clearing the capacity partition by hand under live admission removes the record the admission arithmetic is computed from, so the next requests would be admitted against memory this one still holds -- trading a host that under-admits for one that over-promises. The discharge is the compute lifecycle capability (gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge). Any manual intervention before then requires compute admission STOPPED on this host and every gunbc-compute unit PROVEN gone, in that order. Until then this host under-admits, which is the fail-closed direction and is not an incident."
+data compute_stuck_reservation_remedy: String = "THE REMEDY IS compute_recover_cli, run with this reservation reference: it reads the attempt slot, observes the unit through the manager and its cgroup, and releases the seat ONLY if the unit has ended -- refusing, and saying why, if it has not. What is still NOT safe is clearing the capacity partition by hand under live admission: that removes the record the admission arithmetic is computed from, so the next requests would be admitted against memory this one still holds, trading a host that under-admits for one that over-promises. If the door declines, the seat is meant to stay charged; a manual intervention over its refusal requires compute admission STOPPED on this host and every gunbc-compute unit PROVEN gone, in that order. Until the door is run this host under-admits, which is the fail-closed direction and is not an incident."
 
 // THE ORDER THE TWO HOLDS ARE TAKEN IN, and they are two facts rather than one. The producer lease
 // excludes a SECOND PRODUCER OF THIS IDENTITY and is a NAME, so an exclusive create settles it; the
@@ -872,7 +1154,7 @@ fn compute_provide_leaf(
       StoredOutcomeFound { ending, identity: stored_identity, document } => ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: HostRecordWritten }
       StoredOutcomeUnreadable { reason } => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: reason } }, subject: subject, op: op)
     }
-  } else if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.store_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir)) {
+  } else if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.store_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir) && compute_ensure_dir(instance: instance, path: layout.attempts_dir)) {
     compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["could not create the compute directories under ", layout.root], "") } }, subject: subject, op: op)
   } else {
     let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
@@ -965,7 +1247,8 @@ fn compute_run_leased(
   op: WorkOperation,
   dependency_store: String,
   granted: Kibibyte,
-) -> WorkOutcome {
+  opened: AttemptGate,
+) -> LeasedRun {
   let existing = Filesystem.List(path: layout.checkout)
   let checkout = if existing.success {
     ComputeExecOk { stdout: "", stderr: "" }
@@ -978,22 +1261,42 @@ fn compute_run_leased(
   }
   match checkout {
     ComputeExecFailed { exit_code, stdout: _, stderr } =>
-      WorkRefusedByInfrastructure { identity: identity, cause: CheckoutUnavailable { detail: join(["git worktree add exited ", to_string(value: exit_code), ": ", stderr], "") } }
-    ComputeExecOk { stdout: _, stderr: _ } => {
-      let run = compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store), granted: granted)
-      let log = Filesystem.Write(path: layout.log_path, content: match run {
-        ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
-        ComputeExecFailed { exit_code: _, stdout, stderr } => join([stdout, stderr], "")
-      })
-      match run {
-        ComputeExecFailed { exit_code, stdout: _, stderr: _ } => WorkFailed { identity: identity, exit_code: exit_code, log_path: layout.log_path }
-        ComputeExecOk { stdout: _, stderr: _ } =>
-          match compute_return_outputs(instance: instance, layout: layout, declared: work_declared_outputs(op: op)) {
-            OutputsMismatch { detail } => WorkOutputMismatch { identity: identity, detail: detail }
-            OutputsReturned { outputs } => WorkSucceeded { identity: identity, outputs: outputs, log_path: if log.success { layout.log_path } else { "" } }
-          }
+      LeasedRun { outcome: WorkRefusedByInfrastructure { identity: identity, cause: CheckoutUnavailable { detail: join(["git worktree add exited ", to_string(value: exit_code), ": ", stderr], "") } }, gate: opened }
+    ComputeExecOk { stdout: _, stderr: _ } =>
+      match compute_begin_launch(layout: layout, gate: opened) {
+        AttemptGateRefused { detail: d } => LeasedRun { outcome: WorkCancelled { identity: identity }, gate: AttemptGateRefused { detail: d } }
+        AttemptGateReady { record: rec2, generation: g2 } =>
+          compute_spawn_and_collect(
+            instance: instance, layout: layout, identity: identity, op: op, dependency_store: dependency_store,
+            granted: granted, launched: AttemptGateReady { record: rec2, generation: g2 })
       }
-    }
+  }
+}
+
+fn compute_spawn_and_collect(
+  instance: HostDashboardInstance,
+  layout: ComputeLayout,
+  identity: String,
+  op: WorkOperation,
+  dependency_store: String,
+  granted: Kibibyte,
+  launched: AttemptGate,
+) -> LeasedRun {
+  let run = compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store), granted: granted)
+  let log = Filesystem.Write(path: layout.log_path, content: match run {
+    ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
+    ComputeExecFailed { exit_code: _, stdout, stderr } => join([stdout, stderr], "")
+  })
+  LeasedRun {
+    gate: launched,
+    outcome: match run {
+      ComputeExecFailed { exit_code, stdout: _, stderr: _ } => WorkFailed { identity: identity, exit_code: exit_code, log_path: layout.log_path }
+      ComputeExecOk { stdout: _, stderr: _ } =>
+        match compute_return_outputs(instance: instance, layout: layout, declared: work_declared_outputs(op: op)) {
+          OutputsMismatch { detail } => WorkOutputMismatch { identity: identity, detail: detail }
+          OutputsReturned { outputs } => WorkSucceeded { identity: identity, outputs: outputs, log_path: if log.success { layout.log_path } else { "" } }
+        }
+    },
   }
 }
 
@@ -1083,6 +1386,148 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
           }
         }
       }
+  }
+}
+
+// ── THE RECOVERY DOOR (criteria 4, 5, 6) ─────────────────────────────────────────────────────
+//
+// THIS IS THE CAPABILITY gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge
+// NAMED AS ITS TRIGGER, and PR 1's compute_release_on says in its own annotation what had to exist
+// before a discharge could ship: a termination decision bound to the unit, an attempt-to-unit
+// binding that cannot release another attempt's live reservation, and a settled state a retry
+// consumes. All three are here -- observe_unit_lifecycle decides from the manager, the unit name
+// comes from the attempt record rather than from an identity or a listing, and the terminal
+// generation IS the settled state.
+//
+// EVERY REFUSAL ARM BELOW EXISTS BECAUSE ITS OPPOSITE FREES A SEAT THAT SHOULD STAY HELD, so none
+// of them widens toward "release anyway". An unreadable slot is NOT an absent one (criterion 4): a
+// recovery that read "absent" from a failed read would release a seat whose attempt it never saw.
+// THE ATTEMPT SLOTS ARE PER-HOST, NOT PER-IDENTITY, which is why this is its own fold rather than
+// a field read off a layout: a layout is built around one work identity and recovery arrives
+// holding a reference, not an identity. Deriving the root through a layout with an empty identity
+// would work and would also be a second spelling of the same path (DESIGN 3).
+fn compute_attempts_root(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([dashboard_instance_compute_root(instance: instance) as String, "/attempts"], "") as NonEmptyStr
+}
+
+// THE TERMINAL TRANSITION AND THE RELEASE ARE TWO FACTS AND THE MIDDLE ARM IS THE ONE THAT
+// MATTERS. The attempt can settle -- history written, generation advanced -- and the seat can still
+// fail to come back, and reporting that as a success would be exactly the recording-failure-as-
+// verdict conflation the settlement path already had to be repaired for. It gets its own arm so
+// the operator learns the attempt is closed AND the memory is still charged.
+type ComputeRecovery
+  = RecoveryReleased { reference: String, verdict: String, seat: String }
+  | RecoverySettledButHeld { reference: String, verdict: String, seat: String }
+  | RecoveryDeclined { reference: String, why: String }
+  | RecoveryRefused { detail: String }
+
+fn compute_recovery_wire(r: ComputeRecovery) -> String {
+  match r {
+    RecoveryReleased { reference: ref_, verdict: v, seat: rel } => join(["recovered ", ref_, ": ", v, "; ", rel], "")
+    RecoverySettledButHeld { reference: ref_, verdict: v, seat: rel } =>
+      join(["SETTLED BUT STILL CHARGED ", ref_, ": the attempt is closed (", v, ") and the seat did NOT come back -- ", rel, "; this host under-admits by that grant until the ledger accepts a release for this reference"], "")
+    RecoveryDeclined { reference: ref_, why: w } => join(["declined ", ref_, ": ", w], "")
+    RecoveryRefused { detail: d } => join(["recovery refused: ", d], "")
+  }
+}
+
+// THE RE-CHECK UNDER THE LEASE (criterion 5), AND IT IS THE SAME GENERATION OR IT IS NOTHING.
+// The slot is read, the unit is observed, the trigger is evaluated -- and then the terminal
+// transition is committed EXPECTING THE GENERATION THAT WAS READ. If the producer advanced in the
+// meantime, the observation recovery decided on is stale and the store refuses it. The re-check is
+// not a second read that could also go stale; it is the compare-and-set itself, which is the only
+// form of re-check that cannot be overtaken between the checking and the acting.
+fn compute_recover_attempt(instance: HostDashboardInstance, reference: NonEmptyStr) -> ComputeRecovery {
+  let attempts_root = compute_attempts_root(instance: instance)
+  match attempt_slot_read(root: attempts_root, reference: reference) {
+    AttemptSlotUnreadable { detail: d } =>
+      RecoveryRefused { detail: join(["the attempt slot for ", reference as String, " could not be read (", d, "), and an unreadable slot is not an absent one -- releasing on a read that failed would return a seat whose attempt was never observed"], "") }
+    AttemptSlotAbsent =>
+      RecoveryRefused { detail: join(["no attempt slot exists for ", reference as String, "; there is no record binding that reference to a unit, and this door will not release a seat it cannot name the attempt of"], "") }
+    AttemptSlotHeld { record: rec, generation: g } => {
+      let lifecycle = observe_unit_lifecycle(unit: rec.unit as NonEmptyStr)
+      match compute_now_seconds() {
+        Absent => RecoveryRefused { detail: "the host clock could not be read as epoch seconds, and the reserved-state trigger is a comparison against a deadline" }
+        Present { value: now } =>
+          match recovery_trigger(record: rec, lifecycle: lifecycle, now: now) {
+            RecoveryTooEarly { deadline: d, now: n } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryTooEarly { deadline: d, now: n }) }
+            RecoveryUnitNotEnded { lifecycle: u } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }) }
+            RecoveryStateNotRecoverable { state: st } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryStateNotRecoverable { state: st }) }
+            RecoveryMayTerminate { reason: why } =>
+              match attempt_terminate(root: attempts_root, record: rec, expected: g, verdict: "recovered", detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
+                AttemptLostRace { expected: e, observed: o } =>
+                  RecoveryRefused { detail: join(["the attempt moved while recovery was deciding: expected ", e, " and the slot holds ", o, "; the observation this recovery would act on is stale, so nothing is released"], "") }
+                AttemptTransitionRefused { detail: d } => RecoveryRefused { detail: join(["the attempt slot would not take the terminal generation: ", d], "") }
+                AttemptAdvanced { state: _, generation: _ } =>
+                  compute_recovery_after_settlement(
+                    reference: rec.reference,
+                    verdict: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], ""),
+                    returned: compute_recover_release(instance: instance, reference: reference, reason: why))
+              }
+          }
+      }
+    }
+  }
+}
+
+fn compute_recovery_after_settlement(reference: String, verdict: String, returned: ComputeRelease) -> ComputeRecovery {
+  if compute_release_landed(r: returned) {
+    RecoveryReleased { reference: reference, verdict: verdict, seat: compute_release_wire(r: returned) }
+  } else {
+    RecoverySettledButHeld { reference: reference, verdict: verdict, seat: compute_release_wire(r: returned) }
+  }
+}
+
+// THE SEAT COMES BACK THROUGH PR 1'S OWN RELEASE PATH, never a second one. compute_release_on
+// reads, folds and PROPOSES against the folded pool, so a reference the ledger is not holding is
+// refused at the proposal rather than appended -- which is what keeps a recovery from poisoning the
+// whole partition with an UnknownEncumbrance every later read would refuse on.
+fn compute_recover_release(instance: HostDashboardInstance, reference: NonEmptyStr, reason: String) -> ComputeRelease {
+  match compute_capacity_subject(instance: instance) {
+    ComputeSubjectHostUnresolved { host: h } => ComputeReleaseRefused { detail: join(["no capacity subject resolves for host ", h as String], "") }
+    ComputeSubjectResolved { subject: subj } =>
+      compute_release_on(
+        store: compute_capacity_store(subject: subj),
+        partition: subj.partition,
+        appropriation: kibibyte(count: 0),
+        reference: reference,
+        reason: join(["recovered: ", reason], "") as NonEmptyStr)
+  }
+}
+
+// THE DOOR A WORKER OR AN OPERATOR ACTUALLY OPENS. Three exits and they are the three the rest of
+// this provider uses: 0 the seat came back, 1 recovery looked and declined (which is the SAFE
+// answer and must not read as a tool failure), 2 recovery could not establish enough to answer.
+fn compute_recover_cli(repo_root: String, reference: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: 2, reason: join(["compute-recover: no dashboard instance is rooted at ", r], "") }
+    DashboardInstanceResolved { instance } =>
+      if trim(s: reference) == "" {
+        ExitFailure { code: 2, reason: "compute-recover: a reservation reference is required (it is the attempt slot's key: <identity>@<instant>)" }
+      } else {
+        compute_recover_exit(
+          outcome: compute_recover_attempt(instance: instance, reference: trim(s: reference) as NonEmptyStr),
+          receipt_path: receipt_path)
+      }
+  }
+}
+
+// THE RECOVERED CASE WRITES ITS RECEIPT TOO, and that is not symmetry for its own sake: exit 0
+// carries no text, so a discharge that reported only a status would leave the operator who ran it
+// unable to say WHICH seat came back or on what evidence. The durable history is the attempt
+// slot's terminal generation; this is the copy the caller can read without opening the store.
+fn compute_recover_exit(outcome: ComputeRecovery, receipt_path: String) -> ProcessExit {
+  let wire = compute_recovery_wire(r: outcome)
+  let written = Filesystem.Write(path: receipt_path, content: join([wire, "\n"], ""))
+  if !written.success {
+    ExitFailure { code: 2, reason: join(["compute-recover: the receipt could not be written to ", receipt_path, ": ", written.error, "; the outcome was ", wire], "") }
+  } else {
+    match outcome {
+      RecoveryReleased { reference: _, verdict: _, seat: _ } => ExitSuccess
+      RecoverySettledButHeld { reference: _, verdict: _, seat: _ } => ExitFailure { code: 2, reason: wire }
+      RecoveryDeclined { reference: _, why: _ } => ExitFailure { code: 1, reason: wire }
+      RecoveryRefused { detail: _ } => ExitFailure { code: 2, reason: wire }
+    }
   }
 }
 

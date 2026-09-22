@@ -18,11 +18,17 @@ data a_held_compute_seat_has_no_in_corpus_discharge: RecurringFailureMode = Recu
 
     "THERE IS NO SAFE MANUAL DISCHARGE UNDER LIVE ADMISSION, and saying so is part of the row rather than a caveat on it. Clearing the capacity partition by hand while this host is admitting work removes the very record the admission arithmetic folds, so the next requests are admitted against memory the stuck grant still holds -- trading a host that under-admits for one that over-promises, which is the direction this whole change exists to prevent. Any manual intervention requires compute admission STOPPED on the host and every gunbc-compute unit PROVEN gone, in that order.",
 
+    "THE TRIGGER FIRED, AND THIS ROW IS WHERE IT IS RECORDED RATHER THAN DELETED. The lifecycle capability the trigger names is gunbc.compute.work_provider_local compute_recover_cli, and it has all four properties the trigger asked for: (a) it decides termination from the manager and the cgroup through unit_lifecycle_decide, never from a state word; (b) it binds the unit from the attempt record the producer wrote, so it cannot stop a unit belonging to a different attempt; (c) it commits the terminal generation EXPECTING the generation it read, so a producer that advanced in the meantime wins and the recovery is refused by the store; (d) the terminal generation IS the settled state, carrying the verdict and why. The class does not stop existing -- a seat can still be held while the discharge has not been run -- so what changes is the RUNG, not the membership.",
+
+    "AND THE DISCHARGE DOES NOT ANNOUNCE ITSELF ON A HALF-SUCCESS, which is the arm that would have quietly re-created this class under a name that reads as fixed. The terminal transition landing and the seat coming back are two facts: gunbc.compute.work_provider_local RecoverySettledButHeld is the arm where the attempt closed and the ledger refused the release, and it exits 2 saying the host still under-admits by that grant. A recovery that reported success on the transition alone would leave exactly the state this row describes while claiming the row was retired.",
+
     "RUNG FOUND AT: mitigatable. The state is reachable, its harm is bounded to one host's compute appropriation, it is visible in the outcome document and in the partition, and it never over-promises.",
 
-    "CEILING: mechanically preventable. A discharge route exists to be built -- the evidence needed is a termination decision bound to the unit plus a settled lifecycle state that a retry consumes -- so this is not a class that must stay a ratchet.",
+    "CURRENT RUNG: mechanically preventable, which is the CEILING for this class and is not structural impossibility. The invalid state is still writable -- a held seat whose release did not land is a state the store can be in -- and safety now depends on the discharge being RUN. What the discharge cannot do is free a seat it has not established is free, and that is the part held by construction: every arm that fails to establish an end keeps the charge.",
 
-    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY AND NOT AN ARTIFACT: the compute reservation LIFECYCLE capability -- a discharge that (a) decides termination from authoritative absence or an observed-empty cgroup rather than from a state word, (b) binds the attempt and its unit from the authoritative attempt record so releasing one cannot release another's live reservation, (c) coordinates with a pending producer so a release cannot race a launch that has not happened yet, and (d) produces a settled state a retry consumes, with history kept. Until a discharge with all four properties is consumed by a real caller, this row stands.",
+    "CEILING: mechanically preventable, and the reason it goes no higher is worth stating rather than leaving as an unexplained stop. Structural impossibility would mean no reachable state in which a seat is held with nothing running, and that would require proving a systemd transient unit has stopped using memory from outside it -- an external fact at the boundary DESIGN 4b keeps OFF the ladder. So this class is at its ceiling, and the honest residual is that a seat stays charged until someone runs the door.",
+
+    "NEXT-RUNG TRIGGER: NONE, because the class is at its ceiling. The trigger this row carried -- the compute reservation LIFECYCLE capability, with all four properties, consumed by a real caller -- is discharged as described above. A row at its ceiling with no trigger is not a stalled row: DESIGN 4b(2) separates cannot-climb-further from can-climb-after-one-grounding, and this is the first.",
 
     "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration, and gunbc.compute.work_provider_local compute_stuck_reservation_remedy carries the remedy sentence into the refusal a caller actually receives.",
   ],
@@ -32,5 +38,8 @@ data a_held_compute_seat_has_no_in_corpus_discharge: RecurringFailureMode = Recu
     decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "unit_termination_frees_capacity"),
     decl_ref(module_path: "gunbc.compute.host_capacity", decl_name: "compute_release"),
     decl_ref(module_path: "test.claim.compute.work_request_witness_test", decl_name: "only_proven_absence_or_an_ended_cgroup_frees_a_seat"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_recover_cli"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "unit_lifecycle_decide"),
+    decl_ref(module_path: "test.claim.compute.work_request_witness_test", decl_name: "the_lifecycle_verdict_has_four_states_and_unknown_carries_why"),
   ],
 }
