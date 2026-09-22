@@ -3254,16 +3254,15 @@ type PostfixStep {
   call_elem: Optional<Node>
 }
 
-// THE THIRD ARM IS WHY DELETING THE OLD READER IS NOT A WIDEN. A dot-projection step whose suffix
-// slot is neither empty nor a paren call -- today that is the BRACE suffix, the module-qualified
-// record construction `a.b.C { f: v }`, and an `as` suffix -- was refused by the old
-// body_lower_try_postfix_projection, because its has_call_suffix test answered false and fell into
-// the refusal. That shape is NOT lowered by this change: a construct's tag is a Symbol
-// (v2.std.node_query construct_node) and a module-qualified tag has no representation in it, so
-// lowering it would mean changing the construct shape, which is a wider package than this one.
-// DESIGN section 5 therefore requires it to keep refusing rather than fall through to the arms
-// that erase it, and it refuses HERE, located at the offending step, under a reason that says what
-// is actually wrong with it instead of calling it a field access.
+// THE THIRD ARM CARRIES THE SUFFIX KINDS THIS LOWERING CANNOT READ. A dot-projection step whose
+// suffix slot is neither empty nor a paren call -- today the BRACE suffix, the module-qualified
+// record construction `a.b.C { f: v }`, and an `as` suffix -- reaches PostfixChainSuffixCarried.
+// That shape is NOT lowered by this change: a construct's tag is a Symbol (v2.std.node_query
+// construct_node) and a module-qualified tag has no representation in it, so lowering it would
+// mean changing the construct shape, which is a wider package than this one. What the door DOES
+// with this arm -- decline to the pre-existing arms and emit a counted head-grain advisory rather
+// than refuse -- is stated once, on body_lower_postfix_chain_steps_grow below, and is not
+// restated here.
 type PostfixChainRead
   = PostfixChainFound { steps: List<PostfixStep> }
   | PostfixChainNotThisShape
