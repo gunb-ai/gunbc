@@ -1,8 +1,9 @@
 module extdeps.linux.proc_meminfo
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String, Bool, Int }
 import std.types { List }
-import std.measure { Kibibyte }
+import std.measure { Kibibyte, kibibyte }
+import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -38,3 +39,157 @@ data meminfo_field_names: List<NonEmptyStr> = [
   "SwapTotal",
   "SwapFree",
 ]
+
+// READING THE FILE'S TEXT BACK INTO THE SHAPE ABOVE. proc.5 describes /proc/meminfo as one metric
+// per line, `Name:` followed by a decimal count and, for every field this module names, the unit
+// `kB` -- which proc.5 spells in kilobytes and the kernel emits in KIBIBYTES, so the field type is
+// Kibibyte and not a kilobyte. The parse lives here because this module owns the file's shape; the
+// transport that produces the text is extdeps.linux.procfs, one of N (DESIGN 3).
+//
+// A MISSING FIELD IS ITS OWN ARM AND NEVER A ZERO. A host whose kernel does not publish
+// MemAvailable (pre-3.14) would otherwise read as a host with no memory available, which is the
+// state-space conflation an admission decision cannot survive: zero headroom and unknown headroom
+// have opposite remedies, and only one of them is a refusal.
+type MeminfoRead
+  = MeminfoParsed { meminfo: ProcMeminfo }
+  | MeminfoFieldAbsent { field: NonEmptyStr }
+
+// THE UNIT IS THE DISCRIMINATOR AND IT IS PRESENT IN THE TEXT, so throwing it away and minting a
+// Kibibyte for every line is the one thing this fold must not do (review 69784).
+//
+// /proc/meminfo IS NOT UNIFORMLY kB. Most lines are `Name:   N kB`, and four on every Linux host --
+// HugePages_Total, HugePages_Free, HugePages_Rsvd, HugePages_Surp -- are `Name:   N` with NO unit,
+// because they are counts of PAGES. Reading a page count as a kibibyte value is wrong by the huge
+// page size, 2048x at the usual 2 MiB, and nothing in the resulting type says so: a MemoryMetric
+// carrying 0 pages and a MemoryMetric carrying 0 KiB are indistinguishable, and one carrying 3
+// pages claims 3 KiB. That is DESIGN 5's fabricated plausible output in the small -- syntactically
+// fine, semantically not the quantity it claims -- and DESIGN 3's instruction for extdeps is to
+// model what the API actually returns rather than what would be convenient.
+//
+// SO A LINE BECOMES A MemoryMetric ONLY IF IT SAYS kB. The third token is required and compared,
+// not discarded. A line without it is not a memory measure and has no business in a
+// List<MemoryMetric>; excluding it is the type being honest rather than data being lost.
+//
+// WHAT THIS MEANS FOR all_metrics, said because the name overpromises on its own: it is the
+// kB-DENOMINATED metrics, not every line of the file. The unitless lines are unmodelled here and
+// would need their own carrier -- a page count is a different quantity, not a memory one -- which
+// is a row to add when a consumer exists (DESIGN 3c) rather than a field to fake now.
+data meminfo_kibibyte_unit: String = "kB"
+
+fn meminfo_line_metric(line: String) -> MemoryMetric? {
+  let tokens = filter(split(s: line, delimiter: " "), t => trim(s: t) != "")
+  if count(tokens) != 3 {
+    none
+  } else {
+    match first(tokens) {
+      Absent => none
+      Present { value: head } =>
+        if !ends_with(s: head, suffix: ":") {
+          none
+        } else {
+          let key = substring(s: head, start: 0, end: length(head) - 1)
+          match first(tokens |> skip(n: 1)) {
+            Absent => none
+            Present { value: raw } =>
+              match first(tokens |> skip(n: 2)) {
+                Absent => none
+                Present { value: unit } =>
+                  if trim(s: unit) != meminfo_kibibyte_unit {
+                    none
+                  } else {
+                    match parse_int(s: trim(s: raw)) {
+                      Absent => none
+                      Present { value: n } =>
+                        if key == "" || n < 0 { none } else { Present { value: MemoryMetric { key: key as NonEmptyStr, value: kibibyte(count: n) } } }
+                    }
+                  }
+              }
+          }
+        }
+    }
+  }
+}
+
+fn meminfo_metrics(text: String) -> List<MemoryMetric> {
+  fold(split(s: text, delimiter: "\n"), init: [], f: (acc, line) =>
+    match meminfo_line_metric(line: line) {
+      Absent => acc
+      Present { value: m } => concat(acc, [m])
+    })
+}
+
+fn meminfo_metric_named(metrics: List<MemoryMetric>, name: NonEmptyStr) -> Kibibyte? {
+  match first(filter(metrics, m => (m.key as String) == (name as String))) {
+    Absent => none
+    Present { value: m } => Present { value: m.value }
+  }
+}
+
+// EVERY NAMED FIELD IS RESOLVED BY THE SAME LOOKUP THAT PROVES IT PRESENT, and that is the whole
+// shape of this fold rather than a stylistic preference.
+//
+// IT WAS WRITTEN THE OTHER WAY FIRST AND THE OTHER WAY WAS WRONG (review 69561 on gunbc#11962). A
+// presence pass walked meminfo_field_names and refused the first name it could not find; the record
+// was then built from a SECOND spelling of those names, each one falling back to
+// `kibibyte(count: 0)` on an absence the presence pass had supposedly ruled out. Two lists for one
+// concept is DESIGN 3's nicknaming, and here the fork was load-bearing rather than cosmetic: the
+// zero's unreachability was an invariant maintained AT A DISTANCE between the roster and the record,
+// so renaming or dropping a roster entry made mem_total and mem_available read 0 KiB -- which a
+// compute admission (gunbc.compute.host_capacity compute_reserve_on) turns into a permanent
+// below-floor or appropriation-exceeds-total refusal ATTRIBUTED TO THE MACHINE rather than to the
+// parse. A fabricated plausible output (DESIGN 5) behind a guard that looked like a wall.
+//
+// So the guard is deleted rather than strengthened. Each field is matched once, its absence names
+// ITSELF, and its value is the one the match just bound: `meminfo_required` and its zero are gone,
+// and the fabricated reading has no constructor left to be written in (DESIGN 4b, structurally
+// impossible rather than validated). meminfo_field_names is consequently NOT this fold's authority
+// and no longer claims to be -- it is the roster of fields this module models, read by consumers
+// that want the names; what this parse demands is exactly what ProcMeminfo has fields for, which is
+// a fact the record already carries and cannot drift from itself.
+//
+// The nesting is flat in meaning and deep in shape on purpose: there is no total lookup over seven
+// independent optionals that does not either lose which one was missing or introduce a positional
+// list, and a positional list would be the same fork one representation over.
+fn parse_proc_meminfo(text: String) -> MeminfoRead {
+  let metrics = meminfo_metrics(text: text)
+  match meminfo_metric_named(metrics: metrics, name: "MemTotal" as NonEmptyStr) {
+    Absent => MeminfoFieldAbsent { field: "MemTotal" as NonEmptyStr }
+    Present { value: mem_total } =>
+      match meminfo_metric_named(metrics: metrics, name: "MemFree" as NonEmptyStr) {
+        Absent => MeminfoFieldAbsent { field: "MemFree" as NonEmptyStr }
+        Present { value: mem_free } =>
+          match meminfo_metric_named(metrics: metrics, name: "MemAvailable" as NonEmptyStr) {
+            Absent => MeminfoFieldAbsent { field: "MemAvailable" as NonEmptyStr }
+            Present { value: mem_available } =>
+              match meminfo_metric_named(metrics: metrics, name: "Buffers" as NonEmptyStr) {
+                Absent => MeminfoFieldAbsent { field: "Buffers" as NonEmptyStr }
+                Present { value: buffers } =>
+                  match meminfo_metric_named(metrics: metrics, name: "Cached" as NonEmptyStr) {
+                    Absent => MeminfoFieldAbsent { field: "Cached" as NonEmptyStr }
+                    Present { value: cached } =>
+                      match meminfo_metric_named(metrics: metrics, name: "SwapTotal" as NonEmptyStr) {
+                        Absent => MeminfoFieldAbsent { field: "SwapTotal" as NonEmptyStr }
+                        Present { value: swap_total } =>
+                          match meminfo_metric_named(metrics: metrics, name: "SwapFree" as NonEmptyStr) {
+                            Absent => MeminfoFieldAbsent { field: "SwapFree" as NonEmptyStr }
+                            Present { value: swap_free } =>
+                              MeminfoParsed {
+                                meminfo: ProcMeminfo {
+                                  mem_total: mem_total,
+                                  mem_free: mem_free,
+                                  mem_available: mem_available,
+                                  buffers: buffers,
+                                  cached: cached,
+                                  swap_total: swap_total,
+                                  swap_free: swap_free,
+                                  all_metrics: metrics,
+                                },
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
