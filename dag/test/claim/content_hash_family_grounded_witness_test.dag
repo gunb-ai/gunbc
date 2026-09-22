@@ -11,7 +11,6 @@ import std.content_hash {
   Sha512Digest,
   Sha512DigestHex,
   content_hash_of_value,
-  content_hash_of_value_cryptographic,
   content_hash_from_structural_digest,
   content_hash_eq_structural,
   content_hash_eq_cryptographic,
@@ -395,22 +394,5 @@ test fn git_sha1_object_id_maps_to_sha1_family() -> Bool {
         Sha512Hash(_) => false
       }
     Absent => false
-  }
-}
-
-// THE COMPUTING MINT'S INHABITANCE CLAIM, AND THE ONLY CLAIM THAT RUNS IT (DESIGN section 3 pairing
-// obligation; DESIGN 3c declared frontier). content_hash_of_value_cryptographic has no production
-// consumer until native emission of the sha2 closure lets std.fabric_storage bind to it again --
-// the row is gunbc.recurring_failure_mode fabric_object_identity_is_a_structural_locator -- so
-// this claim is what keeps the seam executed rather than merely declared. The preimage is exactly
-// the forty-one bytes std.fabric_storage fabric_object_preimage produces for a linkless object whose
-// body is {"event":"root"}, and the oracle is the SHA-256 of those bytes computed by coreutils
-// sha256sum and, separately, by Python hashlib, which agreed. Neither can see this corpus, so the
-// literal is grounded outside the tree it checks (DESIGN section 5). Re-derive it, do not adjust it.
-test fn the_computing_mint_reaches_the_published_digest_of_a_fabric_preimage() -> Bool {
-  match content_hash_of_value_cryptographic(value: "fabric_storage.object;B16:{\"event\":\"root\"}" as NonEmptyStr) {
-    Absent => false
-    Present { value: h } =>
-      (serialize_content_hash(hash: h) as String) == "sha256:6fccc7fc79c56ea89adfcdef847e160cdc96071797d7c123d50955406465fb7c"
   }
 }

@@ -50,12 +50,13 @@ import v2.std.node {
 // CORRECTED 2026-09-21 (gunbc#11996). This note said "No stronger option exists in .dag today -- the
 // sha256 surfaces in std.content_hash and extdeps.crypto.hash VALIDATE hex rather than computing it".
 // That was true when written and is now FALSE: extdeps.crypto.sha2 computes FIPS 180-4 SHA-256 over
-// List<UInt8> in the substrate, witnessed by test.claim.sha256_fips_witness_test, and
-// std.content_hash content_hash_of_value_cryptographic mints a Sha256Hash through it.
-// std.fabric_storage's object refs were bound to it in that change and the binding was withdrawn
-// in the same change: interpreted, it made every store consumer two to three hundred times slower
-// and cancelled the required floor (gunbc.recurring_failure_mode
-// fabric_object_identity_is_a_structural_locator carries the receipt and the trigger).
+// List<UInt8> in the substrate, witnessed by test.claim.sha256_fips_witness_test. A std.content_hash
+// mint over it, and std.fabric_storage's object refs bound to that mint, were both authored in that
+// change and both withdrawn in it. Interpreted SHA-256 made every store consumer two to three hundred
+// times slower and cancelled the required floor, and the mint's own inhabitance claim performed
+// 244,396 eval steps against a 72,300-step budget, so the seam could not carry an executing claim
+// either (gunbc.recurring_failure_mode fabric_object_identity_is_a_structural_locator carries both
+// receipts and the trigger). What is available today is the COMPUTATION, not a mint over it.
 //
 // AND THE OLD TRIGGER HAD TO BE REPLACED, NOT JUST THE REASON -- this is the DESIGN 4b(3) defect the
 // row was one merge away from committing. The dissolve-on read "a computing cryptographic digest

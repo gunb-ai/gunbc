@@ -62,16 +62,20 @@ fn fabric_object_preimage(object: FabricObject) -> NonEmptyStr {
 // second sentence, so minting a locator and calling the check verification would be rung inflation
 // in the DESIGN 4b(1) sense, and this module does not call it that.
 //
-// The cryptographic mint EXISTS and was TRIED HERE: std.content_hash content_hash_of_value_cryptographic
-// reaches the FIPS 180-4 digest through extdeps.crypto.sha2 with neither a write nor a spawn, and
-// gunbc#11996 bound it to this function. It was measured on this module's real consumers and
-// withdrawn: interpreted SHA-256 on every put, every verified get and every closure step made each
-// consumer of gunbc.fabric.fabric_storage_file_store two to three hundred times slower and cancelled
-// the required floor at its cap. The row is gunbc.recurring_failure_mode
+// THE COMPUTATION EXISTS AND A MINT OVER IT WAS TRIED HERE AND WITHDRAWN, BOTH HALVES MEASURED.
+// extdeps.crypto.sha2 sha256_hex reaches the FIPS 180-4 digest with neither a write nor a spawn, and
+// gunbc#11996 authored a std.content_hash mint over it and bound it to this function. Two independent
+// measurements withdrew it. FIRST, at this module's real consumers: interpreted SHA-256 on every put,
+// every verified get and every closure step made each consumer of gunbc.fabric.fabric_storage_file_store
+// two to three hundred times slower and cancelled the required floor at its cap. SECOND, at the mint's
+// own inhabitance claim: one interpreted SHA-256 of a single-block preimage performed 244,396 eval steps
+// against the required floor's 72,300-step new-witness budget, so the seam could not carry an executing
+// claim at floor rate either -- a mint no claim can run is a declaration DESIGN 3c refuses. The row is
+// gunbc.recurring_failure_mode
 // fabric_object_identity_is_a_structural_locator: rung, ceiling, the receipt, and the trigger --
 // native emission of the sha2 closure SUFFICIENT FOR those consumers to run at floor rate. Until
-// that capability lands, this mint stays structural and the refusal to call it verification stays
-// in force. The mint is pure, which is what keeps fabric_object_verified a pure check; the shell arm
+// that capability lands, this ref stays structural and the refusal to call it verification stays
+// in force. The structural mint is pure, which is what keeps fabric_object_verified a pure check; the shell arm
 // (extdeps.crypto.hash sha256sum over a PATH) was refused for the same reason under either family:
 // it would write every in-memory preimage to a file before hashing it, re-opening the custody gap
 // verification exists to close.
