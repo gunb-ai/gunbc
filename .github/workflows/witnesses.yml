@@ -275,7 +275,7 @@ jobs:
         env:
           REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME: ${{ steps.build_witness_fold.outcome }}
         if: always() && !cancelled()
-      - name: Generated artifacts match their authorities
+      - name: Registry-rostered generated artifacts (gunbc.generated_artifact) match their authorities; the stage0 mirrors are NOT checked here
         id: generated_artifact_gate
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -287,7 +287,7 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function heal_repair_declaration
         if: failure() && steps.generated_artifact_gate.outcome == 'failure' && github.actor != 'dependabot[bot]'
-      - name: Regenerate every committed generated artifact, then verify the tree it wrote
+      - name: Regenerate every registry-rostered generated artifact (not the stage0 mirrors), then verify the tree it wrote
         id: repair_regen
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)

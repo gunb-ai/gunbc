@@ -249,7 +249,8 @@ use crate::v1_std_core::CompilerDiagnostic::{
     ReceiverTypeUnestablished, ResourceFrontierOccurrenceBudgetExceeded,
     ResourceRequirementFrontierAdmitted, ResourceRequirementUnestablished,
     ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation, TypeArgumentArityMismatch,
-    TypeMismatch, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
+    TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType,
+    VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -382,6 +383,7 @@ pub struct InferScope {
     pub lambda_param_provenance: Rc<HashMap<String, Rc<SubValueRelation>>>,
     pub caller_decl_name: String,
     pub in_flight_lambda_param_names: Rc<Vec<String>>,
+    pub enclosing_declared_type_param_names: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1648,7 +1650,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "gcp_oauth_access_token".to_string(),
     callee_module_path: "gunbc.auth.credentials".to_string(),
     callee_decl_name: "gcp_oauth_access_token_adc_for_path".to_string(),
-    resource: "std.resources.Network".to_string(),
+    resource: "Network".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1657,7 +1659,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "acquire_subject_token".to_string(),
     callee_module_path: "gunbc.auth.patterns".to_string(),
     callee_decl_name: "github_oidc".to_string(),
-    resource: "std.resources.Network".to_string(),
+    resource: "Network".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1666,7 +1668,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "acquire_subject_token".to_string(),
     callee_module_path: "gunbc.auth.patterns".to_string(),
     callee_decl_name: "metadata_oidc".to_string(),
-    resource: "std.resources.Network".to_string(),
+    resource: "Network".to_string(),
     occurrences: 2,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1738,7 +1740,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_acquisition_standing".to_string(),
     callee_module_path: "gunbc.github_app_acquisition".to_string(),
     callee_decl_name: "live_custody_standing".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1774,7 +1776,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_acquire_for".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "census_app_acquire_with_code".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1783,7 +1785,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_acquire_for".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "read_handoff_value".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 3,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1792,7 +1794,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_acquire_receipt".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "census_app_acquire_for".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1801,7 +1803,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_acquire_receipt".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "observed_acquisition_reading".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1810,7 +1812,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_acquire_with_code".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "custody_preflight".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1819,7 +1821,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_acquire_with_code".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "persist_then_read_back".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1828,7 +1830,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_acquisition_receipt".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "census_app_acquisition_receipt_for".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1837,7 +1839,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_acquisition_receipt".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "observed_acquisition_reading".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1846,7 +1848,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_acquisition_receipt_for".to_string(),
     callee_module_path: "gunbc.github_app_acquisition".to_string(),
     callee_decl_name: "census_app_acquisition_standing".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1855,7 +1857,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_installations_receipt".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "installations_read_exit".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1864,7 +1866,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_observe_receipt".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "observed_acquisition_reading".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1873,7 +1875,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_registration_instruction_receipt".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "observed_acquisition_reading".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1882,7 +1884,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "census_app_registration_instruction_receipt".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "read_handoff_value".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1891,7 +1893,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "custody_preflight_receipt".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "custody_preflight".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 2,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1900,7 +1902,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "custody_write_receipt".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "persist_issued_credentials".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1909,7 +1911,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "persist_then_read_back".to_string(),
     callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
     callee_decl_name: "persist_issued_credentials".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1927,7 +1929,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "mtcollins1_boot_after_gate".to_string(),
     callee_module_path: "gunbc.authorization_claim_slot".to_string(),
     callee_decl_name: "claim_authorization_slot".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1936,7 +1938,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "mtcollins1_boot_after_gate".to_string(),
     callee_module_path: "gunbc.machine_intake_mtcollins1_boot_run".to_string(),
     callee_decl_name: "mtcollins1_boot_settle_from_fresh_clock".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 2,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1945,7 +1947,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "mtcollins1_boot_settle_from_fresh_clock".to_string(),
     callee_module_path: "gunbc.authorization_claim_slot".to_string(),
     callee_decl_name: "settle_authorization_claim".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1954,7 +1956,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "mtcollins1_census_image_publish_wet".to_string(),
     callee_module_path: "gunbc.machine_intake_mtcollins1_census_image".to_string(),
     callee_decl_name: "mtcollins1_census_image_publish_admitted".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1972,7 +1974,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "converge_drive_half".to_string(),
     callee_module_path: "gunbc.review_sheet_spreadsheet_actuator".to_string(),
     callee_decl_name: "converge_review_spreadsheet".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1981,7 +1983,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "converge_drive_half_cli".to_string(),
     callee_module_path: "gunbc.review_sheet_converge_cli".to_string(),
     callee_decl_name: "drive_half_exit".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1990,7 +1992,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "converge_review_sheet_all".to_string(),
     callee_module_path: "gunbc.review_sheet_spreadsheet_actuator".to_string(),
     callee_decl_name: "converge_review_spreadsheet".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -1999,7 +2001,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "converge_review_spreadsheet".to_string(),
     callee_module_path: "gunbc.review_sheet_legacy_extent_producer".to_string(),
     callee_decl_name: "read_operator_legacy_declaration".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2134,7 +2136,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "srv3_boot_once_cd".to_string(),
     callee_module_path: "gunbc.srv3_boot_once_cd".to_string(),
     callee_decl_name: "srv3_boot_once_cd_gated".to_string(),
-    resource: "std.resources.Clock".to_string(),
+    resource: "Clock".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2143,7 +2145,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "srv3_boot_once_cd_gated".to_string(),
     callee_module_path: "gunbc.authorization_claim_slot".to_string(),
     callee_decl_name: "claim_authorization_slot".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2152,7 +2154,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "srv3_boot_once_cd_gated".to_string(),
     callee_module_path: "gunbc.authorization_claim_slot".to_string(),
     callee_decl_name: "settle_authorization_claim".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2161,7 +2163,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "srv3_boot_once_cd_operator_approved".to_string(),
     callee_module_path: "gunbc.srv3_boot_once_cd".to_string(),
     callee_decl_name: "srv3_boot_once_cd_gated".to_string(),
-    resource: "std.resources.Clock".to_string(),
+    resource: "Clock".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2170,7 +2172,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "gcp_oauth_access_token_dispatch_swapped".to_string(),
     callee_module_path: "gunbc.auth.credentials".to_string(),
     callee_decl_name: "gcp_oauth_access_token_via_adc_refresh".to_string(),
-    resource: "std.resources.Network".to_string(),
+    resource: "Network".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2179,7 +2181,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "witness_adc_refresh_absent_routes_to_adc_leaf".to_string(),
     callee_module_path: "gunbc.auth.credentials".to_string(),
     callee_decl_name: "gcp_oauth_access_token_via_adc_refresh".to_string(),
-    resource: "std.resources.Network".to_string(),
+    resource: "Network".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2188,7 +2190,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "witness_adc_refresh_null_optional_routes_to_adc_leaf".to_string(),
     callee_module_path: "gunbc.auth.credentials".to_string(),
     callee_decl_name: "gcp_oauth_access_token_via_adc_refresh".to_string(),
-    resource: "std.resources.Network".to_string(),
+    resource: "Network".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2197,7 +2199,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "witness_adc_refresh_present_routes_to_adc_leaf".to_string(),
     callee_module_path: "gunbc.auth.credentials".to_string(),
     callee_decl_name: "gcp_oauth_access_token_via_adc_refresh".to_string(),
-    resource: "std.resources.Network".to_string(),
+    resource: "Network".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2206,7 +2208,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "witness_leaves_are_distinguishable".to_string(),
     callee_module_path: "gunbc.auth.credentials".to_string(),
     callee_decl_name: "gcp_oauth_access_token_via_adc_refresh".to_string(),
-    resource: "std.resources.Network".to_string(),
+    resource: "Network".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2215,7 +2217,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "witness_swapped_gcloud_hits_adc_leaf".to_string(),
     callee_module_path: "gunbc.auth.credentials".to_string(),
     callee_decl_name: "gcp_oauth_access_token_via_adc_refresh".to_string(),
-    resource: "std.resources.Network".to_string(),
+    resource: "Network".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2242,7 +2244,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "candidacy_over_declaration_file".to_string(),
     callee_module_path: "gunbc.review_sheet_legacy_extent_producer".to_string(),
     callee_decl_name: "read_operator_legacy_declaration".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2251,7 +2253,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "decision_over_declaration_file".to_string(),
     callee_module_path: "gunbc.review_sheet_legacy_extent_producer".to_string(),
     callee_decl_name: "read_operator_legacy_declaration".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -2260,7 +2262,7 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     caller_decl_name: "mint_a_receipt_from_authored_standings".to_string(),
     callee_module_path: "gunbc.github_app_acquisition".to_string(),
     callee_decl_name: "census_app_acquisition_standing".to_string(),
-    resource: "std.resources.Filesystem".to_string(),
+    resource: "Filesystem".to_string(),
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
@@ -9693,6 +9695,7 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
             caller_decl_name: scope.caller_decl_name.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
             in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+            enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names.clone(),
         })
     }
 }
@@ -9742,6 +9745,7 @@ pub fn extend_scope(
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
         in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+        enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names.clone(),
     })
 }
 
@@ -9775,6 +9779,7 @@ pub fn extend_scope_match_bound(
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
         in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+        enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names.clone(),
     })
 }
 
@@ -9810,6 +9815,7 @@ pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) 
             caller_decl_name: scope.caller_decl_name.clone(),
             lambda_param_provenance: scope.lambda_param_provenance.clone(),
             in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+            enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names.clone(),
         })
     }
 }
@@ -10234,6 +10240,7 @@ let fold_scope = Rc::new(InferScope {
     caller_decl_name: scope.caller_decl_name.clone(),
     lambda_param_provenance: prov_map.clone(),
     in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+    enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names.clone(),
 });
 let ar = infer_expr(lam_value.clone(), fold_scope.clone(), Some(fold_callable.clone()));
 Rc::new(ArgInferResult {
@@ -10261,6 +10268,7 @@ let nf_scope = if is_lambda_expr(nf_lam_value.clone()) {
     caller_decl_name: scope.caller_decl_name.clone(),
     lambda_param_provenance: nf_prov_map.clone(),
     in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
+    enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names.clone(),
 })
                         } else {
                             scope.clone()
@@ -11168,14 +11176,28 @@ match scope_parent.clone() {
 })), span.clone(), span.clone()),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
 }),
-    std::option::Option::None => {
-                let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
+    std::option::Option::None => if name_is_enclosing_declared_type_parameter(name.clone(), scope.clone()) {
+                Rc::new(InferResult {
+    typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
+    binding_kind: std::option::Option::None,
+}), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
+    node: error_type(),
+})), span.clone(), span.clone()),
+    diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeParameterInValuePosition {
+    name: name.clone(),
+    span: span.clone(),
+}), scope.module_name.clone())]),
+})
+            } else {
+                {
+                    let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
 ok_infer(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(binding_kind.clone()),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: binding.resolved.clone(),
 })), span.clone(), span.clone()))
-},
+}
+            },
 }
 },
     std::option::Option::None => match (*crate::v1_compiler_infer_lookup::lookup_func_sig(scope.func_env.clone(), scope.type_env.clone(), name.clone())).clone() {
@@ -11220,8 +11242,21 @@ match scope_parent.clone() {
 })), span.clone(), span.clone()),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
 }),
-    std::option::Option::None => {
-                let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
+    std::option::Option::None => if name_is_enclosing_declared_type_parameter(name.clone(), scope.clone()) {
+                Rc::new(InferResult {
+    typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
+    binding_kind: std::option::Option::None,
+}), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
+    node: error_type(),
+})), span.clone(), span.clone()),
+    diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeParameterInValuePosition {
+    name: name.clone(),
+    span: span.clone(),
+}), scope.module_name.clone())]),
+})
+            } else {
+                {
+                    let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
 Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(binding_kind.clone()),
@@ -11230,7 +11265,8 @@ Rc::new(InferResult {
 })), span.clone(), span.clone()),
     diagnostics: bare_product_reference_missing_field_diagnostics(scope.clone(), name.clone(), span.clone()),
 })
-},
+}
+            },
 },
 }
 },
@@ -13733,6 +13769,9 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     lam_scope.in_flight_lambda_param_names.clone(),
                     lam_params.clone(),
                 ),
+                enclosing_declared_type_param_names: lam_scope
+                    .enclosing_declared_type_param_names
+                    .clone(),
             });
             let body_result =
                 infer_expr(lam_body.clone(), body_scope.clone(), body_expected.clone());
@@ -21136,6 +21175,11 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         caller_decl_name: fn_decl_name.clone(),
                         lambda_param_provenance: fn_scope.lambda_param_provenance.clone(),
                         in_flight_lambda_param_names: Rc::new(vec![]),
+                        enclosing_declared_type_param_names:
+                            crate::v1_compiler_infer_resolve::fn_type_param_names(
+                                item.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
                     });
                     let fn_return_expected = if (item.inferred.clone() != std::option::Option::None)
                     {
@@ -21560,6 +21604,24 @@ pub fn split_sig_params(
             __result
         }),
     })
+}
+
+pub fn name_is_enclosing_declared_type_parameter(name: String, scope: Rc<InferScope>) -> bool {
+    {
+        let mut __found = false;
+        for tp in scope
+            .enclosing_declared_type_param_names
+            .clone()
+            .iter()
+            .cloned()
+        {
+            if (tp.clone() == name.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
 }
 
 pub fn param_is_generic_decl(
@@ -26847,6 +26909,7 @@ pub fn typecheck_module(
             caller_decl_name: "".to_string(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
             in_flight_lambda_param_names: Rc::new(vec![]),
+            enclosing_declared_type_param_names: Rc::new(vec![]),
         });
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());
         let typed_items = Rc::new({
