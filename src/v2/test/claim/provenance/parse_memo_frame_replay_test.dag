@@ -33,7 +33,8 @@ fn parse_memo_frame_replay_run_modeled(
   let base = parse_table_for_production_analyzed(
     validated: validated,
     analysis: analysis,
-    all_tokens: tokens
+    all_tokens: tokens,
+    materialization: Memoize
   )
   let table = ParseTableRealization {
     artifact_kind: base.artifact_kind,
