@@ -19,7 +19,6 @@ import std.materialization_ladder {
   CacheProvider, CoversAllComputations,
   LadderVerdict,
   materialization_ladder, materialization_ladder_holds,
-  ladder_prescription_for,
   ladder_verdict_for,
   ladder_verdict_is_green,
   empty_frame_path, no_cost_floor_exemptions, no_cache_providers,
@@ -160,8 +159,8 @@ fn v2_compiler_materialization_ladder_holds() -> Bool {
 //
 // Absent -- no verdict for this identity -- is the fail-closed arm: a demand the ladder never
 // ruled on has no admission to consume, so the store is not permitted. It is deliberately NOT
-// the same answer as a ruled Recompute, which is why ladder_prescription_for reports the gap
-// instead of flattening it.
+// the same answer as a ruled Recompute, which is why ladder_verdict_for hands back the VERDICT
+// and leaves the reading to this door instead of flattening it into a prescription.
 // A REFUSED VERDICT IS NOT AN ADMISSION, and this is the correction review 69770 asked for.
 // std.materialization_ladder.ladder_verdict_prescribes answers what materialization each verdict
 // IMPLIES, and for five of the six Refused arms it answers Memoize -- deliberately, because a

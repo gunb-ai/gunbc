@@ -760,16 +760,13 @@ fn verdict_identity(v: LadderVerdict) -> String {
 // the ladder never ruled on it. That is not the same as a verdict that prescribes Recompute,
 // and the distinction is the consumer's to make: this fold reports the gap rather than
 // substituting the permissive answer for it (DESIGN section 5, a failure arm must refuse).
+// It returns the VERDICT and deliberately not its prescription: a consumer that acts on this
+// has to look at the arm it got, which is what stops "the obligation is unmet" being read as
+// "permission granted". An identity-keyed helper that answered with the bare prescription
+// would hand every future caller exactly that widen.
 fn ladder_verdict_for(verdicts: List<LadderVerdict>, identity: String) -> LadderVerdict? {
   let mine = verdicts |> filter(v => verdict_identity(v: v) == identity)
   mine.first()
-}
-
-fn ladder_prescription_for(verdicts: List<LadderVerdict>, identity: String) -> Materialization? {
-  match ladder_verdict_for(verdicts: verdicts, identity: identity) {
-    Absent => Absent
-    Present { value: chosen } => Present { value: ladder_verdict_prescribes(v: chosen) }
-  }
 }
 
 fn materialization_ladder_holds(
