@@ -1,23 +1,48 @@
 module test.claim.grub_console_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, NonEmptyStr, String }
-import extdeps.gnu.grub_console {
+import std.types { Bool, String }
+import extdeps.bootloader.grub {
   GrubNothingStated, GrubBannerOnly, GrubStillTrying, GrubBootFailed, grub_console_report,
+  GrubMediaReadFailed, GrubKernelNotLoaded, GrubOtherError,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE FOUR READINGS, from the lines GRUB 2.12 printed on Mt. Collins unit 1 (run 35669747413) and
 // the operator's off-run boot: nothing, the banner alone, an error with the loader still trying,
-// and the terminal statement (with the errors that preceded it retained, in order).
+// and the terminal statement (with the errors that preceded it retained, in order). The errors are
+// read at the grain a remedy needs: a sector read failure names the DEVICE, a kernel-not-loaded is
+// its own arm, and an unmodeled error is carried verbatim rather than guessed at.
 test fn grub_console_reads_nothing_banner_trying_and_failed() -> Bool {
   (match grub_console_report(lines: ["Checkpoint 98", "Checkpoint AD"]) { GrubNothingStated => true  _ => false })
     && (match grub_console_report(lines: ["GNU GRUB  version 2.12", "      Press enter to boot the selected OS"]) { GrubBannerOnly => true  _ => false })
     && (match grub_console_report(lines: ["GNU GRUB  version 2.12", "error: failure reading sector 0xc5130 from `cd0'."]) {
-      GrubStillTrying { errors: es } => es == ["error: failure reading sector 0xc5130 from `cd0'." as NonEmptyStr]  _ => false })
+      GrubStillTrying { errors: es } =>
+        match get(xs: es, index: 0) {
+          Present { value: e } => match e {
+            GrubMediaReadFailed { device: d, detail: t } =>
+              (d as String) == "cd0" && (t as String) == "failure reading sector 0xc5130 from `cd0'."
+            _ => false
+          }
+          Absent => false
+        }
+      _ => false })
     && (match grub_console_report(lines: ["GNU GRUB  version 2.12", "error: failure reading sector 0xc5130 from `cd0'.", "error: you need to load the kernel first.", "Press any key to continue...", "  Failed to boot both default and fallback entries.", "GNU GRUB  version 2.12"]) {
-      GrubBootFailed { errors: es } => count(es) == 2  _ => false })
+      GrubBootFailed { errors: es } =>
+        count(es) == 2
+          && (match get(xs: es, index: 1) {
+            Present { value: e } => match e { GrubKernelNotLoaded { detail: _ } => true  _ => false }
+            Absent => false
+          })
+      _ => false })
+    && (match grub_console_report(lines: ["error: unknown filesystem"]) {
+      GrubStillTrying { errors: es } =>
+        match get(xs: es, index: 0) {
+          Present { value: e } => match e { GrubOtherError { detail: t } => (t as String) == "unknown filesystem"  _ => false }
+          Absent => false
+        }
+      _ => false })
     && (match grub_console_report(lines: ["  Failed to boot both default and fallback entries."]) { GrubBootFailed { errors: es } => count(es) == 0  _ => false })
     && (match grub_console_report(lines: ["Failed to boot both default and fallback entries. (not the statement)"]) { GrubBootFailed { errors: _ } => false  _ => true })
 }

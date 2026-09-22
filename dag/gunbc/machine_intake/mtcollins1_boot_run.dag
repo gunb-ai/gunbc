@@ -49,7 +49,10 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly, FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware,
   FirmwareStatedLocus, firmware_console_report,
 }
-import extdeps.gnu.grub_console { GrubConsoleReport, GrubNothingStated, GrubBannerOnly, GrubStillTrying, GrubBootFailed, grub_console_report }
+import extdeps.bootloader.grub {
+  GrubConsoleReport, GrubNothingStated, GrubBannerOnly, GrubStillTrying, GrubBootFailed, grub_console_report,
+  GrubError, grub_error_text,
+}
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
 import v2.std.optional { Present }
@@ -293,6 +296,14 @@ fn mtcollins1_sol_activate_held(
   if capture_path == "" {
     return exit_failure(reason: "mtcollins1 boot: SOL capture path unset; refusing acquire")
   }
+  // THE CAPTURE IS THIS ATTEMPT'S, BY CONSTRUCTION: it is emptied here, in the same fold that
+  // starts the collector that appends to it, so every line the verdict reads -- firmware, loader
+  // or envelope -- was written after this grant. A stale GRUB failure from an earlier attempt
+  // cannot refuse this boot; the shell prelude's own truncation is no longer what that rests on.
+  let fresh = Filesystem.Write(path: capture_path, content: "")
+  if !fresh.success {
+    return exit_failure(reason: concat("mtcollins1 boot: could not establish an attempt-owned SOL capture at ", capture_path, "; refusing acquire"))
+  }
   spawned = gunbc.machine_intake.sol_hold.ActivateHeld(
     bmc_host: mtcollins1_endpoint.host,
     username: username,
@@ -369,7 +380,7 @@ type MtCollins1BootTerminalCause
   | WorkloadWriteFailed { rc: String }
   | WorkloadDigestUnstable
   | PreOsFirmwareRefusal { statement: NonEmptyStr, locus: FirmwareStatedLocus }
-  | PreOsBootLoaderRefusal { errors: List<NonEmptyStr> }
+  | PreOsBootLoaderRefusal { errors: List<GrubError> }
 
 type MtCollins1BootTerminalVerdict
   = TerminalPending { reason: String }
@@ -549,7 +560,7 @@ fn terminal_over_open(envelope: BoundHostCaptureEnvelope, threads: HardwareThrea
 // Both end the boot with no kernel and therefore no envelope, and a loop that only waits for a
 // BEGIN marker reports them as a timeout (DESIGN §5: an observation that did not hold is not the
 // absence of an observation). The readers are the owning grammars -- the firmware's in
-// pre_os_bringup_verdict, the loader's in extdeps.gnu.grub_console -- over the same terminated
+// pre_os_bringup_verdict, the loader's in extdeps.bootloader.grub -- over the same terminated
 // lines the envelope scan reads. An unrecognised firmware ERROR line or a GRUB error while the
 // loader is still trying its fallback is NOT terminal: the boot may yet proceed, so those stay
 // pending and are visible in the preserved capture.
@@ -558,15 +569,23 @@ fn mtcollins1_boot_pre_os_verdict(capture: String) -> MtCollins1BootTerminalVerd
   match firmware_console_report(lines: lines) {
     TrainingRefusedByFirmware { statement: st, locus: locus } => TerminalRefused { causes: [PreOsFirmwareRefusal { statement: st, locus: locus }] }
     NoTerminalStated => mtcollins1_boot_loader_verdict(lines: lines)
-    UndecodedErrorCodesOnly { err_lines: _ } => mtcollins1_boot_loader_verdict(lines: lines)
-    FirmwareErrorStatementUnrecognized { statement: _ } => mtcollins1_boot_loader_verdict(lines: lines)
+    UndecodedErrorCodesOnly { err_lines: n } =>
+      match mtcollins1_boot_loader_verdict(lines: lines) {
+        TerminalPending { reason: r } => TerminalPending { reason: concat("firmware printed ", to_string(n), " undecoded ERR code line(s); ", r) }
+        other => other
+      }
+    FirmwareErrorStatementUnrecognized { statement: st } =>
+      match mtcollins1_boot_loader_verdict(lines: lines) {
+        TerminalPending { reason: r } => TerminalPending { reason: concat("firmware printed an unrecognised statement (", st as String, "); ", r) }
+        other => other
+      }
   }
 }
 
 fn mtcollins1_boot_loader_verdict(lines: List<String>) -> MtCollins1BootTerminalVerdict {
   match grub_console_report(lines: lines) {
     GrubBootFailed { errors: es } => TerminalRefused { causes: [PreOsBootLoaderRefusal { errors: es }] }
-    GrubStillTrying { errors: _ } => TerminalPending { reason: "boot loader reported an error and is still trying; no begin marker yet" }
+    GrubStillTrying { errors: es } => TerminalPending { reason: concat("boot loader reported ", join(map(es, e => grub_error_text(error: e)), "; "), " and is still trying; no begin marker yet") }
     GrubBannerOnly => TerminalPending { reason: "boot loader menu shown; no begin marker yet" }
     GrubNothingStated => TerminalPending { reason: "no begin marker for this machine yet" }
   }
@@ -613,7 +632,7 @@ fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> St
         (match locus.socket { Present { value: sk } => concat(" [socket ", to_string(sk), "]")  Absent => "" }),
         (match locus.memory_controller { Present { value: mc } => concat(" [memory controller ", to_string(mc), "]")  Absent => "" }))
     PreOsBootLoaderRefusal { errors: es } =>
-      concat("boot loader failed both default and fallback entries before any kernel", if count(es) == 0 { "" } else { concat(" (", join(map(es, e => e as String), "; "), ")") })
+      concat("boot loader failed both default and fallback entries before any kernel", if count(es) == 0 { "" } else { concat(" (", join(map(es, e => grub_error_text(error: e)), "; "), ")") })
   }
 }
 
@@ -621,20 +640,23 @@ fn mtcollins1_boot_terminal_refusal_text(causes: List<MtCollins1BootTerminalCaus
   concat("mtcollins1 boot: host qualification REFUSED (", join(map(causes, c => mtcollins1_boot_terminal_cause_text(cause: c)), "; "), "); capture preserved; claim will abort, not complete")
 }
 
+// THE DEADLINE REPORTS WHAT WAS LAST OBSERVED, never a bare "timed out": the final poll's Pending
+// reason -- an unrecognised firmware statement, a loader still trying, a banner, nothing -- is the
+// evidence the run has, and a timeout that discards it is the conflation this verdict exists to end.
 fn mtcollins1_boot_await_capture_terminal(
   remaining: Int,
   capture_path: String,
   subject: MtCollins1BootSubject,
 ) -> ProcessExit {
-  if remaining <= 0 {
-    exit_failure(reason: "mtcollins1 boot: timed out waiting for the host-capture terminal in SOL; capture preserved; claim will abort, not complete")
-  } else {
-    let capture = Filesystem.Read(path: capture_path)
-    let verdict = if capture.success { mtcollins1_boot_terminal_verdict(capture: capture.content, subject: subject, medium: mtcollins1_boot_medium) } else { TerminalPending { reason: "capture unreadable" } }
-    match verdict {
-      TerminalAccepted { run: _, threads: _ } => ExitSuccess
-      TerminalRefused { causes: causes } => exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes))
-      TerminalPending { reason: _ } => {
+  let capture = Filesystem.Read(path: capture_path)
+  let verdict = if capture.success { mtcollins1_boot_terminal_verdict(capture: capture.content, subject: subject, medium: mtcollins1_boot_medium) } else { TerminalPending { reason: "capture unreadable" } }
+  match verdict {
+    TerminalAccepted { run: _, threads: _ } => ExitSuccess
+    TerminalRefused { causes: causes } => exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes))
+    TerminalPending { reason: why } =>
+      if remaining <= 0 {
+        exit_failure(reason: concat("mtcollins1 boot: deadline reached without a host-capture terminal; last observation: ", why, "; capture preserved; claim will abort, not complete"))
+      } else {
         let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
         mtcollins1_boot_await_capture_terminal(
           remaining: remaining - 1,
@@ -642,7 +664,6 @@ fn mtcollins1_boot_await_capture_terminal(
           subject: subject,
         )
       }
-    }
   }
 }
 

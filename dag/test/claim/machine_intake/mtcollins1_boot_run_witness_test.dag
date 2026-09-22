@@ -222,6 +222,12 @@ fn is_pending(v: MtCollins1BootTerminalVerdict) -> Bool {
   match v { TerminalPending { reason: _ } => true  _ => false }
 }
 
+// A PENDING CARRIES WHAT WAS OBSERVED, which is what the deadline reports instead of a bare
+// "timed out": the reason is the evidence, so it is asserted rather than discarded here too.
+fn pending_because(v: MtCollins1BootTerminalVerdict, fragment: String) -> Bool {
+  match v { TerminalPending { reason: r } => string_contains(s: r, pattern: fragment)  _ => false }
+}
+
 // THE FOUR WALLS OF REVIEW 5269655400, each with its RED and its positive control:
 // (1) a second begin for the machine while the envelope is open refuses -- run B's refusing
 //     section may not inhabit run A's open envelope;
@@ -539,6 +545,7 @@ test fn a_pre_os_refusal_on_the_console_is_a_typed_refusal_not_a_timeout() -> Bo
     })
     _ => false })
     && is_pending(v: mtcollins1_boot_pre_os_verdict(capture: grub_trying))
+    && pending_because(v: mtcollins1_boot_pre_os_verdict(capture: grub_trying), fragment: "media read failed on cd0")
     && is_pending(v: mtcollins1_boot_pre_os_verdict(capture: banner_only))
     && is_pending(v: mtcollins1_boot_pre_os_verdict(capture: ""))
     && is_pending(v: mtcollins1_boot_pre_os_verdict(capture: unterminated_failure))
