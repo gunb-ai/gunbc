@@ -326,7 +326,7 @@ fn raw_octets_of(result: RawOctetsResult) -> List<Int> {
 
 fn octets_of(result: OctetsResult) -> List<Int> {
   match result {
-    OctetsReady { octets: octets } => octet_int_values(octets: octets)
+    OctetsReady { octets: octets } => qualified_octet_members(q: octets)
     OctetsRefused { cause: _ } => []
   }
 }
@@ -687,7 +687,7 @@ test fn admitting_an_out_of_range_member_refuses_before_packing_holds() -> Bool 
 
 test fn admitting_an_in_range_list_succeeds_holds() -> Bool {
   match uint8_octets_of_ints(values: [1, 255]) {
-    QualifiedOctetsReady { value: o } => octet_int_values(octets: o) == [1, 255]
+    QualifiedOctetsReady { value: o } => qualified_octet_members(q: o) == [1, 255]
     QualifiedOctetsRefused { observed: _ } => false
   }
 }
@@ -754,7 +754,7 @@ fn word_refuses_unrealizable(result: WordResult) -> Bool {
 // head this replaces. What remains claimable is that the projection reads what was admitted.
 test fn octet_projection_reads_what_was_admitted_holds() -> Bool {
   match uint8_octets_of_ints(values: [0, 1, 255]) {
-    QualifiedOctetsReady { value: o } => octet_int_values(octets: o) == [0, 1, 255]
+    QualifiedOctetsReady { value: o } => qualified_octet_members(q: o) == [0, 1, 255]
     QualifiedOctetsRefused { observed: _ } => false
   }
 }
