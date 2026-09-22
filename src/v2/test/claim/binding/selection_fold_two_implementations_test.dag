@@ -244,8 +244,8 @@ data binding_inhabitance_module_root: Node = Node {
       )
     ],
     [
-      binding_inhabitance_variant_edge(type_sym: ^Mood, variants: [^Shadowed]),
-      binding_inhabitance_variant_edge(type_sym: ^Classical, variants: [^Shadowed])
+      binding_inhabitance_variant_edge(type_sym: ^Classical, variants: [^Shadowed]),
+      binding_inhabitance_variant_edge(type_sym: ^Shadowed, variants: [^Inner])
     ]
   ),
   occurrence_id: OccurrenceSynthetic
@@ -256,6 +256,11 @@ data binding_inhabitance_index: SymbolIndex = symbol_index_fill_module_root(
   root: binding_inhabitance_module_root
 )
 
+// TWO CANDIDATES BY CONSTRUCTION, AND THE SHAPE IS THE ORDINARY SHADOWING ONE: the module exports
+// a type named Shadowed, and the type Classical exports a VARIANT of the same bare name. A walk
+// starting inside Classical therefore finds Classical.Shadowed and then the module-level Shadowed,
+// which is exactly the two-candidate population the duplicate and two-distinct fixtures above
+// supply by hand.
 // The real chain walk, executed. Its result is the population the fixtures above only assert the
 // shape of.
 fn binding_inhabitance_real_population() -> List<LexicalBindingCandidate> {
