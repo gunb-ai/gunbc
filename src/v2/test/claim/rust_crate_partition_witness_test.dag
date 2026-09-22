@@ -6,6 +6,7 @@ import std.types { NonEmptyStr }
 import v2.std.collection { Absent, Present, empty_map, map_get, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.compilers.compilation_unit {
+  CompilationUnit,
   CompilationUnitId,
   HandExplicit,
   ModuleDag,
@@ -40,7 +41,6 @@ import v2.workflow.rust_crate_partition {
   stage0_interim_explicit_assignment,
   stage0_module_dag,
   Stage0PartitionCrateRow,
-  Stage0FoundationCrate,
   Stage0LayeredCoreCrate,
   Stage0ReexportDisagreementsDerived,
   Stage0ReexportDisagreementsUnavailable,
