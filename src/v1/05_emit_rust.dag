@@ -200,7 +200,7 @@ import v1.compiler.infer_items {
   ItemLookup, ItemFound, ItemLeafAmbiguous, ItemNotFound,
   ResolvedGraph, TypedModule,
   ItemInfo, DataItem, TypeItem, OtherItem,
-  item_kind, item_resource_names
+  item_kind, item_is_effectful_callee
 }
 import v1.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
@@ -7558,7 +7558,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
           }
 
           let is_effectful = match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: authored_name(env: env, node: item) }) {
-            Present { value: info } => info.service_names |> count > 0 || item_resource_names(info: info) |> count > 0
+            Present { value: info } => item_is_effectful_callee(info: info)
             Absent => false
           }
           if is_effectful {
@@ -12004,7 +12004,7 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
   )
   let extra_args = match callee {
     Present { value: info } =>
-      let has_effects = info.service_names |> count > 0 || item_resource_names(info: info) |> count > 0
+      let has_effects = item_is_effectful_callee(info: info)
       if has_effects {
         let established = caller_resource_requirements(scope: scope)
         let resource_args = info.resource_requirements |> map(rr =>
@@ -12072,7 +12072,7 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
   }
   match callee {
     Present { value: info } =>
-      let has_effects = info.service_names |> count > 0 || item_resource_names(info: info) |> count > 0
+      let has_effects = item_is_effectful_callee(info: info)
       if has_effects { concat(call_str, ".await?") } else { call_str }
     Absent => call_str
   }

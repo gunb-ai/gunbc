@@ -55,7 +55,7 @@ import v1.compiler.infer_sigs {
 }
 
 import v1.compiler.infer_items {
-  TypedModule, ResolvedGraph, ItemInfo, item_resource_names
+  TypedModule, ResolvedGraph, ItemInfo, item_is_effectful_callee
 }
 
 import v1.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name }
@@ -3484,7 +3484,7 @@ fn emit_typed_call_unified(func: String, args: List<Node>, call_semantics: CallS
   }
   let extra_args = match callee {
     Present { value: info } =>
-      let has_effects = info.service_names |> count > 0 || item_resource_names(info: info) |> count > 0
+      let has_effects = item_is_effectful_callee(info: info)
       if has_effects {
         let resource_args = item_resource_names(info: info) |> map(rn => emit_ident(name: rn, target: target))
         let service_args = info.service_names |> map(sn => service_var_name(service_name: sn))
@@ -3502,7 +3502,7 @@ fn emit_typed_call_unified(func: String, args: List<Node>, call_semantics: CallS
   }
   match callee {
     Present { value: info } =>
-      let has_effects = info.service_names |> count > 0 || item_resource_names(info: info) |> count > 0
+      let has_effects = item_is_effectful_callee(info: info)
       if has_effects { concat(spec.async_call_prefix, call_str) } else { call_str }
     Absent => call_str
   }

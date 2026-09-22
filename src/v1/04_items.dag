@@ -77,6 +77,14 @@ fn item_resource_names(info: ItemInfo) -> List<String> {
   info.resource_requirements |> map(r => r.binding_name)
 }
 
+// THE ONE EFFECT PREDICATE. A declaration is effectful when it carries a service requirement
+// (inferred, transitive) or a resource requirement (authored `uses`); every emitter site that
+// decides async-ness, extra arguments or the await suffix reads this rather than respelling the
+// disjunction.
+fn item_is_effectful_callee(info: ItemInfo) -> Bool {
+  info.service_names |> count > 0 || item_resource_names(info: info) |> count > 0
+}
+
 type ItemInfo {
   name: String
   module_name: String

@@ -40,6 +40,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // class's rung is the minimum, which is still 3 because the typecheck gates both. The `uses`
 // resource TYPE is compared by the declaration it resolves to in the caller's environment; a
 // resource spelling that resolves nowhere matches nothing and refuses, never admits.
+// TEST ROOTS ARE THE ONE ADMITTED CALLER WITHOUT A `uses` ROW (v1.compiler.infer caller_is_test_root):
+// the claim harness supplies a test fn's resources ambiently and keys that provision on the root
+// declaring none -- a test fn given `uses net: Network` bypassed the hermetic fixture and reached
+// the live network (measured 2026-09-22) -- so the boundary control below pins that arm too.
 // dissolve-on: never -- a call site may not pass a resource its declaration did not establish.
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
@@ -72,6 +76,13 @@ data green_renamed_binding_caller_source: String = "module probe_resource_rename
 // BOUNDARY CONTROL: a callee with no requirement is callable from a plain fn, so the wall is
 // about the requirement and not about calls in general.
 data green_no_requirement_source: String = "module probe_resource_no_requirement\nimport std.types { String }\nfn plain_reads(path: String) -> String {\n  path\n}\nfn plain(path: String) -> String {\n  plain_reads(path: path)\n}\n"
+
+// BOUNDARY CONTROL 2: a test-marked root calling the resource-requiring declaration is admitted.
+data green_test_root_caller_source: String = "module probe_resource_test_root_caller\nimport std.types { String, Bool }\nimport std.resources { Filesystem }\nfn reads(path: String) -> String uses fs: Filesystem {\n  filesystem_read(path)\n}\ntest fn root(path: String) -> Bool {\n  reads(path: path) == path\n}\n"
+
+test fn a_test_root_calling_a_resource_requiring_declaration_is_admitted() -> Bool {
+  blocking_unestablished_count(source: green_test_root_caller_source) == 0
+}
 
 test fn a_plain_caller_of_a_resource_requiring_declaration_refuses() -> Bool {
   blocking_unestablished_count(source: red_plain_caller_source) >= 1
