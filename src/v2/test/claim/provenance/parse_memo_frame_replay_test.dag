@@ -405,6 +405,16 @@ fn derived_memo_materialization_is(root: GrammarRoot, want: Materialization) -> 
   }
 }
 
+// THESE TWO CLAIMS CARRY AN ADMISSION ARM, NOT ONLY A REPLAY ONE, and that is a load the module
+// name does not advertise. Between them they are the only controls that drive the REAL
+// prepare_grammar across both admitted outcomes: Memoize here, from a census that counts a
+// discarding backtrack site, and Recompute below, from a census that counts nothing. The
+// direct-computation half is also asserted by
+// v2.test.claim.compiler_materialization_witness.materialization_control_prepare_is_admitted,
+// but nothing over there reaches a store-permitting admission through the production door -- so
+// if these are retargeted or rewritten for replay reasons, that coverage leaves with them and
+// every remaining control stays green. Keep an admitted-Memoize route through prepare_grammar
+// somewhere, or move it deliberately and say where it went.
 test fn parse_memo_demand_derived_discharged_when_the_grammar_abandons_a_demand() -> Bool {
   derived_memo_materialization_is(root: abandoned_path_root(), want: Memoize)
 }
@@ -421,6 +431,18 @@ type ParseFullRun {
   hits: Int
 }
 
+// The door's answer as a Materialization for the equality claim's base table. A refusal is not
+// this claim's subject -- refused_scope_is_not_admitted and the consumer-boundary control own it
+// -- and Recompute is the conservative stand-in here: it turns the store OFF, so if a refusal
+// ever did reach this grammar the forced/derived comparison would still have to hold, rather
+// than being quietly skipped.
+fn derived_admission_or_recompute(r: ParseMemoRecurrence) -> Materialization {
+  match parse_table_memo_materialization_for(r: r) {
+    Rejected { diagnostics: _ } => Recompute
+    Accepted { value: m, diagnostics: _ } => m
+  }
+}
+
 fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
   let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^abandoned_path_grammar_contract)
   match grammar_validate_for_parse(root: linear_root(), at: contract_locus) {
@@ -428,10 +450,16 @@ fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
     Accepted { value: validated, diagnostics: _ } =>
       let tokens = abandoned_path_tokens()
       let root = validated.root
+      let analysis = compute_grammar_first_analysis(root: root)
+      // THE UNFORCED RUN IS THE DERIVED ONE, so the base table's materialization comes from the
+      // real door asked about THIS grammar's census -- not from a literal that would make the
+      // equality claim compare two runs the derivation never chose.
+      let derived = derived_admission_or_recompute(r: analysis.memo_recurrence)
       let base = parse_table_for_production_analyzed(
         validated: validated,
-        analysis: compute_grammar_first_analysis(root: root),
-        all_tokens: tokens
+        analysis: analysis,
+        all_tokens: tokens,
+        materialization: derived
       )
       let table = ParseTableRealization {
         artifact_kind: base.artifact_kind,

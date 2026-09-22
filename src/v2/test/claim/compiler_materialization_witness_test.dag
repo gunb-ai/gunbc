@@ -150,7 +150,7 @@ fn materialization_control_grammar() -> ParseGrammar {
 
 fn materialization_control_prepare_is_refused() -> Bool {
   match prepare_grammar_with_admission(
-    admit: (r) => refused_scope_prescription(),
+    admit: fn(_) { refused_scope_prescription() },
     grammar: materialization_control_grammar()
   ) {
     Rejected { diagnostics: _ } => true
@@ -167,6 +167,16 @@ fn materialization_control_prepare_is_refused() -> Bool {
 // asked twice, and the ladder answers AcceptedSingleRecompute. That is the admitted
 // direct-computation arm reaching the real prepare -- a grammar that needs no memo does not get
 // one -- and pinning Memoize here would have pinned a memo the grammar does not demand.
+//
+// WHERE THE OTHER ADMITTED ARM IS EXERCISED, cited because this control no longer carries it.
+// THIS pair drives prepare_grammar to a Recompute admission; the MEMOIZE admission through the
+// same door is driven by v2.test.provenance.parse_memo_frame_replay
+// parse_memo_demand_derived_discharged_when_the_grammar_abandons_a_demand, on a grammar whose
+// census counts a discarding backtrack site. Those two claims are the only place the real
+// prepare produces a store-permitting answer, and their stated subject is REPLAY, so retargeting
+// them for replay reasons would delete this module's Memoize counterpart while every control
+// here stayed green. That is why the citation runs both ways: the replay claims carry a matching
+// note naming this control.
 fn materialization_control_prepare_is_admitted() -> Bool {
   match prepare_grammar(grammar: materialization_control_grammar()) {
     Rejected { diagnostics: _ } => false

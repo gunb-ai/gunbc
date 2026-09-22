@@ -3735,7 +3735,7 @@ fn parse_production_tree(
 // and drives THIS body, the one parse_module runs, rather than a copy of it.
 fn prepare_grammar(grammar: ParseGrammar) -> Outcome<PreparedGrammar> {
   prepare_grammar_with_admission(
-    admit: (r) => parse_table_memo_materialization_for(r: r),
+    admit: fn(r) { parse_table_memo_materialization_for(r: r) },
     grammar: grammar
   )
 }
