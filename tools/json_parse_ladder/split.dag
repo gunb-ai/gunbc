@@ -1,0 +1,16 @@
+module tools.json_parse_ladder.split
+
+import extdeps.filesystem.filesystem_io
+
+fn big() -> String { filesystem_read(path: "tools/json_parse_ladder/doc_96000.json").content }
+
+fn pass_only(s: String, i: Int) -> Int { if i >= 50000 { i } else { pass_only(s: s, i: i + 1) } }
+fn a_pass_only() -> Int { pass_only(s: big(), i: 0) }
+
+fn charat_closed(i: Int, acc: Int, t: String) -> Int { if i >= 50000 { acc } else { charat_closed(i: i + 1, acc: acc + char_at(s: t, pos: 3).length(), t: "x") } }
+fn b_charat_small() -> Int { charat_closed(i: 0, acc: 0, t: "x") }
+
+fn let_bound(i: Int) -> Int {
+  if i >= 50000 { i } else { let_bound(i: i + 1) }
+}
+fn c_big_in_scope() -> Int { let t = big()  let_bound(i: 0) + t.length() }
