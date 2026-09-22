@@ -27,7 +27,7 @@ module gunbc.compiler_gate_workflow
 
 import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
-import v2.std.algebra { list_map }
+import v2.std.algebra { list_map, filter }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
@@ -747,16 +747,15 @@ fn compiler_gate_aggregate_step() -> Step {
     name: Present { value: "Every required lane must have succeeded" },
     id: none,
     run: join([
-      "echo \"required lanes: compiler=$COMPILER clippy=$CLIPPY emit_build=$EMIT_BUILD floor=$FLOOR (same_repo=$SAME_REPO)\"",
-      "if [ \"$COMPILER\" = failure ] || [ \"$CLIPPY\" = failure ] || [ \"$EMIT_BUILD\" = failure ] || [ \"$FLOOR\" = failure ]; then echo \"::error::a required lane concluded failure (compiler=$COMPILER clippy=$CLIPPY emit_build=$EMIT_BUILD) - open that job's log\" >&2; exit 1; fi",
-      "if [ \"$COMPILER\" != success ] || [ \"$CLIPPY\" != success ] || [ \"$EMIT_BUILD\" != success ]; then echo \"::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (compiler=$COMPILER clippy=$CLIPPY emit_build=$EMIT_BUILD)\" >&2; exit 1; fi",
+      "echo \"required lanes: compiler=$COMPILER clippy=$CLIPPY floor=$FLOOR (same_repo=$SAME_REPO)\"",
+      "if [ \"$COMPILER\" = failure ] || [ \"$CLIPPY\" = failure ] || [ \"$FLOOR\" = failure ]; then echo \"::error::a required lane concluded failure (compiler=$COMPILER clippy=$CLIPPY) - open that job's log\" >&2; exit 1; fi",
+      "if [ \"$COMPILER\" != success ] || [ \"$CLIPPY\" != success ]; then echo \"::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (compiler=$COMPILER clippy=$CLIPPY)\" >&2; exit 1; fi",
       "if [ \"$FLOOR\" != success ]; then if [ \"$SAME_REPO\" = false ] && [ \"$FLOOR\" = skipped ]; then echo \"::notice::the fleet lane is skipped for a fork pull request: no witnesses fold and no generated-artifact verdict for this head\"; else echo \"::error::the fleet lane produced no success (floor=$FLOOR), so this head carries no witnesses fold and no generated-artifact verdict\"; exit 1; fi; fi"
     ], "\n"),
     shell: none,
     env: Present { value: [
       kv(key: "COMPILER", value: yaml_string(s: compiler_gate_lane_result_expression(job_id: compiler_gate_job_id))),
       kv(key: "CLIPPY", value: yaml_string(s: compiler_gate_lane_result_expression(job_id: compiler_gate_clippy_job_id))),
-      kv(key: "EMIT_BUILD", value: yaml_string(s: compiler_gate_lane_result_expression(job_id: compiler_gate_emit_build_job_id))),
       kv(key: "FLOOR", value: yaml_string(s: compiler_gate_lane_result_expression(job_id: compiler_gate_floor_job_id))),
       kv(key: "SAME_REPO", value: yaml_string(s: "${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}"))
     ] },
@@ -773,7 +772,7 @@ fn compiler_gate_aggregate_job() -> Job {
     name: none,
     runner: HostedRunner { label: Ubuntu2404Arm },
     steps: [compiler_gate_aggregate_step()],
-    needs: [compiler_gate_job_id, compiler_gate_clippy_job_id, compiler_gate_emit_build_job_id, compiler_gate_floor_job_id],
+    needs: compiler_gate_blocking_job_ids(),
     env: none,
     outputs: none,
     if_condition: Present { value: "always()" },
@@ -784,48 +783,103 @@ fn compiler_gate_aggregate_job() -> Job {
   }
 }
 
-// THE AGGREGATE MUST NEED EVERY JOB THAT IS NOT THE AGGREGATE, AND THAT IS NOW AN EMISSION
-// CONJUNCT RATHER THAN A HAND-KEPT LIST THAT HAPPENS TO AGREE.
+// EVERY JOB THAT IS NOT THE AGGREGATE DECLARES WHETHER IT BLOCKS, AND THE TWO STATES ARE
+// DERIVED FROM ONE ROSTER RATHER THAN FROM THE ABSENCE OF AN EDGE.
 //
-// A job present in the workflow but absent from the aggregate's `needs` RUNS AND CANNOT BLOCK: it
-// publishes its own check, which no ruleset requires, while the one required context concludes
-// success over a lane it never read. That is the same fail-open shape as a skipped required check,
-// arrived at from the other side, and nothing in this file noticed it before -- the jobs list and
-// the `needs` list were two spellings of one fact.
+// THE FAIL-OPEN THIS CLOSES. A job present in the workflow but absent from the aggregate's
+// `needs` RUNS AND CANNOT BLOCK: it publishes its own check, which no ruleset requires, while the
+// one required context concludes success over a lane it never read. Before this roster the jobs
+// list and the `needs` list were two spellings of one fact, and that state was reachable by
+// forgetting an edge -- silently, with a green gate.
 //
-// IT IS AN EMISSION CONJUNCT AND NOT A WITNESS because the remedy is refusal, not a report: a
-// workflow whose gate does not reach every lane must not be emitted at all, and
-// `expected_compiler_gate_yml` already refuses to produce yaml when a capability closure fails.
-// The generated-artifact drift gate then goes red on the refusal marker rather than on a workflow
-// that would have run.
+// WHY THE ANSWER IS NOT "EVERY JOB MUST BE NEEDED". A lane that runs and does not block is a
+// LEGITIMATE INTERIM, and this change is standing in it: `emit-build` reds on every head until
+// the emitter's import gap is fixed on main, so requiring it today stops the merge queue for a
+// defect it did not introduce. The operator ruling (v2 foundation manager, 2026-09-22) is to land
+// the job PRESENT and NOT BLOCKING and flip it in a one-line follow-up once main's self-host
+// builds. The defect is not that such a lane exists; it is that its non-blocking standing was
+// INFERRABLE FROM AN ABSENCE, where a forgotten edge and a deliberate interim are the same bytes.
 //
-// IT IS PARAMETERIZED ON BOTH SIDES so the RED is authorable at the fixture boundary, which is the
-// boundary that decides whether a top-rung check carries information (DESIGN section 4b): a
-// witness hands it a job set and a needs set that disagree and reads the refusal, rather than
-// waiting for a future author to supply the only counterexample.
+// So the standing is DECLARED, it carries the trigger that retires it, and the conjunct below
+// makes the two representations agree in BOTH directions: a `LaneBlocks` row that is not in
+// `needs` refuses emission, and a `needs` entry with no blocking row refuses it too. Flipping
+// `emit-build` to required is then one word on one row, and forgetting to flip it is a row whose
+// trigger is visible to anyone reading the roster -- not an edge nobody can see is missing.
+type CompilerGateLaneStanding
+  = LaneBlocks
+  | LaneAnnouncedNotBlocking { flip_trigger: String }
+
+type CompilerGateLaneRow {
+  job_id: String
+  standing: CompilerGateLaneStanding
+}
+
+fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
+  [
+    CompilerGateLaneRow { job_id: compiler_gate_job_id, standing: LaneBlocks },
+    CompilerGateLaneRow { job_id: compiler_gate_clippy_job_id, standing: LaneBlocks },
+    CompilerGateLaneRow {
+      job_id: compiler_gate_emit_build_job_id,
+      standing: LaneAnnouncedNotBlocking {
+        flip_trigger: "THE EMITTED SELF-HOST CLOSURE BUILDS ON MAIN. Measured red on run 35686128136: the emitted src/extdeps_numeric_base16.rs refuses with E0425 (UInt8 not found in scope at base16_decode_lower) and E0282, cargo status 101 -- gunbc#12004 pulling base16 into the closure against a latent emitter import gap. Sufficient for: a head of main on which `gunbc test //gunbc/instruments:self-host` and `gunbc test //gunbc/instruments:v2-native-cli` both exit zero, so that requiring this lane blocks merges only for defects the head in front of it introduced. At that point this row becomes LaneBlocks, the aggregate gains the needs edge and the variable, and the measured GREEN wall is reported to the operator -- the 12m33s figure from the run above is a red run's wall and is a lower bound, not the number the decision turns on."
+      }
+    },
+    CompilerGateLaneRow { job_id: compiler_gate_floor_job_id, standing: LaneBlocks },
+  ]
+}
+
+fn compiler_gate_lane_blocks(row: CompilerGateLaneRow) -> Bool {
+  match row.standing {
+    LaneBlocks => true
+    LaneAnnouncedNotBlocking { flip_trigger: _ } => false
+  }
+}
+
+fn compiler_gate_blocking_job_ids() -> List<String> {
+  list_map(
+    xs: filter(xs: compiler_gate_lane_rows(), predicate: compiler_gate_lane_blocks),
+    f: fn(row) { row.job_id }
+  )
+}
+
+// THE JOIN, IN THREE DIRECTIONS, AND IT IS AN EMISSION CONJUNCT RATHER THAN A WITNESS because the
+// remedy is refusal, not a report: a workflow whose gate does not match its declared standings
+// must not be emitted at all, and `expected_compiler_gate_yml` already refuses to produce yaml
+// when a capability closure fails. The drift gate then reds on the refusal marker rather than on
+// a workflow that would have run.
 //
-// WHAT IT DOES NOT COVER, named so the conjunct is not read for more than it holds. The
-// aggregate's ENV BLOCK and its SCRIPT still spell each lane's variable by hand, three times per
-// lane. This join sees neither: a lane could be in `needs` and in the jobs list, and still have no
-// `$VAR` binding or no arm reading it, and the aggregate would emit and green over it. Closing
-// that half means deriving env, script and needs from one lane roster -- the construction
-// `gunbc.witness_floor_workflow` `required_lanes_roster` already carries for the workflow this
-// module displaced -- and it is a restructuring of a load-bearing gate, deliberately not bundled
-// into the change that adds a lane. Until it lands, the variable half is diligence and this
-// paragraph is the record that it is.
-fn compiler_gate_job_ids_all_needed(job_ids: List<String>, needs: List<String>) -> Bool {
-  all(job_ids, id => any(needs, n => n == id)) && all(needs, n => any(job_ids, id => id == n))
+// IT IS PARAMETERIZED ON ALL THREE SIDES so the RED is authorable at the fixture boundary, which
+// is the boundary that decides whether a top-rung check carries information (DESIGN section 4b):
+// a witness hands it disagreeing sets and reads the refusal, rather than waiting for a future
+// author to supply the only counterexample.
+fn compiler_gate_standings_agree(
+  job_ids: List<String>,
+  rostered: List<String>,
+  blocking: List<String>,
+  needs: List<String>
+) -> Bool {
+  let every_job_rostered = all(job_ids, id => any(rostered, r => r == id))
+  let no_phantom_row = all(rostered, r => any(job_ids, id => id == r))
+  let every_blocker_needed = all(blocking, b => any(needs, n => n == b))
+  let no_unblocking_need = all(needs, n => any(blocking, b => b == n))
+  every_job_rostered && no_phantom_row && every_blocker_needed && no_unblocking_need
 }
 
 fn compiler_gate_non_aggregate_job_ids() -> List<String> {
-  compiler_gate_workflow.jobs
-    |> map(j => j.id)
-    |> filter(id => id != compiler_gate_aggregate_job_id)
+  list_map(
+    xs: filter(
+      xs: compiler_gate_workflow.jobs,
+      predicate: fn(j) { j.id != compiler_gate_aggregate_job_id }
+    ),
+    f: fn(j) { j.id }
+  )
 }
 
-fn compiler_gate_aggregate_enrollment_holds() -> Bool {
-  compiler_gate_job_ids_all_needed(
+fn compiler_gate_lane_standings_hold() -> Bool {
+  compiler_gate_standings_agree(
     job_ids: compiler_gate_non_aggregate_job_ids(),
+    rostered: list_map(xs: compiler_gate_lane_rows(), f: fn(row) { row.job_id }),
+    blocking: compiler_gate_blocking_job_ids(),
     needs: compiler_gate_aggregate_job().needs
   )
 }
@@ -870,7 +924,7 @@ data compiler_gate_workflow: Workflow = Workflow {
   jobs: [compiler_gate_job(), compiler_gate_clippy_job(), compiler_gate_emit_build_job(), compiler_gate_floor_job(), compiler_gate_aggregate_job()]
 }
 
-data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: a job's capability closure does not hold, a floor script is not renderable, or the aggregate does not need every non-aggregate job. No workflow yaml was emitted. Fix the step roles in the lane's bound steps, or add the missing lane to compiler_gate_aggregate_job needs (and to its env and script arms, which this refusal does not check)."
+data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: a job's capability closure does not hold, a floor script is not renderable, or the declared lane standings do not match the aggregate's needs. No workflow yaml was emitted. Fix the step roles in the lane's bound steps, or reconcile compiler_gate_lane_rows with compiler_gate_aggregate_job needs (the env and script arms are hand-kept and this refusal does not check them)."
 
 fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
   match admit_workflow_action_uses(workflow: compiler_gate_workflow) {
@@ -881,7 +935,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          if compiler_gate_capability_closure_holds() && compiler_gate_clippy_capability_closure_holds() && compiler_gate_emit_build_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() && compiler_gate_aggregate_enrollment_holds() {
+          if compiler_gate_capability_closure_holds() && compiler_gate_clippy_capability_closure_holds() && compiler_gate_emit_build_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() && compiler_gate_lane_standings_hold() {
             WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) }
           } else {
             WitnessFloorGenerationRefused { reason: compiler_gate_capability_refusal_reason }

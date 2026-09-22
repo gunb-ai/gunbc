@@ -2,19 +2,21 @@ module test.claim.compiler_gate_emit_build_lane_witness_test
 
 import std.types { Bool, List, String }
 import gunbc.compiler_gate_workflow {
-  compiler_gate_job_ids_all_needed,
+  compiler_gate_standings_agree,
   compiler_gate_non_aggregate_job_ids,
-  compiler_gate_aggregate_enrollment_holds,
+  compiler_gate_lane_standings_hold,
+  compiler_gate_lane_rows, compiler_gate_lane_blocks,
+  compiler_gate_blocking_job_ids,
+  CompilerGateLaneRow, LaneBlocks, LaneAnnouncedNotBlocking,
   compiler_gate_aggregate_job,
   compiler_gate_emit_build_job_id,
-  compiler_gate_emit_build_job,
   compiler_gate_emit_build_bound_steps,
   compiler_gate_emit_build_capability_closure_holds,
   compiler_gate_lane_result_expression
 }
 import gunbc.emitted_subject_build_gate {
   emitted_subject_build_rows,
-  emitted_subject_build_population,
+  emitted_subject_build_label_text,
   emitted_subject_build_command
 }
 import extdeps.exec.command { shell_command_render }
@@ -33,47 +35,120 @@ import v2.std.algebra { length }
 // claims would still pass.
 
 data fixture_jobs: List<String> = ["compiler", "clippy", "emit-build", "floor"]
+data fixture_all_blocking: List<String> = ["compiler", "clippy", "emit-build", "floor"]
 
-test fn enrollment_holds_when_every_job_is_needed() -> Bool {
-  compiler_gate_job_ids_all_needed(job_ids: fixture_jobs, needs: fixture_jobs)
+test fn standings_agree_when_every_blocker_is_needed_and_nothing_else_is() -> Bool {
+  compiler_gate_standings_agree(
+    job_ids: fixture_jobs,
+    rostered: fixture_jobs,
+    blocking: fixture_all_blocking,
+    needs: fixture_all_blocking
+  )
 }
 
-// A LANE THAT RUNS AND CANNOT BLOCK. This is the fail-open the conjunct exists to make unemittable:
-// the job is in the workflow, publishes its own check, and the one required context never reads it.
-test fn w_RED_a_job_absent_from_needs_refuses() -> Bool {
-  compiler_gate_job_ids_all_needed(
+// A DECLARED NON-BLOCKING LANE IS ADMITTED, which is the state this change lands in. It is in the
+// workflow and in the roster and deliberately NOT in `needs`.
+test fn a_declared_non_blocking_lane_is_admitted() -> Bool {
+  compiler_gate_standings_agree(
     job_ids: fixture_jobs,
+    rostered: fixture_jobs,
+    blocking: ["compiler", "clippy", "floor"],
+    needs: ["compiler", "clippy", "floor"]
+  )
+}
+
+// THE FAIL-OPEN. A job in the workflow that no row accounts for -- its non-blocking standing
+// inferrable from an absence, where a forgotten edge and a deliberate interim are the same bytes.
+test fn w_RED_a_job_with_no_standing_row_refuses() -> Bool {
+  compiler_gate_standings_agree(
+    job_ids: fixture_jobs,
+    rostered: ["compiler", "clippy", "floor"],
+    blocking: ["compiler", "clippy", "floor"],
     needs: ["compiler", "clippy", "floor"]
   ) == false
 }
 
-// THE OTHER DIRECTION, WHICH FAILS DIFFERENTLY AND SILENTLY. An unknown `needs` context renders as
-// the empty string, which is not `success`, so a stale name would refuse every run and read as a
-// broken lane rather than a broken reference.
-test fn w_RED_a_needs_entry_naming_no_job_refuses() -> Bool {
-  compiler_gate_job_ids_all_needed(
+// A LANE DECLARED BLOCKING THAT THE GATE DOES NOT READ. This is the original fail-open: the row
+// says it blocks, the aggregate never asked, and the required context greens over it.
+test fn w_RED_a_blocking_lane_absent_from_needs_refuses() -> Bool {
+  compiler_gate_standings_agree(
     job_ids: fixture_jobs,
-    needs: ["compiler", "clippy", "emit-build", "floor", "required-v2-native"]
+    rostered: fixture_jobs,
+    blocking: fixture_all_blocking,
+    needs: ["compiler", "clippy", "floor"]
   ) == false
 }
 
-// INHABITANCE: the predicate above is not merely true of a fixture, it is true of the workflow
-// this module emits.
-test fn the_live_workflow_needs_every_lane_it_runs() -> Bool {
-  compiler_gate_aggregate_enrollment_holds()
+// THE OTHER DIRECTION, WHICH FAILS DIFFERENTLY AND SILENTLY: an unknown `needs` context renders
+// as the empty string, which is not `success`, so a stale name refuses every run and reads as a
+// broken lane rather than a broken reference.
+test fn w_RED_a_needs_entry_that_no_row_declares_blocking_refuses() -> Bool {
+  compiler_gate_standings_agree(
+    job_ids: fixture_jobs,
+    rostered: fixture_jobs,
+    blocking: ["compiler", "clippy", "floor"],
+    needs: ["compiler", "clippy", "floor", "required-v2-native"]
+  ) == false
 }
 
-// INHABITANCE: the emit-build lane is one of the jobs that join says is covered. Without this the
-// two claims above would hold over a workflow that never grew the lane.
-test fn the_emit_build_lane_is_a_job_and_is_needed() -> Bool {
+// A ROW FOR A JOB THE WORKFLOW DOES NOT RUN. Bookkeeping about nothing, and the shape a roster
+// takes as it rots.
+test fn w_RED_a_standing_row_for_a_job_that_does_not_exist_refuses() -> Bool {
+  compiler_gate_standings_agree(
+    job_ids: ["compiler", "clippy", "floor"],
+    rostered: fixture_jobs,
+    blocking: ["compiler", "clippy", "floor"],
+    needs: ["compiler", "clippy", "floor"]
+  ) == false
+}
+
+// INHABITANCE: the predicate is not merely true of fixtures, it is true of the workflow this
+// module emits -- and emission refuses if it is not.
+test fn the_live_workflow_standings_agree_with_its_gate() -> Bool {
+  compiler_gate_lane_standings_hold()
+}
+
+// INHABITANCE: the emit-build lane is a job in the live workflow and carries a row.
+test fn the_emit_build_lane_is_a_job_and_is_rostered() -> Bool {
   any(compiler_gate_non_aggregate_job_ids(), id => id == compiler_gate_emit_build_job_id)
-    && any(compiler_gate_aggregate_job().needs, n => n == compiler_gate_emit_build_job_id)
+    && any(
+      compiler_gate_lane_rows() |> map(r => r.job_id),
+      id => id == compiler_gate_emit_build_job_id
+    )
+}
+
+// AND IT IS DELIBERATELY NOT BLOCKING TODAY, which is the operator ruling this change implements.
+// The claim is written so that FLIPPING the row to LaneBlocks reddens it: the follow-up that
+// makes the lane required must come here and say so, rather than leaving a stale claim asserting
+// a standing the workflow no longer has.
+test fn the_emit_build_lane_is_announced_and_does_not_block_yet() -> Bool {
+  (any(compiler_gate_blocking_job_ids(), id => id == compiler_gate_emit_build_job_id) == false)
+    && (any(compiler_gate_aggregate_job().needs, n => n == compiler_gate_emit_build_job_id) == false)
+}
+
+// THE THREE LANES THAT DO BLOCK STILL DO. Without this, the claim above would be satisfied by a
+// gate that reads nothing at all.
+test fn the_three_established_lanes_still_block() -> Bool {
+  length(xs: compiler_gate_blocking_job_ids()) == 3
+    && all(compiler_gate_blocking_job_ids(), id => any(compiler_gate_aggregate_job().needs, n => n == id))
+}
+
+// A NON-BLOCKING STANDING CARRIES ITS FLIP TRIGGER. A standing with no trigger is an indefinite
+// exemption wearing an interim's clothes (DESIGN section 4b(2): a class below its ceiling must
+// name its next-rung trigger), and an empty string would satisfy a presence-only check.
+test fn every_non_blocking_lane_names_what_would_flip_it() -> Bool {
+  all(compiler_gate_lane_rows(), row =>
+    match row.standing {
+      LaneBlocks => true
+      LaneAnnouncedNotBlocking { flip_trigger: t } => string_contains(s: t, pattern: "Sufficient for:")
+    }
+  )
 }
 
 // THE SUBJECTS ARE THE TWO RETAINED NATIVE COMPILATIONS, BY LABEL. A green here that named one
 // subject would be the coverage claim without the coverage.
 test fn the_lane_runs_both_retained_emit_build_subjects() -> Bool {
-  emitted_subject_build_population() == [
+  (emitted_subject_build_rows() |> map(r => emitted_subject_build_label_text(row: r))) == [
     "//gunbc/instruments:self-host",
     "//gunbc/instruments:v2-native-cli"
   ]
