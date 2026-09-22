@@ -16,9 +16,11 @@
 // emitted rather than authored. The obligation is enrolled in
 // `gunbc.target_invocation_seed_growth`.
 //
-// WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit pattern -> a single target
-// builds the registry, exact lookup, invoke the bound producer, render its native standing; a
-// set form is refused with status 2 until the native test route executes it. No per-instrument arm on that route, and none
+// WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit pattern -> the operand's
+// CONTAINMENT in the native route's universe decides the executor. Inside it, the native test
+// route adjudicates that pattern through the emitted compiler. Outside it, a single target builds
+// the registry, exact lookup, invoke the bound producer, render its native standing; a set form
+// has no executor and is refused with status 2. No per-instrument arm on that route, and none
 // may be added; a second instrument is a row in `instrument_registry` plus one `Producer` arm in
 // `run_producer` — the peripheral realization dispatch DESIGN section 3 keeps out of the
 // interface. Deliberately NOT here: any consultation of `//:required` aggregate policy or the
