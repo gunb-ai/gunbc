@@ -51,6 +51,26 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // CEILING recorded on the support module: this shape turns one over-ceiling claim into two that
 // must each fit, so a large specimen hits the wall through the mechanism meant to be the remedy.
 // That is a distinct cause and is NOT admitted here -- it was fixed by trimming, not declared.
+// MEMBERSHIP DECLARES THE WORK OVERRUN AND NOTHING ELSE, WHICH IS NOT WHAT A READER WILL ASSUME.
+// A member is still judged by the ENROLMENT MARGIN -- a per-claim cpu measure the floor applies to
+// an identity this change enrols -- and the step drop does not cover it, cannot cover it, and
+// should not: a drop covering a timing axis would declare more than it measured.
+//
+// THIS IS OBSERVED, NOT PREDICTED. On required floor run 35742213666 at dc0d53d7e1f the step drop
+// took eleven identities out of their eval-step refusal and every one of them blocked immediately
+// on cause=enrolment_measured_over_margin instead: twelve of that run's fifteen blockers are
+// margin refusals over rows this list covers. Two members admitted on that run cleared the 302 ms
+// margin by 16 ms and 37 ms while running 70 and 37 percent over the step ceiling, and blocked on
+// another lane's tree at the same eval_steps and higher cpu -- so admission here rests on a
+// variance-prone measure that this row is silent about.
+//
+// THE ROW IS THE INTERIM AND NOT THE REPAIR. The expensive witnesses of
+// v2.test.claim.match_arm_binder_frame -- 265k to 713k eval steps, 174 to 1555 ms cpu, the most
+// expensive in this PR -- are on NEITHER gate, and no drop did that: they are enrolled as shared
+// pure producers (v2.workflow.floor_pure_producer_share), which attributes parse and normalize to
+// preparation's fill and charges the claim only its marginal assertions. The same move over these
+// specimens would take this population off both gates and DISSOLVE this row. That, not a cost
+// reduction and not a second drop, is what this row expects to be retired by.
 data normalize_fn_body_witnesses_over_the_floor_ceiling_population: List<String> = floor_eval_step_cost_drop_fn_body_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_fn_body_rows; measured by "), m.measured_by))
 
 data normalize_fn_body_witnesses_over_the_floor_ceiling: RungDrop = RungDrop {
