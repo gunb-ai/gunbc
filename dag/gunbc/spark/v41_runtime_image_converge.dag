@@ -219,10 +219,77 @@ fn v41_wheel_verification_line(v: V41KernelWheelVerification) -> String {
 // standing is minted either way and the ENTRY's exit is what the capability reading decides. Folding
 // the capability verdict into the produced standing would make "was this built from the candidate's
 // inputs" and "does it work" one answer, and they are two.
+// ── THE PROBE MUST DESCRIBE THE IMAGE THE STANDING KEYS ───────────────────────────────────────
+//
+// THE IDENTITY BREAK THIS CLOSES. The produced-runtime standing keys ONE image by its configuration
+// digest. The capability probe used to be handed `identity.tag`, and a tag is a MUTABLE POINTER: a
+// concurrent build, a pull, or a retag between the build leg and the probe leg re-resolves that tag
+// to different bytes. The two halves of the receipt would then be about different images -- the
+// standing keying the digest this build produced, the capability readings describing whatever the
+// tag pointed at when the probe ran -- and the entry would exit ZERO on the conjunction of them,
+// because each half is individually true. That is the fabricated-plausible-output failure DESIGN
+// section 5 forbids, assembled from two honest readings.
+//
+// TWO MOVES, AND THEY ARE NOT THE SAME MOVE. First, CONSTRUCTION: the probe is handed the produced
+// configuration digest rather than the tag, so there is no mutable pointer left in the route and a
+// tag that moves cannot redirect the readback at all. Second, the OBSERVATION JOIN below, which is
+// not redundant with it: what the daemon answers for `.Id` is external reality (DESIGN section 4b's
+// outside-the-modeled-guarantee column), read at a declared boundary, so the identity it reports
+// back is compared to the digest we asked about and a disagreement REFUSES rather than being
+// assumed away. The comparison is over CANONICAL RENDERINGS of parsed digests, not raw strings, so
+// a differently-spelled but equal digest is equal and an unparseable one is its own refusal.
+type V41ProbeIdentityJoin
+  = V41ProbeJoinedToProducedImage { digest: NonEmptyStr }
+  | V41ProbeDescribesAnotherImage { produced: NonEmptyStr, observed: NonEmptyStr }
+  | V41ProbeIdentityUnreadable { observed: NonEmptyStr }
+  | V41ProbeIdentityNotRead { step: NonEmptyStr, cause: String }
+
+fn v41_probe_identity_join(produced: OciContentDigest, o: V41ProbeOutcome) -> V41ProbeIdentityJoin {
+  match o {
+    V41ProbeRefused { step: st, cause: why } => V41ProbeIdentityNotRead { step: st, cause: why }
+    V41ProbeRead { reference: _, observed_config_id: observed, stdout: _, readings: _ } =>
+      match parse_oci_content_digest_wire(raw: observed as String) {
+        Absent => V41ProbeIdentityUnreadable { observed: observed }
+        Present { value: seen } =>
+          if render_oci_content_digest_wire(d: seen) == render_oci_content_digest_wire(d: produced) {
+            V41ProbeJoinedToProducedImage { digest: render_oci_content_digest_wire(d: produced) as NonEmptyStr }
+          } else {
+            V41ProbeDescribesAnotherImage {
+              produced: render_oci_content_digest_wire(d: produced) as NonEmptyStr,
+              observed: render_oci_content_digest_wire(d: seen) as NonEmptyStr,
+            }
+          }
+      }
+  }
+}
+
+fn v41_probe_identity_holds(j: V41ProbeIdentityJoin) -> Bool {
+  match j {
+    V41ProbeJoinedToProducedImage { digest: _ } => true
+    V41ProbeDescribesAnotherImage { produced: _, observed: _ } => false
+    V41ProbeIdentityUnreadable { observed: _ } => false
+    V41ProbeIdentityNotRead { step: _, cause: _ } => false
+  }
+}
+
+fn v41_probe_identity_line(j: V41ProbeIdentityJoin) -> String {
+  match j {
+    V41ProbeJoinedToProducedImage { digest: d } =>
+      join(["probe identity JOINED to the produced image ", d as String, "\n"], "")
+    V41ProbeDescribesAnotherImage { produced: p, observed: obs } =>
+      join(["probe identity BROKEN: this build produced ", p as String, " but the probe read ", obs as String, "; the capability readings describe a different image than the standing keys\n"], "")
+    V41ProbeIdentityUnreadable { observed: obs } =>
+      join(["probe identity UNREADABLE: the daemon answered ", obs as String, " for the probed image, which is not an OCI content digest\n"], "")
+    V41ProbeIdentityNotRead { step: st, cause: why } =>
+      join(["probe identity NOT READ: the probe refused at ", st as String, " (", why, "), so nothing joins the readings to the produced image\n"], "")
+  }
+}
+
 type V41ProducedRuntime
   = V41RuntimeProductionComplete {
       standing: V41ProducedRuntimeStanding
       probe: V41ProbeOutcome
+      identity: V41ProbeIdentityJoin
       wheels: V41KernelWheelVerification
       build: VllmImageBuild
     }
@@ -266,7 +333,12 @@ fn converge_v41_produced_runtime_image(
                       cause: join(["the daemon answered ", identity.local_config_digest as String, " for the produced image, which is not an OCI content digest"], ""),
                       wheels: wheels,
                     }
-                    Present { value: config_digest } =>
+                    Present { value: config_digest } => {
+                      // THE PROBE IS HANDED THE PRODUCED DIGEST, NOT THE TAG: no mutable pointer
+                      // survives in the readback route, so a tag that moves between these two legs
+                      // cannot redirect what gets described. The join below then checks the
+                      // daemon's own answer, which is the part construction cannot reach.
+                      let probe = v41_probe_image_in_place(ctx: ctx, reference: identity.local_config_digest)
                       V41RuntimeProductionComplete {
                         standing: v41_admit_produced_runtime(
                           inputs: v41_candidate_inputs.runtime,
@@ -279,10 +351,12 @@ fn converge_v41_produced_runtime_image(
                             provenance: identity.provenance,
                           ),
                         ),
-                        probe: v41_probe_image_in_place(ctx: ctx, reference: identity.tag),
+                        probe: probe,
+                        identity: v41_probe_identity_join(produced: config_digest, o: probe),
                         wheels: wheels,
                         build: build,
                       }
+                    }
                   }
               }
           }
@@ -295,24 +369,31 @@ fn v41_production_receipt(p: V41ProducedRuntime) -> String {
   match p {
     V41RuntimeProductionStopped { step: st, cause: why, wheels: w } =>
       join([v41_wheel_verification_line(v: w), "production STOPPED step=", st as String, " cause=", why, "\n"], "")
-    V41RuntimeProductionComplete { standing: s, probe: probe, wheels: w, build: build } =>
+    V41RuntimeProductionComplete { standing: s, probe: probe, identity: j, wheels: w, build: build } =>
       join([
         v41_wheel_verification_line(v: w),
         vllm_image_receipt_line(b: build),
         v41_produced_runtime_line(s: s),
+        v41_probe_identity_line(j: j),
         v41_probe_body(o: probe),
       ], "")
   }
 }
 
-// THE THREE THINGS THAT MUST ALL HOLD, and they are conjoined here rather than at the exit so the
+// THE FOUR THINGS THAT MUST ALL HOLD, and they are conjoined here rather than at the exit so the
 // receipt and the verdict cannot disagree: the wheels verified, the produced digest was admitted
-// against the candidate, and the produced bytes carry every capability the probe asks for.
+// against the candidate, THE PROBE DESCRIBED THE IMAGE THE STANDING KEYS, and the produced bytes
+// carry every capability the probe asks for.
+//
+// THE THIRD CONJUNCT IS THE ONE THAT WAS MISSING, and its absence is why the other three could all
+// be true of a run that established nothing: capability readings taken from a tag that moved are
+// honest readings of the wrong image, and conjoining them with a standing that keys the right one
+// produces a green over two facts about two different images.
 fn v41_production_succeeded(p: V41ProducedRuntime) -> Bool {
   match p {
     V41RuntimeProductionStopped { step: _, cause: _, wheels: _ } => false
-    V41RuntimeProductionComplete { standing: s, probe: probe, wheels: _, build: _ } =>
-      v41_runtime_was_produced(s: s) && v41_probe_all_present(o: probe)
+    V41RuntimeProductionComplete { standing: s, probe: probe, identity: j, wheels: _, build: _ } =>
+      v41_runtime_was_produced(s: s) && v41_probe_identity_holds(j: j) && v41_probe_all_present(o: probe)
   }
 }
 
