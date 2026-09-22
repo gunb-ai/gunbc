@@ -553,7 +553,7 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // not, so a recursion threading one text through its steps rehashed all of it per step. The parser
 // is a victim; the link that violated its own contract is the key derivation, which states one
 // relation (content hash) and realized it at O(|text|) per call for exactly one value kind. The
-// instrument is the ladder named in the PR that lands this row.
+// instrument is tools.json_parse_ladder, whose rungs re-derive every reading above.
 //
 // THE PURPOSE TEST IS SATISFIED FOR THE SAME REASON AS THE ASCII FLAG: the interpreter is the engine
 // the v2 self-host program runs on, and a pure recursion over source text is that program's

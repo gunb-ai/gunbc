@@ -1,8 +1,0 @@
-module tools.json_parse_ladder.acc
-
-fn grow(i: Int, n: Int, acc: List<Int>) -> Int {
-  if i >= n { count(acc) } else { grow(i: i + 1, n: n, acc: acc |> list_push(i)) }
-}
-fn acc_10k() -> Int { grow(i: 0, n: 10000, acc: []) }
-fn acc_20k() -> Int { grow(i: 0, n: 20000, acc: []) }
-fn acc_40k() -> Int { grow(i: 0, n: 40000, acc: []) }
