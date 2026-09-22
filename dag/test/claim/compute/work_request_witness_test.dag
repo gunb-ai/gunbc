@@ -2,11 +2,23 @@ module test.claim.compute.work_request_witness_test
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import gunbc.compute.work_provider_local {
+  UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitPopulated, UnitTerminationUnavailable,
+  UnitPropertyReading, UnitObservations, unit_termination_decide,
+  unit_termination_frees_capacity, unit_termination_wire, compute_attempt_completed,
+  ProvideResult, ProvideFresh, ProvideAttached, HostRecordStatus, HostRecordWritten, HostRecordLost,
+  provide_result_host_record, provide_result_ending, provide_result_document, host_record_was_written, host_record_wire,
+  compute_with_lost_host_record, provide_result_with_host_record, host_record_join,
+  ComputeLayout, compute_layout, compute_unit_properties,
+  compute_kill_mode_property, compute_kill_mode_value,
+}
+import std.measure { kibibyte }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
-  WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostAtColdBuildCap,
+  WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostComputeCapacityFull,
   work_outcome_wire, stored_outcome_decode, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_is_success,
 }
 
@@ -64,13 +76,166 @@ test fn the_stored_outcome_round_trips_and_a_broken_one_is_unreadable() -> Bool 
   let subject = tree(hex: tree_a)
   let ok = work_outcome_wire(o: WorkSucceeded { identity: "abc", outputs: [WorkOutput { declared: "target/release/gunbc", blob: "deadbeef", store_path: "/s/gunbc" }], log_path: "/l" }, subject: subject, op: work_default_build())
   let failed = work_outcome_wire(o: WorkFailed { identity: "abc", exit_code: 101, log_path: "/l" }, subject: subject, op: work_default_build())
-  let refused = work_outcome_wire(o: WorkRefusedByInfrastructure { identity: "abc", cause: HostAtColdBuildCap { in_flight: 2, cap: 2 } }, subject: subject, op: work_default_build())
+  let refused = work_outcome_wire(o: WorkRefusedByInfrastructure { identity: "abc", cause: HostComputeCapacityFull { wire: "pool-full (attempt 1)" } }, subject: subject, op: work_default_build())
   (match stored_outcome_decode(text: ok) { StoredOutcomeFound { ending, identity, document: _ } => ending == "succeeded" && identity == "abc"  StoredOutcomeUnreadable { reason: _ } => false })
     && stored_outcome_is_success(r: stored_outcome_decode(text: ok))
     && !stored_outcome_is_success(r: stored_outcome_decode(text: failed))
     && (match stored_outcome_decode(text: refused) { StoredOutcomeFound { ending, identity: _, document: _ } => ending == "refused_by_infrastructure"  StoredOutcomeUnreadable { reason: _ } => false })
-    && string_contains(s: refused, pattern: "cap 2")
+    && string_contains(s: refused, pattern: "pool-full")
     && string_contains(s: ok, pattern: "\"blob\": \"deadbeef\"")
     && (match stored_outcome_decode(text: "{\"identity\": \"abc\"}") { StoredOutcomeUnreadable { reason: _ } => true  StoredOutcomeFound { ending: _, identity: _, document: _ } => false })
     && (match stored_outcome_decode(text: "not json") { StoredOutcomeUnreadable { reason: _ } => true  StoredOutcomeFound { ending: _, identity: _, document: _ } => false })
+}
+
+// THE CONTROLS SIT AT THE OBSERVATION-TO-DECISION BOUNDARY, not at the variant-to-release mapping,
+// because the mapping cannot see the defects that actually occurred: a failed query whose TEXT
+// looks like an answer, a property that came back EMPTY, and a start that is still PENDING all
+// arrive as readings and are wrong only in how they are read (side-chat review at 5ee0cce).
+//
+// THE PREDICATE IS EXACTLY FOUR WORDS LONG AND EVERY OTHER READING KEEPS THE CHARGE: occupied
+// keeps; authoritative absence releases; completed AND POSITIVELY EMPTY releases; everything else
+// keeps. The revision before this one read "not occupied AND (absent OR completed)", so
+// completed + UNKNOWN released -- and this cell ASSERTED that, which is the worse half: a control
+// that pins the defect is not a control (side-chat verdict at f5344b28). A bound KillMode says what
+// systemd WILL do; it is not a reading of what is true, and an unreadable cgroup establishes
+// nothing beside a completed wait.
+//
+// A COMPLETED WAIT NEVER OVERRIDES A POSITIVE POPULATION, which is the row the previous revision
+// got backwards: completion was tested FIRST and returned immediately, so {completed, populated 1}
+// RELEASED -- a launcher's success overriding the kernel saying processes are still there. Under
+// KillMode=process or none a forked child outlives the main process exactly like that. Contrary
+// evidence wins now, and a positive populated=1 is never discarded.
+//
+// AND A MOMENTARILY EMPTY CGROUP IS NOT TERMINAL ON ITS OWN: populated=0 WITHOUT an established
+// completion used to release, and a realized cgroup can be empty between execs. Uncertain
+// completion keeps the charge.
+//
+// THE PENDING-START ROW IS THE ONE THIS CELL EXISTS FOR. An empty ControlGroup was read as observed
+// termination, and it equally describes a unit whose start has not spawned yet -- systemd realizes
+// the cgroup AT SPAWN. That made a whole unbacked launch reachable: reserve, start pending, the
+// LAUNCHER lost while this driver lives on, settlement sees the empty property, releases, and the
+// job then starts against memory nobody holds. It must establish nothing.
+fn reading(queried: Bool, value: String) -> UnitPropertyReading {
+  UnitPropertyReading { queried: queried, value: value }
+}
+
+fn decided(done: Bool, load: UnitPropertyReading, cg: UnitPropertyReading, ev: UnitPropertyReading) -> UnitTermination {
+  unit_termination_decide(o: UnitObservations { attempt_completed: done, load_state: load, control_group: cg, events: ev })
+}
+
+test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
+  let no_events = reading(queried: false, value: "")
+  let unread = reading(queried: false, value: "")
+  let completed_empty = decided(done: true, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))
+  let completed_populated = decided(done: true, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 1\n"))
+  let completed_unknown = decided(done: true, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: ""), ev: no_events)
+  let absent = decided(done: false, load: reading(queried: true, value: "not-found"), cg: unread, ev: no_events)
+  let misleading = decided(done: false, load: reading(queried: false, value: "Failed to connect to bus: not-found"), cg: unread, ev: no_events)
+  let empty_load = decided(done: false, load: reading(queried: true, value: ""), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))
+  let pending = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: ""), ev: no_events)
+  let empty_no_completion = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))
+  let populated_no_completion = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 1\n"))
+  let undecodable = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "garbage\n"))
+  unit_termination_frees_capacity(t: completed_empty)
+    && unit_termination_frees_capacity(t: absent)
+    && !unit_termination_frees_capacity(t: completed_unknown)
+    && !unit_termination_frees_capacity(t: completed_populated)
+    && !unit_termination_frees_capacity(t: empty_no_completion)
+    && !unit_termination_frees_capacity(t: populated_no_completion)
+    && !unit_termination_frees_capacity(t: misleading)
+    && !unit_termination_frees_capacity(t: empty_load)
+    && !unit_termination_frees_capacity(t: pending)
+    && !unit_termination_frees_capacity(t: undecodable)
+    && string_contains(s: unit_termination_wire(t: completed_populated), pattern: "STILL POPULATED")
+    && string_contains(s: unit_termination_wire(t: completed_unknown), pattern: "establishes nothing even beside a completed wait")
+    && string_contains(s: unit_termination_wire(t: empty_no_completion), pattern: "did not complete")
+    && string_contains(s: unit_termination_wire(t: pending), pattern: "pending")
+    && string_contains(s: unit_termination_wire(t: misleading), pattern: "UNESTABLISHED")
+}
+
+// A COMPLETED ATTEMPT RELEASES, AND AN ATTEMPT THAT DID NOT COMPLETE DOES NOT RELEASE ON ITS OWN.
+// The work's ENDING and the attempt's COMPLETION are different questions: a WorkFailed says the
+// unit exited nonzero OR that the launcher never got an answer, and only the second is a lost
+// launcher. The ending is what the caller is told; completion is what the seat is decided on.
+test fn the_attempt_completion_fact_is_not_the_works_ending() -> Bool {
+  compute_attempt_completed(outcome: WorkSucceeded { identity: "a", outputs: [], log_path: "/l" })
+    && compute_attempt_completed(outcome: WorkOutputMismatch { identity: "a", detail: "d" })
+    && !compute_attempt_completed(outcome: WorkFailed { identity: "a", exit_code: 1, log_path: "/l" })
+    && !compute_attempt_completed(outcome: WorkCancelled { identity: "a" })
+    && !compute_attempt_completed(outcome: WorkRefusedByInfrastructure { identity: "a", cause: HostComputeCapacityFull { wire: "pool-full" } })
+}
+
+// AN ATTACHED RESULT CARRIES THE LOSS TOO, which is the arm that used to throw it away. The only
+// call site passes a FRESH result, so the discard was latent -- and "latent" is the kind of safe
+// that stops being true at the next call site, in the very function whose annotation is about a
+// fact vanishing (review 69724). Both arms are driven here.
+//
+// THE STORED RECORD AND THE RETURNED OUTCOME AGREE, WHATEVER HAPPENED TO THIS HOST'S OWN RECORD.
+// The fusion was made twice in opposite directions -- a refusal handed to the caller over a stored
+// success, then a synthesized refusal over a published outcome -- and both times the next attacher
+// read something different from the caller. Losing the host record now changes the host_record
+// fact and NOTHING about the work, so re-requesting the identity yields the same ending the first
+// caller was told; what the first caller additionally gets is the recording failure, which is the
+// only consumer that could act on it.
+test fn a_lost_host_record_changes_no_contract_the_next_caller_reads() -> Bool {
+  let succeeded = WorkSucceeded { identity: "abc", outputs: [], log_path: "/l" }
+  let document = work_outcome_wire(o: succeeded, subject: tree(hex: tree_a), op: work_default_build())
+  let settled = ProvideFresh { outcome: succeeded, document: document, host_record: HostRecordWritten }
+  let attached = ProvideAttached { identity: "abc", ending: "succeeded", document: document, host_record: HostRecordWritten }
+  let layout = compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc")
+  let lost = compute_with_lost_host_record(settled: settled, layout: layout, dropped_ok: false, dropped_error: "EBUSY", error: "ENOSPC")
+  let lost_attached = compute_with_lost_host_record(settled: attached, layout: layout, dropped_ok: false, dropped_error: "EBUSY", error: "ENOSPC")
+  provide_result_ending(r: lost) == provide_result_ending(r: settled)
+    && provide_result_document(r: lost) == provide_result_document(r: settled)
+    && provide_result_ending(r: lost) == "succeeded"
+    && host_record_was_written(h: provide_result_host_record(r: settled))
+    && !host_record_was_written(h: provide_result_host_record(r: lost))
+    && string_contains(s: host_record_wire(h: provide_result_host_record(r: lost)), pattern: "STILL HELD")
+    && provide_result_ending(r: lost_attached) == "succeeded"
+    && provide_result_document(r: lost_attached) == document
+    && !host_record_was_written(h: provide_result_host_record(r: lost_attached))
+    && string_contains(s: host_record_wire(h: provide_result_host_record(r: lost_attached)), pattern: "STILL HELD")
+}
+
+// THIS CHECKS INVOCATION WIRING, NOT A RUNTIME POLICY READBACK, and the distinction is the whole
+// honesty of the cell. It reads the argv this provider CONSTRUCTS and establishes that the
+// KillMode word is in it. It does NOT establish what systemd applied: a drop-in, a manager that
+// rejected the property, or a unit started by some other path are all outside what any fold over
+// our own argv can see. That is precisely why the release predicate does not lean on the binding --
+// completion must still be confirmed by a positively empty cgroup, and this row only ensures we are
+// not ALSO shipping an invocation that opts into the dangerous mode.
+test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -> Bool {
+  let props = compute_unit_properties(
+    layout: compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc"),
+    granted: kibibyte(count: 1048576))
+  contains(props, join([compute_kill_mode_property, "=", compute_kill_mode_value], ""))
+    && compute_kill_mode_value == "control-group"
+    && count(filter(props, p => starts_with(s: p, prefix: "MemoryMax="))) == 1
+}
+
+// A LOSS ANYWHERE IN THE CHAIN REACHES A TERMINAL CONSUMER, which is the property three separate
+// seams were erasing: compute_provide_dependent returned only the child's result, so a BUILD that
+// lost its record followed by a successful dependent reported clean; and compile_entry_cli and
+// run_selected_module both read only the work's ending (side-chat verdict at f5344b28).
+//
+// The join is what carries it, and it accumulates rather than letting the later arm win -- both
+// details are kept because they name different identities and an operator needs each. The work
+// contract is untouched by all of this: the ending and the document are exactly what was stored.
+test fn a_lost_record_on_a_dependency_survives_a_successful_dependent() -> Bool {
+  let succeeded = WorkSucceeded { identity: "child", outputs: [], log_path: "/l" }
+  let document = work_outcome_wire(o: succeeded, subject: tree(hex: tree_a), op: work_default_build())
+  let clean_child = ProvideFresh { outcome: succeeded, document: document, host_record: HostRecordWritten }
+  let attached_child = ProvideAttached { identity: "child", ending: "succeeded", document: document, host_record: HostRecordWritten }
+  let build_lost = HostRecordLost { detail: "the build's lease is still held" }
+  let carried_fresh = provide_result_with_host_record(r: clean_child, carried: build_lost)
+  let carried_attached = provide_result_with_host_record(r: attached_child, carried: build_lost)
+  let both_lost = host_record_join(a: build_lost, b: HostRecordLost { detail: "and the dependent lost its reading" })
+  !host_record_was_written(h: provide_result_host_record(r: carried_fresh))
+    && !host_record_was_written(h: provide_result_host_record(r: carried_attached))
+    && provide_result_ending(r: carried_fresh) == "succeeded"
+    && provide_result_document(r: carried_fresh) == document
+    && provide_result_ending(r: carried_attached) == "succeeded"
+    && host_record_was_written(h: provide_result_host_record(r: clean_child))
+    && string_contains(s: host_record_wire(h: both_lost), pattern: "still held")
+    && string_contains(s: host_record_wire(h: both_lost), pattern: "lost its reading")
 }
