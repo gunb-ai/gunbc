@@ -6,7 +6,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // AN AUTHORED IMPORT'S USE-LINE MUST FOLLOW THE MODULE THE AUTHOR NAMED, and today it does not
 // when two conditions hold together. This pair is the executing control for
-// gunbc.recurring_failure_mode a_bare_type_name_binds_the_wrong_declaration reaching EMISSION:
+// gunbc.recurring_failure_mode an_authored_import_emits_no_use_line_when_its_spelling_is_forked:
 // the emitted module renders a bare type name it declined to import, which is one module
 // contradicting itself and refuses downstream at rustc with E0425.
 //
