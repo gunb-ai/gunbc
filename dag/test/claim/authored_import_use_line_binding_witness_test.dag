@@ -33,6 +33,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reference. The qualified module path is the discriminator instead: `crate::std_integer::`
 // appears ONLY in the use-line, since the signature spells `UInt8` unqualified.
 
+// DO NOT DELETE THIS MODULE BECAUSE ITS CLAIMS ARE GREEN. Every claim here is green TODAY and
+// that is the intended state: four of the five assert behaviour that is CORRECT, and the fifth
+// asserts that a KNOWN DEFECT is still present, which it is. Green therefore means "the defect is
+// still exactly where it was measured", not "there is nothing here to guard".
+//
+// The defect this module guards HAS NO OTHER SYMPTOM ANYWHERE IN THE CORPUS. The site that
+// exposed it -- extdeps.numeric.base16 refusing the self-host build with E0425 -- was repaired at
+// the SOURCE in the same change that enrolled this witness, so nothing else in the tree fails if
+// the defect returns or widens. Deleting this module as redundant coverage would leave a live
+// emitter defect with no red at all, which is the state it was in before 2026-09-22 and the
+// reason it survived undiagnosed through several investigations.
+
 // THE POSITIVE CONTROL, AND IT IS THE HALF THAT MUST NEVER RED. One declarer of the spelling in
 // the closure, the same phantom alias, the same signature: the use-line is emitted and binds the
 // named provider. If this arm ever goes red, the defect has widened from a conjunction to the
