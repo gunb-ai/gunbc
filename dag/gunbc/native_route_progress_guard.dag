@@ -8,7 +8,7 @@ import v2.std.optional { Optional, Present, Absent, optional_present, optional_a
 import v2.compiler.native_test_vocabulary {
   NativeTestStage, NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval
 }
-import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, structural_content_hash }
+import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, structural_content_hash, content_hash_eq_structural }
 import gunbc.witness_v2_native_route {
   NativeRouteTestIdentity, native_route_identity_eq, native_route_identity_qualified,
   NativeRouteDisposition,
@@ -75,7 +75,8 @@ import gunbc.witness_v2_native_route {
 //
 //   TRIGGER. That job's CADENCE and its COVERAGE DISPOSITION are an operator decision, put on
 //   gunbc#12043 and not yet answered, and both change what gets written: the route's measured
-//   wall (4h06m at 14.8 GB on srv2) does not fit the acceptance path, so the job runs on a
+//   wall does not fit the acceptance path -- the figure is that drop row's own, re-derived by the
+//   lane rather than restated here -- so the job runs on a
 //   different cadence, which `gunbc.rung_drop` `v2_native_route_off_the_merge_path` pre-authorises
 //   as its third option -- "a job that runs on a different cadence with its own row ... replaces
 //   it with a differently-named drop". Whether that replacement is total or partial decides
@@ -97,9 +98,9 @@ import gunbc.witness_v2_native_route {
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
 // THE MEASURED FACT THIS SECTION IS BUILT ON. No contemporary head executes the native route end
-// to end. It dies at the EMITTED CARGO BUILD: main at c4464fc75d9 with no diff refuses with
-// `cause=EmittedCompilerBuildFailed`, four E0425 in the emitted `src/extdeps_numeric_base16.rs`,
-// on a pure-main control; gunbc#12043's `emit-build` lane reproduces it on every head it has run.
+// to end. It dies at the EMITTED CARGO BUILD: main with no diff refuses with `cause=EmittedCompilerBuildFailed` in the emitted
+// `src/extdeps_numeric_base16.rs`, on a pure-main control; gunbc#12043's `emit-build` lane
+// reproduces it on every head it has run, and is the producer to re-ask rather than this line.
 // The cause is a rostered substrate class -- a phantom `Compose` carrier spelled where values are
 // put -- spanning seven-plus modules, not a missing import anyone can add.
 //
@@ -114,19 +115,20 @@ import gunbc.witness_v2_native_route {
 //
 // AND HOW FAR A RUN GETS IS A PER-HEAD FACT THAT FLIPS, WHICH IS WHY `reach` IS A FIELD ON THE
 // REPORT AND NOT A CEILING IN THIS MODULE. Two readings within an hour of each other: main stops
-// at the emitted build (measured here, by gunbc#12043's `emit-build` lane, twice,
-// deterministically at 12m33s), and a composition including `session/sharp-bear-756` at
-// 6032d50be7d builds the emitted crate clean.
+// at the emitted build (measured by gunbc#12043's `emit-build` lane, which is where to re-ask),
+// and a composition including `session/sharp-bear-756` at 6032d50be7d builds the emitted crate
+// clean.
 //
 // THE SECOND READING IS RELAYED AND STAYS LABELLED THAT WAY, with its evidence stated at the
 // strength it actually has rather than rounded up or down. TWO INDEPENDENT OBSERVATIONS exist:
-// that session's own (`exit_status=0`, `warning_count=0` under `RUSTFLAGS=-D warnings`, self-host
-// emit and build 575s), and gentle-bee-234's on a different composition including the same head
-// (same clean build, 1361s, and further -- a discriminating cargo red and clean-root-versus-poison
-// behaviour). A THIRD ATTEMPT, from this lane, IS INCONCLUSIVE: one remote dispatch over that tree
-// reached `compile.normalize` and was ended by the runner's own deadline. The 575s-to-1361s spread
-// is the likely reason and is worth carrying for the next person who tries -- budget for the
-// upper figure, not the headline one.
+// that session's own (a clean build under `RUSTFLAGS=-D warnings`), and gentle-bee-234's on a
+// DIFFERENT composition including the same head (same clean build, and further -- a discriminating
+// cargo red and clean-root-versus-poison behaviour). A THIRD ATTEMPT, from this lane, IS
+// INCONCLUSIVE: one remote dispatch over that tree reached `compile.normalize` and was ended by
+// the runner's own deadline. The two builds' walls differ by more than a factor of two, which is
+// the likely reason and is why the next person should budget from the slower observer's run
+// rather than the headline one -- both are re-derivable by re-running the instrument, and neither
+// number is restated here.
 //
 // SO THE STANDING IS: cited to its authors, not restated as this module's measurement
 // (`extdeps.external_authority` `CitedFigureStanding`), and the reading is symmetric in the way
@@ -156,7 +158,7 @@ import gunbc.witness_v2_native_route {
 // needed on that day, the rungs were drawn in the wrong place.
 //
 // AND THE PRE-CONTEXT RUNGS ARE THE ONLY PART WITH A REAL INHABITANCE SOURCE TODAY. gunbc#12043's
-// `emit-build` lane executes exactly them -- on main it attempts emission, emits 194 files, and
+// `emit-build` lane executes exactly them -- on main it attempts emission, emits the closure, and
 // refuses at the cargo build; on the head above it reaches `ReachCrateBuilt` -- so this vocabulary
 // is not a frontier waiting on a consumer the way the stage ladder above it still is. It is the
 // part of the guard that can be read against a real run now, and it is read against two runs that
@@ -306,8 +308,15 @@ type NativeVerdictAdjudication {
   receipt_identity: Optional<String>
 }
 
+// THE EQUALITY IS `std.content_hash`'s AND NOT A SECOND SPELLING OF IT (review 70088). The first
+// cut wrote `(a.closure_identity.digest as String) == (b...)`, which re-mints
+// `content_hash_eq_structural` -- a consumed authority in the very module this one already
+// imports from -- and does it by casting AWAY the `lower_hex_16` refinement, in the one function
+// whose stated job is to be exact. Section 2's test is that net concepts must not grow by
+// re-invention, and a hand-rolled compare that erases its operands' type is re-invention with a
+// downgrade attached.
 fn native_adjudication_same(a: NativeVerdictAdjudication, b: NativeVerdictAdjudication) -> Bool {
-  (a.closure_identity.digest as String) == (b.closure_identity.digest as String)
+  content_hash_eq_structural(left: a.closure_identity, right: b.closure_identity)
 }
 
 // THE RECEIPT IDENTITY REACHES THE OPERATOR RATHER THAN SITTING UNREAD (review 70073: it was
@@ -546,12 +555,13 @@ type NativeProgressBaselineRow {
 // WILL PENALISE THE LANE THAT REMOVES A FAIL-OPEN (manager requirement, 2026-09-22, arriving from
 // a consumer rather than from the brief).
 //
-// THE CASE. gunbc#12009 deletes the global spelling search. On a 132-module closure that makes 106
-// resolve refusals APPEAR -- and they are not new failures. The old acceptances DEPENDED ON THE
-// FALLBACK: a reference whose real binding did not exist fell through to a corpus-wide spelling
-// search, found the name in an unrelated module, and answered. 81 of the 106 reach a module that
-// FILE-REFUSES, so their declarations never entered the index at all. The search was inventing
-// answers around sixteen front-end defects that were invisible for exactly as long as it existed.
+// THE CASE. gunbc#12009 deletes the global spelling search, and on the closure it measures that
+// makes a large set of resolve refusals APPEAR -- which are not new failures. The old acceptances
+// DEPENDED ON THE FALLBACK: a reference whose real binding did not exist fell through to a
+// corpus-wide spelling search, found the name in an unrelated module, and answered. MOST of them
+// reach a module that FILE-REFUSES, so their declarations never entered the index at all. The
+// search was inventing answers around front-end defects that were invisible for exactly as long
+// as it existed. gunbc#12009 is the producer that enumerates them; the counts are its to report.
 // That is DESIGN section 5's absorbing fallback, removed.
 //
 // WHY THE LADDER ALONE GETS THIS WRONG. `AttainAgreed` outranks every refusal, so agreement going
@@ -559,8 +569,8 @@ type NativeProgressBaselineRow {
 // it is not a rung -- and a located, attributed refusal IS a rung. An identity moving from a
 // fabricated acceptance to an attributed refusal has therefore gone UP, and scoring it as a fall
 // would reward restoring the fail-open. Progress has opposite signs on a refusal count in two
-// real cases this week: a bounded repair taking 42 refusals to 0, and an authority migration
-// taking 0 to 106.
+// real cases this week: a bounded repair driving its refusals to zero, and an authority
+// migration making a large attributed set appear.
 //
 // SO THE ARM IS NOT "DID ANYTHING REGRESS" BUT "IS EVERY ACCEPT-TO-REFUSE MEMBER DISPOSITIONED".
 // Empty is the right answer for a bounded repair and is its done condition; non-empty is expected
