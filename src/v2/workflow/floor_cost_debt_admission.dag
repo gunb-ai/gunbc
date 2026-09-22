@@ -34,7 +34,7 @@ type FloorCostDebtTypedAdmission {
 // real P-384 field arithmetic or a real SHA-384 over a published vector, and the seed interpreter
 // realizes those primitives as 16-limb bignat folds and Word64 pairs because it reifies no machine
 // width. That realization, not the claim's shape, is what the CPU pays: there is no repeated
-// demand, no copied accumulator and no nested scan to remove, and supplying the curve check's
+// demand and no nested scan to remove -- measured, not asserted: one nested scan DID exist when this was written (octet_split recomputing count per octet, called twice per point by curve_admit_point_octets), it is removed, and removing it moved eval_steps by roughly six hundred out of eight hundred thousand, which is the receipt that the overrun is the primitive's realization and not the fold's shape (review 70100) -- and supplying the curve check's
 // answer or the digest as a fixture would delete the only execution of these primitives on the
 // acceptance path (DESIGN section 3, the pairing obligation). The terminal shape is the natively
 // emitted crypto closure that gunbc.auth.approval_device_redemption
