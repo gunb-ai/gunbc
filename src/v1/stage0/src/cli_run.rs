@@ -90,13 +90,15 @@ mod census_heads;
 pub mod declaration_index;
 pub mod derived_row_roster;
 mod native_lane_runner;
+pub mod required_ci_measurement;
 mod required_floor_runner;
 mod required_lane_roster;
 pub mod rostered_row_join;
 pub mod scope_rank_view;
 mod serve_budget_refusal;
 pub use native_lane_runner::{
-    run_required_v2_native, run_self_host, run_v2_native_cli, SelfHostHeld, V2NativeCliHeld,
+    run_required_v2_native, run_self_host, run_v2_native_cli, NativeRouteOutcome, SelfHostHeld,
+    V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
