@@ -12,7 +12,7 @@ import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.systemd.systemd_run { systemd_run_user_wait_arguments, systemd_run_property }
 import extdeps.systemd.systemctl
-import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
+import extdeps.transports.shell { ShellOutcome, ShellExited, ShellSpawnRefused }
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_events_path,
   CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
@@ -595,9 +595,26 @@ fn observe_unit_lifecycle(unit: NonEmptyStr) -> UnitLifecycle {
 // route now reaches its own unavailable arm instead of a diagnostic about a program.
 fn read_user_unit_property(unit: NonEmptyStr, property: NonEmptyStr) -> UnitPropertyReading {
   let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: property)
-  match read.outcome {
+  unit_property_from_shell(outcome: read.outcome, success: read.success, value: read.value)
+}
+
+// THE DECISION IS SEPARATED FROM THE EFFECT SO A CONTROL CAN REACH IT (review 69970). Fused to the
+// ShowUserProperty call, this mapping was only observable on a host with NO systemd user manager,
+// and the one lane the witness runs on HAS one -- so the claim over it was `if present { true }`,
+// permanently green on the only route that executes it, which DESIGN 4b names as worse than absent
+// because it will be cited as coverage. As a fold over a supplied ShellOutcome it is a claim at ONE
+// INTERFACE with both arms authorable anywhere, and the wet witness keeps the inhabitance half:
+// that the real producer on a host WITH a manager emits ShellExited and reaches a queried reading.
+//
+// A REFUSED SPAWN IS NOT A FALSE ANSWER, which is the whole content of the fold. systemctl
+// answering nonzero means the manager refused the question; systemctl not running means there was
+// no manager to ask. Only the first is a reading, so the second is queried: false and carries no
+// value -- and the decide folds downstream already route a not-queried property to their own
+// unavailable arm, keeping the charge and saying the manager could not be asked.
+fn unit_property_from_shell(outcome: ShellOutcome, success: Bool, value: String) -> UnitPropertyReading {
+  match outcome {
     ShellSpawnRefused { program: _, cause: _ } => UnitPropertyReading { queried: false, value: "" }
-    ShellExited => UnitPropertyReading { queried: read.success, value: read.value }
+    ShellExited => UnitPropertyReading { queried: success, value: value }
   }
 }
 

@@ -6,7 +6,9 @@ import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedSuccess, U
 import gunbc.compute.work_provider_local {
   UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitPopulated, UnitTerminationUnavailable,
   observe_unit_termination, observe_unit_lifecycle, unit_termination_frees_capacity, compute_unit_name,
+  UnitPropertyReading, unit_property_from_shell,
 }
+import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 
 // A HOST WITH NO USER MANAGER TO ASK, and the arm the settlement and recovery routes reach there.
 // The subject is the boundary between the shell transport and the two readings that consume the
@@ -54,12 +56,28 @@ fn lifecycle_unknown(u: UnitLifecycle) -> Bool {
   }
 }
 
+// THE DISCRIMINATING HALF OF THIS SUBJECT LIVES IN test.claim.compute.work_request_witness,
+// NOT HERE, and the reason is this file's own exclusion row. unit_property_from_shell is a pure
+// fold, so a claim over it needs no host effect -- but this file is excluded from discovery
+// (gunbc.ci.ci_layer_roots excl_manager_unaskable_reason), and an excluded file's identities are
+// planned only on a run that CHANGES it. A hermetic claim placed here would execute on the change
+// that wrote it and never again, which is the same decoration review 69970 found, one move along.
+// So the fold's claim sits in the hermetic witness that is discovered every run, and what stays
+// here is the half that genuinely needs the host: the inhabitance claim below.
+//
+// THE INHABITANCE HALF (DESIGN section 3, the pairing obligation). The claim above supplies the
+// boundary's inputs, so something must still establish that the REAL producer emits that shape and
+// that the real route runs. On a host WITH a manager this asserts the route reaches a RETURNED
+// reading rather than aborting, which is the half the wet lane can honestly carry; on a host
+// without one it asserts the unavailable arm end to end. Deleting the ShellOutcome opt-in makes
+// this cell ABORT rather than answer, which is the control the file's header describes.
 test fn a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting() -> Bool {
   let present = manager_present()
   let termination = observe_unit_termination(identity_hex: unaskable_identity, attempt_completed: false)
   let lifecycle = observe_unit_lifecycle(unit: compute_unit_name(identity_hex: unaskable_identity))
   if present {
-    true
+    !unit_termination_frees_capacity(t: termination)
+      && !unit_lifecycle_ended(u: lifecycle)
   } else {
     termination_unavailable(t: termination)
       && !unit_termination_frees_capacity(t: termination)
