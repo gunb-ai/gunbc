@@ -579,3 +579,31 @@ data qualified_octets_at_qualified_octets_source: String = "module probe_inhabit
 test fn w_the_sealed_carrier_at_its_own_formal_is_admitted() -> Bool {
   violation_count(source: qualified_octets_at_qualified_octets_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
+
+// THE RECORD-UPDATE FORM AT ITS BASE'S OWN FORMAL, which is the observable consequence of typing
+// `with` from its receiver rather than from the builtin registry. The registry declares `with` as
+// the MAP operation returning a Map, so before v1.compiler.infer's receiver-keyed arm this
+// expression was typed Map, and the relation above then refused a Map at a product formal --
+// correctly, on a premise it had been handed wrongly. The refusal was real and blocking: it stopped
+// the regen round's v2 self-compile on v1.compiler.emit_rust's own
+// `with(emit_info, { movable: ... })`, where EmitGraphInfo genuinely declares `movable`.
+//
+// This arm is the FALSE-REFUSAL control for that repair. It must be admitted, and it goes red if
+// the receiver-keyed arm is removed or narrowed back to the registry's answer.
+data record_update_at_its_own_formal_source: String = "module probe_with_record_update\nimport std.types { Int, String }\ntype Holder { a: String  b: Int }\nfn takes_holder(h: Holder) -> Int { 1 }\nfn probe() -> Int {\n  let base: Holder = Holder { a: \"x\", b: 1 }\n  takes_holder(h: with(base, { b: 2 }))\n}\n"
+
+test fn w_a_record_update_inhabits_its_bases_declared_type() -> Bool {
+  violation_count(source: record_update_at_its_own_formal_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// AND THE CONTROL THAT KEEPS THAT ADMISSION FROM BEING A HOLE, because the cheap way to green the
+// arm above is to stop refusing Map-at-product altogether -- which is the symptom-link patch the
+// repair deliberately did not take (gunbc.recurring_failure_mode
+// symptom_link_patched_without_the_earliest_unjustified_boundary). A genuine keyed collection at a
+// product formal must still refuse. If this greens, the false-positive repair has been bought with
+// the wall's discriminating power and the relation is no longer doing its job.
+data genuine_map_at_product_source: String = "module probe_with_genuine_map\nimport std.types { Int, String, Map }\ntype Holder { a: String  b: Int }\nfn takes_holder(h: Holder) -> Int { 1 }\nfn a_map() -> Map<String, Int> { { \"b\": 2 } }\nfn probe() -> Int { takes_holder(h: a_map()) }\n"
+
+test fn w_a_genuine_map_at_a_product_formal_still_refuses() -> Bool {
+  violation_count(source: genuine_map_at_product_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
