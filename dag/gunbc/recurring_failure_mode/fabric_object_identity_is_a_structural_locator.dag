@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.fabric_object_identity_is_a_structural_locator
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data fabric_object_identity_is_a_structural_locator: RecurringFailureMode = RecurringFailureMode {
+  identity: "fabric_object_identity_is_a_structural_locator" as NonEmptyStr,
+
+  receipts: [
+    "Fabric object identity is a structural locator. INVALID STATE: a fabric object ref (std.fabric_storage FabricObjectRef) is minted by content_hash_of_value, the Fnv1a64Structural family -- sixty-four non-cryptographic bits. Two distinct preimages can share a ref at birthday work no adversary would notice paying, and the store has no way to tell them apart: the ref is the only name an object has.",
+
+    "HARM: a read verified against the asked ref can return the wrong bytes with no refusal. fabric_object_verified re-mints the ref of the bytes it holds and compares; under this family the comparison holds for a second preimage, so the verified-cache guarantee the storage program rests on -- every read verified against the asked ref, a failed verification discards the cache copy -- is a statement about a locator, and calling it verification would be rung inflation (DESIGN 4b(1)). The module says so at the mint and does not call it that.",
+
+    "RUNG FOUND AT: 1, mitigatable. The verify-on-read route exists and refuses every mismatch it can see -- a corrupt file, a substituted tip, a reply one object short -- so the harm is contained to what a 64-bit fingerprint cannot distinguish. ATTAINABLE CEILING: 3, structurally guaranteed, once refs are minted and verified through a cryptographic family -- the COMPUTATION (extdeps.crypto.sha2 sha256_hex, FIPS 180-4) already exists, is pure, and is witnessed against the standard's vectors by test.claim.sha256_fips_witness_test. What does not exist is a mint over it: gunbc#11996 authored one and withdrew it, because interpreted SHA-256 is unaffordable both at this module's consumers and at the mint's own inhabitance claim.",
+
+    "THE RECEIPT THAT THIS IS A STALL AND NOT A CHOICE. gunbc#11996 bound fabric_object_ref_of to the cryptographic mint and ran it on the module's real consumers. Under the interpreter every put, every verified get and every closure step pays an interpreted SHA-256, and the spark pair_serving authority-log and d0 real-execution claims -- which append and re-read event chains through gunbc.fabric.fabric_storage_file_store -- ran two to three hundred times slower than on main, cancelling the required floor at its cap (workflow run 35670506917). The differential that pins it to the mint's family and nothing else -- the merge-base binary and the PR binary on the base tree equal, the PR tree slow, the PR tree with only the mint's family flipped back fast -- is on that PR at issuecomment-5770994507. The binding was withdrawn in the same PR and the family stays structural. THE SECOND MEASUREMENT WITHDREW THE MINT ITSELF, and it is the one that decides the shape rather than the speed: the mint's inhabitance claim -- one interpreted SHA-256 over a single-block preimage -- performed 244,396 eval steps against the required floor's 72,300-step new-witness budget (v2.workflow.required_floor claim_eval_step_budget_for_identity). One compression block is the floor of that cost, so no smaller preimage buys it back, and cost-debt enrolment is shrink-only and not an author's to rule. A mint whose only real-path claim cannot be enrolled is a declaration with no executing consumer, which DESIGN 3c refuses, so the mint was withdrawn with its binding and std.content_hash is unchanged by that PR.",
+
+    "WHY THE OBVIOUS REPAIRS ARE REFUSED. A seed intrinsic for SHA-256 would cement Rust into the substrate to buy a number, which the brief and DESIGN 7 forbid: the closure is emit-blocked only because bounded-natural arithmetic is refused at emission (gunbc.recurring_failure_mode bounded_natural_arithmetic_evaluated_as_unbounded_int), and that is a language capability, not a missing bridge. A shell-out to sha256sum takes a PATH, so it would write every in-memory preimage to a file before hashing it, re-opening the custody gap verification exists to close, and would make ref-minting an effect. Raising the floor's cap or narrowing its scope is the escape hatch DESIGN 5 names.",
+
+    "CLASS: can climb after one capability lands. NEXT-RUNG TRIGGER, at capability grain (DESIGN 4b(3)): native emission of the extdeps.crypto.sha2 closure sufficient for every consumer of gunbc.fabric.fabric_storage_file_store to run at floor rate -- measured as the spark pair_serving authority-log claims completing inside main's floor envelope with fabric_object_ref_of minting through a cryptographic family, AND the mint's inhabitance claim enrolling inside the new-witness budget rather than over it. An emitted closure that is still slow does not fire it. When it fires, fabric_object_ref_of and fabric_object_ref_of_wire change family together (gunbc.recurring_failure_mode a_carrier_swap_moves_the_mint_and_strands_the_parser), and this row's discriminating control is the floor run that completes.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.fabric_storage", decl_name: "fabric_object_ref_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.fabric_storage", decl_name: "fabric_object_verified", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.crypto.sha2", decl_name: "sha256_hex", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fabric_storage_file_store", decl_name: "fabric_storage_file_get", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.sha256_fips_witness_test", decl_name: "sha256_of_the_empty_message_is_the_published_value", field: WholeDeclaration },
+  ],
+}

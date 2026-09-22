@@ -373,9 +373,23 @@ fn compiler_gate_floor_run_step() -> Step {
   }
 }
 
+// THE STEP NAME STATES ITS POPULATION, AND THE POPULATION IS NARROWER THAN "GENERATED ARTIFACTS".
+// generated_artifact_gate main reads gunbc.generated_artifact committed_generated_artifacts only. The
+// ~157 stage0 mirrors (src/v1/stage0/src/std_measure.rs and the rest of the compile_stage0 emitted
+// population) are adjudicated by claim_executor's GeneratedArtifact phase, which routes to
+// --required-lane build, and no job has invoked that lane since #11742. The earlier name,
+// "Generated artifacts match their authorities", stayed GREEN over that gap and read as a statement
+// about stage0; std_measure.rs drifted on main under it (gunbc#12067). Declared drop:
+// gunbc.rung_drop.witness_floor_off_the_required_gate. Row:
+// gunbc.recurring_failure_mode.generated_population_split_across_two_unjoined_rosters.
+//
+// WHERE THE STAGE0 PHASES MAY RUN, measured rather than assumed: this job's floor process already
+// peaks AT its slot's memory.high (run 35716368507: peak 26847006720 against high 26843545600,
+// high events 1109), and the generated-artifact pass peaks near 12.9 GiB. They fit only as a
+// SEPARATE process in a later step, after the floor exits -- never inside the floor's invocation.
 fn compiler_gate_drift_step() -> Step {
   RunStep {
-    name: Present { value: "Generated artifacts match their authorities" },
+    name: Present { value: "Registry-rostered generated artifacts (gunbc.generated_artifact) match their authorities; the stage0 mirrors are NOT checked here" },
     id: Present { value: compiler_gate_drift_step_id },
     run: concat(gunbc_ci_generated_artifact_verify_invoke(), "\n"),
     shell: none,
@@ -433,7 +447,7 @@ fn compiler_gate_repair_declaration_step() -> Step {
 
 fn compiler_gate_regen_step() -> Step {
   RunStep {
-    name: Present { value: "Regenerate every committed generated artifact, then verify the tree it wrote" },
+    name: Present { value: "Regenerate every registry-rostered generated artifact (not the stage0 mirrors), then verify the tree it wrote" },
     id: Present { value: compiler_gate_repair_regen_step_id },
     run: concat(gunbc_ci_generated_artifact_regen_verified_invoke(), "\n"),
     shell: none,
@@ -531,7 +545,7 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
     CompilerGateBoundStep {
       step: compiler_gate_drift_step(),
       role: capability_neutral,
-      step_name: "Generated artifacts match their authorities",
+      step_name: "Registry-rostered generated artifacts (gunbc.generated_artifact) match their authorities; the stage0 mirrors are NOT checked here",
     },
     CompilerGateBoundStep {
       step: compiler_gate_repair_declaration_step(),
@@ -541,7 +555,7 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
     CompilerGateBoundStep {
       step: compiler_gate_regen_step(),
       role: capability_neutral,
-      step_name: "Regenerate every committed generated artifact, then verify the tree it wrote",
+      step_name: "Regenerate every registry-rostered generated artifact (not the stage0 mirrors), then verify the tree it wrote",
     },
     CompilerGateBoundStep {
       step: compiler_gate_candidate_step(),
