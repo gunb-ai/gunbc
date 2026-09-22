@@ -932,9 +932,24 @@ fn resolve_transform_children(
 // an ordinary reference, so a misspelled variant in a pat refuses instead of quietly becoming
 // a binder that matches everything. A pat that is not a construct (a bare atom, a literal)
 // binds nothing and resolves as before.
+// A DECLARED PAYLOAD IS A CONSTRUCTOR; A VALUE CONSTRUCT IS NOT. Both are Conj, so the connective
+// alone cannot decide it, and the difference is load-bearing here: this stage now lowers
+// `data d: R = R { .. }` to the construct shape (body_lowering_fold body_lower_try_record_literal),
+// so a plain `TypeNode { connective: Conj }` test classifies that data row as a constructor and a
+// pattern binder spelling its name -- `match c { A(d) => d }` beside `data d: Rec = Rec { .. }` --
+// gets no frame local, leaving the arm body's `d` bound to the data row. That is Accepted with the
+// wrong value and no diagnostic, which DESIGN section 5 forbids outright, and it contradicts the
+// rule stated below that a fn or data of the same name does not make an atom a constructor.
+// construct_tag_optional is the existing authority for the distinction: Present exactly for a
+// construct (first child is the tag self-edge, label == target atom identity), Absent for a
+// declared payload, whose first edge labels a FIELD and targets that field's TYPE.
 fn resolve_pattern_node_is_constructor(node: Node) -> Bool {
   match node.kind {
-    TypeNode { connective: Conj } => true
+    TypeNode { connective: Conj } =>
+      match construct_tag_optional(n: node) {
+        Absent => true
+        Present { value: _ } => false
+      }
     _ => false
   }
 }

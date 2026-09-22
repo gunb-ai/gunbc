@@ -138,6 +138,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "body-lowering stage frontier on the self-host critical path: a match pattern the pattern lowering cannot read (two positional binders, a suffix that is neither braced nor parenthesised). Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_call_args_unlowered,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "body-lowering stage frontier on the self-host critical path: an argument-list capture the comma-list reader cannot read, which is neither an empty list (is_empty_conj_root answers that Present) nor the seq(item, seq(repeat, opt)) spine. Both sites previously answered Accepted with zero operands, dropping every argument while keeping the callee -- the shape gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering records. The postfix-suffix site is unreachable for a zero-argument call today, measured by flipping it to a refusal and observing the zero-arg specimen lower at identical eval steps; it refuses because an unreachable widen is what bites when the grammar moves. Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_field_init_unlowered,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
