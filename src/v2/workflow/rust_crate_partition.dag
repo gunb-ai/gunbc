@@ -44,7 +44,6 @@ import v2.std.compilers.compilation_unit {
   PartitionFoldOutcome,
   PartitionFoldRefusalCause,
   partition_fold_outcome,
-  partition_unit_by_id,
   partition_provenance_hand_explicit,
   partition_provenance_policy_derived
 }
@@ -984,21 +983,82 @@ fn stage0_partition_fold_ok() -> Bool {
   }
 }
 
-// THE DISAGREEMENT BETWEEN THE TWO AUTHORITIES THAT ANSWER "WHAT DOES THIS CRATE DEPEND ON",
-// DERIVED RATHER THAN DESCRIBED. rust_crate_partition_dissolve_on says stage0's edges are authored
-// and "a policy over them would balance an incomplete graph". How incomplete is a MEASUREMENT, and
-// DESIGN section 6 is explicit that a measurement is cited by naming the producer that re-derives
-// it, never by copying its numbers into prose -- a transcribed number is unreachable from the thing
-// that owns it, so it rots without anyone touching either end. An earlier revision of this row
-// carried the figures in its description; this fold is the producer that replaces them, so the
-// population is recomputed on every run instead of going stale the moment an edge row is appended.
+// UNIT DEPENDENCY EDGES WITHOUT ASKING FOR INTERFACES. This is the same projection
+// assignment_unit_graph_has_cycle already performs and its note already names: the unit graph is
+// the module edges projected through the assignment, which is the fact partition_fold_outcome
+// derives as CompilationUnit.deps.
 //
-// THE COMPARISON. reexport_packages is the authored answer. The derived answer is the transitive
-// closure of CompilationUnit.deps -- which partition_fold_outcome projects from the module edges
-// through the assignment -- mapped back to package names. A unit DISAGREES when those two sets
-// differ, and the fold returns the disagreeing package names rather than a count, because DESIGN
-// section 5 requires a debt contract to check membership at IDENTITY grain: a count equality would
-// stay green if one unit were repaired while another began to diverge.
+// WHY THIS ROUTE AND NOT THE FOLD, measured rather than assumed. Asking
+// stage0_partition_receipt_outcome for units cost 190,226 eval steps while the comparison built on
+// top of it cost 1,640 -- so 99% of the claim's cost was a CompilationUnit interface saturation it
+// never inspected. That is the shape DESIGN section 3 names exactly: a claim dominated by one call
+// whose RESULT SHAPE is all it looks at, whose cost does not move when its assertions change. The
+// earliest unjustified boundary was demanding a whole CompilationUnit for a dependency question,
+// so the derivation is re-taken here rather than the symptom optimized.
+type UnitDepEdge {
+  from: CompilationUnitId
+  to: CompilationUnitId
+}
+
+fn assignment_unit_dep_edges(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> List<UnitDepEdge> {
+  module_dag.edges |> fold(init: [], f: fn(acc, edge) {
+    match assignment_owner(assignment: assignment, module_id: edge.from) {
+      Absent => acc
+      Present { value: from_unit } =>
+        match assignment_owner(assignment: assignment, module_id: edge.to) {
+          Absent => acc
+          Present { value: to_unit } =>
+            if from_unit == to_unit {
+              acc
+            } else {
+              if acc |> any(e => (e.from == from_unit) && (e.to == to_unit)) {
+                acc
+              } else {
+                acc |> list_push(UnitDepEdge { from: from_unit, to: to_unit })
+              }
+            }
+        }
+    }
+  })
+}
+
+fn unit_direct_deps(edges: List<UnitDepEdge>, unit_id: CompilationUnitId) -> List<CompilationUnitId> {
+  edges |> fold(init: [], f: fn(acc, e) {
+    if (e.from == unit_id) && !(acc |> any(seen => seen == e.to)) { acc |> list_push(e.to) } else { acc }
+  })
+}
+
+fn unit_dep_closure_step(
+  edges: List<UnitDepEdge>,
+  acc: List<CompilationUnitId>
+) -> List<CompilationUnitId> {
+  acc |> fold(init: acc, f: fn(outer, uid) {
+    unit_direct_deps(edges: edges, unit_id: uid) |> fold(init: outer, f: fn(inner, dep) {
+      if inner |> any(seen => seen == dep) { inner } else { inner |> list_push(dep) }
+    })
+  })
+}
+
+// Fuel bounds the rounds: each round adds at least one unit or the closure is complete, so the
+// edge count is an upper bound rather than a guess (DESIGN section 4: bounded and forward).
+fn unit_dep_closure(
+  edges: List<UnitDepEdge>,
+  acc: List<CompilationUnitId>,
+  fuel: Int
+) -> List<CompilationUnitId> {
+  if fuel <= 0 {
+    acc
+  } else {
+    let grown = unit_dep_closure_step(edges: edges, acc: acc)
+    if (grown |> count) == (acc |> count) { acc } else {
+      unit_dep_closure(edges: edges, acc: grown, fuel: fuel - 1)
+    }
+  }
+}
+
 fn unit_package_name(rows: List<Stage0PartitionCrateRow>, unit_id: CompilationUnitId) -> Optional<String> {
   rows
     |> fold(init: Absent, f: fn(acc, row) {
@@ -1010,54 +1070,22 @@ fn unit_package_name(rows: List<Stage0PartitionCrateRow>, unit_id: CompilationUn
     })
 }
 
-fn stage0_unit_dep_closure_step(
-  units: List<CompilationUnit>,
-  acc: List<CompilationUnitId>
-) -> List<CompilationUnitId> {
-  acc |> fold(init: acc, f: fn(outer, uid) {
-    match partition_unit_by_id(units: units, unit_id: uid) {
-      Absent => outer
-      Present { value: unit } =>
-        unit.deps |> fold(init: outer, f: fn(inner, dep) {
-          if inner |> any(seen => seen == dep) { inner } else { inner |> list_push(dep) }
-        })
-    }
-  })
-}
-
-// Bounded by the unit count: each round adds at least one unit or the closure is complete, so the
-// fuel is an upper bound on rounds rather than a guess (DESIGN section 4: bounded and forward).
-fn stage0_unit_dep_closure(
-  units: List<CompilationUnit>,
-  acc: List<CompilationUnitId>,
-  fuel: Int
-) -> List<CompilationUnitId> {
-  if fuel <= 0 {
-    acc
-  } else {
-    let grown = stage0_unit_dep_closure_step(units: units, acc: acc)
-    if (grown |> count) == (acc |> count) { acc } else {
-      stage0_unit_dep_closure(units: units, acc: grown, fuel: fuel - 1)
-    }
-  }
-}
-
 fn derived_dep_packages(
-  units: List<CompilationUnit>,
+  edges: List<UnitDepEdge>,
   rows: List<Stage0PartitionCrateRow>,
   row: Stage0PartitionCrateRow
 ) -> List<String> {
-  match partition_unit_by_id(units: units, unit_id: row.unit_id) {
-    Absent => []
-    Present { value: unit } =>
-      stage0_unit_dep_closure(units: units, acc: unit.deps, fuel: (units |> count) + 1)
-        |> fold(init: [], f: fn(acc, dep) {
-          match unit_package_name(rows: rows, unit_id: dep) {
-            Present { value: pkg } => acc |> list_push(pkg)
-            Absent => acc
-          }
-        })
-  }
+  unit_dep_closure(
+    edges: edges,
+    acc: unit_direct_deps(edges: edges, unit_id: row.unit_id),
+    fuel: (edges |> count) + 1
+  )
+    |> fold(init: [], f: fn(acc, dep) {
+      match unit_package_name(rows: rows, unit_id: dep) {
+        Present { value: pkg } => acc |> list_push(pkg)
+        Absent => acc
+      }
+    })
 }
 
 fn stage0_package_sets_agree(left: List<String>, right: List<String>) -> Bool {
@@ -1065,30 +1093,21 @@ fn stage0_package_sets_agree(left: List<String>, right: List<String>) -> Bool {
     && (right |> fold(init: true, f: fn(ok, pkg) { ok && (left |> any(p => p == pkg)) }))
 }
 
-// THE REFUSAL ARMS MAY NOT ANSWER []. An empty list here reads as "no unit disagrees", which is
-// the strongest possible answer, and a partition that refused to resolve or fold has established
-// nothing about any unit. Collapsing a refusal into the clean answer is the absorbing fallback
-// DESIGN section 5 forbids -- and it is the same class this lane deleted from compilation_unit,
-// so reintroducing it here by a new road would be the symptom arriving in the repair.
-type Stage0ReexportDerivationDisagreements
-  = Stage0ReexportDisagreementsDerived { packages: List<String> }
-  | Stage0ReexportDisagreementsUnavailable { cause: Stage0PartitionReceiptOutcome }
-
 // DRIVABLE FROM SUPPLIED INPUTS, so the detector can be exercised over a fixture carrying a
-// PLANTED disagreement. That control is not optional decoration: the subset assertion below is
-// green when the disagreement set is empty AND green when this fold is broken and finds nothing,
-// and those are the same observation. Today v1-stage0-v1-artifact inhabits the set and masks the
+// PLANTED disagreement. That control is not optional decoration: the subset assertion is green
+// when the disagreement set is empty AND green when this fold is broken and finds nothing, and
+// those are the same observation. Today v1-stage0-v1-artifact inhabits the set and masks the
 // difference; the day the edge list is derived the set empties and the mask goes with it, leaving
 // a permanently green assertion with no evidence it can still see anything -- the inert lens
-// DESIGN section 5 warns about. The fixture control is what keeps the green meaningful.
+// DESIGN section 5 warns about.
 fn reexport_derivation_disagreements_over(
-  units: List<CompilationUnit>,
+  edges: List<UnitDepEdge>,
   rows: List<Stage0PartitionCrateRow>
 ) -> List<String> {
   rows |> fold(init: [], f: fn(acc, row) {
     if stage0_package_sets_agree(
       left: row.reexport_packages,
-      right: derived_dep_packages(units: units, rows: rows, row: row)
+      right: derived_dep_packages(edges: edges, rows: rows, row: row)
     ) { acc } else { acc |> list_push(row.package_name) }
   })
 }
@@ -1100,20 +1119,23 @@ fn reexport_derivation_disagreements_over(
 // disposition for a removal from a monotone debt contract lives.
 data stage0_reexport_derivation_known_divergent_packages: List<String> = ["v1-stage0-v1-artifact"]
 
+// THE REFUSAL ARM MAY NOT ANSWER []. An empty list reads as "no unit disagrees", the strongest
+// possible answer, and a partition that refused to resolve has established nothing about any unit.
+// Collapsing a refusal into the clean answer is the absorbing fallback DESIGN section 5 forbids,
+// and it is the same class this lane deleted from compilation_unit, so reintroducing it here by a
+// new road would be the symptom arriving in its own repair.
+type Stage0ReexportDerivationDisagreements
+  = Stage0ReexportDisagreementsDerived { packages: List<String> }
+  | Stage0ReexportDisagreementsUnavailable { cause: ResolvePartitionOutcome }
+
 fn stage0_reexport_derivation_disagreements() -> Stage0ReexportDerivationDisagreements {
-  match stage0_partition_receipt_outcome {
-    Stage0PartitionReceiptResolveRefused { cause: cause } =>
-      Stage0ReexportDisagreementsUnavailable {
-        cause: Stage0PartitionReceiptResolveRefused { cause: cause }
-      }
-    Stage0PartitionReceiptFoldRefused { cause: cause } =>
-      Stage0ReexportDisagreementsUnavailable {
-        cause: Stage0PartitionReceiptFoldRefused { cause: cause }
-      }
-    Stage0PartitionReceiptOk { units: units } =>
+  match stage0_resolve_partition_outcome {
+    ResolvePartitionRefused { cause: cause } =>
+      Stage0ReexportDisagreementsUnavailable { cause: ResolvePartitionRefused { cause: cause } }
+    ResolvePartitionOk { assignment: assignment, provenance: _ } =>
       Stage0ReexportDisagreementsDerived {
         packages: reexport_derivation_disagreements_over(
-          units: units,
+          edges: assignment_unit_dep_edges(module_dag: stage0_module_dag, assignment: assignment),
           rows: stage0_module_bearing_crate_rows()
         )
       }

@@ -6,7 +6,6 @@ import std.types { NonEmptyStr }
 import v2.std.collection { Absent, Present, empty_map, map_get, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.compilers.compilation_unit {
-  CompilationUnit,
   CompilationUnitId,
   HandExplicit,
   ModuleDag,
@@ -42,6 +41,7 @@ import v2.workflow.rust_crate_partition {
   stage0_module_dag,
   Stage0PartitionCrateRow,
   Stage0LayeredCoreCrate,
+  UnitDepEdge,
   Stage0ReexportDisagreementsDerived,
   Stage0ReexportDisagreementsUnavailable,
   reexport_derivation_disagreements_over,
@@ -416,8 +416,8 @@ test fn stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit()
 // carrying a PLANTED disagreement: "probe-diverging" authors a dependency the unit graph does not
 // give it, "probe-agreeing" authors exactly what it derives. Removing the comparison from
 // reexport_derivation_disagreements_over reds this and leaves the subset claim above untouched.
-fn probe_unit(id: String, deps: List<CompilationUnitId>) -> CompilationUnit {
-  CompilationUnit { id: id as CompilationUnitId, members: [], interface: [], deps: deps }
+fn probe_edge(from: String, to: String) -> UnitDepEdge {
+  UnitDepEdge { from: from as CompilationUnitId, to: to as CompilationUnitId }
 }
 
 fn probe_row(package: String, unit: String, reexports: List<String>) -> Stage0PartitionCrateRow {
@@ -433,18 +433,15 @@ fn probe_row(package: String, unit: String, reexports: List<String>) -> Stage0Pa
 }
 
 test fn the_disagreement_detector_finds_a_planted_divergence() -> Bool {
-  let units = [
-    probe_unit(id: "u-base", deps: []),
-    probe_unit(id: "u-agree", deps: ["u-base" as CompilationUnitId]),
-    probe_unit(id: "u-diverge", deps: []),
-  ]
+  let edges = [probe_edge(from: "u-agree", to: "u-base")]
   let rows = [
     probe_row(package: "probe-base", unit: "u-base", reexports: []),
     probe_row(package: "probe-agreeing", unit: "u-agree", reexports: ["probe-base"]),
     probe_row(package: "probe-diverging", unit: "u-diverge", reexports: ["probe-base"]),
   ]
-  let found = reexport_derivation_disagreements_over(units: units, rows: rows)
+  let found = reexport_derivation_disagreements_over(edges: edges, rows: rows)
   (found |> any(p => p == "probe-diverging"))
     && !(found |> any(p => p == "probe-agreeing"))
     && !(found |> any(p => p == "probe-base"))
 }
+
