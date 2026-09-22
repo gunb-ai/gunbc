@@ -5,11 +5,9 @@ import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.algebra { trim }
-import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { sha256sum_argv, sha256sum_line_digest }
 import extdeps.tools.sha256sum { sha256sum_byte_span_argv }
@@ -40,7 +38,6 @@ import gunbc.spark.model_snapshot_materialize {
   spark_transfer_supervise,
 }
 import gunbc.spark.model_snapshot_acquisition { spark_hub_cache_root, spark_models_root }
-import gunbc.spark.v41_identity_input { V41EngramResidencyPartition }
 import gunbc.spark.v41_engram_row_store {
   V41PublishedSpan, V41PublishedSpanPlan, V41PublishedSpansPlanned, V41PublishedSpansUnplannable,
   V41PublishedSpanDigest, v41_published_span_plan,
