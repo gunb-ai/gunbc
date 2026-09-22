@@ -20,11 +20,11 @@ import extdeps.apple.app_attest {
   AttestationExpectation, verify_attestation, AssertionExpectation, verify_assertion,
 }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
-import extdeps.ntfy.ntfy { NtfyMessage, ntfy_publish_outcome_sentence }
+import extdeps.ntfy.ntfy { NtfyMessage, ntfy_publish_outcome_sentence, NtfyAccepted, NtfyRefusedExplicitly, NtfyAcceptanceIndeterminate }
 import gunbc.auth.approval_notification { approval_notification }
 import gunbc.auth.approval_ntfy_deployment
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url }
-import gunbc.auth.approval_request_submission { PublisherTokenRead, PublisherTokenLoaded, PublisherTokenUnavailable, read_publisher_token, publish_notification, NotificationPublished, NotificationPublisherTokenUnavailable, NotificationNotPublished }
+import gunbc.auth.approval_request_submission { PublisherTokenRead, PublisherTokenLoaded, PublisherTokenUnavailable, read_publisher_token, publish_notification, NotificationPublish, NotificationAttempted, NotificationPublisherTokenUnavailable }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability {
   ProposeApprove, ProposeDeny, utc_instant_is_canonical, utc_instant_before,
@@ -562,15 +562,28 @@ fn device_push_update_response_at(body: String, process: ApprovalServingProcess,
 // administrator edge by gunbc.auth.approval_device_enrolment_code_issue (a FleetConvergeWorkflowMode
 // step, never an HTTP route -- gunbc.auth.approval_device_redemption: the operator's SSH key is the
 // attribution). Decision msg_a1d8d1b9 (2026-09-21): THE CODE NEVER APPEARS IN A STEP LOG OR A
-// RECEIPT. It is delivered over the private operator channel gunbc.auth.approval_notification
-// publishes to -- a workflow log is readable by every repository reader, and a readable code lets
+// RECEIPT. It is delivered over the operator ntfy topic gunbc.auth.approval_notification publishes
+// to. That topic's deny-by-default access and operator-only read grant are DECLARED
+// (gunbc.auth.approval_ntfy_deployment, NoDischargeSiteModeled) and NOT READ BACK, while the receipt
+// below names the topic -- so the channel is not established private until a readback shows
+// default deny, publisher write, operator read, and an unprivileged identity refused. A workflow log is readable by every repository reader, and a readable code lets
 // another principal enrol as the operator inside the window, the exact hole HTTP issuance was
 // refused for. What this verb prints is the delivery receipt: channel, message id, expiry.
-// Eight hex characters of entropy, ten minutes to spend it, issued into the store BEFORE it is
-// delivered so the code the operator receives is already valid; a delivery that fails leaves an
-// unspent code nobody knows, which expires.
+// Issued into the store BEFORE it is delivered so the code the operator receives is already valid.
+//
+// SIXTEEN OCTETS, NOT FOUR (review of gunbc#12013). The redemption route answers "not issued"
+// differently from "attestation did not verify", so it is a validity oracle, and this server
+// models no attempt rate, lockout or query bound: the code's own entropy is the entire modeled
+// online secret strength. The code is delivered electronically and never memorized, so 128 bits
+// costs nothing and makes no claim about throttling Apple or the tailnet may or may not apply.
+//
+// A publish is a mutation, so its outcome is three answers (extdeps.ntfy.ntfy
+// ntfy_publish_acceptance): accepted (with or without a readable message id), explicitly refused,
+// or indeterminate. Only an explicit refusal establishes that nobody received the code; an
+// indeterminate delivery keeps the SAME code valid until it expires and says so, and never invites
+// a second code under the claim that the first reached no one.
 data approval_enrolment_code_window: Second = second(count: 600)
-data approval_enrolment_code_entropy: ByteSize = byte_size(count: 4)
+data approval_enrolment_code_entropy: ByteSize = byte_size(count: 16)
 data approval_enrolment_code_notification_title: NonEmptyStr = "Device enrolment code"
 
 fn mint_enrolment_code() -> NonEmptyStr? {
@@ -591,20 +604,43 @@ fn enrolment_code_notification(code: NonEmptyStr, expires_at: Timestamp) -> Ntfy
 
 // THE RECEIPT THE STEP PRINTS: the channel, the message id and the expiry -- and by construction
 // not the code, which this record does not carry.
+// An accepted publish whose response body was unreadable is ACCEPTED WITHOUT A MESSAGE ID -- the
+// server took it; only its receipt is missing.
+type EnrolmentCodeDelivery
+  = DeliveryAccepted { message_id: NonEmptyStr? }
+  | DeliveryRefused { detail: String }
+  | DeliveryIndeterminate { detail: String }
+
 type EnrolmentCodeDeliveryReceipt {
   topic: NonEmptyStr
-  message_id: NonEmptyStr
+  message_id: NonEmptyStr?
   expires_at: Timestamp
 }
 
 fn enrolment_code_delivery_line(r: EnrolmentCodeDeliveryReceipt) -> String {
-  "enrolment code issued and delivered: channel=ntfy:" + (r.topic as String) + " message_id=" + (r.message_id as String) + " expires=" + r.expires_at + "\n"
+  let id = match r.message_id {
+    Present { value: m } => m as String
+    Absent => "unread (the server accepted the publish; its response body could not be read)"
+  }
+  "enrolment code issued and accepted for delivery: channel=ntfy:" + (r.topic as String) + " message_id=" + id + " expires=" + r.expires_at + "\n"
 }
 
 type EnrolmentCodeIssuance
-  = EnrolmentCodeDelivered { receipt: EnrolmentCodeDeliveryReceipt }
-  | EnrolmentCodeIssuedNotDelivered { expires_at: Timestamp, cause: String }
+  = EnrolmentCodeIssued { topic: NonEmptyStr, expires_at: Timestamp, delivery: EnrolmentCodeDelivery }
   | EnrolmentCodeIssuanceRefused { cause: String }
+
+// THE ONE RENDERING OF AN ISSUANCE. Only DeliveryRefused says the code reached no one; an
+// indeterminate delivery says the code may already be on the device and stays valid until expiry.
+fn enrolment_code_issuance_response(i: EnrolmentCodeIssuance) -> CliWireResponse {
+  match i {
+    EnrolmentCodeIssuanceRefused { cause: c } => CliWireUnprintable { cause: c as NonEmptyStr }
+    EnrolmentCodeIssued { topic: t, expires_at: x, delivery: d } => match d {
+      DeliveryAccepted { message_id: m } => CliWirePrintable { bytes: enrolment_code_delivery_line(r: EnrolmentCodeDeliveryReceipt { topic: t, message_id: m, expires_at: x }), exit: ExitSuccess }
+      DeliveryRefused { detail: why } => CliWireUnprintable { cause: ("a code was issued but its delivery was refused and never sent (" + why + "); it expires unspent at " + x + ", and running again issues a fresh code") as NonEmptyStr }
+      DeliveryIndeterminate { detail: why } => CliWireUnprintable { cause: ("a code was issued and its delivery is INDETERMINATE (" + why + "): it may already be on the operator's device and stays valid until " + x + "; check the channel before running again, since a re-run mints a second valid code") as NonEmptyStr }
+    }
+  }
+}
 
 fn issue_and_deliver_enrolment_code(root: NonEmptyStr, now: Timestamp, code: NonEmptyStr, publisher: PublisherTokenRead) -> EnrolmentCodeIssuance {
   issue_and_deliver_enrolment_code_until(root: root, now: now, expires_at: device_instant_plus(t: now, s: approval_enrolment_code_window), code: code, publisher: publisher)
@@ -624,10 +660,18 @@ fn issue_and_deliver_enrolment_code_until(root: NonEmptyStr, now: Timestamp, exp
 
 fn deliver_enrolment_code(code: NonEmptyStr, expires_at: Timestamp, publisher: PublisherTokenRead) -> EnrolmentCodeIssuance {
   let message = enrolment_code_notification(code: code, expires_at: expires_at)
-  match publish_notification(message: message, publisher: publisher) {
-    NotificationPublisherTokenUnavailable { detail: d } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "publisher token unavailable: " + d }
-    NotificationPublished { message_id: m } => EnrolmentCodeDelivered { receipt: EnrolmentCodeDeliveryReceipt { topic: message.topic as NonEmptyStr, message_id: m, expires_at: expires_at } }
-    NotificationNotPublished { publish: p } => EnrolmentCodeIssuedNotDelivered { expires_at: expires_at, cause: "ntfy " + ntfy_publish_outcome_sentence(o: p) }
+  EnrolmentCodeIssued { topic: message.topic as NonEmptyStr, expires_at: expires_at, delivery: enrolment_code_delivery_of(publish: publish_notification(message: message, publisher: publisher)) }
+}
+
+// No token means nothing was sent: that, like an explicit 4xx, establishes non-delivery.
+fn enrolment_code_delivery_of(publish: NotificationPublish) -> EnrolmentCodeDelivery {
+  match publish {
+    NotificationPublisherTokenUnavailable { detail: d } => DeliveryRefused { detail: "publisher token unavailable, nothing was sent: " + d }
+    NotificationAttempted { publish: p, acceptance: a } => match a {
+      NtfyAccepted { message_id: m } => DeliveryAccepted { message_id: m }
+      NtfyRefusedExplicitly { status: _, detail: _ } => DeliveryRefused { detail: "ntfy " + ntfy_publish_outcome_sentence(o: p) }
+      NtfyAcceptanceIndeterminate { detail: d } => DeliveryIndeterminate { detail: "ntfy " + d }
+    }
   }
 }
 
@@ -638,11 +682,7 @@ fn issue_device_enrolment_code() -> CliWireResponse {
       match mint_enrolment_code() {
         Absent => CliWireUnprintable { cause: "the entropy read did not yield the requested octets" }
         Present { value: code } =>
-          match issue_and_deliver_enrolment_code(root: approval_device_store_root, now: now, code: code, publisher: read_publisher_token()) {
-            EnrolmentCodeDelivered { receipt: r } => CliWirePrintable { bytes: enrolment_code_delivery_line(r: r), exit: ExitSuccess }
-            EnrolmentCodeIssuedNotDelivered { expires_at: x, cause: c } => CliWireUnprintable { cause: ("a code was issued but not delivered (" + c + "); it expires at " + x + " unknown to anyone; run again") as NonEmptyStr }
-            EnrolmentCodeIssuanceRefused { cause: c } => CliWireUnprintable { cause: c as NonEmptyStr }
-          }
+          enrolment_code_issuance_response(i: issue_and_deliver_enrolment_code(root: approval_device_store_root, now: now, code: code, publisher: read_publisher_token()))
       }
   }
 }

@@ -1,13 +1,18 @@
 module test.claim.approval_device_enrolment_code_witness_test
 
 import std.logic { Bool }
-import std.types { String, NonEmptyStr, Timestamp, List, Secret }
+import std.types { String, NonEmptyStr, Timestamp, List, Secret, Int }
 import std.process { ExitSuccess }
 import gunbc.auth.approval_device_routes {
   EnrolmentCodeDeliveryReceipt, enrolment_code_delivery_line, enrolment_code_notification, approval_enrolment_code_notification_title,
-  issue_and_deliver_enrolment_code_until, deliver_enrolment_code, EnrolmentCodeDelivered, EnrolmentCodeIssuedNotDelivered, EnrolmentCodeIssuanceRefused,
+  issue_and_deliver_enrolment_code_until, deliver_enrolment_code, EnrolmentCodeIssued, EnrolmentCodeIssuanceRefused,
+  EnrolmentCodeDelivery, DeliveryAccepted, DeliveryRefused, DeliveryIndeterminate, enrolment_code_delivery_of, enrolment_code_issuance_response,
+  mint_enrolment_code,
 }
-import gunbc.auth.approval_request_submission { PublisherTokenLoaded, PublisherTokenUnavailable }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
+import extdeps.ntfy.ntfy { ntfy_publish_outcome_of, ntfy_publish_acceptance }
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import gunbc.auth.approval_request_submission { PublisherTokenLoaded, PublisherTokenUnavailable, NotificationAttempted }
 import gunbc.auth.approval_ntfy_deployment { hermetic_ntfy_publish_message_id }
 import gunbc.auth.approval_device_redemption { observe_enrolment_slot, EnrolmentCodeUnspent }
 import extdeps.shell
@@ -25,18 +30,18 @@ import gunbc.fleet_converge_workflow {
 // ntfy.Publish.PublishMessage's hermetic arm, the Delivered receipt's message id is the published
 // message's id (wiring it to the code reds this), the line rendered from that receipt does NOT
 // contain the code while the notification body -- the one rendering the code is allowed -- does,
-// and without a publisher token the same fold reports IssuedNotDelivered rather than publishing.
-data fx_code: NonEmptyStr = "9f3ac1d2"
+// and without a publisher token the same fold reports DeliveryRefused rather than publishing.
+data fx_code: NonEmptyStr = "9f3ac1d20b7e44c1a5d3e8f60c2b91aa"
 data fx_expires: Timestamp = "2026-09-21T20:10:00Z"
 
 test fn the_delivered_receipt_comes_from_the_published_message_and_its_line_never_carries_the_code() -> Bool {
   let message = enrolment_code_notification(code: fx_code, expires_at: fx_expires)
   (match deliver_enrolment_code(code: fx_code, expires_at: fx_expires, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }) {
-    EnrolmentCodeDelivered { receipt: r } => {
-      let line = enrolment_code_delivery_line(r: r)
-      (r.message_id as String) == hermetic_ntfy_publish_message_id
-        && r.topic == approval_ntfy_topic
-        && r.expires_at == fx_expires
+    EnrolmentCodeIssued { topic: t, expires_at: x, delivery: DeliveryAccepted { message_id: Present { value: m } } } => {
+      let line = enrolment_code_delivery_line(r: EnrolmentCodeDeliveryReceipt { topic: t, message_id: Present { value: m }, expires_at: x })
+      (m as String) == hermetic_ntfy_publish_message_id
+        && t == approval_ntfy_topic
+        && x == fx_expires
         && !string_contains(s: line, pattern: fx_code as String)
         && string_contains(s: line, pattern: "message_id=" + hermetic_ntfy_publish_message_id)
         && string_contains(s: line, pattern: "expires=" + fx_expires)
@@ -44,7 +49,7 @@ test fn the_delivered_receipt_comes_from_the_published_message_and_its_line_neve
     _ => false
   })
     && (match deliver_enrolment_code(code: fx_code, expires_at: fx_expires, publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }) {
-      EnrolmentCodeIssuedNotDelivered { expires_at: x, cause: c } => x == fx_expires && string_contains(s: c, pattern: "absent")
+      EnrolmentCodeIssued { topic: _, expires_at: x, delivery: DeliveryRefused { detail: c } } => x == fx_expires && string_contains(s: c, pattern: "absent")
       _ => false
     })
     && string_contains(s: message.body as String, pattern: fx_code as String)
@@ -66,7 +71,7 @@ test fn the_code_slot_is_written_before_delivery_by_real_execution() -> Bool {
   let second = issue_and_deliver_enrolment_code_until(root: root, now: "2026-09-21T20:00:00Z", expires_at: fx_expires, code: fx_code, publisher: publisher)
   let removed = shell.Remove.RecursiveForce(path: root_path)
   (match first {
-    EnrolmentCodeIssuedNotDelivered { expires_at: x, cause: _ } => x == fx_expires
+    EnrolmentCodeIssued { topic: _, expires_at: x, delivery: DeliveryRefused { detail: _ } } => x == fx_expires
     _ => false
   })
     && (match slot {
@@ -107,4 +112,76 @@ test fn the_mode_is_rostered_and_pinned_to_srv1() -> Bool {
       FleetSshKeyConsumed => true
       _ => false
     })
+}
+
+// A PUBLISH IS THREE ANSWERS, NOT TWO (review of gunbc#12013). Each transport outcome is supplied at
+// the ntfy fold's boundary and carried through the real acceptance fold, the enrolment delivery
+// fold and the one issuance rendering. A 200 whose body could not be read is ACCEPTED without a
+// message id, renders as a printable receipt, and never as "refused"/"never sent"; the
+// discriminating red is the explicit 401, which alone yields DeliveryRefused and the "never sent"
+// rendering. A transport refusal and a 503 are indeterminate and say the code may already be on
+// the device. Collapsing any non-RestOk arm into one negative reds this.
+fn fx_delivery_of_rest(rest: RestOutcome, id: String) -> EnrolmentCodeDelivery {
+  let p = ntfy_publish_outcome_of(rest: rest, message_id: id)
+  enrolment_code_delivery_of(publish: NotificationAttempted { publish: p, acceptance: ntfy_publish_acceptance(o: p) })
+}
+
+fn fx_rendered(d: EnrolmentCodeDelivery) -> CliWireResponse {
+  enrolment_code_issuance_response(i: EnrolmentCodeIssued { topic: approval_ntfy_topic as NonEmptyStr, expires_at: fx_expires, delivery: d })
+}
+
+test fn an_accepted_publish_with_an_unreadable_receipt_is_accepted_and_never_rendered_as_not_delivered() -> Bool {
+  let d = fx_delivery_of_rest(rest: RestBodyUndecodable { status: 200, cause: "unexpected end of JSON" }, id: "")
+  (match d {
+    DeliveryAccepted { message_id: Absent } => true
+    _ => false
+  })
+    && (match fx_rendered(d: d) {
+      CliWirePrintable { bytes: b, exit: _ } => string_contains(s: b, pattern: "accepted") && string_contains(s: b, pattern: "unread") && !string_contains(s: b, pattern: "never sent")
+      _ => false
+    })
+}
+
+test fn only_an_explicit_http_refusal_yields_delivery_refused() -> Bool {
+  let refused = fx_delivery_of_rest(rest: RestStatusRefused { status: 401, body: "unauthorized" }, id: "")
+  (match refused {
+    DeliveryRefused { detail: d } => string_contains(s: d, pattern: "401")
+    _ => false
+  })
+    && (match fx_rendered(d: refused) {
+      CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "never sent")
+      _ => false
+    })
+}
+
+test fn a_transport_refusal_or_server_error_is_indeterminate_and_says_the_code_may_have_arrived() -> Bool {
+  let unreached = fx_delivery_of_rest(rest: RestTransportRefused { cause: "connection reset" }, id: "")
+  let five = fx_delivery_of_rest(rest: RestStatusRefused { status: 503, body: "busy" }, id: "")
+  (match unreached {
+    DeliveryIndeterminate { detail: _ } => true
+    _ => false
+  })
+    && (match five {
+      DeliveryIndeterminate { detail: _ } => true
+      _ => false
+    })
+    && (match fx_rendered(d: unreached) {
+      CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "INDETERMINATE") && string_contains(s: c as String, pattern: "may already be on") && !string_contains(s: c as String, pattern: "never sent")
+      _ => false
+    })
+}
+
+// THE MINTED CODE IS 128 BITS: the real mint over the real entropy read yields 32 characters, each
+// a lowercase hex digit. Shrinking approval_enrolment_code_entropy, or switching the encoding, reds
+// this.
+fn fx_all_lower_hex_from(s: String, pos: Int) -> Bool {
+  if pos >= string_length(s: s) { true }
+  else { string_contains(s: "0123456789abcdef", pattern: char_at(s: s, pos: pos)) && fx_all_lower_hex_from(s: s, pos: pos + 1) }
+}
+
+test fn the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex() -> Bool {
+  match mint_enrolment_code() {
+    Present { value: c } => string_length(s: c as String) == 32 && fx_all_lower_hex_from(s: c as String, pos: 0)
+    Absent => false
+  }
 }

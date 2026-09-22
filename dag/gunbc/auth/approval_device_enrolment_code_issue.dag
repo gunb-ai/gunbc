@@ -26,8 +26,10 @@ import gunbc.live_deploy.emit { approval_broker_release_dir, approval_broker_rel
 // SSH context, connects to srv1 as the bootstrap principal, and elevates to the OPERATOR'S POSIX
 // USER -- the owner of approval_device_store_root and a reader of the ntfy publisher token -- to
 // run gunbc.auth.approval_device_routes issue_device_enrolment_code from the broker's admitted
-// release tree. The remote verb writes the code's slot and delivers the code over the private
-// operator channel; what comes back over SSH, and what this step prints, is the delivery receipt
+// release tree. The remote verb writes the code's slot and delivers the code over the operator's
+// ntfy topic -- whose deny-by-default access and operator-only grant are DECLARED
+// (gunbc.auth.approval_ntfy_deployment, NoDischargeSiteModeled) and NOT READ BACK, so the channel
+// is not established private and topic knowledge may suffice to read it; what comes back over SSH, and what this step prints, is the delivery receipt
 // only (decision msg_a1d8d1b9: the code never appears in a step log or a receipt artifact).
 //
 // THE RELEASE IS NAMED BY THE DISPATCH: expected_revision selects the broker release directory,
