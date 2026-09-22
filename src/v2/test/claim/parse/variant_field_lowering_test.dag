@@ -62,38 +62,41 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // below runs the declarations and the positional match of that module verbatim through the same
 // two stages.
 
-fn vf_parse(text: String) -> Outcome<Node> {
+// THE INPUT IS SUPPLIED AT THE BOUNDARY; PARSE AND NORMALIZE STILL EXECUTE. Each claim below
+// discriminates at normalize -- how a variant or record field reaches a declared field identity
+// -- so the token stream is its INPUT and not its claim, and supplying it is what DESIGN
+// section 3 asks for. Parse still runs on the supplied tokens, so a claim whose subject includes
+// parsing keeps that subject and needs no carve-out. The real tokenizer is not deleted from the
+// evidence: every specimen owes a vfs_fidelity_* claim asserting this stream IS what tokenize
+// emits for the same text (v2.test.parse.supplied_token_stream_support), so deleting the
+// integration reddens a control.
+fn vf_parse(tokens: TokenStream) -> Outcome<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
-      bind_outcome(
-        o: tokenize(text: text, file: ^variant_field_probe, rules: dag_lex()),
-        f: fn(token_stream) {
-          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
-          }
-        }
-      )
+      match parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: residue) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+      }
   }
 }
 
-fn vf_normalized(text: String) -> Outcome<NormalizedTree> {
-  match vf_parse(text: text) {
+fn vf_normalized(tokens: TokenStream) -> Outcome<NormalizedTree> {
+  match vf_parse(tokens: tokens) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
   }
 }
 
-fn vf_normalizes(text: String) -> Bool {
-  match vf_normalized(text: text) {
+fn vf_normalizes(tokens: TokenStream) -> Bool {
+  match vf_normalized(tokens: tokens) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn vf_refuses_with(text: String, reason: Symbol) -> Bool {
-  match vf_normalized(text: text) {
+fn vf_refuses_with(tokens: TokenStream, reason: Symbol) -> Bool {
+  match vf_normalized(tokens: tokens) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
   }
@@ -149,8 +152,8 @@ fn vf_arm_payload_optional(root: Node, type_lexeme: String, arm_lexeme: String) 
   }
 }
 
-fn vf_arm_payload_of(text: String, type_lexeme: String, arm_lexeme: String) -> Optional<Node> {
-  match vf_normalized(text: text) {
+fn vf_arm_payload_of(tokens: TokenStream, type_lexeme: String, arm_lexeme: String) -> Optional<Node> {
+  match vf_normalized(tokens: tokens) {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: nt, diagnostics: _ } =>
       vf_arm_payload_optional(root: nt.root, type_lexeme: type_lexeme, arm_lexeme: arm_lexeme)
@@ -178,7 +181,7 @@ data vf_positional_sum: String = "module m.t\n\ntype C = A(Int) | B\n"
 
 // `type C = A(Int) | B`: A declares exactly one Required field "0" of type Int; B is nullary.
 test fn vf_positional_variant_declares_one_required_field_zero() -> Bool {
-  match vf_arm_payload_of(text: vf_positional_sum, type_lexeme: "C", arm_lexeme: "A") {
+  match vf_arm_payload_of(tokens: vfs_stream_13(), type_lexeme: "C", arm_lexeme: "A") {
     Absent => false
     Present { value: payload } =>
       (vf_field_count(payload: payload) == 1)
@@ -190,7 +193,7 @@ test fn vf_positional_variant_declares_one_required_field_zero() -> Bool {
 }
 
 test fn vf_bare_variant_is_nullary() -> Bool {
-  match vf_arm_payload_of(text: vf_positional_sum, type_lexeme: "C", arm_lexeme: "B") {
+  match vf_arm_payload_of(tokens: vfs_stream_13(), type_lexeme: "C", arm_lexeme: "B") {
     Absent => false
     Present { value: payload } => payload_is_nullary(payload: payload) && (vf_field_count(payload: payload) == 0)
   }
@@ -198,7 +201,7 @@ test fn vf_bare_variant_is_nullary() -> Bool {
 
 // The braced spelling declares the SAME kind of field, through the same stage.
 test fn vf_braced_variant_declares_named_field() -> Bool {
-  match vf_arm_payload_of(text: "module m.t\n\ntype C = A { v: Int } | B\n", type_lexeme: "C", arm_lexeme: "A") {
+  match vf_arm_payload_of(tokens: vfs_stream_0(), type_lexeme: "C", arm_lexeme: "A") {
     Absent => false
     Present { value: payload } =>
       (vf_field_count(payload: payload) == 1)
@@ -212,7 +215,7 @@ test fn vf_braced_variant_declares_named_field() -> Bool {
 // A record declaration is a Named member whose payload declares its fields: Required `v`,
 // Optional `w` (a Cardinality node over Int), and `xs` typed by an Instantiation of List over Int.
 test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
-  match vf_normalized(text: "module m.t\n\ntype R { v: Int, w: Int?, xs: List<Int> }\n") {
+  match vf_normalized(tokens: vfs_stream_1()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: nt, diagnostics: _ } =>
       match vf_named_member_optional(root: nt.root, lexeme: "R") {
@@ -256,14 +259,14 @@ test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
 // The seed's sum rule: one alternative with a payload is a coproduct; one bare alternative is an
 // alias and keeps its reference to the type it names.
 test fn vf_single_fielded_variant_is_a_sum() -> Bool {
-  match vf_arm_payload_of(text: "module m.t\n\ntype F = Bar { n: Int }\n", type_lexeme: "F", arm_lexeme: "Bar") {
+  match vf_arm_payload_of(tokens: vfs_stream_2(), type_lexeme: "F", arm_lexeme: "Bar") {
     Absent => false
     Present { value: payload } => vf_field_count(payload: payload) == 1
   }
 }
 
 test fn vf_bare_alias_is_not_a_sum() -> Bool {
-  match vf_normalized(text: "module m.t\n\ntype T = String\n") {
+  match vf_normalized(tokens: vfs_stream_3()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: nt, diagnostics: _ } =>
       match vf_named_member_optional(root: nt.root, lexeme: "T") {
@@ -277,8 +280,8 @@ test fn vf_bare_alias_is_not_a_sum() -> Bool {
   }
 }
 
-fn vf_fn_body_of(text: String, fn_lexeme: String) -> Optional<Node> {
-  match vf_normalized(text: text) {
+fn vf_fn_body_of(tokens: TokenStream, fn_lexeme: String) -> Optional<Node> {
+  match vf_normalized(tokens: tokens) {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: nt, diagnostics: _ } =>
       match vf_named_member_optional(root: nt.root, lexeme: fn_lexeme) {
@@ -297,7 +300,7 @@ fn vf_fn_body_of(text: String, fn_lexeme: String) -> Optional<Node> {
 // seed's infer_variant_constructor_call joins them. That the argument is CARRIED is this control's
 // point: on the route before this change `A(x)` lowered to Transform(A) with x dropped.
 test fn vf_positional_construction_carries_its_operand() -> Bool {
-  match vf_fn_body_of(text: "module m.t\n\ntype C = A(Int) | B\n\nfn wrap(x: Int) -> C {\n  A(x)\n}\n", fn_lexeme: "wrap") {
+  match vf_fn_body_of(tokens: vfs_stream_4(), fn_lexeme: "wrap") {
     Absent => false
     Present { value: body } =>
       match body.kind {
@@ -313,7 +316,7 @@ test fn vf_positional_construction_carries_its_operand() -> Bool {
 
 // A record construction is the construct shape: tag edge R -> Atom(R), then field v -> x.
 test fn vf_record_construction_is_the_construct_shape() -> Bool {
-  match vf_fn_body_of(text: "module m.t\n\ntype R { v: Int }\n\nfn mk(x: Int) -> R {\n  R { v: x }\n}\n", fn_lexeme: "mk") {
+  match vf_fn_body_of(tokens: vfs_stream_5(), fn_lexeme: "mk") {
     Absent => false
     Present { value: body } =>
       (match construct_tag_optional(n: body) { Present { value: tag } => symbol_lexeme(sym: tag) == "R"  Absent => false })
@@ -327,8 +330,8 @@ test fn vf_record_construction_is_the_construct_shape() -> Bool {
   }
 }
 
-fn vf_first_arm_pattern_of(text: String, fn_lexeme: String) -> Optional<Node> {
-  match vf_fn_body_of(text: text, fn_lexeme: fn_lexeme) {
+fn vf_first_arm_pattern_of(tokens: TokenStream, fn_lexeme: String) -> Optional<Node> {
+  match vf_fn_body_of(tokens: tokens, fn_lexeme: fn_lexeme) {
     Absent => Absent
     Present { value: body } =>
       match body.kind {
@@ -363,21 +366,21 @@ data vf_positional_unwrap: String = "module m.t\n\ntype C = A(Int) | B\n\nfn unw
 // binder the body names reaches the resolver instead of vanishing (and instead of the typed
 // refusal gunbc#11998 stood in its place, now retired).
 test fn vf_positional_pattern_binds_field_zero() -> Bool {
-  match vf_first_arm_pattern_of(text: vf_positional_unwrap, fn_lexeme: "unwrap") {
+  match vf_first_arm_pattern_of(tokens: vfs_stream_14(), fn_lexeme: "unwrap") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "x")
   }
 }
 
 test fn vf_braced_pattern_binds_named_field() -> Bool {
-  match vf_first_arm_pattern_of(text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v: x } => x\n    B => 0\n  }\n}\n", fn_lexeme: "unwrap") {
+  match vf_first_arm_pattern_of(tokens: vfs_stream_6(), fn_lexeme: "unwrap") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "v", binder: "x")
   }
 }
 
 test fn vf_shorthand_pattern_binds_field_to_its_own_name() -> Bool {
-  match vf_first_arm_pattern_of(text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v } => v\n    B => 0\n  }\n}\n", fn_lexeme: "unwrap") {
+  match vf_first_arm_pattern_of(tokens: vfs_stream_7(), fn_lexeme: "unwrap") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "v", binder: "v")
   }
@@ -385,7 +388,7 @@ test fn vf_shorthand_pattern_binds_field_to_its_own_name() -> Bool {
 
 // A wildcard payload is the same construct with `_` in field 0 -- nothing is dropped.
 test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
-  match vf_first_arm_pattern_of(text: "module m.t\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n", fn_lexeme: "tag") {
+  match vf_first_arm_pattern_of(tokens: vfs_stream_8(), fn_lexeme: "tag") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "_")
   }
@@ -397,12 +400,11 @@ test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
 // arm. That the body's x then RESOLVES to the arm's binder and not the parameter is the
 // resolver's fact, asserted by v2.test.claim.match_arm_binder_frame over resolve_match_node.
 test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
-  let text = "module m.t\n\ntype C = A(Int) | B\n\nfn pick(x: Int, c: C) -> Int {\n  match c {\n    A(x) => x\n    B => x\n  }\n}\n"
-  (match vf_first_arm_pattern_of(text: text, fn_lexeme: "pick") {
+  (match vf_first_arm_pattern_of(tokens: vfs_stream_16(), fn_lexeme: "pick") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "x")
   })
-    && (match vf_normalized(text: text) {
+    && (match vf_normalized(tokens: vfs_stream_16()) {
       Rejected { diagnostics: _ } => false
       Accepted { value: nt, diagnostics: _ } =>
         match vf_named_member_optional(root: nt.root, lexeme: "pick") {
@@ -423,10 +425,10 @@ test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
 // DISTINCT PAYLOADS STAY DISTINCT: constructions differing only in the payload normalize to
 // different provenance-free trees, so the payload is carried, not summarized by the constructor.
 test fn vf_distinct_payloads_normalize_distinct() -> Bool {
-  match vf_normalized(text: "module m.t\n\ntype C = A(Int) | B\n\nfn one() -> C { A(1) }\n") {
+  match vf_normalized(tokens: vfs_stream_9()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: left, diagnostics: _ } =>
-      match vf_normalized(text: "module m.t\n\ntype C = A(Int) | B\n\nfn one() -> C { A(2) }\n") {
+      match vf_normalized(tokens: vfs_stream_10()) {
         Rejected { diagnostics: _ } => false
         Accepted { value: right, diagnostics: _ } =>
           canonicalize_node_strip_provenance(n: left.root) != canonicalize_node_strip_provenance(n: right.root)
@@ -438,14 +440,14 @@ test fn vf_distinct_payloads_normalize_distinct() -> Bool {
 // clause beside a payload is a spelling the seed never reaches.
 test fn vf_two_positional_binders_refuse() -> Bool {
   vf_refuses_with(
-    text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x, y) => x\n    B => 0\n  }\n}\n",
+    tokens: vfs_stream_11(),
     reason: ^body_lowering_reason_pattern_unlowered
   )
 }
 
 test fn vf_where_beside_payload_refuses() -> Bool {
   vf_refuses_with(
-    text: "module m.t\n\ntype C = A where non_empty { v: Int } | B\n",
+    tokens: vfs_stream_12(),
     reason: ^body_lowering_reason_field_decl_unlowered
   )
 }
@@ -455,12 +457,12 @@ test fn vf_where_beside_payload_refuses() -> Bool {
 data vf_content_hash_declarations: String = "module std.content_hash\n\ntype HashFamily =\n  | Fnv1a64StructuralFamily\n  | Sha256Family\n\ntype Fnv1a64Structural {\n  digest: Fnv1a64StructuralDigestHex\n}\n\ntype Sha256Digest {\n  hex: Sha256DigestHex\n}\n\ntype ContentHash =\n  | Fnv1a64(Fnv1a64Structural)\n  | Sha256Hash(Sha256Digest)\n\nfn structural_content_hash(digest: Fnv1a64StructuralDigestHex) -> Fnv1a64Structural {\n  Fnv1a64Structural { digest: digest }\n}\n\nfn as_content_hash_structural(structural: Fnv1a64Structural) -> ContentHash {\n  Fnv1a64(structural)\n}\n\nfn compare_content_hash(left: ContentHash, right: ContentHash) -> ContentHashComparison {\n  match left {\n    Fnv1a64(left_structural) =>\n      match right {\n        Fnv1a64(right_structural) =>\n          if content_hash_eq_structural(left: left_structural, right: right_structural) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Sha256Hash(_) => ContentHashCrossFamilyIncomparable\n      }\n    Sha256Hash(left_digest) =>\n      match right {\n        Sha256Hash(right_digest) =>\n          if content_hash_eq_cryptographic(left: left_digest, right: right_digest) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Fnv1a64(_) => ContentHashCrossFamilyIncomparable\n      }\n  }\n}\n"
 
 test fn vf_content_hash_declarations_and_positional_match_normalize() -> Bool {
-  vf_normalizes(text: vf_content_hash_declarations)
-    && (match vf_first_arm_pattern_of(text: vf_content_hash_declarations, fn_lexeme: "compare_content_hash") {
+  vf_normalizes(tokens: vfs_stream_15())
+    && (match vf_first_arm_pattern_of(tokens: vfs_stream_15(), fn_lexeme: "compare_content_hash") {
       Absent => false
       Present { value: pat } => vf_pattern_binds(pat: pat, tag: "Fnv1a64", field: "0", binder: "left_structural")
     })
-    && (match vf_arm_payload_of(text: vf_content_hash_declarations, type_lexeme: "ContentHash", arm_lexeme: "Fnv1a64") {
+    && (match vf_arm_payload_of(tokens: vfs_stream_15(), type_lexeme: "ContentHash", arm_lexeme: "Fnv1a64") {
       Absent => false
       Present { value: payload } =>
         match declared_field_named(payload: payload, name: positional_payload_field_name()) {
@@ -470,117 +472,11 @@ test fn vf_content_hash_declarations_and_positional_match_normalize() -> Bool {
     })
 }
 
-// COST DECOMPOSITION PROBES -- TEMPORARY, removed before this PR lands. They exist to falsify or
 // confirm one reading: that the fixed route cost (grammar preparation) dominates every claim in
 // this module, so no assertion tuning can bring one under the floor budget.
-test fn vf_probe_a_grammar_only() -> Bool {
-  match dag_prepared_grammar() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
 
-test fn vf_probe_b_grammar_and_tokenize() -> Bool {
-  match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: _, diagnostics: _ } =>
-      match tokenize(text: vf_positional_sum, file: ^variant_field_probe, rules: dag_lex()) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-  }
-}
 
-test fn vf_probe_c_parse_only() -> Bool {
-  match vf_parse(text: vf_positional_sum) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn vf_probe_d_parse_and_normalize() -> Bool {
-  vf_normalizes(text: vf_positional_sum)
-}
-
-data vf_probe_tiny: String = "module m.t\n"
-data vf_probe_big: String = "module m.t\n\ntype C0 = A0(Int) | B0\ntype C1 = A1(Int) | B1\ntype C2 = A2(Int) | B2\ntype C3 = A3(Int) | B3\ntype C4 = A4(Int) | B4\ntype C5 = A5(Int) | B5\ntype C6 = A6(Int) | B6\ntype C7 = A7(Int) | B7\ntype C8 = A8(Int) | B8\ntype C9 = A9(Int) | B9\ntype C10 = A10(Int) | B10\ntype C11 = A11(Int) | B11\ntype C12 = A12(Int) | B12\ntype C13 = A13(Int) | B13\ntype C14 = A14(Int) | B14\ntype C15 = A15(Int) | B15\ntype C16 = A16(Int) | B16\ntype C17 = A17(Int) | B17\ntype C18 = A18(Int) | B18\ntype C19 = A19(Int) | B19\n"
-
-test fn vf_probe_e_tokenize_tiny() -> Bool {
-  match tokenize(text: vf_probe_tiny, file: ^variant_field_probe, rules: dag_lex()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn vf_probe_f_tokenize_big() -> Bool {
-  match tokenize(text: vf_probe_big, file: ^variant_field_probe, rules: dag_lex()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn vf_probe_g_normalize_big() -> Bool {
-  vf_normalizes(text: vf_probe_big)
-}
-
-// FEASIBILITY PROBE: a hand-supplied token stream for `type C = A(Int) | B`, to establish that
 // parse_module_prepared accepts a constructed stream and what the supplied-token route costs.
-fn vf_probe_supplied_tokens() -> TokenStream {
-  token_stream_new(all: [
-    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
-    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
-    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
-    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
-    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
-    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 22, end: 23 },
-    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 23, end: 26 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 26, end: 27 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 28, end: 29 },
-    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 30, end: 31 }
-  ])
-}
-
-test fn vf_probe_h_supplied_tokens_parse_and_normalize() -> Bool {
-  match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: prepared, diagnostics: residue } =>
-      match parse_module_prepared(tokens: vf_probe_supplied_tokens(), prepared: prepared, validation_residue: residue) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-      }
-  }
-}
-
-// FIDELITY: the supplied stream must BE what the tokenizer emits for the same text, or every
-// claim built on it is green about a stream the real route never produces. Compared as one
-// canonical projection per stream -- a single fold each, no pairwise walk needed.
-fn vf_probe_stream_projection(ts: TokenStream) -> String {
-  fold(ts.all, init: "", f: fn(acc, t) {
-    concat(concat(concat(acc, symbol_lexeme(sym: t.class)), "="), concat(t.lexeme, ";"))
-  })
-}
-
-test fn vf_probe_i_supplied_tokens_equal_real_tokenize() -> Bool {
-  match tokenize(text: vf_positional_sum, file: ^variant_field_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: real, diagnostics: _ } =>
-      vf_probe_stream_projection(ts: real)
-        == vf_probe_stream_projection(ts: vf_probe_supplied_tokens())
-  }
-}
-
-data vf_probe_zero_arg_call: String = "module m.t\n\nfn f() -> Int {\n  1\n}\n\nfn g() -> Int {\n  f()\n}\n"
-
-test fn vf_probe_j_zero_arg_call_lowers() -> Bool {
-  vf_normalizes(text: vf_probe_zero_arg_call)
-}
 
 fn vfs_stream_0() -> TokenStream {
   token_stream_new(all: [
@@ -1340,5 +1236,59 @@ test fn vfs_fidelity_15() -> Bool {
     text: "module std.content_hash\n\ntype HashFamily =\n  | Fnv1a64StructuralFamily\n  | Sha256Family\n\ntype Fnv1a64Structural {\n  digest: Fnv1a64StructuralDigestHex\n}\n\ntype Sha256Digest {\n  hex: Sha256DigestHex\n}\n\ntype ContentHash =\n  | Fnv1a64(Fnv1a64Structural)\n  | Sha256Hash(Sha256Digest)\n\nfn structural_content_hash(digest: Fnv1a64StructuralDigestHex) -> Fnv1a64Structural {\n  Fnv1a64Structural { digest: digest }\n}\n\nfn as_content_hash_structural(structural: Fnv1a64Structural) -> ContentHash {\n  Fnv1a64(structural)\n}\n\nfn compare_content_hash(left: ContentHash, right: ContentHash) -> ContentHashComparison {\n  match left {\n    Fnv1a64(left_structural) =>\n      match right {\n        Fnv1a64(right_structural) =>\n          if content_hash_eq_structural(left: left_structural, right: right_structural) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Sha256Hash(_) => ContentHashCrossFamilyIncomparable\n      }\n    Sha256Hash(left_digest) =>\n      match right {\n        Sha256Hash(right_digest) =>\n          if content_hash_eq_cryptographic(left: left_digest, right: right_digest) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Fnv1a64(_) => ContentHashCrossFamilyIncomparable\n      }\n  }\n}\n",
     file: ^variant_field_probe,
     supplied: vfs_stream_15()
+  )
+}
+
+fn vfs_stream_16() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 23, end: 26 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 30, end: 31 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_ident, lexeme: "pick", file: ^variant_field_probe, start: 36, end: 40 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 40, end: 41 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 41, end: 42 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 42, end: 43 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 44, end: 47 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^variant_field_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 49, end: 50 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 52, end: 53 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 53, end: 54 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 55, end: 57 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 58, end: 61 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 62, end: 63 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^variant_field_probe, start: 66, end: 71 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 72, end: 73 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 74, end: 75 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 80, end: 81 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 81, end: 82 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 82, end: 83 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 83, end: 84 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 85, end: 87 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 88, end: 89 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 94, end: 95 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 96, end: 98 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 99, end: 100 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 103, end: 104 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 105, end: 106 }
+  ])
+}
+
+test fn vfs_fidelity_16() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn pick(x: Int, c: C) -> Int {\n  match c {\n    A(x) => x\n    B => x\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_16()
   )
 }
