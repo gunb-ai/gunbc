@@ -1,0 +1,39 @@
+module test.claim.nested_applied_marker_import_witness
+
+// A unit variant used as a type argument is emitted as a zero-sized marker struct, and its authored
+// import must bind that MARKER, not the variant. std.integer writes the variant two applications
+// deep -- Compose<Int, MachineWidth<PointerWidth>> -- and the use-line planner's applied-argument
+// walk missed that position, because a nested application arrives in resolved form with its
+// arguments on __applied_type_args rather than on its children. The import then bound
+// WidthResolution::PointerWidth while the body rendered MachineWidth<PointerWidth>, and the emitted
+// self-host crate refused with E0573 (expected type, found variant). Emission-text witnesses: they
+// prove the spelling of the use line, not that rustc accepts the crate; the self-host instrument is
+// the executing route.
+
+fn w_nested_applied_variant_imports_the_marker() -> Bool {
+  compile_dag_rust_emit_check(
+    "module nested_applied_marker\n\nimport std.types { Int }\nimport std.machine_constraints { Compose, MachineWidth, PointerWidth }\n\ntype NestedUse = Compose<Int, MachineWidth<PointerWidth>>\n",
+    "src/nested_applied_marker.rs",
+    ["MachineWidth, PointerWidth", "MachineWidth<PointerWidth>"],
+    ["WidthResolution::PointerWidth", "WidthResolution::\\\{PointerWidth}", "MachineWidth, WidthResolution"]
+  )
+}
+
+test fn nested_applied_unit_variant_imports_its_marker_type() -> Bool {
+  w_nested_applied_variant_imports_the_marker()
+}
+
+// Positive control at depth one, which already held before the repair: if this reds, the fixture
+// and not the nested walk is what changed.
+fn w_direct_applied_variant_imports_the_marker() -> Bool {
+  compile_dag_rust_emit_check(
+    "module direct_applied_marker\n\nimport std.machine_constraints { MachineWidth, PointerWidth }\n\ntype DirectUse = MachineWidth<PointerWidth>\n",
+    "src/direct_applied_marker.rs",
+    ["MachineWidth<PointerWidth>"],
+    ["WidthResolution::PointerWidth", "WidthResolution::\\\{PointerWidth}"]
+  )
+}
+
+test fn direct_applied_unit_variant_imports_its_marker_type() -> Bool {
+  w_direct_applied_variant_imports_the_marker()
+}

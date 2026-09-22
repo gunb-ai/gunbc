@@ -171,9 +171,34 @@ pub fn collect_type_node_import_surface_occurrences(
             }
             _ => Rc::new(vec![]),
         };
+        let applied_names = match crate::v1_std_core::find_property(
+            peeled.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(applied) => Rc::new({
+                let mut __result = Vec::new();
+                for arg in applied.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*collect_type_node_import_surface_occurrences(
+                            arg.clone(),
+                            true,
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+            None => Rc::new(vec![]),
+        };
         v1_rt::concat(
             own.clone(),
-            v1_rt::concat(child_names.clone(), inferred_names.clone()),
+            v1_rt::concat(
+                child_names.clone(),
+                v1_rt::concat(applied_names.clone(), inferred_names.clone()),
+            ),
         )
     })
 }
