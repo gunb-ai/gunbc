@@ -246,7 +246,8 @@ use crate::v1_std_core::CompilerDiagnostic::{
     EqualityMemberUnjudgeable, EqualityOnFunctionMember, FieldNotFound,
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
-    ReceiverTypeUnestablished, ResourceRequirementUnestablished,
+    ReceiverTypeUnestablished, ResourceFrontierOccurrenceBudgetExceeded,
+    ResourceRequirementFrontierAdmitted, ResourceRequirementUnestablished,
     ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation, TypeArgumentArityMismatch,
     TypeMismatch, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
 };
@@ -285,8 +286,8 @@ pub use crate::v1_std_core::{
     arm_body, arm_guard, arm_pattern, authored_name_at, binop_left, binop_right, bool_type,
     build_newline_index, callable_identity, cast_expr, cast_target, container_expected_arity,
     decl_ref_coords_label, default_ident_span, diagnostic_frontier_occurrence_key,
-    diagnostic_to_span, empty_intern_table, error_type, expr_call_func_at,
-    expr_has_non_tail_self_call, expr_has_self_call, expr_literal_int_optional,
+    diagnostic_resource_frontier_key, diagnostic_to_span, empty_intern_table, error_type,
+    expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call, expr_literal_int_optional,
     expr_literal_string_optional, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_access_spine, field_binding_name_at, field_binding_pattern,
     field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
@@ -317,8 +318,8 @@ pub use crate::v1_std_core::{
     Connective, DeclRefCoords, DeclarationMarker, DeclaredCallableIdentity, DeclaredFuncEnv,
     DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle,
     FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, ResolvedCallFormal, ResolvedFormal, ServiceConfigField,
-    StringPart, UnaryOpKind, VarBindingKind,
+    MethodSemantics, NewlineIndex, Node, ResolvedCallFormal, ResolvedFormal,
+    ResourceFrontierOccurrenceKey, ServiceConfigField, StringPart, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -1616,6 +1617,150 @@ pub fn callee_declaration_for_target(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ResourceRequirementFrontierRow {
+    pub caller_module_path: String,
+    pub caller_decl_name: String,
+    pub callee_module_path: String,
+    pub callee_decl_name: String,
+    pub resource: String,
+    pub occurrences: i64,
+    pub cause: String,
+    pub dissolution: Rc<DissolutionCondition>,
+}
+
+pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierRow>>> {
+    Rc::new(vec![])
+}
+
+pub fn resource_requirement_frontier_trigger(
+    caller_module_path: String,
+    caller_decl_name: String,
+    callee_module_path: String,
+    callee_decl_name: String,
+    resource: String,
+) -> Option<Rc<DissolutionCondition>> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for r in resource_requirement_frontier().iter().cloned() {
+            if (((((r.caller_module_path.clone() == caller_module_path.clone())
+                && (r.caller_decl_name.clone() == caller_decl_name.clone()))
+                && (r.callee_module_path.clone() == callee_module_path.clone()))
+                && (r.callee_decl_name.clone() == callee_decl_name.clone()))
+                && (r.resource.clone() == resource.clone()))
+            {
+                __result.push(r);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(row) => Some(row.dissolution.clone()),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn resource_frontier_diag_matches_row(
+    d: Rc<CompilerDiagnostic>,
+    row: Rc<ResourceRequirementFrontierRow>,
+) -> bool {
+    match crate::v1_std_core::diagnostic_resource_frontier_key(d.clone()) {
+        Some(key) => {
+            (((((key.caller_module_path.clone() == row.caller_module_path.clone())
+                && (key.caller_decl_name.clone() == row.caller_decl_name.clone()))
+                && (key.callee_module_path.clone() == row.callee_module_path.clone()))
+                && (key.callee_decl_name.clone() == row.callee_decl_name.clone()))
+                && (key.resource.clone() == row.resource.clone()))
+        }
+        std::option::Option::None => false,
+    }
+}
+
+pub fn resource_frontier_row_observed(
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    row: Rc<ResourceRequirementFrontierRow>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for e in diagnostics.iter().cloned() {
+            if resource_frontier_diag_matches_row(e.diagnostic.clone(), row.clone()) {
+                __result.push(e);
+            }
+        }
+        __result
+    })
+}
+
+pub fn resource_frontier_row_budget_diags(
+    row: Rc<ResourceRequirementFrontierRow>,
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    module_name: String,
+    module_span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let observed = resource_frontier_row_observed(diagnostics.clone(), row.clone());
+        if ((observed.clone().len() as i64) == row.occurrences.clone()) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(
+                    CompilerDiagnostic::ResourceFrontierOccurrenceBudgetExceeded {
+                        caller_decl_name: row.caller_decl_name.clone(),
+                        callee_module_path: row.callee_module_path.clone(),
+                        callee_decl_name: row.callee_decl_name.clone(),
+                        resource: row.resource.clone(),
+                        declared: row.occurrences.clone(),
+                        observed: (observed.clone().len() as i64),
+                        span: match observed.clone().first().cloned() {
+                            Some(witness) => {
+                                crate::v1_std_core::diagnostic_to_span(witness.diagnostic.clone())
+                            }
+                            std::option::Option::None => module_span.clone(),
+                        },
+                    },
+                ),
+                module_name.clone(),
+            )])
+        }
+    }
+}
+
+pub fn resource_frontier_occurrence_budget_diags(
+    module_name: String,
+    module_span: Rc<SourceSpan>,
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for r in Rc::new({
+            let mut __result = Vec::new();
+            for r in resource_requirement_frontier().iter().cloned() {
+                if (r.caller_module_path.clone() == module_name.clone()) {
+                    __result.push(r);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.extend(
+                (*resource_frontier_row_budget_diags(
+                    r.clone(),
+                    diagnostics.clone(),
+                    module_name.clone(),
+                    module_span.clone(),
+                ))
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
 pub fn resource_requirement_diags(
     scope: Rc<InferScope>,
     call_target: Rc<CallTargetOutcome>,
@@ -1647,6 +1792,12 @@ pub fn resource_requirement_diags(
                         } else {
                             {
                                 let established = caller_resource_requirements(scope.clone());
+                                let caller_name =
+                                    if (scope.caller_decl_name.clone() == "".to_string()) {
+                                        "<module scope>".to_string()
+                                    } else {
+                                        scope.caller_decl_name.clone()
+                                    };
                                 Rc::new({
                                     let mut __result = Vec::new();
                                     for r in Rc::new({
@@ -1665,18 +1816,28 @@ pub fn resource_requirement_diags(
                                     .iter()
                                     .cloned()
                                     {
-                                        __result.push(crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ResourceRequirementUnestablished {
+                                        __result.push({
+                            let resource_label = type_node_label(r.resource.clone(), scope.type_env.clone().source_indices.clone());
+match resource_requirement_frontier_trigger(scope.module_name.clone(), caller_name.clone(), callee.owner_module_path.clone(), callee.decl_name.clone(), resource_label.clone()) {
+    Some(trigger) => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ResourceRequirementFrontierAdmitted {
     callee_module_path: callee.owner_module_path.clone(),
     callee_decl_name: callee.decl_name.clone(),
-    resource: type_node_label(r.resource.clone(), scope.type_env.clone().source_indices.clone()),
+    resource: resource_label.clone(),
     caller_module_path: scope.module_name.clone(),
-    caller_decl_name: if (scope.caller_decl_name.clone() == "".to_string()) {
-                            "<module scope>".to_string()
-                        } else {
-                            scope.caller_decl_name.clone()
-                        },
+    caller_decl_name: caller_name.clone(),
+    trigger: crate::std_dissolution::dissolution_description(trigger.clone()),
     span: span.clone(),
-}), scope.module_name.clone()));
+}), scope.module_name.clone()),
+    std::option::Option::None => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ResourceRequirementUnestablished {
+    callee_module_path: callee.owner_module_path.clone(),
+    callee_decl_name: callee.decl_name.clone(),
+    resource: resource_label.clone(),
+    caller_module_path: scope.module_name.clone(),
+    caller_decl_name: caller_name.clone(),
+    span: span.clone(),
+}), scope.module_name.clone()),
+}
+});
                                     }
                                     __result
                                 })
@@ -1689,6 +1850,30 @@ pub fn resource_requirement_diags(
     }
 }
 
+pub fn diag_is_resource_requirement_admitted(e: Rc<ErrorNode>) -> bool {
+    (crate::v1_std_core::diagnostic_resource_frontier_key(e.diagnostic.clone())
+        != std::option::Option::None)
+}
+
+pub fn resource_requirement_admitted_diags(
+    scope: Rc<InferScope>,
+    call_target: Rc<CallTargetOutcome>,
+    span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for e in resource_requirement_diags(scope.clone(), call_target.clone(), span.clone())
+            .iter()
+            .cloned()
+        {
+            if diag_is_resource_requirement_admitted(e.clone()) {
+                __result.push(e);
+            }
+        }
+        __result
+    })
+}
+
 pub fn resource_requirement_refusal(
     func_name: String,
     scope: Rc<InferScope>,
@@ -1696,7 +1881,18 @@ pub fn resource_requirement_refusal(
     span: Rc<SourceSpan>,
 ) -> Option<Rc<InferResult>> {
     {
-        let diags = resource_requirement_diags(scope.clone(), call_target.clone(), span.clone());
+        let diags = Rc::new({
+            let mut __result = Vec::new();
+            for e in resource_requirement_diags(scope.clone(), call_target.clone(), span.clone())
+                .iter()
+                .cloned()
+            {
+                if !diag_is_resource_requirement_admitted(e.clone()) {
+                    __result.push(e);
+                }
+            }
+            __result
+        });
         match diags.clone().first().cloned() {
             std::option::Option::None => std::option::Option::None,
             Some(_) => Some(Rc::new(InferResult {
@@ -8470,8 +8666,15 @@ pub fn frontier_occurrence_budget_checked(
     diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     v1_rt::concat(
-        diagnostics.clone(),
-        frontier_occurrence_budget_diags(
+        v1_rt::concat(
+            diagnostics.clone(),
+            frontier_occurrence_budget_diags(
+                module_name.clone(),
+                module_span.clone(),
+                diagnostics.clone(),
+            ),
+        ),
+        resource_frontier_occurrence_budget_diags(
             module_name.clone(),
             module_span.clone(),
             diagnostics.clone(),
@@ -11068,7 +11271,7 @@ Rc::new(ArgGenericFoldState {
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),
 })), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
-    diagnostics: v1_rt::concat(formal_authority_diags.clone(), v1_rt::concat(arg_diags.clone(), v1_rt::concat(arg_shape_diags.clone(), v1_rt::concat(arg_compat_diags.clone(), v1_rt::concat(structured_arg_diags.clone(), v1_rt::concat(inhabitance_arg_diags.clone(), generic_type_argument_inhabitance_diags.clone())))))),
+    diagnostics: v1_rt::concat(resource_requirement_admitted_diags(scope.clone(), call_target.clone(), span.clone()), v1_rt::concat(formal_authority_diags.clone(), v1_rt::concat(arg_diags.clone(), v1_rt::concat(arg_shape_diags.clone(), v1_rt::concat(arg_compat_diags.clone(), v1_rt::concat(structured_arg_diags.clone(), v1_rt::concat(inhabitance_arg_diags.clone(), generic_type_argument_inhabitance_diags.clone()))))))),
 })
                                             }
                                         }
