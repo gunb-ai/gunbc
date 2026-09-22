@@ -202,9 +202,23 @@ fn exact_decimal_wire(d: ExactDecimal) -> String {
 // gunbc.build_cache.build_cache_endpoint_observe, gunbc.rust_item_host_observation,
 // gunbc.rust_item_scan) were cut over to it in the same change that added it, so a reader of a
 // fixed-width decimal field consumes it rather than minting its own. Hexadecimal digits are
-// extdeps.numeric.base16's, a different alphabet.
+// extdeps.numeric.base16's, a different alphabet. THE BODY IS THE ORDERING TEST, NOT A TEN-WAY
+// EQUALITY CHAIN (review 70082 of gunbc#11989): three of the cut-over sites are per-character folds
+// over whole source trees, so the chain put up to a 5x constant on the innermost predicate of each.
+// DESIGN section 6, bare minimum cost: a proven cost-shape defect is always fixed regardless of the
+// realized n, because "n is small here" is not a time-stable fact. The ordering form is what
+// char_is_ident's neighbouring a-z and A-Z range tests already use, so it adds no convention.
+//
+// ITS PRECONDITION, STATED BECAUSE IT IS A REAL NARROWING RATHER THAN A NOTATION CHANGE: this is a
+// SINGLE-CHARACTER predicate. String ordering is lexicographic, so "12" >= "0" and "12" <= "9" both
+// hold and multi-character text would answer true here where the ten-way equality chain answered
+// false. Every call site reaches it through char_at -- decimal_digits_from, char_is_ident and
+// leading_ident_from in gunbc.rust_item_scan, digits_from in gunbc.rust_item_host_observation,
+// leading_digits_from in gunbc.build_cache.build_cache_endpoint_observe, and is_digit in
+// gunbc.auth.approval_capability, whose own caller folds char_at over the offsets -- so no current
+// consumer can reach the divergence. A caller passing a longer string is outside this contract.
 fn decimal_digit_char(ch: String) -> Bool {
-  ch == "0" || ch == "1" || ch == "2" || ch == "3" || ch == "4" || ch == "5" || ch == "6" || ch == "7" || ch == "8" || ch == "9"
+  ch >= "0" && ch <= "9"
 }
 
 fn decimal_digits_from(s: String, i: Int) -> Bool {
