@@ -1590,7 +1590,7 @@ fn body_lower_comma_list_items_optional(list_capture: Node) -> Optional<List<Nod
 // Instantiation connective with the head as its first positional child and each argument
 // after it (the shape v2.std.compilers.target_model reads the head from, index 0); a trailing
 // `?` wraps the result in the Cardinality connective, v2's authority for an optional field
-// (v2.std.node_query DeclaredField.required, decoded once at declared_field_from_edge). Before this reader a param or field typed
+// (v2.std.node_query DeclaredField.cardinality, decoded once at declared_field_cardinality_of_target). Before this reader a param or field typed
 // `List<Int>` or `Int?` lowered to the bare head atom, silently.
 fn body_lower_type_generic_args_optional(generic_capture: Node) -> Optional<List<Node>> {
   let stripped = body_lower_deep_unwrap_optional(node: generic_capture)
@@ -1824,34 +1824,6 @@ fn body_lower_arrow_seq_return_type(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_return_type_after_arrow_walk(node: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: node)
-  match body_lower_arrow_seq_return_type(node: stripped) {
-    Present { value: found } => Present { value: found }
-    Absent =>
-      match parse_production_captured_child_optional(node: stripped) {
-        Present { value: captured } =>
-          match body_lower_return_type_after_arrow_walk(node: captured) {
-            Present { value: found } => Present { value: found }
-            Absent =>
-              fold(stripped.children, init: Absent, f: fn(acc, e) {
-                match acc {
-                  Present { value: _ } => acc
-                  Absent => body_lower_return_type_after_arrow_walk(node: e.target)
-                }
-              })
-          }
-        Absent =>
-          fold(stripped.children, init: Absent, f: fn(acc, e) {
-            match acc {
-              Present { value: _ } => acc
-              Absent => body_lower_return_type_after_arrow_walk(node: e.target)
-            }
-          })
-      }
-  }
-}
-
 fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
     Absent => Absent
@@ -1883,56 +1855,78 @@ fn body_lower_sequence_head_is_arrow(node: Node) -> Bool {
   }
 }
 
-fn body_lower_type_expr_after_arrow(node: Node) -> Optional<Node> {
-  match sugar_sequence_pair_optional(node: node) {
-    Present { value: pair } =>
-      if body_lower_sequence_head_is_arrow(node: pair.left) {
-        match body_lower_find_captured(
-          root: pair.right,
-          emitted: ^dag_surface_type_expr
-        ) {
-          ParseSubtreeFound { captured: type_expr } => Present { value: type_expr }
-          ParseSubtreeAbsent =>
-            match sugar_sequence_pair_optional(node: pair.right) {
-              Present { value: after_arrow } =>
-                match parse_production_emitted_identity_optional(node: after_arrow.left) {
-                  Present { value: emitted } =>
-                    if emitted == ^dag_surface_type_expr {
-                      optional_present(value: after_arrow.left)
-                    } else {
-                      body_lower_type_expr_after_arrow(node: pair.right)
-                    }
-                  Absent => body_lower_type_expr_after_arrow(node: pair.right)
-                }
-              Absent => Absent
-            }
-        }
-      } else {
-        match body_lower_type_expr_after_arrow(node: pair.left) {
-          Present { value: found } => Present { value: found }
-          Absent => body_lower_type_expr_after_arrow(node: pair.right)
-        }
-      }
-    Absent =>
-      match parse_production_emitted_identity_optional(node: node) {
-        Present { value: _ } =>
-          match parse_production_captured_child_optional(node: node) {
-            Present { value: captured } => body_lower_type_expr_after_arrow(node: captured)
-            Absent => Absent
+// The return type of a `fn` is a POSITIONAL fact of the fn_decl production, not a shape to go
+// looking for. `dag_grammar_fn_decl_expr` is one right-nested sequence:
+//   seq(kw_fn, seq(name, seq(opt(generic_params), seq(param_list, seq(RET, BODY)))))
+// where RET is `opt(seq(arrow, type_expr))`. So RET is the LEFT of the FOURTH right-projection
+// from the production's captured child, at a fixed depth. An elided `optional` still yields
+// grammar_empty_node (v2.compiler.parse parse_expr_optional returns one on the rejected arm), so
+// the spine positions do NOT shift when the generic params or the arrow clause are absent --
+// that is what makes reading by position sound rather than a guess about layout.
+//
+// THE DEPTH IS VERIFIED AGAINST THE PRODUCTION, NOT SAMPLED FROM SPECIMENS. That production has
+// exactly TWO optionals and only generic_params precedes the return clause, so generic_params is
+// the entire risk surface for this depth; both it and the `= expr` body arm are held by
+// executing falsifiers (`nfbcp_falsifier_generic_fn_return_type_holds`,
+// `nfbcp_falsifier_eq_body_fn_return_type_holds`). The reciprocal note lives on the carrier that
+// owns the shape, beside dag_grammar_fn_decl_expr, because the person who would break this is
+// editing the grammar and not this reader.
+//
+// THIS REPLACES A SILENTLY WRONG READING, AND THAT IS WHY IT IS NOT AN OPTIMISATION.
+// The deleted reading (body_lower_return_type_after_arrow_walk, #10929) walked the whole fn
+// subtree looking for any sequence(arrow, ...) with no prune, so it descended into the PARAMETER
+// LIST and answered with the first arrow it met there. For `fn g(h: fn(Int) -> Int) -> Bool`
+// -- which parses today, because fn_type is a type_expr alternative -- it returned
+// dag_binding_type_int for a function declared to return Bool. A wrong answer with no diagnostic
+// is DESIGN section 5's forbidden class, not a cost finding. The positional read cannot reach a
+// parameter's type at all, so the invalid state is unwritable rather than checked for
+// (DESIGN section 4b: construction over validation). Its sibling
+// body_lower_type_expr_after_arrow, a second blind arrow hunt with no consumer on main, is
+// deleted with it rather than left standing as a second authority for the same question.
+// Discriminating red: v2.test.manual.normalize_fn_body_cost_probe
+// `nfbcp_hazard_return_type_is_positional_holds`, which fails on the deleted reading and holds
+// on this one; `nfbcp_hazard_specimen_parses_holds` beside it separates "no hazard" from
+// "specimen does not parse", so the red cannot go green by the specimen ceasing to compile.
+fn body_lower_fn_decl_spine_right(node: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+    Present { value: pair } => optional_present(value: pair.right)
+    Absent => optional_absent()
+  }
+}
+
+fn body_lower_fn_decl_return_clause_optional(captured: Node) -> Optional<Node> {
+  match body_lower_fn_decl_spine_right(node: captured) {
+    Absent => optional_absent()
+    Present { value: after_kw_fn } =>
+      match body_lower_fn_decl_spine_right(node: after_kw_fn) {
+        Absent => optional_absent()
+        Present { value: after_name } =>
+          match body_lower_fn_decl_spine_right(node: after_name) {
+            Absent => optional_absent()
+            Present { value: after_generics } =>
+              match body_lower_fn_decl_spine_right(node: after_generics) {
+                Absent => optional_absent()
+                Present { value: after_params } =>
+                  match sugar_sequence_pair_optional(
+                    node: body_lower_deep_unwrap_optional(node: after_params)
+                  ) {
+                    Absent => optional_absent()
+                    Present { value: pair } =>
+                      optional_present(
+                        value: body_lower_unwrap_optional_element(node: pair.left)
+                      )
+                  }
+              }
           }
-        Absent =>
-          fold(node.children, init: Absent, f: fn(acc, e) {
-            match acc {
-              Present { value: _ } => acc
-              Absent => body_lower_type_expr_after_arrow(node: e.target)
-            }
-          })
       }
   }
 }
 
 fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
-  body_lower_return_type_after_arrow_walk(node: captured)
+  match body_lower_fn_decl_return_clause_optional(captured: captured) {
+    Absent => optional_absent()
+    Present { value: clause } => body_lower_arrow_seq_return_type(node: clause)
+  }
 }
 
 fn body_lower_find_core_substrate_optional(root: Node) -> Optional<Node> {

@@ -113,71 +113,9 @@ data floor_eval_step_cost_drop_page_style_rows: List<EvalStepCostDropMeasurement
 ]
 
 
-// THE FN-BODY WITNESSES OF gunbc#12033, ON THEIR OWN LIST because growing another drop's list is
-// a new drop. Membership is by whole qualified identity, one row per witness; the reasoning lives on
-// gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling, whose population DERIVES from
-// this list rather than restating it.
-data floor_eval_step_cost_drop_fn_body_rows: List<EvalStepCostDropMeasurement> = [
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.variant_field_lowering.vf_distinct_payloads_normalize_distinct" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.variant_field_lowering.vf_content_hash_declarations_and_positional_match_normalize" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.variant_field_lowering.vf_shadowing_binder_is_carried_on_the_arm" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.variant_field_lowering.vf_braced_pattern_binds_named_field" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.variant_field_lowering.vf_shorthand_pattern_binds_field_to_its_own_name" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.variant_field_lowering.vf_positional_construction_carries_its_operand" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.variant_field_lowering.vf_positional_pattern_binds_field_zero" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.variant_field_lowering.vf_wildcard_pattern_keeps_its_field" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.variant_field_lowering.vf_record_construction_is_the_construct_shape" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.variant_field_lowering.vf_two_positional_binders_refuse" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.braced_pattern_binder_still_normalizes_holds" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.positional_payload_without_leading_pipe_with_construction_normalizes_holds" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.positional_pattern_binder_normalizes_holds" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.positional_wildcard_pattern_still_normalizes_holds" as NonEmptyStr,
-    measured_by: "required floor run 35723843235, artifact required-floor-claim-cost; planned, verdict pass, over the new-witness budget. The billed work is one function body through parse and normalize on a supplied token stream -- inputs are already supplied as far as they go (v2.test.parse.supplied_token_stream_support), and parse ALONE of a fn-bearing specimen measures 61931 against the 72300 ceiling, so no remaining supply point brings these under it. Reasoning: gunbc.rung_drop normalize_fn_body_witnesses_over_the_floor_ceiling" as NonEmptyStr,
-  },
-]
 
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_fn_body_rows)
+  concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or
