@@ -627,21 +627,19 @@ fn compute_run_and_settle(
       layout: layout, identity: identity, subject: subject, op: op, outcome: outcome,
       reservation: reservation, returned: returned, reference: reference, termination: termination)
   }
-  let dropped = Filesystem.Delete(path: layout.lease_path)
+  let dropped = compute_drop_producer_lease(layout: layout)
   let measured = Filesystem.Write(
     path: layout.consumption_path,
     content: join([
       compute_capacity_standing_wire(s: standing), "\n",
       "unit: ", unit_termination_wire(t: termination), "\n",
       "reservation: ", compute_release_wire(r: returned), "\n",
-      if dropped.success { "" } else { compute_stale_lease_note(layout: layout, error: dropped.error) },
+      match dropped { LeaseDropped => ""  LeaseNotDropped { detail: d } => compute_stale_lease_note(layout: layout, error: d) },
     ], ""))
   if measured.success {
     settled
   } else {
-    compute_with_lost_host_record(
-      settled: settled, layout: layout,
-      dropped_ok: dropped.success, dropped_error: dropped.error, error: measured.error)
+    compute_with_lost_host_record(settled: settled, layout: layout, dropped: dropped, error: measured.error)
   }
 }
 
@@ -672,17 +670,15 @@ fn compute_run_and_settle(
 fn compute_with_lost_host_record(
   settled: ProvideResult,
   layout: ComputeLayout,
-  dropped_ok: Bool,
-  dropped_error: String,
+  dropped: LeaseDrop,
   error: String,
 ) -> ProvideResult {
   let detail = join([
     "this host's record at ", layout.consumption_path, " could not be written: ", error,
     "; the consumption reading is lost, and ",
-    if dropped_ok {
-      "the producer lease was dropped, so nothing else is outstanding"
-    } else {
-      join(["THE PRODUCER LEASE AT ", layout.lease_path, " IS ALSO STILL HELD (", dropped_error, ") AND NOTHING NOW RECORDS THAT IT IS STALE: an operator must remove the name before this identity can be produced again"], "")
+    match dropped {
+      LeaseDropped => "the producer lease was dropped, so nothing else is outstanding"
+      LeaseNotDropped { detail: d } => join(["THE PRODUCER LEASE AT ", layout.lease_path, " IS ALSO STILL HELD (", d, ") AND NOTHING NOW RECORDS THAT IT IS STALE: an operator must remove the name before this identity can be produced again"], "")
     },
   ], "")
   provide_result_with_host_record(r: settled, carried: HostRecordLost { detail: detail })
@@ -780,7 +776,7 @@ fn compute_unreleased_record(
 // operator clears the partition by hand. That is the direction a capacity ledger must fail in.
 data compute_stuck_reservation_remedy: String = "There is NO safe discharge for this seat while this host is admitting work: clearing the capacity partition by hand under live admission removes the record the admission arithmetic is computed from, so the next requests would be admitted against memory this one still holds -- trading a host that under-admits for one that over-promises. The discharge is the compute lifecycle capability (gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge). Any manual intervention before then requires compute admission STOPPED on this host and every gunbc-compute unit PROVEN gone, in that order. Until then this host under-admits, which is the fail-closed direction and is not an incident."
 
-// THE ORDER THE TWO HOLDS ARE TAKEN IN// THE ORDER THE TWO HOLDS ARE TAKEN IN, and they are two facts rather than one. The producer lease
+// THE ORDER THE TWO HOLDS ARE TAKEN IN, and they are two facts rather than one. The producer lease
 // excludes a SECOND PRODUCER OF THIS IDENTITY and is a NAME, so an exclusive create settles it; the
 // reservation is a QUANTITY on the host, and no exclusive create of any name settles that. The
 // lease is taken first because a request that then loses on capacity releases a name it holds
@@ -803,6 +799,63 @@ data compute_stuck_reservation_remedy: String = "There is NO safe discharge for 
 // attached to MODULE-SCOPE declarations only, and the interpreter route this provider's witnesses
 // run on tolerates a body-position block that `gunbc compile` refuses outright -- 14 blocking
 // errors on a module every witness had reported green.
+// THE ATTACH CHECK IS MADE TWICE, AND THE SECOND ONE IS THE LOAD-BEARING ONE.
+//
+// The first read happens BEFORE the producer lease exists, which makes it evidence about a past
+// world: between reading "no stored outcome" and winning the lease, another producer can finish and
+// publish one. The first caller then re-produces work that is already done AND takes a second
+// reservation for an identity that is already satisfied -- the dedup the contract promises, lost to
+// a window nobody was holding anything across.
+//
+// So whatever was observed before the lease is re-observed while holding it. The early read is kept
+// because it lets the overwhelmingly common case -- an identity that is already built -- answer
+// without touching the lease at all; it is an optimisation, and the one inside the lease is the
+// decision.
+fn compute_read_stored_outcome(layout: ComputeLayout) -> StoredOutcomeRead {
+  let stored = Filesystem.Read(path: layout.outcome_path)
+  if stored.success { stored_outcome_decode(text: stored.content) } else { StoredOutcomeUnreadable { reason: "no stored outcome" } }
+}
+
+// ATTACHING FROM INSIDE THE LEASE MEANS GIVING THE LEASE BACK, and a failure to do so is reported
+// through the one lease-drop authority rather than a second spelling of it.
+fn compute_attach_under_lease(layout: ComputeLayout, identity: String, subject: WorkSubject, op: WorkOperation) -> ProvideResult {
+  let attached = compute_read_stored_outcome(layout: layout)
+  let dropped = compute_drop_producer_lease(layout: layout)
+  match attached {
+    StoredOutcomeFound { ending, identity: stored_identity, document } =>
+      ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: compute_lease_drop_record(dropped: dropped, layout: layout) }
+    StoredOutcomeUnreadable { reason } =>
+      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: reason } }, subject: subject, op: op)
+  }
+}
+
+// ONE AUTHORITY FOR "THE PRODUCER LEASE WAS NOT DROPPED", because there were three.
+//
+// compute_refused_unreserved mapped a failed drop to StoreUnavailable; compute_run_and_settle
+// folded it into the consumption note; and the attach path above would have needed a third. Three
+// places deciding one fact is the DESIGN 3 fork, and the thing to delete rather than to keep
+// consistent by hand -- they were already inconsistent, since one turned the failure into a verdict
+// about the work and another did not.
+//
+// THE CONTRACT, stated once and applied everywhere: a lease that could not be dropped NEVER changes
+// what the work did. It is a host-operational fact, it rides as a HostRecordLost so the caller hears
+// it without the stored record being contradicted, and the remedy is an operator removing the name.
+type LeaseDrop
+  = LeaseDropped
+  | LeaseNotDropped { detail: String }
+
+fn compute_drop_producer_lease(layout: ComputeLayout) -> LeaseDrop {
+  let dropped = Filesystem.Delete(path: layout.lease_path)
+  if dropped.success { LeaseDropped } else { LeaseNotDropped { detail: dropped.error } }
+}
+
+fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostRecordStatus {
+  match dropped {
+    LeaseDropped => HostRecordWritten
+    LeaseNotDropped { detail: d } => HostRecordLost { detail: compute_stale_lease_note(layout: layout, error: d) }
+  }
+}
+
 fn compute_provide_leaf(
   instance: HostDashboardInstance,
   commit: String,
@@ -813,8 +866,7 @@ fn compute_provide_leaf(
 ) -> ProvideResult {
   let identity = work_identity_hex(id: work_identity(subject: subject, op: op, toolchain: toolchain))
   let layout = compute_layout(instance: instance, identity_hex: identity)
-  let stored = Filesystem.Read(path: layout.outcome_path)
-  let attached = if stored.success { stored_outcome_decode(text: stored.content) } else { StoredOutcomeUnreadable { reason: "no stored outcome" } }
+  let attached = compute_read_stored_outcome(layout: layout)
   if stored_outcome_is_success(r: attached) {
     match attached {
       StoredOutcomeFound { ending, identity: stored_identity, document } => ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: HostRecordWritten }
@@ -826,6 +878,8 @@ fn compute_provide_leaf(
     let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
     if !lease.success {
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: layout.lease_path } }, subject: subject, op: op)
+    } else if stored_outcome_is_success(r: compute_read_stored_outcome(layout: layout)) {
+      compute_attach_under_lease(layout: layout, identity: identity, subject: subject, op: op)
     } else {
       let reference = compute_reservation_reference(identity: identity)
       let reservation = compute_reserve(instance: instance, reference: reference, term_seconds: compute_reservation_term_seconds)
@@ -876,16 +930,12 @@ fn compute_refused_unreserved(
   layout: ComputeLayout,
   cause: WorkInfrastructureRefusal,
 ) -> ProvideResult {
-  let dropped = Filesystem.Delete(path: layout.lease_path)
-  if dropped.success {
-    compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: cause }, subject: subject, op: op)
-  } else {
-    compute_fresh(
-      outcome: WorkRefusedByInfrastructure {
-        identity: identity,
-        cause: StoreUnavailable { detail: join(["a capacity refusal could not drop its producer lease at ", layout.lease_path, ": ", dropped.error], "") },
-      },
-      subject: subject, op: op)
+  let dropped = compute_drop_producer_lease(layout: layout)
+  match compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: cause }, subject: subject, op: op) {
+    ProvideFresh { outcome: o, document: d, host_record: _ } =>
+      ProvideFresh { outcome: o, document: d, host_record: compute_lease_drop_record(dropped: dropped, layout: layout) }
+    ProvideAttached { identity: i, ending: e, document: d, host_record: h } =>
+      ProvideAttached { identity: i, ending: e, document: d, host_record: h }
   }
 }
 
