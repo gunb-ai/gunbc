@@ -3433,6 +3433,19 @@ fn body_lower_postfix_chain_read(node: Node) -> PostfixChainRead {
 // an operand reference, and the expression sites read those through
 // body_lower_dotted_chain_lowered_optional. A chain with a computed head is likewise not an
 // operand reference: the head is an expression.
+//
+// WHERE THE CARRIED-SUFFIX RESIDUE IS COUNTED, AND WHERE IT IS NOT (review 70146, non-blocking).
+// This reader answers PostfixChainSuffixCarried with optional_absent() and NO diagnostic: its
+// Optional<Node> return has no slot for one, and its single caller
+// (body_lower_operand_ref_optional) then falls back to reading the chain's HEAD, so a
+// brace-suffixed chain reached ONLY through operand position is truncated silently rather than
+// counted. The counting site is the expression door, which emits
+// body_lowering_reason_postfix_suffix_carried once per occurrence; that is deliberate, because
+// counting at both would double-count the same residue. NEITHER THE REVIEWER NOR THIS AUTHOR
+// COULD CONSTRUCT A ROUTE where the operand reader is the SOLE reader of such a chain, so the
+// gap is stated rather than closed: closing it means giving this reader an Outcome, which is a
+// type change across every operand site and is not warranted for a route nobody can reach. If
+// such a route is ever exhibited, this is the sentence that says what to do about it.
 fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
   match body_lower_postfix_chain_read(node: node) {
     PostfixChainNotThisShape => optional_absent()
