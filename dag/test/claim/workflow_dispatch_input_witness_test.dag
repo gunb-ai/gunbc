@@ -107,7 +107,16 @@ test fn workflow_dispatch_empty_inputs_preserve_null_projection() -> Bool {
   }
 }
 
-fn mode_input_has_choice_options(v: YamlValue) -> Bool {
+// THE EXPECTED OPTION LIST IS A PARAMETER, NOT fleet_converge_mode_options HARD-WIRED.
+//
+// This predicate fused two subjects while the roster was baked in: the PROJECTION (an InputChoice's
+// options reach the yaml as a sequence of strings, all of them, and nothing else) and the CONTENT
+// (that the workflow's mode input carries the fleet's mode roster). Only the first is a fact about
+// workflow_trigger_entry, and the second is true by construction anyway -- the workflow literal
+// writes `options: fleet_converge_mode_options`, so asserting equality with that same row restates
+// a constraint the source already carries (DESIGN section 5). The roster's own coherence is
+// established separately by every_dispatch_option_is_a_wire_value_of_the_vocabulary.
+fn mode_input_has_choice_options(v: YamlValue, expected: List<String>) -> Bool {
   match v {
     YamlMapping { entries } =>
       fold(entries, init: false, f: fn(acc, entry) {
@@ -119,8 +128,8 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
                   fold(fields, init: false, f: fn(has_opts, field) {
                     has_opts || (field.key == "options" && match field.value {
                       YamlSequence { elements: opts } =>
-                        length(opts) == length(fleet_converge_mode_options)
-                          && all(fleet_converge_mode_options, m => any(opts, o => match o { YamlString { value } => value == m  _ => false }))
+                        length(opts) == length(expected)
+                          && all(expected, m => any(opts, o => match o { YamlString { value } => value == m  _ => false }))
                       YamlNull => false
                       YamlBool { value: _ } => false
                       YamlInt { lexeme: _ } => false
@@ -165,13 +174,32 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
 // and surfaced only from a local claim_batch run -- see
 // gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rather_than_red (fourth
 // specimen: the falsifier is the compiler wall, not another file).
+// THE TRIGGER IS SUPPLIED, BECAUSE THE SUBJECT IS THE PROJECTION AND NOT THE WORKFLOW.
+//
+// This claim discriminates at ONE interface: workflow_trigger_entry turning a WorkflowDispatch
+// carrying a choice input into a yaml mapping with an `options` sequence under `mode`. It used to
+// reach that interface by forcing fleet_converge_workflow and taking its first trigger, which pays
+// to construct EVERY DispatchInput's description -- one of them is a multi-thousand-character
+// string -- for a fact about none of them. That is DESIGN section 3's tell verbatim: evaluation
+// dominated by one call whose result shape is all the claim inspects. Measured: 528572 eval steps
+// against a 72300 budget, and the cost rose with every input any lane added.
+//
+// The supplied trigger is the same construction the two sibling claims above already use. Its
+// PAIRING OBLIGATION -- that the real producer emits this shape -- is discharged by
+// fleet_converge_workflow_has_build_job_needs_release_bins and by the rendered-yaml claims below,
+// which run the real workflow end to end; deleting them would leave this input unpaired.
 test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
-  match fleet_converge_workflow.on.first() {
-    Present { value: trigger } =>
-      let entry = workflow_trigger_entry(trigger: trigger)
-      entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
-    Absent => false
-  }
+  let entry = workflow_trigger_entry(trigger: WorkflowDispatch {
+    inputs: [DispatchInput {
+      name: "mode",
+      description: Present { value: "which convergence the run performs" },
+      required: true,
+      default: none,
+      type: InputChoice { options: ["plan", "apply"] },
+    }]
+  })
+  entry.key == "workflow_dispatch"
+    && mode_input_has_choice_options(v: entry.value, expected: ["plan", "apply"])
 }
 
 // THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
