@@ -112,27 +112,24 @@ test fn a_consumer_that_names_both_providers_keeps_its_use_line() -> Bool {
   w_consumer_naming_both_providers_keeps_its_use_line()
 }
 
-// THE DISCRIMINATION IS THE WHOLE CONJUNCTION, not any arm alone, and this states it as one fact
-// so a reader cannot take the expecting-red arm for a claim that dropping use-lines is correct.
-// All four arms are joined here deliberately: the condition has THREE terms, and a conjunction
-// over only the first two would stay green if the third were lost -- which is exactly the state
-// this witness was in before arm E was measured, when it encoded a condition the defect does not
-// actually have.
-test fn the_use_line_verdict_turns_on_the_whole_conjunction() -> Bool {
-  w_single_declarer_keeps_the_authored_use_line()
-    && w_second_declarer_drops_the_authored_use_line()
-    && w_consumer_naming_both_providers_keeps_its_use_line()
-    && w_forked_nominal_record_keeps_its_use_line()
-}
-
-// THE NON-PHANTOM COMPARISON, ENROLLED BECAUSE IT IS WHAT BOUNDS THE CLASS. A forked NOMINAL
-// record keeps its use-line with the second declarer present. Without this arm the row's
-// population would read as "every dual-declared spelling", which is measurably false and would
-// send a later reader to repair 34 names instead of the one condition that matters.
+// THE NON-PHANTOM BOUND, AND THE FIRST CUT OF IT WAS CONFOUNDED. A forked NOMINAL record must keep
+// its use-line under the SAME conditions that drop a phantom's, or nominality is not what the
+// bound is about. The first version of this arm had the consumer author
+// `import v2.std.cardinality { LoopBound }` itself -- and v2.std.cardinality is exactly where the
+// second TerminationProof lives, so the consumer NAMED the second declarer and term (3) was
+// violated. Its green was fully explained by term (3) and said nothing about nominality, while
+// the failure-mode row leaned on it to keep 34 forked spellings out of the population (review
+// 70079). A permanently-green arm whose verdict is decided by a different term is decoration,
+// which DESIGN section 4b forbids by name.
+//
+// It now takes the arm-B/C shape: the second declarer arrives through gunbc.product.fan_tach_health,
+// a module imported for an unrelated symbol that itself imports v2.std.cardinality and does not
+// mention std.termination. All three terms hold except nominality, so a red here would mean the
+// phantom shape is NOT load-bearing and the class is wider than the row states.
 fn w_forked_nominal_record_keeps_its_use_line() -> Bool {
   compile_dag_rust_emit_check(
-    "module aiulb_nominal\n\nimport std.types { Int, List }\nimport std.termination { TerminationProof }\nimport v2.std.cardinality { LoopBound }\n\nfn proof_dimension_count(p: TerminationProof) -> Int {\n  count(p.dimensions)\n}\n",
-    "src/aiulb_nominal.rs",
+    "module aiulb_nominal_indirect\n\nimport std.types { Int, List }\nimport std.termination { TerminationProof }\nimport gunbc.product.fan_tach_health { FanTachWindow }\n\nfn proof_dimension_count(p: TerminationProof) -> Int {\n  count(p.dimensions)\n}\n\nfn window_is_ignored(w: FanTachWindow) -> Int {\n  0\n}\n",
+    "src/aiulb_nominal_indirect.rs",
     ["pub use crate::std_termination::"],
     []
   )
@@ -140,4 +137,33 @@ fn w_forked_nominal_record_keeps_its_use_line() -> Bool {
 
 test fn a_forked_nominal_record_keeps_its_authored_use_line() -> Bool {
   w_forked_nominal_record_keeps_its_use_line()
+}
+
+// THE SAME NOMINAL CONSUMER WITH NO SECOND DECLARER AT ALL, so the arm above is read against a
+// baseline rather than on its own. If this one ever diverges from it, the nominal case has become
+// sensitive to the second declarer and the bound has moved.
+fn w_nominal_record_alone_keeps_its_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aiulb_nominal_alone\n\nimport std.types { Int, List }\nimport std.termination { TerminationProof }\n\nfn proof_dimension_count(p: TerminationProof) -> Int {\n  count(p.dimensions)\n}\n",
+    "src/aiulb_nominal_alone.rs",
+    ["pub use crate::std_termination::"],
+    []
+  )
+}
+
+test fn a_singly_declared_nominal_record_keeps_its_use_line() -> Bool {
+  w_nominal_record_alone_keeps_its_use_line()
+}
+
+// THE DISCRIMINATION IS THE WHOLE CONJUNCTION, not any arm alone, and this states it as one fact
+// so a reader cannot take the expecting-red arm for a claim that dropping use-lines is correct.
+// All five arms are joined: the condition has THREE terms, and a conjunction over a subset would
+// stay green if a term were lost -- which is exactly the state this witness was in twice, once
+// before arm E was measured and once while the nominal arm was confounded with it.
+test fn the_use_line_verdict_turns_on_the_whole_conjunction() -> Bool {
+  w_single_declarer_keeps_the_authored_use_line()
+    && w_second_declarer_drops_the_authored_use_line()
+    && w_consumer_naming_both_providers_keeps_its_use_line()
+    && w_forked_nominal_record_keeps_its_use_line()
+    && w_nominal_record_alone_keeps_its_use_line()
 }

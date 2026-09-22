@@ -4,8 +4,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String, Secret }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.resources { Network }
-import std.encoding { base64_decode, base64_octets, Standard }
-import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.encoding { base64_decode, Standard }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
 import std.algebra { trim }
 import extdeps.numeric.base16 { base16_encode_lower }
 import extdeps.entropy { Urandom }
@@ -78,7 +78,7 @@ fn mint_key_material() -> MintedKeyMaterial {
       if count(octets) != byte_size_count(b: mac_suite_key_size(s: approval_mac_key_suite)) {
         KeyMaterialRefused { cause: concat("the entropy read returned the wrong octet count: ", to_string(count(octets))) as NonEmptyStr }
       } else {
-        match base64_octets(values: octets) {
+        match uint8_octets_of_ints(values: octets) {
           QualifiedOctetsRefused { observed: o } =>
             KeyMaterialRefused { cause: concat("the entropy read decoded to an out-of-range octet: ", to_string(o)) as NonEmptyStr }
           QualifiedOctetsReady { value: qualified } =>
