@@ -113,20 +113,26 @@ import gunbc.witness_v2_native_route {
 //
 // AND HOW FAR A RUN GETS IS A PER-HEAD FACT THAT FLIPS, WHICH IS WHY `reach` IS A FIELD ON THE
 // REPORT AND NOT A CEILING IN THIS MODULE. Two readings within an hour of each other: main stops
-// at the emitted build (measured here, by gunbc#12043's `emit-build` lane, twice, deterministically
-// at 12m33s), and `session/sharp-bear-756` at 6032d50be7d builds the emitted crate clean --
-// `exit_status=0`, `warning_count=0` under `RUSTFLAGS=-D warnings`, wall 575s -- which is
-// RELAYED FROM THAT SESSION AND NOT REPRODUCED HERE. The reproduction was attempted from this lane
-// and is INCONCLUSIVE rather than negative: one remote dispatch over that tree reached
-// `compile.normalize` and was ended by the runner's own deadline, so it neither confirms nor
-// contradicts the figure. It is cited to its author rather than restated as this module's
-// measurement, which is the standing `extdeps.external_authority` `CitedFigureStanding` asks for
-// and the distinction DESIGN section 4d turns on -- an inference is not promoted by being useful.
-// Nothing in this module's construction depends on which of the two readings is right; they are
-// two values of one field. So "unreached on
-// main, reached on that head" is two runs with two `NativeRunReach` values and one model, with no
-// observation fabricated for main and no ceiling written down. That is the whole test of whether
-// the rungs are drawn in the right place, and the day that branch lands nothing here changes.
+// at the emitted build (measured here, by gunbc#12043's `emit-build` lane, twice,
+// deterministically at 12m33s), and a composition including `session/sharp-bear-756` at
+// 6032d50be7d builds the emitted crate clean.
+//
+// THE SECOND READING IS RELAYED AND STAYS LABELLED THAT WAY, with its evidence stated at the
+// strength it actually has rather than rounded up or down. TWO INDEPENDENT OBSERVATIONS exist:
+// that session's own (`exit_status=0`, `warning_count=0` under `RUSTFLAGS=-D warnings`, self-host
+// emit and build 575s), and gentle-bee-234's on a different composition including the same head
+// (same clean build, 1361s, and further -- a discriminating cargo red and clean-root-versus-poison
+// behaviour). A THIRD ATTEMPT, from this lane, IS INCONCLUSIVE: one remote dispatch over that tree
+// reached `compile.normalize` and was ended by the runner's own deadline. The 575s-to-1361s spread
+// is the likely reason and is worth carrying for the next person who tries -- budget for the
+// upper figure, not the headline one.
+//
+// SO THE STANDING IS: cited to its authors, not restated as this module's measurement
+// (`extdeps.external_authority` `CitedFigureStanding`), and the reading is symmetric in the way
+// DESIGN section 4d requires in BOTH directions -- a third party timing out is not evidence
+// against a result, and two independent builds are not evidence that it always builds. Nothing in
+// this module's construction depends on which reading is right; they are two values of one field,
+// which is the whole reason `reach` sits on the report.
 //
 // WHAT A GREEN EMITTED BUILD DOES NOT ESTABLISH, said here because the temptation is immediate:
 // it establishes `ReachCrateBuilt`, and nothing above it. Context, Prepare, Entry, Eval and Pass
