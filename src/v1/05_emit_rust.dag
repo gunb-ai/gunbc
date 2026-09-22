@@ -12942,21 +12942,6 @@ fn freemonoid_match_arm_for(arms: List<Node>, variant: String) -> Node? {
   }) |> first
 }
 
-fn freemonoid_cons_binding(cons_arm: Node, field: String, source_indices: Map<String, NewlineIndex>) -> String {
-  match arm_pattern(n: cons_arm) {
-    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
-      match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: source_indices) == field) |> first {
-        Present { value: fb } =>
-          match field_binding_pattern(n: fb) {
-            Bind { declaration: declaration } => declaration.name
-            _ => "_"
-          }
-        Absent => "_"
-      }
-    _ => "_"
-  }
-}
-
 fn arm_resolved_parent_enum(arm: Node, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> String? {
   match arm_pattern(n: arm) {
     VariantPattern { name: n, parent_enum: pe, field_bindings: _ } =>
@@ -12984,13 +12969,6 @@ fn freemonoid_catchall_arm(arms: List<Node>) -> Node? {
   }) |> first
 }
 
-fn freemonoid_catchall_bind_name(arm: Node) -> String {
-  match arm_pattern(n: arm) {
-    Bind { declaration: declaration } => declaration.name
-    _ => ""
-  }
-}
-
 fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> Bool {
   let has_empty = match freemonoid_match_arm_for(arms: arms, variant: "Empty") { Present { value: _ } => true  Absent => false }
   let has_cons = match freemonoid_match_arm_for(arms: arms, variant: "Cons") { Present { value: _ } => true  Absent => false }
@@ -13009,58 +12987,255 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
   is_fm && empty_fillable && cons_fillable
 }
 
-// THE TAIL IS A STRUCTURAL SKIP, NEVER A COPY. `im::Vector::skip` is O(log n) — it shares the
-// RRB tree — while `iter().skip(1).cloned().collect()` materializes the whole tail: every
-// cons-match in every emitted program paid O(n) per step, so every fold over a FreeMonoid was
-// quadratic. Measured on the required-v2-native lane's first run (2026-09-09): the self-hosted
-// lexer, which tails the remaining source per character and per rule attempt, parsed a 22KB
-// file in 23.3s against 70ms for 899B (333x time for 25x size), projecting a multi-hour
-// whole-corpus context fold — the lane's dominant term, ahead of the cargo build the envelope
-// had priced as dominant. DESIGN section 6 prices a copied accumulator as always-fixed.
-fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
-  if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new(__fm.skip(1)); ") }
+// ONE FreeMonoid MATCH IS A LENGTH DECISION OVER ITS ARMS IN ORDER, NOT A TWO-WAY is_empty SPLIT.
+//
+// The previous lowering asked two questions -- which arm mentions `Empty`, which arm mentions
+// `Cons` -- kept the FIRST answer to each, and emitted `if __fm.is_empty() { A } else { B }`. That
+// is faithful for exactly one shape: each variant appearing once, with irrefutable field
+// sub-patterns. Every other shape was lowered into a program that RUNS AND ANSWERS WRONGLY, which
+// is outside the ladder rather than low on it (DESIGN section 4b, section 5):
+//
+//   - a REFUTABLE field sub-pattern degraded to a wildcard, because the binding reader returned
+//     "_" for anything that was not a `Bind`, so `Cons { head: _, tail: Empty }` -- the ONE-element
+//     case -- lowered as `Cons { head: _, tail: _ }` and matched every non-empty list; and
+//   - every arm after the first `Cons` arm was DISCARDED, because nothing read past `first`. An
+//     arm guard was dropped on the same reasoning: no branch body ever read `arm_guard`.
+//
+// MEASURED IN THE EMITTED BINARY rather than the interpreter (witty-cat-84, Pkg12): v2.std.algebra
+// `list_init` -- `Empty => Empty | Cons { head: _, tail: Empty } => Empty | Cons { head: h, tail: t }
+// => Cons { head: h, tail: list_init(xs: t) }` -- emitted as `if __fm.is_empty() { vec![] } else {
+// vec![] }`, so `qualified_name_init(["v2", "acp_user", "acp_row"])` returned `[]` instead of
+// `["v2", "acp_user"]`, and the native resolver's ancestor walk skipped every intermediate
+// ancestor. v2.lens.cost.copied_port_derivation is the same class read rather than executed: it
+// reports "exactly one" for a three-element list. THE INTERPRETER LOWERS ALL OF THESE CORRECTLY,
+// which is why no interpreted claim discriminates the class, and why it survived unseen in every
+// emitted binary this seed has ever produced.
+//
+// THE CONSTRUCTION. A FreeMonoid pattern is a spine of `Cons` levels terminating either in `Empty`
+// (an EXACT length) or in a binding/wildcard tail (a length FLOOR). So each arm carries a decidable
+// length predicate, and its head bindings are decidable index reads. The arms are then an ordered
+// chain of those predicates, which is what a match MEANS -- the arm count and the nesting depth are
+// carried rather than assumed, so the class is closed at any depth rather than at the two shapes
+// the old pair of lookups could name. Exhaustiveness is decidable on the same facts -- every length
+// below the smallest floor must be covered by an exact arm -- so the chain's final `else` is PROVEN
+// total, and no `unreachable!` is fabricated to stand in for the proof.
+//
+// WHAT IT REFUSES RATHER THAN MIS-LOWERING (DESIGN section 5: a failure arm refuses, never widens):
+// a guard on an arm; a refutable `head` sub-pattern, which asks a question about the ELEMENT and
+// not about the FreeMonoid; a variant that is neither `Empty` nor `Cons`; and an arm set this
+// analysis cannot prove exhaustive. Each emits a located `compile_error!` naming the shape and the
+// span, so the line stops at the emitter with a typed, located cause instead of shipping.
+//
+// SELF-HOSTING NOTE, AND IT IS LOAD-BEARING. This module is emitted BY THE SEED THIS CHANGE FIXES,
+// so no function added here may use the shape the old lowering breaks, or the regenerated mirror
+// would be built from a miscompilation of the repair itself. Every FreeMonoid match below is two
+// arms with irrefutable field bindings, and the spine recursion is expressed with `count` on the
+// tail rather than with a `tail: Empty` sub-pattern. Written that way, ONE regeneration round
+// reaches the fixed point rather than two.
+type FmArmPlan {
+  supported: Bool
+  reason: String
+  exact: Bool
+  len: Int
+  head_binds: List<String>
+  tail_bind: String
+  arm: Node
 }
 
-fn freemonoid_empty_branch_body(empty_arm: Node?, catchall: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  match empty_arm {
-    Present { value: ea } => emit_typed_expr(texpr: arm_body(n: ea), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-    Absent => match catchall {
-      Present { value: wa } =>
-        let bn = freemonoid_catchall_bind_name(arm: wa)
-        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
-        concat(bind_let, emit_typed_expr(texpr: arm_body(n: wa), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
-      Absent => ""
+// Above every representable spine floor, so `fm_min_open_len` over a set with no open arm reports
+// "no arm accepts an unbounded length" rather than picking one.
+fn fm_open_len_sentinel() -> Int {
+  1000000
+}
+
+fn fm_unsupported_plan(reason: String, arm: Node) -> FmArmPlan {
+  FmArmPlan { supported: false, reason: reason, exact: false, len: 0, head_binds: [], tail_bind: "", arm: arm }
+}
+
+// A `head` sub-pattern may only NAME the element, never discriminate it: `Cons { head: Present { .. } }`
+// is a question about the element type, which this lowering does not answer and therefore refuses.
+fn fm_head_bind_name(p: MatchPattern) -> String? {
+  match p {
+    Wildcard => Present { value: "_" }
+    Bind { declaration: d } => Present { value: d.name }
+    LitPattern { value: _ } => none
+    VariantPattern { name: _, parent_enum: _, field_bindings: _ } => none
+  }
+}
+
+// An omitted field in a record pattern binds nothing and selects nothing, which is a wildcard.
+fn fm_field_sub_pattern(fbs: List<Node>, field: String, si: Map<String, NewlineIndex>) -> MatchPattern {
+  match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: si) == field) |> first {
+    Present { value: fb } => field_binding_pattern(n: fb)
+    Absent => Wildcard
+  }
+}
+
+fn fm_analyze_pattern(pattern: MatchPattern, si: Map<String, NewlineIndex>, arm: Node, fuel: Int) -> FmArmPlan {
+  if fuel <= 0 {
+    fm_unsupported_plan(reason: "a FreeMonoid pattern spine deeper than the emitter's nesting fuel", arm: arm)
+  } else {
+    match pattern {
+      Wildcard => FmArmPlan { supported: true, reason: "", exact: false, len: 0, head_binds: [], tail_bind: "_", arm: arm }
+      Bind { declaration: d } => FmArmPlan { supported: true, reason: "", exact: false, len: 0, head_binds: [], tail_bind: d.name, arm: arm }
+      LitPattern { value: _ } => fm_unsupported_plan(reason: "a literal pattern against a FreeMonoid", arm: arm)
+      VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
+        let bare = qualified_last_segment(name: n)
+        if bare == "Empty" {
+          FmArmPlan { supported: true, reason: "", exact: true, len: 0, head_binds: [], tail_bind: "", arm: arm }
+        } else if bare == "Cons" {
+          let head_pat = fm_field_sub_pattern(fbs: fbs, field: "head", si: si)
+          let tail_pat = fm_field_sub_pattern(fbs: fbs, field: "tail", si: si)
+          match fm_head_bind_name(p: head_pat) {
+            Absent => fm_unsupported_plan(reason: "a refutable `head` sub-pattern under `Cons`, which discriminates the ELEMENT rather than the list", arm: arm)
+            Present { value: hb } =>
+              let inner = fm_analyze_pattern(pattern: tail_pat, si: si, arm: arm, fuel: fuel - 1)
+              if !inner.supported {
+                inner
+              } else {
+                FmArmPlan { supported: true, reason: "", exact: inner.exact, len: inner.len + 1, head_binds: concat([hb], inner.head_binds), tail_bind: inner.tail_bind, arm: arm }
+              }
+          }
+        } else {
+          fm_unsupported_plan(reason: concat("the variant `", bare, "` in a FreeMonoid pattern"), arm: arm)
+        }
     }
   }
 }
 
-fn freemonoid_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<String, NewlineIndex>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  match cons_arm {
-    Present { value: ca } =>
-      let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
-      let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
-      let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
-      let tail_let = freemonoid_tail_let_from_fm(tail_bind: tail_bind)
-      concat(head_let, tail_let, emit_typed_expr(texpr: arm_body(n: ca), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
-    Absent => match catchall {
-      Present { value: wa } =>
-        let bn = freemonoid_catchall_bind_name(arm: wa)
-        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
-        concat(bind_let, emit_typed_expr(texpr: arm_body(n: wa), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
-      Absent => ""
+fn fm_arm_plan(arm: Node, si: Map<String, NewlineIndex>) -> FmArmPlan {
+  match arm_guard(n: arm) {
+    Present { value: _ } => fm_unsupported_plan(reason: "a guard on a FreeMonoid match arm", arm: arm)
+    Absent => fm_analyze_pattern(pattern: arm_pattern(n: arm), si: si, arm: arm, fuel: 64)
+  }
+}
+
+// The smallest length FLOOR any arm accepts. Every length strictly below it must be named by an
+// exact arm, or some list matches nothing and the chain's final `else` would be a fabrication.
+fn fm_min_open_len(plans: List<FmArmPlan>) -> Int {
+  plans |> fold(init: fm_open_len_sentinel(), f: (acc, p) =>
+    if !p.exact && p.len < acc { p.len } else { acc })
+}
+
+fn fm_exact_covers_len(plans: List<FmArmPlan>, k: Int) -> Bool {
+  plans |> any(p => p.exact && p.len == k)
+}
+
+fn fm_covers_below(plans: List<FmArmPlan>, k: Int, limit: Int, fuel: Int) -> Bool {
+  if k >= limit {
+    true
+  } else if fuel <= 0 {
+    false
+  } else if !fm_exact_covers_len(plans: plans, k: k) {
+    false
+  } else {
+    fm_covers_below(plans: plans, k: k + 1, limit: limit, fuel: fuel - 1)
+  }
+}
+
+// The empty string means the arm set is lowerable; anything else is the located cause, and the
+// caller emits it as a `compile_error!` rather than choosing a branch it cannot justify.
+fn fm_plans_refusal(plans: List<FmArmPlan>) -> String {
+  match plans |> filter(p => !p.supported) |> first {
+    Present { value: bad } =>
+      concat("v1.compiler.emit_rust will not lower ", bad.reason, " at ", bad.arm.span.file, ":", to_string(value: bad.arm.span.start),
+        " -- the FreeMonoid match lowering refuses this shape rather than dropping the arm")
+    Absent =>
+      let limit = fm_min_open_len(plans: plans)
+      if limit >= fm_open_len_sentinel() {
+        "v1.compiler.emit_rust cannot prove this FreeMonoid match exhaustive: no arm accepts a list of unbounded length"
+      } else if !fm_covers_below(plans: plans, k: 0, limit: limit, fuel: limit + 1) {
+        "v1.compiler.emit_rust cannot prove this FreeMonoid match exhaustive: a list shorter than every open arm is matched by no arm"
+      } else {
+        ""
+      }
+  }
+}
+
+type FmChainPiece {
+  cond: String
+  binds: String
+  body: String
+}
+
+fn fm_arm_condition(plan: FmArmPlan) -> String {
+  if plan.exact {
+    if plan.len == 0 { "__fm.is_empty()" } else { concat("__fm.len() == ", to_string(value: plan.len)) }
+  } else {
+    if plan.len == 0 { "true" } else { concat("__fm.len() >= ", to_string(value: plan.len)) }
+  }
+}
+
+// A head binding at spine level i reads index i. `_` names nothing, so it emits nothing.
+type FmBindAcc {
+  index: Int
+  out: String
+}
+
+fn fm_head_bind_lets(head_binds: List<String>) -> String {
+  let folded = head_binds |> fold(init: FmBindAcc { index: 0, out: "" }, f: (acc, hb) =>
+    FmBindAcc {
+      index: acc.index + 1,
+      out: if hb == "_" { acc.out } else { concat(acc.out, "let ", hb, " = (*__fm)[", to_string(value: acc.index), "].clone(); ") }
+    })
+  folded.out
+}
+
+// THE TAIL IS A STRUCTURAL SKIP, NEVER A COPY. `im::Vector::skip` is O(log n) -- it shares the
+// RRB tree -- while `iter().skip(n).cloned().collect()` materializes the whole tail: every
+// cons-match in every emitted program would pay O(n) per step, so every fold over a FreeMonoid
+// would be quadratic. Measured on the required-v2-native lane's first run (2026-09-09): the
+// self-hosted lexer, which tails the remaining source per character and per rule attempt, parsed a
+// 22KB file in 23.3s against 70ms for 899B (333x time for 25x size), projecting a multi-hour
+// whole-corpus context fold -- the lane's dominant term, ahead of the cargo build the envelope had
+// priced as dominant. DESIGN section 6 prices a copied accumulator as always-fixed. The skip is now
+// by the arm's own spine depth rather than always by one, which is what makes a deeper spine
+// expressible at all.
+fn fm_tail_bind_let(plan: FmArmPlan) -> String {
+  if plan.exact || plan.tail_bind == "_" || plan.tail_bind == "" {
+    ""
+  } else if plan.len == 0 {
+    concat("let ", plan.tail_bind, " = __fm.clone(); ")
+  } else {
+    concat("let ", plan.tail_bind, ": Rc<Vec<_>> = Rc::new(__fm.skip(", to_string(value: plan.len), ")); ")
+  }
+}
+
+// The LAST piece carries no condition: `fm_plans_refusal` has already established that the arms
+// cover every length, so whatever reaches the final `else` is exactly that arm's population.
+fn fm_chain_from(pieces: List<FmChainPiece>, fuel: Int) -> String {
+  if fuel <= 0 {
+    emit_rust_compile_error_expr(message: "a FreeMonoid match with more arms than the emitter's chain fuel")
+  } else {
+    match pieces {
+      Empty => emit_rust_compile_error_expr(message: "a FreeMonoid match with no arms")
+      Cons { head: p, tail: rest } =>
+        if (rest |> count) == 0 {
+          concat("{ ", p.binds, p.body, " }")
+        } else {
+          concat("if ", p.cond, " { ", p.binds, p.body, " } else ", fm_chain_from(pieces: rest, fuel: fuel - 1))
+        }
     }
   }
+}
+
+fn fm_arm_binds(plan: FmArmPlan) -> String {
+  concat(fm_head_bind_lets(head_binds: plan.head_binds), fm_tail_bind_let(plan: plan))
 }
 
 fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
-  let empty_arm = freemonoid_match_arm_for(arms: arms, variant: "Empty")
-  let cons_arm = freemonoid_match_arm_for(arms: arms, variant: "Cons")
-  let catchall = freemonoid_catchall_arm(arms: arms)
-  let empty_body = freemonoid_empty_branch_body(empty_arm: empty_arm, catchall: catchall, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let nonempty_body = freemonoid_nonempty_branch_body(cons_arm: cons_arm, catchall: catchall, si: si, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  if empty_body == "" || nonempty_body == "" { "" } else {
-    concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", nonempty_body, " } }")
+  let plans = arms |> map(arm => fm_arm_plan(arm: arm, si: si))
+  let refusal = fm_plans_refusal(plans: plans)
+  if refusal != "" {
+    emit_rust_compile_error_expr(message: refusal)
+  } else {
+    let pieces = plans |> map(p => FmChainPiece {
+      cond: fm_arm_condition(plan: p),
+      binds: fm_arm_binds(plan: p),
+      body: emit_typed_expr(texpr: arm_body(n: p.arm), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+    })
+    concat("{ let __fm = ", scrut_str, "; ", fm_chain_from(pieces: pieces, fuel: 256), " }")
   }
 }
 
@@ -14541,46 +14716,25 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, regist
   }
 }
 
-fn freemonoid_tco_empty_branch_body(empty_arm: Node?, catchall: Node?, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  match empty_arm {
-    Present { value: ea } => emit_typed_tco_expr(texpr: arm_body(n: ea), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-    Absent => match catchall {
-      Present { value: wa } =>
-        let bn = freemonoid_catchall_bind_name(arm: wa)
-        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
-        concat(bind_let, emit_typed_tco_expr(texpr: arm_body(n: wa), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
-      Absent => ""
-    }
-  }
-}
-
-fn freemonoid_tco_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<String, NewlineIndex>, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  match cons_arm {
-    Present { value: ca } =>
-      let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
-      let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
-      let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
-      let tail_let = freemonoid_tail_let_from_fm(tail_bind: tail_bind)
-      concat(head_let, tail_let, emit_typed_tco_expr(texpr: arm_body(n: ca), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
-    Absent => match catchall {
-      Present { value: wa } =>
-        let bn = freemonoid_catchall_bind_name(arm: wa)
-        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
-        concat(bind_let, emit_typed_tco_expr(texpr: arm_body(n: wa), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
-      Absent => ""
-    }
-  }
-}
-
+// THE TAIL-CALL TWIN OF THE SAME LOWERING, and it carried the same defect for the same reason: it
+// asked for the first `Empty` arm and the first `Cons` arm and emitted a two-way split. It differs
+// from the ordinary lowering in ONE fact -- an arm body is emitted as a tail-call continuation
+// rather than as a value -- so the analysis, the refusal and the chain are shared authorities here
+// and the body emitter is the only thing that varies. Fixing one and not the other would have left
+// the class alive in exactly the self-recursive folds it most often appears in.
 fn emit_native_freemonoid_tco_match(scrut_str: String, arms: List<Node>, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
-  let empty_arm = freemonoid_match_arm_for(arms: arms, variant: "Empty")
-  let cons_arm = freemonoid_match_arm_for(arms: arms, variant: "Cons")
-  let catchall = freemonoid_catchall_arm(arms: arms)
-  let empty_body = freemonoid_tco_empty_branch_body(empty_arm: empty_arm, catchall: catchall, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let nonempty_body = freemonoid_tco_nonempty_branch_body(cons_arm: cons_arm, catchall: catchall, si: si, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  if empty_body == "" || nonempty_body == "" { "" } else {
-    concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", nonempty_body, " } }")
+  let plans = arms |> map(arm => fm_arm_plan(arm: arm, si: si))
+  let refusal = fm_plans_refusal(plans: plans)
+  if refusal != "" {
+    emit_rust_compile_error_expr(message: refusal)
+  } else {
+    let pieces = plans |> map(p => FmChainPiece {
+      cond: fm_arm_condition(plan: p),
+      binds: fm_arm_binds(plan: p),
+      body: emit_typed_tco_expr(texpr: arm_body(n: p.arm), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    })
+    concat("{ let __fm = ", scrut_str, "; ", fm_chain_from(pieces: pieces, fuel: 256), " }")
   }
 }
 
