@@ -108,6 +108,7 @@ import v2.std.node {
 import v2.std.node_query {
   construct_field_edges,
   construct_tag_optional,
+  declared_field_list,
   find_named_child,
   pattern_wildcard_name
 }
@@ -1048,10 +1049,10 @@ fn resolve_transform_children(
 // and it does NOT close the module-container case. v2.std.node_query declared_field_from_edge
 // accepts ANY Named edge and constrains the target kind not at all, so a module container --
 // every child a Named edge to a declaration -- satisfies the field-coverage test and is still
-// answered "constructor". Reachable and in this tree: src/v2/std/symbol_index.dag:156 is
-// `Present { value: node } =>` inside module v2.std.symbol_index, and lexical ascent from that
-// arm reaches the MODULE v2.std.node. The binder gets no frame local and the arm body's `node`
-// resolves to the module: Accepted, wrong value, no diagnostic. Carried as the narrowed
+// answered "constructor". Reachable and in this tree: the binder `node` of BOTH
+// `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at -- the
+// unbound-declaring arm and the fold arm -- where lexical ascent reaches the MODULE v2.std.node.
+// The binder gets no frame local and the arm body resolves `node` to the module.
 // population of gunbc.rung_drop variant_fields_unlowered_on_the_native_route, which is why that
 // row STANDS rather than being retired by this PR.
 //
