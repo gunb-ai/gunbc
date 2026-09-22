@@ -30,8 +30,70 @@ type FloorCostDebtTypedAdmission {
   reason: NonEmptyStr
 }
 
+// THE APP ATTEST INTERPRETED-CRYPTO ROWS (gunbc#11981, 2026-09-22). Each identity below evaluates
+// real P-384 field arithmetic or a real SHA-384 over a published vector, and the seed interpreter
+// realizes those primitives as 16-limb bignat folds and Word64 pairs because it reifies no machine
+// width. That realization, not the claim's shape, is what the CPU pays: there is no repeated
+// demand, no copied accumulator and no nested scan to remove, and supplying the curve check's
+// answer or the digest as a fixture would delete the only execution of these primitives on the
+// acceptance path (DESIGN section 3, the pairing obligation). The terminal shape is the natively
+// emitted crypto closure that gunbc.auth.approval_device_redemption
+// ecdsa_verification_realization_frontier names; when it lands these rows go stale on their own
+// live reading and must be deleted, which is the whole point of carrying no figure here. The
+// measurement that established each row is the merge-queue required floor run 35678328407 of
+// gunbc#11981 and the PR floor run that follows it, artifact required-ci-measurement-receipt,
+// enrolment-margin lines. The three published SHA-384 vectors are THREE identities here, one per
+// vector, each PAIRED WITH THE MUTATION THAT DISCRIMINATES IT. An earlier cut folded them into one
+// claim so the summed bill cleared the per-subject line; that was enrolment-gate avoidance by
+// aggregation, and the counterfactual shows it: removing one vector changed no semantic fact about
+// the others yet could make the admission stale, and adding an unrelated fourth would have
+// strengthened nothing yet stabilised the admission. A cost ground that moves with its neighbours
+// does not ground the subject it admits. Paired instead, each claim's cost is caused by its own
+// subject -- the second evaluation is the RED that DESIGN section 4b requires of the rung anyway,
+// not ballast bought to clear a budget -- and each measured decisively above the line.
 fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
-  []
+  [
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.the_p384_base_point_is_on_the_curve",
+    reason: "the seed interpreter evaluates one P-384 curve equation over the standard base point as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.a_point_beside_the_base_point_is_off_the_curve",
+    reason: "the seed interpreter evaluates one P-384 curve equation over an off-curve neighbour of the base point as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.a_point_with_a_coordinate_at_p_is_not_admitted",
+    reason: "the seed interpreter evaluates one P-384 range refusal over an unreduced residue as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.apples_ca_and_root_keys_are_on_p384",
+    reason: "the seed interpreter evaluates two P-384 curve equations over Apple's real CA and root keys as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p256_dag_ecdsa_witness_test.the_base_point_is_on_the_curve",
+    reason: "the seed interpreter evaluates one P-256 curve equation over the published base point as 11-limb bignat folds; it is the cheap half of a claim whose other half, n*G = infinity, crossed the wall deadline and left the floor for the native row; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.doubling_and_adding_the_base_point_stay_on_the_curve",
+    reason: "the seed interpreter evaluates one Jacobian doubling, one addition and two projective curve-equation checks as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.doubling_an_off_curve_point_stays_off_the_curve",
+    reason: "the seed interpreter evaluates one Jacobian doubling and one projective curve-equation check as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_the_empty_message_is_the_published_value_and_one_octet_discriminates",
+    reason: "the seed interpreter evaluates the published empty-message SHA-384 vector and the one-octet message that discriminates it as Word64 pairs, two single-block compressions on an interpreter that reifies no machine width; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_abc_is_the_published_value_and_one_octet_discriminates",
+    reason: "the seed interpreter evaluates the published abc SHA-384 vector and the abd message that discriminates it as Word64 pairs, two single-block compressions on an interpreter that reifies no machine width; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_the_896_bit_message_is_the_published_two_block_value_and_one_octet_discriminates",
+    reason: "the seed interpreter evaluates the published 896-bit two-block SHA-384 vector and the last-block mutation that discriminates its padding path as Word64 pairs, four block compressions on an interpreter that reifies no machine width; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  ]
 }
 
 fn floor_cost_debt_typed_admitted_identities() -> List<String> {
