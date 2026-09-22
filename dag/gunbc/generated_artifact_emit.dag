@@ -13,6 +13,7 @@ import gunbc.generated_artifact {
   SeedRetentionFrontierGeneratedRsArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
   EvaluationBudgetConsequenceGeneratedRsArtifact,
+  ReleaseLocusSeedConstantsGeneratedRsArtifact,
   FileTransportRealizationGeneratedRsArtifact,
   Fci1BoundedExecutionContextArtifact,
   WholeCorpusCompileMeasuredRootDemandsArtifact,
@@ -72,6 +73,7 @@ import gunbc.seed_retention_frontier_emit {
   expected_seed_retention_frontier_generated_rs
 }
 import gunbc.evaluation_budget_consequence_emit { expected_evaluation_budget_consequence_generated_rs }
+import gunbc.release_locus_seed_constants_emit { expected_release_locus_seed_constants_generated_rs }
 import gunbc.v1_interpreter_dispatch_emit {
   expected_v1_interpreter_dispatch_generated_rs,
   V1InterpreterDispatchGenerated,
@@ -148,6 +150,8 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
     SeedRetentionFrontierGeneratedRsArtifact => artifact_generated(content: expected_seed_retention_frontier_generated_rs())
     EvaluationBudgetConsequenceGeneratedRsArtifact =>
       artifact_generated(content: expected_evaluation_budget_consequence_generated_rs())
+    ReleaseLocusSeedConstantsGeneratedRsArtifact =>
+      artifact_generated(content: expected_release_locus_seed_constants_generated_rs())
     V1InterpreterDispatchGeneratedRsArtifact => match expected_v1_interpreter_dispatch_generated_rs() {
       V1InterpreterDispatchGenerated { content } => artifact_generated(content: content)
       V1InterpreterDispatchGenerationRefused { reason } =>
