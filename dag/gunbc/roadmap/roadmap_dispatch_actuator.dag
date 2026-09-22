@@ -38,6 +38,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, attempt_origin_base_ref, continuation_brief_prefix,
   continuation_alignment_l0_pointer, continuation_alignment_ask,
 }
+import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
 import gunbc.roadmap.roadmap_project {
   node_project_membership, MembershipStandalone, MembershipMember, MembershipAmbiguous,
 }
@@ -1299,6 +1300,73 @@ fn dispatch_audit_unit_argv(
         "--arg", join(["verdict_dir=", dir], ""),
         "--arg", join(["verdict_name=", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], ""),
         "--arg", join(["attempt_identity=auditor:", node_id as String, "-", attempt_key], ""),
+      ],
+    ),
+  )
+}
+
+// THE SUPERVISOR DIRECTORY, the supervisor session's only writable path, beside review/ and
+// audit/. One supervisor per escalation record (node, attempt, turn): its verdict, event stream,
+// scratch and log are addressed together, and the belt's continuation decision reads the verdict
+// at this same address (belt_supervisor_verdict_observe), so writer and reader cannot disagree
+// about where an adjudication lands.
+data supervisor_directory_segment: String = "supervisor"
+
+fn dispatch_attempt_supervisor_dir_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", supervisor_directory_segment], "")
+}
+
+fn dispatch_supervisor_unit_name(node_id: String, attempt_key: String, turn: Int) -> NonEmptyStr {
+  join(["gunbc-supervisor-", node_id, "-", attempt_key, "-t", to_string(value: turn), ".service"], "") as NonEmptyStr
+}
+
+fn dispatch_supervisor_attempt_identity(node_id: String, attempt_key: String, turn: Int) -> String {
+  join(["supervisor:", node_id, "-", attempt_key, "-t", to_string(value: turn)], "")
+}
+
+data gunbc_harness_supervisor_function: String = "harness_supervisor_cli"
+
+// THE SUPERVISOR'S UNIT: the auditor's shape (one session per subject, not per criterion) with the
+// escalation's turn in the unit name and the attempt identity, which is what makes one escalation
+// record convene at most one session -- a second convene over the same record names the same unit,
+// and the belt's liveness gate reads that. The worktree stays read-only to the session, as the
+// reviewer's is: the supervisor adjudicates the checkpoint; it does not edit it.
+fn dispatch_supervisor_unit_argv(
+  systemd_run_program: FilePath,
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  turn: Int,
+  worktree_path: String,
+  brief: String,
+) -> HostExecArgv {
+  let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  host_exec_argv(
+    program: systemd_run_program as String,
+    args: systemd_run_user_transient_arguments(
+      unit: dispatch_supervisor_unit_name(node_id: node_id as String, attempt_key: attempt_key, turn: turn),
+      properties: dispatch_review_unit_properties(
+        instance: instance,
+        working_directory: instance.repo_root as String,
+        log_path: join([dir, "/supervisor-stdout.log"], ""),
+        review_dir: dir,
+      ),
+      setenv_bindings: [],
+      command_argv: [
+        instance.serve_binary as String,
+        "run",
+        "--source-root", join([instance.repo_root as String, "/dag"], ""),
+        "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
+        "--entry", join([instance.repo_root as String, "/", gunbc_harness_worker_entry], ""),
+        "--function", gunbc_harness_supervisor_function,
+        "--arg", join(["worktree=", worktree_path], ""),
+        "--arg", join(["brief=", brief], ""),
+        "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
+        "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
+        "--arg", join(["events_path=", dir, "/provider-events.jsonl"], ""),
+        "--arg", join(["verdict_dir=", dir], ""),
+        "--arg", join(["verdict_name=", supervisor_verdict_basename as String], ""),
+        "--arg", join(["attempt_identity=", dispatch_supervisor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, turn: turn)], ""),
       ],
     ),
   )

@@ -84,6 +84,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_brief_fields_for_environment,
   dispatch_brief_with_centering,
   dispatch_continuation_alignment_preamble,
+  dispatch_supervisor_unit_argv, dispatch_supervisor_unit_name, dispatch_supervisor_attempt_identity,
   DispatchSpawnCommands,
   HostExecArgv,
   SystemdUnitContainer,
@@ -1236,4 +1237,35 @@ test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() ->
     && cont.contains("verification failed: sandbox render red")
     && cont.contains("\nAlignment (re-checked at every continuation turn):\n")
     && cont.contains(continuation_alignment_ask)
+}
+
+// ONE SESSION PER ESCALATION RECORD: the unit name, the attempt identity and the confinement all
+// derive from (node, attempt, turn) -- the turn is what makes the record's one session distinct
+// from the lineage's other turns, and the verdict lands at the basename the continuation decision
+// reads. The session invokes the supervisor's own CLI function, never the worker's.
+test fn witness_supervisor_unit_argv_shapes_one_session_per_escalation_record() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let argv = dispatch_supervisor_unit_argv(
+    systemd_run_program: "/usr/bin/systemd-run" as FilePath,
+    instance: lab,
+    node_id: roadmap_dispatch_actuator_nid(s: "shell-dag-cron-entry-line-builder"),
+    attempt_key: "cd172fe81b806160",
+    turn: 3,
+    worktree_path: "/x/attempts/wt",
+    brief: "BRIEF-MARKER",
+  )
+  let wire = join(argv.args, separator: "\0")
+  wire.contains("gunbc-supervisor-shell-dag-cron-entry-line-builder-cd172fe81b806160-t3.service")
+    && wire.contains("\0--function\0harness_supervisor_cli\0")
+    && wire.contains("\0worktree=/x/attempts/wt\0")
+    && wire.contains("BRIEF-MARKER")
+    && wire.contains("\0verdict_name=supervisor-verdict.json\0")
+    && wire.contains("/supervisor/harness-request.json")
+    && wire.contains("/supervisor/provider-events.jsonl")
+    && wire.contains("ReadWritePaths=")
+    && wire.contains("/supervisor\0")
+    && !wire.contains("harness_worker_cli")
+    && dispatch_supervisor_attempt_identity(node_id: "shell-dag-cron-entry-line-builder", attempt_key: "cd172fe81b806160", turn: 3)
+      == "supervisor:shell-dag-cron-entry-line-builder-cd172fe81b806160-t3"
+    && wire.contains("attempt_identity=supervisor:shell-dag-cron-entry-line-builder-cd172fe81b806160-t3")
 }

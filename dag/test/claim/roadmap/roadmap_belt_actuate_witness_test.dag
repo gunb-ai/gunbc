@@ -148,6 +148,28 @@ import gunbc.roadmap_belt_actuate {
   srv1_live_dashboard_instance,
 }
 import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap.roadmap_attempt_continuation {
+  PriorAttemptFacts, ContinuationTurnKnown, ContinuationEscalate,
+  continuation_decision, continuation_turn_cap,
+}
+import gunbc.roadmap.roadmap_supervisor {
+  SupervisorEscalation, SupervisorForNode, SupervisorAtTop,
+  SupervisorVerdictAbsent, supervisor_verdict_schema,
+}
+import gunbc.roadmap.roadmap_submission {
+  SubmissionCapture, WorkerSubmission, SubmissionBlocked, submission_digest,
+  SubmissionCaptureObservation, CaptureForHead, CaptureUnreadable,
+}
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, VerificationWorkflowSegment, WorkflowSegmentFailed,
+}
+import gunbc.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges }
+import gunbc.worker_lifecycle { WorkerProcessUnobserved }
+import gunbc.roadmap_belt_actuate {
+  SupervisorConveneGate, ConveneClear, ConveneAlreadyLive, ConveneExitedNoVerdict, ConveneLivenessUnobserved,
+  belt_supervisor_convene_gate, belt_supervisor_checkpoint_lines, belt_supervisor_convene_brief,
+  SupervisorConvened,
+}
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
@@ -272,6 +294,7 @@ fn is_spawn_failed(o: BeltSpawnOutcome) -> Bool {
   match o {
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => true
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
     SpawnNotAdmitted { node_id: _, refusal: _ } => false
   }
 }
@@ -377,6 +400,7 @@ test fn witness_identity_survives_actuation_failure() -> Bool {
         && launch.instance_id == id.instance_id
         && launch.revision == id.revision
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
     SpawnNotAdmitted { node_id: _, refusal: _ } => false
   }
 }
@@ -712,7 +736,8 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 26
+  belt_dispatch_label_band_rows().length() == 27
+    && band_key_for_label(label: "supervisor_convened") == "ok"
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "dependencies_blocked") == "fail"
     && band_key_for_label(label: "execution_contract_missing") == "fail"
@@ -746,7 +771,7 @@ test fn witness_no_result_maps_to_in_progress() -> Bool {
 }
 
 test fn witness_ok_labels_derive_from_band_fold() -> Bool {
-  belt_dispatch_ok_status_labels() == ["spawned", "already_live"]
+  belt_dispatch_ok_status_labels() == ["spawned", "supervisor_convened", "already_live"]
 }
 
 test fn witness_label_band_cover_reds_on_missing_row() -> Bool {
@@ -770,6 +795,7 @@ test fn witness_label_band_cover_reds_on_missing_row() -> Bool {
 fn d4_wire_contract_labels() -> List<String> {
   [
     "spawned",
+    "supervisor_convened",
     "spawn_failed",
     "no_instance",
     "disabled",
@@ -2464,4 +2490,142 @@ test fn the_poisoned_outcome_is_named_in_the_tick_result_and_the_attempt_receipt
     && r.attempt_key == "abc"
     && r.node_id == "n1"
     && string_contains(s: r.detail, pattern: "zero files")
+}
+
+// ------------------------------------------------------------------------------------------------
+// The supervisor convene path: one session per escalation record, the checkpoint projected from
+// belt records, the production lineages naming their derived targets.
+// ------------------------------------------------------------------------------------------------
+
+// THE GATE ADMITS ONCE AND NEVER STACKS: an absent unit is clear to convene, a running unit is
+// already the session over this record (escalation does not stack), an exited unit without a
+// verdict is named and not reconvened, and an unreadable unit refuses rather than guessing.
+test fn the_convene_gate_admits_once_and_never_stacks() -> Bool {
+  match belt_supervisor_convene_gate(process: WorkerProcessAbsent) {
+    ConveneClear => true
+    _ => false
+  }
+    && (match belt_supervisor_convene_gate(process: WorkerProcessRunning { command: "gunbc-supervisor-n1-k-t3.service" }) {
+      ConveneAlreadyLive => true
+      _ => false
+    })
+    && (match belt_supervisor_convene_gate(process: WorkerProcessExited { exit_code: 1, last_command: "u" }) {
+      ConveneExitedNoVerdict { exit_code } => exit_code == 1
+      _ => false
+    })
+    && (match belt_supervisor_convene_gate(process: WorkerProcessUnobserved { reason: "systemctl refused" as NonEmptyStr }) {
+      ConveneLivenessUnobserved { reason } => reason == "systemctl refused"
+      _ => false
+    })
+}
+
+// THE CHECKPOINT LINES ARE THE CAPTURE RECORD, PROJECTED: the worker's own explanation and
+// limitations arrive verbatim, the capture state names its readiness, a yield reads as a yield,
+// and an unreadable capture carries its reason -- no line is invented.
+test fn the_checkpoint_lines_project_the_capture_record_verbatim() -> Bool {
+  let blocked = WorkerSubmission {
+    readiness: SubmissionBlocked,
+    explanation: "the acceptance run was still in flight when the budget died",
+    limitations: "acceptance unconfirmed",
+  }
+  let bound = belt_supervisor_checkpoint_lines(
+    capture: CaptureForHead { capture: SubmissionCapture {
+      head_sha: "b04485cffb000000000000000000000000000000",
+      scm_repository: "/instance/attempt-state/projects/n1.gunbc-repository.json",
+      scm_commit_ordinal: 3,
+      digest: submission_digest(submission: blocked),
+      submission: blocked,
+    } },
+    head_sha: "b04485cffb000000000000000000000000000000",
+    history_line: "3 turns spent; last commit outcome: recorded -- swept",
+  )
+  let yielded = belt_supervisor_checkpoint_lines(capture: CaptureAbsent, head_sha: "h2", history_line: "y")
+  bound.explanation == "the acceptance run was still in flight when the budget died"
+    && bound.limitations == "acceptance unconfirmed"
+    && bound.head_sha == "b04485cffb000000000000000000000000000000"
+    && bound.history_line == "3 turns spent; last commit outcome: recorded -- swept"
+    && string_contains(s: bound.capture_line, pattern: "blocked")
+    && string_contains(s: yielded.capture_line, pattern: "preservation only")
+    && string_contains(s: yielded.explanation, pattern: "yielded")
+    && string_contains(
+      s: belt_supervisor_checkpoint_lines(capture: CaptureUnreadable { reason: "does not decode" }, head_sha: "h3", history_line: "z").capture_line,
+      pattern: "does not decode",
+    )
+}
+
+// THE TWO PRODUCTION LINEAGES. A capped lineage of either node evaluates to ContinuationEscalate
+// (never a refusal), the target derives to their declared project from the authority's own edges,
+// and the convene brief names that supervisor with the attempt's identity carried.
+fn capped_production_prior(node_id: String) -> PriorAttemptFacts {
+  PriorAttemptFacts {
+    node_id: node_id,
+    edges: declared_roadmap_edges(),
+    attempt_key: "cd172fe81b806160",
+    branch: "dispatch/x-acd172fe81b806160",
+    worker_terminal: true,
+    capture: CaptureAbsent,
+    supervisor_verdict: SupervisorVerdictAbsent,
+    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "red" } },
+    review: none,
+    goal_audit: none,
+  }
+}
+
+fn production_escalation(node_id: String) -> SupervisorEscalation? {
+  match continuation_decision(prior: Present { value: capped_production_prior(node_id: node_id) }, prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap }) {
+    ContinuationEscalate { escalation } => Present { value: escalation }
+    _ => none
+  }
+}
+
+fn production_node(id: String) -> RoadmapNode? {
+  (declared_roadmap_nodes() |> filter(n => (n.node as String) == id)).first()
+}
+
+test fn the_two_production_lineages_escalate_and_convene_naming_their_derived_supervisor() -> Bool {
+  match production_escalation(node_id: "shell-dag-cron-entry-line-builder") {
+    Absent => false
+    Present { value: e1 } =>
+      match production_escalation(node_id: "shell-dag-floor-peak-calibration-rows") {
+        Absent => false
+        Present { value: e2 } =>
+          match production_node(id: "shell-dag-cron-entry-line-builder") {
+            Absent => false
+            Present { value: n1 } =>
+              match production_node(id: "shell-dag-floor-peak-calibration-rows") {
+                Absent => false
+                Present { value: n2 } => {
+                  let b1 = belt_supervisor_convene_brief(
+                    node: n1,
+                    escalation: e1,
+                    checkpoint: belt_supervisor_checkpoint_lines(capture: CaptureAbsent, head_sha: "h", history_line: "3 turns spent"),
+                  )
+                  let b2 = belt_supervisor_convene_brief(
+                    node: n2,
+                    escalation: e2,
+                    checkpoint: belt_supervisor_checkpoint_lines(capture: CaptureAbsent, head_sha: "h", history_line: "3 turns spent"),
+                  )
+                  (match e1.target { SupervisorForNode { node_id } => node_id == "shell-typed-invocation"  _ => false })
+                    && (match e2.target { SupervisorForNode { node_id } => node_id == "shell-typed-invocation"  _ => false })
+                    && b1.contains("the supervisor of node shell-typed-invocation")
+                    && b2.contains("the supervisor of node shell-typed-invocation")
+                    && b1.contains("cd172fe81b806160")
+                    && b1.contains(supervisor_verdict_schema as String)
+                }
+              }
+          }
+      }
+  }
+}
+
+// THE CONVENED OUTCOME IS ITS OWN OK LABEL: a convened supervisor is the desired state achieved,
+// on the ok side of the band, in the derived ok-label set, and on the wire as
+// supervisor_convened -- never painted as a worker spawn and never as a failure.
+test fn the_convened_outcome_is_an_ok_label_of_its_own() -> Bool {
+  let o = SupervisorConvened { node_id: "n", unit: "gunbc-supervisor-n-k-t3.service", provider: "codex", launch: launch_identity_exemplar() }
+  belt_dispatch_status_label(r: o) == "supervisor_convened"
+    && belt_dispatch_result_ok(r: o)
+    && count(belt_dispatch_ok_status_labels() |> filter(l => l == "supervisor_convened")) == 1
+    && serialize_json(v: belt_spawn_outcome_json(o: o)).contains("\"status\": \"supervisor_convened\"")
+    && serialize_json(v: belt_spawn_outcome_json(o: o)).contains("gunbc-supervisor-n-k-t3.service")
 }

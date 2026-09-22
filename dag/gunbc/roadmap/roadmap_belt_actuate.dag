@@ -23,6 +23,9 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_review_unit_name, dispatch_review_unit_argv,
   dispatch_attempt_audit_dir_for_instance, dispatch_attempt_audit_verdict_path_for_instance, dispatch_attempt_audit_verdict_basename,
   dispatch_audit_unit_name, dispatch_audit_unit_argv,
+  dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_argv,
+  dispatch_supervisor_attempt_identity,
+  dispatch_alignment_project_intent, dispatch_alignment_task_contract,
 }
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap_authority {
@@ -446,6 +449,7 @@ import gunbc.roadmap.roadmap_submission {
   SubmissionDecoded, SubmissionNotDecodable, CaptureDecoded, CaptureNotDecodable,
   submission_artifact_name, submission_digest, submission_decode,
   submission_capture_basename, submission_capture_text, submission_capture_decode,
+  submission_readiness_key,
 }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
 import gunbc.roadmap_dispatch_actuator { host_exec_argv, dispatch_attempt_continuation_turn_path_for_instance, dispatch_attempt_continuation_turn_basename }
@@ -459,8 +463,9 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 import gunbc.roadmap.roadmap_supervisor {
   SupervisorVerdictObservation, SupervisorVerdictAbsent, SupervisorVerdictBound, SupervisorVerdictUnreadable,
   supervisor_verdict_basename, supervisor_verdict_decode, VerdictDecoded, VerdictNotDecodable,
-  supervisor_escalation_line,
+  SupervisorEscalation,
 }
+import gunbc.harness.harness_supervisor_guidance { SupervisorCheckpoint, supervisor_brief_for }
 import gunbc.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
 import std.content_hash {
@@ -1330,6 +1335,7 @@ fn belt_persist_spawn_failure_for_instance(
 // to its admission by construction. SpawnNotAdmitted has no identity: no admission produced one.
 type BeltSpawnOutcome
   = Spawned { node_id: String, session_name: String, provider: String, launch: LaunchIdentity }
+  | SupervisorConvened { node_id: String, unit: String, provider: String, launch: LaunchIdentity }
   | SpawnFailed { node_id: String, step: String, detail: String, provider: String, launch: LaunchIdentity }
   | SpawnNotAdmitted { node_id: String, refusal: LaunchRefusal }
 
@@ -1916,13 +1922,13 @@ fn belt_actuate_spawn_exec_modeled(
         launch: launch,
       }
     ContinuationEscalate { escalation } =>
-      SpawnFailed {
-        node_id: node.node as String,
-        step: "supervisor-escalation",
-        detail: supervisor_escalation_line(e: escalation),
-        provider: provider_wire_label,
+      belt_supervisor_convene(
+        instance: instance,
+        node: node,
+        escalation: escalation,
+        provider_wire_label: provider_wire_label,
         launch: launch,
-      }
+      )
     ContinuationPlanDefect { defect } =>
       SpawnFailed {
         node_id: node.node as String,
@@ -2000,7 +2006,7 @@ fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node
 // attempt's adjudication. The decision consumes the observation; it never touches the filesystem
 // itself.
 fn belt_supervisor_verdict_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SupervisorVerdictObservation {
-  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   let path = join([dir, "/", supervisor_verdict_basename as String], "")
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
@@ -2029,6 +2035,225 @@ fn belt_supervisor_verdict_observe(instance: HostDashboardInstance, node_id: Roa
     FilesystemFileIndeterminate { cause } => SupervisorVerdictUnreadable { reason: cause }
     FilesystemFileObservationsDisagree { path: _, cause } => SupervisorVerdictUnreadable { reason: cause }
     FilesystemFileSubjectRefused { directory: _, name: _, cause } => SupervisorVerdictUnreadable { reason: cause }
+  }
+}
+
+// THE CONVENE GATE, pure so a witness reaches every arm. One escalation record convenes at most
+// one session: the unit name derives from the record (node, attempt, turn), so a second convene
+// over the same record names the same unit, and this gate reads that unit's liveness. A session
+// already convening is skipped -- escalation does not stack. A session that exited WITHOUT
+// writing its verdict is named and NOT reconvened: the retained unit keeps the fact stable, a
+// loop of supervisors over one record would be the absorbing fallback, and the documented remedy
+// (escalation to the parent supervisor) is a later slice, not a silent retry here.
+type SupervisorConveneGate
+  = ConveneClear
+  | ConveneAlreadyLive
+  | ConveneExitedNoVerdict { exit_code: Int }
+  | ConveneLivenessUnobserved { reason: String }
+
+fn belt_supervisor_convene_gate(process: WorkerProcessEvidence) -> SupervisorConveneGate {
+  match process {
+    WorkerProcessAbsent => ConveneClear
+    WorkerProcessRunning { command: _ } => ConveneAlreadyLive
+    WorkerProcessExited { exit_code, last_command: _ } => ConveneExitedNoVerdict { exit_code: exit_code }
+    WorkerProcessUnobserved { reason } => ConveneLivenessUnobserved { reason: reason as String }
+  }
+}
+
+// THE CHECKPOINT VIEW, pure: the capture observation projects the lines the brief renders. A bound
+// capture's declaration IS the worker's own account; a yield or an unreadable capture names
+// itself, and no line is ever invented. The head and the history line arrive from their own
+// observations so each fact has exactly one reader.
+fn belt_supervisor_checkpoint_lines(capture: SubmissionCaptureObservation, head_sha: String, history_line: String) -> SupervisorCheckpoint {
+  match capture {
+    CaptureForHead { capture: c } =>
+      SupervisorCheckpoint {
+        head_sha: head_sha,
+        capture_line: join(["a capture binds the head, declaring ", submission_readiness_key(r: c.submission.readiness)], ""),
+        explanation: c.submission.explanation,
+        limitations: c.submission.limitations,
+        history_line: history_line,
+      }
+    CaptureAbsent =>
+      SupervisorCheckpoint {
+        head_sha: head_sha,
+        capture_line: "no capture binds the head: the belt's commit was preservation only (yielded, not ready)",
+        explanation: "(the worker declared nothing -- it yielded)",
+        limitations: "",
+        history_line: history_line,
+      }
+    CaptureUnreadable { reason } =>
+      SupervisorCheckpoint {
+        head_sha: head_sha,
+        capture_line: join(["the capture state cannot be established: ", reason], ""),
+        explanation: "(unavailable -- the capture did not decode)",
+        limitations: "",
+        history_line: history_line,
+      }
+  }
+}
+
+// THE HISTORY LINE reads the belt's own persisted per-attempt outcome (the commit-outcome-last.json
+// lineage), never the belt's memory: the file is the receipt, and an absent or unreadable one is
+// named rather than reconstructed.
+fn belt_supervisor_history_line(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, turn: Int) -> String {
+  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let path = join([dir, "/", belt_commit_outcome_last_basename as String], "")
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: belt_commit_outcome_last_basename as String,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  ) {
+    FilesystemFileAbsent(_) =>
+      join([to_string(value: turn), " turns spent; no persisted commit outcome is recorded for this attempt"], "")
+    FilesystemFileIndeterminate { cause } =>
+      join([to_string(value: turn), " turns spent; the persisted commit outcome is unreadable: ", cause], "")
+    FilesystemFileObservationsDisagree { path: _, cause } =>
+      join([to_string(value: turn), " turns spent; the persisted commit outcome is unreadable: ", cause], "")
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } =>
+      join([to_string(value: turn), " turns spent; the persisted commit outcome is unreadable: ", cause], "")
+    FilesystemFileRead { path: _, content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap } =>
+          join([to_string(value: turn), " turns spent; the persisted commit outcome is ", json_document_gap_text(gap: gap)], "")
+        JsonDocumentParsed { value: doc } =>
+          match publication_receipt_member(doc: doc, key: "outcome") {
+            ReceiptMemberUnreadable { reason: _ } =>
+              join([to_string(value: turn), " turns spent; the persisted commit outcome does not decode"], "")
+            ReceiptMemberRead { value: outcome } =>
+              match publication_receipt_member(doc: doc, key: "detail") {
+                ReceiptMemberUnreadable { reason: _ } =>
+                  join([to_string(value: turn), " turns spent; last commit outcome: ", outcome], "")
+                ReceiptMemberRead { value: detail } =>
+                  join([to_string(value: turn), " turns spent; last commit outcome: ", outcome, " -- ", detail], "")
+              }
+          }
+      }
+  }
+}
+
+// THE CONVENE BRIEF ASSEMBLY, one join site: the escalation record and the checkpoint from the
+// belt's own records, the intent and contract lines projected by the dispatch actuator's own
+// alignment folds. Nothing about the node is hand-typed here.
+fn belt_supervisor_convene_brief(node: RoadmapNode, escalation: SupervisorEscalation, checkpoint: SupervisorCheckpoint) -> String {
+  supervisor_brief_for(
+    escalation: escalation,
+    checkpoint: checkpoint,
+    intent_line: dispatch_alignment_project_intent(node: node),
+    contract_line: dispatch_alignment_task_contract(node: node),
+  )
+}
+
+// CONVENE THE SUPERVISOR over one escalation record. The liveness gate keeps escalation
+// non-stacking; the checkpoint is assembled from the belt's own records; the session is the same
+// transient-unit shape reviewers and auditors run, with the verdict landing at the address the
+// continuation decision reads on the next evaluation.
+fn belt_supervisor_convene(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  escalation: SupervisorEscalation,
+  provider_wire_label: String,
+  launch: LaunchIdentity,
+) -> BeltSpawnOutcome {
+  let nid = escalation.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let unit = dispatch_supervisor_unit_name(node_id: escalation.node_id, attempt_key: escalation.attempt_key, turn: escalation.turn)
+  match belt_supervisor_convene_gate(process: worker_process_from_attempt_unit(observation: attempt_unit_observation(unit: unit), unit: unit)) {
+    ConveneAlreadyLive =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "supervisor-convening",
+        detail: "a supervisor session is already convening over this escalation record; escalation does not stack",
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    ConveneExitedNoVerdict { exit_code } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "supervisor-exited-no-verdict",
+        detail: join(["the supervisor unit for this escalation record exited ", to_string(exit_code), " without writing a verdict; the unit is retained for inspection and the record is not reconvened"], ""),
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    ConveneLivenessUnobserved { reason } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "supervisor-liveness",
+        detail: join(["whether a supervisor session already convenes cannot be established: ", reason], ""),
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    ConveneClear =>
+      match instance.toolchain.systemd_run {
+        Absent =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: "supervisor-unit",
+            detail: "the toolchain declares no systemd-run; the supervisor needs a transient unit",
+            provider: provider_wire_label,
+            launch: launch,
+          }
+        Present { value: systemd_run } => {
+          let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: nid, attempt_key: escalation.attempt_key)
+          match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+            WorktreeHeadUnobserved { reason } =>
+              SpawnFailed {
+                node_id: node.node as String,
+                step: "supervisor-checkpoint",
+                detail: join(["the checkpoint head cannot be observed, so the supervisor has no checkpoint to adjudicate: ", reason], ""),
+                provider: provider_wire_label,
+                launch: launch,
+              }
+            WorktreeHeadObserved { revision } =>
+              match belt_exec(
+                cmd: dispatch_supervisor_unit_argv(
+                  systemd_run_program: systemd_run,
+                  instance: instance,
+                  node_id: nid,
+                  attempt_key: escalation.attempt_key,
+                  turn: escalation.turn,
+                  worktree_path: worktree,
+                  brief: belt_supervisor_convene_brief(
+                    node: node,
+                    escalation: escalation,
+                    checkpoint: belt_supervisor_checkpoint_lines(
+                      capture: belt_prior_attempt_capture(instance: instance, node_id: nid, attempt_key: escalation.attempt_key),
+                      head_sha: revision as String,
+                      history_line: belt_supervisor_history_line(instance: instance, node_id: nid, attempt_key: escalation.attempt_key, turn: escalation.turn),
+                    ),
+                  ),
+                ),
+                workdir: worktree,
+              ) {
+                ExecOk { stdout: _ } =>
+                  SupervisorConvened {
+                    node_id: node.node as String,
+                    unit: unit as String,
+                    provider: provider_wire_label,
+                    launch: launch,
+                  }
+                ExecFailed { program: _, exit_code, stderr } =>
+                  SpawnFailed {
+                    node_id: node.node as String,
+                    step: "supervisor-unit-start",
+                    detail: join(["the supervisor unit could not be started (exit ", to_string(exit_code), "): ", stderr], ""),
+                    provider: provider_wire_label,
+                    launch: launch,
+                  }
+                ExecRefused { program: _, reason } =>
+                  SpawnFailed {
+                    node_id: node.node as String,
+                    step: "supervisor-unit-start",
+                    detail: reason,
+                    provider: provider_wire_label,
+                    launch: launch,
+                  }
+              }
+          }
+        }
+      }
   }
 }
 
@@ -2975,6 +3200,7 @@ fn belt_spawn_failure_reason(spawn_outcomes: List<BeltSpawnOutcome>) -> String {
         SpawnFailed { node_id: n, step: st, detail: d, provider: pv, launch: _ } =>
           concat(acc, [join([n, " [", pv, "] ", st, ": ", d], "")])
         Spawned { node_id: _, session_name: _, provider: _, launch: _ } => acc
+        SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => acc
         SpawnNotAdmitted { node_id: _, refusal: _ } => acc
       }),
       "; ",
@@ -3461,6 +3687,7 @@ fn belt_tick_deferred_count(outcomes: List<BeltSpawnOutcome>) -> Int { belt_spaw
 fn belt_tick_launch_identities(outcomes: List<BeltSpawnOutcome>) -> List<LaunchIdentity> {
   fold(outcomes, init: [], f: (acc, o) => match o {
     Spawned { node_id: _, session_name: _, provider: _, launch } => concat(acc, [launch])
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch } => concat(acc, [launch])
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch } => concat(acc, [launch])
     SpawnNotAdmitted { node_id: _, refusal: _ } => acc
   })
@@ -3503,6 +3730,8 @@ type BeltSpawnTally {
 fn belt_spawn_tally(outcomes: List<BeltSpawnOutcome>) -> BeltSpawnTally {
   fold(outcomes, init: BeltSpawnTally { spawned: 0, failed: 0, not_admitted: 0, deferred: 0 }, f: (acc, o) => match o {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } =>
+      BeltSpawnTally { spawned: acc.spawned + 1, failed: acc.failed, not_admitted: acc.not_admitted, deferred: acc.deferred }
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } =>
       BeltSpawnTally { spawned: acc.spawned + 1, failed: acc.failed, not_admitted: acc.not_admitted, deferred: acc.deferred }
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } =>
       BeltSpawnTally { spawned: acc.spawned, failed: acc.failed + 1, not_admitted: acc.not_admitted, deferred: acc.deferred }
@@ -3585,6 +3814,14 @@ fn belt_spawn_outcome_json(o: BeltSpawnOutcome) -> JsonValue {
         json_kv(key: "status", value: json_string(s: "spawned")),
         json_kv(key: "provider", value: json_string(s: p)),
         json_kv(key: "session_name", value: json_string(s: sn)),
+        json_kv(key: "launch", value: launch_identity_json(id: l)),
+      ])
+    SupervisorConvened { node_id: nid, unit: u, provider: p, launch: l } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "supervisor_convened")),
+        json_kv(key: "provider", value: json_string(s: p)),
+        json_kv(key: "unit", value: json_string(s: u)),
         json_kv(key: "launch", value: launch_identity_json(id: l)),
       ])
     SpawnFailed { node_id: nid, step: st, detail: d, provider: p, launch: l } =>
@@ -5187,6 +5424,14 @@ type BeltSeedOutcome
 // SEED ONCE. The envelope holding any commit at all is already seeded -- the second candidate of a
 // project must never re-read the base tree. The seed is saved before the candidate work begins, so
 // a crash after seeding does not re-seed either.
+//
+// Two notes on the mint below, kept at declaration grain (the annotation channel admits no
+// in-body comments): on the BaseShaUnobserved arm -- THE SPAWN ORIGIN IS WRITTEN ONCE, BY THE
+// DISPATCH THAT SPAWNED THIS ATTEMPT. No retry of the capture can create it for this attempt key;
+// only a fresh dispatch can. That is durable for the attempt, so it poisons rather than refuses.
+// On the commit_staged arms -- THE MINT'S DURABLE REFUSALS. Given the same staged tree and store
+// these recompute to the same refusal every time, so retry buys nothing; the save arms below them
+// are I/O and stay transient.
 fn belt_scm_envelope_seeded(
   instance: HostDashboardInstance,
   worktree: String,
@@ -5200,9 +5445,6 @@ fn belt_scm_envelope_seeded(
     SeedReady { envelope: envelope }
   } else {
     match belt_scm_base_sha_observe(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-      // THE SPAWN ORIGIN IS WRITTEN ONCE, BY THE DISPATCH THAT SPAWNED THIS ATTEMPT. No retry of
-      // the capture can create it for this attempt key; only a fresh dispatch can. That is durable
-      // for the attempt, so it poisons rather than refuses.
       BaseShaUnobserved { reason } => SeedPoisoned { detail: reason }
       BaseShaObserved { base_sha } =>
         match belt_scm_stage_base_tree(
@@ -5231,9 +5473,6 @@ fn belt_scm_envelope_seeded(
                   },
                   message: join(["project base: ", base_sha], ""),
                 ) {
-                  // THE MINT'S DURABLE REFUSALS. Given the same staged tree and store these
-                  // recompute to the same refusal every time, so retry buys nothing; the
-                  // save arms below them are I/O and stay transient.
                   StagedCommitCandidateRefused { cause: _ } =>
                     SeedPoisoned { detail: "the base stage could not be compared against its base" }
                   StagedCommitNothingToFreeze =>
@@ -5280,6 +5519,10 @@ fn belt_scm_root_commit_ref(envelope: RepositoryEnvelope) -> RepositoryCommitRef
 // is moved to the base for the mint and restored afterwards, so between belt operations
 // checked_out IS the integration head and restart recovery is a pure derivation from the
 // envelope. A candidate identical to the intake base is refused -- there is no change to deliver.
+//
+// One note on the zero-inventory arm below, kept at declaration grain (the annotation channel
+// admits no in-body comments): THE RECORDED BASE IS A FACT ABOUT THE DISPATCH, not about this
+// tick's I/O: an inventory that named zero files names zero files on every retry.
 fn belt_scm_capture_candidate_tree(
   instance: HostDashboardInstance,
   worktree: String,
@@ -5346,8 +5589,6 @@ fn belt_scm_capture_candidate_tree(
             ExecOk { stdout } => {
               let paths = worktree_inventory_parse(stdout_nul: stdout)
               if count(paths) == 0 {
-                // THE RECORDED BASE IS A FACT ABOUT THE DISPATCH, not about this tick's I/O: an
-                // inventory that named zero files names zero files on every retry.
                 ScmCapturePoisoned {
                   detail: "the recorded base names zero files, so capturing against it would mint an empty tree as the worker's deliverable",
                 }
@@ -5474,6 +5715,11 @@ fn belt_scm_delta_fold_step(
   }
 }
 
+// Two notes on the mint arms below, kept at declaration grain (the annotation channel admits no
+// in-body comments): on the delta fold's refused arm -- A CHANGED PATH THAT CANNOT BE READ is this
+// tick's I/O; the next tick reads again, so it stays transient. On the commit_staged arms -- THE
+// MINT'S DURABLE REFUSALS, the same classification the seed's mint carries: identical-to-base,
+// allocator damage, and unrecoverable sources recompute to the same refusal on every retry.
 fn belt_scm_delta_capture(
   instance: HostDashboardInstance,
   worktree: String,
@@ -5540,8 +5786,6 @@ fn belt_scm_delta_capture(
                     f: (acc, change) => belt_scm_delta_fold_step(instance: instance, worktree: worktree, acc: acc, change: change),
                   )
                   match folded.refused {
-                    // A CHANGED PATH THAT CANNOT BE READ is this tick's I/O; the next tick reads
-                    // again, so it stays transient.
                     Present { value: detail } => ScmCaptureRefused { detail: detail }
                     Absent =>
                       match store_path_unique_manifest(store: folded.store, unique: folded.unique) {
@@ -5560,9 +5804,6 @@ fn belt_scm_delta_capture(
                             },
                             message: message,
                           ) {
-                            // THE MINT'S DURABLE REFUSALS, the same classification the seed's mint
-                            // carries: identical-to-base, allocator damage, and unrecoverable
-                            // sources recompute to the same refusal on every retry.
                             StagedCommitCandidateRefused { cause: _ } =>
                               ScmCapturePoisoned {
                                 detail: "the SCM stage could not be compared against its base, so the capture was not minted",
@@ -5752,6 +5993,10 @@ fn belt_commit_outcome_receipt_json(r: BeltCommitOutcomeReceipt) -> JsonValue {
   ])
 }
 
+// THE PERSISTED OUTCOME'S NAME IS SPELLED ONCE: the persist pass writes it and the supervisor's
+// history line reads it, so writer and reader cannot drift.
+data belt_commit_outcome_last_basename: NonEmptyStr = "commit-outcome-last.json" as NonEmptyStr
+
 fn belt_commit_outcome_persist(
   instance: HostDashboardInstance,
   node_id: String,
@@ -5768,7 +6013,7 @@ fn belt_commit_outcome_persist(
           node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
           attempt_key: attempt_key,
         ),
-        "/commit-outcome-last.json",
+        "/", belt_commit_outcome_last_basename as String,
       ], ""),
       content: serialize_json(v: belt_commit_outcome_receipt_json(
         r: belt_commit_outcome_receipt(o: outcome, attempt_key: attempt_key),
@@ -5927,6 +6172,12 @@ fn belt_commit_outcome_is_recorded(o: BeltCommitOutcome) -> Bool {
   }
 }
 
+// POISONED ATTEMPTS ARE SKIPS, NOT FAILURES (kept at declaration grain: the annotation channel
+// admits no in-body comments): a durable capture refusal changes what the pass can report, never
+// whether it failed. The pass defers honestly (nothing was committed for that attempt until its
+// durable fact is repaired) and the tick result counts the poison separately — one bad attempt
+// cannot hold the other attempts' verdict hostage, which is the failure the 2026-09-21 tick kept
+// paying. A transient CommitFailed still fails the pass, beside any number of poisoned siblings.
 fn belt_commit_pass_outcome_from(outcomes: List<BeltCommitOutcome>) -> BeltPassOutcome {
   let ledger_refusals = outcomes |> filter(o => match o {
     CommitDeferred { node_id: nid, reason: _ } => nid == ""
@@ -5937,12 +6188,6 @@ fn belt_commit_pass_outcome_from(outcomes: List<BeltCommitOutcome>) -> BeltPassO
     CommitCapturePoisoned { node_id: _, detail: _ } => false
     CommitSubjectUnaddressable { node_id: _, reason: _ } => false
   })
-  // POISONED ATTEMPTS ARE SKIPS, NOT FAILURES: a durable capture refusal changes what the pass can
-  // report, never whether it failed. The pass defers honestly (nothing was committed for that
-  // attempt until its durable fact is repaired) and the tick result counts the poison separately —
-  // one bad attempt cannot hold the other attempts' verdict hostage, which is the failure the
-  // 2026-09-21 tick kept paying. A transient CommitFailed above still fails the pass, beside any
-  // number of poisoned siblings.
   let poison_count = count(outcomes |> filter(o => match o {
     CommitCapturePoisoned { node_id: _, detail: _ } => true
     CommitRecorded { node_id: _, message: _ } => false
@@ -7805,6 +8050,7 @@ fn belt_dispatch_result_ok(r: BeltSpawnOutcome) -> Bool {
 fn belt_dispatch_status_label(r: BeltSpawnOutcome) -> String {
   match r {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => "spawned"
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => "supervisor_convened"
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => "spawn_failed"
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_label(r: refusal)
   }
@@ -7860,6 +8106,7 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
 fn belt_dispatch_result_band(r: BeltSpawnOutcome) -> DispatchBand {
   match r {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => BandOk
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => BandOk
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => BandLoud
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_band(r: refusal)
   }
@@ -7926,6 +8173,7 @@ fn belt_dispatch_result_exemplars() -> List<BeltSpawnOutcome> {
   concat(
     [
       Spawned { node_id: "x", session_name: "s", provider: belt_dispatch_wire_contract_exemplar_provider, launch: launch_identity_exemplar() },
+      SupervisorConvened { node_id: "x", unit: "gunbc-supervisor-x-k-t3.service", provider: belt_dispatch_wire_contract_exemplar_provider, launch: launch_identity_exemplar() },
       SpawnFailed { node_id: "x", step: "s", detail: "d", provider: belt_dispatch_wire_contract_exemplar_provider, launch: launch_identity_exemplar() },
     ],
     map(launch_refusal_exemplars(), r => SpawnNotAdmitted { node_id: "x", refusal: r }),
@@ -9254,6 +9502,11 @@ fn belt_path_parent_dir(path: String) -> String {
 // Materialize the integration head's corpus into the belt-owned integration worktree and commit
 // it at the edge. The recovered files' parent directories are created in ONE install -d -- the
 // Filesystem.Write intrinsic creates no parents, the lesson the publication directory taught.
+//
+// One note on the fold arms below, kept at declaration grain (the annotation channel admits no
+// in-body comments): NO POISON IS BORN IN MATERIALIZATION (its refusals are all exec/write I/O),
+// but the verdict type is shared, so a poisoned accumulator propagates as the terminal state it is
+// rather than being reclassified transient.
 fn belt_publish_project_materialize(
   instance: HostDashboardInstance,
   worktree: String,
@@ -9290,9 +9543,6 @@ fn belt_publish_project_materialize(
         f: (acc, f) =>
           match acc {
             ScmCaptureRefused { detail: _ } => acc
-            // NO POISON IS BORN IN MATERIALIZATION (its refusals are all exec/write I/O), but the
-            // verdict type is shared, so a poisoned accumulator propagates as the terminal state
-            // it is rather than being reclassified transient.
             ScmCapturePoisoned { detail: _ } => acc
             ScmCandidateCaptured { repository_path: _, commit_ordinal: _ } => {
               let write = Filesystem.Write(
