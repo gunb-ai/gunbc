@@ -108,6 +108,7 @@ import v2.std.node {
 import v2.std.node_query {
   construct_field_edges,
   construct_tag_optional,
+  declared_field_list,
   find_named_child,
   pattern_wildcard_name
 }
