@@ -42,6 +42,8 @@ import v2.workflow.rust_crate_partition {
   Stage0PartitionCrateRow,
   Stage0LayeredCoreCrate,
   UnitDepEdge,
+  ReexportDisagreementScanOk,
+  ReexportDisagreementScanUnitHasNoRow,
   Stage0ReexportDisagreementsDerived,
   Stage0ReexportDisagreementsUnavailable,
   reexport_derivation_disagreements_over,
@@ -439,9 +441,31 @@ test fn the_disagreement_detector_finds_a_planted_divergence() -> Bool {
     probe_row(package: "probe-agreeing", unit: "u-agree", reexports: ["probe-base"]),
     probe_row(package: "probe-diverging", unit: "u-diverge", reexports: ["probe-base"]),
   ]
-  let found = reexport_derivation_disagreements_over(edges: edges, rows: rows)
-  (found |> any(p => p == "probe-diverging"))
-    && !(found |> any(p => p == "probe-agreeing"))
-    && !(found |> any(p => p == "probe-base"))
+  match reexport_derivation_disagreements_over(edges: edges, rows: rows) {
+    ReexportDisagreementScanUnitHasNoRow { unit_id: _ } => false
+    ReexportDisagreementScanOk { packages: found } =>
+      (found |> any(p => p == "probe-diverging"))
+        && !(found |> any(p => p == "probe-agreeing"))
+        && !(found |> any(p => p == "probe-base"))
+  }
+}
+
+// THE DISCRIMINATOR FOR THE FALSE GREEN, and it is the input the detector used to certify.
+// A FOUNDATION row authors reexport_packages: [] and has a derived edge to a unit that NO package
+// row covers. The old fold dropped that edge, leaving derived [] against authored [], and reported
+// AGREEMENT from a projection it could not complete -- the exact shape this declaration exists to
+// make impossible, reached through the arm rather than through the comparison.
+//
+// It must REFUSE. Restoring `Absent => acc` inside derived_dep_packages reds this claim and leaves
+// the planted-divergence guard above green, because that fixture pairs every edge destination with
+// a row and so never reaches the arm -- which is why this case needed its own claim rather than a
+// wider fixture.
+test fn a_dep_edge_to_a_unit_with_no_package_row_refuses() -> Bool {
+  let edges = [probe_edge(from: "u-foundation", to: "u-unrostered")]
+  let rows = [probe_row(package: "probe-foundation", unit: "u-foundation", reexports: [])]
+  match reexport_derivation_disagreements_over(edges: edges, rows: rows) {
+    ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id } => (unit_id as String) == "u-unrostered"
+    ReexportDisagreementScanOk { packages: _ } => false
+  }
 }
 
