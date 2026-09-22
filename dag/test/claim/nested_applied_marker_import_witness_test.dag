@@ -15,8 +15,8 @@ fn w_nested_applied_variant_imports_the_marker() -> Bool {
   compile_dag_rust_emit_check(
     "module nested_applied_marker\n\nimport std.types { Int }\nimport std.machine_constraints { Compose, MachineWidth, PointerWidth }\n\ntype NestedUse = Compose<Int, MachineWidth<PointerWidth>>\n",
     "src/nested_applied_marker.rs",
-    ["std_machine_constraints::\\\{PointerWidth}", "MachineWidth<PointerWidth>"],
-    ["WidthResolution::PointerWidth", "WidthResolution::\\\{PointerWidth}", "MachineWidth, WidthResolution"]
+    ["std_machine_constraints::\{PointerWidth}", "MachineWidth<PointerWidth>"],
+    ["WidthResolution::PointerWidth", "WidthResolution::\{PointerWidth}", "MachineWidth, WidthResolution"]
   )
 }
 
@@ -31,7 +31,7 @@ fn w_direct_applied_variant_imports_the_marker() -> Bool {
     "module direct_applied_marker\n\nimport std.machine_constraints { MachineWidth, PointerWidth }\n\ntype DirectUse = MachineWidth<PointerWidth>\n",
     "src/direct_applied_marker.rs",
     ["MachineWidth<PointerWidth>"],
-    ["WidthResolution::PointerWidth", "WidthResolution::\\\{PointerWidth}"]
+    ["WidthResolution::PointerWidth", "WidthResolution::\{PointerWidth}"]
   )
 }
 
