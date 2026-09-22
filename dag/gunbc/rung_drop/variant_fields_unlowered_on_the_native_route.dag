@@ -17,61 +17,29 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // silently lost; that loss is now the typed refusal
 // body_lowering_reason_positional_pattern_binder_unlowered.
 
-// NOT RETIRED BY gunbc#12033, AND THE POPULATION IS NARROWED TO WHAT REMAINS. The lowering half
-// of the trigger IS executed: v2.compiler.body_lowering_fold declares the fields, the graft skip
-// is deleted, and body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>`
-// to the construct over their binders, so the #11998 positional-binder refusal is retired. The
-// resolver frame is executed too: v2.compiler.resolve resolve_match_node scopes those binders as
-// the arm's lexical frame. What is NOT established is the sentence this row's trigger requires --
-// that a binder BINDS -- because one reachable class of binder still silently does not.
+// NOT RETIRED BY gunbc#12033. The lowering half of the replacement IS executed:
+// v2.compiler.body_lowering_fold declares the fields, the graft skip is deleted, and
+// body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>` to the construct over
+// their binders, so the #11998 positional-binder refusal is retired. The resolver frame is executed
+// too: v2.compiler.resolve resolve_match_node scopes those binders as the arm's lexical frame, and
+// v2.test.claim.match_arm_binder_frame holds that a binder binds. What is NOT established is the
+// capability this row's subject names: that the NATIVE ROUTE, the emitted compiler, lowers fields and
+// binds binders. The emitted compiler does not build today, so nothing observes it there.
 //
-// THE RESIDUE, WITH ITS SPECIMEN, AS FILED. The row was narrowed (review 70101) to one class: a
-// shape classifier answered constructor for a MODULE container, since a module container is a Conj
-// whose every child is a Named edge, so a binder spelling a sibling module name got no frame local
-// and resolved to the module. The filed specimen is the binder `node` in the `Present { value: node }`
-// arms of v2.std.symbol_index symbol_index_candidates_at, where lexical ascent was claimed to reach
-// the module v2.std.node. That shape classifier is deleted (see below); what remains is the
-// observation, not the mechanism.
-//
-// AN ABSENCE CLAIM THAT WAS ABOUT WHERE I LOOKED, RECORDED BECAUSE THE NEXT READER MEETS IT HERE.
-// Two commits before this row was narrowed, the annotation beside the classifier stated that this
-// arm had NO corpus specimen, on the strength of two probes that came back green with a live
-// control. Both probes hunted a DATA or ALIAS whose indexed node is a parse-rest node. The
-// reachable shape is a MODULE, so the search was in the wrong place and the absence was a fact
-// about the search rather than about the corpus. gunbc#12057's author pointed one link upstream,
-// at the LOOKUP rather than the node shape, and was closer than either reading.
-//
-// WHY THE REPAIR IS NOT ANOTHER PREDICATE. Three shape discriminators have now been tried on this
-// classifier -- the bare connective, the construct tag, and declared-field coverage -- and each
-// admitted a wider set than its author intended, each looking complete at the time. A declared
-// payload, a module container and a declaration parse-rest node are all Conj with Named edges, so
-// the shape does not carry the distinguishing fact at all; what the classifier needs is what the
-// NAME DENOTES, which v2.compiler.symbol_index_fill knows at insert time. That is this row's
-// restoration trigger and it is filed as its own subject.
-// STILL STANDING AFTER PKG16 (gunbc#12069), AND WHY THAT IS NOT THE TRIGGER BEING IGNORED. Pkg16
-// replaced the shape classifier this row named: v2.compiler.resolve
-// resolve_pattern_atom_names_constructor now asks v2.std.symbol_index
-// symbol_index_denotes_declared_payload, a fact v2.compiler.symbol_index_fill writes at insert
-// time, and the shape predicates are deleted. But the trigger ends "The check is the specimen", and
-// the specimen has not been observed: running it on the native route needs the emitted compiler,
-// and on #12033's head that crate fails to build (a missing `UInt8` import in base16_decode_lower,
-// gunbc#12056's defect). So the trigger is written and unchecked, and retiring on it would be
-// retiring on the author's reading. The population states what is left -- an unobserved specimen,
-// not an observed wrong value -- because two parts of the filed account are contradicted at fixture
-// scale (review 70259): the ROUTE (a module
-// container is never a symbol-index entry, since the fill descends module spine segments without
-// inserting a path; at fixture size the name reaches the classifier through the global-bare lookup
-// instead) and the HARM (at fixture size that route REFUSES resolve_reason_unbound_symbol, loudly,
-// rather than accepting a wrong value). Receipts: gunbc#12069's census, and
-// v2.test.claim.match_arm_binder_frame mab_binder_spelling_an_ambiguous_global_name_refuses_unbound.
-// THE SPECIMEN'S SHAPE BINDS AT THE RESOLVE INTERFACE, and that is all it establishes:
-// v2.test.claim.match_arm_binder_frame mab_binder_spelling_a_sibling_module_binds_the_arm resolves a
-// supplied mirror of v2.std.node beside v2.std.symbol_index symbol_index_candidates_at and holds that
-// the binder `node` binds its arm (red with every binder forced to a constructor). The trigger asks
-// for the specimen on the NATIVE route, which a supplied mirror at one interface is not, so this
-// row stands until the emitted compiler builds and runs it.
+// A HARM SENTENCE THIS ROW USED TO CARRY IS RETRACTED, AND THE RETRACTION IS RECORDED HERE. An
+// earlier revision said the binder `node` in v2.std.symbol_index symbol_index_candidates_at
+// resolved silently to the MODULE v2.std.node because resolve_pattern_node_is_constructor
+// classifies by shape. That came from review 70101's reading and was never executed. Execution
+// falsified it (nimble-boar-636, 2026-09-22, on #12033's head bbc77204a49):
+// v2.test.claim.match_arm_binder_frame mab_binder_spelling_a_sibling_module_binds_the_arm (authored on gunbc#12082), with
+// v2.std.node supplied beside that arm, holds and the binder binds. v2.compiler.symbol_index_fill
+// inserts no path for a module spine, so lexical ascent cannot reach a module, and the global-bare
+// Unbound arm refuses rather than falling back to one. The shape classifier remains a construction
+// deficit (a declared payload, a module container and a declaration parse-rest node are all Conj
+// with Named edges), and gunbc#12082 replaces it with the declaration kind the symbol index records.
+// That is construction with no behavioural delta on this corpus, so it does not retire this row.
 data variant_fields_unlowered_on_the_native_route_population: List<String> = [
-  "v2.std.symbol_index symbol_index_candidates_at, the binder `node` of its `Present { value: node }` arms -- UNOBSERVED on the native route, not observed wrong: v2.compiler.resolve resolve_pattern_atom_names_constructor now asks v2.std.symbol_index symbol_index_denotes_declared_payload (written by v2.compiler.symbol_index_fill at insert time) and no shape predicate remains, and at fixture scale the reachable route for this spelling refuses (global-bare Ambiguous, resolve_reason_unbound_symbol) rather than accepting a wrong value (v2.test.claim.match_arm_binder_frame). What is not established is the specimen itself binding its arm, because running it needs the emitted compiler, which does not build",
+  "the emitted (native-route) compiler: variant-field lowering and match-arm binder binding are executed by the interpreted v2 stages but unobserved on the native route, because the emitted compiler does not build; specimen: the binder `node` of the `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at",
 ]
 
 data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
@@ -86,6 +54,6 @@ data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
       replacement: "a v2 stage lowers variant fields into declared field identities (named and positional \"0\")"
     },
     population: variant_fields_unlowered_on_the_native_route_population,
-    restoration_trigger: "v2.compiler.resolve resolve_pattern_atom_names_constructor decides binder-versus-constructor from the DECLARATION KIND the symbol index recorded at insert time -- v2.compiler.symbol_index_fill distinguishes a containment edge from a variant payload from a data row -- rather than from the node's shape, so that a binder spelling a module, data or alias name binds the arm. The check is the specimen: the binder `node` of the `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at binds its arm on the native route rather than resolving to module v2.std.node. A fourth shape predicate does NOT satisfy this: three have been tried and each admitted a wider set than intended, which is the evidence that shape is the wrong carrier."
+    restoration_trigger: "the emitted compiler builds, and on that native route the specimen is observed: the binder `node` in v2.std.symbol_index symbol_index_candidates_at binds its arm and a positional `A(x)` construction and match round-trip field \"0\". A declaration-kind classifier alone (gunbc#12082) does NOT satisfy this: it changes how the interpreted stages decide, not whether the native route is observed."
   }
 }
