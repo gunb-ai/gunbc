@@ -171,10 +171,28 @@ fn runner_microvm_attempt_slice_property(attempt: MicroVmAttempt) -> SystemdRunP
 // kill, a crash, systemd's final SIGKILL after TimeoutStopSec -- leaked a VMM (external review of
 // gunbc#12011; PartOf appears nowhere else in this corpus, so no lifetime edge existed).
 //
-// PartOf IS ONE-WAY AND THAT IS THE POINT: stopping the slot unit stops this attempt unit, while
-// this attempt unit exiting does NOT stop the slot unit -- the controller must outlive its guest to
-// read the teardown back. BindsTo would take the controller down with the guest and destroy exactly
-// the settlement the lifecycle exists to produce.
+// PartOf IS ONE-WAY IN THE DIRECTION THIS NEEDS: stopping the slot unit stops this attempt unit,
+// while this attempt unit exiting does NOT stop the slot unit -- the controller must outlive its
+// guest to read the teardown back.
+//
+// WHAT PartOf ALONE MAY NOT COVER, AND IT IS NOT YET SETTLED. systemd.unit(5) propagates PartOf on
+// a STOP OR RESTART of the listed unit, which is a stop JOB. A controller that is OOM-killed,
+// crashes, or is SIGKILLed by systemd after TimeoutStopSec does not issue one -- its unit enters
+// inactive or failed on its own -- so the propagation this row installs may not fire for exactly
+// three of the four paths the note above lists. BindsTo= is the directive that also stops the
+// dependent when the listed unit enters inactive for ANY reason, and it is the SAME DIRECTION as
+// PartOf when written here, on the attempt unit: the slot unit going away stops the attempt, and
+// the attempt exiting still does not stop the slot unit. An earlier revision of this annotation
+// claimed BindsTo "would take the controller down with the guest"; that describes BindsTo written
+// on the SLOT unit pointing at the attempt, which is the opposite direction and not what is
+// proposed. The claim was wrong and is retracted here.
+//
+// THIS IS NOT REPAIRED BY ASSERTION. gunbc.runner_microvm_stop_propagation_probe settles it by
+// running both arms against a stand-in -- an explicit `systemctl stop` of the supervisor, and a
+// kill of the supervisor's main process standing in for the OOM and crash paths -- and reading the
+// stand-in's ActiveState after each. If the kill arm leaves the stand-in active, PartOf is
+// insufficient for those paths and this row gains BindsTo; if both arms stop it, PartOf is enough
+// and that is recorded rather than assumed.
 //
 // THE ALTERNATIVE REPAIR IS REFUSED: moving the VMM into the controller's slice would make one
 // cgroup reach it, and would charge the guest's 28 GiB to the controller instead of to the cell's

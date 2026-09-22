@@ -54,10 +54,39 @@ data stop_propagation_probe_supervisor_unit: NonEmptyStr = "gunbc-stop-propagati
 
 data stop_propagation_probe_stand_in_unit: NonEmptyStr = "gunbc-stop-propagation-probe-stand-in.service" as NonEmptyStr
 
+// THE TWO ARMS ARE THE WHOLE EXPERIMENT, because they ask different questions of systemd.
+// StopJob issues `systemctl stop` on the supervisor, which is the one path PartOf is documented to
+// propagate. MainProcessKilled kills the supervisor's main process instead, standing in for the
+// OOM and crash paths where the unit goes inactive with NO stop job issued -- the paths
+// gunbc.runner_microvm_attempt runner_microvm_attempt_part_of_property names and may not cover.
+// IF THE ANSWER IS THAT BindsTo IS NEEDED, IT DOES NOT TRAVEL ALONE. systemd.unit(5) is explicit
+// that BindsTo= must be combined with After= naming the same unit, or the STOP ORDERING between
+// them is undefined -- a bound unit can be torn down in an order nobody specified, which for this
+// lane means a guest stopped before or after its controller with no guarantee either way. So the
+// edit that adds BindsTo to gunbc.runner_microvm_attempt runner_microvm_attempt_part_of_property
+// adds After= naming the slot unit in the SAME edit, and the argv witness then requires all three
+// words rather than the one that was gone looking for. AfterProperty is already in the modeled
+// vocabulary; BindsTo is deliberately NOT added until the probe says it is needed, because a
+// variant with no consumer is a dangling declaration (DESIGN section 3c) and every arm added to a
+// closed type refuses every exhaustive match over it.
+//
+// IF THE ANSWER IS THAT PartOf SUFFICES, the measurement is recorded where the retracted sentence
+// was, so the next reader gets a receipt rather than a second confident claim.
+type StopPropagationArm
+  = StopJob
+  | MainProcessKilled
+
+fn stop_propagation_arm_label(a: StopPropagationArm) -> String {
+  match a {
+    StopJob => "stop-job"
+    MainProcessKilled => "main-process-killed"
+  }
+}
+
 type StopPropagationVerdict
   = StandInStoppedWithItsSupervisor
   | StandInSurvivedItsSupervisor { active_state: String }
-  | StandInNeverStarted { cause: String }
+  | StandInNotRunningBeforeTheAction { state_before: String }
   | SupervisorNeverStarted { cause: String }
   | StandInStateUnreadable { cause: String }
 
@@ -69,27 +98,34 @@ fn stop_propagation_admitted(v: StopPropagationVerdict) -> Bool {
   match v {
     StandInStoppedWithItsSupervisor => true
     StandInSurvivedItsSupervisor { active_state: _ } => false
-    StandInNeverStarted { cause: _ } => false
+    StandInNotRunningBeforeTheAction { state_before: _ } => false
     SupervisorNeverStarted { cause: _ } => false
     StandInStateUnreadable { cause: _ } => false
   }
 }
 
-// THE VERDICT IS DECIDED BY THE READBACK, NOT BY THE STOP COMMAND'S EXIT. `systemctl stop` exits
-// zero for a unit it stopped and for one that was not running, so its status cannot distinguish a
-// propagation that worked from a stand-in that never started -- which is exactly the false green
-// this probe would otherwise produce.
+// THE VERDICT IS DECIDED BY THE READBACK, NOT BY THE ACTION'S EXIT. `systemctl stop` exits zero
+// for a unit it stopped and for one that was not running, and a kill exits zero whether or not
+// anything died, so neither action's status can distinguish a propagation that worked from a
+// stand-in that was never running.
+//
+// THE STATE BEFORE THE ACTION IS READ, AND THAT IS WHAT KEEPS THE TWO ARMS DISTINGUISHABLE IN
+// FAILURE RATHER THAN ONLY IN SUCCESS. A stand-in that is already inactive when the action runs is
+// trivially inactive afterwards, so BOTH arms would report a stop and the experiment would prove
+// nothing -- arm B in particular runs second and is exactly where a leftover inactive stand-in
+// would land. Requiring an observed `active` beforehand turns that into
+// StandInNotRunningBeforeTheAction, which admits nothing and says why.
 fn stop_propagation_verdict(
   supervisor_started: Bool,
-  stand_in_started: Bool,
+  stand_in_state_before: String,
   stand_in_state_after: String,
 ) -> StopPropagationVerdict {
   if supervisor_started == false {
     SupervisorNeverStarted { cause: "the probe's supervisor unit did not start, so nothing was stopped and no propagation was observed" }
-  } else if stand_in_started == false {
-    StandInNeverStarted { cause: "the probe's stand-in unit did not start, so its absence after the stop says nothing about propagation" }
+  } else if stand_in_state_before != "active" {
+    StandInNotRunningBeforeTheAction { state_before: stand_in_state_before }
   } else if stand_in_state_after == "" {
-    StandInStateUnreadable { cause: "systemd returned no ActiveState for the stand-in unit after the supervisor was stopped" }
+    StandInStateUnreadable { cause: "systemd returned no ActiveState for the stand-in unit after the action" }
   } else if stand_in_state_after == "inactive" {
     StandInStoppedWithItsSupervisor
   } else {
@@ -103,7 +139,8 @@ fn stop_propagation_verdict_text(v: StopPropagationVerdict) -> String {
       "stop-propagation=held: the stand-in went inactive when its supervisor was stopped externally"
     StandInSurvivedItsSupervisor { active_state: s } =>
       join(["stop-propagation=LEAKED: the stand-in is ", s, " after its supervisor was stopped -- PartOf did not propagate"], "")
-    StandInNeverStarted { cause: c } => join(["stop-propagation=not-observed (", c, ")"], "")
+    StandInNotRunningBeforeTheAction { state_before: b } =>
+      join(["stop-propagation=not-observed: the stand-in was ", b, " before the action, not active, so its state afterwards says nothing about propagation"], "")
     SupervisorNeverStarted { cause: c } => join(["stop-propagation=not-observed (", c, ")"], "")
     StandInStateUnreadable { cause: c } => join(["stop-propagation=unreadable (", c, ")"], "")
   }
