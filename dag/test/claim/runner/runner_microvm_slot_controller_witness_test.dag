@@ -264,15 +264,15 @@ test fn the_shakedown_demand_and_offer_are_derived_from_the_slot_and_name_the_sh
 
 // --- the slot is selected out of the roster, never parsed ---
 
+// EVERY ROSTER MEMBER SELECTS ITSELF BY ITS OWN INSTANCE NAME, as an identity join over the roster
+// rather than a count of it (review 69823, DESIGN 5: a live-population count is not an oracle) --
+// a member the selection cannot reach is the defect, however many members there are.
 test fn the_controller_selects_only_a_fabric_member_out_of_its_instance_name() -> Bool {
   let shakedown = match slot_of_instance(instance: "srv1-13") {
     Present { value: s } => (s.host as String) == (operator_host_srv1 as String) && s.slot_index == 13
     Absent => false
   }
   let github_slot = match slot_of_instance(instance: "srv1-01") { Present { value: _ } => false  Absent => true }
-  // EVERY ROSTER MEMBER SELECTS ITSELF BY ITS OWN INSTANCE NAME, as an identity join over the
-  // roster rather than a count of it (review 69823, DESIGN 5: a live-population count is not an
-  // oracle) -- a member the selection cannot reach is the defect, however many members there are.
   let every_member_selects = fold(fabric_execution_slot_identities(), init: true, f: (acc, m) =>
     acc && match slot_of_instance(instance: runner_slot_instance_name(slot: m)) {
       Present { value: s } => (s.host as String) == (m.host as String) && s.slot_index == m.slot_index
