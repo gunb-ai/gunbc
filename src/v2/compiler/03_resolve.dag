@@ -70,6 +70,7 @@ import v2.std.symbol_index {
   LexicalUnbound,
   SymbolIndex,
   empty_symbol_index,
+  symbol_index_absolute_candidates,
   symbol_index_lexical_lookup,
   symbol_index_lookup
 }

@@ -44,7 +44,6 @@ import v2.std.symbol_index {
   GlobalBareLookupUnbound,
   symbol_index_global_unique_lookup
 }
-import v2.compiler.name_resolve { ResolutionContext }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -382,6 +381,8 @@ type NcrOutcomes
       shadow_permuted: NcrVerdict
       chain_permuted: NcrVerdict
       qual_permuted: NcrVerdict
+      singly_declared_leaf_is_unique: Bool
+      doubly_declared_leaf_is_ambiguous: Bool
     }
 
 fn ncr_verdicts_for(ingest: SourceRootIngest, module_name: String) -> Optional<NativeCensusModuleOutcome> {
@@ -397,17 +398,6 @@ fn ncr_verdicts_for(ingest: SourceRootIngest, module_name: String) -> Optional<N
   }
 }
 
-fn ncr_context() -> Optional<ResolutionContext> {
-  match native_test_context_from_ingest(ingest: ncr_ingest) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: ctx, diagnostics: _ } =>
-      match ctx.resolution {
-        Rejected { diagnostics: _ } => optional_absent()
-        Accepted { value: rc, diagnostics: _ } => optional_present(value: rc)
-      }
-  }
-}
-
 fn ncr_outcomes() -> NcrOutcomes {
   match native_test_context_from_ingest(ingest: ncr_ingest) {
     Rejected { diagnostics: _ } => NcrContextRefused
@@ -418,6 +408,24 @@ fn ncr_outcomes() -> NcrOutcomes {
         Accepted { value: permuted_context, diagnostics: _ } => {
           let permuted_index = native_lane_file_refusal_index(refusals: permuted_context.file_refusals)
           NcrOutcomesDecided {
+            singly_declared_leaf_is_unique: (match context.resolution {
+              Rejected { diagnostics: _ } => false
+              Accepted { value: rc, diagnostics: _ } =>
+                match symbol_index_global_unique_lookup(index: rc.symbol_index, name: ^NcrDisp) {
+                  GlobalBareHit { node: _, path: _ } => true
+                  GlobalBareLookupAmbiguous => false
+                  GlobalBareLookupUnbound => false
+                }
+            }),
+            doubly_declared_leaf_is_ambiguous: (match context.resolution {
+              Rejected { diagnostics: _ } => false
+              Accepted { value: rc, diagnostics: _ } =>
+                match symbol_index_global_unique_lookup(index: rc.symbol_index, name: ^NcrTwin) {
+                  GlobalBareHit { node: _, path: _ } => false
+                  GlobalBareLookupAmbiguous => true
+                  GlobalBareLookupUnbound => false
+                }
+            }),
             importer: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_importer")),
             double: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_double")),
             unbound: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_unbound")),
@@ -510,7 +518,7 @@ fn ncr_verdict_same(left: NcrVerdict, right: NcrVerdict) -> Bool {
 test fn a_bound_sibling_declaration_resolves_by_containment_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: importer, double: _, unbound: _, home_a: home_a, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _ } =>
+    NcrOutcomesDecided { importer: importer, double: _, unbound: _, home_a: home_a, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_is_resolved(v: importer) && ncr_verdict_is_resolved(v: home_a)
   }
 }
@@ -521,7 +529,7 @@ test fn a_bound_sibling_declaration_resolves_by_containment_holds() -> Bool {
 test fn a_genuine_ambiguity_refuses_naming_both_binders_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: double, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: double, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: double, reason: ^resolve_reason_ambiguous_symbol)
         && ncr_verdict_names(v: double, dotted: "v2.ncr_home_a.NcrTwin")
         && ncr_verdict_names(v: double, dotted: "v2.ncr_home_b.NcrTwin")
@@ -537,7 +545,7 @@ test fn a_genuine_ambiguity_refuses_naming_both_binders_holds() -> Bool {
 test fn an_unbound_name_the_corpus_spells_twice_stays_unbound_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: unbound, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: unbound, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: unbound, reason: ^resolve_reason_unbound_symbol)
   }
 }
@@ -565,7 +573,9 @@ test fn reordering_the_files_changes_no_verdict_holds() -> Bool {
       disp_user_permuted: disp_user_permuted,
       shadow_permuted: shadow_permuted,
       chain_permuted: chain_permuted,
-      qual_permuted: qual_permuted
+      qual_permuted: qual_permuted,
+      singly_declared_leaf_is_unique: _,
+      doubly_declared_leaf_is_ambiguous: _
     } =>
       ncr_verdict_same(left: importer, right: importer_permuted)
         && ncr_verdict_same(left: double, right: double_permuted)
@@ -587,7 +597,7 @@ test fn reordering_the_files_changes_no_verdict_holds() -> Bool {
 test fn the_workload_bare_variant_reference_resolves_through_its_import_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: disp_user, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: disp_user, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_is_resolved(v: disp_user)
   }
 }
@@ -599,7 +609,7 @@ test fn the_workload_bare_variant_reference_resolves_through_its_import_holds() 
 test fn declaring_and_importing_one_name_refuses_naming_both_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: shadow, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: shadow, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: shadow, reason: ^resolve_reason_ambiguous_symbol)
         && ncr_verdict_names(v: shadow, dotted: "v2.ncr_shadow.NcrTwin")
         && ncr_verdict_names(v: shadow, dotted: "v2.ncr_home_a.NcrTwin")
@@ -616,7 +626,7 @@ test fn declaring_and_importing_one_name_refuses_naming_both_holds() -> Bool {
 test fn a_re_export_chain_resolves_through_its_relay_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: chain, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: chain, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_is_resolved(v: chain)
   }
 }
@@ -628,7 +638,7 @@ test fn a_re_export_chain_resolves_through_its_relay_holds() -> Bool {
 test fn a_qualified_reference_to_a_contested_position_refuses_naming_both_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: qual, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: qual, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: qual, reason: ^resolve_reason_ambiguous_symbol)
         && ncr_verdict_names(v: qual, dotted: "v2.ncr_shadow.NcrTwin")
         && ncr_verdict_names(v: qual, dotted: "v2.ncr_home_a.NcrTwin")
@@ -654,18 +664,13 @@ test fn a_qualified_reference_to_a_contested_position_refuses_naming_both_holds(
 // bare atom in a match arm names a constructor, and reads Ambiguous as yes. Every leaf polluted
 // this way would push a fresh arm BINDER toward being classified as a constructor and refused.
 test fn a_transmuted_import_does_not_make_its_leaf_globally_ambiguous_holds() -> Bool {
-  match ncr_context() {
-    Absent => false
-    Present { value: rc } =>
-      (match symbol_index_global_unique_lookup(index: rc.symbol_index, name: ^NcrDisp) {
-        GlobalBareHit { node: _, path: _ } => true
-        GlobalBareLookupAmbiguous => false
-        GlobalBareLookupUnbound => false
-      })
-      && (match symbol_index_global_unique_lookup(index: rc.symbol_index, name: ^NcrTwin) {
-        GlobalBareHit { node: _, path: _ } => false
-        GlobalBareLookupAmbiguous => true
-        GlobalBareLookupUnbound => false
-      })
+  match ncr_outcomes_warm {
+    NcrContextRefused => false
+    NcrOutcomesDecided {
+      importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: _,
+      importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _,
+      shadow_permuted: _, chain_permuted: _, qual_permuted: _,
+      singly_declared_leaf_is_unique: unique, doubly_declared_leaf_is_ambiguous: ambiguous
+    } => unique && ambiguous
   }
 }
