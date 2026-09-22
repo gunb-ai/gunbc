@@ -5299,6 +5299,31 @@ type Tier2bBt {
   kernel_diags: List<ErrorNode>
 }
 
+// `with` IS TWO CONTRACTS ON ONE SPELLING, AND THIS ARM DECIDES BETWEEN THEM BY THE RECEIVER'S
+// TYPE. v1.compiler.method registers `with` as the MAP operation -- three parameters, returning a
+// Map -- while the corpus also uses the RECORD-UPDATE form `with(base, { field: value })`, which
+// returns the base's product type. Nothing had to choose before, because the registry's Map answer
+// was the only one: the record update was typed as a Map, and every consumer that merely passed the
+// result along never noticed. The declared-type inhabitance wall is the first consumer that must
+// decide, and it refused a Map at a product formal -- correctly, on a true premise it was handed
+// wrongly (v1.compiler.emit_rust `with(emit_info, { movable: ... })`, where EmitGraphInfo really
+// does declare `movable`).
+//
+// THE DISCRIMINATOR IS THE RECEIVER'S TYPE, NOT THE ARITY AND NOT THE CALL'S SPELLING. A keyed
+// collection receiver is the map insert; an established product receiver is the record update and
+// the result is that product. An arity test would answer correctly for the sites that exist today
+// and lie about the next one, because arity is a property of the call rather than of the operation.
+// An unresolved or otherwise unestablished receiver keeps the registry's answer, so this arm
+// narrows nothing it cannot decide.
+//
+// WHAT THIS DOES NOT SETTLE, recorded as an open reading so the next reader starts here rather than
+// reaching for a rename: whether these are ultimately ONE concept -- functional update of a keyed
+// structure at two scales, a map by key and a record by field -- in which case DESIGN section 2's
+// horizontal move makes the answer a single polymorphic `with` rather than two names, and section 3
+// is satisfied by unifying rather than by splitting. This arm does not decide that. It makes the
+// existing two contracts distinguishable, which is the prerequisite for either answer. The name is
+// currently forked across v1.compiler.method, v1.compiler.languages (bridge_method_overrides maps
+// it to with_update), v1.compiler.parse and v1.compiler.emit_rust, each special-casing it apart.
 fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<Node>, scope: InferScope, span: SourceSpan) -> Tier2bBt {
   if func_name == "lookup" || func_name == "map_get" {
     Tier2bBt {
@@ -5310,6 +5335,26 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
                 Present { value: value_type } =>
                   with_optional_cardinality(n: value_type)
                 Absent => resolve_builtin_call_type(name: func_name)
+              }
+            _ => resolve_builtin_call_type(name: func_name)
+          }
+        Absent => resolve_builtin_call_type(name: func_name)
+      },
+      kernel_diags: []
+    }
+  } else if func_name == "with" {
+    Tier2bBt {
+      bt: match typed_args |> first {
+        Present { value: receiver_arg } =>
+          match arg_value(n: receiver_arg).inferred {
+            Present { value: Resolved { node: receiver_type } } =>
+              if node_is_keyed_collection(n: receiver_type, source_indices: scope.type_env.source_indices) {
+                resolve_builtin_call_type(name: func_name)
+              } else if type_head_exposure_is_product(
+                  exposure: expected_type_head_exposure(formal: receiver_type, scope: scope)) {
+                receiver_type
+              } else {
+                resolve_builtin_call_type(name: func_name)
               }
             _ => resolve_builtin_call_type(name: func_name)
           }
