@@ -58,9 +58,6 @@ type V41IndexScan
   = V41IndexScanned { name_count: Nat, members: List<SafetensorsIndexMember> }
   | V41IndexScanRefused { cause: NonEmptyStr }
 
-fn v41_quoted_tokens(text: String) -> List<String> {
-  map(filter(enumerate(split(s: text, delimiter: "\"")), p => p.first % 2 == 1), p => p.second)
-}
 
 // ONE TRAVERSAL WITH CONSTANT STATE: each token either opens a pair (it is a name) or closes the open one
 // (it is that name's shard). The fold keeps only the open name, two counts and the SELECTED members, so
@@ -85,21 +82,61 @@ fn v41_pair_step(acc: V41PairScan, t: String, selector: NonEmptyStr) -> V41PairS
   }
 }
 
-fn v41_pairs_of(tokens: List<String>, selector: NonEmptyStr) -> V41PairScan {
-  fold(tokens, init: V41PairScan { pending: none, names: 0, not_shards: 0, members: [] as List<SafetensorsIndexMember> }, f: (acc, t) => v41_pair_step(acc: acc, t: t, selector: selector))
+
+// ONE TRAVERSAL FOR THE WHOLE READING, AND THE PARITY IS FOLD STATE RATHER THAN AN INDEX. The previous
+// spelling materialised the ~192k-element token list SIX times -- split, enumerate, filter, map inside a
+// token helper, then enumerate/filter/map again ONLY to read three elements, and a third time ONLY to
+// drop those same three. On a 7.4MB index that is six full copies on the converge mode's success gate,
+// inside a routine whose reason for existing is that the general parser cannot chew a document of this
+// size (review 70086). DESIGN section 6, bare minimum cost: fixed at any n, no percentage required.
+//
+// `split` is the one materialisation that remains; everything after it is this single fold. A segment is
+// inside quotes exactly when it follows an odd number of quote characters, which is a Bool the fold
+// carries -- so `enumerate` is not needed to know it. The first three quoted tokens are the head and the
+// rest feed v41_pair_step in order, which is what the two discarded traversals were computing.
+//
+// WHAT IT ACCEPTS IS UNCHANGED, AND THAT IS THE POINT: the head must still be exactly
+// metadata/total_size/weight_map, an unpaired trailing name still refuses, a value that is not a
+// .safetensors shard still refuses, and a zero-name map still refuses -- byte-identical causes. A faster
+// scan that accepts more would be a worse scan.
+type V41IndexTokenFold {
+  quoted: Bool
+  seen: Nat
+  head: List<String>
+  scan: V41PairScan
 }
 
+fn v41_index_token_step(acc: V41IndexTokenFold, seg: String, selector: NonEmptyStr) -> V41IndexTokenFold {
+  if !acc.quoted {
+    V41IndexTokenFold { quoted: true, seen: acc.seen, head: acc.head, scan: acc.scan }
+  } else if acc.seen < 3 {
+    V41IndexTokenFold { quoted: false, seen: acc.seen + 1, head: acc.head |> list_push(seg), scan: acc.scan }
+  } else {
+    V41IndexTokenFold { quoted: false, seen: acc.seen + 1, head: acc.head, scan: v41_pair_step(acc: acc.scan, t: seg, selector: selector) }
+  }
+}
+
+fn v41_index_token_fold(text: String, selector: NonEmptyStr) -> V41IndexTokenFold {
+  fold(split(s: text, delimiter: "\""),
+    init: V41IndexTokenFold {
+      quoted: false,
+      seen: 0,
+      head: [] as List<String>,
+      scan: V41PairScan { pending: none, names: 0, not_shards: 0, members: [] as List<SafetensorsIndexMember> },
+    },
+    f: (acc, seg) => v41_index_token_step(acc: acc, seg: seg, selector: selector))
+}
 
 fn v41_scan_index_text(text: String, selector: NonEmptyStr) -> V41IndexScan {
   if text.contains("\\") {
     V41IndexScanRefused { cause: "the index text carries a backslash, so a quoted token may contain an escaped quote and the token scan cannot read it exactly" as NonEmptyStr }
   } else {
-    let tokens = v41_quoted_tokens(text: text)
-    let head = map(filter(enumerate(tokens), p => p.first < 3), p => p.second)
+    let f = v41_index_token_fold(text: text, selector: selector)
+    let head = f.head
     if head != ["metadata", "total_size", "weight_map"] {
       V41IndexScanRefused { cause: join(["the index does not open with metadata, total_size, weight_map; it opens with ", join(head, ", ")], "") as NonEmptyStr }
     } else {
-      let scan = v41_pairs_of(tokens: map(filter(enumerate(tokens), p => p.first >= 3), p => p.second), selector: selector)
+      let scan = f.scan
       let unpaired = match scan.pending { Present { value: _ } => 1  Absent => 0 }
       if unpaired != 0 {
         V41IndexScanRefused { cause: "the weight_map ends on a name with no shard, so it is not the shape this scan reads" as NonEmptyStr }
