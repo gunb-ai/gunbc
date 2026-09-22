@@ -1205,8 +1205,722 @@ type ResourceRequirementFrontierRow {
   dissolution: DissolutionCondition
 }
 
+// HOW THE POPULATION WAS DISCOVERED, NAMED AS AN INSTRUMENT RATHER THAN TRANSCRIBED AS A COUNT.
+// A monotone debt contract is honest only over a universe that is independently discovered and
+// CLOSED (DESIGN section 5), so the rows below are the output of a WHOLE-CORPUS census, not of any
+// one closure. Re-derive them with the command gunbc.emit_stage_blocking_population_census names --
+// build the seed, then `gunbc compile` over both source roots with --repository and
+// --measured-root-demands -- and count distinct (caller declaration, callee declaration, resource)
+// with its distinct spans. No population figure is stored here on purpose: a stored count is the
+// hand-count-beside-structure class this repository keeps filing rows about, and it would rot while
+// both ends stayed untouched.
+//
+// WHY THE CLOSURE VIEW WAS NOT ENOUGH, recorded because it nearly was. The required floor surfaced
+// this class while resolving ONE witness closure, and that view holds roughly a third of the sites
+// the whole-corpus census finds. A roster built from it would have been an ALLOWLIST that omitted
+// two thirds of its own subject while calling itself complete -- and every omitted site would have
+// refused the first time an unrelated lane's closure happened to reach it.
+//
+// THE 11 TEST-MODULE CALLERS BELOW ARE NOT TEST ROOTS, which was checked rather than assumed
+// before they were rostered. caller_is_test_root admits a declaration carrying TestMarked, which
+// the parser attaches only to an authored `test fn` or `test data` (v1.compiler.parse
+// test_marker_admits_form restricts the marker to the fn and data forms precisely so `test pattern`
+// and `test interface` cannot carry it). Every caller below is a plain `fn` -- one is a `pattern` --
+// that merely LIVES in a test module, so the admission correctly does not reach it. No row here
+// covers a site the wall should not have refused.
 fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
-  []
+  [
+    {
+      caller_module_path: "gunbc.auth.credentials",
+      caller_decl_name: "gcp_oauth_access_token",
+      callee_module_path: "gunbc.auth.credentials",
+      callee_decl_name: "gcp_oauth_access_token_adc_for_path",
+      resource: "std.resources.Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.auth.patterns",
+      caller_decl_name: "acquire_subject_token",
+      callee_module_path: "gunbc.auth.patterns",
+      callee_decl_name: "github_oidc",
+      resource: "std.resources.Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.auth.patterns",
+      caller_decl_name: "acquire_subject_token",
+      callee_module_path: "gunbc.auth.patterns",
+      callee_decl_name: "metadata_oidc",
+      resource: "std.resources.Network",
+      occurrences: 2,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.command_runner",
+      caller_decl_name: "stat_owner_name_capture",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_command_capture",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.executor_privileged_apply",
+      caller_decl_name: "apply_executor_privileged_operations_wet",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_commands",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.fleet_host_key_enrollment",
+      caller_decl_name: "scan_host_key_lines",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_command_capture",
+      resource: "Network",
+      occurrences: 2,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.fleet_multi_principal_probe",
+      caller_decl_name: "spark_managed_access_standing_with_attempt",
+      callee_module_path: "gunbc.fleet_multi_principal_probe",
+      callee_decl_name: "spark_managed_access_standing_for_attempt",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.fleet_probe_identity_observe",
+      caller_decl_name: "observe_authorized_keys_line",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_command_capture",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.fleet_probe_identity_observe",
+      caller_decl_name: "observe_capture_line",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_command_capture",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.fleet_receipt_collector",
+      caller_decl_name: "collect_fleet_convergence_wet",
+      callee_module_path: "gunbc.fleet_host_key_enrollment",
+      callee_decl_name: "fleet_host_key_enroll_apply",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.github_app_acquisition",
+      caller_decl_name: "census_app_acquisition_standing",
+      callee_module_path: "gunbc.github_app_acquisition",
+      callee_decl_name: "live_custody_standing",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.harness.harness_seat",
+      caller_decl_name: "harness_bind_seat",
+      callee_module_path: "gunbc.fleet_ssh_locus",
+      callee_decl_name: "prepare_fleet_ssh_agent_context",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.host_effect_realize",
+      caller_decl_name: "build_cache_host_read_observed",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_command_capture",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.host_reach_identity_probe",
+      caller_decl_name: "probe_fleet_reach_wet",
+      callee_module_path: "gunbc.fleet_host_key_enrollment",
+      callee_decl_name: "fleet_host_key_enroll_apply",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_acquire_for",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "census_app_acquire_with_code",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_acquire_for",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "read_handoff_value",
+      resource: "std.resources.Filesystem",
+      occurrences: 3,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_acquire_receipt",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "census_app_acquire_for",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_acquire_receipt",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "observed_acquisition_reading",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_acquire_with_code",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "custody_preflight",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_acquire_with_code",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "persist_then_read_back",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_acquisition_receipt",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "census_app_acquisition_receipt_for",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_acquisition_receipt",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "observed_acquisition_reading",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_acquisition_receipt_for",
+      callee_module_path: "gunbc.github_app_acquisition",
+      callee_decl_name: "census_app_acquisition_standing",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_installations_receipt",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "installations_read_exit",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_observe_receipt",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "observed_acquisition_reading",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_registration_instruction_receipt",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "observed_acquisition_reading",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_registration_instruction_receipt",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "read_handoff_value",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "custody_preflight_receipt",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "custody_preflight",
+      resource: "std.resources.Filesystem",
+      occurrences: 2,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "custody_write_receipt",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "persist_issued_credentials",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "persist_then_read_back",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "persist_issued_credentials",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.live_deploy.apply",
+      caller_decl_name: "live_deploy_write_transaction_receipt",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_commands",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.machine_intake_mtcollins1_boot_run",
+      caller_decl_name: "mtcollins1_boot_after_gate",
+      callee_module_path: "gunbc.authorization_claim_slot",
+      callee_decl_name: "claim_authorization_slot",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.machine_intake_mtcollins1_boot_run",
+      caller_decl_name: "mtcollins1_boot_after_gate",
+      callee_module_path: "gunbc.machine_intake_mtcollins1_boot_run",
+      callee_decl_name: "mtcollins1_boot_settle_from_fresh_clock",
+      resource: "std.resources.Filesystem",
+      occurrences: 2,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.machine_intake_mtcollins1_boot_run",
+      caller_decl_name: "mtcollins1_boot_settle_from_fresh_clock",
+      callee_module_path: "gunbc.authorization_claim_slot",
+      callee_decl_name: "settle_authorization_claim",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.machine_intake_mtcollins1_census_image",
+      caller_decl_name: "mtcollins1_census_image_publish_wet",
+      callee_module_path: "gunbc.machine_intake_mtcollins1_census_image",
+      callee_decl_name: "mtcollins1_census_image_publish_admitted",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.package_delivery",
+      caller_decl_name: "publish_codex_runtime_current_link",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_commands",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.review_sheet_converge_cli",
+      caller_decl_name: "converge_drive_half",
+      callee_module_path: "gunbc.review_sheet_spreadsheet_actuator",
+      callee_decl_name: "converge_review_spreadsheet",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.review_sheet_converge_cli",
+      caller_decl_name: "converge_drive_half_cli",
+      callee_module_path: "gunbc.review_sheet_converge_cli",
+      callee_decl_name: "drive_half_exit",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.review_sheet_converge_cli",
+      caller_decl_name: "converge_review_sheet_all",
+      callee_module_path: "gunbc.review_sheet_spreadsheet_actuator",
+      callee_decl_name: "converge_review_spreadsheet",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.review_sheet_spreadsheet_actuator",
+      caller_decl_name: "converge_review_spreadsheet",
+      callee_module_path: "gunbc.review_sheet_legacy_extent_producer",
+      callee_decl_name: "read_operator_legacy_declaration",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.runner_guest_image",
+      caller_decl_name: "runner_guest_image_build_and_receipt_wet",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_commands",
+      resource: "Network",
+      occurrences: 2,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.runner_guest_image",
+      caller_decl_name: "runner_guest_image_receipt_wet",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_commands",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.runner_microvm_boot_probe",
+      caller_decl_name: "runner_microvm_boot_probe_receipt_wet",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_commands",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.runner_microvm_host_ready",
+      caller_decl_name: "observe_kvm_group_enrolment_wet",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_command_capture",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.runner_microvm_host_ready",
+      caller_decl_name: "write_host_standing_receipt",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_commands",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.runner_microvm_network_converge",
+      caller_decl_name: "capture_stdout",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_command_capture",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.runner_microvm_network_converge",
+      caller_decl_name: "record_converge_readback_wet",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_commands",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.spark.glm_canary_converge",
+      caller_decl_name: "glm_canary_cutover_with",
+      callee_module_path: "gunbc.spark.glm_canary_converge",
+      callee_decl_name: "glm_canary_cutover",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.spark.host_commitment",
+      caller_decl_name: "admit_unplaced_host_live",
+      callee_module_path: "gunbc.spark.fabric_reach",
+      callee_decl_name: "observe_executor_reach",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.spark.host_commitment",
+      caller_decl_name: "settle_host_effect_live",
+      callee_module_path: "gunbc.fleet_ssh_locus",
+      callee_decl_name: "prepare_fleet_ssh_agent_context",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.spark.host_commitment",
+      caller_decl_name: "settle_host_effect_live",
+      callee_module_path: "gunbc.spark.fabric_reach",
+      callee_decl_name: "observe_executor_reach",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.spark.host_commitment",
+      caller_decl_name: "spark_host_standings_live",
+      callee_module_path: "gunbc.spark.fabric_reach",
+      callee_decl_name: "observe_executor_reach",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.spark.managed_access_apply",
+      caller_decl_name: "spark_managed_access_apply_with_resolved_credentials",
+      callee_module_path: "gunbc.fleet_known_hosts_anchor",
+      callee_decl_name: "materialize_fleet_known_hosts_anchor",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.spark.pair_serving_d0",
+      caller_decl_name: "d0_run_admitted",
+      callee_module_path: "gunbc.fleet_ssh_locus",
+      callee_decl_name: "prepare_fleet_ssh_agent_context",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.srv3_boot_once_cd",
+      caller_decl_name: "srv3_boot_once_cd",
+      callee_module_path: "gunbc.srv3_boot_once_cd",
+      callee_decl_name: "srv3_boot_once_cd_gated",
+      resource: "std.resources.Clock",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.srv3_boot_once_cd",
+      caller_decl_name: "srv3_boot_once_cd_gated",
+      callee_module_path: "gunbc.authorization_claim_slot",
+      callee_decl_name: "claim_authorization_slot",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.srv3_boot_once_cd",
+      caller_decl_name: "srv3_boot_once_cd_gated",
+      callee_module_path: "gunbc.authorization_claim_slot",
+      callee_decl_name: "settle_authorization_claim",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.srv3_boot_once_cd",
+      caller_decl_name: "srv3_boot_once_cd_operator_approved",
+      callee_module_path: "gunbc.srv3_boot_once_cd",
+      callee_decl_name: "srv3_boot_once_cd_gated",
+      resource: "std.resources.Clock",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "test.claim.gcp_oauth_access_token_witness",
+      caller_decl_name: "gcp_oauth_access_token_dispatch_swapped",
+      callee_module_path: "gunbc.auth.credentials",
+      callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
+      resource: "std.resources.Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "test.claim.gcp_oauth_access_token_witness",
+      caller_decl_name: "witness_adc_refresh_absent_routes_to_adc_leaf",
+      callee_module_path: "gunbc.auth.credentials",
+      callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
+      resource: "std.resources.Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "test.claim.gcp_oauth_access_token_witness",
+      caller_decl_name: "witness_adc_refresh_null_optional_routes_to_adc_leaf",
+      callee_module_path: "gunbc.auth.credentials",
+      callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
+      resource: "std.resources.Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "test.claim.gcp_oauth_access_token_witness",
+      caller_decl_name: "witness_adc_refresh_present_routes_to_adc_leaf",
+      callee_module_path: "gunbc.auth.credentials",
+      callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
+      resource: "std.resources.Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "test.claim.gcp_oauth_access_token_witness",
+      caller_decl_name: "witness_leaves_are_distinguishable",
+      callee_module_path: "gunbc.auth.credentials",
+      callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
+      resource: "std.resources.Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "test.claim.gcp_oauth_access_token_witness",
+      caller_decl_name: "witness_swapped_gcloud_hits_adc_leaf",
+      callee_module_path: "gunbc.auth.credentials",
+      callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
+      resource: "std.resources.Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "test.claim.mtcollins1_census_image_local_wet",
+      caller_decl_name: "workload_case",
+      callee_module_path: "gunbc.command_runner",
+      callee_decl_name: "run_shell_command_observe",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "test.claim.review_sheet_header_init_witness",
+      caller_decl_name: "plan_over_fixture",
+      callee_module_path: "gunbc.review_sheet_formula_observation",
+      callee_decl_name: "observe_formula_whole_tab",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "test.claim.review_sheet_legacy_declaration_wet_witness",
+      caller_decl_name: "candidacy_over_declaration_file",
+      callee_module_path: "gunbc.review_sheet_legacy_extent_producer",
+      callee_decl_name: "read_operator_legacy_declaration",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "test.claim.review_sheet_legacy_declaration_wet_witness",
+      caller_decl_name: "decision_over_declaration_file",
+      callee_module_path: "gunbc.review_sheet_legacy_extent_producer",
+      callee_decl_name: "read_operator_legacy_declaration",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "test.probe.census_app_acquisition_forged_probe",
+      caller_decl_name: "mint_a_receipt_from_authored_standings",
+      callee_module_path: "gunbc.github_app_acquisition",
+      callee_decl_name: "census_app_acquisition_standing",
+      resource: "std.resources.Filesystem",
+      occurrences: 1,
+      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    }
+  ]
 }
 
 fn resource_requirement_frontier_trigger(
