@@ -60,6 +60,7 @@ type SystemdUnitProperty
   | TasksCurrent
   | ControlGroup
   | SliceProperty
+  | PartOf
   | ActiveEnterTimestampMonotonic
   | ActiveState
   | MainPID
@@ -124,6 +125,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     TasksCurrent => "TasksCurrent" as NonEmptyStr
     ControlGroup => "ControlGroup" as NonEmptyStr
     SliceProperty => "Slice" as NonEmptyStr
+    PartOf => "PartOf" as NonEmptyStr
     ActiveEnterTimestampMonotonic => "ActiveEnterTimestampMonotonic" as NonEmptyStr
     ActiveState => "ActiveState" as NonEmptyStr
     MainPID => "MainPID" as NonEmptyStr

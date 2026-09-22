@@ -31,6 +31,7 @@ import gunbc.fabric_cell_converge { fabric_cell_slice_name }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, runner_microvm_attempt_unit_name, runner_microvm_attempt_dir,
   runner_microvm_attempt_jail_base, runner_microvm_attempt_slice_property,
+  runner_microvm_attempt_part_of_property,
 }
 import gunbc.runner_attempt_launch {
   AttemptGround, GroundClear, GroundOccupied,
@@ -1039,6 +1040,7 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, recei
     unit: unit,
     property_argv: systemd_run_property_argv(properties: [
       runner_microvm_attempt_slice_property(attempt: attempt),
+      runner_microvm_attempt_part_of_property(attempt: attempt),
       attempt_invocation_env_setting(invocation_id: invocation_id),
     ]),
     command_argv: concat([receipt.jailer.program as String], receipt.jailer.arguments),

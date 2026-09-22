@@ -39,11 +39,22 @@ data runner_microvm_slot_unit_disposition: Disposition = SingleAuthority
 // THE CONTROLLER IS MainPID, WHICH IS THE WHOLE CLAIM gunbc.runner_microvm's
 // VmmUnderLifecycleController topology rests on: the unit execs the controller directly (Type=exec,
 // no launcher that exits), the controller starts the VMM as a transient unit in the cell's slice
-// and waits for it, and the unit's ExitType=main / KillMode=control-group are
-// gunbc.runner_unit's declared lifecycle intent -- the same rows the GitHub slot units carry -- so
-// systemd's stop of THIS unit reaches every process under it. A launcher that forked the controller
-// and exited would make systemd's view of the slot end at the fork, which is precisely the orphan
-// class gunbc.runner_microvm_lifecycle exists to close.
+// and waits for it, and the unit's ExitType=main / KillMode=control-group are gunbc.runner_unit's
+// declared lifecycle intent -- the same rows the GitHub slot units carry. A launcher that forked the
+// controller and exited would make systemd's view of the slot end at the fork, which is precisely
+// the orphan class gunbc.runner_microvm_lifecycle exists to close.
+//
+// WHAT KillMode=control-group DOES NOT REACH, corrected here because an earlier revision of this
+// note claimed the opposite (external review of gunbc#12011). It reaches the processes in THIS
+// unit's control group. The VMM is not among them: the controller starts it as a SEPARATE transient
+// service unit under the CELL's slice, so that its memory and tasks are charged to the reservation.
+// A control-group kill on the slot unit therefore does not cross into it, and the claim that
+// stopping this unit reaches every process under it was FALSE for the topology this module installs.
+// The edge that makes it true is a directive on the ATTEMPT unit, not on this one:
+// gunbc.runner_microvm_attempt runner_microvm_attempt_part_of_property sets
+// PartOf=gunbc-microvm-slot@<slot>.service, which is what propagates this unit's stop to the guest.
+// Read that row's annotation for why the relation is one-way and why moving the VMM into this slice
+// is the wrong repair.
 //
 // THE UNIT RUNS AS root, BY CONSTRUCTION OF WHAT IT DOES: systemd-run into a fabric-cell slice,
 // cgroup.kill writes, jailer chroots, and the App key read that mints the attempt's JIT credential

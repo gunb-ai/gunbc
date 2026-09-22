@@ -25,7 +25,11 @@ import gunbc.runner_slot_allocation {
 }
 import gunbc.fabric_witness_run { gunbc_internal_fleet_trust_domain }
 import gunbc.runner_microvm { gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused, gunbc_runner_microvm_shape }
-import gunbc.runner_microvm_attempt { MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused,
+  runner_microvm_attempt_slice_property, runner_microvm_attempt_part_of_property,
+}
+import extdeps.systemd.systemd_run { systemd_run_property_argv }
 import gunbc.runner_microvm_shakedown { microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer }
 import gunbc.runner_attempt_launch {
   ReservationAuthorization, ReservationAuthorizes, ReservationArmRequiresInternalFleetTrust,
@@ -305,4 +309,38 @@ test fn only_a_delivered_mint_carries_a_registration_into_the_controller() -> Bo
     && minted_registration(mint: JitMintReceived { delivery: JitCredentialMintNotCreated { outcome: jit_config_mint_outcome(status: 409, encoded: "", runner_id: 0, error_body: "taken") } }) == none
     && minted_registration(mint: JitMintReceived { delivery: JitCredentialNotDispatched { refusal: DispatchRefusedCellNotOwned { cause: "unowned" } } }) == none
     && minted_registration(mint: JitMintClockUnread { detail: "no clock" }) == none
+}
+
+// --- the attempt unit's lifetime edge, read off the argv systemd-run is actually given ---
+
+// THE PROPERTY WORDS THE LAUNCH REALLY PASSES, NOT THE DIRECTIVES IT MEANT TO.
+//
+// The defect this claim exists for was not a missing intention: the slot unit carried
+// ExitType=main and KillMode=control-group, and an annotation asserted that stopping it reached
+// every process under it. That was false for the realized topology, because the VMM is a SEPARATE
+// transient service unit under the cell's slice and a control-group kill does not cross into it
+// (external review of gunbc#12011). A witness over the slot unit's own directives could not have
+// caught it -- those directives were all present and correct.
+//
+// So this reads the ARGV: the exact `--property=` words systemd_run_property_argv builds from the
+// same list run_jailer_in_cell passes, and requires PartOf to name this slot's supervising unit.
+// The Slice word is required in the same breath because the two are a pair -- the cell placement is
+// what makes the control-group kill insufficient, so a future edit that dropped Slice would make
+// PartOf redundant rather than load-bearing, and one that dropped PartOf leaks the guest.
+fn attempt_launch_property_words(attempt: MicroVmAttempt) -> List<String> {
+  systemd_run_property_argv(properties: [
+    runner_microvm_attempt_slice_property(attempt: attempt),
+    runner_microvm_attempt_part_of_property(attempt: attempt),
+  ])
+}
+
+test fn the_attempt_unit_is_bound_to_the_slot_unit_that_supervises_it() -> Bool {
+  match microvm_attempt(slot: srv1_microvm_shakedown_slot(), attempt_id: "w-42") {
+    MicroVmAttemptRefused { refusal: _ } => false
+    MicroVmAttemptAccepted { attempt: a } =>
+      attempt_launch_property_words(attempt: a) == [
+        "--property=Slice=fabric-cell-srv1-13.slice",
+        "--property=PartOf=gunbc-microvm-slot@srv1-13.service",
+      ]
+  }
 }

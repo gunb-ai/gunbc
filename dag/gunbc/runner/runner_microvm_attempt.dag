@@ -2,9 +2,10 @@ module gunbc.runner_microvm_attempt
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.disposition { Disposition, SingleAuthority }
-import extdeps.systemd { SystemdUnitProperty, SliceProperty }
+import extdeps.systemd { SystemdUnitProperty, SliceProperty, PartOf }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name }
 import gunbc.fabric_cell_converge {
   fabric_cell_attempt_root_path, fabric_cell_slice_name,
 }
@@ -154,6 +155,35 @@ fn runner_microvm_attempt_slice_property(attempt: MicroVmAttempt) -> SystemdRunP
   SystemdRunProperty {
     property: SliceProperty,
     value: fabric_cell_slice_name(slot: attempt.slot) as NonEmptyStr,
+  }
+}
+
+// THE ATTEMPT UNIT'S LIFETIME IS BOUND TO THE SLOT UNIT THAT SUPERVISES IT, and without this the
+// controller's stop reaches nothing.
+//
+// The VMM does not run inside the controller's service cgroup: it is a SEPARATE transient service
+// unit (systemd-run), placed in the CELL's slice so its memory and tasks are charged to the
+// reservation rather than to the controller. That placement is correct and stays. What it means is
+// that KillMode=control-group on gunbc-microvm-slot@<slot>.service reaches only the processes in
+// THAT unit's control group and does not cross into a transient unit living under another slice --
+// so stopping the slot unit left the guest running, with Restart=no meaning nothing came back to
+// reap it. Every path that ends the controller without its own teardown -- systemctl stop, an OOM
+// kill, a crash, systemd's final SIGKILL after TimeoutStopSec -- leaked a VMM (external review of
+// gunbc#12011; PartOf appears nowhere else in this corpus, so no lifetime edge existed).
+//
+// PartOf IS ONE-WAY AND THAT IS THE POINT: stopping the slot unit stops this attempt unit, while
+// this attempt unit exiting does NOT stop the slot unit -- the controller must outlive its guest to
+// read the teardown back. BindsTo would take the controller down with the guest and destroy exactly
+// the settlement the lifecycle exists to produce.
+//
+// THE ALTERNATIVE REPAIR IS REFUSED: moving the VMM into the controller's slice would make one
+// cgroup reach it, and would charge the guest's 28 GiB to the controller instead of to the cell's
+// reservation, discarding the accounting gunbc.runner_microvm_attempt exists to keep. Separate
+// slices, bound lifetimes.
+fn runner_microvm_attempt_part_of_property(attempt: MicroVmAttempt) -> SystemdRunProperty {
+  SystemdRunProperty {
+    property: PartOf,
+    value: microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: attempt.slot) as String),
   }
 }
 
