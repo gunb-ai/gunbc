@@ -1,7 +1,7 @@
 module gunbc.auth.approval_app_attest_config
 
 import std.types { NonEmptyStr, Int, List }
-import extdeps.apple.app_attest { AppIdPrefix, AppAttestEnvironment, AppAttestProduction, app_attest_app_id }
+import extdeps.apple.app_attest { AppIdPrefix, AppAttestEnvironment, AppAttestDevelopment, app_attest_app_id }
 
 // THE FACTS THE APP ATTEST VERIFIER IS CONFIGURED WITH, and who owns each. The bundle identifier
 // is the app's (apps/approve-ios/project.yml PRODUCT_BUNDLE_IDENTIFIER). The App ID prefix is
@@ -13,9 +13,13 @@ import extdeps.apple.app_attest { AppIdPrefix, AppAttestEnvironment, AppAttestPr
 // own Xcode build can enrol during bring-up), and the bundle version is the one the operator
 // distributed.
 //
-// UNTIL THE OPERATOR SUPPLIES THE PREFIX AND THE VERSION THE VERIFIER IS UNCONFIGURED, and every
-// device route that needs it refuses by name rather than verifying against a guessed prefix
-// (DESIGN section 5: no fabricated default). The row below is the one place that changes.
+// THE OPERATOR SUPPLIED THE PREFIX (chat, 2026-09-22): the Team ID 72HGYAMBVQ shown under
+// Membership details, which Apple uses as the App ID prefix for an account's own identifiers. The
+// bring-up build reaches the phone from the operator's Xcode over a cable, so it attests in the
+// development environment with a development signing identity (category 3); TestFlight (2) and
+// App Store (4) stay admitted for the day the distribution changes, and the bundle version is the
+// MARKETING_VERSION apps/approve-ios/project.yml sets. A wrong prefix does not fabricate: every
+// attestation refuses AttestationAppIdMismatch by name. The row below is the one place that changes.
 type AppAttestVerifierConfig
   = AppAttestVerifierConfigured {
       app_id_prefix: AppIdPrefix
@@ -28,9 +32,17 @@ type AppAttestVerifierConfig
 
 data approval_app_bundle_id: NonEmptyStr = "ai.gunb.approve"
 
-data approval_app_attest_verifier: AppAttestVerifierConfig = AppAttestVerifierAwaitingOperator {
-  missing: "the App ID prefix from the Apple Developer account's Identifier entry, and the distributed bundle version (CFBundleShortVersionString of the TestFlight build); bundle id ai.gunb.approve and the production environment are known",
+data approval_app_attest_verifier: AppAttestVerifierConfig = AppAttestVerifierConfigured {
+  app_id_prefix: "72HGYAMBVQ" as AppIdPrefix,
+  bundle_id: approval_app_bundle_id,
+  environment: AppAttestDevelopment,
+  admitted_validation_categories: [2, 3, 4],
+  expected_bundle_version: approval_app_bundle_version,
 }
+
+// CFBundleShortVersionString of the operator's build: the same literal apps/approve-ios/project.yml
+// sets as MARKETING_VERSION, which is hand-authored Swift/XcodeGen seed and cannot read this row.
+data approval_app_bundle_version: NonEmptyStr = "1"
 
 fn approval_app_attest_app_id(c: AppAttestVerifierConfig) -> NonEmptyStr? {
   match c {
