@@ -126,6 +126,10 @@ type GrandfatheredRemoval =
 // by the floored-ratio grounding rather than renamed into it.
 data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   WitnessDeleted {
+    identity: "v2.test.claim.rust_crate_partition_witness.witness_policy_partition_refuses_holds" as NonEmptyStr,
+    deleted_in: "Pkg7a/b policy partition resolver: it pinned PolicyResolverUnimplemented, the refusal the resolver replaces. The arm and its cause are deleted; the policy arm's refusal (PolicyTargetCountNotPositive) and admission are asserted at v2.test.claim.rust_crate_partition_witness.policy_target_below_one_refuses and policy_partition_admits_a_balanced_acyclic_assignment, new identities judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessDeleted {
     identity: "test.claim.declared_type_inhabitance_direct_call_witness.w_optional_value_at_required_binding_is_admitted_only_at_the_counted_boundary" as NonEmptyStr,
     deleted_in: "gunbc#11626 Optional-at-Required wall: it pinned the silent state (an Optional at a Required String parameter admitted with only an Undecided advisory) that the wall climbs to a DeclaredTypeNotInhabited refusal. Its subject survives, inverted, at test.claim.optional_at_required_position_witness_test an_optional_at_a_string_parameter_must_refuse, which counts the blocking class" as NonEmptyStr,
   },

@@ -621,7 +621,7 @@ fn live_deploy_approval_broker_unit_file_on(
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
     service: [
-      ServiceType { mode: "simple" as NonEmptyStr },
+      ServiceType { mode: SimpleMode },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
