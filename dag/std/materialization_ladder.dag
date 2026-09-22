@@ -765,13 +765,6 @@ fn ladder_verdict_for(verdicts: List<LadderVerdict>, identity: String) -> Ladder
   mine.first()
 }
 
-fn ladder_prescription_for(verdicts: List<LadderVerdict>, identity: String) -> Materialization? {
-  match ladder_verdict_for(verdicts: verdicts, identity: identity) {
-    Absent => Absent
-    Present { value: chosen } => Present { value: ladder_verdict_prescribes(v: chosen) }
-  }
-}
-
 fn materialization_ladder_holds(
   demands: List<FrameDemand>,
   providers: List<CacheProvider>,
