@@ -19,6 +19,7 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
   fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
+  SparkV41RuntimeImageBuild, SparkRuntimeImageProbe,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
   fleet_converge_workflow, expected_fleet_converge_yml,
@@ -583,6 +584,25 @@ test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_befo
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") != fleet_converge_mutation_group_for(mode: FleetApply, host: "srv2")
     && string_contains(s: yml, pattern: "github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1'")
     && string_contains(s: yml, pattern: "github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1'")
+}
+
+// THE v4.1 RUNTIME IMAGE BUILD JOINS GROUP A'S ARM KEY, AND THE PROBE BESIDE IT DOES NOT. The build
+// takes a host that the Group A pair subject holds, for the better part of an hour, whichever
+// executor the dispatch named -- so its domain is the arm's and it queues behind D0 and the pair
+// apply. The probe reads an image on the executor that was named and takes no Group A host, so it
+// stays keyed to its executor; keying it to the arm would serialize it for a relation it does not
+// have. The two modes are checked TOGETHER because the discriminating fact is that they DIFFER: a
+// change that swept every spark mode onto the arm key would satisfy the first half alone.
+test fn the_v41_runtime_image_build_is_group_a_arm_keyed_and_the_probe_stays_executor_keyed() -> Bool {
+  let yml = expected_fleet_converge_yml_content()
+  fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv1") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
+    && fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv2") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv8")
+    && fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv2") == fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv8")
+    && fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv1") != fleet_converge_mutation_group_for(mode: SparkNativeServingApply, host: "srv1")
+    && fleet_converge_mutation_group_for(mode: SparkRuntimeImageProbe, host: "srv1") != fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv1")
+    && fleet_converge_mutation_group_for(mode: SparkRuntimeImageProbe, host: "srv2") != fleet_converge_mutation_group_for(mode: SparkRuntimeImageProbe, host: "srv8")
+    && string_contains(s: yml, pattern: "github.event.inputs.mode == 'spark_v41_runtime_image_build' && 'gunbc-host-mutation-srv1'")
+    && !string_contains(s: yml, pattern: "github.event.inputs.mode == 'spark_runtime_image_probe' &&")
 }
 
 // THE OPERATIONAL BOUNDS ARE A MAINTAINED INTERFACE, NOT A ONE-HEAD TEXT: the emitted invocation

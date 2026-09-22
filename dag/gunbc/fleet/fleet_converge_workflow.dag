@@ -967,6 +967,17 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // the pair-serving apply -- which rewrites Group A's units from any executor -- joins that same key,
 // so an apply that read Active before D0's suspension CAS cannot execute across it. Belt, not the
 // wall: the wall is the authority log's lease and claim (gunbc.spark.pair_serving_d0).
+//
+// THE v4.1 RUNTIME IMAGE BUILD IS THE THIRD MODE ON THAT KEY, and it is there for the same reason
+// the pair apply is: its target host is admitted because the Group A pair subject HOLDS it, so the
+// host it occupies for the better part of an hour is Group A's, whichever executor was named. A
+// build keyed to its executor would queue behind nothing while sitting on a Group A host, which is
+// exactly the collision the arm key exists to prevent.
+//
+// THE PROBE BESIDE IT STAYS ExecutorDomain, and the difference is the subject rather than the
+// recipe. `spark_runtime_image_probe` reads an image on the executor that was named; it does not
+// take a Group A host, so keying it to the arm would serialize it against D0 and the pair apply for
+// no relation it actually has.
 type FleetMutationDomain
   = ArmDomain { group: String }
   | ExecutorDomain
@@ -991,7 +1002,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     SparkServingApply => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     SparkNativeServingApply => ArmDomain { group: fleet_arm_mutation_group_glm_group_b_native }
     SparkRuntimeImageProbe => ExecutorDomain
-    SparkV41RuntimeImageBuild => ExecutorDomain
+    SparkV41RuntimeImageBuild => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     DashboardDeploy => ExecutorDomain
     RlmLaunchDeploymentReceipt => ExecutorDomain
     HostResetReturn => ExecutorDomain

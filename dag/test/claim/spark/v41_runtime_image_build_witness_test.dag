@@ -26,6 +26,11 @@ import extdeps.vllm.deepseek_v4_1_sm12 {
 import extdeps.vllm.deepseek_v4_1_flash_recipe {
   v41_flash_hardware_verified, v41_flash_vram_minimum, v41_flash_checkpoint, v41_flash_headroom,
 }
+import gunbc.spark.v41_runtime_image_converge {
+  V41ProducedRuntime, V41RuntimeProductionStopped, V41RuntimeProductionComplete,
+  V41KernelWheelVerification, V41KernelWheelVerificationRefused,
+  v41_production_succeeded, v41_production_receipt,
+}
 import gunbc.spark.v41_published_image_observation {
   v41_published_revision_public_standing,
   v41_published_distribution_observation, v41_published_arm64_config_observations,
@@ -592,3 +597,44 @@ test fn the_reachability_verdict_refuses_an_empty_population_rather_than_passing
     && verdict_word(v: spark_reachability_verdict(readings: [ok, down])) == "some"
 }
 
+
+// ── THE PRODUCTION FOLD, AND WHY IT IS CLAIMED FROM HERE AT ALL ────────────────────────────────
+//
+// THIS CLAIM EXISTS TO RESOLVE A MODULE, AND THAT IS THE LOAD-BEARING HALF. A fleet-converge mode
+// entry is reached only by a dispatched gunbc run, so gunbc.spark.v41_runtime_image_converge sat in
+// the corpus with NO compiled closure importing it -- this witness file, landed beside it by #12008,
+// deliberately did not. A module nothing imports is never resolved, so a resolve error in it is not
+// a red anywhere: it waits for dispatch day. That is not hypothetical. As merged, the module
+// constructed SparkBuildHostWork -- a sole_constructor type -- across the module boundary that
+// sealing exists to refuse, and every required lane was green over it.
+//
+// So the discriminating red this claim carries is TWO reds, not one. It goes red if the fold starts
+// reporting success for a stopped production, and it goes red if the module stops resolving at all,
+// which is the failure that actually happened and the one nothing could see.
+//
+// THE INPUTS ARE SUPPLIED, NOT PRODUCED, per DESIGN section 3: the subject is
+// v41_production_succeeded at one interface, and producing a V41ProducedRuntime for real means an
+// SSH session, a three-hour source build and a daemon. The pairing obligation is discharged where it
+// belongs -- the real producer converge_v41_produced_runtime_image is the only construction site of
+// these arms and is reached by the mode entry this same import resolves.
+//
+// A STOPPED PRODUCTION NEVER REPORTS SUCCESS is the arm worth pinning because it is the one a
+// refactor can silently invert: every stop arm carries a cause and no standing, so a fold that
+// reached for the standing and defaulted when it was absent would report success for a build that
+// never ran. The receipt is checked beside the verdict because DESIGN forbids them disagreeing --
+// a receipt saying STOPPED over a verdict saying true is the fabricated plausible output.
+data stopped_wheels_fixture: V41KernelWheelVerification = V41KernelWheelVerificationRefused {
+  step: "wheel-verify" as NonEmptyStr,
+  cause: "fixture: the wheel fetch did not run",
+}
+
+test fn a_stopped_production_never_reports_success_and_says_so_on_the_receipt() -> Bool {
+  let stopped = V41RuntimeProductionStopped {
+    step: "patch-population" as NonEmptyStr,
+    cause: "fixture: the storage-backed patch population reads as absent by observation",
+    wheels: stopped_wheels_fixture,
+  }
+  !v41_production_succeeded(p: stopped)
+    && string_contains(s: v41_production_receipt(p: stopped), pattern: "production STOPPED step=patch-population")
+    && string_contains(s: v41_production_receipt(p: stopped), pattern: "fixture: the storage-backed patch population reads as absent by observation")
+}
