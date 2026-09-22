@@ -18,8 +18,7 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
-  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step,
-  fleet_converge_spark_v41_checkpoint_materialize_step, PairServingD0, SparkServingApply, SparkV41CheckpointMaterialize, SparkV41RuntimeImageBuild, SparkRuntimeImageProbe, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
+  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkV41CheckpointMaterialize, SparkV41RuntimeImageBuild, SparkRuntimeImageProbe, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
   fleet_converge_mutation_concurrency_group_expression,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
@@ -30,7 +29,7 @@ import gunbc.host_reset_return {
   DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
   ResetDispatchAdmitted, ResetDispatchNotThisMode, ResetDispatchObserverUnnamed, admit_reset_dispatch,
 }
-import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_pair_serving_d0_invoke, gunbc_ci_sm_connect_timeout, gunbc_ci_sm_max_time, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_mtcollins1_fan_observe_invoke, gunbc_ci_spark_v41_checkpoint_materialize_invoke }
+import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_pair_serving_d0_invoke, gunbc_ci_sm_connect_timeout, gunbc_ci_sm_max_time, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_mtcollins1_fan_observe_invoke }
 import std.measure { minute_count, second_count }
 import gunbc.spark.pair_serving_d0_door { pair_serving_d0_step_timeout_minutes, d0_prelude_allowance, d0_approval_window, d0_transaction_allowance }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
@@ -209,8 +208,7 @@ fn expected_fleet_converge_yml_content() -> String {
   }
 }
 
-// THE FILE'S ONE RENDER FRAME. Every pattern below is a fact about the same emitted workflow, and
-// rendering it
+// TWO ABSENCES, ONE RENDER. Both patterns are facts about the same emitted workflow, and rendering it
 // is the expensive part -- roughly the whole 500ms claim budget on its own. Asking them in separate
 // witnesses renders it twice for no additional information, which is DESIGN section 2's authored
 // duplication rather than a cache question: the two demands share this frame as their least common
@@ -225,15 +223,6 @@ fn expected_fleet_converge_yml_content() -> String {
 // naming an identity the tree no longer declares AND made this an unenrolled identity whose 523ms was
 // then gated rather than observed.
 //
-// THE PAIR_SERVING_D0 CONJUNCTS ARRIVED THE SAME WAY AND FOR THE SAME REASON. They were the render
-// half of the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_before_credentials,
-// which the floor refused at 690,279 eval steps against the 72,300 new-witness budget: that identity
-// landed on #11964 without an enrolment and was never selected until a change to this file made it a
-// changed witness. Its cheap conjuncts stayed with their own producers; its three render facts are
-// here, where the render is already paid and already declared. Adding a fact about the emitted
-// workflow to THIS frame costs nothing; asking it in a new witness buys a second render and a
-// refusal.
-//
 // SO THE NAME IS LOAD-BEARING AND IS NOT TO BE TIDIED. Every witness in this file that renders or
 // constructs the workflow costs over a second (the floor reports 1264-1399ms for its siblings); the
 // 500ms line is not a target they can meet, it is the threshold above which a claim must be ENROLLED
@@ -241,13 +230,8 @@ fn expected_fleet_converge_yml_content() -> String {
 // is keyed by the witness's fully qualified name, so a rename is a silent de-enrollment.
 test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool {
   let yml = expected_fleet_converge_yml_content()
-  let before_wif = match first(split(yml, separator: "id: wif_auth")) { Present { value: p } => p  Absent => "" }
   !string_contains(s: yml, pattern: "expected_healed_sha")
     && !string_contains(s: yml, pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
-    && !string_contains(s: yml, pattern: "d0_group")
-    && string_contains(s: yml, pattern: "id: pair_serving_d0\n")
-    && string_contains(s: before_wif, pattern: "id: pair_serving_d0_admit")
-    && !string_contains(s: before_wif, pattern: "id: pair_serving_d0\n")
 }
 
 // ONE EMISSION, READ TWICE. Both conjuncts ask about the same rendered workflow, so emitting it
@@ -514,15 +498,6 @@ fn yaml_scalar_text(v: YamlValue) -> String {
   }
 }
 
-fn step_id_text(step: Step) -> String {
-  match step {
-    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      match i { Present { value: v } => v  Absent => "" }
-    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      match i { Present { value: v } => v  Absent => "" }
-  }
-}
-
 fn step_env_text(step: Step) -> String {
   match step {
     RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
@@ -577,27 +552,17 @@ test fn the_fabric_writer_identity_receipt_upload_survives_a_failed_observation(
 
 // THE D0 DOOR MODE BINDS THE HOST, THE CONSENT AND THE EXPECTED REVISION INTO ITS ENVIRONMENT
 // (no group: the mode is Group A by construction), consumes the fleet ssh key (the transaction
-// reads the group's hosts), the consent is an INPUT, never the run id, and the job's concurrency
-// domain for this mode is Group A's arm, which IS srv1's host key: shared with the pair-serving
-// apply on any executor and with every srv1 control-plane mutation (fleet apply, keyring converge,
-// dashboard deploy, broker install), distinct from Group B's native arm and from other executors'
-// domains.
-//
-// EVERY CONJUNCT HERE ASKS THE PRODUCER THAT OWNS ITS FACT -- the two step values for the
-// environments, fleet_converge_mode_fleet_ssh_key_demand for the key, fleet_converge_mutation_group_for
-// and fleet_converge_mutation_concurrency_group_expression for the domain -- and NONE of them renders
-// the workflow. That is not tidiness: this witness rendered it, and the required floor measured
-// 690,279 eval steps against the 72,300 new-witness budget and refused
-// (completed_over_cost_requirement, run 35686204607). The render is one call whose result shape was
-// all these conjuncts inspected, which is the reach DESIGN's "a witness discriminates at one
-// interface" names. THE THREE FACTS THAT REALLY ARE ABOUT THE RENDERED FILE -- the d0_group absence,
-// the emitted pair_serving_d0 step, and the admit step landing before wif_auth -- moved to
-// fleet_converge_workflow_has_no_heal_revalidation_paste_through, which already pays one render and
-// is enrolled for it, so no coverage was dropped and no second render was bought.
+// reads the group's hosts), the consent is an INPUT, never the run id, the credential-free
+// admission step is emitted BEFORE the WIF token, the fleet key and the submission key, and the
+// job's concurrency domain for this mode is Group A's arm, which IS srv1's host key: shared with the
+// pair-serving apply on any executor and with every srv1 control-plane mutation (fleet apply,
+// keyring converge, dashboard deploy, broker install), distinct from Group B's native arm and from
+// other executors' domains.
 test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_before_credentials() -> Bool {
   let env = step_env_text(step: fleet_converge_pair_serving_d0_step())
   let admit_env = step_env_text(step: fleet_converge_pair_serving_d0_admit_step())
-  let expression = fleet_converge_mutation_concurrency_group_expression
+  let yml = expected_fleet_converge_yml_content()
+  let before_wif = match first(split(yml, separator: "id: wif_auth")) { Present { value: p } => p  Absent => "" }
   string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
     && string_contains(s: env, pattern: "GUNBC_D0_CONSENT=$\{\{ github.event.inputs.d0_consent \}\}")
     && string_contains(s: env, pattern: "RLM_EXPECTED_REVISION=$\{\{ github.event.inputs.expected_revision \}\}")
@@ -606,6 +571,10 @@ test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_befo
     && string_contains(s: admit_env, pattern: "GUNBC_D0_CONSENT=")
     && !string_contains(s: admit_env, pattern: "WIF_ACCESS_TOKEN")
     && (match fleet_converge_mode_fleet_ssh_key_demand(mode: PairServingD0) { FleetSshKeyConsumed => true  FleetSshKeyNotConsumed => false })
+    && string_contains(s: yml, pattern: "id: pair_serving_d0\n")
+    && !string_contains(s: yml, pattern: "d0_group")
+    && string_contains(s: before_wif, pattern: "id: pair_serving_d0_admit")
+    && !string_contains(s: before_wif, pattern: "id: pair_serving_d0\n")
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv2")
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1")
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1")
@@ -613,21 +582,21 @@ test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_befo
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: ApprovalBrokerDarkInstall, host: "srv1")
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") != fleet_converge_mutation_group_for(mode: SparkNativeServingApply, host: "srv1")
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") != fleet_converge_mutation_group_for(mode: FleetApply, host: "srv2")
-    && string_contains(s: expression, pattern: "github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1'")
-    && string_contains(s: expression, pattern: "github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1'")
+    && string_contains(s: yml, pattern: "github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1'")
+    && string_contains(s: yml, pattern: "github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1'")
 }
 
 // THE CHECKPOINT MATERIALIZE MODE IS IN GROUP A'S ARM DOMAIN, NOT ITS EXECUTOR'S: whichever executor a
 // dispatch names, it queues behind D0 and the pair apply, and two dispatches for two Group A hosts
 // queue behind each other. The emitted step reads the target and runs the modeled entry.
 test fn the_v41_checkpoint_materialize_mode_serializes_on_group_a() -> Bool {
-  let expression = fleet_converge_mutation_concurrency_group_expression
+  let yml = expected_fleet_converge_yml_content()
   fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv3") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
     && fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv2") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv2")
     && fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv2") != fleet_converge_mutation_group_for(mode: SparkNativeServingApply, host: "srv2")
-    && string_contains(s: expression, pattern: "github.event.inputs.mode == 'spark_v41_checkpoint_materialize' && 'gunbc-host-mutation-srv1'")
-    && step_id_text(step: fleet_converge_spark_v41_checkpoint_materialize_step()) == "spark_v41_checkpoint_materialize"
-    && string_contains(s: gunbc_ci_spark_v41_checkpoint_materialize_invoke(), pattern: "--function v41_checkpoint_materialize_ci_wet")
+    && string_contains(s: yml, pattern: "github.event.inputs.mode == 'spark_v41_checkpoint_materialize' && 'gunbc-host-mutation-srv1'")
+    && string_contains(s: yml, pattern: "id: spark_v41_checkpoint_materialize")
+    && string_contains(s: yml, pattern: "--function v41_checkpoint_materialize_ci_wet")
 }
 
 // THE V4.1 IMAGE BUILD IS IN GROUP A'S ARM DOMAIN AND THE PROBE BESIDE IT IS NOT, which is the
