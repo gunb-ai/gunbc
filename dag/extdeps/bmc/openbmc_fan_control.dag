@@ -1825,26 +1825,35 @@ type OpenBmcStepwiseScalars {
   negative_hysteresis: CelsiusDelta
 }
 
-fn openbmc_stepwise_scalars(scalars: List<Int>) -> OpenBmcStepwiseScalars? {
+// THE CAUSES ARE SEPARATE FACTS AND ARE CARRIED SEPARATELY. An earlier form answered a bare
+// `Absent` both for a row count other than five and for a row missing at an index the count admits,
+// so the caller could only refuse with one sentence spanning causes whose repairs differ -- a query
+// that returned the wrong shape versus a list that lost a member between the count and the read.
+type OpenBmcStepwiseScalarsResult
+  = OpenBmcStepwiseScalarsObserved { value: OpenBmcStepwiseScalars }
+  | OpenBmcStepwiseScalarCountUnexpected { observed: Int }
+  | OpenBmcStepwiseScalarMissing { index: Int }
+
+fn openbmc_stepwise_scalars(scalars: List<Int>) -> OpenBmcStepwiseScalarsResult {
   if scalars.length() != 5 {
-    Absent
+    OpenBmcStepwiseScalarCountUnexpected { observed: scalars.length() }
   } else {
     match scalars.first() {
-      Absent => Absent
+      Absent => OpenBmcStepwiseScalarMissing { index: 0 }
       Present { value: a } =>
         match scalars.skip(n: 1).first() {
-          Absent => Absent
+          Absent => OpenBmcStepwiseScalarMissing { index: 1 }
           Present { value: b } =>
             match scalars.skip(n: 2).first() {
-              Absent => Absent
+              Absent => OpenBmcStepwiseScalarMissing { index: 2 }
               Present { value: c } =>
                 match scalars.skip(n: 3).first() {
-                  Absent => Absent
+                  Absent => OpenBmcStepwiseScalarMissing { index: 3 }
                   Present { value: d } =>
                     match scalars.skip(n: 4).first() {
-                      Absent => Absent
+                      Absent => OpenBmcStepwiseScalarMissing { index: 4 }
                       Present { value: e } =>
-                        Present {
+                        OpenBmcStepwiseScalarsObserved {
                           value: OpenBmcStepwiseScalars {
                             minimum_duty: percent(a),
                             zone_failsafe_duty: percent(b),
@@ -1942,16 +1951,26 @@ fn openbmc_fan_config_observe_one(
               OpenBmcFanConfigObservationRefused { reason: reason }
             OpenBmcIntegerListObserved { values: outputs } =>
               match openbmc_stepwise_scalars(scalars: scalars) {
-                Absent =>
+                OpenBmcStepwiseScalarCountUnexpected { observed: _ } =>
                   OpenBmcFanConfigObservationRefused {
-                    reason: "OpenBMC fan config response has invalid structured cardinality or negative duty",
+                    reason: "OpenBMC stepwise scalar read returned a row count other than the five configured scalars",
                   }
-                Present { value: five } =>
-                  if readings.length() != outputs.length()
-                    || scalars |> any(value => value < 0)
-                    || outputs |> any(value => value < 0) {
+                OpenBmcStepwiseScalarMissing { index: _ } =>
+                  OpenBmcFanConfigObservationRefused {
+                    reason: "OpenBMC stepwise scalar row is absent at an index the observed row count admits",
+                  }
+                OpenBmcStepwiseScalarsObserved { value: five } =>
+                  if readings.length() != outputs.length() {
                     OpenBmcFanConfigObservationRefused {
-                      reason: "OpenBMC fan config response has invalid structured cardinality or negative duty",
+                      reason: "OpenBMC stepwise reading and output series have different lengths",
+                    }
+                  } else if scalars |> any(value => value < 0) {
+                    OpenBmcFanConfigObservationRefused {
+                      reason: "OpenBMC stepwise scalar duty or hysteresis is negative",
+                    }
+                  } else if outputs |> any(value => value < 0) {
+                    OpenBmcFanConfigObservationRefused {
+                      reason: "OpenBMC stepwise output duty is negative",
                     }
                   } else {
                     openbmc_fan_config_finish_observation(
