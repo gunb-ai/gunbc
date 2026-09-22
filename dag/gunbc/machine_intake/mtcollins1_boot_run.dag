@@ -282,6 +282,11 @@ fn mtcollins1_sol_acquire_after_grant(
   }
 }
 
+// THE CAPTURE IS THIS ATTEMPT'S, BY CONSTRUCTION: it is emptied in this fold, the same one that
+// starts the collector appending to it, so every line the verdict later reads -- firmware, loader
+// or envelope -- was written after this grant. A stale GRUB failure from an earlier attempt cannot
+// refuse this boot, and that no longer rests on the shell prelude's own truncation. If the write
+// fails the acquire refuses rather than proceeding against a capture of unknown provenance.
 fn mtcollins1_sol_activate_held(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
@@ -296,10 +301,6 @@ fn mtcollins1_sol_activate_held(
   if capture_path == "" {
     return exit_failure(reason: "mtcollins1 boot: SOL capture path unset; refusing acquire")
   }
-  // THE CAPTURE IS THIS ATTEMPT'S, BY CONSTRUCTION: it is emptied here, in the same fold that
-  // starts the collector that appends to it, so every line the verdict reads -- firmware, loader
-  // or envelope -- was written after this grant. A stale GRUB failure from an earlier attempt
-  // cannot refuse this boot; the shell prelude's own truncation is no longer what that rests on.
   let fresh = Filesystem.Write(path: capture_path, content: "")
   if !fresh.success {
     return exit_failure(reason: concat("mtcollins1 boot: could not establish an attempt-owned SOL capture at ", capture_path, "; refusing acquire"))
