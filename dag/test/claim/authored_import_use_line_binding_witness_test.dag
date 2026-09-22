@@ -166,6 +166,14 @@ test fn a_forked_nominal_record_keeps_its_authored_use_line() -> Bool {
 // change. NAMED HERE so the duplication is a known debt with a stated remedy rather than
 // unnoticed work.
 //
+// AND THE DEBT IS BOUNDED AT THIS ONE SITE, which is why it is tolerable rather than a pattern.
+// An arm asserting the line is ABSENT validates its own precondition: if the second declarer were
+// not in the closure the line would be PRESENT, which is the baseline behaviour arm A establishes,
+// so that arm's verdict is only reachable when term 1 holds. An arm asserting the line is PRESENT
+// cannot tell "term 1 held and nominality protected the line" from "term 1 never held", because
+// the baseline answers present too -- so only presence-asserting arms need a second reading, and
+// this file has exactly one.
+//
 // THE CHEAPER VERSION WAS TESTED AND REJECTED, because it cannot fail the way this must: folding
 // term 1 into the arm above by also requiring `pub use crate::v2_extdeps_languages_ptx::` in the
 // CONSUMER file costs no extra compile, but if ptx ever stopped importing v2.std.cardinality that
