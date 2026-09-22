@@ -28,13 +28,30 @@ test fn compile_stage_memo_provider_preserves_catalog_retention() -> Bool {
     && (compile_stage_memo_provider_id() == compile_stage_memo_id)
 }
 
+// The parse demand's site is derived from the grammar's recurrence census, so the carrier is
+// asked for a census rather than for one grammar-less answer. The real producer's route -- a real
+// grammar through compute_grammar_first_analysis into the table -- is the inhabitance claim in
+// v2.test.provenance.parse_memo_frame_replay.
+fn recurrent_census() -> ParseMemoRecurrence {
+  ParseMemoRecurrence { discarding_backtrack_sites: 1, nullable_nonterminals: 0 }
+}
+
+fn nullable_only_census() -> ParseMemoRecurrence {
+  ParseMemoRecurrence { discarding_backtrack_sites: 0, nullable_nonterminals: 1 }
+}
+
 test fn parse_table_carrier_inhabits_realization() -> Bool {
-  match parse_table_realized_step() {
+  match parse_table_realized_step(r: recurrent_census()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: step, diagnostics: _ } =>
       (step.materialization == Memoize)
         && (step.placement == LocalInProcess)
-        && materialization_admission_admits_store(a: parse_table_memo_materialization())
+        && materialization_admission_admits_store(
+             a: parse_table_memo_materialization_for(r: recurrent_census())
+           )
+        && !materialization_admission_admits_store(
+             a: parse_table_memo_materialization_for(r: parse_memo_no_recurrence)
+           )
   }
 }
 
@@ -61,8 +78,18 @@ test fn parse_table_empty_uses_catalog_identity() -> Bool {
   parse_table_carrier_grounded_on_catalog()
 }
 
+// Both arms read off the VERDICT: a refusal also prescribes Memoize, so the prescription alone
+// could not tell a discharge from an unmet obligation. The nullable-only census discriminates the
+// second recurrence source -- dropping it from parse_memo_recurrence_is_possible reds here.
 test fn parse_table_demand_is_discharged_by_its_catalog_provider() -> Bool {
-  parse_table_memo_verdict_is_discharged()
+  parse_table_memo_verdict_is_discharged_for(r: recurrent_census())
+    && parse_table_memo_verdict_is_discharged_for(r: nullable_only_census())
+    && !parse_table_memo_verdict_is_discharged_for(r: parse_memo_no_recurrence)
+}
+
+test fn parse_table_demand_without_recurrence_is_accepted_single_recompute() -> Bool {
+  parse_table_memo_verdict_is_single_recompute_for(r: parse_memo_no_recurrence)
+    && !parse_table_memo_verdict_is_single_recompute_for(r: recurrent_census())
 }
 
 test fn compile_stage_demand_is_accepted_single_recompute() -> Bool {
@@ -123,7 +150,7 @@ fn materialization_control_grammar() -> ParseGrammar {
 
 fn materialization_control_prepare_is_refused() -> Bool {
   match prepare_grammar_with_admission(
-    admission: refused_scope_prescription(),
+    admit: fn(_) { refused_scope_prescription() },
     grammar: materialization_control_grammar()
   ) {
     Rejected { diagnostics: _ } => true
@@ -133,13 +160,30 @@ fn materialization_control_prepare_is_refused() -> Bool {
 
 // The positive control on the same grammar through the REAL door: without it the negative would
 // also pass if prepare_grammar_with_admission simply refused this grammar for any reason.
+//
+// IT ASSERTS THE DERIVED VALUE, NOT MERELY THAT SOMETHING WAS ADMITTED, and the value is
+// Recompute rather than Memoize BECAUSE OF THE DERIVATION: this grammar is one Terminal
+// production, so its recurrence census is zero on both counts, no (nonterminal, position) is
+// asked twice, and the ladder answers AcceptedSingleRecompute. That is the admitted
+// direct-computation arm reaching the real prepare -- a grammar that needs no memo does not get
+// one -- and pinning Memoize here would have pinned a memo the grammar does not demand.
+//
+// WHERE THE OTHER ADMITTED ARM IS EXERCISED, cited because this control no longer carries it.
+// THIS pair drives prepare_grammar to a Recompute admission; the MEMOIZE admission through the
+// same door is driven by v2.test.provenance.parse_memo_frame_replay
+// parse_memo_demand_derived_discharged_when_the_grammar_abandons_a_demand, on a grammar whose
+// census counts a discarding backtrack site. Those two claims are the only place the real
+// prepare produces a store-permitting answer, and their stated subject is REPLAY, so retargeting
+// them for replay reasons would delete this module's Memoize counterpart while every control
+// here stayed green. That is why the citation runs both ways: the replay claims carry a matching
+// note naming this control.
 fn materialization_control_prepare_is_admitted() -> Bool {
   match prepare_grammar(grammar: materialization_control_grammar()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: prepared, diagnostics: _ } =>
       match prepared {
         PreparedVoidGrammar => false
-        PreparedModeled { modeled: _, materialization: m } => materialization_allows_memo_store(m: m)
+        PreparedModeled { modeled: _, materialization: m } => m == Recompute
       }
   }
 }
