@@ -33,7 +33,8 @@ fn parse_memo_frame_replay_run_modeled(
   let base = parse_table_for_production_analyzed(
     validated: validated,
     analysis: analysis,
-    all_tokens: tokens
+    all_tokens: tokens,
+    materialization: Memoize
   )
   let table = ParseTableRealization {
     artifact_kind: base.artifact_kind,
@@ -377,16 +378,21 @@ fn linear_root() -> GrammarRoot {
   }
 }
 
+// THE INHABITANCE CLAIM FOR THE DERIVATION, and it runs the PRODUCTION DOOR rather than a
+// reconstruction of it. prepare_grammar is where the admission is made -- it analyzes the grammar,
+// takes the recurrence census off that analysis, and asks parse_table_memo_materialization_for --
+// so reading the materialization off its PreparedModeled arm is reading exactly the value every
+// ParseTable built from this grammar will carry. Supplying a materialization to
+// parse_table_for_production_analyzed here instead would have asserted only that the constructor
+// copies its argument, which is the thing the derivation is not.
 fn derived_memo_materialization(root: GrammarRoot) -> Optional<Materialization> {
-  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^abandoned_path_grammar_contract)
-  match grammar_validate_for_parse(root: root, at: contract_locus) {
+  match prepare_grammar(grammar: ModeledGrammar { root: root }) {
     Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: validated, diagnostics: _ } =>
-      optional_present(value: parse_table_for_production_analyzed(
-        validated: validated,
-        analysis: compute_grammar_first_analysis(root: validated.root),
-        all_tokens: abandoned_path_tokens()
-      ).materialization)
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => optional_absent()
+        PreparedModeled { modeled: _, materialization: m } => optional_present(value: m)
+      }
   }
 }
 
