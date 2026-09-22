@@ -44,6 +44,7 @@ import v2.std.compilers.compilation_unit {
   PartitionFoldOutcome,
   PartitionFoldRefusalCause,
   partition_fold_outcome,
+  partition_unit_by_id,
   partition_provenance_hand_explicit,
   partition_provenance_policy_derived
 }
@@ -983,7 +984,143 @@ fn stage0_partition_fold_ok() -> Bool {
   }
 }
 
-data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: stage0_module_dag's edges and module lists are authored (stage0_cross_unit_import_edges, the stage0_*_modules lists) over v1 mirror basenames, not derived, so a policy over them would balance an incomplete graph. MEASURED, so the size of 'incomplete' is known rather than asserted: folding the 78 stage0_cross_unit_import_edges against the six module-bearing unit module lists and comparing each unit's derived transitive closure to its authored reexport_packages, five of six units agree exactly and ONE does not -- v1-stage0-v1-artifact authors four package dependencies and has ZERO derived cross-unit out-edges, its modules v1_compiler_artifact and v1_compiler_languages appearing in the edge list only as targets plus one intra-unit edge. The REEXPORTS are the correct side: src/v1/stage0_v1_artifact names all four packages in source and declares all four in its Cargo.toml, so the authored edge list is what is missing them. Crate dependency is therefore answered by two authorities that already disagree for one unit with nothing gating the disagreement -- stage0_partition_row_lookups_resolved checks only that each named package resolves to some row, never that it matches an edge. No wall is enrolled against this: its red would be a red about a gap this row already declares, so it would convert a bounded documented debt into a floor stop while buying no new information. Deriving the edges dissolves the second authority and makes the equality true by construction, which is why the trigger below is the derivation and not a hand completion -- completing the list by hand re-authors the fork. Stage0 flips to PolicyPartition \{ target_crate_count: declared_core_target } with provenance PolicyDerived when its ModuleDag is derived from the mirrors' resolved dependency facts the way v2.workflow.emitted_closure_crate_partition module_dag_from_dependency_facts derives the emitted closure's.")
+// THE DISAGREEMENT BETWEEN THE TWO AUTHORITIES THAT ANSWER "WHAT DOES THIS CRATE DEPEND ON",
+// DERIVED RATHER THAN DESCRIBED. rust_crate_partition_dissolve_on says stage0's edges are authored
+// and "a policy over them would balance an incomplete graph". How incomplete is a MEASUREMENT, and
+// DESIGN section 6 is explicit that a measurement is cited by naming the producer that re-derives
+// it, never by copying its numbers into prose -- a transcribed number is unreachable from the thing
+// that owns it, so it rots without anyone touching either end. An earlier revision of this row
+// carried the figures in its description; this fold is the producer that replaces them, so the
+// population is recomputed on every run instead of going stale the moment an edge row is appended.
+//
+// THE COMPARISON. reexport_packages is the authored answer. The derived answer is the transitive
+// closure of CompilationUnit.deps -- which partition_fold_outcome projects from the module edges
+// through the assignment -- mapped back to package names. A unit DISAGREES when those two sets
+// differ, and the fold returns the disagreeing package names rather than a count, because DESIGN
+// section 5 requires a debt contract to check membership at IDENTITY grain: a count equality would
+// stay green if one unit were repaired while another began to diverge.
+fn unit_package_name(rows: List<Stage0PartitionCrateRow>, unit_id: CompilationUnitId) -> Optional<String> {
+  rows
+    |> fold(init: Absent, f: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if row.unit_id == unit_id { optional_present(value: row.package_name) } else { Absent }
+      }
+    })
+}
+
+fn stage0_unit_dep_closure_step(
+  units: List<CompilationUnit>,
+  acc: List<CompilationUnitId>
+) -> List<CompilationUnitId> {
+  acc |> fold(init: acc, f: fn(outer, uid) {
+    match partition_unit_by_id(units: units, unit_id: uid) {
+      Absent => outer
+      Present { value: unit } =>
+        unit.deps |> fold(init: outer, f: fn(inner, dep) {
+          if inner |> any(seen => seen == dep) { inner } else { inner |> list_push(dep) }
+        })
+    }
+  })
+}
+
+// Bounded by the unit count: each round adds at least one unit or the closure is complete, so the
+// fuel is an upper bound on rounds rather than a guess (DESIGN section 4: bounded and forward).
+fn stage0_unit_dep_closure(
+  units: List<CompilationUnit>,
+  acc: List<CompilationUnitId>,
+  fuel: Int
+) -> List<CompilationUnitId> {
+  if fuel <= 0 {
+    acc
+  } else {
+    let grown = stage0_unit_dep_closure_step(units: units, acc: acc)
+    if (grown |> count) == (acc |> count) { acc } else {
+      stage0_unit_dep_closure(units: units, acc: grown, fuel: fuel - 1)
+    }
+  }
+}
+
+fn derived_dep_packages(
+  units: List<CompilationUnit>,
+  rows: List<Stage0PartitionCrateRow>,
+  row: Stage0PartitionCrateRow
+) -> List<String> {
+  match partition_unit_by_id(units: units, unit_id: row.unit_id) {
+    Absent => []
+    Present { value: unit } =>
+      stage0_unit_dep_closure(units: units, acc: unit.deps, fuel: (units |> count) + 1)
+        |> fold(init: [], f: fn(acc, dep) {
+          match unit_package_name(rows: rows, unit_id: dep) {
+            Present { value: pkg } => acc |> list_push(pkg)
+            Absent => acc
+          }
+        })
+  }
+}
+
+fn stage0_package_sets_agree(left: List<String>, right: List<String>) -> Bool {
+  (left |> fold(init: true, f: fn(ok, pkg) { ok && (right |> any(p => p == pkg)) }))
+    && (right |> fold(init: true, f: fn(ok, pkg) { ok && (left |> any(p => p == pkg)) }))
+}
+
+// THE REFUSAL ARMS MAY NOT ANSWER []. An empty list here reads as "no unit disagrees", which is
+// the strongest possible answer, and a partition that refused to resolve or fold has established
+// nothing about any unit. Collapsing a refusal into the clean answer is the absorbing fallback
+// DESIGN section 5 forbids -- and it is the same class this lane deleted from compilation_unit,
+// so reintroducing it here by a new road would be the symptom arriving in the repair.
+type Stage0ReexportDerivationDisagreements
+  = Stage0ReexportDisagreementsDerived { packages: List<String> }
+  | Stage0ReexportDisagreementsUnavailable { cause: Stage0PartitionReceiptOutcome }
+
+// DRIVABLE FROM SUPPLIED INPUTS, so the detector can be exercised over a fixture carrying a
+// PLANTED disagreement. That control is not optional decoration: the subset assertion below is
+// green when the disagreement set is empty AND green when this fold is broken and finds nothing,
+// and those are the same observation. Today v1-stage0-v1-artifact inhabits the set and masks the
+// difference; the day the edge list is derived the set empties and the mask goes with it, leaving
+// a permanently green assertion with no evidence it can still see anything -- the inert lens
+// DESIGN section 5 warns about. The fixture control is what keeps the green meaningful.
+fn reexport_derivation_disagreements_over(
+  units: List<CompilationUnit>,
+  rows: List<Stage0PartitionCrateRow>
+) -> List<String> {
+  rows |> fold(init: [], f: fn(acc, row) {
+    if stage0_package_sets_agree(
+      left: row.reexport_packages,
+      right: derived_dep_packages(units: units, rows: rows, row: row)
+    ) { acc } else { acc |> list_push(row.package_name) }
+  })
+}
+
+// THE DEBT POPULATION IS A NAMED ROW, NOT A LITERAL INSIDE THE ASSERTION. A subset assertion on
+// its own notices nothing when the set shrinks -- it just stays green -- so an inline literal
+// would let the debt evaporate with no record that it was ever paid. As a row, removing a package
+// is an edit someone must make and justify, which is where DESIGN section 5's required typed
+// disposition for a removal from a monotone debt contract lives.
+data stage0_reexport_derivation_known_divergent_packages: List<String> = ["v1-stage0-v1-artifact"]
+
+fn stage0_reexport_derivation_disagreements() -> Stage0ReexportDerivationDisagreements {
+  match stage0_partition_receipt_outcome {
+    Stage0PartitionReceiptResolveRefused { cause: cause } =>
+      Stage0ReexportDisagreementsUnavailable {
+        cause: Stage0PartitionReceiptResolveRefused { cause: cause }
+      }
+    Stage0PartitionReceiptFoldRefused { cause: cause } =>
+      Stage0ReexportDisagreementsUnavailable {
+        cause: Stage0PartitionReceiptFoldRefused { cause: cause }
+      }
+    Stage0PartitionReceiptOk { units: units } =>
+      Stage0ReexportDisagreementsDerived {
+        packages: reexport_derivation_disagreements_over(
+          units: units,
+          rows: stage0_module_bearing_crate_rows()
+        )
+      }
+  }
+}
+
+data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: stage0_module_dag's edges and module lists are authored (stage0_cross_unit_import_edges, the stage0_*_modules lists) over v1 mirror basenames, not derived, so a policy over them would balance an incomplete graph. THE SIZE OF 'incomplete' IS DERIVED, NOT TRANSCRIBED (DESIGN 6: name the instrument, never copy its output). stage0_reexport_derivation_disagreements is the producer: it folds the authored edges through the assignment into CompilationUnit.deps, closes them transitively, maps them back to package names and returns the package names whose DERIVED dependency set differs from their AUTHORED reexport_packages. An earlier revision of this row carried the counts in prose; they were removed because they go stale the moment an edge row is appended and nothing would notice. The population is pinned at IDENTITY grain by test.claim.rust_crate_partition_witness stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit, which asserts the disagreeing set is a SUBSET of the one unit known to diverge -- so a NEW divergence reds, a repair stays green, and DESIGN 5's membership-not-count rule for a monotone debt contract is satisfied. WHICH SIDE IS WRONG is not symmetric: the reexports are correct and the authored edge list is what is missing them, established off this graph by the unit's real Cargo.toml and its real lib.rs. Crate dependency is therefore answered by TWO authorities, and deriving the edges dissolves the second rather than reconciling them -- which is why the trigger below is the derivation and not a hand completion, since completing the list by hand re-authors the fork.")
 
 data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
 

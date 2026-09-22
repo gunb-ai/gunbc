@@ -39,6 +39,14 @@ import v2.workflow.rust_crate_partition {
   rust_crate_partition_module_bearing_unit_target,
   stage0_interim_explicit_assignment,
   stage0_module_dag,
+  Stage0PartitionCrateRow,
+  Stage0FoundationCrate,
+  Stage0LayeredCoreCrate,
+  Stage0ReexportDisagreementsDerived,
+  Stage0ReexportDisagreementsUnavailable,
+  reexport_derivation_disagreements_over,
+  stage0_reexport_derivation_disagreements,
+  stage0_reexport_derivation_known_divergent_packages,
   stage0_module_dag_interface_grounding_is_debt,
   stage0_module_bearing_unit_count,
   stage0_module_id,
@@ -377,4 +385,66 @@ test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> B
   stage0_module_dag_interface_grounding_is_debt()
 }
 
+// ── THE TWO AUTHORITIES FOR "WHAT DOES THIS CRATE DEPEND ON", AND WHY THE BOUND IS A SUBSET ──
+//
+// rust_crate_partition_dissolve_on declares stage0's edges authored rather than derived. The size
+// of that gap is DERIVED by stage0_reexport_derivation_disagreements rather than transcribed into
+// prose (DESIGN 6), and this pins its population at IDENTITY grain rather than by count: a count
+// equality would stay green if one unit were repaired while another began to diverge.
+//
+// SUBSET, not equality, and the direction is deliberate. Equality would red the floor on debt this
+// row already declares, which stops every lane to tell them something the row already says. Subset
+// reds only on a NEW divergence -- the thing nothing would otherwise notice -- and stays green when
+// the authored edge list is finally derived and the set empties, at which point this claim becomes
+// the DESIGN 4b(4) regression control that keeps the climb real rather than retiring with it.
+test fn stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit() -> Bool {
+  match stage0_reexport_derivation_disagreements() {
+    Stage0ReexportDisagreementsUnavailable { cause: _ } => false
+    Stage0ReexportDisagreementsDerived { packages: packages } =>
+      packages |> fold(init: true, f: fn(ok, pkg) {
+        ok && (stage0_reexport_derivation_known_divergent_packages |> any(known => known == pkg))
+      })
+  }
+}
 
+// THE VACUOUS-GREEN GUARD, and it is the claim that keeps the one above honest. Subset-of-known-bad
+// is green when the disagreement set is EMPTY and equally green when the detector is BROKEN and
+// finds nothing -- the same observation from two different worlds. Today v1-stage0-v1-artifact
+// inhabits the set and masks that; when the edge list is derived the set empties and the mask goes
+// with it, leaving a permanently green assertion with no evidence it can still see anything, which
+// is the inert lens DESIGN section 5 names. So the detector is run over SUPPLIED units and rows
+// carrying a PLANTED disagreement: "probe-diverging" authors a dependency the unit graph does not
+// give it, "probe-agreeing" authors exactly what it derives. Removing the comparison from
+// reexport_derivation_disagreements_over reds this and leaves the subset claim above untouched.
+fn probe_unit(id: String, deps: List<CompilationUnitId>) -> CompilationUnit {
+  CompilationUnit { id: id as CompilationUnitId, members: [], interface: [], deps: deps }
+}
+
+fn probe_row(package: String, unit: String, reexports: List<String>) -> Stage0PartitionCrateRow {
+  Stage0PartitionCrateRow {
+    unit_id: unit as CompilationUnitId,
+    package_name: package,
+    crate_dir: "src/probe",
+    kind: Stage0LayeredCoreCrate,
+    modules: [],
+    reexport_packages: reexports,
+    carries_non_empty_wrappers: false,
+  }
+}
+
+test fn the_disagreement_detector_finds_a_planted_divergence() -> Bool {
+  let units = [
+    probe_unit(id: "u-base", deps: []),
+    probe_unit(id: "u-agree", deps: ["u-base" as CompilationUnitId]),
+    probe_unit(id: "u-diverge", deps: []),
+  ]
+  let rows = [
+    probe_row(package: "probe-base", unit: "u-base", reexports: []),
+    probe_row(package: "probe-agreeing", unit: "u-agree", reexports: ["probe-base"]),
+    probe_row(package: "probe-diverging", unit: "u-diverge", reexports: ["probe-base"]),
+  ]
+  let found = reexport_derivation_disagreements_over(units: units, rows: rows)
+  (found |> any(p => p == "probe-diverging"))
+    && !(found |> any(p => p == "probe-agreeing"))
+    && !(found |> any(p => p == "probe-base"))
+}
