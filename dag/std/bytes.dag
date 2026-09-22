@@ -56,9 +56,15 @@ fn bytes_octets(b: Bytes) -> List<UInt8> {
 // std.encoding base64_encode declares the SEALED carrier QualifiedOctets -- the proof that every
 // member passed uint8_of_int admission -- and the only general route to one is std.integer's
 // uint8_octets_of_ints fold, which returns a Result. For a value that arrives from BYTES that
-// fold's refusal arm is UNREACHABLE: a byte is 0..255 by the definition of a byte, so the scan can
-// only ever answer Absent, and every caller would be forced to write a refusal branch no input can
-// reach. std.integer names that trap in its own roster annotation -- word_to_octets is admitted to
+// fold's refusal arm is UNREACHABLE, and THE RANGE IS A DECLARED CONTRACT RATHER THAN AN APPEAL TO
+// WHAT A BYTE IS: gunbc.primitive_egress.dispositions_text carries the bytes_octets evidence row,
+// whose result is "List<Int> of octets 0..255; total". So the scan can only ever answer Absent,
+// and every caller would be forced to write a refusal branch no input can reach. The distinction
+// matters because this mint rests on that contract: bytes_octets' own .dag body is the divergent
+// seam, so unlike word_to_octets -- whose members are computed in-corpus through uint8_of_int --
+// the range here is established by the declared row and not by a computation this module can see.
+// If that row's result ever stops saying 0..255, this admission stops holding and the mint owes
+// the fold. std.integer names that trap in its own roster annotation -- word_to_octets is admitted to
 // the mint precisely because "routing it through the fold would add a refusal arm no input can
 // reach" -- and DESIGN section 5 names it more generally: a check that restates a constraint the
 // model already carries is validation standing where construction was available.
