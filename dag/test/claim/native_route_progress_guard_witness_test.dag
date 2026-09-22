@@ -4,6 +4,7 @@ import v2.std.algebra { any, count_where, is_empty, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.optional { Present, Absent, optional_present, optional_absent }
+import std.content_hash { structural_content_hash }
 import v2.compiler.native_test_vocabulary {
   NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval
 }
@@ -23,6 +24,10 @@ import gunbc.native_route_progress_guard {
   native_attainment_at_least, native_attainment_rank,
   NativeProgressBaseline, NativeProgressBaselineRow,
   NativeVerdictAdjudication, BaselineMintedUnderADifferentAdjudication, native_adjudication_same,
+  NativeAcceptToRefuseDisposition, NativeAcceptToRefuseRow,
+  PriorAcceptanceDependedOnARemovedFallback,
+  AcceptToRefuseUndispositioned, AcceptToRefuseDispositionContradicted,
+  native_fall_is_accept_to_refuse,
   NativeProgressDispositionRow, SubjectDeleted, SubjectRenamed, SubjectLeftTheUniverse,
   NativeProgressObservedRow, NativeProgressObservedReading,
   native_progress_read_observed,
@@ -81,15 +86,30 @@ fn observed(identity: NativeRouteTestIdentity, attained: NativeRouteAttainment) 
 // by, so every claim that does not vary it is comparing within one meaning of green -- which is
 // the only condition under which a per-identity comparison says anything.
 data current_adjudicator: NativeVerdictAdjudication = NativeVerdictAdjudication {
-  authority: "gunbc.witness_v2_native_route native_route_admission @ f5bd9b064a",
+  authority: "gunbc.witness_v2_native_route native_route_admission",
+  closure_identity: structural_content_hash(digest: "1111222233334444"),
   receipt_identity: optional_present(value: "native_route_receipt.json")
+}
+
+// THE SAME NAME, A DIFFERENT CLOSURE. This is the case the first cut could not see and the reason
+// the discriminator moved off `authority`: a gate strengthening that renames nothing -- the
+// NORMAL case, since gunbc#11829 renamed nothing it strengthened.
+data strengthened_adjudicator: NativeVerdictAdjudication = NativeVerdictAdjudication {
+  authority: "gunbc.witness_v2_native_route native_route_admission",
+  closure_identity: structural_content_hash(digest: "aaaabbbbccccdddd"),
+  receipt_identity: optional_absent()
 }
 
 fn baseline_of(
   rows: List<NativeProgressBaselineRow>,
   dispositions: List<NativeProgressDispositionRow>
 ) -> NativeProgressBaseline {
-  NativeProgressBaseline { rows: rows, dispositions: dispositions, minted_under: current_adjudicator }
+  NativeProgressBaseline {
+    rows: rows,
+    dispositions: dispositions,
+    accept_to_refuse: [],
+    minted_under: current_adjudicator
+  }
 }
 
 data head_sha: String = "0123456789abcdef0123456789abcdef01234567"
@@ -242,7 +262,9 @@ test fn w_RED_a_subject_refused_earlier_than_before_is_a_regression() -> Bool {
       DisposedSubjectHasNoBaselineRow { identity: _ } => false
       ArtifactProductionFailed { detail: _ } => false
       ObservedMemberReadingMalformed { identity: _ } => false
-      BaselineMintedUnderADifferentAdjudication { baseline_authority: _, run_authority: _ } => false
+      BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+      AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+      AcceptToRefuseDispositionContradicted { identity: _ } => false
       SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
     }
   })
@@ -370,7 +392,9 @@ test fn w_RED_a_rename_whose_target_attains_less_reds() -> Bool {
       DisposedSubjectHasNoBaselineRow { identity: _ } => false
       ArtifactProductionFailed { detail: _ } => false
       ObservedMemberReadingMalformed { identity: _ } => false
-      BaselineMintedUnderADifferentAdjudication { baseline_authority: _, run_authority: _ } => false
+      BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+      AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+      AcceptToRefuseDispositionContradicted { identity: _ } => false
       SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
     }
   })
@@ -397,7 +421,9 @@ test fn w_RED_a_rename_to_a_target_the_run_never_saw_reds() -> Bool {
       DisposedSubjectHasNoBaselineRow { identity: _ } => false
       ArtifactProductionFailed { detail: _ } => false
       ObservedMemberReadingMalformed { identity: _ } => false
-      BaselineMintedUnderADifferentAdjudication { baseline_authority: _, run_authority: _ } => false
+      BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+      AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+      AcceptToRefuseDispositionContradicted { identity: _ } => false
       SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
     }
   })
@@ -619,7 +645,9 @@ test fn w_RED_an_unreached_subject_reds_as_unreached_and_not_as_a_regression() -
         DisposedSubjectHasNoBaselineRow { identity: _ } => false
         ArtifactProductionFailed { detail: _ } => false
         ObservedMemberReadingMalformed { identity: _ } => false
-        BaselineMintedUnderADifferentAdjudication { baseline_authority: _, run_authority: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
         SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
       }
     })
@@ -781,7 +809,9 @@ test fn w_RED_a_run_with_no_binary_reports_every_row_unreached_not_missing() -> 
         DisposedSubjectHasNoBaselineRow { identity: _ } => false
         ArtifactProductionFailed { detail: _ } => false
         ObservedMemberReadingMalformed { identity: _ } => false
-        BaselineMintedUnderADifferentAdjudication { baseline_authority: _, run_authority: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
       }
     }) == false)
     && count_where(xs: fs, predicate: fn(f) {
@@ -795,7 +825,9 @@ test fn w_RED_a_run_with_no_binary_reports_every_row_unreached_not_missing() -> 
         DisposedSubjectHasNoBaselineRow { identity: _ } => false
         ArtifactProductionFailed { detail: _ } => false
         ObservedMemberReadingMalformed { identity: _ } => false
-        BaselineMintedUnderADifferentAdjudication { baseline_authority: _, run_authority: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
       }
     }) == 2
 }
@@ -857,7 +889,9 @@ test fn w_RED_a_rename_to_an_unreached_target_reds_as_unreached_not_as_a_lowered
         DisposedSubjectHasNoBaselineRow { identity: _ } => false
         ArtifactProductionFailed { detail: _ } => false
         ObservedMemberReadingMalformed { identity: _ } => false
-        BaselineMintedUnderADifferentAdjudication { baseline_authority: _, run_authority: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
       }
     })
 }
@@ -992,10 +1026,8 @@ test fn w_RED_a_baseline_minted_under_a_weaker_adjudicator_is_not_a_bar() -> Boo
     baseline: NativeProgressBaseline {
       rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: [],
-      minted_under: NativeVerdictAdjudication {
-        authority: "gunbc.witness_v2_native_route native_route_admission @ pre-f5bd9b064a",
-        receipt_identity: optional_absent()
-      }
+      accept_to_refuse: [],
+      minted_under: strengthened_adjudicator
     },
     readings: [observed(identity: subject_a, attained: AttainAgreed)],
     build: clean_build,
@@ -1006,8 +1038,8 @@ test fn w_RED_a_baseline_minted_under_a_weaker_adjudicator_is_not_a_bar() -> Boo
   length(xs: fs) == 1
     && any(xs: fs, predicate: fn(f) {
       match f {
-        BaselineMintedUnderADifferentAdjudication { baseline_authority: b, run_authority: _ } =>
-          string_contains(s: b, pattern: "pre-f5bd9b064a")
+        BaselineMintedUnderADifferentAdjudication { baseline: b, run: _ } =>
+          (b.closure_identity.digest as String) == "aaaabbbbccccdddd"
         ProgressRegressed { identity: _, baseline: _, observed: _ } => false
         BaselineMemberMissingUndisposed { identity: _ } => false
         DispositionContradictedByRun { identity: _ } => false
@@ -1016,6 +1048,8 @@ test fn w_RED_a_baseline_minted_under_a_weaker_adjudicator_is_not_a_bar() -> Boo
         DisposedSubjectHasNoBaselineRow { identity: _ } => false
         ArtifactProductionFailed { detail: _ } => false
         ObservedMemberReadingMalformed { identity: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
         SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
       }
     })
@@ -1031,7 +1065,8 @@ test fn w_RED_across_a_meaning_boundary_no_regression_is_reported_beside_it() ->
     baseline: NativeProgressBaseline {
       rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: [],
-      minted_under: NativeVerdictAdjudication { authority: "some older adjudicator", receipt_identity: optional_absent() }
+      accept_to_refuse: [],
+      minted_under: strengthened_adjudicator
     },
     readings: [observed(identity: subject_a, attained: AttainDiverged)],
     build: clean_build,
@@ -1043,7 +1078,7 @@ test fn w_RED_across_a_meaning_boundary_no_regression_is_reported_beside_it() ->
     && (any(xs: fs, predicate: fn(f) {
       match f {
         ProgressRegressed { identity: _, baseline: _, observed: _ } => true
-        BaselineMintedUnderADifferentAdjudication { baseline_authority: _, run_authority: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
         BaselineMemberMissingUndisposed { identity: _ } => false
         DispositionContradictedByRun { identity: _ } => false
         RenameTargetAbsent { identity: _, target: _ } => false
@@ -1051,7 +1086,9 @@ test fn w_RED_across_a_meaning_boundary_no_regression_is_reported_beside_it() ->
         DisposedSubjectHasNoBaselineRow { identity: _ } => false
         ArtifactProductionFailed { detail: _ } => false
         ObservedMemberReadingMalformed { identity: _ } => false
-        BaselineMintedUnderADifferentAdjudication { baseline_authority: _, run_authority: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
         SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
       }
     }) == false)
@@ -1235,5 +1272,142 @@ test fn w_RED_a_branch_and_an_author_composition_refuse_under_different_names() 
     BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
     BaselineAdvanceRefusedUnreached { reach: _ } => false
     BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// ═══ THE DISCRIMINATOR IS DERIVED, NOT THE NAME (review 70073) ═══
+//
+// The first cut compared `authority`, a free-form String, and the module's prose promised that a
+// gate strengthening would make older verdicts incomparable AUTOMATICALLY. A strengthening that
+// renames nothing -- the normal case -- left `comparable` true. The fixture even demonstrated the
+// dependency rather than the property: its red only fired because a person hand-typed a commit
+// hash into the string.
+
+// THE CLAIM THE OLD SHAPE COULD NOT PASS. Same authority spelling, different adjudicating
+// closure, and the comparison must refuse. Nothing here recalls a hash.
+test fn w_RED_a_strengthening_that_renames_nothing_is_still_a_different_meaning() -> Bool {
+  (current_adjudicator.authority == strengthened_adjudicator.authority)
+    && (native_adjudication_same(a: current_adjudicator, b: strengthened_adjudicator) == false)
+}
+
+// AND THE SAME CLOSURE STILL COMPARES, so the discriminator did not simply refuse everything.
+// The receipt differs between these two and must NOT make them incomparable: two runs under one
+// adjudicator with different receipts are the same meaning of green.
+test fn the_same_closure_compares_even_with_a_different_receipt() -> Bool {
+  let same_closure_no_receipt = NativeVerdictAdjudication {
+    authority: "a different human label entirely",
+    closure_identity: structural_content_hash(digest: "1111222233334444"),
+    receipt_identity: optional_absent()
+  }
+  native_adjudication_same(a: current_adjudicator, b: same_closure_no_receipt)
+}
+
+// ═══ ACCEPT-TO-REFUSE IS NOT AUTOMATICALLY A REGRESSION ═══
+//
+// gunbc#12009 deletes the global spelling search; on a 132-module closure that makes 106 resolve
+// refusals APPEAR, and 81 of them reach a module that FILE-REFUSES -- the search was inventing
+// answers around sixteen front-end defects. DESIGN section 4b puts silent wrongness BELOW the
+// ladder entirely, so a fabricated acceptance becoming an attributed refusal is a rung UP. A
+// ratchet that scored it as a fall would penalise the lane that removes a fail-open.
+
+// THE SHAPE IS RECOGNISED BEFORE ANY DISPOSITION IS CONSULTED, and only this shape: no fail-open
+// removal turns an agreement into a divergence or a later stage into an earlier one.
+test fn only_an_agreement_becoming_a_refusal_is_an_accept_to_refuse_fall() -> Bool {
+  native_fall_is_accept_to_refuse(
+    baseline: BaselineAgreed, seen: AttainRefused { stage: NativeTestStagePrepare })
+    && (native_fall_is_accept_to_refuse(baseline: BaselineAgreed, seen: AttainDiverged) == false)
+    && (native_fall_is_accept_to_refuse(
+      baseline: BaselineRefused { stage: NativeTestStageEval },
+      seen: AttainRefused { stage: NativeTestStagePrepare }) == false)
+}
+
+// THE ARM IS NOT "DID ANYTHING FALL" BUT "IS EVERY ACCEPT-TO-REFUSE MEMBER ATTRIBUTED". Undisposed
+// reds under its OWN name, not as a regression -- the cause a reader is sent to is different.
+test fn w_RED_an_undispositioned_accept_to_refuse_reds_under_its_own_name() -> Bool {
+  let fs = findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainRefused { stage: NativeTestStageContext })]
+  )
+  length(xs: fs) == 1
+    && any(xs: fs, predicate: fn(f) {
+      match f {
+        AcceptToRefuseUndispositioned { identity: i, baseline: _, observed: _ } => i.module == "v2.test.alpha"
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        BaselineMemberMissingUndisposed { identity: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+        SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+      }
+    })
+}
+
+// AND WITH THE DISPOSITION IT IS ADMITTED. This is the lane that removed a fail-open not being
+// penalised for it -- the whole requirement.
+test fn an_attributed_accept_to_refuse_is_admitted() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: [],
+      accept_to_refuse: [NativeAcceptToRefuseRow {
+        identity: subject_a,
+        disposition: PriorAcceptanceDependedOnARemovedFallback {
+          fallback: "the corpus-wide global spelling search, deleted by gunbc#12009",
+          now_refuses_with: "resolve refusal at the real binding, which never existed"
+        }
+      }],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(identity: subject_a, attained: AttainRefused { stage: NativeTestStageContext })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => true
+    ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// A TRANSITION DISPOSITION IS CHECKED FROM ITS OWN SIDE, exactly as a removal disposition is: one
+// claimed for a subject that did NOT go accept-to-refuse is contradicted by the run, and leaving
+// it standing would pre-authorise a future fall nobody looked at.
+// The reading supplied below still AGREES, so no transition happened and the claimed
+// disposition has nothing to attribute.
+test fn w_RED_an_accept_to_refuse_disposition_the_run_contradicts_reds() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: [],
+      accept_to_refuse: [NativeAcceptToRefuseRow {
+        identity: subject_a,
+        disposition: PriorAcceptanceDependedOnARemovedFallback {
+          fallback: "claimed", now_refuses_with: "claimed"
+        }
+      }],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressLost { findings: fs } => length(xs: fs) == 1
+    ProgressPreserved => false
+    ProgressUnobserved { reach: _, findings: _ } => false
   }
 }
