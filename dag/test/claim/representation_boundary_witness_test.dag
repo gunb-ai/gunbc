@@ -272,20 +272,45 @@ test fn representation_boundary_local_evidence_gap_is_separate_from_the_oracle_g
     && !boundary_has_unbuilt_local_evidence(b: conforming_row())
 }
 
-// THE DENOMINATOR IS COUNTED, because every wall above is universally quantified and true on an
-// empty roster. The three standing counts are asserted to be individually well-formed and are
-// deliberately NOT asserted to sum to anything: summing a defect count, an open question and an
-// admitted decision produces a number true of no population.
-test fn representation_boundary_counts_are_separate_and_bounded_holds() -> Bool {
-  boundary_roster_size() == 11
-    && interpreted_only_count() >= 0
-    && interpreted_only_count() <= boundary_roster_size()
-    && established_fork_count() >= 1
-    && candidate_fork_count() >= 0
+// EVERY BOUND HERE IS GROUNDED IN A NAMED ROW, WHICH IS WHAT SEPARATES IT FROM A CHANGE DETECTOR.
+// An earlier cut opened with `boundary_roster_size() == 11` -- a literal compared against a
+// population authored in the same tree, which DESIGN section 5 names outright: if automating the
+// literal's update collapses the assertion to measure() == measure(), the manual update was the
+// test's entire content. It is deleted rather than adjusted, and nothing is lost -- the emptiness it
+// was reaching for is already carried by `boundary_roster_size() > 0` in the production-walls arm,
+// which is a bound rather than a transcription. Review 69899 flagged it as a soft spot not worth a
+// round trip; it is one line and DESIGN names the shape, so it is fixed rather than deferred.
+//
+// TWO MORE CONJUNCTS WENT WITH IT AND THE REVIEW DID NOT CATCH THESE. `interpreted_only_count() >= 0`
+// and `candidate_fork_count() >= 0` are VACUOUSLY TRUE -- a count is never negative -- so they were
+// permanently green, carried no information, and padded the arm with the appearance of rigour. That
+// is the same decoration this file deletes twice elsewhere, committed inside the arm that counts.
+//
+// WHAT SURVIVES IS ANCHORED TO SPECIFIC ROWS, so each bound would go red for a NAMED reason rather
+// than because a population moved: at least one ESTABLISHED fork (the coercion two-algebra row), at
+// least one DECLARED DIVERGENCE (bindings), at least one row with NO AUTHORITY (evaluation order),
+// at least two rows carrying a cheap local claim (coercions and bindings), and the containment
+// relations between the arms, which must hold at any population size.
+//
+// THE LAST CONJUNCT IS A CONTAINMENT BOUND AND NOT A SUM, and the difference is worth stating
+// because the roster's own header forbids the second. Adding a defect count, an open question and
+// an admitted decision together produces a number TRUE OF NO POPULATION -- that is why no
+// declaration in gunbc.representation_boundary adds them. What this asserts is weaker and real:
+// the three standings are DISJOINT SUBSETS of one roster, so their total cannot exceed it, at any
+// population size and without any literal. It also keeps candidate_fork_count consumed by an
+// executing claim rather than by an import -- the roster currently has ZERO candidate forks, since
+// bindings was settled into a declared divergence, and a count nothing calls is the dangling
+// declaration DESIGN section 3c calls red. Asserting `candidate_fork_count() == 0` instead would
+// have been worse than useless: it would fire on the legitimate act of recording a new candidate,
+// which is the thing this roster exists to make easy.
+test fn representation_boundary_counts_are_grounded_in_named_rows_holds() -> Bool {
+  established_fork_count() >= 1
     && declared_divergence_count() >= 1
     && boundaries_without_an_authority() >= 1
+    && no_evidence_count() >= 1
     && unbuilt_but_testable_now_count() >= 2
     && unbuilt_but_testable_now_count() <= interpreted_only_count()
-    && no_evidence_count() >= 1
+    && interpreted_only_count() <= boundary_roster_size()
     && no_evidence_count() + interpreted_only_count() <= boundary_roster_size()
+    && established_fork_count() + candidate_fork_count() + declared_divergence_count() <= boundary_roster_size()
 }
