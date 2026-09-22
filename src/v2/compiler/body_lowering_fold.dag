@@ -3268,6 +3268,17 @@ type PostfixChainRead
   = PostfixChainFound { steps: List<PostfixStep> }
   | PostfixChainNotThisShape
 
+// AN UNLOWERED SUFFIX KIND DECLINES, IT DOES NOT REFUSE, AND THE PRECEDENT IS #11683's.
+// Refusing a step suffix this lowering cannot read is the DESIGN section 5 reading, and it was
+// MEASURED against the workload: it turned 32 modules that ACCEPT at base into refusals -- 28
+// directly under the refusal, and 4 more as match_arm_navigation_refused, where the rejection
+// propagated out of a match scrutinee and surfaced under a reason this change never touched.
+// #11683 faced exactly this choice for the call-before-end class and declined for the same
+// reason. So the brace suffix (`a.b.C { f: v }`, the module-qualified record construction) and
+// the `as` suffix decline to the pre-existing arms and behave exactly as they do on base. Their
+// erasure REMAINS and this package does not claim otherwise: the receipt is on
+// gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering, and lowering them
+// needs a construct tag able to carry a qualified name, which is a wider package than this one.
 fn body_lower_postfix_chain_steps_grow(
   repeat_capture: Node,
   acc: List<PostfixStep>,
@@ -3296,19 +3307,6 @@ fn body_lower_postfix_chain_steps_read(
           Present { value: segment } =>
             match body_lower_postfix_suffix_read(repeat_elem: repeat_elem) {
               PostfixSuffixNone => PostfixChainNotThisShape
-              // DECLINED, NOT REFUSED, AND THE PRECEDENT IS #11683's FOR THE SAME REASON.
-              // Refusing an unlowered suffix kind here is the DESIGN section 5 reading, and it
-              // was measured: it turned 32 modules that ACCEPT at base into refusals -- 28
-              // directly, and 4 more as match_arm_navigation_refused when the rejection
-              // propagated out of a match scrutinee. #11683 faced this exact choice for the
-              // call-before-end class and declined for the same reason, with the erasure
-              // recorded as a today-row rather than hidden. So the brace suffix
-              // (`a.b.C { f: v }`, the module-qualified record construction) and the `as`
-              // suffix DECLINE to the pre-existing arms, where they behave exactly as they do
-              // on base. That leaves their erasure in place and this package does not claim
-              // otherwise: the receipt is on gunbc.recurring_failure_mode
-              // call_expression_erased_at_v2_body_lowering, and lowering them needs a construct
-              // tag that can carry a qualified name, which is a wider package than this one.
               PostfixSuffixUnlowered => PostfixChainNotThisShape
               PostfixSuffixEmpty =>
                 body_lower_postfix_chain_steps_grow(
