@@ -687,9 +687,21 @@ fn native_cause_unchanged(baseline: NativeBaselineAttainment, seen: NativeRouteA
   }
 }
 
+// THIS ROSTER CLASSIFIES; IT DOES NOT WAIVE. The first cut had only the two excusing arms and
+// admitted on ANY declaration -- `Present { value: _ } => []` -- so an author who declared
+// `PriorAcceptanceWasNeverSound` over an acceptance that WAS sound got a silent pass, and the
+// roster was an escape hatch with a vocabulary on it.
+//
+// The third arm is what makes it a classification. It exists so an author CAN say the honest
+// thing when a fall is a real fall, and SAYING IT DOES NOT EXCUSE IT: the guard reds under its
+// own name. Declared gets a located red naming the regression; undeclared gets
+// `AcceptToRefuseUndispositioned`. Neither passes, and the two send a reader somewhere different
+// -- which is the whole reason this is a disposition and not a boolean, and the same shape the
+// cause-transition roster takes.
 type NativeAcceptToRefuseDisposition
   = PriorAcceptanceDependedOnARemovedFallback { fallback: String, now_refuses_with: String }
   | PriorAcceptanceWasNeverSound { authority: String, now_refuses_with: String }
+  | AcceptanceWasSoundAndThisIsARegression { why: String }
 
 type NativeAcceptToRefuseRow {
   identity: NativeRouteTestIdentity
@@ -756,6 +768,11 @@ type NativeProgressFinding
       observed: NativeRouteAttainment
     }
   | AcceptToRefuseDispositionContradicted { identity: NativeRouteTestIdentity }
+  | AcceptToRefuseDeclaredARegression {
+      identity: NativeRouteTestIdentity
+      baseline: NativeBaselineAttainment
+      observed: NativeRouteAttainment
+    }
   | CauseTransitionUndispositioned { identity: NativeRouteTestIdentity }
   | CauseRegressedAtAFixedRank { identity: NativeRouteTestIdentity, was: String, now: String }
   | SubjectUnreachedEarlierRungFailed {
@@ -1105,7 +1122,17 @@ fn native_progress_rank_comparison(
     native_cause_transition_findings(row: row, seen: seen, cause_transitions: cause_transitions)
   } else if native_fall_is_accept_to_refuse(baseline: row.attained, seen: seen) {
     match native_accept_to_refuse_for(identity: row.identity, rows: accept_to_refuse) {
-      Present { value: _ } => []
+      Present { value: d } =>
+        match d {
+          PriorAcceptanceDependedOnARemovedFallback { fallback: _, now_refuses_with: _ } => []
+          PriorAcceptanceWasNeverSound { authority: _, now_refuses_with: _ } => []
+          AcceptanceWasSoundAndThisIsARegression { why: _ } =>
+            [AcceptToRefuseDeclaredARegression {
+              identity: row.identity,
+              baseline: row.attained,
+              observed: seen
+            }]
+        }
       Absent => [AcceptToRefuseUndispositioned {
         identity: row.identity,
         baseline: row.attained,
@@ -1460,6 +1487,11 @@ fn native_progress_finding_text(f: NativeProgressFinding) -> String {
       join([
         "CAUSE REGRESSED AT A FIXED RANK (declared, and declaring it does not excuse it): '", w,
         "' -> '", n, "' ", native_route_identity_qualified(identity: id)
+      ], "")
+    AcceptToRefuseDeclaredARegression { identity: id, baseline: _, observed: _ } =>
+      join([
+        "ACCEPT-TO-REFUSE DECLARED A REGRESSION (declared, and declaring it does not excuse it) ",
+        native_route_identity_qualified(identity: id)
       ], "")
     AcceptToRefuseDispositionContradicted { identity: id } =>
       join([

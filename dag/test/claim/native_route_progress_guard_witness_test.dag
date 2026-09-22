@@ -31,7 +31,8 @@ import gunbc.native_route_progress_guard {
   NativeProgressBaseline, NativeProgressBaselineRow,
   NativeVerdictAdjudication, BaselineMintedUnderADifferentAdjudication, native_adjudication_same,
   NativeAcceptToRefuseDisposition, NativeAcceptToRefuseRow,
-  PriorAcceptanceDependedOnARemovedFallback,
+  PriorAcceptanceDependedOnARemovedFallback, AcceptanceWasSoundAndThisIsARegression,
+  AcceptToRefuseDeclaredARegression,
   AcceptToRefuseUndispositioned, AcceptToRefuseDispositionContradicted,
   native_fall_is_accept_to_refuse,
   NativeProgressDispositionRow, SubjectDeleted, SubjectRenamed, SubjectLeftTheUniverse,
@@ -274,6 +275,7 @@ test fn w_RED_a_subject_refused_earlier_than_before_is_a_regression() -> Bool {
       BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
       AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
       AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
       SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
@@ -406,6 +408,7 @@ test fn w_RED_a_rename_whose_target_attains_less_reds() -> Bool {
       BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
       AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
       AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
       SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
@@ -437,6 +440,7 @@ test fn w_RED_a_rename_to_a_target_the_run_never_saw_reds() -> Bool {
       BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
       AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
       AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
       SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
@@ -663,6 +667,8 @@ test fn w_RED_an_unreached_subject_reds_as_unreached_and_not_as_a_regression() -
         BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
         AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
@@ -830,6 +836,8 @@ test fn w_RED_a_run_with_no_binary_reports_every_row_unreached_not_missing() -> 
         ObservedMemberReadingMalformed { identity: _ } => false
         AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
@@ -850,6 +858,8 @@ test fn w_RED_a_run_with_no_binary_reports_every_row_unreached_not_missing() -> 
         ObservedMemberReadingMalformed { identity: _ } => false
         AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
@@ -918,6 +928,8 @@ test fn w_RED_a_rename_to_an_unreached_target_reds_as_unreached_not_as_a_lowered
         ObservedMemberReadingMalformed { identity: _ } => false
         AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
@@ -1082,6 +1094,8 @@ test fn w_RED_a_baseline_minted_under_a_weaker_adjudicator_is_not_a_bar() -> Boo
         ObservedMemberReadingMalformed { identity: _ } => false
         AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
@@ -1125,6 +1139,8 @@ test fn w_RED_across_a_meaning_boundary_no_regression_is_reported_beside_it() ->
         ObservedMemberReadingMalformed { identity: _ } => false
         AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
@@ -1386,12 +1402,16 @@ test fn w_RED_an_undispositioned_accept_to_refuse_reds_under_its_own_name() -> B
         ObservedMemberReadingMalformed { identity: _ } => false
         BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
         CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
         AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
@@ -1523,6 +1543,8 @@ test fn w_RED_a_cause_change_at_a_fixed_rank_is_not_a_non_event() -> Bool {
         CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
         AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
         BaselineMemberMissingUndisposed { identity: _ } => false
         DispositionContradictedByRun { identity: _ } => false
         RenameTargetAbsent { identity: _, target: _ } => false
@@ -1610,6 +1632,8 @@ test fn w_RED_a_declared_cause_regression_still_reds() -> Bool {
         ProgressRegressed { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
         BaselineMemberMissingUndisposed { identity: _ } => false
         DispositionContradictedByRun { identity: _ } => false
         RenameTargetAbsent { identity: _, target: _ } => false
@@ -1630,4 +1654,36 @@ test fn w_RED_a_divergence_changing_kind_is_also_a_cause_transition() -> Bool {
     baseline: BaselineDiverged { cause: NativePassedExpectedRed },
     seen: AttainDiverged { cause: NativeReturnedOtherVerdict }
   ) == false
+}
+
+// THE ACCEPT-TO-REFUSE ROSTER CLASSIFIES RATHER THAN WAIVES, the same shape the cause-transition
+// roster takes. Its first cut admitted on ANY declaration, so an author declaring
+// `PriorAcceptanceWasNeverSound` over an acceptance that WAS sound got a silent pass -- an escape
+// hatch with a vocabulary on it. The honest arm exists so the real case can be said, and saying
+// it produces a located red rather than a pass.
+test fn w_RED_a_declared_accept_to_refuse_regression_still_reds() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: [],
+      accept_to_refuse: [NativeAcceptToRefuseRow {
+        identity: subject_a,
+        disposition: AcceptanceWasSoundAndThisIsARegression {
+          why: "the acceptance did not depend on any fallback; this subject genuinely stopped working"
+        }
+      }],
+      cause_transitions: [],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(identity: subject_a, attained: AttainRefused { stage: NativeTestStageContext, cause: frontier_cause })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressLost { findings: fs } => length(xs: fs) == 1
+    ProgressPreserved => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
 }
