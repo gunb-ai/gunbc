@@ -5,6 +5,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { second_count, minute_count, hardware_thread_count, hardware_thread_count_value }
 import v2.std.optional { Present }
 import gunbc.machine_intake_mtcollins1_boot_run {
+  SolAcquirePlan, SolAcquireRefuse, SolAcquireBindHeldCollector, SolAcquireReleaseThenStart,
+  SolAcquireStart, sol_acquire_plan,
   mtcollins1_boot_approval_window, mtcollins1_boot_poll_cadence, mtcollins1_boot_poll_tick_budget,
   mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
   mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance,
@@ -555,4 +557,37 @@ test fn a_pre_os_refusal_on_the_console_is_a_typed_refusal_not_a_timeout() -> Bo
     && (match mtcollins1_boot_terminal_verdict(capture: grub_failed, subject: mtcollins1_boot_subject_for(medium: MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr), medium: MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }) {
       TerminalRefused { causes: cs } => count(cs) == 1
       _ => false })
+}
+
+// EVERY ACQUISITION THAT GOES ON TO READ THE CAPTURE BINDS IT TO THIS ATTEMPT FIRST. This is the
+// claim that was RED before the repair it guards: the converged arm -- a collector we already hold
+// -- returned plain success without ever binding the capture, so a GRUB refusal left in the file by
+// an EARLIER attempt was readable as this attempt's evidence, and the typed pre-OS refusal beside
+// it would have aborted the claim on another boot's failure. The live workflow truncated the file
+// in its shell prelude, so CI was green on a second safety net while the fold's own annotation
+// claimed a construction it did not have.
+//
+// The assertion is on the MAPPING rather than on a predicate over the sum: a predicate answering
+// true for every arm is permanently green by construction (section 4b calls that a decoration), so
+// what is asserted is that converged yields the BINDING arm and that each refusing observation
+// still refuses -- which is exactly what flips if the bypass returns.
+test fn every_acquisition_that_reads_the_capture_binds_it_to_this_attempt() -> Bool {
+  let pid = "/run/mtcollins1-sol.pid"
+  let cap = "/run/mtcollins1-sol.out"
+  (match sol_acquire_plan(verdict: Converged, pid_path: pid, capture_path: cap) {
+    SolAcquireBindHeldCollector => true  _ => false })
+    && (match sol_acquire_plan(verdict: Absent, pid_path: pid, capture_path: cap) {
+      SolAcquireStart => true  _ => false })
+    && (match sol_acquire_plan(verdict: Drifted, pid_path: pid, capture_path: cap) {
+      SolAcquireReleaseThenStart => true  _ => false })
+    && (match sol_acquire_plan(verdict: Conflict, pid_path: pid, capture_path: cap) {
+      SolAcquireRefuse { reason: _ } => true  _ => false })
+    && (match sol_acquire_plan(verdict: Inaccessible, pid_path: pid, capture_path: cap) {
+      SolAcquireRefuse { reason: _ } => true  _ => false })
+    && (match sol_acquire_plan(verdict: UnknownRefused, pid_path: pid, capture_path: cap) {
+      SolAcquireRefuse { reason: _ } => true  _ => false })
+    && (match sol_acquire_plan(verdict: Converged, pid_path: pid, capture_path: "") {
+      SolAcquireRefuse { reason: _ } => true  _ => false })
+    && (match sol_acquire_plan(verdict: Converged, pid_path: "", capture_path: cap) {
+      SolAcquireRefuse { reason: _ } => true  _ => false })
 }
