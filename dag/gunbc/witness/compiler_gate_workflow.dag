@@ -27,7 +27,7 @@ module gunbc.compiler_gate_workflow
 
 import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
-import v2.std.algebra { list_map, filter, list_append }
+import v2.std.algebra { list_map, filter, list_append, length }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
@@ -98,7 +98,7 @@ import extdeps.github.expressions { interpolate, ContextAccess, Needs, default_e
 import extdeps.github.log_annotations { emit_line_shell }
 import gunbc.emitted_subject_build_gate {
   EmittedSubjectBuildRow,
-  emit_build_standing_notice,
+  emit_build_standing, emit_build_standing_notice_for,
   emitted_subject_build_rows,
   emitted_subject_build_command,
   emitted_subject_build_step_name
@@ -707,11 +707,23 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
 // IT ECHOES RATHER THAN ANNOTATES. A `::error::` would add a second red to a job that already has
 // one, and a `::notice::` on a failed job is rendered where nobody looking at the failure will
 // read it. Plain stdout at the end of the step list is where the eye already is.
+// THE LIVE NOTICE: the standing row composed with THIS lane row's blocking status, so "does NOT
+// block your merge" is printed only while `compiler_gate_lane_rows` says so, and the one-word flip
+// to `LaneBlocks` changes the notice in the same edit.
+fn compiler_gate_emit_build_notice_lines() -> List<String> {
+  emit_build_standing_notice_for(
+    standing: emit_build_standing,
+    lane_blocks: length(xs: filter(xs: compiler_gate_blocking_rows(), predicate: fn(row) {
+      row.job_id == compiler_gate_emit_build_job_id
+    })) > 0
+  )
+}
+
 fn compiler_gate_emit_build_notice_step() -> Step {
   RunStep {
     name: Present { value: "Why this lane is red, and what would be a real finding" },
     id: none,
-    run: join(list_map(xs: emit_build_standing_notice(), f: emit_line_shell), "\n"),
+    run: join(list_map(xs: compiler_gate_emit_build_notice_lines(), f: emit_line_shell), "\n"),
     shell: none,
     env: none,
     working_directory: none,

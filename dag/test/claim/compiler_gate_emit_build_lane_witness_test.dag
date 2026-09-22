@@ -17,17 +17,18 @@ import gunbc.compiler_gate_workflow {
   compiler_gate_aggregate_script_lines,
   compiler_gate_blocking_rows, compiler_gate_lane_rows,
   compiler_gate_same_repo_expression, compiler_gate_floor_job_condition,
-  compiler_gate_emit_build_notice_step
+  compiler_gate_emit_build_notice_step,
+  compiler_gate_emit_build_notice_lines
 }
 import gunbc.emitted_subject_build_gate {
   NativeEmitBuildStanding, EmitBuildExpectedGreen, EmitBuildExpectedRed, EmittedBuildSignature,
-  emit_build_standing_notice, emit_build_standing_notice_for,
+  emit_build_standing_notice_for,
   emitted_subject_build_rows,
   emitted_subject_build_label_text,
   emitted_subject_build_command
 }
 import extdeps.exec.command { shell_command_render }
-import v2.std.algebra { length }
+import v2.std.algebra { length, filter }
 
 // WHAT THIS FILE DISCRIMINATES. Three facts, and each has a red that is authorable HERE rather
 // than only by a future edit to the workflow: the aggregate-enrollment predicate refuses a lane
@@ -287,7 +288,7 @@ test fn the_fork_predicate_has_one_authority_across_both_transports() -> Bool {
 // this lane, which is how a detector dies without anyone deciding to kill it. So the notice must
 // carry the DISCRIMINATOR -- what would be a genuinely new finding -- and not only the comfort.
 test fn the_notice_carries_the_discriminator_and_not_only_the_reassurance() -> Bool {
-  let text = join(emit_build_standing_notice(), "\n")
+  let text = join(compiler_gate_emit_build_notice_lines(), "\n")
   string_contains(s: text, pattern: "does NOT block your merge")
     && string_contains(s: text, pattern: "E0573 PointerWidth at src/std_integer.rs")
     && string_contains(s: text, pattern: "DIFFERENT error code")
@@ -303,7 +304,7 @@ test fn the_notice_carries_the_discriminator_and_not_only_the_reassurance() -> B
 // rendered notice is a pointer to something that moves, on a surface a stranger reads as
 // authoritative because they have no other source.
 test fn w_RED_the_notice_names_no_owning_pull_request() -> Bool {
-  let text = join(emit_build_standing_notice(), "\n")
+  let text = join(compiler_gate_emit_build_notice_lines(), "\n")
   (string_contains(s: text, pattern: "#1") == false)
     && (string_contains(s: text, pattern: "#2") == false)
     && (string_contains(s: text, pattern: "PR #") == false)
@@ -314,7 +315,7 @@ test fn w_RED_the_notice_names_no_owning_pull_request() -> Bool {
 // every break at this step shares `cause=EmittedCompilerBuildFailed`, so a reader comparing cause
 // lines concludes "known break" for a defect that is new.
 test fn the_notice_says_the_cause_line_does_not_discriminate() -> Bool {
-  string_contains(s: join(emit_build_standing_notice(), "\n"), pattern: "cause=EmittedCompilerBuildFailed")
+  string_contains(s: join(compiler_gate_emit_build_notice_lines(), "\n"), pattern: "cause=EmittedCompilerBuildFailed")
 }
 
 // THE REASSURANCE IS UNPRINTABLE ONCE THE STANDING FLIPS. This renders the Green arm over a
@@ -323,10 +324,10 @@ test fn the_notice_says_the_cause_line_does_not_discriminate() -> Bool {
 // self-hosts. The positive half: the same rendering over the Red arm DOES print it, so the claim
 // cannot pass by the renderer printing nothing.
 test fn w_RED_the_green_standing_cannot_print_the_expected_red_reassurance() -> Bool {
-  let green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen), "\n")
+  let green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen, lane_blocks: false), "\n")
   let red = join(emit_build_standing_notice_for(standing: EmitBuildExpectedRed {
     known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
-  }), "\n")
+  }, lane_blocks: false), "\n")
   (string_contains(s: green, pattern: "CURRENTLY EXPECTED") == false)
     && (string_contains(s: green, pattern: "E9999") == false)
     && string_contains(s: green, pattern: "REAL FINDING")
@@ -339,11 +340,38 @@ test fn w_RED_the_green_standing_cannot_print_the_expected_red_reassurance() -> 
 // automatically when the condition holds -- that stays review diligence, and this claim does not
 // pretend otherwise; it establishes only that the condition reaches the surface a reader sees.
 test fn the_live_notice_prints_its_retirement_capability() -> Bool {
-  let text = join(emit_build_standing_notice(), "\n")
+  let text = join(compiler_gate_emit_build_notice_lines(), "\n")
   string_contains(s: text, pattern: "THIS STANDING RETIRES WHEN: ")
     && string_contains(s: text, pattern: "//gunbc/instruments:self-host")
     && string_contains(s: text, pattern: "//gunbc/instruments:v2-native-cli")
     && string_contains(s: text, pattern: "all exit zero")
+}
+
+// WHETHER THE LANE BLOCKS IS READ FROM THE LANE ROW, NOT WRITTEN INTO THE NOTICE. Rendered with the
+// status supplied both ways: a blocking lane never prints the non-blocking reassurance, and a
+// blocking lane with a still-Red standing prints the contradiction rather than "nothing for you to
+// fix". The live half: today's row is `LaneAnnouncedNotBlocking`, so the live notice says so.
+test fn w_RED_a_blocking_lane_never_prints_the_non_blocking_reassurance() -> Bool {
+  let probe = EmitBuildExpectedRed {
+    known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
+  }
+  let blocking_red = join(emit_build_standing_notice_for(standing: probe, lane_blocks: true), "\n")
+  let blocking_green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen, lane_blocks: true), "\n")
+  let advisory_red = join(emit_build_standing_notice_for(standing: probe, lane_blocks: false), "\n")
+  (string_contains(s: blocking_red, pattern: "does NOT block") == false)
+    && (string_contains(s: blocking_green, pattern: "does NOT block") == false)
+    && string_contains(s: blocking_green, pattern: "BLOCKS your merge")
+    && string_contains(s: blocking_red, pattern: "CONTRADICTION")
+    && (string_contains(s: blocking_red, pattern: "nothing for you to fix") == false)
+    && string_contains(s: advisory_red, pattern: "does NOT block")
+}
+
+test fn the_live_notice_agrees_with_the_live_lane_row() -> Bool {
+  let text = join(compiler_gate_emit_build_notice_lines(), "\n")
+  let blocks = length(xs: filter(xs: compiler_gate_blocking_rows(), predicate: fn(row) {
+    row.job_id == compiler_gate_emit_build_job_id
+  })) > 0
+  string_contains(s: text, pattern: "does NOT block") == (blocks == false)
 }
 
 // THE NOTICE RUNS ONLY ON FAILURE. On every passing PR in the repository it must print nothing --

@@ -1,7 +1,7 @@
 module gunbc.emitted_subject_build_gate
 
-import std.types { String, List }
-import v2.std.algebra { list_map }
+import std.types { Bool, String, List }
+import v2.std.algebra { list_map, list_append }
 import extdeps.bazel.label { Label, render_label }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.gunbc_cli_command { gunbc_test_command }
@@ -188,27 +188,51 @@ data emit_build_standing: NativeEmitBuildStanding = EmitBuildExpectedRed {
   }
 }
 
-// THE LINES A LANE READS WHEN IT CLICKS THE RED X. Rendered from the row above, so the reassurance
-// and the discriminator cannot drift apart from the standing they describe. The live notice is the
-// rendering of the live row; the rendering is a function over a SUPPLIED standing so that the Green
-// arm -- reachable in production only by editing the row -- can be executed by a claim today.
-fn emit_build_standing_notice() -> List<String> {
-  emit_build_standing_notice_for(standing: emit_build_standing)
-}
-
+// THE LINES A LANE READS WHEN IT CLICKS THE RED X. Rendered from the standing row above AND from
+// whether the lane blocks -- a SUPPLIED Bool, because that fact's one home is the lane row in
+// `gunbc.compiler_gate_workflow` (`LaneBlocks` / `LaneAnnouncedNotBlocking`), which imports this
+// module and composes the live notice. A hard-coded "does NOT block your merge" would go false the
+// moment that row flips, on exactly the surface this rendering exists to keep honest.
+//
 // The retirement condition is PRINTED, so a reader who can see main self-host again knows the row
 // is stale and what edit retires it. Nothing mechanically flips the row when the condition holds:
-// that is review diligence, stated here rather than implied by the field's existence.
-fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding) -> List<String> {
+// that is review diligence, stated here rather than implied.
+fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding, lane_blocks: Bool) -> List<String> {
+  list_append(xs: emit_build_lane_blocking_lines(lane_blocks: lane_blocks), ys: emit_build_standing_lines(standing: standing, lane_blocks: lane_blocks))
+}
+
+fn emit_build_lane_blocking_lines(lane_blocks: Bool) -> List<String> {
+  if lane_blocks {
+    [
+      "emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.",
+    ]
+  } else {
+    [
+      "emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:",
+      "the required context is `witnesses`, and this job is not an input to it.",
+    ]
+  }
+}
+
+// A BLOCKING LANE WITH A RED STANDING IS A CONTRADICTION, not a state to reassure anyone about:
+// the flip trigger is main self-hosting, which is the standing's retirement condition. So that
+// combination prints no "nothing for you to fix" -- it tells the reader the two rows disagree.
+fn emit_build_standing_lines(standing: NativeEmitBuildStanding, lane_blocks: Bool) -> List<String> {
   match standing {
     EmitBuildExpectedGreen => [
-      "emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:",
-      "the required context is `witnesses`, and this job is not an input to it.",
       "No standing break is declared, so a red here is a REAL FINDING -- most likely yours.",
     ]
-    EmitBuildExpectedRed { known_signature: sig } => [
-      "emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:",
-      "the required context is `witnesses`, and this job is not an input to it.",
+    EmitBuildExpectedRed { known_signature: sig } => if lane_blocks {
+      [
+        "",
+        "CONTRADICTION: this lane blocks, yet its standing still declares an expected red with signature",
+        join(["  ", render_emitted_build_signature(sig: sig)], ""),
+        "The lane was to become required only once main self-hosts, which retires that standing.",
+        "One of gunbc.compiler_gate_workflow's emit-build lane row or",
+        "gunbc.emitted_subject_build_gate emit_build_standing is stale. Report it; do not assume this red is yours or not.",
+      ]
+    } else {
+    [
       "",
       "A RED IS CURRENTLY EXPECTED: main cannot self-host, and the break has this signature --",
       join(["  ", render_emitted_build_signature(sig: sig)], ""),
@@ -228,5 +252,6 @@ fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding) -> List<Str
       join(["THIS STANDING RETIRES WHEN: ", emit_build_standing_retirement()], ""),
       "If that already holds on main, this notice is stale: flip gunbc.emitted_subject_build_gate emit_build_standing to EmitBuildExpectedGreen.",
     ]
+    }
   }
 }
