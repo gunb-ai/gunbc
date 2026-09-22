@@ -474,3 +474,71 @@ test fn w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses() ->
   violation_count(source: disjoint_refinement_at_product_source, wanted: "DeclaredTypeNotInhabited")
     > violation_count(source: disjoint_partner_source, wanted: "DeclaredTypeNotInhabited")
 }
+
+// THE COLLECTION-VERSUS-NOMINAL-PRODUCT CELL, IN BOTH DIRECTIONS. Measured on main ff2110b7e24,
+// both arms below ADMITTED: the callee body ran and returned. Every arm of
+// declared_type_inhabitance keyed on the kind of ONE side -- `collection_at_scalar_declared_type`
+// asked whether the PRODUCED value was a collection and the DECLARED type peeled to a kernel
+// scalar, `record_at_scalar_needs_identity` asked for a kernel DECLARED and a product PRODUCED,
+// `nominal_product_head_name` answers "" for a collection by design -- so the pair
+// collection/nominal-product was judged by no arm and reached the terminal `Inhabits` by
+// fallthrough. The four REFUSED controls already in this file (Int<-String, Int<-List<Int>,
+// Rec<-Other, Rec<-Optional) establish that the direct-call seam RUNS on these fixtures, so the
+// admission was a hole in the relation and not an unreached position.
+//
+// This is a specimen of gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel, not a new class: the wall was keyed on
+// the kind of the offending value rather than on the relation between the value and its declared
+// type. The repair generalizes the collection judgment into
+// `collection_versus_established_identity`, which is why these two arms and the positives below
+// are read together -- an arm that refused every collection would pass both reds and destroy the
+// corpus.
+data list_value_at_record_formal_source: String = "module probe_inhabit_list_at_record\nimport std.types { Int, String, List }\ntype Rec { a: String }\nfn takes_rec(r: Rec) -> Int { 1 }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn probe() -> Int { takes_rec(r: a_list()) }\n"
+
+test fn w_a_collection_at_a_nominal_product_formal_is_refused() -> Bool {
+  violation_count(source: list_value_at_record_formal_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE DUAL, and it is not the arm above with the words swapped: it exercises the other branch of
+// the relation, where the DECLARED side is the collection and the PRODUCED side carries the
+// established product identity. A relation that only looked at the produced side would leave this
+// one admitted.
+data record_value_at_list_formal_source: String = "module probe_inhabit_record_at_list\nimport std.types { Int, String, List }\ntype Rec { a: String }\nfn takes_list(xs: List<Int>) -> Int { 1 }\nfn a_rec() -> Rec { Rec { a: \"x\" } }\nfn probe() -> Int { takes_list(xs: a_rec()) }\n"
+
+test fn w_a_nominal_product_at_a_collection_formal_is_refused() -> Bool {
+  violation_count(source: record_value_at_list_formal_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE ANTI-REFUSE-EVERYTHING CONTROLS FOR THAT RELATION. Same two shapes, each at its OWN formal.
+// The census records that an earlier structural reading of this seam refused 33 of 50 correct
+// sites, so a positive control here is load-bearing rather than a formality.
+data matching_collection_and_record_source: String = "module probe_inhabit_coll_match\nimport std.types { Int, String, List }\ntype Rec { a: String }\nfn takes_rec(r: Rec) -> Int { 1 }\nfn takes_list(xs: List<String>) -> Int { 1 }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn a_rec() -> Rec { Rec { a: \"x\" } }\nfn probe() -> Int { takes_rec(r: a_rec()) + takes_list(xs: a_list()) }\n"
+
+test fn w_a_collection_and_a_product_each_at_their_own_formal_are_admitted() -> Bool {
+  violation_count(source: matching_collection_and_record_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// THE PEEL, AND WHY BOTH SIDES ARE PEELED. `type Words = List<String>` is a declared alias whose
+// outer node is not List, so a relation that asked the collection question before peeling would
+// read the formal as a non-collection nominal identity and refuse a correct site. The same gap
+// carries FreeMonoid<T> arriving as List<T>. This arm is the discriminating control over
+// side_is_collection_after_peel: drop the peel and it goes red while the two arms above stay
+// green, which is exactly the false-refusal shape the census exists to catch.
+data alias_collection_formal_source: String = "module probe_inhabit_alias_coll\nimport std.types { Int, String, List }\ntype Words = List<String>\nfn takes_words(w: Words) -> Int { 1 }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn probe() -> Int { takes_words(w: a_list()) }\n"
+
+test fn w_a_collection_at_an_alias_of_that_collection_is_admitted() -> Bool {
+  violation_count(source: alias_collection_formal_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// THE loyal-swift-608 DISCOVERY SHAPE, ENROLLED AS A CLAIM ON THE DECLARED TYPE. A
+// construction-level wall over a record mintable only by a quiet builder was defeated by handing
+// the interpreter a List<String> carrying "--quiet" at the record's declared position: the
+// construction wall was real and the DECLARED-TYPE wall beneath it was open, so the value never
+// had to be minted. The claim here is the type one -- the declared record REFUSES the smuggled
+// argv list -- which is the fact a next-rung trigger over that construction wall needs to be
+// able to fire on.
+data smuggled_argv_at_builder_record_source: String = "module probe_inhabit_smuggled_argv\nimport std.types { Int, String, List }\ntype QuietInvocation { argv: List<String> }\nfn run_quiet(inv: QuietInvocation) -> Int { 1 }\nfn smuggled_argv() -> List<String> { [\"--quiet\"] }\nfn probe() -> Int { run_quiet(inv: smuggled_argv()) }\n"
+
+test fn w_a_smuggled_argv_list_at_a_builder_minted_record_is_refused() -> Bool {
+  violation_count(source: smuggled_argv_at_builder_record_source, wanted: "DeclaredTypeNotInhabited") > 0
+}

@@ -4998,6 +4998,7 @@ pub enum InhabitanceUndecidableReason {
 pub enum InhabitanceRefusalReason {
     RefusedPayloadAtParent,
     RefusedKernelAtStructured,
+    RefusedCollectionAtEstablishedIdentity,
     RefusedDistinctProductConstructor,
     RefusedDistinctAppliedTypeArgument,
     RefusedOptionalAtRequired,
@@ -5262,14 +5263,14 @@ pub fn declared_type_inhabitance(
                             ) {
                                 Rc::new(InhabitanceVerdict::Inhabits)
                             } else {
-                                if collection_at_scalar_declared_type(
+                                if collection_versus_established_identity(
                                     declared.clone(),
                                     produced.clone(),
                                     scope.clone(),
                                 ) {
                                     Rc::new(InhabitanceVerdict::InhabitanceRefused {
-                                        reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
-                                    })
+    reason: InhabitanceRefusalReason::RefusedCollectionAtEstablishedIdentity,
+})
                                 } else {
                                     if record_at_scalar_needs_identity(
                                         declared.clone(),
@@ -5371,43 +5372,94 @@ pub fn optional_produced_at_required_declared(
     }
 }
 
-pub fn collection_at_scalar_declared_type(
+pub fn side_is_collection_after_peel(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        if (crate::v1_compiler_infer_types::node_is_element_collection(n.clone(), si.clone())
+            || crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), si.clone()))
+        {
+            true
+        } else {
+            {
+                let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                    n.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                );
+                (crate::v1_compiler_infer_types::node_is_element_collection(
+                    peeled.clone(),
+                    si.clone(),
+                ) || crate::v1_compiler_infer_types::node_is_keyed_collection(
+                    peeled.clone(),
+                    si.clone(),
+                ))
+            }
+        }
+    }
+}
+
+pub fn side_is_established_non_collection_identity(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        let is_generic = (((n.params.clone().len() as i64) > 0)
+            || match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                _ => false,
+            });
+        if (is_generic.clone() || type_node_is_callable(n.clone())) {
+            false
+        } else {
+            {
+                let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                    n.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                );
+                let peeled_is_kernel = crate::std_types::is_kernel_type(
+                    crate::v1_std_core::authored_name_at(si.clone(), peeled.clone()),
+                );
+                let refinement_base_is_kernel = if is_where_refinement_type(n.clone()) {
+                    match n.children.clone().first().cloned() {
+                        Some(base) => {
+                            crate::std_types::is_kernel_type(crate::v1_std_core::authored_name_at(
+                                si.clone(),
+                                crate::v1_compiler_infer_types::child_type_node(base.clone()),
+                            ))
+                        }
+                        std::option::Option::None => false,
+                    }
+                } else {
+                    false
+                };
+                if (peeled_is_kernel.clone() || refinement_base_is_kernel.clone()) {
+                    true
+                } else {
+                    {
+                        let exposure = expected_type_head_exposure(n.clone(), scope.clone());
+                        ((crate::v1_compiler_type_head_exposure::type_head_exposure_is_kernel_scalar(exposure.clone()) || crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(exposure.clone())) || crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(exposure.clone()))
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn collection_versus_established_identity(
     declared: Rc<Node>,
     produced: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> bool {
-    if (crate::v1_compiler_infer_types::node_is_collection(
-        produced.clone(),
-        scope.type_env.clone().source_indices.clone(),
-    ) == false)
     {
-        false
-    } else {
-        {
-            let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                declared.clone(),
-                scope.type_env.clone(),
-                scope.module_name.clone(),
-            );
-            let peeled_is_kernel =
-                crate::std_types::is_kernel_type(crate::v1_std_core::authored_name_at(
-                    scope.type_env.clone().source_indices.clone(),
-                    peeled.clone(),
-                ));
-            let refinement_base_is_kernel = if is_where_refinement_type(declared.clone()) {
-                match declared.children.clone().first().cloned() {
-                    Some(base) => {
-                        crate::std_types::is_kernel_type(crate::v1_std_core::authored_name_at(
-                            scope.type_env.clone().source_indices.clone(),
-                            crate::v1_compiler_infer_types::child_type_node(base.clone()),
-                        ))
-                    }
-                    std::option::Option::None => false,
-                }
+        let declared_is_collection = side_is_collection_after_peel(declared.clone(), scope.clone());
+        let produced_is_collection = side_is_collection_after_peel(produced.clone(), scope.clone());
+        if (declared_is_collection.clone() == produced_is_collection.clone()) {
+            false
+        } else {
+            if produced_is_collection.clone() {
+                side_is_established_non_collection_identity(declared.clone(), scope.clone())
             } else {
-                false
-            };
-            (peeled_is_kernel.clone() || refinement_base_is_kernel.clone())
+                side_is_established_non_collection_identity(produced.clone(), scope.clone())
+            }
         }
     }
 }
@@ -27679,6 +27731,8 @@ pub struct UndecidableRefinementPeerChains;
 pub struct RefusedPayloadAtParent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedKernelAtStructured;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedCollectionAtEstablishedIdentity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedDistinctProductConstructor;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
