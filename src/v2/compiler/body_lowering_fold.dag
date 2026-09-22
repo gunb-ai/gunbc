@@ -6115,6 +6115,23 @@ fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
 // have lowered no block shell remains under the unit, so a remaining one is the record spelling.
 // Generic parameters and the type-decl modifiers are not carried by this rehome, as they are
 // not by the where-alias rehome beside it: neither is modeled on this route yet.
+// A RECORD REHOMES TO Conj{ R: payload }, AND THAT SHAPE DOES NOT SAY IT IS A RECORD. The graft
+// flattens this the same way it flattens a where-alias, so downstream of the graft a record
+// declaration and a where-alias are indistinguishable, and the record/where-alias distinction is
+// last held HERE, in body_lower_type_decl's arms.
+//
+// NOTHING CONSUMES THAT DISTINCTION TODAY, WHICH IS WHY THIS IS A FRONTIER AND NOT A DEFECT --
+// and it is named rather than left to be discovered, because a lane has already hit it:
+// gunbc#12033's follow-up (Pkg16, the pattern-binder classifier reading what a name DENOTES rather
+// than sniffing node shape) withdrew its first design on exactly this, having assumed a record
+// still reaches namespace_graft_unit_disposition as a type_decl. It does not, on this branch.
+//
+// NOTE WHAT THE EVIDENCE HERE DOES NOT COVER, stated because a reader would otherwise assume it
+// does: this file's witnesses assert the FIELDS a record declares, and v2.test.parse.
+// variant_field_lowering vf_where_beside_payload_refuses asserts a where clause beside a payload
+// REFUSES. Neither distinguishes a lowered record from a lowered where-alias, so no claim in this
+// PR would go red if that collapse mattered. Whoever needs the distinction carries it from this
+// arm; they do not recover it downstream.
 fn body_lower_record_type_decl(shell: Node, type_name: Symbol, block_shell: Node) -> Outcome<Node> {
   match body_lower_field_decl_block_payload(block_shell: block_shell) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
