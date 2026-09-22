@@ -224,10 +224,19 @@ data whole_corpus_compile_public_root_receipt: WholeCorpusCompileDemandReceipt =
   },
 }
 
+// THE PUBLIC ROOT'S MEASURED PEAK IS ITS OWN ROW, CONSUMED BY THE DEMAND ROW BELOW AND BY THE
+// ONE CONSUMER THAT SIZES A PROCESS BY IT (gunbc.runner_slot_allocation
+// microvm_controller_slice_memory_max_bytes: the microVM slot controller resolves the same
+// closure this row measured). A projection that matched the demand's arms would have needed an
+// answer for UnmeasuredRoot, and there is none that is not fabricated (review 69931); reading the
+// figure as the row the measured arm is BUILT FROM leaves nothing to answer -- if this root ever
+// becomes UnmeasuredRoot, this row is deleted with the arm and every consumer refuses to compile.
+data whole_corpus_compile_public_root_peak: ByteSize = byte_size(17179869184)
+
 data whole_corpus_compile_public_root_demand: WholeCorpusCompileDemand = MeasuredForRoot {
   root: whole_corpus_compile_public_root,
   census: whole_corpus_compile_public_root_census,
-  peak: byte_size(17179869184),
+  peak: whole_corpus_compile_public_root_peak,
   receipt: whole_corpus_compile_public_root_receipt,
 }
 
@@ -246,17 +255,6 @@ data whole_corpus_compile_xl1_fixture_root: WholeCorpusCompileRootIdentity = Who
   repository: whole_corpus_compile_repository,
   primary_root: "dag/test/fixture/reference_derived_graph" as SourceRootIdentity,
   dependency_pools: ["dag/std" as SourceRootIdentity],
-}
-
-// THE PUBLIC ROOT'S MEASURED PEAK, PROJECTED FOR A CONSUMER THAT SIZES A PROCESS BY IT: the
-// microVM slot controller's slice (gunbc.runner_microvm_slot_unit) bounds a seed process that
-// resolves the same closure this row measured. Reading the peak through this function keeps the
-// number in one place.
-fn whole_corpus_compile_public_root_demand_peak() -> ByteSize {
-  match whole_corpus_compile_public_root_demand {
-    MeasuredForRoot { root: _, census: _, peak: p, receipt: _ } => p
-    UnmeasuredRoot { root: _ } => byte_size(0)
-  }
 }
 
 data whole_corpus_compile_xl1_fixture_root_demand: WholeCorpusCompileDemand = MeasuredForRoot {

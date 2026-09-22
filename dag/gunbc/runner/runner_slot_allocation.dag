@@ -9,7 +9,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import extdeps.github.actions { runner_labels_equivalent }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
-import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_demand_peak }
+import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_peak }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
@@ -568,7 +568,7 @@ fn host_memory_admitted_width(host: HostIdentity) -> Int {
 data microvm_controller_slice_cache_headroom_bytes: Int = 8589934592
 
 fn microvm_controller_slice_memory_max_bytes() -> Int {
-  byte_size_count(b: whole_corpus_compile_public_root_demand_peak()) + microvm_controller_slice_cache_headroom_bytes
+  byte_size_count(b: whole_corpus_compile_public_root_peak) + microvm_controller_slice_cache_headroom_bytes
 }
 
 fn gunbc_microvm_shakedown_slot_charge_bytes() -> Int {
