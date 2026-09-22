@@ -656,8 +656,15 @@ test fn the_v41_runtime_image_build_serializes_on_group_a_and_the_probe_does_not
 // THE OPERATIONAL BOUNDS ARE A MAINTAINED INTERFACE, NOT A ONE-HEAD TEXT: the emitted invocation
 // carries the Secret Manager connect and total bounds, the prelude allowance covers the total
 // bound, the step timeout is the sum of the window and the two allowances rounded up, and a key
-// fetch that fails does not stop the door (no set -e exit on the curl; the door decides); and the
-// same bounds reach every prelude that fetches a secret, because they consume one producer.
+// fetch that fails does not stop the door (no set -e exit on the curl; the door decides).
+//
+// THE OTHER THREE PRELUDES MOVED TO THE WITNESS BELOW, which is a subject split and not only a cost
+// one. This claim is named for the D0 invocation; that the SAME bound reaches the keyring converge,
+// the boot and the fan observe is a different fact about a different interface -- one producer
+// consumed by four callers -- and it was paying for a fourth invoke construction inside a claim
+// about the first. The required floor measured 91,527 eval steps against the 72,300 new-witness
+// budget and refused (completed_over_cost_requirement, run 35693815880). Split, each claim also gets
+// its own red: a regression in the fan observe no longer reads as a D0 bounds failure.
 test fn the_pair_serving_d0_invocation_is_bounded_and_the_step_timeout_is_the_declared_sum() -> Bool {
   let inv = gunbc_ci_pair_serving_d0_invoke()
   let secs = (second_count(s: d0_approval_window()) as Int) + (second_count(s: d0_transaction_allowance) as Int) + (second_count(s: d0_prelude_allowance) as Int)
@@ -668,8 +675,15 @@ test fn the_pair_serving_d0_invocation_is_bounded_and_the_step_timeout_is_the_de
     && string_contains(s: inv, pattern: "a held lifecycle resumes without it")
     && (minute_count(m: pair_serving_d0_step_timeout_minutes()) as Int) == (secs + 59) / 60
     && (minute_count(m: pair_serving_d0_step_timeout_minutes()) as Int) == 47
-    && string_contains(s: gunbc_ci_approval_keyring_converge_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
-    && string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
-    && string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+}
+
+// ONE PRODUCER, FOUR CALLERS: every prelude that fetches a secret carries the same total bound,
+// because gunbc_ci_sm_max_time is the single authority for it rather than a number each invocation
+// spells for itself. The discriminating red is a prelude that grows its own literal.
+test fn every_secret_fetching_prelude_carries_the_declared_total_bound() -> Bool {
+  let bound = join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], "")
+  string_contains(s: gunbc_ci_approval_keyring_converge_invoke(), pattern: bound)
+    && string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: bound)
+    && string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: bound)
 }
 
