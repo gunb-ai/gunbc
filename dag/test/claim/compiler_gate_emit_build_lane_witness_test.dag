@@ -20,7 +20,7 @@ import gunbc.compiler_gate_workflow {
   compiler_gate_emit_build_notice_step
 }
 import gunbc.emitted_subject_build_gate {
-  NativeEmitBuildStanding, EmitBuildExpectedGreen, EmitBuildExpectedRed,
+  NativeEmitBuildStanding, EmitBuildExpectedGreen, EmitBuildExpectedRed, EmittedBuildSignature,
   emit_build_standing_notice, emit_build_standing_notice_for,
   emitted_subject_build_rows,
   emitted_subject_build_label_text,
@@ -325,8 +325,7 @@ test fn the_notice_says_the_cause_line_does_not_discriminate() -> Bool {
 test fn w_RED_the_green_standing_cannot_print_the_expected_red_reassurance() -> Bool {
   let green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen), "\n")
   let red = join(emit_build_standing_notice_for(standing: EmitBuildExpectedRed {
-    known_signature: "E9999 Probe at src/probe.rs",
-    retires_when: "probe condition"
+    known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
   }), "\n")
   (string_contains(s: green, pattern: "CURRENTLY EXPECTED") == false)
     && (string_contains(s: green, pattern: "E9999") == false)
@@ -344,7 +343,7 @@ test fn the_live_notice_prints_its_retirement_capability() -> Bool {
   string_contains(s: text, pattern: "THIS STANDING RETIRES WHEN: ")
     && string_contains(s: text, pattern: "//gunbc/instruments:self-host")
     && string_contains(s: text, pattern: "//gunbc/instruments:v2-native-cli")
-    && string_contains(s: text, pattern: "both exit zero")
+    && string_contains(s: text, pattern: "all exit zero")
 }
 
 // THE NOTICE RUNS ONLY ON FAILURE. On every passing PR in the repository it must print nothing --

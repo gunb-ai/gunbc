@@ -246,7 +246,7 @@ jobs:
           printf '%s\n' 'the known one -- every break at this step shares cause=EmittedCompilerBuildFailed, so the'
           printf '%s\n' 'cause line does not discriminate and the ERROR CODE is what you compare.'
           printf '%s\n' ''
-          printf '%s\n' 'THIS STANDING RETIRES WHEN: a head of main on which `gunbc test //gunbc/instruments:self-host` and `gunbc test //gunbc/instruments:v2-native-cli` both exit zero'
+          printf '%s\n' 'THIS STANDING RETIRES WHEN: a head of main on which `gunbc test //gunbc/instruments:self-host` and `gunbc test //gunbc/instruments:v2-native-cli` all exit zero'
           printf '%s\n' 'If that already holds on main, this notice is stale: flip gunbc.emitted_subject_build_gate emit_build_standing to EmitBuildExpectedGreen.'
         if: failure()
   floor:

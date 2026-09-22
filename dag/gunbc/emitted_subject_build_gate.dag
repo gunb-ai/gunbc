@@ -1,6 +1,7 @@
 module gunbc.emitted_subject_build_gate
 
 import std.types { String, List }
+import v2.std.algebra { list_map }
 import extdeps.bazel.label { Label, render_label }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.gunbc_cli_command { gunbc_test_command }
@@ -145,17 +146,46 @@ fn emitted_subject_build_step_name(row: EmittedSubjectBuildRow) -> String {
 // file. Matching red -- noise, do nothing. Different red -- a second defect, report it.
 type NativeEmitBuildStanding
   = EmitBuildExpectedGreen
-  | EmitBuildExpectedRed {
-      known_signature: String
-      retires_when: String
-    }
+  | EmitBuildExpectedRed { known_signature: EmittedBuildSignature }
+
+// THE SIGNATURE'S THREE PARTS ARE FIELDS, because the notice tells a reader to compare two of them
+// SEPARATELY -- a different error code, or a different emitted file, is a new finding -- and a
+// single string would leave that comparison to eyes (DESIGN section 2). The error code is rustc's
+// own vocabulary; the path is the emitted crate's, relative to its root.
+type EmittedBuildSignature {
+  error_code: String
+  symbol: String
+  emitted_path: String
+}
+
+fn render_emitted_build_signature(sig: EmittedBuildSignature) -> String {
+  join([sig.error_code, " ", sig.symbol, " at ", sig.emitted_path], "")
+}
+
+// THE RETIREMENT CONDITION IS NOT A FIELD: it is rendered from `emitted_subject_build_rows`, so it
+// names exactly the instruments this lane runs, by their declared labels, and a subject added to
+// the lane joins the condition without anyone restating it.
+fn emit_build_standing_retirement() -> String {
+  join([
+    "a head of main on which ",
+    join(list_map(xs: emitted_subject_build_rows(), f: emitted_subject_build_retirement_clause), " and "),
+    " all exit zero",
+  ], "")
+}
+
+fn emitted_subject_build_retirement_clause(row: EmittedSubjectBuildRow) -> String {
+  join(["`gunbc test ", emitted_subject_build_label_text(row: row), "`"], "")
+}
 
 // THE ONE ROW TO EDIT WHEN MAIN SELF-HOSTS AGAIN. Flipping it to `EmitBuildExpectedGreen` deletes
 // the notice from every future run; leaving it stale keeps printing a reassurance for a red that
 // is no longer expected, which is why the type has only two arms and no "probably fine" middle.
 data emit_build_standing: NativeEmitBuildStanding = EmitBuildExpectedRed {
-  known_signature: "E0573 PointerWidth at src/std_integer.rs",
-  retires_when: "a head of main on which `gunbc test //gunbc/instruments:self-host` and `gunbc test //gunbc/instruments:v2-native-cli` both exit zero"
+  known_signature: EmittedBuildSignature {
+    error_code: "E0573",
+    symbol: "PointerWidth",
+    emitted_path: "src/std_integer.rs",
+  }
 }
 
 // THE LINES A LANE READS WHEN IT CLICKS THE RED X. Rendered from the row above, so the reassurance
@@ -176,12 +206,12 @@ fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding) -> List<Str
       "the required context is `witnesses`, and this job is not an input to it.",
       "No standing break is declared, so a red here is a REAL FINDING -- most likely yours.",
     ]
-    EmitBuildExpectedRed { known_signature: sig, retires_when: t } => [
+    EmitBuildExpectedRed { known_signature: sig } => [
       "emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:",
       "the required context is `witnesses`, and this job is not an input to it.",
       "",
       "A RED IS CURRENTLY EXPECTED: main cannot self-host, and the break has this signature --",
-      join(["  ", sig], ""),
+      join(["  ", render_emitted_build_signature(sig: sig)], ""),
       "",
       "This notice names no owning pull request ON PURPOSE. Ownership of a standing break moves,",
       "and a stale pointer here would be read as authoritative by someone who has no other source.",
@@ -195,7 +225,7 @@ fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding) -> List<Str
       "the known one -- every break at this step shares cause=EmittedCompilerBuildFailed, so the",
       "cause line does not discriminate and the ERROR CODE is what you compare.",
       "",
-      join(["THIS STANDING RETIRES WHEN: ", t], ""),
+      join(["THIS STANDING RETIRES WHEN: ", emit_build_standing_retirement()], ""),
       "If that already holds on main, this notice is stale: flip gunbc.emitted_subject_build_gate emit_build_standing to EmitBuildExpectedGreen.",
     ]
   }
