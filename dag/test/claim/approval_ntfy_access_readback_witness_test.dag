@@ -1,31 +1,34 @@
 module test.claim.approval_ntfy_access_readback_witness_test
 
 import std.logic { Bool }
-import std.types { String, List }
-import extdeps.ssh.session { SshSessionExecResult }
+import std.types { String, List, NonEmptyStr }
 import extdeps.ntfy.access { ntfy_access_read, NtfyAccessListed, NtfyAccessUnparseable, NtfyRoleAdmin, NtfyReadWrite }
+import extdeps.shell
+import extdeps.exec.command { LocalExec, argv_words }
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.auth.approval_ntfy_access_readback {
   ApprovalNtfyAclDeviation, AclReadbackDidNotRun, AclListingUnparseable, AclDefaultAccessNotDeny, AclAnonymousHasGrants,
   AclPrincipalMissing, AclPrincipalDuplicated, AclPublisherNotWriteOnly, AclOperatorNotReadOnly, AclUnexpectedPrincipal,
-  approval_ntfy_access_readback_argv,
+  ApprovalNtfyPrivateChannelStanding, PrivateChannelObserved, PrivateChannelUnestablished,
+  approval_ntfy_access_readback_command, approval_ntfy_private_channel_standing_of,
 }
-import gunbc.auth.approval_device_enrolment_code_issue {
-  EnrolmentCodeIssuePlan, EnrolmentCodeIssueAdmitted, EnrolmentCodeIssueRefusedChannel, enrolment_code_issue_plan,
-}
-import gunbc.live_deploy.emit { RevisionBoundAtEmission }
+import gunbc.auth.approval_device_routes { issue_device_enrolment_code_under }
 
-// ── Enrolment-code issuance is gated on the ntfy ACL readback ─────────────────────────────────
+// ── Enrolment-code issuance is gated, AT THE VERB, on the ntfy ACL readback ──────────────────
 // Every listing below is REAL `ntfy access --config <server.yml>` stdout from the upstream
 // ntfy v2.28.0 linux/arm64 release binary, captured against a scratch auth database built with
 // `ntfy user add` / `ntfy access USER TOPIC PERM` / `ntfy user change-role` / an
 // auth-default-access change -- never transcribed from the source, so the parser is exercised
-// against what the producer actually emits. Each claim supplies one listing at the step's gate
-// (enrolment_code_issue_plan) and asserts WHICH arm it takes and, for a refusal, WHICH typed
-// deviation. The positive control is the only listing that yields the issuing argv.
+// against what the producer actually emits. The ACL claims supply one listing to the standing fold
+// (approval_ntfy_private_channel_standing_of) and assert which standing and which typed deviation.
+// The ROUTE claims then drive the verb's own gate (issue_device_enrolment_code_under) and assert
+// what it TOUCHED, not only what it said.
 //
-// MUTATION RECEIPT (PR body): replacing the AclRefused arm of enrolment_code_issue_plan with the
-// admitted argv turns every refusal claim here red, and the positive control stays green -- the
-// gate is what these claims measure, not a neighbouring check.
+// MUTATION RECEIPT (PR body): making the Unestablished arm of issue_device_enrolment_code_under
+// fall through to issue_device_enrolment_code_on_private_channel turns both route REDs red and
+// leaves the Observed route control green.
 data ntfy_access_exact: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
 data ntfy_access_default_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n"
 data ntfy_access_anon_read: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- read-only access to topic gunbc-approvals\n- no access to any (other) topics (server config)\n"
@@ -37,47 +40,38 @@ data ntfy_access_admin_extra: String = "user root (role: admin, tier: none)\n- r
 data ntfy_access_wildcard_reader: String = "user eve (role: user, tier: none)\n- read-only access to topic gunbc-*\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
 data ntfy_access_pub_admin: String = "user gunbc-approval-publisher (role: admin, tier: none)\n- read-write access to all topics (admin role)\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
 
-data fx_revision: String = "0123456789abcdef0123456789abcdef01234567"
 
-fn readback_of(stdout: String) -> SshSessionExecResult {
-  SshSessionExecResult { exit_code: 0, success: true, stdout: stdout, stderr: "" }
+fn standing_of(stdout: String) -> ApprovalNtfyPrivateChannelStanding {
+  approval_ntfy_private_channel_standing_of(exit_code: 0, stdout: stdout, stderr: "")
 }
 
-fn plan_of(stdout: String) -> EnrolmentCodeIssuePlan {
-  enrolment_code_issue_plan(readback: readback_of(stdout: stdout), revision: RevisionBoundAtEmission { revision: fx_revision })
-}
-
-fn refused_with(p: EnrolmentCodeIssuePlan) -> ApprovalNtfyAclDeviation? {
-  match p {
-    EnrolmentCodeIssueRefusedChannel { deviation: d } => Present { value: d }
-    EnrolmentCodeIssueAdmitted { argv: _ } => none
+fn refused_with(s: ApprovalNtfyPrivateChannelStanding) -> ApprovalNtfyAclDeviation? {
+  match s {
+    PrivateChannelUnestablished { missing: d } => Present { value: d }
+    PrivateChannelObserved { listing: _ } => none
   }
 }
 
-// POSITIVE CONTROL: the exact ACL admits, and the admitted argv is the issuing verb.
-test fn the_exact_acl_admits_issuance() -> Bool {
-  (match ntfy_access_read(stdout: ntfy_access_exact) {
-    NtfyAccessListed { listing: l } => count(l.users) == 3
+// POSITIVE CONTROL: the exact ACL, and only it, is Observed.
+test fn the_exact_acl_is_observed_private() -> Bool {
+  match standing_of(stdout: ntfy_access_exact) {
+    PrivateChannelObserved { listing: l } => count(l.users) == 3
     _ => false
-  })
-    && (match plan_of(stdout: ntfy_access_exact) {
-      EnrolmentCodeIssueAdmitted { argv: a } => string_contains(s: join(a, " "), pattern: "--function issue_device_enrolment_code")
-      _ => false
-    })
+  }
 }
 
 // The readback runs the server's own CLI as the server's principal, over the server's config.
 test fn the_readback_argv_is_ntfy_access_as_the_server_principal() -> Bool {
-  join(approval_ntfy_access_readback_argv(), " ") == "/usr/bin/sudo -n -u gunbc-ntfy /usr/bin/ntfy access --config /etc/gunbc-ntfy/server.yml"
+  join(argv_words(command: approval_ntfy_access_readback_command()), " ") == "/usr/bin/sudo -n -u gunbc-ntfy /usr/bin/ntfy access --config /etc/gunbc-ntfy/server.yml"
 }
 
 // UNOBSERVED IS REFUSED: a readback that did not exit zero, and one that printed nothing.
 test fn an_unobserved_readback_refuses() -> Bool {
-  (match refused_with(p: enrolment_code_issue_plan(readback: SshSessionExecResult { exit_code: 1, success: false, stdout: ntfy_access_exact, stderr: "sudo: a password is required" }, revision: RevisionBoundAtEmission { revision: fx_revision })) {
+  (match refused_with(s: approval_ntfy_private_channel_standing_of(exit_code: 1, stdout: ntfy_access_exact, stderr: "sudo: a password is required")) {
     Present { value: AclReadbackDidNotRun { detail: d } } => string_contains(s: d, pattern: "password")
     _ => false
   })
-    && (match refused_with(p: plan_of(stdout: "")) {
+    && (match refused_with(s: standing_of(stdout: "")) {
       Present { value: AclListingUnparseable { line: _, cause: _ } } => true
       _ => false
     })
@@ -85,63 +79,63 @@ test fn an_unobserved_readback_refuses() -> Bool {
 
 // A line the upstream does not print is not skipped.
 test fn an_unplaced_line_refuses() -> Bool {
-  match refused_with(p: plan_of(stdout: ntfy_access_exact + "WARN something unrelated\n")) {
+  match refused_with(s: standing_of(stdout: ntfy_access_exact + "WARN something unrelated\n")) {
     Present { value: AclListingUnparseable { line: l, cause: _ } } => l == "WARN something unrelated"
     _ => false
   }
 }
 
 test fn default_access_not_deny_refuses() -> Bool {
-  match refused_with(p: plan_of(stdout: ntfy_access_default_rw)) {
+  match refused_with(s: standing_of(stdout: ntfy_access_default_rw)) {
     Present { value: AclDefaultAccessNotDeny { observed: NtfyReadWrite } } => true
     _ => false
   }
 }
 
 test fn an_anonymous_read_grant_refuses() -> Bool {
-  match refused_with(p: plan_of(stdout: ntfy_access_anon_read)) {
+  match refused_with(s: standing_of(stdout: ntfy_access_anon_read)) {
     Present { value: AclAnonymousHasGrants { grants: g } } => count(g) == 1
     _ => false
   }
 }
 
 test fn a_publisher_that_can_read_refuses() -> Bool {
-  match refused_with(p: plan_of(stdout: ntfy_access_pub_rw)) {
+  match refused_with(s: standing_of(stdout: ntfy_access_pub_rw)) {
     Present { value: AclPublisherNotWriteOnly { role: _, admin_all_topics: false, grants: _ } } => true
     _ => false
   }
 }
 
 test fn an_admin_publisher_refuses() -> Bool {
-  match refused_with(p: plan_of(stdout: ntfy_access_pub_admin)) {
+  match refused_with(s: standing_of(stdout: ntfy_access_pub_admin)) {
     Present { value: AclPublisherNotWriteOnly { role: NtfyRoleAdmin, admin_all_topics: true, grants: _ } } => true
     _ => false
   }
 }
 
 test fn an_operator_that_can_write_refuses() -> Bool {
-  match refused_with(p: plan_of(stdout: ntfy_access_op_rw)) {
+  match refused_with(s: standing_of(stdout: ntfy_access_op_rw)) {
     Present { value: AclOperatorNotReadOnly { role: _, admin_all_topics: _, grants: _ } } => true
     _ => false
   }
 }
 
 test fn an_operator_without_the_grant_refuses() -> Bool {
-  match refused_with(p: plan_of(stdout: ntfy_access_op_nogrant)) {
+  match refused_with(s: standing_of(stdout: ntfy_access_op_nogrant)) {
     Present { value: AclOperatorNotReadOnly { role: _, admin_all_topics: _, grants: g } } => count(g) == 0
     _ => false
   }
 }
 
 test fn a_missing_operator_refuses() -> Bool {
-  match refused_with(p: plan_of(stdout: ntfy_access_op_missing)) {
+  match refused_with(s: standing_of(stdout: ntfy_access_op_missing)) {
     Present { value: AclPrincipalMissing { user: u } } => u == "gunbc-approval-operator"
     _ => false
   }
 }
 
 test fn a_further_admin_refuses() -> Bool {
-  match refused_with(p: plan_of(stdout: ntfy_access_admin_extra)) {
+  match refused_with(s: standing_of(stdout: ntfy_access_admin_extra)) {
     Present { value: AclUnexpectedPrincipal { user: u, role: NtfyRoleAdmin } } => u == "root"
     _ => false
   }
@@ -149,15 +143,65 @@ test fn a_further_admin_refuses() -> Bool {
 
 // A further non-admin user whose wildcard pattern matches the topic: refused by being present at all.
 test fn a_further_wildcard_reader_refuses() -> Bool {
-  match refused_with(p: plan_of(stdout: ntfy_access_wildcard_reader)) {
+  match refused_with(s: standing_of(stdout: ntfy_access_wildcard_reader)) {
     Present { value: AclUnexpectedPrincipal { user: u, role: _ } } => u == "eve"
     _ => false
   }
 }
 
 test fn a_duplicated_principal_refuses() -> Bool {
-  match refused_with(p: plan_of(stdout: ntfy_access_exact + "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\n")) {
+  match refused_with(s: standing_of(stdout: ntfy_access_exact + "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\n")) {
     Present { value: AclPrincipalDuplicated { user: u } } => u == "gunbc-approval-operator"
     _ => false
   }
+}
+
+fn dir_entries(path: String) -> String {
+  run_shell_command_observe(command: posix_sh_program_command(script: "ls -A '" + path + "'\n"), transport: LocalExec).stdout
+}
+
+fn unestablished_fixture() -> ApprovalNtfyPrivateChannelStanding {
+  PrivateChannelUnestablished { missing: AclDefaultAccessNotDeny { observed: NtfyReadWrite } }
+}
+
+fn refused_before_minting(r: CliWireResponse) -> Bool {
+  match r {
+    CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "refused before any code was minted") && string_contains(s: c as String, pattern: "default access is not deny-all")
+    _ => false
+  }
+}
+
+// ROUTE RED, HERMETIC: Unestablished returns WITHOUT an effect. The hermetic route has no arm for
+// Urandom.ReadBytes, the store's mkdir/CAS or the publish, so reaching any of them fails this claim
+// as a route gap -- the claim is green only if the verb answered from the standing alone.
+test fn an_unestablished_channel_touches_no_effect() -> Bool {
+  refused_before_minting(r: issue_device_enrolment_code_under(standing: unestablished_fixture(), root: "/nonexistent/gunbc-enrol-red"))
+}
+
+// ROUTE RED, WET (claim_batch --wet): against a real, empty store root with no publisher token on
+// the machine, Unestablished leaves the root EMPTY -- no slot written.
+test fn an_unestablished_channel_writes_no_slot_by_real_execution() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_enrol_red.XXXXXX").path
+  let r = issue_device_enrolment_code_under(standing: unestablished_fixture(), root: root_path as NonEmptyStr)
+  let after = dir_entries(path: root_path)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  refused_before_minting(r: r) && after == "" && removed.success
+}
+
+// ROUTE CONTROL, WET: the same root under Observed DOES reach the clock, the entropy and the slot
+// (the root is no longer empty), and with no publisher token nothing is sent -- so the empty root
+// above is the gate's doing, not a route that never writes.
+test fn an_observed_channel_writes_the_slot_by_real_execution() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_enrol_ctl.XXXXXX").path
+  let observed = standing_of(stdout: ntfy_access_exact)
+  let r = issue_device_enrolment_code_under(standing: observed, root: root_path as NonEmptyStr)
+  let after = dir_entries(path: root_path)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  (match observed { PrivateChannelObserved { listing: _ } => true  _ => false })
+    && (match r {
+      CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "delivery was refused and never sent")
+      _ => false
+    })
+    && after != ""
+    && removed.success
 }

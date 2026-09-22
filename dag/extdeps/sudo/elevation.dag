@@ -91,6 +91,14 @@ fn sudo_elevate_as(user: NonEmptyStr, command: List<String>) -> ElevatedInvocati
   }
 }
 
+// THE SAME -n -u ELEVATION AS AN ArgvCommand, for a caller that runs it through the command
+// transport (gunbc.command_runner) rather than the host-effect surface. One row beside
+// sudo_elevate_as, not a second spelling of it: the argv is sudo_elevate_as's own.
+fn sudo_elevate_as_command(user: NonEmptyStr, command: List<String>) -> ArgvCommand {
+  let elevated = sudo_elevate_as(user: user, command: command)
+  argv_command(program: elevated.bin_path as NonEmptyStr, arguments: elevated.args)
+}
+
 // THE FLAT ARGV OF AN ELEVATED INVOCATION. ElevatedInvocation splits binary from tail because the
 // host-effect surface takes it that way; a shell transport wants one word list, and three callers
 // had each written the same [bin_path] ++ args append to get it. One row, so a future change to

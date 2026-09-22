@@ -1,14 +1,16 @@
 module gunbc.auth.approval_ntfy_access_readback
 
-import std.types { NonEmptyStr, String, List, Bool }
+import std.types { NonEmptyStr, String, List, Bool, Int }
 import extdeps.ntfy.access {
   NtfyAccessRead, NtfyAccessListed, NtfyAccessUnparseable, NtfyAccessListing, NtfyAccessUser, NtfyAccessGrant,
   NtfyPermission, NtfyReadWrite, NtfyReadOnly, NtfyWriteOnly, NtfyDenyAll,
   NtfyRole, NtfyRoleAdmin, NtfyRoleUser, NtfyRoleAnonymous,
-  ntfy_access_read, ntfy_everyone_user,
+  ntfy_access_read, ntfy_everyone_user, ntfy_access_list_argv,
 }
-import extdeps.sudo.elevation { sudo_elevate_as }
-import extdeps.ssh.session { SshSessionExecResult }
+import std.resources { Network }
+import extdeps.sudo.elevation { sudo_elevate_as_command }
+import extdeps.exec.command { ArgvCommand, argv_words, LocalExec }
+import gunbc.command_runner { run_shell_command_observe }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import gunbc.auth.approval_ntfy_deployment {
   approval_ntfy_principal_name, approval_ntfy_config_path, approval_ntfy_binary_path,
@@ -51,11 +53,8 @@ type ApprovalNtfyAclVerdict
 
 // The readback argv: the server's own CLI, as the server's own principal, over the server's own
 // config -- the auth database it reads is the one the running server enforces.
-fn approval_ntfy_access_readback_argv() -> List<String> {
-  let inv = sudo_elevate_as(user: approval_ntfy_principal_name, command: [
-    approval_ntfy_binary_path as String, "access", "--config", approval_ntfy_config_path as String,
-  ])
-  concat([inv.bin_path], inv.args)
+fn approval_ntfy_access_readback_command() -> ArgvCommand {
+  sudo_elevate_as_command(user: approval_ntfy_principal_name, command: ntfy_access_list_argv(binary: approval_ntfy_binary_path, config: approval_ntfy_config_path))
 }
 
 fn permission_is(p: NtfyPermission, want: NtfyPermission) -> Bool {
@@ -138,14 +137,38 @@ fn approval_ntfy_acl_of_principals(anonymous: List<NtfyAccessUser>, publisher: L
   }
 }
 
-// FROM THE EXEC RESULT: a readback that did not exit zero observed nothing, and nothing observed
-// is a refusal -- never "no rules, so default".
-fn approval_ntfy_acl_of_readback(result: SshSessionExecResult) -> ApprovalNtfyAclVerdict {
-  if !result.success { AclRefused { deviation: AclReadbackDidNotRun { detail: "exit=" + to_string(result.exit_code) + " " + result.stderr } } }
-  else { match ntfy_access_read(stdout: result.stdout) {
-    NtfyAccessUnparseable { line: l, cause: c } => AclRefused { deviation: AclListingUnparseable { line: l, cause: c } }
-    NtfyAccessListed { listing: listing } => approval_ntfy_acl_of_listing(listing: listing)
+// ── THE STANDING THE ISSUING VERB MATCHES FIRST ─────────────────────────────────────────────
+// PrivateChannelObserved carries the listing it was read from, and is constructed in exactly one
+// place: approval_ntfy_private_channel_standing_of below, on AclEstablished. The substrate has no
+// constructor privacy, so "only the readback constructs it" is held by review diligence, not by a
+// gate -- the same rung gunbc.auth.approval_ntfy_deployment's declared ACL sat at, now with the
+// readback it lacked.
+type ApprovalNtfyPrivateChannelStanding
+  = PrivateChannelObserved { listing: NtfyAccessListing }
+  | PrivateChannelUnestablished { missing: ApprovalNtfyAclDeviation }
+
+// FROM THE EXEC RESULT, parsed once: a readback that did not exit zero observed nothing, and
+// nothing observed is Unestablished -- never "no rules, so default".
+fn approval_ntfy_private_channel_standing_of(exit_code: Int, stdout: String, stderr: String) -> ApprovalNtfyPrivateChannelStanding {
+  if exit_code != 0 { PrivateChannelUnestablished { missing: AclReadbackDidNotRun { detail: "exit=" + to_string(exit_code) + " " + stderr } } }
+  else { match ntfy_access_read(stdout: stdout) {
+    NtfyAccessUnparseable { line: l, cause: c } => PrivateChannelUnestablished { missing: AclListingUnparseable { line: l, cause: c } }
+    NtfyAccessListed { listing: listing } => match approval_ntfy_acl_of_listing(listing: listing) {
+      AclRefused { deviation: d } => PrivateChannelUnestablished { missing: d }
+      AclEstablished => PrivateChannelObserved { listing: listing }
+    }
   } }
+}
+
+// THE READBACK, run on the host the verb runs on (the ntfy server is loopback on that host), as the
+// server's principal over the server's config. The verb obtains its own standing rather than
+// receiving one, so no entrypoint -- the fleet step or a direct `gunbc run --function` -- reaches
+// the clock, the entropy, the slot or the publish without this read.
+fn approval_ntfy_private_channel_standing() -> ApprovalNtfyPrivateChannelStanding
+  uses net: Network
+{
+  let run = run_shell_command_observe(command: approval_ntfy_access_readback_command(), transport: LocalExec)
+  approval_ntfy_private_channel_standing_of(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
 }
 
 fn approval_ntfy_acl_deviation_sentence(d: ApprovalNtfyAclDeviation) -> String {

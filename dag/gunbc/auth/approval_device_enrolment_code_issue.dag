@@ -18,11 +18,6 @@ import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.host_layout { srv1_gunbc_approval_broker_root }
-import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.auth.approval_ntfy_access_readback {
-  ApprovalNtfyAclDeviation, AclEstablished, AclRefused,
-  approval_ntfy_access_readback_argv, approval_ntfy_acl_of_readback, approval_ntfy_acl_deviation_sentence,
-}
 import gunbc.live_deploy.emit { approval_broker_release_dir, approval_broker_release_binary_path, ReleaseRevisionBinding, RevisionBoundAtEmission }
 
 // ── THE OPERATOR'S CODE-ISSUING VERB, over the fleet SSH administrator edge ──────────────────
@@ -32,12 +27,10 @@ import gunbc.live_deploy.emit { approval_broker_release_dir, approval_broker_rel
 // USER -- the owner of approval_device_store_root and a reader of the ntfy publisher token -- to
 // run gunbc.auth.approval_device_routes issue_device_enrolment_code from the broker's admitted
 // release tree. The remote verb writes the code's slot and delivers the code over the operator's
-// ntfy topic. THE CHANNEL IS READ BACK FIRST: over the same SSH edge the step runs the server's
-// `ntfy access` listing as the server's principal (gunbc.auth.approval_ntfy_access_readback), and
-// the issuing verb is reached ONLY when that listing shows the exact ACL -- deny-by-default, the
-// publisher write-only, the operator read-only, nobody else. A readback that fails, does not parse
-// or shows any other shape refuses with its typed deviation and no code is minted. What comes back
-// over SSH from the verb, and what this step prints, is the delivery receipt
+// ntfy topic. The verb itself refuses before minting unless the channel reads back private
+// (its first match is gunbc.auth.approval_ntfy_access_readback's standing, read on the host), so
+// this step carries no second check beside it. What comes back over SSH, and what this step
+// prints, is the delivery receipt
 // only (decision msg_a1d8d1b9: the code never appears in a step log or a receipt artifact).
 //
 // THE RELEASE IS NAMED BY THE DISPATCH: expected_revision selects the broker release directory,
@@ -72,39 +65,17 @@ fn enrolment_code_issue_refuses_off_srv1(host: String) -> ProcessExit {
   else { exit_failure(reason: "approval device enrolment code: refuses host '" + host + "': the store lives on the machine that serves /approve, which is " + (operator_host_srv1 as String)) }
 }
 
-// THE GATE, as a pure fold over the readback's exec result so a claim supplies that result and
-// observes which argv -- if any -- the step would run next. The only arm that yields the issuing
-// argv is AclEstablished.
-type EnrolmentCodeIssuePlan
-  = EnrolmentCodeIssueAdmitted { argv: List<String> }
-  | EnrolmentCodeIssueRefusedChannel { deviation: ApprovalNtfyAclDeviation }
-
-fn enrolment_code_issue_plan(readback: SshSessionExecResult, revision: ReleaseRevisionBinding) -> EnrolmentCodeIssuePlan {
-  match approval_ntfy_acl_of_readback(result: readback) {
-    AclRefused { deviation: d } => EnrolmentCodeIssueRefusedChannel { deviation: d }
-    AclEstablished => EnrolmentCodeIssueAdmitted { argv: enrolment_code_issue_remote_argv(revision: revision) }
-  }
-}
-
 fn enrolment_code_issue_remote(revision: ReleaseRevisionBinding) -> CliWireResponse
   uses net: Network
 {
   match prepare_fleet_ssh_agent_context(attempt_raw: approval_device_enrolment_code_issue_attempt_raw) {
     FleetSshContextRefused { cause: c } => CliWireUnprintable { cause: ("approval device enrolment code: " + c) as NonEmptyStr }
     FleetSshContextReady { context: context, receipt: _ } =>
-      match typed_argv_exec_over_fleet_ssh(target: enrolment_code_issue_ssh_target(), context: context, argv: approval_ntfy_access_readback_argv()) {
-        TypedArgvExecRefused { reason: why } => CliWireUnprintable { cause: ("approval device enrolment code: refused, the ntfy access readback could not be invoked: " + why) as NonEmptyStr }
-        TypedArgvExecConverged { result: readback } =>
-          match enrolment_code_issue_plan(readback: readback, revision: revision) {
-            EnrolmentCodeIssueRefusedChannel { deviation: d } => CliWireUnprintable { cause: ("approval device enrolment code: refused, no code minted: " + approval_ntfy_acl_deviation_sentence(d: d)) as NonEmptyStr }
-            EnrolmentCodeIssueAdmitted { argv: argv } =>
-              match typed_argv_exec_over_fleet_ssh(target: enrolment_code_issue_ssh_target(), context: context, argv: argv) {
-                TypedArgvExecRefused { reason: why } => CliWireUnprintable { cause: ("approval device enrolment code: remote invocation refused: " + why) as NonEmptyStr }
-                TypedArgvExecConverged { result: r } =>
-                  if r.success { CliWirePrintable { bytes: r.stdout, exit: ExitSuccess } }
-                  else { CliWireUnprintable { cause: ("approval device enrolment code: remote exit=" + to_string(r.exit_code) + " " + trim(s: r.stderr)) as NonEmptyStr } }
-              }
-          }
+      match typed_argv_exec_over_fleet_ssh(target: enrolment_code_issue_ssh_target(), context: context, argv: enrolment_code_issue_remote_argv(revision: revision)) {
+        TypedArgvExecRefused { reason: why } => CliWireUnprintable { cause: ("approval device enrolment code: remote invocation refused: " + why) as NonEmptyStr }
+        TypedArgvExecConverged { result: r } =>
+          if r.success { CliWirePrintable { bytes: r.stdout, exit: ExitSuccess } }
+          else { CliWireUnprintable { cause: ("approval device enrolment code: remote exit=" + to_string(r.exit_code) + " " + trim(s: r.stderr)) as NonEmptyStr } }
       }
   }
 }
