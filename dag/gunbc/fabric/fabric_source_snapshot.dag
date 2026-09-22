@@ -558,7 +558,7 @@ fn capture_source_snapshot(
 // over-assertion this corpus is supposed to catch.
 //
 // So the candidate parent is OBSERVED and ADMITTED before anything is created in it:
-// `admit_provider_root` requires a directory that is either STICKY -- the rule that stops a
+// `establish_provider_base` requires a directory that is either STICKY -- the rule that stops a
 // principal renaming an entry it does not own, which is what makes a shared temporary directory
 // safe to allocate in -- or OWNER-ONLY, which no other principal can even traverse. Anything else
 // refuses, and the allocation does not happen.
@@ -877,7 +877,6 @@ fn verify_provider_base(
 ) -> ProviderRootAdmission {
   let base = layout.base as String
   let resolved = shell.Path.Canonical(path: base as FilePath)
-  if true {
     if !resolved.success {
       ProviderRootRefused {
         root: base,
@@ -911,7 +910,6 @@ fn verify_provider_base(
         AncestrySafe => ProviderRootAdmitted { root: layout.base }
       }
     }
-  }
 }
 
 type ProviderRootSelection
