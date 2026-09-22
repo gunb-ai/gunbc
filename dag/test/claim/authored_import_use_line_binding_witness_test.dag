@@ -1,0 +1,223 @@
+module test.claim.authored_import_use_line_binding_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN AUTHORED IMPORT'S USE-LINE MUST FOLLOW THE MODULE THE AUTHOR NAMED, and today it does not
+// when two conditions hold together. This pair is the executing control for
+// gunbc.recurring_failure_mode an_authored_import_emits_no_use_line_when_its_spelling_is_forked:
+// the emitted module renders a bare type name it declined to import, which is one module
+// contradicting itself and refuses downstream at rustc with E0425.
+//
+// THE CONDITION IS A CONJUNCTION OF THREE TERMS, measured over five arms on 2026-09-22
+// (sharp-bear-756), and no single arm derives it. (1) TWO modules in the compiled closure declare
+// the short spelling -- std.integer and v2.std.integer both declare UInt8. (2) The declaration the
+// author NAMED is a non-nominal alias: UInt8 is Compose<UInt, MachineWidth<8>>, a phantom. (3) The
+// SECOND declarer reaches the closure through a module the consumer DOES NOT IMPORT. Drop any one
+// term and the line returns.
+//
+// THE TWO BOUNDS, because without them the class reads far wider than it is. A NOMINAL record
+// forked the same way keeps its line -- std.termination TerminationProof against
+// v2.std.cardinality TerminationProof, two genuinely different records under one spelling,
+// emitted byte-identically with and without the second declarer in the closure. And a consumer
+// that NAMES BOTH PROVIDERS in its own import list keeps its line, and gets both. So neither "a
+// duplicate short name" nor "two declarers in the closure" is the defect; both would put spellings
+// in the population that the emitter provably handles correctly.
+//
+// WHAT IS DELIBERATELY NOT ASSERTED HERE: which filter decides it. The arms establish the
+// CONDITION, not the mechanism, and writing a claim over a named predicate would assert a
+// location this evidence does not reach.
+
+// THE ASSERTION STRINGS CARRY NO BRACES, AND THAT IS NOT COSMETIC. A `.dag` string literal
+// INTERPOLATES a braced reference, so the natural spelling of the expected line --
+// `pub use crate::std_integer::{UInt8};` -- is read as a reference to `UInt8`, which has two
+// declarers and therefore REFUSES AT RESOLVE with "ambiguous reference 'UInt8': 2 candidates".
+// Measured here: the three refusals landed on the assertion arrays, not on the source strings
+// beside them, because those spell `{ Int, List }` with spaces and a comma and do not parse as a
+// reference. The qualified module path is the discriminator instead: `crate::std_integer::`
+// appears ONLY in the use-line, since the signature spells `UInt8` unqualified.
+
+// DO NOT DELETE THIS MODULE BECAUSE ITS CLAIMS ARE GREEN. Every claim here is green TODAY and
+// that is the intended state: four of the five assert behaviour that is CORRECT, and the fifth
+// asserts that a KNOWN DEFECT is still present, which it is. Green therefore means "the defect is
+// still exactly where it was measured", not "there is nothing here to guard".
+//
+// The defect this module guards HAS NO OTHER SYMPTOM ANYWHERE IN THE CORPUS. The site that
+// exposed it -- extdeps.numeric.base16 refusing the self-host build with E0425 -- was repaired at
+// the SOURCE in the same change that enrolled this witness, so nothing else in the tree fails if
+// the defect returns or widens. Deleting this module as redundant coverage would leave a live
+// emitter defect with no red at all, which is the state it was in before 2026-09-22 and the
+// reason it survived undiagnosed through several investigations.
+
+// THE DISCRIMINATION IS THE WHOLE CONJUNCTION, AND THAT IS SAID HERE RATHER THAN RE-EXECUTED.
+// An earlier cut carried a `test fn` conjoining all six arms. It asserted nothing the six
+// individually do not -- each already answers its own pole -- while paying every
+// compile_dag_rust_emit_check a second time, twelve production compiles for six facts, at the
+// single most expensive primitive in the corpus (review 70115; DESIGN section 3, "two claims
+// making the same call on the same input where one assertion implies the other, each paying the
+// call in full"). The purpose it served was a READER'S, not a discriminator's: stopping someone
+// from taking the expecting-red arm for a claim that dropping use-lines is correct. That purpose
+// is served by this sentence, which costs nothing to evaluate.
+//
+// SO READ THE ARMS AS A SET: the condition is the THREE-TERM conjunction stated at the top of
+// this module, and no single arm establishes it. Dropping the joined claim also improves
+// diagnosis -- a failure now names WHICH arm moved instead of answering one opaque false.
+
+// THE POSITIVE CONTROL, AND IT IS THE HALF THAT MUST NEVER RED. One declarer of the spelling in
+// the closure, the same phantom alias, the same signature: the use-line is emitted and binds the
+// named provider. If this arm ever goes red, the defect has widened from a conjunction to the
+// unconditional case and every phantom-aliased import in the corpus is affected.
+fn w_single_declarer_keeps_the_authored_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aiulb_single\n\nimport std.types { Int, List }\nimport std.integer { UInt8 }\n\nfn count_octets(xs: List<UInt8>) -> Int {\n  count(xs)\n}\n",
+    "src/aiulb_single.rs",
+    ["pub use crate::std_integer::", "UInt8"],
+    []
+  )
+}
+
+test fn a_singly_declared_phantom_import_emits_its_use_line() -> Bool {
+  w_single_declarer_keeps_the_authored_use_line()
+}
+
+// THE EXPECTING-RED ARM, AND THE THIRD CONDITION IT ENCODES. The second declarer must reach the
+// closure through a module the consumer DOES NOT IMPORT. Measured 2026-09-22: a consumer that
+// imports std.integer AND v2.std.integer directly gets BOTH use-lines and is correct, so the
+// emitter is right whenever the author named both providers. Here the consumer names only
+// std.integer; extdeps.posix.identity is imported for an unrelated function and itself imports
+// v2.std.integer, so the second UInt8 declaration arrives in the crate without this module ever
+// mentioning it. That is the shape every real occurrence has -- extdeps.numeric.base16 never
+// mentioned v2.std.integer either.
+//
+// WHEN THE REPAIR LANDS THIS CLAIM GOES RED, AND THAT IS ITS JOB. Per DESIGN section 4b(4) it
+// then FLIPS to a permanent regression control -- move the string from excludes to includes --
+// rather than being deleted. It is the only thing in the corpus that fails if this defect
+// returns, and it matters because the symptom that exposed it (extdeps.numeric.base16 refusing
+// the self-host build) has been removed at the source by the sealed-carrier repair, leaving the
+// defect real and silent.
+fn w_second_declarer_drops_the_authored_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aiulb_indirect\n\nimport std.types { Int, List, String }\nimport std.integer { UInt8 }\nimport extdeps.posix.identity { posix_id_value_from_text }\n\nfn count_octets(xs: List<UInt8>) -> Int {\n  count(xs)\n}\n\nfn read_id(text: String) -> Int {\n  0\n}\n",
+    "src/aiulb_indirect.rs",
+    ["UInt8"],
+    ["pub use crate::std_integer::"]
+  )
+}
+
+test fn a_second_declarer_in_the_closure_drops_the_use_line() -> Bool {
+  w_second_declarer_drops_the_authored_use_line()
+}
+
+// THE THIRD CONDITION, ISOLATED. Same two declarers in the closure, but the consumer NAMES both
+// providers in its own import list: the use-line returns. Without this arm the row would read as
+// "two declarers anywhere in the closure", which is measurably false and would make the
+// expecting-red arm above look like the general case rather than the specific one.
+fn w_consumer_naming_both_providers_keeps_its_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aiulb_both_named\n\nimport std.types { Int, List }\nimport std.integer { UInt8 }\nimport v2.std.integer { OverflowDisposition }\n\nfn count_octets(xs: List<UInt8>) -> Int {\n  count(xs)\n}\n\nfn disposition_is_ignored(d: OverflowDisposition) -> Int {\n  0\n}\n",
+    "src/aiulb_both_named.rs",
+    ["pub use crate::std_integer::", "pub use crate::v2_std_integer::"],
+    []
+  )
+}
+
+test fn a_consumer_that_names_both_providers_keeps_its_use_line() -> Bool {
+  w_consumer_naming_both_providers_keeps_its_use_line()
+}
+
+// THE NON-PHANTOM BOUND, AND THE FIRST CUT OF IT WAS CONFOUNDED. A forked NOMINAL record must keep
+// its use-line under the SAME conditions that drop a phantom's, or nominality is not what the
+// bound is about. The first version of this arm had the consumer author
+// `import v2.std.cardinality { LoopBound }` itself -- and v2.std.cardinality is exactly where the
+// second TerminationProof lives, so the consumer NAMED the second declarer and term (3) was
+// violated. Its green was fully explained by term (3) and said nothing about nominality, while
+// the failure-mode row leaned on it to keep 34 forked spellings out of the population (review
+// 70079). A permanently-green arm whose verdict is decided by a different term is decoration,
+// which DESIGN section 4b forbids by name.
+//
+// It now takes the arm-C shape: the second declarer arrives through v2.extdeps.languages.ptx, a
+// module imported for an unrelated symbol (StateSpace) that itself imports
+// v2.std.cardinality { PositiveUpperBoundedNat } and never names TerminationProof. All three
+// terms hold except nominality, so a red here would mean the phantom shape is NOT load-bearing
+// and the class is wider than the row states.
+//
+// TERM 1 IS VERIFIED PRESENT RATHER THAN ASSUMED, because a green here is worthless if the second
+// declaration never reached the crate -- that would be the baseline again under another name.
+// Measured: this source emits src/v2_std_cardinality.rs CONTAINING TerminationProof, and the
+// no-bystander baseline below emits no such module at all, so the pair varies term 1 rather than
+// holding it constant. Measured in the same probe: a PHANTOM consumer in this exact shape still
+// DROPS its line, so the instrument can detect a drop here and is not one that only ever says yes.
+//
+// THE BYSTANDER'S CLOSURE MUST COMPILE CLEAN, and that is a precondition of every arm in this
+// file rather than a property of this one. compile_dag_rust_emit_check counts hard diagnostics
+// over the WHOLE compile, imported closure included, so a bystander dragging in a module with a
+// hard diagnostic reds the arm for a reason that has nothing to do with its subject. The first
+// bystander tried here, gunbc.product.fan_tach_health, did exactly that.
+fn w_forked_nominal_record_keeps_its_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aiulb_nominal_indirect\n\nimport std.types { Int, List }\nimport std.termination { TerminationProof }\nimport v2.extdeps.languages.ptx { StateSpace }\n\nfn proof_dimension_count(p: TerminationProof) -> Int {\n  count(p.dimensions)\n}\n\nfn state_space_is_ignored(s: StateSpace) -> Int {\n  0\n}\n",
+    "src/aiulb_nominal_indirect.rs",
+    ["pub use crate::std_termination::"],
+    []
+  )
+}
+
+test fn a_forked_nominal_record_keeps_its_authored_use_line() -> Bool {
+  w_forked_nominal_record_keeps_its_use_line()
+}
+
+// TERM 1 IS PRESENT IN THE NOMINAL ARM, ASSERTED RATHER THAN DESCRIBED. Without this the arm
+// above is "a module that keeps its use-line", which the baseline also is; the pair only varies
+// term 1 if the second declaration really reaches the crate in one and not the other.
+//
+// THIS COMPILES THE SAME SOURCE AS THE ARM ABOVE AND READS A DIFFERENT EMITTED FILE, which is one
+// compile paid twice and is a real cost defect (review 70115; DESIGN section 2, minimize the
+// demand graph before materializing its answers). It is kept because the primitive takes ONE
+// output path per call, so two readings of one emission cannot be expressed today; the modeled
+// fix is compile_dag_rust_emit_check admitting a path SET, which is a seed change -- builtin
+// registry, interpreter dispatch, host function, mirror -- and a different subject from this
+// change. NAMED HERE so the duplication is a known debt with a stated remedy rather than
+// unnoticed work.
+//
+// AND THE DEBT IS BOUNDED AT THIS ONE SITE, which is why it is tolerable rather than a pattern.
+// An arm asserting the line is ABSENT validates its own precondition: if the second declarer were
+// not in the closure the line would be PRESENT, which is the baseline behaviour arm A establishes,
+// so that arm's verdict is only reachable when term 1 holds. An arm asserting the line is PRESENT
+// cannot tell "term 1 held and nominality protected the line" from "term 1 never held", because
+// the baseline answers present too -- so only presence-asserting arms need a second reading, and
+// this file has exactly one.
+//
+// THE CHEAPER VERSION WAS TESTED AND REJECTED, because it cannot fail the way this must: folding
+// term 1 into the arm above by also requiring `pub use crate::v2_extdeps_languages_ptx::` in the
+// CONSUMER file costs no extra compile, but if ptx ever stopped importing v2.std.cardinality that
+// check would stay GREEN while the arm silently degraded into the baseline -- green for a reason
+// other than the one claimed, which is the confound this file has already carried once.
+fn w_nominal_arm_really_carries_the_second_declaration() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aiulb_nominal_indirect\n\nimport std.types { Int, List }\nimport std.termination { TerminationProof }\nimport v2.extdeps.languages.ptx { StateSpace }\n\nfn proof_dimension_count(p: TerminationProof) -> Int {\n  count(p.dimensions)\n}\n\nfn state_space_is_ignored(s: StateSpace) -> Int {\n  0\n}\n",
+    "src/v2_std_cardinality.rs",
+    ["TerminationProof"],
+    []
+  )
+}
+
+test fn the_nominal_arm_really_carries_the_second_declaration() -> Bool {
+  w_nominal_arm_really_carries_the_second_declaration()
+}
+
+// THE SAME NOMINAL CONSUMER WITH NO SECOND DECLARER AT ALL, so the arm above is read against a
+// baseline rather than on its own. If this one ever diverges from it, the nominal case has become
+// sensitive to the second declarer and the bound has moved.
+fn w_nominal_record_alone_keeps_its_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aiulb_nominal_alone\n\nimport std.types { Int, List }\nimport std.termination { TerminationProof }\n\nfn proof_dimension_count(p: TerminationProof) -> Int {\n  count(p.dimensions)\n}\n",
+    "src/aiulb_nominal_alone.rs",
+    ["pub use crate::std_termination::"],
+    []
+  )
+}
+
+test fn a_singly_declared_nominal_record_keeps_its_use_line() -> Bool {
+  w_nominal_record_alone_keeps_its_use_line()
+}
