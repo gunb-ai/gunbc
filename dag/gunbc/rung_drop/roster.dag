@@ -82,6 +82,7 @@ import gunbc.rung_drop.accumulator_copy_positive_controls_off_every_lane { accum
 import gunbc.rung_drop.slot_row_pinned_below_demonstrated_demand_unrefused { slot_row_pinned_below_demonstrated_demand_unrefused }
 import gunbc.rung_drop.seed_whole_corpus_demand_population_blind { seed_whole_corpus_demand_population_blind }
 import gunbc.rung_drop.interpreter_purity_gate_reads_authored_uses_only { interpreter_purity_gate_reads_authored_uses_only }
+import gunbc.rung_drop.census_image_rendered_program_wet_row_withdrawn { census_image_rendered_program_wet_row_withdrawn }
 import gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost { roadmap_live_projection_new_witness_eval_step_cost }
 import gunbc.rung_drop.live_deploy_apply_render_new_witness_eval_step_cost { live_deploy_apply_render_new_witness_eval_step_cost }
 import gunbc.rung_drop.roadmap_live_forecast_new_witness_eval_step_cost { roadmap_live_forecast_new_witness_eval_step_cost }
@@ -159,6 +160,7 @@ data rung_drop_roster: List<RungDrop> = [
   slot_row_pinned_below_demonstrated_demand_unrefused,
   seed_whole_corpus_demand_population_blind,
   interpreter_purity_gate_reads_authored_uses_only,
+  census_image_rendered_program_wet_row_withdrawn,
   roadmap_live_projection_new_witness_eval_step_cost,
   live_deploy_apply_render_new_witness_eval_step_cost,
   roadmap_live_forecast_new_witness_eval_step_cost,

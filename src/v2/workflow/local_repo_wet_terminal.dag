@@ -249,9 +249,10 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // .../gunbc-mtcollins1-census-...iso` finds no ISO in the ephemeral temp root), which the fail-open
 // floor reported green over. This lane realizes only ExpectedToHold, so under the sealed floor
 // (gunbc#11993) the row is withdrawn from the schedule rather than scheduled to disagree with its
-// terminal; it stays enrolled in floor_route_gap chunk_20 as the held route gap it is. It returns
-// here as ExpectedToHold when the census-image lane gives the rendered program its fixture on the
-// runner.
+// terminal. That withdraws the route's last execution, which is a declared drop and not a note:
+// gunbc.rung_drop census_image_rendered_program_wet_row_withdrawn carries the previous and
+// temporary rung, the reason, the population and the return trigger; the chunk_20 expectation and
+// the exclusion-frontier row stay so the identity is a held route gap rather than an unenrolled one.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
