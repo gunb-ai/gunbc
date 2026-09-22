@@ -1,7 +1,7 @@
 module extdeps.crypto.sha2
 
 import std.types { Int, List, String }
-import std.integer { UInt8, UInt32 }
+import std.integer { UInt8, UInt32, qualified_octets }
 import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_shr, word32_rotr, bitwise_pow2, Word64, word64_and, word64_xor, word64_not, word64_add, word64_shr, word64_rotr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -204,8 +204,12 @@ fn sha256(message: List<UInt8>) -> List<UInt8> {
 }
 
 // The lowercase hex rendering extdeps.crypto.hash Digest.hex carries.
+// The digest's octets are minted rather than re-admitted: every one came out of sha256_word_octets,
+// the same modulo-radix decomposition std.machine_word word_to_octets performs, so they are computed
+// in [0, 255] by the operation that produced them. That is the ground on which this declaration is
+// named in std.integer qualified_octets' admission roster.
 fn sha256_hex(message: List<UInt8>) -> String {
-  base16_encode_lower(octets: sha256(message: message))
+  base16_encode_lower(octets: qualified_octets(members: sha256(message: message)))
 }
 
 // ── SHA-384 (§6.5): the SHA-512 computation, truncated ──────────────────────────────────────
