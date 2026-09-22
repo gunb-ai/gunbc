@@ -1,0 +1,163 @@
+module test.claim.approval_ntfy_access_readback_witness_test
+
+import std.logic { Bool }
+import std.types { String, List }
+import extdeps.ssh.session { SshSessionExecResult }
+import extdeps.ntfy.access { ntfy_access_read, NtfyAccessListed, NtfyAccessUnparseable, NtfyRoleAdmin, NtfyReadWrite }
+import gunbc.auth.approval_ntfy_access_readback {
+  ApprovalNtfyAclDeviation, AclReadbackDidNotRun, AclListingUnparseable, AclDefaultAccessNotDeny, AclAnonymousHasGrants,
+  AclPrincipalMissing, AclPrincipalDuplicated, AclPublisherNotWriteOnly, AclOperatorNotReadOnly, AclUnexpectedPrincipal,
+  approval_ntfy_access_readback_argv,
+}
+import gunbc.auth.approval_device_enrolment_code_issue {
+  EnrolmentCodeIssuePlan, EnrolmentCodeIssueAdmitted, EnrolmentCodeIssueRefusedChannel, enrolment_code_issue_plan,
+}
+import gunbc.live_deploy.emit { RevisionBoundAtEmission }
+
+// ── Enrolment-code issuance is gated on the ntfy ACL readback ─────────────────────────────────
+// Every listing below is REAL `ntfy access --config <server.yml>` stdout from the upstream
+// ntfy v2.28.0 linux/arm64 release binary, captured against a scratch auth database built with
+// `ntfy user add` / `ntfy access USER TOPIC PERM` / `ntfy user change-role` / an
+// auth-default-access change -- never transcribed from the source, so the parser is exercised
+// against what the producer actually emits. Each claim supplies one listing at the step's gate
+// (enrolment_code_issue_plan) and asserts WHICH arm it takes and, for a refusal, WHICH typed
+// deviation. The positive control is the only listing that yields the issuing argv.
+//
+// MUTATION RECEIPT (PR body): replacing the AclRefused arm of enrolment_code_issue_plan with the
+// admitted argv turns every refusal claim here red, and the positive control stays green -- the
+// gate is what these claims measure, not a neighbouring check.
+data ntfy_access_exact: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data ntfy_access_default_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n"
+data ntfy_access_anon_read: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- read-only access to topic gunbc-approvals\n- no access to any (other) topics (server config)\n"
+data ntfy_access_pub_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- read-write access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data ntfy_access_op_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-write access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data ntfy_access_op_nogrant: String = "user gunbc-approval-operator (role: user, tier: none)\n- no topic-specific permissions\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data ntfy_access_op_missing: String = "user gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data ntfy_access_admin_extra: String = "user root (role: admin, tier: none)\n- read-write access to all topics (admin role)\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data ntfy_access_wildcard_reader: String = "user eve (role: user, tier: none)\n- read-only access to topic gunbc-*\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data ntfy_access_pub_admin: String = "user gunbc-approval-publisher (role: admin, tier: none)\n- read-write access to all topics (admin role)\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+
+data fx_revision: String = "0123456789abcdef0123456789abcdef01234567"
+
+fn readback_of(stdout: String) -> SshSessionExecResult {
+  SshSessionExecResult { exit_code: 0, success: true, stdout: stdout, stderr: "" }
+}
+
+fn plan_of(stdout: String) -> EnrolmentCodeIssuePlan {
+  enrolment_code_issue_plan(readback: readback_of(stdout: stdout), revision: RevisionBoundAtEmission { revision: fx_revision })
+}
+
+fn refused_with(p: EnrolmentCodeIssuePlan) -> ApprovalNtfyAclDeviation? {
+  match p {
+    EnrolmentCodeIssueRefusedChannel { deviation: d } => Present { value: d }
+    EnrolmentCodeIssueAdmitted { argv: _ } => none
+  }
+}
+
+// POSITIVE CONTROL: the exact ACL admits, and the admitted argv is the issuing verb.
+test fn the_exact_acl_admits_issuance() -> Bool {
+  (match ntfy_access_read(stdout: ntfy_access_exact) {
+    NtfyAccessListed { listing: l } => count(l.users) == 3
+    _ => false
+  })
+    && (match plan_of(stdout: ntfy_access_exact) {
+      EnrolmentCodeIssueAdmitted { argv: a } => string_contains(s: join(a, " "), pattern: "--function issue_device_enrolment_code")
+      _ => false
+    })
+}
+
+// The readback runs the server's own CLI as the server's principal, over the server's config.
+test fn the_readback_argv_is_ntfy_access_as_the_server_principal() -> Bool {
+  join(approval_ntfy_access_readback_argv(), " ") == "/usr/bin/sudo -n -u gunbc-ntfy /usr/bin/ntfy access --config /etc/gunbc-ntfy/server.yml"
+}
+
+// UNOBSERVED IS REFUSED: a readback that did not exit zero, and one that printed nothing.
+test fn an_unobserved_readback_refuses() -> Bool {
+  (match refused_with(p: enrolment_code_issue_plan(readback: SshSessionExecResult { exit_code: 1, success: false, stdout: ntfy_access_exact, stderr: "sudo: a password is required" }, revision: RevisionBoundAtEmission { revision: fx_revision })) {
+    Present { value: AclReadbackDidNotRun { detail: d } } => string_contains(s: d, pattern: "password")
+    _ => false
+  })
+    && (match refused_with(p: plan_of(stdout: "")) {
+      Present { value: AclListingUnparseable { line: _, cause: _ } } => true
+      _ => false
+    })
+}
+
+// A line the upstream does not print is not skipped.
+test fn an_unplaced_line_refuses() -> Bool {
+  match refused_with(p: plan_of(stdout: ntfy_access_exact + "WARN something unrelated\n")) {
+    Present { value: AclListingUnparseable { line: l, cause: _ } } => l == "WARN something unrelated"
+    _ => false
+  }
+}
+
+test fn default_access_not_deny_refuses() -> Bool {
+  match refused_with(p: plan_of(stdout: ntfy_access_default_rw)) {
+    Present { value: AclDefaultAccessNotDeny { observed: NtfyReadWrite } } => true
+    _ => false
+  }
+}
+
+test fn an_anonymous_read_grant_refuses() -> Bool {
+  match refused_with(p: plan_of(stdout: ntfy_access_anon_read)) {
+    Present { value: AclAnonymousHasGrants { grants: g } } => count(g) == 1
+    _ => false
+  }
+}
+
+test fn a_publisher_that_can_read_refuses() -> Bool {
+  match refused_with(p: plan_of(stdout: ntfy_access_pub_rw)) {
+    Present { value: AclPublisherNotWriteOnly { role: _, admin_all_topics: false, grants: _ } } => true
+    _ => false
+  }
+}
+
+test fn an_admin_publisher_refuses() -> Bool {
+  match refused_with(p: plan_of(stdout: ntfy_access_pub_admin)) {
+    Present { value: AclPublisherNotWriteOnly { role: NtfyRoleAdmin, admin_all_topics: true, grants: _ } } => true
+    _ => false
+  }
+}
+
+test fn an_operator_that_can_write_refuses() -> Bool {
+  match refused_with(p: plan_of(stdout: ntfy_access_op_rw)) {
+    Present { value: AclOperatorNotReadOnly { role: _, admin_all_topics: _, grants: _ } } => true
+    _ => false
+  }
+}
+
+test fn an_operator_without_the_grant_refuses() -> Bool {
+  match refused_with(p: plan_of(stdout: ntfy_access_op_nogrant)) {
+    Present { value: AclOperatorNotReadOnly { role: _, admin_all_topics: _, grants: g } } => count(g) == 0
+    _ => false
+  }
+}
+
+test fn a_missing_operator_refuses() -> Bool {
+  match refused_with(p: plan_of(stdout: ntfy_access_op_missing)) {
+    Present { value: AclPrincipalMissing { user: u } } => u == "gunbc-approval-operator"
+    _ => false
+  }
+}
+
+test fn a_further_admin_refuses() -> Bool {
+  match refused_with(p: plan_of(stdout: ntfy_access_admin_extra)) {
+    Present { value: AclUnexpectedPrincipal { user: u, role: NtfyRoleAdmin } } => u == "root"
+    _ => false
+  }
+}
+
+// A further non-admin user whose wildcard pattern matches the topic: refused by being present at all.
+test fn a_further_wildcard_reader_refuses() -> Bool {
+  match refused_with(p: plan_of(stdout: ntfy_access_wildcard_reader)) {
+    Present { value: AclUnexpectedPrincipal { user: u, role: _ } } => u == "eve"
+    _ => false
+  }
+}
+
+test fn a_duplicated_principal_refuses() -> Bool {
+  match refused_with(p: plan_of(stdout: ntfy_access_exact + "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\n")) {
+    Present { value: AclPrincipalDuplicated { user: u } } => u == "gunbc-approval-operator"
+    _ => false
+  }
+}

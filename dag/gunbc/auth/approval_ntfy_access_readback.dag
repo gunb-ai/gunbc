@@ -1,0 +1,163 @@
+module gunbc.auth.approval_ntfy_access_readback
+
+import std.types { NonEmptyStr, String, List, Bool }
+import extdeps.ntfy.access {
+  NtfyAccessRead, NtfyAccessListed, NtfyAccessUnparseable, NtfyAccessListing, NtfyAccessUser, NtfyAccessGrant,
+  NtfyPermission, NtfyReadWrite, NtfyReadOnly, NtfyWriteOnly, NtfyDenyAll,
+  NtfyRole, NtfyRoleAdmin, NtfyRoleUser, NtfyRoleAnonymous,
+  ntfy_access_read, ntfy_everyone_user,
+}
+import extdeps.sudo.elevation { sudo_elevate_as }
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.auth.approval_notification { approval_ntfy_topic }
+import gunbc.auth.approval_ntfy_deployment {
+  approval_ntfy_principal_name, approval_ntfy_config_path, approval_ntfy_binary_path,
+  approval_ntfy_publisher_user, approval_ntfy_operator_user,
+}
+
+// ── THE PRIVATE CHANNEL IS READ BACK, NOT DECLARED ──────────────────────────────────────────
+// An enrolment code is a credential delivered over the approval topic, so the topic's ACL IS the
+// code's confidentiality: a subscriber who is not the operator receives the code and can enrol
+// as the operator. gunbc.auth.approval_ntfy_deployment only DECLARES that ACL (a human step with
+// NoDischargeSiteModeled); this module reads the live list back from the server and admits exactly
+// one shape -- anything else, including a readback that did not run or did not parse, refuses.
+// Refusal is the default: the only arm that admits is AclEstablished, and it is reached only by
+// every check below holding on an observed listing (DESIGN §5; §3b leasing/grants row -- a grant
+// is established by readback of who may perform the effect, never by the declaration).
+//
+// THE EXACT ACL, stated once:
+//   default access (auth-default-access)          deny-all
+//   user `*` (anonymous)                          no grants          -- unprivileged subscribe refused
+//   approval_ntfy_publisher_user, role user       write-only on the topic, nothing else
+//   approval_ntfy_operator_user,  role user       read-only on the topic, nothing else
+//   any other user (admin or not)                 absent
+// "Absent" rather than "no access to the topic" because an admin reads every topic and a further
+// user's wildcard grant may match it; admitting only the three rows makes that question vanish
+// instead of re-implementing ntfy's pattern matching here.
+type ApprovalNtfyAclDeviation
+  = AclReadbackDidNotRun { detail: String }
+  | AclListingUnparseable { line: String, cause: String }
+  | AclDefaultAccessNotDeny { observed: NtfyPermission }
+  | AclAnonymousHasGrants { grants: List<NtfyAccessGrant> }
+  | AclPrincipalMissing { user: String }
+  | AclPrincipalDuplicated { user: String }
+  | AclPublisherNotWriteOnly { role: NtfyRole, admin_all_topics: Bool, grants: List<NtfyAccessGrant> }
+  | AclOperatorNotReadOnly { role: NtfyRole, admin_all_topics: Bool, grants: List<NtfyAccessGrant> }
+  | AclUnexpectedPrincipal { user: String, role: NtfyRole }
+
+type ApprovalNtfyAclVerdict
+  = AclEstablished
+  | AclRefused { deviation: ApprovalNtfyAclDeviation }
+
+// The readback argv: the server's own CLI, as the server's own principal, over the server's own
+// config -- the auth database it reads is the one the running server enforces.
+fn approval_ntfy_access_readback_argv() -> List<String> {
+  let inv = sudo_elevate_as(user: approval_ntfy_principal_name, command: [
+    approval_ntfy_binary_path as String, "access", "--config", approval_ntfy_config_path as String,
+  ])
+  concat([inv.bin_path], inv.args)
+}
+
+fn permission_is(p: NtfyPermission, want: NtfyPermission) -> Bool {
+  match p {
+    NtfyReadWrite => match want { NtfyReadWrite => true  _ => false }
+    NtfyReadOnly => match want { NtfyReadOnly => true  _ => false }
+    NtfyWriteOnly => match want { NtfyWriteOnly => true  _ => false }
+    NtfyDenyAll => match want { NtfyDenyAll => true  _ => false }
+  }
+}
+
+fn role_is_user(r: NtfyRole) -> Bool {
+  match r { NtfyRoleUser => true  _ => false }
+}
+
+// A named principal holds EXACTLY one grant, on the topic's literal name, with the wanted permission.
+fn holds_exactly(u: NtfyAccessUser, want: NtfyPermission) -> Bool {
+  role_is_user(r: u.role)
+    && !u.admin_all_topics
+    && count(u.grants) == 1
+    && all(u.grants, g => g.topic_pattern == (approval_ntfy_topic as String) && permission_is(p: g.permission, want: want))
+}
+
+fn is_declared_principal(name: String) -> Bool {
+  name == ntfy_everyone_user || name == (approval_ntfy_publisher_user as String) || name == (approval_ntfy_operator_user as String)
+}
+
+fn users_named(listing: NtfyAccessListing, name: String) -> List<NtfyAccessUser> {
+  filter(listing.users, u => u.name == name)
+}
+
+fn one_user(listing: NtfyAccessListing, name: String) -> ApprovalNtfyAclDeviation? {
+  let n = count(users_named(listing: listing, name: name))
+  if n == 0 { Present { value: AclPrincipalMissing { user: name } } }
+  else { if n > 1 { Present { value: AclPrincipalDuplicated { user: name } } } else { none } }
+}
+
+// THE ADMISSION FOLD over an observed listing. Checks run in a fixed order and the first deviation
+// is the cause, so the refusal is located rather than a count.
+fn approval_ntfy_acl_of_listing(listing: NtfyAccessListing) -> ApprovalNtfyAclVerdict {
+  let everyone = ntfy_everyone_user
+  let publisher = approval_ntfy_publisher_user as String
+  let operator = approval_ntfy_operator_user as String
+  if !permission_is(p: listing.default_access, want: NtfyDenyAll) { AclRefused { deviation: AclDefaultAccessNotDeny { observed: listing.default_access } } }
+  else { match first(filter(listing.users, u => !is_declared_principal(name: u.name))) {
+    Present { value: extra } => AclRefused { deviation: AclUnexpectedPrincipal { user: extra.name, role: extra.role } }
+    Absent => match one_user(listing: listing, name: everyone) {
+      Present { value: d } => AclRefused { deviation: d }
+      Absent => match one_user(listing: listing, name: publisher) {
+        Present { value: d } => AclRefused { deviation: d }
+        Absent => match one_user(listing: listing, name: operator) {
+          Present { value: d } => AclRefused { deviation: d }
+          Absent => approval_ntfy_acl_of_principals(
+            anonymous: users_named(listing: listing, name: everyone),
+            publisher: users_named(listing: listing, name: publisher),
+            operator: users_named(listing: listing, name: operator),
+          )
+        }
+      }
+    }
+  } }
+}
+
+fn approval_ntfy_acl_of_principals(anonymous: List<NtfyAccessUser>, publisher: List<NtfyAccessUser>, operator: List<NtfyAccessUser>) -> ApprovalNtfyAclVerdict {
+  match first(anonymous) {
+    Absent => AclRefused { deviation: AclPrincipalMissing { user: ntfy_everyone_user } }
+    Present { value: a } =>
+      if count(a.grants) != 0 || a.admin_all_topics { AclRefused { deviation: AclAnonymousHasGrants { grants: a.grants } } }
+      else { match first(publisher) {
+        Absent => AclRefused { deviation: AclPrincipalMissing { user: approval_ntfy_publisher_user as String } }
+        Present { value: p } =>
+          if !holds_exactly(u: p, want: NtfyWriteOnly) { AclRefused { deviation: AclPublisherNotWriteOnly { role: p.role, admin_all_topics: p.admin_all_topics, grants: p.grants } } }
+          else { match first(operator) {
+            Absent => AclRefused { deviation: AclPrincipalMissing { user: approval_ntfy_operator_user as String } }
+            Present { value: o } =>
+              if !holds_exactly(u: o, want: NtfyReadOnly) { AclRefused { deviation: AclOperatorNotReadOnly { role: o.role, admin_all_topics: o.admin_all_topics, grants: o.grants } } }
+              else { AclEstablished }
+          } }
+      } }
+  }
+}
+
+// FROM THE EXEC RESULT: a readback that did not exit zero observed nothing, and nothing observed
+// is a refusal -- never "no rules, so default".
+fn approval_ntfy_acl_of_readback(result: SshSessionExecResult) -> ApprovalNtfyAclVerdict {
+  if !result.success { AclRefused { deviation: AclReadbackDidNotRun { detail: "exit=" + to_string(result.exit_code) + " " + result.stderr } } }
+  else { match ntfy_access_read(stdout: result.stdout) {
+    NtfyAccessUnparseable { line: l, cause: c } => AclRefused { deviation: AclListingUnparseable { line: l, cause: c } }
+    NtfyAccessListed { listing: listing } => approval_ntfy_acl_of_listing(listing: listing)
+  } }
+}
+
+fn approval_ntfy_acl_deviation_sentence(d: ApprovalNtfyAclDeviation) -> String {
+  match d {
+    AclReadbackDidNotRun { detail: x } => "the ntfy access readback did not run (" + x + "); the channel is unobserved"
+    AclListingUnparseable { line: l, cause: c } => "the ntfy access listing did not parse at '" + l + "': " + c
+    AclDefaultAccessNotDeny { observed: _ } => "the server's default access is not deny-all, so an unlisted principal may subscribe"
+    AclAnonymousHasGrants { grants: _ } => "the anonymous user '*' holds topic grants, so an unprivileged subscriber may read"
+    AclPrincipalMissing { user: u } => "the access list has no user '" + u + "'"
+    AclPrincipalDuplicated { user: u } => "the access list names user '" + u + "' more than once"
+    AclPublisherNotWriteOnly { role: _, admin_all_topics: _, grants: _ } => "the publisher '" + (approval_ntfy_publisher_user as String) + "' does not hold exactly write-only on '" + (approval_ntfy_topic as String) + "'"
+    AclOperatorNotReadOnly { role: _, admin_all_topics: _, grants: _ } => "the operator '" + (approval_ntfy_operator_user as String) + "' does not hold exactly read-only on '" + (approval_ntfy_topic as String) + "'"
+    AclUnexpectedPrincipal { user: u, role: _ } => "the access list names a further user '" + u + "', who is not the publisher or the operator"
+  }
+}

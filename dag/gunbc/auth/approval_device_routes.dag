@@ -563,10 +563,13 @@ fn device_push_update_response_at(body: String, process: ApprovalServingProcess,
 // step, never an HTTP route -- gunbc.auth.approval_device_redemption: the operator's SSH key is the
 // attribution). Decision msg_a1d8d1b9 (2026-09-21): THE CODE NEVER APPEARS IN A STEP LOG OR A
 // RECEIPT. It is delivered over the operator ntfy topic gunbc.auth.approval_notification publishes
-// to. That topic's deny-by-default access and operator-only read grant are DECLARED
-// (gunbc.auth.approval_ntfy_deployment, NoDischargeSiteModeled) and NOT READ BACK, while the receipt
-// below names the topic -- so the channel is not established private until a readback shows
-// default deny, publisher write, operator read, and an unprivileged identity refused. A workflow log is readable by every repository reader, and a readable code lets
+// to. The step that reaches this verb (gunbc.auth.approval_device_enrolment_code_issue) first reads
+// the server's ACL back with `ntfy access` and runs this verb only when the listing shows default
+// deny, the publisher write-only, the operator read-only and no other principal
+// (gunbc.auth.approval_ntfy_access_readback). That gate is on the STEP: a person with a shell on the
+// host running this verb by hand bypasses it, which is the same boundary as that person reading the
+// store directly. "Unprivileged subscribe refused" is DERIVED from that listing through ntfy's own
+// authorizer (deny default, `*` without grants), not observed by a subscribe probe. A workflow log is readable by every repository reader, and a readable code lets
 // another principal enrol as the operator inside the window, the exact hole HTTP issuance was
 // refused for. What this verb prints is the delivery receipt: channel, message id, expiry.
 // Issued into the store BEFORE it is delivered so the code the operator receives is already valid.

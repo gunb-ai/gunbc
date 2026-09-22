@@ -1,0 +1,231 @@
+module extdeps.ntfy.access
+
+import std.types { String, List, Bool }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// ── `ntfy access`: the server's access-control list, as the upstream CLI prints it ───────────
+// Cited to the upstream source at a pinned tag, because the listing is a text rendering and its
+// exact wording IS the interface: cmd/access.go showUsers at ntfy v2.28.0. That function prints,
+// per user row of the auth database (manager.Users(), which includes the anonymous user `*`):
+//
+//   user NAME (role: ROLE, tier: TIER[, server config])
+//   - read-write access to all topics (admin role)                 -- admin role only, no grants
+//   - {read-write|read-only|write-only} access to topic PATTERN[ (server config)]
+//   - no access to topic PATTERN[ (server config)]
+//   - no topic-specific permissions                                -- a non-admin with no grants
+//   - {read-write|read-only|write-only} access to all (other) topics (server config)
+//   - no access to any (other) topics (server config)              -- the last two only under `*`,
+//                                                                     rendering auth-default-access
+//
+// ROLE is one of admin | user | anonymous (user/types.go Role). A permission is two bits, read and
+// write (user/types.go Permission), so the four arms below are the whole space.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/binwiederhier/ntfy/blob/v2.28.0/cmd/access.go"
+  }
+}
+
+data ntfy_access_upstream_version: String = "v2.28.0"
+
+// user/types.go Everyone: the anonymous principal's row name.
+data ntfy_everyone_user: String = "*"
+
+type NtfyPermission
+  = NtfyReadWrite
+  | NtfyReadOnly
+  | NtfyWriteOnly
+  | NtfyDenyAll
+
+type NtfyRole
+  = NtfyRoleAdmin
+  | NtfyRoleUser
+  | NtfyRoleAnonymous
+
+type NtfyAccessGrant {
+  topic_pattern: String
+  permission: NtfyPermission
+}
+
+// admin_all_topics is the admin line; grants are the per-topic lines. The upstream prints one or
+// the other, never both, and a non-admin with neither prints "no topic-specific permissions".
+type NtfyAccessUser {
+  name: String
+  role: NtfyRole
+  admin_all_topics: Bool
+  grants: List<NtfyAccessGrant>
+}
+
+type NtfyAccessListing {
+  users: List<NtfyAccessUser>
+  default_access: NtfyPermission
+}
+
+// A LINE THE UPSTREAM DOES NOT PRINT IS A REFUSAL, NOT A SKIP. The listing is read to establish an
+// access boundary, so a line this model cannot place (a newer upstream's wording, a log line, a
+// truncated read) means the boundary was not observed -- never that the unplaced line was harmless.
+type NtfyAccessRead
+  = NtfyAccessListed { listing: NtfyAccessListing }
+  | NtfyAccessUnparseable { line: String, cause: String }
+
+type NtfyAccessLine
+  = LineUser { name: String, role: NtfyRole }
+  | LineAdminAllTopics
+  | LineGrant { grant: NtfyAccessGrant }
+  | LineNoTopicGrants
+  | LineDefaultAccess { permission: NtfyPermission }
+  | LineUnrecognized { cause: String }
+
+fn ntfy_permission_of_words(words: String) -> NtfyPermission? {
+  if words == "read-write" { Present { value: NtfyReadWrite } }
+  else { if words == "read-only" { Present { value: NtfyReadOnly } }
+  else { if words == "write-only" { Present { value: NtfyWriteOnly } }
+  else { none } } }
+}
+
+fn ntfy_role_of_word(word: String) -> NtfyRole? {
+  if word == "admin" { Present { value: NtfyRoleAdmin } }
+  else { if word == "user" { Present { value: NtfyRoleUser } }
+  else { if word == "anonymous" { Present { value: NtfyRoleAnonymous } }
+  else { none } } }
+}
+
+fn listing_line_ends_with(s: String, suffix: String) -> Bool {
+  let n = string_length(s: s)
+  let m = string_length(s: suffix)
+  n >= m && substring(s: s, start: n - m, end: n) == suffix
+}
+
+fn strip_suffix_if(s: String, suffix: String) -> String {
+  if listing_line_ends_with(s: s, suffix: suffix) { substring(s: s, start: 0, end: string_length(s: s) - string_length(s: suffix)) } else { s }
+}
+
+fn after_prefix(s: String, prefix: String) -> String {
+  substring(s: s, start: string_length(s: prefix), end: string_length(s: s))
+}
+
+type SplitPair {
+  left: String
+  right: String
+}
+
+// A split that must yield exactly two parts: the delimiter occurs once.
+fn two_parts(parts: List<String>) -> SplitPair? {
+  if count(parts) != 2 { none }
+  else { match first(parts) {
+    Absent => none
+    Present { value: l } => match last(parts) {
+      Absent => none
+      Present { value: r } => Present { value: SplitPair { left: l, right: r } }
+    }
+  } }
+}
+
+// `user NAME (role: ROLE, tier: ...)` -- the name is everything before " (role: ", the role the
+// word before the next ", ".
+fn ntfy_access_user_line(rest: String) -> NtfyAccessLine {
+  let parts = rest |> split(delimiter: " (role: ")
+  match two_parts(parts: parts) {
+    Absent => LineUnrecognized { cause: "user line without exactly one role clause" }
+    Present { value: pair } => match pair.right |> split(delimiter: ", ") |> first {
+      Present { value: role_word } => match ntfy_role_of_word(word: role_word) {
+        Present { value: role } => if pair.left == "" { LineUnrecognized { cause: "empty user name" } } else { LineUser { name: pair.left, role: role } }
+        Absent => LineUnrecognized { cause: "unknown role '" + role_word + "'" }
+      }
+      Absent => LineUnrecognized { cause: "no role" }
+    }
+  }
+}
+
+// `- PERM access to topic PATTERN[ (server config)]`, `- no access to topic PATTERN[...]`, or the
+// `*` default line `- PERM access to all (other) topics (server config)`.
+fn ntfy_access_item_line(item: String) -> NtfyAccessLine {
+  if item == "read-write access to all topics (admin role)" { LineAdminAllTopics }
+  else { if item == "no topic-specific permissions" { LineNoTopicGrants }
+  else { if item == "no access to any (other) topics (server config)" { LineDefaultAccess { permission: NtfyDenyAll } }
+  else { if listing_line_ends_with(s: item, suffix: " access to all (other) topics (server config)") {
+    match ntfy_permission_of_words(words: strip_suffix_if(s: item, suffix: " access to all (other) topics (server config)")) {
+      Present { value: p } => LineDefaultAccess { permission: p }
+      Absent => LineUnrecognized { cause: "unknown default permission" }
+    }
+  }
+  else { if starts_with(s: item, prefix: "no access to topic ") {
+    ntfy_access_grant_line(pattern_part: after_prefix(s: item, prefix: "no access to topic "), permission: NtfyDenyAll)
+  }
+  else {
+    match two_parts(parts: item |> split(delimiter: " access to topic ")) {
+      Present { value: pair } => match ntfy_permission_of_words(words: pair.left) {
+        Present { value: p } => ntfy_access_grant_line(pattern_part: pair.right, permission: p)
+        Absent => LineUnrecognized { cause: "unknown permission '" + pair.left + "'" }
+      }
+      Absent => LineUnrecognized { cause: "unrecognized access line" }
+    }
+  } } } } }
+}
+
+fn ntfy_access_grant_line(pattern_part: String, permission: NtfyPermission) -> NtfyAccessLine {
+  let pattern = strip_suffix_if(s: pattern_part, suffix: " (server config)")
+  if pattern == "" || string_contains(s: pattern, pattern: " ") { LineUnrecognized { cause: "malformed topic pattern" } }
+  else { LineGrant { grant: NtfyAccessGrant { topic_pattern: pattern, permission: permission } } }
+}
+
+fn ntfy_access_line(line: String) -> NtfyAccessLine {
+  if starts_with(s: line, prefix: "user ") { ntfy_access_user_line(rest: after_prefix(s: line, prefix: "user ")) }
+  else { if starts_with(s: line, prefix: "- ") { ntfy_access_item_line(item: after_prefix(s: line, prefix: "- ")) }
+  else { LineUnrecognized { cause: "neither a user line nor an access line" } } }
+}
+
+type NtfyAccessFold {
+  users: List<NtfyAccessUser>
+  default_access: List<NtfyPermission>
+  failure: NtfyAccessRead?
+}
+
+fn ntfy_access_fold_fail(st: NtfyAccessFold, line: String, cause: String) -> NtfyAccessFold {
+  NtfyAccessFold { users: st.users, default_access: st.default_access, failure: Present { value: NtfyAccessUnparseable { line: line, cause: cause } } }
+}
+
+// Attaches an item line to the LAST user opened. An item before any user, or a default-access line
+// under any user but `*`, is not a listing the upstream prints.
+fn ntfy_access_fold_step(st: NtfyAccessFold, line: String) -> NtfyAccessFold {
+  match st.failure {
+    Present { value: _ } => st
+    Absent => match ntfy_access_line(line: line) {
+      LineUnrecognized { cause: c } => ntfy_access_fold_fail(st: st, line: line, cause: c)
+      LineUser { name: n, role: r } => NtfyAccessFold { users: concat(st.users, [NtfyAccessUser { name: n, role: r, admin_all_topics: false, grants: [] }]), default_access: st.default_access, failure: none }
+      item => match last(st.users) {
+        Absent => ntfy_access_fold_fail(st: st, line: line, cause: "access line before any user line")
+        Present { value: u } => {
+          let head = st.users.take(n: count(st.users) - 1)
+          match item {
+            LineAdminAllTopics => NtfyAccessFold { users: concat(head, [NtfyAccessUser { name: u.name, role: u.role, admin_all_topics: true, grants: u.grants }]), default_access: st.default_access, failure: none }
+            LineGrant { grant: g } => NtfyAccessFold { users: concat(head, [NtfyAccessUser { name: u.name, role: u.role, admin_all_topics: u.admin_all_topics, grants: concat(u.grants, [g]) }]), default_access: st.default_access, failure: none }
+            LineNoTopicGrants => st
+            LineDefaultAccess { permission: p } =>
+              if u.name == ntfy_everyone_user { NtfyAccessFold { users: st.users, default_access: concat(st.default_access, [p]), failure: none } }
+              else { ntfy_access_fold_fail(st: st, line: line, cause: "default-access line under a user other than '*'") }
+            _ => ntfy_access_fold_fail(st: st, line: line, cause: "unplaced line")
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE ONE READ of an `ntfy access` stdout. Exactly one default-access line must appear: none means
+// the anonymous row was absent from the listing, two means it was not one listing.
+fn ntfy_access_read(stdout: String) -> NtfyAccessRead {
+  let lines = filter(stdout |> split(delimiter: "\n") |> map(l => trim(s: l)), l => l != "")
+  let st = fold(lines, init: NtfyAccessFold { users: [], default_access: [], failure: none }, f: (acc, l) => ntfy_access_fold_step(st: acc, line: l))
+  match st.failure {
+    Present { value: failed } => failed
+    Absent => match first(st.default_access) {
+      Present { value: p } =>
+        if count(st.default_access) == 1 { NtfyAccessListed { listing: NtfyAccessListing { users: st.users, default_access: p } } }
+        else { NtfyAccessUnparseable { line: "", cause: "expected exactly one default-access line under user '*', saw " + to_string(count(st.default_access)) } }
+      Absent => NtfyAccessUnparseable { line: "", cause: "no default-access line: the anonymous user '*' was not listed" }
+    }
+  }
+}
