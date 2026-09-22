@@ -1547,16 +1547,31 @@ fn body_lower_comma_repeat_items(repeat_capture: Node) -> List<Node> {
   }
 }
 
+// A COMMA LIST HAS THREE SHAPES, NOT TWO, AND THE THIRD IS A LIST OF ONE. An empty capture is the
+// empty list; a `seq(item, seq(repeat, opt))` spine is the multi-item list; ANYTHING ELSE NON-EMPTY
+// is a SINGLE ITEM, because the grammar's comma spine only appears once there is a comma. Reading
+// the third case as "unreadable" conflates arity one with a shape this reader cannot parse, and
+// both of the obvious dispositions for that conflation are wrong: answering an empty list drops
+// the argument silently (the erasure gunbc.recurring_failure_mode call_expression_erased_at_v2_
+// body_lowering records), and REFUSING rejects every one-argument call -- `x.step(a)` reached this
+// reader as the bare atom `a`, which is neither empty nor a spine. gunbc#12033 introduced that
+// refusal while repairing the drop, and the floor caught it as a claim_failed on
+// v2.test.claim.body_lowering_qualified_path body_lowering_local_receiver_call_callee_is_the_whole_path.
+//
+// SO THIS READER IS TOTAL AND REFUSES NOTHING. Its job is to classify LIST SHAPE, and every node
+// is one of the three. Whether an individual item is lowerable is the item lowerer's question --
+// body_lower_arg_lowered refuses there, located on the item -- which is where a refusal can name
+// what it could not read instead of blaming the list.
 fn body_lower_comma_list_items_optional(list_capture: Node) -> Optional<List<Node>> {
   let stripped = body_lower_deep_unwrap_optional(node: list_capture)
   if is_empty_conj_root(n: stripped) {
     optional_present(value: Empty)
   } else {
     match sugar_sequence_pair_optional(node: stripped) {
-      Absent => Absent
+      Absent => optional_present(value: [stripped])
       Present { value: pair } =>
         match sugar_sequence_pair_optional(node: pair.right) {
-          Absent => Absent
+          Absent => optional_present(value: [stripped])
           Present { value: tail } =>
             Present {
               value: list_append(
@@ -3017,13 +3032,22 @@ fn body_lower_arg_lowered(arg_capture: Node) -> Outcome<Node> {
   body_lower_value_lowered_or_carried(value: body_lower_arg_value_capture(arg_capture: arg_capture))
 }
 
-// AN UNREADABLE ARGUMENT LIST REFUSES; IT DOES NOT BECOME A CALL WITH NO ARGUMENTS. A genuinely
-// empty list is already Present(Empty) -- body_lower_comma_list_items_optional answers that from
-// is_empty_conj_root -- so Absent here means the capture is neither empty nor the expected
-// seq(item, seq(repeat, opt)) spine, and answering it with an accepted zero-operand call is the
-// fabricated plausible output DESIGN section 5 forbids: the callee survives, every argument is
-// dropped, and no reader downstream can tell. That is the shape
-// gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering records.
+// THIS REFUSAL IS UNREACHABLE BY CONSTRUCTION TODAY, AND SAYING SO IS THE POINT. The reader above
+// is TOTAL -- empty conj, comma spine, or single item, every node is one of the three and every
+// path answers Present -- so no capture reaches this arm. It is kept rather than deleted because
+// the alternative disposition for an unreadable list is the one DESIGN section 5 forbids: an
+// accepted call with ZERO operands, callee surviving and every argument dropped with nothing
+// downstream able to tell (gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering).
+// If the reader ever regains an Absent arm, this site must refuse rather than fabricate.
+//
+// IT IS NOT COVERAGE AND MUST NOT BE CITED AS ANY. No red can be authored for it while the reader
+// stays total, which is DESIGN section 4b's question -- is the check's RED authorable -- answered
+// honestly in the negative. An earlier revision of this arm DID fire, on every single-argument
+// call: `x.step(a)` reaches the reader as the bare atom `a`, which is neither empty nor a spine,
+// and the reader answered Absent for two different reasons. The floor caught it as a claim_failed
+// on v2.test.claim.body_lowering_qualified_path
+// body_lowering_local_receiver_call_callee_is_the_whole_path. The repair was to the READER, which
+// is where the missing distinction lived, not to this arm.
 fn body_lower_call_args_from_capture(args_capture: Node) -> Outcome<List<Node>> {
   match body_lower_comma_list_items_optional(list_capture: args_capture) {
     Absent =>
@@ -3139,14 +3163,22 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-// THE PAREN-SUFFIX ARM WITH AN UNREADABLE INTERIOR REFUSES, AND IS UNREACHABLE TODAY. A
-// zero-argument call `f()` does NOT arrive there -- it reaches body_lower_call_args_from_capture
-// with an empty conj, which is_empty_conj_root answers Present(Empty); measured by flipping the
-// arm to a refusal and observing the zero-arg specimen lower unchanged, at identical eval steps.
-// So the arm sees only a paren call suffix whose interior is not the expected spine, and an
-// accepted empty argument list there would drop arguments silently. An unreachable refusal costs
-// nothing; an unreachable widen is the one that bites when the grammar moves (DESIGN section 5:
-// refuse, never widen).
+// THE PAREN-SUFFIX ARM WITH AN UNREADABLE INTERIOR REFUSES, AND AN EMPTY INTERIOR IS NOT WHAT
+// REACHES IT. Stated explicitly because a lane read this arm the other way and spent a round on
+// it (gunbc#12057): the question "is an empty interior representable here" has an answer and the
+// arm did not carry it. IT IS NOT. A zero-argument call does not arrive here with an ABSENT
+// interior -- it reaches body_lower_call_args_from_capture with an empty conj, which
+// is_empty_conj_root answers Present(Empty). Two independent measurements say so: flipping this
+// arm to a refusal leaves a zero-arg specimen lowering unchanged at identical eval steps, and
+// gunbc#12057's own pairing rows -- parsed zero-arg call TRUE, hand-supplied seq(lparen, rparen)
+// FALSE over the same door and the same assertion -- establish that the real parser does not emit
+// the absent-interior shape at all. A fixture that builds `()` as seq(lparen, rparen) is an
+// unfaithful hypothesis about this boundary, not a reachable program.
+//
+// So what this arm sees is a paren call suffix whose interior is present but not the expected
+// spine, and an accepted empty argument list there would drop arguments silently. An unreachable
+// refusal costs nothing; an unreachable widen is the one that bites when the grammar moves
+// (DESIGN section 5: refuse, never widen).
 fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Outcome<Optional<List<Node>>> {
   match body_lower_call_suffix_is_paren_list(call_suffix: call_suffix) {
     false => outcome_accepted(value: optional_absent())
