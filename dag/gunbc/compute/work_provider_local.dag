@@ -42,7 +42,7 @@ import gunbc.roadmap_execution_contract {
 import std.measure { Kibibyte, kibibyte_to_byte_size }
 import gunbc.compute.host_capacity {
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
-  ComputeRelease, ComputeReleased, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire,
+  ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
   compute_capacity_subject, compute_capacity_store, compute_release_on,
@@ -1262,6 +1262,10 @@ fn compute_refused_unreserved(
 fn compute_release_landed(r: ComputeRelease) -> Bool {
   match r {
     ComputeReleased { partition: _, reference: _, reason: _ } => true
+    // A SEAT NOBODY HOLDS IS NOT A CHARGE, so this arm LANDS. It is what gates the settled record
+    // against compute_unreleased_record, and routing a double release to the unreleased record is
+    // exactly the false incident this arm exists to stop.
+    ComputeNothingToRelease { detail: _ } => true
     ComputeReleaseRefused { detail: _ } => false
   }
 }
@@ -1269,6 +1273,7 @@ fn compute_release_landed(r: ComputeRelease) -> Bool {
 fn compute_release_wire(r: ComputeRelease) -> String {
   match r {
     ComputeReleased { partition: _, reference: ref_, reason: why } => join(["released ", ref_ as String, " (", why as String, ")"], "")
+    ComputeNothingToRelease { detail: d } => join(["no seat to return -- ", d], "")
     ComputeReleaseRefused { detail: d } => join(["NOT released: ", d], "")
   }
 }

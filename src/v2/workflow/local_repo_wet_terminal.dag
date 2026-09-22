@@ -310,6 +310,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet" },
       entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
       function: "a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet",
