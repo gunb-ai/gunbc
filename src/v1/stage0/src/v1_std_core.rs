@@ -746,14 +746,6 @@ pub enum CompilerDiagnostic {
         constructor_decl_name: String,
         span: Rc<SourceSpan>,
     },
-    ResourceRequirementUnestablished {
-        callee_module_path: String,
-        callee_decl_name: String,
-        resource: String,
-        caller_module_path: String,
-        caller_decl_name: String,
-        span: Rc<SourceSpan>,
-    },
     DeclaredTypeNotInhabited {
         position: String,
         expected: String,
@@ -1019,7 +1011,6 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         }
         CompilerDiagnostic::ConstructorCallAdmissionRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { span: s, .. } => s.clone(),
-        CompilerDiagnostic::ResourceRequirementUnestablished { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeNotInhabited { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
@@ -1093,7 +1084,6 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => crate::std_source_annotation::annotation_attachment_refusal_message(r.clone()),
     CompilerDiagnostic::ConstructorCallAdmissionRefused { constructor_module_path: cm, constructor_decl_name: cn, caller_module_path: caller_m, caller_decl_name: caller_n, permitted_callers: permitted, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor call admission refused: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' refuses call from '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' — permitted callers: [".to_string()), permitted.clone().join(&", ".to_string())), "]".to_string()),
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, .. } => v1_rt::concat(v1_rt::concat("admit_callers entry on '".to_string(), cn.clone()), "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored".to_string()),
-    CompilerDiagnostic::ResourceRequirementUnestablished { callee_module_path: cm, callee_decl_name: cn, resource: r, caller_module_path: caller_m, caller_decl_name: caller_n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("resource requirement unestablished: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' requires resource '".to_string()), r.clone()), "' and the calling declaration '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' establishes no binding of that resource -- a call site must establish every resource its callee declares through `uses`, or the realized call has nothing to pass".to_string()),
     CompilerDiagnostic::DeclaredTypeNotInhabited { position: pos, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("value does not inhabit its declared type at the ".to_string(), pos.clone()), ": declared '".to_string()), e.clone()), "', produced '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position: pos, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("declared-type inhabitance is undecidable at the ".to_string(), pos.clone()), " (".to_string()), r.clone()), "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
@@ -1316,10 +1306,6 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityError,
-    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
-    CompilerDiagnostic::ResourceRequirementUnestablished { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),

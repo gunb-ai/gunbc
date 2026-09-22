@@ -431,14 +431,6 @@ type CompilerDiagnostic
       span: SourceSpan
     }
   | AdmitCallersEntryNotDeclRef { constructor_decl_name: String, span: SourceSpan }
-  | ResourceRequirementUnestablished {
-      callee_module_path: String,
-      callee_decl_name: String,
-      resource: String,
-      caller_module_path: String,
-      caller_decl_name: String,
-      span: SourceSpan
-    }
   | DeclaredTypeNotInhabited { position: String, expected: String, got: String, span: SourceSpan }
   | DeclaredTypeInhabitanceUndecided { position: String, reason: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
@@ -665,7 +657,6 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
       span: s
     } => s
     AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: s } => s
-    ResourceRequirementUnestablished { callee_module_path: _, callee_decl_name: _, resource: _, caller_module_path: _, caller_decl_name: _, span: s } => s
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: s } => s
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
@@ -764,12 +755,6 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       )
     AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, span: _ } =>
       concat("admit_callers entry on '", cn, "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored")
-    ResourceRequirementUnestablished { callee_module_path: cm, callee_decl_name: cn, resource: r, caller_module_path: caller_m, caller_decl_name: caller_n, span: _ } =>
-      concat(
-        "resource requirement unestablished: '", cm, ".", cn, "' requires resource '", r,
-        "' and the calling declaration '", caller_m, ".", caller_n,
-        "' establishes no binding of that resource -- a call site must establish every resource its callee declares through `uses`, or the realized call has nothing to pass"
-      )
     DeclaredTypeNotInhabited { position: pos, expected: e, got: g, span: _ } =>
       concat("value does not inhabit its declared type at the ", pos, ": declared '", e, "', produced '", g, "'")
     DeclaredTypeInhabitanceUndecided { position: pos, reason: r, span: _ } =>
@@ -910,7 +895,6 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     SourceAnnotationRefused { refusal: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ConstructorCallAdmissionRefused { constructor_module_path: _, constructor_decl_name: _, caller_module_path: _, caller_decl_name: _, permitted_callers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
-    ResourceRequirementUnestablished { callee_module_path: _, callee_decl_name: _, resource: _, caller_module_path: _, caller_decl_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     UnlistedImportUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }

@@ -48,7 +48,7 @@ pub fn fixture_item_info(name: String, module_name: String) -> Rc<ItemInfo> {
         module_name: module_name.clone(),
         kind: ItemKind::FnItem,
         service_names: Rc::new(vec![]),
-        resource_requirements: Rc::new(vec![]),
+        resource_names: Rc::new(vec![]),
         params: Rc::new(vec![]),
         is_self_recursive: false,
         has_non_tail_self_call: false,

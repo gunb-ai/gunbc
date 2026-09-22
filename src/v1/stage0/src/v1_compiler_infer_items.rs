@@ -27,7 +27,6 @@ use crate::v1_std_core::LeafOwner::{LeafAmbiguous, SingleOwner};
 pub use crate::v1_std_core::{
     authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
     make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
-    resource_use_name_at, resource_use_resource,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, ErrorNode, InferredNode, LeafOwner, NewlineIndex, Node,
@@ -59,52 +58,12 @@ pub enum ItemKind {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ResourceRequirement {
-    pub binding_name: String,
-    pub resource: Rc<Node>,
-}
-
-pub fn resource_requirements_of_uses(
-    uses: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ResourceRequirement>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for u in uses.iter().cloned() {
-            __result.push(Rc::new(ResourceRequirement {
-                binding_name: crate::v1_std_core::resource_use_name_at(
-                    u.clone(),
-                    source_indices.clone(),
-                ),
-                resource: crate::v1_std_core::resource_use_resource(u.clone()),
-            }));
-        }
-        __result
-    })
-}
-
-pub fn item_resource_names(info: Rc<ItemInfo>) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for r in info.resource_requirements.clone().iter().cloned() {
-            __result.push(r.binding_name.clone());
-        }
-        __result
-    })
-}
-
-pub fn item_is_effectful_callee(info: Rc<ItemInfo>) -> bool {
-    (((info.service_names.clone().len() as i64) > 0)
-        || ((item_resource_names(info.clone()).len() as i64) > 0))
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemInfo {
     pub name: String,
     pub module_name: String,
     pub kind: ItemKind,
     pub service_names: Rc<Vec<String>>,
-    pub resource_requirements: Rc<Vec<Rc<ResourceRequirement>>>,
+    pub resource_names: Rc<Vec<String>>,
     pub params: Rc<Vec<Rc<Node>>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,

@@ -27,7 +27,6 @@ import v1.std.core {
   node_name_span, no_span,
   NewlineIndex, authored_name_at,
   LeafOwner, SingleOwner, LeafAmbiguous,
-  resource_use_name_at, resource_use_resource,
 }
 import std.occurrence_identity { OccurrenceTransport, OccurrenceSynthetic }
 
@@ -50,47 +49,12 @@ import v1.compiler.infer_emit_info {
 
 type ItemKind = FnItem | TypeItem | DataItem | ServiceItem | OtherItem
 
-// A DECLARATION'S RESOURCE REQUIREMENT IS PART OF ITS CALL CONTRACT, NOT A NAME LIST. One row per
-// `uses` entry: the binding name the declaration gave the resource (which is also the identifier
-// the Rust realization receives it under) and the resource TYPE it requires, kept as the authored
-// type node so a consumer can resolve it in an environment and compare declarations rather than
-// spellings. The list of names alone -- what this carrier replaced -- let the Rust emitter pass a
-// CALLEE's binding name at a call site in a CALLER that never bound it: the arity of the emitted
-// call agreed with the declaration while its argument named nothing in scope, and only rustc
-// refused, after the file was published (DESIGN section 5, silent wrongness at the realization
-// boundary). The requirement is checked at the call site by v1.compiler.infer
-// resource_requirement_diags and consumed by v1.compiler.emit_rust emit_typed_call, both keyed
-// on declaration identity.
-type ResourceRequirement {
-  binding_name: String
-  resource: Node
-}
-
-fn resource_requirements_of_uses(uses: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<ResourceRequirement> {
-  uses |> map(u => ResourceRequirement {
-    binding_name: resource_use_name_at(n: u, source_indices: source_indices),
-    resource: resource_use_resource(n: u)
-  })
-}
-
-fn item_resource_names(info: ItemInfo) -> List<String> {
-  info.resource_requirements |> map(r => r.binding_name)
-}
-
-// THE ONE EFFECT PREDICATE. A declaration is effectful when it carries a service requirement
-// (inferred, transitive) or a resource requirement (authored `uses`); every emitter site that
-// decides async-ness, extra arguments or the await suffix reads this rather than respelling the
-// disjunction.
-fn item_is_effectful_callee(info: ItemInfo) -> Bool {
-  info.service_names |> count > 0 || item_resource_names(info: info) |> count > 0
-}
-
 type ItemInfo {
   name: String
   module_name: String
   kind: ItemKind
   service_names: List<String>
-  resource_requirements: List<ResourceRequirement>
+  resource_names: List<String>
   params: List<Node>
   is_self_recursive: Bool
   has_non_tail_self_call: Bool

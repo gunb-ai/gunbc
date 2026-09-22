@@ -35,7 +35,7 @@ fn fixture_item_info(name: String, module_name: String) -> ItemInfo {
     module_name: module_name,
     kind: FnItem,
     service_names: [],
-    resource_requirements: [],
+    resource_names: [],
     params: [],
     is_self_recursive: false,
     has_non_tail_self_call: false

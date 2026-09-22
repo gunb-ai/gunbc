@@ -606,8 +606,8 @@ fn project_resolved_rust_fn_signatures(
                             RenderTarget::Rust,
                         ));
                     }
-                    for r in info.resource_requirements.iter() {
-                        ordered.push(emit_ident(r.binding_name.clone(), RenderTarget::Rust));
+                    for r in info.resource_names.iter() {
+                        ordered.push(emit_ident(r.clone(), RenderTarget::Rust));
                     }
                     for sn in info.service_names.iter() {
                         ordered.push(crate::v1_compiler_emit_core_support::service_var_name(

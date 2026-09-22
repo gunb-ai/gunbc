@@ -332,7 +332,7 @@ fn expand_transitive_services_once(module_callees: List<ModuleCallees>, registry
               module_name: info.module_name,
               kind: info.kind,
               service_names: merged,
-              resource_requirements: info.resource_requirements,
+              resource_names: info.resource_names,
               params: info.params,
               is_self_recursive: info.is_self_recursive,
               has_non_tail_self_call: info.has_non_tail_self_call
