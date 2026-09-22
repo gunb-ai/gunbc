@@ -148,8 +148,8 @@ type TypeDefinitionsMapNotSourceGrounded {
 // reexport_packages wildcard pub-use chain — not CompilationUnit.interface Nodes, which is why the
 // R3 crate rendering does NOT wait on this debt. Full Node-carrier exports are blocked on the
 // module-binding SUPPLY carrying per-module declaration contents at closure scale; the index
-// itself cannot supply them, and this sentence used to say it could (see
-// stage0_grounding_target_repointed_note).
+// itself cannot supply them, and this sentence used to say it could (the annotation above
+// stage0_module_interface_grounding_target records why two dissolve targets got that wrong).
 
 // Rust R4 primary refusals: SccSplit + UnitGraphCycle (LinkageCycle permissive). ByValueTypeCycle
 // has LANDED on the home coproduct and is refused by the C realization, not by Rust — type-layout
@@ -157,20 +157,40 @@ type TypeDefinitionsMapNotSourceGrounded {
 // described that arm as arriving with a rebase and instructed exhaustive PartitionR4ValidityCause
 // matches to add a fourth arm on it; both were already done.
 
-data stage0_grounding_target_repointed_note: String = "REPOINTED TWICE, AND THE SECOND TARGET WAS WRONG IN THE SAME WAY AS THE FIRST. This debt's dissolution first named v2.compiler.self_host.frontier compiler_frontier_roster, on the premise that the self-host roster would eventually carry each module's exports and type definitions. It never could: a roster row carried a module path and a self-host disposition and nothing else, so the pointer named an authority that was not going to supply the fact even in principle.
-
-It was then repointed at v2.compiler.source_authority ModuleStorageIndex, reasoning that this is where module identity is DERIVED at parse rather than authored. THAT POINTER FAILED THE SAME TEST. A ModuleStorageBinding is { module: QualifiedName, provenance: ModuleStorageProvenance, source_root: SourceRootRef }; ModuleStorageProvenance is ParsedFromSource { artifact, span_index } or ProducedByBehavior { producer }; and v2.std.artifact Artifact is { kind, id, file_path }. A row therefore carries a NAME, a LOCATION and a source root, and no declaration appears anywhere in that closure. It cannot supply exported declaration Nodes or ModuleTypeDefinitionRows any more than a roster row could.
-
-THE TELL, so a third repoint does not repeat it: a dissolve target is not checked by whether the fact is derived at the right TIME but by whether the named authority CARRIES the right FACT. Module IDENTITY derived at parse is the wrong property. What the interface maps need is module CONTENTS derived at parse. The first note diagnosed exactly this and then named another module-to-location authority.
-
-WHERE THE FACT ACTUALLY IS, and it is not missing. v2.compiler.source_authority already parses every module: module_storage_binding_from_read_prepared tokenizes and calls parse_module_prepared, and module_storage_binding_from_parse_artifact hands artifact.tree to module_storage_binding_from_provenance as `node:`. The module root is IN HAND at the mint site and dropped there, deliberately -- module_storage_binding_authority_note earns that scope by saying the binding never needed file CONTENTS, only module and path. So the projection belongs at that mint site and needs no second read of the source, let alone a third.
-
-WHY THIS IS STILL DEBT, which is the part a capability-shaped trigger has to say. module_storage_bindings_for_source_roots' own note prices the in-graph derivation per module and admits it as fine at ORACLE scale and impossible at consumer scale, quantifying the frontier it was written against. THE SUBJECT HERE IS LARGER THAN THAT FRONTIER BY AN ORDER OF MAGNITUDE -- the closure is the one v2.workflow.emitted_closure_crate_partition derives -- so a reader must not carry that note's verdict across to this subject unexamined. Both figures stay with the instruments that own them and are re-derived from them rather than copied here (DESIGN 6). The consumer-scale producer is a host handler, and module_storage_bindings_for_source_roots refuses today with module_storage_supply_host_dispatch_required.
-
-SO THE TRIGGER IS A CAPABILITY, not a table (DESIGN 4b(3)). It is DECLARED on the typed carrier, stage0_module_dag_interface_grounding_debt_dissolve_on, because that is the one a program reads and this note is not; restated here only so the argument above lands, never as a second authority. In outline: the module-binding supply must be host-emitted AND must carry per-module declaration contents, sufficient for partition_fold_outcome to derive a complete CompilationUnit interface for EVERY module of the emitted closure within the gate's budget. The host-emission half is the dissolution v2.compiler.source_authority module_storage_supply_dissolution_trigger ALREADY declares, so this debt joins that one rather than opening a second. What is not yet declared anywhere is the contents half, and naming it here is what this repoint adds.
-
-A module whose provenance is ProducedByBehavior has no artifact and no file_path, so it has no contents to project; its interface is its producer's to supply and is a different fact needing a different declaration. That arm must refuse, never answer Empty -- an Empty there is the symptom this whole row exists to remove, arriving by a new road."
-
+// REPOINTED TWICE, AND THE SECOND TARGET WAS WRONG IN THE SAME WAY AS THE FIRST. This debt's
+// dissolution first named v2.compiler.self_host.frontier compiler_frontier_roster, on the premise
+// that the self-host roster would eventually carry each module's exports and type definitions. It
+// never could: a roster row carried a module path and a self-host disposition and nothing else, so
+// the pointer named an authority that was not going to supply the fact even in principle.
+//
+// It was then repointed at v2.compiler.source_authority ModuleStorageIndex, reasoning that this is
+// where module identity is DERIVED at parse rather than authored. That pointer failed the same
+// test. A ModuleStorageBinding carries a module QualifiedName, a ModuleStorageProvenance and a
+// SourceRootRef; the provenance carries an Artifact, which is kind, id and file_path. So a row
+// carries a NAME, a LOCATION and a source root, and no declaration appears anywhere in that
+// closure. It cannot supply exported declaration Nodes or ModuleTypeDefinitionRows any more than a
+// roster row could.
+//
+// THE TELL, so a third repoint does not repeat it: a dissolve target is not checked by whether the
+// fact is derived at the right TIME but by whether the named authority CARRIES the right FACT.
+// Module IDENTITY derived at parse is the wrong property; what the interface maps need is module
+// CONTENTS derived at parse. The first note diagnosed exactly this and then named another
+// module-to-location authority.
+//
+// WHERE THE FACT ACTUALLY IS, and it is not missing. source_authority already parses every module:
+// module_storage_binding_from_read_prepared tokenizes and calls parse_module_prepared, and
+// module_storage_binding_from_parse_artifact hands artifact.tree to
+// module_storage_binding_from_provenance as `node:`. The module root is IN HAND at the mint site
+// and dropped there, deliberately -- module_storage_binding_authority_note earns that scope by
+// saying the binding never needed file CONTENTS, only module and path. So the projection belongs
+// at that mint site and needs no second read of the source, let alone a third.
+//
+// WHY IT IS STILL DEBT is not restated here. The operative trigger lives on the typed carrier,
+// stage0_module_dag_interface_grounding_debt_dissolve_on, because that is the declaration a
+// program can read; an annotation is never evidence that a machine claim holds (DESIGN 4c), and a
+// second prose copy of the trigger would be the §3 fork a disclaimer cannot talk its way out of.
+// What is above is the irreducible rationale for the SHAPE of that trigger -- why two earlier
+// targets were named and why both could not work -- which is what this channel is for.
 fn stage0_module_interface_grounding_target() -> DeclarationRef {
   DeclarationRef {
     module_path: "v2.compiler.source_authority" as NonEmptyStr,
@@ -1000,4 +1020,4 @@ data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolutio
 
 data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
 
-data stage0_module_dag_interface_grounding_debt_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_module_dag_interface_grounding — THE TRIGGER IS A CAPABILITY, NOT AN ARTIFACT, and it is stated here because this is the carrier a program reads; stage0_grounding_target_repointed_note is commentary no Accepted program can consume, and stage0_module_interface_grounding_target is a DeclarationRef, which can name a declaration and nothing else. THE CAPABILITY: the module-binding supply must be HOST-EMITTED and must carry PER-MODULE DECLARATION CONTENTS. SUFFICIENT FOR, which is the half a decl name cannot state: partition_fold_outcome deriving a COMPLETE CompilationUnit interface — exports as module-scope declaration Nodes, and by-value ModuleTypeDefinitionRow rows — for EVERY module of the emitted compiler closure, within the required gate budget rather than at oracle scale. Both halves must hold: a host-emitted supply that still carries only module and path retires nothing, and contents derived in-graph at a scale the gate cannot pay for retires nothing either. THE POPULATION is the emitted closure v2.workflow.emitted_closure_crate_partition derives, not a fixture; its size and the per-module eval price are owned by v2.compiler.source_authority module_storage_bindings_for_source_roots' own note and by that derivation, and are deliberately not copied here (DESIGN 6: name the instrument, never transcribe its output). THE HOST-EMISSION HALF is already declared as v2.compiler.source_authority module_storage_supply_dissolution_trigger, so this debt JOINS that dissolution rather than opening a second; the CONTENTS half and the sufficiency clause above are what this row adds, and they are declared nowhere else. A module whose provenance is ProducedByBehavior has no artifact and no file_path, so it has no contents to project: that arm must REFUSE, and its interface being supplied by its producer is a different fact owing a different declaration — answering Empty there reintroduces the exact symptom this row exists to remove. UNTIL ALL OF THAT HOLDS, R3 render uses Stage0PartitionCrateRow.modules plus the reexport_packages wildcard pub-use chain, never CompilationUnit.interface Nodes.")
+data stage0_module_dag_interface_grounding_debt_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_module_dag_interface_grounding — THE TRIGGER IS A CAPABILITY, NOT AN ARTIFACT, and it is stated here because this is the carrier a program reads; the annotation above stage0_module_interface_grounding_target is commentary no Accepted program can consume, and that declaration is a DeclarationRef, which can name a declaration and nothing else. THE CAPABILITY: the module-binding supply must be HOST-EMITTED and must carry PER-MODULE DECLARATION CONTENTS. SUFFICIENT FOR, which is the half a decl name cannot state: partition_fold_outcome deriving a COMPLETE CompilationUnit interface — exports as module-scope declaration Nodes, and by-value ModuleTypeDefinitionRow rows — for EVERY module of the emitted compiler closure, within the required gate budget rather than at oracle scale. Both halves must hold: a host-emitted supply that still carries only module and path retires nothing, and contents derived in-graph at a scale the gate cannot pay for retires nothing either. THE POPULATION is the emitted closure v2.workflow.emitted_closure_crate_partition derives, not a fixture; its size and the per-module eval price are owned by v2.compiler.source_authority module_storage_bindings_for_source_roots' own note and by that derivation, and are deliberately not copied here (DESIGN 6: name the instrument, never transcribe its output). THE HOST-EMISSION HALF is already declared as v2.compiler.source_authority module_storage_supply_dissolution_trigger, so this debt JOINS that dissolution rather than opening a second; the CONTENTS half and the sufficiency clause above are what this row adds, and they are declared nowhere else. A module whose provenance is ProducedByBehavior has no artifact and no file_path, so it has no contents to project: that arm must REFUSE, and its interface being supplied by its producer is a different fact owing a different declaration — answering Empty there reintroduces the exact symptom this row exists to remove. UNTIL ALL OF THAT HOLDS, R3 render uses Stage0PartitionCrateRow.modules plus the reexport_packages wildcard pub-use chain, never CompilationUnit.interface Nodes.")
