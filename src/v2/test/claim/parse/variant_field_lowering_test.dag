@@ -88,15 +88,15 @@ fn vf_normalized(tokens: TokenStream) -> Outcome<NormalizedTree> {
   }
 }
 
-fn vf_normalizes(tokens: TokenStream) -> Bool {
-  match vf_normalized(tokens: tokens) {
+fn vf_normalizes(o: Outcome<NormalizedTree>) -> Bool {
+  match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn vf_refuses_with(tokens: TokenStream, reason: Symbol) -> Bool {
-  match vf_normalized(tokens: tokens) {
+fn vf_refuses_with(o: Outcome<NormalizedTree>, reason: Symbol) -> Bool {
+  match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
   }
@@ -159,8 +159,8 @@ fn vf_arm_payload_from_tree(nt: NormalizedTree, type_lexeme: String, arm_lexeme:
   vf_arm_payload_optional(root: nt.root, type_lexeme: type_lexeme, arm_lexeme: arm_lexeme)
 }
 
-fn vf_arm_payload_of(tokens: TokenStream, type_lexeme: String, arm_lexeme: String) -> Optional<Node> {
-  match vf_normalized(tokens: tokens) {
+fn vf_arm_payload_of(o: Outcome<NormalizedTree>, type_lexeme: String, arm_lexeme: String) -> Optional<Node> {
+  match o {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: nt, diagnostics: _ } =>
       vf_arm_payload_optional(root: nt.root, type_lexeme: type_lexeme, arm_lexeme: arm_lexeme)
@@ -188,7 +188,7 @@ data vf_positional_sum: String = "module m.t\n\ntype C = A(Int) | B\n"
 
 // `type C = A(Int) | B`: A declares exactly one Required field "0" of type Int; B is nullary.
 test fn vf_positional_variant_declares_one_required_field_zero() -> Bool {
-  match vf_arm_payload_of(tokens: vfs_stream_13(), type_lexeme: "C", arm_lexeme: "A") {
+  match vf_arm_payload_of(o: vfs_normalized_13(), type_lexeme: "C", arm_lexeme: "A") {
     Absent => false
     Present { value: payload } =>
       (vf_field_count(payload: payload) == 1)
@@ -200,7 +200,7 @@ test fn vf_positional_variant_declares_one_required_field_zero() -> Bool {
 }
 
 test fn vf_bare_variant_is_nullary() -> Bool {
-  match vf_arm_payload_of(tokens: vfs_stream_13(), type_lexeme: "C", arm_lexeme: "B") {
+  match vf_arm_payload_of(o: vfs_normalized_13(), type_lexeme: "C", arm_lexeme: "B") {
     Absent => false
     Present { value: payload } => payload_is_nullary(payload: payload) && (vf_field_count(payload: payload) == 0)
   }
@@ -208,7 +208,7 @@ test fn vf_bare_variant_is_nullary() -> Bool {
 
 // The braced spelling declares the SAME kind of field, through the same stage.
 test fn vf_braced_variant_declares_named_field() -> Bool {
-  match vf_arm_payload_of(tokens: vfs_stream_0(), type_lexeme: "C", arm_lexeme: "A") {
+  match vf_arm_payload_of(o: vfs_normalized_0(), type_lexeme: "C", arm_lexeme: "A") {
     Absent => false
     Present { value: payload } =>
       (vf_field_count(payload: payload) == 1)
@@ -222,7 +222,7 @@ test fn vf_braced_variant_declares_named_field() -> Bool {
 // A record declaration is a Named member whose payload declares its fields: Required `v`,
 // Optional `w` (a Cardinality node over Int), and `xs` typed by an Instantiation of List over Int.
 test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
-  match vf_normalized(tokens: vfs_stream_1()) {
+  match vfs_normalized_1() {
     Rejected { diagnostics: _ } => false
     Accepted { value: nt, diagnostics: _ } =>
       match vf_named_member_optional(root: nt.root, lexeme: "R") {
@@ -266,14 +266,14 @@ test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
 // The seed's sum rule: one alternative with a payload is a coproduct; one bare alternative is an
 // alias and keeps its reference to the type it names.
 test fn vf_single_fielded_variant_is_a_sum() -> Bool {
-  match vf_arm_payload_of(tokens: vfs_stream_2(), type_lexeme: "F", arm_lexeme: "Bar") {
+  match vf_arm_payload_of(o: vfs_normalized_2(), type_lexeme: "F", arm_lexeme: "Bar") {
     Absent => false
     Present { value: payload } => vf_field_count(payload: payload) == 1
   }
 }
 
 test fn vf_bare_alias_is_not_a_sum() -> Bool {
-  match vf_normalized(tokens: vfs_stream_3()) {
+  match vfs_normalized_3() {
     Rejected { diagnostics: _ } => false
     Accepted { value: nt, diagnostics: _ } =>
       match vf_named_member_optional(root: nt.root, lexeme: "T") {
@@ -298,8 +298,8 @@ fn vf_fn_body_from_tree(nt: NormalizedTree, fn_lexeme: String) -> Optional<Node>
   }
 }
 
-fn vf_fn_body_of(tokens: TokenStream, fn_lexeme: String) -> Optional<Node> {
-  match vf_normalized(tokens: tokens) {
+fn vf_fn_body_of(o: Outcome<NormalizedTree>, fn_lexeme: String) -> Optional<Node> {
+  match o {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: nt, diagnostics: _ } => vf_fn_body_from_tree(nt: nt, fn_lexeme: fn_lexeme)
   }
@@ -310,7 +310,7 @@ fn vf_fn_body_of(tokens: TokenStream, fn_lexeme: String) -> Optional<Node> {
 // seed's infer_variant_constructor_call joins them. That the argument is CARRIED is this control's
 // point: on the route before this change `A(x)` lowered to Transform(A) with x dropped.
 test fn vf_positional_construction_carries_its_operand() -> Bool {
-  match vf_fn_body_of(tokens: vfs_stream_4(), fn_lexeme: "wrap") {
+  match vf_fn_body_of(o: vfs_normalized_4(), fn_lexeme: "wrap") {
     Absent => false
     Present { value: body } =>
       match body.kind {
@@ -326,7 +326,7 @@ test fn vf_positional_construction_carries_its_operand() -> Bool {
 
 // A record construction is the construct shape: tag edge R -> Atom(R), then field v -> x.
 test fn vf_record_construction_is_the_construct_shape() -> Bool {
-  match vf_fn_body_of(tokens: vfs_stream_5(), fn_lexeme: "mk") {
+  match vf_fn_body_of(o: vfs_normalized_5(), fn_lexeme: "mk") {
     Absent => false
     Present { value: body } =>
       (match construct_tag_optional(n: body) { Present { value: tag } => symbol_lexeme(sym: tag) == "R"  Absent => false })
@@ -340,8 +340,8 @@ test fn vf_record_construction_is_the_construct_shape() -> Bool {
   }
 }
 
-fn vf_first_arm_pattern_of(tokens: TokenStream, fn_lexeme: String) -> Optional<Node> {
-  match vf_normalized(tokens: tokens) {
+fn vf_first_arm_pattern_of(o: Outcome<NormalizedTree>, fn_lexeme: String) -> Optional<Node> {
+  match o {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: nt, diagnostics: _ } => vf_first_arm_pattern_from_tree(nt: nt, fn_lexeme: fn_lexeme)
   }
@@ -383,21 +383,21 @@ data vf_positional_unwrap: String = "module m.t\n\ntype C = A(Int) | B\n\nfn unw
 // binder the body names reaches the resolver instead of vanishing (and instead of the typed
 // refusal gunbc#11998 stood in its place, now retired).
 test fn vf_positional_pattern_binds_field_zero() -> Bool {
-  match vf_first_arm_pattern_of(tokens: vfs_stream_14(), fn_lexeme: "unwrap") {
+  match vf_first_arm_pattern_of(o: vfs_normalized_14(), fn_lexeme: "unwrap") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "x")
   }
 }
 
 test fn vf_braced_pattern_binds_named_field() -> Bool {
-  match vf_first_arm_pattern_of(tokens: vfs_stream_6(), fn_lexeme: "unwrap") {
+  match vf_first_arm_pattern_of(o: vfs_normalized_6(), fn_lexeme: "unwrap") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "v", binder: "x")
   }
 }
 
 test fn vf_shorthand_pattern_binds_field_to_its_own_name() -> Bool {
-  match vf_first_arm_pattern_of(tokens: vfs_stream_7(), fn_lexeme: "unwrap") {
+  match vf_first_arm_pattern_of(o: vfs_normalized_7(), fn_lexeme: "unwrap") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "v", binder: "v")
   }
@@ -405,7 +405,7 @@ test fn vf_shorthand_pattern_binds_field_to_its_own_name() -> Bool {
 
 // A wildcard payload is the same construct with `_` in field 0 -- nothing is dropped.
 test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
-  match vf_first_arm_pattern_of(tokens: vfs_stream_8(), fn_lexeme: "tag") {
+  match vf_first_arm_pattern_of(o: vfs_normalized_8(), fn_lexeme: "tag") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "_")
   }
@@ -417,11 +417,11 @@ test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
 // arm. That the body's x then RESOLVES to the arm's binder and not the parameter is the
 // resolver's fact, asserted by v2.test.claim.match_arm_binder_frame over resolve_match_node.
 test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
-  (match vf_first_arm_pattern_of(tokens: vfs_stream_16(), fn_lexeme: "pick") {
+  (match vf_first_arm_pattern_of(o: vfs_normalized_16(), fn_lexeme: "pick") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "x")
   })
-    && (match vf_normalized(tokens: vfs_stream_16()) {
+    && (match vfs_normalized_16() {
       Rejected { diagnostics: _ } => false
       Accepted { value: nt, diagnostics: _ } =>
         match vf_named_member_optional(root: nt.root, lexeme: "pick") {
@@ -442,10 +442,10 @@ test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
 // DISTINCT PAYLOADS STAY DISTINCT: constructions differing only in the payload normalize to
 // different provenance-free trees, so the payload is carried, not summarized by the constructor.
 test fn vf_distinct_payloads_normalize_distinct() -> Bool {
-  match vf_normalized(tokens: vfs_stream_9()) {
+  match vfs_normalized_9() {
     Rejected { diagnostics: _ } => false
     Accepted { value: left, diagnostics: _ } =>
-      match vf_normalized(tokens: vfs_stream_10()) {
+      match vfs_normalized_10() {
         Rejected { diagnostics: _ } => false
         Accepted { value: right, diagnostics: _ } =>
           canonicalize_node_strip_provenance(n: left.root) != canonicalize_node_strip_provenance(n: right.root)
@@ -457,14 +457,14 @@ test fn vf_distinct_payloads_normalize_distinct() -> Bool {
 // clause beside a payload is a spelling the seed never reaches.
 test fn vf_two_positional_binders_refuse() -> Bool {
   vf_refuses_with(
-    tokens: vfs_stream_11(),
+    o: vfs_normalized_11(),
     reason: ^body_lowering_reason_pattern_unlowered
   )
 }
 
 test fn vf_where_beside_payload_refuses() -> Bool {
   vf_refuses_with(
-    tokens: vfs_stream_12(),
+    o: vfs_normalized_12(),
     reason: ^body_lowering_reason_field_decl_unlowered
   )
 }
@@ -473,7 +473,7 @@ test fn vf_where_beside_payload_refuses() -> Bool {
 // workload stopped on. This is the seed-run half of that receipt; the native run is on the PR.
 
 test fn vf_content_hash_declarations_and_positional_match_normalize() -> Bool {
-  match vf_normalized(tokens: vfs_stream_15()) {
+  match vfs_normalized_15() {
     Rejected { diagnostics: _ } => false
     Accepted { value: nt, diagnostics: _ } =>
       (match vf_first_arm_pattern_from_tree(nt: nt, fn_lexeme: "compare_content_hash") {
@@ -1185,3 +1185,70 @@ test fn vfs_fidelity_16() -> Bool {
   )
 }
 
+fn vfs_normalized_0() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_0())
+}
+
+fn vfs_normalized_1() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_1())
+}
+
+fn vfs_normalized_2() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_2())
+}
+
+fn vfs_normalized_3() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_3())
+}
+
+fn vfs_normalized_4() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_4())
+}
+
+fn vfs_normalized_5() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_5())
+}
+
+fn vfs_normalized_6() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_6())
+}
+
+fn vfs_normalized_7() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_7())
+}
+
+fn vfs_normalized_8() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_8())
+}
+
+fn vfs_normalized_9() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_9())
+}
+
+fn vfs_normalized_10() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_10())
+}
+
+fn vfs_normalized_11() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_11())
+}
+
+fn vfs_normalized_12() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_12())
+}
+
+fn vfs_normalized_13() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_13())
+}
+
+fn vfs_normalized_14() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_14())
+}
+
+fn vfs_normalized_15() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_15())
+}
+
+fn vfs_normalized_16() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_16())
+}
