@@ -398,9 +398,10 @@ fn app_attest_root() -> X509Certificate? {
 // verifier does not carry, or a signature that is not an ECDSA-Sig-Value for the issuer's width --
 // and never a verdict. ITS EVIDENCE: the refusing arms are claimed cheaply over the real leaf
 // (test.claim.app_attest_verifier_witness_test); the two verifying links are enrolled there and in
-// test.claim.p384_dag_ecdsa_witness_test and are NOT executed on the interpreter, because a P-384
-// verification at 16 limbs exceeds what a session container holds (one P-256 verify is 15.5 GiB);
-// their executing route is the native gunbc test row the frontier names.
+// test.claim.p384_dag_ecdsa_witness_test and are NOT executed on the interpreter: a P-384
+// verification at 16 limbs exceeds what a session container holds, by the instrument the roadmap
+// row v1-interpreter-p256-verify-cost-shape names; their executing route is the native gunbc test
+// row the frontier names.
 fn chain_link_verifies(subject: X509Certificate, issuer: X509Certificate) -> Bool? {
   let digest = if subject.signature_algorithm == oid_ecdsa_with_sha256 { Present { value: sha256(message: subject.tbs.tbs_octets) } }
     else if subject.signature_algorithm == oid_ecdsa_with_sha384 { Present { value: sha384(message: subject.tbs.tbs_octets) } }

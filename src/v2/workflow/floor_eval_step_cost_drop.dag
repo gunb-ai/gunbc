@@ -158,8 +158,43 @@ data floor_eval_step_cost_drop_interpreted_crypto_rows: List<EvalStepCostDropMea
   },
 ]
 
+
+// SIXTH DROP, SAME MEMBERSHIP TEST: the App Attest VERIFIER claims (`gunbc.rung_drop`
+// `app_attest_verifier_new_witness_eval_step_cost`). Six identities, each decoding Apple's real
+// attestation or assertion object -- one CBOR document, three DER certificates, SHA-256 over the
+// leaf's TBS and the nonce -- through the production folds and asserting a named step's verdict.
+// The decode is done ONCE per claim and carried (AttestationDecoded); what the budget prices is
+// the interpreter walking real-sized octet lists byte by byte. The P-256 verifications of the same
+// witnesses are not members and not on the floor: they cross the wall deadline.
+data floor_eval_step_cost_drop_app_attest_verifier_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.app_attest_verifier_witness_test.the_sample_passes_every_step_before_the_extension_steps" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic [witness] receipt at session/nimble-eagle-216-step3b 1e567156455 (gunbc#11989 is stacked and no required floor has run it): verdict pass, wall under the 8 s deadline, eval_steps read from that receipt's own line; the billed work is decoding Apple's real attestation object (CBOR, three X.509 certificates, SHA-256 over the TBS and nonce) once per claim on the interpreter" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.app_attest_verifier_witness_test.each_expectation_reds_its_own_step" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic [witness] receipt at session/nimble-eagle-216-step3b 1e567156455 (gunbc#11989 is stacked and no required floor has run it): verdict pass, wall under the 8 s deadline, eval_steps read from that receipt's own line; the billed work is decoding Apple's real attestation object (CBOR, three X.509 certificates, SHA-256 over the TBS and nonce) once per claim on the interpreter" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.app_attest_verifier_witness_test.the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic [witness] receipt at session/nimble-eagle-216-step3b 1e567156455 (gunbc#11989 is stacked and no required floor has run it): verdict pass, wall under the 8 s deadline, eval_steps read from that receipt's own line; the billed work is decoding Apple's real attestation object (CBOR, three X.509 certificates, SHA-256 over the TBS and nonce) once per claim on the interpreter" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.app_attest_verifier_witness_test.an_undecodable_stored_key_is_absent_not_a_false_verdict" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic [witness] receipt at session/nimble-eagle-216-step3b 1e567156455 (gunbc#11989 is stacked and no required floor has run it): verdict pass, wall under the 8 s deadline, eval_steps read from that receipt's own line; the billed work is decoding Apple's real attestation object (CBOR, three X.509 certificates, SHA-256 over the TBS and nonce) once per claim on the interpreter" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.app_attest_verifier_witness_test.chain_link_refuses_an_unsupported_algorithm_or_curve_by_absence" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic [witness] receipt at session/nimble-eagle-216-step3b 1e567156455 (gunbc#11989 is stacked and no required floor has run it): verdict pass, wall under the 8 s deadline, eval_steps read from that receipt's own line; the billed work is decoding Apple's real attestation object (CBOR, three X.509 certificates, SHA-256 over the TBS and nonce) once per claim on the interpreter" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.signature_verify_join_witness_test.malformed_carriers_refuse_before_the_curve" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic [witness] receipt at session/nimble-eagle-216-step3b 1e567156455 (gunbc#11989 is stacked and no required floor has run it): verdict pass, wall under the 8 s deadline, eval_steps read from that receipt's own line; the billed work is decoding Apple's real attestation object (CBOR, three X.509 certificates, SHA-256 over the TBS and nonce) once per claim on the interpreter" as NonEmptyStr,
+  },
+]
+
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows)
+  concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or
