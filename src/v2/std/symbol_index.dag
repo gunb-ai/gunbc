@@ -16,7 +16,8 @@ import v2.std.collection {
   Map,
   empty_map,
   map_get,
-  map_insert
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -219,13 +220,19 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
   }
 }
 
+// MEMBERSHIP, WITH NO FAILURE ARM TO WIDEN (review 70226). The first cut read this through
+// map_get, whose Outcome carries a Rejected arm, and answered `false` there -- and `false` here
+// means BINDER, which matches every value, so a lookup that could not answer would have widened the
+// arm silently. That is the fail-open shape DESIGN section 5 forbids and the one this package
+// exists to close. map_lookup is the total read underneath map_get (which is
+// `outcome_accepted(map_lookup(..))`, so its refusal arm is unreachable by construction rather than
+// merely unlikely): present or absent, no third answer to default. The map is a SET of declaring
+// paths -- `true` is the only value written and absence is non-membership, the idiom
+// v2.std.declaration_marker marked_paths already uses -- so membership is the whole question.
 fn symbol_index_denotes_declared_payload(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
-  match v2.std.collection.map_get(index.declared_payloads, qualified_path) {
-    Accepted { value: opt, diagnostics: _ } => match opt {
-      Present { value: _ } => true
-      Absent => false
-    }
-    Rejected { diagnostics: _ } => false
+  match map_lookup(m: index.declared_payloads, key: qualified_path) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 

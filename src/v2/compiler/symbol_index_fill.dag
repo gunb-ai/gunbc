@@ -366,17 +366,43 @@ fn symbol_index_fill_unique_variant_aliases(
 
 // PASS A -- WHAT THIS ROOT DECLARES. Every path here is rooted at this module's own qualified name,
 // so no other root can write it and the result does not depend on when this root is visited.
-fn symbol_index_fill_module_declarations(index: SymbolIndex, root: Node) -> SymbolIndex {
+// A RECORD IS MARKED FROM THE CARRIER, AND BY THE ARM THAT ALREADY DECIDED THE MODULE'S NAME.
+// Pass A cannot tell a record from a module container or a where-alias -- all three arrive through
+// symbol_index_fill_containment_edge as a Named edge to a Conj -- so the record half of the
+// declared-payload fact rides on ModuleBindingSource record_declarations (captured at normalize,
+// where the rehome still holds it) and is qualified here by the module's own name.
+//
+// IT IS MARKED INSIDE THIS FUNCTION, NOT BESIDE IT (review 70226). The first cut qualified the
+// records in its own fold, which re-asked qualified_name_from_module_node and therefore carried a
+// SECOND arm for a root whose name does not resolve -- a place to drop records for a module whose
+// declarations this arm had already dropped. Two arms deciding one thing is the fork; there is now
+// one. A root whose qualified name does not resolve contributes NOTHING here, records included,
+// which is this function's existing behaviour rather than a new drop: no entry is inserted for it,
+// so no reference can reach it and no binder can be widened by its absence.
+fn symbol_index_fill_module_declarations(
+  index: SymbolIndex,
+  root: Node,
+  record_declarations: FreeMonoid<Symbol>
+) -> SymbolIndex {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
-      symbol_index_fill_unique_variant_aliases(
-        index: symbol_index_fill_containment_node(
-          index: index,
-          path: module_qn,
-          node: root
+      fold_list(
+        xs: record_declarations,
+        empty: symbol_index_fill_unique_variant_aliases(
+          index: symbol_index_fill_containment_node(
+            index: index,
+            path: module_qn,
+            node: root
+          ),
+          module_qn: module_qn,
+          root: root
         ),
-        module_qn: module_qn,
-        root: root
+        cons: fn(acc, name) {
+          symbol_index_mark_declared_payload(
+            index: acc,
+            qualified_path: qualified_name_snoc(qn: module_qn, segment: name)
+          )
+        }
       )
     Rejected { diagnostics: _ } => index
   }
@@ -394,7 +420,7 @@ fn symbol_index_fill_module_root(index: SymbolIndex, root: Node) -> SymbolIndex 
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
       symbol_index_fill_alias_bindings(
-        index: symbol_index_fill_module_declarations(index: index, root: root),
+        index: symbol_index_fill_module_declarations(index: index, root: root, record_declarations: Empty),
         module_qn: module_qn,
         root: root
       )
@@ -426,7 +452,7 @@ fn symbol_index_fill_module_root_nodes(
       xs: roots,
       empty: index,
       cons: fn(acc, root) {
-        symbol_index_fill_module_declarations(index: acc, root: root)
+        symbol_index_fill_module_declarations(index: acc, root: root, record_declarations: Empty)
       }
     ),
     pending: fold_list(
@@ -446,30 +472,6 @@ fn symbol_index_fill_module_root_nodes(
   )
 }
 
-// A RECORD IS MARKED FROM THE CARRIER, NOT FROM THE TREE. Pass A cannot tell a record from a
-// module container or a where-alias -- all three arrive through symbol_index_fill_containment_edge
-// as a Named edge to a Conj -- so the record half of the declared-payload fact rides on
-// ModuleBindingSource record_declarations (captured at normalize, where the rehome still holds it)
-// and is qualified here by the module's own name. The node-only doors above have no carrier and
-// mark variant arms only; nothing that asks symbol_index_denotes_declared_payload is filled
-// through them (the resolver's index is filled here, v2.compiler.name_resolve).
-fn symbol_index_mark_records(index: SymbolIndex, tree: ModuleBindingSource) -> SymbolIndex {
-  match qualified_name_from_module_node(root: tree.root) {
-    Rejected { diagnostics: _ } => index
-    Accepted { value: module_qn, diagnostics: _ } =>
-      fold_list(
-        xs: tree.record_declarations,
-        empty: index,
-        cons: fn(acc, name) {
-          symbol_index_mark_declared_payload(
-            index: acc,
-            qualified_path: qualified_name_snoc(qn: module_qn, segment: name)
-          )
-        }
-      )
-  }
-}
-
 fn symbol_index_fill_module_roots(
   index: SymbolIndex,
   roots: FreeMonoid<ModuleBindingSource>
@@ -479,9 +481,10 @@ fn symbol_index_fill_module_roots(
       xs: roots,
       empty: index,
       cons: fn(acc, tree) {
-        symbol_index_mark_records(
-          index: symbol_index_fill_module_declarations(index: acc, root: tree.root),
-          tree: tree
+        symbol_index_fill_module_declarations(
+          index: acc,
+          root: tree.root,
+          record_declarations: tree.record_declarations
         )
       }
     ),
