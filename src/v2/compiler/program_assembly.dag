@@ -215,11 +215,19 @@ fn program_assembly_phase_parse_measured(
 // the composition does internally, so the threading has to be reachable phase by phase or the
 // driver silently keeps the per-file reset while the modeled fold no longer has it.
 //
-// THE FALLBACK ON A REFUSAL IS THE SEED ITSELF, NOT ZERO. A refused parse produces no artifact to
-// read a mark from, and the honest answer is the mark the phase was HANDED: nothing after a refusal
-// consumed an id, and returning `occurrence_id_allocator_initial()` there would silently rewind the
-// whole ingest to the start, reintroducing across the refusal the collision this threading exists
-// to prevent.
+// THE FALLBACK ON A REFUSAL IS THE SEED ITSELF, NOT ZERO, AND NOT THE MARK THE ATTEMPT REACHED.
+// Returning `occurrence_id_allocator_initial()` would silently rewind the whole ingest to the
+// start, which is the collision this threading exists to prevent, at its worst.
+//
+// THE SEED IS A FLOOR, NOT A STATEMENT THAT NOTHING WAS MINTED (review 69819). A refused parse HAS
+// minted ids -- `parse_prov_seeded` threads the allocator through the entire attempt -- and an
+// earlier revision of this paragraph said "nothing after a refusal consumed an id", which was
+// false. What is true is that the mark the attempt reached is not RECOVERABLE here:
+// `ParseExprRejected` carries no provenance state, by construction, because the parse core
+// backtracks and a failed branch's mints are abandoned by design. Reusing those ids is sound
+// exactly while nothing retains a refused parse's node loci; the precondition and the carrier that
+// would break it are named on `v2.compiler.compile` `native_test_context_absorb`, which is where
+// the reuse actually happens.
 fn program_assembly_phase_parse_measured_seeded(
   tokens: Outcome<TokenStream>,
   prepared: PreparedGrammar,
@@ -326,8 +334,12 @@ type ProgramAssemblySeededRead {
 // index, and it is exactly the file whose diagnostic a reader needs located. Returning
 // Outcome<...> alone would discard that index on the arm where it matters most.
 //
-// TOKENIZE OR PARSE REFUSING IS DIFFERENT AND REPORTS AN EMPTY INDEX HONESTLY: no occurrence was
-// minted, so there is nothing to carry. Absence here is an answer, not a dropped value.
+// TOKENIZE OR PARSE REFUSING REPORTS AN EMPTY INDEX, and the reason is that the artifact holding
+// the index does not exist on that arm -- NOT that no occurrence was minted. A refused parse mints
+// ids and records spans for them inside a `ParseProvenanceState` the refusal discards. Empty here
+// is therefore "this producer cannot reach what was recorded", which `span_index_lookup` turns into
+// a refusal at the join rather than a wrong locus -- the fail-closed arm. An earlier revision of
+// this sentence claimed nothing was minted, which was a stronger and false claim (review 69819).
 type ProgramAssemblySeededReadResult {
   alloc: OccurrenceIdAllocator,
   spans: SpanIndex,

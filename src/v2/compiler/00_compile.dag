@@ -1276,10 +1276,33 @@ fn native_test_file_refusal(path: Symbol, d: NonEmptyDiagnostics) -> NativeTestF
 // front end was entered -- as one composed call (native_test_context_from_ingest below) or phase
 // by phase with a clock between them (std.compiler_entry.SourceRootEvalDriver). Neither caller
 // changes what is absorbed.
-// THE MARK ADVANCES ON EVERY ARM, INCLUDING THE REFUSING ONES. A read that refused still consumed
-// the ids it minted before it stopped, so carrying the incoming mark forward regardless of outcome
-// is what keeps the next file from reusing them -- rolling back to the pre-read mark on a refusal
-// would reintroduce exactly the collision this field exists to prevent, one file later.
+// WHAT THIS ARM CARRIES, STATED AS THE CODE ACTUALLY BEHAVES (review 69819). Every arm stores the
+// mark `program_assembly_read_to_normalized_root_seeded` returned, and that producer does NOT
+// advance it uniformly: a read whose NORMALIZE or graft refused reports the mark its parse reached,
+// while a read whose TOKENIZE or PARSE refused reports the mark it was HANDED. An earlier revision
+// of this paragraph claimed the mark advances on every arm including the refusing ones. It does
+// not, and that sentence was the same defect this package exists to correct -- prose asserting a
+// behaviour the code does not have (DESIGN section 4c) -- written by the author who had just
+// corrected it elsewhere.
+//
+// WHY THE PARSE-REFUSAL ARM DOES NOT ADVANCE, AND WHAT THAT COSTS. A refused parse has minted ids:
+// `parse_prov_seeded` threads the allocator through the whole attempt. Those ids are reachable only
+// from values the refusal discards -- `ParseExprRejected` carries no provenance state, by
+// construction, because the parse core BACKTRACKS and a failed branch's mints are abandoned by
+// design. So the mark the attempt reached is not recoverable here without threading provenance out
+// of all 35 `ParseExprRejected` sites AND deciding what the allocator means across a backtrack,
+// which is a change to the parse core and its own package, not a fold-threading detail.
+//
+// THE CONSTRAINT THAT MAKES THE CURRENT ARM SAFE, NAMED RATHER THAN ASSUMED. Reusing a refused
+// parse's ids is sound exactly while nothing retains that parse's node loci. Today nothing does:
+// `native_test_vocabulary` `NativeTestFileRefusal` keeps `path`, `head_reason` and `fatal_reason`
+// -- three symbols, no `Locus`. That is a property of a carrier scheduled to change: gunbc#11965's
+// named remainder 1 proposes widening it to carry the front end's loci. WIDENING IT WITHOUT FIRST
+// ADVANCING THIS MARK REOPENS THE COLLISION -- a refused file's retained `NodeLocus` would carry an
+// id the next file re-mints and records a span for, and `span_index_merge` is base-wins, so the
+// join would answer with a confident wrong file rather than refusing (DESIGN section 5). Whoever
+// widens that record owns this precondition, and it is written here because that is where the reuse
+// happens.
 fn native_test_context_absorb(
   state: NativeTestContextFoldState,
   read: DagSourceReadWitness,
