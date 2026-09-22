@@ -95,12 +95,17 @@ test fn a_consumer_that_names_both_providers_keeps_its_use_line() -> Bool {
   w_consumer_naming_both_providers_keeps_its_use_line()
 }
 
-// THE DISCRIMINATION IS THE PAIR, not either arm alone, and this states it as one fact so a
-// reader cannot take the red arm for a claim that dropping use-lines is correct. Exactly one
-// variable separates the two sources: the presence of `import v2.std.integer`.
-test fn the_use_line_verdict_turns_on_a_second_declarer_alone() -> Bool {
+// THE DISCRIMINATION IS THE WHOLE CONJUNCTION, not any arm alone, and this states it as one fact
+// so a reader cannot take the expecting-red arm for a claim that dropping use-lines is correct.
+// All four arms are joined here deliberately: the condition has THREE terms, and a conjunction
+// over only the first two would stay green if the third were lost -- which is exactly the state
+// this witness was in before arm E was measured, when it encoded a condition the defect does not
+// actually have.
+test fn the_use_line_verdict_turns_on_the_whole_conjunction() -> Bool {
   w_single_declarer_keeps_the_authored_use_line()
     && w_second_declarer_drops_the_authored_use_line()
+    && w_consumer_naming_both_providers_keeps_its_use_line()
+    && w_forked_nominal_record_keeps_its_use_line()
 }
 
 // THE NON-PHANTOM COMPARISON, ENROLLED BECAUSE IT IS WHAT BOUNDS THE CLASS. A forked NOMINAL
