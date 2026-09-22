@@ -1,0 +1,102 @@
+module gunbc.emitted_subject_build_gate
+
+import std.types { String, List }
+import extdeps.bazel.label { Label, render_label }
+import extdeps.exec.command { ArgvCommand }
+import gunbc.gunbc_cli_command { gunbc_test_command }
+import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
+
+// THE SUBJECT OF THE REQUIRED EMIT-AND-BUILD LANE, AND WHAT IT IS CAREFULLY NOT.
+//
+// WHAT IT IS. Two instruments, each of which asks the seed to EMIT a retained v2 closure and then
+// asks cargo to BUILD the emitted crate: `//gunbc/instruments:self-host` over `v2.compiler.compile`
+// and `//gunbc/instruments:v2-native-cli` over `v2.cli.compile_cli`. Both also start what they
+// built -- the self-host row's census-mode pair, the CLI row's `cli_no_entry` refusal arm -- and
+// the self-host row injects a type error into its own emitted module and requires cargo to fail
+// alone on a diagnostic naming it, so a fingerprint alias or a replayed cached verdict cannot stand
+// in for a compile. Those controls are the instruments' own and are not restated here; this module
+// decides only WHICH subjects the required lane runs and with what argv.
+//
+// WHAT ITS RED DISCRIMINATES THAT NO EXISTING REQUIRED LANE DOES, which is the question
+// gunbc.compiler_gate_workflow's roster header requires an author to answer before proposing a
+// lane. Every required lane today reads the corpus through the INTERPRETER or through the SEED's
+// own Rust: the floor evaluates witnesses, the clippy lane lints hand-written and stage0-mirrored
+// Rust, the compiler lane builds the seed binary. NOTHING ON THE MERGE PATH EMITS A V2 CLOSURE AND
+// COMPILES THE RESULT. So a defect that is invisible under evaluation and fatal under emission
+// reaches main green. That is not a hypothesis: `gunbc.recurring_failure_mode`
+// `bounded_natural_arithmetic_evaluated_as_unbounded_int` records it in as many words -- rows over
+// `UInt8` typecheck and their witnesses evaluate, "their emitted Rust is produced by nothing on the
+// merge path" -- and BOTH retained subjects refused on it at once, because `std.integer` is in every
+// closure. It happened again on 2026-09-21 when gunbc#12004 pulled `base16` into the closure and
+// broke main's native self-host build with no required check noticing.
+//
+// THE CAUSE IS NAMED CORRECTLY HERE BECAUSE THE FIRST READING OF IT WAS WRONG, and the wrong one
+// is the one that reads plausibly. The emitted `extdeps_numeric_base16.rs` refused with E0425
+// `UInt8 not found in this scope`, which looks exactly like a dropped import and was first
+// recorded here as "a latent emitter import gap". It was not: `extdeps.numeric.base16` was
+// SPELLING THE UNINHABITED `UInt8` CARRIER where values are put, and the repair (gunbc#12056,
+// sharp-bear-756) carries `std.integer` `QualifiedOctets` through its codec surface instead --
+// the emitter is untouched by it. This is the same rostered class the paragraph above cites,
+// not a second defect.
+//
+// A DROPPED-USE-LINE EMITTER DEFECT DOES EXIST and is deliberately not conflated with this one:
+// an authored `import M { T }` emits no use-line when two modules in the closure declare the
+// short spelling, the named declaration is a non-nominal alias, and the second declarer arrives
+// through a module the consumer does not import. It is real, reproduced under a one-variable
+// experiment, and UNFIXED -- so this lane will meet it again on any module satisfying all three,
+// and a reader must not treat base16's repair as having closed it.
+//
+// This lane is the check that would have noticed, and its red is structural to the diff --
+// it names the emitted module and the compiler diagnostic -- rather than a host or shared-runner
+// signal.
+//
+// WHAT IT IS NOT, AND THE NAMING IS LOAD-BEARING. This lane is EMIT-AND-BUILD. It is not the native
+// ROUTE, and it touches no line of `gunbc.rung_drop` `v2_native_route_off_the_merge_path`'s declared
+// population -- every one of those five lines is route adjudication or execution of the derived
+// `v2.test.*` universe by the emitted-native compiler, and nothing here executes that universe,
+// mints a `NativeRouteReceipt`, or evaluates a clause of `native_route_admission`. That drop stays
+// STANDING and UNNARROWED, and its restoration trigger is untouched by this change. The lane is
+// therefore named for emit-and-build rather than for the native route, so a reader meeting the
+// green does not read it as coverage of the drop: a true sentence under a name that suggests more
+// is rung inflation by naming (DESIGN section 4b(1)), and the cheapest place to prevent it is the
+// name.
+
+// ONE SUBJECT PER LABEL, AND TWO LABELS RATHER THAN ONE. `gunbc.instrument_targets` states why
+// these are two instruments and not one: the two closures are DIFFERENT rather than nested, neither
+// contains the other's `compiler_pipeline_entry`, and the CLI closure reaches modules
+// `v2.compiler.compile`'s does not. A green on one is not evidence about the other. The lane
+// therefore runs them as two STEPS with two step ids, so a regression is reported under a name that
+// says which compilation broke -- the same reason the labels are two.
+type EmittedSubjectBuildRow {
+  label: Label
+  step_id: String
+}
+
+// THE STEP ID IS A ROW FIELD, NOT A TRANSFORMATION OF THE LABEL. A GitHub step id and a Bazel
+// label are two different namespaces with two different alphabets -- a label carries `/` and `:`,
+// neither of which an id admits -- so deriving one from the other means authoring a mangling rule
+// whose only consumer is this list. Two rows say the same thing with no rule to maintain, and the
+// pairing stays visible at the one place a subject is added.
+fn emitted_subject_build_rows() -> List<EmittedSubjectBuildRow> {
+  [
+    EmittedSubjectBuildRow { label: self_host_label(), step_id: "emit_build_self_host" },
+    EmittedSubjectBuildRow { label: v2_native_cli_label(), step_id: "emit_build_v2_native_cli" },
+  ]
+}
+
+// THE LABEL TEXT IS RENDERED FROM THE DECLARATION, never typed. `render_label` is the upstream
+// spelling authority (extdeps.bazel.label); a step that spelled `//gunbc/instruments:self-host`
+// itself would be a second name for a target this repository already declares (DESIGN section 3).
+fn emitted_subject_build_label_text(row: EmittedSubjectBuildRow) -> String {
+  render_label(l: row.label)
+}
+
+fn emitted_subject_build_command(row: EmittedSubjectBuildRow) -> ArgvCommand {
+  gunbc_test_command(label: emitted_subject_build_label_text(row: row))
+}
+
+// THE STEP NAME CARRIES THE LABEL, for the same reason the labels are two: a run log naming only
+// "emit and build" would not say which compilation refused.
+fn emitted_subject_build_step_name(row: EmittedSubjectBuildRow) -> String {
+  join(["emit and build ", emitted_subject_build_label_text(row: row)], "")
+}
