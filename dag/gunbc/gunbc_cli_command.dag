@@ -1,0 +1,69 @@
+module gunbc.gunbc_cli_command
+
+import std.types { String, List, NonEmptyStr }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import gunbc.cli_invoke {
+  InvocationWord, LiteralWord,
+  invocation_words_bare,
+  gunbc_bin_name,
+  release_bin_rel_path
+}
+
+// THE ARGV SHAPE OF AN INVOCATION OF OUR OWN `gunbc` BINARY, beside `gunbc.claim_executor_cli`
+// which does the same job for the other one. It is a module of its own for the reason that one is:
+// "where the release binary lives" and "what shape an invocation of it takes" are facts about THIS
+// repository's build output, and every call site that spells its own argv has taken both back.
+//
+// WHY NOT IN `gunbc.cli_invoke`, WHICH ALREADY OWNS THE `gunbc run` SHAPE. Two reasons, one of
+// design and one measured. The design one: that module's own dissolution row describes it as the
+// interim GHA SHELL-SPELLING surface, and its live product is `InvocationWord` lists for the
+// orchestration emitter -- an ArgvCommand builder is the `claim_executor_cli` shape, not that one.
+// THE MEASURED ONE is worth recording because it cost an afternoon and will cost the next author
+// the same: adding the single line `import extdeps.exec.command { ArgvCommand, argv_command }` to
+// `gunbc.cli_invoke`, WITH NO OTHER CHANGE, makes `gunbc.host_effect_realize` fail to resolve --
+// `dag/gunbc/host/host_effect_realize.dag:2779:51: error: no field 'verdict' on type 'U'`, a
+// module this edge does not touch and a lambda whose parameter was inferred before it. Bisected
+// against main at f5bd9b064a with the seed built from that tree: the import alone is necessary and
+// sufficient. That is a front-end defect -- an import edge in one module changing generic inference
+// in an unrelated one -- and it is NOT what this module exists to route around: the placement above
+// is the conforming one independently of it. It is recorded here because the next author to reach
+// for that import needs to know the edge is load-bearing on something invisible from the call site.
+
+// THE ONE `gunbc test` SHAPE. `gunbc test <label>` is the dedicated route for invoking a v2
+// measurement (DESIGN, "Building & checks"), and the label is a POSITIONAL operand rather than an
+// option -- the subject is the instrument's own fact, so an invocation cannot quietly measure a
+// different corpus while reporting the same target's standing. There is nothing else for this
+// builder to decide, which is why it takes one argument and has no options parameter.
+//
+// THE LABEL IS NOT SPELLED BY CALLERS. Every instrument label is declared once in
+// `gunbc.instrument_targets` as a `Label` and rendered by `extdeps.bazel.label` `render_label`, so
+// a call site hands this function the RENDERED declaration rather than a string it typed. A caller
+// free to spell the label could name a target that does not exist and still look like a conforming
+// call -- and `gunbc test` refuses an unknown label with exit 2, which is the right refusal but a
+// late one, in a child process, after a runner has been paid for.
+fn gunbc_test_invocation_words(label: String) -> List<InvocationWord> {
+  [LiteralWord { spelling: "test" }, LiteralWord { spelling: label }]
+}
+
+// THE ARGV REALIZATION. The path is relative because it names a build output inside the checkout
+// the job is standing in, not an installed program -- the same fact and the same reason as
+// `gunbc.claim_executor_cli` `claim_executor_release_path` -- and it is DERIVED from the two facts
+// `gunbc.cli_invoke` already owns, the bin name and the release directory, rather than respelled
+// as a third literal.
+//
+// WHY AN ArgvCommand AND NOT THE `gunbc run` STEP EMITTER, which is the neighbouring realization of
+// the neighbouring shape: `v2.workflow.gunbc_invoke_step_emit` renders UNQUOTED words and refuses
+// any word outside `orch_shell_unquoted_path_ok`'s alphabet, which does not contain `:`. Every
+// instrument label carries one (`//gunbc/instruments:self-host`), so rendering a label through it
+// would refuse every call. Widening that alphabet is not available -- it is the wall that keeps a
+// shell metacharacter out of an emitted step, and widening a wall to admit one's own input is the
+// move DESIGN section 5 names. So the label travels as a QUOTED argv word through
+// `shell_command_render`, the same transport the required lanes already use for `claim_executor`.
+// The two realizations differ in quoting, not in the invocation shape, which is why the shape above
+// is separate from either.
+fn gunbc_test_command(label: String) -> ArgvCommand {
+  argv_command(
+    program: release_bin_rel_path(bin_name: gunbc_bin_name) as NonEmptyStr,
+    arguments: invocation_words_bare(words: gunbc_test_invocation_words(label: label)),
+  )
+}

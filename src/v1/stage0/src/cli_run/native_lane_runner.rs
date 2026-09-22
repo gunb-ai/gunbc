@@ -1740,7 +1740,61 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
     })
 }
 
-pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
+/// HOW A NATIVE ROUTE RUN ENDED, AS A TYPED VALUE RATHER THAN A SENTENCE A CALLER RE-READS.
+///
+/// The admission is a BOOLEAN INSIDE THE BINARY (`run.terminal.admitted`, derived with its summary
+/// by `native_lane_run`), and flattening it into `Result<(), String>` made every consumer recover
+/// it by sniffing the rendered text for `cause=AdmissionRefused`. That is a second representation
+/// of a decision this function already holds, free to disagree with it.
+///
+/// THE ARMS ARE NAMED FOR WHAT THE BIT ACTUALLY DECIDES, AND THE NAMING IS THE WHOLE POINT. It is
+/// `gunbc.witness_v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
+/// -- a conjunction over roughly twenty clauses including `JobNameMismatch`,
+/// `PreparationSeedUnrecorded`, `EmittedBuildNotClean`, `MalformedControlAcceptedByRoute`,
+/// `PositivePopulationEmpty` and `RequiredNativePassRegressed`. It is NOT "the targets the operator
+/// asked for were observed and held". An earlier spelling of this enum called the arms
+/// `AdmissionHeld`/`AdmissionRefused`, which invited exactly the misreading that a consumer could
+/// take them for a per-operand verdict -- and one did.
+#[derive(Debug)]
+pub enum NativeRouteOutcome {
+    /// The emitted binary adjudicated and the LANE'S QUALIFICATION held. Says nothing per target.
+    LaneQualificationHeld { summary: String },
+    /// The emitted binary adjudicated and the LANE'S QUALIFICATION refused. The cause may be any
+    /// of the route-integrity clauses and need not involve any selected test at all.
+    LaneQualificationRefused { summary: String },
+    /// No adjudication was produced.
+    Unreached { cause: String },
+}
+
+pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> NativeRouteOutcome {
+    // The `?`-carrying body stays one function; only the ADMISSION leaves it as a value, so this
+    // wrapper is the single place the three-way partition is made and no consumer re-derives it.
+    match run_required_v2_native_inner(source_roots, pattern) {
+        Ok(admission) => {
+            if admission.admitted {
+                NativeRouteOutcome::LaneQualificationHeld {
+                    summary: admission.summary,
+                }
+            } else {
+                NativeRouteOutcome::LaneQualificationRefused {
+                    summary: admission.summary,
+                }
+            }
+        }
+        Err(cause) => NativeRouteOutcome::Unreached { cause },
+    }
+}
+
+/// What the adjudicating run decided, carried out of the body as a value.
+struct NativeRunAdmission {
+    admitted: bool,
+    summary: String,
+}
+
+fn run_required_v2_native_inner(
+    source_roots: &[String],
+    pattern: &str,
+) -> Result<NativeRunAdmission, String> {
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
     // THE TESTED TREE IS OBSERVED OR THE RUN REFUSES (review 64210). This defaulted to the literal
@@ -1827,14 +1881,17 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     // 5. THE LANE RUN. The emitted binary, by explicit path, over the real source roots: it
     // derives the universe, executes it, mints the receipt and judges it.
     eprintln!("v2-native-route: adjudicating through the emitted compiler");
-    // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes the default pattern: this literal is the
-    // seed's mirror of `gunbc.witness_v2_native_route` `native_route_default_pattern`
-    // (`//v2/test/...`, which narrows nothing within the floor's universe). A narrower pattern is an
-    // operator's argument to the emitted binary, never this runner's.
+    // THE PATTERN IS THE CALLER'S, AND THAT IS WHAT MAKES A FOCUSED RUN POSSIBLE. The lane passes
+    // `gunbc.witness_v2_native_route` `native_route_default_pattern` (`//v2/test/...`, which
+    // narrows nothing within the floor's universe); `gunbc test <operand>` passes the operand's own
+    // pattern, already admitted by `extdeps.bazel.target_pattern` and rendered by its own renderer.
+    // This runner does not parse it, default it, or widen it: a pattern that reached here was
+    // decided by the authority, and substituting one here would let the run adjudicate a population
+    // the caller did not ask for while reporting under the caller's name.
     let mut args = vec![
         "adjudicate".to_string(),
         facts_file.display().to_string(),
-        "//v2/test/...".to_string(),
+        pattern.to_string(),
     ];
     args.extend(source_roots.iter().cloned());
     let rows_file = workspace
@@ -1883,14 +1940,10 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     // value inside the binary (`native_lane_run` derives the summary from the admission it
     // returns), so the terminal line and the admission cannot disagree about what was decided.
     eprintln!("v2-native-route: admission {}", run.terminal.summary);
-    if run.terminal.admitted {
-        Ok(())
-    } else {
-        Err(format!(
-            "V2-NATIVE REFUSAL cause=AdmissionRefused — {}",
-            run.terminal.summary
-        ))
-    }
+    Ok(NativeRunAdmission {
+        admitted: run.terminal.admitted,
+        summary: run.terminal.summary,
+    })
 }
 
 #[cfg(test)]
