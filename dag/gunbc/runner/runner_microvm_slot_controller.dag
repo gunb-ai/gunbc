@@ -184,8 +184,12 @@ fn outcome_is_success(outcome: ProcessOutcome) -> Bool {
 
 // THE VMM AND THE JAILER ARE THE LOCUS'S, root-owned and installed beside this binary by the same
 // deploy (gunbc.live_deploy.emit microvm_controller_vmm_install_steps). The job-user copy under
-// the executor's HOME (gunbc.runner_microvm_host_ready) is never read here: root must not exec what
-// the job user can write.
+// the executor's HOME (gunbc.runner_microvm_host_ready) is never read here, which is what this
+// reference buys: the VMM the controller launches is the locus's, not a binary sitting in the
+// executor's writable HOME. It is NOT a claim that the job user cannot reach the locus -- ghrunner's
+// path-unrestricted sudo install says otherwise on srv1 (gunbc.rung_drop
+// the_job_user_holds_a_path_unrestricted_root_grant), and this is the trusted-workload shakedown
+// that makes no isolation claim, exactly as the guest-image note below states (review 70080).
 type LocusBinaries { firecracker: String, jailer: String }
 
 fn locus_binaries(release_dir: String) -> LocusBinaries {

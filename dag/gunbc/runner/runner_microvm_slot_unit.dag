@@ -49,7 +49,13 @@ data runner_microvm_slot_unit_disposition: Disposition = SingleAuthority
 // cgroup.kill writes, jailer chroots, and the App key read that mints the attempt's JIT credential
 // (gunbc.microvm_controller_app_key_converge delivers that key root:root 0400). It is therefore
 // NOT the job user, and the locus it execs from is root-owned for the same reason the network
-// frontier gives for staged sources: root must not exec a binary the job user can write.
+// frontier gives for staged sources -- at the rung that reason actually holds today. Root-ownership
+// removes the unprivileged-by-default write path and keeps the unit off the job user's HOME copy of
+// the VMM. It does NOT make the locus unwritable by the job user: ghrunner holds NOPASSWD over a
+// path-unrestricted /usr/bin/install on this host (gunbc.rung_drop
+// the_job_user_holds_a_path_unrestricted_root_grant), so the sentence "root must not exec a binary
+// the job user can write" is the OBLIGATION this ownership serves, not a property srv1 establishes
+// (review 70080). gunbc.live_deploy.emit release_locus_tree_copy_steps carries the full statement.
 data microvm_slot_unit_template_name: NonEmptyStr = "gunbc-microvm-slot@.service" as NonEmptyStr
 
 fn microvm_slot_unit_path() -> NonEmptyStr {
