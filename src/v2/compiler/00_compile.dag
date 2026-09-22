@@ -27,10 +27,11 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_finalize_source_outcomes
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
-import extdeps.bazel.label { Label, LabelParsed, LabelRefused }
+import extdeps.bazel.label { Label, LabelParsed, LabelRefused, render_package }
 import extdeps.bazel.target_pattern {
   TargetPattern, TargetPatternParsed, TargetPatternRefused, TargetPatternRefusal,
-  parse_target_pattern, target_pattern_matches, target_pattern_refusal_text
+  SingleTarget, PackageTargets, SubtreeTargets,
+  parse_target_pattern, target_pattern_matches, target_pattern_refusal_text, render_target_pattern
 }
 import v2.std.logic { Bool }
 import v2.std.integer { integer_int_to_decimal_string }
@@ -2200,6 +2201,58 @@ fn native_lane_universe_selected(ingest: SourceRootIngest, pattern: TargetPatter
   }
 }
 
+// A SINGLE TARGET THAT NAMES A MODULE IS A MISSPELLING, AND IT REFUSES WITH THE RIGHT ONE (manager
+// ruling 2026-09-21). Under this lane's correspondence a module namespace is a PACKAGE and a
+// declaration is a TARGET, so `//v2/test/parse:expression_bodied_fn_decl_parse` asks for a
+// declaration of that name in module `v2.test.parse`. When no identity answers it AND a universe
+// module is named `<package>.<target>`, the author meant that module -- the file-as-target
+// spelling -- and an empty universe would be a silent wrong answer. The refusal names the module
+// spelling, `//<package>/<target>:all`. The comparison is made in PACKAGE-TEXT space with the one
+// correspondence the selection already uses (gunbc.witness_v2_native_route
+// `native_route_module_package_text`), never by an inverse fold back to namespaces. A single
+// target that matches nothing and names no module is left to the caller's own emptiness contract.
+fn native_lane_pattern_named_module(
+  pattern: TargetPattern,
+  modules: List<NativeLaneUniverseModule>,
+  sources: List<NativeLaneLabeledSource>
+) -> Optional<String> {
+  match pattern {
+    SubtreeTargets { package: _ } => optional_absent()
+    PackageTargets { package: _ } => optional_absent()
+    SingleTarget { label: label } =>
+      if length(xs: modules) > 0 {
+        optional_absent()
+      } else {
+        let package_text = render_package(p: label.package)
+        let candidate_package_text = if package_text == "" {
+          label.target.name as String
+        } else {
+          concat(concat(package_text, "/"), label.target.name as String)
+        }
+        match list_find_first(
+          xs: sources,
+          predicate: fn(s) { native_route_module_package_text(module_qn: s.module) == candidate_package_text }
+        ) {
+          Absent => optional_absent()
+          Present { value: s } => optional_present(value: s.module)
+        }
+      }
+  }
+}
+
+fn native_lane_pattern_names_a_module_detail(pattern: TargetPattern, module_qn: String) -> String {
+  concat(
+    concat(
+      concat(concat("target pattern ", render_target_pattern(pattern: pattern)), " names MODULE "),
+      module_qn
+    ),
+    concat(
+      ", not a declaration in its package -- did you mean //",
+      concat(native_route_module_package_text(module_qn: module_qn), ":all")
+    )
+  )
+}
+
 // THE OWNERSHIP ARM IS ITS OWN DECLARATION RATHER THAN A NESTED BLOCK, because the refusal above
 // it is an expression: `.dag` has no early `return` to fall through, so the accepted path has to be
 // the other arm of the same match. Splitting it keeps that arm one call wide instead of indenting
@@ -2226,6 +2279,13 @@ fn native_lane_universe_after_ownership(
           )
         }
       )
+      match native_lane_pattern_named_module(pattern: pattern, modules: modules, sources: sources) {
+        Present { value: module_qn } =>
+          native_lane_refused(
+            reason: ^native_lane_pattern_names_a_module,
+            detail: native_lane_pattern_names_a_module_detail(pattern: pattern, module_qn: module_qn)
+          )
+        Absent =>
       outcome_accepted(value: NativeLaneUniverse {
         modules: modules,
         identities: fold_list(
@@ -2249,6 +2309,7 @@ fn native_lane_universe_after_ownership(
           }
         )
       })
+      }
     }
   }
 }
