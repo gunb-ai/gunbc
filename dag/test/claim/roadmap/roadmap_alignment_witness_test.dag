@@ -1,0 +1,523 @@
+module test.claim.roadmap.roadmap_alignment_witness_test
+
+// THE ALIGNMENT LADDER, WITNESSED (docs/plans/harness-work-lifecycle.md, "Alignment ladder").
+// Chain derivation is derived, never transcribed: the production example is read off the REAL
+// declared authority edges, and every fixture claim supplies its own rows at the module boundary.
+// Cadence claims pin the magnitudinal bases, the verdict step function's floor/ceiling walls, the
+// per-lineage state codec, and the due evaluation over an adaptive state.
+
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { DeclarationRef, decl_field_eq, WholeDeclaration }
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentChain,
+  AlignmentChained, AlignmentChainAmbiguous, AlignmentChainRowUndeclared,
+  alignment_chain, alignment_chain_for,
+  AlignmentLevel,
+  TaskContractLevel, ProjectIntentLevel, RootPrinciplesLevel,
+  alignment_levels, alignment_levels_due,
+  AlignmentVerdict,
+  Aligned, Misaligned, ExtremelyMisaligned, CatastrophicallyMisaligned, RoutedConflict,
+  alignment_verdict_key,
+  AlignmentCadenceStep,
+  CadenceStepInterval, CadenceStepStopTheLine,
+  alignment_interval, alignment_interval_floor, alignment_interval_ceiling,
+  alignment_clamp_turns, alignment_next_interval,
+  alignment_cadence_base_turns, alignment_cadence_step_turns,
+  AlignmentCadenceState,
+  alignment_cadence_state_text, alignment_cadence_state_decode,
+  AlignmentCadenceStateDecoded, AlignmentCadenceStateNotDecodable,
+  alignment_cadence_state_schema,
+}
+import gunbc.roadmap_model { RoadmapEdge, RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, Unsized }
+import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ------------------------------------------------------------------------------------------------
+// Fixture rows and edges, supplied at the module boundary (DESIGN section 3: a witness
+// discriminates at one interface; the derived authority rows are the production claim's subject,
+// and these fixtures are the derivation-control claims' inputs).
+// ------------------------------------------------------------------------------------------------
+
+fn fixture_fields(headline: String, brief: String) -> TicketFields {
+  TicketFields {
+    headline: headline,
+    brief: brief,
+    displaced_cost: "fixture displaced cost",
+    current_state: "fixture current state",
+    first_slice: "fixture first slice",
+    red_control: "fixture red control",
+    out_of_scope: "fixture out of scope",
+    handback: "fixture handback",
+    updates: [],
+    authored_on: "",
+    last_verified_on: "",
+  }
+}
+
+fn fixture_node(id: String, headline: String, brief: String) -> RoadmapNode {
+  RoadmapNode {
+    identity: join(["fixture_identity_", id], "") as RoadmapNodeIdentity,
+    node: id as RoadmapNodeId,
+    line: TicketLine { done: false, ticket: fixture_fields(headline: headline, brief: brief) },
+    carriers: [] as List<Pointer>,
+    sizing: Unsized,
+    execution: ExecutionContractUnspecified,
+    owner: "alignment-fixture",
+    signoff: Unsigned,
+  }
+}
+
+fn fixture_edge(child: String, parent: String) -> RoadmapEdge {
+  RoadmapEdge { child: child as RoadmapNodeId, parent: parent as RoadmapNodeId }
+}
+
+fn fixture_nodes() -> List<RoadmapNode> {
+  [
+    fixture_node(id: "task-a", headline: "Task A headline", brief: "Task A boundary"),
+    fixture_node(id: "arc-one", headline: "Arc One headline", brief: "Arc One boundary"),
+    fixture_node(id: "arc-mid", headline: "Arc Mid headline", brief: "Arc Mid boundary"),
+    fixture_node(id: "arc-two", headline: "Arc Two headline", brief: "Arc Two boundary"),
+    fixture_node(id: "arc-three", headline: "Arc Three headline", brief: "Arc Three boundary"),
+    fixture_node(id: "lone-task", headline: "Lone headline", brief: "Lone boundary"),
+  ]
+}
+
+fn linear_edges() -> List<RoadmapEdge> {
+  [
+    fixture_edge(child: "arc-one", parent: "task-a"),
+    fixture_edge(child: "arc-two", parent: "arc-one"),
+  ]
+}
+
+fn deep_linear_edges() -> List<RoadmapEdge> {
+  [
+    fixture_edge(child: "arc-one", parent: "task-a"),
+    fixture_edge(child: "arc-mid", parent: "arc-one"),
+    fixture_edge(child: "arc-two", parent: "arc-mid"),
+  ]
+}
+
+fn ambiguous_edges() -> List<RoadmapEdge> {
+  [
+    fixture_edge(child: "arc-one", parent: "task-a"),
+    fixture_edge(child: "arc-mid", parent: "arc-one"),
+    fixture_edge(child: "arc-two", parent: "arc-mid"),
+    fixture_edge(child: "arc-three", parent: "arc-mid"),
+  ]
+}
+
+// ------------------------------------------------------------------------------------------------
+// Chain derivation. Task first, motivating projects nearest-first, root principles last; the link
+// carries the row's own headline and brief (the contribution check reads against carried text,
+// never a fresh interpretation).
+// ------------------------------------------------------------------------------------------------
+
+test fn a_linear_chain_runs_task_then_projects_then_the_root_pointer() -> Bool {
+  match alignment_chain(node_id: "task-a", edges: linear_edges(), nodes: fixture_nodes()) {
+    AlignmentChained { task, projects, root } =>
+      task.node_id == "task-a"
+        && task.purpose == "Task A headline"
+        && task.boundary == "Task A boundary"
+        && (map(projects, p => p.node_id)) == ["arc-one", "arc-two"]
+        && (map(projects, p => p.purpose)) == ["Arc One headline", "Arc Two headline"]
+        && (map(projects, p => p.boundary)) == ["Arc One boundary", "Arc Two boundary"]
+        && root.module_path as String == "gunbc.design_document"
+        && root.decl_name as String == "design_document"
+        && decl_field_eq(a: root.field, b: WholeDeclaration)
+    _ => false
+  }
+}
+
+// DERIVATION CONTROL: same rows, one rewired middle edge (arc-two now hangs off arc-mid). The
+// derived chain follows the edge; nothing beside it is edited, because nothing beside it exists.
+test fn an_edge_edit_re_renders_the_chain_there_is_no_second_list() -> Bool {
+  match alignment_chain(node_id: "task-a", edges: deep_linear_edges(), nodes: fixture_nodes()) {
+    AlignmentChained { task, projects, root: _ } =>
+      task.node_id == "task-a"
+        && (map(projects, p => p.node_id)) == ["arc-one", "arc-mid", "arc-two"]
+    _ => false
+  }
+}
+
+test fn a_projectless_node_chains_straight_from_its_task_to_the_root() -> Bool {
+  match alignment_chain(node_id: "lone-task", edges: [], nodes: fixture_nodes()) {
+    AlignmentChained { task, projects, root } =>
+      task.node_id == "lone-task"
+        && count(projects) == 0
+        && root.module_path as String == "gunbc.design_document"
+    _ => false
+  }
+}
+
+test fn two_dependents_at_one_step_is_a_typed_ambiguity_not_a_first_choice() -> Bool {
+  let edges = [
+    fixture_edge(child: "arc-one", parent: "task-a"),
+    fixture_edge(child: "arc-two", parent: "task-a"),
+  ]
+  match alignment_chain(node_id: "task-a", edges: edges, nodes: fixture_nodes()) {
+    AlignmentChainAmbiguous { walked, at, dependents } =>
+      count(walked) == 0
+        && at == "task-a"
+        && dependents == ["arc-one", "arc-two"]
+    _ => false
+  }
+}
+
+test fn an_ambiguity_carries_the_walked_prefix_the_fork_erases_nothing() -> Bool {
+  match alignment_chain(node_id: "task-a", edges: ambiguous_edges(), nodes: fixture_nodes()) {
+    AlignmentChainAmbiguous { walked, at, dependents } =>
+      (map(walked, l => l.node_id)) == ["arc-one", "arc-mid"]
+        && at == "arc-mid"
+        && dependents == ["arc-two", "arc-three"]
+    _ => false
+  }
+}
+
+test fn an_undeclared_task_row_refuses_the_chain() -> Bool {
+  match alignment_chain(node_id: "ghost", edges: [], nodes: fixture_nodes()) {
+    AlignmentChainRowUndeclared { node_id } => node_id == "ghost"
+    _ => false
+  }
+}
+
+test fn an_undeclared_arc_row_mid_walk_refuses_rather_than_projecting_nothing() -> Bool {
+  let edges = [fixture_edge(child: "arc-missing", parent: "task-a")]
+  match alignment_chain(node_id: "task-a", edges: edges, nodes: fixture_nodes()) {
+    AlignmentChainRowUndeclared { node_id } => node_id == "arc-missing"
+    _ => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE PRODUCTION EXAMPLE, DERIVED. The draft brief expected
+// [task, shell-typed-invocation, shell-effectplan-to-bash, shell-gate-migration, shell-residue-zero,
+// ROOT PRINCIPLES]; the REAL declared edges refuse that: shell-gate-migration has TWO dependents
+// (shell-residue-zero and fleet-closed-loop-converge), so the honest derived chain climbs task ->
+// shell-typed-invocation -> shell-effectplan-to-bash -> shell-gate-migration and stops TYPED at the
+// fork. This claim pins the real derived answer; a future authority edit that disambiguates the
+// edge is exactly what flips it.
+// ------------------------------------------------------------------------------------------------
+
+test fn the_production_example_is_derived_and_the_real_chain_refuses_at_the_fork() -> Bool {
+  match alignment_chain_for(node_id: "shell-dag-cron-entry-line-builder") {
+    AlignmentChainAmbiguous { walked, at, dependents } =>
+      at == "shell-gate-migration"
+        && (map(walked, l => l.node_id)) == ["shell-typed-invocation", "shell-effectplan-to-bash", "shell-gate-migration"]
+        && dependents == ["shell-residue-zero", "fleet-closed-loop-converge"]
+        && fold(walked, init: true, f: fn(ok, l) { ok && l.purpose != "" && l.boundary != "" })
+    _ => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The cadence. Magnitudinal bases off the level index only; the step function's walls are the
+// declared floor and the magnitudinal ceiling.
+// ------------------------------------------------------------------------------------------------
+
+test fn the_base_intervals_are_magnitudinal_off_the_level_index_only() -> Bool {
+  alignment_interval(level_index: 0) == 20
+    && alignment_interval(level_index: 1) == 200
+    && alignment_interval(level_index: 2) == 2000
+    && alignment_interval(level_index: 3) == 20000
+    && alignment_cadence_base_turns == 20
+    && alignment_interval(level_index: 0) == alignment_cadence_base_turns
+}
+
+test fn the_declared_bounds_are_one_magnitude_around_the_base() -> Bool {
+  alignment_interval_floor(level_index: 0) == 2
+    && alignment_interval_ceiling(level_index: 0) == 20
+    && alignment_interval_floor(level_index: 1) == 20
+    && alignment_interval_ceiling(level_index: 1) == 200
+    && alignment_interval_floor(level_index: 2) == 200
+    && alignment_interval_ceiling(level_index: 2) == 2000
+}
+
+test fn aligned_widens_by_the_declared_step_and_never_past_the_ceiling() -> Bool {
+  match alignment_next_interval(level_index: 0, current: 20, verdict: Aligned) {
+    CadenceStepInterval { turns } => turns == 20
+    CadenceStepStopTheLine => false
+  }
+    && match alignment_next_interval(level_index: 0, current: 18, verdict: Aligned) {
+      CadenceStepInterval { turns } => turns == 20
+      CadenceStepStopTheLine => false
+    }
+    && match alignment_next_interval(level_index: 0, current: 2, verdict: Aligned) {
+      CadenceStepInterval { turns } => turns == 4
+      CadenceStepStopTheLine => false
+    }
+}
+
+test fn misaligned_shortens_by_the_declared_step_and_never_below_the_floor() -> Bool {
+  match alignment_next_interval(level_index: 0, current: 20, verdict: Misaligned { direction: "scope crept into the adjacent module" }) {
+    CadenceStepInterval { turns } => turns == 18
+    CadenceStepStopTheLine => false
+  }
+    && match alignment_next_interval(level_index: 0, current: 2, verdict: Misaligned { direction: "scope crept into the adjacent module" }) {
+      CadenceStepInterval { turns } => turns == 2
+      CadenceStepStopTheLine => false
+    }
+}
+
+test fn extremely_misaligned_drops_to_the_floor_outright() -> Bool {
+  match alignment_next_interval(level_index: 1, current: 200, verdict: ExtremelyMisaligned { direction: "the work is off the project contract" }) {
+    CadenceStepInterval { turns } => turns == 20
+    CadenceStepStopTheLine => false
+  }
+}
+
+test fn catastrophically_misaligned_stops_the_line_rather_than_tuning() -> Bool {
+  match alignment_next_interval(level_index: 0, current: 20, verdict: CatastrophicallyMisaligned { reason: "the diff violates a root principle" }) {
+    CadenceStepStopTheLine => true
+    CadenceStepInterval { turns: _ } => false
+  }
+}
+
+test fn a_routed_conflict_is_not_a_magnitude_and_tunes_nothing() -> Bool {
+  match alignment_next_interval(level_index: 0, current: 18, verdict: RoutedConflict { conflict: "the brief contradicts DESIGN.md on the same point" }) {
+    CadenceStepInterval { turns } => turns == 18
+    CadenceStepStopTheLine => false
+  }
+    && match alignment_next_interval(level_index: 0, current: 18, verdict: RoutedConflict { conflict: "the brief contradicts DESIGN.md on the same point" }) {
+      CadenceStepInterval { turns } => turns == alignment_cadence_step_turns - alignment_cadence_step_turns + 18
+      CadenceStepStopTheLine => false
+    }
+}
+
+test fn the_verdict_keys_name_the_five_arm_vocabulary() -> Bool {
+  alignment_verdict_key(v: Aligned) == "aligned"
+    && alignment_verdict_key(v: Misaligned { direction: "d" }) == "misaligned"
+    && alignment_verdict_key(v: ExtremelyMisaligned { direction: "d" }) == "extremely-misaligned"
+    && alignment_verdict_key(v: CatastrophicallyMisaligned { reason: "r" }) == "catastrophically-misaligned"
+    && alignment_verdict_key(v: RoutedConflict { conflict: "c" }) == "routed-conflict"
+}
+
+// THE MONOTONICITY WALL: a level never aligns more often than any level below it. The clamp is
+// monotone in the level (ceiling(k) == floor(k+1) == the magnitudinal base), so ANY demanded
+// interval an author, verdict, or fabricated state can produce keeps the ladder ordered.
+test fn the_clamp_is_monotone_in_the_level_for_any_demanded_turns() -> Bool {
+  fold([1, 2, 3, 17, 20, 40, 196, 200, 500, 2000, 5000, 20000], init: true, f: fn(ok, t) {
+    ok
+      && alignment_clamp_turns(level_index: 0, turns: t) <= alignment_clamp_turns(level_index: 1, turns: t)
+      && alignment_clamp_turns(level_index: 1, turns: t) <= alignment_clamp_turns(level_index: 2, turns: t)
+  })
+}
+
+fn stepped_interval(level_index: Int, current: Int, verdict: AlignmentVerdict) -> Int {
+  match alignment_next_interval(level_index: level_index, current: current, verdict: verdict) {
+    CadenceStepInterval { turns } => turns
+    CadenceStepStopTheLine => 0
+  }
+}
+
+// The same verdict applied at adjacent levels from their bases never inverts the order, for every
+// verdict in the vocabulary (a RoutedConflict included, an EXTREMELY included).
+test fn a_verdict_step_at_adjacent_levels_preserves_the_ladder_order() -> Bool {
+  stepped_interval(level_index: 0, current: 20, verdict: Aligned) <= stepped_interval(level_index: 1, current: 200, verdict: Aligned)
+    && stepped_interval(level_index: 0, current: 20, verdict: Misaligned { direction: "d" }) <= stepped_interval(level_index: 1, current: 200, verdict: Misaligned { direction: "d" })
+    && stepped_interval(level_index: 0, current: 20, verdict: ExtremelyMisaligned { direction: "d" }) <= stepped_interval(level_index: 1, current: 200, verdict: ExtremelyMisaligned { direction: "d" })
+    && stepped_interval(level_index: 0, current: 20, verdict: RoutedConflict { conflict: "c" }) <= stepped_interval(level_index: 1, current: 200, verdict: RoutedConflict { conflict: "c" })
+}
+
+fn interval_streak(level_index: Int, current: Int, steps: Int, verdict: AlignmentVerdict) -> Int {
+  if steps <= 0 {
+    current
+  } else {
+    match alignment_next_interval(level_index: level_index, current: current, verdict: verdict) {
+      CadenceStepInterval { turns } => interval_streak(level_index: level_index, current: turns, steps: steps - 1, verdict: verdict)
+      CadenceStepStopTheLine => current
+    }
+  }
+}
+
+// RED CONTROL: a verdict sequence can never fabricate an interval past the declared bounds. An
+// ALIGNED streak folds 50 steps from the base and from the floor and never passes the ceiling; a
+// MISALIGNED streak never passes below the floor; an EXTREMELY streak sits at the floor.
+test fn a_long_aligned_streak_can_never_fabricate_past_the_ceiling() -> Bool {
+  interval_streak(level_index: 0, current: 20, steps: 50, verdict: Aligned) == 20
+    && interval_streak(level_index: 1, current: 200, steps: 50, verdict: Aligned) == 200
+    && interval_streak(level_index: 0, current: 2, steps: 50, verdict: Aligned) == 20
+}
+
+test fn a_long_misaligned_streak_can_never_fabricate_past_the_floor() -> Bool {
+  interval_streak(level_index: 0, current: 20, steps: 50, verdict: Misaligned { direction: "scope creep" }) == 2
+    && interval_streak(level_index: 1, current: 200, steps: 100, verdict: Misaligned { direction: "scope creep" }) == 20
+    && interval_streak(level_index: 0, current: 20, steps: 50, verdict: ExtremelyMisaligned { direction: "off contract" }) == 2
+}
+
+// ------------------------------------------------------------------------------------------------
+// The per-lineage state codec: round-trip, payload fidelity, and the refusal walls.
+// ------------------------------------------------------------------------------------------------
+
+fn sample_state() -> AlignmentCadenceState {
+  AlignmentCadenceState {
+    level_intervals: [20, 200, 2000],
+    last_verdicts: [
+      Aligned,
+      Misaligned { direction: "drifted into the adjacent module" },
+      RoutedConflict { conflict: "brief contradicts DESIGN on the same point" },
+    ],
+  }
+}
+
+// TEXT STABILITY closes the round-trip: a decode that lost anything re-encodes differently, so
+// equality of the re-encoded texts proves the decode captured every member the encode wrote.
+test fn the_cadence_state_codec_round_trips_the_per_lineage_record() -> Bool {
+  let state = sample_state()
+  match alignment_cadence_state_decode(text: alignment_cadence_state_text(state: state)) {
+    AlignmentCadenceStateNotDecodable { reason: _ } => false
+    AlignmentCadenceStateDecoded { state: decoded } =>
+      decoded.level_intervals == [20, 200, 2000]
+        && count(decoded.last_verdicts) == 3
+        && alignment_cadence_state_text(state: decoded) == alignment_cadence_state_text(state: state)
+  }
+}
+
+test fn the_codec_carries_the_verdict_payloads_not_just_the_kinds() -> Bool {
+  let extreme = AlignmentCadenceState {
+    level_intervals: [18],
+    last_verdicts: [ExtremelyMisaligned { direction: "the work is off the project contract" }],
+  }
+  let catastrophic = AlignmentCadenceState {
+    level_intervals: [20],
+    last_verdicts: [CatastrophicallyMisaligned { reason: "the diff violates a root principle" }],
+  }
+  match alignment_cadence_state_decode(text: alignment_cadence_state_text(state: extreme)) {
+    AlignmentCadenceStateNotDecodable { reason: _ } => false
+    AlignmentCadenceStateDecoded { state: d1 } =>
+      match d1.last_verdicts.first() {
+        Present { value: ExtremelyMisaligned { direction } } => direction == "the work is off the project contract"
+        _ => false
+      }
+      && match alignment_cadence_state_decode(text: alignment_cadence_state_text(state: catastrophic)) {
+        AlignmentCadenceStateNotDecodable { reason: _ } => false
+        AlignmentCadenceStateDecoded { state: d2 } =>
+          match d2.last_verdicts.first() {
+            Present { value: CatastrophicallyMisaligned { reason } } => reason == "the diff violates a root principle"
+            _ => false
+          }
+      }
+  }
+}
+
+test fn a_document_without_the_schema_is_not_a_cadence_state() -> Bool {
+  match alignment_cadence_state_decode(text: "{\"level_intervals\": [20], \"last_verdicts\": []}") {
+    AlignmentCadenceStateNotDecodable { reason } => reason != ""
+    AlignmentCadenceStateDecoded { state: _ } => false
+  }
+    && match alignment_cadence_state_decode(
+      text: join(["{\"schema\": \"roadmap-alignment-cadence-state/v2\", \"level_intervals\": [20], \"last_verdicts\": []}"], ""),
+    ) {
+      AlignmentCadenceStateNotDecodable { reason: _ } => true
+      AlignmentCadenceStateDecoded { state: _ } => false
+    }
+}
+
+test fn a_state_whose_parallel_lists_disagree_refuses() -> Bool {
+  match alignment_cadence_state_decode(
+    text: join([
+      "{\"schema\": \"", alignment_cadence_state_schema as String,
+      "\", \"level_intervals\": [20], \"last_verdicts\": []}",
+    ], ""),
+  ) {
+    AlignmentCadenceStateNotDecodable { reason } => reason != ""
+    AlignmentCadenceStateDecoded { state: _ } => false
+  }
+}
+
+test fn a_fabricated_non_positive_interval_refuses() -> Bool {
+  match alignment_cadence_state_decode(
+    text: join([
+      "{\"schema\": \"", alignment_cadence_state_schema as String,
+      "\", \"level_intervals\": [0], \"last_verdicts\": [{\"kind\": \"aligned\"}]}",
+    ], ""),
+  ) {
+    AlignmentCadenceStateNotDecodable { reason: _ } => true
+    AlignmentCadenceStateDecoded { state: _ } => false
+  }
+}
+
+test fn an_unknown_verdict_kind_refuses() -> Bool {
+  match alignment_cadence_state_decode(
+    text: join([
+      "{\"schema\": \"", alignment_cadence_state_schema as String,
+      "\", \"level_intervals\": [20], \"last_verdicts\": [{\"kind\": \"vibes\"}]}",
+    ], ""),
+  ) {
+    AlignmentCadenceStateNotDecodable { reason: _ } => true
+    AlignmentCadenceStateDecoded { state: _ } => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Due evaluation over a chain and the adaptive per-lineage state.
+// ------------------------------------------------------------------------------------------------
+
+// THE DUE FIXTURE CHAIN: task-a -> arc-one -> arc-mid -> arc-two, then the root -- four levels
+// above the floor, five due slots including the root principles.
+fn four_level_chain() -> AlignmentChain {
+  alignment_chain(node_id: "task-a", edges: deep_linear_edges(), nodes: fixture_nodes())
+}
+
+fn base_state() -> AlignmentCadenceState {
+  AlignmentCadenceState {
+    level_intervals: [20, 200, 2000, 20000],
+    last_verdicts: [Aligned, Aligned, Aligned, Aligned],
+  }
+}
+
+test fn with_base_intervals_the_due_set_grows_by_magnitude() -> Bool {
+  let chain = four_level_chain()
+  count(alignment_levels_due(chain: chain, turns_elapsed: 20, state: base_state())) == 1
+    && count(alignment_levels_due(chain: chain, turns_elapsed: 40, state: base_state())) == 1
+    && count(alignment_levels_due(chain: chain, turns_elapsed: 200, state: base_state())) == 2
+    && count(alignment_levels_due(chain: chain, turns_elapsed: 2000, state: base_state())) == 3
+    && count(alignment_levels_due(chain: chain, turns_elapsed: 20000, state: base_state())) == 4
+}
+
+test fn turn_zero_is_dispatch_not_a_checkpoint_nothing_is_due() -> Bool {
+  count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 0, state: base_state())) == 0
+    && count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 0 - 5, state: base_state())) == 0
+}
+
+test fn the_task_level_is_due_first_in_every_due_set() -> Bool {
+  let due = alignment_levels_due(chain: four_level_chain(), turns_elapsed: 2000, state: base_state())
+  count(due) == 3
+    && match due.first() {
+      Present { value: TaskContractLevel { link } } => link.node_id == "task-a"
+      _ => false
+    }
+}
+
+// THE ADAPTIVE STATE REPLACES THE BASE INTERVAL: two MISALIGNED steps moved the first project
+// 200 -> 196, so turn 980 (20 * 49 == 196 * 5, due for the task either way) is due for the task
+// and the project under the adaptive state, and only for the task under the base state.
+test fn the_adaptive_state_replaces_the_base_interval_a_shortened_level_comes_due_sooner() -> Bool {
+  let adaptive = AlignmentCadenceState {
+    level_intervals: [20, 196, 2000, 20000],
+    last_verdicts: [Aligned, Misaligned { direction: "drift" }, Aligned, Aligned],
+  }
+  count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 980, state: base_state())) == 1
+    && count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 980, state: adaptive)) == 2
+}
+
+// A STATE THAT PREDATES A LEVEL starts that level at its declared base: one recorded interval, so
+// the task level reads 10 from the state and every level above reads the magnitudinal base, never
+// a zero and never an error.
+test fn a_state_that_predates_a_level_starts_that_level_at_its_declared_base() -> Bool {
+  let partial = AlignmentCadenceState {
+    level_intervals: [10],
+    last_verdicts: [Aligned],
+  }
+  count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 200, state: partial)) == 2
+    && count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 20, state: partial)) == 1
+    && count(alignment_levels_due(chain: four_level_chain(), turns_elapsed: 2000, state: partial)) == 3
+}
+
+test fn a_chain_that_refused_has_no_levels_due() -> Bool {
+  let refused = alignment_chain(node_id: "task-a", edges: ambiguous_edges(), nodes: fixture_nodes())
+  count(alignment_levels_due(chain: refused, turns_elapsed: 200, state: base_state())) == 0
+    && count(alignment_levels(chain: refused)) == 0
+}
