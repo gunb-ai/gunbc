@@ -1,0 +1,123 @@
+module test.claim.compiler_gate_emit_build_lane_witness_test
+
+import std.types { Bool, List, String }
+import gunbc.compiler_gate_workflow {
+  compiler_gate_job_ids_all_needed,
+  compiler_gate_non_aggregate_job_ids,
+  compiler_gate_aggregate_enrollment_holds,
+  compiler_gate_aggregate_job,
+  compiler_gate_emit_build_job_id,
+  compiler_gate_emit_build_job,
+  compiler_gate_emit_build_bound_steps,
+  compiler_gate_emit_build_capability_closure_holds,
+  compiler_gate_lane_result_expression
+}
+import gunbc.emitted_subject_build_gate {
+  emitted_subject_build_rows,
+  emitted_subject_build_population,
+  emitted_subject_build_command
+}
+import extdeps.exec.command { shell_command_render }
+import v2.std.algebra { length }
+
+// WHAT THIS FILE DISCRIMINATES. Three facts, and each has a red that is authorable HERE rather
+// than only by a future edit to the workflow: the aggregate-enrollment predicate refuses a lane
+// that runs without being needed and refuses a `needs` entry naming no job; the emit-build lane is
+// actually enrolled in the live workflow; and the lane's steps invoke the two declared instrument
+// labels rather than a spelling of them.
+//
+// THE INHABITANCE HALF IS THE LIVE WORKFLOW ITSELF (DESIGN section 3, the pairing obligation):
+// every claim below that supplies a job set or a needs list is paired with one that reads
+// `compiler_gate_aggregate_enrollment_holds` and `compiler_gate_emit_build_job` on the real value,
+// so deleting the enrollment from the workflow reddens this file even though the parameterized
+// claims would still pass.
+
+data fixture_jobs: List<String> = ["compiler", "clippy", "emit-build", "floor"]
+
+test fn enrollment_holds_when_every_job_is_needed() -> Bool {
+  compiler_gate_job_ids_all_needed(job_ids: fixture_jobs, needs: fixture_jobs)
+}
+
+// A LANE THAT RUNS AND CANNOT BLOCK. This is the fail-open the conjunct exists to make unemittable:
+// the job is in the workflow, publishes its own check, and the one required context never reads it.
+test fn w_RED_a_job_absent_from_needs_refuses() -> Bool {
+  compiler_gate_job_ids_all_needed(
+    job_ids: fixture_jobs,
+    needs: ["compiler", "clippy", "floor"]
+  ) == false
+}
+
+// THE OTHER DIRECTION, WHICH FAILS DIFFERENTLY AND SILENTLY. An unknown `needs` context renders as
+// the empty string, which is not `success`, so a stale name would refuse every run and read as a
+// broken lane rather than a broken reference.
+test fn w_RED_a_needs_entry_naming_no_job_refuses() -> Bool {
+  compiler_gate_job_ids_all_needed(
+    job_ids: fixture_jobs,
+    needs: ["compiler", "clippy", "emit-build", "floor", "required-v2-native"]
+  ) == false
+}
+
+// INHABITANCE: the predicate above is not merely true of a fixture, it is true of the workflow
+// this module emits.
+test fn the_live_workflow_needs_every_lane_it_runs() -> Bool {
+  compiler_gate_aggregate_enrollment_holds()
+}
+
+// INHABITANCE: the emit-build lane is one of the jobs that join says is covered. Without this the
+// two claims above would hold over a workflow that never grew the lane.
+test fn the_emit_build_lane_is_a_job_and_is_needed() -> Bool {
+  any(compiler_gate_non_aggregate_job_ids(), id => id == compiler_gate_emit_build_job_id)
+    && any(compiler_gate_aggregate_job().needs, n => n == compiler_gate_emit_build_job_id)
+}
+
+// THE SUBJECTS ARE THE TWO RETAINED NATIVE COMPILATIONS, BY LABEL. A green here that named one
+// subject would be the coverage claim without the coverage.
+test fn the_lane_runs_both_retained_emit_build_subjects() -> Bool {
+  emitted_subject_build_population() == [
+    "//gunbc/instruments:self-host",
+    "//gunbc/instruments:v2-native-cli"
+  ]
+}
+
+// THE ARGV IS `gunbc test <label>` AGAINST THE BUILT SEED BINARY, not a claim_executor flag: the
+// withdrawn `--self-host` route is exactly the fork DESIGN's "Building & checks" section records.
+test fn each_subject_is_invoked_through_gunbc_test() -> Bool {
+  all(emitted_subject_build_rows(), row =>
+    string_contains(
+      s: shell_command_render(command: emitted_subject_build_command(row: row)),
+      pattern: "target/release/gunbc"
+    )
+  )
+}
+
+// ONE STEP PER SUBJECT ON TOP OF THE SHARED PRELUDE, and the prelude is the compiler lane's five
+// steps. A lane that grew a subject without growing a step would run one compilation and report on
+// two.
+test fn the_lane_binds_one_step_per_subject_above_the_prelude() -> Bool {
+  length(xs: compiler_gate_emit_build_bound_steps())
+    == 5 + length(xs: emitted_subject_build_rows())
+}
+
+// THE CARGO CONSUMER HAS A PROVIDER ORDERED BEFORE IT. This is the same closure check every other
+// lane in the workflow carries, asked of the lane this change adds.
+test fn the_lane_capability_closure_holds() -> Bool {
+  compiler_gate_emit_build_capability_closure_holds()
+}
+
+// THE HYPHEN TRAP, ASKED OF THE LANE THIS CHANGE ADDS. `-` is subtraction in the Actions
+// expression language, so `needs.emit-build.result` renders EMPTY on every run -- including
+// all-green ones -- and the aggregate would compare empty against `success` and refuse forever: a
+// gate whose only reachable state is red. The claim asserts the INDEX FORM IS PRESENT and the
+// DOTTED FORM IS ABSENT, because a renderer that emitted both would satisfy a presence-only check
+// while still carrying the arithmetic.
+test fn a_hyphenated_lane_result_renders_as_an_index() -> Bool {
+  let rendered = compiler_gate_lane_result_expression(job_id: compiler_gate_emit_build_job_id)
+  string_contains(s: rendered, pattern: "needs['emit-build'].result")
+    && (string_contains(s: rendered, pattern: "needs.emit-build") == false)
+}
+
+// AND THE DOT-SAFE LANES ARE UNCHANGED BY ROUTING THEM THROUGH THE SAME AUTHORITY, which is the
+// claim that makes the consolidation safe rather than merely tidy.
+test fn a_dot_safe_lane_result_still_renders_as_a_dereference() -> Bool {
+  compiler_gate_lane_result_expression(job_id: "compiler") == "${{ needs.compiler.result }}"
+}
