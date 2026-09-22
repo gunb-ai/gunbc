@@ -602,48 +602,78 @@ data app_permissions_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// WHAT WOULD GROUND AN UNREAD AXIS. Carried as one row so every AxisAccessesUnread names the
+// same obligation and the reason lives beside the table that owes it.
+data permission_axis_level_read_obligation: NonEmptyStr = "read a GitHub source that publishes ADMITTED ACCESS LEVELS per App permission (app_permissions_citation is organised by endpoint and does not), or observe a live App-manifest validator refusal for this axis, as workflows was observed on 2026-09-22" as NonEmptyStr
+
 // NOT EVERY AXIS ADMITS EVERY ACCESS LEVEL, AND THE MANIFEST VALIDATOR UPSTREAM REFUSES THE PAIRS
 // THAT DO NOT. This module carried the axis and the access as two independent coproducts, so a
 // GitHubAppPermission could spell `workflows: read` -- and the census manifest did, and GitHub's
 // registration page refused the whole manifest with "Default permission records resource
-// (workflows) is a write-only permission" (2026-09-22, the first live submission). That refusal is
-// the grounding for the workflows row; the metadata row is the documented one (app_permissions_citation:
-// metadata admits read only, and every App holds it). Every other axis admits both levels per the
-// same table. administration additionally documents an `admin` level this module's access type
-// does not spell; that is a partiality of GitHubAppPermissionAccess, not of this table.
-fn permission_axis_admitted_accesses(axis: GitHubPermissionAxis) -> List<GitHubAppPermissionAccess> {
+// (workflows) is a write-only permission" (2026-09-22, the first live submission).
+//
+// WHAT IS READ IS CITED; WHAT IS NOT READ IS A BET, AND THE BET IS TYPED (DESIGN 4d). Only two
+// rows are grounded: workflows by that live refusal, and metadata because app_permissions_citation
+// documents it read-only and every App holds it. Every other axis is UNREAD, and an unread axis is
+// NOT judged here -- the pair reaches GitHub and GitHub answers. An earlier draft asserted
+// [AppAccessRead, AppAccessWrite] for the other twenty axes on the strength of prose saying the
+// same table admits both; that is a plausible inference standing as a deduced fact, which is the
+// defect this module is careful to avoid on the events side (webhook_event_subscribability
+// deliberately declines to classify installation_target and meta) and was doing the opposite of
+// here.
+//
+// THE READ OBLIGATION NAMES WHY THE CITED PAGE DOES NOT DISCHARGE IT. app_permissions_citation is
+// organised by ENDPOINT, not by admitted level: it lists which endpoints each permission reaches at
+// which level, so "only read endpoints are documented for code_quality" does not establish that the
+// manifest validator REFUSES `code_quality: write`. Reading a level off it is the same promotion
+// one layer down, and in the restrictive direction, which DESIGN 4d names as the costlier arm --
+// an over-broad prohibition refuses a manifest GitHub would have accepted, and the cost is the
+// submission that never happened. Grounding a row therefore takes a source that publishes admitted
+// levels, or a live validator refusal like the one that grounded workflows.
+//
+// THE UNREAD SET IS THE COMPLEMENT OF WHAT WAS READ, so it is a wildcard rather than twenty
+// identical rows: enumerating it would be a second list that must be edited every time a row is
+// grounded (DESIGN 3). A newly added axis therefore defaults to unjudged, which is the fail-safe
+// direction -- it reaches the upstream validator -- and the only way to make a row refuse locally
+// is to ground it.
+//
+// administration additionally documents an `admin` level this module's access type does not spell;
+// that is a partiality of GitHubAppPermissionAccess, not of this table.
+
+type AxisAccessAdmission
+  = AxisAdmitsExactly { accesses: List<GitHubAppPermissionAccess>, authority: ExternalAuthority }
+  | AxisAccessesUnread { read_obligation: NonEmptyStr }
+
+fn permission_axis_admitted_accesses(axis: GitHubPermissionAxis) -> AxisAccessAdmission {
   match axis {
-    MetadataAxis => [AppAccessRead]
-    WorkflowsAxis => [AppAccessWrite]
-    ActionsAxis => [AppAccessRead, AppAccessWrite]
-    ArtifactMetadataAxis => [AppAccessRead, AppAccessWrite]
-    AttestationsAxis => [AppAccessRead, AppAccessWrite]
-    ChecksAxis => [AppAccessRead, AppAccessWrite]
-    CodeQualityAxis => [AppAccessRead, AppAccessWrite]
-    ContentsAxis => [AppAccessRead, AppAccessWrite]
-    DeploymentsAxis => [AppAccessRead, AppAccessWrite]
-    DiscussionsAxis => [AppAccessRead, AppAccessWrite]
-    IdTokenAxis => [AppAccessRead, AppAccessWrite]
-    IssuesAxis => [AppAccessRead, AppAccessWrite]
-    ModelsAxis => [AppAccessRead, AppAccessWrite]
-    PackagesAxis => [AppAccessRead, AppAccessWrite]
-    PagesAxis => [AppAccessRead, AppAccessWrite]
-    PullRequestsAxis => [AppAccessRead, AppAccessWrite]
-    RepositoryProjectsAxis => [AppAccessRead, AppAccessWrite]
-    SecurityEventsAxis => [AppAccessRead, AppAccessWrite]
-    StatusesAxis => [AppAccessRead, AppAccessWrite]
-    VulnerabilityAlertsAxis => [AppAccessRead, AppAccessWrite]
-    AdministrationAxis => [AppAccessRead, AppAccessWrite]
-    OrganizationSelfHostedRunnersAxis => [AppAccessRead, AppAccessWrite]
+    MetadataAxis =>
+      AxisAdmitsExactly { accesses: [AppAccessRead], authority: app_permissions_citation }
+    WorkflowsAxis =>
+      AxisAdmitsExactly { accesses: [AppAccessWrite], authority: app_permissions_citation }
+    _ => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
   }
 }
 
-fn permission_axis_admits_access(axis: GitHubPermissionAxis, access: GitHubAppPermissionAccess) -> Bool {
-  fold_list(
-    xs: permission_axis_admitted_accesses(axis: axis),
-    empty: false,
-    cons: fn(found, a) { found || a == access }
-  )
+// THREE-VALUED BY CONSTRUCTION: a Bool here would fold "this module read the table and the pair is
+// not on it" together with "this module never read the table", and only the first is a refusal.
+type AxisAccessVerdict
+  = AxisAccessAdmitted { authority: ExternalAuthority }
+  | AxisAccessRefusedByAuthority { authority: ExternalAuthority }
+  | AxisAccessUnjudged { read_obligation: NonEmptyStr }
+
+fn permission_axis_access_verdict(
+  axis: GitHubPermissionAxis,
+  access: GitHubAppPermissionAccess,
+) -> AxisAccessVerdict {
+  match permission_axis_admitted_accesses(axis: axis) {
+    AxisAccessesUnread { read_obligation: o } => AxisAccessUnjudged { read_obligation: o }
+    AxisAdmitsExactly { accesses: xs, authority: auth } =>
+      if fold_list(xs: xs, empty: false, cons: fn(found, a) { found || a == access }) {
+        AxisAccessAdmitted { authority: auth }
+      } else {
+        AxisAccessRefusedByAuthority { authority: auth }
+      }
+  }
 }
 
 fn first_permission_not_admitted(perms: List<GitHubAppPermission>) -> GitHubAppPermission? {
@@ -654,7 +684,11 @@ fn first_permission_not_admitted(perms: List<GitHubAppPermission>) -> GitHubAppP
       match found {
         Present { value: v } => Present { value: v }
         Absent =>
-          if permission_axis_admits_access(axis: p.name, access: p.access) { none } else { Present { value: p } }
+          match permission_axis_access_verdict(axis: p.name, access: p.access) {
+            AxisAccessAdmitted { authority: _ } => none
+            AxisAccessUnjudged { read_obligation: _ } => none
+            AxisAccessRefusedByAuthority { authority: _ } => Present { value: p }
+          }
       }
     }
   )

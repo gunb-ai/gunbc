@@ -53,6 +53,7 @@ import extdeps.github.app {
   WebhookCheckRun,
   MetadataAxis,
   WorkflowsAxis,
+  IdTokenAxis,
   webhook_event_wire_name,
   webhook_event_from_wire,
   permission_access_wire_name,
@@ -65,6 +66,11 @@ import extdeps.github.app {
   ManifestDuplicatePermission,
   ManifestDuplicateEvent,
   ManifestAccessNotAdmittedOnAxis,
+  permission_axis_access_verdict,
+  AxisAccessAdmitted,
+  AxisAccessRefusedByAuthority,
+  AxisAccessUnjudged,
+  permission_axis_level_read_obligation,
   ManifestEventNotSubscribable,
   admit_app_manifest,
   AppManifestRendered,
@@ -411,6 +417,45 @@ test fn w_manifest_admits_write_on_workflows_and_refuses_write_on_metadata() -> 
     ManifestEventNotSubscribable { event: _ } => false
   }
   write_ok && metadata_write_refused
+}
+
+// THE THIRD VALUE IS THE POINT: an axis this module never read is UNJUDGED, not admitted, and an
+// unjudged pair reaches GitHub rather than being refused here. The three arms are discriminated on
+// three different axes -- workflows:read is a grounded refusal, workflows:write a grounded
+// admission, and id_token (never read; GitHub publishes it as write-only, which this module does
+// NOT assert) is unjudged -- so collapsing any two would turn one of these reds green.
+test fn w_an_unread_axis_is_unjudged_rather_than_admitted() -> Bool {
+  let grounded_refusal = match permission_axis_access_verdict(axis: WorkflowsAxis, access: AppAccessRead) {
+    AxisAccessRefusedByAuthority { authority: _ } => true
+    AxisAccessAdmitted { authority: _ } => false
+    AxisAccessUnjudged { read_obligation: _ } => false
+  }
+  let grounded_admission = match permission_axis_access_verdict(axis: WorkflowsAxis, access: AppAccessWrite) {
+    AxisAccessAdmitted { authority: _ } => true
+    AxisAccessRefusedByAuthority { authority: _ } => false
+    AxisAccessUnjudged { read_obligation: _ } => false
+  }
+  let unread_is_unjudged = match permission_axis_access_verdict(axis: IdTokenAxis, access: AppAccessRead) {
+    AxisAccessUnjudged { read_obligation: o } => (o as String) == (permission_axis_level_read_obligation as String)
+    AxisAccessAdmitted { authority: _ } => false
+    AxisAccessRefusedByAuthority { authority: _ } => false
+  }
+  grounded_refusal && grounded_admission && unread_is_unjudged
+}
+
+// AND THE UNJUDGED ARM DOES NOT REFUSE AT THE MANIFEST BOUNDARY. A manifest naming an unread axis
+// is admitted here and judged upstream, which is the same disposition the events side gives
+// installation_target and meta.
+test fn w_a_manifest_naming_an_unread_axis_is_admitted_here() -> Bool {
+  match admit_app_manifest(m: manifest_with_permissions(perms: [
+    GitHubAppPermission { name: IdTokenAxis, access: AppAccessRead },
+  ])) {
+    ManifestAdmitted { manifest: _ } => true
+    ManifestDuplicatePermission { axis: _ } => false
+    ManifestDuplicateEvent { event: _ } => false
+    ManifestAccessNotAdmittedOnAxis { axis: _, access: _ } => false
+    ManifestEventNotSubscribable { event: _ } => false
+  }
 }
 
 test fn w_manifest_refuses_an_installation_event_as_a_subscription() -> Bool {
