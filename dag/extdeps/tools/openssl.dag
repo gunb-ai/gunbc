@@ -1,7 +1,7 @@
 module extdeps.tools.openssl
 
 import std.types { String, NonEmptyStr, Int, Bool, List, Unit }
-import std.integer { UInt8 }
+import std.integer { UInt8, qualified_octet_members }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -88,7 +88,7 @@ fn openssl_signature_of(exit_code: Int, stdout: String, stderr: String) -> Opens
     } else {
       match base16_decode_lower(hex: digits) {
         Absent => OpensslSignRefused { exit_code: exit_code, detail: "openssl dgst -hex signature is not lowercase hex" }
-        Present { value: octets } => OpensslSigned { octets: octets }
+        Present { value: octets } => OpensslSigned { octets: qualified_octet_members(q: octets) }
       }
     }
   }
