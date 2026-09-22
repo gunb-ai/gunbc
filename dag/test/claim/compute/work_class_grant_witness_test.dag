@@ -312,6 +312,9 @@ test fn an_empty_capture_is_reported_as_capture_empty_not_as_a_missing_line() ->
 // THE THREE STANDINGS ARE ASSERTED SEPARATELY, one cause per claim, because a claim that asserted
 // several of them could not name which collapsed -- the class this lane filed as
 // a_claim_asserting_several_causes_cannot_name_which_one_went.
+// The other end of the grounding relation: only a major this module has read proceeds to the
+// parser. Its base case is the_grounding_recursion_terminates_because_an_unreadable_version_refuses
+// below -- without that, the version read this check depends on could fail open.
 test fn a_grounded_major_is_the_only_one_that_parses() -> Bool {
   match summary_format_standing(version_line: "systemd 255 (255.4-1ubuntu8)") {
     SummaryFormatGrounded { major } => major == 255
@@ -336,7 +339,19 @@ test fn an_unread_major_refuses_instead_of_reading_its_figures() -> Bool {
     }
 }
 
-test fn an_unreadable_version_line_refuses_rather_than_assuming_the_grounded_major() -> Bool {
+// THIS IS THE BASE CASE OF THE GROUNDING RECURSION, WHICH IS WHY IT IS NOT NAMED FOR AN EDGE CASE
+// (loyal-swift-608, 2026-09-22). Deciding whether the format may be parsed requires READING A
+// VERSION LINE, so "parse the version to decide whether you may parse" is circular unless the
+// version read can ITSELF refuse. That is this claim, and the recursion terminates here and
+// nowhere else. Its counterpart is a_grounded_major_is_the_only_one_that_parses, which is the
+// other end of the same relation: that one says only a read major proceeds, this one says an
+// unread VERSION LINE does not silently become a read major.
+//
+// The earlier name, an_unreadable_version_line_refuses_rather_than_assuming_the_grounded_major,
+// read as edge-case tidying, so ordinary edge-case cleanup would have deleted the base case and
+// left the recursion open. A name that understates what depends on a claim is a decay an
+// annotation cannot fully repair, because the annotation is read AFTER the decision to touch it.
+test fn the_grounding_recursion_terminates_because_an_unreadable_version_refuses() -> Bool {
   let unknown = summary_format_standing(version_line: "")
   let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: unknown, stderr: summary_oom_after_spoof)
   match unknown { SummaryFormatVersionUnreadable { line } => line == ""  _ => false }
