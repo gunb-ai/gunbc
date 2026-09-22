@@ -480,17 +480,6 @@ fn yaml_flow_sequence(v: String) -> YamlScalarResult {
   }
 }
 
-// The number of leading spaces. The line never ends in whitespace (the document refuses that), so
-// its trimmed length gives the count directly unless the leading whitespace holds a tab.
-fn yaml_leading_spaces(line: String) -> Int {
-  let lead = line.length() - trim(line).length()
-  if starts_with(s: line, prefix: substring(s: yaml_spaces, start: 0, end: if lead > yaml_spaces.length() { yaml_spaces.length() } else { lead })) && (lead <= yaml_spaces.length()) {
-    lead
-  } else {
-    yaml_indent_of(line: line)
-  }
-}
-
 // Spaces only: a tab ends the count.
 fn yaml_indent_of(line: String) -> Int {
   if starts_with(s: line, prefix: "        ") {
@@ -837,11 +826,6 @@ fn yaml_indicator_opens_plain(v: String) -> Bool {
     starts_with(s: v, prefix: "-") || starts_with(s: v, prefix: "?") || starts_with(s: v, prefix: ":")
   }
 }
-
-// Key starts that leave the one-line fast path: quoted and explicit keys, indicators, numeric
-// starts and whitespace. Value starts that leave it: every indicator, and whitespace.
-data yaml_key_slow_starts: String = "-?:,[]{}#&*!|>'\"%@`0123456789+.~ \t"
-data yaml_value_slow_starts: String = "\"'[]{},|>&*!%@`#-?: \t"
 
 // 1: leaves the one-line fast path (an indicator or whitespace). 2: a plain scalar the core schema
 // may resolve to something other than a string. Absent: an ordinary start, always a string.
