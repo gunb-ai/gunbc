@@ -22,6 +22,7 @@ import gunbc.native_route_progress_guard {
   NativeCauseTransitionDisposition, NativeCauseTransitionRow,
   CauseNowMoreTruthful, SameDefectRenamed, CauseRegressedUnderANewLabel,
   CauseTransitionUndispositioned, CauseRegressedAtAFixedRank,
+  CauseTransitionDispositionContradicted,
   native_cause_unchanged, native_exclusion_cause_same,
   native_baseline_rank, native_observed_as_baseline,
   NativeBaselineMinting, native_progress_mint_baseline,
@@ -279,6 +280,7 @@ test fn w_RED_a_subject_refused_earlier_than_before_is_a_regression() -> Bool {
       AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
       SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
     }
   })
@@ -412,6 +414,7 @@ test fn w_RED_a_rename_whose_target_attains_less_reds() -> Bool {
       AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
       SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
     }
   })
@@ -444,6 +447,7 @@ test fn w_RED_a_rename_to_a_target_the_run_never_saw_reds() -> Bool {
       AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
       SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
     }
   })
@@ -672,8 +676,11 @@ test fn w_RED_an_unreached_subject_reds_as_unreached_and_not_as_a_regression() -
         AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
         CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
         SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
       }
     })
@@ -841,8 +848,11 @@ test fn w_RED_a_run_with_no_binary_reports_every_row_unreached_not_missing() -> 
         AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
         CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
         BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
       }
     }) == false)
@@ -863,8 +873,11 @@ test fn w_RED_a_run_with_no_binary_reports_every_row_unreached_not_missing() -> 
         AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
         CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
         BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
       }
     }) == 2
@@ -933,8 +946,11 @@ test fn w_RED_a_rename_to_an_unreached_target_reds_as_unreached_not_as_a_lowered
         AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
         CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
         BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
       }
     })
@@ -1099,8 +1115,11 @@ test fn w_RED_a_baseline_minted_under_a_weaker_adjudicator_is_not_a_bar() -> Boo
         AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
         CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
         SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
       }
     })
@@ -1144,8 +1163,11 @@ test fn w_RED_across_a_meaning_boundary_no_regression_is_reported_beside_it() ->
         AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
         CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
         BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
         SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
       }
@@ -1407,16 +1429,22 @@ test fn w_RED_an_undispositioned_accept_to_refuse_reds_under_its_own_name() -> B
         AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
         CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
         AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
       AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
       CauseTransitionUndispositioned { identity: _ } => false
       CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
         CauseTransitionUndispositioned { identity: _ } => false
         CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
         SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
       }
     })
@@ -1542,6 +1570,8 @@ test fn w_RED_a_cause_change_at_a_fixed_rank_is_not_a_non_event() -> Bool {
         CauseTransitionUndispositioned { identity: i } => i.module == "v2.test.alpha"
         ProgressRegressed { identity: _, baseline: _, observed: _ } => false
         CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
         AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
       AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
@@ -1630,6 +1660,7 @@ test fn w_RED_a_declared_cause_regression_still_reds() -> Bool {
       match f {
         CauseRegressedAtAFixedRank { identity: _, was: w, now: _ } => w == "resolve_reason_unbound_symbol"
         CauseTransitionUndispositioned { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
         ProgressRegressed { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
         AcceptToRefuseDispositionContradicted { identity: _ } => false
@@ -1780,4 +1811,104 @@ test fn w_RED_a_stage_fall_carrying_a_new_cause_is_still_a_regression() -> Bool 
       identity: subject_a,
       attained: AttainRefused { stage: NativeTestStagePrepare, cause: unbound_cause })]
   ) == false
+}
+
+// THE THIRD ROSTER IS CHECKED FROM ITS OWN SIDE (review 70131). It was the only one that was not:
+// a `CauseNowMoreTruthful` row for an identity whose cause did not move was never contradicted,
+// persisted in the baseline, and SILENTLY PRE-AUTHORISED THE NEXT cause change at that identity.
+// A pre-declared waiver of a red this module exists to raise, which DESIGN section 5 calls an
+// escape hatch and a hard reject.
+test fn w_RED_a_cause_transition_row_the_run_contradicts_reds() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause }
+      }],
+      dispositions: [],
+      accept_to_refuse: [],
+      cause_transitions: [NativeCauseTransitionRow {
+        identity: subject_a,
+        disposition: SameDefectRenamed { was: "claimed", now: "claimed" }
+      }],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressLost { findings: fs } => length(xs: fs) == 1
+    ProgressPreserved => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// AND A ROW FOR AN IDENTITY WHOSE RANK MOVED IS ALSO CONTRADICTED, because the disposition claims
+// a change AT A FIXED RANK. A stage advance is not what this vocabulary describes, and a row
+// saying otherwise would waive the cause check on the head after next.
+test fn w_RED_a_cause_transition_row_over_a_rank_change_is_contradicted() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause }
+      }],
+      dispositions: [],
+      accept_to_refuse: [],
+      cause_transitions: [NativeCauseTransitionRow {
+        identity: subject_a,
+        disposition: CauseNowMoreTruthful { was: "a", now: "b", why: "claimed" }
+      }],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStageEval, cause: unbound_cause })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressLost { findings: fs } => length(xs: fs) == 1
+    ProgressPreserved => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// THE CONTROL: A GENUINE CAUSE TRANSITION WITH ITS ROW IS STILL ADMITTED, so the own-side check
+// did not simply reject every row.
+test fn a_cause_transition_row_the_run_confirms_is_admitted() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause }
+      }],
+      dispositions: [],
+      accept_to_refuse: [],
+      cause_transitions: [NativeCauseTransitionRow {
+        identity: subject_a,
+        disposition: CauseNowMoreTruthful { was: "ambiguous", now: "unbound", why: "the fallback was removed" }
+      }],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStagePrepare, cause: unbound_cause })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => true
+    ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
 }

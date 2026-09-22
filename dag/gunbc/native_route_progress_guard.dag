@@ -777,6 +777,7 @@ type NativeProgressFinding
     }
   | CauseTransitionUndispositioned { identity: NativeRouteTestIdentity }
   | CauseRegressedAtAFixedRank { identity: NativeRouteTestIdentity, was: String, now: String }
+  | CauseTransitionDispositionContradicted { identity: NativeRouteTestIdentity }
   | SubjectUnreachedEarlierRungFailed {
       identity: NativeRouteTestIdentity
       blocked_at: NativeRunReach
@@ -968,6 +969,67 @@ fn native_accept_to_refuse_index(
 // A TRANSITION DISPOSITION IS CHECKED FROM ITS OWN SIDE TOO, exactly as a removal disposition is:
 // one claimed for a subject that did NOT go accept-to-refuse is contradicted by the run, and
 // leaving it standing would pre-authorise a future fall nobody looked at.
+// THE THIRD ROSTER IS CHECKED FROM ITS OWN SIDE TOO, and it was the only one that was not
+// (review 70131). Removal dispositions had `native_progress_disposition_row_findings`,
+// accept-to-refuse had `native_accept_to_refuse_row_findings`, and `cause_transitions` was only
+// ever READ BY KEY LOOKUP -- so a `CauseNowMoreTruthful` row for an identity whose cause did not
+// move was never contradicted, persisted in the baseline, and SILENTLY PRE-AUTHORISED THE NEXT
+// CAUSE CHANGE at that identity: the guard would return no finding where it owed
+// `CauseTransitionUndispositioned` or `CauseRegressedAtAFixedRank`.
+//
+// A PRE-DECLARED WAIVER OF A RED THIS MODULE EXISTS TO RAISE is DESIGN section 5's escape hatch --
+// "a toggle whose only effect is 'proceed as if the refusal had not fired'" -- and the section
+// calls a diff that lands one a hard reject. It is also the eighth instance of
+// `a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling` in this module, and the
+// purest: the annotation on the accept-to-refuse checker states the rule VERBATIM -- "one claimed
+// for a subject that did NOT go accept-to-refuse is contradicted by the run, and leaving it
+// standing would pre-authorise a future fall nobody looked at" -- and the same sentence is true,
+// word for word, of a cause-transition row. The rule was written down, next to the code, and not
+// applied to the roster added after it.
+//
+// THE CHECK IS THE CONJUNCTION THE DISPOSITION CLAIMS: the identity must be in the baseline, in
+// the run, AT EQUAL RANK, and carrying a DIFFERENT cause. Any one of those failing means the row
+// describes something that did not happen.
+fn native_cause_transition_row_findings(
+  row: NativeCauseTransitionRow,
+  baseline_index: Map<String, NativeBaselineAttainment>,
+  observed: Map<String, NativeRouteAttainment>
+) -> List<NativeProgressFinding> {
+  let key = native_route_identity_qualified(identity: row.identity)
+  match map_lookup(m: baseline_index, key: key) {
+    Absent => [CauseTransitionDispositionContradicted { identity: row.identity }]
+    Present { value: bar } =>
+      match map_lookup(m: observed, key: key) {
+        Absent => [CauseTransitionDispositionContradicted { identity: row.identity }]
+        Present { value: seen } =>
+          if native_rank_is_equal(baseline: bar, seen: seen)
+            && (native_cause_unchanged(baseline: bar, seen: seen) == false) {
+            []
+          } else {
+            [CauseTransitionDispositionContradicted { identity: row.identity }]
+          }
+      }
+  }
+}
+
+fn native_cause_transition_findings_from_rows(
+  baseline: NativeProgressBaseline,
+  baseline_index: Map<String, NativeBaselineAttainment>,
+  observed: Map<String, NativeRouteAttainment>,
+  reach: NativeRunReach
+) -> List<NativeProgressFinding> {
+  if native_run_reached_the_population(r: reach) == false {
+    []
+  } else {
+    list_flat_map(
+      xs: baseline.cause_transitions,
+      f: fn(row) {
+        native_cause_transition_row_findings(row: row, baseline_index: baseline_index, observed: observed)
+      }
+    )
+  }
+}
+
 fn native_accept_to_refuse_row_findings(
   row: NativeAcceptToRefuseRow,
   baseline_index: Map<String, NativeBaselineAttainment>,
@@ -1377,6 +1439,11 @@ fn native_progress_report(
         } else {
           []
         },
+        if comparable {
+          native_cause_transition_findings_from_rows(baseline: baseline, baseline_index: baseline_index, observed: observed, reach: reach)
+        } else {
+          []
+        },
         adjudication_findings
       ],
       f: fn(fs) { fs }
@@ -1525,6 +1592,12 @@ fn native_progress_finding_text(f: NativeProgressFinding) -> String {
       join([
         "ACCEPT-TO-REFUSE DECLARED A REGRESSION (declared, and declaring it does not excuse it) ",
         native_route_identity_qualified(identity: id)
+      ], "")
+    CauseTransitionDispositionContradicted { identity: id } =>
+      join([
+        "CAUSE-TRANSITION DISPOSITION CONTRADICTED BY THE RUN (this subject's cause did not change ",
+        "at a fixed rank, so the row describes something that did not happen and would have ",
+        "pre-authorised the next change) ", native_route_identity_qualified(identity: id)
       ], "")
     AcceptToRefuseDispositionContradicted { identity: id } =>
       join([
