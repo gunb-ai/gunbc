@@ -11,10 +11,14 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.pair_serving_authority {
-  PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_capacity_subject,
+  PairServingGroupAuthority, pair_serving_capacity_subject,
   CapacityOrdinarySubject, CapacitySuspendedSubject, CapacityReleasedSubject,
 }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import std.resources { Network }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.vllm_kv_layout_observe {
   VllmKvLayoutReceipt, admit_kv_layout,
 }
@@ -138,14 +142,22 @@ type CapacityProbeRead
   = ProbeFields { fields: CapacityProbeFields }
   | ProbeUnreadable { detail: String }
 
-fn field_at(lines: List<String>, n: Nat) -> String {
-  trim(s: lines.skip(n: n).first())
+// AN INDEX PAST THE END IS NOT A FIELD. `.first()` on the skipped remainder is honestly Optional,
+// and every caller here already carries an Absent arm (the roster slot, the split segment, the
+// fraction digits), so the absence is propagated to the arm that names what the missing field
+// MEANS rather than defaulted to "". Same shape as v2.workflow.floor_terminal_ledger_wire
+// ledger_wire_field_at and extdeps.bmc.ipmi_sdr sdr_field_at.
+fn field_at(lines: List<String>, n: Nat) -> String? {
+  match lines.skip(n: n).first() {
+    Absent => none
+    Present { value: s } => Present { value: trim(s: s) }
+  }
 }
 
 fn field_named(lines: List<String>, name: ProbeFieldName) -> String? {
   match slot_index(want: name) {
     Absent => none
-    Present { value: n } => Present { value: field_at(lines: lines, n: n) }
+    Present { value: n } => field_at(lines: lines, n: n)
   }
 }
 
@@ -274,7 +286,7 @@ fn after_startup_prefix(line: String, kind: VllmStartupLine) -> String? {
   if list_length(items: parts) < 2 {
     none
   } else {
-    Present { value: trim(s: field_at(lines: parts, n: 1)) }
+    field_at(lines: parts, n: 1)
   }
 }
 
@@ -282,7 +294,10 @@ fn tokens_from_gpu_kv_cache_size_line(line: String) -> Int? {
   match after_startup_prefix(line: line, kind: GpuKvCacheSize) {
     Absent => none
     Present { value: after } =>
-      parse_int(s: replace(s: trim(s: split(s: after, delimiter: " ").first()), from: ",", to: ""))
+      match field_at(lines: split(s: after, delimiter: " "), n: 0) {
+        Absent => none
+        Present { value: head } => parse_int(s: replace(s: head, from: ",", to: ""))
+      }
   }
 }
 
@@ -294,7 +309,10 @@ fn hundredths_from_maximum_concurrency_line(line: String) -> Int? {
       if list_length(items: segs) < 2 {
         none
       } else {
-        hundredths_from_two_digit_x(lexeme: field_at(lines: segs, n: list_length(items: segs) - 1))
+        match field_at(lines: segs, n: list_length(items: segs) - 1) {
+          Absent => none
+          Present { value: lexeme } => hundredths_from_two_digit_x(lexeme: lexeme)
+        }
       }
     }
   }
@@ -316,23 +334,30 @@ fn hundredths_from_two_digit_x(lexeme: String) -> Int? {
       if list_length(items: parts) != 2 {
         none
       } else {
-        let frac = field_at(lines: parts, n: 1)
-        if string_length(s: frac) != 2 {
-          none
-        } else {
-          match parse_int(s: field_at(lines: parts, n: 0)) {
-            Absent => none
-            Present { value: whole } =>
-              match parse_int(s: frac) {
+        match field_at(lines: parts, n: 1) {
+          Absent => none
+          Present { value: frac } =>
+            if string_length(s: frac) != 2 {
+              none
+            } else {
+              match field_at(lines: parts, n: 0) {
                 Absent => none
-                Present { value: fraction } =>
-                  if whole < 0 || fraction < 0 || fraction > 99 {
-                    none
-                  } else {
-                    Present { value: whole * 100 + fraction }
+                Present { value: whole_text } =>
+                  match parse_int(s: whole_text) {
+                    Absent => none
+                    Present { value: whole } =>
+                      match parse_int(s: frac) {
+                        Absent => none
+                        Present { value: fraction } =>
+                          if whole < 0 || fraction < 0 || fraction > 99 {
+                            none
+                          } else {
+                            Present { value: whole * 100 + fraction }
+                          }
+                      }
                   }
               }
-          }
+            }
         }
       }
     }
@@ -552,6 +577,35 @@ fn capacity_standing_verdict(standings: List<GroupStanding>) -> ProcessExit {
   }
 }
 
-fn fabric_capacity_standing() -> ProcessExit {
-  capacity_standing_verdict(standings: map(spark_pair_serving_authorities, a => standing_for_authority(a: a)))
+// THE AUTHORITY IS READ FROM THE LOG, NOT THE SOURCE ROW. gunbc.spark.pair_serving_authority_log
+// folds the resting row through every recorded transition, so a group a transaction has suspended
+// is reported suspended here without a commit. An authority that could not be read is a refused
+// standing naming the read's step -- the instrument does not stand for a group whose state it
+// could not establish, and it does not fall back to the row.
+fn standing_for_current(c: CurrentAuthority) -> GroupStanding {
+  match c {
+    CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => standing_for_authority(a: a)
+    CurrentAuthorityUnread { group: g, step: s, reason: why } =>
+      refused_standing(text: join([fabric_group_wire(g: g) as String, ": serving authority could not be read at ", s, ": ", why], ""))
+  }
+}
+
+// The verdict over a SUPPLIED current roster: the real group_report route for every read
+// authority, so a witness can hand in the resting row at generation 0 and still execute the
+// producer and the binding, while the live entry below hands in what the executor's log says.
+fn fabric_capacity_standing_current(current: List<CurrentAuthority>) -> ProcessExit {
+  capacity_standing_verdict(standings: map(current, c => standing_for_current(c: c)))
+}
+
+fn fabric_capacity_standing() -> ProcessExit
+  uses net: Network
+{
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["fabric capacity standing: ", c], ""))
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match now_epoch_seconds() {
+        Absent => exit_failure(reason: "fabric capacity standing: the clock could not be read as epoch seconds, so the lease standing of the authority cannot be derived")
+        Present { value: at } => fabric_capacity_standing_current(current: current_pair_serving_authorities(short_hostname: executor, at: at))
+      }
+  }
 }

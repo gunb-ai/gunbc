@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.v2_test_lens_disposition_redundancy_disposition_redundancy_test_redundancy_region_budget_marks_gunbc_ci_managed_host_fixed_overhead_disposition
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data v2_test_lens_disposition_redundancy_disposition_redundancy_test_redundancy_region_budget_marks_gunbc_ci_managed_host_fixed_overhead_disposition: TransitionAdmission = TransitionAdmission {
+  label: "EXTRACTION host memory observation: `gunbc_ci_managed_host_fixed_overhead_disposition` moves gunbc.ci_floor_measurement -> gunbc.host_memory_observation" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("v2.test.lens_disposition_redundancy.disposition_redundancy_test", "redundancy_region_budget_marks"),
+    spelling: "gunbc_ci_managed_host_fixed_overhead_disposition" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.host_memory_observation", "gunbc_ci_managed_host_fixed_overhead_disposition")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11625 as UInt32,
+}

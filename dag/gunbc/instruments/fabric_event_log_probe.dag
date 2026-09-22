@@ -4,8 +4,8 @@ import std.types { String, Bool, Int, NonEmptyStr, List, FilePath, EpochSecs }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.nat { Nat }
 import std.measure { Measure, Count, One }
-import gunbc.fabric_db_client { FabricDbBinding, FabricDbLocalFiles, FabricDbServed }
-import gunbc.fabric_db_file_store { fabric_db_file_root, fabric_db_file_root_ensure, FabricDbRootReady, FabricDbRootRefused }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageServed }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady, FabricStorageRootRefused }
 import product.capacity.pool { Pool, NoReplenishment, pool_of }
 import product.capacity.event_chain { PartitionId, EventId, ChainEvent, HeadExpectation, HeadAbsent, HeadAt, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, SeatRequest }
@@ -50,20 +50,20 @@ fn probe_event(partition: PartitionId, parent: HeadExpectation, at: EpochSecs, p
 }
 
 fn fabric_event_log_probe(root: NonEmptyStr) -> ProcessExit {
-  let files = fabric_db_file_root(root: root)
-  let step = match fabric_db_file_root_ensure(root: files) {
-    FabricDbRootRefused { area: _, detail: _ } => 1
-    FabricDbRootReady => fabric_event_log_probe_step(store: FabricDbLocalFiles { root: files }, partition: "probe-seats" as PartitionId)
+  let files = fabric_storage_file_root(root: root)
+  let step = match fabric_storage_file_root_ensure(root: files) {
+    FabricStorageRootRefused { area: _, detail: _ } => 1
+    FabricStorageRootReady => fabric_event_log_probe_step(store: FabricStorageLocalFiles { root: files }, partition: "probe-seats" as PartitionId)
   }
   if step == 0 { ExitSuccess } else { exit_failure(reason: join(["fabric event log probe failed at step ", to_string(step)], "")) }
 }
 
 fn fabric_event_log_probe_served(endpoint: NonEmptyStr, partition: NonEmptyStr) -> ProcessExit {
-  let step = fabric_event_log_probe_step(store: FabricDbServed { endpoint: endpoint }, partition: partition as String as PartitionId)
+  let step = fabric_event_log_probe_step(store: FabricStorageServed { endpoint: endpoint }, partition: partition as String as PartitionId)
   if step == 0 { ExitSuccess } else { exit_failure(reason: join(["fabric event log probe (served) failed at step ", to_string(step)], "")) }
 }
 
-fn fabric_event_log_probe_step(store: FabricDbBinding, partition: PartitionId) -> Int {
+fn fabric_event_log_probe_step(store: FabricStorageBinding, partition: PartitionId) -> Int {
   {
     match event_log_observe_head(store: store, partition: partition) {
       HeadObservationRefused { cause: _ } => 2
@@ -91,14 +91,14 @@ fn fabric_event_log_probe_step(store: FabricDbBinding, partition: PartitionId) -
                               ChainBudgetExhausted { at: _ } => 6
                               ChainWalked { oldest_first: xs } =>
                                 if !(length(xs) == 2 && (match first(xs) { Present { value: x } => (x.id as String) == (first_id as String)  Absent => false })) { 6 } else {
-                                  match fabric_seat_acquire(store: store, partition: partition, root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-a" as NonEmptyStr, amount: 1, at: 2000, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
+                                  match fabric_seat_acquire(store: store, partition: partition, root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-a" as NonEmptyStr, amount: Measure { count: 1 }, at: 2000, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
                                     SeatFull { wire: _, attempts_used: _ } => 7
                                     SeatContended { attempts: _ } => 7
                                     SeatAcquireRefused { step: _, reason: _, attempts_used: _ } => 7
                                     SeatStoreRefused { cause: _, attempts_used: _ } => 7
                                     SeatGranted { grant: ga, generation: gen_a, attempts_used: _ } =>
                                       if !(gen_a == 3 && ga.expires_at == 2300) { 7 } else {
-                                        match fabric_seat_acquire(store: store, partition: partition, root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-b" as NonEmptyStr, amount: 1, at: 2001, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
+                                        match fabric_seat_acquire(store: store, partition: partition, root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-b" as NonEmptyStr, amount: Measure { count: 1 }, at: 2001, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
                                           SeatGranted { grant: _, generation: _, attempts_used: _ } => 8
                                           SeatContended { attempts: _ } => 8
                                           SeatAcquireRefused { step: _, reason: _, attempts_used: _ } => 8
@@ -109,7 +109,7 @@ fn fabric_event_log_probe_step(store: FabricDbBinding, partition: PartitionId) -
                                                 EventAppendRefused { cause: _ } => 9
                                                 EventAppendStale { expected: _, observed: _ } => 9
                                                 EventAppended { id: _ } =>
-                                                  match fabric_seat_acquire(store: store, partition: partition, root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-c" as NonEmptyStr, amount: 1, at: 2003, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
+                                                  match fabric_seat_acquire(store: store, partition: partition, root: probe_root_pool(), actor: probe_actor(), request: SeatRequest { reference: "turn-c" as NonEmptyStr, amount: Measure { count: 1 }, at: 2003, term_seconds: 300 }, policy: probe_policy(), attempts: 3, budget: 16) {
                                                     SeatGranted { grant: _, generation: gen_c, attempts_used: _ } => if gen_c == 5 { 0 } else { 9 }
                                                     SeatFull { wire: _, attempts_used: _ } => 9
                                                     SeatContended { attempts: _ } => 9

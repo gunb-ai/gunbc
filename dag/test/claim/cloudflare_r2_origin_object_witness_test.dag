@@ -33,9 +33,16 @@ import gunbc.cloudflare.r2_origin {
   fleet_cloudflare_account_id,
   fabric_durable_origin_read_access_key_id,
   fabric_durable_origin_read_secret_id,
+  fabric_durable_origin_write_access_key_id,
+  fabric_durable_origin_write_secret_id,
   FabricDurableOrigin,
   allocated_bucket_name,
+  R2OriginAllocated,
+  R2OriginBucket,
+  OriginCredentialPinned,
+  OriginCredentialUnminted,
 }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import gunbc.cloudflare.r2_permission_group_observe {
   r2_bucket_item_write_permission_group,
   cloudflare_r2_bucket_item_write_observed_permission_group_id,
@@ -64,6 +71,7 @@ import gunbc.cloudflare.r2_origin_object {
   OriginTargetReady,
   OriginTargetRefused,
   resolve_origin_target,
+  resolve_origin_target_under,
   OriginPut,
   WriteCredentialShredded,
   WriteCredentialResidueRemains,
@@ -357,11 +365,40 @@ test fn origin_read_target_resolves_to_the_declared_bucket_and_read_credential()
   }
 }
 
-// THE WRITE TARGET REFUSES TODAY, NAMING THE ENTRY THAT MINTS ITS CREDENTIAL. This is the declared
-// state until run_object_write executes and its version is pinned; when that lands this test is
-// retired into the write twin of the read test above, deliberately.
-test fn origin_write_target_refuses_until_the_write_credential_is_pinned() -> Bool {
-  match resolve_origin_target(direction: OriginWrite, key: "k") {
+// THE WRITE TARGET RESOLVES FROM THE DECLARATIONS -- the write twin of the read test above, which
+// the unminted-write test was retired into when run_object_write executed and its version was
+// pinned (2026-09-19). It must carry the WRITE credential, never the read one.
+test fn origin_write_target_resolves_to_the_declared_bucket_and_write_credential() -> Bool {
+  match resolve_origin_target(direction: OriginWrite, key: "fabric-m0/v1/commit/attempt-1") {
+    OriginTargetRefused { cause: _ } => false
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: locus, create_only: create_only } =>
+      create_only
+        && (locator.bucket_name as String) == declared_bucket_name()
+        && (access_key_id as String) == (fabric_durable_origin_write_access_key_id as String)
+        && (locus.secret as String) == (fabric_durable_origin_write_secret_id as String)
+        && (access_key_id as String) != (fabric_durable_origin_read_access_key_id as String)
+  }
+}
+
+// THE UNMINTED-WRITE REFUSAL STAYS ENROLLED ON A SUPPLIED ORIGIN (DESIGN section 4b(4)). The
+// declarations no longer inhabit this arm, so the origin is a constructed value: an allocated bucket
+// whose write credential is unminted must refuse, naming the entry that mints it, and never resolve.
+test fn origin_write_target_refuses_while_the_write_credential_is_unminted() -> Bool {
+  let origin = R2OriginAllocated {
+    bucket: R2OriginBucket {
+      bucket_name: "a-bucket",
+      jurisdiction: R2JurisdictionDefault,
+      purpose: FabricDurableOrigin {},
+      read_credential: OriginCredentialPinned {
+        access_key_id: "0123456789abcdef0123456789abcdef",
+        token_value: secret_ref_pin_version(ref: fleet_secret_ref(secret_id: "a-read-secret"), version: "1"),
+      },
+      write_credential: OriginCredentialUnminted {
+        mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_object_write"),
+      },
+    },
+  }
+  match resolve_origin_target_under(direction: OriginWrite, key: "k", origin: origin) {
     OriginTargetReady { locator: _, access_key_id: _, token_value: _, create_only: _ } => false
     OriginTargetRefused { cause: cause } =>
       string_contains(s: cause as String, pattern: "run_object_write")
@@ -402,8 +439,8 @@ fn frontier_row_names_decl(row: FrontierRow, ref: DeclarationRef) -> Bool {
 }
 
 // THE FRONTIER MOVED AND SAYS WHERE IT STANDS: the S3 endpoint row is retired (r2_object_url reaches
-// it on the executing entries), the write-mint admission row is open until its Create executes, and
-// the observed-write-id row is still open for the same reason.
+// it on the executing entries), and the write-mint admission row and the observed-write-id row both
+// retired when run_object_write executed and the write credential was pinned (2026-09-19).
 test fn r2_origin_object_frontier_rows_reflect_the_executed_evidence() -> Bool {
   frontier_rows_well_formed(rows: cloudflare_r2_frontier_rows)
     && frontier_rows_well_formed(rows: cloudflare_r2_supplier_frontier_rows)
@@ -412,8 +449,8 @@ test fn r2_origin_object_frontier_rows_reflect_the_executed_evidence() -> Bool {
     && any(cloudflare_r2_frontier_rows, row => frontier_row_names_decl(
          row: row, ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_tokens_doc_as_of")))
     && frontier_rows_well_formed(rows: cloudflare_r2_token_mint_frontier_rows)
-    && any(cloudflare_r2_token_mint_frontier_rows, row => frontier_row_names_decl(
+    && !any(cloudflare_r2_token_mint_frontier_rows, row => frontier_row_names_decl(
          row: row, ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_write_api_mint")))
-    && any(cloudflare_permission_group_observation_frontier_rows, row => frontier_row_names_decl(
+    && !any(cloudflare_permission_group_observation_frontier_rows, row => frontier_row_names_decl(
          row: row, ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "cloudflare_r2_bucket_item_write_observed_permission_group_id")))
 }

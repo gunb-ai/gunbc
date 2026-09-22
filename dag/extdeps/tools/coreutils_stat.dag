@@ -2,7 +2,7 @@ module extdeps.tools.coreutils_stat
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.access.posix { FileOwnership }
+import extdeps.access.posix { FileOwnership, FileMode, file_mode_of_octal_text }
 import std.types { Bool, Int, List, NonEmptyStr, Unit }
 import std.string_type { String }
 import std.algebra { trim }
@@ -29,6 +29,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // four fields can contain one: uid and gid are decimal, and a POSIX login name is restricted to the
 // portable filename character set, which excludes the colon. That is a property of the fields, not
 // an assumption about the data, which is why the separator is not a configurable parameter.
+//
+// THE MODE IS ITS OWN PROBE, NOT A FIFTH FIELD ON THE OWNERSHIP ONE. The colon separator above is
+// safe because none of those four fields can contain one, which is a property of the fields; the
+// mode is a different question with a different failure -- a path can be readable for ownership and
+// the answer still be that its permission bits are what nobody expected -- and joining them would
+// make one unreadable half destroy the other. It is also the shape this module's sibling
+// extdeps.tools.stat already commits to: one token per probe.
+//
+// %a IS THE ACCESS BITS IN OCTAL WITH NO INTERPRETATION. extdeps.access.posix owns what those digits
+// MEAN and reads them back through file_mode_of_octal_text; PathMode's whole job is to fetch the
+// spelling.
 service coreutils.Stat {
   operation PathOwnership {
     input { path: NonEmptyStr }
@@ -38,6 +49,20 @@ service coreutils.Stat {
     }
     readonly
     transport shell { argv: ["stat", "-c", "%u:%g:%U:%G", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "stat could not read the path"
+    }
+  }
+
+  operation PathMode {
+    input { path: NonEmptyStr }
+    output {
+      mode_text: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["stat", "-c", "%a", "--", "{path}"] }
     exit {
       0 => Unit
       nonzero => String "stat could not read the path"
@@ -130,6 +155,27 @@ fn coreutils_stat_ownership_record(
               group_name: group as NonEmptyStr,
             }
         }
+    }
+  }
+}
+
+// THE MODE OBSERVATION, WITH THE SAME REFUSAL DISCIPLINE AS THE OWNERSHIP ONE ABOVE. A path whose
+// permission bits could not be read must not arrive at a consumer as a mode with everything false,
+// because "nobody may" and "we did not look" are the two answers a delegation check must keep
+// apart -- the first says the host is misconfigured, the second says the probe is.
+type PathModeObservation
+  = PathModeObserved { path: NonEmptyStr, mode: FileMode }
+  | PathModeUnobservable { path: NonEmptyStr, reason: String }
+
+fn coreutils_stat_path_mode(path: NonEmptyStr) -> PathModeObservation {
+  let observed = coreutils.Stat.PathMode(path: path)
+  if observed.success == false {
+    PathModeUnobservable { path: path, reason: "stat could not read the path" }
+  } else {
+    match file_mode_of_octal_text(text: observed.mode_text) {
+      Absent =>
+        PathModeUnobservable { path: path, reason: join(["stat printed a mode this cannot read as octal permission bits: '", trim(s: observed.mode_text), "'"], "") }
+      Present { value: mode } => PathModeObserved { path: path, mode: mode }
     }
   }
 }

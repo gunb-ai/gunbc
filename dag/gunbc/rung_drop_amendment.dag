@@ -1,0 +1,97 @@
+module gunbc.rung_drop_amendment
+
+import std.types { String, NonEmptyStr, List, Bool }
+import gunbc.rung_drop { RungDropStanding, Standing, Retired }
+
+// A LATER RULING AMENDING A STANDING RUNG DROP -- THE ONE THING gunbc.rung_drop COULD NOT CARRY.
+// A DESIGN section 4b(3) declaration is written once, at the moment the guarantee falls: previous
+// rung, temporary rung, reason, population, restoration trigger. It has no field for what happens
+// NEXT while the row still stands -- and the world does move under a standing drop. gunbc#11774
+// discovered that the hard way: its author had a fact the ruling depended on (the carrier redesign
+// had already landed hours earlier, so the ruling was pricing the gate and not only its billing),
+// no field to put it in, and wrote it into docs/design-rung-drops.md -- a PROJECTION of
+// gunbc.rung_drop. Two lanes then met the unexplained deletion in their regeneration diff
+// (gunbc#11732 reverted it, gunbc#11786 was left holding nothing else and was closed), and the
+// third regeneration, gunbc#11789, carried the deletion and the reasoning left the corpus. That is
+// DESIGN section 6's manual application committed as source, and the repair is not to re-hand-edit
+// the bytes: it is this carrier.
+//
+// WHY THIS CARRIES NO CLAIM ABOUT THE RESTORATION TRIGGER. The first draft of this type had an
+// `AmendedTrigger = TriggerStandsWhole | TriggerSuperseded` field, so that the amendment could say
+// what it did to the declaration below it. That is a SECOND AUTHORITY for a fact the drop already
+// owns: whether the guarantee is still down is `RungDropStanding` on the row, and whether the
+// trigger fired is `Retired { trigger_fired }` -- so an amendment asserting the trigger stands
+// whole beside a Retired row would be two answers to one question, and DESIGN section 4b(3) is
+// explicit that a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE. The sentence is therefore
+// DERIVED from the row's own standing at render time and is authored nowhere. An amendment states
+// what happened in the world and what it bears on; it does not get a vote on the declaration.
+//
+// THE BOUNDARY THAT LEAVES, STATED BECAUSE THE TYPE CANNOT STATE IT. The derivation above is honest
+// for one class of amendment and one only: a later ruling that bears on a standing drop WITHOUT
+// MOVING ITS RESTORATION TRIGGER. A ruling that SUPERSEDES the trigger -- replacing the condition
+// that retires the row -- has no representation here, and standing cannot stand in for it: such a
+// row is still `Standing`, so `standing_sentence` would close it with "the restoration trigger above
+// stands whole", which would be FALSE. That is the one thing this carrier can say wrongly.
+//
+// It is left unmodelled rather than built because NOTHING IN THE CORPUS SUPERSEDES A TRIGGER TODAY,
+// and an arm with no instance is a constructor that constructs nothing -- the decoration DESIGN
+// section 4b names at the top rung, permanently green and worse than absent because it would be
+// cited as coverage. What arrives with the first real superseding ruling is an authored arm carrying
+// THE SUPERSEDING TRIGGER ITSELF (nobody can derive a new trigger from a row's standing), the
+// closing sentence branching on its presence, and a witness whose red is a superseded row rendered
+// as though its trigger stood. The asymmetry is the design: supersession is authored because it
+// carries content; "unchanged" is the ABSENCE of that claim and stays derived. Until then, an
+// amendment that would move a trigger does not belong in this roster -- it belongs in the
+// declaration, edited by the change that rules it, and this paragraph is what says so to the next
+// lane rather than leaving them to splice prose into the projection again.
+
+// WHY IT IS A SEPARATE CARRIER RATHER THAN A FIELD ON `RungDrop`. The precedent is inside
+// gunbc.rung_drop itself: gunbc.deleted_cadence_reference_census carried `lost_with` BESIDE a drop
+// rather than widening the shared record. The same two reasons hold here and one more. Most drops
+// are never amended, so the field would be empty on 70-odd rows; the rows are one file each
+// precisely so that separate lanes append without rewriting each other's file, and widening the
+// record rewrites every one of them in a single diff; and an amendment is appended by a DIFFERENT
+// change, at a different time, from the one that declared the drop -- which is the same argument
+// DESIGN section 4b(3) makes for keeping the drop roster and the failure-mode ledger apart.
+//
+// THE JOIN IS THE RESIDUAL RISK AND IT IS WALLED. A row keyed by `drop_identity` can name a drop
+// that does not exist, or one that was renamed. test.claim.rung_drop_amendment_witness_test joins
+// every amendment against gunbc.rung_drop.roster at identity grain and refuses a dangling key, with
+// a control amendment naming no drop to keep the assertion discriminating.
+
+type RungDropAmendment {
+  drop_identity: NonEmptyStr
+  amended: String
+  later_event: NonEmptyStr
+  bearing: NonEmptyStr
+}
+
+// THE ONE RENDERING, for the same reason gunbc.rung_drop carries exactly one: a consumer that spelled
+// the amendment itself would be a second authority for it and the two would drift.
+fn rung_drop_amendment_message(a: RungDropAmendment, standing: RungDropStanding) -> String {
+  concat(
+    concat(concat("AMENDED ", a.amended), concat(": ", (a.later_event as String))),
+    concat(
+      concat("; ", (a.bearing as String)),
+      concat(". ", standing_sentence(standing: standing))
+    )
+  )
+}
+
+// THE CLOSING SENTENCE, READ OFF THE ROW'S OWN STANDING. This is the derivation the note above
+// argues for: the amendment supplies neither arm, so a row that is retired cannot be described by
+// its amendment as one whose trigger still stands.
+fn standing_sentence(standing: RungDropStanding) -> String {
+  match standing {
+    Standing => "The restoration trigger above stands whole."
+    Retired { trigger_fired: _ } => "The trigger above has since fired; the retirement stated with this row is what ends the drop."
+  }
+}
+
+// THE JOIN, AS A PREDICATE OVER BOTH POPULATIONS. Held here rather than in the roster so the
+// witness can call it with a control amendment that names no drop.
+fn every_amendment_names_a_rostered_drop(amendments: List<RungDropAmendment>, drop_identities: List<String>) -> Bool {
+  fold(amendments, init: true, f: fn(acc, a) {
+    acc && length(xs: filter(drop_identities, i => i == (a.drop_identity as String))) == 1
+  })
+}

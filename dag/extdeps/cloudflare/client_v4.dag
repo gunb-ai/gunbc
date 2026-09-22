@@ -1,6 +1,11 @@
 module extdeps.cloudflare.client_v4
 
-import std.types { NonEmptyStr, String, Int }
+import std.types { NonEmptyStr, String, Int, List }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -36,4 +41,67 @@ data cloudflare_client_v4_base: NonEmptyStr = join(
 type CloudflareApiError {
   code: Int
   message: String
+}
+
+// THE ERROR ENVELOPE'S CODES, READ RATHER THAN MATCHED AS SUBSTRINGS. Every client/v4 response
+// carries `errors: [{ code, message }]` (the envelope this module's anchor documents), and a refused
+// status's body is the only place the service says WHICH refusal it made -- a 403 is an
+// authorization refusal and an entitlement refusal alike. A substring search for a code would
+// accept the digits inside a message or an id; reading the array is the discriminator.
+//
+// THE CODES STAY LEXEMES. The envelope's code is a JSON number whose meaning is its identity, not
+// its magnitude, and every consumer compares it to a cited code; parsing it to an Int would add a
+// conversion no consumer demands.
+type CloudflareErrorCodesRead
+  = CloudflareErrorCodesListed { codes: List<String> }
+  | CloudflareErrorEnvelopeUnreadable { cause: NonEmptyStr }
+
+fn cloudflare_error_code_lexemes(entry: JsonValue) -> List<String> {
+  match json_object_unique_member(v: entry, key: "code") {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNumber { lexeme: lexeme } => [lexeme as String]
+        JsonNull => []
+        JsonBool { value: _ } => []
+        JsonString { value: _ } => []
+        JsonArray { elements: _ } => []
+        JsonObject { members: _ } => []
+      }
+    JsonMemberAbsent => []
+    JsonMemberNotAnObject => []
+    JsonMemberDuplicated { count: _ } => []
+  }
+}
+
+fn cloudflare_error_codes_from_entries(entries: List<JsonValue>) -> CloudflareErrorCodesRead {
+  let codes = entries |> flat_map(entry => cloudflare_error_code_lexemes(entry: entry))
+  if codes.length() == entries.length() {
+    CloudflareErrorCodesListed { codes: codes }
+  } else {
+    CloudflareErrorEnvelopeUnreadable { cause: "an errors entry carries no numeric code" as NonEmptyStr }
+  }
+}
+
+fn cloudflare_error_codes(body: String) -> CloudflareErrorCodesRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: gap } =>
+      CloudflareErrorEnvelopeUnreadable {
+        cause: concat("the refused body is not JSON: ", json_document_gap_text(gap: gap)) as NonEmptyStr
+      }
+    JsonDocumentParsed { value: doc } =>
+      match json_object_unique_member(v: doc, key: "errors") {
+        JsonMemberFound { value: errors } =>
+          match errors {
+            JsonArray { elements: entries } => cloudflare_error_codes_from_entries(entries: entries)
+            JsonNull => CloudflareErrorEnvelopeUnreadable { cause: "errors is null" as NonEmptyStr }
+            JsonBool { value: _ } => CloudflareErrorEnvelopeUnreadable { cause: "errors is not an array" as NonEmptyStr }
+            JsonNumber { lexeme: _ } => CloudflareErrorEnvelopeUnreadable { cause: "errors is not an array" as NonEmptyStr }
+            JsonString { value: _ } => CloudflareErrorEnvelopeUnreadable { cause: "errors is not an array" as NonEmptyStr }
+            JsonObject { members: _ } => CloudflareErrorEnvelopeUnreadable { cause: "errors is not an array" as NonEmptyStr }
+          }
+        JsonMemberAbsent => CloudflareErrorEnvelopeUnreadable { cause: "the refused body carries no errors member" as NonEmptyStr }
+        JsonMemberNotAnObject => CloudflareErrorEnvelopeUnreadable { cause: "the refused body is not a JSON object" as NonEmptyStr }
+        JsonMemberDuplicated { count: _ } => CloudflareErrorEnvelopeUnreadable { cause: "the refused body names errors twice" as NonEmptyStr }
+      }
+  }
 }

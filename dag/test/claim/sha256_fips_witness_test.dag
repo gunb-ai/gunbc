@@ -1,0 +1,54 @@
+module test.claim.sha256_fips_witness_test
+
+import std.logic { Bool }
+import std.types { Int, List }
+import std.integer { UInt8 }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.bitwise { word32_and, word32_xor, word32_or, word32_not, word32_add, word32_rotr, word32_shr, Word64, word64_add, word64_rotr, word64_xor }
+import extdeps.crypto.sha2 { sha256_hex }
+
+fn ascii(s: String) -> List<UInt8> {
+  bytes_octets(b: utf8_encode_bytes(s: s))
+}
+
+// ── std.bitwise against values computed by an independent implementation (Python int ops) ─────
+test fn word32_xor_and_or_not_match_the_bit_definitions() -> Bool {
+  word32_xor(a: 305419896, b: 2596069104) == 2290649224
+    && word32_and(a: 305419896, b: 2596069104) == 305419888
+    && word32_or(a: 0, b: 4294967295) == 4294967295
+    && word32_not(a: 0) == 4294967295
+    && word32_add(a: 4294967295, b: 2) == 1
+}
+
+test fn word32_rotr_moves_the_low_bits_to_the_top() -> Bool {
+  word32_rotr(a: 305419896, n: 7) == 4028917932 && word32_shr(a: 305419896, n: 7) == 2386092
+}
+
+// 64-bit: the carry crosses the halves, and a rotation by 32 or more swaps them.
+test fn word64_add_carries_across_the_halves_and_rotr_swaps_them() -> Bool {
+  let all_ones = Word64 { hi: 4294967295, lo: 4294967295 }
+  let one = Word64 { hi: 0, lo: 1 }
+  let sum = word64_add(a: all_ones, b: one)
+  let r = word64_rotr(a: Word64 { hi: 1, lo: 0 }, n: 33)
+  let x = word64_xor(a: all_ones, b: one)
+  sum.hi == 0 && sum.lo == 0 && r.hi == 2147483648 && r.lo == 0 && x.hi == 4294967295 && x.lo == 4294967294
+}
+
+// ── SHA-256: FIPS 180-2 Appendix B, the published examples ────────────────────────────────────
+test fn sha256_of_the_empty_message_is_the_published_value() -> Bool {
+  sha256_hex(message: []) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
+
+test fn sha256_of_abc_is_the_published_one_block_value() -> Bool {
+  sha256_hex(message: ascii(s: "abc")) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+}
+
+// 448 bits: the padding no longer fits the first block, so this is the two-block path.
+test fn sha256_of_the_448_bit_message_is_the_published_two_block_value() -> Bool {
+  sha256_hex(message: ascii(s: "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")) == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+}
+
+// One changed octet changes the digest: the discriminating red for the vectors above.
+test fn sha256_of_a_one_octet_change_is_a_different_digest() -> Bool {
+  sha256_hex(message: ascii(s: "abd")) != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+}

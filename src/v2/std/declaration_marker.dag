@@ -1,12 +1,12 @@
 module v2.std.declaration_marker
 
 import v2.std.algebra { contains, length }
-import v2.std.collection { List }
+import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert, map_lookup }
 import v2.std.node { Symbol }
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
 
 // The authored `test` marker segregates test code from serving code (owner ruling 2026-09-16/17), and
-// its consumer is a declared frontier: name resolution will refuse a reference to a marked declaration
-// (TRIGGER: gunbc#11580 merging, the change named in v2.compiler.test_marker_capture). What it must not
+// name resolution CONSUMES it: a reference to a marked declaration is refused there. What it must not
 // touch is the semantic tree -- a marked declaration's semantic graph and content hash are identical
 // to an unmarked one's -- so it rides this channel beside the tree rather than as a child edge. It
 // borrows the SHAPE of the DESIGN section 4c annotation channel (captured beside the semantic result,
@@ -30,10 +30,57 @@ type TestMarkerChannel {
   marked: List<TestMarkedDeclaration>
 }
 
+// The channel of a module that declares no test code. Its consumers are the fixture doors that admit
+// already-lowered roots, whose markers cannot be recovered (v2.compiler.normalized_tree
+// admit_unmarked_normalized_roots and the fixture callers of admit_normalized_tree).
+fn test_marker_channel_empty() -> TestMarkerChannel {
+  TestMarkerChannel { marked: [] }
+}
+
 fn test_marker_channel_marks(channel: TestMarkerChannel, name: Symbol) -> Bool {
   contains(xs: channel.marked, item: TestMarkedDeclaration { name: name }, eq: fn(a, b) { a.name == b.name })
 }
 
 fn test_marker_channel_count(channel: TestMarkerChannel) -> Int {
   length(xs: channel.marked)
+}
+
+// THE RESOLUTION-SIDE READING OF THE CHANNEL: the compilation's marked declarations as the qualified
+// paths a reference binds to. The key is the path v2.compiler.symbol_index_fill indexes (module path,
+// then one segment per named member), so a binding answered by the symbol index is judged by the path
+// it answered with and nothing else.
+//
+// ITEM-SCOPED, NOT MODULE-SCOPED. Test code is the declarations the author marked, and nothing else:
+// an unmarked helper that happens to live in a module with tests is ordinary code, and a module-level
+// rule ("any test in the module makes all of it test code") is wrong in both directions -- it refuses
+// references to ordinary helpers and says nothing finer about the marked ones.
+type TestCodeIndex {
+  marked_paths: Map<QualifiedName, Bool>
+}
+
+type TestCodeReach
+  = ReachesNoTestCode
+  | ReachesTestMarkedDeclaration
+
+fn test_code_index_empty() -> TestCodeIndex {
+  TestCodeIndex { marked_paths: empty_map() }
+}
+
+fn test_code_index_add_module(
+  index: TestCodeIndex,
+  module_qn: QualifiedName,
+  channel: TestMarkerChannel
+) -> TestCodeIndex {
+  TestCodeIndex {
+    marked_paths: fold(channel.marked, init: index.marked_paths, f: fn(acc, row) {
+      map_insert(m: acc, key: qualified_name_snoc(qn: module_qn, segment: row.name), value: true)
+    })
+  }
+}
+
+fn test_code_reach(index: TestCodeIndex, path: QualifiedName) -> TestCodeReach {
+  match map_lookup(m: index.marked_paths, key: path) {
+    Present { value: _ } => ReachesTestMarkedDeclaration
+    Absent => ReachesNoTestCode
+  }
 }

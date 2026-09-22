@@ -1,0 +1,126 @@
+module gunbc.auth.approval_writer_authority
+
+import std.types { NonEmptyStr, String, Bool }
+import gunbc.auth.approval_cutover_posture {
+  ApprovalCutoverPosture, RoadmapServesAndWrites, BrokerServesAndWrites, BrokerOwnsAlone,
+  approval_cutover_posture,
+}
+
+// ── WHICH PROCESS MAY MUTATE THE APPROVAL STORE ─────────────────────────────────────────────
+// PORT IDENTITY IS NOT WRITER AUTHORITY, and an earlier cut of this change confused them (side-chat
+// HOLD, item 3). It kept the broker on a separate "dark" port and treated being off the front door
+// as being unable to write: a process bound somewhere nothing routes cannot receive a request, so
+// it cannot mutate. That reasoning holds only for traffic arriving through the front door. A boot
+// client on the same host reaches loopback directly, and the moment one does, two processes with
+// working keyrings and the same store root are both able to write it -- which is the single-writer
+// premise the whole cutover rests on, defeated by a client that knew a port number.
+//
+// SO AUTHORITY IS DECLARED AND CONSULTED AT THE MUTATION, not inferred from where a request came
+// from. One row says who the writer is; both serving processes read it before they touch the store,
+// and the one that is not the writer refuses. That makes "exactly one writer" a property of the
+// deployment rather than a property of the traffic -- the distinction the split was ordered to
+// establish, now stated at the only boundary that decides it.
+//
+// WHY A ROW RATHER THAN AN EXCLUSIVE LEASE, for now. A lease over the store is the stronger
+// construction and is the terminal shape: it makes the invalid state unrepresentable rather than
+// refused, and it survives a process that disagrees with the row. It also needs a durable
+// compare-and-set surface beside the 0600 generations and a holder identity that outlives a
+// restart, which is its own change. This row is the transition's decidable half and lands first.
+//
+// THE TRIGGER THAT ENDS THIS ARRANGEMENT IS NOT RESTATED HERE. It is the restoration_trigger of
+// gunbc.rung_drop.approval_store_single_writer_by_agreement, which is rostered and projected into
+// docs/design-rung-drops.md. A second spelling beside this declaration was written first and
+// deleted (review 68420): it was a bare String carrying commentary, which DESIGN section 4c names
+// as misplaced or dead data, and it was the copy NOT reachable from the roster that owns it -- so
+// it was the one that would have rotted while the ledger moved.
+
+type ApprovalWriterAuthority
+  = RoadmapWriter
+  | BrokerWriter
+
+// THE LIVE VALUE IS DERIVED FROM THE CUT, NOT DECLARED BESIDE IT. It used to be its own row, which
+// made moving the store and moving the front door two edits somebody had to make together -- and
+// the cut is one transaction or it is an outage (side-chat HOLD, stage E). It reads
+// gunbc.auth.approval_cutover_posture, so an authority that disagrees with the routing has no
+// spelling.
+//
+// gunbc.auth.approval_broker_cutover still refuses to admit the posture move until the broker's
+// release, identity and demand have been observed; this derivation says what the move MEANS, and
+// that plan says when it may happen.
+fn approval_writer_authority_for(posture: ApprovalCutoverPosture) -> ApprovalWriterAuthority {
+  match posture {
+    RoadmapServesAndWrites => RoadmapWriter
+    BrokerServesAndWrites => BrokerWriter
+    BrokerOwnsAlone => BrokerWriter
+  }
+}
+
+data approval_writer_authority: ApprovalWriterAuthority = approval_writer_authority_for(posture: approval_cutover_posture)
+
+// WHO IS ASKING. The two serving processes run the SAME four handler folds -- that is the point of
+// the extraction -- so the fold cannot tell which process it is in. The entry can: an entry is
+// bound once per process by `gunbc serve --function`, so each supplies its own identity and no
+// request can claim to be the other.
+type ApprovalServingProcess
+  = RoadmapProcess
+  | BrokerProcess
+
+// THE ADMISSION, AND WHY IT CARRIES BOTH NAMES. A bare false could not tell an operator whether the
+// broker refused because the roadmap still holds authority (expected, mid-cutover) or because the
+// row was flipped and the roadmap is still being asked (a routing mistake after the cut). Those are
+// opposite states with opposite remedies, so the refusal names the holder and the asker.
+type ApprovalWriteAdmission
+  = ApprovalWriteAdmitted { writer: ApprovalServingProcess }
+  | ApprovalWriteRefused { holder: ApprovalWriterAuthority, asker: ApprovalServingProcess }
+
+fn approval_writer_process(authority: ApprovalWriterAuthority) -> ApprovalServingProcess {
+  match authority {
+    RoadmapWriter => RoadmapProcess
+    BrokerWriter => BrokerProcess
+  }
+}
+
+fn approval_serving_process_label(p: ApprovalServingProcess) -> NonEmptyStr {
+  match p {
+    RoadmapProcess => "the roadmap serve process (gunbc-roadmap.service)" as NonEmptyStr
+    BrokerProcess => "the approval broker process (gunbc-approval-broker.service)" as NonEmptyStr
+  }
+}
+
+fn approval_serving_process_eq(a: ApprovalServingProcess, b: ApprovalServingProcess) -> Bool {
+  match a {
+    RoadmapProcess => match b { RoadmapProcess => true  BrokerProcess => false }
+    BrokerProcess => match b { BrokerProcess => true  RoadmapProcess => false }
+  }
+}
+
+// EVERY STORE MUTATION GOES THROUGH THIS. It is deliberately total and deliberately has no
+// parameter that could widen it: there is no "force", no environment override and no arm that
+// admits both. A process that is not the declared writer has no spelling that reaches the store.
+fn approval_write_admission(asker: ApprovalServingProcess) -> ApprovalWriteAdmission {
+  approval_write_admission_under(authority: approval_writer_authority, asker: asker)
+}
+
+fn approval_write_admission_under(
+  authority: ApprovalWriterAuthority,
+  asker: ApprovalServingProcess,
+) -> ApprovalWriteAdmission {
+  if approval_serving_process_eq(a: approval_writer_process(authority: authority), b: asker) {
+    ApprovalWriteAdmitted { writer: asker }
+  } else {
+    ApprovalWriteRefused { holder: authority, asker: asker }
+  }
+}
+
+fn approval_write_refusal_reason(holder: ApprovalWriterAuthority, asker: ApprovalServingProcess) -> NonEmptyStr {
+  join([
+    "approval store write refused: writer authority is held by ",
+    approval_serving_process_label(p: approval_writer_process(authority: holder)) as String,
+    " and this request reached ",
+    approval_serving_process_label(p: asker) as String,
+    ". The approval store keeps single-writer 0600 generations, so a second process writing it is ",
+    "not a slower cutover but a different store -- a request filed by one process and redeemed by ",
+    "the other, or two redemptions each believing they won. Authority moves in one modeled ",
+    "transaction (gunbc.auth.approval_broker_cutover), never by a request arriving somewhere new.",
+  ], "") as NonEmptyStr
+}

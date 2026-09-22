@@ -443,7 +443,7 @@ fn fabric_cell_read_boundary_property(
   unit: NonEmptyStr,
   property: SystemdUnitProperty,
 ) -> FabricCellPropertyObservation {
-  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: property)
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
   fabric_cell_boundary_property_observation(
     success: shown.success,
     output: shown.value,
@@ -488,7 +488,7 @@ fn fabric_cell_read_boundary(slot: RunnerSlotIdentity) -> FabricCellBoundaryRead
 }
 
 fn fabric_cell_read_cpu_quota_per_sec(unit: NonEmptyStr) -> FabricCellQuotaPropertyObservation {
-  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: CPUQuotaPerSecUSec)
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: CPUQuotaPerSecUSec))
   let word = systemd_unit_property_wire(property: CPUQuotaPerSecUSec) as String
   if !shown.success {
     QuotaPropertyReadRefused {

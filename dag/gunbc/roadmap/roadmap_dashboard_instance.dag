@@ -1341,12 +1341,12 @@ fn dashboard_instance_compute_root(instance: HostDashboardInstance) -> FilePath 
 }
 
 // THE FABRIC DB ROOT: where the fabric DB's files live on the instance that holds its placement
-// (gunbc.fabric_db_placement, gunbc.fabric_db_file_store). Named here for the same reason the compute
-// root is: the deployment (gunbc.live_deploy.spec FabricDbStoreDirectory, an ensured host directory)
+// (gunbc.fabric_storage_placement, gunbc.fabric_storage_file_store). Named here for the same reason the compute
+// root is: the deployment (gunbc.live_deploy.spec FabricStorageStoreDirectory, an ensured host directory)
 // and the placement read one authority. It replaced the per-instance event-log mirror root: no
 // executor keeps a copy of the log any more, so only the placement's host holds a root at all.
-fn dashboard_instance_fabric_db_root(instance: HostDashboardInstance) -> FilePath {
-  dashboard_instance_child(root: instance.instance_root, child: "fabric-db")
+fn dashboard_instance_fabric_storage_root(instance: HostDashboardInstance) -> FilePath {
+  dashboard_instance_child(root: instance.instance_root, child: "fabric-storage")
 }
 
 fn dashboard_instance_dispatch_attempt_state_root(instance: HostDashboardInstance) -> FilePath {
@@ -1540,8 +1540,17 @@ type DashboardInstanceProvisionOp
 // srv1_live (systemd plus a session). This plan therefore keeps the mkdirs and does not poll
 // health after launch: it does not start the process. Production process start is live_deploy
 // ServiceProcess. For every other instance, start is an operator act until deployment_spec_for
-// is a real caller — the same declared-outside-the-modeled-guarantee arm C7 is given for
-// provider-state mkdir, not a silent requirement this apply cannot discharge.
+// is a real caller. That is a declared operator act, not a silent requirement this apply cannot
+// discharge.
+//
+// PROVIDER-STATE CREATION (C7, operator ruling 2026-09-19): live_deploy owns it as an ensured
+// member, gunbc.live_deploy.spec deployment_provider_state_step. The member is read back as a
+// DirectoryRoot, and no spec can lack it: the member is derived from the spec rather than authored
+// into its step list, so the state a refusal would have caught has no constructor. For srv1_live
+// that member is now the creator on the production route. DashboardEnsureProviderStateRoot stays
+// in this plan because it is still the only creator for srv1_lab, srv2_lab, srv2_deploy and
+// macbook_local; the census on deployment_provider_state_step lists each instance. It may be
+// deleted for an instance only when a production caller applies that instance's deployment spec.
 fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
   let controller_source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []

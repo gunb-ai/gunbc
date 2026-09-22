@@ -118,10 +118,13 @@ fn srv3_nbd_proxy_serve() -> ProcessExit
 // The step count was never the subject — that the plan is DERIVED from the solved mechanism was.
 // srv3's BMC upgrade propagates through that derivation and the plan now refuses, which is what
 // distinguishes a derived plan from a hardcoded three-step one: a hardcoded plan would still be Ready.
-fn srv3_os_install_actuator_plan_refuses_on_unestablished_path() -> Bool {
-  match srv3_os_install_actuator_plan_standing {
-    ActuatorPlanRefused { cause: _ } => true
-    ActuatorPlanReady { plan: _, intents: _ } => false
+// THE REFUSAL MUST BE THE MECHANISM'S. The plan is also a function of the served image, and an
+// unresolved image refuses the serve step on its own; a caller supplying a RESOLVED image isolates
+// the mechanism as the only thing left that can refuse.
+fn srv3_os_install_actuator_plan_refuses_on_unestablished_path(image: SeededImageResolution) -> Bool {
+  match srv3_os_install_actuator_plan_standing(image: image) {
+    ActuatorPlanRefused { cause: ActuatorMechanismRefused { cause: _ } } => true
+    _ => false
   }
 }
 

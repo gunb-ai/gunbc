@@ -1,0 +1,3 @@
+module probe.brc.alias_home
+
+type BrcAliasId = Int

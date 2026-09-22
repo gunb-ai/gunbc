@@ -1,0 +1,103 @@
+module extdeps.linux.proc_net_tcp
+
+import std.types { NonEmptyStr, List, Bool, Int, Port }
+import std.string_type { String }
+import v2.std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.numeric.base16 { base16_word_value }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE SHAPE OF /proc/net/tcp AND /proc/net/tcp6 (proc(5), "/proc/net/tcp"): one header line, then
+// one row per socket, whitespace-separated. The fields this module reads are the second
+// (local_address: hex IP, a colon, a 4-hex-digit port) and the fourth (st: the socket state as two
+// hex digits, where 0A is TCP_LISTEN -- include/net/tcp_states.h). Everything else on the row is
+// carried past. The port is the same 16-bit hex field in both files; only the address width
+// differs (8 hex digits for v4, 32 for v6), and this parser reads the port from the right of the
+// colon so the width is not its business.
+//
+// WHAT THIS ESTABLISHES: which local ports have a socket in LISTEN state on the host whose procfs
+// was read, whatever bound them. It does not say which process owns the socket (that is the inode
+// joined through /proc/<pid>/fd, a separate read) and it says nothing about a listener in another
+// network namespace -- a container with its own netns has its own /proc/net/tcp. A consumer that
+// needs "nothing listens on this port on this host" reads both files and, when containers may
+// hold the port, the host's namespace is the one the enrolled address reaches.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/proc.5.html#/proc/net/tcp"
+  }
+}
+
+data tcp_listen_state_hex: String = "0A"
+
+// THE LOCAL PORT IS std.types Port WHERE ONE IS BOUND. The field is a 4-hex-digit 16-bit word;
+// 0000 is a real value the kernel prints for a socket with no bound port, and Port (1..65535) has
+// no constructor for it, so the row says which it read rather than carrying 0 as a port.
+type TcpLocalPort
+  = TcpPortBound { port: Port }
+  | TcpPortUnbound
+
+type TcpSocketRow {
+  local_address: String
+  local_port: TcpLocalPort
+  state: String
+}
+
+type ProcNetTcpTable
+  = ProcNetTcpParsed { rows: List<TcpSocketRow> }
+  | ProcNetTcpUnparseable { line: String }
+
+fn tcp_row_fields(line: String) -> List<String> {
+  filter(split(s: trim(s: line), delimiter: " "), f => f != "")
+}
+
+fn tcp_socket_row(line: String) -> TcpSocketRow? {
+  let fields = tcp_row_fields(line: line)
+  match get(xs: fields, index: 1) {
+    Absent => none
+    Present { value: local } =>
+      match get(xs: fields, index: 3) {
+        Absent => none
+        Present { value: st } => {
+          let parts = split(s: local, delimiter: ":")
+          if length(parts) != 2 { none } else {
+            match get(xs: parts, index: 1) {
+              Absent => none
+              Present { value: port_hex } =>
+                match base16_word_value(word: port_hex, max_digits: 4) {
+                  Absent => none
+                  Present { value: port } => Present { value: TcpSocketRow { local_address: local, local_port: if port == 0 { TcpPortUnbound } else { TcpPortBound { port: port } }, state: st } }
+                }
+            }
+          }
+        }
+      }
+  }
+}
+
+// The table: the header line is skipped by its first field ("sl"), blank lines are skipped, and
+// a row that does not carry the two fields this module reads refuses the whole table naming the
+// line -- a socket table with an unreadable row is not a table with fewer sockets.
+fn proc_net_tcp_table(text: String) -> ProcNetTcpTable {
+  let lines = filter(split(s: text, delimiter: "\n"), l => trim(s: l) != "")
+  fold(lines, init: ProcNetTcpParsed { rows: [] as List<TcpSocketRow> }, f: (acc, line) =>
+    match acc {
+      ProcNetTcpUnparseable { line: _ } => acc
+      ProcNetTcpParsed { rows: rs } =>
+        match get(xs: tcp_row_fields(line: line), index: 0) {
+          Absent => acc
+          Present { value: first } =>
+            if first == "sl" { acc } else {
+              match tcp_socket_row(line: line) {
+                Absent => ProcNetTcpUnparseable { line: line }
+                Present { value: r } => ProcNetTcpParsed { rows: concat(rs, [r]) }
+              }
+            }
+        }
+    })
+}
+
+fn tcp_rows_listening_on(rows: List<TcpSocketRow>, port: Port) -> List<TcpSocketRow> {
+  filter(rows, r => r.state == tcp_listen_state_hex && (match r.local_port { TcpPortBound { port: p } => p == port  TcpPortUnbound => false }))
+}

@@ -73,10 +73,44 @@ type CodeSearchRepository {
 // a population.
 data retrievable_result_ceiling: Int = 1000
 
+// A PAGE SIZE IS ADMITTED BEFORE IT IS DIVIDED BY, AND AN EARLIER CUT DIVIDED BY WHATEVER ARRIVED.
+// deepest_retrievable_page took a bare Int and computed retrievable_result_ceiling / per_page, so a
+// caller supplying a size outside the endpoint's domain got a bound that looked derived and was
+// nonsense: per_page = 1000 yields a bound of ONE PAGE, and a walk that reads one page and finds it
+// short reports StoppedExhausted -- a partial first page presented as a complete population. GitHub
+// serves at most max_per_page results per page for this endpoint, and nothing refused above it.
+//
+// The domain is upstream's, so the admission lives here rather than in a consumer: this is the
+// endpoint's documented contract, not a policy any caller may choose. The admitted carrier is
+// sole_constructor, so it can be built only by the admission below -- an unadmitted Int cannot reach
+// the division at all, which is the difference between refusing a bad bound and being unable to
+// compute one.
+type CodeSearchPageSize sole_constructor { size: Int }
+
+type CodeSearchPageSizeAdmission
+  = CodeSearchPageSizeAdmitted { page_size: CodeSearchPageSize }
+  | CodeSearchPageSizeRefused { observed: Int, cause: NonEmptyStr }
+
+fn admit_code_search_page_size(observed: Int) -> CodeSearchPageSizeAdmission {
+  if observed < 1 {
+    CodeSearchPageSizeRefused {
+      observed: observed,
+      cause: "a page size below one asks the endpoint for no results per page, and dividing the retrievable ceiling by it yields no usable bound" as NonEmptyStr,
+    }
+  } else if observed > max_per_page {
+    CodeSearchPageSizeRefused {
+      observed: observed,
+      cause: join(["code search serves at most ", to_string(max_per_page), " results per page, so a larger size is silently truncated upstream and the walk bound derived from it understates the pages that exist"], "") as NonEmptyStr,
+    }
+  } else {
+    CodeSearchPageSizeAdmitted { page_size: CodeSearchPageSize { size: observed } }
+  }
+}
+
 // The deepest page a caller may request without passing the ceiling, derived rather than authored
 // so that changing the ceiling or the page size cannot leave a stale bound behind.
-fn deepest_retrievable_page(per_page: Int) -> Int {
-  retrievable_result_ceiling / per_page
+fn deepest_retrievable_page(page_size: CodeSearchPageSize) -> Int {
+  retrievable_result_ceiling / page_size.size
 }
 
 type CodeSearchHit {

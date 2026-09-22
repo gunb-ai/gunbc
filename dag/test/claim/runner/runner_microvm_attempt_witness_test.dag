@@ -86,7 +86,7 @@ test fn the_vmm_is_placed_in_the_cells_own_slice() -> Bool {
   match attempt(i: 3, id: "s1") {
     MicroVmAttemptAccepted { attempt: at } =>
       match bind_owned_attempt(attempt: at, owned: true) {
-        VmBoundToOwnedCell { attempt: a, rootfs_path: _, jit_drive_path: _, vm_config_path: _, unit_name: _, slice_property: sp } =>
+        VmBoundToOwnedCell { attempt: a, rootfs_path: _, vm_config_path: _, unit_name: _, slice_property: sp } =>
           (sp.value as String) == fabric_cell_slice_name(slot: a.slot)
         _ => false
       }

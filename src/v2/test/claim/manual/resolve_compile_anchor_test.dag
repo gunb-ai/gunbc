@@ -1,7 +1,8 @@
 module v2.test.manual.resolve_compile_anchor
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots, admit_normalized_tree }
+import v2.std.declaration_marker { test_marker_channel_empty }
+import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots, admit_normalized_tree }
 import v2.compiler.name_resolve {
   Admission,
   Import,
@@ -60,7 +61,7 @@ fn service_atom_conj_tree() -> Node {
 }
 
 fn anchor_resolve_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> {
-  match admit_normalized_tree(root: service_atom_conj_tree(), diagnostics: None) {
+  match admit_normalized_tree(test_markers: test_marker_channel_empty(), root: service_atom_conj_tree(), diagnostics: None) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: tree, diagnostics: _ } =>
       resolve(tree: tree, lm: dag_language_model_void())
@@ -68,7 +69,7 @@ fn anchor_resolve_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> 
 }
 
 fn anchor_resolve_empty_prelude_service_atom() -> Outcome<ResolvedTree> {
-  match admit_normalized_tree(root: service_atom_conj_tree(), diagnostics: None) {
+  match admit_normalized_tree(test_markers: test_marker_channel_empty(), root: service_atom_conj_tree(), diagnostics: None) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: tree, diagnostics: _ } =>
       resolve(tree: tree, lm: dag_language_model_surface_empty_prelude())
@@ -77,6 +78,7 @@ fn anchor_resolve_empty_prelude_service_atom() -> Outcome<ResolvedTree> {
 
 fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTree> {
   match admit_normalized_tree(
+    test_markers: test_marker_channel_empty(),
     root: Node {
       kind: TypeNode { connective: Conj },
       children: [
@@ -112,6 +114,7 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTre
 
 fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
   match admit_normalized_tree(
+    test_markers: test_marker_channel_empty(),
     root: Node {
       kind: TypeNode { connective: Conj },
       children: [
@@ -260,7 +263,7 @@ fn resolve_subject_name() -> QualifiedName {
 }
 
 fn resolve_roots_single_import() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: resolve_subject_module_root_with_import_use(),
     tail: Cons {

@@ -25,6 +25,8 @@ type ProcfsPath
   | ProcSelfStatus
   | ProcSelfCgroup
   | ProcNetUnix
+  | ProcNetTcp
+  | ProcNetTcp6
   | ProcSwaps
   | ProcSysKernelHostname
   | ProcNetPnp
@@ -36,6 +38,8 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
     ProcSelfStatus => "/proc/self/status"
     ProcSelfCgroup => "/proc/self/cgroup"
     ProcNetUnix => "/proc/net/unix"
+    ProcNetTcp => "/proc/net/tcp"
+    ProcNetTcp6 => "/proc/net/tcp6"
     ProcSwaps => "/proc/swaps"
     ProcSysKernelHostname => "/proc/sys/kernel/hostname"
     ProcNetPnp => "/proc/net/pnp"
@@ -83,9 +87,11 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
 // operation with a shell transport, so gunbc.host_operation_exec can carry it over whichever
 // transport the caller holds (DESIGN 3: the transport is a realization bound to this shape, never
 // a fact about procfs). `cat` is the whole realization: procfs files are read-once text and the
-// kernel synthesizes them on open, so there is nothing to seek, follow or lock. Three operations
-// and not one generic ReadFile, so that the operation's identity says which file it reads and an
-// argv over an arbitrary path cannot be materialized from this service.
+// kernel synthesizes them on open, so there is nothing to seek, follow or lock. ONE OPERATION PER
+// FILE and not one generic ReadFile, so that the operation's identity says which file it reads and
+// an argv over an arbitrary path cannot be materialized from this service. ReadMeminfo serves the
+// host memory capacity and live availability a compute admission reads before it reserves
+// (gunbc.compute.host_capacity).
 service linux.Procfs {
   operation ReadStat {
     input {}
@@ -104,6 +110,23 @@ service linux.Procfs {
     }
   }
 
+  operation ReadMeminfo {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/meminfo"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/meminfo read failed"
+    }
+    mock_response {
+      0 => { value: "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    8388608 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n", success: true } "hermetic linux.Procfs.ReadMeminfo"
+    }
+  }
+
   operation ReadPidStat {
     input { pid: NonEmptyStr }
     output {
@@ -118,6 +141,40 @@ service linux.Procfs {
     }
     mock_response {
       0 => { value: "1 (cat) R 0 1 1 0 -1 4194304 0 0 0 0 0 0 0 0 20 0 1 0 100 0 0 18446744073709551615 0 0 0 0 0 0 0 0 0 0 0 0 17 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n", success: true } "hermetic linux.Procfs.ReadPidStat"
+    }
+  }
+
+  operation ReadNetTcp {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/net/tcp"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/net/tcp read failed"
+    }
+    mock_response {
+      0 => { value: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", success: true } "hermetic linux.Procfs.ReadNetTcp: a socket table with no rows"
+    }
+  }
+
+  operation ReadNetTcp6 {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/net/tcp6"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/net/tcp6 read failed"
+    }
+    mock_response {
+      0 => { value: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", success: true } "hermetic linux.Procfs.ReadNetTcp6: a socket table with no rows"
     }
   }
 
@@ -185,6 +242,8 @@ fn procfs_path_provision(p: ProcfsPath) -> ProcfsPathProvision {
     ProcSwaps => ProvisionNotYetQualified
     ProcSysKernelHostname => ProvisionNotYetQualified
     ProcNetPnp => ProvidedWhenConfigured { option: "CONFIG_IP_PNP" as NonEmptyStr }
+    ProcNetTcp => ProvisionNotYetQualified
+    ProcNetTcp6 => ProvisionNotYetQualified
   }
 }
 

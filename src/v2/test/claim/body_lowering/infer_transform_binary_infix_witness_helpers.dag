@@ -6,6 +6,7 @@ import v2.compiler.infer {
   inferred_facts_witness_for_node
 }
 import v2.compiler.resolve { resolve }
+import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.compiler.normalized_tree { admit_normalized_tree }
 import v2.extdeps.languages.dag {
   dag_int_literal_fixture_one,
@@ -52,7 +53,7 @@ fn infer_transform_witness_resolved_add_arrow() -> Optional<Node> {
   match wave1_gate1_normalized_add_module() {
     Absent => Absent
     Present { value: tree } =>
-      match admit_normalized_tree(root: tree, diagnostics: None) {
+      match admit_normalized_tree(test_markers: test_marker_channel_empty(), root: tree, diagnostics: None) {
         Rejected { diagnostics: _ } => Absent
         Accepted { value: normalized, diagnostics: _ } =>
           match resolve(tree: normalized, lm: dag_language_model()) {

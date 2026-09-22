@@ -1,0 +1,175 @@
+module gunbc.required_lane_resolution_census_live
+
+import std.types { String, Bool, List, Int }
+import v2.std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.github.actions { Workflow, Job }
+import gunbc.compiler_gate_workflow {
+  compiler_gate_workflow, compiler_gate_job_id, compiler_gate_clippy_job_id,
+  compiler_gate_floor_job_id, compiler_gate_aggregate_job_id,
+}
+import gunbc.ci_spec { gunbc_ci_heal_verify_target }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.required_lane_resolution_census {
+  ModuleIdentityPopulation, ModuleIdentityPopulationObserved, ModuleIdentityPopulationRefused,
+  LaneResolutionSubject, FloorNominalPreparedSubject, RunEntryClosure, ResolvesNoDagModule,
+  LaneResolutionRow, LaneResolvedPopulation, ResolutionCensusInputs, ResolutionCensus,
+  ResolutionCensusStanding, ResolutionCensusHeld, ResolutionCensusDidNotHold,
+  resolution_census, resolution_census_standing, census_receipt_lines,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE LANE ROSTER IS READ FROM THE WORKFLOW THAT EMITS witnesses.yml, AND EVERY JOB THERE MUST
+// CARRY A ROW HERE. The classification is authored -- which producer each job's steps hand
+// sources to is a fact about the step scripts, and reading it out of a rendered `run:` line
+// would be a second parser of a string this repository already generates from typed rows -- but
+// its COVERAGE is checked against the emitted job list: a job the workflow carries and this
+// roster does not is a refusal, never a job read as resolving nothing. The subject rows cite the
+// same declarations the step scripts render from (gunbc.ci.ci_spec gunbc_ci_heal_verify_target
+// for the drift gate's entry; the floor's nominal seeds through the compiler query).
+fn lane_resolution_roster() -> List<LaneResolutionRow> {
+  [
+    LaneResolutionRow {
+      job_id: compiler_gate_job_id,
+      subjects: [ResolvesNoDagModule { reason: "cargo build of the seed's Rust mirrors; no .dag source is handed to the compiler" }]
+    },
+    LaneResolutionRow {
+      job_id: compiler_gate_clippy_job_id,
+      subjects: [ResolvesNoDagModule { reason: "cargo clippy over every Rust target; no .dag source is handed to the compiler" }]
+    },
+    LaneResolutionRow {
+      job_id: compiler_gate_floor_job_id,
+      subjects: [
+        FloorNominalPreparedSubject {},
+        RunEntryClosure { entry_path: gunbc_ci_heal_verify_target.entry }
+      ]
+    },
+    LaneResolutionRow {
+      job_id: compiler_gate_aggregate_job_id,
+      subjects: [ResolvesNoDagModule { reason: "reads the other lanes' conclusions; runs no compiler" }]
+    }
+  ]
+}
+
+fn workflow_job_ids(w: Workflow) -> List<String> {
+  w.jobs |> map(j => j.id)
+}
+
+fn roster_job_ids() -> List<String> {
+  lane_resolution_roster() |> map(r => r.job_id)
+}
+
+// Every emitted job has exactly one roster row; every roster row names an emitted job.
+type RosterCoverage
+  = RosterCovers
+  | RosterMissesJob { job_id: String }
+  | RosterNamesAbsentJob { job_id: String }
+  | RosterDuplicatesJob { job_id: String }
+
+fn count_of(xs: List<String>, x: String) -> Int {
+  xs |> filter(y => y == x) |> count
+}
+
+fn roster_coverage(w: Workflow) -> RosterCoverage {
+  let emitted = workflow_job_ids(w: w)
+  let rostered = roster_job_ids()
+  let missing = emitted |> filter(j => count_of(xs: rostered, x: j) == 0)
+  let absent = rostered |> filter(j => count_of(xs: emitted, x: j) == 0)
+  let duplicated = rostered |> filter(j => count_of(xs: rostered, x: j) > 1)
+  match first(missing) {
+    Present { value: j } => RosterMissesJob { job_id: j }
+    Absent => match first(absent) {
+      Present { value: j } => RosterNamesAbsentJob { job_id: j }
+      Absent => match first(duplicated) {
+        Present { value: j } => RosterDuplicatesJob { job_id: j }
+        Absent => RosterCovers {}
+      }
+    }
+  }
+}
+
+fn roster_coverage_rendered(c: RosterCoverage) -> String {
+  match c {
+    RosterCovers => "covers"
+    RosterMissesJob { job_id: j } => concat("the workflow emits job `", concat(j, "` and the lane resolution roster has no row for it"))
+    RosterNamesAbsentJob { job_id: j } => concat("the lane resolution roster names job `", concat(j, "`, which the workflow does not emit"))
+    RosterDuplicatesJob { job_id: j } => concat("the lane resolution roster names job `", concat(j, "` twice"))
+  }
+}
+
+// THE POPULATION ONE SUBJECT RESOLVES, asked of the lane's own producer through the compiler
+// query that wraps it. A ResolvesNoDagModule subject observes the empty population: that is a
+// true statement about a cargo job, not a refusal.
+fn subject_population(s: LaneResolutionSubject) -> ModuleIdentityPopulation {
+  match s {
+    FloorNominalPreparedSubject => required_floor_nominal_subject_module_identities(witness_layer_roots)
+    RunEntryClosure { entry_path: p } => entry_closure_module_identities(witness_layer_roots, p)
+    ResolvesNoDagModule { reason: _ } => ModuleIdentityPopulationObserved { modules: [] }
+  }
+}
+
+type LivePopulations
+  = LivePopulationsObserved { admitted: List<String>, resolved: List<LaneResolvedPopulation> }
+  | LivePopulationsRefused { cause: String }
+
+// The fold's accumulator is a coproduct rather than rows-plus-optional-cause: a refused subject
+// ends the fold with its cause, and no arm carries a partial row list beside a refusal.
+type ResolvedAcc
+  = ResolvedRows { rows: List<LaneResolvedPopulation> }
+  | ResolvedRefused { cause: String }
+
+fn resolve_subject(acc: ResolvedAcc, job_id: String, s: LaneResolutionSubject) -> ResolvedAcc {
+  match acc {
+    ResolvedRefused { cause: c } => ResolvedRefused { cause: c }
+    ResolvedRows { rows: rows } => match subject_population(s: s) {
+      ModuleIdentityPopulationRefused { cause: c } =>
+        ResolvedRefused { cause: concat(concat(concat("job `", job_id), "`: "), c) }
+      ModuleIdentityPopulationObserved { modules: ms } =>
+        ResolvedRows { rows: list_push(rows, LaneResolvedPopulation { job_id: job_id, subject: s, modules: ms }) }
+    }
+  }
+}
+
+fn resolve_row(acc: ResolvedAcc, row: LaneResolutionRow) -> ResolvedAcc {
+  row.subjects |> fold(init: acc, f: fn(a, s) { resolve_subject(acc: a, job_id: row.job_id, s: s) })
+}
+
+fn live_populations() -> LivePopulations {
+  match roster_coverage(w: compiler_gate_workflow) {
+    RosterCovers => match source_root_ingest_module_identities(witness_layer_roots) {
+      ModuleIdentityPopulationRefused { cause: c } => LivePopulationsRefused { cause: concat("admitted population: ", c) }
+      ModuleIdentityPopulationObserved { modules: admitted } =>
+        match lane_resolution_roster() |> fold(init: ResolvedRows { rows: [] }, f: resolve_row) {
+          ResolvedRefused { cause: c } => LivePopulationsRefused { cause: c }
+          ResolvedRows { rows: rows } => LivePopulationsObserved { admitted: admitted, resolved: rows }
+        }
+    }
+    RosterMissesJob { job_id: j } => LivePopulationsRefused { cause: roster_coverage_rendered(c: RosterMissesJob { job_id: j }) }
+    RosterNamesAbsentJob { job_id: j } => LivePopulationsRefused { cause: roster_coverage_rendered(c: RosterNamesAbsentJob { job_id: j }) }
+    RosterDuplicatesJob { job_id: j } => LivePopulationsRefused { cause: roster_coverage_rendered(c: RosterDuplicatesJob { job_id: j }) }
+  }
+}
+
+// THE INSTRUMENT ENTRY (`gunbc test //gunbc/instruments:required-lane-resolution-census`). Prints
+// the receipt and exits by the census standing: 0 every admitted module is resolved by some
+// required lane; 1 the unreached population is nonempty (printed by identity above the exit);
+// 2 a population could not be established or the roster does not cover the emitted jobs. The
+// receipt is the product on every termination that has one.
+fn required_lane_resolution_census_exit() -> CliWireResponse {
+  match live_populations() {
+    LivePopulationsRefused { cause: c } =>
+      CliWirePrintable { bytes: concat("required-lane-resolution-census: refused: ", concat(c, "\n")), exit: ExitFailure { code: 2, reason: c } }
+    LivePopulationsObserved { admitted: admitted, resolved: resolved } => {
+      let c = resolution_census(inputs: ResolutionCensusInputs { admitted: admitted, resolved: resolved })
+      let bytes = concat(census_receipt_lines(c: c) |> join(separator: "\n"), "\n")
+      match resolution_census_standing(c: c) {
+        ResolutionCensusHeld => CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+        ResolutionCensusDidNotHold { unreached: u } =>
+          CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: concat("required-lane-resolution-census: did not hold: ", concat(to_string(u |> count), " admitted modules are resolved by no required lane (listed above by identity)")) } }
+      }
+    }
+  }
+}

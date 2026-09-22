@@ -36,6 +36,17 @@ fn pure_dag_seam_unreachable_float() -> Float {
 // dissolve-on a bottom type, at which point one divergent seam inhabits every result type and the
 // Float projection deletes.
 
+// The String projection of the same divergence, added for the same reason the Float one exists and
+// borrowing the Int seam's divergence the same way: a caller whose result type is String and whose
+// refusal arm is unreachable BY CONSTRUCTION has nowhere to put a value, and "" is a perfectly good
+// String, which is exactly what makes it a fabricated plausible output. The condition forces the
+// Int seam to evaluate, so divergence happens before any String is produced; both arms are the same
+// literal because neither is ever reached. DISSOLVE-ON: the same bottom type the Float projection
+// names -- one divergent seam inhabits every result type and both projections delete.
+fn pure_dag_seam_unreachable_string() -> String {
+  if pure_dag_seam_unreachable() == 0 { "" } else { "" }
+}
+
 fn bytes_octets(b: Bytes) -> List<UInt8> {
   [pure_dag_seam_unreachable()]
 }

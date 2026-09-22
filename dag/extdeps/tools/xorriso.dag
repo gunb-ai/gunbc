@@ -62,11 +62,13 @@ service xorriso.Iso {
     }
   }
 
-  operation ReplayBuildWithTwoMaps {
+  operation ReplayBuildPinnedDates {
     input {
       stock_iso_path: NonEmptyStr,
       output_path: NonEmptyStr,
       volume_id: NonEmptyStr,
+      volume_uuid: NonEmptyStr,
+      file_date: NonEmptyStr,
       map_one_source: NonEmptyStr,
       map_one_iso_path: NonEmptyStr,
       map_two_source: NonEmptyStr,
@@ -74,10 +76,10 @@ service xorriso.Iso {
     }
     output { success: Bool from "exit_success" }
     transport shell {
-      argv: ["xorriso", "-indev", "{stock_iso_path}", "-outdev", "{output_path}", "-boot_image", "any", "replay", "-volid", "{volume_id}", "-map", "{map_one_source}", "{map_one_iso_path}", "-map", "{map_two_source}", "{map_two_iso_path}", "-commit"]
+      argv: ["xorriso", "-indev", "{stock_iso_path}", "-outdev", "{output_path}", "-boot_image", "any", "replay", "-volid", "{volume_id}", "-map", "{map_one_source}", "{map_one_iso_path}", "-map", "{map_two_source}", "{map_two_iso_path}", "-volume_date", "uuid", "{volume_uuid}", "-volume_date", "all_file_dates", "{file_date}", "-commit"]
     }
     exit {
-      0 => Unit
+      0 => Unit "ORDER IS LOAD-BEARING: xorriso executes left to right and -volume_date all_file_dates applies to the files then in the image, so both date commands follow the -map commands -- issued before them, the freshly mapped files would keep the build instant. -volume_date uuid fixes the volume dates and the medium's UUID"
       nonzero => String "xorriso -boot_image any replay build failed"
     }
   }

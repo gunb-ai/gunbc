@@ -134,13 +134,16 @@ test fn witness_runner_and_session_cpu_weights_are_distinct() -> Bool {
   workload_class_cpu_weight(wc: BatchLatencyTolerant) != workload_class_cpu_weight(wc: InteractiveLatencySensitive)
 }
 
+// oom_pressure_kill is asserted as DERIVED output, not pinned to a literal.
+// This previously froze `=true` into the manifest, which is what kept the
+// retired pressure-kill posture flowing to manifest consumers.
 test fn witness_session_slice_line_emits_cpu_weight() -> Bool {
   let rendered = expected_runner_deploy_manifest()
   string_contains(s: rendered, pattern: "session-slice host=")
     && string_contains(s: rendered, pattern: " cpu_weight=1000")
     && string_contains(s: rendered, pattern: " slice_max_bytes=")
     && string_contains(s: rendered, pattern: " per_session_max_bytes=")
-    && string_contains(s: rendered, pattern: " oom_pressure_kill=true")
+    && string_contains(s: rendered, pattern: " oom_pressure_kill=false")
     && string_contains(s: rendered, pattern: " oom_pressure_limit_pct=60")
 }
 

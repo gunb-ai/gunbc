@@ -4,6 +4,7 @@ import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
 import std.types { String, NonEmptyStr, List }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
 import gunbc.roadmap_authority {
+  roadmap_acceptance_event_history_load,
   roadmap_authority_projection,
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjected,
@@ -152,7 +153,7 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProje
 }
 
 fn materialize_live_roadmap_site_surface_bundle() -> RoadmapSiteSurfaceBundle {
-  render_roadmap_site_surface_bundle_for_projection(proj: roadmap_authority_projection())
+  render_roadmap_site_surface_bundle_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
 }
 
 fn live_roadmap_site_surface_bundle() -> LiveRoadmapSiteSurfaceBundle {

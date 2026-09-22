@@ -24,7 +24,7 @@ import extdeps.systemd.unit_file {
   Description,
   After,
   Wants,
-  ServiceType,
+  ServiceType, SimpleMode,
   ExecStart,
   Restart,
   Installable,
@@ -60,10 +60,10 @@ import gunbc.typed_remote_file_write {
   classify_typed_remote_file_comparison,
   converge_typed_remote_file,
 }
-import gunbc.runner_host_grants { executor_bootstrap_principal }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.ci_spec { site_pxe_edge_converge_receipt_path }
 import gunbc.runner_host_file_converge { elevated_argv }
-import gunbc.machine_intake_subject { content_hash_equal }
+import std.content_hash { content_hash_equal }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import gunbc.network_boot_delivery {
   first_slice_admitted_architectures,
@@ -188,7 +188,7 @@ data site_pxe_edge_unit: SystemdUnitFile = ServiceUnitFile {
     Wants { target: "network-online.target" },
   ],
   service: [
-    ServiceType { mode: "simple" },
+    ServiceType { mode: SimpleMode },
     ExecStart { command: join([site_pxe_edge_dnsmasq_binary as String, " --keep-in-foreground --conf-file=", site_pxe_edge_config_path as String], "") as NonEmptyStr },
     Restart { policy: "on-failure" },
   ],

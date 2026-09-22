@@ -1,0 +1,143 @@
+module test.claim.fabric.fabric_storage_wire_witness
+
+import std.types { NonEmptyStr, String, Bool }
+import std.durable_compare_and_set { CasSlotObservationRefused, CasUnreadableObservationBoundExceeded, CasGenerationPublicationRefused }
+import std.fabric_storage {
+  FabricObject, fabric_object_ref_of, fabric_object_ref_eq, fabric_object_preimage, FabricStoredObject,
+  FabricHeadAbsent, FabricHeadAt, ExpectHeadAt,
+  FabricStoreUnreachable, FabricStoreRefused, FabricObjectMissing, FabricReplyUndecodable,
+  FabricHeadObserved, FabricHeadReadRefused, FabricHeadMoved, FabricHeadAdvanced, FabricHeadAdvanceRefused,
+  FabricClosureRead, FabricClosureRefused,
+}
+import gunbc.fabric_storage_wire {
+  fabric_storage_wire_head, fabric_storage_wire_advance, fabric_storage_wire_closure,
+  fabric_storage_unwire_head, fabric_storage_unwire_advance, fabric_storage_unwire_closure,
+  fabric_storage_wire_identity, fabric_storage_unwire_identity, FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused,
+}
+import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
+import gunbc.fabric_storage_client { served_reply_from, ServedAnswered, ServedFault }
+
+// Evidence that the typed arms survive the hop: each outcome the store side writes is read back as
+// the same arm by the caller side, and the transport outcome is classified before any reply. Values
+// are supplied; the served route's execution is the live endpoint's receipt.
+
+fn a() -> FabricObject { FabricObject { links: [], body: "a" } }
+fn b() -> FabricObject { FabricObject { links: [fabric_object_ref_of(object: a())], body: "b\nwith a newline" } }
+
+test fn a_lost_race_crosses_the_wire_as_a_lost_race_naming_the_winner() -> Bool {
+  let moved = FabricHeadMoved { expected: ExpectHeadAt { object: fabric_object_ref_of(object: a()) }, observed: FabricHeadAt { object: fabric_object_ref_of(object: b()), generation: 2 } }
+  match fabric_storage_unwire_advance(text: fabric_storage_wire_advance(advance: moved)) {
+    FabricHeadMoved { expected: _, observed: o } => match o { FabricHeadAt { object: w, generation: g } => fabric_object_ref_eq(a: w, b: fabric_object_ref_of(object: b())) && g == 2  FabricHeadAbsent => false }
+    _ => false
+  }
+}
+
+test fn a_missing_object_crosses_the_wire_as_missing_not_as_a_store_refusal() -> Bool {
+  match fabric_storage_unwire_advance(text: fabric_storage_wire_advance(advance: FabricHeadAdvanceRefused { fault: FabricObjectMissing { object: fabric_object_ref_of(object: a()) } })) {
+    FabricHeadAdvanceRefused { fault: f } => match f { FabricObjectMissing { object: m } => fabric_object_ref_eq(a: m, b: fabric_object_ref_of(object: a()))  _ => false }
+    _ => false
+  }
+}
+
+test fn a_store_bound_refusal_keeps_its_cause_across_the_wire() -> Bool {
+  let refused = FabricHeadReadRefused { fault: FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableObservationBoundExceeded { bound: 4096 } } } }
+  match fabric_storage_unwire_head(text: fabric_storage_wire_head(read: refused)) {
+    FabricHeadReadRefused { fault: f } => match f {
+      FabricStoreRefused { cause: c } => match c { CasSlotObservationRefused { cause: u } => match u { CasUnreadableObservationBoundExceeded { bound: n } => n == 4096  _ => false }  _ => false }
+      _ => false
+    }
+    FabricHeadObserved { reading: _ } => false
+  }
+}
+
+test fn a_closure_whose_bodies_hold_newlines_round_trips_whole() -> Bool {
+  let read = FabricClosureRead {
+    reading: FabricHeadAt { object: fabric_object_ref_of(object: b()), generation: 2 },
+    newest_first: [FabricStoredObject { object: fabric_object_ref_of(object: b()), content: b() }, FabricStoredObject { object: fabric_object_ref_of(object: a()), content: a() }],
+  }
+  match fabric_storage_unwire_closure(text: fabric_storage_wire_closure(read: read)) {
+    FabricClosureRead { reading: _, newest_first: xs } => length(xs) == 2
+    _ => false
+  }
+}
+
+test fn a_closure_whose_tip_is_not_the_named_head_is_refused() -> Bool {
+  let read = FabricClosureRead {
+    reading: FabricHeadAt { object: fabric_object_ref_of(object: b()), generation: 2 },
+    newest_first: [FabricStoredObject { object: fabric_object_ref_of(object: a()), content: a() }],
+  }
+  match fabric_storage_unwire_closure(text: fabric_storage_wire_closure(read: read)) {
+    FabricClosureRefused { fault: f } => match f { FabricReplyUndecodable { detail: _ } => true  _ => false }
+    _ => false
+  }
+}
+
+test fn a_reply_in_another_protocol_is_undecodable_not_a_store_answer() -> Bool {
+  match fabric_storage_unwire_head(text: "fabric_storage/2 head absent") {
+    FabricHeadReadRefused { fault: f } => match f { FabricReplyUndecodable { detail: _ } => true  _ => false }
+    FabricHeadObserved { reading: _ } => false
+  }
+}
+
+// THE TRANSPORT ARMS: curl never connecting is unreachable; an answered non-200 is undecodable; an
+// answered 200 is decoded. The git realization answered a lost race and an unreachable store both
+// with exit 128.
+test fn a_connect_failure_is_unreachable_before_any_reply_is_read() -> Bool {
+  match served_reply_from(exit_code: 7, stdout: "", stderr: "Failed to connect") {
+    ServedFault { fault: f } => match f { FabricStoreUnreachable { detail: _ } => true  _ => false }
+    ServedAnswered { body: _ } => false
+  }
+}
+
+test fn a_timeout_is_unreachable() -> Bool {
+  match served_reply_from(exit_code: 28, stdout: "", stderr: "timed out") {
+    ServedFault { fault: f } => match f { FabricStoreUnreachable { detail: _ } => true  _ => false }
+    ServedAnswered { body: _ } => false
+  }
+}
+
+test fn an_answered_non_200_is_undecodable_not_unreachable() -> Bool {
+  match served_reply_from(exit_code: 0, stdout: "fabric_storage/1 no route /x\n404", stderr: "") {
+    ServedFault { fault: f } => match f { FabricReplyUndecodable { detail: _ } => true  _ => false }
+    ServedAnswered { body: _ } => false
+  }
+}
+
+test fn an_answered_200_hands_back_the_body_without_the_status_line() -> Bool {
+  match served_reply_from(exit_code: 0, stdout: "fabric_storage/1 head absent\n200", stderr: "") {
+    ServedAnswered { body: body } => body == "fabric_storage/1 head absent"
+    ServedFault { fault: _ } => false
+  }
+}
+
+// The presented identity crosses the wire as the same arm: a login as that login, absent as absent.
+// A reply of another shape under the identity word is undecodable, not an absent identity -- the
+// absent arm is written by the store side only, never inferred by the caller from a reply it could
+// not read. THE GRAMMAR IS EXACT: a trailing word on `absent`, and a second word after a login, are
+// undecodable -- a malformed reply can never read as the store saying the proxy supplied no login.
+// THE REPLY IS ONE LINE: a continuation after either arm, or a trailing newline, is undecodable.
+test fn a_presented_login_crosses_the_wire_as_that_login_and_absent_as_absent() -> Bool {
+  let present = match fabric_storage_unwire_identity(text: fabric_storage_wire_identity(identity: TailnetUser { login: "writer@example.ts.net" as NonEmptyStr })) {
+    FabricIdentityPresented { identity: i } => match i { TailnetUser { login: l } => (l as String) == "writer@example.ts.net"  TailnetIdentityAbsent => false }
+    FabricIdentityUnproxied => false
+    FabricIdentityReadRefused { fault: _ } => false
+  }
+  let absent = match fabric_storage_unwire_identity(text: fabric_storage_wire_identity(identity: TailnetIdentityAbsent)) {
+    FabricIdentityPresented { identity: i } => match i { TailnetIdentityAbsent => true  TailnetUser { login: _ } => false }
+    _ => false
+  }
+  let skew = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity present") {
+    FabricIdentityReadRefused { fault: f } => match f { FabricReplyUndecodable { detail: _ } => true  _ => false }
+    _ => false
+  }
+  let other = match fabric_storage_unwire_identity(text: "fabric_storage/1 head absent") {
+    FabricIdentityReadRefused { fault: _ } => true
+    _ => false
+  }
+  let absent_extra = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity absent extra") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
+  let present_extra = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity present login extra") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
+  let absent_continued = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity absent\nunexpected continuation") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
+  let present_continued = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity present writer@example.ts.net\nunexpected continuation") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
+  let trailing_newline = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity absent\n") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
+  present && absent && skew && other && absent_extra && present_extra && absent_continued && present_continued && trailing_newline
+}

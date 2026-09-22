@@ -1,5 +1,7 @@
 module v2.lens.reference_derived_residency_reading
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 import gunbc.namespace_reference_derived_residency_qualification {
   CarrierKeyPopulation,
   CarrierReadability,
@@ -239,4 +241,14 @@ fn carrier_reading_from_type_decl(
     population: carrier_key_population_of(decl: decl),
     readability: carrier_readability_of(decl: decl),
   }
+}
+
+// WHY THIS IS A LENS AND NOT CONSTRUCTION. The reading is derived from a declaration a producer
+// already holds, so the fact it reports has one authority -- the declaration -- and this module is a
+// second reader of it. What construction would need is for the residency qualification to consume the
+// producer's declared carrier type directly, at which point a separate reading has nothing to add;
+// until that single authority carries the grain, population and readability itself, the lens is the
+// validation that stands in front of it.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

@@ -1,0 +1,69 @@
+module gunbc.typed_module_store_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by the host-persisted typed-module store.
+// Authored because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes
+// unenumerated hand growth in src/v1 a stop-line. Requested by review 69138 on gunbc#11793,
+// which was right to call it: the comparable precedent gunbc.census_memo_seed_growth was
+// authored for a 37-line cli_run delta, and this change is an order of magnitude larger.
+//
+// WHAT THE CHANGE IS. It is the BACKING of an existing transport, not a new one.
+// v1_compiler.shared_typecheck_store already serialized TypecheckModuleResult as authored module
+// and type names so a DECODING process could read an ENCODING process's snapshot against its own
+// intern table; that transport, its content key (std.interface_summary typed_module_key) and its
+// seam (index_get_typed / index_insert_typed) all pre-exist on main. This change gives the same
+// transport a host-local content-addressed directory so the value survives the process that
+// computed it, and adds no second key scheme, no second representation and no second seam.
+//
+// WHY IT IS RUST AND NOT .dag, which is the question this receipt exists to answer honestly. The
+// subject being persisted is a HOST value: TypecheckModuleResult is produced by the seed's own
+// inference, and the substrate has no representation of it to attach a materialization to. A
+// .dag-side store would have to key on a typecheck the substrate cannot name -- a layer inversion
+// rather than a migration, which is the same boundary gunbc.census_memo_seed_growth records one
+// seam over. The DECISION the store implements is modeled: gunbc.floor_materialization declares
+// the provider, its frame, its tier, its ceiling and its at-capacity disposition, and this Rust
+// is that row's realization rather than a second authority for it. The ceiling is held in
+// lockstep by persist_cap_matches_modeled_authority, which READS the .dag row rather than
+// restating its number -- the tautology review 69138 also caught, and repaired in the same change.
+//
+// WHAT IS NOT NETTED, and what was DELETED rather than justified. Two items in the first draft of
+// this change had no consumer at all -- persist_format_version and
+// persistent_typed_store_is_armed_for_test -- and they are not enumerated below because they were
+// removed. A receipt that justified a declaration nothing reads would be DESIGN section 3c's
+// dangling modeling wearing a justification's clothes. The four cli_run changes are
+// ExistingSeedItemModified per gunbc.seed_growth_admission SeedGrowthChangeDisposition
+// (index_get_typed and index_insert_typed keep their names and signatures) except for the two
+// items enumerated below, which are new.
+//
+// HAND-ITEM DELTA: this file enumerates every new citable declaration. The module-level statics
+// (seven counters and the process store cell) and the inherent methods on PersistentTypedStore
+// are NOT citable declarations; they are named here rather than omitted, because a receipt that
+// counts only what the roster can cite under-reports its own growth. The free functions
+// source_root_namespace, encode_entry, decode_entry and scan_occupancy are private to the module
+// and are the store's own implementation, enumerated below for the same reason.
+
+data typed_module_store_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.shared_typecheck_store", decl_name: "PersistentTypedStore", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.shared_typecheck_store", decl_name: "PersistentTypedStoreCounters", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.shared_typecheck_store", decl_name: "persistent_typed_store_for", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.shared_typecheck_store", decl_name: "persistent_typed_store_if_open", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.shared_typecheck_store", decl_name: "persistent_typed_store_counters_snapshot", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.shared_typecheck_store", decl_name: "persistent_typed_store_receipt_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.shared_typecheck_store", decl_name: "persist_default_cap_bytes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.shared_typecheck_store", decl_name: "reset_persistent_typed_store_counters_for_test", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.shared_typecheck_store", decl_name: "source_root_namespace", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.shared_typecheck_store", decl_name: "encode_entry", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.shared_typecheck_store", decl_name: "decode_entry", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.shared_typecheck_store", decl_name: "scan_occupancy", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "persist_get_typed", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "persist_put_typed", field: WholeDeclaration }
+  ],
+  reason: "The realization of gunbc.floor_materialization's host_persisted_typecheck_store provider row, which declares the frame, tier, ceiling and at-capacity disposition this Rust obeys. It persists a HOST value -- TypecheckModuleResult, produced by the seed's own inference -- so the substrate has no representation to attach a materialization to, and a .dag-side store would key on a typecheck the substrate cannot name. PersistentTypedStore and its four private helpers are the store; encode_entry and decode_entry are the framing whose verification (magic, format version, declared length, stored key) is what makes a rejected entry a counted miss rather than a partial decode served as a result; source_root_namespace keeps entries produced under a different source-root set unreachable rather than merely unequal, because resolution is root-relative. persistent_typed_store_for is the only door and carries the two refusals that stop the line: a named directory that cannot be opened, and a second root set inside one process. persistent_typed_store_if_open observes without arming, which the counters and the receipt line both need. persist_get_typed and persist_put_typed are the two cli_run call sites; both sit at the pre-existing typed-cache seam, so no second cache layer exists.\\n\\nENUMERATED RATHER THAN COUNTED, and enumerated HONESTLY: the seven module-level counters, the process store cell and the inherent methods on PersistentTypedStore are not citable declarations and are disclosed in this file's header instead of being silently excluded. Two further items were written and then DELETED for having no consumer at all, rather than being justified here.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the whole store -- realization, arming switch, cli_run call sites and the floor_materialization provider row -- when the authoritative native route replaces the v1 typecheck preparation it sits behind. The trigger names the CAPABILITY and not an artifact: what must exist is a preparation path whose typed results the substrate itself materializes, at which point a hand-rolled per-module directory is exactly the duplicated materialization authority std.materialization_ladder dissolves. v1 deletion does not wait for this optimization to become a general platform, and this store is not a reason to keep v1 preparation alive.",
+  current_boundary: "OFF BY DEFAULT and unreachable unless GUNBC_TYPED_STORE_PERSIST names a directory; no CI lane arms it as of this change, so on every current route the store is not opened and the seam falls through to the pre-existing behaviour. It changes no verdict when armed either: the value served is the value the transport encoded for the identical content key, and the key already carried source hash, direct-import interface hashes and compiler identity before this change. Every failure arm is a counted miss or a counted refusal -- absence, verification rejection and IO failure are counted separately, a rejected entry is deleted rather than left to be re-read, and at the ceiling publication is declined under RefuseNewStore -- so an unavailable store costs time and cannot change an answer. Two arms deliberately do NOT widen: a payload that passes header verification but will not decode is codec drift and refuses, and a NAMED directory that cannot be opened refuses rather than running cold under a promise it is not keeping. WHAT IS NOT YET ESTABLISHED, stated here rather than left for a reader to discover: no production-path cold/warm measurement exists, so the saving this store is built for is unmeasured and no figure is claimed for it."
+}

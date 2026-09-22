@@ -2,6 +2,7 @@ module gunbc.machine_intake_subject
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import std.content_hash {
+  content_hash_equal,
   ContentHash,
   ContentHashComparison,
   ContentHashEqual,
@@ -216,22 +217,10 @@ fn qualification_subject_of(
   }
 }
 
-// THE ONE DIGEST-EQUALITY DECISION FOR THIS LAYER (review 57612). It was
-// authored twice -- here and again in gunbc.machine_intake_receipt -- which is
-// two names for one predicate and the hollow_alias class DESIGN section 3
-// names. It is homed here because the qualification subject is what the
-// digests identify and every other machine-intake module already imports this
-// one. std.content_hash deliberately offers no union-level Bool: the
-// cross-family arm is a DECISION, and this layer makes it once, in the
-// refusing direction -- two digests from different families are never the same
-// subject, so they cannot be treated as unchanged.
-fn content_hash_equal(left: ContentHash, right: ContentHash) -> Bool {
-  match compare_content_hash(left: left, right: right) {
-    ContentHashEqual => true
-    ContentHashDifferent => false
-    ContentHashCrossFamilyIncomparable => false
-  }
-}
+// content_hash_equal lived here (the refusing-direction Bool over the union, made once); it is now
+// std.content_hash content_hash_equal, beside the comparison it folds, since two more consumers in
+// gunbc.spark had re-minted it (review 67905).
+
 
 // Which axes moved between an admitted subject and the one observed now. All
 // three are reported, not the first: a repair that changed a DIMM and flashed

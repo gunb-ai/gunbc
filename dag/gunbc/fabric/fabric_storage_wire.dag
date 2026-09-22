@@ -1,0 +1,347 @@
+module gunbc.fabric_storage_wire
+
+import std.types { String, NonEmptyStr, Int, List }
+import std.durable_compare_and_set {
+  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasUnreadableSlot,
+  CasUnreadableMalformed, CasUnreadableContentMissing, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded,
+  cas_generation_count,
+}
+import std.content_hash { serialize_content_hash, content_hash_from_structural_digest }
+import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent }
+import std.fabric_storage {
+  FabricObjectRef, FabricObject, FabricStoredObject, fabric_object_ref_wire, fabric_object_ref_of_wire, fabric_object_preimage, fabric_object_ref_of, fabric_object_ref_eq,
+  fabric_objects_decode_stream,
+  FabricHeadReading, FabricHeadAbsent, FabricHeadAt, FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
+  FabricStorageFault, FabricStoreUnreachable, FabricStoreRefused, FabricObjectMissing, FabricObjectCorrupt, FabricReplyUndecodable, FabricHeadNameRefused,
+  FabricPut, FabricObjectStored, FabricPutRefused,
+  FabricHeadRead, FabricHeadObserved, FabricHeadReadRefused,
+  FabricHeadAdvance, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
+  FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused,
+}
+
+// THE FABRIC DB WIRE: one text form for every std.fabric_storage outcome, written by the store's side of
+// a remote handler and read by the caller's side. Transport-agnostic -- whatever carries the bytes
+// (a served endpoint, a remote verb) carries this and nothing else, so the typed arms survive the
+// hop: a lost race, a missing object, a corrupt object and each store failure arrive as the arm they
+// left as. Store unreachable is never ON the wire: it is the carrier's own failure, decided by the
+// caller's side before any reply exists.
+//
+// SHAPE. The first line is `fabric_storage/1 <outcome words>`; a closure reply continues with the stream
+// of held objects in their canonical preimage form, which is self-delimiting. A reply in any other
+// protocol, or with words this version does not name, decodes to FabricReplyUndecodable carrying the
+// line -- a version skew is its own arm, never guessed at.
+
+data fabric_storage_wire_protocol: String = "fabric_storage/1"
+
+// ── ENCODE (store side) ──────────────────────────────────────────────────────────────────────
+
+fn wire_line(words: List<String>) -> String {
+  join([fabric_storage_wire_protocol, " ", join(words, " ")], "")
+}
+
+fn ref_word(object: FabricObjectRef) -> String {
+  fabric_object_ref_wire(object: object) as String
+}
+
+fn reading_words(reading: FabricHeadReading) -> List<String> {
+  match reading {
+    FabricHeadAbsent => ["absent"]
+    FabricHeadAt { object: o, generation: g } => ["at", ref_word(object: o), to_string(cas_generation_count(g: g))]
+  }
+}
+
+fn expectation_words(expected: FabricHeadExpectation) -> List<String> {
+  match expected {
+    ExpectHeadAbsent => ["absent"]
+    ExpectHeadAt { object: o } => ["at", ref_word(object: o)]
+  }
+}
+
+// A detail is free text and is always the LAST field, so it may hold spaces.
+fn fault_words(fault: FabricStorageFault) -> List<String> {
+  match fault {
+    FabricStoreUnreachable { detail: d } => ["unreachable", d as String]
+    FabricObjectMissing { object: o } => ["missing", ref_word(object: o)]
+    FabricObjectCorrupt { object: o, detail: d } => ["corrupt", ref_word(object: o), d as String]
+    FabricReplyUndecodable { detail: d } => ["undecodable", d as String]
+    FabricHeadNameRefused { name: n } => ["name", n as String]
+    FabricStoreRefused { cause: c } =>
+      match c {
+        CasGenerationPublicationRefused { detail: d } => ["store-publish", d as String]
+        CasSlotObservationRefused { cause: u } =>
+          match u {
+            CasUnreadableMalformed { detail: d } => ["store-malformed", d as String]
+            CasUnreadableContentMissing { referenced: h } => ["store-content-missing", serialize_content_hash(hash: h) as String]
+            CasUnreadableReadRefused { detail: d } => ["store-read-refused", d as String]
+            CasUnreadableObservationBoundExceeded { bound: b } => ["store-bound", to_string(b)]
+          }
+      }
+  }
+}
+
+fn fabric_storage_wire_head(read: FabricHeadRead) -> String {
+  match read {
+    FabricHeadObserved { reading: r } => wire_line(words: concat(["head"], reading_words(reading: r)))
+    FabricHeadReadRefused { fault: f } => wire_line(words: concat(["head", "refused"], fault_words(fault: f)))
+  }
+}
+
+fn fabric_storage_wire_put(put: FabricPut) -> String {
+  match put {
+    FabricObjectStored { object: o } => wire_line(words: ["put", "stored", ref_word(object: o)])
+    FabricPutRefused { fault: f } => wire_line(words: concat(["put", "refused"], fault_words(fault: f)))
+  }
+}
+
+fn fabric_storage_wire_advance(advance: FabricHeadAdvance) -> String {
+  match advance {
+    FabricHeadAdvanced { object: o, generation: g } => wire_line(words: ["advance", "advanced", ref_word(object: o), to_string(cas_generation_count(g: g))])
+    FabricHeadMoved { expected: e, observed: r } => wire_line(words: concat(concat(["advance", "moved"], expectation_words(expected: e)), concat(["observed"], reading_words(reading: r))))
+    FabricHeadAdvanceRefused { fault: f } => wire_line(words: concat(["advance", "refused"], fault_words(fault: f)))
+  }
+}
+
+fn fabric_storage_wire_closure(read: FabricClosureRead) -> String {
+  match read {
+    FabricClosureRead { reading: r, newest_first: xs } =>
+      join([wire_line(words: concat(["closure", "read"], reading_words(reading: r))), "\n", join(map(xs, s => fabric_object_preimage(object: s.content) as String), "")], "")
+    FabricClosureBudgetExhausted { at: a, bound: b } => wire_line(words: ["closure", "exhausted", ref_word(object: a), to_string(b)])
+    FabricClosureRefused { fault: f } => wire_line(words: concat(["closure", "refused"], fault_words(fault: f)))
+  }
+}
+
+// THE PRESENTED IDENTITY, echoed. Not a store operation: the fifth reply of the SERVED door only,
+// naming the Tailscale-User-Login the proxy handed the handler (extdeps.tailscale.identity), so a
+// fleet writer can read the principal it presents before any roster is written from it. THE
+// GRAMMAR IS EXACT: `identity absent` is two words and `identity present <login>` is three (a
+// login is one word; a Tailscale login carries no spaces), so a reply with any other arity is
+// undecodable -- a skewed or malformed reply can never read as the store deliberately saying the
+// proxy supplied no login. `absent` is the arm a tagged device, a direct connection and a stripped
+// header all produce, and it is written as absent, never as an anonymous login.
+fn fabric_storage_wire_identity(identity: TailnetIdentity) -> String {
+  match identity {
+    TailnetUser { login: l } => wire_line(words: ["identity", "present", l as String])
+    TailnetIdentityAbsent => wire_line(words: ["identity", "absent"])
+  }
+}
+
+// ── DECODE (caller side) ─────────────────────────────────────────────────────────────────────
+
+fn undecodable(line: String) -> FabricStorageFault {
+  FabricReplyUndecodable { detail: (if line == "" { "empty reply" } else { line }) as NonEmptyStr }
+}
+
+// The reply's first line split into words after the protocol token, and the text after it.
+type WireReply {
+  words: List<String>
+  line: String
+  body: String
+}
+
+fn wire_reply(text: String) -> WireReply? {
+  let line = match first(split(text, separator: "\n")) { Present { value: l } => l  Absent => "" }
+  let body = if length(line) >= length(text) { "" } else { substring(s: text, start: length(line) + 1, end: length(text)) }
+  let ws = split(line, separator: " ")
+  match first(ws) {
+    Present { value: p } => if p == fabric_storage_wire_protocol { Present { value: WireReply { words: ws |> skip(n: 1), line: line, body: body } } } else { none }
+    Absent => none
+  }
+}
+
+fn word_at(ws: List<String>, i: Int) -> String {
+  match first(ws |> skip(n: i)) { Present { value: w } => w  Absent => "" }
+}
+
+// Every word from index i on, rejoined: the free-text detail field.
+fn rest_from(ws: List<String>, i: Int) -> String {
+  join(ws |> skip(n: i), " ")
+}
+
+fn nonempty_or(text: String, fallback: String) -> NonEmptyStr {
+  (if text == "" { fallback } else { text }) as NonEmptyStr
+}
+
+fn decode_ref(word: String) -> FabricObjectRef? {
+  fabric_object_ref_of_wire(wire: word)
+}
+
+fn decode_reading(ws: List<String>, i: Int) -> FabricHeadReading? {
+  match word_at(ws: ws, i: i) {
+    "absent" => Present { value: FabricHeadAbsent }
+    "at" =>
+      match decode_ref(word: word_at(ws: ws, i: i + 1)) {
+        Absent => none
+        Present { value: o } =>
+          match parse_int(s: word_at(ws: ws, i: i + 2)) {
+            Present { value: g } => if g >= 1 { Present { value: FabricHeadAt { object: o, generation: g } } } else { none }
+            Absent => none
+          }
+      }
+    _ => none
+  }
+}
+
+fn decode_fault(ws: List<String>, i: Int, line: String) -> FabricStorageFault {
+  let detail = rest_from(ws: ws, i: i + 1)
+  match word_at(ws: ws, i: i) {
+    "missing" => match decode_ref(word: word_at(ws: ws, i: i + 1)) { Present { value: o } => FabricObjectMissing { object: o }  Absent => undecodable(line: line) }
+    "corrupt" => match decode_ref(word: word_at(ws: ws, i: i + 1)) { Present { value: o } => FabricObjectCorrupt { object: o, detail: nonempty_or(text: rest_from(ws: ws, i: i + 2), fallback: "unspecified") }  Absent => undecodable(line: line) }
+    "name" => FabricHeadNameRefused { name: nonempty_or(text: detail, fallback: "unnamed") }
+    "unreachable" => FabricStoreUnreachable { detail: nonempty_or(text: detail, fallback: "unspecified") }
+    "undecodable" => FabricReplyUndecodable { detail: nonempty_or(text: detail, fallback: "unspecified") }
+    "store-publish" => FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: nonempty_or(text: detail, fallback: "unspecified") } }
+    "store-malformed" => FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableMalformed { detail: nonempty_or(text: detail, fallback: "unspecified") } } }
+    "store-read-refused" => FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: nonempty_or(text: detail, fallback: "unspecified") } } }
+    "store-content-missing" => match content_hash_from_structural_digest(digest: detail) { Present { value: h } => FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableContentMissing { referenced: h } } }  Absent => undecodable(line: line) }
+    "store-bound" => match parse_int(s: detail) { Present { value: b } => FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableObservationBoundExceeded { bound: b } } }  Absent => undecodable(line: line) }
+    _ => undecodable(line: line)
+  }
+}
+
+fn fabric_storage_unwire_head(text: String) -> FabricHeadRead {
+  match wire_reply(text: text) {
+    Absent => FabricHeadReadRefused { fault: undecodable(line: text) }
+    Present { value: r } =>
+      if word_at(ws: r.words, i: 0) != "head" { FabricHeadReadRefused { fault: undecodable(line: r.line) } }
+      else if word_at(ws: r.words, i: 1) == "refused" { FabricHeadReadRefused { fault: decode_fault(ws: r.words, i: 2, line: r.line) } }
+      else {
+        match decode_reading(ws: r.words, i: 1) {
+          Present { value: rd } => FabricHeadObserved { reading: rd }
+          Absent => FabricHeadReadRefused { fault: undecodable(line: r.line) }
+        }
+      }
+  }
+}
+
+fn fabric_storage_unwire_put(text: String) -> FabricPut {
+  match wire_reply(text: text) {
+    Absent => FabricPutRefused { fault: undecodable(line: text) }
+    Present { value: r } =>
+      if word_at(ws: r.words, i: 0) != "put" { FabricPutRefused { fault: undecodable(line: r.line) } }
+      else if word_at(ws: r.words, i: 1) == "refused" { FabricPutRefused { fault: decode_fault(ws: r.words, i: 2, line: r.line) } }
+      else if word_at(ws: r.words, i: 1) == "stored" {
+        match decode_ref(word: word_at(ws: r.words, i: 2)) { Present { value: o } => FabricObjectStored { object: o }  Absent => FabricPutRefused { fault: undecodable(line: r.line) } }
+      } else { FabricPutRefused { fault: undecodable(line: r.line) } }
+  }
+}
+
+fn decode_expectation(ws: List<String>, i: Int) -> FabricHeadExpectation? {
+  match word_at(ws: ws, i: i) {
+    "absent" => Present { value: ExpectHeadAbsent }
+    "at" => match decode_ref(word: word_at(ws: ws, i: i + 1)) { Present { value: o } => Present { value: ExpectHeadAt { object: o } }  Absent => none }
+    _ => none
+  }
+}
+
+fn expectation_width(e: FabricHeadExpectation) -> Int {
+  match e { ExpectHeadAbsent => 1  ExpectHeadAt { object: _ } => 2 }
+}
+
+fn fabric_storage_unwire_advance(text: String) -> FabricHeadAdvance {
+  match wire_reply(text: text) {
+    Absent => FabricHeadAdvanceRefused { fault: undecodable(line: text) }
+    Present { value: r } =>
+      if word_at(ws: r.words, i: 0) != "advance" { FabricHeadAdvanceRefused { fault: undecodable(line: r.line) } }
+      else {
+        match word_at(ws: r.words, i: 1) {
+          "refused" => FabricHeadAdvanceRefused { fault: decode_fault(ws: r.words, i: 2, line: r.line) }
+          "advanced" =>
+            match decode_reading(ws: concat(["at"], r.words |> skip(n: 2)), i: 0) {
+              Present { value: FabricHeadAt { object: o, generation: g } } => FabricHeadAdvanced { object: o, generation: g }
+              _ => FabricHeadAdvanceRefused { fault: undecodable(line: r.line) }
+            }
+          "moved" =>
+            match decode_expectation(ws: r.words, i: 2) {
+              Absent => FabricHeadAdvanceRefused { fault: undecodable(line: r.line) }
+              Present { value: e } => {
+                let at = 2 + expectation_width(e: e)
+                if word_at(ws: r.words, i: at) != "observed" { FabricHeadAdvanceRefused { fault: undecodable(line: r.line) } }
+                else {
+                  match decode_reading(ws: r.words, i: at + 1) {
+                    Present { value: o } => FabricHeadMoved { expected: e, observed: o }
+                    Absent => FabricHeadAdvanceRefused { fault: undecodable(line: r.line) }
+                  }
+                }
+              }
+            }
+          _ => FabricHeadAdvanceRefused { fault: undecodable(line: r.line) }
+        }
+      }
+  }
+}
+
+// A CLOSURE REPLY IS CHECKED ON ARRIVAL, not trusted. Each carried object's ref is re-derived from
+// its bytes on this side, so an object cannot arrive under a name it does not hash to; and the
+// newest object must BE the head the reply names, so a carrier that dropped or substituted the tip
+// is refused. Deeper links are then joined by the caller's own walk (product.capacity.event_chain
+// chain_from_head), which refuses a hole by id.
+fn closure_stored(objs: List<FabricObject>) -> List<FabricStoredObject> {
+  map(objs, o => FabricStoredObject { object: fabric_object_ref_of(object: o), content: o })
+}
+
+fn closure_tip_matches(reading: FabricHeadReading, stored: List<FabricStoredObject>) -> Bool {
+  match reading {
+    FabricHeadAbsent => length(stored) == 0
+    FabricHeadAt { object: h, generation: _ } =>
+      match first(stored) { Present { value: s } => fabric_object_ref_eq(a: s.object, b: h)  Absent => false }
+  }
+}
+
+fn fabric_storage_unwire_closure(text: String) -> FabricClosureRead {
+  match wire_reply(text: text) {
+    Absent => FabricClosureRefused { fault: undecodable(line: text) }
+    Present { value: r } =>
+      if word_at(ws: r.words, i: 0) != "closure" { FabricClosureRefused { fault: undecodable(line: r.line) } }
+      else {
+        match word_at(ws: r.words, i: 1) {
+          "refused" => FabricClosureRefused { fault: decode_fault(ws: r.words, i: 2, line: r.line) }
+          "exhausted" =>
+            match decode_ref(word: word_at(ws: r.words, i: 2)) {
+              Absent => FabricClosureRefused { fault: undecodable(line: r.line) }
+              Present { value: a } => match parse_int(s: word_at(ws: r.words, i: 3)) { Present { value: b } => FabricClosureBudgetExhausted { at: a, bound: b }  Absent => FabricClosureRefused { fault: undecodable(line: r.line) } }
+            }
+          "read" =>
+            match decode_reading(ws: r.words, i: 2) {
+              Absent => FabricClosureRefused { fault: undecodable(line: r.line) }
+              Present { value: rd } =>
+                match fabric_objects_decode_stream(text: r.body, acc: []) {
+                  Absent => FabricClosureRefused { fault: undecodable(line: "closure body is not a stream of fabric objects") }
+                  Present { value: objs } => {
+                    let stored = closure_stored(objs: objs)
+                    if closure_tip_matches(reading: rd, stored: stored) { FabricClosureRead { reading: rd, newest_first: stored } }
+                    else { FabricClosureRefused { fault: undecodable(line: "closure body does not begin at the head it names") } }
+                  }
+                }
+            }
+          _ => FabricClosureRefused { fault: undecodable(line: r.line) }
+        }
+      }
+  }
+}
+
+// ── THE IDENTITY REPLY, decoded ──────────────────────────────────────────────────────────────
+// Read by the observing writer. A reply that is not this protocol, or whose identity words are not
+// `present <login>` / `absent`, is undecodable and names the line -- a served door of another
+// version answering something else is a skew, never an absent identity.
+type FabricIdentityRead
+  = FabricIdentityPresented { identity: TailnetIdentity }
+  | FabricIdentityUnproxied
+  | FabricIdentityReadRefused { fault: FabricStorageFault }
+
+fn fabric_storage_unwire_identity(text: String) -> FabricIdentityRead {
+  match wire_reply(text: text) {
+    Absent => FabricIdentityReadRefused { fault: undecodable(line: text) }
+    Present { value: r } =>
+      if text != r.line { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
+      else if word_at(ws: r.words, i: 0) != "identity" { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
+      else {
+        match word_at(ws: r.words, i: 1) {
+          "absent" => if length(r.words) == 2 { FabricIdentityPresented { identity: TailnetIdentityAbsent } } else { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
+          "present" =>
+            if length(r.words) == 3 && word_at(ws: r.words, i: 2) != "" { FabricIdentityPresented { identity: TailnetUser { login: word_at(ws: r.words, i: 2) as NonEmptyStr } } }
+            else { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
+          _ => FabricIdentityReadRefused { fault: undecodable(line: r.line) }
+        }
+      }
+  }
+}

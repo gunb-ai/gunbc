@@ -15,7 +15,7 @@ import gunbc.roadmap_authority {
   RoadmapAcceptanceEventHistoryLoadRefused,
   RoadmapAcceptanceReceiptsProjected,
   RoadmapAcceptanceReceiptsProjectionRefused,
-  withheld_node_ids_from_live_history,
+  withheld_node_ids_projection,
   WithheldNodeIdsProjected,
   WithheldNodeIdsProjectionRefused,
   active_roadmap_nodes_projection,
@@ -34,8 +34,7 @@ import gunbc.roadmap_authority {
   ProjectedRoadmapDependencyEdgesProjected,
   ProjectedRoadmapDependencyEdgesProjectionRefused,
   startable_nodes_missing_closing_contract_for_accepted,
-  frontier_sets_from_events,
-  frontier_sets_from_live_history,
+  frontier_sets_projection,
   FrontierSetsProjected,
   FrontierSetsProjectionRefused,
 }
@@ -149,14 +148,14 @@ fn active_edges() -> List<RoadmapEdge> {
 }
 
 fn live_accepted_node_ids() -> List<RoadmapNodeId>? {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjected { accepted: ids, withheld: _ } => Present { value: ids }
     FrontierSetsProjectionRefused { detail: _ } => Absent
   }
 }
 
 fn live_withheld_node_ids() -> List<RoadmapNodeId>? {
-  match withheld_node_ids_from_live_history() {
+  match withheld_node_ids_projection(history: roadmap_acceptance_event_history_load()) {
     WithheldNodeIdsProjected { ids: ids } => Present { value: ids }
     WithheldNodeIdsProjectionRefused { detail: _ } => Absent
   }
@@ -366,7 +365,7 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
 }
 
 test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
-  match roadmap_acceptance_receipts() {
+  match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {
     RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
     RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
       count(receipts) > 0
@@ -542,7 +541,7 @@ test fn witness_ambiguous_declared_node_refuses_remains_superseded_join() -> Boo
 }
 
 test fn witness_orphan_reopen_revocation_refuses_frontier_sets() -> Bool {
-  match frontier_sets_from_events(events: [
+  match frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoaded { events: [
     AcceptanceRevoked {
       exact_prior_receipt: receipt_fixture(
         node: "namespace-occurrence-transport",
@@ -553,7 +552,7 @@ test fn witness_orphan_reopen_revocation_refuses_frontier_sets() -> Bool {
       revoked_by: "operator" as NonEmptyStr,
       revoked_on: "2026-09-13" as NonEmptyStr,
     },
-  ]) {
+  ] }) {
     FrontierSetsProjectionRefused { detail } =>
       detail == "acceptance-history-unreplayable"
     FrontierSetsProjected { accepted: _, withheld: _ } => false
@@ -578,9 +577,9 @@ test fn witness_record_after_remains_superseded_on_superseded_line_refuses_front
         AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
           false
         AcceptanceRecorded { receipt } =>
-          match frontier_sets_from_events(events: concat(prior, [
+          match frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoaded { events: concat(prior, [
             AcceptanceRecorded { receipt: receipt },
-          ])) {
+          ]) }) {
             FrontierSetsProjectionRefused { detail } =>
               detail == concat("live-receipt-on-superseded-line:", "entry-graph-union-construction")
             FrontierSetsProjected { accepted: _, withheld: _ } => false
@@ -607,7 +606,7 @@ test fn witness_stale_criteria_digest_refuses_acceptance() -> Bool {
 }
 
 test fn witness_duplicate_receipts_refuse_acceptance() -> Bool {
-  match roadmap_acceptance_receipts() {
+  match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {
     RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
     RoadmapAcceptanceReceiptsProjected { receipts: all_receipts } => {
       let rs = all_receipts |> filter(r => r.node == "namespace-occurrence-transport")
@@ -1118,7 +1117,7 @@ test fn witness_fleet_state_frontier_authority_is_host_converge_carrier() -> Boo
 }
 
 test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
       match projected_roadmap_dependency_edges_projection() {
         ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>

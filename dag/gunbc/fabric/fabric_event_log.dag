@@ -2,35 +2,37 @@ module gunbc.fabric_event_log
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { Count, One }
+import std.measure { Count, One, Measure }
 import product.placement_supply { HostIdentity }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.fabric_db {
+import std.fabric_storage {
   FabricObject, FabricObjectRef, fabric_object_ref_of, fabric_object_ref_wire, fabric_object_ref_of_wire,
   FabricHeadAbsent, FabricHeadAt, ExpectHeadAbsent, ExpectHeadAt, FabricHeadExpectation,
-  FabricDbFault, fabric_db_fault_wire,
+  FabricStorageFault, fabric_storage_fault_wire,
   FabricObjectStored, FabricPutRefused, FabricHeadObserved, FabricHeadReadRefused,
   FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
   FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused, FabricStoredObject,
 }
-import gunbc.fabric_db_placement { fabric_db_placement, FabricDbPlaced, FabricDbUnplaced }
-import gunbc.fabric_db_client { FabricDbBinding, fabric_db_binding_for, fabric_db_head, fabric_db_put, fabric_db_advance, fabric_db_closure }
-import gunbc.fabric_db_file_store { fabric_db_file_root, fabric_db_file_root_ensure, FabricDbRootReady, FabricDbRootRefused }
-import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
+import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced }
+import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_binding_for, fabric_storage_head, fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady, FabricStorageRootRefused }
+import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at, PoolOutcome, PoolAdvanced, PoolRefused, pool_release, pool_refusal_wire }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
   event_parent_expectation, AppendDecision, AppendAdmitted, AppendStale, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_from_head,
+  EventDecode, EventDecoded, EventUndecodable,
 }
 import product.capacity.pool_events {
-  PoolEvent, pool_event_wire_text, pool_event_decode, PoolEventDecode, PoolEventDecoded, PoolEventUndecodable,
+  PoolEvent, pool_event_wire_text, pool_event_decode,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold, SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, grant_from_admission,
+  PoolReleased,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, release_law_eq, release_law_wire }
 
 // THE FABRIC EVENT LOG: THE CARRIER FOR EVERY CAPACITY TRANSACTION, REALIZED ON THE FABRIC DB.
 // One immutable object per event, addressed by its content; one named head per partition, advanced
-// by a compare-and-set on the expected head; no chain-wide head. The store is std.fabric_db, reached
-// through the binding gunbc.fabric_db_client derives for the executing host -- in process on the
+// by a compare-and-set on the expected head; no chain-wide head. The store is std.fabric_storage, reached
+// through the binding gunbc.fabric_storage_client derives for the executing host -- in process on the
 // placed host, over its served endpoint everywhere else. Nothing here names a host or a transport.
 //
 // THE PARENT IS A LINK THE STORE HOLDS. An event object links to its parent's object, derived from
@@ -42,14 +44,14 @@ import product.capacity.lease { LeasePolicy, LeaseGrant, release_law_eq, release
 //
 // CUTOVER (2026-09-19): partitions start empty in the fabric DB. Nothing is imported from the git log
 // -- this realization never derives state from the one it replaced -- and termed leases make the
-// drain sufficient: see docs/plans/fabric-db.md. The git repository is left read-only on its host as
+// drain sufficient: see docs/plans/fabric-storage.md. The git repository is left read-only on its host as
 // history and is consulted by nothing.
 
-// WHY A LOG OPERATION REFUSED, TYPED. A store fault carries std.fabric_db's arm unchanged, so an
+// WHY A LOG OPERATION REFUSED, TYPED. A store fault carries std.fabric_storage's arm unchanged, so an
 // unreachable store, a missing object, a corrupt object and a store refusal stay distinct all the way
 // to the consumer. A lost race is not here: it is EventAppendStale, an outcome with both heads.
 type EventLogRefusal
-  = EventLogStoreFault { fault: FabricDbFault }
+  = EventLogStoreFault { fault: FabricStorageFault }
   | EventLogParentMismatch
   | EventLogEventUndecodable { id: EventId, reason: String }
   | EventLogIdUnreadable { id: EventId }
@@ -57,7 +59,7 @@ type EventLogRefusal
 
 fn event_log_refusal_wire(cause: EventLogRefusal) -> String {
   match cause {
-    EventLogStoreFault { fault: f } => fabric_db_fault_wire(fault: f)
+    EventLogStoreFault { fault: f } => fabric_storage_fault_wire(fault: f)
     EventLogParentMismatch => "the event's parent is not the head the append expects"
     EventLogEventUndecodable { id: i, reason: why } => join(["event ", i as String, " undecodable: ", why], "")
     EventLogIdUnreadable { id: i } => join(["event id ", i as String, " is not an object ref"], "")
@@ -66,8 +68,8 @@ fn event_log_refusal_wire(cause: EventLogRefusal) -> String {
 }
 
 // WHERE THE LOG IS FROM THE EXECUTING HOST: the fabric DB binding for this executor.
-fn event_log_binding_for(executor: HostIdentity) -> FabricDbBinding {
-  fabric_db_binding_for(placement: fabric_db_placement(), executor: executor)
+fn event_log_binding_for(executor: HostIdentity) -> FabricStorageBinding {
+  fabric_storage_binding_for(placement: fabric_storage_placement(), executor: executor)
 }
 
 fn event_id_of(object: FabricObjectRef) -> EventId {
@@ -78,8 +80,8 @@ type EventObject
   = EventObjectBuilt { object: FabricObject }
   | EventObjectRefused { cause: EventLogRefusal }
 
-fn event_object(event: ChainEvent<PoolEvent>) -> EventObject {
-  let body = pool_event_wire_text(event: event)
+fn event_object<P>(event: ChainEvent<P>, encode: fn(ChainEvent<P>) -> String) -> EventObject {
+  let body = encode(event)
   if body == "" {
     EventObjectRefused { cause: EventLogEventEmpty }
   } else {
@@ -101,7 +103,7 @@ fn store_expectation(expected: HeadExpectation) -> FabricHeadExpectation? {
   }
 }
 
-fn log_head(reading: std.fabric_db.FabricHeadReading) -> HeadExpectation {
+fn log_head(reading: std.fabric_storage.FabricHeadReading) -> HeadExpectation {
   match reading {
     FabricHeadAbsent => HeadAbsent
     FabricHeadAt { object: o, generation: _ } => HeadAt { id: event_id_of(object: o) }
@@ -113,8 +115,8 @@ type HeadObservation
   = HeadObserved { head: HeadExpectation }
   | HeadObservationRefused { cause: EventLogRefusal }
 
-fn event_log_observe_head(store: FabricDbBinding, partition: PartitionId) -> HeadObservation {
-  match fabric_db_head(binding: store, name: partition as String as NonEmptyStr) {
+fn event_log_observe_head(store: FabricStorageBinding, partition: PartitionId) -> HeadObservation {
+  match fabric_storage_head(binding: store, name: partition as String as NonEmptyStr) {
     FabricHeadReadRefused { fault: f } => HeadObservationRefused { cause: EventLogStoreFault { fault: f } }
     FabricHeadObserved { reading: r } => HeadObserved { head: log_head(reading: r) }
   }
@@ -122,39 +124,54 @@ fn event_log_observe_head(store: FabricDbBinding, partition: PartitionId) -> Hea
 
 // READING A PARTITION: one closure from the head, each held object decoded as an event, and the
 // collected envelopes handed to the pure walk so the chain's shape is decided by one authority.
-type PartitionRead
-  = PartitionReadOk { head: HeadExpectation, walk: ChainWalk<PoolEvent> }
+// THE ONE READ BUDGET FOR A PARTITION CLOSURE: how many events a single read of any partition may
+// walk before it refuses as ChainBudgetExhausted. Owned here, beside the read it bounds, and
+// consumed by every reader of the log (the seat and quota transactions through the pool-event
+// read, the pair-serving authority and host-placement folds, the partition-read instrument), so a
+// bound that moves moves once.
+fn event_log_read_budget() -> Nat { 4096 }
+
+// THE LOG IS ONE CARRIER FOR EVERY PARTITION KIND. A partition's payload type and its codec are
+// the partition owner's (pool events here; the pair-serving authority and host placement in
+// gunbc.spark.pair_serving_authority_log), so the read and the append take the codec as a value:
+// one store walk, one put-and-advance, N payload types -- never a second log per kind.
+type PartitionRead<P>
+  = PartitionReadOk { head: HeadExpectation, walk: ChainWalk<P> }
   | PartitionReadRefused { cause: EventLogRefusal }
 
-type DecodeState {
-  envs: List<ChainEnvelope<PoolEvent>>
+type DecodeState<P> {
+  envs: List<ChainEnvelope<P>>
   refused: EventLogRefusal?
 }
 
-fn decode_envelopes(objects: List<FabricStoredObject>) -> DecodeState {
-  fold(objects, init: DecodeState { envs: [], refused: none }, f: (acc, s) =>
+fn decode_envelopes<P>(objects: List<FabricStoredObject>, decode: fn(String) -> EventDecode<P>) -> DecodeState<P> {
+  fold(objects, init: DecodeState { envs: [] as List<ChainEnvelope<P>>, refused: none }, f: (acc, s) =>
     match acc.refused {
       Present { value: _ } => acc
       Absent =>
-        match pool_event_decode(text: s.content.body as String) {
-          PoolEventUndecodable { reason: why } => DecodeState { envs: acc.envs, refused: Present { value: EventLogEventUndecodable { id: event_id_of(object: s.object), reason: why } } }
-          PoolEventDecoded { event: e } => DecodeState { envs: concat(acc.envs, [ChainEnvelope { id: event_id_of(object: s.object), event: e }]), refused: none }
+        match decode(s.content.body as String) {
+          EventUndecodable { reason: why } => DecodeState { envs: acc.envs, refused: Present { value: EventLogEventUndecodable { id: event_id_of(object: s.object), reason: why } } }
+          EventDecoded { event: e } => DecodeState { envs: concat(acc.envs, [ChainEnvelope { id: event_id_of(object: s.object), event: e }]), refused: none }
         }
     })
 }
 
-fn event_log_read_partition(store: FabricDbBinding, partition: PartitionId, budget: Nat) -> PartitionRead {
-  match fabric_db_closure(binding: store, name: partition as String as NonEmptyStr, bound: budget) {
+fn event_log_read_partition_with<P>(store: FabricStorageBinding, partition: PartitionId, budget: Nat, decode: fn(String) -> EventDecode<P>) -> PartitionRead<P> {
+  match fabric_storage_closure(binding: store, name: partition as String as NonEmptyStr, bound: budget) {
     FabricClosureRefused { fault: f } => PartitionReadRefused { cause: EventLogStoreFault { fault: f } }
     FabricClosureBudgetExhausted { at: a, bound: _ } => PartitionReadOk { head: HeadAt { id: event_id_of(object: a) }, walk: ChainBudgetExhausted { at: event_id_of(object: a) } }
     FabricClosureRead { reading: r, newest_first: xs } => {
-      let d = decode_envelopes(objects: xs)
+      let d = decode_envelopes(objects: xs, decode: decode)
       match d.refused {
         Present { value: c } => PartitionReadRefused { cause: c }
         Absent => PartitionReadOk { head: log_head(reading: r), walk: chain_from_head(envs: d.envs, head: log_head(reading: r), budget: budget) }
       }
     }
   }
+}
+
+fn event_log_read_partition(store: FabricStorageBinding, partition: PartitionId, budget: Nat) -> PartitionRead<PoolEvent> {
+  event_log_read_partition_with(store: store, partition: partition, budget: budget, decode: fn(t) { pool_event_decode(text: t) })
 }
 
 // APPEND: put the event's object, then advance the partition head from the expected one. The store
@@ -167,20 +184,20 @@ type EventAppend
   | EventAppendStale { expected: HeadExpectation, observed: HeadExpectation }
   | EventAppendRefused { cause: EventLogRefusal }
 
-fn event_log_append(store: FabricDbBinding, partition: PartitionId, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> EventAppend {
+fn event_log_append_with<P>(store: FabricStorageBinding, partition: PartitionId, event: ChainEvent<P>, expected: HeadExpectation, encode: fn(ChainEvent<P>) -> String) -> EventAppend {
   if !head_expectation_eq(a: event_parent_expectation(e: event), b: expected) {
     EventAppendRefused { cause: EventLogParentMismatch }
   } else {
-    match event_object(event: event) {
+    match event_object(event: event, encode: encode) {
       EventObjectRefused { cause: c } => EventAppendRefused { cause: c }
       EventObjectBuilt { object: object } =>
         match store_expectation(expected: expected) {
           Absent => EventAppendRefused { cause: match expected { HeadAt { id: i } => EventLogIdUnreadable { id: i }  HeadAbsent => EventLogParentMismatch } }
           Present { value: x } =>
-            match fabric_db_put(binding: store, object: object) {
+            match fabric_storage_put(binding: store, object: object) {
               FabricPutRefused { fault: f } => EventAppendRefused { cause: EventLogStoreFault { fault: f } }
               FabricObjectStored { object: r } =>
-                match fabric_db_advance(binding: store, name: partition as String as NonEmptyStr, expected: x, target: r) {
+                match fabric_storage_advance(binding: store, name: partition as String as NonEmptyStr, expected: x, target: r) {
                   FabricHeadAdvanced { object: o, generation: _ } => EventAppended { id: event_id_of(object: o) }
                   FabricHeadMoved { expected: _, observed: now } => EventAppendStale { expected: expected, observed: log_head(reading: now) }
                   FabricHeadAdvanceRefused { fault: f } => EventAppendRefused { cause: EventLogStoreFault { fault: f } }
@@ -189,6 +206,10 @@ fn event_log_append(store: FabricDbBinding, partition: PartitionId, event: Chain
         }
     }
   }
+}
+
+fn event_log_append(store: FabricStorageBinding, partition: PartitionId, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> EventAppend {
+  event_log_append_with(store: store, partition: partition, event: event, expected: expected, encode: fn(e) { pool_event_wire_text(event: e) })
 }
 
 // THE SEAT TRANSACTION, WET AND BOUNDED: read, fold, propose, append; a stale append re-reads and
@@ -223,13 +244,20 @@ type SeatAttemptState {
 // and take a reading. Every step is the one seat_attempt already runs, which is what keeps this a
 // second QUESTION rather than a second authority -- there is no separate notion here of what a seat
 // is or when a pool is full.
-type SeatStandingObservation
-  = SeatRoomObserved { headroom: Nat, generation: Nat }
+// THE HEADROOM CARRIES ITS DIMENSION, AND THIS PR IS WHY IT HAS TO. A bare Nat was legitimate while
+// this fold was fixed at Pool<Count, One>: seats are dimensionless and the field meant seats. The
+// generalization to Pool<Q, S> above made the same field mean KiB for a memory pool and seats for a
+// seat pool, with nothing in the type to say which -- so the unit moved into the consumer's head and
+// into rendered strings, which is the unit modeled twice and checked nowhere (review 69624). The
+// earliest unjustified boundary is this declaration, not its consumers, and it is one this change
+// moved itself (DESIGN 6b).
+type SeatStandingObservation<Q, S>
+  = SeatRoomObserved { headroom: Measure<Q, S, Nat>, generation: Nat }
   | SeatFullObserved { generation: Nat }
   | SeatStandingUnobserved { step: String, reason: String }
   | SeatStandingStoreRefused { cause: EventLogRefusal }
 
-fn fabric_seat_observe(store: FabricDbBinding, partition: PartitionId, root: Pool<Count, One>, at: EpochSecs, budget: Nat) -> SeatStandingObservation {
+fn fabric_seat_observe<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, at: EpochSecs, budget: Nat) -> SeatStandingObservation<Q, S> {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => SeatStandingStoreRefused { cause: c }
     PartitionReadOk { head: _, walk: walk } =>
@@ -247,7 +275,7 @@ fn fabric_seat_observe(store: FabricDbBinding, partition: PartitionId, root: Poo
                 PoolReadingRefused { at: t, anchor: a } =>
                   SeatStandingUnobserved { step: "reading", reason: join(["instant ", to_string(t), " precedes the pool anchor ", to_string(a)], "") }
                 PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } =>
-                  if h.count > 0 { SeatRoomObserved { headroom: h.count, generation: g } }
+                  if h.count > 0 { SeatRoomObserved { headroom: h, generation: g } }
                   else { SeatFullObserved { generation: g } }
               }
           }
@@ -255,7 +283,7 @@ fn fabric_seat_observe(store: FabricDbBinding, partition: PartitionId, root: Poo
   }
 }
 
-fn seat_attempt(store: FabricDbBinding, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, budget: Nat, attempt: Nat) -> SeatAcquisition? {
+fn seat_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest<Q, S>, policy: LeasePolicy, budget: Nat, attempt: Nat) -> SeatAcquisition? {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => Present { value: SeatStoreRefused { cause: c, attempts_used: attempt } }
     PartitionReadOk { head: head, walk: walk } =>
@@ -293,7 +321,7 @@ fn seat_attempt(store: FabricDbBinding, partition: PartitionId, root: Pool<Count
 // and the drift is invisible because each side is internally consistent. A mismatch is refused before
 // anything is appended rather than resolved in favour of either side: neither is authoritative over
 // the other, and picking one silently would be the same fail-open in a different costume.
-fn fabric_seat_acquire(store: FabricDbBinding, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
+fn fabric_seat_acquire<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, actor: NonEmptyStr, request: SeatRequest<Q, S>, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
   if !release_law_eq(left: root.release_law, right: policy.release_law) {
     SeatAcquireRefused {
       step: "release-law",
@@ -317,6 +345,164 @@ fn fabric_seat_acquire(store: FabricDbBinding, partition: PartitionId, root: Poo
   }
 }
 
+// APPENDING A POOL EVENT THAT IS NOT AN ACQUISITION -- a settlement or a release -- against the
+// partition's current head, re-observing and retrying while the head moves under it.
+//
+// WHY IT IS HERE AND NOT AT EACH CALLER. Acquisition already lived here because it has to fold the
+// pool to decide; settlement and release decide nothing, so each caller wrote its own
+// observe/append/retry loop and gunbc.fabric_quota had the only copy. A second consumer
+// (gunbc.compute.host_capacity, releasing a compute reservation) would have made it two spellings
+// of one transaction, free to disagree about how many times a contended head is retried -- so the
+// loop moves to the carrier that owns partition appends and both consumers call it.
+//
+// A RELEASE THAT LOSES ITS RACE IS RETRIED, NEVER ASSUMED. Nothing here reports a success it did
+// not observe: exhausting the attempts is its own arm, and a caller holding it still holds the
+// reservation.
+type PoolEventAppend
+  = PoolEventAppended { id: EventId }
+  | PoolEventContended { attempts: Nat }
+  | PoolEventAppendRefused { detail: String }
+
+type PoolEventAttemptState {
+  done: PoolEventAppend?
+}
+
+fn pool_event_append_attempt(store: FabricStorageBinding, partition: PartitionId, actor: NonEmptyStr, at: EpochSecs, payload: PoolEvent) -> PoolEventAppend? {
+  match event_log_observe_head(store: store, partition: partition) {
+    HeadObservationRefused { cause: c } => Present { value: PoolEventAppendRefused { detail: event_log_refusal_wire(cause: c) } }
+    HeadObserved { head: head } =>
+      match event_log_append(
+        store: store,
+        partition: partition,
+        event: ChainEvent {
+          partition: partition,
+          parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+          recorded_at: at,
+          actor: actor,
+          payload: payload,
+        },
+        expected: head,
+      ) {
+        EventAppended { id: h } => Present { value: PoolEventAppended { id: h } }
+        EventAppendStale { expected: _, observed: _ } => none
+        EventAppendRefused { cause: c } => Present { value: PoolEventAppendRefused { detail: event_log_refusal_wire(cause: c) } }
+      }
+  }
+}
+
+fn fabric_pool_event_append(store: FabricStorageBinding, partition: PartitionId, actor: NonEmptyStr, at: EpochSecs, payload: PoolEvent, attempts: Nat) -> PoolEventAppend {
+  let st = fold(nat_range_inclusive(lo: 1, hi: attempts), init: PoolEventAttemptState { done: none }, f: (acc, _i) =>
+    match acc.done {
+      Present { value: _ } => acc
+      Absent => PoolEventAttemptState { done: pool_event_append_attempt(store: store, partition: partition, actor: actor, at: at, payload: payload) }
+    })
+  match st.done {
+    Present { value: d } => d
+    Absent => PoolEventContended { attempts: attempts }
+  }
+}
+
+fn pool_event_append_wire(a: PoolEventAppend) -> String {
+  match a {
+    PoolEventAppended { id: h } => join(["appended ", h as String], "")
+    PoolEventContended { attempts: n } => join(["contended after ", to_string(n), " attempts"], "")
+    PoolEventAppendRefused { detail: d } => join(["refused ", d], "")
+  }
+}
+
+// RELEASING A SEAT, AND IT IS CHECKED AGAINST THE FOLDED POOL BEFORE ANYTHING IS APPENDED.
+//
+// fabric_pool_event_append is unchecked by construction -- it writes the event a caller hands it --
+// which is correct for a settlement whose amount the caller already knows and WRONG for a release,
+// because a release names a reference the ledger may not be holding. An unheld reference appended
+// anyway does not fail at the append: it fails at the next READ, when pool_fold reaches the event,
+// gets UnknownEncumbrance, and answers PoolFoldRefused for the WHOLE PARTITION. One mistyped
+// reference in a recovery command would make a host's capacity ledger permanently unreadable, and
+// the damage would surface at an unrelated caller's next acquire.
+//
+// So this is the mirror of fabric_seat_acquire and not of the settlement helper: read the partition,
+// fold it, PROPOSE the release against the folded pool, and append only what the pool admits. A
+// reference the pool is not holding is a typed refusal that writes nothing.
+//
+// ITS CONSUMER IS gunbc.compute.host_capacity compute_release_on, which every compute settlement
+// reaches when a run ends and its unit is proven gone. Under QuiescenceRequired a term never frees
+// capacity, so an explicit release is the ONLY way a seat comes back.
+//
+// AN OPERATOR-FACING RECOVERY DOOR IS NOT AMONG ITS CONSUMERS, and this annotation said it was
+// until review 69645 caught the citation naming two symbols that do not exist -- they were removed
+// when the compute lifecycle was split out, and the comment was not. A citation that does not
+// resolve is a citation defect (DESIGN 3), and worse here because host_capacity's own annotation
+// states the opposite. Discharging a seat whose release did not land is the capability named by
+// gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge; when it lands it
+// will reach this same function, which is why the check below is built to serve a caller that did
+// not take the reservation.
+type SeatRelease
+  = SeatReleased { reference: NonEmptyStr, id: EventId }
+  | SeatNotHeld { reference: NonEmptyStr, wire: String }
+  | SeatReleaseContended { attempts: Nat }
+  | SeatReleaseRefused { step: String, reason: String }
+
+type SeatReleaseState {
+  done: SeatRelease?
+}
+
+fn seat_release_attempt<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, reference: NonEmptyStr, reason: NonEmptyStr, at: EpochSecs, budget: Nat) -> SeatRelease? {
+  match event_log_read_partition(store: store, partition: partition, budget: budget) {
+    PartitionReadRefused { cause: c } => Present { value: SeatReleaseRefused { step: "store", reason: event_log_refusal_wire(cause: c) } }
+    PartitionReadOk { head: head, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } => Present { value: SeatReleaseRefused { step: "chain", reason: join(["partition chain is missing event ", m as String], "") } }
+        ChainBudgetExhausted { at: a } => Present { value: SeatReleaseRefused { step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], "") } }
+        ChainWalked { oldest_first: xs } =>
+          match pool_fold(root: root, oldest_first: xs) {
+            PoolFoldRefused { at_event: e, wire: w } => Present { value: SeatReleaseRefused { step: "fold", reason: join(["event ", e as String, " refused: ", w], "") } }
+            PoolFolded { pool: p, generation: _ } =>
+              match pool_release(pool: p, reference: reference, reason: reason, at: at) {
+                PoolRefused { refusal: r } => Present { value: SeatNotHeld { reference: reference, wire: pool_refusal_wire(r: r) } }
+                PoolAdvanced { pool: _ } =>
+                  match event_log_append(
+                    store: store,
+                    partition: partition,
+                    event: ChainEvent {
+                      partition: partition,
+                      parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+                      recorded_at: at,
+                      actor: reference,
+                      payload: PoolReleased { reference: reference, reason: reason },
+                    },
+                    expected: head,
+                  ) {
+                    EventAppended { id: h } => Present { value: SeatReleased { reference: reference, id: h } }
+                    EventAppendStale { expected: _, observed: _ } => none
+                    EventAppendRefused { cause: c } => Present { value: SeatReleaseRefused { step: "store", reason: event_log_refusal_wire(cause: c) } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn fabric_seat_release<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, reference: NonEmptyStr, reason: NonEmptyStr, at: EpochSecs, attempts: Nat, budget: Nat) -> SeatRelease {
+  let st = fold(nat_range_inclusive(lo: 1, hi: attempts), init: SeatReleaseState { done: none }, f: (acc, _i) =>
+    match acc.done {
+      Present { value: _ } => acc
+      Absent => SeatReleaseState { done: seat_release_attempt(store: store, partition: partition, root: root, reference: reference, reason: reason, at: at, budget: budget) }
+    })
+  match st.done {
+    Present { value: d } => d
+    Absent => SeatReleaseContended { attempts: attempts }
+  }
+}
+
+fn seat_release_wire(r: SeatRelease) -> String {
+  match r {
+    SeatReleased { reference: ref_, id: h } => join(["released ", ref_ as String, " at ", h as String], "")
+    SeatNotHeld { reference: ref_, wire: w } => join(["the pool is not holding ", ref_ as String, ": ", w], "")
+    SeatReleaseContended { attempts: n } => join(["contended after ", to_string(n), " attempts"], "")
+    SeatReleaseRefused { step: s, reason: why } => join(["refused at ", s, ": ", why], "")
+  }
+}
+
 fn seat_acquisition_wire(a: SeatAcquisition) -> String {
   match a {
     SeatGranted { grant: g, generation: gen, attempts_used: n } => join(["granted ", g.reference as String, " fence=", g.fence.grant as String, "@", to_string(gen), " expires_at=", to_string(g.expires_at), " attempt=", to_string(n)], "")
@@ -330,13 +516,13 @@ fn seat_acquisition_wire(a: SeatAcquisition) -> String {
 // THE STORE ENSURE, run ON the placed host: the fabric DB's two areas under its placement root.
 // The root's parent, ownership and mode are the substrate's obligation; a missing or unwritable
 // parent refuses.
-fn fabric_db_placement_ensure_wet() -> ProcessExit {
-  match fabric_db_placement() {
-    FabricDbUnplaced => exit_failure(reason: "fabric DB placement ensure refused: the fabric DB is unplaced")
-    FabricDbPlaced { host: _, store_root: r, endpoint: _ } =>
-      match fabric_db_file_root_ensure(root: fabric_db_file_root(root: r)) {
-        FabricDbRootReady => ExitSuccess
-        FabricDbRootRefused { area: a, detail: why } => exit_failure(reason: join(["fabric DB placement ensure refused at ", a, ": ", why], ""))
+fn fabric_storage_placement_ensure_wet() -> ProcessExit {
+  match fabric_storage_placement() {
+    FabricStorageUnplaced => exit_failure(reason: "fabric DB placement ensure refused: the fabric DB is unplaced")
+    FabricStoragePlaced { host: _, store_root: r, endpoint: _ } =>
+      match fabric_storage_file_root_ensure(root: fabric_storage_file_root(root: r)) {
+        FabricStorageRootReady => ExitSuccess
+        FabricStorageRootRefused { area: a, detail: why } => exit_failure(reason: join(["fabric DB placement ensure refused at ", a, ": ", why], ""))
       }
   }
 }

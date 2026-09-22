@@ -1,12 +1,16 @@
 module v2.std.lens_verdict
 
+import std.occurrence_identity { OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import v2.std.algebra { fold_list }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic {
   ByteRange,
   CorrectionNotModeled,
+  DeclarationLocus,
   Diagnostic,
   Extent,
   NodeLocus,
+  NonEmptyDiagnostics,
   InvariantPortLocus,
   SourcePortLocus,
   Textual,
@@ -15,7 +19,11 @@ import v2.std.diagnostic {
   textual_whole_file_diagnostic,
 }
 import v2.std.integer { integer_int_to_decimal_string }
-import v2.std.node { Symbol }
+import extdeps.languages.json.emit { quote_json_string }
+import v2.std.node { Node, Symbol }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
 
 // LensVerdict is the shared fail-closed lattice for lenses that have not yet specialized to a
@@ -64,6 +72,7 @@ fn lens_verdict_diagnostic_locus_module(d: Diagnostic) -> String {
     NodeLocus { anchor: _ } => ""
     SourcePortLocus { anchor: _, file: module_file, extent: _ } => symbol_lexeme(sym: module_file)
     InvariantPortLocus { anchor: _, invariant: _ } => ""
+    DeclarationLocus { declaration: _ } => ""
   }
 }
 
@@ -80,14 +89,75 @@ fn lens_verdict_extent_text(e: Extent) -> String {
   }
 }
 
+// A NODE LOCUS NAMES AN OCCURRENCE, AND THE OCCURRENCE IS WHAT THE READER GETS. The arm used to
+// render "<node locus, no file>", which is true and useless: the anchor node carries its
+// occurrence identity (std.occurrence_identity, the keying home DESIGN section 3b names for
+// occurrence identity within one source graph), so the position the failing stage established
+// was in hand and was rendered as its own absence. The ordinal is the parser's, scoped to the
+// source graph that minted it; resolving it to a byte range needs that graph's SpanIndex, which
+// the stages past parse do not carry -- so this renders the identity the diagnostic HAS rather
+// than fabricating a file it does not.
+//
+// AN ATOM ANCHOR ALSO NAMES ITS SYMBOL. When the anchor is an atom -- a bare reference, the node a
+// resolver refusal is located at -- its identity is in the node the diagnostic already carries,
+// and the persisted row keeps it; rendering only the ordinal dropped the one word a reader needs
+// ("which symbol was ambiguous?") on the text surface while the JSON row still had it. Composite
+// anchors carry no single name and render as before. Whether a node is an atom, and which, is
+// `v2.std.grammar` `node_atom_identity_optional`'s question -- asked there, not re-destructured here.
+//
+// THE SPELLING IS QUOTED BY ONE LOSSLESS AUTHORITY, NOT PASTED (side-chat hold on gunbc#12004). A
+// symbol's lexeme is any string: pasted between delimiters, an embedded delimiter breaks the
+// quoting and a newline or ESC goes onto the operator's line raw. `extdeps.languages.json.emit`
+// `quote_json_string` is the repository's modeled RFC 8259 string quotation -- total, lossless and
+// unambiguous (backslash and quote escaped, every control character a visible escape) -- so the
+// atom renders as a JSON string literal and no second escaping rule is written here.
+fn lens_verdict_node_atom_suffix(node: Node) -> String {
+  match node_atom_identity_optional(node: node) {
+    Present { value: identity } => concat(" ", quote_json_string(s: symbol_lexeme(sym: identity)))
+    Absent => ""
+  }
+}
+
+fn lens_verdict_node_occurrence_text(node: Node) -> String {
+  let atom = lens_verdict_node_atom_suffix(node: node)
+  match node.occurrence_id {
+    OccurrenceSynthetic => concat("<synthetic node occurrence", concat(atom, ">"))
+    OccurrenceMinted { id: id } =>
+      concat("<node occurrence #", concat(integer_int_to_decimal_string(value: id.value), concat(atom, ">")))
+    OccurrenceProjected { id: id, caused_by: _ } =>
+      concat("<projected node occurrence #", concat(integer_int_to_decimal_string(value: id.value), concat(atom, ">")))
+  }
+}
+
 fn lens_verdict_diagnostic_locus_text(d: Diagnostic) -> String {
   match d.at {
     Textual { file: f, extent: e } =>
       concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
     SourcePortLocus { anchor: _, file: f, extent: e } =>
       concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
-    NodeLocus { anchor: _ } => "<node locus, no file>"
+    NodeLocus { anchor: a } => lens_verdict_node_occurrence_text(node: a.at)
     InvariantPortLocus { anchor: _, invariant: inv } =>
       concat("<invariant ", concat(symbol_lexeme(sym: inv), ">"))
+    DeclarationLocus { declaration: declaration } =>
+      concat("declaration ", qualified_name_to_dotted_string(qn: declaration))
   }
+}
+
+// ONE DIAGNOSTIC, LOCATED: "reason @ locus". The reason alone was what every boundary that
+// summarized a refusal kept, and the locus is what each of them dropped.
+fn lens_verdict_diagnostic_located_text(d: Diagnostic) -> String {
+  concat(symbol_lexeme(sym: d.reason), concat(" @ ", lens_verdict_diagnostic_locus_text(d: d)))
+}
+
+// THE WHOLE CHAIN, EACH LINK LOCATED, IN CARRIAGE ORDER. The last link is the cause that
+// refused (rejected_with_pending prepends advisories, so the fatal diagnostic is the tail);
+// the earlier links are what rode along -- advisories, and for an ambiguous reference the
+// lookup class and each competing declaration. Rendering only the fatal would drop exactly
+// the detail those links exist to carry.
+fn lens_verdict_diagnostics_located_chain_text(d: NonEmptyDiagnostics) -> String {
+  fold_list(
+    xs: d.tail,
+    empty: lens_verdict_diagnostic_located_text(d: d.head),
+    cons: fn(acc, diag) { concat(acc, concat(" -> ", lens_verdict_diagnostic_located_text(d: diag))) }
+  )
 }

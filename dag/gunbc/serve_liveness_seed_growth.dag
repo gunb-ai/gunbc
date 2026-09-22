@@ -1,0 +1,52 @@
+module gunbc.serve_liveness_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.seed_growth { SeedGrowthJustification }
+import gunbc.roadmap_model { RoadmapNodeId }
+
+// ── HAND-AUTHORED SEED RUST FOR THE OUT-OF-EVALUATOR LIVENESS ENDPOINT ──────────────────────
+// THE ROW EXISTS BECAUSE THE CHANGE WAS ADMITTED WITHOUT ONE, WHICH IS THE UNTRACKED STALL DESIGN
+// section 4b(2) forbids (review 68121). About forty-five lines of hand Rust entered
+// v1_compiler.cli_run's serve loop with two constants that knowingly duplicate declarations this
+// corpus already owns, and the reason was argued at length in annotations while the TRIGGER -- the
+// capability under which the branch stops being hand Rust -- was named nowhere. A reason without a
+// trigger is a retention, not a debt.
+//
+// THE PURPOSE ADMISSION IS THE HONEST WEAK POINT AND IS STATED AS ONE. gunbc.v1_maintenance_standing
+// v1_seed_standing admits a v1 change when it serves the v2 self-host program, and this serves the
+// deployed serving product: an operator's ability to ask a swapped or wedged process which release
+// it is. It is admitted as an OPERATOR AVAILABILITY obligation under the 2026-09-19 side-chat
+// ruling and the earlier #11557 request, not as self-host work, and that distinction is recorded
+// here rather than blurred -- v1_seed_standing's own standing danger is that an active-maintenance
+// arm becomes an absorbing one when every proposal classifies as admissible.
+//
+// WHY IT CANNOT BE MODELED WHERE IT IS CONSUMED. The endpoint's entire value is that it answers
+// BEFORE the evaluator is entered, from values validated before the listener bound. A `.dag` fold
+// producing the document would have to be evaluated, which is the dependency the endpoint exists to
+// remove, and the first cut of this work proved the failure mode: it declared the document in
+// `.dag`, the seed forked it, the `.dag` side had no consumer, and the claim over the shape
+// asserted against bytes nobody served (review 68036). What is modeled instead is the READER,
+// gunbc.serve_liveness observe_serve_liveness, which executes over what this branch writes.
+data serve_liveness_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "SERVE_LIVENESS_PATH",
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "SERVE_LIVENESS_REVISION_KEY",
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "handle_serve",
+      field: WholeDeclaration,
+    },
+  ],
+  reason: "OPERATOR AVAILABILITY admission, NOT a self-host admission, and recorded as the weaker class it is (side-chat ruling 2026-09-19; request #11557). Boot 15 refused on an approval status poll because the roadmap serve process was swapped and OOM-killed, and every route that could have reported it sat inside the evaluator that could not run -- so a health answer reachable only through evaluation reports healthy or nothing, and nothing is indistinguishable from a dead host. Classified against the five refused v1 classes: NewLanguageBehavior -- no, no compiler semantics change; NewCompatibilityObligation -- no predecessor route is retained; NewEscapeHatchOrAdmissionRow -- no, the branch answers one literal path and every other request reaches the evaluator unchanged; SeedFeatureCompletion -- no; PublicSurfaceGrowth -- YES, one served path on every `gunbc serve` process. The two constants DUPLICATE declarations this corpus owns -- gunbc.serve_liveness serve_liveness_path and gunbc.running_release_identity running_release_revision_key -- and that duplication is the debt, not an oversight: no fold can run at this seam, which is the same two-boundary arrangement release_revision_text_valid already carries. The document's READER is modeled and consumed (gunbc.serve_liveness observe_serve_liveness, called by gunbc.live_deploy.apply through the cutover's stage-2 discharge), so the pair is one producer and one executing reader rather than two producers.",
+  owning_dissolution_lane: "v1-zero-hand-maintained-rust" as RoadmapNodeId,
+  trigger: "Delete these declarations and this justification when a served process can answer a request WITHOUT ENTERING THE EVALUATOR from a modeled description of that route -- that is, when the serve seam takes its pre-evaluation route table (path, status, and the document's members) as a compiled value produced by the graph at process start, so this path and this member name are read from gunbc.serve_liveness and gunbc.running_release_identity rather than restated. SUFFICIENT FOR: the seam renders this exact document, byte for byte, with no path literal and no member-name literal in hand Rust, and a second out-of-evaluator route can be added as a row rather than as a branch. A native serve entry that still hand-writes this branch does NOT retire the row, and neither does deleting the endpoint without replacing the capability.",
+  current_boundary: "src/v1/stage0/src/cli_run.rs handle_serve: one `method == GET && path == SERVE_LIVENESS_PATH` arm ahead of the evaluator dispatch, writing a format! document from the validated release revision, the armed contract's entry and the bound address; no `.dag` evaluation and no budget arming on that path",
+}

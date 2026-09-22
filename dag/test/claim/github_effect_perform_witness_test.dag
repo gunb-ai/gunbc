@@ -1,0 +1,130 @@
+module test.claim.github_effect_perform_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.integer { UInt8 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization }
+import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
+import extdeps.tools.openssl { openssl_signature_of, OpensslSigned, OpensslSignRefused }
+import extdeps.github.actions_jit_runner { JitConfigCreatedBody, JitConfigCreatedRunner }
+import extdeps.transports.rest {
+  RestOk, RestStatusRefused, RestTransportRefused, RestExchangeCommitAmbiguous,
+}
+import gunbc.runner.runner_jit_perform {
+  JitCredentialBoundToAttempt, JitCredentialMintNotCreated, JitCredentialNotDispatched,
+}
+import gunbc.github_effect_perform {
+  jit_mint_performance_of_generate, perform_organization_jit_mint,
+  JitMintReceived, JitMintStepNotSucceeded, GenerateJitConfigStep,
+  JitMintAppKeyNotCustodied, lifecycle_controller_app,
+}
+import gunbc.auth.github_apps { gunbai_bot_declared }
+import test.claim.github_app_registry { dispatched, runner_grant }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// RFC 7515 appendix A's header differs from ours only in alg; this golden is base64url of
+// {"alg":"RS256","typ":"JWT"} computed outside this tree (`base64 | tr '+/' '-_' | tr -d =`), so a
+// padded, standard-alphabet or re-ordered header goes red.
+data rs256_jwt_header_b64url: String = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9"
+
+test fn witness_jws_signing_input_leads_with_the_rs256_header_unpadded() -> Bool {
+  let input = jws_rs256_signing_input(payload_json: "x") as String
+  starts_with(s: input, prefix: concat(rs256_jwt_header_b64url, "."))
+}
+
+// 0xFB 0xFF is "+/8=" in the standard alphabet and "-_8" in base64url: one input that goes red for
+// the wrong alphabet AND for kept padding, which are the two ways a signature segment is mis-encoded.
+test fn witness_jws_signature_segment_is_base64url_without_padding() -> Bool {
+  let compact = jws_compact_serialization(signing_input: "h.p", signature: [251, 255]) as String
+  compact == "h.p.-_8"
+}
+
+test fn witness_app_jwt_claims_backdate_iat_bound_exp_and_name_the_app() -> Bool {
+  github_app_jwt_claims_json(app_id: 2653532, now_epoch_secs: 1000)
+    == "\{\"iat\":940,\"exp\":1540,\"iss\":\"2653532\"}"
+}
+
+// BOTH OpenSSL RENDERINGS decode to the same octets; a refusal from the process, a missing
+// separator and a non-hex digit each refuse rather than yielding a guessed signature.
+test fn witness_openssl_hex_signature_decodes_both_renderings_and_refuses_the_rest() -> Bool {
+  let v3 = match openssl_signature_of(exit_code: 0, stdout: "RSA-SHA2-256(stdin)= 0aff\n", stderr: "") {
+    OpensslSigned { octets: o } => o == [10, 255]
+    OpensslSignRefused { exit_code: _, detail: _ } => false
+  }
+  let v1 = match openssl_signature_of(exit_code: 0, stdout: "(stdin)= 0aff", stderr: "") {
+    OpensslSigned { octets: o } => o == [10, 255]
+    OpensslSignRefused { exit_code: _, detail: _ } => false
+  }
+  let failed = match openssl_signature_of(exit_code: 1, stdout: "", stderr: "Could not open file") {
+    OpensslSignRefused { exit_code: 1, detail: _ } => true
+    _ => false
+  }
+  let unseparated = match openssl_signature_of(exit_code: 0, stdout: "0aff", stderr: "") {
+    OpensslSignRefused { exit_code: _, detail: _ } => true
+    OpensslSigned { octets: _ } => false
+  }
+  let not_hex = match openssl_signature_of(exit_code: 0, stdout: "(stdin)= zz", stderr: "") {
+    OpensslSignRefused { exit_code: _, detail: _ } => true
+    OpensslSigned { octets: _ } => false
+  }
+  v3 && v1 && failed && unseparated && not_hex
+}
+
+data created_body: JitConfigCreatedBody = JitConfigCreatedBody {
+  runner: JitConfigCreatedRunner { id: 4242 },
+  encoded_jit_config: "ZmFrZS1qaXQtY29uZmln",
+}
+
+// THE GENERATE STEP'S THREE ANSWERS, supplied rather than fetched (DESIGN §3: this witness is about
+// the decision, and the dispatch fixture is test.claim.github_app_registry's, not re-derived here).
+// A 201 delivers bound to the dispatched attempt with the registration id; a 409 GitHub decided is
+// a not-created refusal; a POST that never answered is commit-ambiguous and is NOT a refusal,
+// because GitHub may have created the registration.
+test fn witness_generate_step_delivers_refuses_or_reports_ambiguity_by_what_github_answered() -> Bool {
+  let d = dispatched(owned: true, perms: runner_grant)
+  let delivered = match jit_mint_performance_of_generate(dispatch: d, outcome: RestOk, created: created_body) {
+    JitMintReceived { delivery: JitCredentialBoundToAttempt { attempt: _, credential: c, runner_id: id } } =>
+      (c.encoded as String) == "ZmFrZS1qaXQtY29uZmln" && id == 4242
+    _ => false
+  }
+  let conflicted = match jit_mint_performance_of_generate(
+    dispatch: d,
+    outcome: RestStatusRefused { status: 409, body: "Already exists" },
+    created: created_body,
+  ) {
+    JitMintReceived { delivery: JitCredentialMintNotCreated { outcome: _ } } => true
+    _ => false
+  }
+  let ambiguous = match jit_mint_performance_of_generate(
+    dispatch: d,
+    outcome: RestTransportRefused { cause: "connection reset" },
+    created: created_body,
+  ) {
+    JitMintStepNotSucceeded { step: GenerateJitConfigStep, performance: RestExchangeCommitAmbiguous { detail: _ } } => true
+    _ => false
+  }
+  delivered && conflicted && ambiguous
+}
+
+// THE KEY IS ONE APP'S, AND THIS IS THE RED FOR IT. The shared dispatch fixture is built on
+// gunbai_bot_declared while the controller's key is gunbai_ci_declared's, so an AUTHORIZED dispatch
+// for the wrong App refuses before any I/O -- no key read, no request. Without this the custody
+// guard would be a wall nothing executes: dropping it while the key still points at the CI App's
+// pem would leave every other witness green (review 68748).
+test fn witness_a_dispatch_for_another_app_is_refused_before_signing() -> Bool {
+  match perform_organization_jit_mint(dispatch: dispatched(owned: true, perms: runner_grant)) {
+    JitMintAppKeyNotCustodied { app: a } => a == gunbai_bot_declared && a != lifecycle_controller_app
+    _ => false
+  }
+}
+
+// A REFUSED DISPATCH PERFORMS NOTHING: no key is read and no request is sent, and the refusal the
+// plan reached is what comes back. This executes the real perform function, which reaches no
+// effect on this arm.
+test fn witness_a_refused_dispatch_performs_no_mint() -> Bool {
+  match perform_organization_jit_mint(dispatch: dispatched(owned: false, perms: runner_grant)) {
+    JitMintReceived { delivery: JitCredentialNotDispatched { refusal: _ } } => true
+    _ => false
+  }
+}

@@ -1,0 +1,143 @@
+module gunbc.serve_liveness
+
+import std.types { NonEmptyStr, String, Int, Bool, CommitSha }
+import extdeps.languages.json.parse {
+  JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  json_object_unique_member, parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
+}
+import gunbc.running_release_identity {
+  running_release_revision_key,
+  running_release_member_string,
+  release_revision_text_valid,
+}
+
+// ── A HEALTH ANSWER THAT DOES NOT DEPEND ON THE THING BEING ASKED ABOUT ──────────────────────
+// WHAT /healthz CANNOT ANSWER, AND WHY THAT IS NOT A DEFECT IN IT. The roadmap's /healthz publishes
+// digests of the surface the process serves, which means answering it RENDERS that surface: it
+// materializes the site bundle inside the evaluator, under the process's evaluation budget, out of
+// the process's heap. That is the right shape for the question it asks -- "am I serving this tree"
+// -- and it is exactly the wrong instrument for the question an operator asks during an incident,
+// because the conditions that make a process unhealthy are the conditions that make an expensive
+// evaluation fail.
+//
+// Boot 15 is the receipt (side-chat ruling 2026-09-19, and the earlier #11557 request): the roadmap
+// process's heap was swapped and OOM-killed, and every route that could have reported it was inside
+// the evaluator that could not run. A health endpoint reachable only through the evaluator answers
+// "healthy" or nothing, and "nothing" is indistinguishable from a network fault, a dead host or a
+// process that never started.
+//
+// SO THIS ONE IS ANSWERED BEFORE THE EVALUATOR IS ENTERED, by the serve seam, from values it
+// already holds. Both served processes get it without either route table carrying it, which is the
+// property the approval-broker split needs: the broker's table is exactly its four approval routes.
+data serve_liveness_path: NonEmptyStr = "/livez"
+
+// ── THIS MODULE IS A READER. IT IS DELIBERATELY NOT A SECOND PRODUCER ───────────────────────
+// THE FIRST CUT OF THIS MODULE DECLARED THE DOCUMENT AND CALLED ITSELF ITS AUTHORITY, and review
+// 68036 was right to refuse it. No `.dag` fold can run where this document is written -- that is
+// the whole point of the endpoint -- so the seed wrote the bytes with a `format!` and the
+// declaration had ZERO production consumers. Two producers for one document, able to drift
+// independently (DESIGN section 3 meaning fork, section 2 redundancy), and the only claim over the
+// shape asserted against the copy that is NOT served: it stayed green if the served bytes dropped
+// the release member, which is precisely the failure it claimed to catch (section 5,
+// specification-without-execution).
+//
+// IT ALSO FORKED THE MEMBER NAME. It spelled `release_revision` while
+// gunbc.running_release_identity -- the authority for reading a running process's revision off a
+// served document -- has spelled that member `revision` since it was written. One meaning, two
+// names, in a corpus where the whole purpose of the second name was to be read back.
+//
+// So the producer is deleted and what remains is the READER, which is the half that can execute
+// here. The member name and the 40-hex validation are CONSUMED from
+// gunbc.running_release_identity rather than restated: there is one name for this fact and one
+// predicate that decides whether wire bytes carry it.
+//
+// WHY NOT observe_running_release_identity ITSELF. That fold reads BOTH members of the /healthz
+// document -- the revision and the surface bundle identity -- and refuses a document missing
+// either. The liveness document has no surface bundle: the broker renders no site, and the point of
+// the endpoint is that it renders nothing. Reusing it would have meant either teaching it an
+// optional member (weakening the /healthz contract that a surface identity is mandatory) or
+// synthesising a digest, so this reads the ONE member it has, through that module's name and that
+// module's predicate.
+
+// ServeLivenessUnreachable IS A SEPARATE ARM FROM EVERY PARSE ARM, and the distinction is the one
+// gunbc.live_deploy.readiness already pays for on /healthz: "the probe never landed" and "a process
+// answered something wrong" are different facts with different remedies, and a reader that folded
+// them together would report a dead unit and a malformed launch argument as one state. It is the
+// only arm this module cannot produce from bytes, so it is supplied by the probe fold below.
+type ServeLivenessRead
+  = ServeLivenessUnreachable { detail: NonEmptyStr }
+  | ServeLivenessBodyUnparseable
+  | ServeLivenessBodyNotAnObject
+  | ServeLivenessRevisionAbsent
+  | ServeLivenessRevisionDuplicated { count: Int }
+  | ServeLivenessRevisionNotAString
+  | ServeLivenessRevisionMalformed { text: String }
+  | ServeLivenessObserved { revision: CommitSha }
+
+// THE ARMS STAY DISTINCT for the reason running_release_identity's do, and the reason is sharper
+// here because this endpoint is what an operator reaches for during an incident. "Nothing answered"
+// is the caller's observation, not a value this fold returns; everything below is a process that
+// DID answer and what was wrong with what it said. A body that is not an object is the wrong
+// process on the port; an absent member is a build older than the liveness channel; a malformed
+// revision is a launch argument that was a branch name or an empty string and reached the wire.
+// Collapsing them into one Unknown leaves the remedy unlocatable.
+fn observe_serve_liveness(body: String) -> ServeLivenessRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => ServeLivenessBodyUnparseable
+    JsonDocumentParsed { value: doc } =>
+      match json_object_unique_member(v: doc, key: running_release_revision_key) {
+        JsonMemberNotAnObject => ServeLivenessBodyNotAnObject
+        JsonMemberAbsent => ServeLivenessRevisionAbsent
+        JsonMemberDuplicated { count: n } => ServeLivenessRevisionDuplicated { count: n }
+        JsonMemberFound { value: v } =>
+          match running_release_member_string(lookup: JsonMemberFound { value: v }) {
+            Absent => ServeLivenessRevisionNotAString
+            Present { value: text } =>
+              if release_revision_text_valid(text: text) {
+                ServeLivenessObserved { revision: text as CommitSha }
+              } else {
+                ServeLivenessRevisionMalformed { text: text }
+              }
+          }
+      }
+  }
+}
+
+// THE PROBE FOLD. A liveness endpoint that did not answer is the observation the CALLER makes, so
+// the caller's transport outcome is what supplies this arm; everything past it is bytes, which
+// observe_serve_liveness decides. Splitting it here rather than inside the parser is what keeps this
+// module free of any transport.
+fn serve_liveness_read_from_probe(success: Bool, body: String, error: NonEmptyStr) -> ServeLivenessRead {
+  if success {
+    observe_serve_liveness(body: body)
+  } else {
+    ServeLivenessUnreachable { detail: error }
+  }
+}
+
+fn serve_liveness_read_reason(r: ServeLivenessRead) -> NonEmptyStr {
+  match r {
+    ServeLivenessUnreachable { detail: d } =>
+      join(["the liveness endpoint did not answer: ", d as String], "") as NonEmptyStr
+    ServeLivenessBodyUnparseable =>
+      "the liveness endpoint answered bytes that are not JSON" as NonEmptyStr
+    ServeLivenessBodyNotAnObject =>
+      "the liveness endpoint answered a JSON value that is not an object -- most likely a different process on that port" as NonEmptyStr
+    ServeLivenessRevisionAbsent =>
+      join([
+        "the liveness document carries no '", running_release_revision_key,
+        "' member: the process is older than the liveness channel, so which release is listening cannot be read",
+      ], "") as NonEmptyStr
+    ServeLivenessRevisionDuplicated { count: n } =>
+      join(["the liveness document carries ", to_string(n), " revision members -- two writers"], "") as NonEmptyStr
+    ServeLivenessRevisionNotAString =>
+      "the liveness document's revision member is not a string" as NonEmptyStr
+    ServeLivenessRevisionMalformed { text: t } =>
+      join([
+        "the liveness document's revision is not 40 lowercase hex digits: ", t,
+        " -- a branch name, an abbreviated sha or an empty launch argument reached the wire",
+      ], "") as NonEmptyStr
+    ServeLivenessObserved { revision: rev } =>
+      join(["the liveness endpoint reported release ", rev as String], "") as NonEmptyStr
+  }
+}

@@ -3,6 +3,7 @@ module std.materialization_object
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
   ContentHash,
+  parse_content_hash,
   Fnv1a64Structural,
   content_hash_atom,
   content_hash_from_structural_digest,
@@ -271,42 +272,6 @@ fn store_object_line(line: String) -> StoreObjectLine {
   }
 }
 
-fn parse_recorded_store_key_candidate(key_text: String) -> ContentHash? {
-  if starts_with(s: key_text, prefix: "sha256:") {
-    match get(xs: split(s: key_text, delimiter: "sha256:"), index: 1) {
-      Absent => none
-      Present { value: hex } =>
-        match sha256_hex_digest(hex: hex) {
-          Absent => none
-          Present { value: d } => Present { value: as_content_hash_cryptographic(digest: d) }
-        }
-    }
-  } else if starts_with(s: key_text, prefix: "sha512:") {
-    match get(xs: split(s: key_text, delimiter: "sha512:"), index: 1) {
-      Absent => none
-      Present { value: hex } =>
-        match sha512_hex_digest(hex: hex) {
-          Absent => none
-          Present { value: d } => Present { value: as_content_hash_sha512(digest: d) }
-        }
-    }
-  } else {
-    content_hash_from_structural_digest(digest: key_text)
-  }
-}
-
-fn parse_recorded_store_key(key_text: String) -> ContentHash? {
-  match parse_recorded_store_key_candidate(key_text: key_text) {
-    Absent => none
-    Present { value: parsed } =>
-      if (serialize_content_hash(hash: parsed) as String) == key_text {
-        Present { value: parsed }
-      } else {
-        none
-      }
-  }
-}
-
 type StoreObjectDecode
   = StoreObjectDecoded {
       manifest: ArtifactManifest,
@@ -408,7 +373,7 @@ fn decode_store_object(content: String) -> StoreObjectDecode {
             match store_object_header_value(lines: lines, index: 2, tag: "request_key") {
               Absent => StoreObjectMalformed { cause: "line 3 is not a `request_key <key>` header" }
               Present { value: key_text } =>
-                match parse_recorded_store_key(key_text: key_text) {
+                match parse_content_hash(wire: key_text) {
                   Absent => StoreObjectMalformed { cause: concat("the recorded request key is not a ContentHash wire form: ", key_text) }
                   Present { value: key } =>
                     match store_object_header_value(lines: lines, index: 3, tag: "evaluation_preimage") {

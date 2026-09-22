@@ -9,7 +9,7 @@ import std.scoped_authorization {
   AuthorizationRefused,
   AuthorizationRefusalCause,
   AuthorizationNotGranted,
-  AuthorizationExpired,
+  AuthorizationExpired, AuthorizationObservedBeforeGrant,
   AuthorizationAlreadyCompleted,
   AuthorizationClaimedByOtherAttempt,
   AuthorizationAborted,
@@ -86,6 +86,8 @@ fn workflow_step_disposition_for_decision<Subject>(
         AuthorizationDeniedByOperator { escalation_id: _, denied_by: _, denied_at: _, reason: _ } =>
           StepBlocked { reason: authorization_refusal_reason(cause: cause) }
         AuthorizationExpired { expires_at: _, observed_at: _ } =>
+          StepBlocked { reason: authorization_refusal_reason(cause: cause) }
+        AuthorizationObservedBeforeGrant { granted_at: _, observed_at: _ } =>
           StepBlocked { reason: authorization_refusal_reason(cause: cause) }
         AuthorizationAlreadyCompleted { completed_by: _, completed_at: _ } =>
           StepBlocked { reason: authorization_refusal_reason(cause: cause) }

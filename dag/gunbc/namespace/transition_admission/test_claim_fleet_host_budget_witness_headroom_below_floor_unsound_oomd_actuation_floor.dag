@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.test_claim_fleet_host_budget_witness_headroom_below_floor_unsound_oomd_actuation_floor
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data test_claim_fleet_host_budget_witness_headroom_below_floor_unsound_oomd_actuation_floor: TransitionAdmission = TransitionAdmission {
+  label: "EXTRACTION host memory observation: `oomd_actuation_floor` moves gunbc.fleet_host_budget -> gunbc.host_memory_observation" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("test.claim.fleet_host_budget", "witness_headroom_below_floor_unsound"),
+    spelling: "oomd_actuation_floor" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.host_memory_observation", "oomd_actuation_floor")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11625 as UInt32,
+}

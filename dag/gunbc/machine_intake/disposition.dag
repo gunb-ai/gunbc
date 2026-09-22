@@ -1,7 +1,7 @@
 module gunbc.machine_intake_disposition
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, content_hash_equal }
 import gunbc.machine_intake_subject {
   QualificationSubject,
   SubjectCurrency,
@@ -9,7 +9,6 @@ import gunbc.machine_intake_subject {
   SubjectStale,
   merge_subject_currency,
   compare_qualification_subject,
-  content_hash_equal,
 }
 import gunbc.machine_intake_phase {
   ArrivalHardwareQualification,

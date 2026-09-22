@@ -375,6 +375,30 @@ fn docker_image_inspect_command(image: NonEmptyStr) -> ArgvCommand {
 // naming "No such container" when the reference names nothing. No --format, for the same
 // portable-word reason as the image form. The argv and the sudoers Cmnd_Spec that authorizes it are
 // the same words, so a grantee rendering both reads this one function.
+// THE RUNNING CONTAINERS SELECTED BY ONE `docker ps` FILTER, one container id per line (`docker ps
+// --filter <key>=<value> --quiet`): empty output is "no such running container". `docker ps` lists
+// RUNNING containers only, which is the question a quiescence reading asks; a stopped container is
+// not a residual realization of an effect. Two filters this repository asks by: `name=<name>`
+// (docker's name filter is an unanchored regular expression, so it matches any running container
+// whose name contains the text -- wider than exact, and the wider reading is the safe one for a
+// residue question) and `ancestor=<image>` (containers created from that image reference, for an
+// effect that starts an unnamed container). `--quiet` rather than a `--format` template because
+// the argv crosses an ssh leg whose portable word alphabet has no braces.
+type DockerPsFilter
+  = DockerPsByName { name: NonEmptyStr }
+  | DockerPsByAncestor { image: NonEmptyStr }
+
+fn docker_ps_filter_wire(f: DockerPsFilter) -> String {
+  match f {
+    DockerPsByName { name: n } => join(["name=", n as String], "")
+    DockerPsByAncestor { image: i } => join(["ancestor=", i as String], "")
+  }
+}
+
+fn docker_ps_running_command(filter: DockerPsFilter) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["ps", "--filter", docker_ps_filter_wire(f: filter), "--quiet"])
+}
+
 fn docker_container_inspect_command(name: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["container", "inspect", name as String])
 }

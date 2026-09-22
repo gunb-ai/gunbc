@@ -58,6 +58,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // THIS PROSE SITS ABOVE THE SERVICE AND NOT BESIDE EACH OPERATION because §4c admits annotations at
 // module-item grain only; a `//` block inside a declaration body is a hard error, which is how the
 // first draft of these operations was caught.
+// SdrTypeList IS THE AUTHENTICATED, TYPE-SELECTED READ, AND IT EXISTS BECAUSE SdrList COULD NOT BE
+// USED. The three original readonly operations carry no credential, which the asymmetry paragraph
+// above already records as a real gap; every controller in this fleet now requires one, so a sensor
+// read had no reachable operation at all. Rather than add a credential to SdrList and change what an
+// existing operation means, this is a second operation whose whole contract is authenticated,
+// type-selected sensor reading.
+//
+// THE SENSOR TYPE IS A PARAMETER FOR THE SAME REASON THE BOOT DEVICE IS. "Fan" and "Temperature" are
+// the two a fan-policy observation wants today and they are business policy, not facts about the
+// IPMI interface; baking either into argv here would need a second near-identical operation the
+// first time anything wanted "Power Supply". The values are the SDR sensor-type strings ipmitool
+// itself accepts, which come from the IPMI specification's sensor-type table.
 service diagnostic.ipmi.Tool {
   operation SensorList {
     input { bmc_host: NonEmptyStr }
@@ -78,6 +90,17 @@ service diagnostic.ipmi.Tool {
     exit {
       0 => Unit
       nonzero => String "ipmitool sdr failed"
+    }
+  }
+
+  operation SdrTypeList {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sensor_type: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sdr", "type", "{sensor_type}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool sdr type failed"
     }
   }
 

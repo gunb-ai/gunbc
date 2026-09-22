@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.gunbc_ci_runner_placement_host_fixed_overhead_bytes_hostfixedoverhead
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data gunbc_ci_runner_placement_host_fixed_overhead_bytes_hostfixedoverhead: TransitionAdmission = TransitionAdmission {
+  label: "EXTRACTION host memory observation: `HostFixedOverhead` moves gunbc.ci_floor_measurement -> gunbc.host_memory_observation" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.ci_runner_placement", "host_fixed_overhead_bytes"),
+    spelling: "HostFixedOverhead" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.host_memory_observation", "HostFixedOverhead")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11625 as UInt32,
+}

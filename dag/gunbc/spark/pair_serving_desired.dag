@@ -234,7 +234,7 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // that reads as freedom. So those two are not freed, they are REFUSED, including to the very
 // PairServingUnitOn FabricGroupA subject that wanted them. srv7/srv8 meanwhile lose their only cause and
 // become uncommitted -- admissible to any serving subject and
-// eligible as admit_unplaced_host effect targets, which gunbc.spark.v41_runtime_image_probe consumes to
+// eligible as admit_unplaced_host_live effect targets, which gunbc.spark.v41_runtime_image_probe consumes to
 // pull an image and start a container. A lane that empties this row to "release" Group A for its own use
 // removes the modeled commitment that serving selection, build admission and probe admission consult to
 // avoid conflicting placement -- a PairServingUnitOn FabricGroupA subject derives its host population

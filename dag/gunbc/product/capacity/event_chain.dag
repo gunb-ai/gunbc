@@ -34,6 +34,15 @@ type ChainEnvelope<P> {
   event: ChainEvent<P>
 }
 
+// WHAT A PARTITION'S BYTES DECODE TO, for any payload. The log stores one object per event and
+// reads it back through the payload's own codec; this is the codec's answer, and it is generic
+// because the log is: a second decode result per payload type would re-spell this arm pair once
+// per partition kind. Undecodable is a typed refusal carried up to the reader, never a skipped
+// event.
+type EventDecode<P>
+  = EventDecoded { event: ChainEvent<P> }
+  | EventUndecodable { reason: String }
+
 // The head a writer believes the partition is at. Absent is a real value: the first event of a
 // partition is admitted against an absent head, and a writer that observed absence while another
 // wrote first is stale exactly like any other.

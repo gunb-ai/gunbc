@@ -2,11 +2,10 @@ module test.claim.machine_intake_disposition_witness_test
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash, content_hash_of_value }
+import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash, content_hash_of_value, content_hash_equal }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import gunbc.boot_artifact { BootArtifact, IntakeLinuxEnvironment, IsoImage }
 import gunbc.machine_intake_subject {
-  content_hash_equal,
   SubjectCurrent,
   SubjectStale,
   StaleAxis,

@@ -18,7 +18,7 @@ import gunbc.spark.v41_runtime_candidate {
   V41EnginePatch, v41_engine_patch, V41PatchPopulation, V41PatchesObserved, V41PatchesAbsentByObservation, V41PatchesUnestablished,
   V41EngramPartitionAuthority, PartitionFixedByPatch, PartitionByLaunchConfiguration,
   V41RuntimeArtifactInputs, V41ModelSourceInputs, V41EngramRealizationInputs, V41CandidateInputs,
-  V41ManifestObserved, V41ManifestUnestablished,
+  V41ManifestObserved, V41ManifestUnestablished, V41ManifestRefused, V41ModelSourceInputs, v41_model_source_key, V41IdentityRefused, V41IdentityUnestablished, V41IdentityKeyed,
   V41EngramResidencyPartition, V41PartitionAdmitted, V41PartitionRefused, v41_admit_partition,
   V41CandidateStanding, V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_candidate_standing, v41_candidate, v41_candidate_inputs, v41_candidate_partition, v41_candidate_recipe,
@@ -133,18 +133,41 @@ fn w_refused_with(s: V41CandidateVerdict, fragment: String) -> Bool {
   }
 }
 
-// THE LIVE CANDIDATE HAS NO KEY, AND SAYS WHAT IS MISSING. Patch bytes are not in this change;
-// DigestFile + upsert_decision apply is the next PR. Weight/tokenizer manifests and row-store
+// THE LIVE CANDIDATE'S REMAINING OBLIGATION IS THE ROW STORE ALONE (Cut 0, 2026-09-21): the weight
+// manifest (48 shard digests at dba1be0a) and the tokenizer files are keyed from the publisher's
+// declared digests in extdeps.deepseek.deepseek_v4_1_flash, so neither names an obligation any
+// more; the published-shard row-store content digest is a fleet-side reading and still does.
 // content digest are also open.
 test fn the_live_candidate_is_unestablished_and_names_every_missing_axis() -> Bool {
   match v41_candidate().standing {
     V41CandidateUnestablished { obligations: o } =>
-      any(o, x => (x as String).contains("weight manifest"))
-        && any(o, x => (x as String).contains("tokenizer"))
+      !any(o, x => (x as String).contains("weight manifest"))
+        && !any(o, x => (x as String).contains("tokenizer"))
         && any(o, x => (x as String).contains("published-shard row-store"))
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
     V41CandidateRefused { defects: _ } => false
   }
+}
+
+// A DEFECT IS NOT AN OBLIGATION: a refused weight population refuses the model source naming the
+// defects (and the candidate with it), while an undigested tokenizer is an obligation; both present,
+// the defect is answered, never hidden behind pending work -- including on the Engram axis, where a
+// refused row store under a membership residual refuses rather than joining the residual's obligations.
+test fn a_refused_manifest_refuses_the_model_source_and_is_not_an_obligation() -> Bool {
+  let refused = V41ModelSourceInputs { checkpoint_revision: "dba1be0a40aa45a94ad051997016db3960a90277" as NonEmptyStr, weights: V41ManifestRefused { first: "weight manifest: path declared more than once: model-00003-of-00048.safetensors" as NonEmptyStr, rest: [] as List<NonEmptyStr> }, tokenizer: V41ManifestUnestablished { obligation: "the tokenizer text could not be digested" as NonEmptyStr } }
+  let pending = V41ModelSourceInputs { checkpoint_revision: "dba1be0a40aa45a94ad051997016db3960a90277" as NonEmptyStr, weights: V41ManifestObserved { digest: w_sha(c: "a") }, tokenizer: V41ManifestUnestablished { obligation: "the tokenizer text could not be digested" as NonEmptyStr } }
+  let residual_and_refused = v41_candidate_standing(c: V41CandidateInputs {
+    runtime: w_default(patches: w_two_patches()).runtime,
+    model_source: w_default(patches: w_two_patches()).model_source,
+    engram: V41EngramRealizationInputs { partition: v41_candidate_partition, population: deepseek_v4_1_flash_engram_population, row_store_encoding: V41ManifestRefused { first: "row store: a row of another table" as NonEmptyStr, rest: [] as List<NonEmptyStr> }, route: engram_route_b_identity },
+    topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
+    device: gb10_observed_compute_capability,
+  })
+  (match v41_model_source_key(s: refused) { V41IdentityRefused { defects: d } => length(d) == 1 && any(d, x => (x as String).contains("more than once"))  _ => false })
+    && (match v41_model_source_key(s: pending) { V41IdentityUnestablished { obligations: o } => length(o) == 1  _ => false })
+    && (match residual_and_refused.standing { V41CandidateRefused { defects: d } => any(d, x => (x as String).contains("another table"))  _ => false })
+    && (match v41_candidate_standing(c: V41CandidateInputs { runtime: w_default(patches: w_two_patches()).runtime, model_source: refused, engram: w_default(patches: w_two_patches()).engram, topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1), device: gb10_observed_compute_capability }).standing { V41CandidateRefused { defects: d } => any(d, x => (x as String).contains("more than once"))  _ => false })
+    && (match v41_candidate_standing(c: V41CandidateInputs { runtime: w_default(patches: w_two_patches()).runtime, model_source: pending, engram: w_default(patches: w_two_patches()).engram, topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1), device: gb10_observed_compute_capability }).standing { V41CandidateUnestablished { obligations: o } => length(o) == 1 && any(o, x => (x as String).contains("tokenizer"))  _ => false })
 }
 
 // THE POSITIVE CONTROL: the same inputs with every axis established key, and the keyed candidate still

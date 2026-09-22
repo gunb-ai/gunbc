@@ -20,6 +20,7 @@ import gunbc.runner_host_grants {
   fabric_allocation_store_privileged_operations,
   runner_host_wide_privileged_operations,
 }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,

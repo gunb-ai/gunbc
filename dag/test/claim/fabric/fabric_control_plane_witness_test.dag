@@ -280,7 +280,10 @@ fn cp_bind_is_bound(b: CellCandidateBinding) -> Bool {
 // refuses everything -- which would be a roster that can never be built.
 test fn an_offer_executed_by_the_cell_itself_binds_to_that_cell() -> Bool {
   let bound = cp_binds(executor: "srv3-06")
-  bound.length() == 1 && cp_bind_is_bound(b: bound[0])
+  match bound.first() {
+    Present { value: b } => bound.length() == 1 && cp_bind_is_bound(b: b)
+    Absent => false
+  }
 }
 
 // THE DISCRIMINATING RED, AND IT IS THE REASON THE ARROW EXISTS. An earlier cut
@@ -291,7 +294,10 @@ test fn an_offer_executed_by_the_cell_itself_binds_to_that_cell() -> Bool {
 // not choose cannot be constructed rather than being caught afterwards.
 test fn an_offer_executed_by_anyone_else_cannot_be_bound_to_this_cell() -> Bool {
   let bound = cp_binds(executor: "srv1-02")
-  bound.length() == 1 && !cp_bind_is_bound(b: bound[0])
+  match bound.first() {
+    Present { value: b } => bound.length() == 1 && !cp_bind_is_bound(b: b)
+    Absent => false
+  }
 }
 
 // THE ACCOUNT FIXTURE, PARAMETERIZED ON THE TWO AXES THE BUDGET SEAM CAN REFUSE

@@ -17,7 +17,8 @@ module gunbc.fleet_workflow_steps
 // constructors, because its build is one cargo invocation with no artifact handoff, and reusing
 // a cross-job artifact-transfer vocabulary to express that would be borrowing an architecture it
 // does not have.
-import std.measure { minute_count }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import std.measure { minute_count, second_count }
 import std.types { Duration }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.github.actions {
@@ -46,6 +47,7 @@ import gunbc.ci_spec {
   gunbc_ci_fleet_key_agent_cleanup_script,
 }
 import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
+import gunbc.spark.vllm_runtime_image_build { vllm_build_host_effect_term }
 import std.types { List, String, Int }
 
 import gunbc.roadmap_execution_contract {
@@ -450,6 +452,23 @@ data gunbc_ci_fleet_converge_plan_step_timeout_minutes: Duration = 15
 
 data gunbc_ci_spark_serving_step_timeout_minutes: Duration = 60
 
+// THE V4.1 RUNTIME IMAGE BUILD'S OWN STEP BUDGET, DERIVED FROM THE HOST CLAIM RATHER THAN CHOSEN.
+// The serving budget above is an hour and this step compiles vLLM from source for compute
+// capability 12.1; the one executed cold build of that image took about seventy-five minutes, so an
+// hour cuts it off mid-compile and reports a timeout where the truth is a budget defect -- which is
+// precisely the reason gunbc.spark.vllm_runtime_image_build's dissolve-on gives for its entry having
+// had no dispatch mode.
+//
+// WHAT GROUNDS THE NUMBER is not that seventy-five minutes and a margin. It is
+// gunbc.spark.vllm_runtime_image_build vllm_build_host_effect_term, the term the build's own
+// host-effect claim is admitted for: after it an unreleased claim reads OVERDUE and fences the host.
+// A step allowed to run longer than the claim that fences its host would be running in exactly the
+// state that term exists to make visible, so the step budget IS the claim's term, converted once.
+// A different term is a different budget, automatically, and neither number can drift from the other.
+fn gunbc_ci_spark_runtime_image_build_step_timeout_minutes() -> Int {
+  second_count(s: vllm_build_host_effect_term) / 60
+}
+
 data gunbc_ci_spark_serving_step_timeout_note: String = "Spark serving converge/observe step budget, raised from the shared aux 5m (operator authorization 2026-08-19). STATED AS AN ENVELOPE, NOT A MEASUREMENT, because the neighbouring gates in this module earn their numbers and this one cannot yet. What IS modeled: the ollama runtime archive at 1542416321 bytes, cited on extdeps.ollama.binary_release. What is NOT: the model blob closure has no modeled byte size at all — the desired model is identified by its manifest digest rather than a size — and throughput from the executor to a spark target has never been measured. So a cold install downloads a ~1.5GB runtime plus a model of unmodeled size over a link of unmeasured bandwidth, and no honest derivation produces a minute count from that. 5m was not a considered budget for this step, it was the shared aux default, and it cannot cover a cold install under any plausible bandwidth.
 
 WHAT IS OBSERVED, and why this is not a hypothetical envelope: run 32213195686 (2026-08-19T03:49:56Z, read-only spark_observe) reports state=absent for BOTH spark targets — on srv6 the user unit is-active exits 4, the api/version and api/tags probes exit 7 against a refused connection, and the runtime receipt file does not exist. So the first canary is a guaranteed cold install of the full closure rather than a converged no-op, and the step budget has to cover acquisition of an unmodeled model closure on a host observed to hold none of it. The 5m default would have killed that install mid-download every time, and because publication is split from acquisition it would have done so silently-safely — dying in the attempt workspace, publishing nothing, and looking like a timeout rather than a budget defect.
@@ -461,6 +480,15 @@ STEADY STATE IS SECONDS, NOT MINUTES. A converged host plans zero rows and the s
 DISSOLVE-ON: the first successful srv6 canary produces the measurement this envelope stands in for — replace the number with that receipt, dated and cited to its run id, per the rule the v1-compiler test-targets gate states one constant down (raising a budget needs a measurement, not a round number)."
 
 data gunbc_ci_runner_guest_image_step_timeout_minutes: Duration = 30
+
+// THE CENSUS IMAGE BUILD IS A FULL LIVE-SERVER ISO REMASTER, NOT AN AUX STEP: sha256sum over the pinned
+// ~3 GB stock ISO, xorriso tree extraction, the pinned-dates replay, then sha256sum over the staged
+// output, all inside the served /srv/bmc export. Cancelled mid-xorriso it would leave the staging
+// directory in the export with no publication and no receipt (review 69382), so it carries the same
+// class of envelope the guest-image build does rather than the shared aux 5m.
+// STATED AS AN ENVELOPE, NOT A MEASUREMENT. DISSOLVE-ON: the first mtcollins1_census_image_publish
+// run produces the measurement this stands in for -- replace it with that receipt, dated and cited.
+data gunbc_ci_mtcollins1_census_image_step_timeout_minutes: Duration = 30
 
 data gunbc_ci_runner_guest_image_step_timeout_note: String = "Runner micro-VM guest image observe/converge step budget, raised from the shared aux 5m. It is its own constant rather than a bump to gunbc_ci_aux_step_timeout_minutes for the reason the Spark serving envelope one section up already records: that value is multiplied by the step count in the fleet job backstop, so raising it inflates every unrelated aux step and the job cap together.
 
@@ -590,6 +618,11 @@ data fleet_host_mutation_concurrency_group_expression: String = join([fleet_host
 // needed. This row stays the host-domain authority and is unchanged by that.
 data fleet_arm_mutation_group_glm_group_b_native: String = "gunbc-arm-mutation-glm-group-b-native"
 
+// Group A's arm key IS srv1's host key (gunbc.fleet.fleet_converge_workflow: the D0 door has two
+// domains, the srv1 control plane and Group A, and a job carries one group), so the pair-serving
+// apply keyed here queues behind D0 and behind every srv1 mutation whichever executor it names.
+data fleet_arm_mutation_group_deepseek_group_a: String = join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")
+
 // The Int->Nat crossing is admitted at a function RETURN position (std.checked_arithmetic's own
 // note), so the sum of the positive per-step allowances crosses here and the public fn carries the
 // std.measure Minute duration rather than a bare scalar (review 57760 finding 1).
@@ -709,5 +742,6 @@ fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {
     + (gunbc_ci_fleet_converge_plan_step_timeout_minutes - gunbc_ci_aux_step_timeout_minutes)
     + (gunbc_ci_fleet_job_always_run_artifact_transfer_step_count * gunbc_ci_artifact_transfer_step_timeout_minutes)
     + (gunbc_ci_fleet_job_worst_case_mode_spark_step_count * gunbc_ci_spark_serving_step_timeout_minutes)
+    + gunbc_ci_spark_runtime_image_build_step_timeout_minutes()
 }
 

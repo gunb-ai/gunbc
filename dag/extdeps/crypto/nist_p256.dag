@@ -1,0 +1,242 @@
+module extdeps.crypto.nist_p256
+
+import std.types { Int, List, Bool }
+import std.integer { UInt8 }
+import std.bignat {
+  BigNat, MontgomeryModulus, bignat_from_octets, bignat_compare, bignat_is_zero, bignat_bits, bignat_zero_limbs, bignat_one,
+  montgomery_modulus, montgomery_mul, montgomery_add, montgomery_sub, montgomery_to, montgomery_from,
+  montgomery_inverse_prime, montgomery_reduce_once,
+}
+import extdeps.crypto.sha2 { sha256 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// The NIST P-256 curve (SP 800-186 §3.2.1.3) and ECDSA verification over it with SHA-256
+// (FIPS 186-5 §6.4.2), computed in the substrate on std.bignat's Montgomery arithmetic.
+//
+// WHO CONSUMES THIS TODAY, STATED AS THE FRONTIER IT IS (DESIGN 3c; review 69091 of gunbc#11645).
+// NOTHING IN PRODUCTION DOES. The only importers of this module are the witness files under
+// dag/test/claim. An earlier version of this header said it was "the producer behind
+// extdeps.crypto.signature p256_ecdsa_verify" in the PRESENT TENSE -- and that module declares no
+// such name. extdeps.crypto.signature is real and owns the suite, the encodings and the refusal
+// vocabulary (SignatureSuite, SignatureVerification, signature_verification_from_implementation),
+// but p256_ecdsa_verify does not exist in it or anywhere else outside this module and its tests.
+//
+// THAT IS THE CLASS THIS REPOSITORY ALREADY ROSTERS AS
+// gunbc.recurring_failure_mode unlanded_citation_indistinguishable_at_the_citing_end, and this
+// PR's own failure-mode receipts flag their unlanded names scrupulously ("UNLANDED NAMES, read as
+// such") while this header -- the one sentence a reader consults to learn who consumes the module
+// -- did not. A citation is not made true by being the plan.
+//
+// DECLARED FRONTIER WITH ITS TRIGGER: extdeps.crypto.signature gains p256_ecdsa_verify, binding
+// p256_ecdsa_verify_octets below through signature_verification_from_implementation with the
+// decoded octet lengths. Until that declaration exists, this module's consumers are its witnesses
+// and nothing else, and no reader should infer otherwise from this comment.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "csrc.nist.gov/pubs/sp/800/186/final"
+  }
+}
+
+// ── Domain parameters (SP 800-186 §3.2.1.3), as published octets ────────────────────────────
+// THE DOMAIN PARAMETERS ARE OCTETS, NOT A DECODE, BECAUSE A DECODE HAS A FAILURE ARM AND THESE MAY
+// NOT HAVE ONE (review 69034 of gunbc#11645). They were previously written as hex strings run
+// through base16_decode_lower, whose Absent arm answered bignat_small(n: 0) -- so a mistyped literal
+// would have substituted ZERO FOR THE FIELD PRIME and every verification below would have computed
+// confidently on a degenerate curve. That is the fabricated default DESIGN 5 names a hard reject,
+// and it sat on the five values the whole curve is defined by.
+//
+// GUARDING THE ARM WAS NOT THE FIX. A refusing p256_hex_nat would make every consumer of the field
+// arithmetic answer an Optional for a condition that cannot occur at runtime at all, since the input
+// is a source literal. Removing the DECODE removes the arm: each parameter is now its big-endian
+// octet encoding, read directly by bignat_from_octets, which is total. There is no longer a state in
+// which a parameter is wrong-but-accepted, rather than a check that such a state is reported.
+//
+// Values: SP 800-186 section 3.2.1.3 (P-256), big-endian, 32 octets each, as SEC1 renders them.
+data p256_p_octets: List<UInt8> = [255, 255, 255, 255, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
+data p256_n_octets: List<UInt8> = [255, 255, 255, 255, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 188, 230, 250, 173, 167, 23, 158, 132, 243, 185, 202, 194, 252, 99, 37, 81]
+data p256_b_octets: List<UInt8> = [90, 198, 53, 216, 170, 58, 147, 231, 179, 235, 189, 85, 118, 152, 134, 188, 101, 29, 6, 176, 204, 83, 176, 246, 59, 206, 60, 62, 39, 210, 96, 75]
+data p256_gx_octets: List<UInt8> = [107, 23, 209, 242, 225, 44, 66, 71, 248, 188, 230, 229, 99, 164, 64, 242, 119, 3, 125, 129, 45, 235, 51, 160, 244, 161, 57, 69, 216, 152, 194, 150]
+data p256_gy_octets: List<UInt8> = [79, 227, 66, 226, 254, 26, 127, 155, 142, 231, 235, 74, 124, 15, 158, 22, 43, 206, 51, 87, 107, 49, 94, 206, 203, 182, 64, 104, 55, 191, 81, 245]
+
+data p256_p: BigNat = bignat_from_octets(octets: p256_p_octets)
+data p256_n: BigNat = bignat_from_octets(octets: p256_n_octets)
+data p256_b: BigNat = bignat_from_octets(octets: p256_b_octets)
+data p256_gx: BigNat = bignat_from_octets(octets: p256_gx_octets)
+data p256_gy: BigNat = bignat_from_octets(octets: p256_gy_octets)
+
+// 256-bit moduli in 24-bit limbs: 11 limbs.
+data p256_field: MontgomeryModulus = montgomery_modulus(m: p256_p, width: 11)
+data p256_order: MontgomeryModulus = montgomery_modulus(m: p256_n, width: 11)
+
+// ── Jacobian points over the field, coordinates in Montgomery form ──────────────────────────
+// (X, Y, Z) represents (X/Z², Y/Z³); Z = 0 is the point at infinity.
+type P256Jacobian {
+  x: BigNat
+  y: BigNat
+  z: BigNat
+}
+
+fn fmul(a: BigNat, b: BigNat) -> BigNat { montgomery_mul(ctx: p256_field, a: a, b: b) }
+fn fadd(a: BigNat, b: BigNat) -> BigNat { montgomery_add(ctx: p256_field, a: a, b: b) }
+fn fsub(a: BigNat, b: BigNat) -> BigNat { montgomery_sub(ctx: p256_field, a: a, b: b) }
+fn fsqr(a: BigNat) -> BigNat { montgomery_mul(ctx: p256_field, a: a, b: a) }
+
+data p256_infinity: P256Jacobian = P256Jacobian { x: bignat_zero_limbs(), y: bignat_zero_limbs(), z: bignat_zero_limbs() }
+
+fn p256_is_infinity(p: P256Jacobian) -> Bool {
+  bignat_is_zero(a: p.z)
+}
+
+fn p256_affine(x: BigNat, y: BigNat) -> P256Jacobian {
+  P256Jacobian { x: montgomery_to(ctx: p256_field, a: x), y: montgomery_to(ctx: p256_field, a: y), z: montgomery_to(ctx: p256_field, a: bignat_one()) }
+}
+
+// Doubling for a = −3 (Bernstein and Lange, Explicit-Formulas Database, dbl-2001-b).
+fn p256_double(p: P256Jacobian) -> P256Jacobian {
+  if p256_is_infinity(p: p) { p } else {
+    let delta = fsqr(a: p.z)
+    let gamma = fsqr(a: p.y)
+    let beta = fmul(a: p.x, b: gamma)
+    let t = fmul(a: fsub(a: p.x, b: delta), b: fadd(a: p.x, b: delta))
+    let alpha = fadd(a: fadd(a: t, b: t), b: t)
+    let beta4 = fadd(a: fadd(a: beta, b: beta), b: fadd(a: beta, b: beta))
+    let x3 = fsub(a: fsqr(a: alpha), b: fadd(a: beta4, b: beta4))
+    let yz = fadd(a: p.y, b: p.z)
+    let z3 = fsub(a: fsub(a: fsqr(a: yz), b: gamma), b: delta)
+    let g2 = fsqr(a: gamma)
+    let g8 = fadd(a: fadd(a: fadd(a: g2, b: g2), b: fadd(a: g2, b: g2)), b: fadd(a: fadd(a: g2, b: g2), b: fadd(a: g2, b: g2)))
+    let y3 = fsub(a: fmul(a: alpha, b: fsub(a: beta4, b: x3)), b: g8)
+    P256Jacobian { x: x3, y: y3, z: z3 }
+  }
+}
+
+// Addition (Explicit-Formulas Database, add-2007-bl), with its two exceptional inputs decided rather
+// than fed through: equal points double, opposite points give infinity.
+fn p256_add(p: P256Jacobian, q: P256Jacobian) -> P256Jacobian {
+  if p256_is_infinity(p: p) { q } else if p256_is_infinity(p: q) { p } else {
+    let z1z1 = fsqr(a: p.z)
+    let z2z2 = fsqr(a: q.z)
+    let u1 = fmul(a: p.x, b: z2z2)
+    let u2 = fmul(a: q.x, b: z1z1)
+    let s1 = fmul(a: fmul(a: p.y, b: q.z), b: z2z2)
+    let s2 = fmul(a: fmul(a: q.y, b: p.z), b: z1z1)
+    let h = fsub(a: u2, b: u1)
+    let rr = fsub(a: s2, b: s1)
+    if bignat_is_zero(a: h) {
+      if bignat_is_zero(a: rr) { p256_double(p: p) } else { p256_infinity }
+    } else {
+      let h2 = fadd(a: h, b: h)
+      let i = fsqr(a: h2)
+      let j = fmul(a: h, b: i)
+      let r = fadd(a: rr, b: rr)
+      let v = fmul(a: u1, b: i)
+      let x3 = fsub(a: fsub(a: fsqr(a: r), b: j), b: fadd(a: v, b: v))
+      let s1j = fmul(a: s1, b: j)
+      let y3 = fsub(a: fmul(a: r, b: fsub(a: v, b: x3)), b: fadd(a: s1j, b: s1j))
+      let zz = fadd(a: p.z, b: q.z)
+      let z3 = fmul(a: fsub(a: fsub(a: fsqr(a: zz), b: z1z1), b: z2z2), b: h)
+      P256Jacobian { x: x3, y: y3, z: z3 }
+    }
+  }
+}
+
+// ── u1·G + u2·Q by Shamir's simultaneous method ─────────────────────────────────────────────
+type P256ShamirBit {
+  u1: Int
+  u2: Int
+}
+
+fn p256_zip_bits(a: List<Int>, b: List<Int>, acc: List<P256ShamirBit>) -> List<P256ShamirBit> {
+  match a {
+    Empty => acc
+    Cons { head: x, tail: at } =>
+      match b {
+        Empty => p256_zip_bits(a: at, b: [], acc: acc |> list_push(P256ShamirBit { u1: x, u2: 0 }))
+        Cons { head: y, tail: bt } => p256_zip_bits(a: at, b: bt, acc: acc |> list_push(P256ShamirBit { u1: x, u2: y }))
+      }
+  }
+}
+
+fn p256_double_scalar(u1: BigNat, g: P256Jacobian, u2: BigNat, q: P256Jacobian) -> P256Jacobian {
+  let gq = p256_add(p: g, q: q)
+  fold(reverse(p256_zip_bits(a: bignat_bits(a: u1), b: bignat_bits(a: u2), acc: [])), init: p256_infinity, f: (acc, bit) => {
+    let d = p256_double(p: acc)
+    if bit.u1 == 1 && bit.u2 == 1 { p256_add(p: d, q: gq) }
+    else if bit.u1 == 1 { p256_add(p: d, q: g) }
+    else if bit.u2 == 1 { p256_add(p: d, q: q) }
+    else { d }
+  })
+}
+
+// ── Public key validation (SP 800-186 §D.1.1 partial validation: on the curve, in range) ─────
+fn p256_on_curve(x: BigNat, y: BigNat) -> Bool {
+  let xm = montgomery_to(ctx: p256_field, a: x)
+  let ym = montgomery_to(ctx: p256_field, a: y)
+  let bm = montgomery_to(ctx: p256_field, a: p256_b)
+  let x3 = fmul(a: fsqr(a: xm), b: xm)
+  let three_x = fadd(a: fadd(a: xm, b: xm), b: xm)
+  bignat_compare(a: fsqr(a: ym), b: fadd(a: fsub(a: x3, b: three_x), b: bm)) == 0
+}
+
+fn p256_below(a: BigNat, m: BigNat) -> Bool {
+  bignat_compare(a: a, b: m) < 0
+}
+
+fn p256_nonzero_below(a: BigNat, m: BigNat) -> Bool {
+  !bignat_is_zero(a: a) && p256_below(a: a, m: m)
+}
+
+// Split a list after `n` elements.
+type P256Split {
+  front: List<UInt8>
+  back: List<UInt8>
+}
+
+fn p256_split(xs: List<UInt8>, n: Int) -> P256Split {
+  fold(xs, init: P256Split { front: [], back: [] }, f: (acc, x) =>
+    if count(acc.front) < n { P256Split { front: acc.front |> list_push(x), back: acc.back } }
+    else { P256Split { front: acc.front, back: acc.back |> list_push(x) } })
+}
+
+// ── ECDSA verification (FIPS 186-5 §6.4.2) ───────────────────────────────────────────────────
+// key: the 65-octet SEC 1 uncompressed point 0x04 || X || Y. signature: the 64-octet r || s. The
+// message is hashed here with SHA-256. Answers:
+//   Present true  -- the signature verifies;
+//   Present false -- well-formed inputs, and it does not;
+//   Absent        -- an input is not an admitted encoding: wrong length, a prefix other than 0x04,
+//                    a coordinate ≥ p, a point off the curve, r or s outside [1, n−1].
+fn p256_ecdsa_verify_octets(key: List<UInt8>, signature: List<UInt8>, message: List<UInt8>) -> Bool? {
+  if count(key) != 65 || count(signature) != 64 { none } else {
+    let prefixed = p256_split(xs: key, n: 1)
+    if prefixed.front != [4] { none } else {
+      let coords = p256_split(xs: prefixed.back, n: 32)
+      let qx = bignat_from_octets(octets: coords.front)
+      let qy = bignat_from_octets(octets: coords.back)
+      let rs = p256_split(xs: signature, n: 32)
+      let r = bignat_from_octets(octets: rs.front)
+      let s = bignat_from_octets(octets: rs.back)
+      if !p256_below(a: qx, m: p256_p) || !p256_below(a: qy, m: p256_p) || !p256_on_curve(x: qx, y: qy) { none }
+      else if !p256_nonzero_below(a: r, m: p256_n) || !p256_nonzero_below(a: s, m: p256_n) { none }
+      else { Present { value: p256_verify_checked(qx: qx, qy: qy, r: r, s: s, message: message) } }
+    }
+  }
+}
+
+// e = SHA-256(message) as an integer; 256 bits is the bit length of n, so there is no truncation
+// (§6.4.2 step 3). e may exceed n; one reduction suffices because e < 2^256 < 2n. Likewise the final
+// v = x mod n needs one reduction, because x < p < 2n.
+fn p256_verify_checked(qx: BigNat, qy: BigNat, r: BigNat, s: BigNat, message: List<UInt8>) -> Bool {
+  let e = montgomery_reduce_once(ctx: p256_order, a: bignat_from_octets(octets: sha256(message: message)))
+  let sm = montgomery_to(ctx: p256_order, a: s)
+  let w = montgomery_inverse_prime(ctx: p256_order, a: sm)
+  let u1 = montgomery_from(ctx: p256_order, a: montgomery_mul(ctx: p256_order, a: montgomery_to(ctx: p256_order, a: e), b: w))
+  let u2 = montgomery_from(ctx: p256_order, a: montgomery_mul(ctx: p256_order, a: montgomery_to(ctx: p256_order, a: r), b: w))
+  let point = p256_double_scalar(u1: u1, g: p256_affine(x: p256_gx, y: p256_gy), u2: u2, q: p256_affine(x: qx, y: qy))
+  if p256_is_infinity(p: point) { false } else {
+    let zinv = montgomery_inverse_prime(ctx: p256_field, a: point.z)
+    let x = montgomery_from(ctx: p256_field, a: fmul(a: point.x, b: fsqr(a: zinv)))
+    bignat_compare(a: montgomery_reduce_once(ctx: p256_order, a: x), b: r) == 0
+  }
+}

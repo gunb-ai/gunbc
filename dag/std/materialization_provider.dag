@@ -354,7 +354,7 @@ type EvaluationIdentityCollisionDisposition
   = FnvBucketPreimageVerified { restoration_trigger: NonEmptyStr }
 
 data evaluation_identity_fnv_store_preimage_exception: EvaluationIdentityCollisionDisposition = FnvBucketPreimageVerified {
-  restoration_trigger: "parse_recorded_store_key (algorithm-qualified ContentHash wire, inverse of serialize_content_hash) round-trips Sha256Family and Sha512Family object headers, and every persistent consumer of EvaluationStoreAddress — store_object_name, store_lookup_decide, store_commit_prepare, local_store_lookup, provider_serve PersistedProbe — derives EvaluationIdentity from evaluation_bucket under that family for PersistentStoreScope and CrossRunScope"
+  restoration_trigger: "std.content_hash parse_content_hash (algorithm-qualified ContentHash wire, inverse of serialize_content_hash) round-trips Sha256Family and Sha512Family object headers, and every persistent consumer of EvaluationStoreAddress — store_object_name, store_lookup_decide, store_commit_prepare, local_store_lookup, provider_serve PersistedProbe — derives EvaluationIdentity from evaluation_bucket under that family for PersistentStoreScope and CrossRunScope"
 }
 
 type EvaluationStoreAddressStanding

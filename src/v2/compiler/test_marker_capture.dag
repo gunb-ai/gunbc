@@ -1,6 +1,6 @@
 module v2.compiler.test_marker_capture
 
-import v2.compiler.parse { ParseArtifact }
+import v2.compiler.parse { ParseTree }
 import v2.extdeps.languages.dag {
   dag_binding_branded_atom_identity,
   parse_production_captured_child_optional,
@@ -33,13 +33,18 @@ import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissi
 // would make a marked declaration read as unmarked, which is the absent-reads-as-false class the
 // channel exists to close.
 //
-// CONSUMER, a declared frontier. The consumer is the refusal of references to test code at name
-// resolution (v2.compiler.resolve resolve_atom_bound), reached through v2.compiler.normalize, which
-// seals this channel beside the normalized root. TRIGGER: gunbc#11580 merging, the change that wires
-// both. Until then the only executing reader is v2.test.claim.parse.test_marker_channel.
-fn test_marker_capture(artifact: ParseArtifact) -> Outcome<TestMarkerChannel> {
+// CONSUMER: v2.compiler.normalize runs this over the same parse tree it lowers and seals the result
+// beside the root in NormalizedTree, where name resolution (v2.compiler.resolve resolve_atom_bound)
+// reads it and refuses references to what it marks. The frontier gunbc#11573 declared here is closed
+// by that wiring.
+//
+// THE SUBJECT IS THE PARSE TREE, NOT THE ARTIFACT AROUND IT. gunbc#11573 took a whole ParseArtifact
+// while reading only its `tree`; normalize, the consumer that landed, is handed a ParseTree and never
+// the artifact, so the door now names what it actually reads rather than obliging every caller to
+// carry a span index the capture does not use.
+fn test_marker_capture(tree: ParseTree) -> Outcome<TestMarkerChannel> {
   let no_rows: List<TestMarkedDeclaration> = []
-  match test_marker_capture_walk(n: artifact.tree, acc: outcome_accepted(value: no_rows)) {
+  match test_marker_capture_walk(n: tree, acc: outcome_accepted(value: no_rows)) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: rows, diagnostics: d } =>
       Accepted { value: TestMarkerChannel { marked: rows }, diagnostics: d }

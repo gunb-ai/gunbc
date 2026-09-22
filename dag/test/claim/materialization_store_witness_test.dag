@@ -2,7 +2,7 @@ module test.claim.materialization_store_witness
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
-  ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_of_value, serialize_content_hash,
+  ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_of_value, serialize_content_hash, parse_content_hash,
   sha256_hex_digest, sha512_hex_digest, as_content_hash_cryptographic, as_content_hash_sha512,
   content_hash_family, Sha256Family, Sha512Family, Sha1Family, Fnv1a64StructuralFamily
 }
@@ -37,7 +37,6 @@ import std.materialization_object {
   store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
   store_commit_refusal_tag, store_lookup_fold,
   encode_store_object, decode_store_object, percent_encode_payload, percent_decode_payload,
-  parse_recorded_store_key,
   result_content_canonical, store_object_name, store_object_magic, store_object_format_version,
   StoreObjectDecoded, StoreObjectMalformed,
   store_observed_digest, artifact_from_manifest, ManifestDecoded,
@@ -647,12 +646,12 @@ test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool {
                       Sha1Family => false
                       Sha256Family => false
                     }
-                    && match parse_recorded_store_key(key_text: serialize_content_hash(hash: k256) as String) {
+                    && match parse_content_hash(wire: serialize_content_hash(hash: k256) as String) {
                       Absent => false
                       Present { value: p } =>
                         (p == k256) && ((serialize_content_hash(hash: p) as String) == (serialize_content_hash(hash: k256) as String))
                     }
-                    && match parse_recorded_store_key(key_text: serialize_content_hash(hash: k512) as String) {
+                    && match parse_content_hash(wire: serialize_content_hash(hash: k512) as String) {
                       Absent => false
                       Present { value: p } =>
                         (p == k512) && ((serialize_content_hash(hash: p) as String) == (serialize_content_hash(hash: k512) as String))
@@ -664,17 +663,17 @@ test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool {
   }
 }
 
-test fn parse_recorded_store_key_refuses_trailing_repeated_prefix() -> Bool {
+test fn parse_content_hash_refuses_trailing_repeated_prefix() -> Bool {
   match sha256_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
     Absent => false
     Present { value: sha } => {
       let h = as_content_hash_cryptographic(digest: sha)
       let canon = serialize_content_hash(hash: h) as String
       let alias = concat(canon, "sha256:ignored")
-      match parse_recorded_store_key(key_text: alias) {
+      match parse_content_hash(wire: alias) {
         Present { value: _ } => false
         Absent =>
-          match parse_recorded_store_key(key_text: canon) {
+          match parse_content_hash(wire: canon) {
             Absent => false
             Present { value: p } =>
               (p == h) && ((serialize_content_hash(hash: p) as String) == canon)

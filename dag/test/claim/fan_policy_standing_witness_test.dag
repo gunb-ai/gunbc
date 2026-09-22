@@ -1,0 +1,939 @@
+module test.claim.fan_policy_standing_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { RevolutionsPerMinute, celsius_count, fan_count, fan_count_value, percent, percent_count, published_level_count_value, rpm, rpm_count, sdr_undecoded_line_count, sdr_undecoded_line_count_value, second, second_count }
+import extdeps.units.iec_61672 { dba_difference_tenths, tenths_dba }
+import extdeps.fans.dynatron { dynatron_df126025bu_pwmh_catalog }
+import extdeps.bmc.endpoint { AmiMegaRac, Ipmi, OpenBmc }
+import extdeps.bmc.phosphor_fan_control {
+  ZoneSensorNonFunctional,
+  ZoneSensorUnavailable,
+  phosphor_fan_failsafe_condition_label,
+  phosphor_fan_failsafe_duty_read_obligation,
+  phosphor_fan_zone_enters_failsafe,
+}
+import extdeps.bmc.megarac_fan_policy {
+  megarac_fan_mode_protocol_floor,
+  megarac_fan_mode_surface,
+  megarac_fan_mode_surface_read_obligation,
+  megarac_fan_policy_read_obligation,
+}
+import extdeps.bmc.ipmi_sdr {
+  SdrFanDuty,
+  SdrFanNoReading,
+  SdrFanReadingUnrecognised,
+  SdrFanRpm,
+  SdrLineDecoded,
+  SdrLineUnstructured,
+  SdrTemperatureDegreesC,
+  SdrTemperaturePublication,
+  TemperaturePublished,
+  TemperatureSensorsSilent,
+  TemperatureNoSensorRows,
+  TemperatureUndecodable,
+  sdr_temperature_publication,
+  sdr_decode_line,
+  sdr_decode_lines,
+  sdr_decoded_lines,
+  sdr_fan_reading,
+  sdr_temperature_reading,
+  sdr_unstructured_count,
+}
+import product.placement_supply { HostIdentity, SiteIdentity }
+import product.fan_tach { FanTachEndpointIdentity }
+import product.acoustic_ceiling {
+  AcousticCeiling,
+  AcousticOverCeiling,
+  AcousticPositionsIncomparable,
+  AcousticWithinCeiling,
+  DutyCeilingMultipleFansUnpriced,
+  DutyCeilingNoPublishedPointWithin,
+  DutyCeilingPositionIncomparable,
+  DutyCeilingPublished,
+  FanDatasheetPosition,
+  MeasuredAtPosition,
+  OperatorStatedTolerance,
+  SiteListeningPosition,
+  acoustic_level_against_ceiling,
+  duty_ceiling_for_fan,
+}
+import product.fan_policy_standing {
+  FailsafeBeforeHostTelemetry,
+  FailsafeHeldAfterPost,
+  FanDriveDuty,
+  FanDriveTachOnly,
+  FanDutyNotReported,
+  FanDutyExcursionOverCeiling,
+  NoPostTransitionWindow,
+  OutlivedPostTransitionWindow,
+  WithinPostTransitionWindow,
+  FanDutySteadyCurveOverCeiling,
+  FanDutyWithinCeiling,
+  FanPolicyAuthority,
+  FanPolicySample,
+  FanPolicyStanding,
+  FanPolicyUnderdetermined,
+  BelowCatalogMaximum,
+  NearCatalogMaximum,
+  RpmWithoutDutyTelemetry,
+  HostPostState,
+  HostPosted,
+  HostPoweredOff,
+  HostPoweredOnPrePost,
+  HostPostStateUnobserved,
+  PostPostTransition,
+  SteadyCurve,
+  FanPolicyCeilingUnderdetermined,
+  FanPolicyCeilingUnenforceable,
+  FanPolicyFailsafeWindowOverCeiling,
+  FanPolicySteadyCurveOverCeiling,
+  FanPolicyWithinSiteCeiling,
+  fan_drive_against_duty_ceiling,
+  fan_policy_against_ceiling,
+  fan_policy_standing_label,
+  fan_policy_standing_of_sample,
+}
+import gunbc.machine_intake_bmc_fan_observation {
+  ChassisPowerRead,
+  ChassisStatusUndecodable,
+  chassis_observation,
+  ChassisUnreadable,
+  FanObservationRound,
+  FanSensorObservation,
+  FanSensorsRead,
+  FanSensorsUnreadable,
+  ThermalRead,
+  ThermalUnreadable,
+  round_fan_lines,
+  ChassisPowerLineAbsent,
+  ChassisPowerLineOff,
+  ChassisPowerLineOn,
+  chassis_power_line,
+  elapsed_at_round,
+  post_state_of_round,
+  first_posted_round_index,
+  samples_of_round,
+  render_series,
+}
+import gunbc.fleet_acoustic_intent {
+  operator_residence_duty_ceiling,
+  residence_duty_verdict,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.fleet_fan_converge_routes { fan_converge_route_for_family }
+
+// WHAT IS SUPPLIED HERE AND WHAT IS EXECUTED, STATED FIRST BECAUSE THE PAIRING OBLIGATION TURNS ON
+// IT (DESIGN §3, a witness discriminates at one interface).
+//
+// SUPPLIED: the bytes a controller would have returned. These witnesses construct ipmitool stdout as
+// text and hand it to the decoder, rather than reaching a BMC. That boundary is supplied because the
+// alternative is a witness whose verdict depends on a machine in someone's house being powered on.
+//
+// EXECUTED, AND THIS IS THE HALF THAT MAKES THE SUPPLY HONEST: everything from the decoder inward is
+// the real production path. sdr_decode_line, sdr_fan_reading, chassis_power_line, post_state_of_round,
+// samples_of_round and fan_policy_standing_of_sample are the SAME functions the wet entry calls, not
+// shapes designed to match them. A change that broke the decoder would red these claims.
+//
+// WHAT IS NOT COVERED, NAMED RATHER THAN LEFT TO BE DISCOVERED: the transport leg itself - that
+// diagnostic.ipmi.Tool.SdrTypeList returns text of this shape from a real MegaRAC controller - is an
+// INHABITANCE claim this lane cannot make, because no runner in this session has ipmitool or the
+// rotated credential. The fleet-converge mode mtcollins1_fan_observe IS that claim's executor, and
+// until it has run against Mt. Collins the text below is a hypothesis about a boundary and is
+// labelled as one. It is written from the tool's documented output format, not from a reading of
+// this unit.
+
+data witness_host: HostIdentity = "mtcollins1" as HostIdentity
+
+data witness_authority: FanPolicyAuthority = FanPolicyAuthority {
+  declaration: DeclarationRef {
+    module_path: "extdeps.bmc.megarac_fan_policy",
+    decl_name: "megarac_fan_policy_standing",
+    field: WholeDeclaration
+  }
+}
+
+// ── the two family authorities, which must not share a vocabulary ──────────────────────────────
+
+test fn witness_phosphor_failsafe_enters_on_one_condition() -> Bool {
+  phosphor_fan_zone_enters_failsafe(conditions: [ZoneSensorUnavailable])
+    && !phosphor_fan_zone_enters_failsafe(conditions: [])
+}
+
+// THE ASYMMETRY IS THE CLAIM: two conditions still enter, and only the EMPTY set resumes. A model
+// that let a zone resume while one dependency was still missing would make FailsafeHeldAfterPost
+// unreachable, which is the finding this whole lane exists to be able to report.
+test fn witness_phosphor_resumes_only_when_every_condition_clears() -> Bool {
+  phosphor_fan_zone_enters_failsafe(conditions: [ZoneSensorUnavailable, ZoneSensorNonFunctional])
+    && !phosphor_fan_zone_enters_failsafe(conditions: [])
+    && phosphor_fan_failsafe_condition_label(condition: ZoneSensorNonFunctional) == "ZoneSensorNonFunctional"
+}
+
+// NEITHER FAMILY ASSERTS A DUTY, AND BOTH SAY SO IN THE TYPE. This is the §4d claim: a reader asking
+// "what duty does this family hold in failsafe" gets a read obligation, not a number.
+test fn witness_neither_family_asserts_a_failsafe_duty() -> Bool {
+  match phosphor_fan_failsafe_duty_read_obligation() {
+    Absent => false
+    Present { value: _ } => match megarac_fan_policy_read_obligation() {
+      Absent => false
+      Present { value: _ } => true
+    }
+  }
+}
+
+// THE MEGARAC CONVERGE SURFACE IS UNBOUND AND ITS PROTOCOL FLOOR IS IPMI. The second half matters as
+// much as the first: an unbound surface that answered Redfish would be taking a per-build fact from
+// a family row.
+test fn witness_megarac_fan_mode_surface_is_unbound_with_ipmi_floor() -> Bool {
+  match megarac_fan_mode_surface_read_obligation(surface: megarac_fan_mode_surface) {
+    Absent => false
+    Present { value: obligation } => (obligation as String) != ""
+      && match megarac_fan_mode_protocol_floor(surface: megarac_fan_mode_surface) {
+        Ipmi => true
+        _ => false
+      }
+  }
+}
+
+// ── the SDR decoder, over text of the shape ipmitool documents ─────────────────────────────────
+
+data witness_fan_stdout: String = "FAN1             | 41h | ok  |  7.1 | 8600 RPM\nFAN2             | 42h | ns  |  7.2 | No Reading\nPWM_FAN3         | 43h | ok  |  7.3 | 72 percent\n"
+
+data witness_temperature_stdout_posted: String = "CPU0_Temp        | 01h | ok  |  3.1 | 45 degrees C\nDIMM_Temp        | 02h | ok  |  3.2 | 38 degrees C\n"
+
+data witness_temperature_stdout_prepost: String = "CPU0_Temp        | 01h | ns  |  3.1 | No Reading\nDIMM_Temp        | 02h | ns  |  3.2 | No Reading\n"
+
+test fn witness_sdr_line_decodes_five_fields() -> Bool {
+  match sdr_decode_line(text: "FAN1             | 41h | ok  |  7.1 | 8600 RPM") {
+    SdrLineUnstructured { text: _ } => false
+    SdrLineDecoded { line: l } => (l.name as String) == "FAN1"
+      && (l.status as String) == "ok"
+      && (l.reading_text as String) == "8600 RPM"
+  }
+}
+
+// A LINE THAT IS NOT A SENSOR RECORD IS CARRIED AS A REFUSAL, NOT DROPPED. This is the claim that
+// stops a truncated read from reading as a machine with no fans.
+test fn witness_sdr_non_record_line_is_unstructured_and_counted() -> Bool {
+  match sdr_decode_line(text: "Unable to establish IPMI v2 / RMCP+ session") {
+    SdrLineDecoded { line: _ } => false
+    SdrLineUnstructured { text: t } => t != ""
+  } && sdr_undecoded_line_count_value(c: sdr_unstructured_count(results: sdr_decode_lines(stdout: "garbage\nFAN1 | 41h | ok | 7.1 | 8600 RPM\n"))) == 1
+}
+
+// THE THREE FAN READING ARMS ARE THREE DIFFERENT FACTS. RPM is not duty, "No Reading" is the sensor
+// saying nothing, and each must survive the decoder as itself.
+test fn witness_fan_reading_arms_stay_distinct() -> Bool {
+  let lines = sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout))
+  lines.length() == 3
+    && match sdr_fan_reading(reading_text: "8600 RPM") {
+      SdrFanRpm { speed: s } => rpm_count(r: s) == 8600
+      _ => false
+    }
+    && match sdr_fan_reading(reading_text: "72 percent") {
+      SdrFanDuty { duty: d } => percent_count(p: d) == 72
+      _ => false
+    }
+    && match sdr_fan_reading(reading_text: "No Reading") {
+      SdrFanNoReading => true
+      _ => false
+    }
+    && match sdr_fan_reading(reading_text: "8600 furlongs") {
+      SdrFanReadingUnrecognised { text: _ } => true
+      _ => false
+    }
+}
+
+// A DECODER GAP MUST NOT BE FILED AS THE SENSOR SAYING NOTHING, and this claim carries the exact
+// failure that made it matter. A fractional temperature is unparseable by parse_int; filed as
+// SdrTemperatureNoReading it made the publication fold answer "no thermals" on a SUCCESSFUL read,
+// which produced HostPoweredOnPrePost and then FailsafeBeforeHostTelemetry -- silently disabling
+// FailsafeHeldAfterPost. The end-to-end assertion is the point: a posted host whose thermals are
+// merely UNDECODABLE must not read as a host that has not posted.
+//
+// THE FIRST VERSION OF THIS CLAIM ASSERTED THE DEFECT GREEN. It ended with
+// `sdr_any_temperature_reading(...) == false` under this same header -- pinning the widen it was
+// written to forbid, because the repair had stopped at the reading type and never reached the
+// predicate that consumes it. The assertion now runs the whole chain to post_state_of_round.
+//
+// "Device Present" is here because Mt. Collins really prints it -- its FANn_Presence sensors are
+// discrete, and fleet-converge run 35402673990 returned it on 48 lines. It is this decoder's gap,
+// not a silent fan.
+test fn witness_unparseable_reading_is_a_decoder_gap_not_a_silent_sensor() -> Bool {
+  match sdr_temperature_reading(reading_text: "45.5 degrees C") {
+    SdrTemperatureUnrecognised { text: _ } => true
+    _ => false
+  } && match sdr_fan_reading(reading_text: "Device Present") {
+    SdrFanReadingUnrecognised { text: _ } => true
+    _ => false
+  } && match sdr_temperature_reading(reading_text: "No Reading") {
+    SdrTemperatureNoReading => true
+    _ => false
+  } && match sdr_temperature_publication(results: (sdr_decode_lines(
+    stdout: "CPU0_Temp        | 01h | ok  |  3.1 | 45.5 degrees C\n"
+  ))) {
+    TemperatureUndecodable => true
+    _ => false
+  } && match post_state_of_round(round: witness_round_thermal(
+    publication: sdr_temperature_publication(results: (sdr_decode_lines(
+      stdout: "CPU0_Temp        | 01h | ok  |  3.1 | 45.5 degrees C\n"
+    )))
+  )) {
+    HostPostStateUnobserved => true
+    _ => false
+  }
+}
+
+// AN EMPTY READING FIELD DECODES AS UNSTRUCTURED, AND MT. COLLINS REALLY PRINTS ONE. Its eight
+// FANn_Failure discrete sensors emit a blank fifth field; before the refusal landed, the decoder
+// substituted the literal text "SdrFieldEmpty" and it reached the operator's artifact on 48 lines
+// of fleet-converge run 35402673990. The line is the controller's output being unstructured, and
+// the count is what carries it.
+test fn witness_blank_reading_field_is_unstructured_not_a_substituted_word() -> Bool {
+  let results = sdr_decode_lines(stdout: "FAN0_Failure     | 4Ah | ok  |  7.1 | \nFAN1_0_Speed     | 41h | ok  |  7.1 | 5802 RPM\n")
+  sdr_undecoded_line_count_value(c: sdr_unstructured_count(results: results)) == 1
+    && sdr_decoded_lines(results: results).length() == 1
+}
+
+// AN UNREAD CHASSIS LINE IS NOT A POWERED-OFF HOST, AND A GARBLED THERMAL READ IS NOT A SILENT ONE.
+//
+// TWO REDS FOR THE SAME CLASS, both of which the suite lacked and both of which were live. The
+// chassis parse started at `false`, so a successful `chassis status` that printed no
+// `System Power :` row answered power_on:false -- indistinguishable from the controller saying the
+// host is off, and routing to FailsafeBeforeHostTelemetry, the arm this module calls the contract
+// working rather than a finding. And sdr_temperature_publication took only the STRUCTURALLY decoded
+// lines, so a read where every line failed to decode handed it an empty list and got back the fold's
+// initial value: "sensors present and silent", about a read where nothing was understood.
+//
+// Each case below goes red on the pre-fix folds. The fourth pins the new empty-read arm apart from
+// silence, because "no temperature rows at all" and "rows that all said No Reading" are different
+// facts about the evidence even though both leave the host's thermals unknown.
+test fn witness_unparsed_chassis_and_undecodable_thermal_are_not_off_and_silent() -> Bool {
+  match chassis_observation(success: true, stdout: "Chassis Intrusion : inactive\nFront Panel Lockout : inactive\n") {
+    ChassisStatusUndecodable { cause: _ } => true
+    _ => false
+  } && match chassis_observation(success: true, stdout: "System Power         : off\n") {
+    ChassisPowerRead { power_on: on } => !on
+    _ => false
+  } && match chassis_observation(success: true, stdout: "System Power         : unknown\n") {
+    ChassisStatusUndecodable { cause: c } => string_contains(c, "unknown")
+    _ => false
+  } && match chassis_observation(success: true, stdout: "System Power         :\n") {
+    ChassisStatusUndecodable { cause: _ } => true
+    _ => false
+  } && match sdr_temperature_publication(results: sdr_decode_lines(stdout: "garbage\nmore garbage\n")) {
+    TemperatureUndecodable => true
+    _ => false
+  } && match sdr_temperature_publication(results: sdr_decode_lines(stdout: "")) {
+    TemperatureNoSensorRows => true
+    _ => false
+  }
+}
+
+test fn witness_temperature_publication_discriminates_post() -> Bool {
+  match sdr_temperature_publication(results: sdr_decode_lines(stdout: witness_temperature_stdout_posted)) {
+    TemperaturePublished => true
+    _ => false
+  } && match sdr_temperature_publication(results: sdr_decode_lines(stdout: witness_temperature_stdout_prepost)) {
+    TemperatureSensorsSilent => true
+    _ => false
+  }
+    && match sdr_temperature_reading(reading_text: "45 degrees C") {
+      SdrTemperatureDegreesC { degrees: d } => celsius_count(c: d) == 45
+      _ => false
+    }
+}
+
+// AN UNREADABLE CHASSIS STATUS IS NOT "POWERED OFF", and this claim now asserts what its name has
+// always said. It used to call chassis_power_on, a Bool, so the third case could only assert
+// !on -- which is the SAME VALUE the "off" case returns. The name promised a discrimination the
+// assertion could not make, and the defect review 69131 found was sitting directly under it: the
+// parse answered false for a missing line. Against a three-valued parse the third case is now a
+// distinct arm, and the claim reds if absence is ever folded back onto off.
+test fn witness_chassis_power_parses_and_absence_is_not_off() -> Bool {
+  match chassis_power_line(stdout: "System Power         : on\nPower Overload       : false\n") {
+    ChassisPowerLineOn => true
+    _ => false
+  } && match chassis_power_line(stdout: "System Power         : off\n") {
+    ChassisPowerLineOff => true
+    _ => false
+  } && match chassis_power_line(stdout: "") {
+    ChassisPowerLineAbsent => true
+    _ => false
+  }
+}
+
+// ── the observation round, projected onto product-layer samples ────────────────────────────────
+
+fn witness_round(index: Int, power_on: Bool, thermal: Bool) -> FanObservationRound {
+  witness_round_read(index: index, power_on: power_on, thermal: thermal, thermal_readable: true)
+}
+
+fn witness_round_thermal(publication: SdrTemperaturePublication) -> FanObservationRound {
+  FanObservationRound {
+    observed_at: "2026-09-19T00:00:00Z" as NonEmptyStr,
+    round_index: 0,
+    chassis: ChassisPowerRead { power_on: true },
+    thermal: ThermalRead { publication: publication, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    fans: FanSensorsRead { lines: [], undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+  }
+}
+
+fn witness_round_read(index: Int, power_on: Bool, thermal: Bool, thermal_readable: Bool) -> FanObservationRound {
+  FanObservationRound {
+    observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
+    round_index: index,
+    chassis: ChassisPowerRead { power_on: power_on },
+    thermal: if thermal_readable { ThermalRead { publication: if thermal { TemperaturePublished } else { TemperatureSensorsSilent }, undecoded_line_count: sdr_undecoded_line_count(count: 0) } } else { ThermalUnreadable },
+    fans: FanSensorsRead {
+      lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
+      undecoded_line_count: sdr_undecoded_line_count(count: 0),
+    },
+  }
+}
+
+test fn witness_post_state_separates_powered_on_from_posted() -> Bool {
+  match post_state_of_round(round: witness_round(index: 0, power_on: false, thermal: false)) {
+    HostPoweredOff => true
+    _ => false
+  } && match post_state_of_round(round: witness_round(index: 1, power_on: true, thermal: false)) {
+    HostPoweredOnPrePost => true
+    _ => false
+  } && match post_state_of_round(round: witness_round(index: 2, power_on: true, thermal: true)) {
+    HostPosted => true
+    _ => false
+  }
+}
+
+// AN UNREADABLE READ IS NOT AN OBSERVED ABSENCE, AND THIS IS THE DISCRIMINATING RED FOR THE DEFECT
+// THAT PRODUCED IT. The first revision recorded a failed SDR temperature read as "publishes no
+// thermals", which became HostPoweredOnPrePost and then FailsafeBeforeHostTelemetry - so a transport
+// failure silently disabled the one finding this lane exists to report. Both unreadable arms - the
+// chassis read and the thermal read - must reach HostPostStateUnobserved, and the standing derived
+// from such a sample must refuse rather than land on the benign arm.
+test fn witness_unreadable_read_is_not_an_observed_absence() -> Bool {
+  match post_state_of_round(round: witness_round_read(index: 0, power_on: true, thermal: false, thermal_readable: false)) {
+    HostPostStateUnobserved => true
+    _ => false
+  } && match post_state_of_round(round: witness_unreadable_chassis_round()) {
+    HostPostStateUnobserved => true
+    _ => false
+  } && (fan_policy_standing_label(standing: fan_policy_standing_of_sample(
+    host: witness_host, authority: witness_authority,
+    sample: witness_sample(duty_count: 100, post: HostPostStateUnobserved),
+    failsafe_duty: percent(100), catalog_maximum: Absent, at_maximum_tolerance: percent(95),
+    elapsed_since_post: Present { value: second(count: 90) }, transition_window: second(count: 60),
+  )) as String) == "FanPolicyUnderdetermined"
+}
+
+fn witness_unreadable_chassis_round() -> FanObservationRound {
+  FanObservationRound {
+    observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
+    round_index: 0,
+    chassis: ChassisUnreadable,
+    thermal: ThermalRead { publication: TemperatureSensorsSilent, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    fans: FanSensorsRead { lines: [], undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+  }
+}
+
+// ONE SAMPLE PER FAN ENDPOINT THAT REPORTED A READING, AND THE "No Reading" FAN PRODUCES NONE. Three
+// sensor lines, two readings, two samples: a per-host average would have produced one number and
+// erased the fact that two of these fans report in different units.
+test fn witness_samples_are_per_endpoint_and_skip_unreadable() -> Bool {
+  let samples = samples_of_round(host: witness_host, round: witness_round(index: 0, power_on: true, thermal: true))
+  samples.length() == 2
+    && match samples.first() {
+      Absent => false
+      Present { value: s } => (s.endpoint.name as String) == "FAN1"
+    }
+}
+
+// ELAPSED-SINCE-POST IS DERIVED FROM THE SERIES AND IS ABSENT WHEN NO ROUND WAS POSTED. Absent is
+// not zero, and the standing derivation below turns that difference into a refusal rather than a
+// finding.
+// ELAPSED IS ATTRIBUTED PER ROUND, AND THIS IS THE DISCRIMINATING RED FOR A LATENT DEFECT THAT NO
+// EXISTING CLAIM COULD SEE. An earlier revision folded the series into ONE elapsed -- the last
+// round's -- and stamped every sample with it. Nothing visibly broke while the run was shorter than
+// its window; on a longer series every sample would cross the window at once, including one taken a
+// single interval after POST, minting FailsafeHeldAfterPost for readings inside their window.
+//
+// So this claim uses a series LONGER than the 60s window on purpose: posted at round 1, and rounds
+// 2 and 7 must carry 10s and 60s rather than both carrying the series' final 60s. A revision that
+// reintroduces the series-wide fold makes round 2 read 60 and reds here.
+test fn witness_elapsed_is_attributed_per_round_not_per_series() -> Bool {
+  let never = [witness_round(index: 0, power_on: true, thermal: false), witness_round(index: 1, power_on: true, thermal: false)]
+  let posted = map([0, 1, 2, 3, 4, 5, 6, 7], i => witness_round(index: i, power_on: true, thermal: i >= 1))
+  let first = first_posted_round_index(rounds: posted)
+  match first_posted_round_index(rounds: never) {
+    Present { value: _ } => false
+    Absent => match first {
+      Absent => false
+      Present { value: f } => f == 1
+    }
+  } && match elapsed_at_round(round: witness_round(index: 2, power_on: true, thermal: true), first_posted_index: first, interval: second(count: 10)) {
+    Present { value: e } => second_count(s: e) == 10
+    Absent => false
+  } && match elapsed_at_round(round: witness_round(index: 7, power_on: true, thermal: true), first_posted_index: first, interval: second(count: 10)) {
+    Present { value: e } => second_count(s: e) == 60
+    Absent => false
+  } && match elapsed_at_round(round: witness_round(index: 0, power_on: true, thermal: false), first_posted_index: first, interval: second(count: 10)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_render_series_carries_every_round() -> Bool {
+  let text = render_series(rounds: [witness_round(index: 0, power_on: true, thermal: false), witness_round(index: 1, power_on: true, thermal: true)])
+  string_contains(text, "round=0") && string_contains(text, "round=1") && string_contains(text, "fan=FAN1")
+}
+
+// ── the standing, one claim per arm ────────────────────────────────────────────────────────────
+
+fn witness_sample(duty_count: Int, post: HostPostState) -> FanPolicySample {
+  FanPolicySample {
+    observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
+    endpoint: FanTachEndpointIdentity { host: witness_host, name: "FAN1" },
+    drive: FanDriveDuty { duty: percent(duty_count) },
+    post_state: post,
+  }
+}
+
+fn witness_tach_sample(post: HostPostState) -> FanPolicySample {
+  FanPolicySample {
+    observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
+    endpoint: FanTachEndpointIdentity { host: witness_host, name: "FAN1" },
+    drive: FanDriveTachOnly { speed: rpm(8600) },
+    post_state: post,
+  }
+}
+
+fn witness_standing_label(sample: FanPolicySample, elapsed: Int) -> NonEmptyStr {
+  fan_policy_standing_label(standing: fan_policy_standing_of_sample(
+    host: witness_host,
+    authority: witness_authority,
+    sample: sample,
+    failsafe_duty: percent(100),
+    catalog_maximum: Absent,
+    at_maximum_tolerance: percent(95),
+    elapsed_since_post: Present { value: second(count: elapsed) },
+    transition_window: second(count: 60),
+  ))
+}
+
+// THE PRE-POST CASE, WHICH IS THE Mt. JADE READING: powered on, no DIMMs, never posts, fans at full
+// and staying there. It is FailsafeBeforeHostTelemetry - the contract working - and NOT a finding.
+test fn witness_prepost_full_duty_is_failsafe_not_a_finding() -> Bool {
+  (witness_standing_label(sample: witness_sample(duty_count: 100, post: HostPoweredOnPrePost), elapsed: 0) as String) == "FailsafeBeforeHostTelemetry"
+    && (witness_standing_label(sample: witness_sample(duty_count: 100, post: HostPoweredOff), elapsed: 0) as String) == "FailsafeBeforeHostTelemetry"
+}
+
+// THE TRANSITION AND THE FINDING ARE THE SAME READING ON EITHER SIDE OF THE WINDOW, WHICH IS WHY THE
+// WINDOW HAS TO BE BOUNDED. Thirty seconds in is the loop still closing; ninety seconds in is the
+// finding this lane exists to be able to report.
+test fn witness_window_boundary_separates_transition_from_finding() -> Bool {
+  (witness_standing_label(sample: witness_sample(duty_count: 100, post: HostPosted), elapsed: 30) as String) == "PostPostTransition"
+    && (witness_standing_label(sample: witness_sample(duty_count: 100, post: HostPosted), elapsed: 90) as String) == "FailsafeHeldAfterPost"
+}
+
+// THE Mt. COLLINS READING: posted, and the duty is BELOW the family's fixed output. That is
+// SteadyCurve, and it is the typed answer to "why does Collins not sit at failsafe".
+test fn witness_posted_below_fixed_output_is_steady_curve() -> Bool {
+  (witness_standing_label(sample: witness_sample(duty_count: 40, post: HostPosted), elapsed: 90) as String) == "SteadyCurve"
+}
+
+// A POSTED TACH-ONLY READING IS AN OBSERVATION AND NEVER A FAILSAFE VERDICT. This is the arm Mt.
+// Collins lands on: its controller publishes fans in RPM, so the series can say what the fans are
+// doing and cannot say what the controller is commanding.
+test fn witness_posted_tach_is_an_observation_not_a_verdict() -> Bool {
+  (witness_standing_label(sample: witness_tach_sample(post: HostPosted), elapsed: 90) as String) == "RpmWithoutDutyTelemetry"
+}
+
+// A POSTED HOST AT FIXED OUTPUT WHOSE POST TRANSITION WAS NEVER OBSERVED REFUSES RATHER THAN
+// REPORTING THE FINDING. Answering zero elapsed would have put it in the window; answering the
+// finding would have claimed a duration nothing measured.
+test fn witness_posted_without_an_observed_transition_refuses() -> Bool {
+  match fan_policy_standing_of_sample(
+    host: witness_host,
+    authority: witness_authority,
+    sample: witness_sample(duty_count: 100, post: HostPosted),
+    failsafe_duty: percent(100),
+    catalog_maximum: Absent,
+    at_maximum_tolerance: percent(95),
+    elapsed_since_post: Absent,
+    transition_window: second(count: 60),
+  ) {
+    FanPolicyUnderdetermined { host: h, cause: _ } => (h as String) == "mtcollins1"
+    _ => false
+  }
+}
+
+// A CATALOGUED MAXIMUM SHARPENS THE OBSERVATION AND STILL DOES NOT MINT A VERDICT, which is the
+// whole content of the 2026-09-18 ruling. 8600 of 8800 is near the ceiling and 4000 of 20000 is not,
+// and BOTH are RpmWithoutDutyTelemetry - because the speed a fan reaches at a given PWM depends on
+// supply voltage, part tolerance, static pressure and chassis impedance, so no tolerance converts
+// RPM into a commanded duty even with an exact catalogue figure.
+//
+// THIS CLAIM IS WRITTEN AS A NEGATIVE ON PURPOSE. An earlier revision returned FailsafeHeldAfterPost
+// from the first case and SteadyCurve from the second, and a witness asserting those passed - the
+// model was wrong where the test agreed with it. So the assertion below pins what the arms are AND
+// pins that neither failsafe verdict is reachable from a tach reading.
+test fn witness_catalog_maximum_sharpens_but_never_mints_a_verdict() -> Bool {
+  match witness_tach_standing(maximum: rpm(8800)) {
+    RpmWithoutDutyTelemetry { host: _, authority: _, speed: s, catalog_relation: rel } =>
+      rpm_count(r: s) == 8600 && match rel {
+        NearCatalogMaximum { catalog_maximum: m } => rpm_count(r: m) == 8800
+        _ => false
+      }
+    _ => false
+  } && match witness_tach_standing(maximum: rpm(20000)) {
+    RpmWithoutDutyTelemetry { host: _, authority: _, speed: _, catalog_relation: rel } => match rel {
+      BelowCatalogMaximum { catalog_maximum: m } => rpm_count(r: m) == 20000
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn witness_tach_standing(maximum: RevolutionsPerMinute) -> FanPolicyStanding {
+  fan_policy_standing_of_sample(
+    host: witness_host, authority: witness_authority, sample: witness_tach_sample(post: HostPosted),
+    failsafe_duty: percent(100), catalog_maximum: Present { value: maximum }, at_maximum_tolerance: percent(95),
+    elapsed_since_post: Present { value: second(count: 90) }, transition_window: second(count: 60),
+  )
+}
+
+// THE DISCRIMINATING RED FOR THE RULING: neither failsafe verdict may be reachable from ANY tach
+// reading, at any tolerance, with or without a catalogued maximum. If this ever greens against
+// FailsafeHeldAfterPost, the tach arm has been rewired back into the duty arm.
+test fn witness_no_tach_reading_reaches_a_failsafe_verdict() -> Bool {
+  let labels = map(
+    [witness_tach_standing(maximum: rpm(8600)), witness_tach_standing(maximum: rpm(8800)), witness_tach_standing(maximum: rpm(20000))],
+    st => fan_policy_standing_label(standing: st) as String,
+  )
+  fold(labels, init: true, f: (acc, l) => acc && l != "FailsafeHeldAfterPost" && l != "SteadyCurve" && l != "PostPostTransition")
+}
+
+// ── the site ceiling ───────────────────────────────────────────────────────────────────────────
+
+data witness_datasheet_ceiling: AcousticCeiling = AcousticCeiling {
+  site: "witness-site" as SiteIdentity,
+  level: tenths_dba(450),
+  position: FanDatasheetPosition,
+  basis: MeasuredAtPosition { instrument: "witness fixture: a stated datasheet-grain budget, not a reading of any room" },
+}
+
+data witness_listening_ceiling: AcousticCeiling = AcousticCeiling {
+  site: "witness-site" as SiteIdentity,
+  level: tenths_dba(450),
+  position: SiteListeningPosition,
+  basis: OperatorStatedTolerance { statement: "witness fixture" },
+}
+
+// THE CROSS-POSITION COMPARISON REFUSES. This is the structural content of the position arm: a
+// datasheet level and a listening-position ceiling are different quantities sharing a unit, and the
+// model will not answer.
+test fn witness_cross_position_comparison_refuses() -> Bool {
+  match acoustic_level_against_ceiling(level: tenths_dba(400), at: FanDatasheetPosition, ceiling: witness_listening_ceiling) {
+    AcousticPositionsIncomparable => true
+    _ => false
+  } && match acoustic_level_against_ceiling(level: tenths_dba(400), at: FanDatasheetPosition, ceiling: witness_datasheet_ceiling) {
+    AcousticWithinCeiling => true
+    _ => false
+  } && match acoustic_level_against_ceiling(level: tenths_dba(598), at: FanDatasheetPosition, ceiling: witness_datasheet_ceiling) {
+    AcousticOverCeiling { over_by: over } => dba_difference_tenths(d: over) == 148
+    _ => false
+  }
+}
+
+// THE DUTY CEILING IS THE HIGHEST PUBLISHED POINT WITHIN THE BUDGET, DERIVED FROM A REAL CATALOGUED
+// FAN AND NEVER INTERPOLATED. The Dynatron publishes 20%/25.8, 50%/44.4 and 100%/59.8 dBA; under a
+// 45.0 budget the answer is 50% - the highest point that fits, because the ceiling is a bound and
+// not a target.
+test fn witness_duty_ceiling_selects_the_highest_published_point_within() -> Bool {
+  match duty_ceiling_for_fan(row: dynatron_df126025bu_pwmh_catalog, ceiling: witness_datasheet_ceiling, fan_count: fan_count(count: 1)) {
+    DutyCeilingPublished { duty: d, level: _ } => percent_count(p: d) == 50
+    _ => false
+  }
+}
+
+// THE THREE REFUSALS, EACH REACHABLE: a budget below every published point, a listening-position
+// ceiling, and more than one fan. The last is the one that would otherwise be quietly wrong - six
+// fans are louder than one and combining levels needs a logarithm this substrate does not have.
+test fn witness_duty_ceiling_refusals_are_each_reachable() -> Bool {
+  match duty_ceiling_for_fan(row: dynatron_df126025bu_pwmh_catalog, ceiling: witness_datasheet_ceiling, fan_count: fan_count(count: 6)) {
+    DutyCeilingMultipleFansUnpriced { fan_count: n } => fan_count_value(c: n) == 6
+    _ => false
+  } && match duty_ceiling_for_fan(row: dynatron_df126025bu_pwmh_catalog, ceiling: witness_listening_ceiling, fan_count: fan_count(count: 1)) {
+    DutyCeilingPositionIncomparable => true
+    _ => false
+  } && match duty_ceiling_for_fan(
+    row: dynatron_df126025bu_pwmh_catalog,
+    ceiling: AcousticCeiling {
+      site: "witness-site" as SiteIdentity,
+      level: tenths_dba(100),
+      position: FanDatasheetPosition,
+      basis: MeasuredAtPosition { instrument: "witness fixture" },
+    },
+    fan_count: fan_count(count: 1),
+  ) {
+    DutyCeilingNoPublishedPointWithin { published_level_count: n } => published_level_count_value(c: n) == 3
+    _ => false
+  }
+}
+
+// ── the residence intent, which is the enforceable bound today ─────────────────────────────────
+
+// THE SITE'S CEILING IS OPERATOR POLICY AND THE MODEL SAYS SO. The claim reads the BASIS COPRODUCT
+// directly rather than a Bool predicate over it: an earlier revision flattened these two arms to
+// true/false in product.acoustic_ceiling, which is a predicate that exists only to be asserted about
+// and whose sole caller chain ended at this witness. If this ever greens against a measured basis,
+// somebody has replaced a stated tolerance with a reading and not said so.
+test fn witness_residence_ceiling_is_policy_not_measurement() -> Bool {
+  match operator_residence_duty_ceiling.basis {
+    OperatorStatedTolerance { statement: st } => (st as String) != ""
+    MeasuredAtPosition { instrument: _ } => false
+  } && percent_count(p: operator_residence_duty_ceiling.duty) == 60
+}
+
+// THE ARMS REACHABLE THROUGH THE SITE'S OWN CEILING, INCLUDING THE TACH REFUSAL -- which is not
+// decoration: it is the arm Mt. Collins actually landed on, 108 samples out of 108, on
+// fleet-converge run 35402673990.
+//
+// EIGHTY AND NOT ONE HUNDRED FOR THE CURVE ARM. At the supplied failsafe duty of 100, a reading of
+// 100 is AT the fixed output and is an excursion, never a curve; this claim asserted 100 into the
+// curve arm until the curve/excursion split made the two distinguishable and red it.
+test fn witness_residence_duty_verdict_arms_are_reachable() -> Bool {
+  match residence_duty_verdict(standing: fan_policy_standing_of_sample(
+    host: witness_host, authority: witness_authority,
+    sample: witness_sample(duty_count: 40, post: HostPosted),
+    failsafe_duty: percent(100), catalog_maximum: Absent, at_maximum_tolerance: percent(95),
+    elapsed_since_post: Present { value: second(count: 90) }, transition_window: second(count: 60),
+  )) {
+    FanDutyWithinCeiling { duty: d, ceiling: c } => percent_count(p: d) == 40 && percent_count(p: c) == 60
+    _ => false
+  } && match residence_duty_verdict(standing: fan_policy_standing_of_sample(
+    host: witness_host, authority: witness_authority,
+    sample: witness_sample(duty_count: 80, post: HostPosted),
+    failsafe_duty: percent(100), catalog_maximum: Absent, at_maximum_tolerance: percent(95),
+    elapsed_since_post: Present { value: second(count: 90) }, transition_window: second(count: 60),
+  )) {
+    FanDutySteadyCurveOverCeiling { duty: d, ceiling: _ } => percent_count(p: d) == 80
+    _ => false
+  } && match fan_drive_against_duty_ceiling(drive: FanDriveTachOnly { speed: rpm(8600) }, ceiling: operator_residence_duty_ceiling.duty) {
+    FanDutyNotReported { cause: _ } => true
+    _ => false
+  }
+}
+
+// ── the acoustic bound on a standing, which is the declared frontier's executed evidence ───────
+
+fn witness_standing(duty_count: Int, post: HostPostState, elapsed: Int) -> FanPolicyStanding {
+  fan_policy_standing_of_sample(
+    host: witness_host, authority: witness_authority,
+    sample: witness_sample(duty_count: duty_count, post: post),
+    failsafe_duty: percent(100), catalog_maximum: Absent, at_maximum_tolerance: percent(95),
+    elapsed_since_post: Present { value: second(count: elapsed) },
+    transition_window: second(count: 60),
+  )
+}
+
+// THE TWO FAMILY ROUTES ARE PRODUCTION ROWS NOW, NOT FIXTURES. Both were authored here, which made
+// them a route no production consumer could reach: gunbc.fleet_fan_converge_routes holds them and
+// Mt. Jade's fan standing dispatches on them, so this claim exercises the rows a real host uses
+// rather than a witness-local pair that happened to have the same shape.
+
+// A FAMILY WITH NO CONVERGE ROUTE REFUSES, AND REFUSES FIRST. This is the arm that matters most and
+// the one MegaRAC lands on today: there is no modeled way to set a duty on that family, so no
+// ceiling can be honoured OR refused against it, and reading that as "within ceiling" would be a
+// fabricated answer about the operator's own room. It fires before the level is even consulted.
+test fn witness_ceiling_is_unenforceable_without_a_converge_route() -> Bool {
+  match fan_policy_against_ceiling(
+    standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Present { value: tenths_dba(200) },
+    route: fan_converge_route_for_family(family: AmiMegaRac),
+  ) {
+    FanPolicyCeilingUnenforceable { cause: c } => string_contains(c as String, "megarac_fan_mode_surface")
+    _ => false
+  }
+}
+
+// THE STEADY CURVE AND THE FAILSAFE WINDOW ARE BOUNDED DIFFERENTLY BY THE SAME CEILING, which is
+// the whole reason this fold takes a standing rather than a reading. A curve above the ceiling is a
+// converge obligation; a failsafe above it is an excursion whose DURATION is the bound, so the
+// verdict carries the window.
+test fn witness_ceiling_bounds_curve_and_window_differently() -> Bool {
+  match fan_policy_against_ceiling(
+    standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Present { value: tenths_dba(598) },
+    route: fan_converge_route_for_family(family: OpenBmc),
+  ) {
+    FanPolicySteadyCurveOverCeiling { comparison: _ } => true
+    _ => false
+  } && match fan_policy_against_ceiling(
+    standing: witness_standing(duty_count: 100, post: HostPoweredOnPrePost, elapsed: 0),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Present { value: tenths_dba(598) },
+    route: fan_converge_route_for_family(family: OpenBmc),
+  ) {
+    FanPolicyFailsafeWindowOverCeiling { comparison: _, bound: b } => match b {
+      NoPostTransitionWindow => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// WITHIN, AND THE TWO UNDERDETERMINED ARMS. A drive point the datasheet publishes no level for
+// refuses rather than interpolating, and a listening-position ceiling refuses rather than comparing
+// across positions - the same two walls the ceiling module carries, reached through the standing.
+// A STANDING THAT CANNOT ATTRIBUTE A LEVEL REFUSES AT ANY LEVEL, INCLUDING A QUIET ONE.
+//
+// THIS IS THE RED THE SUITE DID NOT HAVE, and its absence is why the defect survived six reviews.
+// Every ceiling claim here drove `within` through a SteadyCurve standing, so the standing-dependent
+// refusals were only ever reached through the AcousticOverCeiling arm -- which is exactly where
+// they were written. A tach-only standing with a level BELOW the ceiling fell through to
+// FanPolicyWithinSiteCeiling: a positive verdict about the operator's room for a reading the same
+// function refuses one line below, because RPM attributes no level to a commanded duty.
+//
+// The first case is the discriminating one and it goes red on the pre-fix fold. The second pins the
+// asymmetry shut: the SAME standing, over the ceiling, must refuse for the SAME reason, so a future
+// edit cannot fix one direction and leave the other.
+test fn witness_unattributable_standing_refuses_below_the_ceiling_too() -> Bool {
+  match fan_policy_against_ceiling(
+    standing: witness_tach_standing(maximum: rpm(8800)),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Present { value: tenths_dba(200) },
+    route: fan_converge_route_for_family(family: OpenBmc),
+  ) {
+    FanPolicyCeilingUnderdetermined { cause: c } => string_contains(c as String, "RPM and not in duty")
+    _ => false
+  } && match fan_policy_against_ceiling(
+    standing: witness_tach_standing(maximum: rpm(8800)),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Present { value: tenths_dba(598) },
+    route: fan_converge_route_for_family(family: OpenBmc),
+  ) {
+    FanPolicyCeilingUnderdetermined { cause: c } => string_contains(c as String, "RPM and not in duty")
+    _ => false
+  }
+}
+
+test fn witness_ceiling_within_and_its_two_refusals() -> Bool {
+  match fan_policy_against_ceiling(
+    standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Present { value: tenths_dba(200) },
+    route: fan_converge_route_for_family(family: OpenBmc),
+  ) {
+    FanPolicyWithinSiteCeiling => true
+    _ => false
+  } && match fan_policy_against_ceiling(
+    standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Absent,
+    route: fan_converge_route_for_family(family: OpenBmc),
+  ) {
+    FanPolicyCeilingUnderdetermined { cause: _ } => true
+    _ => false
+  } && match fan_policy_against_ceiling(
+    standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
+    ceiling: witness_listening_ceiling,
+    level_at_drive: Present { value: tenths_dba(598) },
+    route: fan_converge_route_for_family(family: OpenBmc),
+  ) {
+    FanPolicyCeilingUnderdetermined { cause: _ } => true
+    _ => false
+  }
+}
+
+// THE SITE'S OWN DATASHEET-ROUTE WRAPPER IS EXECUTED TOO, so the declared frontier's other half is
+// evidence rather than a promise: it answers exactly what the ceiling module answers, and the
+// wrapper exists only to be the named production consumer when a dB(A) ceiling lands.
+test fn witness_residence_datasheet_route_is_executed() -> Bool {
+  match duty_ceiling_for_fan(
+    row: dynatron_df126025bu_pwmh_catalog,
+    ceiling: witness_datasheet_ceiling,
+    fan_count: fan_count(count: 1),
+  ) {
+    DutyCeilingPublished { duty: d, level: _ } => percent_count(p: d) == 50
+    _ => false
+  }
+}
+
+// EIGHTY PERCENT POSTED IS THE CURVE CASE AND ONE HUNDRED IS NOT, which is worth stating because
+// the first draft of this claim got it wrong: at the supplied failsafe duty of 100, a reading of
+// 100 is AT the fixed output and can never be SteadyCurve. A curve over a 60 percent ceiling needs
+// a duty between the ceiling and the fixed output.
+//
+// A PRE-POST FAILSAFE OVER THE CEILING IS AN EXCURSION, NOT A CURVE VIOLATION -- AND IT IS STILL
+// OVER. This is the discriminating red for the defect that produced the split: the prose claimed
+// the fold branched on the standing while the fold projected the drive out and compared it, so a
+// pre-POST failsafe at 100% came back as a plain curve violation. Both halves are asserted here,
+// because getting either one wrong is a different wrong answer about the operator's own room:
+// SteadyCurve at 100% is a converge obligation, the pre-POST failsafe at the same duty is an
+// excursion carrying its bound, and BOTH are over -- the two arms separate the remedy, not the
+// fact. The claim asserts the arms directly rather than through a Bool helper: an earlier revision
+// carried duty_verdict_is_over_ceiling for that question and nothing in production ever asked it,
+// which made it a §3c dangling declaration whose only callers were these assertions.
+test fn witness_duty_ceiling_separates_curve_from_excursion() -> Bool {
+  let curve = residence_duty_verdict(standing: witness_standing(duty_count: 80, post: HostPosted, elapsed: 90))
+  let prepost = residence_duty_verdict(standing: witness_standing(duty_count: 100, post: HostPoweredOnPrePost, elapsed: 0))
+  match curve {
+    FanDutySteadyCurveOverCeiling { duty: d, ceiling: c } => percent_count(p: d) == 80 && percent_count(p: c) == 60
+    _ => false
+  } && match prepost {
+    FanDutyExcursionOverCeiling { duty: _, ceiling: _, bound: b } => match b {
+      NoPostTransitionWindow => true
+      _ => false
+    }
+    _ => false
+  } && match residence_duty_verdict(standing: witness_standing(duty_count: 100, post: HostPosted, elapsed: 90)) {
+      FanDutyExcursionOverCeiling { duty: _, ceiling: _, bound: b } => match b {
+        OutlivedPostTransitionWindow { elapsed: e, window: w } => second_count(s: e) == 90 && second_count(s: w) == 60
+        _ => false
+      }
+      _ => false
+    }
+    && match residence_duty_verdict(standing: witness_standing(duty_count: 100, post: HostPosted, elapsed: 30)) {
+      FanDutyExcursionOverCeiling { duty: _, ceiling: _, bound: b } => match b {
+        WithinPostTransitionWindow { elapsed: e, window: w } => second_count(s: e) == 30 && second_count(s: w) == 60
+        _ => false
+      }
+      _ => false
+    }
+    && match residence_duty_verdict(standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90)) {
+      FanDutyWithinCeiling { duty: _, ceiling: _ } => true
+      _ => false
+    }
+}
+
+// AN UNREAD FAN LIST IS NOT A FANLESS CHASSIS, and this is the discriminating red for the fourth
+// and last appearance of one defect in this module. fan_lines kept `else { [] }` after the chassis
+// and thermal reads had both been given arms, so a FAILED fan read produced an empty list, an
+// undecoded count of zero, and a receipt reading `fan_sensors=0 fan_undecoded_line_count=0` --
+// byte-identical to a controller that answered and published no fan sensors, with the series still
+// reported as taken.
+//
+// The two rounds below differ ONLY in whether the read succeeded, and the claim is that they do not
+// render the same. A revision that reinstates the empty-list substitution makes them identical and
+// reds here.
+test fn witness_unread_fan_list_is_not_a_fanless_chassis() -> Bool {
+  let unread = witness_round_fans(fans: FanSensorsUnreadable)
+  let empty_read = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_line_count: sdr_undecoded_line_count(count: 0) })
+  round_fan_lines(round: unread).length() == 0
+    && round_fan_lines(round: empty_read).length() == 0
+    && string_contains(render_series(rounds: [unread]), "fans=UNREAD")
+    && string_contains(render_series(rounds: [empty_read]), "fans=sensors=0")
+    && !string_contains(render_series(rounds: [empty_read]), "UNREAD")
+}
+
+fn witness_round_fans(fans: FanSensorObservation) -> FanObservationRound {
+  FanObservationRound {
+    observed_at: "2026-09-19T00:00:00Z" as NonEmptyStr,
+    round_index: 0,
+    chassis: ChassisPowerRead { power_on: true },
+    thermal: ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    fans: fans,
+  }
+}

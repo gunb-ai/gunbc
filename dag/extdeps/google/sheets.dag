@@ -1,7 +1,7 @@
 module extdeps.google.sheets
 
 import std.types { NonEmptyStr, String, Int, List, Secret, Bool, Float, HttpMethod, AuthScheme }
-import extdeps.transports.rest { RestOutcome }
+import extdeps.transports.rest { RestOutcome, RestOk }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.credentials { EnvVar }
 import extdeps.external_authority {
@@ -620,6 +620,21 @@ type BatchUpdateValuesResponse {
   responses: List<ValueRange>?
 }
 
+// THE HERMETIC values.get FIXTURE IS AN EMPTY WHOLE TAB. mock_response can publish one result, so
+// the hermetic arm is the decoded-200 shape of values.get over a tab holding no values: the range
+// Sheets reports for a whole-tab request (the quoted title, then the grid extent) and no values
+// field, which is how the API spells an empty range. The title is the fixture's identity -- a live
+// tab is not named this, and a live read of a non-empty tab cannot answer without values. Like the
+// github.Users fixture, mock_response evaluates with an empty env, so every part is a data row.
+data hermetic_get_values_tab: NonEmptyStr = "hermetic-mock-tab"
+data hermetic_get_values_range: String = "'hermetic-mock-tab'!A1:Z1000"
+data hermetic_get_values_value_range: ValueRange = ValueRange {
+  range: hermetic_get_values_range,
+  majorDimension: Absent,
+  values: Absent,
+}
+data hermetic_get_values_outcome: RestOutcome = RestOk
+
 // THE READ THAT MAKES FORMATTING CONVERGEABLE. Without it a format actuator can only report what
 // the API answered to its write, never what the sheet now carries, so re-running re-applies
 // instead of adopting and a conditional rule accumulates on every pass.
@@ -645,6 +660,7 @@ type BatchUpdateValuesResponse {
 // conditionalFormats to the rules INTERSECTING the requested ranges, so any range chosen to bound
 // a grid read silently hides the rules that fall outside it, which is how a readback came to be
 // unable to see its own work (gunbc.recurring_failure_mode readback_scoped_to_exclude_the_effect_it_verifies).
+
 service sheets.Spreadsheets {
   config {
     endpoint: sheets_api_base
@@ -728,6 +744,9 @@ service sheets.Spreadsheets {
       404 => SheetsError
       429 => SheetsError
       5xx => SheetsError
+    }
+    mock_response {
+      200 => { value_range: hermetic_get_values_value_range, outcome: hermetic_get_values_outcome } "hermetic values.get decoded-200 shape over an empty whole tab; the title is the fixture identity, not a live tab"
     }
   }
 

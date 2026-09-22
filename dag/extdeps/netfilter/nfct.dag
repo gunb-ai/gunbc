@@ -1,0 +1,43 @@
+module extdeps.netfilter.nfct
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git.netfilter.org/conntrack-tools/tree/src/nfct.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.netfilter.nfct",
+      decl_name: "nfct_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// nfct IS conntrack-tools' HELPER-OBJECT CLI, AND IS NOT THE `conntrack` BINARY. `conntrack` reads
+// the flow and expectation tables; `nfct` manages the USERSPACE helper objects that create
+// expectations. They are separate programs in the same upstream project, so they are separate
+// authorities here rather than one module with two spellings.
+data nfct_program: NonEmptyStr = "nfct"
+
+// NO ArgvCommand BUILDER HERE, DELIBERATELY. The only consumer in this repository reaches this
+// program through a privileged read projection that prepends its own sudo binary path, so it needs
+// the ARGUMENT WORDS and not a command whose program field it would discard. Adding a builder
+// nothing calls would be the dangling declaration DESIGN 3c refuses; it belongs here the day a
+// direct invocation exists to consume it.
+//
+// `helper list` PRINTS THE REGISTERED USERSPACE HELPERS, one stanza per helper, and an empty stdout
+// with exit zero is the honest empty reading. It is the counterpart to the kernel-side
+// nf_conntrack_helper sysctl: a host can have automatic assignment gone from the kernel and still
+// carry userspace helpers, so neither reading substitutes for the other.
+data nfct_helper_list_arguments: List<NonEmptyStr> = ["helper", "list"]

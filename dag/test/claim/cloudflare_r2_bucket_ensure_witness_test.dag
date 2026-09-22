@@ -1,0 +1,237 @@
+module test.claim.cloudflare_r2_bucket_ensure
+
+import std.types { String, NonEmptyStr, Bool }
+import std.decl_ref { decl_ref }
+import std.upsert_decision {
+  ObservationVerdict, Converged, Absent, Conflict, Inaccessible, UnknownRefused,
+  Noop, Apply, Refuse,
+  UpsertClassification,
+}
+import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused }
+import extdeps.cloudflare.r2 { R2JurisdictionDefault, R2JurisdictionEu }
+import extdeps.cloudflare.r2_buckets {
+  R2BucketResponse,
+  R2BucketRead, R2BucketPresent, R2BucketAbsent, R2AccountNotEntitled, R2BucketReadRefused,
+  classify_r2_bucket_get,
+}
+import gunbc.cloudflare.r2_origin {
+  FabricDurableOrigin, FabricBootOrigin,
+  R2OriginStanding, R2OriginAllocated, R2OriginUnallocated,
+  R2OriginBucket,
+  OriginCredentialMintEntryUnbuilt,
+  OriginCredentialUnminted,
+  OriginCredentialPinned,
+  fleet_r2_bucket_admin_credential,
+  cloudflare_bootstrap_custody_secret_id,
+  cloudflare_r2_bucket_admin_secret_id,
+  bucket_purpose_origin_standing,
+  gunbc_fleet_r2_bucket_allocations,
+}
+import gunbc.cloudflare.r2_bucket_ensure {
+  R2BucketCreatePlan,
+  classify_r2_bucket_ensure,
+  r2_subscription_dashboard_step,
+  r2_ensure_signing_locus,
+  R2EnsureSigningPinned,
+  R2EnsureSigningRefused,
+}
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+
+// THE WITNESS SUPPLIES THE READ AND RUNS THE REAL CLASSIFIERS. The two classifiers are the whole
+// decision surface: classify_r2_bucket_get turns an HTTP outcome into one of the four bucket facts,
+// and classify_r2_bucket_ensure turns a declared standing and that fact into Noop | Apply | Refuse.
+// The live Get/Create exchange is exercised by running gunbc.cloudflare.r2_bucket_ensure ensure
+// against the account (its receipt is recorded on the landing PR); no claim here can reach it.
+
+fn witness_standing(jurisdiction_is_eu: Bool) -> R2OriginStanding {
+  R2OriginAllocated {
+    bucket: R2OriginBucket {
+      bucket_name: "witness-bucket",
+      jurisdiction: if jurisdiction_is_eu { R2JurisdictionEu } else { R2JurisdictionDefault },
+      purpose: FabricDurableOrigin {},
+      read_credential: OriginCredentialMintEntryUnbuilt { secret_id: "witness-read" },
+      write_credential: OriginCredentialMintEntryUnbuilt { secret_id: "witness-write" },
+    }
+  }
+}
+
+fn present(name: String, jurisdiction: String) -> R2BucketRead {
+  R2BucketPresent { bucket: R2BucketResponse { name: name, jurisdiction: Present { value: jurisdiction }, location: none } }
+}
+
+fn empty_bucket() -> R2BucketResponse {
+  R2BucketResponse { name: "", jurisdiction: none, location: none }
+}
+
+fn is_noop(c: UpsertClassification<R2BucketCreatePlan>) -> Bool {
+  match c.decision { Noop => true Apply { plan: _ } => false Refuse { reason: _ } => false }
+}
+
+fn refusal_reason(c: UpsertClassification<R2BucketCreatePlan>) -> String {
+  match c.decision { Noop => "" Apply { plan: _ } => "" Refuse { reason: r } => r as String }
+}
+
+fn applied_bucket(c: UpsertClassification<R2BucketCreatePlan>) -> String {
+  match c.decision { Noop => "" Apply { plan: p } => p.bucket_name as String Refuse { reason: _ } => "" }
+}
+
+fn verdict_is(c: UpsertClassification<R2BucketCreatePlan>, want: ObservationVerdict) -> Bool {
+  match c.verdict {
+    Converged => match want { Converged => true _ => false }
+    Absent => match want { Absent => true _ => false }
+    Conflict => match want { Conflict => true _ => false }
+    Inaccessible => match want { Inaccessible => true _ => false }
+    UnknownRefused => match want { UnknownRefused => true _ => false }
+    _ => false
+  }
+}
+
+// ── THE DISCRIMINATING REDS: THE TWO STATES THE INCIDENT HID ────────────────────────────────────
+
+// An established absence creates the declared bucket, and only that bucket.
+test fn an_absent_bucket_applies_a_create_of_the_declared_name() -> Bool {
+  let c = classify_r2_bucket_ensure(desired: witness_standing(jurisdiction_is_eu: false), read: R2BucketAbsent)
+  verdict_is(c: c, want: Absent) && applied_bucket(c: c) == "witness-bucket"
+}
+
+// An unentitled account refuses with the dashboard step and creates nothing -- the purchase is not
+// an effect this converge may perform.
+test fn an_unentitled_account_refuses_with_the_dashboard_step() -> Bool {
+  let c = classify_r2_bucket_ensure(desired: witness_standing(jurisdiction_is_eu: false), read: R2AccountNotEntitled)
+  verdict_is(c: c, want: Inaccessible)
+    && refusal_reason(c: c) == r2_subscription_dashboard_step as String
+    && applied_bucket(c: c) == ""
+}
+
+// ── THE POSITIVE CONTROL ────────────────────────────────────────────────────────────────────────
+
+test fn a_present_default_bucket_is_converged_and_noops() -> Bool {
+  let c = classify_r2_bucket_ensure(desired: witness_standing(jurisdiction_is_eu: false), read: present(name: "witness-bucket", jurisdiction: "default"))
+  verdict_is(c: c, want: Converged) && is_noop(c: c)
+}
+
+// ── THE NEIGHBOURING REFUSALS ───────────────────────────────────────────────────────────────────
+
+// A jurisdiction is immutable after creation, so a mismatch is a conflict, never an Apply.
+test fn a_bucket_in_another_jurisdiction_is_a_conflict() -> Bool {
+  let c = classify_r2_bucket_ensure(desired: witness_standing(jurisdiction_is_eu: true), read: present(name: "witness-bucket", jurisdiction: "default"))
+  verdict_is(c: c, want: Conflict) && !is_noop(c: c) && applied_bucket(c: c) == ""
+}
+
+// The Create surface carries no jurisdiction header, so an absent non-default bucket refuses rather
+// than creating a default bucket under its name.
+test fn an_absent_non_default_bucket_refuses_rather_than_creating_default() -> Bool {
+  let c = classify_r2_bucket_ensure(desired: witness_standing(jurisdiction_is_eu: true), read: R2BucketAbsent)
+  verdict_is(c: c, want: Absent) && applied_bucket(c: c) == "" && refusal_reason(c: c) != ""
+}
+
+test fn a_present_bucket_with_no_jurisdiction_is_not_assumed_default() -> Bool {
+  let c = classify_r2_bucket_ensure(
+    desired: witness_standing(jurisdiction_is_eu: false),
+    read: R2BucketPresent { bucket: R2BucketResponse { name: "witness-bucket", jurisdiction: none, location: none } },
+  )
+  verdict_is(c: c, want: UnknownRefused) && !is_noop(c: c)
+}
+
+test fn a_refused_read_creates_nothing() -> Bool {
+  let c = classify_r2_bucket_ensure(desired: witness_standing(jurisdiction_is_eu: false), read: R2BucketReadRefused { cause: "status 401" })
+  verdict_is(c: c, want: UnknownRefused) && applied_bucket(c: c) == ""
+}
+
+// ── THE WIRE CLASSIFIER: ONLY AN EXACT CITED CODE MINTS A FACT ─────────────────────────────────
+
+fn read_is_not_entitled(r: R2BucketRead) -> Bool {
+  match r { R2AccountNotEntitled => true _ => false }
+}
+
+fn read_is_absent(r: R2BucketRead) -> Bool {
+  match r { R2BucketAbsent => true _ => false }
+}
+
+fn read_is_refused(r: R2BucketRead) -> Bool {
+  match r { R2BucketReadRefused { cause: _ } => true _ => false }
+}
+
+test fn a_403_carrying_not_entitled_reads_as_unentitled() -> Bool {
+  read_is_not_entitled(r: classify_r2_bucket_get(
+    outcome: RestStatusRefused { status: 403, body: "{\"success\":false,\"errors\":[{\"code\":10042,\"message\":\"Please enable R2 through the Cloudflare Dashboard.\"}],\"messages\":[],\"result\":null}" },
+    bucket: empty_bucket(),
+  ))
+}
+
+test fn a_404_carrying_no_such_bucket_reads_as_absent() -> Bool {
+  read_is_absent(r: classify_r2_bucket_get(
+    outcome: RestStatusRefused { status: 404, body: "{\"success\":false,\"errors\":[{\"code\":10006,\"message\":\"The specified bucket does not exist.\"}],\"messages\":[],\"result\":null}" },
+    bucket: empty_bucket(),
+  ))
+}
+
+// The bet stays a bet: an authorization 403 is NOT an entitlement fact, even when its message
+// mentions the entitlement code, and a bare 404 is NOT an established absence.
+test fn a_403_with_another_code_is_an_unclassified_refusal() -> Bool {
+  read_is_refused(r: classify_r2_bucket_get(
+    outcome: RestStatusRefused { status: 403, body: "{\"success\":false,\"errors\":[{\"code\":10000,\"message\":\"Authentication error (not 10042)\"}]}" },
+    bucket: empty_bucket(),
+  ))
+}
+
+test fn a_404_with_an_unreadable_body_is_not_an_absence() -> Bool {
+  read_is_refused(r: classify_r2_bucket_get(outcome: RestStatusRefused { status: 404, body: "not found" }, bucket: empty_bucket()))
+}
+
+test fn a_transport_failure_is_not_an_absence() -> Bool {
+  read_is_refused(r: classify_r2_bucket_get(outcome: RestTransportRefused { cause: "tls handshake alert" }, bucket: empty_bucket()))
+}
+
+// ── THE REAL ROSTER REACHES THE CLASSIFIER ──────────────────────────────────────────────────────
+// Every allocated purpose resolves, through the real standing, to an allocated bucket whose own
+// name and declared jurisdiction noop against a matching read. A purpose whose standing were
+// unallocated, or declared a jurisdiction other than the one its bucket answers with, goes red here.
+test fn every_allocated_purpose_converges_against_its_own_bucket() -> Bool {
+  let held = map(gunbc_fleet_r2_bucket_allocations, row => {
+    let c = classify_r2_bucket_ensure(
+      desired: bucket_purpose_origin_standing(purpose: row.purpose),
+      read: present(name: row.bucket_name as String, jurisdiction: "default"),
+    )
+    is_noop(c: c)
+  })
+  held.length() > 0 && filter(held, h => !h).length() == 0
+}
+
+// ── THE SIGNING CREDENTIAL: THE BUCKET-ADMIN TOKEN, NEVER THE BOOTSTRAP ────────────────────────
+
+// An unminted credential refuses naming its mint entry and calls nothing.
+test fn an_unminted_bucket_admin_credential_refuses_naming_its_mint_entry() -> Bool {
+  let unminted = OriginCredentialUnminted {
+    mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_bucket_admin"),
+  }
+  match r2_ensure_signing_locus(credential: unminted) {
+    R2EnsureSigningRefused { cause: cause } => string_contains(s: cause as String, pattern: "run_bucket_admin")
+    R2EnsureSigningPinned { locus: _ } => false
+  }
+}
+
+// The fleet's real standing (pinned on the executed mint) signs with the bucket-admin locus and
+// never the bootstrap's. Red if the pin were pointed at the bootstrap custody.
+test fn the_fleet_bucket_admin_credential_signs_with_its_own_locus_not_the_bootstrap() -> Bool {
+  match r2_ensure_signing_locus(credential: fleet_r2_bucket_admin_credential()) {
+    R2EnsureSigningPinned { locus: locus } =>
+      (locus.secret as String) == (cloudflare_r2_bucket_admin_secret_id as String)
+        && (locus.secret as String) != (cloudflare_bootstrap_custody_secret_id as String)
+        && (locus.version as String) != "latest"
+    R2EnsureSigningRefused { cause: _ } => false
+  }
+}
+
+test fn a_pinned_bucket_admin_credential_signs_with_its_own_locus() -> Bool {
+  let pinned = OriginCredentialPinned {
+    access_key_id: "witness-admin-token-id",
+    token_value: secret_ref_pin_version(ref: fleet_secret_ref(secret_id: cloudflare_r2_bucket_admin_secret_id), version: "1"),
+  }
+  match r2_ensure_signing_locus(credential: pinned) {
+    R2EnsureSigningPinned { locus: locus } =>
+      (locus.secret as String) == (cloudflare_r2_bucket_admin_secret_id as String)
+        && (locus.secret as String) != (cloudflare_bootstrap_custody_secret_id as String)
+    R2EnsureSigningRefused { cause: _ } => false
+  }
+}

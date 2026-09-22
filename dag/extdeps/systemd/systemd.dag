@@ -86,6 +86,31 @@ type SystemdUnitProperty
   | InvocationIDProperty
   | FragmentPathProperty
 
+// THE WIRE SPELLING AS A SEALED WORD, SO THE CLOSED TYPE SURVIVES ALL THE WAY TO THE ARGV.
+//
+// systemctl's `--property=` takes the wire spelling, and a variant name is not always it -- which is
+// why systemd_unit_property_wire exists. The first repair of that defect widened the operations'
+// input to a bare NonEmptyStr and relied on every caller remembering to convert, which moved the wall
+// from the type system to caller discipline: nothing stopped the next caller passing a literal and
+// re-entering the silent empty reading that a wet run had just been spent finding (review 69084).
+//
+// THE SEAL CANNOT LIVE AT THE ARGV, AND THAT IS A MATERIALIZER FACT RATHER THAN A CHOICE. A sealed
+// one-field carrier read as `{property.wire}` was tried and withdrawn: `bind_argv_expr` binds a
+// string literal, a variable, and a string interpolation over those, and sends every other form --
+// including a FIELD ACCESS -- to ArgvExpressionUnsupported, so the two operations silently left the
+// materializable set and the enrolled argv-binding claims went red (review 69392, measured).
+//
+// The srv1 measurement that seemed to license the seal tested the wrong path. It echoed a record
+// field through a shell transport, which runs the interpreter's dispatch_shell route -- the full
+// evaluator -- while the wall that broke is the MATERIALIZER. `std.operation_argv`
+// `operation_argv_expression_residue_note` says exactly this about such operations, and the residue
+// dissolves when argv element evaluation lands, which is a separate lane.
+//
+// So the wire word is a plain NonEmptyStr and this function is its only sanctioned producer: the
+// conversion is a caller obligation rather than a construction wall, which is honestly weaker than
+// sole_constructor and is stated as such rather than implied. The trigger that would restore the
+// closed type is argv element evaluation in the materializer, and nothing less -- not a convention,
+// not a review habit, and not this comment.
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
     MemoryMax => "MemoryMax" as NonEmptyStr
@@ -393,4 +418,66 @@ fn systemd_binary_path(name: NonEmptyStr) -> NonEmptyStr {
 // a different operation and is not modeled until something reads a name back.
 fn systemd_name_component_is_escaped(component: String) -> Bool {
   string_contains(s: component, pattern: "\\")
+}
+
+// WHERE A SLICE'S CGROUP ACTUALLY IS, AND IT IS NOT `<mount point>/<slice name>`.
+//
+// systemd.slice(5) states the rule outright: "a slice unit named foo-bar-baz.slice is located in
+// the foo.slice/foo-bar.slice/ slice". The dashes in a slice's NAME are its path in the hierarchy,
+// not characters in a directory name -- so the cgroup of `fabric-cell-srv1-07.slice` lives at
+// `fabric.slice/fabric-cell.slice/fabric-cell-srv1.slice/fabric-cell-srv1-07.slice`, four levels
+// down, and a reader that joined the mount point to the name directly looks at a directory that
+// does not exist.
+//
+// THIS IS SYSTEMD'S FACT AND NOT THE KERNEL'S, which is why it is homed here rather than in
+// extdeps.linux.cgroup_v2. The kernel represents a hierarchy of directories; WHICH directory a
+// named slice unit gets is systemd's naming convention, and a copy of it inside the kernel's module
+// would be the layer inversion DESIGN section 3 names -- an upstream module carrying a different
+// upstream's policy. extdeps.linux.cgroup_v2 cgroup_v2_slice_path did exactly that, wrongly, and is
+// deleted with this landing; it had no consumer but the one that found the bug.
+//
+// MEASURED, NOT DERIVED FROM THE MAN PAGE ALONE: on srv1, a transient unit started with
+// `--property=Slice=gunbc-wetprobe.slice` reports `ControlGroup` as
+// `/gunbc.slice/gunbc-wetprobe.slice/wetprobe-a.service`, and `/sys/fs/cgroup/gunbc-wetprobe.slice`
+// does not exist.
+//
+// A NAME THAT IS NOT A SLICE IS REFUSED RATHER THAN GUESSED AT. `-.slice` is the root slice and has
+// no ancestors to expand; a name without the suffix is not a slice unit at all, and joining it into
+// a path would produce a directory whose meaning nobody stated.
+type SystemdSliceCgroupPath
+  = SliceCgroupPath { path: NonEmptyStr }
+  | SliceNameNotASlice { spelling: String }
+
+data systemd_slice_suffix: String = ".slice"
+
+data systemd_root_slice_name: String = "-.slice"
+
+fn systemd_slice_ancestor_names(stem: String) -> List<String> {
+  fold(split(s: stem, delimiter: "-"), init: [], f: (acc, segment) =>
+    match acc.last() {
+      Absent => [segment]
+      Present { value: prev } => concat(acc, [join([prev, "-", segment], "")])
+    })
+}
+
+fn systemd_slice_cgroup_path(mount_point: NonEmptyStr, slice: NonEmptyStr) -> SystemdSliceCgroupPath {
+  let name = slice as String
+  if name == systemd_root_slice_name {
+    SliceCgroupPath { path: mount_point }
+  } else if !ends_with(s: name, suffix: systemd_slice_suffix) {
+    SliceNameNotASlice { spelling: name }
+  } else {
+    let stem = substring(s: name, start: 0, end: string_length(s: name) - string_length(s: systemd_slice_suffix))
+    if stem == "" {
+      SliceNameNotASlice { spelling: name }
+    } else {
+      SliceCgroupPath {
+        path: fold(
+          systemd_slice_ancestor_names(stem: stem),
+          init: mount_point as String,
+          f: (acc, ancestor) => join([acc, "/", ancestor, systemd_slice_suffix], ""),
+        ) as NonEmptyStr,
+      }
+    }
+  }
 }

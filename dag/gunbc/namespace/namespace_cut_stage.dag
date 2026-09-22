@@ -240,16 +240,19 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 //
 //   4. OPEN, ATTRIBUTED TO THE TREE, NOT REPAIRED HERE: the bare FIELD-position miss. It is a
 //      fourth class rather than a dotted case, because the spelling that misses carries no dot.
-//      The mechanism is now located: v2.compiler.namespace_graft namespace_graft_body_edges_for_graft
-//      flattens the module body to Named declaration edges, which only a fn_decl yields (body
-//      lowering rehomes fn_decl under its name and rehomes nothing else), and falls back to raw
-//      dag_surface_top_level_item parse shells only when that flattening is EMPTY. So a module
-//      with any fn DROPS its type and data declarations silently, and a module with none keeps
-//      them as raw shells that resolve walks as bare mentions. Two silent arms chosen by an
-//      unrelated declaration's presence is the absorbing fallback of DESIGN section 5. The repair
-//      is a declaration-grafting capability (type_decl and data_decl under Named containment
-//      edges, fields and variants under them), dispatched as its own lane; its RED is a module whose
-//      only content is a plain type declaration. Producer for the measurement:
+//      The mechanism was located in v2.compiler.namespace_graft (the body fold, now
+//      namespace_graft_body_for_graft): it flattened the module body to Named declaration edges,
+//      which only a fn_decl yielded (body lowering rehomes fn_decl under its name and rehomes
+//      nothing else), and fell back to raw dag_surface_top_level_item parse shells only when that
+//      flattening was EMPTY. So a module with any fn DROPPED its type and data declarations
+//      silently, and a module with none kept them as raw shells that resolve walked as bare
+//      mentions. Two silent arms chosen by an unrelated declaration's presence is the absorbing
+//      fallback of DESIGN section 5. The repair, landed as gunbc#11574, is the declaration-grafting
+//      capability: every top-level unit is partitioned once (Named / residual / dissolved), so
+//      type and data declarations are Named containment edges beside fns; the RECORD spelling
+//      (field_decl_block) stays a residual shell under
+//      gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft until body
+//      lowering rehomes it, so the bare FIELD-position miss remains open there. Producer for the measurement:
 //      v2.test.claim.namespace_xl0.field_type_tree_presence; the same loss is why a cross-module
 //      reference to a DATA target still refuses (today-row in cross_module_reference_resolution).
 //

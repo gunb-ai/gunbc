@@ -148,6 +148,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     r2_us_jurisdiction_changelog_authority,
     r2_create_bucket_authority,
     r2_get_bucket_authority,
+    r2_get_started_authority,
+    r2_error_codes_authority,
+    cloudflare_account_subscription_create_authority,
   ]
 }
 // THE FIVE ARMS ARE THE CREATE/GET BUCKET JURISDICTION VALUE SET (r2_create_bucket_location_hint_reading,
@@ -167,6 +170,28 @@ fn r2_jurisdiction_wire(jurisdiction: R2Jurisdiction) -> String {
     R2JurisdictionFedrampHigh => "fedramp-high"
     R2JurisdictionUs => "us"
   }
+}
+
+// THE INHABITANTS, SO THE INVERSE IS READ FROM THE SAME TABLE RATHER THAN RE-SPELLED. An exhaustive
+// match owes an arm per inhabitant, so a sixth jurisdiction must be added here to compile, and the
+// parse below then recognises it without a second edit.
+fn r2_jurisdictions() -> List<R2Jurisdiction> {
+  [R2JurisdictionDefault, R2JurisdictionEu, R2JurisdictionFedramp, R2JurisdictionFedrampHigh, R2JurisdictionUs]
+}
+
+// ONE GRAMMAR READ BACKWARD (DESIGN section 4): the wire token is spelled once, by
+// r2_jurisdiction_wire, and the parse selects from those same rows rather than carrying a second
+// copy of the five literals. A corrected spelling therefore moves both directions together; a
+// hand-written parse would have gone silently unrecognising instead.
+fn parse_r2_jurisdiction(raw: String) -> R2Jurisdiction? {
+  fold(
+    r2_jurisdictions(),
+    init: none,
+    f: (acc, j) => match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if r2_jurisdiction_wire(jurisdiction: j) == raw { Present { value: j } } else { none }
+    },
+  )
 }
 
 type R2S3Endpoint {
@@ -354,6 +379,38 @@ fn r2_object_write_create_request(
   )
 }
 
+// THE ACCOUNT-SCOPED STORAGE GRANT: BUCKET MANAGEMENT IS AN ACCOUNT OPERATION. Creating or reading a
+// bucket's metadata is not an item operation on a bucket that may not yet exist, so no bucket-scoped
+// resource can carry it; the grant names the ACCOUNT resource (r2_account_resource_name). Like the
+// item-write grant, the group id is an observation the workflow layer supplies
+// (gunbc.cloudflare.r2_permission_group_observe), never an id authored here.
+fn r2_account_storage_grant(storage_group: PermissionGroupRef) -> CloudflarePermissionGrant {
+  PermissionGroupGrant { group: storage_group }
+}
+
+fn r2_account_resources(account_id: String) -> Map<String, String> {
+  map_insert(empty_map(), r2_account_resource_name(account_id: account_id), "*")
+}
+
+fn r2_account_storage_create_request(
+  name: String,
+  storage_group: PermissionGroupRef,
+  account_id: String
+) -> CreateAccountTokenRequest {
+  CreateAccountTokenRequest {
+    name: name,
+    policies: [
+      AccountTokenPolicy {
+        effect: PolicyAllow,
+        permission_groups: permission_groups_from_grants(grants: [r2_account_storage_grant(storage_group: storage_group)]),
+        resources: r2_account_resources(account_id: account_id)
+      }
+    ],
+    not_before: none,
+    expires_on: none
+  }
+}
+
 // THE S3 OBJECT ADDRESS AND THE SIGNATURE REGION, CITED TO THE R2 S3 API DOCUMENT
 // (developers.cloudflare.com/r2/api/s3/api, r2_s3_api_citation above). R2 serves the S3 API at
 // <account_id>.r2.cloudflarestorage.com and addresses objects PATH-STYLE, /<bucket>/<key>, so the
@@ -499,19 +556,89 @@ data r2_custom_domain_citation: FactCitation = FactCitation {
 }
 
 
+// ── THE ACCOUNT'S R2 PREREQUISITES: ENTITLEMENT AND BUCKET EXISTENCE ────────────────────────────
+// Two facts a fleet needs before any signed S3 request can mean anything, and which were assumed
+// rather than observed for nine days (gunbc#11713): the account holds an R2 subscription, and the
+// allocated bucket exists. Upstream owns what the API returns about both; which buckets this fleet
+// wants, and what to do about an absence, is the workflow's (gunbc.cloudflare.r2_bucket_ensure).
+
+data r2_get_started_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/r2/get-started/"
+  }
+}
+
+data r2_error_codes_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/r2/api/error-codes/"
+  }
+}
+
+data cloudflare_account_subscription_create_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/accounts/subresources/subscriptions/methods/create/"
+  }
+}
+
+// THE SUBSCRIPTION IS A DASHBOARD CHECKOUT, AND THE API OFFERS NO R2 PLAN. The get-started page names
+// the dashboard flow as the way to add R2; the one API that creates a subscription takes a rate_plan
+// id whose published value set is the zone plan family and names no R2 member. So activation is not
+// an effect this repository can perform: a converge meeting an unentitled account REFUSES and names
+// the dashboard step. Both readings are transcribed verbatim (curl of the index.md projection).
+data r2_get_started_subscription_reading: NonEmptyStr = "Before you begin. You need a Cloudflare account with an R2 subscription. If you do not have one: 1. Go to the Cloudflare Dashboard. 2. Select Storage & databases > R2 > Overview 3. Complete the checkout flow to add an R2 subscription to your account. R2 is free to get started with included free monthly usage. You are billed for your usage on a monthly basis. Last updated Apr 21, 2026. Read 2026-09-19."
+
+data r2_get_started_subscription_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.r2",
+    decl_name: "r2_get_started_subscription_reading",
+    field: WholeDeclaration
+  },
+  authority: r2_get_started_authority,
+}
+
+data cloudflare_account_subscription_rate_plan_reading: NonEmptyStr = "Create Subscription POST/\{accounts_or_zones\}/\{account_or_zone_id\}/subscriptions. rate_plan: optional RatePlan { id, currency, externally_managed, 4 more }. id: optional \"free\"or \"lite\"or \"pro\"or 7 more: \"free\" \"lite\" \"pro\" \"pro_plus\" \"business\" \"enterprise\" \"partners_free\" \"partners_pro\" \"partners_business\" \"partners_enterprise\". Read 2026-09-19."
+
+data cloudflare_account_subscription_rate_plan_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.r2",
+    decl_name: "cloudflare_account_subscription_rate_plan_reading",
+    field: WholeDeclaration
+  },
+  authority: cloudflare_account_subscription_create_authority,
+}
+
+// THE TWO CODES THAT DISCRIMINATE, AND THE HONEST REACH OF THEIR CITATION. The error-code page is
+// written for the Workers and S3-compatible APIs; that the client/v4 bucket endpoints answer an
+// unentitled account and a missing bucket with the same codes in their envelope is an INFERENCE from
+// one product's one code table, not a sentence on the REST reference. It is consumed as a bet: only
+// an exact code match is classified, and any other refusal -- including a 403 or a 404 carrying a
+// code this table does not name -- stays an unclassified refusal rather than being read as either
+// fact. A wrong bet therefore refuses loudly; it can never mint "absent" or "unentitled".
+data r2_error_codes_reading: NonEmptyStr = "| 10042 | NotEntitled | 403 | Account not entitled to this feature. | Ensure your account has an R2 subscription. | | 10006 | NoSuchBucket | 404 | The specified bucket does not exist. | Verify the bucket name is correct and the bucket exists in your account. | Last updated Jul 31, 2026. Read 2026-09-19."
+
+data r2_error_codes_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.r2",
+    decl_name: "r2_error_codes_reading",
+    field: WholeDeclaration
+  },
+  authority: r2_error_codes_authority,
+}
+
+data r2_not_entitled_error_code: NonEmptyStr = "10042"
+
+data r2_no_such_bucket_error_code: NonEmptyStr = "10006"
+
 // THE r2_s3_endpoint_url ROW IS RETIRED: gunbc.cloudflare.r2_origin_object reaches it through
 // r2_object_url on the executing put_origin_object and fetch_origin_object entries, which is the
 // consumer the row named. The list is the membership of what remains. r2_tokens_doc_as_of stays:
 // the digest that cites it is reached only from the dead ProviderRouteObserved arm and the claim
 // witness, which is the unread-outside-witness condition the row already recorded.
 data cloudflare_r2_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_account_resource_name"),
-    reason: "account IAM resource name has no executing consumer; object-read policy uses the bucket resource name",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration consumes r2_account_resource_name in an executing token policy or S3 IAM grant; a witness that the fold exists does not fire this"
-    )
-  ),
+
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_tokens_doc_as_of"),
     reason: "as-of pin is unread outside the claim witness; ExternalAuthority has no as-of field",

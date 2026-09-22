@@ -1,6 +1,7 @@
 module v2.test.resolve.qualified_module_projection_resolve
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.declaration_marker { test_code_index_empty }
 import v2.compiler.resolve {
   Namespace,
   ResolveContext,
@@ -96,7 +97,10 @@ fn qmpr_namespace(index: SymbolIndex) -> Namespace {
     bindings: empty_map(),
     canonical_symbols: empty_canonical_symbol_set(),
     symbol_index: index,
-    module_qn: qmpr_consumer_qn
+    module_qn: qmpr_consumer_qn,
+    test_code: test_code_index_empty(),
+    declared_in: qmpr_consumer_qn,
+    imported_origins: empty_map()
   }
 }
 

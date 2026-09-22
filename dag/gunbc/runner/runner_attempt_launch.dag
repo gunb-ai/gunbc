@@ -1,12 +1,16 @@
 module gunbc.runner_attempt_launch
 
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
+import v2.std.optional { Absent, Present }
+import std.algebra { trim }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { Second, second, ByteSize, byte_size, byte_size_count, measure_le, mebibyte_to_byte_size }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.e2fsprogs { Ext2, mke2fs_format_command, dumpe2fs_superblock_command }
-import extdeps.tools.gnu_coreutils { timeout_command, cp_command }
+import extdeps.tools.gnu_coreutils {
+  timeout_command, cp_command, install_empty_file_command,
+}
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.busybox { busybox_dd_sparse_image_command }
 import extdeps.virtualization.firecracker {
@@ -27,11 +31,17 @@ import product.fabric.grant_issue {
 import gunbc.guarantee_rung {
   GuaranteeRung, Mitigatable, MechanicallyPreventable, guarantee_rung_index,
 }
+import extdeps.github.actions_jit_runner { EncodedJitConfig, JitRunnerName }
+import gunbc.github_effect_perform { JitMintPerformance, JitMintReceived }
+import gunbc.runner.runner_jit_perform {
+  JitCredentialDelivery, JitCredentialBoundToAttempt,
+}
+import gunbc.runner_jit_mint { jit_runner_name_for }
 import gunbc.runner.runner_jit_admission {
-  SignatureAxis, ExpiryAxis, jit_admission_axis_standing,
-  AxisRequired, HostEnvelopeNonemptyAndFresh,
+  SignatureAxis, ExpiryAxis, jit_admission_axis_standing, AxisRequired, HostMintAdmission,
 }
 import gunbc.runner_microvm {
+  jit_drive_content, jit_drive_utf8_size,
   runner_microvm_vm_config,
   attach_workspace_drive,
   runner_microvm_workspace_drive_id,
@@ -50,6 +60,11 @@ import gunbc.runner_microvm_network {
   runner_slot_guest_network_boot_args,
 }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.posix.test_utility { PathExistenceReading, PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable }
+import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_size_bytes_command, StatFieldReading, StatFieldRead, StatFieldUnread, stat_field_reading }
+import std.resources { Network, Filesystem }
+import gunbc.command_runner { run_shell_command_capture }
 
 data runner_attempt_launch_disposition: Disposition = SingleAuthority
 
@@ -62,25 +77,6 @@ data runner_attempt_launch_disposition: Disposition = SingleAuthority
 // frontier together. NOT satisfied by this module existing beside the recovered init.
 data host_boot_cutover_frontier: DissolutionCondition = unbound_dissolution(
   description: "NAMED CONSUMER: the host-image build whose per-attempt driver is gunbc.runner_attempt_launch plan_attempt_launch executed at host boot on tmpfs. TRIGGER: that capability holds — Y execs at host boot and the host image is built from Y — so the recovered initramfs/init path has zero production consumers. SUFFICIENT FOR deleting docs/recovered/mtcollins-host-image-source and this row in one motion. NOT satisfied by this planner compiling, by a gunbc binary in a checkout, or by Y sitting beside X." as NonEmptyStr,
-)
-
-// DECLARED FRONTIER (DESIGN 3c). Step 6's mint is a GitHub HTTP effect. Do not take a dependency
-// on unmerged gunbc#10923. NAMED CONSUMER: plan_attempt_launch's envelope arm. TRIGGER: #10923
-// merges gunbc.github_effect_perform (classify_github_http_outcome / github_effect_http_path for
-// GenerateOrganizationJitConfig) and this planner obtains encoded_jit_config through that
-// realization. SUFFICIENT FOR deleting this row. NOT satisfied by wget, a host HTTP server, or a
-// second performer in this module.
-data jit_mint_http_realization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_attempt_launch plan_attempt_launch envelope arm. TRIGGER: gunbc#10923 merges gunbc.github_effect_perform so generate-jitconfig is a classified GitHubEffect HTTP realization; this planner then takes the minted blob from that effect rather than a presented EnvelopeStanding. SUFFICIENT FOR deleting this row. NOT satisfied by wget, a second HTTP stack here, or an unmerged #10923." as NonEmptyStr,
-)
-
-// DECLARED FRONTIER. After mint, the blob must be written into the jail as /jit.bin (X's
-// padded block device). NAMED CONSUMER: plan_authorized_steps. TRIGGER: the #10923 mint
-// supplies encoded_jit_config and this planner emits the host write into
-// firecracker_jailer_chroot_root. SUFFICIENT FOR deleting this row. NOT satisfied by
-// creating an empty jit.bin beside the workspace.
-data jail_jit_device_staging_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_attempt_launch plan_authorized_steps. TRIGGER: gunbc#10923 mint supplies encoded_jit_config and this planner writes gunbc.runner_microvm jit_drive_content(encoded_jit_config) -- the sector-padded environment-file bytes the guest agent reads from the device jit_drive_guest_device resolves, never the bare blob -- at firecracker_jailer_chroot_root/.../jit.bin so the in-jail path /jit.bin names a file the VMM can open. SUFFICIENT FOR deleting this row. NOT satisfied by an empty placeholder beside work.img." as NonEmptyStr,
 )
 
 // SHADOW MEANS SHADOW. No fleet-converge entry, no dual dispatch, no "use Y when available".
@@ -142,34 +138,173 @@ type AttemptGround
   = GroundClear
   | GroundOccupied
 
-// X's run_attempt admission order after a fetch: absent, malformed, signature, unit, boot,
-// nonce, attempt, payload digest, floor, ceiling. Presented here because mint is still the
-// #10923 frontier; the planner must still refuse every arm so the later cut does not erase a
-// correctness distinction. Host-once refusals (no boot secret, stage2 missing files) are PID 1
-// and are outside this per-attempt planner.
-type EnvelopeStanding
-  = EnvelopeAdmitted { bytes: ByteSize }
-  | EnvelopeAbsent
-  | EnvelopeMalformed
-  | EnvelopeSignatureRejected
-  | EnvelopeBoundToDifferentUnit
-  | EnvelopeBoundToDifferentBoot
-  | EnvelopeNonceMismatch
-  | EnvelopeBoundToDifferentAttempt
-  | EnvelopePayloadDigestMismatch
-  | EnvelopePayloadBelowFloor { bytes: ByteSize }
-  | EnvelopePayloadAboveCeiling { bytes: ByteSize }
-  | EnvelopeAdmissionAxisNotRequired
+// THE JIT CREDENTIAL IS ADMITTED FROM THE MINT'S OWN PERFORMANCE, NOT FROM A PRESENTED STANDING.
+//
+// This replaces X's EnvelopeStanding, which a CALLER assembled: a host fetched a blob, checked it,
+// and told the planner "admitted, N bytes". The receipted fail-open was exactly that shape --
+// jitconfig-bytes=0 and a launch anyway -- because the only thing between the fetch and the jailer
+// was a value anyone could write. Here the planner takes gunbc.github_effect_perform's
+// JitMintPerformance and admits a credential only from its delivered arm, bound to THIS attempt.
+//
+// "SIGNATURE-BOUND" is the App path, not a field. A JitMintReceived delivery is produced by
+// perform_organization_jit_mint only after an RS256 App JWT signed with the host's key was accepted
+// by GitHub for an installation token, and GitHub minted the blob against that token; the blob is
+// opaque (gunbc.runner.runner_jit_admission) and there is no signature in it for a host to check.
+// What is NOT structural, stated so it is not over-read: a caller can still construct a
+// JitMintReceived beside the performer -- witnesses do -- so this is mitigatable on the planner
+// path and its next rung is a sealed performance carrier. Host-envelope axes that had no subject
+// once the fetch was gone (unit, boot, nonce, payload digest) dissolve into the attempt binding,
+// as gunbc.runner.runner_jit_admission already rules for unit and boot.
+type JitDeviceRefusal
+  = JitMintNotReceived { performance: JitMintPerformance }
+  | JitCredentialNotDelivered { delivery: JitCredentialDelivery }
+  | JitCredentialBoundToDifferentAttempt { bound_to: MicroVmAttempt }
+  | JitCredentialBelowFloor { bytes: ByteSize }
+  | JitCredentialAboveCeiling { bytes: ByteSize }
+  | JitMintAdmissionAxisNotRequired
+
+// THE ONLY CARRIER A DEVICE CAN BE STAGED FROM, and admit_jit_credential is its only constructor.
+// The registration id travels with the credential rather than beside it: it is GitHub's identity
+// for the runner this blob registers, and it is recorded on the launch so every later event about
+// this attempt can name the registration a leak or orphan would be reconciled against.
+type AdmittedJitCredential sole_constructor {
+  credential: EncodedJitConfig
+  runner_name: JitRunnerName
+  registration_id: Int
+}
+
+type JitCredentialAdmission
+  = JitCredentialAdmitted { admitted: AdmittedJitCredential }
+  | JitCredentialRefused { refusal: JitDeviceRefusal }
+
+// BYTES, MEASURED AS BYTES. string_length counts CODE POINTS, so building a ByteSize from it labels
+// one quantity as another -- they coincide for the base64 GitHub returns and diverge for anything
+// else, which is exactly the silent wrong answer a floor and ceiling must not admit (review 68668).
+// gunbc.runner_microvm jit_drive_utf8_size is the corpus authority for the UTF-8 size of text, and
+// it is the same measure the staged device is read back against.
+fn jit_credential_bytes(credential: EncodedJitConfig) -> ByteSize {
+  jit_drive_utf8_size(text: credential.encoded as String)
+}
+
+// THE ROSTER IS CONSUMED, NOT RESTATED. gunbc.runner.runner_jit_admission declares signature and
+// expiry required with the HostMintAdmission checker, and admit_jit_credential IS that checker; so
+// it refuses if the roster stops saying so, rather than enforcing a wall the roster no longer
+// declares (or the roster declaring one nothing enforces).
+fn host_mint_admission_is_required() -> Bool {
+  match jit_admission_axis_standing(axis: SignatureAxis) {
+    AxisRequired { checker: HostMintAdmission } =>
+      match jit_admission_axis_standing(axis: ExpiryAxis) {
+        AxisRequired { checker: HostMintAdmission } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn admit_jit_credential(attempt: MicroVmAttempt, mint: JitMintPerformance) -> JitCredentialAdmission {
+  match mint {
+    JitMintReceived { delivery: delivery } =>
+      match delivery {
+        JitCredentialBoundToAttempt { attempt: bound, credential: c, runner_id: id } =>
+          if !host_mint_admission_is_required() {
+            JitCredentialRefused { refusal: JitMintAdmissionAxisNotRequired }
+          } else if bound != attempt {
+            JitCredentialRefused { refusal: JitCredentialBoundToDifferentAttempt { bound_to: bound } }
+          } else if !measure_le(a: jit_config_byte_floor, b: jit_credential_bytes(credential: c)) {
+            JitCredentialRefused { refusal: JitCredentialBelowFloor { bytes: jit_credential_bytes(credential: c) } }
+          } else if !measure_le(a: jit_credential_bytes(credential: c), b: jit_config_byte_ceiling) {
+            JitCredentialRefused { refusal: JitCredentialAboveCeiling { bytes: jit_credential_bytes(credential: c) } }
+          } else {
+            JitCredentialAdmitted {
+              admitted: AdmittedJitCredential {
+                credential: c,
+                runner_name: jit_runner_name_for(attempt: attempt),
+                registration_id: id,
+              },
+            }
+          }
+        other => JitCredentialRefused { refusal: JitCredentialNotDelivered { delivery: other } }
+      }
+    other => JitCredentialRefused { refusal: JitMintNotReceived { performance: other } }
+  }
+}
+
+// THE DEVICE, AS TWO HOST STEPS WHOSE ORDER IS THE SECURITY PROPERTY. (1) install(1) creates an
+// EMPTY file already owned by the attempt's unprivileged uid and mode 0400, inside the attempt's
+// jail; (2) the drive bytes are written into it -- through the filesystem, never an argv.
+//
+// THE BYTES ARE THE GUEST'S CONTRACT, NOT A HOST CHOICE. What goes on the drive is exactly
+// gunbc.runner_microvm jit_drive_content(credential): one ACTIONS_RUNNER_INPUT_JITCONFIG line,
+// newline-padded to whole sectors, which is what the guest agent (gunbc.runner_guest_image) reads
+// from the device jit_drive_guest_device names. A second host-side format (the recovered init's
+// NUL padding, which this module used to write) would be a second authority for one fact, and the
+// guest could not read it. The staged file's size is therefore the content's own size, and
+// readback checks exactly that.
+//
+// The file is inside the chroot of exactly one attempt. The guest sees it as a read-only drive
+// (gunbc.runner_microvm JitConfigOnReadOnlyDrive) and never sees the host path, the App key, the
+// JWT or the installation token, none of which this carrier holds.
+type JitDeviceStaging {
+  host_path: String
+  create: ArgvCommand
+  content: String
+}
+
+// ONE ROW FOR THE DEVICE'S MODE, in the digits stat(1) %a prints. install(1) -m takes the same
+// digits with a leading 0; both spellings derive from this row, so they cannot drift.
+data jit_device_mode_digits: NonEmptyStr = "400"
+
+fn jit_device_install_mode() -> NonEmptyStr {
+  concat("0", jit_device_mode_digits as String) as NonEmptyStr
+}
+
+fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> JitDeviceStaging {
+  let host_path = join([jail_root, jail_jit_path as String], "")
+  JitDeviceStaging {
+    host_path: host_path,
+    create: install_empty_file_command(
+      path: host_path,
+      octal_mode: jit_device_install_mode(),
+      uid: attempt_unprivileged_uid,
+      gid: attempt_unprivileged_gid,
+    ),
+    content: jit_drive_content(encoded_jit_config: admitted.credential.encoded),
+  }
+}
 
 // PID1 refusals (no boot secret, stage2 missing files) have no constructor on AttemptLaunchPlan.
 // That is the census: they are outside this per-attempt planner by construction, not by a Bool.
+//
+// WHAT THIS ARM ESTABLISHES, AND WHAT IT DOES NOT. jit_device and jailer are fields of ONE arm,
+// and plan_after_authorization reaches it only through admit_jit_credential's admitted arm, so a
+// plan BUILT BY THIS PLANNER carries a staging plan and a jailer command together or carries
+// neither.
+//
+// THAT IS NOT A CONSTRUCTION WALL, and an earlier revision of this comment said it was. This type
+// is not sole_constructor, so a LaunchAuthorized is assemblable outside this module, and its jailer
+// field is readable by any holder: a caller can execute plan.jailer without ever obtaining the
+// AttemptStagingReceipt that attempt_staging_verdict produces, and modules outside this one already
+// read that field. So the arm establishes that every LaunchAuthorized HAS FIELDS FOR BOTH -- not
+// that the value came from admit_jit_credential, not that staging ran, not that the readbacks
+// happened, and not that the jailer cannot be obtained first. The rung this module reports,
+// Mitigatable, is the honest one; the earlier "unwritable by shape" language was not.
+//
+// AND DEVICE-WITHOUT-LAUNCH IS NOT THE STATE THAT MUST BE IMPOSSIBLE: a staged device with no VMM
+// is safe provided teardown removes it. The dangerous state is A VMM LAUNCHED WITHOUT AN
+// EFFECT-BOUND, READ-BACK CREDENTIAL DEVICE FOR THIS ATTEMPT. ONE MECHANICALLY PREVENTING REPAIR
+// is to withhold the raw jailer capability until after effect-bound staging, with the staging
+// realization constructing the executable jailer from its own observations. That is a substantive
+// redesign, not a comment fix, and is not attempted here.
 
 type AttemptLaunchPlan
   = LaunchRefusedUnauthorized { authorization: GrantAuthorization }
-  | LaunchRefusedEnvelope { standing: EnvelopeStanding }
+  | LaunchRefusedJitCredential { refusal: JitDeviceRefusal }
   | LaunchRefusedPriorResources
   | LaunchAuthorized {
       authorization: GrantAuthorization
+      jit_runner_name: JitRunnerName
+      jit_registration_id: Int
+      jit_device: JitDeviceStaging
       tap_device: NonEmptyStr
       guest_ip_boot_arg: String
       slice: SystemdRunProperty
@@ -184,66 +319,6 @@ type AttemptLaunchPlan
       vm_config: FirecrackerVmConfig
       jailer: ArgvCommand
     }
-
-fn envelope_floor_is_required() -> Bool {
-  match jit_admission_axis_standing(axis: SignatureAxis) {
-    AxisRequired { checker: HostEnvelopeNonemptyAndFresh } =>
-      match jit_admission_axis_standing(axis: ExpiryAxis) {
-        AxisRequired { checker: HostEnvelopeNonemptyAndFresh } => true
-        _ => false
-      }
-    _ => false
-  }
-}
-
-fn credential_bytes_admit(bytes: ByteSize) -> Bool {
-  envelope_floor_is_required()
-    && measure_le(a: jit_config_byte_floor, b: bytes)
-    && measure_le(a: bytes, b: jit_config_byte_ceiling)
-}
-
-fn envelope_admits_launch(standing: EnvelopeStanding) -> Bool {
-  match standing {
-    EnvelopeAdmitted { bytes: n } => credential_bytes_admit(bytes: n)
-    EnvelopeAbsent => false
-    EnvelopeMalformed => false
-    EnvelopeSignatureRejected => false
-    EnvelopeBoundToDifferentUnit => false
-    EnvelopeBoundToDifferentBoot => false
-    EnvelopeNonceMismatch => false
-    EnvelopeBoundToDifferentAttempt => false
-    EnvelopePayloadDigestMismatch => false
-    EnvelopePayloadBelowFloor { bytes: _ } => false
-    EnvelopePayloadAboveCeiling { bytes: _ } => false
-    EnvelopeAdmissionAxisNotRequired => false
-  }
-}
-
-fn refuse_or_normalize_envelope(standing: EnvelopeStanding) -> EnvelopeStanding {
-  match standing {
-    EnvelopeAdmitted { bytes: n } =>
-      if !envelope_floor_is_required() {
-        EnvelopeAdmissionAxisNotRequired
-      } else if !measure_le(a: jit_config_byte_floor, b: n) {
-        EnvelopePayloadBelowFloor { bytes: n }
-      } else if !measure_le(a: n, b: jit_config_byte_ceiling) {
-        EnvelopePayloadAboveCeiling { bytes: n }
-      } else {
-        standing
-      }
-    EnvelopeAbsent => standing
-    EnvelopeMalformed => standing
-    EnvelopeSignatureRejected => standing
-    EnvelopeBoundToDifferentUnit => standing
-    EnvelopeBoundToDifferentBoot => standing
-    EnvelopeNonceMismatch => standing
-    EnvelopeBoundToDifferentAttempt => standing
-    EnvelopePayloadDigestMismatch => standing
-    EnvelopePayloadBelowFloor { bytes: _ } => standing
-    EnvelopePayloadAboveCeiling { bytes: _ } => standing
-    EnvelopeAdmissionAxisNotRequired => standing
-  }
-}
 
 // ONE APPENDER FOR EVERY BOOT ARGUMENT THE PLAN ADDS -- the guest address today -- so the join
 // is spelled once and a second argument is one more call, not a second copy.
@@ -288,7 +363,7 @@ fn plan_attempt_launch(
   demand: FabricIdentity<NonEmptyStr, DemandKey>,
   offer: FabricIdentity<NonEmptyStr, OfferKey>,
   attempt: MicroVmAttempt,
-  envelope: EnvelopeStanding,
+  mint: JitMintPerformance,
   ground: AttemptGround,
   jailer_binary: String,
   firecracker_binary: String,
@@ -308,7 +383,7 @@ fn plan_attempt_launch(
     GrantAuthorizes => plan_after_authorization(
       authorization: authorization,
       attempt: attempt,
-      envelope: envelope,
+      mint: mint,
       ground: ground,
       jailer_binary: jailer_binary,
       firecracker_binary: firecracker_binary,
@@ -326,7 +401,7 @@ fn plan_attempt_launch(
 fn plan_after_authorization(
   authorization: GrantAuthorization,
   attempt: MicroVmAttempt,
-  envelope: EnvelopeStanding,
+  mint: JitMintPerformance,
   ground: AttemptGround,
   jailer_binary: String,
   firecracker_binary: String,
@@ -337,18 +412,18 @@ fn plan_after_authorization(
   match ground {
     GroundOccupied => LaunchRefusedPriorResources
     GroundClear =>
-      if envelope_admits_launch(standing: envelope) {
-        plan_authorized_steps(
+      match admit_jit_credential(attempt: attempt, mint: mint) {
+        JitCredentialRefused { refusal: r } => LaunchRefusedJitCredential { refusal: r }
+        JitCredentialAdmitted { admitted: admitted } => plan_authorized_steps(
           authorization: authorization,
           attempt: attempt,
+          admitted: admitted,
           jailer_binary: jailer_binary,
           firecracker_binary: firecracker_binary,
           kernel_source: kernel_source,
           rootfs_source: rootfs_source,
           shape: shape,
         )
-      } else {
-        LaunchRefusedEnvelope { standing: refuse_or_normalize_envelope(standing: envelope) }
       }
   }
 }
@@ -356,6 +431,7 @@ fn plan_after_authorization(
 fn plan_authorized_steps(
   authorization: GrantAuthorization,
   attempt: MicroVmAttempt,
+  admitted: AdmittedJitCredential,
   jailer_binary: String,
   firecracker_binary: String,
   kernel_source: String,
@@ -379,6 +455,9 @@ fn plan_authorized_steps(
   )
   LaunchAuthorized {
     authorization: authorization,
+    jit_runner_name: admitted.runner_name,
+    jit_registration_id: admitted.registration_id,
+    jit_device: jit_device_staging(jail_root: jail_root, admitted: admitted),
     tap_device: net.tap_device,
     guest_ip_boot_arg: runner_slot_guest_network_boot_args(net: net),
     slice: runner_microvm_attempt_slice_property(attempt: attempt),
@@ -435,6 +514,9 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
   match plan {
     LaunchAuthorized {
       authorization: _,
+      jit_runner_name: _,
+      jit_registration_id: _,
+      jit_device: _,
       tap_device: _,
       guest_ip_boot_arg: _,
       slice: _,
@@ -450,8 +532,84 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
       jailer: _,
     } => 1
     LaunchRefusedUnauthorized { authorization: _ } => 0
-    LaunchRefusedEnvelope { standing: _ } => 0
+    LaunchRefusedJitCredential { refusal: _ } => 0
     LaunchRefusedPriorResources => 0
+  }
+}
+
+// STAGING, PERFORMED -- and READ BACK FROM THE HOST rather than believed from the steps' exits.
+// Each step's refusal is its own arm naming the step, so a failed install is not reported as a
+// failed write. The readback checks the three facts the device's safety rests on: owned by the
+// attempt's uid (the jailer drops to it, so root-owned would be unreadable and anything looser would
+// be readable by others), mode 0400, and size exactly the drive content's size (so the guest reads
+// whole sectors of the contract it expects). A stat that itself failed is its own refusal carrying
+// its stderr -- not a mismatch of an empty reading (review 68502). A device that fails readback is
+// a refusal: the caller must not launch over it.
+type JitDeviceStagingStep
+  = JitDeviceCreateStep
+  | JitDeviceWriteStep
+  | JitDeviceReadbackStep
+
+type JitDeviceStagingOutcome
+  = JitDeviceStaged { host_path: String }
+  | JitDeviceStagingRefused { step: JitDeviceStagingStep, detail: String }
+
+fn jit_device_fact(name: String, reading: StatFieldReading, expected: String) -> JitDeviceStagingOutcome? {
+  match reading {
+    StatFieldUnread { detail: d } =>
+      Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join([name, " unread: ", d], "") } }
+    StatFieldRead { value: v } =>
+      if v == expected {
+        none
+      } else {
+        Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join([name, " is ", v, ", expected ", expected], "") } }
+      }
+  }
+}
+
+fn jit_device_readback(
+  uid: StatFieldReading,
+  mode: StatFieldReading,
+  size: StatFieldReading,
+  content: String,
+) -> JitDeviceStagingOutcome? {
+  match jit_device_fact(name: "owner uid", reading: uid, expected: to_string(attempt_unprivileged_uid)) {
+    Present { value: r } => Present { value: r }
+    Absent =>
+      match jit_device_fact(name: "mode", reading: mode, expected: jit_device_mode_digits as String) {
+        Present { value: r } => Present { value: r }
+        Absent =>
+          jit_device_fact(
+            name: "size",
+            reading: size,
+            expected: to_string(byte_size_count(b: jit_drive_utf8_size(text: content))),
+          )
+      }
+  }
+}
+
+fn stage_jit_device(device: JitDeviceStaging) -> JitDeviceStagingOutcome
+  uses net: Network, fs: Filesystem
+{
+  match run_shell_command_capture(command: device.create, transport: LocalExec) {
+    ProcessRefused { exit_code: _, stderr: e } =>
+      JitDeviceStagingRefused { step: JitDeviceCreateStep, detail: trim(s: e) }
+    _ => {
+      let wrote = Filesystem.Write(path: device.host_path, content: device.content)
+      if wrote.success == false {
+        JitDeviceStagingRefused { step: JitDeviceWriteStep, detail: device.host_path }
+      } else {
+        match jit_device_readback(
+          uid: stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: device.host_path), transport: LocalExec)),
+          mode: stat_field_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: device.host_path), transport: LocalExec)),
+          size: stat_field_reading(outcome: run_shell_command_capture(command: stat_size_bytes_command(path: device.host_path), transport: LocalExec)),
+          content: device.content,
+        ) {
+          Present { value: refused } => refused
+          Absent => JitDeviceStaged { host_path: device.host_path }
+        }
+      }
+    }
   }
 }
 
@@ -532,17 +690,150 @@ fn workspace_standing(obs: WorkspaceStagingObservation, planned_path: String) ->
   }
 }
 
+// THE JAIL'S MATERIAL IS STAGED BY THREE COMMANDS AND ALL THREE USED TO BE DISCARDED.
+//
+// stage_jail_root, stage_kernel and stage_rootfs ran and their exits went nowhere: the verdict below
+// discriminated only on the JIT device and the workspace superblock, so a `cp` that failed left the
+// receipt mintable and released the jailer onto a chroot with no kernel in it. The guest then fails
+// to boot far from its cause -- which is the exact failure this file already argues against for the
+// workspace two screens up, with the asymmetry sitting two lines apart in the caller (review 69084).
+//
+// THE ORDER IS CAUSAL, as it is for the workspace: a jail root that was not created makes the copies
+// meaningless, and a copy that failed makes its readback meaningless. So the earliest failure is the
+// one reported.
+//
+// AND THE EXITS ARE THE CLAIM WHILE THE READBACK IS THE OBSERVATION, the same split the workspace
+// makes. `cp` exiting zero is the tool's word; the file being at the path the jailer will open is the
+// host's. They are separated in time by a full disk and by a destination nobody checked.
+type JailMaterialStep
+  = JailRootStep
+  | JailKernelStep
+  | JailRootfsStep
+
+fn jail_material_step_label(step: JailMaterialStep) -> String {
+  match step {
+    JailRootStep => "jail root"
+    JailKernelStep => "kernel"
+    JailRootfsStep => "rootfs"
+  }
+}
+
+type JailMaterialStaging {
+  jail_root_exit: Int
+  kernel_exit: Int
+  rootfs_exit: Int
+  kernel: PathExistenceReading
+  rootfs: PathExistenceReading
+}
+
+type JailMaterialStanding
+  = JailMaterialReady
+  | JailMaterialStepFailed { step: JailMaterialStep, exit: Int }
+  | JailMaterialMissing { step: JailMaterialStep }
+  | JailMaterialUnobservable { step: JailMaterialStep, reason: NonEmptyStr }
+
+fn jail_material_standing(obs: JailMaterialStaging) -> JailMaterialStanding {
+  if obs.jail_root_exit != 0 {
+    JailMaterialStepFailed { step: JailRootStep, exit: obs.jail_root_exit }
+  } else if obs.kernel_exit != 0 {
+    JailMaterialStepFailed { step: JailKernelStep, exit: obs.kernel_exit }
+  } else if obs.rootfs_exit != 0 {
+    JailMaterialStepFailed { step: JailRootfsStep, exit: obs.rootfs_exit }
+  } else {
+    jail_material_readbacks(kernel: obs.kernel, rootfs: obs.rootfs)
+  }
+}
+
+fn jail_material_readbacks(kernel: PathExistenceReading, rootfs: PathExistenceReading) -> JailMaterialStanding {
+  match jail_material_present(step: JailKernelStep, reading: kernel) {
+    Present { value: refusal } => refusal
+    Absent =>
+      match jail_material_present(step: JailRootfsStep, reading: rootfs) {
+        Present { value: refusal } => refusal
+        Absent => JailMaterialReady
+      }
+  }
+}
+
+// STAGING NEEDS NO CONTAINMENT AND SANITATION DOES, which is why this arm folds the ambiguous reading
+// where the sanitation readback must open it. `test -e` false means the jailer cannot open the file,
+// whether it is missing or merely unstattable, and either way the launch must refuse. Absence is only
+// load-bearing in the direction that RELEASES something, and nothing is released here.
+fn jail_material_present(step: JailMaterialStep, reading: PathExistenceReading) -> JailMaterialStanding? {
+  match reading {
+    PathPresent => none
+    PathAbsentOrUnstattable => Present { value: JailMaterialMissing { step: step } }
+    PathExistenceUnreadable { reason: r } => Present { value: JailMaterialUnobservable { step: step, reason: r } }
+  }
+}
+
+// THE PATHS THE READBACK ASKS ABOUT ARE THE ONES THE PLAN'S OWN COPIES WRITE TO, derived from the same
+// jail_root and the same interface rows, so a readback cannot drift onto a file the jailer will not
+// open.
+fn jail_kernel_destination(jail_root: String) -> String {
+  join([jail_root, jail_kernel_path as String], "")
+}
+
+fn jail_rootfs_destination(jail_root: String) -> String {
+  join([jail_root, jail_rootfs_path as String], "")
+}
+
+// THE RECEIPT IS SEALED: sole_constructor makes attempt_staging_verdict the only
+// producer of an AttemptStagingReceipt, so a caller cannot construct that receipt
+// beside the gate. The receipt carries the planned JIT-device path and workspace
+// path against which the supplied outcomes were judged.
+//
+// WHAT SEALING DOES NOT PROVE, twice over. FIRST, it does not withhold the jailer
+// capability: the same jailer command sits in plain sight on AttemptLaunchPlan's
+// LaunchAuthorized arm, which is not sole_constructor, so a caller holding the plan
+// already has the capability this receipt was described as gating.
+// SECOND, the gate accepts CALLER-AUTHORED positive outcomes: a JitDeviceStaged value is
+// constructible without stage_jit_device ever running -- this module's own witnesses construct one
+// to drive the foreign-device case -- so a sealed receipt proves the gate was CALLED with
+// positive-shaped arguments, not that the host effects and their readbacks occurred.
+//
+// A PROSE OBLIGATION BESIDE A JAILER-ADMITTING VALUE IS NOT A WALL (sunny-ant-606 ruling): the
+// frontier row can say the controller must reach the jailer through this fold, and a controller
+// following it exactly would still have launched on workspace readiness alone while the credential
+// device had failed. The premises are made inseparable here instead.
+type AttemptStagingReceipt sole_constructor {
+  jailer: ArgvCommand
+  jit_device_path: String
+  workspace_path: String
+}
+
 type AttemptStagingVerdict
-  = StagingAdmitsJailer { jailer: ArgvCommand }
+  = StagingAdmitsJailer { receipt: AttemptStagingReceipt }
+  | StagingRefusedJailMaterial { standing: JailMaterialStanding }
+  | StagingRefusedJitDevice { outcome: JitDeviceStagingOutcome }
+  | StagingRefusedForeignJitDevice { staged_path: String, planned_path: String }
   | StagingRefusedWorkspace { standing: WorkspaceStanding }
   | StagingNotAuthorized
 
-// THE ONLY ROUTE TO THE JAILER COMMAND AFTER STAGING. A refused plan has no jailer to admit, and a
-// workspace that is anything but WorkspaceReady refuses -- there is no arm that launches anyway.
-fn staging_verdict(plan: AttemptLaunchPlan, obs: WorkspaceStagingObservation) -> AttemptStagingVerdict {
+// THE ONLY ROUTE TO THE JAILER COMMAND AFTER STAGING, AND IT CONSUMES BOTH STAGINGS. A refused plan
+// has no jailer to admit; a workspace that is anything but WorkspaceReady refuses; and the JIT
+// device must have been STAGED FOR THIS ATTEMPT -- the staged path is compared against the path this
+// plan's own jit_device names, so a sibling attempt's device (or a stale one left at another path)
+// refuses rather than being launched over.
+//
+// TAKING ONLY THE WORKSPACE OBSERVATION WAS A FAIL-OPEN, AND IT WAS CREATED BY A MERGE rather than
+// authored: the workspace gate landed on one side and the JIT device on the other, and the join
+// admitted a ready workspace while the credential device had failed to stage or had never been
+// staged at all. A guest reaching the listener with no credential burns its whole deadline looking
+// healthy, which is the class this planner exists to close, so the gate takes both outcomes and
+// there is no arm that launches on one of them.
+fn attempt_staging_verdict(
+  plan: AttemptLaunchPlan,
+  jail: JailMaterialStaging,
+  jit: JitDeviceStagingOutcome,
+  workspace: WorkspaceStagingObservation,
+) -> AttemptStagingVerdict {
   match plan {
     LaunchAuthorized {
       authorization: _,
+      jit_runner_name: _,
+      jit_registration_id: _,
+      jit_device: device,
       tap_device: _,
       guest_ip_boot_arg: _,
       slice: _,
@@ -556,32 +847,62 @@ fn staging_verdict(plan: AttemptLaunchPlan, obs: WorkspaceStagingObservation) ->
       kvm_device: _,
       vm_config: _,
       jailer: j,
-    } => {
-      let s = workspace_standing(obs: obs, planned_path: planned)
-      match s {
-        WorkspaceReady => StagingAdmitsJailer { jailer: j }
-        WorkspaceCreateFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
-        WorkspaceFormatFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
-        WorkspaceNotExtFilesystem => StagingRefusedWorkspace { standing: s }
-        WorkspaceSizeMismatch { observed: _, expected: _ } => StagingRefusedWorkspace { standing: s }
-        WorkspaceUnreadable { reason: _ } => StagingRefusedWorkspace { standing: s }
-        WorkspaceReadbackOfDifferentImage { read: _, planned: _ } => StagingRefusedWorkspace { standing: s }
+    } =>
+      match jail_material_standing(obs: jail) {
+        JailMaterialReady => attempt_staging_after_jail(device: device, planned: planned, jailer: j, jit: jit, workspace: workspace)
+        refused_material => StagingRefusedJailMaterial { standing: refused_material }
       }
-    }
     LaunchRefusedUnauthorized { authorization: _ } => StagingNotAuthorized
-    LaunchRefusedEnvelope { standing: _ } => StagingNotAuthorized
+    LaunchRefusedJitCredential { refusal: _ } => StagingNotAuthorized
     LaunchRefusedPriorResources => StagingNotAuthorized
   }
 }
+
+fn attempt_staging_after_jail(
+  device: JitDeviceStaging,
+  planned: String,
+  jailer: ArgvCommand,
+  jit: JitDeviceStagingOutcome,
+  workspace: WorkspaceStagingObservation,
+) -> AttemptStagingVerdict {
+  match jit {
+    JitDeviceStagingRefused { step: _, detail: _ } => StagingRefusedJitDevice { outcome: jit }
+    JitDeviceStaged { host_path: staged } =>
+      if staged != device.host_path {
+        StagingRefusedForeignJitDevice { staged_path: staged, planned_path: device.host_path }
+      } else {
+        attempt_staging_after_jit(staged: staged, planned: planned, jailer: jailer, workspace: workspace)
+      }
+  }
+}
+
+fn attempt_staging_after_jit(
+  staged: String,
+  planned: String,
+  jailer: ArgvCommand,
+  workspace: WorkspaceStagingObservation,
+) -> AttemptStagingVerdict {
+  let s = workspace_standing(obs: workspace, planned_path: planned)
+  match s {
+    WorkspaceReady =>
+      StagingAdmitsJailer {
+        receipt: AttemptStagingReceipt {
+          jailer: jailer,
+          jit_device_path: staged,
+          workspace_path: planned,
+        },
+      }
+    WorkspaceCreateFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
+    WorkspaceFormatFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
+    WorkspaceNotExtFilesystem => StagingRefusedWorkspace { standing: s }
+    WorkspaceSizeMismatch { observed: _, expected: _ } => StagingRefusedWorkspace { standing: s }
+    WorkspaceUnreadable { reason: _ } => StagingRefusedWorkspace { standing: s }
+    WorkspaceReadbackOfDifferentImage { read: _, planned: _ } => StagingRefusedWorkspace { standing: s }
+  }
+}
+
 
 fn workspace_readback_command(workspace_path: String) -> ArgvCommand {
   dumpe2fs_superblock_command(image_path: workspace_path)
 }
 
-// DECLARED FRONTIER (DESIGN 3c). NAMED CONSUMER: the lifecycle controller's staging step
-// (gunbc#11670). TRIGGER: that step runs the plan's workspace_create and workspace_format, reads
-// workspace_readback_command, and reaches the jailer only through staging_verdict. SUFFICIENT FOR
-// deleting this row. NOT satisfied by a witness calling staging_verdict.
-data workspace_staging_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the microVM lifecycle controller's staging step (gunbc#11670). TRIGGER: that step executes workspace_create and workspace_format, reads workspace_readback_command, and reaches the jailer only through staging_verdict. SUFFICIENT FOR deleting this row. NOT satisfied by a witness calling staging_verdict." as NonEmptyStr,
-)

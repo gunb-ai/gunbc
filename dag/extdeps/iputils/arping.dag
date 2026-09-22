@@ -1,0 +1,59 @@
+module extdeps.iputils.arping
+
+import std.types { Bool, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/arping.8.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.iputils.arping",
+      decl_name: "arping_binary_path",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data arping_binary_path: NonEmptyStr = "/usr/sbin/arping"
+
+// arping(8) from iputils. THIS EXISTS SO REACHABILITY REFUSES INSTEAD OF TIMING OUT.
+//
+// The failure it is here to prevent is a Redfish probe that hangs for curl's connect timeout and
+// then reports a transport error, from which a reader cannot tell "the host is not on this
+// segment" from "the host is there and the HTTP service is down". ARP answers the first question
+// and only the first: a reply proves the target address is live AT LAYER 2 on the named interface,
+// and ARP does not cross a router, so a reply is also proof of shared segment. That is exactly the
+// standing this repository could not establish about the Mt. Jade BMC from an address sweep.
+//
+// WHAT A SILENT ARPING DOES NOT ESTABLISH, and the caller must not widen it: no reply means no ARP
+// answer was seen in the window, which covers a wrong interface, a wrong segment, a powered-down
+// BMC and a host configured not to answer. It is a typed refusal with a cause to carry, never a
+// conclusion about which of those holds.
+//
+// `-c` bounds the window so the operation terminates, `-I` names the interface because a host with
+// several segments would otherwise choose one, and `-D` is deliberately NOT used: duplicate-address
+// detection is a different question and its exit convention is inverted.
+service iputils.Arping {
+  operation ProbeAddress {
+    input { device: NonEmptyStr, target: NonEmptyStr, count: NonEmptyStr }
+    output { body: String from "stdout", transport_stderr: String from "stderr", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["arping", "-c", "{count}", "-I", "{device}", "{target}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "arping saw no reply from the target on the named interface"
+    }
+  }
+}

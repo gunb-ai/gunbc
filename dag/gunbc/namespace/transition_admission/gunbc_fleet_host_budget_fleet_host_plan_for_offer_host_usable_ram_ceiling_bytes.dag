@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.gunbc_fleet_host_budget_fleet_host_plan_for_offer_host_usable_ram_ceiling_bytes
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data gunbc_fleet_host_budget_fleet_host_plan_for_offer_host_usable_ram_ceiling_bytes: TransitionAdmission = TransitionAdmission {
+  label: "EXTRACTION host memory observation: `host_usable_ram_ceiling_bytes` moves gunbc.ci_floor_measurement -> gunbc.host_memory_observation" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.fleet_host_budget", "fleet_host_plan_for_offer"),
+    spelling: "host_usable_ram_ceiling_bytes" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.host_memory_observation", "host_usable_ram_ceiling_bytes")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11625 as UInt32,
+}

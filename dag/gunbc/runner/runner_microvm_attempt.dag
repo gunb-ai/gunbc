@@ -124,10 +124,6 @@ fn runner_microvm_attempt_rootfs_path(attempt: MicroVmAttempt) -> String {
   join([runner_microvm_attempt_dir(attempt: attempt), "/rootfs.ext4"], "")
 }
 
-fn runner_microvm_attempt_jit_drive_path(attempt: MicroVmAttempt) -> String {
-  join([runner_microvm_attempt_dir(attempt: attempt), "/jit.img"], "")
-}
-
 fn runner_microvm_attempt_vm_config_path(attempt: MicroVmAttempt) -> String {
   join([runner_microvm_attempt_dir(attempt: attempt), "/vm-config.json"], "")
 }
@@ -169,7 +165,6 @@ type MicroVmCellBinding
   = VmBoundToOwnedCell {
       attempt: MicroVmAttempt
       rootfs_path: String
-      jit_drive_path: String
       vm_config_path: String
       unit_name: NonEmptyStr
       slice_property: SystemdRunProperty
@@ -230,7 +225,6 @@ fn bind_owned_attempt(attempt: MicroVmAttempt, owned: Bool) -> MicroVmCellBindin
     VmBoundToOwnedCell {
       attempt: attempt,
       rootfs_path: runner_microvm_attempt_rootfs_path(attempt: attempt),
-      jit_drive_path: runner_microvm_attempt_jit_drive_path(attempt: attempt),
       vm_config_path: runner_microvm_attempt_vm_config_path(attempt: attempt),
       unit_name: runner_microvm_attempt_unit_name(attempt: attempt),
       slice_property: runner_microvm_attempt_slice_property(attempt: attempt),

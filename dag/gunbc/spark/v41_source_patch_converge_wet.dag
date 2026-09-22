@@ -18,7 +18,7 @@ import gunbc.fleet_ssh_credential_verify {
   fleet_ssh_credential_verification_refusal_reason,
 }
 import gunbc.fleet_multi_principal_probe { probe_agent_credential_verification }
-import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host }
+import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_live, release_host_effect_live }
 import gunbc.spark.managed_access_bootstrap { spark_managed_executor_login }
 import gunbc.spark.fabric_reach { ReachManagementLan, spark_reach_endpoint, spark_reach_path_wire }
 import gunbc.spark.v41_runtime_candidate {
@@ -26,7 +26,7 @@ import gunbc.spark.v41_runtime_candidate {
   v41_storage_backed_patch_population, v41_candidate_recipe,
 }
 import gunbc.spark.vllm_runtime_image_build {
-  vllm_build_host_purpose, vllm_source_dir, vllm_build_root,
+  vllm_build_host_purpose, vllm_source_dir, vllm_build_root, vllm_build_host_residue,
 }
 import gunbc.spark.v41_source_patch_converge {
   converge_vllm_source_with_patches,
@@ -54,9 +54,10 @@ fn v41_patched_source_acquire_wet(host: String) -> ProcessExit
     V41PatchesUnestablished { obligation: o } => exit_failure(reason: o as String)
     V41PatchesObserved { patches: ps, partition: _ } => {
       let now = clock_now_probed_at()
-      match admit_unplaced_host(raw: host, purpose: vllm_build_host_purpose) {
+      match admit_unplaced_host_live(term: vllm_build_host_effect_term, raw: host, purpose: vllm_build_host_purpose, residue: vllm_build_host_residue()) {
         SparkHostRefused { cause: why } => exit_failure(reason: why as String)
-        SparkHostAdmitted { host: build_host } =>
+        SparkHostAdmitted { host: build_host, claim: claim } =>
+          release_host_effect_live(handle: claim, exit: {
           match fleet_ssh_attempt_identity(raw: v41_patched_source_acquire_attempt_raw) {
             Absent => exit_failure(reason: "attempt identity is not a safe path segment")
             Present { value: attempt } =>
@@ -95,7 +96,7 @@ fn v41_patched_source_acquire_wet(host: String) -> ProcessExit
                   }
                 }
               }
-          }
+          }})
       }
     }
   }

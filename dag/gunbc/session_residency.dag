@@ -121,7 +121,7 @@ fn host_session_residency(host: HostIdentity) -> SessionResidency {
 
 // THE UNKNOWN ARM CHARGES RATHER THAN EXEMPTS, and it is the one place in this lane where the
 // fail-closed direction is the OPPOSITE of the usual one. Everywhere else an unclassified host
-// refuses — gunbc.ci_floor_measurement returns HostFixedOverheadUnmeasured,
+// refuses — gunbc.host_memory_observation returns HostFixedOverheadUnmeasured,
 // gunbc.runner_slot_allocation returns zero slots — because refusing to derive is safer than
 // deriving from a borrowed premise.
 //

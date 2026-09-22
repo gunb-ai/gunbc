@@ -1,0 +1,102 @@
+module test.probe.census_app_acquisition_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. A census App acquisition receipt is minted only by
+// gunbc.github_app_acquisition census_app_acquisition_standing, and only over the three readings
+// that function performs itself -- the public app record, the installations listing, the key
+// handoff file. Four earlier rounds each sealed a VALUE at this seam and left the next layer
+// writable; the last of them left the exported mint accepting a RegistrationStanding and a
+// CustodyStanding, both ordinary, beside one sealed installation, so a caller holding a genuine
+// installation seal could mint a receipt over an authored slug and an authored custody path. The
+// two forgeries below are the two routes a caller would take now, and each reinstates that defect.
+//
+// (a) THE RECORD ITSELF. A hand-built CensusAppAcquisitionReceipt is an authored acquisition
+// wearing the name of one that was read; acquisition_standing_line would print it as acquired.
+// CensusAppAcquisitionReceipt is sole_constructor, so this refuses at the record as
+// SoleConstructorViolation.
+//
+// (b) THE ROUTE: THE MINT, CALLED WITH AUTHORED STANDINGS. This spells exactly the exported
+// signature the finding was against -- an established registration, an admissible installation
+// disposition and a custody-at-handoff, none of them read. The mint no longer has a parameter for
+// any of them: it takes the acquisition record that ADDRESSES its reads and nothing else, so the
+// call refuses at resolution, by arity at the mint's own name. There is no installation seal to
+// pattern-match out and pass in, because the sealed carrier that ferried one across this boundary
+// was dissolved with the boundary; the admissible disposition below is the strongest installation
+// evidence a caller can still write, and it is not a parameter either.
+//
+// The witness test.claim.census_app_acquisition_refusal_probe_witness enrolls this probe and asserts
+// each refusal class at its subject by name. dag/test/probe/ sits under the whole-tree strict-resolve
+// exclusion, so this source reaches the compiler only through that witness.
+
+import std.types { NonEmptyStr, String, Int, List }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.uri { Uri, Https }
+import extdeps.github.github { GitHubUser, Organization }
+import extdeps.github.app {
+  GitHubAppId,
+  GitHubAppInstallation,
+  GitHubAppInstallationId,
+  SelectionSelected,
+  ObservedGitHubPermission,
+}
+import gunbc.github_app_acquisition {
+  CensusAppAcquisitionReceipt,
+  CensusAppAcquisitionStanding,
+  RegistrationStanding,
+  RegistrationEstablished,
+  InstallationAdmissionDisposition,
+  InstallationAdmissible,
+  census_app_installation_subject,
+  CustodyStanding,
+  CustodyAtHandoff,
+  CustodyAtHandoffOnly,
+  census_app_private_key_custody,
+  census_app_acquisition_standing,
+}
+
+data authored_owner: GitHubUser = GitHubUser { login: "gunb-ai", id: 1, type: Organization }
+
+fn authored_installation(app_id: Int, installation_id: Int) -> GitHubAppInstallation {
+  GitHubAppInstallation {
+    installation_id: GitHubAppInstallationId { value: installation_id },
+    app_id: GitHubAppId { value: app_id },
+    app_slug: "gunbc-global-census" as NonEmptyStr,
+    html_url: Uri { scheme: Https, locator: "github.com/settings/installations/991" as NonEmptyStr },
+    account: authored_owner,
+    repository_selection: SelectionSelected,
+    permissions: [],
+    subscribed_events: [],
+  }
+}
+
+fn authored_registration() -> RegistrationStanding {
+  RegistrationEstablished { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr }
+}
+
+fn authored_custody() -> CustodyStanding {
+  CustodyAtHandoffOnly {
+    custody: CustodyAtHandoff { path: ".gunbc/someone-elses-key.pem", destination: census_app_private_key_custody }
+  }
+}
+
+fn forged_receipt_over_authored_facts() -> CensusAppAcquisitionReceipt {
+  CensusAppAcquisitionReceipt {
+    app_id: GitHubAppId { value: 7 },
+    slug: "gunbc-global-census" as NonEmptyStr,
+    installation: authored_installation(app_id: 7, installation_id: 991),
+    key_custody: CustodyAtHandoff { path: ".gunbc/someone-elses-key.pem", destination: census_app_private_key_custody },
+  }
+}
+
+fn mint_a_receipt_from_authored_standings() -> CensusAppAcquisitionStanding
+  uses net: Network, fs: std.resources.Filesystem
+{
+  census_app_acquisition_standing(
+    registration: authored_registration(),
+    installation: InstallationAdmissible {
+      installation: authored_installation(app_id: 7, installation_id: 991),
+      subject: census_app_installation_subject(app_id: GitHubAppId { value: 7 }),
+    },
+    custody: authored_custody(),
+  )
+}

@@ -28,11 +28,13 @@ import gunbc.bmc_health_reader {
   reader_account_from_json,
   reader_listed_in_accounts,
 }
-import gunbc.tools.bmc_onboard {
+import gunbc.bmc_custody_read {
   CustodyCredentialAbsent,
   CustodyCredentialHeld,
   CustodyCredentialUnreadable,
   bmc_custody_credential,
+}
+import gunbc.tools.bmc_onboard {
   BmcCustodyEstablished,
   BmcCustodyRefused,
   bmc_onboard_netrc_path,

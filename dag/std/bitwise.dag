@@ -1,0 +1,216 @@
+module std.bitwise
+
+import std.types { Int, List }
+import std.integer { UInt32 }
+
+// BITWISE OPERATIONS OVER BOUNDED NATURALS, emulated with the only integer operations the substrate
+// has (+ - * / %, over a 64-bit Int that refuses on overflow). The operands are std.integer's
+// bounded naturals -- UInt32 here, and Word64 below as its two halves, because a 64-bit unsigned
+// value does not fit a signed 64-bit Int. std.bit's Word32 is the same width read as a list of
+// bits; this module is the arithmetic reading of it, not a second word type.
+//
+// WHICH OPERATIONS ARE ARITHMETIC AND WHICH ARE NOT. Shifts, rotations, complement and addition
+// modulo 2^w are exact integer identities (x / 2^n, x % 2^n, (2^w - 1) - x, (a + b) % 2^w). Only
+// conjunction has no closed arithmetic form, so it is computed four bits at a time from a 16 x 16
+// table DERIVED below from the one-bit definition, and exclusive-or and disjunction follow from it:
+// a xor b = a + b - 2 (a and b), a or b = a + b - (a and b).
+
+data word32_modulus: Int = 4294967296
+
+fn bitwise_pow2_defined(n: Int) -> Int {
+  if n <= 0 { 1 } else { 2 * bitwise_pow2_defined(n: n - 1) }
+}
+
+// 2^0 .. 2^62, derived from the definition above so the hot paths index rather than recurse.
+data bitwise_pow2_table: List<Int> = fold(
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+   32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62],
+  init: [], f: (acc, n) => acc |> list_push(bitwise_pow2_defined(n: n)))
+
+// The Absent arm is the definition itself, reached only for n outside [0, 62]; it answers the same
+// value the table would, so it is not a fallback to something else.
+fn bitwise_pow2(n: Int) -> Int {
+  match get(bitwise_pow2_table, n) {
+    Present { value: v } => v
+    Absent => bitwise_pow2_defined(n: n)
+  }
+}
+
+// One bit of a nibble.
+fn nibble_bit(x: Int, i: Int) -> Int {
+  (x / bitwise_pow2_defined(n: i)) % 2
+}
+
+fn nibble_and(a: Int, b: Int) -> Int {
+  nibble_bit(x: a, i: 0) * nibble_bit(x: b, i: 0)
+    + 2 * nibble_bit(x: a, i: 1) * nibble_bit(x: b, i: 1)
+    + 4 * nibble_bit(x: a, i: 2) * nibble_bit(x: b, i: 2)
+    + 8 * nibble_bit(x: a, i: 3) * nibble_bit(x: b, i: 3)
+}
+
+// Per-bit exclusive or: a + b - 2ab is 0,1,1,0 over the four bit pairs, and every term here is a
+// single BIT, so nothing in this function approaches a word boundary.
+fn nibble_xor(a: Int, b: Int) -> Int {
+  let x0 = nibble_bit(x: a, i: 0) + nibble_bit(x: b, i: 0) - 2 * nibble_bit(x: a, i: 0) * nibble_bit(x: b, i: 0)
+  let x1 = nibble_bit(x: a, i: 1) + nibble_bit(x: b, i: 1) - 2 * nibble_bit(x: a, i: 1) * nibble_bit(x: b, i: 1)
+  let x2 = nibble_bit(x: a, i: 2) + nibble_bit(x: b, i: 2) - 2 * nibble_bit(x: a, i: 2) * nibble_bit(x: b, i: 2)
+  let x3 = nibble_bit(x: a, i: 3) + nibble_bit(x: b, i: 3) - 2 * nibble_bit(x: a, i: 3) * nibble_bit(x: b, i: 3)
+  x0 + 2 * x1 + 4 * x2 + 8 * x3
+}
+
+fn nibble_values() -> List<Int> {
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+}
+
+// Row-major: entry 16a + b is (a and b). Derived, never transcribed.
+data nibble_and_table: List<Int> = fold(nibble_values(), init: [], f: (acc, a) =>
+  fold(nibble_values(), init: acc, f: (row, b) => row |> list_push(nibble_and(a: a, b: b))))
+
+// Row-major: entry 16a + b is (a xor b). Derived, never transcribed.
+data nibble_xor_table: List<Int> = fold(nibble_values(), init: [], f: (acc, a) =>
+  fold(nibble_values(), init: acc, f: (row, b) => row |> list_push(nibble_xor(a: a, b: b))))
+
+// As with bitwise_pow2, the Absent arm is the definition itself and is unreachable for a, b < 16.
+fn nibble_and_lookup(a: Int, b: Int) -> Int {
+  match get(nibble_and_table, a * 16 + b) {
+    Present { value: v } => v
+    Absent => nibble_and(a: a, b: b)
+  }
+}
+
+fn nibble_xor_lookup(a: Int, b: Int) -> Int {
+  match get(nibble_xor_table, a * 16 + b) {
+    Present { value: v } => v
+    Absent => nibble_xor(a: a, b: b)
+  }
+}
+
+// Conjunction over `digits` nibbles, least significant first.
+fn nibbles_and(a: Int, b: Int, digits: Int) -> Int {
+  if digits <= 0 { 0 } else { nibble_and_lookup(a: a % 16, b: b % 16) + 16 * nibbles_and(a: a / 16, b: b / 16, digits: digits - 1) }
+}
+
+// Exclusive or over `digits` nibbles, least significant first. The accumulated value is bounded by
+// the digits consumed so far, so it never exceeds the word it is building.
+fn nibbles_xor(a: Int, b: Int, digits: Int) -> Int {
+  if digits <= 0 { 0 } else { nibble_xor_lookup(a: a % 16, b: b % 16) + 16 * nibbles_xor(a: a / 16, b: b / 16, digits: digits - 1) }
+}
+
+fn word32_and(a: UInt32, b: UInt32) -> UInt32 {
+  nibbles_and(a: a, b: b, digits: 8)
+}
+
+// NO INTERMEDIATE HERE LEAVES [0, 2^32), AND THAT IS THE POINT RATHER THAN AN OPTIMISATION
+// (review 69054 of gunbc#11645). These were written as `a + b - 2 * and` and `a + b - and`, whose
+// answers are correct but whose SUM reaches 2^33 - 2 while typed UInt32 -- the population of
+// gunbc.recurring_failure_mode bounded_natural_arithmetic_evaluated_as_unbounded_int, which that
+// row cites at this very line, and which DESIGN 4b places BELOW THE LADDER rather than on it.
+//
+// Nibble-wise exclusive or removes the oversized intermediate instead of declaring it: each lookup
+// is over values below 16 and the accumulator is bounded by the digits consumed, exactly as
+// word32_and already worked. Disjunction is then xor plus and, which are disjoint bit sets, so
+// their sum IS the disjunction and is bounded by it -- no wider than the result.
+fn word32_xor(a: UInt32, b: UInt32) -> UInt32 {
+  nibbles_xor(a: a, b: b, digits: 8)
+}
+
+fn word32_or(a: UInt32, b: UInt32) -> UInt32 {
+  word32_xor(a: a, b: b) + word32_and(a: a, b: b)
+}
+
+fn word32_not(a: UInt32) -> UInt32 {
+  word32_modulus - 1 - a
+}
+
+// Addition modulo 2^32 decided BEFORE the sum is formed, so the wrap is computed rather than
+// recovered from an oversized value: when a would carry past the modulus, the answer is the
+// distance it travelled past it. `word32_modulus - b` is at least 1 for every b in range, and both
+// branches stay strictly below the modulus.
+fn word32_add(a: UInt32, b: UInt32) -> UInt32 {
+  if a >= word32_modulus - b {
+    a - (word32_modulus - b)
+  } else {
+    a + b
+  }
+}
+
+fn word32_shr(a: UInt32, n: Int) -> UInt32 {
+  a / bitwise_pow2(n: n)
+}
+
+fn word32_shl(a: UInt32, n: Int) -> UInt32 {
+  (a % bitwise_pow2(n: 32 - n)) * bitwise_pow2(n: n)
+}
+
+// Rotate right by n in [0, 32): the low n bits move to the top.
+fn word32_rotr(a: UInt32, n: Int) -> UInt32 {
+  a / bitwise_pow2(n: n) + (a % bitwise_pow2(n: n)) * bitwise_pow2(n: 32 - n)
+}
+
+// ── 64-bit words ─────────────────────────────────────────────────────────────────────────────
+// Two 32-bit halves, because 2^64 - 1 exceeds the signed 64-bit Int. Every operation is the 32-bit
+// operation on each half, except where bits cross the boundary (addition's carry, shifts and
+// rotations), which are stated explicitly.
+type Word64 {
+  hi: UInt32
+  lo: UInt32
+}
+
+fn word64_and(a: Word64, b: Word64) -> Word64 {
+  Word64 { hi: word32_and(a: a.hi, b: b.hi), lo: word32_and(a: a.lo, b: b.lo) }
+}
+
+fn word64_xor(a: Word64, b: Word64) -> Word64 {
+  Word64 { hi: word32_xor(a: a.hi, b: b.hi), lo: word32_xor(a: a.lo, b: b.lo) }
+}
+
+fn word64_or(a: Word64, b: Word64) -> Word64 {
+  Word64 { hi: word32_or(a: a.hi, b: b.hi), lo: word32_or(a: a.lo, b: b.lo) }
+}
+
+fn word64_not(a: Word64) -> Word64 {
+  Word64 { hi: word32_not(a: a.hi), lo: word32_not(a: a.lo) }
+}
+
+// THE SAME REPAIR AS word32_add, WHICH THIS SKIPPED IN THE DIFF THAT MADE IT (review 69076 of
+// gunbc#11645). It was `let lo = a.lo + b.lo` over two UInt32 halves, reaching 2^33 - 2 while
+// typed UInt32, and `a.hi + b.hi + carry` doing it again -- the same population the note above
+// says word32_xor, word32_or and word32_add were rewritten to leave. Applying a repair to the
+// 32-bit family and not the 64-bit one in one change is the defect surviving inside its own fix,
+// and it was LIVE rather than latent: sha256_fips_witness_test drives lo to exactly 2^32.
+//
+// The carry is decided BEFORE either sum is formed, by the same comparison word32_add uses, and
+// both halves are then produced by word32_add itself rather than by a raw `%` -- so the wrap is
+// computed once, in one place, and no intermediate here leaves [0, 2^32).
+fn word64_add(a: Word64, b: Word64) -> Word64 {
+  let carry = if a.lo >= word32_modulus - b.lo { 1 } else { 0 }
+  Word64 {
+    hi: word32_add(a: word32_add(a: a.hi, b: b.hi), b: carry),
+    lo: word32_add(a: a.lo, b: b.lo),
+  }
+}
+
+// Shift right by n in [0, 64).
+fn word64_shr(a: Word64, n: Int) -> Word64 {
+  if n >= 32 {
+    Word64 { hi: 0, lo: word32_shr(a: a.hi, n: n - 32) }
+  } else if n == 0 {
+    a
+  } else {
+    Word64 { hi: word32_shr(a: a.hi, n: n), lo: word32_shr(a: a.lo, n: n) + (a.hi % bitwise_pow2(n: n)) * bitwise_pow2(n: 32 - n) }
+  }
+}
+
+// Rotate right by n in [0, 64): a rotation by 32 or more swaps the halves first.
+fn word64_rotr(a: Word64, n: Int) -> Word64 {
+  if n >= 32 {
+    word64_rotr(a: Word64 { hi: a.lo, lo: a.hi }, n: n - 32)
+  } else if n == 0 {
+    a
+  } else {
+    Word64 {
+      hi: word32_shr(a: a.hi, n: n) + (a.lo % bitwise_pow2(n: n)) * bitwise_pow2(n: 32 - n),
+      lo: word32_shr(a: a.lo, n: n) + (a.hi % bitwise_pow2(n: n)) * bitwise_pow2(n: 32 - n),
+    }
+  }
+}

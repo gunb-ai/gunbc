@@ -111,6 +111,18 @@ test fn the_leading_zero_octet_survives_the_round_trip() -> Bool {
   }
 }
 
+// EVERY NIBBLE POSITION, AGAINST A SPELLING WRITTEN HERE. render_of_an_authored_address_... above
+// already fixes one address's text, and one address does not exercise the alphabet: rendering now
+// reads the same digit rows the parser does, so a mutation of those rows moves both directions
+// together and a round trip alone would still hold. These octets pin both nibble positions across
+// the alphabet -- ff and 00 at the ends, 0f and 10 either side of the decimal boundary, ab and cd
+// in the letter range -- which is what the deleted sixteen-arm renderer got wrong in its default
+// arm, where every value >= 15 answered "f".
+test fn every_octet_value_renders_its_two_digit_spelling() -> Bool {
+  (render_mac_address(addr: mac_address(octet1: 255, octet2: 0, octet3: 15, octet4: 16, octet5: 171, octet6: 205)) as String)
+    == "ff:00:0f:10:ab:cd"
+}
+
 test fn the_all_ones_octet_survives_the_round_trip() -> Bool {
   match parse_mac_address(text: "ff:ff:ff:ff:ff:ff") {
     MacParsed { address: a } =>

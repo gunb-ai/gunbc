@@ -14,7 +14,7 @@ test fn install_media_fetch_effect_is_create_if_absent_on_content_sha256() -> Bo
 
 test fn install_media_fetch_already_present_fixture() -> Bool {
   match classify_install_media_fetch(
-    observation: gunbc.srv3_install_media_fetch.Present { observed_sha256: srv3_ubuntu_install_media_artifact.content_sha256 },
+    observation: InstallMediaPresent { observed_sha256: srv3_ubuntu_install_media_artifact.content_sha256 },
     artifact: srv3_ubuntu_install_media_artifact,
   ) {
     AlreadyPresent { install_path: p, content_sha256: h } =>
@@ -29,7 +29,7 @@ test fn install_media_fetch_already_present_fixture() -> Bool {
 
 test fn install_media_fetch_hash_mismatch_refusal_fixture() -> Bool {
   match classify_install_media_fetch(
-    observation: gunbc.srv3_install_media_fetch.Present { observed_sha256: "0000000000000000000000000000000000000000000000000000000000000000" },
+    observation: InstallMediaPresent { observed_sha256: "0000000000000000000000000000000000000000000000000000000000000000" },
     artifact: srv3_ubuntu_install_media_artifact,
   ) {
     HashMismatchRefusal { install_path: p, expected_sha256: e, observed_sha256: o } =>
@@ -45,7 +45,7 @@ test fn install_media_fetch_hash_mismatch_refusal_fixture() -> Bool {
 
 test fn install_media_fetch_absent_plans_mirror_order() -> Bool {
   match classify_install_media_fetch(
-    observation: Absent,
+    observation: InstallMediaAbsent,
     artifact: srv3_ubuntu_install_media_artifact,
   ) {
     FetchRequired { install_path: p, mirror_order: mirrors } =>
@@ -58,8 +58,10 @@ test fn install_media_fetch_absent_plans_mirror_order() -> Bool {
 }
 
 test fn install_media_fetch_first_mirror_is_releases_then_cdimage() -> Bool {
-  let url = install_media_fetch_first_mirror_url(artifact: srv3_ubuntu_install_media_artifact)
-  string_contains(s: url as String, pattern: "releases.ubuntu.com/24.04/ubuntu-24.04.3-live-server-arm64.iso")
+  match install_media_fetch_first_mirror_url(artifact: srv3_ubuntu_install_media_artifact) {
+    Absent => false
+    Present { value: url } => string_contains(s: url as String, pattern: "releases.ubuntu.com/24.04/ubuntu-24.04.3-live-server-arm64.iso")
+  }
 }
 
 test fn srv3_install_media_fetch_scope_facts() -> Bool {

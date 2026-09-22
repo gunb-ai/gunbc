@@ -1,0 +1,265 @@
+module gunbc.machine_intake_mtcollins1_fan_observe
+
+import extdeps.shell
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Int, List, NonEmptyStr, String }
+import std.measure { ObservationRoundCount, Second, observation_round_count, percent, second, second_count }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.placement_supply { HostIdentity }
+import product.fan_policy_standing {
+  FanDutyCeilingVerdict,
+  ExcursionBound,
+  FanDutyExcursionOverCeiling,
+  FanDutyNotReported,
+  NoPostTransitionWindow,
+  OutlivedPostTransitionWindow,
+  WithinPostTransitionWindow,
+  FanDutySteadyCurveOverCeiling,
+  FanDutyWithinCeiling,
+  FanPolicyAuthority,
+  FanPolicySample,
+  FanPolicyStanding,
+  fan_policy_standing_label,
+  fan_policy_standing_of_sample,
+}
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
+import gunbc.machine_intake_bmc_fan_observation {
+  FanObservationRefused,
+  FanObservationRound,
+  FanObservationSeries,
+  FanObservationTaken,
+  elapsed_at_round,
+  first_posted_round_index,
+  observe_fan_policy,
+  render_series,
+  samples_of_round,
+}
+import gunbc.fleet_acoustic_intent { residence_duty_verdict }
+
+// THE POLICY LAYER FOR ONE HOST'S FAN OBSERVATION, separate from the producer for the same reason
+// the media-attach and boot-handoff wrappers are separate from theirs. Three things are decided here
+// and nowhere else: how many samples this unit takes and how far apart, WHICH FAMILY AUTHORITY
+// governs its controller, and which site ceiling bounds it. A producer carrying any of those would
+// need a second copy for Mt. Jade.
+
+data mtcollins1_fan_credential_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_BMC_CREDENTIAL_FILE" as NonEmptyStr
+
+// THE RECEIPT PATH IS DECLARED HERE AND READ BY THE CONVERGE STEP, NOT THE OTHER WAY ROUND. Where a
+// host's observation lands is a fact about that observation; a CI module declaring it would make the
+// entry unable to write its own receipt without importing CI.
+data mtcollins1_fan_observation_receipt_path: String = "target/mtcollins1-fan-observation.txt"
+
+// SIX ROUNDS AT TEN SECONDS IS A MINUTE OF SERIES, AND THE SHAPE IS THE POINT RATHER THAN THE
+// DURATION. One sample cannot distinguish a controller holding a fixed output from one that happens
+// to be commanding that output right now; a minute of samples can show whether the number moves at
+// all. It is deliberately short: this is a read against a machine in someone's home, and a longer
+// series buys resolution the first question does not need.
+data mtcollins1_fan_observation_rounds: ObservationRoundCount = observation_round_count(count: 6)
+data mtcollins1_fan_observation_interval: Second = second(count: 10)
+
+// THIS UNIT'S CONTROLLER IS MEGARAC, SO ITS FAN POLICY AUTHORITY IS THE MEGARAC ONE - which is the
+// module that says, in its own type, that nothing has been read. Pointing at it is not a claim that
+// its policy is known; it is a claim about WHERE the answer will live when somebody reads the
+// vendor documentation, and it is what makes the standing's provenance re-derivable from the
+// artifact rather than from this sentence.
+data mtcollins1_fan_policy_authority: FanPolicyAuthority = FanPolicyAuthority {
+  declaration: DeclarationRef {
+    module_path: "extdeps.bmc.megarac_fan_policy",
+    decl_name: "megarac_fan_policy_standing",
+    field: WholeDeclaration
+  }
+}
+
+// A MINUTE IS NOT A TRANSITION WINDOW ANYBODY MEASURED, and this row says so rather than implying
+// otherwise. No family publishes how long its loop takes to close, and this run is sixty seconds
+// long, so a window at sixty seconds means "this series cannot distinguish a slow close from a held
+// failsafe" - which makes FailsafeHeldAfterPost unreachable from a six-round run and is the honest
+// state. A run that wants that finding needs a longer series, and the window is a parameter so that
+// lengthening the series does not require editing the standing.
+data mtcollins1_fan_transition_window: Second = second(count: 60)
+
+// THE BARE `import extdeps.shell` ABOVE IS WHAT MAKES shell.Env.Get RESOLVABLE AT RUN TIME, for the
+// reason gunbc.machine_intake_mtcollins1_actuate's header states at length: service operations
+// register from the import closure, so without it this function refuses with
+// `Unimplemented { what: "unknown service operation: shell.Env.Get" }` - naming the operation
+// rather than the import, which is why that module hit it first and this one hit it second.
+//
+// A CREDENTIAL PATH IS A TYPED OUTCOME AND NOT AN OPTIONAL, the same shape
+// gunbc.fleet_bootstrap_principal_session uses for exactly this fact. Optional would carry two
+// different absences on one arm - the variable was never set, and it was set to whitespace - and the
+// second is a materialization that went wrong rather than one that did not happen.
+type MtCollins1FanCredentialPath
+  = FanCredentialPathReady { path: NonEmptyStr }
+  | FanCredentialPathUnset
+  | FanCredentialPathEmpty
+
+fn mtcollins1_fan_credential_path() -> MtCollins1FanCredentialPath {
+  match shell.Env.Get(name: mtcollins1_fan_credential_path_env).value {
+    Absent => FanCredentialPathUnset
+    Present { value: raw } => classify_fan_credential_path(raw: trim(s: raw))
+  }
+}
+
+fn classify_fan_credential_path(raw: String) -> MtCollins1FanCredentialPath {
+  if raw == "" {
+    FanCredentialPathEmpty
+  } else {
+    FanCredentialPathReady { path: raw as NonEmptyStr }
+  }
+}
+
+// THE COMPARISON DUTY IS ONE HUNDRED PERCENT, AND THAT IS THIS RUN'S QUESTION RATHER THAN A FACT
+// ABOUT MEGARAC. extdeps.bmc.megarac_fan_policy publishes no failsafe duty and this module may not
+// invent one for it. What passing 100 asks is narrower and defensible - "is the drive at maximum" -
+// which is exactly the state the operator described on Mt. Jade. If the vendor documentation later
+// names a lower failsafe target, this call site moves and every standing re-derives. It is spelled
+// as a literal rather than a row because percent() admits a literal only (std.measure
+// percent_from_computed_int_frontier), so a row here would be a name that could not be passed.
+//
+// NINETY-FIVE PERCENT IS THIS LANE'S STATED TOLERANCE, NOT A FACT ABOUT ANY FAN, and what it decides
+// is narrower than it looks. It selects between NearCatalogMaximum and BelowCatalogMaximum on a
+// SPEED observation; it cannot reach a failsafe verdict, because no tolerance converts RPM into a
+// commanded duty (operator ruling 2026-09-18: speed at a given PWM depends on supply voltage, part
+// tolerance, static pressure and chassis impedance).
+//
+// It is inert on Mt. Collins today for a further reason worth stating: no fan part is modeled for
+// this unit, so catalog_maximum is Absent and the relation comes back CatalogMaximumUnknown before
+// the tolerance is consulted at all. It is supplied rather than defaulted so that the day a fan part
+// lands, the number it is compared against is a value somebody chose and can revise.
+//
+// ONE STANDING PER SAMPLE, EACH WITH THE SITE DUTY VERDICT BESIDE IT. Both lines are rendered for
+// every sample rather than summarized, because a summary would be a second authority for the same
+// reading and the whole point of the artifact is that the verdict can be re-derived from it.
+fn render_sample_standing(sample: FanPolicySample, elapsed: Second?) -> String {
+  let standing = fan_policy_standing_of_sample(
+    host: mtcollins1_endpoint.host as HostIdentity,
+    authority: mtcollins1_fan_policy_authority,
+    sample: sample,
+    failsafe_duty: percent(100),
+    catalog_maximum: Absent,
+    at_maximum_tolerance: percent(95),
+    elapsed_since_post: elapsed,
+    transition_window: mtcollins1_fan_transition_window,
+  )
+  join([
+    "  standing fan=", sample.endpoint.name as String,
+    " at=", sample.observed_at as String,
+    " verdict=", fan_policy_standing_label(standing: standing) as String,
+    " residence_duty=", render_duty_verdict(verdict: residence_duty_verdict(standing: standing)),
+  ], "")
+}
+
+// THE TWO OVER-ARMS RENDER DISTINCTLY, because their remedies differ: a curve over the ceiling is
+// something to converge, and an excursion over it is something to bound in time or to end by
+// powering the machine off.
+fn render_duty_verdict(verdict: FanDutyCeilingVerdict) -> String {
+  match verdict {
+    FanDutyWithinCeiling { duty: _, ceiling: _ } => "WithinCeiling"
+    FanDutySteadyCurveOverCeiling { duty: _, ceiling: _ } => "SteadyCurveOverCeiling"
+    FanDutyExcursionOverCeiling { duty: _, ceiling: _, bound: b } => join(["ExcursionOverCeiling(", render_excursion_bound(bound: b), ")"], "")
+    FanDutyNotReported { cause: _ } => "NotReported"
+  }
+}
+
+// EACH ROUND'S SAMPLES ARE STAMPED WITH THAT ROUND'S OWN ELAPSED, never with the series'. The first
+// posted index is computed once because it is a property of the series; the elapsed is computed per
+// round from it, because that is a property of the round.
+// THE BOUND RENDERS AS WHAT IT IS, and the pre-POST case says so in words rather than as a zero.
+// This receipt is what the operator reads about his own room, and "window=0s" said an excursion had
+// a zero-second budget where the fact is that nothing bounds it but him powering the machine off.
+fn render_excursion_bound(bound: ExcursionBound) -> String {
+  match bound {
+    NoPostTransitionWindow => "no post-transition window; bounded only by power-off"
+    WithinPostTransitionWindow { elapsed: e, window: w } =>
+      join(["within window, elapsed=", to_string(second_count(s: e)), "s of ", to_string(second_count(s: w)), "s"], "")
+    OutlivedPostTransitionWindow { elapsed: e, window: w } =>
+      join(["OUTLIVED window, elapsed=", to_string(second_count(s: e)), "s past ", to_string(second_count(s: w)), "s"], "")
+  }
+}
+
+fn render_observation(rounds: List<FanObservationRound>, interval: Second) -> String {
+  let first_posted = first_posted_round_index(rounds: rounds)
+  join([
+    render_series(rounds: rounds),
+    join(
+      map(rounds, r => render_round_standings(round: r, first_posted: first_posted, interval: interval)),
+      "\n",
+    ),
+  ], "\n")
+}
+
+fn render_round_standings(round: FanObservationRound, first_posted: Int?, interval: Second) -> String {
+  let elapsed = elapsed_at_round(round: round, first_posted_index: first_posted, interval: interval)
+  join(
+    map(
+      samples_of_round(host: mtcollins1_endpoint.host as HostIdentity, round: round),
+      s => render_sample_standing(sample: s, elapsed: elapsed),
+    ),
+    "\n",
+  )
+}
+
+// REFUSALS BEFORE THE FIRST REQUEST, EACH NAMING WHAT IS MISSING. A run that reaches the controller
+// with no credential produces an authentication failure, and an authentication failure read as a
+// machine fact is how "the fans could not be observed" becomes "the fans are not reporting".
+fn mtcollins1_fan_observe_wet() -> ProcessExit
+  uses net: std.resources.Network, clock: std.resources.Clock
+{
+  match mtcollins1_secured_account() {
+    Absent =>
+      return exit_failure(reason: "mtcollins1 fan observation: the BMC is not BmcSecured, so this run holds no account to read sensors with; contacting NO host")
+    Present { value: username } =>
+      match mtcollins1_fan_credential_path() {
+        FanCredentialPathUnset =>
+          return exit_failure(
+            reason: join([
+              "mtcollins1 fan observation: no ",
+              mtcollins1_fan_credential_path_env as String,
+              " in the environment, so this run materialized no controller credential; contacting NO host",
+            ], "")
+          )
+        FanCredentialPathEmpty =>
+          return exit_failure(
+            reason: join([
+              "mtcollins1 fan observation: ",
+              mtcollins1_fan_credential_path_env as String,
+              " is set but empty, which is not a path - the prelude ran and materialized nothing; contacting NO host",
+            ], "")
+          )
+        FanCredentialPathReady { path: password_file } =>
+          return mtcollins1_write_observation(
+            series: observe_fan_policy(
+              bmc_host: mtcollins1_endpoint.host,
+              username: username,
+              password_file: password_file,
+              rounds: mtcollins1_fan_observation_rounds,
+              interval: mtcollins1_fan_observation_interval,
+            )
+          )
+      }
+  }
+}
+
+// THE RECEIPT IS WRITTEN ONLY FOR A SERIES THAT WAS TAKEN. Writing a refused observation's text
+// would leave an artifact that LOOKS like a measurement attached to a run that failed, and the
+// upload step would attach it with no way for a later reader to tell.
+fn mtcollins1_write_observation(series: FanObservationSeries) -> ProcessExit {
+  match series {
+    FanObservationRefused { cause: cause } =>
+      exit_failure(reason: concat("mtcollins1 fan observation: ", cause as String))
+    FanObservationTaken { rounds: rounds, interval: interval } => {
+      let written = Filesystem.Write(
+        path: mtcollins1_fan_observation_receipt_path,
+        content: render_observation(rounds: rounds, interval: interval),
+      )
+      if written.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("mtcollins1 fan observation: the series was taken and its receipt could not be written: ", written.error))
+      }
+    }
+  }
+}

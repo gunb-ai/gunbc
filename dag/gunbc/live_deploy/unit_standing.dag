@@ -5,9 +5,8 @@ import std.algebra { trim }
 import std.measure { Microsecond, microsecond_count }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
-  SystemdUnitProperty, systemd_duration_usec, AccuracyUSec,
+  systemd_unit_property_wire, SystemdUnitProperty, systemd_duration_usec, AccuracyUSec,
   LoadState, UnitFileState, ActiveState, SubState, Result, ExecMainStatus, ExecStartProperty, User, WorkingDirectoryProperty, Unit, TimersMonotonic,
-  systemd_unit_property_wire,
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
@@ -53,7 +52,7 @@ type UnitPropertyRead
   | UnitPropertyUnreadable { unit: String, property: String }
 
 fn read_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> UnitPropertyRead {
-  let got = systemd.Systemctl.ShowProperty(unit: unit, property: property)
+  let got = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
   if got.success {
     UnitPropertyValue { value: trim(s: got.value) }
   } else {

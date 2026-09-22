@@ -7,6 +7,7 @@ import gunbc.roadmap_program_view {
 }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines }
 import gunbc.roadmap_authority {
+  roadmap_acceptance_event_history_load,
   declared_roadmap_nodes,
   projected_roadmap_dependency_edges_projection,
   ProjectedRoadmapDependencyEdgesProjected,
@@ -30,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // test.claim.roadmap_program_view_witness.
 
 test fn live_roadmap_program_view_corpus_projection_receipt() -> Bool {
-  match roadmap_acceptance_receipts() {
+  match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {
     RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
     RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
       match projected_roadmap_dependency_edges_projection() {

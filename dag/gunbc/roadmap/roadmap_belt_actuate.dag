@@ -25,6 +25,7 @@ import gunbc.roadmap_dispatch_actuator {
 }
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap_authority {
+  roadmap_acceptance_event_history_load,
   RoadmapAuthorityProjection, roadmap_authority_projection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   authored_merged_prs,
@@ -3187,7 +3188,7 @@ fn belt_tick_for_instance(
     standing: standing,
     state: state,
     frontier: frontier,
-    graph: launch_graph_of_projection(proj: roadmap_authority_projection()),
+    graph: launch_graph_of_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load())),
     merged: authored_merged_prs(),
   )
   let spawn_outcomes = belt_tick_spawn_decided(decisions: pass.decisions, workdir: spawn_workdir)
@@ -3387,7 +3388,7 @@ fn belt_run_once_in(
   instance: HostDashboardInstance,
   spawn_workdir: String,
 ) -> BeltTickResult {
-  match roadmap_authority_projection() {
+  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       {
         let commit_outcomes = belt_commit_attempts_for_instance(instance: instance)
@@ -6030,7 +6031,7 @@ fn belt_find_node_in(nodes: List<RoadmapNode>, node_id: String) -> BeltNodeLooku
 }
 
 fn belt_lookup_node(node_id: String) -> BeltNodeLookup {
-  match roadmap_authority_projection() {
+  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       AuthorityProjectionRefused { detail: detail }
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
@@ -6311,7 +6312,7 @@ fn belt_dispatch_node_staged(
   belt_dispatch_node_staged_over(
     instance: instance,
     standing: standing,
-    graph: launch_graph_of_projection(proj: roadmap_authority_projection()),
+    graph: launch_graph_of_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load())),
     merged: authored_merged_prs(),
     node_id: node_id,
   )

@@ -1,5 +1,11 @@
 module gunbc.code_change_workflow
 
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha, Timestamp }
+import gunbc.process_algebra { ProcessNodeId }
+import gunbc.review_verdict { MergeReadinessTally }
+import gunbc.pr_digests { MergeReadinessVerdict, Ready, NotReady }
+import extdeps.github.pulls { PullRequest, PullRequestState, Open, Closed }
+
 type CodeChangeActiveStage
   = ChangeOpen
   | ChangeUnderReview

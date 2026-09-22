@@ -33,7 +33,7 @@ import gunbc.session_reservation_policy {
   session_reservation_bytes,
 }
 import gunbc.ci_fleet { fleet_intent_offers }
-import gunbc.oomd_install { gunbc_oomd_sessions_pressure_limit }
+import gunbc.oomd_install { gunbc_oomd_sessions_pressure_limit, gunbc_oomd_sessions_policy, pressure_is_kill }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime, DirectiveReset }
 import std.measure { byte_size_count, hardware_thread_count_value, percent_count }
@@ -192,6 +192,11 @@ fn operating_curve_doc() -> Doc {
 // the host-keyed placement path and "20 GiB for every offer" from the fleet-wide row, in one file.
 // Each host now renders the reservation it actually owes, and a host that owes none or cannot be
 // sized renders that verdict instead of a number.
+// oom_pressure_kill is DERIVED from gunbc_oomd_sessions_policy, not a literal.
+// It read `=true` while the limit beside it was already derived, so a consumer
+// of expected_runner_deploy_manifest() -- rather than the host_converge target
+// -- kept requesting the retired pressure-kill posture after the policy turned
+// it off, which would recreate the fleet culls through that door.
 fn session_slice_line(host: HostIdentity, ceiling: ByteSize) -> Doc {
   match session_reservation_bytes(host: host) {
     ReservationBytesNotApplicable =>
@@ -208,7 +213,10 @@ fn session_slice_line(host: HostIdentity, ceiling: ByteSize) -> Doc {
                 concat(concat("host=", host), concat(" slice_max_bytes=", to_string(byte_size_count(b: agg_bytes)))),
                 concat(" per_session_max_bytes=", to_string(byte_size_count(b: ceiling)))
               ),
-              " oom_pressure_kill=true"
+              concat(
+                " oom_pressure_kill=",
+                if pressure_is_kill(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure) { "true" } else { "false" }
+              )
             ),
             concat(" oom_pressure_limit_pct=", to_string(percent_count(p: gunbc_oomd_sessions_pressure_limit)))
           ),

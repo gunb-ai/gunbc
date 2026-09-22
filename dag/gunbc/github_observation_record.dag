@@ -127,14 +127,15 @@ fn observation_is_usable_as_population(c: ObservationCompleteness) -> Bool {
 // THE RECORD. `observed_at` is a wall-clock instant supplied by the caller rather than read here,
 // because this module performs no effect and a clock read inside a pure fold would make the same
 // request address two records. `body_digest` is what makes the stored bytes checkable without
-// re-reading them, and `api_version` is stored because GitHub's response shape is versioned and a
-// record decoded under one version may not decode under the next.
+// re-reading them WHEN IT CAN BE TAKEN, which is a standing rather than a number -- see
+// ObservationDigestStanding below -- and `api_version` is stored because GitHub's response shape is
+// versioned and a record decoded under one version may not decode under the next.
 type GithubObservation sole_constructor {
   request: GithubObservationRequest
   identity: Fnv1a64Structural
   observed_at: NonEmptyStr
   api_version: NonEmptyStr
-  body_digest: Fnv1a64Structural
+  body_digest: ObservationDigestStanding
   completeness: ObservationCompleteness
   budget: ObservationBudgetStanding
 }
@@ -143,7 +144,7 @@ fn github_observation(
   request: GithubObservationRequest,
   observed_at: NonEmptyStr,
   api_version: NonEmptyStr,
-  body_digest: Fnv1a64Structural,
+  body_digest: ObservationDigestStanding,
   completeness: ObservationCompleteness,
   budget: ObservationBudgetStanding,
 ) -> GithubObservation {
@@ -162,6 +163,29 @@ fn github_observation(
     completeness: completeness,
     budget: budget,
   }
+}
+
+// THE BODY DIGEST THIS TRANSPORT CANNOT TAKE EITHER, AND THE REASON IT IS A STANDING RATHER THAN A
+// HASH OF SOMETHING ELSE. A body digest exists to let a reader check stored bytes without re-reading
+// them, so it is only a digest if it is taken OVER THOSE BYTES. This transport decodes a response
+// into a modelled shape and exposes no raw body anywhere, so for a decoded read there are no bytes
+// to hash -- and hashing what IS in reach produces a value that looks checkable and discriminates
+// nothing.
+//
+// THAT IS NOT HYPOTHETICAL, IT IS WHAT THIS MODULE'S FIRST CONSUMER DID. An earlier revision of
+// gunbc.ci_workflow_scan_producer scan_observation stored content_hash_atom(value: query), so every
+// record a scan emitted carried the SAME digest, and a reader checking bytes against it would have
+// got a green establishing nothing about the bytes. DESIGN section 5: no fabricated plausible
+// output. A field that cannot be filled honestly is modelled as unfilled, exactly as the budget
+// one below is, rather than filled with whatever was nearby.
+type ObservationDigestStanding
+  = DigestUnobservable { reason: NonEmptyStr }
+  | DigestObserved { digest: Fnv1a64Structural }
+
+data decoded_response_has_no_body_bytes_reason: NonEmptyStr = "this transport hands back a decoded shape and exposes no raw response body, so no digest can be taken over the bytes that were actually received; a hash of the request or of the decoded value would check a different thing while reading as a body digest"
+
+fn digest_unobservable() -> ObservationDigestStanding {
+  DigestUnobservable { reason: decoded_response_has_no_body_bytes_reason }
 }
 
 // THE BUDGET RECEIPT THIS TRANSPORT CANNOT TAKE, STATED RATHER THAN FAKED. GitHub reports the

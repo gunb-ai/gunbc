@@ -11,20 +11,18 @@ import extdeps.cloud.gcp.secret_manager {
   SmVersionIdNotAVersionResource,
   decode_sm_access_version_payload_wire,
   decode_sm_resolved_version_identity_wire,
-  decode_sm_access_version_secret_wire,
   encode_sm_access_version_payload_wire,
   SmAccessVersionPayloadDecoded,
   SmAccessVersionPayloadDecodeRefused,
-  SmAccessVersionSecretDecoded,
-  SmAccessVersionSecretDecodeRefused,
   SmResolvedVersionIdentityDecoded,
   SmResolvedVersionIdentityDecodeRefused,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import extdeps.transports.rest {
-  classify_rest_outcome,
-  RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous,
-  RestExchangeUnreached, RestExchangeUndecodable, RestReadExchange, RestExchangePerformance,
+import gunbc.bmc_custody_read {
+  CustodyCredentialAbsent,
+  CustodyCredentialHeld,
+  CustodyCredentialUnreadable,
+  bmc_custody_credential,
 }
 import gunbc.secret_provision_actuator {
   SecretContainerAbsent,
@@ -423,46 +421,6 @@ fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
 // to the BMC to investigate a problem that is on this host. The same rule governs the stored-
 // credential arm below it.
 
-// THREE ANSWERS, NOT A MAYBE. A 404 is the store saying the secret does not exist; a refused status,
-// an unreached call or an undecodable payload says nothing about existence and is carried as the
-// read failure it is (reviews 67836, 67848). Collapsing them would tell an operator to create a secret that
-// may be sitting there behind a permission they lack.
-type CustodyCredentialRead
-  = CustodyCredentialHeld { password: String }
-  | CustodyCredentialAbsent
-  | CustodyCredentialUnreadable { cause: String }
-
-fn custody_read_refusal_cause(performance: RestExchangePerformance) -> CustodyCredentialRead? {
-  match performance {
-    RestExchangeSucceeded => none
-    RestExchangeStatusRefused { status: status, body: body } =>
-      Present { value: if status == 404 { CustodyCredentialAbsent } else { CustodyCredentialUnreadable { cause: concat("Secret Manager refused the read: ", body) } } }
-    RestExchangeCommitAmbiguous { detail: d } => Present { value: CustodyCredentialUnreadable { cause: d as String } }
-    RestExchangeUnreached { cause: c } => Present { value: CustodyCredentialUnreadable { cause: c as String } }
-    RestExchangeUndecodable { status: _, cause: c } => Present { value: CustodyCredentialUnreadable { cause: c as String } }
-  }
-}
-
-// ONE MATCH OVER THE CLASSIFIED OUTCOME (review 67867): a success decodes the payload, every other
-// arm is the refusal custody_read_refusal_cause already named. There is no second pass that has to
-// invent an answer for a success it can no longer see.
-fn bmc_custody_credential(secret_id: NonEmptyStr, token: Secret) -> CustodyCredentialRead
-  uses net: Network
-{
-  resp = gcp.SecretManager.AccessVersion(
-    access_token: token,
-    project_id: fleet_secrets_gcp_project,
-    secret: secret_id,
-    version: "latest"
-  )
-  return match custody_read_refusal_cause(performance: classify_rest_outcome(standing: RestReadExchange { rest: resp.outcome })) {
-    Present { value: refusal } => refusal
-    none => match decode_sm_access_version_secret_wire(data_b64: resp.data_b64) {
-      SmAccessVersionSecretDecoded { credential: c } => CustodyCredentialHeld { password: c as String }
-      SmAccessVersionSecretDecodeRefused { cause: _ } => CustodyCredentialUnreadable { cause: "the custody payload did not decode" }
-    }
-  }
-}
 
 
 fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> BmcCredentialProbeResult

@@ -450,6 +450,14 @@ pub type PowerCordCount = Rc<Measure<Count, One, i64>>;
 
 pub type MemoryControllerCount = Rc<Measure<Count, One, i64>>;
 
+pub type SdrUndecodedLineCount = Rc<Measure<Count, One, i64>>;
+
+pub type ObservationRoundCount = Rc<Measure<Count, One, i64>>;
+
+pub type FanCount = Rc<Measure<Count, One, i64>>;
+
+pub type PublishedLevelCount = Rc<Measure<Count, One, i64>>;
+
 pub type Millicore = Rc<Measure<Count, Milli, i64>>;
 
 pub type Watt = Rc<Measure<Power, One, i64>>;
@@ -1271,6 +1279,50 @@ pub fn cpu_core_count(count: Nat) -> CpuCoreCount {
 }
 
 pub fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub fn sdr_undecoded_line_count(count: Nat) -> SdrUndecodedLineCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn sdr_undecoded_line_count_value(c: SdrUndecodedLineCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub fn observation_round_count(count: Nat) -> ObservationRoundCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn observation_round_count_value(c: ObservationRoundCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub fn fan_count(count: Nat) -> FanCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn fan_count_value(c: FanCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub fn published_level_count(count: Nat) -> PublishedLevelCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn published_level_count_value(c: PublishedLevelCount) -> Nat {
     measure_count(c.clone())
 }
 

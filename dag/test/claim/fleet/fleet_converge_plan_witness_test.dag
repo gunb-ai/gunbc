@@ -74,6 +74,11 @@ import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
+import gunbc.fleet_converge_workflow {
+  fleet_converge_microvm_host_converge_step, fleet_converge_microvm_boot_probe_step,
+}
+import gunbc.actions_run_binding { fleet_converge_expected_host_env_name }
+import extdeps.github.actions { Step, RunStep }
 import gunbc.fleet_converge_plan {
   fleet_converge_cap_lines,
   fleet_converge_cap_refusal_count,
@@ -640,6 +645,104 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
         && !string_contains(s: artifact.apply_shell, pattern: "printf '%s'")
         && !string_contains(s: artifact.apply_shell, pattern: "/etc/systemd/system/")
   }
+}
+
+// THE FIRST LINE AN APPROVER READS IS ITS OWN SUBJECT, so this control extracts THAT LINE and
+// asserts over it alone. A whole-script substring check cannot do this job: the truthful detailed
+// header sits lower in the same script and would satisfy any document-wide search for the retirement
+// words while the admission-gate summary at the top still said "runner-slot ADD". That is exactly how
+// the ADD-only defect survived its first repair -- fixed at one rendering site, left standing at the
+// earlier one, with the existing witness looking only at the family header.
+fn apply_shell_admission_gate_line(apply_shell: String) -> String {
+  fold(
+    split(apply_shell, "\n"),
+    init: "",
+    f: (acc, l) => if starts_with(s: l, prefix: "# Admission gates enforced") { l } else { acc },
+  )
+}
+
+test fn the_top_admission_gate_line_names_retirement_not_add_only() -> Bool {
+  let artifact = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  )
+  let gate_line = apply_shell_admission_gate_line(apply_shell: artifact.apply_shell)
+  gate_line != ""
+    && string_contains(s: gate_line, pattern: "runner-slot reconciliation")
+    && string_contains(s: gate_line, pattern: "retirement inhibition via systemctl mask --now")
+    && string_contains(s: gate_line, pattern: "completed-retirement tree removal")
+    && !string_contains(s: gate_line, pattern: "runner-slot ADD")
+    && !string_contains(s: gate_line, pattern: "ADD only")
+}
+
+// THE GRANT THAT NOBODY EXECUTED IS NOW IN THE SCRIPT THAT EXECUTES, and this claim is what makes
+// that a fact rather than an intention. gunbc.recurring_failure_mode
+// capability_arrives_outside_the_converged_path was opened because /dev/kvm membership was granted
+// in sudoers and applied by an operator's hand -- so the discriminating assertion is the EXACT
+// elevated argv, not the presence of the word "kvm": a line that names the group but a different
+// binary, login or flag would satisfy a looser check and would not grant anything.
+//
+// THE NEGATIVE HALF IS A HOST WITH NO ROSTER ROW, which must contribute a stated refusal line and
+// no executable grant. Without it this claim would pass on a fold that emitted the same grants for
+// every host, which is a privilege placed on a machine no roster names.
+test fn the_full_host_apply_script_carries_the_hosts_own_executor_grants() -> Bool {
+  let rostered = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  )
+  let unrostered = fleet_converge_plan_artifact(
+    host: "srv-not-rostered" as NonEmptyStr,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  )
+  string_contains(s: rostered.apply_shell, pattern: "'/usr/bin/sudo' '-n' '/usr/sbin/usermod' '-aG' 'kvm' 'ghrunner'")
+    && string_contains(s: rostered.apply_shell, pattern: "host-wide executor grants (gunbc.runner_host_grants runner_host_wide_refused_operations)")
+    && !string_contains(s: unrostered.apply_shell, pattern: "usermod")
+    && string_contains(s: unrostered.apply_shell, pattern: "no runner host spec for srv-not-rostered")
+}
+
+// THE HEADER MUST DESCRIBE THE FOLD UNDER IT, because that line is what an operator reads before
+// approving a host mutation. It said "ADD only" directly above a family that can also emit
+// `systemctl mask --now` for an authorized surplus unit and remove a retired tree -- a narrower
+// blast radius than the script carries, which is the one claim that matters to a reader deciding
+// whether it is safe to run while jobs are live. The negative half is the whole point: the retired
+// wording must not come back.
+test fn the_slot_family_header_names_every_disposition_the_fold_can_emit() -> Bool {
+  let artifact = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  )
+  !string_contains(s: artifact.apply_shell, pattern: "ADD only")
+    && string_contains(s: artifact.apply_shell, pattern: "retirement inhibition (systemctl mask --now)")
+    && string_contains(s: artifact.apply_shell, pattern: "independently reobserved RetirementComplete")
+    && string_contains(s: artifact.apply_shell, pattern: "No desired runner is stopped, restarted or reinstalled")
 }
 
 // The stale diagnostic names the observed generation as ONE word. Split across two echo
@@ -2501,4 +2604,31 @@ fn wt_srv3_deploy() -> RunnerHostDeploy {
     Present { value: d } => d
     Absent => wt_missing_deploy()
   }
+}
+
+
+// THE BINDING IS ONLY A WALL IF THE STEP TELLS IT WHICH HOST WAS SELECTED, and for one revision it
+// did not. gunbc.runner_microvm_host_ready seals the operator's choice against the machine's own
+// hostname before any fetch, install or receipt write, reading that choice from
+// FLEET_CONVERGE_EXPECTED_HOST -- and both micro-VM steps carried `env: none`, so every dispatch of
+// either mode would have exited ExpectedHostAbsent having done nothing. The readback the repair
+// exists to deliver had a route that terminated in a refusal, which is DESIGN section 3c's
+// consumption question answered in the negative: a named consumer that cannot start.
+//
+// This asserts over the STEP VALUES rather than the emitted YAML text, because the text is a
+// projection and the defect was in what the projection was given. Both modes are checked: they fail
+// independently, so a control over one would have left the other dark.
+fn microvm_step_env_names(step: Step) -> List<String> {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match e { Present { value: kvs } => map(kvs, p => p.key)  Absent => [] }
+    _ => []
+  }
+}
+
+test fn both_microvm_steps_pass_the_selected_host_to_the_binding() -> Bool {
+  let converge_env = microvm_step_env_names(step: fleet_converge_microvm_host_converge_step())
+  let probe_env = microvm_step_env_names(step: fleet_converge_microvm_boot_probe_step())
+  any(converge_env, n => n == fleet_converge_expected_host_env_name)
+    && any(probe_env, n => n == fleet_converge_expected_host_env_name)
 }

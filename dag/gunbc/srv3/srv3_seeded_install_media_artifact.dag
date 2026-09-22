@@ -1,17 +1,29 @@
 module gunbc.srv3_seeded_install_media_artifact
 
-import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
+import extdeps.provisioning.ubuntu_install_media {
+  noble_numbat_2404_3_live_server_arm64,
+  ubuntu_install_media_artifacts_dir,
+  ubuntu_install_media_install_path,
+}
 import extdeps.provisioning.ubuntu_seeded_install_media {
-  UbuntuSeededInstallMediaArtifactRow,
+  UbuntuSeededInstallMediaBuildInput,
   ubuntu_seeded_install_media_default_nocloud_dir,
   ubuntu_seeded_install_media_grub_kernel_cmdline,
-  seeded_install_media_content_hash,
-  ubuntu_seeded_install_media_install_path_for,
 }
 import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
 import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
-import std.types { NonEmptyStr, String }
-import std.content_hash { ContentHash }
+import gunbc.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
+import gunbc.seeded_install_media_publish {
+  HostArtifactsDirectory,
+  SeededImagePublication,
+  SeededImagePublicationRefused,
+  SeededImageResolution,
+  SeededImageUnobservable,
+  SeededImageWriteBoundary,
+  publish_seeded_image,
+  resolve_seeded_image,
+}
+import std.types { List, NonEmptyStr, String }
 
 data srv3_seeded_nocloud_dir_on_iso: NonEmptyStr = ubuntu_seeded_install_media_default_nocloud_dir(
   hostname: srv3_ubuntu_autoinstall_on_iso.identity.hostname,
@@ -21,40 +33,77 @@ data srv3_seeded_grub_kernel_cmdline: NonEmptyStr = ubuntu_seeded_install_media_
   nocloud_dir: srv3_seeded_nocloud_dir_on_iso,
 )
 
-// THE DERIVATION CARRIES THE RENDERER'S REFUSAL, because the seeded media IS its rendered user-data:
-// the body is written into the ISO's seed and hashed into the media's identity, so a document the
-// YAML writer will not write leaves no media to name. Every consumer of the row below therefore
-// matches this outcome and refuses in its own vocabulary; the install path above does not, because
-// the name is made of the stock point release and the host, neither of which is seeded content.
+// The install payload is srv3's autoinstall, so the image is an INSTALLER and keeps the label the
+// earlier remaster gave it; nothing reads srv3's boot-medium label. The stem is its own row because
+// it is made of the stock point release and the host, neither of which is seeded content: a reader
+// that wants the name does not need the derivation to have succeeded.
+data srv3_seeded_install_media_image_stem: NonEmptyStr = "ubuntu-24.04.3-live-server-srv3-seeded"
+
+// EVERY BUILD INPUT BUT THE USER-DATA BODY IS A CONSTANT OF THIS MODULE; the body is the one field
+// that is rendered, so it is the one parameter. A witness that supplies a body at this boundary gets
+// the real input shape without re-running the renderer (DESIGN §3, a witness discriminates at one
+// interface); the real route below is the inhabitance claim that the renderer's output reaches it.
+fn srv3_seeded_install_media_input_for(user_data_body: NonEmptyStr) -> UbuntuSeededInstallMediaBuildInput {
+  UbuntuSeededInstallMediaBuildInput {
+    stock_artifact: noble_numbat_2404_3_live_server_arm64,
+    nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
+    user_data_body: user_data_body,
+    seed_files: [],
+    grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
+    volume_id: "UBUNTU_SEEDED",
+    pinned_dates: seeded_install_media_pinned_dates,
+    image_stem: srv3_seeded_install_media_image_stem,
+    builder_revision: seeded_install_media_builder_revision,
+  }
+}
+
+// THE DERIVATION CARRIES THE RENDERER'S REFUSAL, because the seeded image IS its rendered user-data:
+// the body is written into the ISO's seed and is in the build key, so a document the YAML writer
+// will not write leaves no image to build, publish, or resolve. Every consumer of the row below
+// therefore matches this outcome and refuses in its own vocabulary -- publication and resolution
+// through the refusal arms gunbc.seeded_install_media_publish already carries.
 type Srv3SeededInstallMedia
-  = Srv3SeededInstallMediaDerived { artifact: UbuntuSeededInstallMediaArtifactRow }
+  = Srv3SeededInstallMediaDerived { input: UbuntuSeededInstallMediaBuildInput }
   | Srv3SeededInstallMediaRefused { reason: String }
 
 fn srv3_seeded_install_media_derivation() -> Srv3SeededInstallMedia {
   match autoinstall_user_data(payload: srv3_ubuntu_autoinstall_on_iso) {
     AutoinstallUserDataRefused { reason: r } => Srv3SeededInstallMediaRefused { reason: r }
     AutoinstallUserDataRendered { content: body } =>
-      Srv3SeededInstallMediaDerived {
-        artifact: UbuntuSeededInstallMediaArtifactRow {
-          stock_artifact: noble_numbat_2404_3_live_server_arm64,
-          autoinstall: srv3_ubuntu_autoinstall_on_iso,
-          autoinstall_user_data_body: body as NonEmptyStr,
-          grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
-          nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
-          content_hash: seeded_install_media_content_hash(
-            stock_content_sha256: noble_numbat_2404_3_live_server_arm64.content_sha256 as NonEmptyStr,
-            autoinstall_user_data_body: body as NonEmptyStr,
-            grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
-            nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
-          ),
-        },
-      }
+      Srv3SeededInstallMediaDerived { input: srv3_seeded_install_media_input_for(user_data_body: body as NonEmptyStr) }
   }
 }
 
 data srv3_seeded_install_media: Srv3SeededInstallMedia = srv3_seeded_install_media_derivation()
 
-data srv3_seeded_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_seeded_install_media_install_path_for(
-  point_release: noble_numbat_2404_3_live_server_arm64.point_release as NonEmptyStr,
-  hostname: srv3_ubuntu_autoinstall_on_iso.identity.hostname,
-)
+fn srv3_seeded_install_media_refusal_text(reason: String) -> String {
+  concat("the srv3 seeded image has no derivation: ", reason)
+}
+
+// The actuator host serves the image over its own NBD proxy from its artifacts directory, beside the
+// stock medium it was derived from.
+data srv3_seeded_install_media_boundary: SeededImageWriteBoundary = HostArtifactsDirectory {
+  dir: ubuntu_install_media_artifacts_dir(),
+}
+
+fn srv3_seeded_install_media_publish() -> SeededImagePublication {
+  match srv3_seeded_install_media {
+    Srv3SeededInstallMediaRefused { reason: r } =>
+      SeededImagePublicationRefused { reason: srv3_seeded_install_media_refusal_text(reason: r) }
+    Srv3SeededInstallMediaDerived { input: i } =>
+      publish_seeded_image(
+        input: i,
+        stock_path: ubuntu_install_media_install_path(artifact: noble_numbat_2404_3_live_server_arm64),
+        boundary: srv3_seeded_install_media_boundary,
+      )
+  }
+}
+
+fn srv3_seeded_install_media_resolve() -> SeededImageResolution {
+  match srv3_seeded_install_media {
+    Srv3SeededInstallMediaRefused { reason: r } =>
+      SeededImageUnobservable { reason: srv3_seeded_install_media_refusal_text(reason: r) }
+    Srv3SeededInstallMediaDerived { input: i } =>
+      resolve_seeded_image(input: i, dir: ubuntu_install_media_artifacts_dir())
+  }
+}

@@ -34,6 +34,7 @@ import gunbc.cloudflare.r2_origin {
   R2OriginBucket,
   R2OriginAllocated,
   R2OriginUnallocated,
+  R2OriginStanding,
   fabric_durable_origin_standing,
   bucket_purpose_key,
   OriginCredentialStanding,
@@ -229,14 +230,25 @@ type OriginTransportStanding
   = OriginTransportPresent
   | OriginTransportAbsent { cause: NonEmptyStr }
 
-// THE TARGET RESOLUTION IS PURE so every refusal arm is reachable from the declarations alone; the
-// host observation above is consulted by the two effectful entries before it.
+// THE TARGET RESOLUTION IS PURE; the host observation above is consulted by the two effectful
+// entries before it. The origin standing is a PARAMETER of resolve_origin_target_under so every
+// credential arm stays reachable by a supplied value once the declarations no longer inhabit it --
+// the unminted-write refusal became unreachable from the declarations when the write credential
+// was pinned, and an arm only production can reach is one nobody can test.
 fn resolve_origin_target(direction: OriginDirection, key: NonEmptyStr) -> OriginTarget {
+  resolve_origin_target_under(direction: direction, key: key, origin: fabric_durable_origin_standing())
+}
+
+fn resolve_origin_target_under(
+  direction: OriginDirection,
+  key: NonEmptyStr,
+  origin: R2OriginStanding,
+) -> OriginTarget {
   match fleet_cloudflare_account_standing() {
     CloudflareAccountUnallocated { company: _, intervention: intervention } =>
       OriginTargetRefused { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String) as NonEmptyStr }
     CloudflareAccountAllocated { company: _, account_id: account_id } =>
-      match fabric_durable_origin_standing() {
+      match origin {
         R2OriginUnallocated { purpose: purpose } =>
           OriginTargetRefused { cause: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)) as NonEmptyStr }
         R2OriginAllocated { bucket: bucket } =>

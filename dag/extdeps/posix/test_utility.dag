@@ -1,6 +1,8 @@
 module extdeps.posix.test_utility
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Int }
+import std.algebra { trim }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -54,4 +56,90 @@ fn test_writable_command(path: String) -> ArgvCommand {
 
 fn test_executable_command(path: String) -> ArgvCommand {
   argv_command(program: test_program, arguments: ["-x", path])
+}
+
+// WHETHER A PATH IS THERE, OR WHY THAT COULD NOT BE DECIDED -- ONE DECLARATION, AT THE BOUNDARY THAT
+// OWNS THE UTILITY.
+//
+// POSIX gives `test` exit 0 for true and 1 for false, and reserves anything else for the utility
+// itself failing. So exit 1 is the only status that can mean absent; every other nonzero one is an
+// instrument that did not answer.
+//
+// BUT EXIT 1 IS NOT ONLY ABSENCE, AND TREATING IT AS ABSENCE IS THE DEFECT THIS CARRIER NOW REFUSES
+// TO HIDE. `test -e` is false when the path does not exist AND when it exists but cannot be
+// STATTED -- a parent directory without search permission, a dead mount, an I/O error on the inode.
+// The utility reports both as 1 and offers nothing to tell them apart. For a sanitation readback that
+// is the worst possible conflation, because ABSENT is the answer that RELEASES A CELL: a directory
+// whose parent lost +x would read as "the attempt's storage is gone" while the tenant's files sit
+// under it.
+//
+// SO EXIT 1 IS NOT A VERDICT HERE, IT IS A QUESTION, and the caller must establish containment to
+// answer it. That is the repair the recurring-failure-mode row for this class names: establish the
+// PARENT absent and inherit for its descendants; preserve unreadability when the parent is
+// unreadable. A path under a parent that demonstrably does not exist cannot exist; a path under a
+// parent nobody could read is unknown, not gone.
+type PathExistenceReading
+  = PathPresent
+  | PathAbsentOrUnstattable
+  | PathExistenceUnreadable { reason: NonEmptyStr }
+
+fn path_existence_reading(path: String, outcome: ProcessOutcome) -> PathExistenceReading {
+  match outcome {
+    ProcessOutputPresent { text: _ } => PathPresent
+    ProcessOutputAbsent => PathPresent
+    ProcessRefused { exit_code: code, stderr: e } =>
+      if code == 1 {
+        PathAbsentOrUnstattable
+      } else {
+        PathExistenceUnreadable {
+          reason: join(["`test -e ", path, "` exited ", to_string(code), ": ", trim(s: e)], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+// CONTAINMENT: WHAT A PARENT'S READING ESTABLISHES ABOUT A PATH UNDER IT.
+//
+// This is the only route from a `test -e` false to a real ABSENT, and it takes both readings so the
+// inheritance cannot be asserted without the evidence for it. The parent's own false is itself
+// ambiguous -- but a parent that is absent-or-unstattable containing a child that is
+// absent-or-unstattable is a subtree nothing can be read under, and for a SANITATION question that
+// is still not "gone": it is "unreadable". Only a parent that is PRESENT and readable makes the
+// child's false mean absent, because then the directory was searched and the child was not in it.
+type ContainedExistence
+  = ContainedAbsent
+  | ContainedPresent
+  | ContainedUnreadable { reason: NonEmptyStr }
+
+fn contained_existence(
+  path: String,
+  parent: String,
+  parent_reading: PathExistenceReading,
+  child_reading: PathExistenceReading,
+) -> ContainedExistence {
+  match child_reading {
+    PathPresent => ContainedPresent
+    PathExistenceUnreadable { reason: r } => ContainedUnreadable { reason: r }
+    PathAbsentOrUnstattable => absent_under(path: path, parent: parent, parent_reading: parent_reading)
+  }
+}
+
+fn absent_under(path: String, parent: String, parent_reading: PathExistenceReading) -> ContainedExistence {
+  match parent_reading {
+    PathPresent => ContainedAbsent
+    PathAbsentOrUnstattable =>
+      ContainedUnreadable {
+        reason: join([
+          "`test -e ", path, "` is false and so is its parent ", parent,
+          ", so nothing under that parent could be read and the path's absence is not established",
+        ], "") as NonEmptyStr,
+      }
+    PathExistenceUnreadable { reason: r } =>
+      ContainedUnreadable {
+        reason: join([
+          "`test -e ", path, "` is false and its parent ", parent, " could not be read (", r as String,
+          "), so the path's absence is not established",
+        ], "") as NonEmptyStr,
+      }
+  }
 }

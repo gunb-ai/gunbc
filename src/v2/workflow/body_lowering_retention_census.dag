@@ -7,6 +7,7 @@ import v2.std.algebra { Empty, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic {
+  DeclarationLocus,
   Diagnostic,
   Diagnostics,
   NodeLocus,
@@ -16,6 +17,7 @@ import v2.std.diagnostic {
   Textual
 }
 import v2.std.lens_verdict { lens_verdict_extent_text }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.node {
   Arrow,
   Atom,
@@ -167,6 +169,7 @@ fn retained_node_optional(d: Diagnostic) -> Optional<Node> {
     Textual { file: _, extent: _ } => Absent
     SourcePortLocus { anchor: _, file: _, extent: _ } => Absent
     InvariantPortLocus { anchor: _, invariant: _ } => Absent
+    DeclarationLocus { declaration: _ } => Absent
   }
 }
 
@@ -449,6 +452,8 @@ fn diagnostic_attribution(d: Diagnostic) -> String {
         "invariant port ",
         concat(symbol_lexeme(sym: anchor.at), concat(" violated ", symbol_lexeme(sym: invariant)))
       )
+    DeclarationLocus { declaration: declaration } =>
+      concat("declaration ", qualified_name_to_dotted_string(qn: declaration))
   }
 }
 

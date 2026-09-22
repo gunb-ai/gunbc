@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.gunbc_fleet_converge_workflow_fleet_converge_app_control_plane_receipt_upload_step_app_control_plane_receipt_path
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data gunbc_fleet_converge_workflow_fleet_converge_app_control_plane_receipt_upload_step_app_control_plane_receipt_path: TransitionAdmission = TransitionAdmission {
+  label: "C11 REBIND app_control_plane_receipt_path moves from its *_converge module to gunbc.fleet.app_control_plane_inspection (gunbc#11689)" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.fleet_converge_workflow", "fleet_converge_app_control_plane_receipt_upload_step"),
+    spelling: "app_control_plane_receipt_path" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.fleet.app_control_plane_inspection", "app_control_plane_receipt_path")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11689 as UInt32,
+}

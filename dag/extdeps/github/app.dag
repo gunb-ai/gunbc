@@ -32,6 +32,8 @@ import extdeps.languages.json.emit {
   serialize_json,
 }
 import extdeps.github.org_admin_auth { github_app_installation_access_token_url }
+import std.markup { Fragment, Element, FragmentText, attr }
+import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.transports.rest { RestOutcome }
 import v2.std.algebra { fold_list }
 
@@ -938,6 +940,174 @@ fn app_manifest_registration_url(
   }
 }
 
+// THE MANIFEST IS DELIVERED BY A FORM POST AND THERE IS NO FIELD TO PASTE IT INTO. This is the
+// upstream fact the acquisition lane got wrong, observed live: an operator opened the registration
+// URL, was told to "paste the manifest into the form's manifest field", and found a create page with
+// no such field. A GET of that URL renders GitHub's ORDINARY App-creation form, which is the manual
+// route and ignores manifests entirely; the manifest protocol is a POST to the SAME URL carrying one
+// application/x-www-form-urlencoded parameter named `manifest` whose value is the manifest JSON
+// (app_manifest_registration_citation, "Implementing the GitHub App Manifest flow", step 1). So the
+// registration URL alone is not an executable instruction -- it is only the ACTION of a form nobody
+// had written, and the missing form is the whole defect.
+//
+// THE PARAMETER NAME IS A ROW BECAUSE IT IS UPSTREAM'S, not this corpus's choice of spelling. A
+// consumer that spelled it itself would fork the one fact that decides whether the POST is a manifest
+// registration or an ignored request.
+data app_manifest_form_parameter_name: String = "manifest"
+
+// WHY A SUBMIT BUTTON RATHER THAN A SCRIPT THAT POSTS ON LOAD. A page that submits itself would hand
+// the operator's signed-in session to a POST they never read, at the one endpoint in this flow that
+// creates an App and mints a private key shown exactly once. The button is the consent act the
+// endpoint requires anyway (GitHub takes the submission from the account or organization OWNER), so
+// making it a click costs one click and keeps the artifact readable before it is spent.
+data app_manifest_submission_button_label: String = "Create this GitHub App"
+
+// THE ESCAPING IS THE WALL AND IT IS NOT THIS MODULE'S. The manifest document is JSON, so it carries
+// a double quote around every key and every string value; placed unescaped into value="..." it would
+// close the attribute at the first key and the remainder would be parsed as markup -- which is not a
+// cosmetic defect here but a silent one, because the browser would POST a TRUNCATED manifest and
+// GitHub would register an App with permissions nobody declared. std.markup escape_attribute is the
+// single authority for that, reached through extdeps.languages.html's serializer, and this module
+// hands it a Fragment rather than assembling any markup text of its own.
+type AppManifestSubmissionDocument
+  = ManifestSubmissionRendered { html: String }
+  | ManifestSubmissionNotRenderable { cause: NonEmptyStr }
+
+fn app_manifest_submission_fragment(
+  action_url: String,
+  manifest_document: String,
+  heading: String,
+  guidance: String,
+) -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [attr(name: "lang", value: "en")],
+    children: [
+      Element {
+        tag: "head",
+        attributes: [],
+        children: [
+          Element { tag: "meta", attributes: [attr(name: "charset", value: "utf-8")], children: [] },
+          Element { tag: "title", attributes: [], children: [FragmentText { content: heading }] },
+        ],
+      },
+      Element {
+        tag: "body",
+        attributes: [],
+        children: [
+          Element { tag: "h1", attributes: [], children: [FragmentText { content: heading }] },
+          Element { tag: "p", attributes: [], children: [FragmentText { content: guidance }] },
+          Element {
+            tag: "form",
+            attributes: [attr(name: "method", value: "post"), attr(name: "action", value: action_url)],
+            children: [
+              Element {
+                tag: "input",
+                attributes: [
+                  attr(name: "type", value: "hidden"),
+                  attr(name: "name", value: app_manifest_form_parameter_name),
+                  attr(name: "value", value: manifest_document),
+                ],
+                children: [],
+              },
+              Element {
+                tag: "button",
+                attributes: [attr(name: "type", value: "submit")],
+                children: [FragmentText { content: app_manifest_submission_button_label }],
+              },
+            ],
+          },
+          Element {
+            tag: "pre",
+            attributes: [],
+            children: [FragmentText { content: manifest_document }],
+          },
+        ],
+      },
+    ],
+  }
+}
+
+// THE DOCUMENT REFUSES RATHER THAN RENDERING A FORM THAT WOULD POST SOMETHING ELSE. Three things can
+// go wrong before there is an artifact -- the manifest does not admit, the state nonce does not
+// percent-encode into the action URL, the serializer refuses the fragment -- and each produces no
+// document at all. A partial page here is worse than none: the operator would click it.
+fn app_manifest_submission_document(
+  target: GitHubAppRegistrationTarget,
+  state: NonEmptyStr,
+  m: GitHubAppManifest,
+  heading: String,
+  guidance: String,
+) -> AppManifestSubmissionDocument {
+  match render_app_manifest(m: m) {
+    AppManifestNotRenderable { admission: _ } =>
+      ManifestSubmissionNotRenderable {
+        cause: "the declared manifest is not renderable, so there is nothing to submit" as NonEmptyStr
+      }
+    AppManifestRendered { document: document } =>
+      match app_manifest_registration_url(target: target, state: state) {
+        RegistrationUrlStateUnencodable { cause: _ } =>
+          ManifestSubmissionNotRenderable {
+            cause: "the registration state nonce is not percent-encodable, so the form has no action URL" as NonEmptyStr
+          }
+        RegistrationUrlBuilt { url: url } =>
+          match try_serialize_html_source(
+            node: app_manifest_submission_fragment(
+              action_url: url,
+              manifest_document: document,
+              heading: heading,
+              guidance: guidance,
+            )
+          ) {
+            EmitRejected { reason: r } =>
+              ManifestSubmissionNotRenderable {
+                cause: join(["the submission document was refused by the HTML serializer: ", r], "") as NonEmptyStr
+              }
+            EmitOk { html: html } => ManifestSubmissionRendered { html: html }
+          }
+      }
+  }
+}
+
+// INSTALLATION IS A SECOND CONSENT AT A SECOND URL, AND THAT IS WHY IT IS A SECOND FACT. Registering
+// an App creates it under an owner; it grants that App access to nothing. The permissions in the
+// manifest are what the App may ASK FOR, and an installation is where an account holder agrees to
+// give some of them over some repositories -- so an App can exist with zero installations
+// indefinitely, which is exactly the state a newly converted App is in (installations_count is the
+// field upstream omits at zero). The page that takes that consent is the App's public install page,
+// addressed by the SLUG the conversion returned, and like the registration form it is a browser act
+// by a signed-in account holder with no API behind it (app_install_citation).
+data app_install_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/apps/using-github-apps/installing-your-own-github-app"
+  }
+}
+
+data github_apps_install_locator_prefix: String = "github.com/apps/"
+
+type AppInstallUrl
+  = InstallUrlBuilt { url: String }
+  | InstallUrlSlugUnencodable { cause: UriPercentEncodeRefusalCause }
+
+// THE SLUG IS PERCENT-ENCODED RATHER THAN INTERPOLATED. It is a value GitHub returns, not one this
+// corpus authored, and it is being placed into a URL PATH; a slug carrying a separator would address
+// a different page while the refusal here names it instead.
+fn app_install_url(slug: NonEmptyStr) -> AppInstallUrl {
+  match uri_percent_encode_component(value: slug) {
+    UriPercentComponentRefused { cause: c } => InstallUrlSlugUnencodable { cause: c }
+    UriPercentComponentEncoded(encoded) =>
+      InstallUrlBuilt {
+        url: uri_wire(
+          uri: Uri {
+            scheme: Https,
+            locator: join([github_apps_install_locator_prefix, encoded as String, "/installations/new"], "") as NonEmptyStr,
+          }
+        ) as String
+      }
+  }
+}
+
 // THE TEMPORARY CODE IS SPENDABLE EXACTLY ONCE AND EXPIRES IN ONE HOUR (app_manifest_registration_citation:
 // "Must complete all three steps within one hour"). It is branded so a caller cannot hand the exchange
 // an App slug, a client id, or a state nonce - all of which are NonEmptyStr at this boundary.
@@ -1080,8 +1250,10 @@ service github.AppPublicRegistry {
 // THE APP-JWT CREDENTIAL IS READ AT THE TRANSPORT FROM THE ENVIRONMENT, NOT TAKEN AS AN OPERATION
 // INPUT, following the extdeps.google.sheets and github.Checks precedent and for the reason
 // list_app_installations_citation states outright: "You must use a JWT to access this endpoint." That
-// JWT is RS256-signed with the App's private key, and NOTHING IN THIS CORPUS CAN SIGN RS256 - verified,
-// not assumed. So the minting step is external and hourly (org_admin_auth: iat backdated up to 60s,
+// JWT is RS256-signed with the App's private key. The corpus CAN sign one on a host that holds the key
+// FILE -- the extdeps.auth.jws signer, realized by gunbc.jws_signer_realize, performed by gunbc.github_effect_perform -- but
+// this service's callers (the census and org instruments) run where no key file is custodied, so for
+// them the minting step is still external and hourly (org_admin_auth: iat backdated up to 60s,
 // exp at most 10 minutes), and the boundary this module holds is that no caller can interpolate a token
 // into an argument list: the transport reads GITHUB_APP_JWT or the request goes out unauthenticated and
 // upstream refuses it with a status this operation classifies.
@@ -1200,10 +1372,11 @@ fn installation_from_record(record: GitHubAppInstallationRecord) -> Installation
 // GitHubInstallationTokenRequest above carried the narrowing vocabulary and the verdict fold but had
 // no spelling of the POST body those narrowings become, so the half of the budget path that IS
 // decidable here - what we would ask for, and whether it exceeds the installation - stopped short of
-// the wire. The endpoint is named through org_admin_auth's citation-bearing builder rather than
-// respelled. There is no operation: the request needs an RS256-signed App JWT, and nothing in this
-// corpus can sign one, so declaring an operation would be a route that cannot execute (DESIGN 4b:
-// do not cite a check for a red it cannot produce).
+// the wire. installation_token_request_url names the endpoint through org_admin_auth's
+// citation-bearing builder. The OPERATION is github.AppInstallationAccessTokens below, taking the
+// App JWT as an input; its rest path template is necessarily a transport literal (the template
+// language interpolates the id into the path, it cannot call a builder), and it names the same
+// endpoint -- a divergence of spelling the transport forces, stated rather than hidden.
 fn installation_token_request_url(request: GitHubInstallationTokenRequest) -> String {
   github_app_installation_access_token_url(installation_id: request.installation_id.value)
 }
@@ -1257,9 +1430,48 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     extdeps.github.app.private_key_citation,
     extdeps.github.app.app_webhook_config_citation,
     extdeps.github.app.app_manifest_registration_citation,
+    extdeps.github.app.app_install_citation,
     extdeps.github.app.app_manifest_conversion_citation,
     extdeps.github.app.get_an_app_citation,
     extdeps.github.app.list_app_installations_citation,
     extdeps.github.app.webhook_events_citation
   ]
+}
+
+// POST /app/installations/{installation_id}/access_tokens, cited by
+// extdeps.github.org_admin_auth installation_token_citation. It authenticates AS THE APP -- the
+// Bearer is an RS256 App JWT (extdeps.auth.jws), never an installation or user token -- and answers
+// 201 with a token valid for one hour. The token is decoded straight into a Secret so it has no
+// String life in this process. A mutation: a transport refusal is commit-ambiguous, and the caller
+// classifies it through extdeps.transports.rest classify_rest_outcome as RestMutationExchange.
+service github.AppInstallationAccessTokens {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: app_jwt
+  }
+
+  operation Create {
+    input {
+      app_jwt: Secret
+      installation_id: Int
+    }
+    output {
+      token: Secret from "token"
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/app/installations/\{installation_id\}/access_tokens",
+      body: { }
+    }
+    response {
+      201 => GitHubInstallationAccessTokenBody
+    }
+  }
+}
+
+type GitHubInstallationAccessTokenBody {
+  token: String
+  expires_at: String
 }

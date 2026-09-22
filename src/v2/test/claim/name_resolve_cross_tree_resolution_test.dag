@@ -1,7 +1,7 @@
 module v2.test.claim.name_resolve_cross_tree_resolution
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots }
+import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots }
 import v2.compiler.name_resolve {
   Admission,
   Import,
@@ -157,7 +157,7 @@ fn ct_both_trees() -> SourceRootSet {
 }
 
 fn ct_dag_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
@@ -195,7 +195,7 @@ fn ct_dag_same_tree_admission() -> Admission {
 }
 
 fn ct_v2_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
@@ -237,7 +237,7 @@ fn ct_v2_same_tree_admission() -> Admission {
 }
 
 fn ct_cross_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
@@ -291,7 +291,7 @@ fn ct_v2_to_dag_index() -> SourceRootIndex {
 }
 
 fn ct_dag_to_v2_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(

@@ -1,0 +1,142 @@
+module test.claim.fleet_health_observe_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.goal_assessment { ObservationEstablished, ObservationRefused }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import product.host_health {
+  BmcEventLogContinuityUnestablished,
+  BmcEventsObserved,
+  BmcThresholdCritical,
+  CorrectedMemoryErrorEvent,
+  SignalObserved,
+  TemperatureReadingPresent,
+  SensorThresholdEvent,
+  UnclassifiedEvent,
+}
+import extdeps.bmc.redfish_telemetry {
+  RedfishHealthCritical,
+  RedfishHealthOk,
+  RedfishLogEntry,
+  RedfishReadingNull,
+  RedfishReadingValue,
+  RedfishRotationalRpm,
+  RedfishStateEnabled,
+  RedfishTelemetryPoint,
+  RedfishTemperatureCelsius,
+}
+import extdeps.bmc.types { RedfishLegacyChassisThermal, RedfishThermalSubsystemSensorCollection }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog, asrock_altrad8ud_redfish_chassis_id }
+import gunbc.fleet_health_observe {
+  BmcTelemetryProfile,
+  event_window,
+  fan_windows,
+  manager_firmware,
+  telemetry_surface,
+  temperature_windows,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// These claims supply the collector's intermediate values -- decoded log entries and telemetry
+// points -- because they are about the window arithmetic, not about the wire. The wire decoders are
+// witnessed on real responses in test.claim.redfish_telemetry_witness; the route that joins the two
+// on live BMCs is the collector's own run.
+
+fn entry(id: Int, message: NonEmptyStr) -> RedfishLogEntry {
+  RedfishLogEntry { id: id, severity: "Critical", message: message }
+}
+
+data ecc: NonEmptyStr = "OpenBMC.0.1.MemoryECCCorrectable.Critical \n 0,2,0,9"
+data fan_note: NonEmptyStr = "FAN4 critical low threshold deassert."
+
+test fn appended_entries_are_those_after_the_openings_newest_and_are_classified() -> Bool {
+  match event_window(opening: [entry(id: 10, message: fan_note), entry(id: 11, message: fan_note)],
+                     closing: [entry(id: 10, message: fan_note), entry(id: 11, message: fan_note), entry(id: 12, message: ecc), entry(id: 13, message: fan_note)]) {
+    BmcEventsObserved { history_count, appended } =>
+      history_count == 2
+        && map(appended, e => e.id) == [12, 13]
+        && match appended.first() { Present { value: e } => match e.kind { CorrectedMemoryErrorEvent => true _ => false } none => false }
+        && match reverse(appended).first() { Present { value: e } => match e.kind { SensorThresholdEvent { sensor, critical: _, asserted } => sensor == "FAN4" && !asserted _ => false } none => false }
+    BmcEventLogContinuityUnestablished { cause: _ } => false
+  }
+}
+
+// srv3's log wraps at about 1200 entries; if the opening's newest entry has rolled off by the close,
+// nothing about what was appended can be said.
+test fn a_log_that_wrapped_or_was_cleared_in_the_window_is_not_an_empty_append() -> Bool {
+  let wrapped = match event_window(opening: [entry(id: 10, message: fan_note), entry(id: 11, message: fan_note)], closing: [entry(id: 12, message: fan_note)]) {
+    BmcEventLogContinuityUnestablished { cause: _ } => true
+    _ => false
+  }
+  let reordered = match event_window(opening: [entry(id: 11, message: fan_note), entry(id: 10, message: fan_note)], closing: [entry(id: 11, message: fan_note)]) {
+    BmcEventLogContinuityUnestablished { cause: _ } => true
+    _ => false
+  }
+  wrapped && reordered
+}
+
+data srv1_profile: BmcTelemetryProfile = BmcTelemetryProfile {
+  host: operator_host_srv1,
+  bmc_host: "192.168.1.183",
+  chassis_id: asrock_altrad8ud_redfish_chassis_id,
+  surface_catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+}
+
+// The surface follows the firmware the BMC reports, through the board catalog: 2.07 reads per-sensor
+// resources, 3.22 reads legacy Thermal, and a version the catalog does not know refuses.
+test fn the_surface_is_derived_from_the_reported_firmware() -> Bool {
+  let v207 = match manager_firmware(body: "{\"FirmwareVersion\":\"2.07.00\"}") {
+    ObservationEstablished { observed: f } => match telemetry_surface(telemetry: srv1_profile, firmware: f) { ObservationEstablished { observed: RedfishThermalSubsystemSensorCollection } => true _ => false }
+    _ => false
+  }
+  let v322 = match manager_firmware(body: "{\"FirmwareVersion\":\"3.22.00\"}") {
+    ObservationEstablished { observed: f } => match telemetry_surface(telemetry: srv1_profile, firmware: f) { ObservationEstablished { observed: RedfishLegacyChassisThermal } => true _ => false }
+    _ => false
+  }
+  let unknown = match manager_firmware(body: "{\"FirmwareVersion\":\"9.99.00\"}") {
+    ObservationEstablished { observed: f } => match telemetry_surface(telemetry: srv1_profile, firmware: f) { ObservationRefused { cause: _ } => true _ => false }
+    _ => false
+  }
+  let garbage = match manager_firmware(body: "{\"FirmwareVersion\":\"v2-dev\"}") { ObservationRefused { cause: _ } => true _ => false }
+  v207 && v322 && unknown && garbage
+}
+
+fn point(name: NonEmptyStr, fan: Bool, reading: Int) -> RedfishTelemetryPoint {
+  RedfishTelemetryPoint {
+    name: name,
+    kind: if fan { RedfishRotationalRpm } else { RedfishTemperatureCelsius },
+    reading: RedfishReadingValue { whole: reading },
+    health: if fan && reading == 0 { RedfishHealthCritical } else { RedfishHealthOk },
+    state: RedfishStateEnabled,
+  }
+}
+
+// Three samples of srv1's shape: FAN4 at zero every time, a null header, a DIMM temperature.
+test fn samples_fold_into_one_window_per_endpoint() -> Bool {
+  let s1 = [point(name: "FAN4", fan: true, reading: 0), point(name: "FAN1", fan: true, reading: 1200), point(name: "TEMP_DIMM_C1", fan: false, reading: 99)]
+  let s2 = [point(name: "FAN4", fan: true, reading: 0), point(name: "FAN1", fan: true, reading: 1100), point(name: "TEMP_DIMM_C1", fan: false, reading: 98)]
+  let s3 = [point(name: "FAN4", fan: true, reading: 0), point(name: "FAN1", fan: true, reading: 1300), point(name: "TEMP_DIMM_C1", fan: false, reading: 99)]
+  let fans = match fan_windows(host: operator_host_srv1, samples: [s1, s2, s3]) {
+    SignalObserved { observed: ws } =>
+      any(ws, w => w.endpoint.name == "FAN4" && w.zero_count == 3 && w.rotating_count == 0 && w.sample_count == 3)
+        && any(ws, w => w.endpoint.name == "FAN1" && w.rotating_count == 3)
+    _ => false
+  }
+  let temps = match temperature_windows(host: operator_host_srv1, samples: [s1, s2, s3]) {
+    SignalObserved { observed: ws } => count(ws) == 1 && any(ws, w => count(w.samples) == 3)
+    _ => false
+  }
+  fans && temps
+}
+
+// A sensor that vanishes mid-window changes the population; that refuses rather than producing a
+// window over fewer samples than its neighbours.
+test fn a_population_change_mid_window_refuses() -> Bool {
+  let s1 = [point(name: "FAN1", fan: true, reading: 1200), point(name: "FAN4", fan: true, reading: 0)]
+  let s2 = [point(name: "FAN1", fan: true, reading: 1200)]
+  match fan_windows(host: operator_host_srv1, samples: [s1, s2]) {
+    SignalObserved { observed: _ } => false
+    _ => true
+  }
+}

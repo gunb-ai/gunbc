@@ -64,6 +64,7 @@ import gunbc.roadmap_program_view {
   FinishLineNodeUnresolved, FrontGateUnresolved, v1_program_view,
 }
 import gunbc.roadmap_authority {
+  roadmap_acceptance_event_history_load,
   declared_roadmap_nodes,
   projected_roadmap_dependency_edges_projection,
   ProjectedRoadmapDependencyEdgesProjected,
@@ -335,7 +336,7 @@ type LiveProgramView
   | LiveViewRefused { causes: List<String> }
 
 fn live_program_view_result() -> LiveProgramView {
-  match roadmap_acceptance_receipts() {
+  match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {
     RoadmapAcceptanceReceiptsProjectionRefused { detail } =>
       LiveViewRefused { causes: [join(["acceptance receipts unavailable: ", detail], "")] }
     RoadmapAcceptanceReceiptsProjected { receipts } =>

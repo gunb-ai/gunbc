@@ -37,11 +37,6 @@ import gunbc.workflow_escalation {
   workflow_step_disposition_for_authorization,
   workflow_step_is_runnable,
 }
-import gunbc.nbd_proxy_virtual_media_install {
-  ActuatorPlanReady,
-  ActuatorPlanRefused,
-  srv3_os_install_actuator_plan_standing,
-}
 import gunbc.srv3_bmc_credential_resolve { srv3_os_install_actuate_credential_intent }
 
 type OsInstallActuateWorkflowStep
@@ -254,11 +249,4 @@ fn srv3_os_install_actuate_workflow_includes_operator_approval_before_boot() -> 
 
 fn srv3_os_install_actuate_workflow_credential_intent_is_declared() -> Bool {
   srv3_os_install_actuate_credential_intent().rotated_secret_ref.secret == "bmc-srv3-admin" as NonEmptyStr
-}
-
-fn srv3_os_install_actuator_plan_step_count_matches_workflow_tail() -> Bool {
-  match srv3_os_install_actuator_plan_standing {
-    ActuatorPlanReady { plan: p, intents: _ } => p.steps.length() == 3
-    ActuatorPlanRefused { cause: _ } => false
-  }
 }
